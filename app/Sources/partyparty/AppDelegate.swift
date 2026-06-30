@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusModel = StatusModel(api: api)
         statusModel.onOpenConsole = { [weak self] in self?.openConsole() }
         statusModel.onCheckUpdates = { [weak self] in self?.updater.checkForUpdates() }
+        statusModel.onQuit = { NSApp.terminate(nil) }
 
         setupStatusItem()
         statusModel.startPolling()

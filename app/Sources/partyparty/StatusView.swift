@@ -7,6 +7,7 @@ final class StatusModel: ObservableObject {
     private var timer: Timer?
     var onOpenConsole: () -> Void = {}
     var onCheckUpdates: () -> Void = {}
+    var onQuit: () -> Void = {}
 
     init(api: APIClient) { self.api = api }
 
@@ -57,7 +58,11 @@ struct StatusView: View {
             .keyboardShortcut(.defaultAction)
             Button("Open DJ Console…", action: model.onOpenConsole).frame(maxWidth: .infinity)
             Divider()
-            Button("Check for Updates…", action: model.onCheckUpdates).frame(maxWidth: .infinity)
+            HStack {
+                Button("Check for Updates…", action: model.onCheckUpdates)
+                Spacer()
+                Button("Quit", action: model.onQuit)
+            }
         }
         .padding(14)
         .frame(width: 280)
