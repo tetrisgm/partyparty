@@ -38,5 +38,8 @@
   <string>https://github.com/tetrisgm/partyparty/releases/latest/download/appcast.xml</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>86400</integer>
+  <!-- Run Sparkle's generate_keys once, then paste your PUBLIC key below (it is
+       not secret). Until set, the app won't apply updates. See docs/RELEASING.md. -->
+  <!-- <key>SUPublicEDKey</key><string>YOUR_BASE64_PUBLIC_KEY</string> -->
 </dict>
 </plist>

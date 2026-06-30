@@ -1,0 +1,96 @@
+name: Release
+
+# Tag a version (e.g. `git tag v0.1.0 && git push --tags`) to build, Developer-ID
+# sign, notarize, staple, generate the Sparkle appcast, and publish a GitHub
+# Release. Installed apps then auto-update. One-time setup + the secret list are in
+# docs/RELEASING.md.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the GitHub Release + upload assets
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Bundle mediamtx (Homebrew) for the embed/helper step
+        run: brew install mediamtx
+
+      - name: Import Developer ID signing certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KPASS="$(uuidgen)"
+          security create-keychain -p "$KPASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KPASS" "$KEYCHAIN"
+          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KPASS" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build, sign + assemble the .app
+        env:
+          PP_SIGN_ID: ${{ secrets.MACOS_DEVELOPER_ID }}   # "Developer ID Application: Name (TEAMID)"
+        run: make app
+
+      - name: Notarize + staple
+        env:
+          AC_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+          AC_KEY_BASE64: ${{ secrets.AC_API_KEY_BASE64 }}   # the .p8, base64
+        run: |
+          set -euo pipefail
+          echo "$AC_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/ac_key.p8"
+          ditto -c -k --keepParent build/partyparty.app "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$RUNNER_TEMP/ac_key.p8" --key-id "$AC_KEY_ID" --issuer "$AC_ISSUER_ID" \
+            --wait --timeout 30m
+          xcrun stapler staple build/partyparty.app
+          xcrun stapler validate build/partyparty.app
+          rm -f "$RUNNER_TEMP/ac_key.p8"
+
+      - name: Package the update archive (stapled)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ditto -c -k --keepParent build/partyparty.app "dist/partyparty-${GITHUB_REF_NAME}.zip"
+
+      - name: Generate + sign the Sparkle appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          # Sparkle CLI tools (generate_appcast signs each item with the EdDSA key).
+          SPK_VER=2.9.3
+          curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPK_VER}/Sparkle-${SPK_VER}.tar.xz"
+          mkdir -p "$RUNNER_TEMP/sparkle" && tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
+          TOOLS="$RUNNER_TEMP/sparkle/bin"
+          # generate_appcast reads the private key from stdin (-f -) and writes appcast.xml.
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$TOOLS/generate_appcast" --ed-key-file - \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+            dist
+          ls -la dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/partyparty-${{ github.ref_name }}.zip
+            dist/appcast.xml
+          generate_release_notes: true
