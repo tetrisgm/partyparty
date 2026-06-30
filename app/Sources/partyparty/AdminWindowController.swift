@@ -15,7 +15,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
-        win.title = "partyparty"
+        win.title = appName
         win.center()
         win.setFrameAutosaveName("AdminWindow")
         win.minSize = NSSize(width: 720, height: 560)

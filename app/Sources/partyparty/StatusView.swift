@@ -58,11 +58,8 @@ struct StatusView: View {
             .keyboardShortcut(.defaultAction)
             Button("Open DJ Console…", action: model.onOpenConsole).frame(maxWidth: .infinity)
             Divider()
-            HStack {
-                Button("Check for Updates…", action: model.onCheckUpdates)
-                Spacer()
-                Button("Quit", action: model.onQuit)
-            }
+            Button("Check for Updates…", action: model.onCheckUpdates).frame(maxWidth: .infinity)
+            Button("Quit \(appName)", action: model.onQuit).frame(maxWidth: .infinity)
         }
         .padding(14)
         .frame(width: 280)

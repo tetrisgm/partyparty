@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.title = "🕺"            // emoji icons render via the title, not a template image
-            button.toolTip = "partyparty"
+            button.toolTip = appName
             button.action = #selector(statusClicked(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         login.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit partyparty", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit \(appName)", action: #selector(quit), keyEquivalent: "q")
         for item in menu.items where item.action != nil { item.target = self }
         // Show the menu once, then detach so the next left-click uses the popover.
         statusItem.menu = menu
