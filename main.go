@@ -27,15 +27,6 @@ import (
 //go:embed all:web
 var webFS embed.FS
 
-//go:embed assets/ppcapture
-var capBin []byte
-
-//go:embed assets/mediamtx
-var mediamtxBin []byte
-
-//go:embed assets/ffmpeg
-var ffmpegBin []byte
-
 func main() {
 	cfg := config.Parse()
 
@@ -49,20 +40,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Extract the embedded ScreenCaptureKit helper to a stable path (so its
-	// Screen Recording permission persists across runs).
-	helperPath := ""
-	if len(capBin) > 0 {
-		helperPath = filepath.Join(runDir, "ppcapture")
-		if err := os.WriteFile(helperPath, capBin, 0o755); err != nil {
-			helperPath = ""
-		}
-	}
-
-	// FFmpeg is bundled too; extract it unless the user pointed --ffmpeg elsewhere.
-	if cfg.FFmpeg == "ffmpeg" && len(ffmpegBin) > 0 {
-		p := filepath.Join(runDir, "ffmpeg")
-		if err := os.WriteFile(p, ffmpegBin, 0o755); err == nil {
+	// Resolve the capture helper + ffmpeg. In the default build these extract from
+	// the embedded copies; in the signed .app build (-tags bundle) they resolve to
+	// the pre-signed binaries in Contents/Helpers/.
+	helperPath := helperPPCapture(runDir)
+	if cfg.FFmpeg == "ffmpeg" {
+		if p := helperFFmpeg(runDir); p != "" {
 			cfg.FFmpeg = p
 		}
 	}
@@ -88,16 +71,14 @@ func main() {
 	bc := broadcast.New(cfg, runDir, helperPath, ingestURL)
 	ls := stats.New(20 * time.Second)
 
-	// MediaMTX is bundled into the binary; extract it so LL-HLS always works.
+	// MediaMTX (LL-HLS): embedded+extracted in dev, or from Contents/Helpers/ in
+	// the .app build; fall back to PATH if neither is present.
 	mtxBinPath := cfg.MediaMTXBin
 	if mtxBinPath == "" {
-		if len(mediamtxBin) > 0 {
-			mtxBinPath = filepath.Join(runDir, "mediamtx")
-			if err := os.WriteFile(mtxBinPath, mediamtxBin, 0o755); err != nil {
-				log.Fatalf("failed to extract bundled mediamtx: %v", err)
-			}
+		if p := helperMediaMTX(runDir); p != "" {
+			mtxBinPath = p
 		} else if p, err := mediamtx.Find(""); err == nil {
-			mtxBinPath = p // not bundled in this build; fall back to PATH
+			mtxBinPath = p // fall back to PATH
 		}
 	}
 
@@ -177,8 +158,9 @@ func main() {
 	}
 	fmt.Println()
 
-	// Open the DJ console automatically (skip for headless test-tone runs).
-	if !cfg.Tone {
+	// Open the DJ console automatically (skip for headless test-tone runs and when
+	// the native shell hosts the admin in its own window, which passes --no-open).
+	if !cfg.Tone && !cfg.NoOpen {
 		_ = exec.Command("open", fmt.Sprintf("http://localhost:%d/dj", cfg.Port)).Start()
 	}
 

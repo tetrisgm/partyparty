@@ -19,6 +19,7 @@ type Config struct {
 	Device     string
 	Captive    bool
 	Tone       bool
+	NoOpen     bool
 	FFmpeg     string
 
 	// Delivery + LL-HLS (MediaMTX) settings.
@@ -49,6 +50,7 @@ func Parse() Config {
 	flag.StringVar(&c.Device, "device", env("PARTYPARTY_DEVICE", "auto"), "default capture device index")
 	flag.BoolVar(&c.Captive, "captive", env("PARTYPARTY_CAPTIVE", "") == "1", "answer OS connectivity probes to trigger a captive portal")
 	flag.BoolVar(&c.Tone, "tone", false, "auto-start a 440 Hz test tone on launch")
+	flag.BoolVar(&c.NoOpen, "no-open", false, "don't auto-open the DJ console in a browser (the native app hosts it in-window)")
 	flag.StringVar(&c.FFmpeg, "ffmpeg", env("PARTYPARTY_FFMPEG", "ffmpeg"), "path to the ffmpeg binary")
 	mono := false
 	flag.BoolVar(&mono, "mono", env("PARTYPARTY_MONO", "") == "1", "broadcast in mono (about half the bandwidth)")
