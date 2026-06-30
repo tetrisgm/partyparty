@@ -34,5 +34,9 @@
       </dict>
     </dict>
   </dict>
+  <key>SUFeedURL</key>
+  <string>https://github.com/tetrisgm/partyparty/releases/latest/download/appcast.xml</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>86400</integer>
 </dict>
 </plist>

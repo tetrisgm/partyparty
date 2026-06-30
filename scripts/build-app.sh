@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Assemble build/partyparty.app: the Swift menu-bar shell (Contents/MacOS) + the
-# Go server and native helpers (Contents/Helpers), code-signed inside-out.
+# Go server and native helpers (Contents/Helpers) + Sparkle.framework
+# (Contents/Frameworks), code-signed inside-out.
 #
 #   make app                 -> ad-hoc signed (-s -), for LOCAL testing
 #   PP_SIGN_ID="Developer ID Application: ... (TEAMID)" ./scripts/build-app.sh
-#                            -> Developer ID + hardened runtime + timestamp (for notarization, CI)
+#                            -> Developer ID + hardened runtime + timestamp (notarization, CI)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -19,25 +20,31 @@ echo ">> Go server (-tags bundle)"
 
 echo ">> Swift menu-bar app (release)"
 swift build -c release --package-path "$ROOT/app"
-SWIFT_BIN="$ROOT/app/.build/release/partyparty"
+BIN="$(swift build -c release --package-path "$ROOT/app" --show-bin-path)"
 
 echo ">> assembling $APP"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
-cp "$SWIFT_BIN"                  "$APP/Contents/MacOS/partyparty"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+cp "$BIN/partyparty"               "$APP/Contents/MacOS/partyparty"
 cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
-cp "$ROOT/assets/ffmpeg"        "$APP/Contents/Helpers/ffmpeg"
-cp "$ROOT/assets/mediamtx"      "$APP/Contents/Helpers/mediamtx"
-cp "$ROOT/assets/ppcapture"     "$APP/Contents/Helpers/ppcapture"
-cp "$ROOT/app/Info.plist"       "$APP/Contents/Info.plist"
+cp "$ROOT/assets/ffmpeg"           "$APP/Contents/Helpers/ffmpeg"
+cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
+cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
+cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 [ -f "$ROOT/app/icon.icns" ] && cp "$ROOT/app/icon.icns" "$APP/Contents/Resources/icon.icns"
+
+# Sparkle framework (auto-update) — embed + make it discoverable via rpath.
+if [ -d "$BIN/Sparkle.framework" ]; then
+  cp -R "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/partyparty" 2>/dev/null || true
+fi
 chmod +x "$APP/Contents/Helpers/"* "$APP/Contents/MacOS/partyparty"
 
 codesign_one() { # $1=path  $2=entitlements (optional)
   local path="$1" ent="${2:-}"
   local args=(--force)
   if [ "$SIGN_ID" = "-" ]; then
-    args+=(--sign -)                                   # ad-hoc, local only
+    args+=(--sign -)
   else
     args+=(--timestamp --options runtime --sign "$SIGN_ID")
   fi
@@ -46,6 +53,19 @@ codesign_one() { # $1=path  $2=entitlements (optional)
 }
 
 echo ">> codesigning inside-out ($SIGN_ID)"
+SPK="$APP/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPK" ]; then
+  if [ "$SIGN_ID" = "-" ]; then
+    codesign --force --deep --sign - "$SPK"     # ad-hoc: deep is fine for local dev
+  else
+    # Developer ID: Sparkle's nested helpers first, then the framework.
+    V="$SPK/Versions/B"
+    for n in "XPCServices/Installer.xpc" "XPCServices/Downloader.xpc" "Autoupdate" "Updater.app"; do
+      [ -e "$V/$n" ] && codesign_one "$V/$n"
+    done
+    codesign_one "$SPK"
+  fi
+fi
 for b in ppcapture mediamtx ffmpeg partyparty-server; do
   codesign_one "$APP/Contents/Helpers/$b"
 done
