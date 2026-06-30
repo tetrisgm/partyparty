@@ -19,11 +19,6 @@ final class StatusModel: ObservableObject {
     func refresh() {
         api.fetchStatus { [weak self] s in if let s = s { self?.status = s } }
     }
-
-    func toggleLive() {
-        if status.state == "live" || status.state == "starting" { api.stop() } else { api.goLive() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.refresh() }
-    }
 }
 
 /// The at-a-glance show cockpit shown in the menu-bar popover.
@@ -51,15 +46,12 @@ struct StatusView: View {
                      : "Sync spread: —")
                     .font(.callout).foregroundColor(.secondary)
             }
-            Button(action: model.toggleLive) {
-                Text(busy ? "Stop Broadcast" : "Go Live").frame(maxWidth: .infinity)
-            }
-            .controlSize(.large)
-            .keyboardShortcut(.defaultAction)
-            Button("Open DJ Console…", action: model.onOpenConsole).frame(maxWidth: .infinity)
-            Divider()
-            Button("Check for Updates…", action: model.onCheckUpdates).frame(maxWidth: .infinity)
-            Button("Quit \(appName)", action: model.onQuit).frame(maxWidth: .infinity)
+            Button("Open DJ Console…", action: model.onOpenConsole)
+                .frame(maxWidth: .infinity).controlSize(.large)
+            Button("Check for Updates…", action: model.onCheckUpdates)
+                .frame(maxWidth: .infinity).controlSize(.large)
+            Button("Quit \(appName)", action: model.onQuit)
+                .frame(maxWidth: .infinity).controlSize(.large)
         }
         .padding(14)
         .frame(width: 280)
