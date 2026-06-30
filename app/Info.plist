@@ -21,6 +21,9 @@
   <!-- Fallback for the ScreenCaptureKit path on pre-taps systems. -->
   <key>NSScreenCaptureUsageDescription</key>
   <string>partyparty captures your Mac's system audio to broadcast it to guests on your network.</string>
+  <!-- Required or macOS aborts ffmpeg when an input-device (mic/controller/interface) source is used. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>partyparty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
   <!-- The admin window is a WKWebView on the local Go server. ATS allows the
        localhost exception (the literal 127.0.0.1 would be blocked). -->
   <key>NSAppTransportSecurity</key>
