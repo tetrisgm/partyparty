@@ -17,3 +17,5 @@ auto.key
 # Swift package build artifacts
 /app/.build/
 /app/.swiftpm/
+# assembled .app bundle output
+/build/

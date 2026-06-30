@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>partyparty</string>
+  <key>CFBundleDisplayName</key><string>partyparty</string>
+  <key>CFBundleIdentifier</key><string>net.ramine.partyparty</string>
+  <key>CFBundleExecutable</key><string>partyparty</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <!-- Menu-bar/agent app: no Dock icon at rest (flipped to .regular while the
+       admin window is open). -->
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleIconFile</key><string>icon</string>
+  <!-- Audio-only capture (Core Audio process taps): no Screen Recording nag. -->
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>partyparty captures your Mac's audio so guests on your network can hear the music. It only listens to sound — it can't see your screen.</string>
+  <!-- Fallback for the ScreenCaptureKit path on pre-taps systems. -->
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>partyparty captures your Mac's system audio to broadcast it to guests on your network.</string>
+  <!-- The admin window is a WKWebView on the local Go server. ATS allows the
+       localhost exception (the literal 127.0.0.1 would be blocked). -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>localhost</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
+        <key>NSIncludesSubdomains</key><true/>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>

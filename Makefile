@@ -42,7 +42,13 @@ tone: build
 devices:
 	ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | sed -n '/audio devices/,$$p'
 
+# Native macOS .app (menu-bar shell + Go server + helpers). Ad-hoc signed for
+# local testing; the signed/notarized release is built by CI.
+app: $(HELPER) $(MEDIAMTX) $(FFMPEG)
+	GO=$(GO) ./scripts/build-app.sh
+
 clean:
 	rm -f $(BINARY) $(HELPER)
+	rm -rf build
 
-.PHONY: helper build run tone devices clean
+.PHONY: helper build run tone devices app clean
