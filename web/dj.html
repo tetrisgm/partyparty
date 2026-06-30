@@ -93,11 +93,10 @@
         </div>
       </div>
       <select id="device"></select>
-      <div id="macnote" class="warn" style="display:none">
-        “Capture the Mac’s output” needs <b>Screen Recording</b> permission the first time. It captures <b>everything</b> playing — turn on Do Not Disturb so notification sounds don’t go out.
-        <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open Screen Recording Settings</button>
+      <div id="bcnote" class="warn" style="display:none">
+        <div id="bcnoteText"></div>
+        <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%;display:none">Open Screen Recording Settings</button>
       </div>
-      <div id="bcnote" class="warn" style="display:none"></div>
       <div id="helpNote" style="display:none">
         <details open>
           <summary>How do I capture my sound?</summary>
@@ -196,12 +195,6 @@
 <script>
   const $ = id => document.getElementById(id);
   let qrText = null, lastState = 'idle';
-  let screenGranted = null; // null = unknown (plain browser); true/false from the native app
-  function updateMacnote(){
-    const isMac = $('device').value === 'mac';
-    $('macnote').style.display = (isMac && screenGranted !== true) ? 'block' : 'none';
-  }
-  window.ppSetScreenPermission = (g) => { screenGranted = !!g; updateMacnote(); };
 
   // Tabs
   function showTab(name){
@@ -236,7 +229,6 @@
       if (prev) sel.value = prev;                          // keep selection across a device refresh
       else if (data.systemAudio) sel.value = 'mac';        // default: capture the Mac's output
       else if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
-      updateMacnote();
     } catch (e) {
       sel.innerHTML = '<option value="test">🔔 Test tone (440 Hz)</option>';
     }
@@ -306,7 +298,6 @@
     setTimeout(() => b.classList.remove('spin'), 600);
     loadDevices();
   };
-  $('device').onchange = updateMacnote;
   $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=screen', { method:'POST' });
 
   function renderQR(text){
@@ -343,7 +334,8 @@
       if ($('latencyBox')) $('latencyBox').style.display = (s.delivery === 'llhls') ? 'none' : 'block';
       const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
       $('bcnote').style.display = note ? 'block' : 'none';
-      $('bcnote').textContent = note || '';
+      $('bcnoteText').textContent = note || '';
+      $('screenPermBtn').style.display = /screen recording/i.test(note) ? 'block' : 'none';
       $('url').textContent = s.urls.primary;
       renderQR(s.urls.primary);
       $('listeners').textContent = s.listenersTotal;
