@@ -31,10 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let img = NSImage(systemSymbolName: "dot.radiowaves.left.and.right",
-                              accessibilityDescription: "partyparty")
-            img?.isTemplate = true
-            button.image = img
+            button.title = "🕺"            // emoji icons render via the title, not a template image
+            button.toolTip = "partyparty"
             button.action = #selector(statusClicked(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
