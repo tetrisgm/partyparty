@@ -2,55 +2,46 @@ import AppKit
 import WebKit
 import ServiceManagement
 
-/// The DJ admin as a native window hosting web/dj.html in a WKWebView. A small
-/// JS↔Swift bridge ("pp") lets the in-app console toggle Start-at-Login and Quit
-/// the app (things a web page can't do on its own).
-final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+/// The DJ console hosted in a WKWebView, shown as an anchored menu-bar popover
+/// (the SoundSource/Synology pattern). A "pp" JS↔Swift bridge lets the in-app
+/// console toggle Start-at-Login and Quit the app.
+final class ConsoleViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHandler {
     private let port: Int
-    private let onClose: () -> Void
     private var webView: WKWebView!
 
-    init(port: Int, onClose: @escaping () -> Void) {
-        self.port = port
-        self.onClose = onClose
-        let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 800),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered, defer: false)
-        win.title = appName
-        win.center()
-        win.setFrameAutosaveName("AdminWindow")
-        win.minSize = NSSize(width: 720, height: 560)
-        super.init(window: win)
-        win.delegate = self
+    init(port: Int) { self.port = port; super.init(nibName: nil, bundle: nil) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
+    override func loadView() {
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default() // persist localStorage prefs across launches
         let ucc = WKUserContentController()
         ucc.add(self, name: "pp")
-        // Tell the page it's inside the native app *before* its scripts run, so it
-        // reveals the in-app controls (Start at Login, Quit).
+        // Mark the page as in-app before its scripts run (reveals Start-at-Login + Quit).
         ucc.addUserScript(WKUserScript(source: "window.ppNative = true;",
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         cfg.userContentController = ucc
 
-        webView = WKWebView(frame: .zero, configuration: cfg)
+        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 520, height: 700), configuration: cfg)
         webView.navigationDelegate = self
         webView.allowsBackForwardNavigationGestures = false
-        win.contentView = webView
-        load()
+        view = webView
+        preferredContentSize = NSSize(width: 520, height: 700)
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        loadConsole()
+    }
 
-    private func load() {
+    private func loadConsole() {
         guard let url = URL(string: "http://localhost:\(port)/dj") else { return }
         webView.load(URLRequest(url: url))
     }
 
     // Retry while the Go server is still coming up.
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.load() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.loadConsole() }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -89,6 +80,4 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         let enabled = SMAppService.mainApp.status == .enabled
         webView.evaluateJavaScript("window.ppSetLoginState && window.ppSetLoginState(\(enabled))")
     }
-
-    func windowWillClose(_ notification: Notification) { onClose() }
 }

@@ -1,13 +1,13 @@
 import AppKit
 
-/// Menu-bar app delegate. Agent-style at rest (no Dock icon); clicking the
-/// menu-bar icon opens the DJ console window (Start-at-Login + Quit live inside
-/// the console). Right-click gives a safety-net Quit. Supervises the Go server.
+/// Menu-bar app delegate. Pure agent (no Dock icon). Clicking the menu-bar icon
+/// toggles the DJ console as an anchored popover; right-click gives a safety-net
+/// Quit. Supervises the Go server child.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let server = ServerController()
     private let updater = Updater()          // background auto-update (when configured)
     private var statusItem: NSStatusItem!
-    private var adminWindow: AdminWindowController?
+    private var popover: NSPopover?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // menu-bar only, no Dock icon
@@ -37,30 +37,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sender.performClick(nil)
             statusItem.menu = nil
         } else {
-            openConsole()
+            toggleConsole(sender)
         }
     }
 
-    @objc private func openConsole() {
-        if adminWindow == nil {
-            adminWindow = AdminWindowController(port: server.port) { [weak self] in self?.adminClosed() }
+    private func toggleConsole(_ button: NSStatusBarButton) {
+        if popover == nil {
+            let pop = NSPopover()
+            pop.behavior = .transient            // closes on Escape / click-away
+            pop.contentViewController = ConsoleViewController(port: server.port)
+            popover = pop
         }
-        NSApp.setActivationPolicy(.regular) // Dock icon + key-window-able while open
-        NSApp.activate(ignoringOtherApps: true)
-        adminWindow?.showWindow(nil)
-        adminWindow?.window?.makeKeyAndOrderFront(nil)
-    }
-
-    private func adminClosed() {
-        adminWindow = nil
-        NSApp.setActivationPolicy(.accessory) // back to menu-bar only
+        guard let pop = popover, !pop.isShown else { return }
+        NSApp.activate(ignoringOtherApps: true)  // so web controls get clicks/keys (stays dockless)
+        pop.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool {
-        false // closing the console keeps the menu-bar app alive
-    }
+    // A closing popover must not quit the app.
+    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ notification: Notification) {
         server.stop()
