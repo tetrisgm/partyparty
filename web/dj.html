@@ -90,7 +90,8 @@
       </div>
       </details>
       <div id="macnote" class="warn" style="display:none">
-        “Capture the Mac’s output” needs <b>Screen Recording</b> permission the first time (System Settings → Privacy &amp; Security → Screen Recording). It captures <b>everything</b> playing — turn on Do Not Disturb so notification sounds don’t go out.
+        “Capture the Mac’s output” needs <b>Screen Recording</b> permission the first time. It captures <b>everything</b> playing — turn on Do Not Disturb so notification sounds don’t go out.
+        <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open Screen Recording Settings</button>
       </div>
       <div class="row">
         <button class="go" id="startBtn">Go Live</button>
@@ -225,6 +226,7 @@
   $('stopBtn').onclick = async () => { await fetch('/api/stop', { method:'POST' }); refresh(); };
   $('refreshBtn').onclick = loadDevices;
   $('device').onchange = () => { $('macnote').style.display = ($('device').value === 'mac') ? 'block' : 'none'; };
+  $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=screen', { method:'POST' });
 
   function renderQR(text){
     if (text === qrText) return;

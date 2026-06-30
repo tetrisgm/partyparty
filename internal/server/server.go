@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -171,6 +172,23 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				s.MTX.Stop()
 			}
 		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/open-settings":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		var deepLink string
+		switch r.URL.Query().Get("pane") {
+		case "screen":
+			deepLink = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+		case "mic":
+			deepLink = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown pane"})
+			return
+		}
+		_ = exec.Command("open", deepLink).Start()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/devices":
 		devs := devices.List(s.Config.FFmpeg)
