@@ -49,13 +49,18 @@
   .appbar-check input { accent-color:#7C3AED; }
   .appbar-quit { background:#23202e; color:#cdd1e0; padding:9px 18px; border:none; border-radius:9px; font-weight:600; cursor:pointer; }
   .appbar-quit:hover { background:#2d2a3a; }
+  .advtoggle { margin-left:auto; display:flex; align-items:center; gap:6px; color:#9aa0b4; font-size:13px; cursor:pointer; user-select:none; }
+  .advtoggle input { accent-color:#7C3AED; }
+  .adv { display:none; }
+  body.show-adv .adv { display:block; }
 </style>
 </head>
 <body>
 <header>
   <h1>partyparty</h1>
   <span class="badge" id="badge">idle</span>
-  <span class="muted" id="devname" style="margin-left:auto"></span>
+  <span class="muted" id="devname"></span>
+  <label class="advtoggle"><input type="checkbox" id="advToggle"> Advanced</label>
 </header>
 <div class="wrap">
   <div>
@@ -64,7 +69,7 @@
       <label for="device">Where is your sound coming from?</label>
       <select id="device"></select>
       <details>
-      <summary>Advanced settings</summary>
+      <summary>More options</summary>
       <label for="delivery" style="margin-top:14px">Mode</label>
       <select id="delivery">
         <option value="llhls">Low latency — ~1–2s (LL-HLS, needs HTTPS)</option>
@@ -121,7 +126,7 @@
       </details>
     </div>
 
-    <div class="card">
+    <div class="card adv">
       <h2>FFmpeg log</h2>
       <pre id="log">—</pre>
     </div>
@@ -143,13 +148,13 @@
       <div class="kv"><span>Latency min / median / max</span><span id="syncRange">—</span></div>
     </div>
 
-    <div class="card">
+    <div class="card adv">
       <h2>Network health</h2>
       <div class="stat"><span class="badge" id="healthPill">—</span><span class="muted" id="healthDetail" style="margin-left:6px"></span></div>
       <div id="healthSuggest" class="warn" style="display:none;margin-top:12px"></div>
     </div>
 
-    <div class="card">
+    <div class="card adv">
       <h2>Network</h2>
       <div id="ifaces"></div>
     </div>
@@ -209,6 +214,14 @@
   $('quality').onchange = () => localStorage.setItem('pp.bitrate', $('quality').value);
   $('mono').onchange = () => localStorage.setItem('pp.mono', $('mono').checked ? '1' : '0');
   $('latency').onchange = () => localStorage.setItem('pp.latency', $('latency').value);
+  // Advanced view: reveal the FFmpeg log + network cards (hidden by default).
+  const advOn = localStorage.getItem('pp.adv') === '1';
+  $('advToggle').checked = advOn;
+  document.body.classList.toggle('show-adv', advOn);
+  $('advToggle').onchange = () => {
+    document.body.classList.toggle('show-adv', $('advToggle').checked);
+    localStorage.setItem('pp.adv', $('advToggle').checked ? '1' : '0');
+  };
 
   async function startBroadcast() {
     const sel = $('device');
