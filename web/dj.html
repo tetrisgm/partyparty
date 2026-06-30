@@ -233,9 +233,9 @@
         sel.appendChild(o);
       }
       const saved = localStorage.getItem('pp.device');
-      if (prev) sel.value = prev;
-      else if (saved) sel.value = saved;
-      else if (data.systemAudio) sel.value = 'mac';   // best default: capture the Mac's output
+      if (prev) sel.value = prev;                          // keep selection across a device refresh
+      else if (data.systemAudio) sel.value = 'mac';        // default: capture the Mac's output
+      else if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
       updateMacnote();
     } catch (e) {
       sel.innerHTML = '<option value="test">🔔 Test tone (440 Hz)</option>';
