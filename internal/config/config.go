@@ -1,0 +1,88 @@
+package config
+
+import (
+	"flag"
+	"os"
+	"strconv"
+)
+
+// Config holds all tunables. CLI flags override env vars override defaults.
+type Config struct {
+	Port       int
+	Name       string
+	Bitrate    string
+	Codec      string
+	Channels   int
+	SampleRate int
+	HLSTime    int
+	HLSList    int
+	Device     string
+	Captive    bool
+	Tone       bool
+	FFmpeg     string
+
+	// Delivery + LL-HLS (MediaMTX) settings.
+	Delivery    string // "llhls" (default) or "hls"
+	MediaMTXBin string
+	RTSPPort    int
+	HLSPort     int
+	StreamPath  string
+	Domain      string // public hostname for the cert/URL; "" = use LAN IP (self-signed)
+	CertFile    string // real cert (fullchain); "" = self-signed
+	KeyFile     string
+
+	// LL-HLS tuning (MediaMTX). Defaults tuned for iPhone stability.
+	PartDur  string // EXT-X-PART duration, e.g. "350ms"
+	SegDur   string // HLS segment duration, e.g. "1s"
+	SegCount int    // segments kept in the LL-HLS playlist
+}
+
+func Parse() Config {
+	var c Config
+	flag.IntVar(&c.Port, "port", envInt("PARTYPARTY_PORT", 8000), "HTTP port")
+	flag.StringVar(&c.Name, "name", env("PARTYPARTY_NAME", "partyparty"), "display name shown to guests")
+	flag.StringVar(&c.Bitrate, "bitrate", env("PARTYPARTY_BITRATE", "160k"), "AAC audio bitrate")
+	flag.StringVar(&c.Codec, "codec", env("PARTYPARTY_CODEC", "aac_at"), "AAC encoder (aac_at = Apple, best on macOS; aac = portable fallback)")
+	flag.IntVar(&c.SampleRate, "sample-rate", envInt("PARTYPARTY_SAMPLE_RATE", 48000), "audio sample rate")
+	flag.IntVar(&c.HLSTime, "hls-time", envInt("PARTYPARTY_HLS_TIME", 1), "HLS segment length in seconds (lower = less latency, less drop-cushion)")
+	flag.IntVar(&c.HLSList, "hls-list", envInt("PARTYPARTY_HLS_LIST", 10), "number of segments kept in the playlist")
+	flag.StringVar(&c.Device, "device", env("PARTYPARTY_DEVICE", "auto"), "default capture device index")
+	flag.BoolVar(&c.Captive, "captive", env("PARTYPARTY_CAPTIVE", "") == "1", "answer OS connectivity probes to trigger a captive portal")
+	flag.BoolVar(&c.Tone, "tone", false, "auto-start a 440 Hz test tone on launch")
+	flag.StringVar(&c.FFmpeg, "ffmpeg", env("PARTYPARTY_FFMPEG", "ffmpeg"), "path to the ffmpeg binary")
+	mono := false
+	flag.BoolVar(&mono, "mono", env("PARTYPARTY_MONO", "") == "1", "broadcast in mono (about half the bandwidth)")
+	flag.StringVar(&c.Delivery, "delivery", env("PARTYPARTY_DELIVERY", "auto"), "delivery: auto (llhls if a real cert is set, else plain hls), llhls, or hls")
+	flag.StringVar(&c.MediaMTXBin, "mediamtx", env("PARTYPARTY_MEDIAMTX", ""), "path to mediamtx binary (default: found on PATH)")
+	flag.IntVar(&c.RTSPPort, "rtsp-port", envInt("PARTYPARTY_RTSP_PORT", 8554), "MediaMTX RTSP ingest port")
+	flag.IntVar(&c.HLSPort, "hls-port", envInt("PARTYPARTY_HLS_PORT", 8888), "MediaMTX LL-HLS (HTTPS) port")
+	flag.StringVar(&c.StreamPath, "stream-path", env("PARTYPARTY_STREAM_PATH", "party"), "MediaMTX stream path name")
+	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty = LAN IP + self-signed")
+	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
+	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
+	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "350ms"), "LL-HLS part duration (lower = less latency, but iPhones may stall below ~350ms)")
+	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "1s"), "LL-HLS segment duration")
+	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 7), "LL-HLS segments kept in the playlist")
+	flag.Parse()
+	c.Channels = 2
+	if mono {
+		c.Channels = 1
+	}
+	return c
+}
+
+func env(key, def string) string {
+	if v, ok := os.LookupEnv(key); ok {
+		return v
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v, ok := os.LookupEnv(key); ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}

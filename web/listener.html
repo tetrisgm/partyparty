@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0b0b12">
+<title>partyparty</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    background: radial-gradient(120% 120% at 50% 0%, #1a1130 0%, #0b0b12 60%);
+    color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100dvh; padding: 24px; text-align: center; overflow: hidden;
+  }
+  h1 { font-weight: 600; font-size: 28px; margin: 0 0 4px; letter-spacing: -.02em; }
+  .sub { color: #9aa0b4; font-size: 14px; margin: 0 0 36px; }
+  .btn {
+    width: 200px; height: 200px; border-radius: 50%; border: none; cursor: pointer;
+    background: #7C3AED; color: #fff; font-size: 18px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px;
+    transition: transform .15s ease, background .2s ease;
+  }
+  .btn:active { transform: scale(.96); }
+  body.playing .btn { background: #14b86b; animation: pulse 2.2s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(20,184,107,.5)} 70%{box-shadow:0 0 0 28px rgba(20,184,107,0)} 100%{box-shadow:0 0 0 0 rgba(20,184,107,0)} }
+  .ico { font-size: 50px; line-height: 1; }
+  .pill { margin-top: 26px; font-size: 14px; color: #cdd1e0; min-height: 20px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#666; margin-right:6px; vertical-align:middle; }
+  body.playing .dot { background:#14b86b; }
+  .eq { display:flex; gap:5px; height:26px; align-items:flex-end; justify-content:center; margin-top:16px; opacity:0; transition:opacity .3s; }
+  body.playing .eq { opacity:1; }
+  .eq i { width:5px; background:#7C3AED; border-radius:3px; height:6px; animation:bounce 1s infinite ease-in-out; }
+  .eq i:nth-child(2){animation-delay:.2s} .eq i:nth-child(3){animation-delay:.4s} .eq i:nth-child(4){animation-delay:.1s} .eq i:nth-child(5){animation-delay:.3s}
+  @keyframes bounce { 0%,100%{height:6px} 50%{height:26px} }
+  .count { color:#9aa0b4; font-size:13px; margin-top:8px; min-height:16px; }
+  .vol { margin-top: 30px; width: 220px; max-width: 70vw; display:flex; align-items:center; gap:10px; color:#9aa0b4; }
+  .vol input { flex:1; accent-color:#7C3AED; }
+  .foot { position: fixed; bottom: 16px; left:0; right:0; color:#6b7088; font-size:12px; padding:0 20px; }
+</style>
+</head>
+<body>
+  <h1 id="title">partyparty</h1>
+  <p class="sub">live from the decks</p>
+
+  <button class="btn" id="btn" aria-label="Play">
+    <span class="ico" id="ico">►</span>
+    <span id="btnlabel">Tap to listen</span>
+  </button>
+
+  <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="pill"><span class="dot"></span><span id="pilltext">connecting…</span></div>
+  <div class="count" id="count"></div>
+
+  <div class="vol">
+    <span>🔈</span>
+    <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+  </div>
+
+  <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
+
+  <audio id="player" playsinline preload="none"></audio>
+  <script src="/vendor/hls.min.js"></script>
+  <script>
+    const player = document.getElementById('player');
+    const btn = document.getElementById('btn');
+    const ico = document.getElementById('ico');
+    const btnlabel = document.getElementById('btnlabel');
+    const pilltext = document.getElementById('pilltext');
+    const titleEl = document.getElementById('title');
+    const countEl = document.getElementById('count');
+    let STREAM = null, delivery = 'llhls';
+    let hls = null, started = false, live = false, stalledSinceBeat = false;
+    const isNative = !!player.canPlayType('application/vnd.apple.mpegurl');
+    const platform = isNative ? 'native' : 'hls';
+    const debug = new URLSearchParams(location.search).get('debug') === '1';
+
+    // Stable per-device id so the DJ console can track each listener across beats.
+    // Wrapped: a localStorage throw (locked-down browser) must not abort the script
+    // before the play handler wires up.
+    let cid;
+    try {
+      cid = localStorage.getItem('pp.cid');
+      if (!cid) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem('pp.cid', cid); }
+    } catch (e) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+    // NTP-style clock sync to the Mac (the master clock) so per-device latency is
+    // comparable across phones. Keep the minimum-RTT sample.
+    let clockOffset = 0, clockSynced = false;
+    const serverNow = () => Date.now() + clockOffset;
+    async function syncClock(){
+      let best = Infinity, off = clockOffset;
+      for (let i = 0; i < 8; i++){
+        const t0 = Date.now();
+        let t;
+        try { t = (await (await fetch('/api/time', { cache: 'no-store' })).json()).t; }
+        catch (e) { return; }
+        const t1 = Date.now(), rtt = t1 - t0;
+        if (rtt < best){ best = rtt; off = t - (t0 + rtt / 2); }
+      }
+      // Reject an all-congested sync: a best sample worse than 250ms RTT would
+      // inject phantom inter-device spread. Keep the prior offset (or stay unsynced).
+      if (best < 250){ clockOffset = off; clockSynced = true; }
+    }
+
+    // Latency behind live, in seconds, or null if unknown.
+    function measureLatency(){
+      try { if (hls && typeof hls.latency === 'number' && hls.latency > 0 && hls.latency < 60) return hls.latency; } catch (e) {}
+      try {
+        if (clockSynced && typeof player.getStartDate === 'function'){
+          const sd = player.getStartDate();
+          const base = sd && sd.getTime ? sd.getTime() : NaN;
+          if (!isNaN(base)){
+            const lat = (serverNow() - (base + player.currentTime * 1000)) / 1000;
+            if (lat > 0 && lat < 60) return lat;
+          }
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function setStatus(t){ pilltext.textContent = t; }
+    function setPlayingUI(on){
+      document.body.classList.toggle('playing', on);
+      ico.textContent = on ? '❚❚' : '►';
+      btnlabel.textContent = on ? 'Playing' : (live ? 'Tap to listen' : 'Waiting for DJ');
+    }
+
+    function attach(){
+      if (!STREAM) return;
+      if (player.canPlayType('application/vnd.apple.mpegurl')) {
+        player.src = STREAM;                       // iOS Safari — native (LL-)HLS
+      } else if (window.Hls && Hls.isSupported()) {
+        if (hls) { try { hls.destroy(); } catch (e) {} }
+        hls = new Hls({
+          lowLatencyMode: delivery === 'llhls',  // keys off the server PART-HOLD-BACK, same value iOS native reads
+          maxLiveSyncPlaybackRate: 1,       // OFF: no rate convergence/pitch-shift — behave like the iOS native player
+          liveMaxLatencyDuration: 6,        // coarse backstop only (hls.js drifts unrecoverably after stalls)
+          liveDurationInfinity: true,
+          backBufferLength: 30,
+          manifestLoadingMaxRetry: 1e9, levelLoadingMaxRetry: 1e9, fragLoadingMaxRetry: 1e9 });
+        hls.on(Hls.Events.ERROR, (_e, d) => { if (d && d.fatal) { try { hls.startLoad(); } catch (e) {} } });
+        hls.loadSource(STREAM); hls.attachMedia(player);
+      } else {
+        player.src = STREAM;
+      }
+    }
+
+    async function play(){
+      if (!STREAM) { try { await poll(); } catch (e) {} }
+      attach();
+      try { await player.play(); }
+      catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
+    }
+
+    btn.addEventListener('click', () => {
+      if (document.body.classList.contains('playing')) { try { player.pause(); } catch (e) {} }
+      else { mediaSession(); play(); }   // register the media session synchronously in the gesture
+    });
+
+    player.addEventListener('playing', () => { started = true; setPlayingUI(true); setStatus('live'); });
+    player.addEventListener('waiting', () => { stalledSinceBeat = true; setStatus('buffering…'); });
+    player.addEventListener('stalled', () => { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); });
+    player.addEventListener('pause',   () => { setPlayingUI(false); if (started) setStatus('paused'); });
+    player.addEventListener('error',   () => { setStatus('reconnecting…'); setTimeout(() => { if (started){ attach(); player.play().catch(()=>{}); } }, 1500); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { syncClock(); if (started) player.play().catch(()=>{}); } });
+    document.getElementById('vol').addEventListener('input', e => { player.volume = Number(e.target.value); });
+
+    function mediaSession(){
+      if (!('mediaSession' in navigator)) return;
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: titleEl.textContent || 'Live', artist: 'partyparty',
+          artwork: [{ src: '/art-512.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.setActionHandler('play',  () => player.play());
+        navigator.mediaSession.setActionHandler('pause', () => player.pause());
+      } catch (e) {}
+    }
+
+    async function poll(){
+      try {
+        const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
+        if (s.streamUrl) STREAM = s.streamUrl;
+        if (s.delivery) delivery = s.delivery;
+        titleEl.textContent = s.name || 'partyparty';
+        live = s.broadcast && s.broadcast.state === 'live';
+        countEl.textContent = s.listeners ? ('● ' + s.listeners + ' listening') : '';
+        if (!started) {
+          setStatus(live ? 'ready — tap to listen' : 'waiting for the DJ…');
+          btnlabel.textContent = live ? 'Tap to listen' : 'Waiting for DJ';
+        }
+      } catch (e) { if (!started) setStatus('offline'); }
+    }
+    poll(); setInterval(poll, 3000);
+    syncClock(); setInterval(syncClock, 30000);
+
+    // Heartbeat so the DJ console can count listeners, sense strain, and measure
+    // inter-device latency spread (any delivery mode).
+    let diagEl = null, stallCount = 0;
+    player.addEventListener('waiting', () => { stallCount++; });
+    function showDebug(lat){
+      if (!diagEl){
+        diagEl = document.createElement('div');
+        diagEl.style.cssText = 'position:fixed;top:8px;left:8px;right:8px;background:#000a;color:#0f9;font:12px/1.5 ui-monospace,monospace;padding:8px 10px;border-radius:8px;text-align:left;z-index:9;white-space:pre';
+        document.body.appendChild(diagEl);
+      }
+      diagEl.textContent =
+        'platform : ' + platform + '\n' +
+        'state    : ' + (player.paused ? 'paused' : 'playing') + '  rs=' + player.readyState + '\n' +
+        'latency  : ' + (lat != null ? lat.toFixed(2) + ' s' : 'n/a') + '\n' +
+        'clock    : ' + (clockSynced ? (clockOffset >= 0 ? '+' : '') + Math.round(clockOffset) + ' ms' : 'syncing…') + '\n' +
+        'stalls   : ' + stallCount;
+    }
+    setInterval(() => {
+      if (!started) return;
+      const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
+      const lat = measureLatency();
+      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform;
+      if (lat != null) url += '&lat=' + Math.round(lat * 1000);
+      fetch(url, { cache: 'no-store' }).catch(() => {});
+      stalledSinceBeat = false;
+      if (debug) showDebug(lat);
+    }, 5000);
+  </script>
+</body>
+</html>
