@@ -1,10 +1,11 @@
 import AppKit
 import WebKit
 import ServiceManagement
+import CoreGraphics
 
 /// The DJ console as a real, resizable window hosting web/dj.html in a WKWebView.
 /// A "pp" JS↔Swift bridge lets the in-app console toggle Start-at-Login and Quit.
-final class AdminWindowController: NSWindowController, WKNavigationDelegate, WKScriptMessageHandler {
+final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     private let port: Int
     private var webView: WKWebView!
 
@@ -19,6 +20,7 @@ final class AdminWindowController: NSWindowController, WKNavigationDelegate, WKS
         win.setFrameAutosaveName("ConsoleWindow")
         win.minSize = NSSize(width: 860, height: 560)
         super.init(window: win)
+        win.delegate = self
 
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default() // persist localStorage prefs across launches
@@ -49,6 +51,12 @@ final class AdminWindowController: NSWindowController, WKNavigationDelegate, WKS
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pushLoginState()
+        pushScreenPermission()
+    }
+
+    // Re-check Screen Recording when the user returns from System Settings.
+    func windowDidBecomeKey(_ notification: Notification) {
+        pushScreenPermission()
     }
 
     // JS -> Swift
@@ -62,6 +70,7 @@ final class AdminWindowController: NSWindowController, WKNavigationDelegate, WKS
             pushLoginState()
         case "ready":
             pushLoginState()
+            pushScreenPermission()
         default:
             break
         }
@@ -82,5 +91,10 @@ final class AdminWindowController: NSWindowController, WKNavigationDelegate, WKS
     private func pushLoginState() {
         let enabled = SMAppService.mainApp.status == .enabled
         webView.evaluateJavaScript("window.ppSetLoginState && window.ppSetLoginState(\(enabled))")
+    }
+
+    private func pushScreenPermission() {
+        let granted = CGPreflightScreenCaptureAccess()
+        webView.evaluateJavaScript("window.ppSetScreenPermission && window.ppSetScreenPermission(\(granted))")
     }
 }

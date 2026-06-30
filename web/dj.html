@@ -163,6 +163,13 @@
 <script>
   const $ = id => document.getElementById(id);
   let qrText = null, lastState = 'idle';
+  let screenGranted = null; // null = unknown (plain browser); true/false from the native app
+  function updateMacnote(){
+    const isMac = $('device').value === 'mac';
+    // Hide the "grant Screen Recording" note once it's actually granted.
+    $('macnote').style.display = (isMac && screenGranted !== true) ? 'block' : 'none';
+  }
+  window.ppSetScreenPermission = (g) => { screenGranted = !!g; updateMacnote(); };
 
   async function loadDevices(){
     const sel = $('device');
@@ -188,7 +195,7 @@
       if (prev) sel.value = prev;
       else if (saved) sel.value = saved;
       else if (data.systemAudio) sel.value = 'mac';   // best default: capture the Mac's output
-      $('macnote').style.display = (sel.value === 'mac') ? 'block' : 'none';
+      updateMacnote();
     } catch (e) {
       sel.innerHTML = '<option value="test">🔔 Test tone (440 Hz)</option>';
     }
@@ -235,7 +242,7 @@
   };
   $('stopBtn').onclick = async () => { await fetch('/api/stop', { method:'POST' }); refresh(); };
   $('refreshBtn').onclick = loadDevices;
-  $('device').onchange = () => { $('macnote').style.display = ($('device').value === 'mac') ? 'block' : 'none'; };
+  $('device').onchange = updateMacnote;
   $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=screen', { method:'POST' });
 
   function renderQR(text){

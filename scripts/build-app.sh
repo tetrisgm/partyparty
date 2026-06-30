@@ -11,9 +11,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 GO="${GO:-go}"
-SIGN_ID="${PP_SIGN_ID:--}"          # default ad-hoc
 APP="$ROOT/build/partyparty.app"
 ENT="$ROOT/app/partyparty.entitlements"
+
+# Stable signing keeps the TCC (Screen Recording) grant across rebuilds. Prefer an
+# explicit PP_SIGN_ID (CI), else auto-detect a local Developer ID Application
+# identity, else fall back to ad-hoc (which re-prompts for permission each build).
+EXPLICIT_ID="${PP_SIGN_ID:-}"
+SIGN_ID="$EXPLICIT_ID"
+if [ -z "$SIGN_ID" ]; then
+  SIGN_ID="$(security find-identity -p codesigning -v 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+  [ -z "$SIGN_ID" ] && SIGN_ID="-"
+fi
 
 echo ">> Go server (-tags bundle)"
 "$GO" build -tags bundle -o "$ROOT/build/partyparty-server" "$ROOT"
@@ -46,7 +55,8 @@ codesign_one() { # $1=path  $2=entitlements (optional)
   if [ "$SIGN_ID" = "-" ]; then
     args+=(--sign -)
   else
-    args+=(--timestamp --options runtime --sign "$SIGN_ID")
+    args+=(--options runtime --sign "$SIGN_ID")
+    [ -n "$EXPLICIT_ID" ] && args+=(--timestamp)   # timestamp only for explicit/CI (release) signing
   fi
   [ -n "$ent" ] && args+=(--entitlements "$ent")
   codesign "${args[@]}" "$path"
