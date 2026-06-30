@@ -10,9 +10,6 @@
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <!-- Menu-bar/agent app: no Dock icon at rest (flipped to .regular while the
-       admin window is open). -->
-  <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>CFBundleIconFile</key><string>icon</string>
   <!-- Audio-only capture (Core Audio process taps): no Screen Recording nag. -->
