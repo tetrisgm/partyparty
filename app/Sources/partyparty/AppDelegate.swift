@@ -1,46 +1,89 @@
 import AppKit
 
-/// Regular app (Dock icon) + a menu-bar icon. The console is a real resizable
-/// window with a standard menu bar (Cmd+W / Cmd+Q / copy-paste). Supervises the
-/// Go server child.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+/// Regular app (Dock icon + full window/menu bar). The menu-bar 🕺 is a glanceable
+/// broadcast monitor + panic button — it does NOT duplicate the console: just live
+/// status, Go Live/Stop, Open Console, Quit. Supervises the Go server child.
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let server = ServerController()
     private let updater = Updater()          // background auto-update (when configured)
+    private var api: APIClient!
+    private var poller: StatusPoller!
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         server.start()
-        NSApp.mainMenu = buildMainMenu()      // gives Cmd+W, Cmd+Q, copy/paste, etc.
+        NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
+        api = APIClient(port: server.port)
         setupStatusItem()
+        poller = StatusPoller(api: api)
+        poller.onChange = { [weak self] s in self?.updateIcon(s) }
+        poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
     }
 
-    // MARK: Menu-bar icon
+    // MARK: Menu-bar monitor
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.title = "🕺"
             button.toolTip = appName
-            button.action = #selector(iconClicked(_:))
-            button.target = self
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        let menu = NSMenu()
+        menu.delegate = self                  // rebuilt on open so status is fresh
+        statusItem.menu = menu
+    }
+
+    /// Glanceable state in the menu bar: 🕺 idle · 🕺 ● N live · 🕺 ⚠ N strained · 🕺 ⚠ error.
+    private func updateIcon(_ s: ServerStatus) {
+        guard let button = statusItem.button else { return }
+        switch s.state {
+        case "live":
+            let strained = (s.health == "strain" || s.health == "congested")
+            button.title = strained ? "🕺 ⚠ \(s.listeners)" : "🕺 ● \(s.listeners)"
+        case "starting": button.title = "🕺 …"
+        case "error":    button.title = "🕺 ⚠"
+        default:         button.title = "🕺"
         }
     }
 
-    @objc private func iconClicked(_ sender: NSStatusBarButton) {
-        if NSApp.currentEvent?.type == .rightMouseUp {
-            let m = NSMenu()
-            let q = NSMenuItem(title: "Quit \(appName)", action: #selector(quit), keyEquivalent: "q")
-            q.target = self
-            m.addItem(q)
-            statusItem.menu = m
-            sender.performClick(nil)
-            statusItem.menu = nil
-        } else {
-            showConsole()
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let s = poller.status
+
+        let header: String
+        switch s.state {
+        case "live":
+            var t = "Live · \(s.listeners) listening"
+            if s.struggling > 0 { t += " · \(s.struggling) buffering" }
+            header = t
+        case "starting": header = "Starting…"
+        case "error":    header = "Broadcast error — open console"
+        default:         header = "Not broadcasting"
         }
+        let h = NSMenuItem(title: header, action: nil, keyEquivalent: "")
+        h.isEnabled = false
+        menu.addItem(h)
+        menu.addItem(.separator())
+
+        let live = (s.state == "live" || s.state == "starting")
+        menu.addItem(item(live ? "Stop Broadcast" : "Go Live (Mac audio)", #selector(toggleLive)))
+        menu.addItem(item("Open Console", #selector(showConsole)))
+        menu.addItem(.separator())
+        menu.addItem(item("Quit \(appName)", #selector(quit)))
+    }
+
+    private func item(_ title: String, _ sel: Selector) -> NSMenuItem {
+        let i = NSMenuItem(title: title, action: sel, keyEquivalent: "")
+        i.target = self
+        return i
+    }
+
+    @objc private func toggleLive() {
+        let s = poller.status
+        if s.state == "live" || s.state == "starting" { api.stop() } else { api.goLiveMac() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.poller.refresh() }
     }
 
     // MARK: Console window
@@ -52,7 +95,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         console?.window?.makeKeyAndOrderFront(nil)
     }
 
-    // Reopen the window when the Dock icon is clicked with no window open.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { showConsole() }
         return true
@@ -60,14 +102,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() { NSApp.terminate(nil) }
 
-    // Closing the console window keeps the app alive (menu-bar + Dock); Cmd+Q quits.
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
+    func applicationWillTerminate(_ notification: Notification) { server.stop() }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        server.stop()
-    }
-
-    // MARK: Main menu (standard shortcuts incl. Cmd+W close, Cmd+C/V in the web view)
+    // MARK: Main menu (window shortcuts incl. Cmd+W, plus copy/paste in the web view)
 
     private func buildMainMenu() -> NSMenu {
         let main = NSMenu()
