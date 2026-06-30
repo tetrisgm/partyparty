@@ -7,37 +7,39 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; background:#0b0b12; color:#e8e9f0; }
+  body { margin:0; padding-bottom:92px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; background:#0b0b12; color:#e8e9f0; }
   header { padding:16px 24px; display:flex; align-items:center; gap:12px; }
   header h1 { font-size:18px; font-weight:600; margin:0; letter-spacing:-.01em; }
   .badge { font-size:12px; padding:4px 10px; border-radius:999px; background:#23202e; color:#9aa0b4; text-transform:capitalize; }
   .badge.live { background:#0f3d28; color:#39d98a; }
   .badge.error { background:#3d1414; color:#ff8a8a; }
   .badge.starting { background:#3d3414; color:#e9c46a; }
-  .tabs { display:flex; gap:4px; padding:0 24px; max-width:1100px; margin:0 auto; border-bottom:1px solid #1d1e2b; }
+  .tabs { display:flex; gap:4px; padding:0 24px; max-width:680px; margin:0 auto; border-bottom:1px solid #1d1e2b; }
   .tab { background:transparent; color:#9aa0b4; padding:10px 16px; border:none; border-bottom:2px solid transparent; border-radius:0; font-weight:600; font-size:14px; cursor:pointer; }
   .tab:hover { color:#cdd1e0; }
   .tab.active { color:#fff; border-bottom-color:#7C3AED; }
   .tabpane[hidden] { display:none; }
-  .wrap { display:grid; grid-template-columns:1.1fr .9fr; gap:24px; padding:24px; max-width:1100px; margin:0 auto; }
-  @media (max-width:820px){ .wrap { grid-template-columns:1fr; } }
-  .wrap-narrow { max-width:640px; margin:0 auto; padding:24px; }
+  .col { max-width:680px; margin:0 auto; padding:24px; }
   .card { background:#12121c; border:1px solid #1d1e2b; border-radius:14px; padding:20px; }
   .card + .card { margin-top:24px; }
   .card h2 { font-size:14px; font-weight:600; margin:0 0 14px; color:#cdd1e0; }
   label { display:block; font-size:12px; color:#9aa0b4; margin:0 0 6px; }
   select, button { font:inherit; }
-  select { width:100%; padding:11px 12px; border-radius:10px; background:#0b0b12; color:#fff; border:1px solid #2a2b3c; }
+  select {
+    width:100%; padding:11px 38px 11px 12px; border-radius:10px; background-color:#0b0b12; color:#fff; border:1px solid #2a2b3c;
+    -webkit-appearance:none; appearance:none;
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%239aa0b4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
+    background-repeat:no-repeat; background-position:right 13px center;
+  }
   .row { display:flex; gap:10px; margin-top:14px; }
   button { padding:12px; border:none; border-radius:10px; font-weight:600; cursor:pointer; }
-  button.go { flex:1; background:#7C3AED; color:#fff; }
-  button.stop { flex:1; background:#3a2030; color:#ff9aa9; }
+  button.go { background:#7C3AED; color:#fff; }
   button.ghost { background:#23202e; color:#cdd1e0; }
   button:disabled { opacity:.4; cursor:default; }
   .url { font-size:22px; font-weight:600; color:#fff; word-break:break-all; margin:2px 0; }
   .muted { color:#9aa0b4; font-size:13px; }
   #qr { margin:16px 0; display:flex; justify-content:center; background:#fff; width:fit-content; padding:12px; border-radius:12px; }
-  .big { font-size:44px; font-weight:700; color:#fff; line-height:1; }
+  .lcount { font-size:26px; font-weight:700; color:#fff; line-height:1; }
   .stat { display:flex; gap:16px; align-items:baseline; }
   pre { background:#07070d; border:1px solid #1d1e2b; border-radius:10px; padding:12px; font-size:12px; line-height:1.5; height:190px; overflow:auto; color:#9bb; white-space:pre-wrap; margin:0; }
   .kv { display:flex; justify-content:space-between; font-size:13px; color:#9aa0b4; padding:5px 0; border-bottom:1px solid #16172180; }
@@ -47,24 +49,32 @@
   summary { cursor:pointer; font-size:13px; color:#b9bdd0; }
   details h3 { font-size:13px; color:#cdd1e0; margin:14px 0 4px; }
   details p, details li { font-size:12.5px; color:#9aa0b4; line-height:1.6; }
-  details ol { margin:4px 0 0; padding-left:18px; }
   code { background:#07070d; border:1px solid #1d1e2b; border-radius:5px; padding:1px 5px; font-size:12px; color:#cdd1e0; }
   .advcheck { display:flex; align-items:center; gap:8px; color:#9aa0b4; font-size:13px; cursor:pointer; margin:20px 2px 6px; user-select:none; }
   .advcheck input { accent-color:#7C3AED; }
   .adv { display:none; }
   body.show-adv .adv { display:block; }
-  #appbar { display:none; max-width:1100px; margin:4px auto 28px; padding:0 24px; align-items:center; justify-content:space-between; }
-  #appbar.show { display:flex; }
-  .appbar-check { display:flex; align-items:center; gap:8px; color:#9aa0b4; font-size:13px; cursor:pointer; }
-  .appbar-check input { accent-color:#7C3AED; }
-  .appbar-quit { background:#23202e; color:#cdd1e0; padding:9px 18px; border:none; border-radius:9px; font-weight:600; cursor:pointer; }
-  .appbar-quit:hover { background:#2d2a3a; }
+  .inapp-check { display:flex; align-items:center; gap:8px; color:#cdd1e0; font-size:13px; cursor:pointer; }
+  .inapp-check input { accent-color:#7C3AED; }
+  .cardhead { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 14px; }
+  .cardhead h2 { margin:0; }
+  .cardhead-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .iconbtn { width:30px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; background:#23202e; color:#cdd1e0; font-size:15px; font-weight:700; line-height:1; }
+  .iconbtn:hover { background:#2d2a3a; color:#fff; }
+  .iconbtn svg { display:block; }
+  .iconbtn.spin svg { animation:pp-spin .6s linear; }
+  @keyframes pp-spin { to { transform:rotate(360deg); } }
+  #livebar { position:fixed; left:0; right:0; bottom:0; z-index:5; padding:12px 24px; background:#0b0b12; border-top:1px solid #1d1e2b; }
+  #livebar .inner { max-width:680px; margin:0 auto; }
+  #liveBtn { display:block; width:100%; padding:16px; font-size:16px; border-radius:12px; background:#14b86b; color:#06160d; }
+  #liveBtn.stop { background:#e0455e; color:#fff; }
+  #liveBtn:disabled { opacity:.5; }
 </style>
 </head>
 <body>
 <header>
   <h1>partyparty</h1>
-  <span class="badge" id="badge">idle</span>
+  <span class="badge" id="badge" style="display:none"></span>
   <span class="muted" id="devname"></span>
 </header>
 <nav class="tabs">
@@ -73,60 +83,56 @@
 </nav>
 
 <div class="tabpane" id="tab-broadcast">
-  <div class="wrap">
-    <div>
-      <div class="card">
-        <h2>Capture source</h2>
-        <label for="device">Where is your sound coming from?</label>
-        <select id="device"></select>
-        <div id="macnote" class="warn" style="display:none">
-          “Capture the Mac’s output” needs <b>Screen Recording</b> permission the first time. It captures <b>everything</b> playing — turn on Do Not Disturb so notification sounds don’t go out.
-          <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open Screen Recording Settings</button>
+  <div class="col">
+    <div class="card">
+      <div class="cardhead">
+        <h2>What source do you want to broadcast?</h2>
+        <div class="cardhead-actions">
+          <button class="iconbtn" id="helpBtn" type="button" aria-label="Is it working?" title="Is it working?">?</button>
+          <button class="iconbtn" id="refreshBtn" type="button" aria-label="Refresh devices" title="Refresh devices"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
         </div>
-        <div class="row">
-          <button class="go" id="startBtn">Go Live</button>
-          <button class="stop" id="stopBtn" disabled>Stop</button>
-        </div>
-        <div id="bcnote" class="warn" style="display:none"></div>
-        <div class="row">
-          <button class="ghost" id="refreshBtn" style="flex:1">Refresh devices</button>
-        </div>
-        <div class="hint">Not sure it works? Pick <b>Test tone</b> and Start — if a guest hears the beep, your network path is good and you only need to fix the audio routing.</div>
-
-        <details>
+      </div>
+      <select id="device"></select>
+      <div id="macnote" class="warn" style="display:none">
+        “Capture the Mac’s output” needs <b>Screen Recording</b> permission the first time. It captures <b>everything</b> playing — turn on Do Not Disturb so notification sounds don’t go out.
+        <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open Screen Recording Settings</button>
+      </div>
+      <div id="bcnote" class="warn" style="display:none"></div>
+      <div id="helpNote" style="display:none">
+        <details open>
           <summary>How do I capture my sound?</summary>
           <h3>① Capture everything on the Mac (easiest)</h3>
-          <p>Pick <b>🖥️ Capture the Mac’s output</b> and Start. Grant <b>Screen Recording</b> permission once when asked, then Stop/Start. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+          <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. Grant <b>Screen Recording</b> permission once when asked. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
           <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
           <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole above.</p>
           <h3>③ Hardware controller / mixer</h3>
           <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device above. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
           <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
         </details>
+        <div class="hint" style="margin-top:12px">Not sure it works? Pick <b>Test tone</b> and Go Live — if a guest hears the beep, your network path is good and you only need to fix the audio routing.</div>
       </div>
     </div>
 
-    <div>
-      <div class="card">
-        <h2>Guests join here</h2>
-        <div class="url" id="url">—</div>
-        <div id="qr"></div>
-        <div class="kv"><span>Also try</span><span id="hosturl">—</span></div>
-        <div class="hint">Put the QR on a sign by the decks. Tell guests to open it in their <b>browser</b> (Safari/Chrome) — not the Wi-Fi sign-in popup, which can't keep playing in the background.</div>
-      </div>
+    <div class="card">
+      <h2>Guests join here</h2>
+      <div class="url" id="url">—</div>
+      <div id="qr"></div>
+      <div class="hint">Guests scan this with their phone camera to open the player — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+    </div>
 
-      <div class="card">
+    <div class="card">
+      <div class="cardhead">
         <h2>Listeners</h2>
-        <div class="stat"><span class="big" id="listeners">0</span><span class="muted">listening now · <span id="total">0</span> total</span></div>
-        <div class="kv" style="margin-top:10px"><span>Sync spread (dancer ↔ dancer)</span><span id="syncSpread">—</span></div>
-        <div class="kv"><span>Latency min / median / max</span><span id="syncRange">—</span></div>
+        <span class="lcount" id="listeners">0</span>
       </div>
+      <div class="kv"><span>Sync spread (dancer ↔ dancer)</span><span id="syncSpread">—</span></div>
+      <div class="kv"><span>Latency min / median / max</span><span id="syncRange">—</span></div>
     </div>
   </div>
 </div>
 
 <div class="tabpane" id="tab-settings" hidden>
-  <div class="wrap-narrow">
+  <div class="col">
     <div class="card">
       <h2>Audio</h2>
       <label for="delivery">Mode</label>
@@ -160,6 +166,12 @@
       </div>
     </div>
 
+    <div id="inapp" class="card" style="display:none">
+      <h2>App</h2>
+      <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
+      <div class="row"><button id="quitBtn" class="ghost" style="flex:1">Quit partyparty</button></div>
+    </div>
+
     <label class="advcheck"><input type="checkbox" id="advToggle"> Show advanced settings</label>
 
     <div class="card adv">
@@ -178,10 +190,8 @@
   </div>
 </div>
 
-<div id="appbar">
-  <label class="appbar-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
-  <button id="quitBtn" class="appbar-quit">Quit partyparty</button>
-</div>
+<div id="livebar"><div class="inner"><button class="go" id="liveBtn">Go Live</button></div></div>
+
 <script src="/vendor/qrcode.min.js"></script>
 <script>
   const $ = id => document.getElementById(id);
@@ -189,7 +199,6 @@
   let screenGranted = null; // null = unknown (plain browser); true/false from the native app
   function updateMacnote(){
     const isMac = $('device').value === 'mac';
-    // Hide the "grant Screen Recording" note once it's actually granted.
     $('macnote').style.display = (isMac && screenGranted !== true) ? 'block' : 'none';
   }
   window.ppSetScreenPermission = (g) => { screenGranted = !!g; updateMacnote(); };
@@ -265,7 +274,18 @@
       '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono + '&latency=' + encodeURIComponent(latency), { method:'POST' });
     refresh();
   }
-  $('startBtn').onclick = startBroadcast;
+  // one toggle: green Go Live when idle, red Stop when live/starting
+  $('liveBtn').onclick = () => {
+    if (lastState === 'live' || lastState === 'starting') {
+      fetch('/api/stop', { method:'POST' }).then(refresh);
+    } else {
+      startBroadcast();
+    }
+  };
+  $('helpBtn').onclick = () => {
+    const n = $('helpNote');
+    n.style.display = (n.style.display === 'none' || !n.style.display) ? 'block' : 'none';
+  };
 
   $('delivery').onchange = async () => {
     const mode = $('delivery').value;
@@ -280,8 +300,12 @@
     }
     if (wasLive) await startBroadcast(); else refresh();
   };
-  $('stopBtn').onclick = async () => { await fetch('/api/stop', { method:'POST' }); refresh(); };
-  $('refreshBtn').onclick = loadDevices;
+  $('refreshBtn').onclick = () => {
+    const b = $('refreshBtn');
+    b.classList.add('spin');
+    setTimeout(() => b.classList.remove('spin'), 600);
+    loadDevices();
+  };
   $('device').onchange = updateMacnote;
   $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=screen', { method:'POST' });
 
@@ -304,6 +328,7 @@
       const badge = $('badge');
       badge.textContent = st;
       badge.className = 'badge ' + (st === 'live' ? 'live' : st === 'error' ? 'error' : st === 'starting' ? 'starting' : '');
+      badge.style.display = (st && st !== 'idle') ? '' : 'none';
       if ((st === 'live' || st === 'starting') && s.broadcast.deviceName) {
         const ch = s.broadcast.channels === 1 ? 'mono' : 'stereo';
         const delay = s.broadcast.segDur ? ' · ~' + Math.round(s.broadcast.segDur * 3) + 's delay' : '';
@@ -311,17 +336,17 @@
       } else {
         $('devname').textContent = s.broadcast.lastError || '';
       }
-      $('startBtn').disabled = (st === 'live' || st === 'starting');
-      $('stopBtn').disabled = !(st === 'live' || st === 'starting');
+      const live = (st === 'live' || st === 'starting');
+      const lb = $('liveBtn');
+      lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop' : 'Go Live');
+      lb.className = live ? 'stop' : 'go';
       if ($('latencyBox')) $('latencyBox').style.display = (s.delivery === 'llhls') ? 'none' : 'block';
       const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnote').textContent = note || '';
       $('url').textContent = s.urls.primary;
-      $('hosturl').textContent = s.urls.hostnameUrl;
       renderQR(s.urls.primary);
-      $('listeners').textContent = s.listeners;
-      $('total').textContent = s.listenersTotal;
+      $('listeners').textContent = s.listenersTotal;
       const lt = s.latency || {};
       if (lt.count) {
         $('syncSpread').textContent = Math.round(lt.spreadMs) + ' ms across ' + lt.count + ' device' + (lt.count === 1 ? '' : 's');
@@ -351,14 +376,13 @@
   refresh();
   setInterval(refresh, 2000);
 
-  // In-app controls — only when running inside the native menu-bar app (the Swift
-  // shell sets window.ppNative and bridges these to macOS).
+  // In-app controls — only when running inside the native menu-bar app.
   window.ppSetLoginState = (on) => { const c = $('loginItem'); if (c) c.checked = !!on; };
   if (window.ppNative) {
-    $('appbar').classList.add('show');
+    $('inapp').style.display = 'block';
     $('loginItem').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setLoginItem', on: $('loginItem').checked });
     $('quitBtn').onclick = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'quit' });
-    window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready' }); // ask Swift for the current login-item state
+    window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready' });
   }
 </script>
 </body>
