@@ -1,88 +1,80 @@
 import AppKit
-import SwiftUI
 import ServiceManagement
 
 /// Menu-bar app delegate: agent-style at rest (no Dock icon), flips to a regular
-/// app while the admin window is open. Left-click = status popover; right-click =
-/// menu. Supervises the Go server child and wires Sparkle auto-update.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+/// app while the admin window is open. The menu-bar icon opens a standard NSMenu.
+/// Supervises the Go server child and wires Sparkle auto-update.
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let server = ServerController()
     private let updater = Updater()
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
-    private var statusModel: StatusModel!
+    private var statusPoller: StatusPoller!
     private var adminWindow: AdminWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // menu-bar only, no Dock icon
         server.start()
-
-        let api = APIClient(port: server.port)
-        statusModel = StatusModel(api: api)
-        statusModel.onOpenConsole = { [weak self] in self?.openConsole() }
-        statusModel.onCheckUpdates = { [weak self] in self?.updater.checkForUpdates() }
-        statusModel.onQuit = { NSApp.terminate(nil) }
-
+        statusPoller = StatusPoller(api: APIClient(port: server.port))
         setupStatusItem()
-        statusModel.startPolling()
+        statusPoller.start()
     }
-
-    // MARK: Status item (left-click popover / right-click menu)
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.title = "🕺"            // emoji icons render via the title, not a template image
+            button.title = "🕺"        // emoji icons render via the title, not a template image
             button.toolTip = appName
-            button.action = #selector(statusClicked(_:))
-            button.target = self
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-        popover = NSPopover()
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: StatusView(model: statusModel))
-    }
-
-    @objc private func statusClicked(_ sender: NSStatusBarButton) {
-        if NSApp.currentEvent?.type == .rightMouseUp {
-            showMenu(sender)
-        } else {
-            togglePopover(sender)
-        }
-    }
-
-    private func togglePopover(_ sender: NSStatusBarButton) {
-        if popover.isShown {
-            popover.performClose(nil)
-            return
-        }
-        statusModel.refresh()
-        // Accessory apps need to be active for SwiftUI controls in the popover to
-        // receive clicks; activating doesn't show a Dock icon.
-        NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-    }
-
-    private func showMenu(_ sender: NSStatusBarButton) {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open DJ Console", action: #selector(openConsole), keyEquivalent: "o")
-        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkUpdates), keyEquivalent: "")
-        let login = NSMenuItem(title: "Start at Login", action: #selector(toggleLogin), keyEquivalent: "")
+        menu.delegate = self           // rebuilt on each open so status is current
+        statusItem.menu = menu
+    }
+
+    // MARK: Menu (rebuilt each time it opens)
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let s = statusPoller.status
+        let statusText: String
+        switch s.state {
+        case "live":     statusText = "● Live · \(s.listeners) listening"
+        case "starting": statusText = "Starting…"
+        case "error":    statusText = "Error"
+        default:         statusText = "Idle"
+        }
+        addInfo(menu, statusText)
+        menu.addItem(.separator())
+
+        menu.addItem(action(menu, "Open DJ Console", #selector(openConsole), "o"))
+        menu.addItem(.separator())
+
+        let login = action(menu, "Start at Login", #selector(toggleLogin), "")
         login.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit \(appName)", action: #selector(quit), keyEquivalent: "q")
-        for item in menu.items where item.action != nil { item.target = self }
-        // Show the menu once, then detach so the next left-click uses the popover.
-        statusItem.menu = menu
-        sender.performClick(nil)
-        statusItem.menu = nil
+
+        addInfo(menu, "\(appName) \(appVersion)")
+        menu.addItem(action(menu, "Check for Updates…", #selector(checkUpdates), ""))
+        menu.addItem(action(menu, "Quit \(appName)", #selector(quit), "q"))
+    }
+
+    /// A disabled (grayed) informational row.
+    private func addInfo(_ menu: NSMenu, _ title: String) {
+        let i = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        i.isEnabled = false
+        menu.addItem(i)
+    }
+
+    private func action(_ menu: NSMenu, _ title: String, _ sel: Selector, _ key: String) -> NSMenuItem {
+        let i = NSMenuItem(title: title, action: sel, keyEquivalent: key)
+        i.target = self
+        return i
     }
 
     // MARK: Admin window (activation-policy hybrid)
 
     @objc private func openConsole() {
-        if popover.isShown { popover.performClose(nil) }
         if adminWindow == nil {
             adminWindow = AdminWindowController(port: server.port) { [weak self] in self?.adminClosed() }
         }
@@ -97,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory) // back to menu-bar only
     }
 
-    // MARK: Menu actions
+    // MARK: Actions
 
     @objc private func checkUpdates() { updater.checkForUpdates() }
 

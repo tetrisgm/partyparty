@@ -6,3 +6,5 @@ import Foundation
 let appName = (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
     ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)
     ?? "partyparty"
+
+let appVersion = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
