@@ -45,10 +45,10 @@
   .kv { display:flex; justify-content:space-between; font-size:13px; color:#9aa0b4; padding:5px 0; border-bottom:1px solid #16172180; }
   .hint { font-size:12px; color:#7b7f96; margin-top:10px; line-height:1.55; }
   .warn { background:#2a230f; border:1px solid #5a4a16; color:#e9c46a; font-size:12.5px; padding:10px 12px; border-radius:10px; margin-top:12px; line-height:1.5; }
-  details { margin-top:14px; border-top:1px solid #1d1e2b; padding-top:12px; }
-  summary { cursor:pointer; font-size:13px; color:#b9bdd0; }
-  details h3 { font-size:13px; color:#cdd1e0; margin:14px 0 4px; }
-  details p, details li { font-size:12.5px; color:#9aa0b4; line-height:1.6; }
+  #helpNote { border-top:1px solid #1d1e2b; margin-top:14px; padding-top:12px; }
+  #helpNote h3 { font-size:13px; color:#cdd1e0; margin:14px 0 4px; }
+  #helpNote h3:first-child { margin-top:0; }
+  #helpNote p { font-size:12.5px; color:#9aa0b4; line-height:1.6; }
   code { background:#07070d; border:1px solid #1d1e2b; border-radius:5px; padding:1px 5px; font-size:12px; color:#cdd1e0; }
   .advcheck { display:flex; align-items:center; gap:8px; color:#9aa0b4; font-size:13px; cursor:pointer; margin:20px 2px 6px; user-select:none; }
   .advcheck input { accent-color:#7C3AED; }
@@ -98,16 +98,13 @@
         <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%;display:none">Open Screen Recording Settings</button>
       </div>
       <div id="helpNote" style="display:none">
-        <details open>
-          <summary>How do I capture my sound?</summary>
-          <h3>① Capture everything on the Mac (easiest)</h3>
-          <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. Grant <b>Screen Recording</b> permission once when asked. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
-          <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
-          <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole above.</p>
-          <h3>③ Hardware controller / mixer</h3>
-          <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device above. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
-          <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
-        </details>
+        <h3>① Capture everything on the Mac (easiest)</h3>
+        <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. Grant <b>Screen Recording</b> permission once when asked. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+        <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
+        <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole above.</p>
+        <h3>③ Hardware controller / mixer</h3>
+        <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device above. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
+        <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
         <div class="hint" style="margin-top:12px">Not sure it works? Pick <b>Test tone</b> and Go Live — if a guest hears the beep, your network path is good and you only need to fix the audio routing.</div>
       </div>
     </div>
