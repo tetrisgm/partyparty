@@ -55,7 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         addInfo(menu, "\(appName) \(appVersion)")
-        menu.addItem(action(menu, "Check for Updates…", #selector(checkUpdates), ""))
+        // Only show Check for Updates once auto-update is configured (SUPublicEDKey
+        // set + a release exists) — otherwise it errors with "couldn't retrieve
+        // update info" before the first release.
+        if Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil {
+            menu.addItem(action(menu, "Check for Updates…", #selector(checkUpdates), ""))
+        }
         menu.addItem(action(menu, "Quit \(appName)", #selector(quit), "q"))
     }
 
