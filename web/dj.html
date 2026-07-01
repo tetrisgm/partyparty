@@ -126,8 +126,12 @@
         <h2>Listeners</h2>
         <span class="lcount" id="listeners">0</span>
       </div>
+      <div class="kv"><span>Delay from DJ (glass-to-glass)</span><span id="djDelay">—</span></div>
       <div class="kv"><span>Sync spread (dancer ↔ dancer)</span><span id="syncSpread">—</span></div>
+      <div class="hint" id="syncDetail" style="margin:4px 0 6px"></div>
       <div id="roster"></div>
+      <button id="copySync" style="display:none;margin-top:10px;background:#23202e;color:#cdd1e0;border:0;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
+      <div class="hint" style="margin-top:8px">Sync test: open the player on a few phones — lock a couple — and watch the spread. That's what the dancefloor feels.</div>
     </div>
   </div>
 </div>
@@ -242,6 +246,18 @@
   const savedQ = localStorage.getItem('pp.bitrate');
   if (savedQ) $('quality').value = savedQ;
   $('mono').checked = localStorage.getItem('pp.mono') === '1';
+  let lastLt = null;
+  function copySync(){
+    const lt = lastLt; if (!lt || !lt.count) return;
+    const txt = 'partyparty sync — ' + lt.count + ' phone(s)\n'
+      + 'Delay from DJ (glass-to-glass): ~' + (lt.medMs / 1000).toFixed(1) + ' s median\n'
+      + 'Dancer↔dancer spread: ' + Math.round(lt.spreadMs) + ' ms '
+      + '(behind live: closest ' + Math.round(lt.minMs) + ' ms / median ' + Math.round(lt.medMs) + ' ms / furthest ' + Math.round(lt.maxMs) + ' ms)';
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    const b = document.getElementById('copySync'); if (b) { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => b.textContent = o, 1200); }
+  }
+  { const cs = document.getElementById('copySync'); if (cs) cs.onclick = copySync; }
+
   const savedL = localStorage.getItem('pp.latency');
   if (savedL) $('latency').value = savedL;
   $('quality').onchange = () => localStorage.setItem('pp.bitrate', $('quality').value);
@@ -346,8 +362,15 @@
       renderQR(guestUrl);
       const roster = s.roster || [];
       $('listeners').textContent = roster.length;
-      const lt = s.latency || {};
-      $('syncSpread').textContent = lt.count ? (Math.round(lt.spreadMs) + ' ms across ' + lt.count) : '—';
+      const lt = s.latency || {}; lastLt = lt;
+      if (lt.count) {
+        $('djDelay').textContent = '~' + (lt.medMs / 1000).toFixed(1) + ' s';
+        $('syncSpread').textContent = Math.round(lt.spreadMs) + ' ms · ' + lt.count + (lt.count === 1 ? ' phone' : ' phones');
+        $('syncDetail').textContent = 'behind live — closest ' + Math.round(lt.minMs) + ' ms · median ' + Math.round(lt.medMs) + ' ms · furthest ' + Math.round(lt.maxMs) + ' ms';
+        $('copySync').style.display = 'inline-block';
+      } else {
+        $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('syncDetail').textContent = ''; $('copySync').style.display = 'none';
+      }
       $('roster').innerHTML = roster.map((r, i) => {
         const icon = r.stalled ? '⏳' : (r.paused ? '⏸' : '▶');
         const lat = r.hasLatency ? Math.round(r.latencyMs) + ' ms' : '—';
