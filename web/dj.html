@@ -5,75 +5,97 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>partyparty — DJ console</title>
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin:0; padding-bottom:92px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; background:#0b0b12; color:#e8e9f0; }
-  header { padding:16px 24px; display:flex; align-items:center; gap:12px; }
-  header h1 { font-size:18px; font-weight:600; margin:0; letter-spacing:-.01em; }
-  .badge { font-size:12px; padding:4px 10px; border-radius:999px; background:#23202e; color:#9aa0b4; text-transform:capitalize; }
-  .badge.live { background:#0f3d28; color:#39d98a; }
-  .badge.error { background:#3d1414; color:#ff8a8a; }
-  .badge.starting { background:#3d3414; color:#e9c46a; }
-  .tabs { display:flex; gap:4px; padding:0 24px; max-width:680px; margin:0 auto; border-bottom:1px solid #1d1e2b; }
-  .tab { background:transparent; color:#9aa0b4; padding:10px 16px; border:none; border-bottom:2px solid transparent; border-radius:0; font-weight:600; font-size:14px; cursor:pointer; }
-  .tab:hover { color:#cdd1e0; }
-  .tab.active { color:#fff; border-bottom-color:#7C3AED; }
-  .tabpane[hidden] { display:none; }
-  .col { max-width:680px; margin:0 auto; padding:24px; }
-  .card { background:#12121c; border:1px solid #1d1e2b; border-radius:14px; padding:20px; }
-  .card + .card { margin-top:24px; }
-  .card h2 { font-size:14px; font-weight:600; margin:0 0 14px; color:#cdd1e0; }
-  label { display:block; font-size:12px; color:#9aa0b4; margin:0 0 6px; }
-  select, button { font:inherit; }
-  select {
-    width:100%; padding:11px 38px 11px 12px; border-radius:10px; background-color:#0b0b12; color:#fff; border:1px solid #2a2b3c;
-    -webkit-appearance:none; appearance:none;
-    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%239aa0b4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
-    background-repeat:no-repeat; background-position:right 13px center;
+  :root{
+    color-scheme:dark;
+    --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --bg:#000000; --bg-elevated:#1c1c1e; --bg-elevated-2:#2c2c2e;
+    --label:#f5f5f7; --label-secondary:#a1a1a8; --label-tertiary:#6e6e73;
+    --separator:rgba(255,255,255,.10); --fill:rgba(120,120,128,.24); --fill-hover:rgba(120,120,128,.34);
+    --link:#2997ff; --accent:#ff3b7f;
+    --success:#34c759; --warn:#ff9f0a; --danger:#ff453a;
+    --glass-bg:rgba(28,28,30,.62);
+    --r-sm:10px; --r-md:12px; --r-pill:980px;
   }
-  .row { display:flex; gap:10px; margin-top:14px; }
-  button { padding:12px; border:none; border-radius:10px; font-weight:600; cursor:pointer; }
-  button.go { background:#7C3AED; color:#fff; }
-  button.ghost { background:#23202e; color:#cdd1e0; }
-  button:disabled { opacity:.4; cursor:default; }
-  .url { font-size:22px; font-weight:600; color:#fff; word-break:break-all; margin:2px 0; }
-  .muted { color:#9aa0b4; font-size:13px; }
-  #qr { margin:16px 0; display:flex; justify-content:center; background:#fff; width:fit-content; padding:12px; border-radius:12px; }
-  .lcount { font-size:26px; font-weight:700; color:#fff; line-height:1; }
-  .listener { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #16172180; font-size:13px; }
-  .listener:last-child { border-bottom:none; }
-  .listener .lstat { width:18px; text-align:center; }
-  .listener .lname { flex:1; color:#cdd1e0; }
-  .listener .llat { color:#9aa0b4; font-variant-numeric:tabular-nums; }
-  .stat { display:flex; gap:16px; align-items:baseline; }
-  pre { background:#07070d; border:1px solid #1d1e2b; border-radius:10px; padding:12px; font-size:12px; line-height:1.5; height:190px; overflow:auto; color:#9bb; white-space:pre-wrap; margin:0; }
-  .kv { display:flex; justify-content:space-between; font-size:13px; color:#9aa0b4; padding:5px 0; border-bottom:1px solid #16172180; }
-  .hint { font-size:12px; color:#7b7f96; margin-top:10px; line-height:1.55; }
-  .warn { background:#2a230f; border:1px solid #5a4a16; color:#e9c46a; font-size:12.5px; padding:10px 12px; border-radius:10px; margin-top:12px; line-height:1.5; }
-  #helpNote { border-top:1px solid #1d1e2b; margin-top:14px; padding-top:12px; }
-  #helpNote h3 { font-size:13px; color:#cdd1e0; margin:14px 0 4px; }
-  #helpNote h3:first-child { margin-top:0; }
-  #helpNote p { font-size:12.5px; color:#9aa0b4; line-height:1.6; }
-  code { background:#07070d; border:1px solid #1d1e2b; border-radius:5px; padding:1px 5px; font-size:12px; color:#cdd1e0; }
-  .advcheck { display:flex; align-items:center; gap:8px; color:#9aa0b4; font-size:13px; cursor:pointer; margin:20px 2px 6px; user-select:none; }
-  .advcheck input { accent-color:#7C3AED; }
-  .adv { display:none; }
-  body.show-adv .adv { display:block; }
-  .inapp-check { display:flex; align-items:center; gap:8px; color:#cdd1e0; font-size:13px; cursor:pointer; }
-  .inapp-check input { accent-color:#7C3AED; }
-  .cardhead { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 14px; }
-  .cardhead h2 { margin:0; }
-  .cardhead-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
-  .iconbtn { width:30px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; background:#23202e; color:#cdd1e0; font-size:15px; font-weight:700; line-height:1; }
-  .iconbtn:hover { background:#2d2a3a; color:#fff; }
-  .iconbtn svg { display:block; }
-  .iconbtn.spin svg { animation:pp-spin .6s linear; }
-  @keyframes pp-spin { to { transform:rotate(360deg); } }
-  #livebar { position:fixed; left:0; right:0; bottom:0; z-index:5; padding:12px 24px; background:#0b0b12; border-top:1px solid #1d1e2b; }
-  #livebar .inner { max-width:680px; margin:0 auto; }
-  #liveBtn { display:block; width:100%; padding:16px; font-size:16px; border-radius:12px; background:#14b86b; color:#06160d; }
-  #liveBtn.stop { background:#e0455e; color:#fff; }
-  #liveBtn:disabled { opacity:.5; }
+  *{box-sizing:border-box}
+  body{margin:0;padding-bottom:96px;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
+    background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
+  header{padding:18px 24px 14px;display:flex;align-items:center;gap:12px}
+  header h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.02em}
+  .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);text-transform:capitalize}
+  .badge.live{background:rgba(52,199,89,.18);color:var(--success)}
+  .badge.error{background:rgba(255,69,58,.18);color:var(--danger)}
+  .badge.starting{background:rgba(255,159,10,.18);color:var(--warn)}
+  .tabs{display:flex;gap:2px;padding:0 24px;max-width:680px;margin:0 auto;border-bottom:1px solid var(--separator)}
+  .tab{height:auto;background:transparent;color:var(--label-secondary);padding:10px 14px;border:none;border-bottom:2px solid transparent;border-radius:0;font-weight:600;font-size:13px;cursor:pointer;transition:color .15s}
+  .tab:hover{color:var(--label)}
+  .tab.active{color:var(--label);border-bottom-color:var(--accent)}
+  .tabpane[hidden]{display:none}
+  .col{max-width:680px;margin:0 auto;padding:20px 24px}
+  .card{background:var(--bg-elevated);border:1px solid var(--separator);border-radius:var(--r-md);padding:20px}
+  .card + .card{margin-top:16px}
+  .card h2{font-size:17px;font-weight:600;margin:0 0 14px;letter-spacing:-.01em;color:var(--label)}
+  label{display:block;font-size:12px;color:var(--label-secondary);margin:0 0 6px}
+  select,button{font:inherit}
+  select{
+    width:100%;height:32px;padding:0 34px 0 12px;border-radius:var(--r-sm);background-color:var(--fill);color:var(--label);border:1px solid var(--separator);font-size:13px;
+    -webkit-appearance:none;appearance:none;
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%23a1a1a8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
+    background-repeat:no-repeat;background-position:right 12px center;
+  }
+  .row{display:flex;gap:10px;margin-top:14px}
+  button{height:32px;padding:0 14px;border:none;border-radius:var(--r-sm);font-weight:600;font-size:13px;cursor:pointer;transition:filter .15s,background .15s}
+  button.go{background:var(--accent);color:#fff}
+  button.go:hover{filter:brightness(1.05)}
+  button.ghost{background:var(--fill);color:var(--label)}
+  button.ghost:hover{background:var(--fill-hover)}
+  button:disabled{opacity:.4;cursor:default}
+  .url{font-size:22px;font-weight:600;color:var(--label);word-break:break-all;margin:2px 0;letter-spacing:-.01em}
+  .muted{color:var(--label-secondary);font-size:13px}
+  #qr{margin:16px 0;display:flex;justify-content:center;background:#fff;width:fit-content;padding:12px;border-radius:var(--r-md)}
+  .lcount{font-size:26px;font-weight:600;color:var(--label);line-height:1;letter-spacing:-.02em}
+  .listener{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--separator);font-size:13px}
+  .listener:last-child{border-bottom:none}
+  .listener .lstat{width:18px;text-align:center}
+  .listener .lname{flex:1;color:var(--label)}
+  .listener .llat{color:var(--label-secondary);font-variant-numeric:tabular-nums}
+  .stat{display:flex;gap:16px;align-items:baseline}
+  pre{background:#000;border:1px solid var(--separator);border-radius:var(--r-sm);padding:12px;font-family:var(--mono);font-size:12px;line-height:1.5;height:190px;overflow:auto;color:var(--label-secondary);white-space:pre-wrap;margin:0}
+  .kv{display:flex;justify-content:space-between;font-size:13px;color:var(--label-secondary);padding:7px 0;border-bottom:1px solid var(--separator)}
+  .hint{font-size:11px;color:var(--label-tertiary);margin-top:10px;line-height:1.5}
+  .warn{background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.32);color:#ffd483;font-size:12px;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
+  #helpNote{border-top:1px solid var(--separator);margin-top:14px;padding-top:12px}
+  #helpNote h3{font-size:13px;font-weight:600;color:var(--label);margin:14px 0 4px}
+  #helpNote h3:first-child{margin-top:0}
+  #helpNote p{font-size:12px;color:var(--label-secondary);line-height:1.6}
+  code{background:#000;border:1px solid var(--separator);border-radius:5px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--label)}
+  .advcheck{display:flex;align-items:center;gap:8px;color:var(--label-secondary);font-size:13px;cursor:pointer;margin:18px 2px 6px;user-select:none}
+  .advcheck input{accent-color:var(--accent)}
+  .adv{display:none}
+  body.show-adv .adv{display:block}
+  .inapp-check{display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer}
+  .inapp-check input{accent-color:var(--accent)}
+  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px}
+  .cardhead h2{margin:0}
+  .cardhead-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .iconbtn{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);background:var(--fill);color:var(--label-secondary);font-size:15px;font-weight:600;line-height:1;cursor:pointer}
+  .iconbtn:hover{background:var(--fill-hover);color:var(--label)}
+  .iconbtn svg{display:block}
+  .iconbtn.spin svg{animation:pp-spin .6s linear}
+  @keyframes pp-spin{to{transform:rotate(360deg)}}
+  /* the ONE Liquid-Glass surface: the floating Go-Live bar */
+  #livebar{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 24px;
+    background:var(--glass-bg);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
+    border-top:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 -8px 32px rgba(0,0,0,.45)}
+  #livebar .inner{max-width:680px;margin:0 auto}
+  #liveBtn{display:block;width:100%;height:auto;padding:15px;font-size:16px;border-radius:var(--r-md);background:var(--success);color:#03130a;transition:filter .15s}
+  #liveBtn:hover{filter:brightness(1.05)}
+  #liveBtn.stop{background:var(--danger);color:#fff}
+  #liveBtn:disabled{opacity:.5}
+  @supports (corner-shape:superellipse(2)){.card,select,button,.iconbtn,#liveBtn,#qr{corner-shape:superellipse(2)}}
+  @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){#livebar{background:#1c1c1e}}
+  @media (prefers-reduced-transparency:reduce){#livebar{background:#1c1c1e;-webkit-backdrop-filter:none;backdrop-filter:none}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -131,11 +153,11 @@
       <div class="hint" id="syncDetail" style="margin:4px 0 6px"></div>
       <span class="advcheck" id="latHelpToggle" style="margin:2px 0 6px">ⓘ What do these two numbers mean?</span>
       <div class="hint" id="latHelp" hidden style="margin:0 0 8px;line-height:1.55">
-        <b style="color:#cdd1e0">Delay from DJ</b> — how long after you play something the room hears it. A couple of seconds is normal and totally fine; nobody's comparing to your booth. Only worth lowering if you're talking to the crowd live.<br><br>
-        <b style="color:#cdd1e0">Sync spread</b> — how far apart two people standing next to each other are. This is the dancefloor number: under about half a second and the room moves together. If it climbs, phones are usually rebuffering on weak Wi‑Fi — nudge <b>Latency</b> toward Stable, or use a stronger router. Phones keep playing locked or in another app, so you can't "push" a lagging one — a steady buffer is what holds everyone together.
+        <b style="color:var(--label)">Delay from DJ</b> — how long after you play something the room hears it. A couple of seconds is normal and totally fine; nobody's comparing to your booth. Only worth lowering if you're talking to the crowd live.<br><br>
+        <b style="color:var(--label)">Sync spread</b> — how far apart two people standing next to each other are. This is the dancefloor number: under about half a second and the room moves together. If it climbs, phones are usually rebuffering on weak Wi‑Fi — nudge <b>Latency</b> toward Stable, or use a stronger router. Phones keep playing locked or in another app, so you can't "push" a lagging one — a steady buffer is what holds everyone together.
       </div>
       <div id="roster"></div>
-      <button id="copySync" style="display:none;margin-top:10px;background:#23202e;color:#cdd1e0;border:0;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
+      <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
       <div class="hint" style="margin-top:8px">Sync test: open the player on a few phones — lock a couple — and watch the spread. That's what the dancefloor feels.</div>
     </div>
   </div>
@@ -162,8 +184,8 @@
         <option value="256k">Very high — 256 kbps</option>
         <option value="320k">Max — 320 kbps</option>
       </select>
-      <label style="margin-top:12px;display:flex;align-items:center;gap:8px;color:#cdd1e0;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="mono" style="width:auto;accent-color:#7C3AED"> Mono (about half the bandwidth)
+      <label style="margin-top:12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
+        <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
       </label>
       <div id="latencyBox">
         <label for="latency" style="margin-top:14px">Latency vs. stability</label>
