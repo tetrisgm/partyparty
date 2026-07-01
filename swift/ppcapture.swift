@@ -22,6 +22,28 @@ final class SysAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
     let audioQueue = DispatchQueue(label: "ppcapture.audio")
     let screenQueue = DispatchQueue(label: "ppcapture.screen")
 
+    // Timeline continuity: SCK can drop buffers (queue overflow, guard-return
+    // paths). A dropped buffer silently shortens the PCM timeline, which both
+    // clicks and permanently shifts wall-clock vs media-time. Track the expected
+    // next PTS and conceal any gap with silence so downstream timing stays true.
+    var nextPTS: CMTime = .invalid
+    var concealedMs: Double = 0
+    var gapCount = 0
+
+    func concealGapIfNeeded(_ pts: CMTime) {
+        guard nextPTS.isValid, pts.isValid else { return }
+        let gap = CMTimeGetSeconds(CMTimeSubtract(pts, nextPTS))
+        guard gap > 0.002 else { return } // < 2ms: normal jitter
+        let sec = min(gap, 2.0) // cap pathological gaps
+        let frames = Int(sec * 48000)
+        if frames > 0 {
+            writeOut(Data(count: frames * 2 * MemoryLayout<Float32>.size)) // zero-filled silence
+            gapCount += 1
+            concealedMs += sec * 1000
+            elog(String(format: "ppcapture: concealed %.0fms capture gap with silence (gap #%d, %.0fms total)", sec * 1000, gapCount, concealedMs))
+        }
+    }
+
     func start() async {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
@@ -61,14 +83,27 @@ final class SysAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         guard outputType == .audio, CMSampleBufferDataIsReady(sampleBuffer) else { return }
 
+        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+
         if !loggedFormat {
             if let fd = CMSampleBufferGetFormatDescription(sampleBuffer),
                let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(fd)?.pointee {
                 let nonInterleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
-                elog("ppcapture: source format \(Int(asbd.mSampleRate)) Hz, \(asbd.mChannelsPerFrame) ch, \(asbd.mBitsPerChannel)-bit, \(nonInterleaved ? "planar" : "interleaved")")
+                elog("ppcapture: source format \(Int(asbd.mSampleRate)) Hz, \(asbd.mChannelsPerFrame) ch, \(asbd.mBitsPerChannel)-bit, \(nonInterleaved ? "planar" : "interleaved"), \(frameCount) frames/callback (~\(frameCount * 1000 / 48000)ms)")
+                // The pipe consumer declares f32le/48k/2ch with no header — any
+                // other delivery format would be silent corruption. Fail loudly.
+                let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+                if asbd.mFormatID != kAudioFormatLinearPCM || !isFloat || asbd.mBitsPerChannel != 32 || Int(asbd.mSampleRate) != 48000 {
+                    elog("ppcapture: FATAL unexpected capture format — expected 48000 Hz Float32 PCM")
+                    exit(5)
+                }
             }
             loggedFormat = true
         }
+
+        // Fill any hole left by dropped/skipped buffers before writing this one.
+        concealGapIfNeeded(pts)
 
         var sizeNeeded = 0
         guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
@@ -115,6 +150,13 @@ final class SysAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
                 for i in 0..<frames { inter[2 * i] = m[i]; inter[2 * i + 1] = m[i] }
                 inter.withUnsafeBytes { writeOut(Data(bytes: $0.baseAddress!, count: $0.count)) }
             }
+        }
+
+        // Written (or concealed up to here) — expect the next buffer to start
+        // exactly where this one ended. Guard-return paths above skip this, so
+        // their loss is detected and concealed on the next callback.
+        if pts.isValid, frameCount > 0 {
+            nextPTS = CMTimeAdd(pts, CMTime(value: CMTimeValue(frameCount), timescale: 48000))
         }
     }
 }

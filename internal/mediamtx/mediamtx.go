@@ -161,13 +161,15 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// EnsureReady starts MediaMTX (if needed) and waits for its RTSP port.
+// EnsureReady starts MediaMTX (if needed) and waits for its RTSP port. A
+// MediaMTX that launches but never opens its ingest port (port conflict, bad
+// config) is a hard error — callers fall back to plain HLS instead of showing
+// guests a dead stream.
 func (s *Server) EnsureReady(rtspPort int, timeout time.Duration) error {
 	if err := s.Start(); err != nil {
 		return err
 	}
-	WaitReady(fmt.Sprintf("127.0.0.1:%d", rtspPort), timeout)
-	return nil
+	return WaitReady(fmt.Sprintf("127.0.0.1:%d", rtspPort), timeout)
 }
 
 func (s *Server) Running() bool {
@@ -177,15 +179,16 @@ func (s *Server) Running() bool {
 }
 
 // WaitReady blocks until addr accepts TCP connections or timeout elapses.
-func WaitReady(addr string, timeout time.Duration) {
+func WaitReady(addr string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if c, err := net.DialTimeout("tcp", addr, 300*time.Millisecond); err == nil {
 			_ = c.Close()
-			return
+			return nil
 		}
 		time.Sleep(150 * time.Millisecond)
 	}
+	return fmt.Errorf("mediamtx not accepting connections at %s after %s", addr, timeout)
 }
 
 func (s *Server) Stop() {

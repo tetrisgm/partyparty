@@ -169,8 +169,8 @@
       <h2>Audio</h2>
       <label for="delivery">Mode</label>
       <select id="delivery">
-        <option value="llhls">Low latency — ~1–2s (LL-HLS, needs HTTPS)</option>
-        <option value="hls">Compatible — ~3s (plain HLS, no cert)</option>
+        <option value="llhls">Low latency — ~2s (LL-HLS, needs a real HTTPS cert)</option>
+        <option value="hls">Compatible — ~4s (plain HLS, no cert)</option>
       </select>
       <div class="hint" id="deliveryHint">Plain HLS is the default and plays on any phone with no cert. Low latency (LL-HLS) needs a real HTTPS cert; switching restarts the broadcast.</div>
 
@@ -190,11 +190,11 @@
       <div id="latencyBox">
         <label for="latency" style="margin-top:14px">Latency vs. stability</label>
         <select id="latency">
-          <option value="low" selected>Low latency — ~3s (least delay)</option>
-          <option value="balanced">Balanced — ~5s</option>
-          <option value="stable">Stable — ~7s (best on weak Wi-Fi)</option>
+          <option value="low" selected>Low latency — ~4s (least delay)</option>
+          <option value="balanced">Balanced — ~7s</option>
+          <option value="stable">Stable — ~10s (best on weak Wi-Fi)</option>
         </select>
-        <div class="hint">Lower latency = less buffer, so it's more sensitive to drops. If audio cuts out on a weak network, step toward Stable.</div>
+        <div class="hint">Lower latency = less buffer, so it's more sensitive to drops. If audio cuts out on a weak network, step toward Stable. Changing this while live restarts the broadcast.</div>
       </div>
     </div>
 
@@ -290,7 +290,12 @@
   if (savedL) $('latency').value = savedL;
   $('quality').onchange = () => localStorage.setItem('pp.bitrate', $('quality').value);
   $('mono').onchange = () => localStorage.setItem('pp.mono', $('mono').checked ? '1' : '0');
-  $('latency').onchange = () => localStorage.setItem('pp.latency', $('latency').value);
+  // Latency changes apply immediately: restart the broadcast when live (this
+  // was a silent no-op before — the value only took effect on the next start).
+  $('latency').onchange = () => {
+    localStorage.setItem('pp.latency', $('latency').value);
+    if (lastState === 'live' || lastState === 'starting') startBroadcast();
+  };
   // Advanced view: reveal the FFmpeg log + network cards (hidden by default).
   const advOn = localStorage.getItem('pp.adv') === '1';
   $('advToggle').checked = advOn;
@@ -364,14 +369,21 @@
       const dsel = $('delivery');
       if (document.activeElement !== dsel) dsel.value = s.delivery || 'llhls';
       const llOpt = dsel.querySelector('option[value="llhls"]');
-      if (llOpt) llOpt.disabled = (s.llhlsAvailable === false);
+      if (llOpt) {
+        // LL-HLS needs a publicly-trusted cert — iPhones reject the self-signed
+        // fallback, so don't let the DJ hand guests a stream they can't play.
+        llOpt.disabled = (s.llhlsAvailable === false) || (s.llhlsRealCert === false);
+        if (s.llhlsRealCert === false) llOpt.textContent = 'Low latency — needs an HTTPS cert (unavailable)';
+      }
       const badge = $('badge');
       badge.textContent = st;
       badge.className = 'badge ' + (st === 'live' ? 'live' : st === 'error' ? 'error' : st === 'starting' ? 'starting' : '');
       badge.style.display = (st && st !== 'idle') ? '' : 'none';
       if ((st === 'live' || st === 'starting') && s.broadcast.deviceName) {
         const ch = s.broadcast.channels === 1 ? 'mono' : 'stereo';
-        const delay = s.broadcast.segDur ? ' · ~' + Math.round(s.broadcast.segDur * 3) + 's delay' : '';
+        // Real-world plain-HLS delay ≈ 3x segment (player holdback) + 1 segment
+        // being filled — not the optimistic 3x we used to show.
+        const delay = s.broadcast.segDur ? ' · ~' + Math.round(s.broadcast.segDur * 4) + 's delay' : '';
         $('devname').textContent = '▶ ' + s.broadcast.deviceName + ' · ' + s.broadcast.bitrate + ' ' + ch + delay;
       } else {
         $('devname').textContent = s.broadcast.lastError || '';

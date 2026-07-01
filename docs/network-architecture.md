@@ -161,11 +161,15 @@ tracking.
   HE-AAC is ~2× worse latency; AAC-LD/ELD and Opus are not playable by the iOS native `<audio>` HLS path.
 - **"Hardware acceleration" buys 0 ms.** There is no hardware audio encoder on Apple Silicon; a single
   AAC stream encodes >1000× real-time. Encode was never the bottleneck.
-- **Format alternatives (WAV/PCM, progressive/Icecast, MSE/Managed MSE) all lose.** WAV = ~10× bandwidth
+- **Format alternatives (WAV/PCM, progressive/Icecast, MSE) all lose.** WAV = ~10× bandwidth
   (~1.5 Mbps/listener) for a ~55 ms saving the player buffer swallows. Progressive/Icecast = no latency
   win on iOS *and* loses HLS's zero-JS self-healing (a pocketed locked phone that drops Wi-Fi goes
-  permanently silent). MSE/MMS/WebRTC/Web Audio all suspend on background/lock. The iOS player buffer is
-  a roughly **format-independent floor** — background **or** latency-control, never both.
+  permanently silent). WebRTC/Web Audio suspend on background/lock. **Managed Media Source (iOS 17.1+):
+  CORRECTED 2026-07-01** — an earlier pass claimed MMS suspends on lock; WebKit-source analysis says
+  audio-only MMS in an `<audio>` element likely KEEPS PLAYING when locked (audio sessions carry no
+  background restriction; the MediaPlayback assertion keeps page JS alive) — but there are zero field
+  reports, so it stays **unverified/device-gated** (see the audit's rank-11 spike) and iPhone stays on
+  the native path until a 30-60min locked soak passes.
 - **Real changes worth doing:** (a) **Fix the no-op latency control** — the DJ's low/balanced/stable mode
   only feeds the plain-HTTP fallback `hls_time`; it never reaches LL-HLS (`main.go` hardcodes
   `SegDur:"1s", PartDur:"200ms", SegCount:7`). Wire it to MediaMTX. (b) **Default bitrate 256k → 128–160k**
@@ -228,22 +232,44 @@ iPhone-first. **Not a literal single code path** (Chrome has no native HLS → n
 native). But the **strategy is identical**: read the server `PART-HOLD-BACK`, no rate convergence, no
 per-device loop. Configure hls.js to *behave like the native player* — neuter Android, don't smarten it:
 
+> **CORRECTED 2026-07-01 (pipeline audit):** the block previously recommended here —
+> `liveMaxLatencyDuration: 6` **without** `liveSyncDuration` — is an **illegal hls.js config**:
+> the vendored 1.5.17 constructor **throws** (`"liveMaxLatencyDuration" must be greater than
+> "liveSyncDuration"`), which killed ALL Android/desktop playback (the exception surfaced as a
+> silent unhandled rejection — the listen button did nothing). Also verified: any user-set
+> `liveSyncDuration`/`liveSyncDurationCount` **overrides the playlist PART-HOLD-BACK** (user
+> config wins in hls.js), so that pair is only legal/harmless in **plain-HLS** mode.
+
+The shipped config (`web/listener.html`) is:
+
 ```js
-hls = new Hls({
-  lowLatencyMode: delivery === 'llhls', // keys off the same PART-HOLD-BACK native reads
-  maxLiveSyncPlaybackRate: 1,           // OFF: kills the convergence loop + pitch-shift (verified early-exit)
-  liveMaxLatencyDuration: 6,            // KEEP a coarse ~6 s backstop — do NOT delete (see drift note)
+const cfg = {
+  lowLatencyMode: ll,                 // LL-HLS: parks at the server PART-HOLD-BACK (== native)
+  maxLiveSyncPlaybackRate: 1.05,      // gentle pitch-preserved catch-up: kills the post-stall ratchet
   liveDurationInfinity: true,
   backBufferLength: 30,
-  manifestLoadingMaxRetry: 1e9, levelLoadingMaxRetry: 1e9, fragLoadingMaxRetry: 1e9, // offline-robust
-  // do NOT set liveSyncDurationCount → let server PART-HOLD-BACK govern (== native)
-});
+  manifestLoadPolicy / playlistLoadPolicy / fragLoadPolicy:
+    { retryDelayMs: 500, maxRetryDelayMs: 2000, maxNumRetry: 1e9 },  // fast bounded retries
+};
+if (!ll) {          // plain HLS ONLY (no PART-HOLD-BACK exists, so the override is harmless)
+  cfg.liveSyncDuration = 3;           // park 3 target-durations back — native parity
+  cfg.liveMaxLatencyDuration = 6;     // legal ONLY together with liveSyncDuration
+}
+// LL-HLS backstop is MANUAL (in the heartbeat interval):
+//   if (hls.latency > 6 && hls.liveSyncPosition != null) player.currentTime = hls.liveSyncPosition;
 ```
 
-`web/listener.html` edits (the `new Hls({...})` block): `maxLiveSyncPlaybackRate: 1.1 → 1`; delete
-`liveSyncDurationCount: 3`; `liveMaxLatencyDurationCount: 10 → liveMaxLatencyDuration: 6` (**keep this —
-do not delete**); `maxBufferLength: 10` can go. Keep gesture-start, Media Session, `visibilitychange`
-resume, `1e9` retries, vendored hls.min.js, and the no-PWA posture.
+Fatal-error recovery must be per-type: `MEDIA_ERROR → hls.recoverMediaError()` (plus
+`swapAudioCodec()` on repeat) — `startLoad()` cannot rebuild a broken MediaSource and left
+Androids permanently silent after a decode error. Keep gesture-start, Media Session,
+`visibilitychange` resume (gated on a `userPaused` flag so a deliberate pause is never
+overridden), vendored hls.min.js, and the no-PWA posture.
+
+**On `maxLiveSyncPlaybackRate: 1.05` (supersedes the earlier "OFF" advice):** Chrome's
+`preservesPitch` defaults to true, so 5% catch-up is inaudible time-stretch, and it converges a
+post-stall Android back to the SAME hold-back target iPhones park at — better inter-listener
+spread with fewer audible backstop skips, not worse. This is a deliberate, narrow deviation
+from the "behave exactly like native" doctrine.
 
 **Correction folded in:** an earlier pass claimed "deleting the latency ceiling has no penalty" — *wrong*.
 hls.js #6350 documents `targetLatency` drifting 1.4 s → 4.4 s over ~1 hour after stalls with no

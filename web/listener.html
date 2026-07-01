@@ -80,8 +80,16 @@
     const countEl = document.getElementById('count');
     let STREAM = null, delivery = 'llhls';
     let hls = null, started = false, live = false, stalledSinceBeat = false;
-    const isNative = !!player.canPlayType('application/vnd.apple.mpegurl');
-    const platform = isNative ? 'native' : 'hls';
+    // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
+    // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
+    // certain Androids) answer 'maybe' to the native-HLS probe but can't
+    // actually play it — trusting canPlayType there means silent forever-loading.
+    const nativeHLS = !!player.canPlayType('application/vnd.apple.mpegurl');
+    const isAppleUA = /iP(hone|ad|od)/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) // iPadOS masquerading as Mac
+      || (/Version\/[\d.]+.*Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)); // real Safari
+    const useNative = nativeHLS && isAppleUA;
+    const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
 
     // Stable per-device id so the DJ console can track each listener across beats.
@@ -135,45 +143,107 @@
       btnlabel.textContent = on ? 'Playing' : (live ? 'Tap to listen' : 'Waiting for DJ');
     }
 
+    // Fast, bounded retries: after a Wi-Fi blip we want audio back in ~1-2s,
+    // not tens of seconds of exponential backoff (every second of stall is
+    // added latency at playback rate 1x).
+    const RETRY = { maxNumRetry: 1e9, retryDelayMs: 500, maxRetryDelayMs: 2000 };
+    const LOAD_POLICY = { default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: RETRY, errorRetry: RETRY } };
+
     function attach(){
       if (!STREAM) return;
-      if (player.canPlayType('application/vnd.apple.mpegurl')) {
-        player.src = STREAM;                       // iOS Safari — native (LL-)HLS
+      if (useNative) {
+        player.src = STREAM;                       // Safari/iOS — native (LL-)HLS, the lock-safe path
       } else if (window.Hls && Hls.isSupported()) {
-        if (hls) { try { hls.destroy(); } catch (e) {} }
-        hls = new Hls({
-          lowLatencyMode: delivery === 'llhls',  // keys off the server PART-HOLD-BACK, same value iOS native reads
-          maxLiveSyncPlaybackRate: 1,       // OFF: no rate convergence/pitch-shift — behave like the iOS native player
-          liveMaxLatencyDuration: 6,        // coarse backstop only (hls.js drifts unrecoverably after stalls)
+        if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+        const ll = delivery === 'llhls';
+        const cfg = {
+          lowLatencyMode: ll,               // LL-HLS: parks at the server PART-HOLD-BACK, same value iOS native reads
+          // 5% catch-up after stalls (pitch-preserved by default in Chrome):
+          // without it every rebuffer adds its full duration to this phone's
+          // latency FOREVER, ratcheting it away from the room until an audible
+          // backstop skip. 1.05 converges it back to the same target iPhones
+          // park at — better sync, no audible artifact.
+          maxLiveSyncPlaybackRate: 1.05,
           liveDurationInfinity: true,
           backBufferLength: 30,
-          manifestLoadingMaxRetry: 1e9, levelLoadingMaxRetry: 1e9, fragLoadingMaxRetry: 1e9 });
-        hls.on(Hls.Events.ERROR, (_e, d) => { if (d && d.fatal) { try { hls.startLoad(); } catch (e) {} } });
+          manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
+        };
+        if (!ll) {
+          // Plain HLS: park 3 target-durations back (native-player parity),
+          // hard ceiling 6s. NOTE: liveMaxLatencyDuration REQUIRES
+          // liveSyncDuration (the constructor throws without it), and any
+          // user liveSync* would override PART-HOLD-BACK in LL-HLS mode —
+          // so this pair is plain-HLS only; LL-HLS gets a manual backstop
+          // in the heartbeat below.
+          cfg.liveSyncDuration = 3;
+          cfg.liveMaxLatencyDuration = 6;
+        }
+        hls = new Hls(cfg);
+        let mediaErrors = 0;
+        hls.on(Hls.Events.ERROR, (_e, d) => {
+          if (!d || !d.fatal) return;
+          try {
+            if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
+              // startLoad() cannot rebuild a broken MediaSource — this can.
+              mediaErrors++;
+              if (mediaErrors > 1) hls.swapAudioCodec();
+              hls.recoverMediaError();
+            } else if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              hls.startLoad();
+            } else {
+              attach(); // last resort: rebuild the whole player
+            }
+          } catch (e) {}
+        });
+        hls.on(Hls.Events.FRAG_BUFFERED, () => { mediaErrors = 0; });
         hls.loadSource(STREAM); hls.attachMedia(player);
       } else {
         player.src = STREAM;
       }
     }
 
+    function attachSafe(){
+      try { attach(); return true; }
+      catch (e) { setStatus('player error — reload the page'); return false; }
+    }
+
     async function play(){
       if (!STREAM) { try { await poll(); } catch (e) {} }
-      attach();
+      if (!attachSafe()) return;
       try { await player.play(); }
       catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
     }
 
+    let userPaused = false; // deliberate pause: never auto-resumed
     btn.addEventListener('click', () => {
-      if (document.body.classList.contains('playing')) { try { player.pause(); } catch (e) {} }
-      else { mediaSession(); play(); }   // register the media session synchronously in the gesture
+      if (document.body.classList.contains('playing')) { userPaused = true; try { player.pause(); } catch (e) {} }
+      else { userPaused = false; mediaSession(); play().catch(()=>{}); }   // register the media session synchronously in the gesture
     });
 
-    player.addEventListener('playing', () => { started = true; setPlayingUI(true); setStatus('live'); });
+    let errRetries = 0;
+    player.addEventListener('playing', () => { started = true; errRetries = 0; setPlayingUI(true); setStatus('live'); });
     player.addEventListener('waiting', () => { stalledSinceBeat = true; setStatus('buffering…'); });
-    player.addEventListener('stalled', () => { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); });
+    // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
+    // normal between refreshes) — only treat it as real when starved.
+    player.addEventListener('stalled', () => {
+      if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
+    });
     player.addEventListener('pause',   () => { setPlayingUI(false); if (started) setStatus('paused'); });
-    player.addEventListener('error',   () => { setStatus('reconnecting…'); setTimeout(() => { if (started){ attach(); player.play().catch(()=>{}); } }, 1500); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { syncClock(); if (started) player.play().catch(()=>{}); } });
+    player.addEventListener('error',   () => {
+      setStatus('reconnecting…');
+      const delay = Math.min(500 * Math.pow(2, errRetries++), 5000);
+      setTimeout(() => { attachSafe(); player.play().catch(()=>{}); }, delay);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { syncClock(); if (started && !userPaused) player.play().catch(()=>{}); }
+    });
     document.getElementById('vol').addEventListener('input', e => { player.volume = Number(e.target.value); });
+    // iOS ignores programmatic volume (hardware buttons only) — hide the dead slider.
+    try {
+      player.volume = 0.7;
+      if (Math.abs(player.volume - 0.7) > 0.01) document.querySelector('.vol').style.display = 'none';
+      else player.volume = 1;
+    } catch (e) {}
 
     function mediaSession(){
       if (!('mediaSession' in navigator)) return;
@@ -182,8 +252,8 @@
           title: titleEl.textContent || 'Live', artist: 'partyparty',
           artwork: [{ src: '/art-512.png', sizes: '512x512', type: 'image/png' }]
         });
-        navigator.mediaSession.setActionHandler('play',  () => player.play());
-        navigator.mediaSession.setActionHandler('pause', () => player.pause());
+        navigator.mediaSession.setActionHandler('play',  () => { userPaused = false; player.play().catch(()=>{}); });
+        navigator.mediaSession.setActionHandler('pause', () => { userPaused = true; player.pause(); });
       } catch (e) {}
     }
 
@@ -223,6 +293,13 @@
     }
     setInterval(() => {
       if (!started) return;
+      // LL-HLS backstop (manual): the config pair liveSyncDuration/
+      // liveMaxLatencyDuration would override the playlist PART-HOLD-BACK, so
+      // in llhls mode we enforce the 6s ceiling ourselves with a single seek.
+      if (hls && delivery === 'llhls' && !player.paused &&
+          typeof hls.latency === 'number' && hls.latency > 6 && hls.liveSyncPosition != null) {
+        try { player.currentTime = hls.liveSyncPosition; } catch (e) {}
+      }
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform;

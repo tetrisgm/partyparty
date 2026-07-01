@@ -132,7 +132,16 @@ func (b *Broadcaster) cleanRunDir() {
 	entries, _ := os.ReadDir(b.runDir)
 	for _, e := range entries {
 		n := e.Name()
-		if strings.HasSuffix(n, ".ts") || strings.HasSuffix(n, ".m3u8") || strings.HasSuffix(n, ".m4s") {
+		switch {
+		case strings.HasSuffix(n, ".m3u8"):
+			_ = os.Remove(filepath.Join(b.runDir, n))
+		case strings.HasSuffix(n, ".ts") || strings.HasSuffix(n, ".m4s"):
+			// Keep very recent segments so guests mid-download during a source
+			// switch don't 404; epoch sequence numbering means new segments
+			// never collide with these, and the next clean sweeps them.
+			if info, err := e.Info(); err == nil && time.Since(info.ModTime()) < 60*time.Second {
+				continue
+			}
 			_ = os.Remove(filepath.Join(b.runDir, n))
 		}
 	}
@@ -143,12 +152,23 @@ func (b *Broadcaster) buildArgs(device string) []string {
 	var input []string
 	switch device {
 	case "test":
-		input = []string{"-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=440:beep_factor=4:sample_rate=%d", c.SampleRate)}
+		// -re paces the tone at realtime so a test run rehearses the actual
+		// go-live behavior (segment fill, playlist cadence) instead of encoding
+		// at CPU speed.
+		input = []string{"-re", "-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=440:beep_factor=4:sample_rate=%d", c.SampleRate)}
 	case "mac":
-		// PCM piped in from the ScreenCaptureKit helper on stdin.
-		input = []string{"-f", "f32le", "-ar", strconv.Itoa(c.SampleRate), "-ac", "2", "-i", "-"}
+		// PCM piped in from the ScreenCaptureKit helper on stdin. The helper
+		// hardcodes 48 kHz/2ch (ppcapture.swift); raw f32le has no header, so
+		// declaring any other rate here would silently pitch-shift the whole
+		// stream — the input rate is therefore pinned, and c.SampleRate is only
+		// applied on the OUTPUT side (resample) below. nobuffer/low_delay/
+		// probesize keep ffmpeg from sitting on input before the encoder sees it.
+		input = []string{
+			"-fflags", "+nobuffer", "-flags", "+low_delay", "-probesize", "32", "-analyzeduration", "0",
+			"-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "-",
+		}
 	default:
-		input = []string{"-f", "avfoundation", "-thread_queue_size", "1024", "-i", ":" + device}
+		input = []string{"-fflags", "+nobuffer", "-f", "avfoundation", "-thread_queue_size", "1024", "-i", ":" + device}
 	}
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	args = append(args, input...)
@@ -166,10 +186,26 @@ func (b *Broadcaster) buildArgs(device string) []string {
 		)
 	} else {
 		args = append(args,
+			// muxdelay/muxpreload 0 + flush_packets: don't buffer TS output —
+			// keeps PROGRAM-DATE-TIME honest (was ~1.2s skewed) and shaves
+			// tens of ms of mux latency.
+			"-muxdelay", "0", "-muxpreload", "0", "-flush_packets", "1",
 			"-f", "hls",
 			"-hls_time", strconv.FormatFloat(b.hlsTime, 'g', -1, 64),
 			"-hls_list_size", strconv.Itoa(c.HLSList),
-			"-hls_flags", "delete_segments+omit_endlist+append_list+independent_segments+program_date_time",
+			// temp_file: atomic playlist publish (write-then-rename) so a guest
+			// GET can never see a truncated m3u8 under polling load.
+			// discont_start: mark the first segment after a restart as a
+			// discontinuity so players resync cleanly instead of glitching.
+			"-hls_flags", "delete_segments+omit_endlist+append_list+independent_segments+program_date_time+temp_file+discont_start",
+			// Keep deleted segments on disk a while longer: a briefly-stalled
+			// phone can still fetch a segment that just left the playlist
+			// window instead of 404ing exactly when its buffer is thinnest.
+			"-hls_delete_threshold", "10",
+			// Epoch-based sequence numbers: monotonic across stop/start, so a
+			// restarted broadcast never rewinds MEDIA-SEQUENCE under a guest
+			// (players treat it as a forward jump, not a corrupt playlist).
+			"-hls_start_number_source", "epoch",
 			"-hls_segment_type", "mpegts",
 			"-hls_segment_filename", filepath.Join(b.runDir, "seg_%05d.ts"),
 			b.playlist,
@@ -346,7 +382,8 @@ func (b *Broadcaster) hasSegments() bool {
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(data), ".ts")
+	s := string(data)
+	return strings.Contains(s, ".ts") || strings.Contains(s, ".m4s")
 }
 
 func (b *Broadcaster) Status() Status {
@@ -354,8 +391,10 @@ func (b *Broadcaster) Status() Status {
 	defer b.mu.Unlock()
 	if b.state == "starting" {
 		if b.delivery == "llhls" {
-			if !b.startedAt.IsZero() && time.Since(b.startedAt) > 2*time.Second {
-				b.state = "live" // ffmpeg is pushing to MediaMTX
+			// "Live" only if ffmpeg is actually still running (a failed RTSP
+			// push exits within a second or two) — not on a blind timer.
+			if b.cmd != nil && !b.startedAt.IsZero() && time.Since(b.startedAt) > 2*time.Second {
+				b.state = "live"
 			}
 		} else if b.hasSegments() {
 			b.state = "live"

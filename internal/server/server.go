@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -125,6 +126,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"streamUrl":      s.streamURL(),
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
+			"llhlsRealCert":  s.realCert(),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
@@ -160,6 +162,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if mode == "llhls" {
 			if s.MTX == nil {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "low-latency unavailable (install mediamtx)"})
+				return
+			}
+			// Without a real (publicly-trusted) cert, LL-HLS would hand every
+			// iPhone an https:// URL Safari rejects — worse than any latency.
+			if !s.realCert() {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "low latency needs a real HTTPS certificate (--domain/--cert/--key) — iPhones can't play the self-signed fallback"})
 				return
 			}
 			if err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second); err != nil {
@@ -243,9 +251,22 @@ func (s *srv) handleHLS(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(file, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		// EXPERIMENTAL device-test lever: ask players to start closer to live
+		// than the default 3x target duration. Off unless --start-offset is set.
+		if s.Config.StartOffset > 0 {
+			if data, err := os.ReadFile(filepath.Join(s.RunDir, file)); err == nil {
+				tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.1f,PRECISE=YES\n", s.Config.StartOffset)
+				out := strings.Replace(string(data), "#EXTM3U\n", "#EXTM3U\n"+tag, 1)
+				_, _ = w.Write([]byte(out))
+				return
+			}
+		}
 	} else {
 		w.Header().Set("Content-Type", "video/mp2t")
-		w.Header().Set("Cache-Control", "public, max-age=60")
+		// no-store: each live segment URL is fetched once per client, so caching
+		// buys nothing — but a cached segment surviving a broadcast restart can
+		// replay the PREVIOUS set's audio under the same URL. Never cache.
+		w.Header().Set("Cache-Control", "no-store")
 	}
 	http.ServeFile(w, r, filepath.Join(s.RunDir, file))
 }
@@ -369,8 +390,16 @@ func validBitrate(v string) string {
 	}
 }
 
-// latencySegDur maps a latency mode to an HLS segment length (seconds). HLS
-// glass-to-glass latency is roughly 3x this. 0 = keep the configured default.
+// realCert reports whether a publicly-trusted cert is configured — the gate
+// for LL-HLS (iOS Safari rejects self-signed certs on LAN IPs).
+func (s *srv) realCert() bool {
+	return s.Config.Domain != "" && s.Config.CertFile != "" && s.Config.KeyFile != ""
+}
+
+// latencySegDur maps a latency mode to an HLS segment length (seconds).
+// Real-world glass-to-glass ≈ 4x this (Safari parks 3x TARGETDURATION behind
+// live, plus the segment being filled), so low/balanced/stable ≈ 4s/7-8s/10s.
+// 0 = keep the configured default.
 func latencySegDur(mode string) float64 {
 	switch mode {
 	case "low":

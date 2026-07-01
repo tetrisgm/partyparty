@@ -23,7 +23,7 @@ type Config struct {
 	FFmpeg     string
 
 	// Delivery + LL-HLS (MediaMTX) settings.
-	Delivery    string // "llhls" (default) or "hls"
+	Delivery    string // "auto" (default: llhls only with a real domain+cert, else hls), "llhls", or "hls"
 	MediaMTXBin string
 	RTSPPort    int
 	HLSPort     int
@@ -36,6 +36,12 @@ type Config struct {
 	PartDur  string // EXT-X-PART duration, e.g. "350ms"
 	SegDur   string // HLS segment duration, e.g. "1s"
 	SegCount int    // segments kept in the LL-HLS playlist
+
+	// EXPERIMENTAL: negative seconds injected as #EXT-X-START:TIME-OFFSET into
+	// the plain-HLS playlist to ask players to park closer to live than the
+	// default 3x target duration. 0 = off. Spec says live offsets inside 3xTD
+	// SHOULD NOT be used and iOS may ignore/misbehave — device-test only.
+	StartOffset float64
 }
 
 func Parse() Config {
@@ -65,6 +71,7 @@ func Parse() Config {
 	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "350ms"), "LL-HLS part duration (lower = less latency, but iPhones may stall below ~350ms)")
 	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "1s"), "LL-HLS segment duration")
 	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 7), "LL-HLS segments kept in the playlist")
+	flag.Float64Var(&c.StartOffset, "start-offset", 0, "EXPERIMENTAL: seconds before live to ask players to start (injects #EXT-X-START:TIME-OFFSET=-N into the plain-HLS playlist; 0 = off)")
 	flag.Parse()
 	c.Channels = 2
 	if mono {
