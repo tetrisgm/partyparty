@@ -176,6 +176,19 @@
   .vs .ck{color:var(--success);flex:0 0 auto;margin-top:1px}
   .vs .row p{margin:0;font-size:16px;line-height:1.5;color:var(--label-secondary)}
   .vs .row p b{color:var(--label);font-weight:600}
+  /* comparison table */
+  .cmp-wrap{margin-top:40px;overflow-x:auto}
+  .cmp{width:100%;border-collapse:collapse;font-size:15px;min-width:560px}
+  .cmp th,.cmp td{padding:16px 14px;text-align:center;border-bottom:1px solid var(--separator);vertical-align:middle}
+  .cmp thead th{font-weight:600;color:var(--label);font-size:15px}
+  .cmp tbody th{text-align:left;font-weight:500;color:var(--label);font-size:15px}
+  .cmp col.ppcol,.cmp .pp{background:linear-gradient(180deg,rgba(255,45,111,.07),rgba(255,45,111,.03))}
+  .cmp thead .pp{color:var(--accent);font-weight:700;font-size:17px;border-top-left-radius:14px;border-top-right-radius:14px}
+  .cmp tbody tr:last-child .pp{border-bottom-left-radius:14px;border-bottom-right-radius:14px}
+  .cmp .yes{color:var(--success);font-weight:700}
+  .cmp .no{color:var(--label-tertiary)}
+  .cmp td small,.cmp th small{display:block;color:var(--label-tertiary);font-size:12px;font-weight:400;margin-top:3px}
+  @media(max-width:720px){.cmp{font-size:13.5px}.cmp th,.cmp td{padding:12px 9px}}
 
   /* steps */
   .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:44px}
@@ -331,14 +344,14 @@
       <div class="feat"><span class="ic">📍</span><div><b>Places a PA would get you kicked out</b><p>Rooftops, parks, beaches, warehouses, a moving train. If phones can reach your Mac, the party's on.</p></div></div>
       <div class="feat"><span class="ic">🤝</span><div><b>The honest version</b><p>This defeats amplified-sound permits and speaker-volume complaints — not a loud crowd's own noise, a curfew, or music licensing.</p></div></div>
     </div>
-    <div class="shot reveal"><img src="/img/crowd.jpg" alt="A packed crowd, hands up"></div>
+    <div class="shot reveal"><img loading="lazy" src="/img/crowd.jpg" alt="A packed crowd, hands up"></div>
   </div>
 </section>
 
 <!-- OFFLINE (secondary) -->
 <section class="band-secondary">
   <div class="wrap split">
-    <div class="shot reveal" style="order:-1"><img src="/img/party.jpg" alt="A party in a dark room"></div>
+    <div class="shot reveal" style="order:-1"><img loading="lazy" src="/img/party.jpg" alt="A party in a dark room"></div>
     <div class="reveal">
       <p class="eyebrow">No internet needed</p>
       <h2>Works with zero internet.</h2>
@@ -352,16 +365,19 @@
 
 <!-- NO-APP MOAT (light, tiles) -->
 <section>
-  <div class="wrap">
-    <div class="sec-head center reveal">
+  <div class="wrap split">
+    <div class="reveal" style="display:flex;justify-content:center;order:-1">
+      <div class="phone shot" style="transform:none">
+        <div class="scr"><div class="notch"></div><img src="/shots/player.jpg" alt="The guest player open in a phone browser" loading="lazy"></div>
+      </div>
+    </div>
+    <div class="reveal">
       <p class="eyebrow">The no-app moat</p>
       <h2>Guests install nothing.</h2>
-      <p class="lede center" style="margin-top:16px">A popup dies the second you ask 40 strangers to download an app. Hand out a QR, they scan it, the stream opens in the browser already on their phone.</p>
-    </div>
-    <div class="tiles">
-      <div class="tile reveal"><div class="ic">📲</div><h3>Scan a QR → plays in the browser</h3><p>Zero downloads, zero accounts. iPhone or Android, no difference.</p></div>
-      <div class="tile reveal"><div class="ic">⚙️</div><h3>No per-guest config, ever</h3><p>No group name, no jitter buffer, no audio-device picker. SonoBus makes them do all three first.</p></div>
-      <div class="tile reveal"><div class="ic">🎧</div><h3>Their earbuds, not your rentals</h3><p>Everyone uses the headphones already in their pocket. Nothing to rent or hand out.</p></div>
+      <p class="lede" style="margin-top:16px">A popup dies the second you ask 40 strangers to download an app. Hand out a QR, they scan it, the stream opens in the browser already on their phone.</p>
+      <div class="feat"><span class="ic">📲</span><div><b>Scan a QR → plays in the browser</b><p>Zero downloads, zero accounts. iPhone or Android, no difference.</p></div></div>
+      <div class="feat"><span class="ic">⚙️</span><div><b>No per-guest config, ever</b><p>No group name, no jitter buffer, no audio-device picker. SonoBus makes them do all three first.</p></div></div>
+      <div class="feat"><span class="ic">🎧</span><div><b>Their earbuds, not your rentals</b><p>Everyone uses the headphones already in their pocket. Nothing to rent or hand out.</p></div></div>
     </div>
   </div>
 </section>
@@ -414,7 +430,7 @@
 
 <!-- IN SYNC / LOCK-SAFE (black product moment) -->
 <section class="moment dark">
-  <div class="bg"><img src="/img/dance.jpg" alt="Dancefloor, hands up"></div>
+  <div class="bg"><img loading="lazy" src="/img/dance.jpg" alt="Dancefloor, hands up"></div>
   <div class="wrap" style="position:relative;z-index:1"><div style="max-width:600px">
     <p class="eyebrow reveal">In sync, lock-safe</p>
     <h2 class="reveal">The room drops together.</h2>
@@ -445,12 +461,19 @@
       <h2>Your friends keep naming the wrong tool.</h2>
       <p class="lede" style="margin-top:16px">SonoBus and FarPlay are great — for musicians jamming remotely. That's exactly why they're wrong for a party. Hardware silent disco reaches a crowd, but bills you per head, every night.</p>
     </div>
-    <div class="vs reveal">
-      <div class="row"><svg class="ck" width="22" height="22" viewBox="0 0 24 24"><use href="#ck"/></svg><p><b>SonoBus &amp; FarPlay need an app on every guest device</b> — you can't hand a QR to a stranger's phone. partyparty plays in the browser: no install, no login.</p></div>
-      <div class="row"><svg class="ck" width="22" height="22" viewBox="0 0 24 24"><use href="#ck"/></svg><p><b>They're built for a handful, not a crowd</b> — SonoBus caps at ~a dozen by its own docs; FarPlay's free tier is 2 people / 45 min, desktop-only.</p></div>
-      <div class="row"><svg class="ck" width="22" height="22" viewBox="0 0 24 24"><use href="#ck"/></svg><p><b>They're jam tools, not party tools</b> — no browser join, no event page, no photo/video wall, no replay.</p></div>
-      <div class="row"><svg class="ck" width="22" height="22" viewBox="0 0 24 24"><use href="#ck"/></svg><p><b>Hardware silent disco bills per head</b> — ~$820 for 100 guests, ~$3,900 for 500, every night. partyparty's next guest is just one more phone — free.</p></div>
-      <div class="row"><svg class="ck" width="22" height="22" viewBox="0 0 24 24"><use href="#ck"/></svg><p><b>Only partyparty runs fully offline on its own Wi-Fi</b> — one DJ, one set, a whole crowd.</p></div>
+    <div class="cmp-wrap reveal">
+      <table class="cmp">
+        <colgroup><col><col class="ppcol"><col><col></colgroup>
+        <thead><tr><th></th><th class="pp">partyparty</th><th>Rented silent disco</th><th>SonoBus / FarPlay</th></tr></thead>
+        <tbody>
+          <tr><th>No app for guests</th><td class="pp yes">Yes<small>scan a QR</small></td><td class="yes">Yes<small>rented headsets</small></td><td class="no">No<small>app install each</small></td></tr>
+          <tr><th>Works offline (no internet)</th><td class="pp yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+          <tr><th>Crowd size</th><td class="pp">Any<small>~100 on a good router</small></td><td>Any</td><td class="no">~a dozen</td></tr>
+          <tr><th>Cost per event</th><td class="pp yes">Free</td><td class="no">$820–$3,900 / night</td><td>Free<small>2 ppl free tier</small></td></tr>
+          <tr><th>Captures the night<small>photos · videos · replay</small></th><td class="pp yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+          <tr><th>Built for</th><td class="pp">DJ popups</td><td>Silent discos</td><td class="no">Musicians jamming</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </section>
@@ -470,7 +493,7 @@
 
 <!-- FINAL CTA (black product moment) -->
 <section class="moment dark center-moment">
-  <div class="bg"><img src="/img/decks.jpg" alt=""></div>
+  <div class="bg"><img loading="lazy" src="/img/decks.jpg" alt=""></div>
   <div class="bg" style="background:linear-gradient(90deg,rgba(0,0,0,.9),rgba(0,0,0,.55))"></div>
   <div class="wrap"><div class="cta-in">
     <h2 class="reveal" style="font-size:clamp(36px,5vw,60px)">Turn down for what?</h2>
