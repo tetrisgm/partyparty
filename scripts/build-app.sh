@@ -27,6 +27,9 @@ fi
 echo ">> Go server (-tags bundle)"
 "$GO" build -tags bundle -o "$ROOT/build/partyparty-server" "$ROOT"
 
+echo ">> port-80 privileged daemon"
+"$GO" build -o "$ROOT/build/pp-port80" "$ROOT/cmd/pp-port80"
+
 echo ">> Swift menu-bar app (release)"
 swift build -c release --package-path "$ROOT/app"
 BIN="$(swift build -c release --package-path "$ROOT/app" --show-bin-path)"
@@ -39,6 +42,9 @@ cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
 cp "$ROOT/assets/ffmpeg"           "$APP/Contents/Helpers/ffmpeg"
 cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
+cp "$ROOT/build/pp-port80"         "$APP/Contents/Helpers/pp-port80"
+mkdir -p "$APP/Contents/Library/LaunchDaemons"
+cp "$ROOT/app/net.ramine.partyparty.port80.plist" "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port80.plist"
 cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 [ -f "$ROOT/app/icon.icns" ] && cp "$ROOT/app/icon.icns" "$APP/Contents/Resources/icon.icns"
 
@@ -76,7 +82,7 @@ if [ -d "$SPK" ]; then
     codesign_one "$SPK"
   fi
 fi
-for b in ppcapture mediamtx ffmpeg partyparty-server; do
+for b in ppcapture mediamtx ffmpeg partyparty-server pp-port80; do
   codesign_one "$APP/Contents/Helpers/$b"
 done
 codesign_one "$APP/Contents/MacOS/partyparty" "$ENT"

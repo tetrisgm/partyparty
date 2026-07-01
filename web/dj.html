@@ -170,7 +170,9 @@
     <div id="inapp" class="card" style="display:none">
       <h2>App</h2>
       <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
-      <div class="row"><button id="quitBtn" class="ghost" style="flex:1">Quit partyparty</button></div>
+      <label class="inapp-check" style="margin-top:12px"><input type="checkbox" id="portFree"> Shorter guest link (drop the “:8000”)</label>
+      <div class="hint" id="portFreeNote">Asks for your Mac password once to set up a small helper. Only changes the guests’ link, not your own browser.</div>
+      <div class="row" style="margin-top:14px"><button id="quitBtn" class="ghost" style="flex:1">Quit partyparty</button></div>
     </div>
 
     <label class="advcheck"><input type="checkbox" id="advToggle"> Show advanced settings</label>
@@ -197,6 +199,7 @@
 <script>
   const $ = id => document.getElementById(id);
   let qrText = null, lastState = 'idle';
+  let portFreeOn = false;
 
   // Tabs
   function showTab(name){
@@ -338,8 +341,9 @@
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnoteText').textContent = note || '';
       $('screenPermBtn').style.display = /screen recording/i.test(note) ? 'block' : 'none';
-      $('url').textContent = s.urls.primary;
-      renderQR(s.urls.primary);
+      const guestUrl = portFreeOn ? s.urls.primary.replace(/:\d+\//, '/') : s.urls.primary;
+      $('url').textContent = guestUrl;
+      renderQR(guestUrl);
       const roster = s.roster || [];
       $('listeners').textContent = roster.length;
       const lt = s.latency || {};
@@ -372,9 +376,21 @@
 
   // In-app controls — only when running inside the native menu-bar app.
   window.ppSetLoginState = (on) => { const c = $('loginItem'); if (c) c.checked = !!on; };
+  window.ppSetPortFree = (on, pending) => {
+    portFreeOn = on && !pending;
+    const c = $('portFree'); if (c) c.checked = on;
+    const n = $('portFreeNote');
+    if (n) n.textContent = pending
+      ? 'Approve partyparty in System Settings → Login Items, then enter your Mac password.'
+      : (on ? 'On — guests can drop the “:8000”. (Your own browser still uses :8000.)'
+            : 'Asks for your Mac password once to set up a small helper. Only changes the guests’ link, not your own browser.');
+    refresh();
+  };
+  window.ppSetPortFreeError = (m) => { const n = $('portFreeNote'); if (n) n.textContent = 'Kept the standard link. ' + (m || ''); };
   if (window.ppNative) {
     $('inapp').style.display = 'block';
     $('loginItem').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setLoginItem', on: $('loginItem').checked });
+    $('portFree').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setPortFree', on: $('portFree').checked });
     $('quitBtn').onclick = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'quit' });
     window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready' });
   }

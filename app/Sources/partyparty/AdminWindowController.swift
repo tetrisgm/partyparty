@@ -8,6 +8,7 @@ import CoreGraphics
 final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     private let port: Int
     private var webView: WKWebView!
+    private let port80 = SMAppService.daemon(plistName: "net.ramine.partyparty.port80.plist")
 
     init(port: Int) {
         self.port = port
@@ -52,6 +53,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pushLoginState()
         pushScreenPermission()
+        pushPortFreeState()
     }
 
     // Re-check Screen Recording when the user returns from System Settings.
@@ -68,9 +70,12 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         case "setLoginItem":
             setLoginItem(body["on"] as? Bool ?? false)
             pushLoginState()
+        case "setPortFree":
+            setPortFree(body["on"] as? Bool ?? false)
         case "ready":
             pushLoginState()
             pushScreenPermission()
+            pushPortFreeState()
         default:
             break
         }
@@ -96,5 +101,36 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     private func pushScreenPermission() {
         let granted = CGPreflightScreenCaptureAccess()
         webView.evaluateJavaScript("window.ppSetScreenPermission && window.ppSetScreenPermission(\(granted))")
+    }
+
+    // Port-free guest URL: register/unregister the pf-redirect LaunchDaemon. macOS
+    // shows a one-time background-item approval + admin password (no Touch ID for
+    // Developer-ID apps). Toggling off SIGTERMs the daemon, which flushes its anchor.
+    private func setPortFree(_ on: Bool) {
+        do {
+            if on {
+                if port80.status != .enabled { try port80.register() }
+                if port80.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
+            } else {
+                if port80.status == .enabled { try port80.unregister() }
+            }
+            pushPortFreeState()
+        } catch {
+            webView.evaluateJavaScript("window.ppSetPortFreeError && window.ppSetPortFreeError(\(jsString((error as NSError).localizedDescription)))")
+            pushPortFreeState()
+        }
+    }
+
+    private func pushPortFreeState() {
+        let on = port80.status == .enabled
+        let pending = port80.status == .requiresApproval
+        webView.evaluateJavaScript("window.ppSetPortFree && window.ppSetPortFree(\(on), \(pending))")
+    }
+
+    private func jsString(_ s: String) -> String {
+        let e = s.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: " ")
+        return "\"\(e)\""
     }
 }
