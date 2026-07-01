@@ -47,8 +47,13 @@ devices:
 app: $(HELPER) $(MEDIAMTX) $(FFMPEG)
 	GO=$(GO) ./scripts/build-app.sh
 
+# Notarize the local .app (needed for the privileged port-80 daemon). Requires a
+# one-time `xcrun notarytool store-credentials "pp-notary" ...` — see scripts/notarize.sh.
+notarize: app
+	./scripts/notarize.sh
+
 clean:
 	rm -f $(BINARY) $(HELPER)
 	rm -rf build
 
-.PHONY: helper build run tone devices app clean
+.PHONY: helper build run tone devices app notarize clean

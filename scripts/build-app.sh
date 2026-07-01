@@ -61,8 +61,8 @@ codesign_one() { # $1=path  $2=entitlements (optional)
   if [ "$SIGN_ID" = "-" ]; then
     args+=(--sign -)
   else
-    args+=(--options runtime --sign "$SIGN_ID")
-    [ -n "$EXPLICIT_ID" ] && args+=(--timestamp)   # timestamp only for explicit/CI (release) signing
+    # Hardened runtime + secure timestamp — both required for notarization.
+    args+=(--options runtime --timestamp --sign "$SIGN_ID")
   fi
   [ -n "$ent" ] && args+=(--entitlements "$ent")
   codesign "${args[@]}" "$path"
