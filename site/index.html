@@ -188,6 +188,13 @@
   .moment .bg img{width:100%;height:100%;object-fit:cover;object-position:70% center}
   .hero{min-height:94vh;display:flex;align-items:center}
   .hero .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.6) 45%,rgba(0,0,0,.18) 100%),linear-gradient(0deg,#000,transparent 30%)}
+  /* Apple-Music-style vibrant gradient aura (replaces photo moment-bands) */
+  .aura{background:
+    radial-gradient(72% 62% at 22% 16%, #ff5a93 0%, rgba(255,90,147,0) 58%),
+    radial-gradient(64% 70% at 85% 24%, #ff9a3c 0%, rgba(255,154,60,0) 52%),
+    radial-gradient(85% 88% at 60% 104%, #cf1f93 0%, rgba(207,31,147,0) 56%),
+    radial-gradient(96% 96% at 6% 96%, #7c1163 0%, rgba(124,17,99,0) 60%),
+    #5a0f47}
   .moment .wrap{position:relative;z-index:1}
   .hero .inner{max-width:680px;padding-top:52px}
   .pill-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:var(--r-pill);padding:6px 14px;margin-bottom:22px}
@@ -254,12 +261,11 @@
 </header>
 
 <!-- HERO (black product moment) -->
-<section class="moment dark hero" id="top">
-  <div class="bg"><img src="/img/hero.jpg" alt="DJ at the decks"></div>
+<section class="moment hero aura dark" id="top">
   <div class="wrap wide">
     <div class="inner">
       <span class="pill-eyebrow"><span class="dot"></span> Silent popups · anywhere · offline</span>
-      <h1>Throw a party where speakers would <span class="accent">get you shut down.</span></h1>
+      <h1>Throw a party where speakers would get you shut down.</h1>
       <p class="lede">partyparty turns your Mac into a silent-disco rig — no rented headsets, no app for guests. Hit Go Live, hand out a QR, and your set plays in everyone's own earbuds. Nothing in the air means no permit and no noise complaint. Works with zero internet.</p>
       <div class="cta">
         <a class="btn btn-primary btn-lg" href="https://party.ramine.net/partyparty.zip">Download for macOS</a>
@@ -412,8 +418,7 @@
 </section>
 
 <!-- IN SYNC / LOCK-SAFE (black product moment) -->
-<section class="moment dark">
-  <div class="bg"><img src="/img/dance.jpg" alt="Dancefloor, hands up"></div>
+<section class="moment aura dark">
   <div class="wrap" style="position:relative;z-index:1"><div style="max-width:600px">
     <p class="eyebrow reveal">In sync, lock-safe</p>
     <h2 class="reveal">The room drops together.</h2>
@@ -468,9 +473,7 @@
 </section>
 
 <!-- FINAL CTA (black product moment) -->
-<section class="moment dark center-moment">
-  <div class="bg"><img src="/img/decks.jpg" alt=""></div>
-  <div class="bg" style="background:linear-gradient(90deg,rgba(0,0,0,.9),rgba(0,0,0,.55))"></div>
+<section class="moment aura dark center-moment">
   <div class="wrap"><div class="cta-in">
     <h2 class="reveal" style="font-size:clamp(36px,5vw,60px)">Turn down for what?</h2>
     <p class="lede center reveal" style="color:rgba(245,245,247,.86);margin:16px auto 28px">There's nothing to turn down — the sound's in every earbud, not in the air. Free Mac app: hit Go Live, hand out a QR, and throw a party anywhere speakers would get you shut down.</p>
