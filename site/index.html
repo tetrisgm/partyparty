@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>partyparty — turn your Mac into the party's sound system</title>
-<meta name="description" content="Broadcast your Mac's audio to everyone's phones over Wi-Fi — in sync, even locked. Plus a live Event Hub: guests post photos, videos & comments to your set, and you approve what goes up.">
+<title>partyparty — a Mac app + a page for every event</title>
+<meta name="description" content="A Mac app that streams your set to every phone in the room — in sync, even locked. And a page for every event: post the details, the stream saves as a replay, and your crowd joins during or after to comment, post photos & videos, and follow you.">
 <meta property="og:title" content="partyparty">
-<meta property="og:description" content="Your Mac. Everyone's phones. One party — in perfect sync. Plus a live social wall for every set.">
+<meta property="og:description" content="Stream your set to every phone in sync — and give every event its own page, with an auto-saved replay and a live social wall.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#08070c">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
@@ -34,10 +34,9 @@
   .btn.ghost:hover{border-color:var(--accent);box-shadow:none}
   .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:12.5px;font-weight:800;color:var(--accent)}
   h2{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;line-height:1.05;margin:.3em 0 .4em}
-  .lede{color:var(--muted);font-size:clamp(16px,2vw,19px);max-width:620px}
+  .lede{color:var(--muted);font-size:clamp(16px,2vw,19px);max-width:640px}
   section{position:relative}
 
-  /* header */
   header{position:fixed;top:0;left:0;right:0;z-index:30;transition:background .25s,border-color .25s;border-bottom:1px solid transparent}
   header.scrolled{background:rgba(8,7,12,.8);backdrop-filter:blur(14px);border-color:var(--line)}
   header .wrap{display:flex;align-items:center;justify-content:space-between;height:66px}
@@ -45,14 +44,14 @@
   .brand .m{font-size:22px}
 
   /* hero */
-  .hero{position:relative;min-height:92vh;display:flex;align-items:center;overflow:hidden}
+  .hero{position:relative;min-height:94vh;display:flex;align-items:center;overflow:hidden}
   .hero .bg{position:absolute;inset:0;z-index:0}
   .hero .bg img{width:100%;height:100%;object-fit:cover;object-position:70% center}
   .hero .bg::after{content:"";position:absolute;inset:0;background:
      linear-gradient(90deg,rgba(8,7,12,.96) 0%,rgba(8,7,12,.72) 42%,rgba(8,7,12,.25) 100%),
      linear-gradient(0deg,var(--bg),transparent 30%)}
   .hero .wrap{position:relative;z-index:1;padding-top:66px}
-  .hero-in{max-width:640px}
+  .hero-in{max-width:660px}
   .pill{display:inline-flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 14px;margin-bottom:22px}
   .pill .dot{width:7px;height:7px;border-radius:50%;background:#39d98a;box-shadow:0 0 10px #39d98a}
   h1{font-size:clamp(40px,6.4vw,74px);line-height:1;letter-spacing:-.04em;margin:.08em 0 .3em}
@@ -62,19 +61,22 @@
   .meta{margin-top:16px;font-size:13.5px;color:var(--faint)}
   .meta b{color:var(--muted)}
 
-  /* generic photo band */
-  .band{position:relative;padding:96px 0}
-  .split{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
-  @media(max-width:860px){.split{grid-template-columns:1fr;gap:32px}}
-  .shot{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 70px -30px #000}
-  .shot img{width:100%;height:100%;object-fit:cover;aspect-ratio:4/3}
-  .feat{display:flex;gap:13px;margin-top:18px}
-  .feat .ic{font-size:20px;flex:0 0 auto}
-  .feat b{display:block}
-  .feat p{margin:2px 0 0;color:var(--muted);font-size:14.5px}
+  /* two pillars */
+  .pillars-sec{padding:92px 0 20px;background:radial-gradient(70% 60% at 50% 0%,rgba(255,77,141,.10),transparent 70%)}
+  .pillars{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px}
+  @media(max-width:820px){.pillars{grid-template-columns:1fr}}
+  .pillar{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);border-radius:var(--radius);padding:28px}
+  .pillar .tag{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .pillar.app .tag{color:var(--blue)}
+  .pillar h3{margin:10px 0 8px;font-size:23px;letter-spacing:-.02em}
+  .pillar>p{margin:0 0 16px;color:var(--muted);font-size:15px}
+  .pillar ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+  .pillar li{display:flex;gap:11px;font-size:15px}
+  .pillar li .ic{flex:0 0 auto}
+  .pillar li b{font-weight:650}.pillar li span{color:var(--muted)}
 
   /* device showcase */
-  .showcase{padding:90px 0 40px;text-align:center;background:radial-gradient(70% 60% at 50% 0%,rgba(255,77,141,.12),transparent 70%)}
+  .showcase{padding:70px 0 40px;text-align:center}
   .stage{position:relative;margin-top:44px;display:flex;justify-content:center;align-items:flex-end;gap:26px;min-height:520px}
   .phone{width:238px;border-radius:36px;background:#07080c;padding:9px;border:1px solid #262233;box-shadow:0 50px 90px -34px rgba(0,0,0,.85);flex:0 0 auto}
   .phone.side{transform:scale(.9) translateY(18px);opacity:.96}
@@ -90,51 +92,56 @@
   .m .live-strip .d{width:7px;height:7px;border-radius:50%;background:#ff3b5c}
   .m .live-strip b{font-size:11px}.m .live-strip small{color:#6b7280;display:block;font-size:9px}
   .m .live-strip .cnt{margin-left:auto;font-weight:800}
+  .m .ehead{padding:14px 12px 9px;border-bottom:1px solid #eef0f3}
+  .m .ehead .row{display:flex;align-items:center;gap:8px}
+  .m .ehead .av{width:32px;height:32px;border-radius:50%;background:var(--grad);flex:0 0 auto}
+  .m .ehead b{font-size:13px}
+  .m .ehead .fl{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:var(--blue);border-radius:999px;padding:4px 11px}
+  .m .ehead .det{font-size:10px;color:#6b7280;margin-top:6px}
+  .m .socials{display:flex;gap:10px;margin-top:8px;color:#8a92a0}
+  .m .socials svg{width:16px;height:16px}
   .m .post{margin:8px 10px;border:1px solid #eceef2;border-radius:14px;overflow:hidden;background:#fff}
   .m .post .h{display:flex;align-items:center;gap:7px;padding:9px 10px}
   .m .post .h .av{width:24px;height:24px;border-radius:50%;background:var(--grad)}
   .m .post .h b{font-size:11px}.m .post .h .g{font-size:8px;color:var(--blue);background:#eaf5fe;border-radius:999px;padding:1px 6px}
-  .m .post .im{height:150px;background-size:cover;background-position:center}
+  .m .post .im{height:140px;background-size:cover;background-position:center}
   .m .post .ax{display:flex;gap:12px;padding:8px 11px;color:#3d434d;font-size:12px;align-items:center}
   .m .post .ax .heart{color:#ff3b5c}
-  .m .stagec{position:relative;margin:0;height:210px;background-size:cover;background-position:center}
+  .m .stagec{position:relative;height:190px;background-size:cover;background-position:center}
+  .m .stagec .rep{position:absolute;top:9px;left:9px;font-size:9px;font-weight:800;letter-spacing:.05em;background:rgba(0,0,0,.62);color:#fff;padding:3px 9px;border-radius:999px}
   .m .stagec .ctrls{position:absolute;left:0;right:0;bottom:0;padding:10px;display:flex;align-items:center;gap:7px;color:#fff;font-size:11px;background:linear-gradient(0deg,rgba(0,0,0,.6),transparent)}
   .m .stagec .ctrls .pb{flex:1;height:3px;background:rgba(255,255,255,.35);border-radius:2px;position:relative}
-  .m .stagec .ctrls .pb i{position:absolute;left:0;top:0;bottom:0;width:34%;background:#fff;border-radius:2px}
-  .m .pt{padding:11px 12px 4px;font-weight:800;font-size:14px}
-  .m .cmt{display:flex;gap:7px;padding:7px 12px;font-size:11px}
-  .m .cmt .av{width:20px;height:20px;border-radius:50%;background:#dfe3ea;flex:0 0 auto}
-  .m .cmt b{font-size:10px}
+  .m .stagec .ctrls .pb i{position:absolute;left:0;top:0;bottom:0;width:26%;background:#fff;border-radius:2px}
   .m .chat-h{padding:14px 12px 8px;font-weight:800}
   .m .msgs{padding:6px 10px;display:flex;flex-direction:column;gap:7px;flex:1}
   .m .msg{max-width:78%;background:#f1f3f6;border-radius:12px;padding:6px 9px;font-size:11px}
   .m .msg.me{margin-left:auto;background:var(--blue);color:#fff}
   .m .cbar{margin:8px 10px;border:1px solid #e6e8ec;border-radius:999px;padding:8px 12px;color:#9aa1ab;font-size:10px}
-  .m .signin{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px;text-align:center}
-  .m .signin h4{margin:0;font-size:17px;letter-spacing:-.02em}
-  .m .sbtn{width:100%;border:1px solid #e6e8ec;border-radius:999px;padding:9px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px}
-  .m .sbtn.p{background:var(--blue);color:#fff;border-color:var(--blue)}
   .cap{color:var(--faint);font-size:13px;margin-top:26px}
 
-  /* social grid */
-  .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
-  @media(max-width:820px){.cards3{grid-template-columns:1fr}}
-  .c{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);border-radius:var(--radius);padding:22px;transition:transform .2s,border-color .2s}
-  .c:hover{transform:translateY(-3px);border-color:var(--line2)}
-  .c .ic{font-size:24px}.c h3{margin:12px 0 5px;font-size:17px}.c p{margin:0;color:var(--muted);font-size:14.5px}
+  .band{position:relative;padding:96px 0}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  @media(max-width:860px){.split{grid-template-columns:1fr;gap:32px}}
+  .shot{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 70px -30px #000}
+  .shot img{width:100%;height:100%;object-fit:cover;aspect-ratio:4/3}
+  .feat{display:flex;gap:13px;margin-top:18px}
+  .feat .ic{font-size:20px;flex:0 0 auto}
+  .feat b{display:block}
+  .feat p{margin:2px 0 0;color:var(--muted);font-size:14.5px}
+  .socrow{display:flex;align-items:center;gap:14px;margin-top:22px;color:var(--muted);flex-wrap:wrap}
+  .socrow .s{display:inline-flex;align-items:center;gap:7px;font-size:14px;border:1px solid var(--line2);border-radius:999px;padding:7px 13px}
+  .socrow .s svg{width:16px;height:16px}
 
-  /* steps */
-  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:42px;counter-reset:s}
-  @media(max-width:720px){.steps{grid-template-columns:1fr}}
-  .step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 22px}
-  .step::before{counter-increment:s;content:counter(s);position:absolute;top:-16px;left:22px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:var(--grad);color:#1a0d12;font-weight:800}
-  .step h4{margin:8px 0 6px}.step p{margin:0;color:var(--muted);font-size:14.5px}
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:42px;counter-reset:s}
+  @media(max-width:860px){.steps{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.steps{grid-template-columns:1fr}}
+  .step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px 20px}
+  .step::before{counter-increment:s;content:counter(s);position:absolute;top:-16px;left:20px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:var(--grad);color:#1a0d12;font-weight:800}
+  .step h4{margin:8px 0 6px}.step p{margin:0;color:var(--muted);font-size:14px}
 
   .chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:26px}
   .chip{font-size:12.5px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 13px;background:rgba(21,18,33,.6)}
 
-  /* final */
-  .final{padding:0}
   .final .box{position:relative;overflow:hidden;border-top:1px solid var(--line)}
   .final .box img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
   .final .box::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,7,12,.92),rgba(8,7,12,.55));z-index:1}
@@ -144,6 +151,13 @@
 </style>
 </head>
 <body>
+
+<!-- reusable social glyphs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="ig"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.3"/></g>
+  <g id="sc"><path d="M9.5 17.5H18a3 3 0 0 0 .2-6A5.2 5.2 0 0 0 9.8 8.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3.2 12v5.5M5.6 10v7.5M8 9v8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+  <g id="sp"><circle cx="12" cy="12" r="10"/><path d="M7 10.2c3-.9 6.6-.5 9.2 1.1M7.6 12.8c2.4-.7 5.4-.4 7.5 1M8.1 15.2c1.9-.5 4-.3 5.6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></g>
+</defs></svg>
 
 <header id="hdr">
   <div class="wrap">
@@ -157,14 +171,49 @@
   <div class="bg"><img src="img/hero.jpg" alt="DJ at the decks"></div>
   <div class="wrap">
     <div class="hero-in">
-      <span class="pill"><span class="dot"></span> Live audio + a social wall for your set</span>
-      <h1>Your Mac.<br>Everyone's phones.<br><span class="g">One party.</span></h1>
-      <p class="lede">partyparty streams whatever's playing on your Mac to every phone in the room — in sync, even locked in a pocket. Then it turns the night into a shared feed: guests post photos, videos & comments to your set, and you decide what goes up.</p>
+      <span class="pill"><span class="dot"></span> A Mac app + a page for every event</span>
+      <h1>Play it once.<br>Live it <span class="g">twice.</span></h1>
+      <p class="lede">partyparty is two things: a <b style="color:var(--ink)">Mac app</b> that streams your set to every phone in the room — in sync, even locked — and a <b style="color:var(--ink)">page for every event</b>, where the stream saves itself and your crowd joins during or after to post, comment, and follow you.</p>
       <div class="cta">
         <a class="btn" href="https://party.ramine.net/partyparty.zip">⬇&nbsp; Download for macOS</a>
-        <a class="btn ghost" href="#social">See the social side</a>
+        <a class="btn ghost" href="#pillars">How it works</a>
       </div>
       <div class="meta">Free · Apple Silicon · macOS 14+ · guests join in any browser — <b>no app, no login required</b></div>
+    </div>
+  </div>
+</section>
+
+<!-- TWO PILLARS -->
+<section class="pillars-sec" id="pillars">
+  <div class="wrap" style="text-align:center">
+    <span class="eyebrow">Two halves of every night</span>
+    <h2 style="margin-top:.2em">The set, and the story.</h2>
+    <p class="lede" style="margin:0 auto">One drives the room in the moment. The other keeps it alive long after the lights come up.</p>
+  </div>
+  <div class="wrap">
+    <div class="pillars">
+      <div class="pillar">
+        <div class="tag">The event page</div>
+        <h3>A home for every event</h3>
+        <p>Every set gets its own page — post it ahead, stream to it live, and it turns into the after-party.</p>
+        <ul>
+          <li><span class="ic">📅</span><div><b>Post the details</b> <span>— time, place, lineup. Your crowd knows what's coming.</span></div></li>
+          <li><span class="ic">⏺️</span><div><b>The stream saves itself</b> <span>— it auto-uploads as a replay after, like a Twitch VOD.</span></div></li>
+          <li><span class="ic">💬</span><div><b>Join during or after</b> <span>— post comments, photos and videos to the wall, live or later.</span></div></li>
+          <li><span class="ic">➕</span><div><b>Follow for updates</b> <span>— and find all your socials: SoundCloud, Instagram, Spotify…</span></div></li>
+        </ul>
+      </div>
+      <div class="pillar app">
+        <div class="tag">The app</div>
+        <h3>Your Mac, on every phone</h3>
+        <p>A menu-bar app that turns whatever's playing on your Mac into the room's sound system.</p>
+        <ul>
+          <li><span class="ic">🎧</span><div><b>Broadcast your audio</b> <span>— system sound, a DJ set, or a mic, out over the Wi-Fi.</span></div></li>
+          <li><span class="ic">🕰️</span><div><b>The whole room in sync</b> <span>— everyone drops together, a fraction of a second apart.</span></div></li>
+          <li><span class="ic">🔒</span><div><b>Plays when phones are locked</b> <span>— the music keeps going in every pocket, screen off.</span></div></li>
+          <li><span class="ic">📱</span><div><b>Guests scan a QR</b> <span>— no app, no login. iPhone and Android alike.</span></div></li>
+        </ul>
+      </div>
     </div>
   </div>
 </section>
@@ -172,36 +221,35 @@
 <!-- DEVICE SHOWCASE -->
 <section class="showcase">
   <div class="wrap">
-    <span class="eyebrow">The app</span>
-    <h2 style="margin-top:.2em">One tap to go live.<br>The room does the rest.</h2>
-    <p class="lede" style="margin:0 auto">A clean, modern app on every screen — the DJ's console on the Mac, and a live event page in every guest's browser.</p>
-
+    <span class="eyebrow">The event page</span>
+    <h2 style="margin-top:.2em">Live tonight. Replay forever.</h2>
+    <p class="lede" style="margin:0 auto">Your page during the set, and long after — the replay, the wall, the chat.</p>
     <div class="stage">
-      <!-- Player -->
+      <!-- live feed -->
       <div class="phone side">
-        <div class="scr"><div class="notch"></div><div class="m">
-          <div class="bar"><span>🕺</span> partyparty <span class="live">● LIVE</span></div>
-          <div class="stagec" style="background-image:url('img/decks.jpg')"><div class="ctrls">▶ <span>1:20</span><div class="pb"><i></i></div><span>3/15</span></div></div>
-          <div class="pt">Midnight Rooftop Mix</div>
-          <div class="cmt"><div class="av"></div><div><b>Illusion</b> that transition 🤯</div></div>
-          <div class="cmt"><div class="av"></div><div><b>Shokunin</b> best set of the summer</div></div>
-          <div class="cmt"><div class="av"></div><div><b>Mia</b> was there, unreal</div></div>
-          <div class="cbar" style="margin-top:auto">Add a comment…</div>
-        </div></div>
-      </div>
-      <!-- Event feed (center) -->
-      <div class="phone">
         <div class="scr"><div class="notch"></div><div class="m">
           <div class="bar"><span>🕺</span> Rooftop Sessions <span class="live">● LIVE</span></div>
           <div class="live-strip"><span class="d"></span><b>Deep house set</b><small>now playing · in sync</small><span class="cnt">42</span></div>
           <div class="post"><div class="h"><div class="av"></div><b>Zarker</b><div class="g">guest</div></div>
             <div class="im" style="background-image:url('img/party.jpg')"></div>
             <div class="ax"><span class="heart">♥ 36</span><span>💬 8</span></div></div>
-          <div class="post"><div class="h"><div class="av"></div><b>Mia</b><div class="g">guest</div></div>
-            <div class="im" style="background-image:url('img/dance.jpg')"></div></div>
         </div></div>
       </div>
-      <!-- Chat / sign-in -->
+      <!-- event page (center) -->
+      <div class="phone">
+        <div class="scr"><div class="notch"></div><div class="m">
+          <div class="ehead">
+            <div class="row"><div class="av"></div><b>Ramine</b><span class="fl">＋ Follow</span></div>
+            <div class="socials"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#ig"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sc"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sp"/></svg></div>
+            <div class="det">🎧 Rooftop Sessions · Sat 11pm · Le Toit, Paris</div>
+          </div>
+          <div class="stagec" style="background-image:url('img/decks.jpg')"><span class="rep">▶ REPLAY · 1:42:00</span><div class="ctrls">▶ <span>12:04</span><div class="pb"><i></i></div></div></div>
+          <div class="post"><div class="h"><div class="av"></div><b>Mia</b><div class="g">guest</div></div>
+            <div class="im" style="background-image:url('img/dance.jpg')"></div>
+            <div class="ax"><span class="heart">♥ 58</span><span>💬 12</span></div></div>
+        </div></div>
+      </div>
+      <!-- chat -->
       <div class="phone side">
         <div class="scr"><div class="notch"></div><div class="m">
           <div class="chat-h">Rooftop crew · 24</div>
@@ -216,56 +264,55 @@
         </div></div>
       </div>
     </div>
-    <p class="cap">DJ console on Mac · live event page, player & group chat on every phone</p>
+    <p class="cap">Event page with live stream + auto-saved replay · the social wall · group chat</p>
   </div>
 </section>
 
-<!-- WHAT IT IS (core) -->
+<!-- EVENT PAGE deep dive -->
 <section class="band" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
   <div class="wrap split">
+    <div class="shot" style="order:-1"><img src="img/portrait.jpg" alt="Music fan portrait"></div>
     <div>
-      <span class="eyebrow">The sound</span>
+      <span class="eyebrow">Nothing gets lost</span>
+      <h2>The night, saved.</h2>
+      <p class="lede">The moment you stop the stream, a replay lands on your event page — like a Twitch VOD. Anyone who missed it can press play; everyone who was there can relive it and keep posting.</p>
+      <div class="feat"><span class="ic">⏺️</span><div><b>Auto-saved replay</b><p>No re-uploading, no editing. The full set is on the page minutes after you finish.</p></div></div>
+      <div class="feat"><span class="ic">🖼️</span><div><b>The crowd fills the wall</b><p>Photos, videos and comments — during the set or days later. You approve what shows.</p></div></div>
+      <div class="feat"><span class="ic">🔗</span><div><b>Your whole world, linked</b><p>Followers get pinged for your next event, and your socials live right on your profile.</p></div></div>
+      <div class="socrow">
+        <span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sc"/></svg> SoundCloud</span>
+        <span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#ig"/></svg> Instagram</span>
+        <span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sp"/></svg> Spotify</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- APP deep dive -->
+<section class="band">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow">The app</span>
       <h2>Everyone hears it.<br>At the same moment.</h2>
-      <p class="lede">Whatever's on your Mac — a DJ set, Spotify, a mic — goes out to every phone over the Wi-Fi. The whole room drops together, a fraction of a second apart, instead of a chaotic echo.</p>
-      <div class="feat"><span class="ic">🔒</span><div><b>Plays even when the phone is locked</b><p>Built on broadcast-grade streaming, so the music keeps going in every pocket — screen off, no tab open.</p></div></div>
-      <div class="feat"><span class="ic">📱</span><div><b>Guests just scan a QR</b><p>No app to install, iPhone and Android alike. Optional sign-in to post; otherwise they listen as a guest.</p></div></div>
-      <div class="feat"><span class="ic">🎚️</span><div><b>You stay in control</b><p>Pick the source, watch who's connected and each person's delay, tune quality for the room.</p></div></div>
+      <p class="lede">Whatever's on your Mac goes out to every phone over the Wi-Fi. The whole room drops together instead of a chaotic echo — and it keeps playing when phones are pocketed and locked.</p>
+      <div class="feat"><span class="ic">🎚️</span><div><b>One tap to go live</b><p>A green button in your menu bar picks up your audio and starts the broadcast.</p></div></div>
+      <div class="feat"><span class="ic">🔒</span><div><b>Locked-phone playback</b><p>Broadcast-grade streaming means the sound survives a locked screen — no open tab needed.</p></div></div>
+      <div class="feat"><span class="ic">👀</span><div><b>You stay in control</b><p>See who's connected and each person's delay; tune quality for the room.</p></div></div>
     </div>
     <div class="shot"><img src="img/crowd.jpg" alt="Crowd with hands up"></div>
   </div>
 </section>
 
-<!-- THE SOCIAL SIDE -->
-<section class="band" id="social">
-  <div class="wrap split">
-    <div class="shot" style="order:-1"><img src="img/portrait.jpg" alt="Music fan portrait"></div>
-    <div>
-      <span class="eyebrow">The Event Hub</span>
-      <h2>Every set gets<br>its own feed.</h2>
-      <p class="lede">partyparty gathers the whole night in one place — like AirPlay for the event. Guests post the moments, you curate them, everyone relives it after.</p>
-    </div>
-  </div>
-  <div class="wrap">
-    <div class="cards3">
-      <div class="c"><div class="ic">🪩</div><h3>A profile for every DJ</h3><p>Show what you've got coming up, your past sets, and your posts — a home your crowd can follow.</p></div>
-      <div class="c"><div class="ic">📸</div><h3>Guests post the night</h3><p>Photos, videos and comments land on the event wall — as a signed-in user or an anonymous guest.</p></div>
-      <div class="c"><div class="ic">🛡️</div><h3>You approve what goes up</h3><p>Every guest post waits in your queue. One tap to approve, one to reject. It's your wall.</p></div>
-      <div class="c"><div class="ic">❤️</div><h3>Reactions & comments</h3><p>The room reacts in real time, right where the track hit — replay the set and read the moment.</p></div>
-      <div class="c"><div class="ic">💬</div><h3>Group chat</h3><p>The crew keeps talking between sets — DMs and group threads for your regulars.</p></div>
-      <div class="c"><div class="ic">🔗</div><h3>Sign in with social</h3><p>Continue with Google, Apple or Discord — or just stay a guest. Up to you and your crowd.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- HOW GUESTS JOIN -->
+<!-- STEPS -->
 <section class="band" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
   <div class="wrap">
-    <span class="eyebrow">How it works</span>
-    <h2>Three steps, thirty seconds.</h2>
+    <span class="eyebrow">Start to finish</span>
+    <h2>From doors to daylight.</h2>
     <div class="steps">
-      <div class="step"><h4>Hit Go Live</h4><p>One green button in your Mac's menu bar picks up your audio and starts broadcasting on the Wi-Fi.</p></div>
-      <div class="step"><h4>Guests scan the QR</h4><p>A code + short link appear. Everyone points a camera — straight into their browser, nothing to download.</p></div>
-      <div class="step"><h4>Sound in every pocket</h4><p>They tap play, lock their phone, and post to the wall as the night unfolds.</p></div>
+      <div class="step"><h4>Create the event</h4><p>Post the details — time, place, lineup. Share the page and let your crowd follow.</p></div>
+      <div class="step"><h4>Go live from the app</h4><p>Your Mac's audio streams to every phone in the room, in sync, even locked.</p></div>
+      <div class="step"><h4>The stream saves itself</h4><p>A replay lands on your event page automatically — like a Twitch VOD.</p></div>
+      <div class="step"><h4>The crowd keeps posting</h4><p>Comments, photos and videos — during or after. You approve what goes up.</p></div>
     </div>
   </div>
 </section>
@@ -279,7 +326,7 @@
     <div class="chips">
       <span class="chip">Go + Swift · AppKit</span><span class="chip">ScreenCaptureKit</span><span class="chip">ffmpeg · AAC</span>
       <span class="chip">Low-Latency HLS</span><span class="chip">Locked-phone playback</span><span class="chip">Clock-synced room</span>
-      <span class="chip">Apple notarized</span><span class="chip">Auto-updates</span><span class="chip">Apple Silicon</span>
+      <span class="chip">Auto-saved replays</span><span class="chip">Apple notarized</span><span class="chip">Auto-updates</span>
     </div>
   </div>
 </section>
@@ -288,8 +335,8 @@
 <section class="final">
   <div class="box"><img src="img/dance.jpg" alt="">
     <div class="inner wrap">
-      <h2 style="margin-top:0">Get the party going.</h2>
-      <p class="lede" style="margin:0 auto 26px">Download it, hit Go Live, hand your friends a QR — and watch the wall fill up.</p>
+      <h2 style="margin-top:0">Throw the party. Keep the night.</h2>
+      <p class="lede" style="margin:0 auto 26px">Download the app, spin up an event page, and hand your crowd a QR — the rest writes itself.</p>
       <a class="btn" href="https://party.ramine.net/partyparty.zip">⬇&nbsp; Download for macOS</a>
       <div class="meta" style="margin-top:14px">Apple Silicon · macOS 14+ · free</div>
     </div>
