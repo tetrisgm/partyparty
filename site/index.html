@@ -102,7 +102,9 @@
   .tile{background:var(--bg-secondary);border-radius:var(--r-md);border-radius:12px;padding:24px;transition:transform .2s var(--ease-out)}
   .dark .tile{background:var(--bg-secondary)}
   .tile:hover{transform:translateY(-2px)}
-  .tile .ic{font-size:24px}
+  .tile .ic{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:13px;font-size:23px;background:linear-gradient(160deg,rgba(255,45,111,.14),rgba(255,154,60,.14));color:var(--accent)}
+  @supports(corner-shape:superellipse(2)){.tile .ic{corner-shape:superellipse(2)}}
+  .shot.aura{border:0}
   .tile h3{font-size:17px;margin:12px 0 6px}
   .tile p{margin:0;color:var(--label-secondary);font-size:15px;line-height:1.45}
   @supports(corner-shape:superellipse(2)){.tile,.shot,.lat-card,.phone .scr,.notch{corner-shape:superellipse(2)}}
@@ -316,14 +318,14 @@
       <div class="feat"><span class="ic">📍</span><div><b>Places a PA would get you kicked out</b><p>Rooftops, parks, beaches, warehouses, a moving train. If phones can reach your Mac, the party's on.</p></div></div>
       <div class="feat"><span class="ic">🤝</span><div><b>The honest version</b><p>This defeats amplified-sound permits and speaker-volume complaints — not a loud crowd's own noise, a curfew, or music licensing.</p></div></div>
     </div>
-    <div class="shot reveal"><img src="/img/crowd.jpg" alt="Crowd with hands up"></div>
+    <div class="shot aura reveal" style="min-height:340px"></div>
   </div>
 </section>
 
 <!-- OFFLINE (secondary) -->
 <section class="band-secondary">
   <div class="wrap split">
-    <div class="shot reveal" style="order:-1"><img src="/img/party.jpg" alt="Party in a dark room"></div>
+    <div class="shot aura reveal" style="order:-1;min-height:340px"></div>
     <div class="reveal">
       <p class="eyebrow">No internet needed</p>
       <h2>Works with zero internet.</h2>
