@@ -110,14 +110,19 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         do {
             if on {
                 if port80.status != .enabled { try port80.register() }
+                NSLog("partyparty: port80 register -> status=\(port80.status.rawValue)")
                 if port80.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
             } else {
                 if port80.status == .enabled { try port80.unregister() }
+                NSLog("partyparty: port80 unregister -> status=\(port80.status.rawValue)")
             }
             pushPortFreeState()
         } catch {
-            webView.evaluateJavaScript("window.ppSetPortFreeError && window.ppSetPortFreeError(\(jsString((error as NSError).localizedDescription)))")
-            pushPortFreeState()
+            let ns = error as NSError
+            NSLog("partyparty: port80 \(on ? "register" : "unregister") failed: \(ns) status=\(port80.status.rawValue)")
+            // Un-notarized dev builds can't install a root daemon — surface that clearly.
+            let msg = "\(ns.localizedDescription) [\(ns.domain) \(ns.code)]"
+            webView.evaluateJavaScript("window.ppSetPortFreeError && window.ppSetPortFreeError(\(jsString(msg)))")
         }
     }
 
