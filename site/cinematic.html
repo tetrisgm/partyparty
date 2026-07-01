@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>partyparty — the popup that never gets shut down</title>
+<meta name="description" content="A macOS menu-bar app that turns any rooftop, park, or beach into a silent-disco DJ popup. Hit Go Live, hand out a QR, and your set plays in everyone's own earbuds over the local Wi-Fi. No speakers in the air, no app for guests, no internet, no shutdown.">
+<meta name="theme-color" content="#050507">
+<meta property="og:title" content="partyparty">
+<meta property="og:description" content="Throw a DJ popup anywhere speakers would get you shut down. No headsets, no app for guests, no internet.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/img/hero.jpg">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
+<style>
+  :root{
+    --bg:#050507;
+    --bg-soft:#0a0a0e;
+    --ink:#f4f1ea;
+    --ink-dim:#b9b3a8;
+    --faint:#6f695f;
+    --line:rgba(244,241,234,.14);
+    --line-soft:rgba(244,241,234,.07);
+    --hot:#ff2e63;
+    --amber:#ffb23e;
+    --ice:#5fd0e8;
+    --paper:#ece7dc;
+    --serif:"Hoefler Text","Iowan Old Style","Palatino Linotype","Palatino",Palatino,"Times New Roman",Georgia,serif;
+    --sans:"Helvetica Neue",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:"SF Mono",ui-monospace,"Roboto Mono",Menlo,Consolas,monospace;
+    --gutter:clamp(20px,5vw,90px);
+    --maxw:1500px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--ink);font-family:var(--sans);
+    line-height:1.5;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  img{display:block;max-width:100%}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--hot);color:#fff}
+
+  /* film grain overlay */
+  body::after{
+    content:"";position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode:screen;
+  }
+
+  .kick{
+    font-family:var(--mono);font-size:11px;letter-spacing:.42em;text-transform:uppercase;
+    color:var(--faint);font-weight:500;
+  }
+  .kick.hot{color:var(--hot)}
+  .kick.amber{color:var(--amber)}
+  .kick.ice{color:var(--ice)}
+
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 var(--gutter)}
+
+  /* ============ MASTHEAD ============ */
+  header{
+    position:fixed;top:0;left:0;right:0;z-index:200;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px var(--gutter);
+    background:linear-gradient(180deg,rgba(5,5,7,.85),rgba(5,5,7,0));
+    backdrop-filter:blur(2px);
+  }
+  .brand{font-size:19px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+  .brand .em{font-size:22px}
+  .masthead-mid{
+    display:none;font-family:var(--mono);font-size:10px;letter-spacing:.32em;
+    text-transform:uppercase;color:var(--faint);
+  }
+  @media(min-width:960px){.masthead-mid{display:block}}
+  .nav-dl{
+    font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;
+    padding:11px 20px;border:1px solid var(--line);border-radius:100px;color:var(--ink);
+    transition:all .3s ease;white-space:nowrap;
+  }
+  .nav-dl:hover{background:var(--paper);color:#000;border-color:var(--paper)}
+
+  /* ============ HERO ============ */
+  .hero{
+    position:relative;min-height:100svh;display:flex;flex-direction:column;justify-content:flex-end;
+    padding-bottom:clamp(48px,8vh,110px);overflow:hidden;
+  }
+  .hero-bg{position:absolute;inset:0;z-index:0}
+  .hero-bg img{width:100%;height:100%;object-fit:cover;object-position:70% center;
+    filter:saturate(1.08) contrast(1.04);
+    animation:kenburns 26s ease-out forwards;}
+  @keyframes kenburns{from{transform:scale(1.12)}to{transform:scale(1)}}
+  .hero-bg::after{
+    content:"";position:absolute;inset:0;
+    background:
+      linear-gradient(180deg,rgba(5,5,7,.55) 0%,rgba(5,5,7,0) 28%,rgba(5,5,7,.12) 55%,rgba(5,5,7,.94) 100%),
+      linear-gradient(90deg,rgba(5,5,7,.9) 0%,rgba(5,5,7,.35) 42%,rgba(5,5,7,0) 78%);
+  }
+  .hero-inner{position:relative;z-index:2;max-width:1500px;margin:0 auto;width:100%;padding:0 var(--gutter)}
+  .hero-issue{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;margin-bottom:26px}
+  .hero h1{
+    font-family:var(--serif);font-weight:400;
+    font-size:clamp(52px,10.5vw,168px);line-height:.92;letter-spacing:-.02em;
+    text-wrap:balance;max-width:14ch;
+  }
+  .hero h1 em{font-style:italic;color:var(--hot)}
+  .hero-sub{
+    margin-top:30px;max-width:44ch;font-size:clamp(16px,2vw,21px);color:var(--ink-dim);
+    line-height:1.55;
+  }
+  .hero-cta{margin-top:38px;display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  .btn{
+    display:inline-flex;align-items:center;gap:12px;
+    font-family:var(--sans);font-weight:600;font-size:16px;
+    padding:17px 30px;border-radius:100px;transition:all .3s ease;cursor:pointer;
+  }
+  .btn-primary{background:var(--paper);color:#08070a}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 44px rgba(236,231,220,.22)}
+  .btn-primary .arw{transition:transform .3s ease}
+  .btn-primary:hover .arw{transform:translateX(4px)}
+  .btn-ghost{color:var(--ink);border:1px solid var(--line)}
+  .btn-ghost:hover{border-color:var(--paper)}
+  .hero-meta{
+    margin-top:26px;font-family:var(--mono);font-size:11px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--faint);
+  }
+  .scroll-hint{
+    position:absolute;bottom:26px;right:var(--gutter);z-index:3;
+    font-family:var(--mono);font-size:10px;letter-spacing:.3em;text-transform:uppercase;
+    color:var(--faint);writing-mode:vertical-rl;display:none;
+  }
+  @media(min-width:1100px){.scroll-hint{display:block}}
+
+  /* ============ MARQUEE ============ */
+  .marquee{
+    border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);
+    padding:20px 0;overflow:hidden;white-space:nowrap;background:var(--bg-soft);
+  }
+  .marquee-track{display:inline-flex;gap:60px;animation:scroll 34s linear infinite}
+  .marquee:hover .marquee-track{animation-play-state:paused}
+  .marquee span{
+    font-family:var(--serif);font-style:italic;font-size:clamp(22px,3.4vw,40px);
+    color:var(--faint);display:inline-flex;align-items:center;gap:60px;
+  }
+  .marquee span::after{content:"·";color:var(--hot);font-style:normal}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  /* ============ SECTION FRAME ============ */
+  section{position:relative}
+  .band{padding:clamp(80px,13vh,170px) 0}
+  .lead-tag{display:flex;align-items:center;gap:16px;margin-bottom:34px}
+  .lead-tag .num{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.1em}
+  .lead-tag .rule{height:1px;flex:1;background:var(--line-soft)}
+
+  .display{
+    font-family:var(--serif);font-weight:400;letter-spacing:-.02em;line-height:1;
+    font-size:clamp(38px,7vw,104px);text-wrap:balance;
+  }
+  .display em{font-style:italic;color:var(--amber)}
+
+  /* ============ WEDGE / EDITORIAL STATEMENT ============ */
+  .statement .display{max-width:16ch}
+  .statement p{margin-top:34px;max-width:52ch;font-size:clamp(17px,2vw,22px);color:var(--ink-dim);line-height:1.6}
+  .statement p .hl{color:var(--ink);font-style:italic;font-family:var(--serif)}
+
+  /* ============ FULL-BLEED PLATE ============ */
+  .plate{position:relative;height:min(94svh,860px);overflow:hidden}
+  .plate img{width:100%;height:100%;object-fit:cover}
+  .plate::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(5,5,7,.5),rgba(5,5,7,.1) 40%,rgba(5,5,7,.85))}
+  .plate-cap{
+    position:absolute;left:var(--gutter);bottom:clamp(34px,7vh,80px);right:var(--gutter);z-index:2;
+  }
+  .plate-cap .big{
+    font-family:var(--serif);font-size:clamp(34px,6.4vw,92px);line-height:.98;letter-spacing:-.02em;
+    max-width:18ch;text-wrap:balance;
+  }
+  .plate-cap .big em{font-style:italic;color:var(--ice)}
+  .plate-cap .note{margin-top:18px;max-width:46ch;color:var(--ink-dim);font-size:clamp(15px,1.7vw,19px)}
+
+  /* ============ HOW / THREE MOVES ============ */
+  .moves{display:grid;gap:1px;background:var(--line-soft);border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+  @media(min-width:820px){.moves{grid-template-columns:repeat(3,1fr)}}
+  .move{background:var(--bg);padding:clamp(34px,4.5vw,56px) clamp(26px,3.5vw,48px);min-height:340px;
+    display:flex;flex-direction:column;transition:background .4s ease}
+  .move:hover{background:var(--bg-soft)}
+  .move .idx{font-family:var(--serif);font-style:italic;font-size:56px;color:var(--faint);line-height:1}
+  .move h3{margin-top:auto;font-family:var(--serif);font-size:clamp(26px,3vw,38px);font-weight:400;letter-spacing:-.01em;line-height:1.05}
+  .move p{margin-top:16px;color:var(--ink-dim);font-size:16px;line-height:1.6;max-width:34ch}
+  .move .step{margin-top:20px;font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--hot)}
+
+  /* ============ TWO LATENCIES — the technical centerpiece ============ */
+  .latency{background:var(--bg-soft);border-top:1px solid var(--line-soft)}
+  .latency-head{max-width:70ch}
+  .latency-head .display{max-width:20ch}
+  .latency-head p{margin-top:26px;color:var(--ink-dim);font-size:clamp(16px,1.9vw,20px);max-width:56ch;line-height:1.6}
+  .lat-grid{display:grid;gap:24px;margin-top:64px}
+  @media(min-width:860px){.lat-grid{grid-template-columns:1fr 1fr;gap:32px}}
+  .lat-card{border:1px solid var(--line);border-radius:4px;padding:clamp(28px,3.5vw,44px);position:relative;overflow:hidden;background:rgba(5,5,7,.4)}
+  .lat-card .tag{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .lat-card .letter{
+    font-family:var(--serif);font-style:italic;font-size:44px;line-height:1;
+    width:64px;height:64px;flex:none;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--line);border-radius:50%;
+  }
+  .lat-card.a .letter{color:var(--amber);border-color:rgba(255,178,62,.4)}
+  .lat-card.b .letter{color:var(--ice);border-color:rgba(95,208,232,.4)}
+  .lat-card h3{font-family:var(--serif);font-weight:400;font-size:clamp(22px,2.6vw,30px);line-height:1.1;letter-spacing:-.01em}
+  .lat-card .metric{margin-top:6px;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase}
+  .lat-card.a .metric{color:var(--amber)}
+  .lat-card.b .metric{color:var(--ice)}
+  .lat-card p{margin-top:22px;color:var(--ink-dim);font-size:16px;line-height:1.62}
+  .lat-card p strong{color:var(--ink);font-weight:600}
+  .lat-viz{margin-top:28px;padding-top:26px;border-top:1px solid var(--line-soft)}
+  .lat-line{position:relative;height:3px;background:var(--line);border-radius:2px;margin:34px 0 8px}
+  .lat-dot{position:absolute;top:50%;width:13px;height:13px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 4px rgba(5,5,7,.9)}
+  .lat-lbl{position:absolute;top:-24px;transform:translateX(-50%);font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+  .lat-foot{margin-top:14px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--faint);line-height:1.6}
+  .lat-note{
+    margin-top:40px;padding:22px 26px;border-left:2px solid var(--hot);background:rgba(255,46,99,.05);
+    font-size:15px;color:var(--ink-dim);line-height:1.6;max-width:70ch;border-radius:0 4px 4px 0;
+  }
+  .lat-note b{color:var(--ink);font-family:var(--serif);font-style:italic;font-weight:400;font-size:17px}
+
+  /* ============ SKEPTIC / SCALE ============ */
+  .scale-split{display:grid;gap:48px;align-items:center}
+  @media(min-width:980px){.scale-split{grid-template-columns:1.05fr .95fr;gap:clamp(48px,6vw,110px)}}
+  .scale-txt .display{max-width:15ch}
+  .scale-txt .display em{color:var(--hot)}
+  .scale-txt .pull{margin-top:30px;font-size:clamp(17px,2vw,21px);color:var(--ink-dim);line-height:1.6;max-width:50ch}
+  .scale-facts{margin-top:40px;display:grid;gap:0;border-top:1px solid var(--line-soft)}
+  .fact{display:flex;gap:20px;padding:22px 0;border-bottom:1px solid var(--line-soft);align-items:baseline}
+  .fact .n{font-family:var(--serif);font-style:italic;font-size:clamp(30px,4vw,52px);line-height:1;color:var(--amber);flex:none;min-width:2.4ch}
+  .fact .t{color:var(--ink-dim);font-size:16px;line-height:1.5}
+  .fact .t b{color:var(--ink);font-weight:600}
+  .scale-portrait{position:relative;border-radius:4px;overflow:hidden;aspect-ratio:11/16;max-height:720px}
+  .scale-portrait img{width:100%;height:100%;object-fit:cover;filter:contrast(1.05)}
+  .scale-portrait figcaption{position:absolute;left:20px;bottom:18px;right:20px;font-family:var(--mono);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-dim);text-shadow:0 1px 8px #000}
+  .trap{margin-top:52px;border:1px dashed var(--line);border-radius:4px;padding:clamp(24px,3vw,38px);max-width:78ch}
+  .trap .kick{margin-bottom:16px}
+  .trap p{color:var(--ink-dim);font-size:16px;line-height:1.65}
+  .trap p b{color:var(--ink);font-weight:600}
+  .trap p + p{margin-top:12px}
+
+  /* ============ COMPARISON LEDGER ============ */
+  .ledger{border-top:1px solid var(--line-soft)}
+  .ledger-head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;margin-bottom:44px}
+  .ledger-head .display{max-width:16ch}
+  .l-table{width:100%;border-collapse:collapse;font-size:15px}
+  .l-table th,.l-table td{text-align:left;padding:18px 16px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  .l-table thead th{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);font-weight:500;border-bottom:1px solid var(--line)}
+  .l-table thead th:first-child{color:var(--ink)}
+  .l-table tbody th{font-weight:500;color:var(--ink-dim);font-family:var(--sans);font-size:14px}
+  .l-table .us{color:var(--ink)}
+  .l-table .us-col{background:linear-gradient(180deg,rgba(255,46,99,.06),rgba(255,46,99,.02))}
+  .l-table thead .us-col{color:var(--hot)}
+  .l-table td.mut{color:var(--faint)}
+  .yes{color:var(--ice);font-weight:600}
+  .no{color:var(--faint)}
+  .l-note{margin-top:22px;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.02em;line-height:1.7}
+  .l-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .l-table{min-width:640px}
+
+  /* ============ EVENT HUB — COMING SOON ============ */
+  .hub{position:relative;overflow:hidden}
+  .hub-bg{position:absolute;inset:0;z-index:0}
+  .hub-bg img{width:100%;height:100%;object-fit:cover;filter:saturate(.85) brightness(.55)}
+  .hub-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,5,7,.9),rgba(5,5,7,.7) 45%,rgba(5,5,7,.96))}
+  .hub-inner{position:relative;z-index:2}
+  .soon-badge{
+    display:inline-flex;align-items:center;gap:10px;
+    font-family:var(--mono);font-size:11px;letter-spacing:.3em;text-transform:uppercase;
+    padding:9px 18px;border:1px solid var(--amber);color:var(--amber);border-radius:100px;margin-bottom:30px;
+  }
+  .soon-badge .blip{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:blip 1.8s ease-in-out infinite}
+  @keyframes blip{0%,100%{opacity:.3}50%{opacity:1;box-shadow:0 0 10px var(--amber)}}
+  .hub .display{max-width:16ch}
+  .hub .display em{color:var(--amber)}
+  .hub-sub{margin-top:26px;max-width:52ch;font-size:clamp(16px,1.9vw,20px);color:var(--ink-dim);line-height:1.6}
+  .hub-list{margin-top:44px;display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);max-width:900px}
+  @media(min-width:680px){.hub-list{grid-template-columns:1fr 1fr}}
+  .hub-item{background:rgba(5,5,7,.55);padding:24px 26px}
+  .hub-item .h{font-family:var(--serif);font-size:20px;letter-spacing:-.01em}
+  .hub-item .d{margin-top:7px;color:var(--faint);font-size:14px;line-height:1.55}
+
+  /* ============ SHIPPING TODAY MANIFEST ============ */
+  .manifest{border-top:1px solid var(--line-soft)}
+  .man-grid{display:grid;gap:0;margin-top:44px;border-top:1px solid var(--line-soft)}
+  .man-row{display:grid;grid-template-columns:auto 1fr;gap:22px;padding:24px 0;border-bottom:1px solid var(--line-soft);align-items:baseline}
+  @media(min-width:720px){.man-row{grid-template-columns:1.2fr 3fr;gap:40px}}
+  .man-row .k{font-family:var(--serif);font-size:clamp(20px,2.4vw,30px);font-weight:400;letter-spacing:-.01em}
+  .man-row .k .tick{color:var(--ice);font-family:var(--sans);font-size:14px;margin-right:10px}
+  .man-row .v{color:var(--ink-dim);font-size:16px;line-height:1.6;max-width:52ch}
+
+  /* ============ FINAL CTA ============ */
+  .finale{position:relative;overflow:hidden;text-align:center;padding:clamp(90px,16vh,200px) 0}
+  .finale-bg{position:absolute;inset:0;z-index:0}
+  .finale-bg img{width:100%;height:100%;object-fit:cover;object-position:center 40%;filter:brightness(.5) saturate(1.1)}
+  .finale-bg::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 60%,rgba(5,5,7,.35),rgba(5,5,7,.92))}
+  .finale-inner{position:relative;z-index:2}
+  .finale h2{font-family:var(--serif);font-weight:400;font-size:clamp(46px,11vw,150px);line-height:.94;letter-spacing:-.02em;text-wrap:balance;max-width:16ch;margin:0 auto}
+  .finale h2 em{font-style:italic;color:var(--hot)}
+  .finale .btn{margin-top:44px}
+  .finale-meta{margin-top:26px;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint)}
+
+  /* ============ FOOTER ============ */
+  footer{padding:60px var(--gutter);border-top:1px solid var(--line-soft);background:var(--bg)}
+  .foot-top{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .foot-brand{font-size:22px;font-weight:700;display:flex;align-items:center;gap:9px}
+  .foot-tag{margin-top:12px;color:var(--faint);font-size:14px;max-width:34ch;line-height:1.55}
+  .foot-note{margin-top:44px;padding-top:24px;border-top:1px solid var(--line-soft);color:var(--faint);font-size:12.5px;line-height:1.75;max-width:88ch;font-family:var(--mono);letter-spacing:.01em}
+  .foot-note b{color:var(--ink-dim);font-weight:500}
+
+  /* ============ REVEAL ANIMATION ============ */
+  .reveal{opacity:0;transform:translateY(28px);transition:opacity 1s cubic-bezier(.16,1,.3,1),transform 1s cubic-bezier(.16,1,.3,1)}
+  .reveal.in{opacity:1;transform:none}
+  @media(prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none;transition:none}
+    .hero-bg img{animation:none;transform:none}
+    .marquee-track{animation:none}
+    .blip{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="#top"><span class="em">🕺</span> partyparty</a>
+  <div class="masthead-mid">The Popup Issue · No. 01 · Sound with no speakers</div>
+  <a class="nav-dl" href="https://party.ramine.net/partyparty.zip">Download</a>
+</header>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="top">
+  <div class="hero-bg"><img src="/img/hero.jpg" alt="A DJ in headphones lit by cyan and red neon, working the decks" fetchpriority="high"></div>
+  <div class="hero-inner">
+    <div class="hero-issue">
+      <span class="kick hot">Silent-disco popups</span>
+      <span class="kick">macOS · Apple Silicon</span>
+    </div>
+    <h1>Throw the party.<br>Keep the <em>quiet.</em></h1>
+    <p class="hero-sub">A DJ set on the rooftop. On the beach. In the park at midnight. Everyone dancing to the same track — and from ten feet away, all you hear is the wind.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="https://party.ramine.net/partyparty.zip">Download partyparty <span class="arw">→</span></a>
+      <a class="btn btn-ghost" href="#how">See how it works</a>
+    </div>
+    <div class="hero-meta">Free macOS menu-bar app · Apple Silicon · macOS 14+</div>
+  </div>
+  <div class="scroll-hint">Scroll ↓</div>
+</section>
+
+<!-- ============ MARQUEE ============ -->
+<div class="marquee" aria-hidden="true">
+  <div class="marquee-track">
+    <span>rooftops</span><span>the beach at 2am</span><span>a rented loft</span><span>the park</span><span>a warehouse</span><span>anywhere with wi-fi you brought yourself</span>
+    <span>rooftops</span><span>the beach at 2am</span><span>a rented loft</span><span>the park</span><span>a warehouse</span><span>anywhere with wi-fi you brought yourself</span>
+  </div>
+</div>
+
+<!-- ============ THE WEDGE / STATEMENT ============ -->
+<section class="band statement">
+  <div class="wrap">
+    <div class="lead-tag reveal"><span class="num">01</span><span class="rule"></span><span class="kick">The whole idea</span></div>
+    <h2 class="display reveal">The set that <em>never</em> gets shut&nbsp;down.</h2>
+    <p class="reveal">Speakers in the air are what end the night — the permit you don't have, the neighbor who calls, the ranger with the flashlight. So take the speakers out of the air. <span class="hl">Your set plays straight into everyone's own earbuds</span> over a little Wi-Fi network you brought with you. No amplified sound. Nothing to complain about. Nothing to shut down.</p>
+    <p class="reveal">No rented headsets. No app to install. No internet. Your guests point a camera at a QR code and they're in — iPhone, Android, whatever's in their pocket. It just plays.</p>
+  </div>
+</section>
+
+<!-- ============ FULL BLEED — OFFLINE ============ -->
+<section class="plate">
+  <img src="/img/party.jpg" alt="A crowd silhouetted in deep red light, dancing toward a bank of LEDs">
+  <div class="plate-cap">
+    <div class="kick ice reveal" style="margin-bottom:18px">Fully offline</div>
+    <div class="big reveal">No bars. No signal. <em>No problem.</em></div>
+    <p class="note reveal">Runs on a bare local network — your Mac, or a $30 travel router in your bag. Dead zone in the desert, basement with no service, a boat: if you can turn on Wi-Fi, you can throw the party. The internet was never invited.</p>
+  </div>
+</section>
+
+<!-- ============ HOW / THREE MOVES ============ -->
+<section class="band" id="how">
+  <div class="wrap">
+    <div class="lead-tag reveal"><span class="num">02</span><span class="rule"></span><span class="kick">Three moves</span></div>
+    <h2 class="display reveal" style="max-width:14ch;margin-bottom:8px">From nothing to a dancefloor.</h2>
+  </div>
+  <div class="moves reveal" style="margin-top:56px">
+    <div class="move">
+      <div class="idx">i</div>
+      <div class="step">The DJ</div>
+      <h3>Hit Go&nbsp;Live.</h3>
+      <p>partyparty lives in your Mac's menu bar. It grabs whatever's playing — Rekordbox, Serato, Spotify, a live mixer — and starts broadcasting over the local network.</p>
+    </div>
+    <div class="move">
+      <div class="idx">ii</div>
+      <div class="step">The guests</div>
+      <h3>Scan the&nbsp;QR.</h3>
+      <p>Camera at the code, tap the link, done. It opens in the browser — no App Store, no login, no sign-up. iPhone and Android both just work.</p>
+    </div>
+    <div class="move">
+      <div class="idx">iii</div>
+      <div class="step">The night</div>
+      <h3>Everybody dances.</h3>
+      <p>Earbuds in. Lock the phone, text a friend, switch apps — the music keeps playing. Your direct signal, in every ear, all night.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FULL BLEED — NO APP ============ -->
+<section class="plate">
+  <img src="/img/crowd.jpg" alt="A packed, joyful festival crowd with hands and faces lit up">
+  <div class="plate-cap">
+    <div class="kick amber reveal" style="margin-bottom:18px">No app for guests</div>
+    <div class="big reveal">A hundred people. <em>Zero</em> downloads.</div>
+    <p class="note reveal">The moment a party needs an install, half the room bails. So there's no install. They join the Wi-Fi, scan a code, and they're dancing before the download bar would've finished.</p>
+  </div>
+</section>
+
+<!-- ============ TWO LATENCIES ============ -->
+<section class="band latency">
+  <div class="wrap">
+    <div class="lead-tag reveal"><span class="num">03</span><span class="rule"></span><span class="kick ice">The part engineers ask about</span></div>
+    <div class="latency-head">
+      <h2 class="display reveal">Two clocks. Only one <em>matters</em> on the floor.</h2>
+      <p class="reveal">Everyone worries about "latency" like it's a single number. It isn't. There are two, they do different jobs, and knowing which is which is the whole trick.</p>
+    </div>
+
+    <div class="lat-grid">
+      <div class="lat-card a reveal">
+        <div class="tag"><div class="letter">A</div>
+          <div>
+            <h3>Glass-to-glass</h3>
+            <div class="metric">DJ → your ears · we spend this</div>
+          </div>
+        </div>
+        <p>The gap between the DJ playing a beat and <strong>you</strong> hearing it. We deliberately spend 2–4 seconds here — that buffer is what makes the stream rock-solid on a phone in your pocket. Nobody standing on a dancefloor can feel a two-second head start on the DJ. So we don't chase it.</p>
+        <div class="lat-viz">
+          <div class="lat-line" style="background:linear-gradient(90deg,var(--amber),rgba(255,178,62,.2))">
+            <span class="lat-dot" style="left:2%;background:var(--amber)"></span><span class="lat-lbl" style="left:2%">DJ plays</span>
+            <span class="lat-dot" style="left:96%;background:var(--amber)"></span><span class="lat-lbl" style="left:96%">You hear it</span>
+          </div>
+          <div class="lat-foot">2–4s of head-start we happily give up for stability.</div>
+        </div>
+      </div>
+
+      <div class="lat-card b reveal">
+        <div class="tag"><div class="letter">B</div>
+          <div>
+            <h3>Sync spread</h3>
+            <div class="metric">You ↔ the dancer beside you · kept low</div>
+          </div>
+        </div>
+        <p>How far apart two people dancing shoulder-to-shoulder are. <strong>This</strong> is the dancefloor metric — and it's the one we keep tight. Every phone parks at the same server hold-back, so everyone sits the exact same distance behind live. Same distance behind = same moment as each other. The room drops together.</p>
+        <div class="lat-viz">
+          <div class="lat-line" style="background:linear-gradient(90deg,rgba(95,208,232,.2),var(--ice) 46%,var(--ice) 54%,rgba(95,208,232,.2))">
+            <span class="lat-dot" style="left:47%;background:var(--ice)"></span><span class="lat-lbl" style="left:41%">You</span>
+            <span class="lat-dot" style="left:53%;background:var(--ice)"></span><span class="lat-lbl" style="left:60%">Them</span>
+          </div>
+          <div class="lat-foot">The room drops together — sub-second, ~200ms the aim.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lat-note reveal">
+      <b>Straight talk:</b> a stable buffer <em>is</em> the sync. You can't actively phase-lock a locked iPhone — the browser won't let you. So instead of pretending to, we hold everyone the same amount behind live and let physics do the rest. The goal is "the room drops together," not phone-to-phone perfection. We say what we mean.
+    </div>
+  </div>
+</section>
+
+<!-- ============ SKEPTIC / SCALE ============ -->
+<section class="band">
+  <div class="wrap">
+    <div class="lead-tag reveal"><span class="num">04</span><span class="rule"></span><span class="kick">For the skeptic</span></div>
+    <div class="scale-split">
+      <div class="scale-txt">
+        <h2 class="display reveal">No app — and it <em>still</em> scales.</h2>
+        <p class="pull reveal">The magic isn't magic. It's boring, and boring is why it holds. partyparty encodes your set once and serves it as plain static files over HTTP. Every phone fetches the same little chunks — the same way every phone loads the same webpage. One listener or a full rooftop, the Mac barely notices.</p>
+        <div class="scale-facts reveal">
+          <div class="fact"><span class="n">1×</span><span class="t"><b>Encode once, everyone fetches the same chunks.</b> The DJ's Mac isn't rendering a private stream per guest — it's a file server.</span></div>
+          <div class="fact"><span class="n">~100</span><span class="t"><b>The real ceiling is the Wi-Fi, not us.</b> On a good access point that's roughly a hundred phones — the router's client count, not our software, is the wall.</span></div>
+          <div class="fact"><span class="n">$0</span><span class="t"><b>No per-head cost.</b> No headset rental, no cloud bill that grows with the guest list. The crowd is free.</span></div>
+        </div>
+      </div>
+      <figure class="scale-portrait reveal">
+        <img src="/img/portrait.jpg" alt="A music fan in headphones and shades, lit in deep electric blue">
+        <figcaption>Their earbuds. Your signal. No middleman.</figcaption>
+      </figure>
+    </div>
+
+    <div class="trap reveal">
+      <div class="kick hot">Why not the "clever" way?</div>
+      <p><b>Multicast and WebRTC are traps.</b> Multicast looks efficient on paper — but browsers can't do it, so you'd be forcing an app install on every guest, and the whole point was <b>no app.</b></p>
+      <p>WebRTC gives you low latency until the moment it matters most: the screen locks, the phone throttles the connection, and the audio dies mid-song. A dumb, static-file stream survives a locked phone. A clever one doesn't. We chose the one that keeps playing while your guests are texting.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPARISON LEDGER ============ -->
+<section class="band ledger">
+  <div class="wrap">
+    <div class="ledger-head">
+      <div>
+        <div class="lead-tag reveal"><span class="num">05</span><span class="rule" style="width:60px;flex:none"></span><span class="kick">The ledger</span></div>
+        <h2 class="display reveal">What else you'd have to&nbsp;carry.</h2>
+      </div>
+    </div>
+    <div class="l-scroll reveal">
+      <table class="l-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="us-col">🕺 partyparty</th>
+            <th>SonoBus / FarPlay</th>
+            <th>Hardware silent&nbsp;disco</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>App for guests</th>
+            <td class="us us-col"><span class="yes">None — it's the browser</span></td>
+            <td class="mut">Install on every device</td>
+            <td class="mut">Rented headset per head</td>
+          </tr>
+          <tr>
+            <th>Crowd size</th>
+            <td class="us us-col"><span class="yes">~100</span>, capped by the Wi-Fi</td>
+            <td class="mut">A dozen — their own docs say a 25-member choir "is unlikely to succeed"</td>
+            <td class="mut">A full crowd — if you can pay for it</td>
+          </tr>
+          <tr>
+            <th>Built for</th>
+            <td class="us us-col">DJ popups &amp; dancefloors</td>
+            <td class="mut">Musicians jamming remotely</td>
+            <td class="mut">Big branded events</td>
+          </tr>
+          <tr>
+            <th>Free tier</th>
+            <td class="us us-col"><span class="yes">Free app</span></td>
+            <td class="mut">FarPlay: 2 people / 45 min, desktop only</td>
+            <td class="mut">— (it's a rental)</td>
+          </tr>
+          <tr>
+            <th>Cost at 100 guests</th>
+            <td class="us us-col"><span class="yes">$0 per head</span></td>
+            <td class="mut">Won't reach 100</td>
+            <td class="mut">~$820 — <b style="color:var(--faint)">every night</b></td>
+          </tr>
+          <tr>
+            <th>Cost at 500 guests</th>
+            <td class="us us-col"><span class="yes">Add a bigger router</span></td>
+            <td class="mut">Not the tool</td>
+            <td class="mut">~$3,900 — every night</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="l-note">SonoBus &amp; FarPlay are jam tools for musicians and require an app on every device (SonoBus caps around a dozen by its own documentation; FarPlay's free tier is 2 people / 45 min, desktop-only). Hardware silent-disco reaches a crowd but bills per head — roughly $820 for 100 guests, $3,900 for 500 — every time you throw it.</p>
+  </div>
+</section>
+
+<!-- ============ EVENT HUB — COMING SOON ============ -->
+<section class="hub band">
+  <div class="hub-bg"><img src="/img/dance.jpg" alt="A cyan-lit crowd with laser beams cutting across the room"></div>
+  <div class="wrap hub-inner">
+    <div class="soon-badge reveal"><span class="blip"></span> Coming soon</div>
+    <h2 class="display reveal">Keep the night <em>after</em> the night.</h2>
+    <p class="hub-sub reveal">The music is what ships today. Next comes the Event Hub — a home for everything the party leaves behind, so a great set doesn't just evaporate at last call.</p>
+    <div class="hub-list reveal">
+      <div class="hub-item"><div class="h">Auto-saved replay</div><div class="d">The whole set recorded and ready to relive.</div></div>
+      <div class="hub-item"><div class="h">A page for the event</div><div class="d">One link that becomes the party's memory.</div></div>
+      <div class="hub-item"><div class="h">Moderated wall</div><div class="d">Photos, videos and comments from the crowd — curated.</div></div>
+      <div class="hub-item"><div class="h">Follow the DJ</div><div class="d">Never miss the next popup. Linked socials, one tap.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SHIPPING TODAY MANIFEST ============ -->
+<section class="band manifest">
+  <div class="wrap">
+    <div class="lead-tag reveal"><span class="num">06</span><span class="rule"></span><span class="kick ice">Shipping today — no asterisks</span></div>
+    <h2 class="display reveal" style="max-width:14ch">What you can throw <em>tonight.</em></h2>
+    <div class="man-grid reveal">
+      <div class="man-row"><div class="k"><span class="tick">✓</span>Live LAN audio</div><div class="v">Your Mac captures the sound and broadcasts it across the local network in real time.</div></div>
+      <div class="man-row"><div class="k"><span class="tick">✓</span>QR → browser join</div><div class="v">Guests scan and play in their own browser. No app, no login, iPhone and Android.</div></div>
+      <div class="man-row"><div class="k"><span class="tick">✓</span>The room drops together</div><div class="v">Every phone parks the same distance behind live, so the floor moves as one.</div></div>
+      <div class="man-row"><div class="k"><span class="tick">✓</span>Fully offline</div><div class="v">Runs on a bare LAN — your Mac or a travel router. Zero internet required.</div></div>
+      <div class="man-row"><div class="k"><span class="tick">✓</span>Locked-phone playback</div><div class="v">Keeps playing with the screen off, in another tab, while your guests text their friends.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINAL CTA ============ -->
+<section class="finale">
+  <div class="finale-bg"><img src="/img/decks.jpg" alt="Hands working a Pioneer DJ mixer, lit in warm amber"></div>
+  <div class="finale-inner wrap">
+    <h2 class="reveal">Turn down<br>for <em>what?</em></h2>
+    <a class="btn btn-primary reveal" href="https://party.ramine.net/partyparty.zip">Download partyparty <span class="arw">→</span></a>
+    <div class="finale-meta reveal">Free macOS menu-bar app · Apple Silicon · macOS 14+</div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="foot-top">
+    <div>
+      <div class="foot-brand"><span>🕺</span> partyparty</div>
+      <div class="foot-tag">Throw a DJ popup anywhere speakers would get you shut down.</div>
+    </div>
+    <a class="nav-dl" href="https://party.ramine.net/partyparty.zip">Download the app →</a>
+  </div>
+  <p class="foot-note">
+    <b>The honest fine print.</b> partyparty defeats the need for an amplified-sound permit and the noise complaints that come from speaker volume — because there are no speakers in the air. It does <b>not</b> get you around residential curfews, the noise a loud crowd makes on its own, or music-licensing obligations, and it is not "legal anywhere." Audio is your direct signal in each guest's own earbuds — <b>better and more consistent than a muddy room PA with dead spots</b>, delivered straight to their ears. Sync means <b>the room drops together</b> — everyone the same distance behind live — not same-instant, phase-locked, per-phone perfection. The Event Hub (auto-saved replay, event page, moderated photo/video/comment wall, follow-the-DJ, linked socials) is <b>coming soon</b> and not part of today's release. Shipping today: live LAN audio, QR-to-browser join, "room drops together" sync, fully offline operation, and locked-phone playback.
+  </p>
+</footer>
+
+<script>
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if(!('IntersectionObserver' in window)){
+      els.forEach(function(e){e.classList.add('in')});
+      return;
+    }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    },{threshold:.12, rootMargin:'0px 0px -8% 0px'});
+    els.forEach(function(e){io.observe(e)});
+  })();
+</script>
+<div style="border-top:1px solid #22222c;background:#08080b;color:#e6e6ea;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;padding:24px;text-align:center"><div style="max-width:900px;margin:0 auto"><div style="opacity:.55;font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px">partyparty · landing variants (pick one)</div><div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;font-size:14px"><a href="/proof" style="color:#e6e6ea;text-decoration:none;padding:6px 12px;border:1px solid #333;border-radius:999px">Proof</a><a href="/cinematic" style="color:#c6ff3a;font-weight:700;text-decoration:none;padding:6px 12px;border:1px solid #c6ff3a;border-radius:999px">Cinematic ← you are here</a><a href="/demo" style="color:#e6e6ea;text-decoration:none;padding:6px 12px;border:1px solid #333;border-radius:999px">Demo</a><a href="/founder" style="color:#e6e6ea;text-decoration:none;padding:6px 12px;border:1px solid #333;border-radius:999px">Founder</a><a href="/tight" style="color:#e6e6ea;text-decoration:none;padding:6px 12px;border:1px solid #333;border-radius:999px">Tight</a><a href="/" style="color:#9aa0b4;text-decoration:none;padding:6px 12px;border:1px solid #333;border-radius:999px">Current live /</a></div></div></div></body>
+</html>
