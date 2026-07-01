@@ -9,10 +9,12 @@ import (
 // Listeners counts active listeners and gauges health from heartbeats sent by
 // the player page (works the same whether media is served by us or MediaMTX).
 type client struct {
+	firstSeen time.Time // for stable roster ordering
 	lastSeen  time.Time
 	lastStall time.Time
 	lat       float64 // last reported latency behind live, ms
 	hasLat    bool
+	paused    bool
 	platform  string // "native" (iOS Safari) or "hls" (Android/desktop)
 }
 
@@ -35,20 +37,21 @@ func New(window time.Duration) *Listeners {
 // absent) is actively playing. stalled=true means its player reported a
 // buffer/stall since the last beat; latMs (when hasLat) is its measured latency
 // behind live; platform is "native" or "hls".
-func (l *Listeners) Heartbeat(key string, stalled bool, latMs float64, hasLat bool, platform string) {
+func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, hasLat bool, platform string) {
 	if key == "" {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	now := time.Now()
 	c := l.clients[key]
 	if c == nil {
-		c = &client{}
+		c = &client{firstSeen: now}
 		l.clients[key] = c
 		l.ever[key] = struct{}{}
 	}
-	now := time.Now()
 	c.lastSeen = now
+	c.paused = paused
 	if stalled {
 		c.lastStall = now
 	}
@@ -142,4 +145,38 @@ func (l *Listeners) LatencySpread() LatencyStat {
 		med = (v[len(v)/2-1] + v[len(v)/2]) / 2
 	}
 	return LatencyStat{Count: len(v), MinMs: v[0], MedMs: med, MaxMs: v[len(v)-1], SpreadMs: v[len(v)-1] - v[0]}
+}
+
+// Listener is one active listener for the DJ's roster.
+type Listener struct {
+	Platform   string  `json:"platform"` // "native" | "hls"
+	LatencyMs  float64 `json:"latencyMs"`
+	HasLatency bool    `json:"hasLatency"`
+	Stalled    bool    `json:"stalled"`
+	Paused     bool    `json:"paused"`
+}
+
+// Roster returns the currently-active listeners, stable-ordered by join time.
+func (l *Listeners) Roster() []Listener {
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	active := make([]*client, 0, len(l.clients))
+	for _, c := range l.clients {
+		if now.Sub(c.lastSeen) <= l.window {
+			active = append(active, c)
+		}
+	}
+	sort.Slice(active, func(i, j int) bool { return active[i].firstSeen.Before(active[j].firstSeen) })
+	out := make([]Listener, 0, len(active))
+	for _, c := range active {
+		out = append(out, Listener{
+			Platform:   c.platform,
+			LatencyMs:  c.lat,
+			HasLatency: c.hasLat,
+			Stalled:    !c.lastStall.IsZero() && now.Sub(c.lastStall) < 12*time.Second,
+			Paused:     c.paused,
+		})
+	}
+	return out
 }

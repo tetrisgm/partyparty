@@ -128,6 +128,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
+			"roster":         s.Listeners.Roster(),
 		})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.
@@ -144,7 +145,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				lat, hasLat = f, true
 			}
 		}
-		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", lat, hasLat, q.Get("plat"))
+		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/delivery":
 		if r.Method != http.MethodPost {

@@ -218,7 +218,7 @@
       if (!started) return;
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
-      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform;
+      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform;
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
       fetch(url, { cache: 'no-store' }).catch(() => {});
       stalledSinceBeat = false;
