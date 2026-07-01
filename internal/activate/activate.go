@@ -120,6 +120,23 @@ func TokenFromEnvOrFile() string {
 	return strings.TrimSpace(string(b))
 }
 
+// HostFromEnvOrFile resolves the low-latency host from the env var or a
+// persisted file (so the double-clicked .app activates without a shell env).
+func HostFromEnvOrFile() string {
+	if h := strings.TrimSpace(os.Getenv("PARTYPARTY_LIVE_HOST")); h != "" {
+		return h
+	}
+	dir, err := stateDir()
+	if err != nil {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "live-host"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
 func stateDir() (string, error) {
 	base, err := os.UserConfigDir() // ~/Library/Application Support on macOS
 	if err != nil {
@@ -289,12 +306,18 @@ func waitTXT(ctx context.Context, name, want string) error {
 	return errors.New("challenge TXT did not propagate in time")
 }
 
-// verifyResolves checks the SYSTEM resolver returns the LAN IP for host —
-// the same path guests' phones take through the venue router.
+// verifyResolves checks the host resolves to the LAN IP over the network's
+// configured DNS — the path guests' phones take. It uses a Go-native resolver
+// (PreferGo), which queries the configured nameserver directly and BYPASSES the
+// macOS mDNSResponder cache: a freshly-created record is otherwise shadowed by
+// the OS's cached NXDOMAIN (negative TTL) on the DJ's Mac only, a false positive
+// that never affects guests. Querying the real resolver still catches genuine
+// router DNS-rebind protection. Patient (~48s) for propagation.
 func verifyResolves(ctx context.Context, host, lanIP string) error {
+	res := &net.Resolver{PreferGo: true}
 	var lastErr error
-	for i := 0; i < 4; i++ {
-		addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+	for i := 0; i < 12; i++ {
+		addrs, err := res.LookupHost(ctx, host)
 		if err == nil {
 			for _, a := range addrs {
 				if a == lanIP {

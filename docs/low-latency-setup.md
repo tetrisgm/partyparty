@@ -15,19 +15,17 @@ is rejected by iOS Safari. partyparty automates the whole cert story (the Plex
    dash.cloudflare.com → My Profile → API Tokens → Create Token → *Custom token*
    with exactly one permission: **Zone → DNS → Edit**, scoped to that zone.
 
-3. **Give partyparty the two values:**
+3. **Give partyparty the two values** — as files, so the double-clicked `.app`
+   picks them up with no shell environment and they survive reboots:
 
    ```sh
-   # the token (either env var, or a file — the file survives reboots):
    mkdir -p ~/Library/Application\ Support/partyparty
-   pbpaste > ~/Library/Application\ Support/partyparty/cf-token   # paste the token
-
-   # the host (env var or flag):
-   export PARTYPARTY_LIVE_HOST=dj.ramine.net
+   pbpaste > ~/Library/Application\ Support/partyparty/cf-token   # paste the token first
+   echo -n dj.ramine.net > ~/Library/Application\ Support/partyparty/live-host
    ```
 
-   (For the .app, set `PARTYPARTY_LIVE_HOST` via `launchctl setenv` or we bake a
-   settings UI later; the cf-token file needs no env var.)
+   (Both also accept env vars / flags for CLI runs: `PARTYPARTY_CF_TOKEN`,
+   `PARTYPARTY_LIVE_HOST` / `--live-host`. A settings UI comes later.)
 
 ## What happens at launch
 

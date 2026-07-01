@@ -54,7 +54,12 @@ func main() {
 	// Automatic low-latency activation (the Plex pattern): with a live host +
 	// Cloudflare token configured, obtain/renew a real Let's Encrypt cert and
 	// point a public A record at this Mac's LAN IP. Fails soft (offline, no
-	// token, rebind-protecting router) — we just stay on plain HLS.
+	// token, rebind-protecting router) — we just stay on plain HLS. The host can
+	// come from --live-host, the env var, or a persisted file (so the
+	// double-clicked .app activates without any shell environment).
+	if cfg.LiveHost == "" {
+		cfg.LiveHost = activate.HostFromEnvOrFile()
+	}
 	if cfg.LiveHost != "" && cfg.Delivery != "hls" && cfg.CertFile == "" {
 		res := activate.Try(cfg.LiveHost, activate.TokenFromEnvOrFile(), netinfo.PrimaryLanIP(), log.Printf)
 		if res.OK {
