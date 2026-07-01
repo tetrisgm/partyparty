@@ -69,14 +69,17 @@ jobs:
           xcrun stapler validate build/partyparty.app
           rm -f "$RUNNER_TEMP/ac_key.p8"
 
-      - name: Package versioned + latest zip
+      - name: Package versioned zip
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          # Version comes from Info.plist (bump it before tagging) — keeps CI and
+          # `make release` identical and avoids mis-parsing a branch dispatch.
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' app/Info.plist)"
           mkdir -p dist
           ditto -c -k --keepParent build/partyparty.app "dist/partyparty-${VERSION}.zip"
-          cp "dist/partyparty-${VERSION}.zip" dist/partyparty.zip   # stable 'latest' alias
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # NB: the 'latest' partyparty.zip alias is created AFTER appcast signing —
+          # generate_appcast aborts if dist/ holds two archives of the same version.
 
       - name: Sign the Sparkle appcast
         env:
@@ -100,6 +103,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: "4e958c1f2621ced0354e94826590e34f"   # not secret
         run: |
           set -euo pipefail
+          cp "dist/partyparty-${VERSION}.zip" dist/partyparty.zip   # 'latest' alias — safe now (appcast already signed)
           npm --prefix cloudflare install --no-audit --no-fund
           WR="$PWD/cloudflare/node_modules/.bin/wrangler"
           "$WR" r2 object put "partyparty-dl/partyparty-${VERSION}.zip" --file "dist/partyparty-${VERSION}.zip" --content-type application/zip --remote
