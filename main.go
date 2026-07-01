@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/mediamtx"
@@ -47,6 +48,20 @@ func main() {
 	if cfg.FFmpeg == "ffmpeg" {
 		if p := helperFFmpeg(runDir); p != "" {
 			cfg.FFmpeg = p
+		}
+	}
+
+	// Automatic low-latency activation (the Plex pattern): with a live host +
+	// Cloudflare token configured, obtain/renew a real Let's Encrypt cert and
+	// point a public A record at this Mac's LAN IP. Fails soft (offline, no
+	// token, rebind-protecting router) — we just stay on plain HLS.
+	if cfg.LiveHost != "" && cfg.Delivery != "hls" && cfg.CertFile == "" {
+		res := activate.Try(cfg.LiveHost, activate.TokenFromEnvOrFile(), netinfo.PrimaryLanIP(), log.Printf)
+		if res.OK {
+			cfg.Domain, cfg.CertFile, cfg.KeyFile = res.Host, res.CertFile, res.KeyFile
+			log.Printf("activate: low latency ON — %s → this Mac (real cert)", res.Host)
+		} else {
+			log.Printf("activate: low latency off — %s", res.Reason)
 		}
 	}
 
@@ -83,6 +98,7 @@ func main() {
 	}
 
 	var mtx *mediamtx.Server
+	var reconfigureLL func(partDur, segDur string, segCount int) error
 	if mtxBinPath != "" {
 		certPath, keyPath := cfg.CertFile, cfg.KeyFile
 		if certPath == "" || keyPath == "" {
@@ -97,13 +113,26 @@ func main() {
 			}
 		}
 		cfgPath := filepath.Join(runDir, "mediamtx.yml")
-		if err := mediamtx.WriteConfig(cfgPath, mediamtx.ConfigOpts{
-			RTSPPort: cfg.RTSPPort, HLSPort: cfg.HLSPort, Path: cfg.StreamPath,
-			CertPath: certPath, KeyPath: keyPath, SegDur: cfg.SegDur, PartDur: cfg.PartDur, SegCount: cfg.SegCount,
-		}); err != nil {
+		writeMTXConfig := func(partDur, segDur string, segCount int) error {
+			return mediamtx.WriteConfig(cfgPath, mediamtx.ConfigOpts{
+				RTSPPort: cfg.RTSPPort, HLSPort: cfg.HLSPort, Path: cfg.StreamPath,
+				CertPath: certPath, KeyPath: keyPath, SegDur: segDur, PartDur: partDur, SegCount: segCount,
+			})
+		}
+		if err := writeMTXConfig(cfg.PartDur, cfg.SegDur, cfg.SegCount); err != nil {
 			log.Fatalf("mediamtx config failed: %v", err)
 		}
 		mtx = mediamtx.NewServer(mtxBinPath, cfgPath, bc.ExternalWriter())
+		// The DJ's latency modes map to LL-HLS part durations; applying one
+		// rewrites mediamtx.yml and bounces MediaMTX (a few seconds of guest
+		// rebuffer — the console warns that changing it restarts the broadcast).
+		reconfigureLL = func(partDur, segDur string, segCount int) error {
+			mtx.Stop()
+			if err := writeMTXConfig(partDur, segDur, segCount); err != nil {
+				return err
+			}
+			return mtx.EnsureReady(cfg.RTSPPort, 6*time.Second)
+		}
 		if cfg.Delivery == "llhls" {
 			if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err != nil {
 				log.Printf("mediamtx failed to start: %v — falling back to plain HLS", err)
@@ -114,12 +143,13 @@ func main() {
 		bc.SetDelivery("hls")
 	}
 	handler := server.New(server.Deps{
-		Config:      cfg,
-		Broadcaster: bc,
-		Listeners:   ls,
-		RunDir:      runDir,
-		Web:         web,
-		MTX:         mtx,
+		Config:           cfg,
+		Broadcaster:      bc,
+		Listeners:        ls,
+		RunDir:           runDir,
+		Web:              web,
+		MTX:              mtx,
+		ReconfigureLLHLS: reconfigureLL,
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))

@@ -31,6 +31,7 @@ type Config struct {
 	Domain      string // public hostname for the cert/URL; "" = use LAN IP (self-signed)
 	CertFile    string // real cert (fullchain); "" = self-signed
 	KeyFile     string
+	LiveHost    string // Plex-style low-latency host (auto cert + A record via Cloudflare); "" = off
 
 	// LL-HLS tuning (MediaMTX). Defaults tuned for iPhone stability.
 	PartDur  string // EXT-X-PART duration, e.g. "350ms"
@@ -68,6 +69,7 @@ func Parse() Config {
 	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty = LAN IP + self-signed")
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
+	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")
 	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "350ms"), "LL-HLS part duration (lower = less latency, but iPhones may stall below ~350ms)")
 	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "1s"), "LL-HLS segment duration")
 	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 7), "LL-HLS segments kept in the playlist")

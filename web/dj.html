@@ -392,7 +392,16 @@
       const lb = $('liveBtn');
       lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop' : 'Go Live');
       lb.className = live ? 'stop' : 'go';
-      if ($('latencyBox')) $('latencyBox').style.display = (s.delivery === 'llhls') ? 'none' : 'block';
+      // The latency knob applies in BOTH modes now: plain HLS = segment length,
+      // LL-HLS = part duration (server remaps + bounces MediaMTX on change).
+      const lsel = $('latency');
+      if (lsel && lsel.dataset.mode !== s.delivery) {
+        lsel.dataset.mode = s.delivery;
+        const labels = s.delivery === 'llhls'
+          ? { low: 'Lowest — ~1.5-2s (experimental, test your iPhones)', balanced: 'Balanced — ~2-2.5s (recommended)', stable: 'Stable — ~2.5-3s (best on weak Wi-Fi)' }
+          : { low: 'Low latency — ~4s (least delay)', balanced: 'Balanced — ~7s', stable: 'Stable — ~10s (best on weak Wi-Fi)' };
+        for (const o of lsel.options) if (labels[o.value]) o.textContent = labels[o.value];
+      }
       const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnoteText').textContent = note || '';

@@ -30,15 +30,19 @@ type Deps struct {
 	RunDir      string
 	Web         fs.FS
 	MTX         *mediamtx.Server // nil if mediamtx unavailable (LL-HLS disabled)
+	// ReconfigureLLHLS rewrites mediamtx.yml with new LL-HLS timing and bounces
+	// MediaMTX. nil when mediamtx is unavailable.
+	ReconfigureLLHLS func(partDur, segDur string, segCount int) error
 }
 
 type srv struct {
 	Deps
-	vendor http.Handler
+	vendor     http.Handler
+	curPartDur string
 }
 
 func New(d Deps) http.Handler {
-	return &srv{Deps: d, vendor: http.FileServer(http.FS(d.Web))}
+	return &srv{Deps: d, vendor: http.FileServer(http.FS(d.Web)), curPartDur: d.Config.PartDur}
 }
 
 var hlsFileRE = regexp.MustCompile(`^(stream\.m3u8|seg_\d+\.ts)$`)
@@ -223,6 +227,17 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			opts.Channels = 1
 		case "0", "false":
 			opts.Channels = 2
+		}
+		// In LL-HLS the latency modes are part durations, applied by rewriting
+		// mediamtx.yml and bouncing MediaMTX before ffmpeg re-pushes.
+		if s.Broadcaster.Delivery() == "llhls" && s.ReconfigureLLHLS != nil {
+			if part, seg, n := latencyPartDur(q.Get("latency")); part != "" && part != s.curPartDur {
+				if err := s.ReconfigureLLHLS(part, seg, n); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency reconfigure failed: " + err.Error()})
+					return
+				}
+				s.curPartDur = part
+			}
 		}
 		s.Broadcaster.Start(device, q.Get("name"), opts)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -410,6 +425,25 @@ func latencySegDur(mode string) float64 {
 		return 3
 	default:
 		return 0
+	}
+}
+
+// latencyPartDur maps a latency mode to LL-HLS timing (part duration, segment
+// duration, playlist segment count). PART-HOLD-BACK = 2.5x part (gohlslib), so
+// glass-to-glass ≈ hold-back + ~1s player overhead: low ≈ 1.4-2s (200ms parts —
+// experimental: field data saw iPhones stall at 200ms with video; audio-only
+// must prove itself on a device soak), balanced ≈ 1.7-2.5s (350ms, the shipped
+// default), stable ≈ 2.2-3s (500ms, biggest cushion).
+func latencyPartDur(mode string) (string, string, int) {
+	switch mode {
+	case "low":
+		return "200ms", "1s", 7
+	case "balanced":
+		return "350ms", "1s", 7
+	case "stable":
+		return "500ms", "2s", 7
+	default:
+		return "", "", 0
 	}
 }
 
