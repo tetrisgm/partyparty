@@ -3,42 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<meta name="theme-color" content="#0b0b12">
+<meta name="theme-color" content="#000000">
 <title>partyparty</title>
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; margin: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-    background: radial-gradient(120% 120% at 50% 0%, #1a1130 0%, #0b0b12 60%);
-    color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-height: 100dvh; padding: 24px; text-align: center; overflow: hidden;
+  :root{
+    color-scheme:dark;
+    --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+    --label:#f5f5f7; --label-secondary:#a1a1a8; --label-tertiary:#6e6e73;
+    --accent:#ff3b7f; --success:#34c759;
   }
-  h1 { font-weight: 600; font-size: 28px; margin: 0 0 4px; letter-spacing: -.02em; }
-  .sub { color: #9aa0b4; font-size: 14px; margin: 0 0 36px; }
-  .btn {
-    width: 200px; height: 200px; border-radius: 50%; border: none; cursor: pointer;
-    background: #7C3AED; color: #fff; font-size: 18px; font-weight: 600;
-    display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px;
-    transition: transform .15s ease, background .2s ease;
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:var(--sans);
+    background:radial-gradient(120% 120% at 50% 0%, #1b141f 0%, #000 62%);
+    color:var(--label);display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:100dvh;padding:24px;text-align:center;overflow:hidden;
+    -webkit-font-smoothing:antialiased;font-synthesis:none;letter-spacing:-.01em;
   }
-  .btn:active { transform: scale(.96); }
-  body.playing .btn { background: #14b86b; animation: pulse 2.2s infinite; }
-  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(20,184,107,.5)} 70%{box-shadow:0 0 0 28px rgba(20,184,107,0)} 100%{box-shadow:0 0 0 0 rgba(20,184,107,0)} }
-  .ico { font-size: 50px; line-height: 1; }
-  .pill { margin-top: 26px; font-size: 14px; color: #cdd1e0; min-height: 20px; }
-  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#666; margin-right:6px; vertical-align:middle; }
-  body.playing .dot { background:#14b86b; }
-  .eq { display:flex; gap:5px; height:26px; align-items:flex-end; justify-content:center; margin-top:16px; opacity:0; transition:opacity .3s; }
-  body.playing .eq { opacity:1; }
-  .eq i { width:5px; background:#7C3AED; border-radius:3px; height:6px; animation:bounce 1s infinite ease-in-out; }
+  h1{font-weight:600;font-size:28px;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--label-secondary);font-size:14px;margin:0 0 36px}
+  .btn{
+    width:200px;height:200px;border-radius:50%;border:none;cursor:pointer;
+    background:var(--accent);color:#fff;font-size:17px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;
+    transition:transform .15s ease,background .25s ease;
+  }
+  .btn:active{transform:scale(.96)}
+  body.playing .btn{background:var(--success);animation:pulse 2.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,199,89,.5)}70%{box-shadow:0 0 0 28px rgba(52,199,89,0)}100%{box-shadow:0 0 0 0 rgba(52,199,89,0)}}
+  .ico{font-size:50px;line-height:1}
+  .pill{margin-top:26px;font-size:14px;color:var(--label);min-height:20px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--label-tertiary);margin-right:6px;vertical-align:middle}
+  body.playing .dot{background:var(--success)}
+  .eq{display:flex;gap:5px;height:26px;align-items:flex-end;justify-content:center;margin-top:16px;opacity:0;transition:opacity .3s}
+  body.playing .eq{opacity:1}
+  .eq i{width:5px;background:var(--accent);border-radius:3px;height:6px;animation:bounce 1s infinite ease-in-out}
   .eq i:nth-child(2){animation-delay:.2s} .eq i:nth-child(3){animation-delay:.4s} .eq i:nth-child(4){animation-delay:.1s} .eq i:nth-child(5){animation-delay:.3s}
-  @keyframes bounce { 0%,100%{height:6px} 50%{height:26px} }
-  .count { color:#9aa0b4; font-size:13px; margin-top:8px; min-height:16px; }
-  .vol { margin-top: 30px; width: 220px; max-width: 70vw; display:flex; align-items:center; gap:10px; color:#9aa0b4; }
-  .vol input { flex:1; accent-color:#7C3AED; }
-  .foot { position: fixed; bottom: 16px; left:0; right:0; color:#6b7088; font-size:12px; padding:0 20px; }
+  @keyframes bounce{0%,100%{height:6px}50%{height:26px}}
+  .count{color:var(--label-secondary);font-size:13px;margin-top:8px;min-height:16px}
+  .vol{margin-top:30px;width:220px;max-width:70vw;display:flex;align-items:center;gap:10px;color:var(--label-secondary)}
+  .vol input{flex:1;accent-color:var(--accent)}
+  .foot{position:fixed;bottom:16px;left:0;right:0;color:var(--label-tertiary);font-size:12px;padding:0 20px}
+  @media (prefers-reduced-motion:reduce){body.playing .btn,.eq i{animation:none}}
 </style>
 </head>
 <body>
