@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>partyparty — Event Hub (prototype)</title>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#ffffff; --panel2:#f6f7f9; --panel3:#eef0f3;
+    --line:#e6e8ec; --line2:#d8dbe0;
+    --ink:#0e1116; --ink2:#3d434d; --muted:#6b7280; --faint:#9aa1ab;
+    --accent:#1d9bf6; --accent-ink:#0b74c4;
+    --live:#ff3b5c; --party:linear-gradient(120deg,#ff4d8d,#ff9a3c);
+    --good:#12b981; --danger:#ef4444;
+    --sidebar:248px; --radius:16px;
+    -webkit-font-smoothing:antialiased;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;line-height:1.5}
+  a{color:inherit;text-decoration:none}
+  button{font:inherit;cursor:pointer}
+  img{display:block}
+
+  /* layout */
+  .app{display:grid;grid-template-columns:var(--sidebar) 1fr;min-height:100vh}
+  /* sidebar */
+  aside{border-right:1px solid var(--line);padding:22px 16px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:800;letter-spacing:-.02em;font-size:20px;padding:6px 10px 22px}
+  .brand .m{font-size:22px}
+  nav{display:flex;flex-direction:column;gap:2px}
+  .nav{display:flex;align-items:center;gap:14px;padding:11px 12px;border-radius:12px;color:var(--ink2);font-weight:600;font-size:16px}
+  .nav .i{width:22px;text-align:center;font-size:18px}
+  .nav:hover{background:var(--panel2)}
+  .nav.active{color:var(--ink)}
+  .nav.create{color:var(--accent)}
+  .nav.create .i{color:var(--accent)}
+  .nav .badge{margin-left:auto;background:var(--live);color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px}
+  .side-foot{margin-top:auto;border-top:1px solid var(--line);padding-top:14px}
+  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px}
+  .me:hover{background:var(--panel2)}
+  .me img{width:34px;height:34px;border-radius:50%}
+  .me .n{font-weight:700;font-size:14px}
+  .me .h{font-size:12px;color:var(--muted)}
+
+  /* main */
+  main{min-width:0}
+  .view{display:none}
+  .view.active{display:block}
+  .wrap{max-width:940px;margin:0 auto;padding:0 28px 80px}
+  .feedwrap{max-width:620px}
+
+  .pagehead{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.82);backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line);padding:16px 28px}
+  .pagehead h1{margin:0;font-size:20px;letter-spacing:-.02em}
+  .pagehead .sub{color:var(--muted);font-size:13px;margin-top:2px}
+
+  .tabs{display:flex;gap:26px;justify-content:center;border-bottom:1px solid var(--line);margin-bottom:0}
+  .tab{padding:14px 2px;color:var(--muted);font-weight:600;font-size:15px;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer}
+  .tab.active{color:var(--ink);border-color:var(--ink)}
+
+  .btn{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:8px 16px;font-weight:700;font-size:14px;color:var(--ink)}
+  .btn:hover{background:var(--panel2)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:var(--accent-ink)}
+  .btn.sm{padding:6px 13px;font-size:13px}
+  .btn.good{background:var(--good);border-color:var(--good);color:#fff}
+  .btn.ghostdanger{color:var(--danger);border-color:#f2c4c4}
+  .btn.ghostdanger:hover{background:#fdecec}
+
+  /* LIVE now-playing strip */
+  .live{display:flex;align-items:center;gap:14px;background:linear-gradient(120deg,#fff5f8,#fff8f2);
+    border:1px solid #ffd9e4;border-radius:var(--radius);padding:14px 16px;margin:20px 0}
+  .live .dot{width:10px;height:10px;border-radius:50%;background:var(--live);box-shadow:0 0 0 0 rgba(255,59,92,.6);animation:pulse 1.6s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 10px rgba(255,59,92,0)}100%{box-shadow:0 0 0 0 rgba(255,59,92,0)}}
+  .live .tag{font-weight:800;font-size:12px;letter-spacing:.08em;color:var(--live)}
+  .live .np{font-weight:700}
+  .live .np small{display:block;color:var(--muted);font-weight:500;font-size:12px}
+  .eq{display:flex;align-items:flex-end;gap:2px;height:20px;margin-left:2px}
+  .eq i{width:3px;background:var(--live);border-radius:2px;animation:bar 1s ease-in-out infinite}
+  .eq i:nth-child(2){animation-delay:.2s}.eq i:nth-child(3){animation-delay:.4s}.eq i:nth-child(4){animation-delay:.15s}.eq i:nth-child(5){animation-delay:.35s}
+  @keyframes bar{0%,100%{height:5px}50%{height:18px}}
+  .live .listeners{margin-left:auto;text-align:right}
+  .live .listeners b{font-size:16px}
+  .live .listeners small{display:block;color:var(--muted);font-size:12px}
+
+  /* composer */
+  .composer{border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:22px;display:flex;gap:12px}
+  .composer img.av{width:42px;height:42px;border-radius:50%}
+  .composer .grow{flex:1}
+  .composer input.ph{width:100%;border:0;font-size:17px;padding:9px 0;outline:none;color:var(--ink)}
+  .composer input.ph::placeholder{color:var(--faint)}
+  .composer .row{display:flex;align-items:center;gap:6px;margin-top:6px}
+  .iconbtn{border:0;background:transparent;color:var(--accent);border-radius:10px;padding:8px;display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px}
+  .iconbtn:hover{background:#eaf5fe}
+  .iconbtn svg{width:20px;height:20px}
+  .composer .post{margin-left:auto}
+
+  /* post card */
+  .card{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:18px;overflow:hidden;background:#fff}
+  .card .top{display:flex;align-items:center;gap:11px;padding:14px 16px}
+  .card .top img{width:42px;height:42px;border-radius:50%}
+  .card .top .n{font-weight:700}
+  .card .top .n .guest{font-weight:600;color:var(--accent);font-size:12px;background:#eaf5fe;border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+  .card .top .t{color:var(--muted);font-size:13px}
+  .card .top .more{margin-left:auto;color:var(--faint);font-size:22px;line-height:1;padding:0 6px;background:none;border:0}
+  .card .body{padding:0 16px 12px}
+  .card .body p{margin:2px 0 12px;font-size:15px}
+  .media{position:relative;background:var(--panel3)}
+  .media img{width:100%;max-height:560px;object-fit:cover}
+  .media .play{position:absolute;inset:0;display:grid;place-items:center}
+  .media .play span{width:58px;height:58px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center;font-size:22px}
+  .actions{display:flex;align-items:center;gap:6px;padding:10px 12px}
+  .react{display:flex;align-items:center;gap:6px;border:0;background:transparent;border-radius:999px;padding:7px 11px;font-weight:600;color:var(--ink2)}
+  .react:hover{background:var(--panel2)}
+  .react svg{width:20px;height:20px}
+  .react.on{color:var(--live)}
+  .reacts{display:flex;align-items:center;gap:-6px;padding:0 8px 10px 16px}
+  .reacts .emos{display:flex}
+  .reacts .emos span{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:#fff;border:1px solid var(--line);margin-left:-6px}
+  .reacts .who{color:var(--muted);font-size:13px;margin-left:10px;cursor:pointer}
+  .reacts .who b{color:var(--ink2)}
+  .comments{border-top:1px solid var(--line);padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+  .cmt{display:flex;gap:10px;font-size:14px}
+  .cmt img{width:30px;height:30px;border-radius:50%}
+  .cmt .b{background:var(--panel2);border-radius:14px;padding:8px 12px}
+  .cmt .b b{font-size:13px}
+  .addcmt{display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding:10px 16px}
+  .addcmt img{width:30px;height:30px;border-radius:50%}
+  .addcmt input{flex:1;border:0;outline:none;font-size:14px;background:transparent}
+  .addcmt button{color:var(--accent);font-weight:700;border:0;background:none}
+
+  /* pending / moderation */
+  .pendbanner{display:flex;align-items:center;gap:10px;background:#fff8ec;border:1px solid #ffe3ad;color:#8a5a00;
+    border-radius:12px;padding:10px 14px;font-size:14px;font-weight:600;margin-bottom:18px}
+  .card.pending{border-color:#ffe3ad;box-shadow:0 0 0 3px #fff8ec}
+  .modbar{display:flex;gap:10px;padding:12px 16px;border-top:1px dashed var(--line)}
+  .modbar .who{color:var(--muted);font-size:13px;align-self:center;margin-right:auto}
+
+  /* discover grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+  .tile{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:1/1;background:var(--panel3);cursor:pointer}
+  .tile img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
+  .tile:hover img{transform:scale(1.05)}
+  .tile .ov{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,.6));opacity:0;transition:opacity .2s;display:flex;flex-direction:column;justify-content:flex-end;padding:12px;color:#fff}
+  .tile:hover .ov{opacity:1}
+  .tile .ov .st{display:flex;gap:14px;font-size:13px;font-weight:600}
+  .tile .cap{position:absolute;left:12px;bottom:12px;color:#fff}
+  .tile .vid{position:absolute;top:10px;right:10px;color:#fff;font-size:16px;background:rgba(0,0,0,.4);border-radius:50%;width:28px;height:28px;display:grid;place-items:center}
+  .tile .cap .ti{font-weight:700}.tile .cap .by{font-size:12px;opacity:.9}
+
+  /* profile */
+  .banner{height:220px;background:var(--panel3);position:relative;border-radius:0 0 0 0}
+  .banner img{width:100%;height:100%;object-fit:cover}
+  .banner .edit{position:absolute;right:16px;bottom:16px}
+  .phead{display:flex;gap:20px;align-items:flex-end;margin-top:-46px;padding:0 4px}
+  .phead .pav{width:112px;height:112px;border-radius:50%;border:4px solid #fff;object-fit:cover;background:#fff}
+  .phead .meta{padding-bottom:8px}
+  .phead .meta h2{margin:0;font-size:24px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+  .phead .meta .role{color:var(--muted);font-size:14px}
+  .phead .foll{margin-left:auto;display:flex;gap:22px;align-items:center;padding-bottom:8px}
+  .phead .foll .c b{font-size:17px}.phead .foll .c span{color:var(--muted);font-size:13px}
+
+  /* notifications */
+  .nlist{max-width:620px}
+  .nsection{color:var(--muted);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;margin:22px 0 8px}
+  .nrow{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px}
+  .nrow:hover{background:var(--panel2)}
+  .nrow img{width:42px;height:42px;border-radius:50%}
+  .nrow .txt{font-size:14px}.nrow .txt b{font-weight:700}
+  .nrow .t{color:var(--faint);font-size:12px}
+  .nrow .act{margin-left:auto}
+  .nrow .thumb{width:42px;height:42px;border-radius:8px;object-fit:cover}
+
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(15,17,22,.45);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:60px 20px;overflow:auto}
+  .modal.open{display:flex}
+  .sheet{background:#fff;border-radius:20px;width:100%;max-width:540px;box-shadow:0 30px 80px -20px rgba(0,0,0,.35);overflow:hidden}
+  .sheet .h{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .sheet .h img{width:40px;height:40px;border-radius:50%}
+  .sheet .h .x{margin-left:auto;border:0;background:var(--panel2);width:32px;height:32px;border-radius:50%;font-size:16px}
+  .sheet .bd{padding:18px 20px}
+  .sheet textarea{width:100%;border:0;outline:none;font-size:18px;resize:none;min-height:70px;font-family:inherit}
+  .drop{border:2px dashed var(--line2);border-radius:14px;padding:34px;text-align:center;color:var(--muted);margin:6px 0 14px;cursor:pointer}
+  .drop:hover{border-color:var(--accent);color:var(--accent);background:#f7fbff}
+  .drop .ic{font-size:30px}
+  .sheet .foot{display:flex;align-items:center;gap:14px;padding:14px 20px;border-top:1px solid var(--line)}
+  .toggle{display:flex;align-items:center;gap:8px;color:var(--ink2);font-size:14px;font-weight:600}
+  .switch{width:40px;height:23px;border-radius:999px;background:var(--line2);position:relative;transition:.2s}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:.2s}
+  .switch.on{background:var(--accent)}.switch.on::after{left:19px}
+
+  .hint{color:var(--faint);font-size:12.5px;text-align:center;padding:10px}
+  /* ---- PLAYER ---- */
+  .playerwrap{display:grid;grid-template-columns:1fr 372px;min-height:100vh}
+  .player-main{padding:22px 28px;border-right:1px solid var(--line)}
+  .player-back{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-weight:600;margin-bottom:14px;cursor:pointer}
+  .stage{position:relative;border-radius:16px;overflow:hidden;background:#0e1116}
+  .stage>img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover}
+  .stage .ctrls{position:absolute;left:0;right:0;bottom:0;padding:16px;display:flex;align-items:center;gap:14px;color:#fff;background:linear-gradient(0deg,rgba(0,0,0,.65),transparent)}
+  .stage .ctrls .bar{flex:1;height:4px;background:rgba(255,255,255,.3);border-radius:2px;position:relative}
+  .stage .ctrls .bar i{position:absolute;left:0;top:0;bottom:0;width:31%;background:#fff;border-radius:2px}
+  .stage .ctrls .bar i::after{content:"";position:absolute;right:-5px;top:-3px;width:10px;height:10px;border-radius:50%;background:#fff}
+  .stage .plpos{font-size:12px;opacity:.85}
+  .pbtn{background:none;border:0;color:#fff;font-size:17px;cursor:pointer}
+  .player-title{display:flex;align-items:center;gap:14px;margin-top:18px}
+  .player-title h2{margin:0;font-size:22px;letter-spacing:-.02em}
+  .player-title .acts{margin-left:auto;display:flex;gap:8px}
+  .player-desc{color:var(--ink2);margin-top:12px;max-width:640px;font-size:15px}
+  .player-side{padding:20px;overflow:auto}
+  .author{display:flex;align-items:center;gap:10px}
+  .author img{width:42px;height:42px;border-radius:50%}
+  .saved{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:16px 0 6px}
+  .saved .stack span{display:inline-block;width:24px;height:24px;border-radius:50%;border:2px solid #fff;margin-left:-8px;background:var(--panel3);vertical-align:middle}
+  .cside{display:flex;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+  .cside img{width:34px;height:34px;border-radius:50%;flex:0 0 auto}
+  .cside .b{flex:1}.cside .b b{font-size:13px}.cside .b .m{font-size:14px}
+  .cside .t{color:var(--faint);font-size:12px;margin-top:2px}
+  .cside .like{color:var(--faint);align-self:center}
+
+  /* ---- CHAT ---- */
+  .chat{display:grid;grid-template-columns:300px 1fr 240px;min-height:100vh}
+  .threads{border-right:1px solid var(--line);overflow:auto;padding:14px}
+  .threads h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 6px 6px}
+  .threads .search{width:100%;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:6px;outline:none}
+  .thread{display:flex;gap:10px;padding:9px 8px;border-radius:10px;cursor:pointer;align-items:center}
+  .thread:hover,.thread.active{background:var(--panel2)}
+  .thread img{width:40px;height:40px;border-radius:50%}
+  .thread .n{font-weight:700;font-size:14px}
+  .thread .p{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+  .thread .grp{width:40px;height:40px;border-radius:50%;background:var(--panel3);display:grid;place-items:center;font-size:18px}
+  .conv{display:flex;flex-direction:column;min-height:100vh}
+  .conv .ch{border-bottom:1px solid var(--line);padding:16px 18px;font-weight:700}
+  .conv .msgs{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+  .msg{display:flex;gap:10px;max-width:74%}
+  .msg img{width:32px;height:32px;border-radius:50%;flex:0 0 auto}
+  .msg .bub{background:var(--panel2);border-radius:14px;padding:9px 13px;font-size:14px}
+  .msg .t{color:var(--faint);font-size:11px;margin-top:3px}
+  .msg.me{margin-left:auto;flex-direction:row-reverse;text-align:right}
+  .msg.me .bub{background:var(--accent);color:#fff}
+  .conv .cbar{border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:10px}
+  .conv .cbar input{flex:1;border:1px solid var(--line);border-radius:999px;padding:10px 16px;outline:none}
+  .members{border-left:1px solid var(--line);overflow:auto;padding:14px}
+  .members h3{font-size:13px;margin:6px}
+  .member{display:flex;align-items:center;gap:10px;padding:7px 6px;border-radius:8px}
+  .member:hover{background:var(--panel2)}
+  .member img{width:32px;height:32px;border-radius:50%}
+  @media(max-width:1100px){.chat{grid-template-columns:270px 1fr}.members{display:none}}
+  @media(max-width:980px){.playerwrap{grid-template-columns:1fr}.player-main{border-right:0}}
+
+  @media(max-width:900px){:root{--sidebar:76px}.brand span.t{display:none}.nav span.l{display:none}.me .n,.me .h{display:none}.grid{grid-template-columns:repeat(2,1fr)}.chat{grid-template-columns:1fr}.threads{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside>
+    <div class="brand"><span class="m">🕺</span><span class="t">partyparty</span></div>
+    <nav id="nav">
+      <a class="nav active" data-view="event"><span class="i">🏠</span><span class="l">Event</span><span class="badge">LIVE</span></a>
+      <a class="nav" data-view="discover"><span class="i">🧭</span><span class="l">Discover</span></a>
+      <a class="nav" data-view="notifs"><span class="i">🔔</span><span class="l">Notifications</span></a>
+      <a class="nav" data-view="chat"><span class="i">💬</span><span class="l">Inbox</span><span class="badge" style="background:var(--accent)">1</span></a>
+      <a class="nav" data-view="profile"><span class="i">👤</span><span class="l">Profile</span></a>
+      <a class="nav" data-view="moderate"><span class="i">🛡️</span><span class="l">Moderate</span><span class="badge" style="background:#ff9a3c">3</span></a>
+      <a class="nav create" id="createBtn"><span class="i">＋</span><span class="l">Post a moment</span></a>
+    </nav>
+    <div class="side-foot">
+      <div class="me"><img src="https://i.pravatar.cc/80?img=12" alt=""><div><div class="n">Ramine</div><div class="h">DJ · host</div></div></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main>
+    <!-- EVENT TIMELINE -->
+    <section class="view active" id="view-event">
+      <div class="pagehead">
+        <h1>Rooftop Sessions — Ramine</h1>
+        <div class="sub">Sat night · 42 people here · anyone at the party can post — you approve what goes up</div>
+      </div>
+      <div class="wrap feedwrap">
+        <div class="live">
+          <span class="dot"></span>
+          <span class="tag">LIVE</span>
+          <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="np">Deep house set&nbsp; <small>now playing · everyone in sync</small></div>
+          <div class="listeners"><b>42</b><small>listening</small></div>
+        </div>
+
+        <!-- composer -->
+        <div class="composer" id="composerInline">
+          <img class="av" src="https://i.pravatar.cc/80?img=12" alt="">
+          <div class="grow">
+            <input class="ph" placeholder="Share a moment from the party…" readonly>
+            <div class="row">
+              <button class="iconbtn">📷 Photo</button>
+              <button class="iconbtn">🎬 Video</button>
+              <button class="btn primary sm post">Post</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="feed"></div>
+      </div>
+    </section>
+
+    <!-- DISCOVER -->
+    <section class="view" id="view-discover">
+      <div class="pagehead" style="text-align:center"><h1>Discover events & moments</h1></div>
+      <div class="wrap">
+        <div class="tabs" style="max-width:340px;margin:16px auto 0">
+          <div class="tab active">All</div><div class="tab">Photos</div><div class="tab">Videos</div>
+        </div>
+        <div class="grid" id="discoverGrid"></div>
+      </div>
+    </section>
+
+    <!-- NOTIFICATIONS -->
+    <section class="view" id="view-notifs">
+      <div class="pagehead"><h1>Notifications</h1></div>
+      <div class="wrap"><div class="nlist" id="notifList"></div></div>
+    </section>
+
+    <!-- PROFILE -->
+    <section class="view" id="view-profile">
+      <div class="banner">
+        <img src="https://picsum.photos/seed/ppbanner/1400/400" alt="">
+        <button class="btn sm edit">Edit banner</button>
+      </div>
+      <div class="wrap">
+        <div class="phead">
+          <img class="pav" src="https://i.pravatar.cc/160?img=12" alt="">
+          <div class="meta">
+            <h2>Ramine <button class="btn sm primary">Follow</button></h2>
+            <div class="role">DJ · House / Techno · Based in Paris</div>
+            <div class="role">Hosting <b>Rooftop Sessions</b> every Saturday 🌇</div>
+          </div>
+          <div class="foll">
+            <div class="c"><b>1,204</b> <span>followers</span></div>
+            <div class="c"><b>318</b> <span>following</span></div>
+          </div>
+        </div>
+        <div class="tabs" style="margin-top:20px">
+          <div class="tab active">Moments</div><div class="tab">Events</div><div class="tab">About</div>
+        </div>
+        <div class="grid" id="profileGrid"></div>
+      </div>
+    </section>
+
+    <!-- MODERATE -->
+    <section class="view" id="view-moderate">
+      <div class="pagehead"><h1>Moderate — pending posts</h1><div class="sub">Guests' posts wait here until you approve them</div></div>
+      <div class="wrap feedwrap">
+        <div class="pendbanner">⏳ 3 posts waiting for your approval</div>
+        <div id="modFeed"></div>
+      </div>
+    </section>
+
+    <!-- PLAYER (opens from a Discover / Profile tile) -->
+    <section class="view" id="view-player">
+      <div class="playerwrap">
+        <div class="player-main">
+          <span class="player-back" onclick="document.querySelector('#nav [data-view=discover]').click()">‹ Back to Discover</span>
+          <div class="stage">
+            <img src="https://picsum.photos/seed/setstage/1280/720" alt="">
+            <div class="ctrls">
+              <button class="pbtn">⏮</button><button class="pbtn">▶</button><button class="pbtn">⏭</button>
+              <span class="plpos">1:20 / 4:20</span>
+              <div class="bar"><i></i></div>
+              <button class="pbtn">🔊</button>
+              <span class="plpos">3 of 15</span>
+            </div>
+          </div>
+          <div class="player-title">
+            <h2>Midnight Rooftop Mix</h2>
+            <div class="acts">
+              <button class="btn sm">＋ Add to set</button>
+              <button class="btn sm">↗ Share</button>
+              <button class="btn primary sm">Save</button>
+            </div>
+          </div>
+          <p class="player-desc">Recorded live at <b>Rooftop Sessions</b>, Saturday night — deep house into melodic techno. The whole room heard this in sync; replay it and drop a comment right where it hit. 🔥</p>
+        </div>
+        <div class="player-side">
+          <div class="author"><img src="https://i.pravatar.cc/80?img=12"><div><b>Ramine</b> · <a style="color:var(--accent);font-weight:700;cursor:pointer">Follow</a><div style="color:var(--muted);font-size:12px">DJ · host</div></div></div>
+          <div class="saved"><span class="stack"><span></span><span></span><span></span></span> Saved by 24 people</div>
+          <div class="cside"><img src="https://i.pravatar.cc/80?img=5"><div class="b"><b>Illusion</b> <span class="m">that transition at 2:00 🤯</span><div class="t">18 min ago · Reply</div></div><span class="like">♡</span></div>
+          <div class="cside"><img src="https://i.pravatar.cc/80?img=33"><div class="b"><b>Shokunin</b> <span class="m">best set of the summer</span><div class="t">17 min ago · Reply</div></div><span class="like">♡</span></div>
+          <div class="cside"><img src="https://i.pravatar.cc/80?img=51"><div class="b"><b>TocoDeco</b> <span class="m">need the tracklist 🙏</span><div class="t">12 min ago · Reply</div></div><span class="like">♡</span></div>
+          <div class="cside"><img src="https://i.pravatar.cc/80?img=45"><div class="b"><b>Mia</b> <span class="m">was there, unreal night</span><div class="t">9 min ago · Reply</div></div><span class="like">♡</span></div>
+          <div class="addcmt" style="border:1px solid var(--line);border-radius:999px;margin-top:14px"><img src="https://i.pravatar.cc/80?img=12"><input placeholder="Add a comment…"><button>Publish</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAT / INBOX -->
+    <section class="view" id="view-chat">
+      <div class="chat">
+        <div class="threads">
+          <input class="search" placeholder="Search people to chat with">
+          <h3>Threads</h3>
+          <div class="thread active"><div class="grp">👥</div><div><div class="n">Rooftop crew · 24</div><div class="p">yesss! 🎉</div></div></div>
+          <div class="thread"><img src="https://i.pravatar.cc/80?img=15"><div><div class="n">Zarker</div><div class="p">great set tonight buddy</div></div></div>
+          <div class="thread"><img src="https://i.pravatar.cc/80?img=5"><div><div class="n">Illusion</div><div class="p">yo</div></div></div>
+          <div class="thread"><img src="https://i.pravatar.cc/80?img=45"><div><div class="n">Mia</div><div class="p">how do you like the app?</div></div></div>
+          <div class="thread"><img src="https://i.pravatar.cc/80?img=51"><div><div class="n">TocoDeco</div><div class="p">what do you think of this</div></div></div>
+        </div>
+        <div class="conv">
+          <div class="ch">Rooftop crew · 24 members</div>
+          <div class="msgs">
+            <div class="msg"><img src="https://i.pravatar.cc/80?img=15"><div><div class="bub">who's coming Saturday?</div><div class="t">13 min ago</div></div></div>
+            <div class="msg"><img src="https://i.pravatar.cc/80?img=5"><div><div class="bub">me + 2 🙌</div><div class="t">6 min ago</div></div></div>
+            <div class="msg me"><div><div class="bub">Yoooo.</div></div></div>
+            <div class="msg me"><div><div class="bub">this crew is looking sick</div><div class="t">1 min ago</div></div></div>
+            <div class="msg"><img src="https://i.pravatar.cc/80?img=45"><div><div class="bub">yesss!</div><div class="t">just now</div></div></div>
+          </div>
+          <div class="cbar"><input placeholder="Type a message…"><button class="btn primary">Send</button></div>
+        </div>
+        <div class="members">
+          <h3>Members</h3>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=12"><span>Ramine</span></div>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=15"><span>Zarker</span></div>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=5"><span>Illusion</span></div>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=33"><span>Shokunin</span></div>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=45"><span>Mia</span></div>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=51"><span>TocoDeco</span></div>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=60"><span>Vaultec</span></div>
+          <div class="member"><img src="https://i.pravatar.cc/80?img=8"><span>Pixelord</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- COMPOSE MODAL -->
+<div class="modal" id="modal">
+  <div class="sheet">
+    <div class="h">
+      <img src="https://i.pravatar.cc/80?img=12" alt="">
+      <div><b>Post a moment</b><div style="color:var(--muted);font-size:13px">to Rooftop Sessions</div></div>
+      <button class="x" id="closeModal">✕</button>
+    </div>
+    <div class="bd">
+      <textarea placeholder="What's happening at the party, Ramine?"></textarea>
+      <div class="drop"><div class="ic">🖼️</div><div><b>Add photos / videos</b></div><div style="font-size:13px">or drag &amp; drop</div></div>
+    </div>
+    <div class="foot">
+      <label class="toggle"><span class="switch on" onclick="this.classList.toggle('on')"></span> Enable comments</label>
+      <button class="btn primary" style="margin-left:auto" id="doPost">Post</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---- mock data ----
+  const AV = n => `https://i.pravatar.cc/80?img=${n}`;
+  const IMG = s => `https://picsum.photos/seed/${s}/900/900`;
+  const heart = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.2C.4 8.4 2 5 5.2 5 7 5 8.6 6.1 12 9c3.4-2.9 5-4 6.8-4C22 5 23.6 8.4 22 11.8 19.5 16.4 12 21 12 21z"/></svg>';
+  const heartF = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-10-9.2C.4 8.4 2 5 5.2 5 7 5 8.6 6.1 12 9c3.4-2.9 5-4 6.8-4C22 5 23.6 8.4 22 11.8 19.5 16.4 12 21 12 21z"/></svg>';
+  const chat = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.5 7.2L3 21l1.8-6.5A8 8 0 1 1 21 12z"/></svg>';
+  const share = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v14"/></svg>';
+
+  const posts = [
+    {who:'Zarker', av:AV(15), t:'2 min ago', guest:false, text:'The drop on this last track 🔥🔥 whole roof went off', img:IMG('party1'), hearts:36, likes:12, comments:[
+      {who:'Shokunin',av:AV(33),text:'that transition was unreal'},{who:'Illusion',av:AV(5),text:'best set of the summer 🙌'}]},
+    {who:'Guest · Mia', av:AV(45), t:'6 min ago', guest:true, text:'sunset from the corner 🌇', img:IMG('sunset2'), hearts:58, likes:9, comments:[
+      {who:'Pixelord',av:AV(8),text:'gorgeous'}]},
+    {who:'Ramine', av:AV(12), t:'20 min ago', guest:false, text:'We are LIVE. Grab the link, tap play, pocket your phone — everyone hears it together. Post your best shots here 📸', img:null, hearts:74, likes:31, comments:[
+      {who:'TocoDeco',av:AV(51),text:'love this'},{who:'Vaultec',av:AV(60),text:'here we go 🎉'}]},
+    {who:'Guest · Leo', av:AV(53), t:'25 min ago', guest:true, text:'', img:IMG('crowd3'), hearts:22, likes:4, comments:[]},
+  ];
+
+  const pending = [
+    {who:'Guest · Aneec', av:AV(23), t:'just now', text:'dancefloor is packed rn', img:IMG('pend1')},
+    {who:'Guest · Waldo', av:AV(31), t:'1 min ago', text:'', img:IMG('pend2')},
+    {who:'Guest · Klara', av:AV(41), t:'3 min ago', text:'the lights though ✨', img:IMG('pend3')},
+  ];
+
+  const notifs = {
+    New:[
+      {who:'Klick',av:AV(14),txt:'started following you',t:'5m',follow:true},
+      {who:'TocoDeco',av:AV(51),txt:'and 4 others liked your post',t:'12m',thumb:IMG('party1')},
+    ],
+    Earlier:[
+      {who:'Pixelord',av:AV(8),txt:'started following you',t:'1d',follow:true},
+      {who:'Shokunin',av:AV(33),txt:'and 4 others liked your post',t:'1d',thumb:IMG('crowd3')},
+      {who:'Vaultec',av:AV(60),txt:'commented: “best set of the summer”',t:'2d',thumb:IMG('sunset2')},
+      {who:'Zarker',av:AV(15),txt:'approved your post to Rooftop Sessions',t:'2d'},
+    ]
+  };
+
+  // ---- renderers ----
+  function reactsRow(p){
+    return `<div class="reacts"><div class="emos"><span>❤️</span><span>👍</span><span>🔥</span></div>
+      <div class="who"><b>${p.hearts+p.likes}</b> reactions · <b>${p.comments.length}</b> comments</div></div>`;
+  }
+  function commentsBlock(p){
+    if(!p.comments.length) return '';
+    return `<div class="comments">${p.comments.map(c=>`<div class="cmt"><img src="${c.av}"><div class="b"><b>${c.who}</b> ${c.text}</div></div>`).join('')}</div>`;
+  }
+  function postCard(p){
+    return `<div class="card">
+      <div class="top"><img src="${p.av}"><div><div class="n">${p.who}${p.guest?'<span class="guest">guest</span>':''}</div><div class="t">${p.t}</div></div><button class="more">⋯</button></div>
+      ${p.text?`<div class="body"><p>${p.text}</p></div>`:''}
+      ${p.img?`<div class="media"><img src="${p.img}" loading="lazy"></div>`:''}
+      <div class="actions">
+        <button class="react heart">${heart}<span>${p.hearts}</span></button>
+        <button class="react">${chat}<span>${p.comments.length}</span></button>
+        <button class="react" style="margin-left:auto">${share}</button>
+      </div>
+      ${reactsRow(p)}
+      ${commentsBlock(p)}
+      <div class="addcmt"><img src="${AV(12)}"><input placeholder="Add a comment…"><button>Publish</button></div>
+    </div>`;
+  }
+  function modCard(p){
+    return `<div class="card pending">
+      <div class="top"><img src="${p.av}"><div><div class="n">${p.who}<span class="guest">guest</span></div><div class="t">${p.t}</div></div></div>
+      ${p.text?`<div class="body"><p>${p.text}</p></div>`:''}
+      ${p.img?`<div class="media"><img src="${p.img}" loading="lazy"></div>`:''}
+      <div class="modbar"><span class="who">Approve to show on the event wall</span>
+        <button class="btn ghostdanger sm" onclick="this.closest('.card').remove()">Reject</button>
+        <button class="btn good sm" onclick="this.closest('.card').remove()">✓ Approve</button></div>
+    </div>`;
+  }
+  function tile(s,i){
+    const vid = i%3===1;
+    return `<div class="tile"><img src="https://picsum.photos/seed/${s}/600/600" loading="lazy">
+      ${vid?'<div class="vid">▶</div>':''}
+      <div class="ov"><div class="st">❤ ${20+i*7} &nbsp; 💬 ${3+i}</div></div></div>`;
+  }
+  function notifRow(n){
+    return `<div class="nrow"><img src="${n.av}"><div class="txt"><b>${n.who}</b> ${n.txt} <span class="t">· ${n.t}</span></div>
+      ${n.follow?'<button class="btn primary sm act">Follow</button>':(n.thumb?`<img class="thumb act" src="${n.thumb}">`:'')}</div>`;
+  }
+
+  document.getElementById('feed').innerHTML = posts.map(postCard).join('');
+  document.getElementById('modFeed').innerHTML = pending.map(modCard).join('');
+  document.getElementById('discoverGrid').innerHTML = ['dj1','ph2','vid3','ph4','red5','bw6','ph7','vid8','ph9'].map(tile).join('');
+  document.getElementById('profileGrid').innerHTML = ['pf1','pf2','pf3','pf4','pf5','pf6'].map(tile).join('');
+  document.getElementById('notifList').innerHTML = Object.entries(notifs).map(([k,v])=>`<div class="nsection">${k}</div>${v.map(notifRow).join('')}`).join('');
+
+  // ---- interactions ----
+  const views = document.querySelectorAll('.view');
+  document.querySelectorAll('#nav .nav[data-view]').forEach(a=>a.onclick=()=>{
+    document.querySelectorAll('#nav .nav').forEach(n=>n.classList.remove('active'));
+    a.classList.add('active');
+    views.forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+a.dataset.view).classList.add('active');
+    window.scrollTo(0,0);
+  });
+  // heart toggle
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('.react.heart'); if(!b)return;
+    const s=b.querySelector('span'); let n=+s.textContent;
+    if(b.classList.toggle('on')){b.innerHTML=heartF+`<span>${n+1}</span>`;b.classList.add('on');}
+    else{b.innerHTML=heart+`<span>${n-1}</span>`;}
+  });
+  // modal
+  const modal=document.getElementById('modal');
+  const open=()=>modal.classList.add('open'), close=()=>modal.classList.remove('open');
+  document.getElementById('createBtn').onclick=open;
+  document.getElementById('composerInline').onclick=open;
+  document.getElementById('closeModal').onclick=close;
+  modal.onclick=e=>{if(e.target===modal)close()};
+  document.getElementById('doPost').onclick=()=>{
+    close();
+    const p={who:'Ramine',av:AV(12),t:'now',guest:false,text:'(your new post — pending nothing, you\'re the host)',img:IMG('new'+Date.now()%99),hearts:0,likes:0,comments:[]};
+    document.getElementById('feed').insertAdjacentHTML('afterbegin',postCard(p));
+  };
+  // Discover / Profile tiles open the full player view
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('#discoverGrid .tile, #profileGrid .tile'))return;
+    document.querySelectorAll('#nav .nav').forEach(n=>n.classList.remove('active'));
+    views.forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-player').classList.add('active');
+    window.scrollTo(0,0);
+  });
+</script>
+</body>
+</html>
