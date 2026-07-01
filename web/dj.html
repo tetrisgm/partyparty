@@ -129,6 +129,11 @@
       <div class="kv"><span>Delay from DJ (glass-to-glass)</span><span id="djDelay">—</span></div>
       <div class="kv"><span>Sync spread (dancer ↔ dancer)</span><span id="syncSpread">—</span></div>
       <div class="hint" id="syncDetail" style="margin:4px 0 6px"></div>
+      <span class="advcheck" id="latHelpToggle" style="margin:2px 0 6px">ⓘ What do these two numbers mean?</span>
+      <div class="hint" id="latHelp" hidden style="margin:0 0 8px;line-height:1.55">
+        <b style="color:#cdd1e0">Delay from DJ</b> — how long after you play something the room hears it. A couple of seconds is normal and totally fine; nobody's comparing to your booth. Only worth lowering if you're talking to the crowd live.<br><br>
+        <b style="color:#cdd1e0">Sync spread</b> — how far apart two people standing next to each other are. This is the dancefloor number: under about half a second and the room moves together. If it climbs, phones are usually rebuffering on weak Wi‑Fi — nudge <b>Latency</b> toward Stable, or use a stronger router. Phones keep playing locked or in another app, so you can't "push" a lagging one — a steady buffer is what holds everyone together.
+      </div>
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:#23202e;color:#cdd1e0;border:0;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
       <div class="hint" style="margin-top:8px">Sync test: open the player on a few phones — lock a couple — and watch the spread. That's what the dancefloor feels.</div>
@@ -257,6 +262,7 @@
     const b = document.getElementById('copySync'); if (b) { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => b.textContent = o, 1200); }
   }
   { const cs = document.getElementById('copySync'); if (cs) cs.onclick = copySync; }
+  { const ht = document.getElementById('latHelpToggle'), hb = document.getElementById('latHelp'); if (ht && hb) ht.onclick = () => hb.hidden = !hb.hidden; }
 
   const savedL = localStorage.getItem('pp.latency');
   if (savedL) $('latency').value = savedL;
