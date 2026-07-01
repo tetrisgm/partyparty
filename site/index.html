@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>partyparty — a Mac app + a page for every event</title>
-<meta name="description" content="A Mac app that streams your set to every phone in the room — in sync, even locked. And a page for every event: post the details, the stream saves as a replay, and your crowd joins during or after to comment, post photos & videos, and follow you.">
+<title>partyparty — throw a DJ popup where speakers would get you shut down</title>
+<meta name="description" content="partyparty turns your Mac into a silent-disco rig — no rented headsets, no app for guests. Hit Go Live, hand out a QR, and your set plays in everyone's own earbuds over the local Wi-Fi. No speakers in the air = no permit, no noise complaint, no shutdown. Works fully offline.">
 <meta property="og:title" content="partyparty">
-<meta property="og:description" content="Stream your set to every phone in sync — and give every event its own page, with an auto-saved replay and a live social wall.">
+<meta property="og:description" content="A Mac app that turns any spot into a silent-disco popup. No rented headsets, no app for guests, no internet, no shutdown.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#08070c">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
@@ -14,145 +14,138 @@
   :root{
     --bg:#08070c; --bg2:#0f0d16; --card:#151221; --line:#241f33; --line2:#332b47;
     --ink:#f6f3fb; --muted:#a79fc4; --faint:#726a8f;
-    --accent:#ff4d8d; --accent2:#ff9a3c; --blue:#1d9bf6;
+    --accent:#ff4d8d; --accent2:#ff9a3c; --blue:#1d9bf6; --good:#39d98a;
     --grad:linear-gradient(120deg,#ff4d8d,#ff9a3c);
-    --radius:18px; --maxw:1180px;
-    -webkit-font-smoothing:antialiased;
+    --radius:18px; --maxw:1180px; -webkit-font-smoothing:antialiased;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;line-height:1.55;overflow-x:hidden}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;line-height:1.55;overflow-x:hidden}
   a{color:inherit;text-decoration:none}
   img{display:block}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
-  .btn{display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:0;border-radius:999px;font-weight:700;font-size:16px;
-    padding:15px 26px;color:#1a0d12;background:var(--grad);box-shadow:0 12px 34px -10px rgba(255,77,141,.6);transition:transform .15s,box-shadow .15s}
+  .btn{display:inline-flex;align-items:center;gap:9px;cursor:pointer;border:0;border-radius:999px;font-weight:700;font-size:16px;padding:15px 26px;color:#1a0d12;background:var(--grad);box-shadow:0 12px 34px -10px rgba(255,77,141,.6);transition:transform .15s,box-shadow .15s}
   .btn:hover{transform:translateY(-2px);box-shadow:0 18px 44px -10px rgba(255,77,141,.7)}
   .btn.sm{padding:10px 18px;font-size:14px}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line2);box-shadow:none}
   .btn.ghost:hover{border-color:var(--accent);box-shadow:none}
   .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:12.5px;font-weight:800;color:var(--accent)}
-  h2{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;line-height:1.05;margin:.3em 0 .4em}
-  .lede{color:var(--muted);font-size:clamp(16px,2vw,19px);max-width:640px}
+  h2{font-size:clamp(27px,3.8vw,42px);letter-spacing:-.03em;line-height:1.06;margin:.3em 0 .4em}
+  .lede{color:var(--muted);font-size:clamp(15.5px,1.7vw,18px);max-width:640px}
   section{position:relative}
+  .soon{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--accent2);border:1px solid #5a3a1e;background:rgba(255,154,60,.12);border-radius:999px;padding:3px 9px;vertical-align:middle}
 
   header{position:fixed;top:0;left:0;right:0;z-index:30;transition:background .25s,border-color .25s;border-bottom:1px solid transparent}
-  header.scrolled{background:rgba(8,7,12,.8);backdrop-filter:blur(14px);border-color:var(--line)}
+  header.scrolled{background:rgba(8,7,12,.82);backdrop-filter:blur(14px);border-color:var(--line)}
   header .wrap{display:flex;align-items:center;justify-content:space-between;height:66px}
   .brand{display:flex;align-items:center;gap:9px;font-weight:800;letter-spacing:-.02em;font-size:20px}
   .brand .m{font-size:22px}
 
-  /* hero */
-  .hero{position:relative;min-height:94vh;display:flex;align-items:center;overflow:hidden}
+  .hero{position:relative;min-height:96vh;display:flex;align-items:center;overflow:hidden}
   .hero .bg{position:absolute;inset:0;z-index:0}
   .hero .bg img{width:100%;height:100%;object-fit:cover;object-position:70% center}
-  .hero .bg::after{content:"";position:absolute;inset:0;background:
-     linear-gradient(90deg,rgba(8,7,12,.96) 0%,rgba(8,7,12,.72) 42%,rgba(8,7,12,.25) 100%),
-     linear-gradient(0deg,var(--bg),transparent 30%)}
+  .hero .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,7,12,.97) 0%,rgba(8,7,12,.76) 44%,rgba(8,7,12,.28) 100%),linear-gradient(0deg,var(--bg),transparent 28%)}
   .hero .wrap{position:relative;z-index:1;padding-top:66px}
-  .hero-in{max-width:660px}
-  .pill{display:inline-flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 14px;margin-bottom:22px}
-  .pill .dot{width:7px;height:7px;border-radius:50%;background:#39d98a;box-shadow:0 0 10px #39d98a}
-  h1{font-size:clamp(40px,6.4vw,74px);line-height:1;letter-spacing:-.04em;margin:.08em 0 .3em}
+  .hero-in{max-width:680px}
+  .pill{display:inline-flex;gap:8px;align-items:center;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 14px;margin-bottom:22px}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 10px var(--good)}
+  h1{font-size:clamp(38px,6vw,70px);line-height:1.02;letter-spacing:-.04em;margin:.08em 0 .32em}
   h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero .lede{margin-bottom:30px}
+  .hero .lede{margin-bottom:30px;max-width:600px}
   .cta{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .meta{margin-top:16px;font-size:13.5px;color:var(--faint)}
   .meta b{color:var(--muted)}
 
-  /* two pillars */
-  .pillars-sec{padding:92px 0 20px;background:radial-gradient(70% 60% at 50% 0%,rgba(255,77,141,.10),transparent 70%)}
-  .pillars{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px}
-  @media(max-width:820px){.pillars{grid-template-columns:1fr}}
-  .pillar{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);border-radius:var(--radius);padding:28px}
-  .pillar .tag{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
-  .pillar.app .tag{color:var(--blue)}
-  .pillar h3{margin:10px 0 8px;font-size:23px;letter-spacing:-.02em}
-  .pillar>p{margin:0 0 16px;color:var(--muted);font-size:15px}
-  .pillar ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
-  .pillar li{display:flex;gap:11px;font-size:15px}
-  .pillar li .ic{flex:0 0 auto}
-  .pillar li b{font-weight:650}.pillar li span{color:var(--muted)}
+  .band{position:relative;padding:92px 0}
+  .band.alt{background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  @media(max-width:860px){.split{grid-template-columns:1fr;gap:30px}}
+  .shot{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 70px -30px #000}
+  .shot img{width:100%;height:100%;object-fit:cover;aspect-ratio:4/3}
+  .feat{display:flex;gap:13px;margin-top:18px}
+  .feat .ic{font-size:20px;flex:0 0 auto;line-height:1.3}
+  .feat b{display:block}
+  .feat p{margin:2px 0 0;color:var(--muted);font-size:14.5px}
+  .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:38px}
+  @media(max-width:820px){.cards3{grid-template-columns:1fr}}
+  .c{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);border-radius:var(--radius);padding:22px;transition:transform .2s,border-color .2s}
+  .c:hover{transform:translateY(-3px);border-color:var(--line2)}
+  .c .ic{font-size:24px}.c h3{margin:12px 0 5px;font-size:17px}.c p{margin:0;color:var(--muted);font-size:14.5px}
 
   /* device showcase */
-  .showcase{padding:70px 0 40px;text-align:center}
   .stage{position:relative;margin-top:44px;display:flex;justify-content:center;align-items:flex-end;gap:26px;min-height:520px}
-  .phone{width:238px;border-radius:36px;background:#07080c;padding:9px;border:1px solid #262233;box-shadow:0 50px 90px -34px rgba(0,0,0,.85);flex:0 0 auto}
+  .phone{width:238px;border-radius:36px;background:#07080c;padding:9px;border:1px solid #262233;box-shadow:0 50px 90px -34px rgba(0,0,0,.85);flex:0 0 auto;position:relative}
   .phone.side{transform:scale(.9) translateY(18px);opacity:.96}
   .phone .scr{background:#fff;color:#0e1116;border-radius:28px;overflow:hidden;height:500px;position:relative;text-align:left}
+  .phone .tagpin{position:absolute;top:-12px;left:50%;transform:translateX(-50%);z-index:5;white-space:nowrap}
+  .tagpin.now{color:#1a0d12;background:var(--grad);font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:4px 10px}
   .notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:20px;background:#07080c;border-radius:0 0 14px 14px;z-index:3}
   @media(max-width:900px){.stage{gap:0;min-height:auto}.phone.side{display:none}}
-
-  /* mini app screens (light) */
   .m{font-size:12px;height:100%;overflow:hidden;display:flex;flex-direction:column}
   .m .bar{display:flex;align-items:center;gap:7px;padding:16px 12px 8px;font-weight:800;letter-spacing:-.01em}
   .m .bar .live{margin-left:auto;font-size:9px;font-weight:800;color:#ff3b5c;border:1px solid #ffd9e1;border-radius:999px;padding:2px 7px;letter-spacing:.06em}
-  .m .live-strip{margin:6px 10px;padding:9px 11px;border-radius:12px;background:linear-gradient(120deg,#fff5f8,#fff8f2);border:1px solid #ffdbe6;display:flex;align-items:center;gap:8px}
-  .m .live-strip .d{width:7px;height:7px;border-radius:50%;background:#ff3b5c}
-  .m .live-strip b{font-size:11px}.m .live-strip small{color:#6b7280;display:block;font-size:9px}
-  .m .live-strip .cnt{margin-left:auto;font-weight:800}
+  .m .stagec{position:relative;height:200px;background-size:cover;background-position:center}
+  .m .stagec .ctrls{position:absolute;left:0;right:0;bottom:0;padding:10px;display:flex;align-items:center;gap:7px;color:#fff;font-size:11px;background:linear-gradient(0deg,rgba(0,0,0,.6),transparent)}
+  .m .stagec .ctrls .pb{flex:1;height:3px;background:rgba(255,255,255,.35);border-radius:2px;position:relative}
+  .m .stagec .ctrls .pb i{position:absolute;left:0;top:0;bottom:0;width:34%;background:#fff;border-radius:2px}
+  .m .np-t{padding:12px 12px 2px;font-weight:800;font-size:15px}
+  .m .np-s{padding:0 12px;color:#6b7280;font-size:11px}
+  .m .eq{display:flex;align-items:flex-end;gap:3px;height:26px;padding:12px}
+  .m .eq i{width:5px;background:var(--grad);border-radius:2px;animation:bar 1s ease-in-out infinite}
+  .m .eq i:nth-child(2){animation-delay:.15s}.m .eq i:nth-child(3){animation-delay:.35s}.m .eq i:nth-child(4){animation-delay:.5s}.m .eq i:nth-child(5){animation-delay:.2s}.m .eq i:nth-child(6){animation-delay:.4s}.m .eq i:nth-child(7){animation-delay:.1s}
+  @keyframes bar{0%,100%{height:6px}50%{height:24px}}
   .m .ehead{padding:14px 12px 9px;border-bottom:1px solid #eef0f3}
   .m .ehead .row{display:flex;align-items:center;gap:8px}
   .m .ehead .av{width:32px;height:32px;border-radius:50%;background:var(--grad);flex:0 0 auto}
   .m .ehead b{font-size:13px}
   .m .ehead .fl{margin-left:auto;font-size:10px;font-weight:800;color:#fff;background:var(--blue);border-radius:999px;padding:4px 11px}
   .m .ehead .det{font-size:10px;color:#6b7280;margin-top:6px}
-  .m .socials{display:flex;gap:10px;margin-top:8px;color:#8a92a0}
-  .m .socials svg{width:16px;height:16px}
+  .m .socials{display:flex;gap:10px;margin-top:8px;color:#8a92a0}.m .socials svg{width:16px;height:16px}
   .m .post{margin:8px 10px;border:1px solid #eceef2;border-radius:14px;overflow:hidden;background:#fff}
   .m .post .h{display:flex;align-items:center;gap:7px;padding:9px 10px}
   .m .post .h .av{width:24px;height:24px;border-radius:50%;background:var(--grad)}
   .m .post .h b{font-size:11px}.m .post .h .g{font-size:8px;color:var(--blue);background:#eaf5fe;border-radius:999px;padding:1px 6px}
   .m .post .im{height:140px;background-size:cover;background-position:center}
-  .m .post .ax{display:flex;gap:12px;padding:8px 11px;color:#3d434d;font-size:12px;align-items:center}
-  .m .post .ax .heart{color:#ff3b5c}
-  .m .stagec{position:relative;height:190px;background-size:cover;background-position:center}
-  .m .stagec .rep{position:absolute;top:9px;left:9px;font-size:9px;font-weight:800;letter-spacing:.05em;background:rgba(0,0,0,.62);color:#fff;padding:3px 9px;border-radius:999px}
-  .m .stagec .ctrls{position:absolute;left:0;right:0;bottom:0;padding:10px;display:flex;align-items:center;gap:7px;color:#fff;font-size:11px;background:linear-gradient(0deg,rgba(0,0,0,.6),transparent)}
-  .m .stagec .ctrls .pb{flex:1;height:3px;background:rgba(255,255,255,.35);border-radius:2px;position:relative}
-  .m .stagec .ctrls .pb i{position:absolute;left:0;top:0;bottom:0;width:26%;background:#fff;border-radius:2px}
+  .m .post .ax{display:flex;gap:12px;padding:8px 11px;color:#3d434d;font-size:12px}.m .post .ax .heart{color:#ff3b5c}
   .m .chat-h{padding:14px 12px 8px;font-weight:800}
   .m .msgs{padding:6px 10px;display:flex;flex-direction:column;gap:7px;flex:1}
-  .m .msg{max-width:78%;background:#f1f3f6;border-radius:12px;padding:6px 9px;font-size:11px}
+  .m .msg{max-width:80%;background:#f1f3f6;border-radius:12px;padding:6px 9px;font-size:11px}
   .m .msg.me{margin-left:auto;background:var(--blue);color:#fff}
   .m .cbar{margin:8px 10px;border:1px solid #e6e8ec;border-radius:999px;padding:8px 12px;color:#9aa1ab;font-size:10px}
   .cap{color:var(--faint);font-size:13px;margin-top:26px}
 
-  .band{position:relative;padding:96px 0}
-  .split{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
-  @media(max-width:860px){.split{grid-template-columns:1fr;gap:32px}}
-  .shot{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);box-shadow:0 30px 70px -30px #000}
-  .shot img{width:100%;height:100%;object-fit:cover;aspect-ratio:4/3}
-  .feat{display:flex;gap:13px;margin-top:18px}
-  .feat .ic{font-size:20px;flex:0 0 auto}
-  .feat b{display:block}
-  .feat p{margin:2px 0 0;color:var(--muted);font-size:14.5px}
-  .socrow{display:flex;align-items:center;gap:14px;margin-top:22px;color:var(--muted);flex-wrap:wrap}
-  .socrow .s{display:inline-flex;align-items:center;gap:7px;font-size:14px;border:1px solid var(--line2);border-radius:999px;padding:7px 13px}
-  .socrow .s svg{width:16px;height:16px}
+  /* technical / scale */
+  .tech{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 40px;margin-top:38px}
+  @media(max-width:760px){.tech{grid-template-columns:1fr}}
+  .tech .row{display:flex;gap:13px;padding:16px 0;border-bottom:1px solid var(--line)}
+  .tech .row .ic{font-size:20px;flex:0 0 auto}
+  .tech .row b{display:block;margin-bottom:3px}
+  .tech .row p{margin:0;color:var(--muted);font-size:14.5px}
+
+  /* vs */
+  .vs{margin-top:34px;display:flex;flex-direction:column;gap:11px}
+  .vs .row{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .vs .row .ck{color:var(--good);font-weight:900;flex:0 0 auto}
+  .vs .row p{margin:0;font-size:14.5px}
+  .vs .row p b{color:var(--ink)}
 
   .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:42px;counter-reset:s}
   @media(max-width:860px){.steps{grid-template-columns:1fr 1fr}}
   @media(max-width:520px){.steps{grid-template-columns:1fr}}
   .step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px 20px}
   .step::before{counter-increment:s;content:counter(s);position:absolute;top:-16px;left:20px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:var(--grad);color:#1a0d12;font-weight:800}
-  .step h4{margin:8px 0 6px}.step p{margin:0;color:var(--muted);font-size:14px}
-
-  .chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:26px}
-  .chip{font-size:12.5px;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 13px;background:rgba(21,18,33,.6)}
+  .step h4{margin:8px 0 6px;font-size:16px}.step p{margin:0;color:var(--muted);font-size:14px}
 
   .final .box{position:relative;overflow:hidden;border-top:1px solid var(--line)}
   .final .box img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
-  .final .box::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,7,12,.92),rgba(8,7,12,.55));z-index:1}
-  .final .inner{position:relative;z-index:2;padding:110px 0;text-align:center}
+  .final .box::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,7,12,.93),rgba(8,7,12,.55));z-index:1}
+  .final .inner{position:relative;z-index:2;padding:104px 0;text-align:center}
   footer{border-top:1px solid var(--line);padding:40px 0 60px;color:var(--faint);font-size:14px}
   footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center}
 </style>
 </head>
 <body>
 
-<!-- reusable social glyphs -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <g id="ig"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.3"/></g>
   <g id="sc"><path d="M9.5 17.5H18a3 3 0 0 0 .2-6A5.2 5.2 0 0 0 9.8 8.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3.2 12v5.5M5.6 10v7.5M8 9v8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
@@ -171,87 +164,98 @@
   <div class="bg"><img src="img/hero.jpg" alt="DJ at the decks"></div>
   <div class="wrap">
     <div class="hero-in">
-      <span class="pill"><span class="dot"></span> Mac app · streams your audio to phones over Wi-Fi</span>
-      <h1>Your Mac's audio,<br>on <span class="g">every phone</span><br>in the room.</h1>
-      <p class="lede">Hit <b style="color:var(--ink)">Go Live</b> and partyparty captures whatever's playing on your Mac — a DJ set, Spotify, a mic — and streams it over your Wi-Fi to everyone's phone. Guests scan a QR and it plays in their browser: no app, no login, iPhone or Android. Everyone hears the same moment at once, even with the screen locked in a pocket.</p>
+      <span class="pill"><span class="dot"></span> SILENT POPUPS · ANYWHERE · OFFLINE</span>
+      <h1>Throw a party<br>where speakers would<br><span class="g">get you shut down.</span></h1>
+      <p class="lede">partyparty turns your Mac into a silent-disco rig — no rented headsets, no app for guests. Hit <b style="color:var(--ink)">Go Live</b>, hand out a QR, and your set plays in everyone's own earbuds. No speakers in the air means no amplified-sound permit and no noise complaint to shut you down. Park, rooftop, train, beach, warehouse — your call. Works with zero internet, and the room drops together on the beat.</p>
       <div class="cta">
         <a class="btn" href="https://party.ramine.net/partyparty.zip">⬇&nbsp; Download for macOS</a>
         <a class="btn ghost" href="#how">How it works</a>
       </div>
-      <div class="meta">Free · Apple Silicon · macOS 14+ · guests need only a browser on the same Wi-Fi</div>
+      <div class="meta">Free macOS menu-bar app · Apple Silicon · guests just need a browser on the same network</div>
     </div>
   </div>
 </section>
 
-<!-- TWO PILLARS -->
-<section class="pillars-sec" id="pillars">
+<!-- WEDGE -->
+<section class="band">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow">The wedge</span>
+      <h2>No speakers means no permit, no complaint, no shutdown.</h2>
+      <p class="lede">The rules that kill outdoor parties almost all target one thing: amplified sound. Loudspeaker curfews, sound-device permits, dB limits at the property line, rangers with meters — they trigger on speakers blasting into the air. partyparty puts the music in everyone's earbuds instead, so there's nothing broadcasting outside and nothing to measure.</p>
+      <div class="feat"><span class="ic">🎧</span><div><b>Sound is in headphones, not in the air</b><p>The amplified-sound permit trigger and "plainly audible at X feet" limits are written for loudspeakers. Headphones make no external sound, so they fall outside them.</p></div></div>
+      <div class="feat"><span class="ic">📍</span><div><b>Places a PA would get you kicked out</b><p>Rooftops, parks, beaches, libraries, warehouses, subway platforms, a moving train. If phones can reach your Mac, the party's on.</p></div></div>
+      <div class="feat"><span class="ic">🤝</span><div><b>The honest version</b><p>This defeats speaker-volume complaints and amplified-sound permits — not a loud crowd's own noise, a residential curfew, or music licensing. But amplified sound is what gets most popups shut down, and that's exactly what this removes.</p></div></div>
+    </div>
+    <div class="shot"><img src="img/crowd.jpg" alt="Crowd with hands up"></div>
+  </div>
+</section>
+
+<!-- OFFLINE -->
+<section class="band alt">
+  <div class="wrap split">
+    <div class="shot" style="order:-1"><img src="img/party.jpg" alt="Party in a dark room"></div>
+    <div>
+      <span class="eyebrow">No internet needed</span>
+      <h2>Works with zero internet. Throw it anywhere.</h2>
+      <p class="lede">You don't need Wi-Fi, cell service, or a venue's network. partyparty broadcasts over a local network your Mac itself provides — or a cheap travel router you throw in your bag (~$30). Under a bridge, on a beach, in a basement with no bars: the audio never leaves your local network, so dead zones don't matter.</p>
+      <div class="feat"><span class="ic">📡</span><div><b>LAN-only, fully offline</b><p>The Mac — or a pocket travel router — is the whole network. No internet, no venue Wi-Fi, no data plan, nothing phoning home.</p></div></div>
+      <div class="feat"><span class="ic">🕳️</span><div><b>Dead zones are a feature</b><p>You're not streaming to the cloud and back, so "we have no signal out here" stops being a dealbreaker and becomes the point.</p></div></div>
+      <div class="feat"><span class="ic">🎒</span><div><b>The whole rig fits in a bag</b><p>Your Mac plus a small router. Nothing to install on-site, nothing to sign into, nothing to haul.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- NO-APP MOAT -->
+<section class="band">
   <div class="wrap" style="text-align:center">
-    <span class="eyebrow">What it is</span>
-    <h2 style="margin-top:.2em">A Mac app, and a page for every event.</h2>
-    <p class="lede" style="margin:0 auto">The app streams your sound to the room. The page holds the event details, the live stream, the guests' posts, and the replay afterwards.</p>
-  </div>
-  <div class="wrap">
-    <div class="pillars">
-      <div class="pillar app">
-        <div class="tag">The app</div>
-        <h3>Streams your Mac to every phone</h3>
-        <p>A menu-bar app for macOS. It captures your Mac's audio and sends it out over your local Wi-Fi — guests receive it in their browser.</p>
-        <ul>
-          <li><span class="ic">🎧</span><div><b>Pick your source</b> <span>— system audio (Spotify, a set, a video) or a mic / audio interface.</span></div></li>
-          <li><span class="ic">📱</span><div><b>Guests scan a QR</b> <span>— the stream opens in their phone browser. No app, no account, iPhone or Android.</span></div></li>
-          <li><span class="ic">🕰️</span><div><b>Everyone's in sync</b> <span>— each phone matches your Mac's clock, so the room hears the same moment — no echo.</span></div></li>
-          <li><span class="ic">🔒</span><div><b>Keeps playing when locked</b> <span>— pocket the phone, screen off, and the audio continues.</span></div></li>
-        </ul>
-      </div>
-      <div class="pillar">
-        <div class="tag">The event page</div>
-        <h3>A web page for every event</h3>
-        <p>Each set gets a shareable page — a link (and QR) that works before, during, and after the night.</p>
-        <ul>
-          <li><span class="ic">📅</span><div><b>Post the details</b> <span>— date, place, lineup — then share the link so people know what's coming.</span></div></li>
-          <li><span class="ic">🔴</span><div><b>The live stream plays on it</b> <span>— guests listen right on the page while you're on.</span></div></li>
-          <li><span class="ic">💬</span><div><b>Guests post to the wall</b> <span>— comments, photos and videos, during or after. You approve what shows.</span></div></li>
-          <li><span class="ic">⏺️</span><div><b>The set is saved as a replay</b> <span>— when you stop, the whole stream uploads to the page to play back later.</span></div></li>
-          <li><span class="ic">➕</span><div><b>Follow + socials</b> <span>— followers get your next event; your SoundCloud, Instagram &amp; Spotify are linked.</span></div></li>
-        </ul>
-      </div>
+    <span class="eyebrow">The no-app moat</span>
+    <h2 style="margin-top:.2em">Guests install nothing. That's the whole point.</h2>
+    <p class="lede" style="margin:0 auto">A popup dies the second you ask 40 strangers to download an app, make an account, and pick audio devices. partyparty skips all of it — hand out a QR, they scan it, the stream opens in whatever browser is already on their phone.</p>
+    <div class="cards3">
+      <div class="c"><div class="ic">📲</div><h3>Scan a QR → plays in the browser</h3><p>Zero downloads, zero accounts. iPhone or Android, no difference — no "which app?", no version mismatch.</p></div>
+      <div class="c"><div class="ic">⚙️</div><h3>No per-guest config, ever</h3><p>Guests never touch a group name, a jitter buffer, or an audio-device picker. SonoBus makes them do all three first.</p></div>
+      <div class="c"><div class="ic">🎧</div><h3>Their earbuds, not your rentals</h3><p>Everyone uses the headphones already in their pocket. Nothing to rent, charge, hand out, or chase down after.</p></div>
     </div>
   </div>
 </section>
 
-<!-- DEVICE SHOWCASE -->
-<section class="showcase">
-  <div class="wrap">
-    <span class="eyebrow">The event page</span>
-    <h2 style="margin-top:.2em">This is what your guests open.</h2>
-    <p class="lede" style="margin:0 auto">One link. During the set it's the live player + a wall guests post to. After, the same page holds the saved replay.</p>
+<!-- SHOWCASE -->
+<section class="band alt">
+  <div class="wrap" style="text-align:center">
+    <span class="eyebrow">On the phone</span>
+    <h2 style="margin-top:.2em">What a guest actually sees.</h2>
+    <p class="lede" style="margin:0 auto">Scan, tap play, pocket the phone. The live player ships today; the event page &amp; wall are what's next.</p>
     <div class="stage">
-      <!-- live feed -->
+      <!-- event page (coming) -->
       <div class="phone side">
-        <div class="scr"><div class="notch"></div><div class="m">
-          <div class="bar"><span>🕺</span> Rooftop Sessions <span class="live">● LIVE</span></div>
-          <div class="live-strip"><span class="d"></span><b>Deep house set</b><small>now playing · in sync</small><span class="cnt">42</span></div>
-          <div class="post"><div class="h"><div class="av"></div><b>Zarker</b><div class="g">guest</div></div>
-            <div class="im" style="background-image:url('img/party.jpg')"></div>
-            <div class="ax"><span class="heart">♥ 36</span><span>💬 8</span></div></div>
-        </div></div>
-      </div>
-      <!-- event page (center) -->
-      <div class="phone">
+        <span class="tagpin soon">Coming soon</span>
         <div class="scr"><div class="notch"></div><div class="m">
           <div class="ehead">
             <div class="row"><div class="av"></div><b>Ramine</b><span class="fl">＋ Follow</span></div>
             <div class="socials"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#ig"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sc"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sp"/></svg></div>
             <div class="det">🎧 Rooftop Sessions · Sat 11pm · Le Toit, Paris</div>
           </div>
-          <div class="stagec" style="background-image:url('img/decks.jpg')"><span class="rep">▶ REPLAY · 1:42:00</span><div class="ctrls">▶ <span>12:04</span><div class="pb"><i></i></div></div></div>
           <div class="post"><div class="h"><div class="av"></div><b>Mia</b><div class="g">guest</div></div>
             <div class="im" style="background-image:url('img/dance.jpg')"></div>
             <div class="ax"><span class="heart">♥ 58</span><span>💬 12</span></div></div>
         </div></div>
       </div>
-      <!-- chat -->
+      <!-- live player (today) -->
+      <div class="phone">
+        <span class="tagpin now">▶ Live today</span>
+        <div class="scr"><div class="notch"></div><div class="m">
+          <div class="bar"><span>🕺</span> partyparty <span class="live">● LIVE</span></div>
+          <div class="stagec" style="background-image:url('img/decks.jpg')"><div class="ctrls">▶ <span>1:12:04</span><div class="pb"><i></i></div><span>🔊</span></div></div>
+          <div class="np-t">Deep house set</div>
+          <div class="np-s">Ramine · you + 41 others listening, in sync</div>
+          <div class="eq"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div style="margin-top:auto;padding:12px;color:#9aa1ab;font-size:10px">🔒 Keeps playing when you lock your phone</div>
+        </div></div>
+      </div>
+      <!-- chat (coming) -->
       <div class="phone side">
+        <span class="tagpin soon">Coming soon</span>
         <div class="scr"><div class="notch"></div><div class="m">
           <div class="chat-h">Rooftop crew · 24</div>
           <div class="msgs">
@@ -265,79 +269,93 @@
         </div></div>
       </div>
     </div>
-    <p class="cap">Event page with live stream + auto-saved replay · the social wall · group chat</p>
+    <p class="cap">Live player (shipping today) · event page &amp; group chat (Event Hub, coming soon)</p>
   </div>
 </section>
 
-<!-- EVENT PAGE deep dive -->
-<section class="band" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+<!-- TECHNICAL / SCALE -->
+<section class="band" id="how">
+  <div class="wrap">
+    <span class="eyebrow">For the skeptics</span>
+    <h2>No app — and it still scales.</h2>
+    <p class="lede">The usual reaction from technical friends is "you'll need an app to broadcast to that many phones." You don't — and the browser approach is the one that actually scales.</p>
+    <div class="tech">
+      <div class="row"><span class="ic">📄</span><div><b>It's file-serving, not 100 live streams</b><p>Your Mac encodes the set once into small chunks; every phone just fetches the same files over plain HTTP — like 100 people loading the same image. That's how the whole internet streams. A laptop does it in its sleep.</p></div></div>
+      <div class="row"><span class="ic">📶</span><div><b>The only real limit is your router</b><p>~160 kbps a listener → 100 people is ~16 Mbps, nothing. The ceiling is how many phones your Wi-Fi access point can hold — a good router does ~100. That's a router question, not a software one, and it's the same for any tool.</p></div></div>
+      <div class="row"><span class="ic">🚫</span><div><b>Multicast is the trap, not the fix</b><p>Browsers have no multicast API, so "just multicast it" means an app on every phone — the exact thing that kills a popup. And Wi-Fi multicast is slow and flaky in the real world. Plain HTTP is more reliable and needs no install.</p></div></div>
+      <div class="row"><span class="ic">🔒</span><div><b>And it survives a locked screen</b><p>WebRTC drops the moment a phone locks. HLS keeps playing in a pocket — so the format that's easiest to join is also the only one that fits a dancefloor. No compromise.</p></div></div>
+      <div class="row"><span class="ic">📈</span><div><b>The next guest is free</b><p>Guest #200 sounds exactly like guest #2. No bigger PA, no extra transmitter, no extra headset — just one more phone on the QR.</p></div></div>
+      <div class="row"><span class="ic">💻</span><div><b>One Mac is the whole sound system</b><p>The Mac (or a cheap travel router) is the entire rig — versus rented silent-disco gear at ~$3,900 for a 500-person night, every night.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- IN SYNC / LOCK-SAFE -->
+<section class="band alt">
+  <div class="wrap split">
+    <div>
+      <span class="eyebrow">In sync, lock-safe</span>
+      <h2>The room drops together — and survives a locked screen.</h2>
+      <p class="lede">Each phone clock-syncs to your Mac, so the whole floor reacts to the drop together — not half the crowd a beat behind. Every guest gets your direct signal, full-range, straight into their own headphones: no muddy room PA, no dead corners, no fighting the wind on a rooftop.</p>
+      <div class="feat"><span class="ic">🕺</span><div><b>The room drops together</b><p>Phones clock-sync to the Mac so the whole floor reacts on the beat. Whole-room reaction sync (~a fraction of a second) — not phone-to-phone phase-lock, and we won't pretend it is.</p></div></div>
+      <div class="feat"><span class="ic">🔊</span><div><b>Your direct signal, in their ears</b><p>Full-range audio straight to every guest's headphones — consistent front-row to far corner, no room mud, no dead spots.</p></div></div>
+      <div class="feat"><span class="ic">🔒</span><div><b>Keeps playing when locked</b><p>Built on HLS, so a pocketed, locked phone keeps the music going — not just while a browser tab is open and awake.</p></div></div>
+    </div>
+    <div class="shot"><img src="img/dance.jpg" alt="Hands up on the dancefloor"></div>
+  </div>
+</section>
+
+<!-- KEEP THE NIGHT -->
+<section class="band">
   <div class="wrap split">
     <div class="shot" style="order:-1"><img src="img/portrait.jpg" alt="Music fan portrait"></div>
     <div>
-      <span class="eyebrow">After the last track</span>
-      <h2>The set saves itself.</h2>
-      <p class="lede">When you stop streaming, partyparty uploads the whole set to the event page as a replay — automatically, no editing or re-uploading. Anyone who missed it presses play; anyone who was there keeps commenting and posting photos.</p>
-      <div class="feat"><span class="ic">⏺️</span><div><b>Automatic replay</b><p>The full recording is on the page minutes after you finish — same link, now on-demand.</p></div></div>
-      <div class="feat"><span class="ic">🖼️</span><div><b>A wall you moderate</b><p>Guests add photos, videos and comments during the set or days later; each one waits for your approval.</p></div></div>
-      <div class="feat"><span class="ic">🔗</span><div><b>Follow + your socials</b><p>Followers get notified of your next event; SoundCloud, Instagram and Spotify sit on your profile.</p></div></div>
-      <div class="socrow">
-        <span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sc"/></svg> SoundCloud</span>
-        <span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#ig"/></svg> Instagram</span>
-        <span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#sp"/></svg> Spotify</span>
-      </div>
+      <span class="eyebrow">Keep the night <span class="soon">Coming soon</span></span>
+      <h2>You killed it last night. You have nothing to show for it.</h2>
+      <p class="lede">DJs pour everything into a popup and walk away with nothing — no footage, no photos, no way to reach the crowd again. The Event Hub fixes that: every set gets a page. Post details ahead, the live stream plays on it, guests post photos/videos/comments to a wall you approve, and the set auto-saves as a replay. <b style="color:var(--ink)">This layer is what we're building next</b> — the live audio, browser join, sync and locked-phone playback ship today.</p>
+      <div class="feat"><span class="ic">📸</span><div><b>One page collects the whole night</b><p>Photos, videos and comments land on your event page as they happen — moderated, so you approve what shows — instead of scattering across 40 camera rolls.</p></div></div>
+      <div class="feat"><span class="ic">⏺️</span><div><b>Stop the set, it's already saved</b><p>The full set auto-saves as a replay the moment you finish — no exporting, no 3am re-upload. Anyone who missed it presses play.</p></div></div>
+      <div class="feat"><span class="ic">➡️</span><div><b>A one-off crowd becomes followers</b><p>Guests tap Follow and get pinged for your next date; your SoundCloud / Instagram / Spotify link right on the page.</p></div></div>
     </div>
   </div>
 </section>
 
-<!-- APP deep dive -->
-<section class="band">
-  <div class="wrap split">
-    <div>
-      <span class="eyebrow">Why it sounds right</span>
-      <h2>In sync — and it survives a locked screen.</h2>
-      <p class="lede">Two hard problems, handled. Every phone matches your Mac's clock and the server keeps them aligned, so the room hears the same instant instead of a scattered echo. And it streams the way internet radio does (HLS) — the one method that keeps playing when a phone browser is in the background or the screen is off.</p>
-      <div class="feat"><span class="ic">🎚️</span><div><b>Go live in one tap</b><p>A menu-bar button captures your chosen source and starts broadcasting on the Wi-Fi.</p></div></div>
-      <div class="feat"><span class="ic">👀</span><div><b>See the room</b><p>A live list of who's connected and each phone's delay, so you can spot anyone lagging.</p></div></div>
-      <div class="feat"><span class="ic">🎛️</span><div><b>Tune it</b><p>Set the audio quality and latency for the venue and the network you're on.</p></div></div>
+<!-- VS COMPETITORS -->
+<section class="band alt">
+  <div class="wrap">
+    <span class="eyebrow">Why not just use…</span>
+    <h2>Your friends keep telling you to use the wrong tool.</h2>
+    <p class="lede">SonoBus and FarPlay are genuinely great — for musicians jamming remotely at low latency. That's exactly why they're wrong for a party. Hardware silent disco does reach a crowd, but it bills you per head, every night.</p>
+    <div class="vs">
+      <div class="row"><span class="ck">✓</span><p><b>SonoBus &amp; FarPlay need an app on every guest device</b> — you can't hand a QR to a stranger's phone. partyparty plays in the browser: no install, no login.</p></div>
+      <div class="row"><span class="ck">✓</span><p><b>They're built for a handful, not a crowd</b> — SonoBus caps at ~a dozen by its own docs ("a 25-member choir is unlikely to succeed"); FarPlay's free tier is 2 people / 45 min and desktop-only.</p></div>
+      <div class="row"><span class="ck">✓</span><p><b>They're jam tools, not party tools</b> — no browser join, no event page, no photo/video wall, no replay, no follow-the-DJ.</p></div>
+      <div class="row"><span class="ck">✓</span><p><b>Hardware silent disco bills you per head</b> — ~$820 for 100 guests, ~$3,900 for 500, plus shipping, charging, handout, and loss fees. partyparty's next guest is just one more phone on the stream — free.</p></div>
+      <div class="row"><span class="ck">✓</span><p><b>Only partyparty runs fully offline on a bare LAN</b> — one DJ, one set, a whole crowd, and it captures the night into a page and a replay.</p></div>
     </div>
-    <div class="shot"><img src="img/crowd.jpg" alt="Crowd with hands up"></div>
   </div>
 </section>
 
 <!-- STEPS -->
-<section class="band" id="how" style="background:var(--bg2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+<section class="band">
   <div class="wrap">
     <span class="eyebrow">Step by step</span>
     <h2>What actually happens.</h2>
     <div class="steps">
-      <div class="step"><h4>Open the app, Go Live</h4><p>Pick your source — system audio or a mic. partyparty starts broadcasting on your Wi-Fi and shows a QR.</p></div>
-      <div class="step"><h4>Guests scan the QR</h4><p>The stream opens in their phone browser. No app, no account — iPhone or Android.</p></div>
-      <div class="step"><h4>The room plays in sync</h4><p>Every phone is time-aligned to your Mac, and keeps playing when the screen locks.</p></div>
-      <div class="step"><h4>It's saved to the page</h4><p>Stop the stream and the full set becomes a replay on the event page, alongside the crowd's posts.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- UNDER THE HOOD -->
-<section class="band">
-  <div class="wrap">
-    <span class="eyebrow">Under the hood</span>
-    <h2>Built like a proper Mac app.</h2>
-    <p class="lede">One self-contained menu-bar app — a Swift shell around a single Go server, with ffmpeg and the streaming engine embedded. Nothing to configure.</p>
-    <div class="chips">
-      <span class="chip">Go + Swift · AppKit</span><span class="chip">ScreenCaptureKit</span><span class="chip">ffmpeg · AAC</span>
-      <span class="chip">Low-Latency HLS</span><span class="chip">Locked-phone playback</span><span class="chip">Clock-synced room</span>
-      <span class="chip">Auto-saved replays</span><span class="chip">Apple notarized</span><span class="chip">Auto-updates</span>
+      <div class="step"><h4>Hit Go Live on your Mac</h4><p>Pick your source — system audio, a set, or a mic. It starts broadcasting on the local network with a QR ready to hand out.</p></div>
+      <div class="step"><h4>Hand out the QR</h4><p>Guests scan it and the stream opens in their phone browser — iPhone or Android, no app, no login. Earbuds in, they're in.</p></div>
+      <div class="step"><h4>The room drops together</h4><p>Every phone clock-syncs to your Mac; the whole floor reacts on the beat. You see who's connected and each phone's delay.</p></div>
+      <div class="step"><h4>Locked phones keep playing</h4><p>Pocket it, screen off, the music continues. When you stop, the set saves itself to the event page as a replay <span class="soon">soon</span>.</p></div>
     </div>
   </div>
 </section>
 
 <!-- FINAL CTA -->
 <section class="final">
-  <div class="box"><img src="img/dance.jpg" alt="">
+  <div class="box"><img src="img/decks.jpg" alt="">
     <div class="inner wrap">
-      <h2 style="margin-top:0">Download it and go live.</h2>
-      <p class="lede" style="margin:0 auto 26px">Free Mac app. Hit Go Live, hand your crowd a QR, and your set plays on every phone in the room — then lives on as a replay.</p>
+      <h2 style="margin-top:0">Throw one this weekend.</h2>
+      <p class="lede" style="margin:0 auto 26px">Free Mac app. Hit Go Live, hand out a QR, and your set plays in every earbud in the room — anywhere speakers would get you shut down.</p>
       <a class="btn" href="https://party.ramine.net/partyparty.zip">⬇&nbsp; Download for macOS</a>
       <div class="meta" style="margin-top:14px">Apple Silicon · macOS 14+ · free</div>
     </div>
