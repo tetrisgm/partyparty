@@ -1,0 +1,15 @@
+{
+  "name": "partyparty-site",
+  "private": true,
+  "version": "0.0.0",
+  "description": "party.ramine.net — landing page (static assets) + app download (R2), served by one Worker.",
+  "scripts": {
+    "login": "wrangler login",
+    "whoami": "wrangler whoami",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "wrangler": "^4.106.0"
+  }
+}

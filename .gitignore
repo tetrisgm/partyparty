@@ -19,3 +19,8 @@ auto.key
 /app/.swiftpm/
 # assembled .app bundle output
 /build/
+# Cloudflare deploy tooling (wrangler installed locally)
+/cloudflare/node_modules/
+/cloudflare/.wrangler/
+# generated Sparkle appcast / release artifacts
+/dist/

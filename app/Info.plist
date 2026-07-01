@@ -35,7 +35,7 @@
     </dict>
   </dict>
   <key>SUFeedURL</key>
-  <string>https://github.com/tetrisgm/partyparty/releases/latest/download/appcast.xml</string>
+  <string>https://party.ramine.net/appcast.xml</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>86400</integer>
   <!-- Run Sparkle's generate_keys once, then paste your PUBLIC key below (it is

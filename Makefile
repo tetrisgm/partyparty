@@ -52,8 +52,13 @@ app: $(HELPER) $(MEDIAMTX) $(FFMPEG)
 notarize: app
 	./scripts/notarize.sh
 
+# Publish the landing page + current app download to party.ramine.net
+# (Cloudflare Worker + R2). One-time: cd cloudflare && npm install && npx wrangler login
+deploy-site:
+	./scripts/deploy-site.sh
+
 clean:
 	rm -f $(BINARY) $(HELPER)
 	rm -rf build
 
-.PHONY: helper build run tone devices app notarize clean
+.PHONY: helper build run tone devices app notarize deploy-site clean
