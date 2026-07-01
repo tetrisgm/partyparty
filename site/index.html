@@ -188,7 +188,10 @@
   .moment{position:relative;overflow:hidden;color:var(--label)}
   .moment .bg{position:absolute;inset:0;z-index:0}
   .moment .bg img{width:100%;height:100%;object-fit:cover;object-position:70% center}
-  .hero{min-height:94vh;display:flex;align-items:center}
+  .hero{padding:116px 0 72px;text-align:center}
+  .hero-copy{max-width:820px;margin:0 auto}
+  .hero .cta{justify-content:center}
+  .hero-stage{margin-top:54px}
   .hero .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.6) 45%,rgba(0,0,0,.18) 100%),linear-gradient(0deg,#000,transparent 30%)}
   /* Apple-Music-style vibrant gradient aura (replaces photo moment-bands) */
   .aura{background:
@@ -202,7 +205,7 @@
   .pill-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:var(--r-pill);padding:6px 14px;margin-bottom:22px}
   .pill-eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 10px var(--success)}
   h1{font-size:clamp(40px,6vw,80px);line-height:1.05;letter-spacing:-.025em;margin:.06em 0 .3em}
-  .hero .lede{color:rgba(245,245,247,.86);max-width:34ch;margin-bottom:30px}
+  .hero .lede{color:rgba(245,245,247,.9);max-width:56ch;margin:0 auto 30px}
   .cta{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .meta{margin-top:18px;font-size:13px;color:rgba(245,245,247,.6)}
   .moment.center-moment{min-height:auto}
@@ -265,7 +268,7 @@
 <!-- HERO (black product moment) -->
 <section class="moment hero aura dark" id="top">
   <div class="wrap wide">
-    <div class="inner">
+    <div class="hero-copy">
       <span class="pill-eyebrow"><span class="dot"></span> Silent popups · anywhere · offline</span>
       <h1>Throw a party where speakers would get you shut down.</h1>
       <p class="lede">partyparty turns your Mac into a silent-disco rig — no rented headsets, no app for guests. Hit Go Live, hand out a QR, and your set plays in everyone's own earbuds. Nothing in the air means no permit and no noise complaint. Works with zero internet.</p>
@@ -274,6 +277,16 @@
         <a class="btn btn-ghost btn-lg" href="#how" style="color:#fff;border-color:rgba(255,255,255,.4)">How it works</a>
       </div>
       <div class="meta">Free · Apple Silicon · macOS 14+ · guests just need a browser on the same Wi-Fi</div>
+    </div>
+    <div class="stage hero-stage">
+      <div class="laptop">
+        <div class="lid"><img src="/shots/console.jpg" alt="partyparty DJ console on macOS" loading="lazy"></div>
+        <div class="base"></div>
+      </div>
+      <div class="phone shot">
+        <span class="tagpin now">▶ Live today</span>
+        <div class="scr"><div class="notch"></div><img src="/shots/player.jpg" alt="partyparty guest player on a phone" loading="lazy"></div>
+      </div>
     </div>
   </div>
 </section>
@@ -318,14 +331,14 @@
       <div class="feat"><span class="ic">📍</span><div><b>Places a PA would get you kicked out</b><p>Rooftops, parks, beaches, warehouses, a moving train. If phones can reach your Mac, the party's on.</p></div></div>
       <div class="feat"><span class="ic">🤝</span><div><b>The honest version</b><p>This defeats amplified-sound permits and speaker-volume complaints — not a loud crowd's own noise, a curfew, or music licensing.</p></div></div>
     </div>
-    <div class="shot aura reveal" style="min-height:340px"></div>
+    <div class="shot reveal"><img src="/img/crowd.jpg" alt="A packed crowd, hands up"></div>
   </div>
 </section>
 
 <!-- OFFLINE (secondary) -->
 <section class="band-secondary">
   <div class="wrap split">
-    <div class="shot aura reveal" style="order:-1;min-height:340px"></div>
+    <div class="shot reveal" style="order:-1"><img src="/img/party.jpg" alt="A party in a dark room"></div>
     <div class="reveal">
       <p class="eyebrow">No internet needed</p>
       <h2>Works with zero internet.</h2>
@@ -353,27 +366,7 @@
   </div>
 </section>
 
-<!-- SHOWCASE (secondary) -->
-<section class="band-secondary">
-  <div class="wrap wide">
-    <div class="sec-head center reveal">
-      <p class="eyebrow">See it</p>
-      <h2>The console on your Mac.<br>The player on every phone.</h2>
-      <p class="lede center" style="margin:16px auto 0">Actual screenshots, one design language across both — the DJ console you run, and the player your guests get in the browser.</p>
-    </div>
-    <div class="stage reveal">
-      <div class="laptop">
-        <div class="lid"><img src="/shots/console.jpg" alt="partyparty DJ console on macOS" loading="lazy"></div>
-        <div class="base"></div>
-      </div>
-      <div class="phone shot">
-        <span class="tagpin now">▶ Live today</span>
-        <div class="scr"><div class="notch"></div><img src="/shots/player.jpg" alt="partyparty guest player on a phone" loading="lazy"></div>
-      </div>
-    </div>
-    <p class="cap">The DJ console on your Mac · the guest player on any phone — real screenshots.</p>
-  </div>
-</section>
+<!-- (device showcase merged into the hero) -->
 
 <!-- TWO LATENCIES (light) -->
 <section>
@@ -420,7 +413,8 @@
 </section>
 
 <!-- IN SYNC / LOCK-SAFE (black product moment) -->
-<section class="moment aura dark">
+<section class="moment dark">
+  <div class="bg"><img src="/img/dance.jpg" alt="Dancefloor, hands up"></div>
   <div class="wrap" style="position:relative;z-index:1"><div style="max-width:600px">
     <p class="eyebrow reveal">In sync, lock-safe</p>
     <h2 class="reveal">The room drops together.</h2>
@@ -475,7 +469,9 @@
 </section>
 
 <!-- FINAL CTA (black product moment) -->
-<section class="moment aura dark center-moment">
+<section class="moment dark center-moment">
+  <div class="bg"><img src="/img/decks.jpg" alt=""></div>
+  <div class="bg" style="background:linear-gradient(90deg,rgba(0,0,0,.9),rgba(0,0,0,.55))"></div>
   <div class="wrap"><div class="cta-in">
     <h2 class="reveal" style="font-size:clamp(36px,5vw,60px)">Turn down for what?</h2>
     <p class="lede center reveal" style="color:rgba(245,245,247,.86);margin:16px auto 28px">There's nothing to turn down — the sound's in every earbud, not in the air. Free Mac app: hit Go Live, hand out a QR, and throw a party anywhere speakers would get you shut down.</p>
