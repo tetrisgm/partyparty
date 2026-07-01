@@ -21,6 +21,7 @@ auto.key
 /build/
 # Cloudflare deploy tooling (wrangler installed locally)
 /cloudflare/node_modules/
-/cloudflare/.wrangler/
-# generated Sparkle appcast / release artifacts
+.wrangler/
+# generated Sparkle appcast / release artifacts + stray release zips
 /dist/
+/partyparty*.zip

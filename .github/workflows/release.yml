@@ -1,16 +1,17 @@
 name: Release
 
-# Tag a version (e.g. `git tag v0.1.0 && git push --tags`) to build, Developer-ID
-# sign, notarize, staple, generate the Sparkle appcast, and publish a GitHub
-# Release. Installed apps then auto-update. One-time setup + the secret list are in
-# docs/RELEASING.md.
+# Tag a version (e.g. `git tag v0.1.1 && git push --tags`) to build, Developer-ID
+# sign, notarize, staple, sign the Sparkle appcast, and publish the download to
+# party.ramine.net (Cloudflare R2 + Worker). Installed apps then auto-update.
+# The `make release` script does the same thing locally. Required secrets are
+# listed in docs/RELEASING.md.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
-  contents: write   # create the GitHub Release + upload assets
+  contents: write   # create the GitHub Release (tag record + notes)
 
 jobs:
   release:
@@ -21,6 +22,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Bundle mediamtx (Homebrew) for the embed/helper step
         run: brew install mediamtx
@@ -64,33 +69,45 @@ jobs:
           xcrun stapler validate build/partyparty.app
           rm -f "$RUNNER_TEMP/ac_key.p8"
 
-      - name: Package the update archive (stapled)
+      - name: Package versioned + latest zip
         run: |
           set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          ditto -c -k --keepParent build/partyparty.app "dist/partyparty-${GITHUB_REF_NAME}.zip"
+          ditto -c -k --keepParent build/partyparty.app "dist/partyparty-${VERSION}.zip"
+          cp "dist/partyparty-${VERSION}.zip" dist/partyparty.zip   # stable 'latest' alias
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Generate + sign the Sparkle appcast
+      - name: Sign the Sparkle appcast
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          # Sparkle CLI tools (generate_appcast signs each item with the EdDSA key).
           SPK_VER=2.9.3
           curl -fsSL -o "$RUNNER_TEMP/sparkle.tar.xz" \
             "https://github.com/sparkle-project/Sparkle/releases/download/${SPK_VER}/Sparkle-${SPK_VER}.tar.xz"
           mkdir -p "$RUNNER_TEMP/sparkle" && tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
-          TOOLS="$RUNNER_TEMP/sparkle/bin"
-          # generate_appcast reads the private key from stdin (-f -) and writes appcast.xml.
-          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$TOOLS/generate_appcast" --ed-key-file - \
-            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
-            dist
+          # generate_appcast reads the private key from stdin (-f -), checks it
+          # matches the app's SUPublicEDKey, and writes a signed dist/appcast.xml
+          # whose enclosures point at party.ramine.net.
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$RUNNER_TEMP/sparkle/bin/generate_appcast" --ed-key-file - \
+            --download-url-prefix "https://party.ramine.net/" dist
           ls -la dist
 
-      - name: Publish GitHub Release
+      - name: Publish to Cloudflare (R2 + Worker)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "4e958c1f2621ced0354e94826590e34f"   # not secret
+        run: |
+          set -euo pipefail
+          npm --prefix cloudflare install --no-audit --no-fund
+          WR="$PWD/cloudflare/node_modules/.bin/wrangler"
+          "$WR" r2 object put "partyparty-dl/partyparty-${VERSION}.zip" --file "dist/partyparty-${VERSION}.zip" --content-type application/zip --remote
+          "$WR" r2 object put "partyparty-dl/partyparty.zip"            --file "dist/partyparty.zip"            --content-type application/zip --remote
+          "$WR" r2 object put "partyparty-dl/appcast.xml"               --file "dist/appcast.xml"               --content-type application/xml --remote
+          ( cd cloudflare && "$WR" deploy )
+
+      - name: GitHub Release (tag record + notes)
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/partyparty-${{ github.ref_name }}.zip
-            dist/appcast.xml
           generate_release_notes: true

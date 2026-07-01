@@ -1,65 +1,78 @@
 # Releasing partyparty (signed, notarized, auto-updating)
 
-`make app` builds a local, ad-hoc-signed `partyparty.app` for testing. **Releases**
-are cut by CI ([.github/workflows/release.yml](../.github/workflows/release.yml)) on a
-version tag: build → Developer-ID sign → notarize → staple → Sparkle appcast →
-GitHub Release. Installed apps then auto-update via Sparkle.
+`make app` builds a local, ad-hoc-signed `partyparty.app` for testing. A **release**
+is the full chain: build → Developer-ID sign → notarize → staple → sign the Sparkle
+appcast → publish to **party.ramine.net** (Cloudflare R2 + Worker). Installed apps
+then auto-update via Sparkle. See [DISTRIBUTION.md](DISTRIBUTION.md) for the hosting
+layout.
 
-## One-time setup
+There are two ways to cut a release; they do the same thing.
 
-### 1. Sparkle update-signing key
-On your Mac (Sparkle tools are in the Sparkle release `bin/`):
-```
-./bin/generate_keys
-```
-- Copy the **public** key it prints into `app/Info.plist` (uncomment `SUPublicEDKey`
-  and paste). The public key is not secret — commit it.
-- Export the **private** key and store it as the `SPARKLE_ED_PRIVATE_KEY` repo secret:
-  `./bin/generate_keys -x private.pem` (then paste the file contents into the secret).
+## A. From your Mac — `make release` (no CI secrets needed)
 
-### 2. Developer ID certificate
-Export your **Developer ID Application** cert + private key from Keychain as a `.p12`
-(set a password), then:
-```
-base64 -i DeveloperID.p12 | pbcopy
-```
-Add as `MACOS_CERT_P12_BASE64`; add the export password as `MACOS_CERT_PASSWORD`.
-Add the identity string (e.g. `Developer ID Application: Ramine X (TEAMID)`) as
-`MACOS_DEVELOPER_ID`.
+Uses your local Developer ID cert, the `pp-notary` notarytool profile, the Sparkle
+key in your login keychain, and your `wrangler login`. This is the reliable path.
 
-### 3. Notarization (App Store Connect API key)
-App Store Connect → Users and Access → Integrations → create an API key (Developer
-role). Download the `.p8` once.
 ```
-base64 -i AuthKey_XXXX.p8 | pbcopy
+# 1. bump the version in app/Info.plist:
+#      CFBundleShortVersionString (e.g. 0.1.1) and CFBundleVersion (e.g. 2)
+# 2. cut it:
+make release
 ```
-Add as `AC_API_KEY_BASE64`, the Key ID as `AC_API_KEY_ID`, the Issuer ID as
-`AC_API_ISSUER_ID`.
 
-### Repo secrets summary
-| Secret | What |
-|---|---|
-| `MACOS_CERT_P12_BASE64` | Developer ID Application cert+key (.p12, base64) |
-| `MACOS_CERT_PASSWORD` | password for that .p12 |
-| `MACOS_DEVELOPER_ID` | `Developer ID Application: <Name> (<TEAMID>)` |
-| `AC_API_KEY_BASE64` | App Store Connect API key (.p8, base64) — notarization |
-| `AC_API_KEY_ID` | the key's Key ID |
-| `AC_API_ISSUER_ID` | the key's Issuer ID |
-| `SPARKLE_ED_PRIVATE_KEY` | Sparkle EdDSA private key — signs the appcast |
+That builds, notarizes, signs `appcast.xml`, uploads the versioned zip + a
+`partyparty.zip` "latest" alias + the appcast to R2, then deploys the Worker.
+First run prompts once for keychain access to the Sparkle key — click **Always Allow**.
 
-Add them at: Settings → Secrets and variables → Actions → New repository secret.
+## B. From a git tag — GitHub Actions (needs the secrets below)
 
-## Cut a release
 ```
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1 && git push origin v0.1.1
 ```
-CI builds, signs, notarizes, publishes the Release (the `.app` zip + `appcast.xml`),
-and installed apps pick up the update on their next check.
+[.github/workflows/release.yml](../.github/workflows/release.yml) runs the same
+steps on a macOS runner and publishes to R2. Requires all the repo secrets below.
+
+### Repo secrets
+
+| Secret | What | Status |
+|---|---|---|
+| `SPARKLE_ED_PRIVATE_KEY` | Sparkle EdDSA private key — signs the appcast | ✅ set |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare token — R2 write + Workers deploy | ⬜ **you add** |
+| `MACOS_CERT_P12_BASE64` | Developer ID Application cert+key (.p12, base64) | ⬜ **you add** |
+| `MACOS_CERT_PASSWORD` | password for that .p12 | ⬜ **you add** |
+| `MACOS_DEVELOPER_ID` | `Developer ID Application: <Name> (<TEAMID>)` | ⬜ **you add** |
+| `AC_API_KEY_BASE64` | App Store Connect API key (.p8, base64) — notarization | ⬜ **you add** |
+| `AC_API_KEY_ID` | the key's Key ID | ⬜ **you add** |
+| `AC_API_ISSUER_ID` | the key's Issuer ID | ⬜ **you add** |
+
+Add them at Settings → Secrets and variables → Actions, or with `gh secret set NAME`.
+`CLOUDFLARE_ACCOUNT_ID` is baked into the workflow (not secret). CI path B is
+optional — **path A already works today with zero repo secrets.**
+
+#### Creating each secret
+
+- **Sparkle key** — already generated. The public key is committed in
+  `app/Info.plist` (`SUPublicEDKey`); the private key is in your login keychain and
+  in the `SPARKLE_ED_PRIVATE_KEY` secret. **Back it up** (it can't be re-derived):
+  `app/.build/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle-backup.txt`,
+  store `sparkle-backup.txt` somewhere safe (a password manager), then delete it.
+- **Cloudflare token** — dash.cloudflare.com → My Profile → API Tokens → Create
+  Token → *Custom token* with permissions **Account · Workers Scripts · Edit**,
+  **Account · Workers R2 Storage · Edit**, and **Zone · Workers Routes · Edit** (zone
+  ramine.net). Then `gh secret set CLOUDFLARE_API_TOKEN`.
+- **Developer ID cert** — export **Developer ID Application** (cert + private key)
+  from Keychain Access as a `.p12` with a password: `base64 -i DeveloperID.p12 | pbcopy`
+  → `MACOS_CERT_PASSWORD` = the export password; `MACOS_DEVELOPER_ID` =
+  `Developer ID Application: Ramine Darabiha (52WM463HR2)`.
+- **Notarization key** — App Store Connect → Users and Access → Integrations →
+  create an API key (Developer role), download the `.p8` once:
+  `base64 -i AuthKey_XXXX.p8 | pbcopy` → `AC_API_KEY_BASE64`; Key ID →
+  `AC_API_KEY_ID`; Issuer ID → `AC_API_ISSUER_ID`.
 
 ## Notes
-- Bump `CFBundleShortVersionString` + `CFBundleVersion` in `app/Info.plist` before
-  tagging (Sparkle compares `CFBundleVersion`).
-- The first notarization is the moment to confirm the embedded helpers
-  (ffmpeg/mediamtx/ppcapture, signed in `Contents/Helpers/`) and Sparkle's nested
-  code pass — `xcrun notarytool log <id> ...` names any offender.
+- Bump `CFBundleShortVersionString` + `CFBundleVersion` before releasing — Sparkle
+  compares `CFBundleVersion` to decide whether an update is available.
+- The appcast lists only the newest build; that's all Sparkle needs to offer an
+  update. Older versioned zips stay on R2 (immutable) so their links keep working.
+- If notarization fails, `xcrun notarytool log <id> --keychain-profile pp-notary`
+  names the offending nested binary (helpers in `Contents/Helpers/`, Sparkle's XPC).

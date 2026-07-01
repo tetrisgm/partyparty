@@ -46,21 +46,22 @@ un-notarized download trips Gatekeeper on the guest's Mac.
 Verify: open <https://party.ramine.net> and click Download; the file should be
 `partyparty.zip`. `curl -I https://party.ramine.net/partyparty.zip` should be 200.
 
-## TODO — not wired yet
+## Releasing
 
-1. **CI automation.** `.github/workflows/release.yml` still publishes to (private)
-   GitHub Releases. Point it at R2 instead: add a `CLOUDFLARE_API_TOKEN` repo
-   secret (scoped to Workers Scripts + R2 write) and, on `git tag vX.Y.Z`, upload
-   the zip + appcast to `partyparty-dl` and `wrangler deploy` the Worker. Then a
-   tag = a live release with zero manual steps.
+Both paths build → sign → notarize → sign the appcast → publish to R2:
+- **`make release`** — from your Mac, no CI secrets. The reliable path.
+- **`git tag vX.Y.Z && git push --tags`** — GitHub Actions does it (needs the repo
+  secrets in [RELEASING.md](RELEASING.md); `CLOUDFLARE_API_TOKEN` + the Apple secrets
+  are the ones still to add).
 
-2. **Finish Sparkle auto-update.** Currently `SUPublicEDKey` in `app/Info.plist`
-   is a placeholder, so updates can't be verified. To enable:
-   - `generate_keys` (Sparkle tool) → put the public key in `SUPublicEDKey`,
-     store the private key as the `SPARKLE_ED_PRIVATE_KEY` CI secret.
-   - Generate the appcast with `--download-url-prefix https://party.ramine.net/`
-     and upload `appcast.xml` (+ the versioned zip) to R2. The feed URL is already
-     set to `https://party.ramine.net/appcast.xml`.
-   See `docs/RELEASING.md` for the existing appcast-generation step.
+See [RELEASING.md](RELEASING.md) for both.
 
-3. **Optional:** ship a drag-to-Applications **.dmg** instead of a bare zip.
+## Status
+
+- ✅ Sparkle auto-update wired — `SUPublicEDKey` is set, the private key is in the
+  keychain + `SPARKLE_ED_PRIVATE_KEY` secret, and a signed `appcast.xml` is live.
+- ✅ CI release workflow rewritten to publish to R2 on a tag (path B above).
+
+## TODO
+
+- **Optional:** ship a drag-to-Applications **.dmg** instead of a bare zip.

@@ -6,6 +6,7 @@
   "name": "partyparty-site",
   "main": "worker.js",
   "compatibility_date": "2024-12-01",
+  "account_id": "4e958c1f2621ced0354e94826590e34f",
 
   // Landing page (index.html etc.). Served for any path that isn't an R2 file.
   "assets": {

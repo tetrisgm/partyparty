@@ -57,8 +57,13 @@ notarize: app
 deploy-site:
 	./scripts/deploy-site.sh
 
+# Cut a full versioned release (build, notarize, sign appcast, publish to R2).
+# Bump CFBundleShortVersionString in app/Info.plist first.
+release:
+	./scripts/release.sh
+
 clean:
 	rm -f $(BINARY) $(HELPER)
 	rm -rf build
 
-.PHONY: helper build run tone devices app notarize deploy-site clean
+.PHONY: helper build run tone devices app notarize deploy-site release clean

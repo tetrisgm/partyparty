@@ -38,8 +38,8 @@
   <string>https://party.ramine.net/appcast.xml</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>86400</integer>
-  <!-- Run Sparkle's generate_keys once, then paste your PUBLIC key below (it is
-       not secret). Until set, the app won't apply updates. See docs/RELEASING.md. -->
-  <!-- <key>SUPublicEDKey</key><string>YOUR_BASE64_PUBLIC_KEY</string> -->
+  <!-- Sparkle EdDSA public key (not secret). Private key is in the login keychain
+       + the SPARKLE_ED_PRIVATE_KEY CI secret. See docs/RELEASING.md. -->
+  <key>SUPublicEDKey</key><string>qFmaq5ijn3m2sbiadmkBVvGIjz8v9+piqE/T+YZ1/u0=</string>
 </dict>
 </plist>
