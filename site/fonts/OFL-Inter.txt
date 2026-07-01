@@ -1,0 +1,4 @@
+Inter is licensed under the SIL Open Font License 1.1.
+Copyright (c) 2016-2024 The Inter Project Authors (https://github.com/rsms/inter).
+Full license: https://github.com/rsms/inter/blob/master/LICENSE.txt
+Self-hosted here as the cross-platform fallback; Apple devices render San Francisco via the system font stack (-apple-system) and never fetch this file.
