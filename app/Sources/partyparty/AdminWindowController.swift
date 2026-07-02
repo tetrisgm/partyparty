@@ -8,7 +8,6 @@ import CoreGraphics
 final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     private let port: Int
     private var webView: WKWebView!
-    private let port80 = SMAppService.daemon(plistName: "net.ramine.partyparty.port80.plist")
 
     init(port: Int) {
         self.port = port
@@ -53,7 +52,6 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pushLoginState()
         pushScreenPermission()
-        pushPortFreeState()
     }
 
     // Re-check Screen Recording when the user returns from System Settings.
@@ -70,12 +68,9 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         case "setLoginItem":
             setLoginItem(body["on"] as? Bool ?? false)
             pushLoginState()
-        case "setPortFree":
-            setPortFree(body["on"] as? Bool ?? false)
         case "ready":
             pushLoginState()
             pushScreenPermission()
-            pushPortFreeState()
         default:
             break
         }
@@ -103,41 +98,5 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         // microphone) — there's no preflight to check and no Settings dance, so
         // the console never needs to warn ahead of time.
         webView.evaluateJavaScript("window.ppSetScreenPermission && window.ppSetScreenPermission(true)")
-    }
-
-    // Port-free guest URL: register/unregister the pf-redirect LaunchDaemon. macOS
-    // shows a one-time background-item approval + admin password (no Touch ID for
-    // Developer-ID apps). Toggling off SIGTERMs the daemon, which flushes its anchor.
-    private func setPortFree(_ on: Bool) {
-        do {
-            if on {
-                if port80.status != .enabled { try port80.register() }
-                NSLog("partyparty: port80 register -> status=\(port80.status.rawValue)")
-                if port80.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
-            } else {
-                if port80.status == .enabled { try port80.unregister() }
-                NSLog("partyparty: port80 unregister -> status=\(port80.status.rawValue)")
-            }
-            pushPortFreeState()
-        } catch {
-            let ns = error as NSError
-            NSLog("partyparty: port80 \(on ? "register" : "unregister") failed: \(ns) status=\(port80.status.rawValue)")
-            // Un-notarized dev builds can't install a root daemon — surface that clearly.
-            let msg = "\(ns.localizedDescription) [\(ns.domain) \(ns.code)]"
-            webView.evaluateJavaScript("window.ppSetPortFreeError && window.ppSetPortFreeError(\(jsString(msg)))")
-        }
-    }
-
-    private func pushPortFreeState() {
-        let on = port80.status == .enabled
-        let pending = port80.status == .requiresApproval
-        webView.evaluateJavaScript("window.ppSetPortFree && window.ppSetPortFree(\(on), \(pending))")
-    }
-
-    private func jsString(_ s: String) -> String {
-        let e = s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: " ")
-        return "\"\(e)\""
     }
 }
