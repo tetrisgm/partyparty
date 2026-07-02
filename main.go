@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -357,6 +358,7 @@ func main() {
 	// mid-set); on failure we retry every 5 minutes (Wi-Fi comes and goes).
 	if deliveryFlag != "hls" && cfg.Delivery == "hls" && cfg.CertFile == "" && mtx != nil && applyActivation != nil {
 		go func() {
+			retryIn := 15 * time.Second // fast first retries (LE 503s often clear in seconds), then back off
 			for {
 				var res activate.Result
 				if token := activate.TokenFromEnvOrFile(); cfg.LiveHost != "" && token != "" {
@@ -411,9 +413,12 @@ func main() {
 						time.Sleep(5 * time.Second)
 					}
 				}
-				handler.SetActivationPending(res.Reason)
-				log.Printf("activate: secure link not ready — %s (retrying in 30s)", res.Reason)
-				time.Sleep(30 * time.Second)
+				handler.SetActivationPending(humanizeActivation(res.Reason))
+				log.Printf("activate: secure link not ready — %s (retrying in %s)", res.Reason, retryIn)
+				time.Sleep(retryIn)
+				if retryIn *= 2; retryIn > 4*time.Minute {
+					retryIn = 4 * time.Minute
+				}
 			}
 		}()
 	}
@@ -467,4 +472,24 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
+}
+
+// humanizeActivation turns raw activation errors into console-worthy English.
+// The DJ saw "certificate: ACME register: 503 : 503 Service Unavailable" in
+// the field — accurate, useless, and scary. The retry loop is automatic; the
+// message's only job is to say WHO is being waited on.
+func humanizeActivation(reason string) string {
+	r := strings.ToLower(reason)
+	switch {
+	case strings.Contains(r, "acme") || strings.Contains(r, "letsencrypt") || strings.Contains(r, "let's encrypt"):
+		return "the free certificate service (Let's Encrypt) isn't answering right now — retrying automatically, this usually clears in a few minutes"
+	case strings.Contains(r, "register") || strings.Contains(r, "broker") || strings.Contains(r, "party.ramine.net"):
+		return "can't reach the partyparty setup service — check the internet connection; retrying automatically"
+	case strings.Contains(r, "resolve") || strings.Contains(r, "dns"):
+		return "waiting for the new address to become reachable (DNS) — retrying automatically"
+	case strings.Contains(r, "no lan") || strings.Contains(r, "network"):
+		return "no network connection — join a Wi-Fi network or start your hotspot"
+	default:
+		return reason
+	}
 }

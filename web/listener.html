@@ -101,23 +101,30 @@
   .cbox button{background:none;border:none;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer}
   /* Welcome gate: the one REQUIRED tap ("Let's party") doubles as the iOS
      media-activation gesture — buffering starts the instant they're in. */
-  .welov{position:fixed;inset:0;background:rgba(245,245,247,.82);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);display:none;align-items:center;justify-content:center;z-index:30;padding:22px}
+  /* The welcome gate fills the screen like an invite, not a popup: the event
+     name breathes at the top, the picking happens in the middle. */
+  .welov{position:fixed;inset:0;background:var(--bg);display:none;justify-content:center;z-index:30;overflow:auto}
   .welov.show{display:flex}
-  .welcard{background:var(--card);border:1px solid var(--separator);border-radius:26px;padding:30px 26px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.14)}
-  .welhost{color:var(--label-secondary);font-size:14px;font-weight:600;margin-bottom:2px}
-  .weltitle{font-size:32px;font-weight:800;letter-spacing:-.025em;margin:0 0 4px;color:var(--label)}
-  .welstarts{color:var(--label-secondary);font-size:13px;margin:0 0 18px}
+  .welcard{max-width:460px;width:100%;min-height:100dvh;padding:11dvh 26px 5dvh;text-align:center;display:flex;flex-direction:column}
+  .welhost{color:var(--label-secondary);font-size:15px;font-weight:600;margin-bottom:2px}
+  .weltitle{font-size:38px;font-weight:800;letter-spacing:-.025em;margin:0 0 6px;color:var(--label)}
+  .welstarts{color:var(--label-secondary);font-size:14px;margin:0 0 7dvh}
   .wellabel{color:var(--label-secondary);font-size:13px;margin:16px 0 8px;text-align:left}
+  .wellabel.gap{margin-top:5dvh}
   .welopt{color:var(--label-tertiary)}
   .welname{display:flex;gap:8px;align-items:center}
-  .welemoji,.welshuffle{font-size:22px;background:var(--fill);border:1px solid var(--separator);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto}
-  .welname input,.welcard input[type=email]{flex:1;width:100%;background:var(--fill);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left}
-  .welemojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:8px}
+  .welemoji{font-size:22px;background:var(--card);border:1px solid var(--separator);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .welshuffle{font-size:14px;font-weight:700;background:none;border:none;color:var(--accent);cursor:pointer;flex:0 0 auto;padding:0 4px}
+  .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .welname input{flex:1}
+  .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
+  .welemojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:10px}
   .welemojis[hidden]{display:none}
-  .welemojis button{font-size:20px;background:transparent;border:none;border-radius:10px;padding:7px 0;cursor:pointer}
+  .welemojis button{font-size:21px;background:transparent;border:none;border-radius:10px;padding:8px 0;cursor:pointer}
   .welemojis button:hover{background:var(--fill)}
-  .welgo{width:100%;margin-top:22px;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:15px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(255,45,85,.28)}
+  .welgo{width:100%;margin-top:auto;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(255,45,85,.28)}
   .welgo:active{transform:scale(.98)}
+  .welspace{flex:0 0 6dvh}
   .saveall{display:inline-block;color:var(--accent);font-size:13px;font-weight:600;text-decoration:none;margin:0 2px 12px}
   .saveall[hidden]{display:none}
   .saveall:hover{text-decoration:underline}
@@ -201,11 +208,12 @@
       <div class="welname">
         <button class="welemoji" id="welEmoji" type="button" title="Pick your emoji">🪩</button>
         <input id="welName" maxlength="40" autocomplete="off">
-        <button class="welshuffle" id="welShuffle" type="button" title="Shuffle">🎲</button>
+        <button class="welshuffle" id="welShuffle" type="button" title="Pick a random name">Shuffle</button>
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
-      <div class="wellabel">Share your email with <span id="welHost2">the DJ</span> for the party page later <span class="welopt">(optional — only they see it)</span></div>
+      <div class="wellabel gap">Share your email with <span id="welHost2">the DJ</span> for future communication <span class="welopt">(optional — only they see it)</span></div>
       <input id="welEmail" type="email" placeholder="you@example.com" autocapitalize="off" autocomplete="email">
+      <div class="welspace"></div>
       <button class="welgo" id="welGo" type="button">Let's party 🎉</button>
     </div>
   </div>
@@ -775,7 +783,7 @@
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
       // Party name: deterministic from cid so it's stable before any edit.
-      const EMO = ['🪩','🕺','💃','🎧','🎶','✨','🔥','🦩','🍾','🎉','🌈','⚡️','🫧','🎊','🛼','🐆'];
+      const EMO = ['🪩','🕺','💃','🎧','🎶','✨','🔥','🦩','🍾','🎉','🌈','⚡️','🫧','🎊','🛼','🐆','🍒','🌙','👾','🦋','🐬','🍄','💎','🚀'];
       const ADJ = ['Neon','Disco','Velvet','Cosmic','Midnight','Glitter','Electric','Funky','Lunar','Turbo','Mellow','Wavy','Retro','Hyper','Groovy','Solar'];
       const NOUN = ['Flamingo','Fox','Panther','Comet','Otter','Sphinx','Cactus','Koala','Nebula','Mongoose','Tiger','Dolphin','Peacock','Yeti','Gecko','Falcon'];
       let h = 0; for (const ch of cid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
