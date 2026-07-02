@@ -75,7 +75,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(item("Open Console", #selector(showConsole)))
         menu.addItem(.separator())
+        menu.addItem(item("Check for Updates…", #selector(checkUpdates)))
         menu.addItem(item("Quit \(appName)", #selector(quit)))
+    }
+
+    @objc private func checkUpdates() {
+        NSApp.activate(ignoringOtherApps: true)   // Sparkle's alert needs a frontmost app
+        updater.checkForUpdates()
     }
 
     private func item(_ title: String, _ sel: Selector) -> NSMenuItem {
