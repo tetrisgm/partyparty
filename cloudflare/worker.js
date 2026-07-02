@@ -246,8 +246,11 @@ async function broker(request, env, pathname) {
     const list = await env.DL.list({ prefix: "broker/", limit: 1000 });
     const installs = [];
     for (const o of list.objects) {
-      const r2 = await env.DL.get(o.key).then((x) => (x ? x.json() : null));
-      if (r2) installs.push({ id: o.key.slice(7, -5), slug: r2.slug || "", created: r2.created || 0 });
+      if (!o.key.endsWith(".json")) continue; // stray legacy objects
+      try {
+        const r2 = await env.DL.get(o.key).then((x) => (x ? x.json() : null));
+        if (r2) installs.push({ id: o.key.slice(7, -5), slug: r2.slug || "", created: r2.created || 0 });
+      } catch (e) { /* unparseable record — skip, don't kill the listing */ }
     }
     return jsonResp(200, { installs });
   }
