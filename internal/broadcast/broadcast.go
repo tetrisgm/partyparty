@@ -405,7 +405,7 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 				b.lastError = "ffmpeg exited"
 			}
 			if b.device == "mac" {
-				b.lastError += " — did you grant Screen Recording permission?"
+				b.lastError += " — allow System Audio Recording for partyparty, then Start again."
 			}
 			b.pushLog("[partyparty] " + b.lastError)
 		}

@@ -261,17 +261,15 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return
 		}
-		var deepLink string
+		// System-audio capture (Core Audio process tap) lives under
+		// Privacy & Security → "Screen & System Audio Recording" on modern macOS
+		// (the ScreenCapture TCC pane). Open it so the DJ can toggle partyparty on.
 		switch r.URL.Query().Get("pane") {
-		case "screen":
-			deepLink = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 		case "mic":
-			deepLink = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
-		default:
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown pane"})
-			return
+			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone").Start()
+		default: // "audio" / "screen" / anything → the audio-recording pane
+			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture").Start()
 		}
-		_ = exec.Command("open", deepLink).Start()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/devices":
 		devs := devices.List(s.Config.FFmpeg)

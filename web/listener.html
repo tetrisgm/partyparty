@@ -109,21 +109,11 @@
     }
 
     let STREAM = null, delivery = 'llhls';
-    // Low-latency upgrade: the server may advertise an LL-HLS URL on its
-    // domain+cert. THIS DEVICE probes it (some routers' DNS-rebind protection
-    // blocks the domain for phones even when the DJ's Mac resolves it fine)
-    // and silently uses plain HLS when the probe fails — per-device fallback,
-    // nobody ever gets a dead stream.
-    let LLSTREAM = null, llUsable = null;
-    async function probeLL(url){
-      try {
-        const ctl = new AbortController();
-        const t = setTimeout(() => ctl.abort(), 3500);
-        const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
-        clearTimeout(t);
-        return r.ok;
-      } catch (e) { return false; }
-    }
+    // LOW-LATENCY ONLY. The guest link is always the secure https domain, so
+    // loading this page already proved DNS + TLS work → LL-HLS plays. Plain HLS
+    // is not offered (no insecure/slow fallback). STREAM stays only as a
+    // dev/localhost escape hatch.
+    let LLSTREAM = null;
     // The room's sync contract: the wall-clock delay behind the DJ that EVERY
     // phone converges to (server-provided). Players park wherever their
     // heuristics like — iOS versions differ by seconds — so alignment to this
@@ -235,8 +225,8 @@
     // self-syncing AND self-healing (the player re-chases hold-back after a
     // stall). The old tug-of-war existed only because a controller dragged
     // them off it; that controller is gone.
-    const chosenStream = () => (llUsable && LLSTREAM) ? LLSTREAM : STREAM;
-    const usingLL = () => !!(llUsable && LLSTREAM);
+    const chosenStream = () => LLSTREAM || STREAM;   // LL always; STREAM = dev fallback only
+    const usingLL = () => !!LLSTREAM;
 
     function attach(){
       if (!STREAM) return;
@@ -308,7 +298,6 @@
     // (Apple), so it stays tappable right away and buffers on tap instead.
     async function prebuffer(){
       if (attached || started || !STREAM || !live) return;
-      if (LLSTREAM && llUsable === null) llUsable = (location.protocol === 'https:') ? true : await probeLL(LLSTREAM);
       attached = true;
       if (!attachSafe()) return; // native: sets src (desktop Safari preloads); iOS defers until the gesture
       if (useNative) {
@@ -330,7 +319,6 @@
 
     async function play(){
       if (!STREAM) { try { await poll(); } catch (e) {} }
-      if (LLSTREAM && llUsable === null) llUsable = (location.protocol === 'https:') ? true : await probeLL(LLSTREAM);
       if (!attached && !attachSafe()) return;   // native / not-yet-prebuffered
       // If not pre-buffered yet (native, or a fast tapper), give it a brief
       // moment to build a cushion so it doesn't stall on the first seconds.
@@ -372,7 +360,6 @@
       setStatus('reconnecting…');
       // Dev-access only (localhost/IP page): repeated LL failure demotes to
       // plain. On the https origin there is NO fallback — retries stay on LL.
-      if (location.protocol !== 'https:' && usingLL() && errRetries >= 2) llUsable = false;
       const delay = Math.min(500 * Math.pow(2, errRetries++), 5000);
       setTimeout(() => { attachSafe(); player.play().catch(()=>{}); }, delay);
     });
@@ -398,7 +385,6 @@
         considerReload(s.appVersion);
         if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
-        if (!LLSTREAM) llUsable = null; // reset if the DJ turns LL off
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         titleEl.textContent = s.name || 'partyparty';

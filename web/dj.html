@@ -129,8 +129,9 @@
       <select id="device"></select>
       <div id="bcnote" class="warn" style="display:none">
         <div id="bcnoteText"></div>
-        <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%;display:none">Open Screen Recording Settings</button>
+        <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open System Audio Recording settings</button>
       </div>
+      <button class="ghost" id="permBtnAlways" style="margin-top:10px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
       <div id="helpNote" style="display:none">
         <h3>① Capture everything on the Mac (easiest)</h3>
         <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
@@ -176,14 +177,7 @@
   <div class="col">
     <div class="card">
       <h2>Audio</h2>
-      <label for="delivery">Mode</label>
-      <select id="delivery">
-        <option value="llhls">Automatic — low latency for phones that support it (recommended)</option>
-        <option value="hls">Compatible only — plain HLS for everyone</option>
-      </select>
-      <div class="hint" id="deliveryHint">Plain HLS is the default and plays on any phone with no cert. Low latency (LL-HLS) needs a real HTTPS cert; switching restarts the broadcast.</div>
-
-      <label for="quality" style="margin-top:14px">Audio quality</label>
+      <label for="quality">Audio quality</label>
       <select id="quality">
         <option value="64k">Minimum — 64 kbps</option>
         <option value="96k">Low — 96 kbps</option>
@@ -199,11 +193,11 @@
       <div id="latencyBox">
         <label for="latency" style="margin-top:14px">Latency vs. stability</label>
         <select id="latency">
-          <option value="low" selected>Standard — room syncs at ~10s</option>
-          <option value="balanced">Cushioned — room syncs at ~13s</option>
-          <option value="stable">Maximum stability — room syncs at ~16s (weakest Wi-Fi)</option>
+          <option value="low" selected>Low latency — room syncs at ~2s</option>
+          <option value="balanced">Balanced — room syncs at ~3s</option>
+          <option value="stable">Maximum stability — room syncs at ~3.5s (weakest Wi-Fi)</option>
         </select>
-        <div class="hint">Lower latency = less buffer, so it's more sensitive to drops. If audio cuts out on a weak network, step toward Stable. Changing this while live restarts the broadcast.</div>
+        <div class="hint">Low-latency mode for everyone (needs the secure link, which the app sets up automatically). Lower latency = less buffer, so it's more sensitive to drops — step toward Stable if audio cuts out on weak Wi-Fi. Changing this while live restarts the broadcast.</div>
       </div>
     </div>
 
@@ -376,26 +370,14 @@
     n.style.display = (n.style.display === 'none' || !n.style.display) ? 'block' : 'none';
   };
 
-  $('delivery').onchange = async () => {
-    const mode = $('delivery').value;
-    const wasLive = lastState === 'live' || lastState === 'starting';
-    $('deliveryHint').textContent = 'Switching mode…';
-    const r = await fetch('/api/delivery?mode=' + encodeURIComponent(mode), { method: 'POST' });
-    if (!r.ok) {
-      const e = await r.json().catch(() => ({}));
-      $('deliveryHint').textContent = e.error || 'Could not switch mode';
-      refresh();
-      return;
-    }
-    if (wasLive) await startBroadcast(); else refresh();
-  };
   $('refreshBtn').onclick = () => {
     const b = $('refreshBtn');
     b.classList.add('spin');
     setTimeout(() => b.classList.remove('spin'), 600);
     loadDevices();
   };
-  $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=screen', { method:'POST' });
+  $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
+  $('permBtnAlways').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
 
   function renderQR(text){
     if (text === qrText) return;
@@ -416,28 +398,13 @@
         const mine = '__PP_VERSION__';
         if (!mine.includes('PP_VERSION') && s.appVersion !== mine && st === 'idle') location.reload();
       }
-      const dsel = $('delivery');
-      if (document.activeElement !== dsel) dsel.value = s.delivery || 'llhls';
-      const llOpt = dsel.querySelector('option[value="llhls"]');
-      if (llOpt) {
-        // LL-HLS needs a publicly-trusted cert — iPhones reject the self-signed
-        // fallback, so don't let the DJ hand guests a stream they can't play.
-        // Activation runs in the background after launch, so this can flip from
-        // unavailable to available mid-session — set BOTH label states.
-        llOpt.disabled = (s.llhlsAvailable === false) || (s.llhlsRealCert === false);
-        llOpt.textContent = (s.llhlsRealCert === false)
-          ? 'Automatic — setting up low latency (needs internet)…'
-          : 'Automatic — low latency for phones that support it (recommended)';
-      }
       const badge = $('badge');
       badge.textContent = st;
       badge.className = 'badge ' + (st === 'live' ? 'live' : st === 'error' ? 'error' : st === 'starting' ? 'starting' : '');
       badge.style.display = (st && st !== 'idle') ? '' : 'none';
       if ((st === 'live' || st === 'starting') && s.broadcast.deviceName) {
         const ch = s.broadcast.channels === 1 ? 'mono' : 'stereo';
-        // Real-world plain-HLS delay ≈ 3x segment (player holdback) + 1 segment
-        // being filled — not the optimistic 3x we used to show.
-        const delay = s.broadcast.segDur ? ' · ~' + Math.round(s.broadcast.segDur * 4) + 's delay' : '';
+        const delay = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) ? ' · ~' + s.latencyTarget.toFixed(1) + 's delay' : '';
         $('devname').textContent = '▶ ' + s.broadcast.deviceName + ' · ' + s.broadcast.bitrate + ' ' + ch + delay;
       } else {
         $('devname').textContent = s.broadcast.lastError || '';
@@ -461,7 +428,7 @@
       const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnoteText').textContent = note || '';
-      $('screenPermBtn').style.display = /system audio|screen recording/i.test(note) ? 'block' : 'none';
+      $('screenPermBtn').style.display = 'block';
       // Guests only ever get the https link (the Plex model). Until the cert
       // is provisioned there is nothing to advertise — show the pending state
       // rather than an http link that undermines the whole cert story.
@@ -480,7 +447,7 @@
       $('listeners').textContent = roster.length + (llCount ? ' · ' + llCount + ' low-latency' : '');
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
-        ? ((s.delivery === 'llhls' && llCount) ? '~1-2.5 s (low-latency room) · ' + s.latencyTarget.toFixed(1) + ' s for compatible fallback' : s.latencyTarget.toFixed(1) + ' s')
+        ? (s.latencyTarget.toFixed(1) + ' s')
         : '—';
       // Spread is only meaningful WITHIN a cohort: LL devices park ~1-2s
       // behind the DJ, compatible fallback parks at the room target — mixing
