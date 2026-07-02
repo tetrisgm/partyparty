@@ -131,6 +131,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
+			"latencyTarget":  s.latencyTarget(bc),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
@@ -409,6 +410,26 @@ func validBitrate(v string) string {
 // for LL-HLS (iOS Safari rejects self-signed certs on LAN IPs).
 func (s *srv) realCert() bool {
 	return s.Config.Domain != "" && s.Config.CertFile != "" && s.Config.KeyFile != ""
+}
+
+// latencyTarget is the wall-clock delay behind the DJ that every listener
+// aligns to — the sync contract for the room. Players park wherever their
+// heuristics like (iOS versions differ by seconds); the room drops TOGETHER
+// because every client converges on this one number instead. It must sit above
+// the worst natural park position so alignment never fights the player:
+// plain HLS ≈ 4x segment + 3 (low mode = 7s), LL-HLS = 3s.
+func (s *srv) latencyTarget(bc broadcast.Status) float64 {
+	if s.Config.LatencyTarget > 0 {
+		return s.Config.LatencyTarget
+	}
+	if bc.Delivery == "llhls" {
+		return 3
+	}
+	seg := bc.SegDur
+	if seg <= 0 {
+		seg = 1
+	}
+	return 4*seg + 3
 }
 
 // latencySegDur maps a latency mode to an HLS segment length (seconds).

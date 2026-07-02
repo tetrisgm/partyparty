@@ -67,8 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(h)
         menu.addItem(.separator())
 
+        // No Stop here: a stray click in a menu would kill the whole party.
+        // Stopping is a deliberate act — it lives in the console only.
         let live = (s.state == "live" || s.state == "starting")
-        menu.addItem(item(live ? "Stop Broadcast" : "Go Live (Mac audio)", #selector(toggleLive)))
+        if !live {
+            menu.addItem(item("Go Live (Mac audio)", #selector(goLive)))
+        }
         menu.addItem(item("Open Console", #selector(showConsole)))
         menu.addItem(.separator())
         menu.addItem(item("Quit \(appName)", #selector(quit)))
@@ -80,9 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return i
     }
 
-    @objc private func toggleLive() {
-        let s = poller.status
-        if s.state == "live" || s.state == "starting" { api.stop() } else { api.goLiveMac() }
+    @objc private func goLive() {
+        api.goLiveMac()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.poller.refresh() }
     }
 

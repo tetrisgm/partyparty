@@ -43,17 +43,22 @@ type Config struct {
 	// default 3x target duration. 0 = off. Spec says live offsets inside 3xTD
 	// SHOULD NOT be used and iOS may ignore/misbehave — device-test only.
 	StartOffset float64
+
+	// LatencyTarget pins every listener to the same wall-clock delay behind the
+	// DJ (seconds). 0 = auto (plain HLS: 4x segment + 3; LL-HLS: 3). The room
+	// dropping together matters more than absolute closeness to the DJ.
+	LatencyTarget float64
 }
 
 func Parse() Config {
 	var c Config
 	flag.IntVar(&c.Port, "port", envInt("PARTYPARTY_PORT", 8000), "HTTP port")
 	flag.StringVar(&c.Name, "name", env("PARTYPARTY_NAME", "partyparty"), "display name shown to guests")
-	flag.StringVar(&c.Bitrate, "bitrate", env("PARTYPARTY_BITRATE", "160k"), "AAC audio bitrate")
+	flag.StringVar(&c.Bitrate, "bitrate", env("PARTYPARTY_BITRATE", "320k"), "AAC audio bitrate (LAN has headroom — default to max quality)")
 	flag.StringVar(&c.Codec, "codec", env("PARTYPARTY_CODEC", "aac_at"), "AAC encoder (aac_at = Apple, best on macOS; aac = portable fallback)")
 	flag.IntVar(&c.SampleRate, "sample-rate", envInt("PARTYPARTY_SAMPLE_RATE", 48000), "audio sample rate")
 	flag.IntVar(&c.HLSTime, "hls-time", envInt("PARTYPARTY_HLS_TIME", 1), "HLS segment length in seconds (lower = less latency, less drop-cushion)")
-	flag.IntVar(&c.HLSList, "hls-list", envInt("PARTYPARTY_HLS_LIST", 10), "number of segments kept in the playlist")
+	flag.IntVar(&c.HLSList, "hls-list", envInt("PARTYPARTY_HLS_LIST", 16), "number of segments kept in the playlist (deep window = room to sync-align well behind live)")
 	flag.StringVar(&c.Device, "device", env("PARTYPARTY_DEVICE", "auto"), "default capture device index")
 	flag.BoolVar(&c.Captive, "captive", env("PARTYPARTY_CAPTIVE", "") == "1", "answer OS connectivity probes to trigger a captive portal")
 	flag.BoolVar(&c.Tone, "tone", false, "auto-start a 440 Hz test tone on launch")
@@ -74,6 +79,7 @@ func Parse() Config {
 	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "1s"), "LL-HLS segment duration")
 	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 7), "LL-HLS segments kept in the playlist")
 	flag.Float64Var(&c.StartOffset, "start-offset", 0, "EXPERIMENTAL: seconds before live to ask players to start (injects #EXT-X-START:TIME-OFFSET=-N into the plain-HLS playlist; 0 = off)")
+	flag.Float64Var(&c.LatencyTarget, "latency-target", envFloat("PARTYPARTY_LATENCY_TARGET", 0), "wall-clock delay behind the DJ every listener aligns to, in seconds (0 = auto per delivery mode)")
 	flag.Parse()
 	c.Channels = 2
 	if mono {
@@ -93,6 +99,15 @@ func envInt(key string, def int) int {
 	if v, ok := os.LookupEnv(key); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func envFloat(key string, def float64) float64 {
+	if v, ok := os.LookupEnv(key); ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

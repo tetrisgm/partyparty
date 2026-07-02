@@ -79,6 +79,11 @@
     const titleEl = document.getElementById('title');
     const countEl = document.getElementById('count');
     let STREAM = null, delivery = 'llhls';
+    // The room's sync contract: the wall-clock delay behind the DJ that EVERY
+    // phone converges to (server-provided). Players park wherever their
+    // heuristics like — iOS versions differ by seconds — so alignment to this
+    // shared number is what makes the room drop together.
+    let latencyTarget = 0;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
     // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
@@ -156,28 +161,27 @@
       } else if (window.Hls && Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
         const ll = delivery === 'llhls';
+        const target = latencyTarget || (ll ? 3 : 7);
         const cfg = {
-          lowLatencyMode: ll,               // LL-HLS: parks at the server PART-HOLD-BACK, same value iOS native reads
+          lowLatencyMode: ll,
           // 5% catch-up after stalls (pitch-preserved by default in Chrome):
           // without it every rebuffer adds its full duration to this phone's
           // latency FOREVER, ratcheting it away from the room until an audible
-          // backstop skip. 1.05 converges it back to the same target iPhones
-          // park at — better sync, no audible artifact.
+          // backstop skip. 1.05 converges it back to the shared room target —
+          // better sync, no audible artifact.
           maxLiveSyncPlaybackRate: 1.05,
           liveDurationInfinity: true,
           backBufferLength: 30,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
+          // Align to the ROOM's wall-clock target rather than this player's own
+          // preference — the sync contract every phone converges to. In llhls
+          // this deliberately overrides PART-HOLD-BACK: the room dropping
+          // together beats being 2s closer to the DJ. (liveMaxLatencyDuration
+          // is only legal alongside liveSyncDuration — never set it alone, the
+          // constructor throws.)
+          liveSyncDuration: target,
+          liveMaxLatencyDuration: target + 4,
         };
-        if (!ll) {
-          // Plain HLS: park 3 target-durations back (native-player parity),
-          // hard ceiling 6s. NOTE: liveMaxLatencyDuration REQUIRES
-          // liveSyncDuration (the constructor throws without it), and any
-          // user liveSync* would override PART-HOLD-BACK in LL-HLS mode —
-          // so this pair is plain-HLS only; LL-HLS gets a manual backstop
-          // in the heartbeat below.
-          cfg.liveSyncDuration = 3;
-          cfg.liveMaxLatencyDuration = 6;
-        }
         hls = new Hls(cfg);
         let mediaErrors = 0;
         hls.on(Hls.Events.ERROR, (_e, d) => {
@@ -262,6 +266,7 @@
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         if (s.streamUrl) STREAM = s.streamUrl;
         if (s.delivery) delivery = s.delivery;
+        if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         titleEl.textContent = s.name || 'partyparty';
         live = s.broadcast && s.broadcast.state === 'live';
         countEl.textContent = s.listeners ? ('● ' + s.listeners + ' listening') : '';
@@ -288,18 +293,44 @@
         'platform : ' + platform + '\n' +
         'state    : ' + (player.paused ? 'paused' : 'playing') + '  rs=' + player.readyState + '\n' +
         'latency  : ' + (lat != null ? lat.toFixed(2) + ' s' : 'n/a') + '\n' +
+        'target   : ' + (latencyTarget ? latencyTarget.toFixed(1) + ' s  err=' + (lat != null ? ((lat - latencyTarget) >= 0 ? '+' : '') + (lat - latencyTarget).toFixed(2) + 's' : '?') : 'n/a') + '  rate=' + player.playbackRate.toFixed(2) + '\n' +
         'clock    : ' + (clockSynced ? (clockOffset >= 0 ? '+' : '') + Math.round(clockOffset) + ' ms' : 'syncing…') + '\n' +
         'stalls   : ' + stallCount;
     }
+
+    // Room sync for the NATIVE player (Safari/iOS): each iOS version parks at
+    // its own distance behind live — seconds apart across phones, the single
+    // biggest source of room spread. Converge on the shared server target using
+    // the clock-synced latency we already measure: a seek when far off (join,
+    // big disruption), gentle pitch-preserved rate nudges otherwise. Field-
+    // verified that these timers keep firing on a locked iPhone.
+    // (hls.js phones align via liveSyncDuration in the config above.)
+    function alignNative(){
+      if (!useNative || !started || player.paused || !latencyTarget) return;
+      if (player.readyState < 3) return;           // don't fight a buffering player
+      const lat = measureLatency();
+      if (lat == null) return;
+      const err = lat - latencyTarget;              // >0: too far behind → move toward live
+      try {
+        if (Math.abs(err) > 0.75) {
+          const sk = player.seekable;
+          if (sk && sk.length) {
+            const lo = sk.start(sk.length - 1) + 0.5, hi = sk.end(sk.length - 1) - 1.0;
+            const t = Math.min(Math.max(player.currentTime + err, lo), hi);
+            if (hi > lo) player.currentTime = t;
+          }
+          player.playbackRate = 1;
+        } else if (err > 0.15) player.playbackRate = 1.05;
+        else if (err < -0.15) player.playbackRate = 0.95;
+        else player.playbackRate = 1;
+      } catch (e) {}
+    }
+    try { player.preservesPitch = true; player.webkitPreservesPitch = true; } catch (e) {}
+    setInterval(() => { if (document.visibilityState === 'visible') alignNative(); }, 2000);
+
     setInterval(() => {
       if (!started) return;
-      // LL-HLS backstop (manual): the config pair liveSyncDuration/
-      // liveMaxLatencyDuration would override the playlist PART-HOLD-BACK, so
-      // in llhls mode we enforce the 6s ceiling ourselves with a single seek.
-      if (hls && delivery === 'llhls' && !player.paused &&
-          typeof hls.latency === 'number' && hls.latency > 6 && hls.liveSyncPosition != null) {
-        try { player.currentTime = hls.liveSyncPosition; } catch (e) {}
-      }
+      alignNative(); // also under lock — this 5s tick keeps firing there (field-verified)
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform;
