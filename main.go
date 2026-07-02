@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -224,6 +226,50 @@ func main() {
 		}
 	}()
 
+	// HTTPS guest listener (the Plex model): the ADVERTISED link is
+	// https://<domain>:<tls-port>/ — the page itself rides the activated cert,
+	// so a guest who can load it is guaranteed to be able to play the LL
+	// stream (same DNS + TLS). The listener starts now with a hot-loadable
+	// cert; connections before activation simply fail, and no URL is
+	// advertised until the cert is in.
+	var certMu sync.Mutex
+	var liveCert *tls.Certificate
+	loadCert := func(certFile, keyFile string) error {
+		c, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return err
+		}
+		certMu.Lock()
+		liveCert = &c
+		certMu.Unlock()
+		return nil
+	}
+	if cfg.CertFile != "" && cfg.KeyFile != "" {
+		if err := loadCert(cfg.CertFile, cfg.KeyFile); err != nil {
+			log.Printf("tls: explicit cert failed to load: %v", err)
+		}
+	}
+	if tlsLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
+		tlsSrv := &http.Server{
+			Handler: handler,
+			TLSConfig: &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				certMu.Lock()
+				defer certMu.Unlock()
+				if liveCert == nil {
+					return nil, errors.New("certificate not provisioned yet")
+				}
+				return liveCert, nil
+			}},
+		}
+		go func() {
+			if err := tlsSrv.ServeTLS(tlsLn, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("tls listener: %v", err)
+			}
+		}()
+	} else {
+		log.Printf("tls listener failed on :%d: %v", cfg.TLSPort, err)
+	}
+
 	// Background low-latency activation (the Plex pattern) — the console is
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
@@ -246,6 +292,10 @@ func main() {
 				if res.OK {
 					if err := applyActivation(res.CertFile, res.KeyFile); err != nil {
 						log.Printf("activate: mediamtx config failed: %v — staying on plain HLS", err)
+						return
+					}
+					if err := loadCert(res.CertFile, res.KeyFile); err != nil {
+						log.Printf("activate: cert load for the guest page failed: %v", err)
 						return
 					}
 					handler.SetActivation(res.Host)

@@ -257,7 +257,10 @@
 
     async function play(){
       if (!STREAM) { try { await poll(); } catch (e) {} }
-      if (LLSTREAM && llUsable === null) llUsable = await probeLL(LLSTREAM); // once per session, every platform
+      // On the https origin (the only link guests are ever given) the page
+      // load itself proved DNS + TLS work — LL is used directly, no probe, no
+      // fallback. The probe path survives only for localhost/IP dev access.
+      if (LLSTREAM && llUsable === null) llUsable = (location.protocol === 'https:') ? true : await probeLL(LLSTREAM);
       if (!attachSafe()) return;
       // Pre-buffer gate: give the player a moment to build a cushion before
       // sound starts (fewer stalls in the first seconds). One-time, at start
@@ -291,9 +294,9 @@
     });
     player.addEventListener('error',   () => {
       setStatus('reconnecting…');
-      // An LL stream that keeps failing mid-party (MediaMTX died, DNS flipped)
-      // demotes this device to plain HLS — same self-healing as the join probe.
-      if (usingLL() && errRetries >= 2) llUsable = false;
+      // Dev-access only (localhost/IP page): repeated LL failure demotes to
+      // plain. On the https origin there is NO fallback — retries stay on LL.
+      if (location.protocol !== 'https:' && usingLL() && errRetries >= 2) llUsable = false;
       const delay = Math.min(500 * Math.pow(2, errRetries++), 5000);
       setTimeout(() => { attachSafe(); player.play().catch(()=>{}); }, delay);
     });

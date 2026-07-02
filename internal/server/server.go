@@ -118,17 +118,22 @@ type urls struct {
 
 func (s *srv) urls() urls {
 	ip := netinfo.PrimaryLanIP()
-	host := ip
-	// The PAGE/QR must always load, so it uses the raw LAN IP — some routers'
-	// DNS-rebind protection blocks the public-name→private-IP trick for the
-	// phones even when the Mac's own resolver passes (field-verified pain).
-	// Only the STREAM URL uses the activated domain (it needs the TLS cert);
-	// an explicit --domain still overrides for power users who know their DNS.
-	if s.Config.Domain != "" {
-		host = s.Config.Domain
+	// The Plex model: the ONLY advertised link is https:// on the activated
+	// domain. The page itself requires working DNS + TLS — exactly the gate
+	// that guarantees the LL stream will play for whoever loaded it. No http
+	// fallback link is ever shown; until activation completes, Primary stays
+	// http and the console renders a "setting up the secure link" state.
+	if d := s.liveDomain(); d != "" && s.realCert() {
+		return urls{
+			Primary:     fmt.Sprintf("https://%s:%d/", d, s.Config.TLSPort),
+			IP:          ip,
+			Port:        s.Config.TLSPort,
+			HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
+			Interfaces:  netinfo.LanInterfaces(),
+		}
 	}
 	return urls{
-		Primary:     fmt.Sprintf("http://%s:%d/", host, s.Config.Port),
+		Primary:     fmt.Sprintf("http://%s:%d/", ip, s.Config.Port),
 		IP:          ip,
 		Port:        s.Config.Port,
 		HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
