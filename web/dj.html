@@ -551,6 +551,7 @@
         $('url').textContent = guestUrl;
         renderQR(guestUrl);
         $('netCheckBtn').style.display = 'none';
+        $('netCheckOut').textContent = ''; // stale diagnostics vanish once the link is up
       } else {
         const why = (s.activation && s.activation.reason) ? ' — ' + s.activation.reason : ' (needs internet once)';
         $('url').textContent = '🔒 Setting up the secure guest link…' + why;
