@@ -32,10 +32,12 @@ echo ">> [2/5] package dist/partyparty-$VERSION.zip + installer pkg"
 rm -rf dist && mkdir -p dist
 ditto -c -k --keepParent "$APP" "dist/partyparty-$VERSION.zip"
 
-# The .pkg is the primary download: files installed by macOS Installer are NOT
-# quarantined, so the app's first launch has zero Gatekeeper dialogs — the
-# closest a Developer-ID app gets to "just install it" (the Zoom flow). The zip
-# stays for Sparkle enclosures + people who prefer a bare .app.
+# THE ONE download: a signed+notarized .pkg. Installer-placed files are NOT
+# quarantined, so first launch has zero Gatekeeper dialogs, it lands directly
+# in /Applications (no drag, no move prompt, no "running from Downloads"), and
+# the only permission is the one-click audio prompt on first Go Live — never a
+# Privacy-settings visit. (The .zip below is NOT a user download — it's solely
+# Sparkle's in-place update enclosure.)
 productbuild --component "$APP" /Applications \
   --sign "Developer ID Installer: Ramine Darabiha (52WM463HR2)" \
   "dist/partyparty-$VERSION.pkg"
@@ -43,49 +45,22 @@ xcrun notarytool submit "dist/partyparty-$VERSION.pkg" --keychain-profile pp-not
 xcrun stapler staple "dist/partyparty-$VERSION.pkg"
 spctl -a -vv -t install "dist/partyparty-$VERSION.pkg"
 
-# Classic DMG as well ("partyparty Installer"): open → drag the app onto the
-# Applications shortcut in the window → done. Notarized+stapled: no Gatekeeper
-# blocks, no privacy-settings dance.
-DMGSTAGE="dist/dmg-stage"
-rm -rf "$DMGSTAGE" && mkdir -p "$DMGSTAGE"
-ditto "$APP" "$DMGSTAGE/partyparty.app"
-ln -s /Applications "$DMGSTAGE/Applications"
-hdiutil create -volname "partyparty Installer" -srcfolder "$DMGSTAGE" -ov -format UDZO -quiet "dist/partyparty-$VERSION.dmg"
-codesign --sign "Developer ID Application: Ramine Darabiha (52WM463HR2)" "dist/partyparty-$VERSION.dmg"
-xcrun notarytool submit "dist/partyparty-$VERSION.dmg" --keychain-profile pp-notary --wait
-# The ticket can lag "Accepted" by a few seconds — retry the staple briefly.
-for i in 1 2 3 4 5; do
-  xcrun stapler staple "dist/partyparty-$VERSION.dmg" && break
-  echo "stapler: ticket not ready yet, retrying ($i/5)…"; sleep 10
-done
-xcrun stapler validate "dist/partyparty-$VERSION.dmg"
-rm -rf "$DMGSTAGE"
-
-echo ">> [3/5] sign the Sparkle appcast"
+echo ">> [3/5] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
 # click "Always Allow"). Enclosure URLs point at party.ramine.net.
-# Sparkle refuses to scan a dir holding zip+dmg of the same version — feed it
-# a zips-only staging dir and move the result back.
-rm -rf dist/appcast-work && mkdir -p dist/appcast-work
-cp "dist/partyparty-$VERSION.zip" dist/appcast-work/
 if [ -n "${SPARKLE_ED_KEY_FILE:-}" ]; then
-  "$SPK/generate_appcast" --ed-key-file "$SPARKLE_ED_KEY_FILE" --download-url-prefix "https://party.ramine.net/" dist/appcast-work
+  "$SPK/generate_appcast" --ed-key-file "$SPARKLE_ED_KEY_FILE" --download-url-prefix "https://party.ramine.net/" dist
 else
-  "$SPK/generate_appcast" --download-url-prefix "https://party.ramine.net/" dist/appcast-work
+  "$SPK/generate_appcast" --download-url-prefix "https://party.ramine.net/" dist
 fi
-mv dist/appcast-work/appcast.xml dist/appcast.xml
-rm -rf dist/appcast-work
 
 echo ">> [4/5] upload to R2"
 cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
 cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
-cp "dist/partyparty-$VERSION.dmg" dist/partyparty.dmg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.zip" --file "dist/partyparty-$VERSION.zip" --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty.zip"          --file "dist/partyparty.zip"          --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.pkg" --file "dist/partyparty-$VERSION.pkg" --content-type application/octet-stream --remote
 "$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
-"$WR" r2 object put "$BUCKET/partyparty-$VERSION.dmg" --file "dist/partyparty-$VERSION.dmg" --content-type application/x-apple-diskimage --remote
-"$WR" r2 object put "$BUCKET/partyparty.dmg"          --file "dist/partyparty.dmg"          --content-type application/x-apple-diskimage --remote
 "$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
 
 echo ">> [5/5] deploy Worker + landing page"
