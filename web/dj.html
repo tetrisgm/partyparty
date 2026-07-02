@@ -134,6 +134,10 @@
   .ed:hover::after{opacity:.7}
   .ed:has(input)::after{content:''}
   .sharecard{position:relative}
+  .spin16{width:16px;height:16px;border-radius:50%;border:2px solid var(--separator);border-top-color:var(--accent);animation:pp-spin .9s linear infinite;flex:0 0 auto}
+  .typeline{font-size:15px;font-weight:600;color:var(--label);text-align:left;min-height:20px}
+  .typeline .caret{display:inline-block;width:2px;height:1em;background:var(--label-tertiary);vertical-align:-2px;margin-left:2px;animation:pp-blink 1s steps(1) infinite}
+  @keyframes pp-blink{50%{opacity:0}}
   .cardx{position:absolute;top:12px;right:12px;width:26px;height:26px;padding:0;border-radius:50%;background:var(--fill);color:var(--label-secondary);font-size:12px;line-height:1}
   .cardx:hover{background:var(--fill-hover);color:var(--label)}
   /* page tabs (the wall / participants) — segmented, Apple-style */
@@ -196,6 +200,16 @@
     <button class="cardx" id="shareCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
     <h2>Guests join here</h2>
     <div class="url" id="url">—</div>
+    <!-- First-run activation: an Apple-toned staged sequence (spinner +
+         character-by-character lines) instead of raw certificate errors.
+         The technical reason stays visible, small, for diagnosis. -->
+    <div id="pendingBox" style="display:none">
+      <div style="display:flex;gap:10px;align-items:center;min-height:28px">
+        <div class="spin16"></div>
+        <div class="typeline" id="typeLine"></div>
+      </div>
+      <div class="muted" id="pendingReason" style="font-size:11px;margin-top:4px"></div>
+    </div>
     <div id="qr"></div>
     <div class="hint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
     <!-- Shown while the secure link is pending: pinpoint WHICH hop the venue's
@@ -332,6 +346,40 @@
       if (!open) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
   }
+
+  // First-run activation sequence: staged lines, typed character by
+  // character — something honest to watch while the certificate arrives.
+  const PENDING_LINES = [
+    'Setting partyparty up for the first time…',
+    'Connecting to the cloud…',
+    'Securing your guest link…',
+    'This can take a couple of minutes — it only happens once.',
+  ];
+  let typeTimer = null, typing = false;
+  function startPendingType(){
+    if (typing) return;
+    typing = true;
+    const el = $('typeLine');
+    let li = 0, ci = 0;
+    const tick = () => {
+      if (!typing) return;
+      const line = PENDING_LINES[li];
+      ci++;
+      el.textContent = line.slice(0, ci);
+      if (ci < line.length) {
+        el.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
+        typeTimer = setTimeout(tick, 26);
+        return;
+      }
+      if (li < PENDING_LINES.length - 1) {
+        li++; ci = 0;
+        el.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
+        typeTimer = setTimeout(tick, 1600);
+      } // final line rests, caret gone
+    };
+    tick();
+  }
+  function stopPendingType(){ typing = false; clearTimeout(typeTimer); }
 
   // Settings sheet (the gear).
   {
@@ -548,13 +596,18 @@
       const secure = s.urls.primary.startsWith('https://');
       const guestUrl = s.urls.primary;
       if (secure) {
+        $('url').style.display = 'block';
         $('url').textContent = guestUrl;
+        $('pendingBox').style.display = 'none';
+        stopPendingType();
         renderQR(guestUrl);
         $('netCheckBtn').style.display = 'none';
         $('netCheckOut').textContent = ''; // stale diagnostics vanish once the link is up
       } else {
-        const why = (s.activation && s.activation.reason) ? ' — ' + s.activation.reason : ' (needs internet once)';
-        $('url').textContent = '🔒 Setting up the secure guest link…' + why;
+        $('url').style.display = 'none';
+        $('pendingBox').style.display = 'block';
+        startPendingType();
+        $('pendingReason').textContent = (s.activation && s.activation.reason) || '';
         renderQR('');
         $('netCheckBtn').style.display = 'block'; // stuck? find out which hop is blocked
       }

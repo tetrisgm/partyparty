@@ -55,6 +55,8 @@ type Broadcaster struct {
 	// generation is stale aborts instead of clobbering its successor
 	cmd        *exec.Cmd // ffmpeg
 	helper     *exec.Cmd // ppcapture (system audio), when device == "mac"
+	inRate     int       // capture sample rate actually in use (mac source; 0 otherwise)
+	inCh       int
 	state      string
 	device     string
 	deviceName string
@@ -372,6 +374,7 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	// generously, then fall back to 48k/2ch (ffmpeg just exits fast if wrong,
 	// surfacing the error note).
 	inRate, inCh := 48000, 2
+	formatAssumed := false
 	if helper != nil {
 		if err := helper.Start(); err != nil {
 			pr.Close()
@@ -396,8 +399,10 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		select {
 		case f := <-fscan.ch:
 			inRate, inCh = f[0], f[1]
+			b.pushLog(fmt.Sprintf("[partyparty] capturing at %d Hz, %d channel(s)", inRate, inCh))
 		case <-time.After(15 * time.Second):
-			b.pushLog("[partyparty] helper never announced its format (permission not granted?) — assuming 48000/2")
+			formatAssumed = true
+			b.pushLog("[partyparty] helper never announced its format (permission prompt still up?) — assuming 48000/2 for now")
 		}
 	}
 
@@ -443,7 +448,37 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		return
 	}
 	b.cmd = ff
+	b.inRate, b.inCh = 0, 0
+	if device == "mac" {
+		b.inRate, b.inCh = inRate, inCh
+	}
 	b.mu.Unlock()
+
+	// FIRST-RUN RESCUE: when the permission prompt delayed the FORMAT
+	// announcement past the wait, ffmpeg is now running on an assumed
+	// 48000/2. If the tap later reports something else (a 44.1 kHz output
+	// device is common), raw PCM decoded at the wrong rate is pitch-warped
+	// mush for the WHOLE set unless someone thinks to restart — the field
+	// report was "scrubby and dropping". Restart automatically instead.
+	if formatAssumed && device == "mac" {
+		go func() {
+			select {
+			case f := <-fscan.ch:
+				if f[0] == inRate && f[1] == inCh {
+					return // assumed right — leave the broadcast alone
+				}
+				b.mu.Lock()
+				stale := b.gen != myGen
+				b.mu.Unlock()
+				if stale {
+					return
+				}
+				b.pushLog(fmt.Sprintf("[partyparty] capture is actually %d Hz / %dch — restarting with the right settings", f[0], f[1]))
+				b.Start(device, deviceName, opts)
+			case <-time.After(90 * time.Second):
+			}
+		}()
+	}
 
 	go func(c, h *exec.Cmd) {
 		werr := c.Wait()
@@ -552,7 +587,12 @@ func (b *Broadcaster) Status() Status {
 		since = b.startedAt.UnixMilli()
 	}
 	note := ""
-	if b.state == "starting" && !b.startedAt.IsZero() && time.Since(b.startedAt) > 6*time.Second {
+	// A capture rate this low means the OUTPUT device is a Bluetooth headset
+	// in call (HFP) mode — guests would hear telephone-grade audio all night.
+	if (b.state == "live" || b.state == "starting") && b.device == "mac" && b.inRate > 0 && b.inRate < 44100 {
+		note = fmt.Sprintf("Your Mac's audio output is running at %d kHz — that's Bluetooth-headset (call) quality, and guests hear it too. Switch the Mac's output to speakers or wired, then Stop and Go Live again.", b.inRate/1000)
+	}
+	if note == "" && b.state == "starting" && !b.startedAt.IsZero() && time.Since(b.startedAt) > 6*time.Second {
 		switch b.device {
 		case "test":
 			note = "No audio yet — ffmpeg is still starting."
