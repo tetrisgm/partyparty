@@ -31,11 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Self-install (move to /Applications)
 
     /// Returns true when a move+relaunch is underway and this instance should
-    /// do nothing further.
-    private func moveToApplicationsIfNeeded() -> Bool {
+    /// do nothing further. `interactive` = invoked from a menu action (always
+    /// prompt); otherwise it's the launch check (skippable only in dev).
+    @discardableResult
+    private func moveToApplicationsIfNeeded(interactive: Bool = false) -> Bool {
         let src = Bundle.main.bundleURL
         if src.path.contains("/Applications/") { return false } // /Applications or ~/Applications
-        if UserDefaults.standard.bool(forKey: "PPSkipMove") { return false } // dev escape hatch
+        // Dev escape hatch is an ENV var only — never a persisted default, which
+        // would stick on a real install and silently defeat the move (it did).
+        if !interactive && ProcessInfo.processInfo.environment["PP_DEV_NO_MOVE"] == "1" { return false }
 
         let fm = FileManager.default
         var destDir = URL(fileURLWithPath: "/Applications", isDirectory: true)
@@ -140,6 +144,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func checkUpdates() {
         NSApp.activate(ignoringOtherApps: true)   // Sparkle's alert needs a frontmost app
+        // Sparkle can't update an app running from Downloads/a translocated
+        // mount. Rather than dead-end with that error, offer the move first —
+        // it relaunches from /Applications, where the update just works.
+        if !Bundle.main.bundleURL.path.contains("/Applications/") {
+            if moveToApplicationsIfNeeded(interactive: true) { return } // relaunching
+        }
         updater.checkForUpdates()
     }
 
