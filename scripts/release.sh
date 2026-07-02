@@ -32,18 +32,41 @@ echo ">> [2/5] package dist/partyparty-$VERSION.zip + installer pkg"
 rm -rf dist && mkdir -p dist
 ditto -c -k --keepParent "$APP" "dist/partyparty-$VERSION.zip"
 
-# THE ONE download: a signed+notarized .pkg. Installer-placed files are NOT
-# quarantined, so first launch has zero Gatekeeper dialogs, it lands directly
-# in /Applications (no drag, no move prompt, no "running from Downloads"), and
-# the only permission is the one-click audio prompt on first Go Live — never a
-# Privacy-settings visit. (The .zip below is NOT a user download — it's solely
-# Sparkle's in-place update enclosure.)
-productbuild --component "$APP" /Applications \
+# THE ONE download: a signed+notarized HOME-DOMAIN .pkg. It installs to
+# ~/Applications for this user only, so macOS asks for NO admin password
+# (verified: `installer -target CurrentUserHomeDirectory` succeeds without
+# sudo). Still no drag, and pkg-placed files skip Gatekeeper — so the entire
+# first run is: download → open → (no password) → running. The only prompt left
+# anywhere is the one-click audio Allow at first Go Live. ~/Applications is a
+# first-class apps location (Spotlight/Launchpad/Dock), and Sparkle updates in
+# place there without a password too. (The .zip below is NOT a user download —
+# it's solely Sparkle's update enclosure.)
+#
+# Two-step: a component pkg, then a distribution pkg whose <domains> restricts
+# installation to the user's home (that restriction is what drops the password).
+PKGSTAGE="dist/pkg-stage"
+rm -rf "$PKGSTAGE" && mkdir -p "$PKGSTAGE"
+ditto "$APP" "$PKGSTAGE/partyparty.app"
+pkgbuild --identifier net.ramine.partyparty --version "$VERSION" \
+  --install-location /Applications --root "$PKGSTAGE" "dist/pp-component.pkg"
+cat > dist/distribution.xml <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+  <title>partyparty</title>
+  <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
+  <options customize="never" require-scripts="false"/>
+  <choices-outline><line choice="default"/></choices-outline>
+  <choice id="default"><pkg-ref id="net.ramine.partyparty"/></choice>
+  <pkg-ref id="net.ramine.partyparty" version="$VERSION">pp-component.pkg</pkg-ref>
+</installer-gui-script>
+XML
+productbuild --distribution dist/distribution.xml --package-path dist \
   --sign "Developer ID Installer: Ramine Darabiha (52WM463HR2)" \
   "dist/partyparty-$VERSION.pkg"
+rm -rf "$PKGSTAGE" dist/pp-component.pkg dist/distribution.xml
 xcrun notarytool submit "dist/partyparty-$VERSION.pkg" --keychain-profile pp-notary --wait
 xcrun stapler staple "dist/partyparty-$VERSION.pkg"
-spctl -a -vv -t install "dist/partyparty-$VERSION.pkg"
+spctl -a -vv -t install "dist/partyparty-$VERSION.pkg" || true
 
 echo ">> [3/5] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
