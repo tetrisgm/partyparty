@@ -16,6 +16,12 @@ type client struct {
 	hasLat    bool
 	paused    bool
 	platform  string // "native" (iOS Safari) or "hls" (Android/desktop)
+
+	// Controller debug telemetry (v3): which delivery the guest actually ended
+	// up on after probing, its playback rate, and buffered seconds ahead.
+	delivery string
+	rate     float64
+	bufS     float64
 }
 
 type Listeners struct {
@@ -64,6 +70,22 @@ func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, h
 	}
 	if platform != "" {
 		c.platform = platform
+	}
+}
+
+// Debug records the controller telemetry a guest reports with each heartbeat.
+func (l *Listeners) Debug(key, delivery string, rate, bufS float64) {
+	if key == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if c := l.clients[key]; c != nil {
+		if delivery != "" {
+			c.delivery = delivery
+		}
+		c.rate = rate
+		c.bufS = bufS
 	}
 }
 
@@ -150,8 +172,11 @@ func (l *Listeners) LatencySpread() LatencyStat {
 // Listener is one active listener for the DJ's roster.
 type Listener struct {
 	Platform   string  `json:"platform"` // "native" | "hls"
+	Delivery   string  `json:"delivery,omitempty"`
 	LatencyMs  float64 `json:"latencyMs"`
 	HasLatency bool    `json:"hasLatency"`
+	Rate       float64 `json:"rate,omitempty"`
+	BufS       float64 `json:"bufS,omitempty"`
 	Stalled    bool    `json:"stalled"`
 	Paused     bool    `json:"paused"`
 }
@@ -172,8 +197,11 @@ func (l *Listeners) Roster() []Listener {
 	for _, c := range active {
 		out = append(out, Listener{
 			Platform:   c.platform,
+			Delivery:   c.delivery,
 			LatencyMs:  c.lat,
 			HasLatency: c.hasLat,
+			Rate:       c.rate,
+			BufS:       c.bufS,
 			Stalled:    !c.lastStall.IsZero() && now.Sub(c.lastStall) < 12*time.Second,
 			Paused:     c.paused,
 		})

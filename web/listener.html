@@ -79,6 +79,21 @@
     const titleEl = document.getElementById('title');
     const countEl = document.getElementById('count');
     let STREAM = null, delivery = 'llhls';
+    // Low-latency upgrade: the server may advertise an LL-HLS URL on its
+    // domain+cert. THIS DEVICE probes it (some routers' DNS-rebind protection
+    // blocks the domain for phones even when the DJ's Mac resolves it fine)
+    // and silently uses plain HLS when the probe fails — per-device fallback,
+    // nobody ever gets a dead stream.
+    let LLSTREAM = null, llUsable = null;
+    async function probeLL(url){
+      try {
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), 3500);
+        const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
+        clearTimeout(t);
+        return r.ok;
+      } catch (e) { return false; }
+    }
     // The room's sync contract: the wall-clock delay behind the DJ that EVERY
     // phone converges to (server-provided). Players park wherever their
     // heuristics like — iOS versions differ by seconds — so alignment to this
@@ -164,14 +179,19 @@
     const RETRY = { maxNumRetry: 1e9, retryDelayMs: 500, maxRetryDelayMs: 2000 };
     const LOAD_POLICY = { default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: RETRY, errorRetry: RETRY } };
 
+    // The stream THIS device plays: the probed LL-HLS upgrade, else plain.
+    const chosenStream = () => (llUsable && LLSTREAM) ? LLSTREAM : STREAM;
+    const usingLL = () => !!(llUsable && LLSTREAM);
+
     function attach(){
       if (!STREAM) return;
+      const src = chosenStream();
       if (useNative) {
-        player.src = STREAM;                       // Safari/iOS — native (LL-)HLS, the lock-safe path
+        player.src = src;                          // Safari/iOS — native (LL-)HLS, the lock-safe path
       } else if (window.Hls && Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
-        const ll = delivery === 'llhls';
-        const target = latencyTarget || (ll ? 3 : 5);
+        const ll = usingLL();
+        const target = latencyTarget || 5;
         const cfg = {
           lowLatencyMode: ll,
           // hls.js's own latency controller is OFF (rate stays ours to drive):
@@ -207,9 +227,9 @@
           } catch (e) {}
         });
         hls.on(Hls.Events.FRAG_BUFFERED, () => { mediaErrors = 0; });
-        hls.loadSource(STREAM); hls.attachMedia(player);
+        hls.loadSource(src); hls.attachMedia(player);
       } else {
-        player.src = STREAM;
+        player.src = src;
       }
     }
 
@@ -220,6 +240,7 @@
 
     async function play(){
       if (!STREAM) { try { await poll(); } catch (e) {} }
+      if (LLSTREAM && llUsable === null) llUsable = await probeLL(LLSTREAM); // once per session
       if (!attachSafe()) return;
       try { await player.play(); }
       catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
@@ -242,6 +263,9 @@
     player.addEventListener('pause',   () => { setPlayingUI(false); if (started) setStatus('paused'); });
     player.addEventListener('error',   () => {
       setStatus('reconnecting…');
+      // An LL stream that keeps failing mid-party (MediaMTX died, DNS flipped)
+      // demotes this device to plain HLS — same self-healing as the join probe.
+      if (usingLL() && errRetries >= 2) llUsable = false;
       const delay = Math.min(500 * Math.pow(2, errRetries++), 5000);
       setTimeout(() => { attachSafe(); player.play().catch(()=>{}); }, delay);
     });
@@ -272,6 +296,8 @@
       try {
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         if (s.streamUrl) STREAM = s.streamUrl;
+        LLSTREAM = s.llhlsUrl || null;
+        if (!LLSTREAM) llUsable = null; // reset if the DJ turns LL off
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         titleEl.textContent = s.name || 'partyparty';
@@ -398,7 +424,10 @@
       align();
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
-      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform;
+      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
+        + '&del=' + (usingLL() ? 'llhls' : 'hls')
+        + '&rate=' + player.playbackRate.toFixed(3)
+        + '&buf=' + bufferedAhead().toFixed(1);
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
       fetch(url, { cache: 'no-store' }).catch(() => {});
       stalledSinceBeat = false;

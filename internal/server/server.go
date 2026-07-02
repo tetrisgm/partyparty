@@ -160,6 +160,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"health":         health,
 			"urls":           s.urls(),
 			"streamUrl":      s.streamURL(),
+			"llhlsUrl":       s.llhlsURL(),
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
@@ -185,6 +186,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
+		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
+		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
+		s.Listeners.Debug(key, q.Get("del"), rate, buf)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/delivery":
 		if r.Method != http.MethodPost {
@@ -336,17 +340,24 @@ func (s *srv) handleHLS(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(s.RunDir, file))
 }
 
-// streamURL is what the player loads: the MediaMTX LL-HLS URL, or our own
-// plain-HLS playlist.
+// streamURL is the baseline every device can play: our plain-HLS playlist
+// (in llhls mode the tee still writes it). The LL-HLS URL is advertised
+// separately (llhlsURL) and each guest probes it, falling back here.
 func (s *srv) streamURL() string {
-	if s.Broadcaster.Delivery() == "llhls" {
-		host := s.liveDomain()
-		if host == "" {
-			host = netinfo.PrimaryLanIP()
-		}
-		return fmt.Sprintf("https://%s:%d/%s/index.m3u8", host, s.Config.HLSPort, s.Config.StreamPath)
-	}
 	return "/hls/stream.m3u8"
+}
+
+// llhlsURL is the low-latency upgrade a guest MAY use if its device can
+// resolve the domain and complete TLS — "" when not engaged/available.
+func (s *srv) llhlsURL() string {
+	if s.Broadcaster.Delivery() != "llhls" || !s.realCert() {
+		return ""
+	}
+	host := s.liveDomain()
+	if host == "" {
+		return ""
+	}
+	return fmt.Sprintf("https://%s:%d/%s/index.m3u8", host, s.Config.HLSPort, s.Config.StreamPath)
 }
 
 // captiveProbe answers the OS connectivity-check URLs. Only reached when this
@@ -483,22 +494,21 @@ func (s *srv) liveDomain() string {
 // heuristics like (iOS versions differ by seconds); the room drops TOGETHER
 // because every client converges on this one number instead.
 //
-// The base is deliberately tight (plain HLS low mode = 5s, LL-HLS = 3s) and the
-// server adapts within [base, base+3]: stalls in the room raise it in 0.5s
-// steps (fast — everyone drifts smoothly via rate, no skips), and after 5+
-// clean minutes it decays 0.25s at a time. --latency-target pins it manually.
+// ONE target for the whole room regardless of which delivery each guest ended
+// up on (LL-HLS guests simply carry more cushion) — a mixed room must still
+// drop together; that beats letting the LL cohort run 2s early. The base is
+// the plain-HLS constraint (low mode = 5s) and the server adapts within
+// [base, base+3]: stalls raise it 0.5s at a time (smooth — everyone drifts via
+// rate, no skips), 5+ clean minutes decay 0.25s. --latency-target pins it.
 func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	if s.Config.LatencyTarget > 0 {
 		return s.Config.LatencyTarget
 	}
-	base := 3.0 // llhls
-	if bc.Delivery != "llhls" {
-		seg := bc.SegDur
-		if seg <= 0 {
-			seg = 1
-		}
-		base = 3*seg + 2 // low(1s)=5, balanced(2s)=8, stable(3s)=11
+	seg := bc.SegDur
+	if seg <= 0 {
+		seg = 1
 	}
+	base := 3*seg + 2 // low(1s)=5, balanced(2s)=8, stable(3s)=11
 	s.adaptMu.Lock()
 	defer s.adaptMu.Unlock()
 	now := time.Now()

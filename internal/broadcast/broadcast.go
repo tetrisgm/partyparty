@@ -178,33 +178,47 @@ func (b *Broadcaster) buildArgs(device string) []string {
 		"-ar", strconv.Itoa(c.SampleRate),
 		"-c:a", c.Codec, "-b:a", b.bitrate,
 	)
+	// The plain-HLS output ALWAYS exists — it's the delivery every device can
+	// play. Flags: muxdelay/muxpreload 0 + flush_packets keep PROGRAM-DATE-TIME
+	// honest; temp_file = atomic playlist publish (no truncated m3u8 under
+	// polling load); discont_start marks restarts; delete_threshold keeps
+	// just-rotated segments for laggard phones; epoch sequence numbers never
+	// rewind under a guest across restarts.
+	hlsOpts := strings.Join([]string{
+		"hls_time=" + strconv.FormatFloat(b.hlsTime, 'g', -1, 64),
+		"hls_list_size=" + strconv.Itoa(c.HLSList),
+		"hls_flags=delete_segments+omit_endlist+append_list+independent_segments+program_date_time+temp_file+discont_start",
+		"hls_delete_threshold=10",
+		"hls_start_number_source=epoch",
+		"hls_segment_type=mpegts",
+		"hls_segment_filename=" + filepath.Join(b.runDir, "seg_%05d.ts"),
+		// NOTE: muxdelay/muxpreload are ffmpeg CLI options, not AVOptions — they
+		// don't exist inside a tee slave (and this build's hls muxer lacks
+		// hls_ts_options). Their absence adds a small CONSTANT mux delay that
+		// shifts every listener equally, so room sync is unaffected.
+		"flush_packets=1",
+	}, ":")
+
 	if b.delivery == "llhls" {
-		// Push to MediaMTX over RTSP; MediaMTX repackages into LL-HLS.
+		// BOTH flavors from one encode (tee muxer): the plain playlist for
+		// everyone, plus an RTSP push that MediaMTX repackages into LL-HLS over
+		// HTTPS. Guests probe the LL URL themselves and fall back to plain
+		// per-device (rebind-protecting routers, hostile resolvers) — engaging
+		// LL can never hand anyone a dead stream. use_fifo + onfail=ignore: a
+		// dying MediaMTX must never stall or kill the plain output.
 		args = append(args,
-			"-muxdelay", "0", "-flush_packets", "1",
-			"-f", "rtsp", "-rtsp_transport", "tcp", b.ingestURL,
+			"-f", "tee", "-map", "0:a",
+			"["+hlsOpts+"]"+b.playlist+
+				"|[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]"+b.ingestURL,
 		)
 	} else {
 		args = append(args,
-			// muxdelay/muxpreload 0 + flush_packets: don't buffer TS output —
-			// keeps PROGRAM-DATE-TIME honest (was ~1.2s skewed) and shaves
-			// tens of ms of mux latency.
 			"-muxdelay", "0", "-muxpreload", "0", "-flush_packets", "1",
 			"-f", "hls",
 			"-hls_time", strconv.FormatFloat(b.hlsTime, 'g', -1, 64),
 			"-hls_list_size", strconv.Itoa(c.HLSList),
-			// temp_file: atomic playlist publish (write-then-rename) so a guest
-			// GET can never see a truncated m3u8 under polling load.
-			// discont_start: mark the first segment after a restart as a
-			// discontinuity so players resync cleanly instead of glitching.
 			"-hls_flags", "delete_segments+omit_endlist+append_list+independent_segments+program_date_time+temp_file+discont_start",
-			// Keep deleted segments on disk a while longer: a briefly-stalled
-			// phone can still fetch a segment that just left the playlist
-			// window instead of 404ing exactly when its buffer is thinnest.
 			"-hls_delete_threshold", "10",
-			// Epoch-based sequence numbers: monotonic across stop/start, so a
-			// restarted broadcast never rewinds MEDIA-SEQUENCE under a guest
-			// (players treat it as a forward jump, not a corrupt playlist).
 			"-hls_start_number_source", "epoch",
 			"-hls_segment_type", "mpegts",
 			"-hls_segment_filename", filepath.Join(b.runDir, "seg_%05d.ts"),
@@ -389,16 +403,10 @@ func (b *Broadcaster) hasSegments() bool {
 func (b *Broadcaster) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.state == "starting" {
-		if b.delivery == "llhls" {
-			// "Live" only if ffmpeg is actually still running (a failed RTSP
-			// push exits within a second or two) — not on a blind timer.
-			if b.cmd != nil && !b.startedAt.IsZero() && time.Since(b.startedAt) > 2*time.Second {
-				b.state = "live"
-			}
-		} else if b.hasSegments() {
-			b.state = "live"
-		}
+	if b.state == "starting" && b.hasSegments() {
+		// Both modes write the plain playlist (llhls tees it alongside the
+		// RTSP push), so segments-on-disk is the truthful liveness signal.
+		b.state = "live"
 	}
 	var since int64
 	if !b.startedAt.IsZero() {

@@ -219,6 +219,21 @@ func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf
 	return b, nil
 }
 
+// InstallCreds returns this Mac's broker identity for authenticated calls
+// (telemetry etc.), or empty strings if the install never registered.
+func InstallCreds() (id, secret string) {
+	dir, err := stateDir()
+	if err != nil {
+		return "", ""
+	}
+	var rec struct{ ID, Secret string }
+	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
+	if err != nil || json.Unmarshal(data, &rec) != nil {
+		return "", ""
+	}
+	return rec.ID, rec.Secret
+}
+
 // TokenFromEnvOrFile resolves the Cloudflare API token.
 func TokenFromEnvOrFile() string {
 	if t := strings.TrimSpace(os.Getenv("PARTYPARTY_CF_TOKEN")); t != "" {

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -27,6 +29,39 @@ import (
 
 //go:embed all:web
 var webFS embed.FS
+
+// telemetryLoop ships /api/status snapshots to the cloud while broadcasting.
+func telemetryLoop(port int, bc *broadcast.Broadcaster) {
+	id, secret := activate.InstallCreds()
+	if id == "" {
+		return // never registered — nothing to authenticate with
+	}
+	base := os.Getenv("PARTYPARTY_BROKER")
+	if base == "" {
+		base = "https://party.ramine.net"
+	}
+	cl := &http.Client{Timeout: 10 * time.Second}
+	for {
+		time.Sleep(30 * time.Second)
+		if bc.Status().State != "live" {
+			continue
+		}
+		resp, err := cl.Get(fmt.Sprintf("http://127.0.0.1:%d/api/status", port))
+		if err != nil {
+			continue
+		}
+		var snap json.RawMessage
+		err = json.NewDecoder(resp.Body).Decode(&snap)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		body, _ := json.Marshal(map[string]any{"id": id, "secret": secret, "snap": snap})
+		if r, err := cl.Post(base+"/api/broker/telemetry", "application/json", bytes.NewReader(body)); err == nil {
+			r.Body.Close()
+		}
+	}
+}
 
 func main() {
 	cfg := config.Parse()
@@ -208,14 +243,26 @@ func main() {
 						return
 					}
 					handler.SetActivation(res.Host)
-					// Deliberately NOT auto-engaged: the Mac's resolution
-					// self-check can pass while the guests' phones are behind a
-					// rebind-protecting resolver (field-verified), and a room
-					// that can't load the stream is worse than 2s of latency.
-					// The console option un-gates; the DJ flips it after
-					// checking one phone.
-					log.Printf("activate: low latency READY (%s) — enable it in the console, test with one phone first", res.Host)
-					return
+					log.Printf("activate: low latency ON — %s (guests fall back to plain HLS per-device if their DNS blocks it)", res.Host)
+					// Auto-engage is SAFE now: llhls mode tees BOTH outputs, and
+					// each guest probes the LL URL itself, silently using plain
+					// HLS when its resolver/router says no. Engage when idle —
+					// never restart a live set.
+					for {
+						st := bc.Status()
+						if st.State == "idle" || st.State == "error" {
+							if bc.Delivery() == "hls" {
+								if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err == nil {
+									bc.SetDelivery("llhls")
+									log.Printf("activate: low-latency delivery engaged")
+								} else {
+									log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
+								}
+							}
+							return
+						}
+						time.Sleep(5 * time.Second)
+					}
 				}
 				log.Printf("activate: low latency off — %s (retrying in 5 min)", res.Reason)
 				time.Sleep(5 * time.Minute)
@@ -251,6 +298,14 @@ func main() {
 
 	if cfg.Tone {
 		bc.Start("test", "Test tone (440 Hz)", broadcast.Options{})
+	}
+
+	// Debug telemetry: while live, snapshot /api/status to the cloud every 30s
+	// (R2 via the site Worker, authenticated with this install's broker
+	// identity) so playback problems can be analyzed after the fact — nobody
+	// transcribes numbers off phones mid-party. PARTYPARTY_TELEMETRY=0 disables.
+	if os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
+		go telemetryLoop(cfg.Port, bc)
 	}
 
 	sig := make(chan os.Signal, 1)

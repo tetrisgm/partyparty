@@ -246,6 +246,27 @@ async function broker(request, env, pathname) {
     return jsonResp(200, { ok: true, host: name });
   }
 
+  // Debug telemetry: the DJ's Mac snapshots its /api/status here while live so
+  // playback problems can be analyzed after the fact (per-listener latency,
+  // rate, buffer, delivery, sync spread, the app's log ring). Scoped to the
+  // install's own prefix; ~20KB per 30s while broadcasting.
+  if (pathname === "/api/broker/telemetry") {
+    if (!body.snap) return jsonResp(400, { error: "no snap" });
+    await env.DL.put(`telemetry/${id}/${Date.now()}.json`, JSON.stringify(body.snap));
+    return jsonResp(200, { ok: true });
+  }
+  if (pathname === "/api/broker/telemetry-dump") {
+    const n = Math.min(Number(body.n) || 10, 50);
+    const list = await env.DL.list({ prefix: `telemetry/${id}/`, limit: 1000 });
+    const keys = list.objects.map((o) => o.key).sort().slice(-n);
+    const entries = [];
+    for (const k of keys) {
+      const o = await env.DL.get(k);
+      if (o) entries.push({ key: k, snap: await o.json() });
+    }
+    return jsonResp(200, { entries });
+  }
+
   return jsonResp(404, { error: "unknown broker endpoint" });
 }
 

@@ -170,8 +170,8 @@
       <h2>Audio</h2>
       <label for="delivery">Mode</label>
       <select id="delivery">
-        <option value="llhls">Low latency — ~2s (LL-HLS, needs a real HTTPS cert)</option>
-        <option value="hls">Compatible — ~4s (plain HLS, no cert)</option>
+        <option value="llhls">Automatic — low latency for phones that support it (recommended)</option>
+        <option value="hls">Compatible only — plain HLS for everyone</option>
       </select>
       <div class="hint" id="deliveryHint">Plain HLS is the default and plays on any phone with no cert. Low latency (LL-HLS) needs a real HTTPS cert; switching restarts the broadcast.</div>
 
@@ -191,9 +191,9 @@
       <div id="latencyBox">
         <label for="latency" style="margin-top:14px">Latency vs. stability</label>
         <select id="latency">
-          <option value="low" selected>Low latency — ~4s (least delay)</option>
-          <option value="balanced">Balanced — ~7s</option>
-          <option value="stable">Stable — ~10s (best on weak Wi-Fi)</option>
+          <option value="low" selected>Low latency — room syncs at ~5s</option>
+          <option value="balanced">Balanced — room syncs at ~8s</option>
+          <option value="stable">Stable — room syncs at ~11s (best on weak Wi-Fi)</option>
         </select>
         <div class="hint">Lower latency = less buffer, so it's more sensitive to drops. If audio cuts out on a weak network, step toward Stable. Changing this while live restarts the broadcast.</div>
       </div>
@@ -384,8 +384,8 @@
         // unavailable to available mid-session — set BOTH label states.
         llOpt.disabled = (s.llhlsAvailable === false) || (s.llhlsRealCert === false);
         llOpt.textContent = (s.llhlsRealCert === false)
-          ? 'Low latency — setting up (needs internet)…'
-          : 'Low latency — ~2s (test with one phone first)';
+          ? 'Automatic — setting up low latency (needs internet)…'
+          : 'Automatic — low latency for phones that support it (recommended)';
       }
       const badge = $('badge');
       badge.textContent = st;
@@ -404,16 +404,8 @@
       const lb = $('liveBtn');
       lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop' : 'Go Live');
       lb.className = live ? 'stop' : 'go';
-      // The latency knob applies in BOTH modes now: plain HLS = segment length,
-      // LL-HLS = part duration (server remaps + bounces MediaMTX on change).
-      const lsel = $('latency');
-      if (lsel && lsel.dataset.mode !== s.delivery) {
-        lsel.dataset.mode = s.delivery;
-        const labels = s.delivery === 'llhls'
-          ? { low: 'Lowest — ~1.5-2s (experimental, test your iPhones)', balanced: 'Balanced — ~2-2.5s (recommended)', stable: 'Stable — ~2.5-3s (best on weak Wi-Fi)' }
-          : { low: 'Low latency — ~4s (least delay)', balanced: 'Balanced — ~7s', stable: 'Stable — ~10s (best on weak Wi-Fi)' };
-        for (const o of lsel.options) if (labels[o.value]) o.textContent = labels[o.value];
-      }
+      // One room target regardless of per-guest delivery (a mixed room must
+      // still drop together), so the latency labels are static now.
       const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnoteText').textContent = note || '';
@@ -438,7 +430,10 @@
       $('roster').innerHTML = roster.map((r, i) => {
         const icon = r.stalled ? '⏳' : (r.paused ? '⏸' : '▶');
         const lat = r.hasLatency ? Math.round(r.latencyMs) + ' ms' : '—';
-        return '<div class="listener"><span class="lstat">' + icon + '</span><span class="lname">Guest ' + (i + 1) + '</span><span class="llat">' + lat + '</span></div>';
+        const extra = (r.delivery === 'llhls' ? ' · LL' : '')
+          + (r.bufS ? ' · buf ' + r.bufS.toFixed(0) + 's' : '')
+          + (r.rate && Math.abs(r.rate - 1) > 0.001 ? ' · ' + r.rate.toFixed(2) + 'x' : '');
+        return '<div class="listener"><span class="lstat">' + icon + '</span><span class="lname">Guest ' + (i + 1) + '</span><span class="llat">' + lat + extra + '</span></div>';
       }).join('');
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
