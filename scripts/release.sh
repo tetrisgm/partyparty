@@ -51,18 +51,30 @@ rm -rf "$DMGSTAGE" && mkdir -p "$DMGSTAGE"
 ditto "$APP" "$DMGSTAGE/partyparty.app"
 ln -s /Applications "$DMGSTAGE/Applications"
 hdiutil create -volname "partyparty Installer" -srcfolder "$DMGSTAGE" -ov -format UDZO -quiet "dist/partyparty-$VERSION.dmg"
+codesign --sign "Developer ID Application: Ramine Darabiha (52WM463HR2)" "dist/partyparty-$VERSION.dmg"
 xcrun notarytool submit "dist/partyparty-$VERSION.dmg" --keychain-profile pp-notary --wait
-xcrun stapler staple "dist/partyparty-$VERSION.dmg"
+# The ticket can lag "Accepted" by a few seconds — retry the staple briefly.
+for i in 1 2 3 4 5; do
+  xcrun stapler staple "dist/partyparty-$VERSION.dmg" && break
+  echo "stapler: ticket not ready yet, retrying ($i/5)…"; sleep 10
+done
+xcrun stapler validate "dist/partyparty-$VERSION.dmg"
 rm -rf "$DMGSTAGE"
 
 echo ">> [3/5] sign the Sparkle appcast"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
 # click "Always Allow"). Enclosure URLs point at party.ramine.net.
+# Sparkle refuses to scan a dir holding zip+dmg of the same version — feed it
+# a zips-only staging dir and move the result back.
+rm -rf dist/appcast-work && mkdir -p dist/appcast-work
+cp "dist/partyparty-$VERSION.zip" dist/appcast-work/
 if [ -n "${SPARKLE_ED_KEY_FILE:-}" ]; then
-  "$SPK/generate_appcast" --ed-key-file "$SPARKLE_ED_KEY_FILE" --download-url-prefix "https://party.ramine.net/" dist
+  "$SPK/generate_appcast" --ed-key-file "$SPARKLE_ED_KEY_FILE" --download-url-prefix "https://party.ramine.net/" dist/appcast-work
 else
-  "$SPK/generate_appcast" --download-url-prefix "https://party.ramine.net/" dist
+  "$SPK/generate_appcast" --download-url-prefix "https://party.ramine.net/" dist/appcast-work
 fi
+mv dist/appcast-work/appcast.xml dist/appcast.xml
+rm -rf dist/appcast-work
 
 echo ">> [4/5] upload to R2"
 cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
