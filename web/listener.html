@@ -102,9 +102,16 @@
     const PAGE_VERSION = '__PP_VERSION__';
     const versioned = !PAGE_VERSION.includes('PP_VERSION'); // false in raw/dev serving
     let pendingReload = false;
+    // Any self-reload must carry the guest's intent across: a listener (or a
+    // mid-interruption listener about to auto-resume) should come back playing,
+    // not parked silent at "Tap to listen" while the party continues.
+    function reloadKeepingIntent(){
+      try { sessionStorage.setItem('pp.resume', (started || resumeWanted) && !userPaused ? '1' : '0'); } catch (e) {}
+      location.reload();
+    }
     function considerReload(serverVersion){
       if (!versioned || !serverVersion || serverVersion === PAGE_VERSION) return;
-      if (!started || player.paused) { location.reload(); return; }
+      if (!started || player.paused) { reloadKeepingIntent(); return; }
       pendingReload = true; // playing: reload at the next pause (never kill audio)
     }
 
@@ -299,7 +306,10 @@
     async function prebuffer(){
       if (attached || started || !STREAM || !live) return;
       attached = true;
-      if (!attachSafe()) return; // native: sets src (desktop Safari preloads); iOS defers until the gesture
+      // A throwing attach must NOT burn the flag — leaving attached=true with
+      // no player wedges the page at "Preparing…" forever; clearing it makes
+      // the next 3s poll simply try again.
+      if (!attachSafe()) { attached = false; return; }
       if (useNative) {
         // iOS can't buffer before a gesture, so it's tappable immediately;
         // desktop Safari preloads via preload="auto" and readyState will climb.
@@ -335,13 +345,16 @@
 
     let userPaused = false; // deliberate pause (muted): never auto-resumed
     btn.addEventListener('click', () => {
+      // Interruption recovery: element paused by the SYSTEM (call/Siri) and
+      // not by the guest — this tap means "come back", not "mute me".
+      if (started && player.paused && !userPaused) { player.play().catch(()=>{}); return; }
       if (started && !player.muted) { pauseGuest(); }              // listening → mute (stay warm)
       else if (started) { resumeGuest(); }                          // muted → unmute (instant, in sync)
       else { if (!ready) return; userPaused = false; player.muted = false; mediaSession(); play().catch(()=>{}); } // first play (register media session in the gesture)
     });
 
     let errRetries = 0;
-    player.addEventListener('playing', () => { started = true; errRetries = 0; if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
+    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
     player.addEventListener('waiting', () => { stalledSinceBeat = true; setStatus('buffering…'); });
     // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
     // normal between refreshes) — only treat it as real when starved.
@@ -350,22 +363,28 @@
       if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
     });
     player.addEventListener('pause',   () => {
-      if (pendingReload) { location.reload(); return; } // safe moment: nothing playing
+      if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
       // We pause by MUTING, never player.pause(). A real pause here is a system
       // interruption (phone call, Siri, another app) — if the user didn't ask
-      // for it, resume as soon as we can.
-      if (started && !userPaused) { player.play().catch(() => {}); return; }
+      // for it, resume as soon as we can. If the resume is REJECTED (active
+      // call), show the truth instead of a green "Playing" over silence; the
+      // poll nudge keeps retrying and 'playing' restores the UI on success.
+      if (started && !userPaused) {
+        player.play().catch(() => { setPlayingUI(false); setStatus('paused by your phone — back soon'); });
+        return;
+      }
       setPlayingUI(false); if (started) setStatus('paused');
     });
     player.addEventListener('error',   () => {
       if (!live) return; // DJ stopped — poll() tears down and shows "Waiting for DJ"
       // The stream is supposedly live but the player keeps dying (e.g. the
       // server was reconfigured under us and this MediaSource is wedged): a
-      // fresh page is the one reset that always works. Reload once, quietly —
-      // resumeWanted survives via sessionStorage so the guest doesn't re-tap.
-      if (errRetries >= 6) {
-        try { sessionStorage.setItem('pp.resume', started && !userPaused ? '1' : '0'); } catch (e) {}
-        location.reload();
+      // fresh page is the one reset that always works. Reload once, quietly.
+      // ONLY with a recently-successful status poll though — during a Wi-Fi
+      // outage "live" is just stale, and reloading an unreachable page would
+      // strand the guest on the browser's error screen with no way back.
+      if (errRetries >= 6 && Date.now() - lastPollOK < 8000) {
+        reloadKeepingIntent();
         return;
       }
       setStatus('reconnecting…');
@@ -394,7 +413,7 @@
     // (Also restored across the wedged-stream self-reload via sessionStorage;
     // if the browser blocks the gesture-less play() we fall back to the
     // bright "Tap to listen" button — never a stuck screen.)
-    let resumeWanted = false;
+    let resumeWanted = false, resumeTries = 0;
     try { resumeWanted = sessionStorage.getItem('pp.resume') === '1'; sessionStorage.removeItem('pp.resume'); } catch (e) {}
     function stopPlayback(){
       resumeWanted = started && !userPaused;
@@ -405,9 +424,11 @@
       updateIdleButton(); // shows "Waiting for DJ"
     }
 
+    let lastPollOK = 0; // last successful /api/status — proves a reload could actually fetch the page
     async function poll(){
       try {
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
+        lastPollOK = Date.now();
         considerReload(s.appVersion);
         if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
@@ -418,18 +439,23 @@
         // "others" = everyone but you (you're in the count once you're playing).
         const others = Math.max(0, (s.listeners || 0) - (started ? 1 : 0));
         countEl.textContent = others ? ('● ' + others + ' other' + (others > 1 ? 's' : '') + ' listening') : '';
-        if (started && !live) {
+        if (!live && (started || attached)) {
           // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an
-          // endless reconnect loop against a dead stream.
+          // endless reconnect loop against a dead stream. `attached` matters
+          // too — a prebuffered-but-never-tapped page holds a live hls.js
+          // instance that would retry the dead URL forever and could replay
+          // the PREVIOUS set's buffer on the first tap after a restart.
           stopPlayback();
         } else if (!started) {
           updateIdleButton();
           prebuffer();
           // Auto-resume a guest who was listening when the DJ stopped/restarted
           // — no re-tap, no reload (the element keeps its user-activation).
+          // Cleared by 'playing' on success; a browser that blocks the
+          // gesture-less play gets a few retries, then the bright tap button.
           if (live && resumeWanted && ready && !userPaused) {
-            resumeWanted = false;
-            play().catch(() => {});
+            if (++resumeTries > 5) { resumeWanted = false; }
+            else play().catch(() => {});
           }
         }
         // Mid-play hiccup (not a stop): the resume nudge.

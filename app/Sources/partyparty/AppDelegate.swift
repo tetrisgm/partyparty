@@ -6,7 +6,8 @@ import ServiceManagement
 /// Open Console, Quit. Supervises the Go server child.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let server = ServerController()
-    private let updater = Updater()          // background auto-update (when configured)
+    private var updater: Updater!            // created AFTER the move check — Sparkle must
+                                             // never download into a translocated/Downloads copy
     private var api: APIClient!
     private var poller: StatusPoller!
     private var statusItem: NSStatusItem!
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // forever (the LetsMove pattern).
         if moveToApplicationsIfNeeded() { return } // relaunching from the new home
 
+        updater = Updater()                   // background auto-update
         server.start()
         registerLoginItemByDefault()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
@@ -32,13 +34,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Self-install (move to /Applications)
 
+    /// True when running from /Applications or ~/Applications — an INSTALLED
+    /// copy, as opposed to ~/Downloads (or a ~/Downloads/Applications decoy).
+    private var isInstalled: Bool {
+        let path = Bundle.main.bundleURL.path
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return path.hasPrefix("/Applications/") || path.hasPrefix(home + "/Applications/")
+    }
+
     /// Returns true when a move+relaunch is underway and this instance should
     /// do nothing further. `interactive` = invoked from a menu action (always
     /// prompt); otherwise it's the launch check (skippable only in dev).
     @discardableResult
     private func moveToApplicationsIfNeeded(interactive: Bool = false) -> Bool {
         let src = Bundle.main.bundleURL
-        if src.path.contains("/Applications/") { return false } // /Applications or ~/Applications
+        if isInstalled { return false }
         // Dev escape hatch is an ENV var only — never a persisted default, which
         // would stick on a real install and silently defeat the move (it did).
         if !interactive && ProcessInfo.processInfo.environment["PP_DEV_NO_MOVE"] == "1" { return false }
@@ -73,8 +83,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             let cfg = NSWorkspace.OpenConfiguration()
             cfg.createsNewApplicationInstance = true
-            NSWorkspace.shared.openApplication(at: dest, configuration: cfg) { _, _ in
-                DispatchQueue.main.async { NSApp.terminate(nil) }
+            NSWorkspace.shared.openApplication(at: dest, configuration: cfg) { app, err in
+                DispatchQueue.main.async {
+                    // Only hand over if the new copy actually launched —
+                    // terminating blindly could leave the user with NOTHING.
+                    if app != nil { NSApp.terminate(nil); return }
+                    let e = NSAlert()
+                    e.messageText = "Couldn't relaunch from Applications"
+                    e.informativeText = (err?.localizedDescription ?? "Unknown error")
+                        + "\n\nThe copy IS in Applications — open it from there when you're ready."
+                    e.runModal()
+                    NSApp.terminate(nil) // this instance did no setup; don't linger half-alive
+                }
             }
             return true
         } catch {
@@ -145,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Sparkle can't update an app running from Downloads/a translocated
         // mount. Rather than dead-end with that error, offer the move first —
         // it relaunches from /Applications, where the update just works.
-        if !Bundle.main.bundleURL.path.contains("/Applications/") {
+        if !isInstalled {
             if moveToApplicationsIfNeeded(interactive: true) { return } // relaunching
         }
         updater.checkForUpdates()
@@ -169,9 +189,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let d = UserDefaults.standard
         guard !d.bool(forKey: applied) else { return }
         // Only from an installed home — a dev build in ~/dev shouldn't enroll.
-        guard Bundle.main.bundleURL.path.contains("/Applications/") else { return }
-        d.set(true, forKey: applied)
-        try? SMAppService.mainApp.register()
+        guard isInstalled else { return }
+        if SMAppService.mainApp.status == .enabled {
+            d.set(true, forKey: applied) // already on (pkg postinstall era, or manual)
+            return
+        }
+        do {
+            try SMAppService.mainApp.register()
+            d.set(true, forKey: applied) // flag only after SUCCESS — a transient
+            // SMAppService failure retries next launch instead of losing the default
+        } catch {
+            NSLog("partyparty: login-item default enroll failed (will retry next launch): \(error)")
+        }
     }
 
     // MARK: Console window

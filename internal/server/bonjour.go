@@ -95,8 +95,11 @@ func resolveInstanceHost(name, svc string, d time.Duration) string {
 	const marker = "can be reached at "
 	for _, line := range strings.Split(string(out), "\n") {
 		if i := strings.Index(line, marker); i >= 0 {
-			rest := strings.TrimSpace(line[i+len(marker):])
-			host := strings.Fields(rest)[0] // "iPad-Mini.local.:49294"
+			fields := strings.Fields(strings.TrimSpace(line[i+len(marker):]))
+			if len(fields) == 0 {
+				continue // dns-sd killed mid-line at the timeout — truncated output
+			}
+			host := fields[0] // "iPad-Mini.local.:49294"
 			if c := strings.LastIndex(host, ":"); c >= 0 {
 				host = host[:c]
 			}

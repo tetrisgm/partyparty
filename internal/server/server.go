@@ -43,7 +43,13 @@ type Deps struct {
 
 type srv struct {
 	Deps
-	vendor     http.Handler
+	vendor http.Handler
+
+	// llMu guards curPartDur AND serializes the whole LL reconfigure/revive
+	// critical section in /api/start: two concurrent latency changes would
+	// otherwise re-create the very MediaMTX port-bind race StopWait fixed
+	// (the second StopWait sees no process and sails straight into Start).
+	llMu       sync.Mutex
 	curPartDur string
 
 	// Adaptive room-latency target: the room finds its own floor instead of a
@@ -252,7 +258,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.Broadcaster.SetDelivery("hls")
 			if s.MTX != nil {
-				s.MTX.Stop()
+				// StopWait, not Stop: a quick toggle back to llhls within the
+				// SIGINT grace would otherwise launch a replacement that loses
+				// the port race to the still-dying instance.
+				s.MTX.StopWait()
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -303,10 +312,14 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			opts.Channels = 2
 		}
 		// In LL-HLS the latency modes are part durations, applied by rewriting
-		// mediamtx.yml and bouncing MediaMTX before ffmpeg re-pushes.
+		// mediamtx.yml and bouncing MediaMTX before ffmpeg re-pushes. llMu
+		// serializes the bounce — concurrent latency changes must queue, not
+		// race the dying instance for its ports.
 		if s.Broadcaster.Delivery() == "llhls" && s.ReconfigureLLHLS != nil {
+			s.llMu.Lock()
 			if part, seg, n := latencyPartDur(q.Get("latency")); part != "" && part != s.curPartDur {
 				if err := s.ReconfigureLLHLS(part, seg, n); err != nil {
+					s.llMu.Unlock()
 					writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency reconfigure failed: " + err.Error()})
 					return
 				}
@@ -316,10 +329,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				// revive it, or ffmpeg pushes into the void and guests see a
 				// "live" broadcast nobody can hear.
 				if err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second); err != nil {
+					s.llMu.Unlock()
 					writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency engine failed to start: " + err.Error()})
 					return
 				}
 			}
+			s.llMu.Unlock()
 		}
 		s.Broadcaster.Start(device, q.Get("name"), opts)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -627,13 +642,13 @@ func validBitrate(v string) string {
 	}
 }
 
-// realCert reports whether a publicly-trusted cert is available — the gate
-// for LL-HLS (iOS Safari rejects self-signed certs on LAN IPs). True when
-// explicitly configured or when async activation has completed.
+// realCert reports whether the https guest link is actually SERVABLE — the
+// gate for LL-HLS and Go Live (iOS Safari rejects self-signed certs on LAN
+// IPs). True only once SetActivation ran, which main.go does strictly after a
+// cert loaded and the TLS listener bound: raw --cert/--key config presence
+// used to count, and a bad key or busy port then advertised an https link no
+// guest could open.
 func (s *srv) realCert() bool {
-	if s.Config.Domain != "" && s.Config.CertFile != "" && s.Config.KeyFile != "" {
-		return true
-	}
 	s.actMu.Lock()
 	defer s.actMu.Unlock()
 	return s.actDomain != ""
@@ -684,7 +699,10 @@ func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	}
 	var base float64
 	if bc.Delivery == "llhls" {
-		part := parseDurSeconds(s.curPartDur)
+		s.llMu.Lock()
+		pd := s.curPartDur
+		s.llMu.Unlock()
+		part := parseDurSeconds(pd)
 		if part <= 0 {
 			part = 0.5
 		}

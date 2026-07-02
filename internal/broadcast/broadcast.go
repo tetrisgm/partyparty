@@ -46,7 +46,9 @@ type Broadcaster struct {
 	ingestURL  string // RTSP push target for MediaMTX (llhls delivery)
 	playlist   string
 
-	mu         sync.Mutex
+	mu  sync.Mutex
+	gen uint64 // bumped by every Start/Stop; an in-flight Start whose
+	// generation is stale aborts instead of clobbering its successor
 	cmd        *exec.Cmd // ffmpeg
 	helper     *exec.Cmd // ppcapture (system audio), when device == "mac"
 	state      string
@@ -85,6 +87,20 @@ func (b *Broadcaster) SetDelivery(mode string) {
 	b.mu.Lock()
 	b.delivery = mode
 	b.mu.Unlock()
+}
+
+// SetDeliveryIfIdle switches the delivery mode only when nothing is running —
+// atomically, under the lock. The activation auto-engage path uses this so a
+// set that starts while activation is checking is never yanked ("never
+// restart a live set" — check-then-act with a 6s gap was exactly that bug).
+func (b *Broadcaster) SetDeliveryIfIdle(mode string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.state == "live" || b.state == "starting" || b.state == "stopping" {
+		return false
+	}
+	b.delivery = mode
+	return true
 }
 
 // Delivery returns the active delivery mode.
@@ -182,7 +198,16 @@ func (b *Broadcaster) cleanRunDir() {
 	}
 }
 
-func (b *Broadcaster) buildArgs(device string, inRate, inCh int) []string {
+// argSnap freezes the mutable encode settings for one Start — buildArgs runs
+// outside the lock and must not read live fields.
+type argSnap struct {
+	bitrate  string
+	channels int
+	hlsTime  float64
+	delivery string
+}
+
+func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) []string {
 	c := b.cfg
 	var input []string
 	switch device {
@@ -209,9 +234,9 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int) []string {
 	args = append(args, input...)
 	args = append(args,
 		"-vn",
-		"-ac", strconv.Itoa(b.channels),
+		"-ac", strconv.Itoa(snap.channels),
 		"-ar", strconv.Itoa(c.SampleRate),
-		"-c:a", c.Codec, "-b:a", b.bitrate,
+		"-c:a", c.Codec, "-b:a", snap.bitrate,
 	)
 	// The plain-HLS output ALWAYS exists — it's the delivery every device can
 	// play. Flags: muxdelay/muxpreload 0 + flush_packets keep PROGRAM-DATE-TIME
@@ -220,7 +245,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int) []string {
 	// just-rotated segments for laggard phones; epoch sequence numbers never
 	// rewind under a guest across restarts.
 	hlsOpts := strings.Join([]string{
-		"hls_time=" + strconv.FormatFloat(b.hlsTime, 'g', -1, 64),
+		"hls_time=" + strconv.FormatFloat(snap.hlsTime, 'g', -1, 64),
 		"hls_list_size=" + strconv.Itoa(c.HLSList),
 		"hls_flags=delete_segments+omit_endlist+append_list+independent_segments+program_date_time+temp_file+discont_start",
 		"hls_delete_threshold=10",
@@ -234,7 +259,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int) []string {
 		"flush_packets=1",
 	}, ":")
 
-	if b.delivery == "llhls" {
+	if snap.delivery == "llhls" {
 		// BOTH flavors from one encode (tee muxer): the plain playlist for
 		// everyone, plus an RTSP push that MediaMTX repackages into LL-HLS over
 		// HTTPS. Guests probe the LL URL themselves and fall back to plain
@@ -250,7 +275,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int) []string {
 		args = append(args,
 			"-muxdelay", "0", "-muxpreload", "0", "-flush_packets", "1",
 			"-f", "hls",
-			"-hls_time", strconv.FormatFloat(b.hlsTime, 'g', -1, 64),
+			"-hls_time", strconv.FormatFloat(snap.hlsTime, 'g', -1, 64),
 			"-hls_list_size", strconv.Itoa(c.HLSList),
 			"-hls_flags", "delete_segments+omit_endlist+append_list+independent_segments+program_date_time+temp_file+discont_start",
 			"-hls_delete_threshold", "10",
@@ -270,6 +295,8 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	b.Stop()
 
 	b.mu.Lock()
+	b.gen++
+	myGen := b.gen
 	b.cleanRunDir()
 	if opts.Bitrate == "" {
 		opts.Bitrate = b.cfg.Bitrate
@@ -307,6 +334,10 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		return
 	}
 
+	// Snapshot the mutable encode settings while we still hold the lock —
+	// buildArgs runs later, outside it, and must not race SetDelivery/Start.
+	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery}
+
 	var helper *exec.Cmd
 	var pr, pw *os.File
 	var fscan *formatScanner
@@ -322,7 +353,6 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		helper = exec.Command(b.helperPath)
 		helper.Stdout = pw
 		helper.Stderr = fscan
-		b.helper = helper
 	}
 	b.mu.Unlock()
 
@@ -338,9 +368,23 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		if err := helper.Start(); err != nil {
 			pr.Close()
 			pw.Close()
-			b.fail("system-audio helper failed: " + err.Error())
+			b.fail(myGen, "system-audio helper failed: "+err.Error())
 			return
 		}
+		// Publish the RUNNING helper (Process exists now, so a concurrent
+		// Stop can safely signal it during the possibly-long format wait).
+		// If a Stop/newer Start already superseded us, ours dies instead.
+		b.mu.Lock()
+		if b.gen != myGen {
+			b.mu.Unlock()
+			_ = helper.Process.Kill()
+			_ = helper.Wait()
+			pr.Close()
+			pw.Close()
+			return
+		}
+		b.helper = helper
+		b.mu.Unlock()
 		select {
 		case f := <-fscan.ch:
 			inRate, inCh = f[0], f[1]
@@ -349,31 +393,20 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		}
 	}
 
-	ff := exec.Command(b.cfg.FFmpeg, b.buildArgs(device, inRate, inCh)...)
+	ff := exec.Command(b.cfg.FFmpeg, b.buildArgs(device, inRate, inCh, snap)...)
 	ff.Stderr = logWriter{b}
 	if pr != nil {
 		ff.Stdin = pr
 	}
 
-	b.mu.Lock()
-	if device == "mac" && b.helper != helper {
-		// superseded by Stop()/a newer Start while we waited on the format
-		b.mu.Unlock()
-		_ = helper.Process.Kill()
-		pr.Close()
-		pw.Close()
-		return
-	}
-	b.cmd = ff
-	b.mu.Unlock()
-
 	if err := ff.Start(); err != nil {
 		if helper != nil {
 			_ = helper.Process.Kill()
+			_ = helper.Wait()
 			pr.Close()
 			pw.Close()
 		}
-		b.fail("ffmpeg failed to launch: " + err.Error())
+		b.fail(myGen, "ffmpeg failed to launch: "+err.Error())
 		return
 	}
 	// Children hold their own dups of the pipe; the parent must close its copies
@@ -382,6 +415,27 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		pr.Close()
 		pw.Close()
 	}
+
+	// Publish ffmpeg — but ONLY if nothing superseded us while we waited on
+	// the format handshake (a 15s window when the permission prompt is up).
+	// A stale publish here used to clobber the successor broadcast's handle
+	// and orphan its ffmpeg: two encoders writing one playlist, forever.
+	b.mu.Lock()
+	if b.gen != myGen {
+		if b.helper == helper {
+			b.helper = nil
+		}
+		b.mu.Unlock()
+		_ = ff.Process.Kill()
+		_ = ff.Wait()
+		if helper != nil {
+			_ = helper.Process.Kill()
+			_ = helper.Wait()
+		}
+		return
+	}
+	b.cmd = ff
+	b.mu.Unlock()
 
 	go func(c, h *exec.Cmd) {
 		werr := c.Wait()
@@ -414,8 +468,14 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	}(ff, helper)
 }
 
-func (b *Broadcaster) fail(msg string) {
+// fail records an error outcome — but only for the broadcast generation that
+// produced it: a superseded Start's failure must not clobber its successor.
+func (b *Broadcaster) fail(gen uint64, msg string) {
 	b.mu.Lock()
+	if b.gen != gen {
+		b.mu.Unlock()
+		return
+	}
 	b.state = "error"
 	b.lastError = msg
 	b.cmd = nil
@@ -426,13 +486,21 @@ func (b *Broadcaster) fail(msg string) {
 
 func (b *Broadcaster) Stop() {
 	b.mu.Lock()
+	b.gen++ // supersede any in-flight Start — it sees the bump and aborts
 	cmd, helper := b.cmd, b.helper
 	if cmd == nil && helper == nil {
 		b.state = "idle"
 		b.mu.Unlock()
 		return
 	}
-	b.state = "stopping"
+	if cmd == nil {
+		// Only the capture helper is up (a Start parked on the permission
+		// prompt): nothing is live, so there's nothing to wind down — the
+		// signal below kills the helper and the aborting Start stays hands-off.
+		b.state = "idle"
+	} else {
+		b.state = "stopping"
+	}
 	b.mu.Unlock()
 
 	if cmd != nil {

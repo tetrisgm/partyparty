@@ -262,10 +262,14 @@
         o.textContent = (d.virtual ? '🎚️ ' : '🎤 ') + '[' + d.index + '] ' + d.name + (d.hint ? '  — ' + d.hint : '');
         sel.appendChild(o);
       }
+      const has = (v) => v && [...sel.options].some(o => o.value === v);
       const saved = localStorage.getItem('pp.device');
-      if (prev) sel.value = prev;                          // keep selection across a device refresh
-      else if (data.systemAudio) sel.value = 'mac';        // default: capture the Mac's output
-      else if (saved && [...sel.options].some(o => o.value === saved)) sel.value = saved;
+      // Selection precedence: current pick (refresh) → the DJ's saved source
+      // (a BlackHole/interface DJ shouldn't re-pick every launch) → Mac audio.
+      if (has(prev)) sel.value = prev;
+      else if (has(saved)) sel.value = saved;
+      else if (data.systemAudio) sel.value = 'mac';
+      if (sel.selectedIndex < 0) sel.selectedIndex = 0;    // vanished device: never an empty pick
     } catch (e) {
       sel.innerHTML = '<option value="test">🔔 Test tone (440 Hz)</option>';
     }
@@ -526,9 +530,16 @@
       $('log').textContent = (s.log || []).join('\n') || '—';
       $('log').scrollTop = $('log').scrollHeight;
       $('ifaces').innerHTML = (s.urls.interfaces || []).map(i =>
-        '<div class="kv"><span>' + i.iface + '</span><span>' + i.address + '</span></div>'
+        '<div class="kv"><span>' + esc(i.iface) + '</span><span>' + esc(i.address) + '</span></div>'
       ).join('') || '<div class="muted">no LAN interface found — start your hotspot</div>';
-    } catch (e) {}
+    } catch (e) {
+      // /api/status unreachable — the one moment a start error MUST still
+      // show (Go Live against a quit/crashed app would otherwise be silent).
+      if (startError) {
+        $('bcnote').style.display = 'block';
+        $('bcnoteText').textContent = startError;
+      }
+    }
   }
 
   loadDevices();

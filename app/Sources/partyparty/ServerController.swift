@@ -1,9 +1,13 @@
 import Foundation
 
-/// Supervises the Go server child process (the embedded HLS/admin server).
+/// Supervises the Go server child process (the embedded HLS/admin server):
+/// starts it, restarts it if it crashes, and tears it down on quit.
 final class ServerController {
     let port: Int
     private var process: Process?
+    private var stopping = false
+    private var restartCount = 0
+    private var lastStart = Date.distantPast
 
     init(port: Int = 8000) { self.port = port }
 
@@ -34,17 +38,41 @@ final class ServerController {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = ["--no-open", "--port", String(port)]
+        p.terminationHandler = { [weak self] proc in
+            DispatchQueue.main.async { self?.childExited(proc) }
+        }
         do {
             try p.run()
             process = p
+            lastStart = Date()
         } catch {
             NSLog("partyparty: failed to start server: \(error)")
         }
     }
 
+    /// Actual supervision: a crashed server comes back on its own (the app
+    /// used to run forever with a dead console). Restart only on ABNORMAL
+    /// exits — a clean exit(0) is deliberate (e.g. the orphan reaper asked us
+    /// to yield the port to a newer instance) and must NOT resurrect.
+    private func childExited(_ proc: Process) {
+        guard process === proc, !stopping else { return } // our stop(), or an old child
+        process = nil
+        let abnormal = proc.terminationStatus != 0 || proc.terminationReason == .uncaughtSignal
+        guard abnormal else { return }
+        if Date().timeIntervalSince(lastStart) > 60 { restartCount = 0 } // healthy run resets the budget
+        restartCount += 1
+        guard restartCount <= 5 else {
+            NSLog("partyparty: server keeps dying (status \(proc.terminationStatus)) — giving up")
+            return
+        }
+        NSLog("partyparty: server exited (status \(proc.terminationStatus)) — restarting \(restartCount)/5")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.start() }
+    }
+
     /// SIGTERM (graceful Go shutdown: http.Server.Shutdown + ffmpeg/mediamtx teardown),
     /// then SIGKILL if it overstays — so ports are released before relaunch.
     func stop() {
+        stopping = true
         guard let p = process, p.isRunning else { process = nil; return }
         p.terminate()
         let deadline = Date().addingTimeInterval(3)

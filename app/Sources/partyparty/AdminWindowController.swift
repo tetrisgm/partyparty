@@ -3,6 +3,16 @@ import WebKit
 import ServiceManagement
 import CoreGraphics
 
+/// Weak forwarder so WKUserContentController's strong handler reference
+/// doesn't retain the window controller (see init below).
+private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    private weak var target: WKScriptMessageHandler?
+    init(_ target: WKScriptMessageHandler) { self.target = target }
+    func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(ucc, didReceive: message)
+    }
+}
+
 /// The DJ console as a real, resizable window hosting web/dj.html in a WKWebView.
 /// A "pp" JS↔Swift bridge lets the in-app console toggle Start-at-Login and Quit.
 final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
@@ -25,7 +35,10 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default() // persist localStorage prefs across launches
         let ucc = WKUserContentController()
-        ucc.add(self, name: "pp")
+        // WKUserContentController retains its handler STRONGLY — adding self
+        // directly cycles controller→webView→config→ucc→controller and the
+        // window could never deallocate. The weak proxy breaks the cycle.
+        ucc.add(WeakScriptHandler(self), name: "pp")
         ucc.addUserScript(WKUserScript(source: "window.ppNative = true;",
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         cfg.userContentController = ucc

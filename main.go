@@ -190,6 +190,7 @@ func main() {
 		// The DJ's latency modes map to LL-HLS part durations; applying one
 		// rewrites mediamtx.yml and bounces MediaMTX (a few seconds of guest
 		// rebuffer — the console warns that changing it restarts the broadcast).
+		curPart, curSeg, curCount := cfg.PartDur, cfg.SegDur, cfg.SegCount
 		reconfigureLL = func(partDur, segDur string, segCount int) error {
 			// StopWait, not Stop: the replacement must not race the dying
 			// instance for the ports (that race bricked broadcasting in the
@@ -198,7 +199,16 @@ func main() {
 			if err := writeMTXConfig(partDur, segDur, segCount); err != nil {
 				return err
 			}
-			return mtx.EnsureReady(cfg.RTSPPort, 6*time.Second)
+			if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err != nil {
+				// Don't leave a late-binding MediaMTX alive on a config the
+				// server thinks was rejected — kill it and put the previous
+				// timing back on disk so config and curPartDur stay in step.
+				mtx.StopWait()
+				_ = writeMTXConfig(curPart, curSeg, curCount)
+				return err
+			}
+			curPart, curSeg, curCount = partDur, segDur, segCount
+			return nil
 		}
 		// Called by async activation: swap in the real cert and rewrite the
 		// MediaMTX config (MediaMTX isn't running yet in plain-HLS mode).
@@ -275,9 +285,12 @@ func main() {
 		certMu.Unlock()
 		return nil
 	}
+	explicitCertLoaded := false
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
 		if err := loadCert(cfg.CertFile, cfg.KeyFile); err != nil {
 			log.Printf("tls: explicit cert failed to load: %v", err)
+		} else {
+			explicitCertLoaded = true
 		}
 	}
 	if rawLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
@@ -332,8 +345,16 @@ func main() {
 				}(c)
 			}
 		}()
+		// The https listener is UP: if an explicit cert also loaded, the secure
+		// guest link is real — this (not raw config presence) is what un-gates
+		// Go Live and the advertised https URL. Async activation performs the
+		// equivalent SetActivation after its own successful cert load.
+		if explicitCertLoaded && cfg.Domain != "" {
+			handler.SetActivation(cfg.Domain)
+		}
 	} else {
-		log.Printf("tls listener failed on :%d: %v", cfg.TLSPort, err)
+		log.Printf("tls listener failed on :%d: %v — the https guest link is unavailable", cfg.TLSPort, err)
+		handler.SetActivationPending(fmt.Sprintf("port %d is taken by another app — quit it and relaunch partyparty", cfg.TLSPort))
 	}
 
 	// Background low-latency activation (the Plex pattern) — the console is
@@ -379,15 +400,21 @@ func main() {
 					for {
 						st := bc.Status()
 						if st.State == "idle" || st.State == "error" {
-							if bc.Delivery() == "hls" {
-								if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err == nil {
-									bc.SetDelivery("llhls")
-									log.Printf("activate: low-latency room engaged")
-								} else {
-									log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
-								}
+							if bc.Delivery() != "hls" {
+								return
 							}
-							return
+							if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err != nil {
+								log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
+								return
+							}
+							// Atomic idle-check + switch: a set that started
+							// during EnsureReady's up-to-6s wait must NOT be
+							// yanked (SetDelivery stops any broadcast). If one
+							// snuck in, loop and wait for the next idle gap.
+							if bc.SetDeliveryIfIdle("llhls") {
+								log.Printf("activate: low-latency room engaged")
+								return
+							}
 						}
 						time.Sleep(5 * time.Second)
 					}
