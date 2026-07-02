@@ -575,16 +575,18 @@
 
     let userPaused = false; // deliberate pause (muted): never auto-resumed
     btn.addEventListener('click', () => {
-      // Interruption recovery: element paused by the SYSTEM (call/Siri) and
-      // not by the guest — this tap means "come back", not "mute me".
-      if (started && player.paused && !userPaused) { recoverPlayback(); return; }
+      // Interruption recovery: element paused by the SYSTEM (call/Siri) or
+      // STALLED (no current data — the frozen-tab case) while not deliberately
+      // muted. This tap means "come back", not "mute me". (Muted-pause keeps
+      // readyState high, so it correctly falls through to resumeGuest below.)
+      if (started && !userPaused && !player.muted && (player.paused || player.readyState < 3)) { recoverPlayback(); return; }
       if (started && !player.muted) { pauseGuest(); }              // listening → mute (stay warm)
       else if (started) { resumeGuest(); }                          // muted → unmute (instant, in sync)
       else { if (!ready) return; userPaused = false; player.muted = false; mediaSession(); play().catch(()=>{}); } // first play (register media session in the gesture)
     });
 
     let errRetries = 0;
-    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; pausedAt = 0; alignOnce(); if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
+    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; lastProgress = Date.now(); alignOnce(); if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
     player.addEventListener('waiting', () => {
       stalledSinceBeat = true;
       if (started) setStatus('buffering…'); // prebuffer 'waiting' must not flash a pill at an idle guest
@@ -604,15 +606,27 @@
     // server's 32s live window — play() alone stalls at a dead spot ("I click
     // to get back in and it's not allowing me", field report). Re-attach for
     // a fresh join at the live edge, aligned to the room.
-    let pausedAt = 0;
+    // Track when playback last ADVANCED. Muted-pause (our design) keeps the
+    // stream playing, so currentTime advances and this stays fresh — we won't
+    // needlessly re-attach. A real interruption (voice message, phone call,
+    // backgrounded tab that iOS froze) stops progress, so this goes stale and
+    // recoverPlayback re-attaches for a clean rejoin. Field: Seth's Chrome tab
+    // froze reading a voice text, came back STALLED (paused:false) and couldn't
+    // recover — a pause-only check missed it; progress-staleness catches it.
+    let lastProgress = 0, lastTime = -1;
+    player.addEventListener('timeupdate', () => {
+      if (player.currentTime !== lastTime) { lastTime = player.currentTime; lastProgress = Date.now(); }
+    });
+    function stale(){ return started && lastProgress && Date.now() - lastProgress > 8000; }
     function recoverPlayback(){
-      if (player.error || player.readyState === 0 || (pausedAt && Date.now() - pausedAt > 8000)) {
-        attachSafe();
+      if (player.error || player.readyState === 0 || stale()) {
+        reportErr('reconnect', 'err=' + (player.error && player.error.code) + ' rs=' + player.readyState +
+          ' staleMs=' + (lastProgress ? Date.now() - lastProgress : 0));
+        attachSafe(); // fresh join at the live edge (aligned), not a nudge into dead air
       }
       player.play().catch(() => {});
     }
     player.addEventListener('pause',   () => {
-      pausedAt = Date.now();
       if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
       // We pause by MUTING, never player.pause(). A real pause here is a system
       // interruption (phone call, Siri, another app) — if the user didn't ask
@@ -715,9 +729,12 @@
             else play().catch(() => {});
           }
         }
-        // Mid-play hiccup (not a stop): the resume nudge.
-        else if (live && !userPaused && player.paused) {
-          recoverPlayback(); // re-attaches when the pause outlived the live window
+        // Mid-play hiccup (not a stop): the resume nudge. Covers a real PAUSE
+        // *and* a STALL that never fired a pause event (Seth's frozen-tab case:
+        // came back paused:false but stuck) — recoverPlayback re-attaches once
+        // progress has been stale past the live window.
+        else if (started && live && !userPaused && (player.paused || stale())) {
+          recoverPlayback();
         }
       } catch (e) { if (!started) setStatus('offline'); }
     }
