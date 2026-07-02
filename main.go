@@ -563,15 +563,20 @@ func cmdOut(name string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// uploadLogLoop ships the session log to the cloud every 3 minutes while it
-// keeps growing (same auth + namespace as telemetry). PARTYPARTY_TELEMETRY=0
-// disables it along with the rest of the phone-home paths.
+// uploadLogLoop ships the session log to the cloud while it keeps growing —
+// every 45s DURING a broadcast (field problems need near-live visibility,
+// not a 3-minute-old picture), every 3 minutes otherwise. Same auth +
+// namespace as telemetry; PARTYPARTY_TELEMETRY=0 disables it all.
 func uploadLogLoop(dl *diag.Logger, bc *broadcast.Broadcaster) {
 	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
 		return
 	}
 	for {
-		time.Sleep(3 * time.Minute)
+		if bc.Status().State == "live" {
+			time.Sleep(45 * time.Second)
+		} else {
+			time.Sleep(3 * time.Minute)
+		}
 		uploadLogOnce(dl)
 	}
 }

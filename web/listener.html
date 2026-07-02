@@ -577,22 +577,42 @@
     btn.addEventListener('click', () => {
       // Interruption recovery: element paused by the SYSTEM (call/Siri) and
       // not by the guest — this tap means "come back", not "mute me".
-      if (started && player.paused && !userPaused) { player.play().catch(()=>{}); return; }
+      if (started && player.paused && !userPaused) { recoverPlayback(); return; }
       if (started && !player.muted) { pauseGuest(); }              // listening → mute (stay warm)
       else if (started) { resumeGuest(); }                          // muted → unmute (instant, in sync)
       else { if (!ready) return; userPaused = false; player.muted = false; mediaSession(); play().catch(()=>{}); } // first play (register media session in the gesture)
     });
 
     let errRetries = 0;
-    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; alignOnce(); if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
-    player.addEventListener('waiting', () => { stalledSinceBeat = true; if (started) setStatus('buffering…'); }); // prebuffer 'waiting' must not flash a pill at an idle guest
+    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; pausedAt = 0; alignOnce(); if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
+    player.addEventListener('waiting', () => {
+      stalledSinceBeat = true;
+      if (started) setStatus('buffering…'); // prebuffer 'waiting' must not flash a pill at an idle guest
+      // A stall is a natural gap: if an app update has been waiting for a
+      // "safe moment" to refresh this page, this is it — otherwise a page
+      // that plays all night runs stale code all night.
+      if (pendingReload) reloadKeepingIntent();
+    });
     // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
     // normal between refreshes) — only treat it as real when starved.
     player.addEventListener('stalled', () => {
       if (!live) return; // poll() handles the DJ-stopped teardown
       if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
     });
+    // RECONNECT, not resume: after an interruption longer than a few seconds
+    // (voice message, phone call), the paused position has fallen out of the
+    // server's 32s live window — play() alone stalls at a dead spot ("I click
+    // to get back in and it's not allowing me", field report). Re-attach for
+    // a fresh join at the live edge, aligned to the room.
+    let pausedAt = 0;
+    function recoverPlayback(){
+      if (player.error || player.readyState === 0 || (pausedAt && Date.now() - pausedAt > 8000)) {
+        attachSafe();
+      }
+      player.play().catch(() => {});
+    }
     player.addEventListener('pause',   () => {
+      pausedAt = Date.now();
       if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
       // We pause by MUTING, never player.pause(). A real pause here is a system
       // interruption (phone call, Siri, another app) — if the user didn't ask
@@ -623,7 +643,13 @@
       setTimeout(() => { if (live) { attachSafe(); player.play().catch(()=>{}); } }, delay);
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') { syncClock(); if (started && !userPaused) player.play().catch(()=>{}); }
+      if (document.visibilityState !== 'visible') return;
+      syncClock();
+      // Coming back to the tab: reconnect if the interruption outlived the
+      // live window, and check for a newer page version IMMEDIATELY (a tab
+      // parked in the background for days must not keep running old code).
+      if (started && !userPaused) recoverPlayback();
+      poll();
     });
 
     function mediaSession(){
@@ -691,8 +717,7 @@
         }
         // Mid-play hiccup (not a stop): the resume nudge.
         else if (live && !userPaused && player.paused) {
-          if (player.error || player.readyState === 0) attachSafe();
-          player.play().catch(() => {});
+          recoverPlayback(); // re-attaches when the pause outlived the live window
         }
       } catch (e) { if (!started) setStatus('offline'); }
     }
