@@ -385,7 +385,10 @@
     // "muted, staying warm". iOS keeps foreground muted playback going; if it
     // gets suspended while muted+locked, resume (foreground) restarts it.
     function pauseGuest(){ userPaused = true; player.muted = true; setPlayingUI(false); setStatus('paused'); }
-    function resumeGuest(){ userPaused = false; player.muted = false; if (player.paused) player.play().catch(()=>{}); setPlayingUI(true); setStatus('live'); }
+    // Aligned RESUME: muted "pause" keeps playing, and field logs show it
+    // drifting ~1s+ behind the room — unmuting must snap back to the target
+    // (one-shot, same sanctioned move as the aligned start).
+    function resumeGuest(){ userPaused = false; player.muted = false; if (player.paused) player.play().catch(()=>{}); setPlayingUI(true); setStatus('live'); try { alignSeek(latencyTarget || 5); } catch (e) {} }
 
     // Fast, bounded retries: after a Wi-Fi blip we want audio back in ~1-2s,
     // not tens of seconds of exponential backoff (every second of stall is
