@@ -128,7 +128,18 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	if err != nil {
 		return Result{Reason: "broker: " + err.Error()}
 	}
-	host := b.slug + "." + b.base
+
+	// The BROKER is the source of truth for the hostname (its /a response) —
+	// if the base domain changes server-side (e.g. a purchased product domain),
+	// every install follows on its next launch, no re-registration.
+	var aResp struct{ Host string }
+	if err := b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp); err != nil {
+		return Result{Reason: "DNS update: " + err.Error()}
+	}
+	host := aResp.Host
+	if host == "" {
+		host = b.slug + "." + b.base
+	}
 
 	if !certUsable(certFile, host) {
 		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", host)
@@ -136,11 +147,6 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 			return Result{Host: host, Reason: "certificate: " + err.Error()}
 		}
 		logf("activate: certificate issued for %s", host)
-	}
-
-	var aResp struct{ Host string }
-	if err := b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp); err != nil {
-		return Result{Host: host, Reason: "DNS update: " + err.Error()}
 	}
 
 	if err := verifyResolves(ctx, host, lanIP); err != nil {

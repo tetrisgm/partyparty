@@ -24,7 +24,7 @@
   // the broker writes their DNS-01 TXT + IP-encoded A records for them. Needs
   // the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN — Zone→DNS→Edit).
   "vars": {
-    "BROKER_BASE": "pp.ramine.net",
+    "BROKER_BASE": "party.ramine.net",
     "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"
   },
 
