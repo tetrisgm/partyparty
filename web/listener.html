@@ -346,6 +346,7 @@
     // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
     // normal between refreshes) — only treat it as real when starved.
     player.addEventListener('stalled', () => {
+      if (!live) return; // poll() handles the DJ-stopped teardown
       if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
     });
     player.addEventListener('pause',   () => {
@@ -357,11 +358,19 @@
       setPlayingUI(false); if (started) setStatus('paused');
     });
     player.addEventListener('error',   () => {
+      if (!live) return; // DJ stopped — poll() tears down and shows "Waiting for DJ"
+      // The stream is supposedly live but the player keeps dying (e.g. the
+      // server was reconfigured under us and this MediaSource is wedged): a
+      // fresh page is the one reset that always works. Reload once, quietly —
+      // resumeWanted survives via sessionStorage so the guest doesn't re-tap.
+      if (errRetries >= 6) {
+        try { sessionStorage.setItem('pp.resume', started && !userPaused ? '1' : '0'); } catch (e) {}
+        location.reload();
+        return;
+      }
       setStatus('reconnecting…');
-      // Dev-access only (localhost/IP page): repeated LL failure demotes to
-      // plain. On the https origin there is NO fallback — retries stay on LL.
       const delay = Math.min(500 * Math.pow(2, errRetries++), 5000);
-      setTimeout(() => { attachSafe(); player.play().catch(()=>{}); }, delay);
+      setTimeout(() => { if (live) { attachSafe(); player.play().catch(()=>{}); } }, delay);
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') { syncClock(); if (started && !userPaused) player.play().catch(()=>{}); }
@@ -379,6 +388,23 @@
       } catch (e) {}
     }
 
+    // Tear playback down COMPLETELY (DJ stopped / stream ended): no zombie
+    // hls.js hammering "reconnecting…" at a dead stream. Remembers whether
+    // this guest was listening so we can auto-resume when the DJ returns.
+    // (Also restored across the wedged-stream self-reload via sessionStorage;
+    // if the browser blocks the gesture-less play() we fall back to the
+    // bright "Tap to listen" button — never a stuck screen.)
+    let resumeWanted = false;
+    try { resumeWanted = sessionStorage.getItem('pp.resume') === '1'; sessionStorage.removeItem('pp.resume'); } catch (e) {}
+    function stopPlayback(){
+      resumeWanted = started && !userPaused;
+      try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
+      try { player.removeAttribute('src'); player.load(); } catch (e) {}
+      started = false; attached = false; ready = false; errRetries = 0;
+      setPlayingUI(false); setStatus('');
+      updateIdleButton(); // shows "Waiting for DJ"
+    }
+
     async function poll(){
       try {
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
@@ -392,11 +418,21 @@
         // "others" = everyone but you (you're in the count once you're playing).
         const others = Math.max(0, (s.listeners || 0) - (started ? 1 : 0));
         countEl.textContent = others ? ('● ' + others + ' other' + (others > 1 ? 's' : '') + ' listening') : '';
-        if (!started) { updateIdleButton(); prebuffer(); }
-        // Keep-waiting-and-resume: if the DJ's Mac was killed and came back (or
-        // the stream dropped), a guest who was playing just picks up again —
-        // no reload, no re-tap. The tab keeps polling; when live returns we
-        // re-attach + play. (A NEW app version still triggers considerReload.)
+        if (started && !live) {
+          // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an
+          // endless reconnect loop against a dead stream.
+          stopPlayback();
+        } else if (!started) {
+          updateIdleButton();
+          prebuffer();
+          // Auto-resume a guest who was listening when the DJ stopped/restarted
+          // — no re-tap, no reload (the element keeps its user-activation).
+          if (live && resumeWanted && ready && !userPaused) {
+            resumeWanted = false;
+            play().catch(() => {});
+          }
+        }
+        // Mid-play hiccup (not a stop): the resume nudge.
         else if (live && !userPaused && player.paused) {
           if (player.error || player.readyState === 0) attachSafe();
           player.play().catch(() => {});
@@ -462,10 +498,6 @@
       return 0;
     }
     function maybeRejoin(){
-      // LL devices self-heal (the player re-chases its hold-back after any
-      // stall) and sit far below the plain room target by design — rejoin
-      // logic applies only to the plain-HLS cohort.
-      if (usingLL()) return;
       if (!started || player.paused || !latencyTarget) return;
       const lat = measureLatency();
       if (lat == null || player.readyState < 3) return; // only judge a healthy player
@@ -473,11 +505,18 @@
       if (latSamples.length > 14) latSamples.shift();
       const now = Date.now();
       if (latSamples.length < 14 || now - lastRejoinAt < 120000) return; // ~28s of agreement at the 2s tick
+      // How far off counts as adrift. LL natives (locked iPhones/iPads) leak
+      // latency: every lock-screen stall resumes where it stopped and AVPlayer
+      // never chases back down, so they end up 1–3s behind the room (field:
+      // spread 2.0–2.7s vs a 2.25s target). A re-attach re-parks them at the
+      // playlist's hold-back — that IS the passive fix, not a rate nudge.
+      // Plain cohort (dev-only now) keeps the wider historical band.
+      const band = usingLL() ? 1.5 : 3.5;
       // all of the last ~30s of samples far off, same side → genuinely adrift
-      const off = latSamples.every(v => v - latencyTarget > 3.5) || latSamples.every(v => v - latencyTarget < -3.5);
+      const off = latSamples.every(v => v - latencyTarget > band) || latSamples.every(v => v - latencyTarget < -band);
       if (!off) return;
       lastRejoinAt = now; latSamples = [];
-      attachSafe();                       // re-parks at EXT-X-START (room target)
+      attachSafe();                       // re-parks at hold-back / EXT-X-START (room target)
       player.play().catch(()=>{});
     }
 

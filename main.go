@@ -191,7 +191,10 @@ func main() {
 		// rewrites mediamtx.yml and bounces MediaMTX (a few seconds of guest
 		// rebuffer — the console warns that changing it restarts the broadcast).
 		reconfigureLL = func(partDur, segDur string, segCount int) error {
-			mtx.Stop()
+			// StopWait, not Stop: the replacement must not race the dying
+			// instance for the ports (that race bricked broadcasting in the
+			// field — the new MediaMTX lost the bind and silently died).
+			mtx.StopWait()
 			if err := writeMTXConfig(partDur, segDur, segCount); err != nil {
 				return err
 			}

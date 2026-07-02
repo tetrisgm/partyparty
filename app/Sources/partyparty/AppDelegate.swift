@@ -1,8 +1,9 @@
 import AppKit
+import ServiceManagement
 
 /// Regular app (Dock icon + full window/menu bar). The menu-bar 🕺 is a glanceable
-/// broadcast monitor + panic button — it does NOT duplicate the console: just live
-/// status, Go Live/Stop, Open Console, Quit. Supervises the Go server child.
+/// broadcast monitor — it does NOT duplicate the console: just live status,
+/// Open Console, Quit. Supervises the Go server child.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let server = ServerController()
     private let updater = Updater()          // background auto-update (when configured)
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if moveToApplicationsIfNeeded() { return } // relaunching from the new home
 
         server.start()
+        registerLoginItemByDefault()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
         setupStatusItem()
@@ -130,12 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(h)
         menu.addItem(.separator())
 
-        // No Stop here: a stray click in a menu would kill the whole party.
-        // Stopping is a deliberate act — it lives in the console only.
-        let live = (s.state == "live" || s.state == "starting")
-        if !live {
-            menu.addItem(item("Go Live (Mac audio)", #selector(goLive)))
-        }
+        // No Go Live / Stop here: starting or killing the party is a deliberate
+        // act — both live in the console only. The menu bar just monitors.
         menu.addItem(item("Open Console", #selector(showConsole)))
         menu.addItem(.separator())
         menu.addItem(item("Check for Updates…", #selector(checkUpdates)))
@@ -159,9 +157,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return i
     }
 
-    @objc private func goLive() {
-        api.goLiveMac()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.poller.refresh() }
+    // MARK: Login item
+
+    /// A party app should just BE there next time the Mac starts — enable
+    /// start-at-login once, by default (no password, no dialog; SMAppService
+    /// shows it under System Settings → General → Login Items). The console's
+    /// "Start partyparty at login" toggle is the opt-OUT, and because this
+    /// runs only once, a user who turns it off STAYS off.
+    private func registerLoginItemByDefault() {
+        let applied = "PPLoginItemDefaultApplied"
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: applied) else { return }
+        // Only from an installed home — a dev build in ~/dev shouldn't enroll.
+        guard Bundle.main.bundleURL.path.contains("/Applications/") else { return }
+        d.set(true, forKey: applied)
+        try? SMAppService.mainApp.register()
     }
 
     // MARK: Console window

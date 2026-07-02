@@ -53,7 +53,6 @@
   .url{font-size:22px;font-weight:600;color:var(--label);word-break:break-all;margin:2px 0;letter-spacing:-.01em}
   .muted{color:var(--label-secondary);font-size:13px}
   #qr{margin:16px 0;display:flex;justify-content:center;background:#fff;width:fit-content;padding:12px;border-radius:var(--r-md)}
-  .lcount{font-size:26px;font-weight:600;color:var(--label);line-height:1;letter-spacing:-.02em}
   .listener{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--separator);font-size:13px}
   .listener:last-child{border-bottom:none}
   .listener.det{align-items:flex-start}
@@ -78,6 +77,11 @@
   code{background:#000;border:1px solid var(--separator);border-radius:5px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--label)}
   .advcheck{display:flex;align-items:center;gap:8px;color:var(--label-secondary);font-size:13px;cursor:pointer;margin:18px 2px 6px;user-select:none}
   .advcheck input{accent-color:var(--accent)}
+  span.advcheck{color:var(--accent);font-weight:500}
+  span.advcheck:hover{text-decoration:underline}
+  .metrics{font-size:13px;color:var(--label-secondary);padding:7px 0;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;cursor:default}
+  .metrics b{color:var(--label);font-weight:600}
+  .metricsep{color:var(--label-tertiary)}
   .adv{display:none}
   body.show-adv .adv{display:block}
   .inapp-check{display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer}
@@ -152,23 +156,18 @@
     </div>
 
     <div class="card">
-      <div class="cardhead">
-        <h2>Listeners</h2>
-        <span class="lcount" id="listeners">0</span>
+      <h2 id="listeners">0 listeners</h2>
+      <!-- One compact line, plain-English tooltip on hover (ⓘ used to be a
+           whole expandable block; nobody needs it open all the time). -->
+      <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it — a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are — under about half a second and the room moves together.">
+        <span>Delay from DJ <b id="djDelay">—</b></span>
+        <span class="metricsep">·</span>
+        <span>Sync <b id="syncSpread">—</b></span>
       </div>
-      <div class="kv"><span>Delay from DJ (glass-to-glass)</span><span id="djDelay">—</span></div>
-      <div class="kv"><span>Sync spread (dancer ↔ dancer)</span><span id="syncSpread">—</span></div>
-      <div class="kv"><span>Room target (everyone aligns to this)</span><span id="roomTarget">—</span></div>
-      <div class="hint" id="syncDetail" style="margin:4px 0 6px"></div>
-      <span class="advcheck" id="latHelpToggle" style="margin:2px 0 6px">ⓘ What do these two numbers mean?</span>
-      <div class="hint" id="latHelp" hidden style="margin:0 0 8px;line-height:1.55">
-        <b style="color:var(--label)">Delay from DJ</b> — how long after you play something the room hears it. A couple of seconds is normal and totally fine; nobody's comparing to your booth. Only worth lowering if you're talking to the crowd live.<br><br>
-        <b style="color:var(--label)">Sync spread</b> — how far apart two people standing next to each other are. This is the dancefloor number: under about half a second and the room moves together. Every phone actively aligns itself to the <b>room target</b> (tiny speed nudges, even while locked), so the spread should stay tight on its own; if phones keep rebuffering on weak Wi‑Fi, the target raises itself a little until the room is stable, and a single struggling phone backs off on its own instead of dragging everyone.
-      </div>
-      <label class="advcheck" style="display:block;margin:6px 0;cursor:pointer"><input type="checkbox" id="detailsCheck" style="margin-right:6px;vertical-align:middle;accent-color:var(--accent)">See details (device · IP · stats)</label>
+      <div class="kv adv"><span>Room target (everyone aligns to this)</span><span id="roomTarget">—</span></div>
+      <span class="advcheck" id="detailsToggle" style="display:inline-block;margin:8px 0 2px">Show details</span>
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
-      <div class="hint" style="margin-top:8px">Sync test: open the player on a few phones — lock a couple — and watch the spread. That's what the dancefloor feels.</div>
     </div>
   </div>
 </div>
@@ -187,24 +186,26 @@
         <option value="256k">Very high — 256 kbps</option>
         <option value="320k" selected>Max — 320 kbps</option>
       </select>
-      <label style="margin-top:12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
-        <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
-      </label>
-      <div id="latencyBox">
-        <label for="latency" style="margin-top:14px">Latency vs. stability</label>
-        <select id="latency">
-          <option value="low" selected>Low latency — room syncs at ~2s</option>
-          <option value="balanced">Balanced — room syncs at ~3s</option>
-          <option value="stable">Maximum stability — room syncs at ~3.5s (weakest Wi-Fi)</option>
-        </select>
-        <div class="hint">Low-latency mode for everyone (needs the secure link, which the app sets up automatically). Lower latency = less buffer, so it's more sensitive to drops — step toward Stable if audio cuts out on weak Wi-Fi. Changing this while live restarts the broadcast.</div>
+      <!-- Advanced-only: sane defaults for everyone else (stereo, low latency). -->
+      <div class="adv">
+        <label style="margin-top:12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
+          <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
+        </label>
+        <div id="latencyBox">
+          <label for="latency" style="margin-top:14px">Latency vs. stability</label>
+          <select id="latency">
+            <option value="low" selected>Low latency — room syncs at ~2s</option>
+            <option value="balanced">Balanced — room syncs at ~3s</option>
+            <option value="stable">Maximum stability — room syncs at ~3.5s (weakest Wi-Fi)</option>
+          </select>
+          <div class="hint">Lower latency = less buffer, so it's more sensitive to drops — step toward Stable if audio cuts out on weak Wi-Fi. Changing this while live restarts the broadcast.</div>
+        </div>
       </div>
     </div>
 
     <div id="inapp" class="card" style="display:none">
       <h2>App</h2>
       <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
-      <div class="row" style="margin-top:14px"><button id="quitBtn" class="ghost" style="flex:1">Quit partyparty</button></div>
     </div>
 
     <label class="advcheck"><input type="checkbox" id="advToggle"> Show advanced settings</label>
@@ -282,7 +283,7 @@
   const savedQ = localStorage.getItem('pp.bitrate');
   if (savedQ) $('quality').value = savedQ;
   $('mono').checked = localStorage.getItem('pp.mono') === '1';
-  let lastLt = null, lastStatus = null;
+  let lastLt = null, lastStatus = null, startError = '';
   function copySync(){
     const s = lastStatus; if (!s) return;
     const lt = s.latency || {};
@@ -322,8 +323,13 @@
     const b = document.getElementById('copySync'); if (b) { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => b.textContent = o, 1400); }
   }
   { const cs = document.getElementById('copySync'); if (cs) cs.onclick = copySync; }
-  { const ht = document.getElementById('latHelpToggle'), hb = document.getElementById('latHelp'); if (ht && hb) ht.onclick = () => hb.hidden = !hb.hidden; }
-  { const dc = document.getElementById('detailsCheck'); if (dc) { dc.checked = localStorage.getItem('pp.rosterDetails') === '1'; dc.onchange = () => { localStorage.setItem('pp.rosterDetails', dc.checked ? '1' : '0'); refresh(); }; } }
+  // "Show details" / "Hide details" — a link-looking toggle, not a checkbox.
+  let detailsOn = localStorage.getItem('pp.rosterDetails') === '1';
+  { const dt = $('detailsToggle');
+    const paint = () => dt.textContent = detailsOn ? 'Hide details' : 'Show details';
+    paint();
+    dt.onclick = () => { detailsOn = !detailsOn; localStorage.setItem('pp.rosterDetails', detailsOn ? '1' : '0'); paint(); refresh(); };
+  }
 
   const savedL = localStorage.getItem('pp.latency');
   if (savedL) $('latency').value = savedL;
@@ -353,8 +359,20 @@
     const mono = $('mono').checked ? '1' : '0';
     const latency = $('latency').value;
     localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
-    await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name) +
-      '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono + '&latency=' + encodeURIComponent(latency), { method:'POST' });
+    try {
+      const r = await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name) +
+        '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono + '&latency=' + encodeURIComponent(latency), { method:'POST' });
+      if (!r.ok) {
+        // Never fail silently — this exact hole is how "Maximum stability
+        // bricked everything" felt like a mystery instead of an error message.
+        startError = 'Could not start the broadcast.';
+        try { const e = await r.json(); if (e && e.error) startError = e.error; } catch (e) {}
+      } else {
+        startError = '';
+      }
+    } catch (e) {
+      startError = 'Could not reach the app — is it still running?';
+    }
     refresh();
   }
   // one toggle: green Go Live when idle, red Stop when live/starting
@@ -425,10 +443,16 @@
       }
       // One room target regardless of per-guest delivery (a mixed room must
       // still drop together), so the latency labels are static now.
-      const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
+      if (st === 'live' || st === 'starting') startError = ''; // a successful start clears the sticky error
+      const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '') || startError;
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnoteText').textContent = note || '';
       $('screenPermBtn').style.display = 'block';
+      // Once Mac-audio capture has actually gone live, the permission is
+      // provably granted — the "permission not working?" escape hatch would
+      // just be noise. It comes back if an error note ever shows.
+      if (st === 'live' && s.broadcast.device === 'mac') localStorage.setItem('pp.audioOK', '1');
+      $('permBtnAlways').style.display = (note || localStorage.getItem('pp.audioOK') !== '1') ? 'block' : 'none';
       // Guests only ever get the https link (the Plex model). Until the cert
       // is provisioned there is nothing to advertise — show the pending state
       // rather than an http link that undermines the whole cert story.
@@ -443,8 +467,7 @@
         renderQR('');
       }
       const roster = s.roster || [];
-      const llCount = roster.filter(r => r.delivery === 'llhls').length;
-      $('listeners').textContent = roster.length + (llCount ? ' · ' + llCount + ' low-latency' : '');
+      $('listeners').textContent = roster.length + (roster.length === 1 ? ' listener' : ' listeners');
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
         ? (s.latencyTarget.toFixed(1) + ' s')
@@ -462,15 +485,11 @@
       if (main) {
         $('djDelay').textContent = '~' + (main.med / 1000).toFixed(1) + ' s';
         $('syncSpread').textContent = Math.round(main.spread) + ' ms · ' + main.n + (main.n === 1 ? ' phone' : ' phones');
-        $('syncDetail').textContent =
-          (ll ? 'low-latency: ' + Math.round(ll.spread) + ' ms across ' + ll.n : '') +
-          (ll && pl ? ' · ' : '') +
-          (pl ? 'compatible: ' + Math.round(pl.spread) + ' ms across ' + pl.n : '');
         $('copySync').style.display = 'inline-block';
       } else {
-        $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('syncDetail').textContent = ''; $('copySync').style.display = 'none';
+        $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('copySync').style.display = 'none';
       }
-      const details = $('detailsCheck') && $('detailsCheck').checked;
+      const details = detailsOn;
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
       $('roster').innerHTML = roster.map((r, i) => {
         // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
@@ -521,7 +540,6 @@
   if (window.ppNative) {
     $('inapp').style.display = 'block';
     $('loginItem').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setLoginItem', on: $('loginItem').checked });
-    $('quitBtn').onclick = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'quit' });
     window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready' });
   }
 </script>

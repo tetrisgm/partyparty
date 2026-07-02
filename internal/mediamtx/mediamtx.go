@@ -125,6 +125,7 @@ type Server struct {
 
 	mu      sync.Mutex
 	cmd     *exec.Cmd
+	done    chan struct{} // closed when cmd exits (nil until first Start)
 	running bool
 }
 
@@ -146,11 +147,14 @@ func (s *Server) Start() error {
 		s.mu.Unlock()
 		return err
 	}
+	done := make(chan struct{})
 	s.cmd = cmd
+	s.done = done
 	s.running = true
 	s.mu.Unlock()
 	go func() {
 		_ = cmd.Wait()
+		close(done)
 		s.mu.Lock()
 		if s.cmd == cmd {
 			s.cmd = nil
@@ -191,9 +195,20 @@ func WaitReady(addr string, timeout time.Duration) error {
 	return fmt.Errorf("mediamtx not accepting connections at %s after %s", addr, timeout)
 }
 
-func (s *Server) Stop() {
+// Stop signals MediaMTX to exit and returns immediately (shutdown path).
+func (s *Server) Stop() { s.stop(false) }
+
+// StopWait stops MediaMTX and BLOCKS until the process is actually gone.
+// Required before a config-change restart: the old instance holds the RTSP and
+// HLS ports until it dies, so launching the replacement early makes IT lose
+// the bind and exit — while WaitReady happily connects to the dying listener
+// and reports success. That race is exactly how switching latency modes
+// bricked broadcasting in the field until an app restart.
+func (s *Server) StopWait() { s.stop(true) }
+
+func (s *Server) stop(wait bool) {
 	s.mu.Lock()
-	cmd := s.cmd
+	cmd, done := s.cmd, s.done
 	s.cmd = nil
 	s.running = false
 	s.mu.Unlock()
@@ -201,8 +216,23 @@ func (s *Server) Stop() {
 		return
 	}
 	_ = cmd.Process.Signal(syscall.SIGINT)
-	go func() {
-		time.Sleep(1500 * time.Millisecond)
+	if !wait {
+		go func() {
+			select {
+			case <-done:
+			case <-time.After(1500 * time.Millisecond):
+				_ = cmd.Process.Kill()
+			}
+		}()
+		return
+	}
+	select {
+	case <-done:
+	case <-time.After(1500 * time.Millisecond):
 		_ = cmd.Process.Kill()
-	}()
+		select {
+		case <-done: // Wait() reaps the kill almost instantly
+		case <-time.After(2 * time.Second):
+		}
+	}
 }

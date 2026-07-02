@@ -311,6 +311,14 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				s.curPartDur = part
+			} else if s.MTX != nil && !s.MTX.Running() {
+				// Same settings but MediaMTX died under us — a start must
+				// revive it, or ffmpeg pushes into the void and guests see a
+				// "live" broadcast nobody can hear.
+				if err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency engine failed to start: " + err.Error()})
+					return
+				}
 			}
 		}
 		s.Broadcaster.Start(device, q.Get("name"), opts)
@@ -731,11 +739,10 @@ func latencySegDur(mode string) float64 {
 }
 
 // latencyPartDur maps a latency mode to LL-HLS timing (part duration, segment
-// duration, playlist segment count). PART-HOLD-BACK = 2.5x part (gohlslib), so
-// glass-to-glass ≈ hold-back + ~1s player overhead: low ≈ 1.4-2s (200ms parts —
-// experimental: field data saw iPhones stall at 200ms with video; audio-only
-// must prove itself on a device soak), balanced ≈ 1.7-2.5s (350ms, the shipped
-// default), stable ≈ 2.2-3s (500ms, biggest cushion).
+// duration, playlist segment count). PART-HOLD-BACK = 2.5x part (gohlslib) and
+// the room target = hold-back + ~1s player overhead, so: low → 1.25s hold-back,
+// ~2.3s room; balanced → 2s hold-back, ~3s room; stable → 2.5s hold-back,
+// ~3.5s room. These MUST stay in step with the console's latency-select labels.
 func latencyPartDur(mode string) (string, string, int) {
 	switch mode {
 	case "low":

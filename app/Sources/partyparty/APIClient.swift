@@ -8,7 +8,7 @@ struct ServerStatus {
     var struggling = 0
 }
 
-/// Thin client for the local Go server (menu-bar status + Go Live/Stop).
+/// Thin client for the local Go server (menu-bar status monitor).
 final class APIClient {
     let port: Int
     init(port: Int) { self.port = port }
@@ -31,13 +31,4 @@ final class APIClient {
         }.resume()
     }
 
-    private func post(_ pathAndQuery: String) {
-        guard let u = URL(string: "http://localhost:\(port)\(pathAndQuery)") else { return }
-        var r = URLRequest(url: u); r.httpMethod = "POST"
-        URLSession.shared.dataTask(with: r).resume()
-    }
-
-    /// One-tap Go Live with the Mac's system audio (the default source).
-    func goLiveMac() { post("/api/start?device=mac&name=Mac%20output&bitrate=160k&mono=0&latency=low") }
-    func stop() { post("/api/stop") }
 }
