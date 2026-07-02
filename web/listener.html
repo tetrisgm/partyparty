@@ -26,10 +26,22 @@
     min-height:100dvh;margin:0;text-align:center;
     -webkit-font-smoothing:antialiased;font-synthesis:none;letter-spacing:-.01em;
   }
-  /* The event hero fills the first screen; the party wall scrolls below. */
-  .hero{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative}
+  /* The event hero fills the first screen; the party wall scrolls below.
+     SAFE centering: justify-content:center clips overflow off the TOP on
+     small phones (unreachable by scrolling — field bug: decapitated title,
+     vanished artwork). flex-start + an auto-margin pair centers when there's
+     room and flows from the top when there isn't. */
+  .hero{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:24px;position:relative}
+  .hero .artwork{margin-top:auto}
+  .hero .statline{margin-bottom:auto}
+  @media (max-height:760px), (max-width:430px){
+    h1{font-size:26px}
+    .artwork{width:128px;height:128px;font-size:62px;border-radius:28px;margin-bottom:16px}
+    .btn{margin-top:16px;min-width:200px;height:52px}
+    .foot{margin-top:20px}
+  }
   .artwork{width:168px;height:168px;border-radius:36px;background:linear-gradient(135deg,#ffd7e2 0%,#ffe9d2 100%);
-    display:flex;align-items:center;justify-content:center;font-size:84px;box-shadow:var(--shadow);margin-bottom:22px;user-select:none}
+    display:flex;align-items:center;justify-content:center;font-size:84px;box-shadow:var(--shadow);margin-bottom:22px;user-select:none;flex:0 0 auto}
   body.playing .artwork{animation:sway 3.2s ease-in-out infinite}
   @keyframes sway{0%,100%{transform:rotate(-1.6deg)}50%{transform:rotate(1.6deg)}}
   .hosted{color:var(--label-secondary);font-size:14px;font-weight:600}
@@ -114,7 +126,7 @@
   .welopt{color:var(--label-tertiary)}
   .welname{display:flex;gap:8px;align-items:center}
   .welemoji{font-size:22px;background:var(--card);border:1px solid var(--separator);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-  .welshuffle{font-size:14px;font-weight:700;background:none;border:none;color:var(--accent);cursor:pointer;flex:0 0 auto;padding:0 4px}
+  .welshuffle{font-size:24px;background:none;border:none;cursor:pointer;flex:0 0 auto;padding:0 4px} /* the die, unboxed — only inputs get boxes */
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input{flex:1}
   .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
@@ -208,7 +220,7 @@
       <div class="welname">
         <button class="welemoji" id="welEmoji" type="button" title="Pick your emoji">🪩</button>
         <input id="welName" maxlength="40" autocomplete="off">
-        <button class="welshuffle" id="welShuffle" type="button" title="Pick a random name">Shuffle</button>
+        <button class="welshuffle" id="welShuffle" type="button" title="Pick a random name" aria-label="Shuffle name">🎲</button>
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
       <div class="wellabel gap">Share your email with <span id="welHost2">the DJ</span> for future communication <span class="welopt">(optional — only they see it)</span></div>
@@ -542,7 +554,7 @@
 
     let errRetries = 0;
     player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; alignOnce(); if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
-    player.addEventListener('waiting', () => { stalledSinceBeat = true; setStatus('buffering…'); });
+    player.addEventListener('waiting', () => { stalledSinceBeat = true; if (started) setStatus('buffering…'); }); // prebuffer 'waiting' must not flash a pill at an idle guest
     // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
     // normal between refreshes) — only treat it as real when starved.
     player.addEventListener('stalled', () => {
