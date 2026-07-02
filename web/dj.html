@@ -198,6 +198,10 @@
     <div class="url" id="url">—</div>
     <div id="qr"></div>
     <div class="hint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+    <!-- Shown while the secure link is pending: pinpoint WHICH hop the venue's
+         network is blocking (Wi-Fi DNS, our service, or Let's Encrypt). -->
+    <button class="ghost" id="netCheckBtn" style="display:none;margin-top:12px">Test the connection</button>
+    <div id="netCheckOut" style="margin-top:10px;font-size:12px;line-height:1.7"></div>
   </div>
 
   <nav class="ptabs">
@@ -223,9 +227,13 @@
       <div id="djFeed"></div>
       <div class="row" style="margin-top:12px">
         <button class="ghost" id="openMediaBtn" style="flex:1">Open media folder</button>
-        <button class="ghost" id="freshBtn" style="flex:1">Start a fresh wall</button>
+        <button class="ghost" id="eventsBtn" style="flex:1">Your events</button>
       </div>
-      <div class="hint">Everything guests post (and your set recordings) lands in one folder — drag straight from Finder. "Start a fresh wall" begins a new page; the old folder stays untouched.</div>
+      <div id="eventsPanel" hidden style="margin-top:12px;border-top:1px solid var(--separator);padding-top:12px">
+        <button class="ghost" id="freshBtn" style="width:100%">＋ New event</button>
+        <div id="eventsList" style="margin-top:8px"></div>
+      </div>
+      <div class="hint">Everything guests post (and your set recordings) lands in one folder — drag straight from Finder. "Your events" lists every party page; a new event starts a fresh one and the old folders stay untouched.</div>
     </div>
   </section>
 
@@ -542,10 +550,12 @@
       if (secure) {
         $('url').textContent = guestUrl;
         renderQR(guestUrl);
+        $('netCheckBtn').style.display = 'none';
       } else {
         const why = (s.activation && s.activation.reason) ? ' — ' + s.activation.reason : ' (needs internet once)';
         $('url').textContent = '🔒 Setting up the secure guest link…' + why;
         renderQR('');
+        $('netCheckBtn').style.display = 'block'; // stuck? find out which hop is blocked
       }
       const roster = s.roster || [];
       $('listeners').textContent = roster.length + (roster.length === 1 ? ' listener' : ' listeners');
@@ -681,7 +691,7 @@
     const escT = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const nodes = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
-    let newestAct = 0, on = false;
+    let newestAct = 0, on = false, curDir = '';
     function render(p){
       const t = new Date(p.ts);
       const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
@@ -783,6 +793,11 @@
         if (r.status === 404) return;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
+        if (data.dir && data.dir !== curDir) {
+          // Event switched: reset the cursor or an older event's posts (act <
+          // our high-water mark) would never arrive.
+          curDir = data.dir; newestAct = 0; nodes.clear(); authors.clear(); list.innerHTML = '';
+        }
         $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
@@ -832,12 +847,55 @@
     };
     $('openMediaBtn').onclick = () => fetch('/api/open-media', { method:'POST' });
     $('freshBtn').onclick = () => {
-      if ($('freshBtn').textContent !== 'Really start fresh?') {
-        $('freshBtn').textContent = 'Really start fresh?';
-        setTimeout(() => { $('freshBtn').textContent = 'Start a fresh wall'; }, 3000);
+      if ($('freshBtn').textContent !== 'Start a new event page?') {
+        $('freshBtn').textContent = 'Start a new event page?';
+        setTimeout(() => { $('freshBtn').textContent = '＋ New event'; }, 3000);
         return;
       }
       fetch('/api/event-fresh', { method:'POST' }).then(() => location.reload());
+    };
+    // "Your events" — the Partiful list: every party page, switchable.
+    $('eventsBtn').onclick = async () => {
+      const panel = $('eventsPanel');
+      if (!panel.hidden) { panel.hidden = true; return; }
+      panel.hidden = false;
+      const listEl = $('eventsList');
+      listEl.innerHTML = '<span class="muted">Loading…</span>';
+      try {
+        const data = await (await fetch('/api/events')).json();
+        listEl.innerHTML = (data.events || []).map(ev =>
+          '<div style="display:flex;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px solid var(--separator)">' +
+          '<b>' + escT(ev.title) + '</b>' +
+          '<span class="muted" style="font-size:11px">' + escT(ev.dir) + ' · ' + ev.posts + (ev.posts === 1 ? ' post' : ' posts') + ' · ' + ev.media + ' media</span>' +
+          (ev.current
+            ? '<span class="muted" style="margin-left:auto;font-size:11px">current</span>'
+            : '<button class="ghost" data-open="' + escT(ev.dir) + '" style="margin-left:auto;height:24px;font-size:11px;padding:0 10px">Open</button>') +
+          '</div>').join('') || '<span class="muted">No events yet.</span>';
+      } catch (e) { listEl.innerHTML = '<span class="muted">Couldn\'t load events.</span>'; }
+    };
+    $('eventsList').addEventListener('click', async (e) => {
+      const dir = e.target && e.target.dataset && e.target.dataset.open;
+      if (!dir) return;
+      await fetch('/api/event-switch?dir=' + encodeURIComponent(dir), { method:'POST' });
+      location.reload();
+    });
+    // Connection test: which hop is the venue's network blocking?
+    $('netCheckBtn').onclick = async () => {
+      const out = $('netCheckOut');
+      $('netCheckBtn').disabled = true;
+      out.textContent = 'Testing…';
+      try {
+        const data = await (await fetch('/api/netcheck', { method:'POST' })).json();
+        out.innerHTML = (data.checks || []).map(c =>
+          '<div>' + (c.ok ? '✅' : '❌') + ' ' + escT(c.name) +
+          ' <span class="muted" style="font-size:11px">' + escT(c.detail) + ' · ' + c.ms + 'ms</span></div>').join('');
+        if ((data.checks || []).every(c => c.ok)) {
+          out.innerHTML += '<div class="muted" style="margin-top:6px">Everything reachable — the certificate should come through on the next retry. If it stays stuck, send me a screenshot of this.</div>';
+        } else {
+          out.innerHTML += '<div class="muted" style="margin-top:6px">Something on this network is blocking a hop ❌ above — try a phone hotspot for the one-time setup; after that the party works offline.</div>';
+        }
+      } catch (e) { out.textContent = 'Test failed to run — is the app still up?'; }
+      $('netCheckBtn').disabled = false;
     };
   })();
 

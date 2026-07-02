@@ -206,6 +206,9 @@ async function cfDNS(env, method, suffix, body) {
 }
 
 async function broker(request, env, pathname) {
+  // Reachability probe for the app's connection test (any method, no auth,
+  // no side effects) — proves the venue's network can reach the broker.
+  if (pathname === "/api/broker/ping") return jsonResp(200, { ok: true, t: Date.now() });
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
   const body = await request.json().catch(() => null);

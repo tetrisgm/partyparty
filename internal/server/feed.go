@@ -41,6 +41,9 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
+			// dir = the event's identity; clients reset their cursor when it
+			// changes (switching to an OLDER event must replay its posts).
+			"dir":   filepath.Base(s.Events.Dir()),
 			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount, "dj": s.isDJ(r),
 		})
 	case "/api/comment":
@@ -188,6 +191,32 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		if err := s.Events.Fresh(); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/netcheck":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		broker := os.Getenv("PARTYPARTY_BROKER")
+		if broker == "" {
+			broker = "https://party.ramine.net"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"checks": runNetChecks(broker)})
+	case "/api/events":
+		if !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"events": s.Events.List()})
+	case "/api/event-switch":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.SwitchTo(r.URL.Query().Get("dir")); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})

@@ -222,6 +222,79 @@ func (s *Store) SetMeta(title, host, starts string) error {
 	return os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644)
 }
 
+// Info describes one event folder for the console's event list.
+type Info struct {
+	Dir     string `json:"dir"` // folder name under baseDir
+	Title   string `json:"title"`
+	Starts  string `json:"starts,omitempty"`
+	Posts   int    `json:"posts"`
+	Media   int    `json:"media"`
+	Current bool   `json:"current"`
+}
+
+// List enumerates every event folder, newest first (folder names sort by date).
+func (s *Store) List() []Info {
+	s.mu.Lock()
+	base, cur := s.baseDir, s.dir
+	s.mu.Unlock()
+	entries, _ := os.ReadDir(base)
+	var out []Info
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		dir := filepath.Join(base, e.Name())
+		info := Info{Dir: e.Name(), Title: "party " + e.Name(), Current: dir == cur}
+		if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
+			var m Meta
+			if json.Unmarshal(data, &m) == nil {
+				if m.Title != "" {
+					info.Title = m.Title
+				}
+				info.Starts = m.Starts
+			}
+		}
+		// Post/media counts by replaying the journal ops (files are small).
+		if data, err := os.ReadFile(filepath.Join(dir, "posts.jsonl")); err == nil {
+			alive := map[string]int{}
+			for _, raw := range strings.Split(string(data), "\n") {
+				var l line
+				if json.Unmarshal([]byte(raw), &l) != nil {
+					continue
+				}
+				switch {
+				case l.Op == "post" && l.Post != nil:
+					alive[l.Post.ID] = len(l.Post.Media)
+				case l.Op == "delete":
+					delete(alive, l.ID)
+				}
+			}
+			info.Posts = len(alive)
+			for _, m := range alive {
+				info.Media += m
+			}
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+// SwitchTo opens another existing event folder (the Partiful "your events"
+// move — nothing is created or destroyed).
+func (s *Store) SwitchTo(dirName string) error {
+	if dirName == "" || dirName != filepath.Base(dirName) || strings.HasPrefix(dirName, ".") {
+		return errors.New("bad event name")
+	}
+	s.mu.Lock()
+	dir := filepath.Join(s.baseDir, dirName)
+	s.mu.Unlock()
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return errors.New("no such event")
+	}
+	return s.use(dir)
+}
+
 // Fresh abandons the current feed and starts a new event directory (the old
 // one stays on disk untouched — nothing is ever destroyed).
 func (s *Store) Fresh() error {

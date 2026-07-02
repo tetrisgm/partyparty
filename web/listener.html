@@ -126,7 +126,7 @@
   .welopt{color:var(--label-tertiary)}
   .welname{display:flex;gap:8px;align-items:center}
   .welemoji{font-size:22px;background:var(--card);border:1px solid var(--separator);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-  .welshuffle{font-size:24px;background:none;border:none;cursor:pointer;flex:0 0 auto;padding:0 4px} /* the die, unboxed — only inputs get boxes */
+  .welshuffle{background:none;border:none;cursor:pointer;flex:0 0 auto;padding:0 4px;color:var(--accent);display:flex;align-items:center} /* shuffle arrows, unboxed — only inputs get boxes */
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input{flex:1}
   .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
@@ -220,7 +220,7 @@
       <div class="welname">
         <button class="welemoji" id="welEmoji" type="button" title="Pick your emoji">🪩</button>
         <input id="welName" maxlength="40" autocomplete="off">
-        <button class="welshuffle" id="welShuffle" type="button" title="Pick a random name" aria-label="Shuffle name">🎲</button>
+        <button class="welshuffle" id="welShuffle" type="button" title="Pick a random name" aria-label="Shuffle name"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
       <div class="wellabel gap">Share your email with <span id="welHost2">the DJ</span> for future communication <span class="welopt">(optional — only they see it)</span></div>
@@ -969,7 +969,7 @@
       // comment) — the cursor is `act`, not creation time.
       const nodes = new Map(); // post id -> element
       const expanded = new Set(); // posts with all comments shown
-      let newestAct = 0, feedOn = false;
+      let newestAct = 0, feedOn = false, curDir = '';
       const fmtTime = (ts) => {
         const d = new Date(ts);
         return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
@@ -1074,6 +1074,11 @@
           if (!feedOn) {
             feedOn = true;
             feedSec.hidden = false; downhint.hidden = false;
+          }
+          if (data.dir && data.dir !== curDir) {
+            // The DJ switched events: reset the cursor so the other event's
+            // (older-timestamped) posts actually arrive.
+            curDir = data.dir; newestAct = 0; nodes.clear(); expanded.clear(); feedList.innerHTML = '';
           }
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
