@@ -150,11 +150,12 @@
       </div>
       <div class="kv"><span>Delay from DJ (glass-to-glass)</span><span id="djDelay">—</span></div>
       <div class="kv"><span>Sync spread (dancer ↔ dancer)</span><span id="syncSpread">—</span></div>
+      <div class="kv"><span>Room target (everyone aligns to this)</span><span id="roomTarget">—</span></div>
       <div class="hint" id="syncDetail" style="margin:4px 0 6px"></div>
       <span class="advcheck" id="latHelpToggle" style="margin:2px 0 6px">ⓘ What do these two numbers mean?</span>
       <div class="hint" id="latHelp" hidden style="margin:0 0 8px;line-height:1.55">
         <b style="color:var(--label)">Delay from DJ</b> — how long after you play something the room hears it. A couple of seconds is normal and totally fine; nobody's comparing to your booth. Only worth lowering if you're talking to the crowd live.<br><br>
-        <b style="color:var(--label)">Sync spread</b> — how far apart two people standing next to each other are. This is the dancefloor number: under about half a second and the room moves together. If it climbs, phones are usually rebuffering on weak Wi‑Fi — nudge <b>Latency</b> toward Stable, or use a stronger router. Phones keep playing locked or in another app, so you can't "push" a lagging one — a steady buffer is what holds everyone together.
+        <b style="color:var(--label)">Sync spread</b> — how far apart two people standing next to each other are. This is the dancefloor number: under about half a second and the room moves together. Every phone actively aligns itself to the <b>room target</b> (tiny speed nudges, even while locked), so the spread should stay tight on its own; if phones keep rebuffering on weak Wi‑Fi, the target raises itself a little until the room is stable, and a single struggling phone backs off on its own instead of dragging everyone.
       </div>
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
@@ -412,6 +413,9 @@
       const roster = s.roster || [];
       $('listeners').textContent = roster.length;
       const lt = s.latency || {}; lastLt = lt;
+      $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
+        ? s.latencyTarget.toFixed(1) + ' s' + (s.latencyTarget > 6 ? ' (raised — phones were stalling)' : '')
+        : '—';
       if (lt.count) {
         $('djDelay').textContent = '~' + (lt.medMs / 1000).toFixed(1) + ' s';
         $('syncSpread').textContent = Math.round(lt.spreadMs) + ' ms · ' + lt.count + (lt.count === 1 ? ' phone' : ' phones');

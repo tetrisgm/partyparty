@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"partyparty/internal/broadcast"
@@ -39,6 +40,14 @@ type srv struct {
 	Deps
 	vendor     http.Handler
 	curPartDur string
+
+	// Adaptive room-latency target: the room finds its own floor instead of a
+	// hardcoded pessimistic delay. Raised when listeners stall, decayed slowly
+	// when clean. Guarded by adaptMu.
+	adaptMu    sync.Mutex
+	adaptDelta float64 // seconds above the base target, [0, 3]
+	lastAdj    time.Time
+	lastRaise  time.Time
 }
 
 func New(d Deps) http.Handler {
@@ -131,7 +140,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
-			"latencyTarget":  s.latencyTarget(bc),
+			"latencyTarget":  s.latencyTarget(bc, health.Status),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
@@ -415,21 +424,43 @@ func (s *srv) realCert() bool {
 // latencyTarget is the wall-clock delay behind the DJ that every listener
 // aligns to — the sync contract for the room. Players park wherever their
 // heuristics like (iOS versions differ by seconds); the room drops TOGETHER
-// because every client converges on this one number instead. It must sit above
-// the worst natural park position so alignment never fights the player:
-// plain HLS ≈ 4x segment + 3 (low mode = 7s), LL-HLS = 3s.
-func (s *srv) latencyTarget(bc broadcast.Status) float64 {
+// because every client converges on this one number instead.
+//
+// The base is deliberately tight (plain HLS low mode = 5s, LL-HLS = 3s) and the
+// server adapts within [base, base+3]: stalls in the room raise it in 0.5s
+// steps (fast — everyone drifts smoothly via rate, no skips), and after 5+
+// clean minutes it decays 0.25s at a time. --latency-target pins it manually.
+func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	if s.Config.LatencyTarget > 0 {
 		return s.Config.LatencyTarget
 	}
-	if bc.Delivery == "llhls" {
-		return 3
+	base := 3.0 // llhls
+	if bc.Delivery != "llhls" {
+		seg := bc.SegDur
+		if seg <= 0 {
+			seg = 1
+		}
+		base = 3*seg + 2 // low(1s)=5, balanced(2s)=8, stable(3s)=11
 	}
-	seg := bc.SegDur
-	if seg <= 0 {
-		seg = 1
+	s.adaptMu.Lock()
+	defer s.adaptMu.Unlock()
+	now := time.Now()
+	if now.Sub(s.lastAdj) > 90*time.Second {
+		switch healthStatus {
+		case "strain", "congested":
+			if s.adaptDelta < 3 {
+				s.adaptDelta += 0.5
+				s.lastRaise = now
+			}
+			s.lastAdj = now
+		case "good":
+			if s.adaptDelta > 0 && now.Sub(s.lastRaise) > 5*time.Minute {
+				s.adaptDelta -= 0.25
+				s.lastAdj = now
+			}
+		}
 	}
-	return 4*seg + 3
+	return base + s.adaptDelta
 }
 
 // latencySegDur maps a latency mode to an HLS segment length (seconds).
