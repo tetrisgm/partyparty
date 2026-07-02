@@ -191,9 +191,9 @@
       <div id="latencyBox">
         <label for="latency" style="margin-top:14px">Latency vs. stability</label>
         <select id="latency">
-          <option value="low" selected>Low latency — room syncs at ~5s</option>
-          <option value="balanced">Balanced — room syncs at ~8s</option>
-          <option value="stable">Stable — room syncs at ~11s (best on weak Wi-Fi)</option>
+          <option value="low" selected>Low latency — room syncs at ~6.5s</option>
+          <option value="balanced">Balanced — room syncs at ~9.5s</option>
+          <option value="stable">Stable — room syncs at ~12.5s (best on weak Wi-Fi)</option>
         </select>
         <div class="hint">Lower latency = less buffer, so it's more sensitive to drops. If audio cuts out on a weak network, step toward Stable. Changing this while live restarts the broadcast.</div>
       </div>
@@ -461,7 +461,7 @@
 
   loadDevices();
   refresh();
-  setInterval(refresh, 2000);
+  setInterval(refresh, 1000); // latency/sync numbers should feel live, not laggy
 
   // In-app controls — only when running inside the native menu-bar app.
   window.ppSetLoginState = (on) => { const c = $('loginItem'); if (c) c.checked = !!on; };

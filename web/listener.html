@@ -122,6 +122,16 @@
       || (/Version\/[\d.]+.*Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)); // real Safari
     const useNative = nativeHLS && isAppleUA;
     const platform = useNative ? 'native' : 'hls';
+    // Chrome/Firefox/Edge on iOS are WebKit shells WITHOUT real MSE — they end
+    // up on a degraded playback path that syncs noticeably worse (field-
+    // verified). Safari is the real player on iOS; nudge people there.
+    const iosShellBrowser = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
+    if (iosShellBrowser) {
+      try {
+        const f = document.querySelector('.foot');
+        if (f) f.innerHTML = '<b style="color:#ff9f0a">For the best sync on iPhone, open this page in Safari.</b><br>' + f.innerHTML;
+      } catch (e) {}
+    }
     const debug = new URLSearchParams(location.search).get('debug') === '1';
 
     // Stable per-device id so the DJ console can track each listener across beats.
@@ -251,6 +261,14 @@
       if (!STREAM) { try { await poll(); } catch (e) {} }
       if (LLSTREAM && llUsable === null) llUsable = useNative ? false : await probeLL(LLSTREAM); // once per session; native never takes LL
       if (!attachSafe()) return;
+      // Pre-buffer gate: give the player a moment to build a cushion before
+      // sound starts (fewer stalls in the first seconds). One-time, at start
+      // only — playback is never touched once running.
+      setStatus('getting ready…');
+      const t0 = Date.now();
+      while (Date.now() - t0 < 4000 && bufferedAhead() < 2.5 && player.readyState < 4) {
+        await new Promise(r => setTimeout(r, 200));
+      }
       try { await player.play(); }
       catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
     }
@@ -385,9 +403,9 @@
       const lat = measureLatency();
       if (lat == null || player.readyState < 3) return; // only judge a healthy player
       latSamples.push(lat);
-      if (latSamples.length > 6) latSamples.shift();
+      if (latSamples.length > 14) latSamples.shift();
       const now = Date.now();
-      if (latSamples.length < 6 || now - lastRejoinAt < 120000) return;
+      if (latSamples.length < 14 || now - lastRejoinAt < 120000) return; // ~28s of agreement at the 2s tick
       // all of the last ~30s of samples far off, same side → genuinely adrift
       const off = latSamples.every(v => v - latencyTarget > 3.5) || latSamples.every(v => v - latencyTarget < -3.5);
       if (!off) return;
@@ -398,7 +416,7 @@
 
     setInterval(() => {
       if (!started) return;
-      maybeRejoin(); // the ONLY recovery — fires under lock too (this 5s tick keeps running there, field-verified)
+      maybeRejoin(); // the ONLY recovery — fires under lock too (this tick keeps running there, field-verified)
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
@@ -409,7 +427,7 @@
       fetch(url, { cache: 'no-store' }).catch(() => {});
       stalledSinceBeat = false;
       if (debug) showDebug(lat);
-    }, 5000);
+    }, 2000); // 2s: the DJ console's numbers should feel live
   </script>
 </body>
 </html>

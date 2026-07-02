@@ -535,7 +535,10 @@ func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	if seg <= 0 {
 		seg = 1
 	}
-	base := 3*seg + 2 // low(1s)=5, balanced(2s)=8, stable(3s)=11
+	// Field-calibrated: at 5s the first minutes were rough and the adaptive
+	// controller settled the room at 6.5s — so start there instead of making
+	// every party rediscover it.
+	base := 3*seg + 3.5 // low(1s)=6.5, balanced(2s)=9.5, stable(3s)=12.5
 	s.adaptMu.Lock()
 	defer s.adaptMu.Unlock()
 	now := time.Now()
