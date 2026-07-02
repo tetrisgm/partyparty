@@ -587,11 +587,11 @@ func latencySegDur(mode string) float64 {
 func latencyPartDur(mode string) (string, string, int) {
 	switch mode {
 	case "low":
-		return "200ms", "1s", 16
+		return "500ms", "1s", 16 // hold-back 1.25s — the standard cushion
 	case "balanced":
-		return "350ms", "1s", 16
+		return "800ms", "2s", 16 // hold-back 2s
 	case "stable":
-		return "500ms", "2s", 16
+		return "1000ms", "2s", 16 // hold-back 2.5s — party Wi-Fi armor
 	default:
 		return "", "", 0
 	}

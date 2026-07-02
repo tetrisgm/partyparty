@@ -198,11 +198,13 @@
     const LOAD_POLICY = { default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: RETRY, errorRetry: RETRY } };
 
     // The stream THIS device plays: the probed LL-HLS upgrade, else plain.
-    // NATIVE players (Safari/iOS) never take LL: AVPlayer chases the LL
-    // PART-HOLD-BACK (~1s) and cannot sit at the room target without a
-    // tug-of-war (field disaster). LL is an hls.js-only option for now.
-    const chosenStream = () => (!useNative && llUsable && LLSTREAM) ? LLSTREAM : STREAM;
-    const usingLL = () => !!(!useNative && llUsable && LLSTREAM);
+    // NATIVES INCLUDED: with playback fully passive, an LL device parks at
+    // Apple's PART-HOLD-BACK by itself — every iPhone at the SAME hold-back =
+    // self-syncing AND self-healing (the player re-chases hold-back after a
+    // stall). The old tug-of-war existed only because a controller dragged
+    // them off it; that controller is gone.
+    const chosenStream = () => (llUsable && LLSTREAM) ? LLSTREAM : STREAM;
+    const usingLL = () => !!(llUsable && LLSTREAM);
 
     function attach(){
       if (!STREAM) return;
@@ -255,7 +257,7 @@
 
     async function play(){
       if (!STREAM) { try { await poll(); } catch (e) {} }
-      if (LLSTREAM && llUsable === null) llUsable = useNative ? false : await probeLL(LLSTREAM); // once per session; native never takes LL
+      if (LLSTREAM && llUsable === null) llUsable = await probeLL(LLSTREAM); // once per session, every platform
       if (!attachSafe()) return;
       // Pre-buffer gate: give the player a moment to build a cushion before
       // sound starts (fewer stalls in the first seconds). One-time, at start
@@ -395,6 +397,10 @@
       return 0;
     }
     function maybeRejoin(){
+      // LL devices self-heal (the player re-chases its hold-back after any
+      // stall) and sit far below the plain room target by design — rejoin
+      // logic applies only to the plain-HLS cohort.
+      if (usingLL()) return;
       if (!started || player.paused || !latencyTarget) return;
       const lat = measureLatency();
       if (lat == null || player.readyState < 3) return; // only judge a healthy player

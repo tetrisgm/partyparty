@@ -75,7 +75,7 @@ func Parse() Config {
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")
-	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "350ms"), "LL-HLS part duration (lower = less latency, but iPhones may stall below ~350ms)")
+	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "500ms"), "LL-HLS part duration; hold-back (the LL room's park position) = 2.5x this — 500ms = 1.25s cushion, safer on party Wi-Fi than 350ms")
 	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "1s"), "LL-HLS segment duration")
 	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 16), "LL-HLS segments kept in the playlist (deep window: a guest parked at the room target must never fall off the back)")
 	flag.Float64Var(&c.StartOffset, "start-offset", 0, "EXPERIMENTAL: seconds before live to ask players to start (injects #EXT-X-START:TIME-OFFSET=-N into the plain-HLS playlist; 0 = off)")

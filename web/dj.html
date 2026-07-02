@@ -421,15 +421,29 @@
       $('url').textContent = guestUrl;
       renderQR(guestUrl);
       const roster = s.roster || [];
-      $('listeners').textContent = roster.length;
+      const llCount = roster.filter(r => r.delivery === 'llhls').length;
+      $('listeners').textContent = roster.length + (llCount ? ' · ' + llCount + ' low-latency' : '');
       const lt = s.latency || {}; lastLt = lt;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
-        ? s.latencyTarget.toFixed(1) + ' s' + (s.latencyTarget > 6 ? ' (raised — phones were stalling)' : '')
+        ? ((s.delivery === 'llhls' && llCount) ? '~1-2.5 s (low-latency room) · ' + s.latencyTarget.toFixed(1) + ' s for compatible fallback' : s.latencyTarget.toFixed(1) + ' s')
         : '—';
-      if (lt.count) {
-        $('djDelay').textContent = '~' + (lt.medMs / 1000).toFixed(1) + ' s';
-        $('syncSpread').textContent = Math.round(lt.spreadMs) + ' ms · ' + lt.count + (lt.count === 1 ? ' phone' : ' phones');
-        $('syncDetail').textContent = 'behind live — closest ' + Math.round(lt.minMs) + ' ms · median ' + Math.round(lt.medMs) + ' ms · furthest ' + Math.round(lt.maxMs) + ' ms';
+      // Spread is only meaningful WITHIN a cohort: LL devices park ~1-2s
+      // behind the DJ, compatible fallback parks at the room target — mixing
+      // them would read as seconds of "spread" that no two neighbors hear.
+      const spreadOf = (list) => {
+        const v = list.filter(r => r.hasLatency).map(r => r.latencyMs).sort((a, b) => a - b);
+        return v.length ? { n: v.length, spread: v[v.length - 1] - v[0], med: v[Math.floor(v.length / 2)] } : null;
+      };
+      const ll = spreadOf(roster.filter(r => r.delivery === 'llhls'));
+      const pl = spreadOf(roster.filter(r => r.delivery !== 'llhls'));
+      const main = ll && (!pl || ll.n >= pl.n) ? ll : pl;
+      if (main) {
+        $('djDelay').textContent = '~' + (main.med / 1000).toFixed(1) + ' s';
+        $('syncSpread').textContent = Math.round(main.spread) + ' ms · ' + main.n + (main.n === 1 ? ' phone' : ' phones');
+        $('syncDetail').textContent =
+          (ll ? 'low-latency: ' + Math.round(ll.spread) + ' ms across ' + ll.n : '') +
+          (ll && pl ? ' · ' : '') +
+          (pl ? 'compatible: ' + Math.round(pl.spread) + ' ms across ' + pl.n : '');
         $('copySync').style.display = 'inline-block';
       } else {
         $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('syncDetail').textContent = ''; $('copySync').style.display = 'none';
