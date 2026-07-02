@@ -22,6 +22,10 @@ type client struct {
 	delivery string
 	rate     float64
 	bufS     float64
+
+	// Identity for the DJ's "see details" view.
+	ip   string
+	name string // friendly device label derived from the User-Agent
 }
 
 type Listeners struct {
@@ -86,6 +90,23 @@ func (l *Listeners) Debug(key, delivery string, rate, bufS float64) {
 		}
 		c.rate = rate
 		c.bufS = bufS
+	}
+}
+
+// Meta records identity (IP + friendly device name) for the details view.
+func (l *Listeners) Meta(key, ip, name string) {
+	if key == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if c := l.clients[key]; c != nil {
+		if ip != "" {
+			c.ip = ip
+		}
+		if name != "" {
+			c.name = name
+		}
 	}
 }
 
@@ -173,6 +194,8 @@ func (l *Listeners) LatencySpread() LatencyStat {
 type Listener struct {
 	Platform   string  `json:"platform"` // "native" | "hls"
 	Delivery   string  `json:"delivery,omitempty"`
+	Name       string  `json:"name,omitempty"`
+	IP         string  `json:"ip,omitempty"`
 	LatencyMs  float64 `json:"latencyMs"`
 	HasLatency bool    `json:"hasLatency"`
 	Rate       float64 `json:"rate,omitempty"`
@@ -198,6 +221,8 @@ func (l *Listeners) Roster() []Listener {
 		out = append(out, Listener{
 			Platform:   c.platform,
 			Delivery:   c.delivery,
+			Name:       c.name,
+			IP:         c.ip,
 			LatencyMs:  c.lat,
 			HasLatency: c.hasLat,
 			Rate:       c.rate,

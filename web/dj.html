@@ -56,8 +56,15 @@
   .lcount{font-size:26px;font-weight:600;color:var(--label);line-height:1;letter-spacing:-.02em}
   .listener{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--separator);font-size:13px}
   .listener:last-child{border-bottom:none}
+  .listener.det{align-items:flex-start}
   .listener .lstat{width:18px;text-align:center}
+  .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .dot-g{background:var(--success)} .dot-y{background:var(--warn)} .dot-r{background:var(--danger)} .dot-x{background:var(--label-tertiary)}
   .listener .lname{flex:1;color:var(--label)}
+  .listener .lbody{flex:1;min-width:0}
+  .listener .lbody .lname{display:block}
+  .lip{color:var(--label-tertiary);font-size:11px;font-variant-numeric:tabular-nums;font-weight:400}
+  .ldetail{color:var(--label-secondary);font-size:11px;font-variant-numeric:tabular-nums;margin-top:2px}
   .listener .llat{color:var(--label-secondary);font-variant-numeric:tabular-nums}
   .stat{display:flex;gap:16px;align-items:baseline}
   pre{background:#000;border:1px solid var(--separator);border-radius:var(--r-sm);padding:12px;font-family:var(--mono);font-size:12px;line-height:1.5;height:190px;overflow:auto;color:var(--label-secondary);white-space:pre-wrap;margin:0}
@@ -157,6 +164,7 @@
         <b style="color:var(--label)">Delay from DJ</b> — how long after you play something the room hears it. A couple of seconds is normal and totally fine; nobody's comparing to your booth. Only worth lowering if you're talking to the crowd live.<br><br>
         <b style="color:var(--label)">Sync spread</b> — how far apart two people standing next to each other are. This is the dancefloor number: under about half a second and the room moves together. Every phone actively aligns itself to the <b>room target</b> (tiny speed nudges, even while locked), so the spread should stay tight on its own; if phones keep rebuffering on weak Wi‑Fi, the target raises itself a little until the room is stable, and a single struggling phone backs off on its own instead of dragging everyone.
       </div>
+      <label class="advcheck" style="display:block;margin:6px 0;cursor:pointer"><input type="checkbox" id="detailsCheck" style="margin-right:6px;vertical-align:middle;accent-color:var(--accent)">See details (device · IP · stats)</label>
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
       <div class="hint" style="margin-top:8px">Sync test: open the player on a few phones — lock a couple — and watch the spread. That's what the dancefloor feels.</div>
@@ -292,6 +300,7 @@
   }
   { const cs = document.getElementById('copySync'); if (cs) cs.onclick = copySync; }
   { const ht = document.getElementById('latHelpToggle'), hb = document.getElementById('latHelp'); if (ht && hb) ht.onclick = () => hb.hidden = !hb.hidden; }
+  { const dc = document.getElementById('detailsCheck'); if (dc) { dc.checked = localStorage.getItem('pp.rosterDetails') === '1'; dc.onchange = () => { localStorage.setItem('pp.rosterDetails', dc.checked ? '1' : '0'); refresh(); }; } }
 
   const savedL = localStorage.getItem('pp.latency');
   if (savedL) $('latency').value = savedL;
@@ -465,13 +474,30 @@
       } else {
         $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('syncDetail').textContent = ''; $('copySync').style.display = 'none';
       }
+      const details = $('detailsCheck') && $('detailsCheck').checked;
+      const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
       $('roster').innerHTML = roster.map((r, i) => {
-        const icon = r.stalled ? '⏳' : (r.paused ? '⏸' : '▶');
-        const lat = r.hasLatency ? Math.round(r.latencyMs) + ' ms' : '—';
-        const extra = (r.delivery === 'llhls' ? ' · LL' : '')
-          + (r.bufS ? ' · buf ' + r.bufS.toFixed(0) + 's' : '')
-          + (r.rate && Math.abs(r.rate - 1) > 0.001 ? ' · ' + r.rate.toFixed(2) + 'x' : '');
-        return '<div class="listener"><span class="lstat">' + icon + '</span><span class="lname">Guest ' + (i + 1) + '</span><span class="llat">' + lat + extra + '</span></div>';
+        // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
+        // red stalled · gray paused.
+        const cls = r.paused ? 'dot-x'
+          : r.stalled ? 'dot-r'
+          : (!r.hasLatency || (r.bufS && r.bufS < 2)) ? 'dot-y'
+          : 'dot-g';
+        const dot = '<span class="ldot ' + cls + '"></span>';
+        if (!details) {
+          return '<div class="listener">' + dot + '<span class="lname">Guest ' + (i + 1) + '</span></div>';
+        }
+        const name = esc(r.name || 'Guest ' + (i + 1));
+        const lat = r.hasLatency ? Math.round(r.latencyMs) + ' ms behind' : 'measuring…';
+        const bits = [
+          (r.delivery === 'llhls' ? 'low-latency' : 'compatible'),
+          'buf ' + (r.bufS || 0).toFixed(0) + 's',
+          (r.rate && Math.abs(r.rate - 1) > 0.001 ? r.rate.toFixed(2) + '×' : ''),
+          (r.stalled ? 'stalled' : ''), (r.paused ? 'paused' : '')
+        ].filter(Boolean).join(' · ');
+        return '<div class="listener det">' + dot +
+          '<div class="lbody"><span class="lname">' + name + '  <span class="lip">' + esc(r.ip) + '</span></span>' +
+          '<div class="ldetail">' + lat + ' · ' + bits + '</div></div></div>';
       }).join('');
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };

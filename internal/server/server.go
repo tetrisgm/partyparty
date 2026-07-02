@@ -217,6 +217,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
 		s.Listeners.Debug(key, q.Get("del"), rate, buf)
+		s.Listeners.Meta(key, clientIP(r), deviceName(r.UserAgent()))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/delivery":
 		if r.Method != http.MethodPost {
@@ -444,6 +445,44 @@ func (s *srv) captiveLanding(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(html))
+}
+
+// deviceName derives a short friendly label from a User-Agent for the DJ's
+// details view (e.g. "iPhone · Safari", "Android · Chrome", "Mac · Chrome").
+func deviceName(ua string) string {
+	if ua == "" {
+		return "Browser"
+	}
+	dev := "Computer"
+	switch {
+	case strings.Contains(ua, "iPhone"):
+		dev = "iPhone"
+	case strings.Contains(ua, "iPad"):
+		dev = "iPad"
+	case strings.Contains(ua, "Android"):
+		dev = "Android"
+	case strings.Contains(ua, "Macintosh"):
+		dev = "Mac"
+	case strings.Contains(ua, "Windows"):
+		dev = "Windows"
+	case strings.Contains(ua, "Linux"):
+		dev = "Linux"
+	}
+	br := ""
+	switch {
+	case strings.Contains(ua, "CriOS") || (strings.Contains(ua, "Chrome") && !strings.Contains(ua, "Edg")):
+		br = "Chrome"
+	case strings.Contains(ua, "Edg"):
+		br = "Edge"
+	case strings.Contains(ua, "Firefox") || strings.Contains(ua, "FxiOS"):
+		br = "Firefox"
+	case strings.Contains(ua, "Safari"):
+		br = "Safari"
+	}
+	if br == "" {
+		return dev
+	}
+	return dev + " · " + br
 }
 
 func clientIP(r *http.Request) string {

@@ -37,6 +37,32 @@ var webFS embed.FS
 // themselves after an update instead of running old logic forever.
 var appVersion = "dev"
 
+// peekConn re-serves bytes already read off the wire (for first-byte sniffing).
+type peekConn struct {
+	net.Conn
+	peeked []byte
+}
+
+func (c *peekConn) Read(p []byte) (int, error) {
+	if len(c.peeked) > 0 {
+		n := copy(p, c.peeked)
+		c.peeked = c.peeked[n:]
+		return n, nil
+	}
+	return c.Conn.Read(p)
+}
+
+// chanListener is a net.Listener fed pre-accepted conns from a channel — lets
+// one raw port drive both an https server and an http-redirect server.
+type chanListener struct {
+	conns chan net.Conn
+	addr  net.Addr
+}
+
+func (l *chanListener) Accept() (net.Conn, error) { return <-l.conns, nil }
+func (l *chanListener) Close() error              { return nil }
+func (l *chanListener) Addr() net.Addr            { return l.addr }
+
 // telemetryLoop ships /api/status snapshots to the cloud while broadcasting.
 func telemetryLoop(port int, bc *broadcast.Broadcaster) {
 	id, secret := activate.InstallCreds()
@@ -249,7 +275,7 @@ func main() {
 			log.Printf("tls: explicit cert failed to load: %v", err)
 		}
 	}
-	if tlsLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
+	if rawLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
 		tlsSrv := &http.Server{
 			Handler: handler,
 			TLSConfig: &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -261,9 +287,44 @@ func main() {
 				return liveCert, nil
 			}},
 		}
+		// Plaintext hitting the HTTPS port (old QR, hand-typed http://) would get
+		// Go's ugly "Client sent an HTTP request to an HTTPS server" — redirect
+		// to https instead. We can't run http and https on one port with stock
+		// listeners, so sniff the first byte: 0x16 = TLS handshake → the TLS
+		// server; anything else → a 301-to-https server.
+		redirectSrv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "https://"+r.Host+r.URL.RequestURI(), http.StatusMovedPermanently)
+		})}
+		tlsCh := &chanListener{conns: make(chan net.Conn), addr: rawLn.Addr()}
+		httpCh := &chanListener{conns: make(chan net.Conn), addr: rawLn.Addr()}
 		go func() {
-			if err := tlsSrv.ServeTLS(tlsLn, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := tlsSrv.ServeTLS(tlsCh, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("tls listener: %v", err)
+			}
+		}()
+		go func() { _ = redirectSrv.Serve(httpCh) }()
+		go func() {
+			for {
+				c, aerr := rawLn.Accept()
+				if aerr != nil {
+					return
+				}
+				go func(c net.Conn) {
+					b := make([]byte, 1)
+					_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+					n, rerr := c.Read(b)
+					_ = c.SetReadDeadline(time.Time{})
+					if rerr != nil || n == 0 {
+						c.Close()
+						return
+					}
+					pc := &peekConn{Conn: c, peeked: b[:n]}
+					if b[0] == 0x16 { // TLS ClientHello
+						tlsCh.conns <- pc
+					} else {
+						httpCh.conns <- pc
+					}
+				}(c)
 			}
 		}()
 	} else {
