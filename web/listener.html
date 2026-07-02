@@ -1086,11 +1086,15 @@
         if (btn) btn.click();
       });
       async function pollFeed(force){
-        if (!feedOn && !force) return;
+        if (!feedOn && !force) return false;
         try {
-          const r = await fetch('/api/feed?since=' + newestAct, { cache: 'no-store' });
-          if (r.status === 404) return; // no event store (the interval keeps checking cheaply)
-          if (!r.ok) return;
+          // wait=1 long-polls once the feed is up: the server answers the
+          // instant anything happens — realtime without a hammering interval.
+          // (Never on the FIRST load: an empty event would park the request
+          // 25s and hold the welcome card hostage.)
+          const r = await fetch('/api/feed?since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store' });
+          if (r.status === 404) return false; // no event store
+          if (!r.ok) return false;
           const data = await r.json();
           if (!feedOn) {
             feedOn = true;
@@ -1120,19 +1124,26 @@
             }
           }
           const fresh = (data.posts || []);
-          if (!fresh.length) return;
-          const empty = feedList.querySelector('.feedempty');
-          if (empty) empty.remove();
-          for (const p of fresh) {
-            newestAct = Math.max(newestAct, p.act || p.ts);
-            placePost(p);
+          if (fresh.length) {
+            const empty = feedList.querySelector('.feedempty');
+            if (empty) empty.remove();
+            for (const p of fresh) {
+              newestAct = Math.max(newestAct, p.act || p.ts);
+              placePost(p);
+            }
           }
-        } catch (e) {}
+          return true;
+        } catch (e) { return false; }
       }
-      pollFeed(true);
-      // force while !feedOn: a failed FIRST poll (Wi-Fi blip at page load) must
-      // retry, or the wall + welcome gate would never appear at all.
-      setInterval(() => pollFeed(!feedOn), 5000);
+      // Self-scheduling long-poll loop: a healthy parked request IS the wait,
+      // so the breather is tiny; failures (offline, no event store, first poll
+      // lost to a Wi-Fi blip) retry on a 5s cadence instead of hammering.
+      (async () => {
+        for (;;) {
+          const ok = await pollFeed(!feedOn);
+          await new Promise(r => setTimeout(r, ok && feedOn ? 150 : 5000));
+        }
+      })();
     })();
   </script>
 </body>

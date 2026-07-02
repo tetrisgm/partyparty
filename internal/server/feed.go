@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"partyparty/internal/event"
 )
@@ -35,6 +36,18 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/feed":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 		posts, ids, mediaCount := s.Events.Feed(since)
+		// Long-poll (wait=1): nothing new → park until the next mutation (or
+		// ~25s heartbeat), then answer. Posts and comments land on every open
+		// page within a network round-trip instead of a polling interval.
+		if len(posts) == 0 && r.URL.Query().Get("wait") == "1" {
+			select {
+			case <-s.Events.Wait():
+			case <-time.After(25 * time.Second):
+			case <-r.Context().Done():
+				return true
+			}
+			posts, ids, mediaCount = s.Events.Feed(since)
+		}
 		if posts == nil {
 			posts = []event.Post{}
 		}

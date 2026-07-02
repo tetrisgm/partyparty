@@ -105,6 +105,12 @@ type Store struct {
 	posts   []*Post
 	byID    map[string]*Post
 	guests  map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
+
+	// Long-poll wakeup: closed and replaced on every visible mutation, so
+	// /api/feed?wait=1 can hold requests and answer the INSTANT something
+	// happens — the wall feels realtime without a 1s hammering interval.
+	notifyMu sync.Mutex
+	notify   chan struct{}
 }
 
 // Open finds today's most recent event under baseDir (or creates one), so an
@@ -124,11 +130,26 @@ func Open(baseDir string) (*Store, error) {
 	if dir == "" {
 		dir = filepath.Join(baseDir, date)
 	}
-	s := &Store{baseDir: baseDir}
+	s := &Store{baseDir: baseDir, notify: make(chan struct{})}
 	if err := s.use(dir); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// changed wakes every parked long-poll (close-and-replace broadcast).
+func (s *Store) changed() {
+	s.notifyMu.Lock()
+	close(s.notify)
+	s.notify = make(chan struct{})
+	s.notifyMu.Unlock()
+}
+
+// Wait returns a channel that closes on the next visible mutation.
+func (s *Store) Wait() <-chan struct{} {
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	return s.notify
 }
 
 // use switches the store to dir, creating the layout and replaying the journal.
@@ -188,6 +209,7 @@ func (s *Store) use(dir string) error {
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.guests, s.meta = dir, posts, byID, guests, meta
 	s.mu.Unlock()
+	s.changed()
 	return nil
 }
 
@@ -219,7 +241,11 @@ func (s *Store) SetMeta(title, host, starts string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644)
+	if err := os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644); err != nil {
+		return err
+	}
+	s.changed() // title/host edits reach parked long-polls too
+	return nil
 }
 
 // Info describes one event folder for the console's event list.
@@ -473,6 +499,7 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 		g.Pseudonym, g.Emoji = p.Author, p.Emoji // follow renames
 		_ = s.saveGuestsLocked()
 	}
+	s.changed()
 	return p, claimToken, nil
 }
 
@@ -506,6 +533,7 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 	if p.Act < c.TS {
 		p.Act = c.TS
 	}
+	s.changed()
 	return c, nil
 }
 
@@ -522,6 +550,7 @@ func (s *Store) SetPublish(postID string, on bool) error {
 		return err
 	}
 	p.NoPublish = !on
+	s.changed()
 	return nil
 }
 
@@ -538,6 +567,7 @@ func (s *Store) Delete(id string) error {
 		return err
 	}
 	p.Deleted = true
+	s.changed()
 	return nil
 }
 

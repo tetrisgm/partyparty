@@ -857,8 +857,11 @@
     });
     async function poll(){
       try {
-        const r = await fetch('/api/feed?since=' + newestAct, { cache:'no-store' });
-        if (r.status === 404) return;
+        // wait=1 after the first load: long-poll — guest posts/comments land
+        // on the console the moment they happen.
+        const r = await fetch('/api/feed?since=' + newestAct + (on ? '&wait=1' : ''), { cache:'no-store' });
+        if (r.status === 404) return false;
+        if (!r.ok) return false;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
         if (data.dir && data.dir !== curDir) {
@@ -884,9 +887,16 @@
         if (authors.size) {
           $('wallAuthors').innerHTML = [...authors.keys()].map(a => '<span class="chip">' + escT(a) + '</span>').join('');
         }
-      } catch (e) {}
+        return true;
+      } catch (e) { return false; }
     }
-    poll(); setInterval(poll, 5000);
+    // Long-poll loop (same shape as the guest page): parked request = the wait.
+    (async () => {
+      for (;;) {
+        const ok = await poll();
+        await new Promise(r => setTimeout(r, ok && on ? 150 : 5000));
+      }
+    })();
 
     $('djAttachBtn').onclick = () => $('djFiles').click();
     $('djFiles').onchange = () => { $('djAttachN').textContent = $('djFiles').files.length ? $('djFiles').files.length + ' selected' : ''; };

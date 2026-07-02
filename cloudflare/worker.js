@@ -238,6 +238,19 @@ async function broker(request, env, pathname) {
   // install's own secret on the read-only dump/list/get endpoints, so field
   // problems can be pulled up by install id without asking anyone for creds.
   const isAdmin = env.ADMIN_KEY && body.admin === env.ADMIN_KEY;
+  // Admin-only: enumerate installs (id + slug + created) so support tooling
+  // can find "fader91" without anyone reading out an install id. Sits BEFORE
+  // the per-install id validation — this endpoint has no id of its own.
+  if (pathname === "/api/broker/installs") {
+    if (!isAdmin) return jsonResp(403, { error: "admin only" });
+    const list = await env.DL.list({ prefix: "broker/", limit: 1000 });
+    const installs = [];
+    for (const o of list.objects) {
+      const r2 = await env.DL.get(o.key).then((x) => (x ? x.json() : null));
+      if (r2) installs.push({ id: o.key.slice(7, -5), slug: r2.slug || "", created: r2.created || 0 });
+    }
+    return jsonResp(200, { installs });
+  }
   const id = String(body.id || "");
   if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => (o ? o.json() : null));
