@@ -126,7 +126,7 @@
       </div>
       <div id="helpNote" style="display:none">
         <h3>① Capture everything on the Mac (easiest)</h3>
-        <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. Grant <b>Screen Recording</b> permission once when asked. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+        <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
         <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
         <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole above.</p>
         <h3>③ Hardware controller / mixer</h3>
@@ -416,7 +416,7 @@
       const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnoteText').textContent = note || '';
-      $('screenPermBtn').style.display = /screen recording/i.test(note) ? 'block' : 'none';
+      $('screenPermBtn').style.display = /system audio|screen recording/i.test(note) ? 'block' : 'none';
       const guestUrl = portFreeOn ? s.urls.primary.replace(/:\d+\//, '/') : s.urls.primary;
       $('url').textContent = guestUrl;
       renderQR(guestUrl);

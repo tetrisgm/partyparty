@@ -15,11 +15,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.7.1</string>
+	<string>0.8.0</string>
 	<key>CFBundleVersion</key>
-	<string>13</string>
+	<string>14</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
+	<string>26.0</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
@@ -34,7 +34,7 @@
 		</dict>
 	</dict>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>partyparty captures your Mac's audio so guests on your network can hear the music. It only listens to sound — it can't see your screen.</string>
+	<string>partyparty broadcasts the Mac’s audio to your guests’ phones.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>

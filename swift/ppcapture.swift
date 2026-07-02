@@ -1,11 +1,18 @@
-// ppcapture — captures macOS system audio via ScreenCaptureKit and writes raw
-// interleaved Float32 PCM (48 kHz, 2 ch) to stdout. partyparty pipes this into
-// FFmpeg (`-f f32le -ar 48000 -ac 2 -i -`). Needs Screen Recording permission.
+// ppcapture — captures macOS system audio via a Core Audio process tap and
+// writes raw interleaved Float32 PCM to stdout; partyparty pipes it into
+// FFmpeg. macOS 26+ only — no ScreenCaptureKit, no screen-recording TCC.
+//
+// The "System Audio Recording" permission prompts INLINE (a one-click Allow
+// dialog, like microphone) on first use and survives app updates — no
+// System Settings visit, ever.
+//
+// The tap's stream format follows the current OUTPUT device (44.1k or 48k),
+// so the helper reports it on stderr before audio flows:
+//     ppcapture: FORMAT <rate> <channels>
+// and the parent builds ffmpeg's input args from that line.
 
 import Foundation
-import AVFoundation
-import CoreMedia
-import ScreenCaptureKit
+import CoreAudio
 
 let errOut = FileHandle.standardError
 func elog(_ s: String) { errOut.write((s + "\n").data(using: .utf8)!) }
@@ -15,160 +22,137 @@ func writeOut(_ data: Data) {
     do { try outHandle.write(contentsOf: data) } catch { exit(0) } // pipe closed -> done
 }
 
-@available(macOS 13.0, *)
-final class SysAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
-    var stream: SCStream?
-    var loggedFormat = false
-    let audioQueue = DispatchQueue(label: "ppcapture.audio")
-    let screenQueue = DispatchQueue(label: "ppcapture.screen")
+/// Ring buffer between the HAL's realtime IO thread and a blocking writer
+/// thread. The IO thread must NEVER block (a blocked HAL glitches ALL system
+/// audio) — on overflow we drop and count instead.
+final class PCMRing {
+    private var buf: [Float32]
+    private var head = 0, tail = 0, used = 0
+    private let cap: Int
+    private let cond = NSCondition()
+    private var dropped = 0
 
-    // Timeline continuity: SCK can drop buffers (queue overflow, guard-return
-    // paths). A dropped buffer silently shortens the PCM timeline, which both
-    // clicks and permanently shifts wall-clock vs media-time. Track the expected
-    // next PTS and conceal any gap with silence so downstream timing stays true.
-    var nextPTS: CMTime = .invalid
-    var concealedMs: Double = 0
-    var gapCount = 0
-
-    func concealGapIfNeeded(_ pts: CMTime) {
-        guard nextPTS.isValid, pts.isValid else { return }
-        let gap = CMTimeGetSeconds(CMTimeSubtract(pts, nextPTS))
-        guard gap > 0.002 else { return } // < 2ms: normal jitter
-        let sec = min(gap, 2.0) // cap pathological gaps
-        let frames = Int(sec * 48000)
-        if frames > 0 {
-            writeOut(Data(count: frames * 2 * MemoryLayout<Float32>.size)) // zero-filled silence
-            gapCount += 1
-            concealedMs += sec * 1000
-            elog(String(format: "ppcapture: concealed %.0fms capture gap with silence (gap #%d, %.0fms total)", sec * 1000, gapCount, concealedMs))
-        }
+    init(capacitySamples: Int) {
+        cap = max(capacitySamples, 4096)
+        buf = [Float32](repeating: 0, count: cap)
     }
 
-    func start() async {
-        do {
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-            guard let display = content.displays.first else {
-                elog("ppcapture: no display available"); exit(2)
+    func push(_ p: UnsafePointer<Float32>, _ n: Int) {
+        cond.lock()
+        if used + n > cap {
+            dropped += n // never block the HAL thread
+            if dropped % (48000 * 2) < n { elog("ppcapture: output backpressure — dropped ~\(dropped / 96000)s so far") }
+            cond.unlock()
+            return
+        }
+        for i in 0..<n {
+            buf[(tail + i) % cap] = p[i]
+        }
+        tail = (tail + n) % cap
+        used += n
+        cond.signal()
+        cond.unlock()
+    }
+
+    func writerLoop() {
+        var out = [Float32](repeating: 0, count: 16384)
+        while true {
+            cond.lock()
+            while used == 0 { cond.wait() }
+            let n = min(used, out.count)
+            for i in 0..<n {
+                out[i] = buf[(head + i) % cap]
             }
-            let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
-            let cfg = SCStreamConfiguration()
-            cfg.capturesAudio = true
-            cfg.sampleRate = 48000
-            cfg.channelCount = 2
-            cfg.excludesCurrentProcessAudio = true
-            // A stream needs a video output too; keep it trivially small and ignore it.
-            cfg.width = 2
-            cfg.height = 2
-            cfg.minimumFrameInterval = CMTime(value: 1, timescale: 1)
-            cfg.queueDepth = 6
-
-            let s = SCStream(filter: filter, configuration: cfg, delegate: self)
-            try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
-            try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: screenQueue)
-            try await s.startCapture()
-            stream = s
-            elog("ppcapture: capturing system audio (48000 Hz, 2 ch, f32le)")
-        } catch {
-            elog("ppcapture: failed to start: \(error.localizedDescription)")
-            elog("ppcapture: grant Screen Recording permission in System Settings > Privacy & Security > Screen Recording, then start again.")
-            exit(3)
+            head = (head + n) % cap
+            used -= n
+            cond.unlock()
+            out.withUnsafeBytes { writeOut(Data(bytes: $0.baseAddress!, count: n * 4)) }
         }
     }
+}
 
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
-        elog("ppcapture: stopped: \(error.localizedDescription)")
-        exit(4)
+func fail(_ msg: String, code: Int32) -> Never {
+    elog("ppcapture: " + msg)
+    exit(code)
+}
+
+// 1. Global stereo mixdown of all system audio (excluding no processes). The
+//    one-click "record system audio" permission prompt fires here on first use.
+let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+desc.uuid = UUID()
+desc.isPrivate = true
+var tapID = AudioObjectID(kAudioObjectUnknown)
+var err = AudioHardwareCreateProcessTap(desc, &tapID)
+guard err == noErr, tapID != kAudioObjectUnknown else {
+    fail("system-audio tap failed (err \(err)) — if a permission prompt appeared, click Allow and start again", code: 3)
+}
+
+// 2. The tap's format follows the current output device.
+var fmtAddr = AudioObjectPropertyAddress(
+    mSelector: kAudioTapPropertyFormat,
+    mScope: kAudioObjectPropertyScopeGlobal,
+    mElement: kAudioObjectPropertyElementMain)
+var asbd = AudioStreamBasicDescription()
+var fmtSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+err = AudioObjectGetPropertyData(tapID, &fmtAddr, 0, nil, &fmtSize, &asbd)
+guard err == noErr, asbd.mSampleRate > 0 else {
+    fail("tap format query failed (err \(err))", code: 4)
+}
+let rate = Int(asbd.mSampleRate)
+let ch = min(Int(asbd.mChannelsPerFrame), 2)
+
+// 3. Wrap the tap in a private aggregate device and read it with an IOProc.
+let aggDict: [String: Any] = [
+    kAudioAggregateDeviceNameKey as String: "partyparty tap",
+    kAudioAggregateDeviceUIDKey as String: "net.ramine.partyparty.tap." + desc.uuid.uuidString,
+    kAudioAggregateDeviceIsPrivateKey as String: true,
+    kAudioAggregateDeviceTapAutoStartKey as String: true,
+    kAudioAggregateDeviceTapListKey as String: [
+        [kAudioSubTapUIDKey as String: desc.uuid.uuidString,
+         kAudioSubTapDriftCompensationKey as String: true],
+    ],
+]
+var aggID = AudioObjectID(kAudioObjectUnknown)
+err = AudioHardwareCreateAggregateDevice(aggDict as CFDictionary, &aggID)
+guard err == noErr, aggID != kAudioObjectUnknown else {
+    fail("aggregate device failed (err \(err))", code: 4)
+}
+
+let ring = PCMRing(capacitySamples: rate * ch * 8) // ~8s of headroom
+var procID: AudioDeviceIOProcID?
+err = AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { _, inInputData, _, _, _ in
+    let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inInputData))
+    if abl.count >= 2, abl[0].mNumberChannels == 1 {
+        // planar L/R -> interleave
+        let lBuf = abl[0], rBuf = abl[1]
+        let frames = Int(lBuf.mDataByteSize) / MemoryLayout<Float32>.size
+        guard frames > 0, let lp = lBuf.mData, let rp = rBuf.mData else { return }
+        let l = lp.assumingMemoryBound(to: Float32.self)
+        let r = rp.assumingMemoryBound(to: Float32.self)
+        var inter = [Float32](repeating: 0, count: frames * 2)
+        for i in 0..<frames {
+            inter[2 * i] = l[i]
+            inter[2 * i + 1] = r[i]
+        }
+        inter.withUnsafeBufferPointer { ring.push($0.baseAddress!, frames * 2) }
+    } else if let first = abl.first, let p = first.mData {
+        let n = Int(first.mDataByteSize) / MemoryLayout<Float32>.size
+        guard n > 0 else { return }
+        ring.push(p.assumingMemoryBound(to: Float32.self), n)
     }
-
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
-        guard outputType == .audio, CMSampleBufferDataIsReady(sampleBuffer) else { return }
-
-        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
-
-        if !loggedFormat {
-            if let fd = CMSampleBufferGetFormatDescription(sampleBuffer),
-               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(fd)?.pointee {
-                let nonInterleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
-                elog("ppcapture: source format \(Int(asbd.mSampleRate)) Hz, \(asbd.mChannelsPerFrame) ch, \(asbd.mBitsPerChannel)-bit, \(nonInterleaved ? "planar" : "interleaved"), \(frameCount) frames/callback (~\(frameCount * 1000 / 48000)ms)")
-                // The pipe consumer declares f32le/48k/2ch with no header — any
-                // other delivery format would be silent corruption. Fail loudly.
-                let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
-                if asbd.mFormatID != kAudioFormatLinearPCM || !isFloat || asbd.mBitsPerChannel != 32 || Int(asbd.mSampleRate) != 48000 {
-                    elog("ppcapture: FATAL unexpected capture format — expected 48000 Hz Float32 PCM")
-                    exit(5)
-                }
-            }
-            loggedFormat = true
-        }
-
-        // Fill any hole left by dropped/skipped buffers before writing this one.
-        concealGapIfNeeded(pts)
-
-        var sizeNeeded = 0
-        guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: &sizeNeeded, bufferListOut: nil,
-            bufferListSize: 0, blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault, flags: 0, blockBufferOut: nil) == noErr,
-            sizeNeeded > 0 else { return }
-
-        let raw = UnsafeMutableRawPointer.allocate(byteCount: sizeNeeded, alignment: 16)
-        defer { raw.deallocate() }
-        let ablPtr = raw.assumingMemoryBound(to: AudioBufferList.self)
-        var blockBuffer: CMBlockBuffer?
-        guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: nil, bufferListOut: ablPtr,
-            bufferListSize: sizeNeeded, blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, blockBufferOut: &blockBuffer) == noErr
-            else { return }
-
-        let list = UnsafeMutableAudioBufferListPointer(ablPtr)
-        guard list.count > 0 else { return }
-
-        if list.count >= 2, list[0].mNumberChannels == 1 {
-            // Planar (separate L / R buffers) -> interleave to L,R,L,R
-            let lBuf = list[0], rBuf = list[1]
-            let frames = Int(lBuf.mDataByteSize) / MemoryLayout<Float32>.size
-            guard frames > 0, let lp = lBuf.mData, let rp = rBuf.mData else { return }
-            let l = lp.assumingMemoryBound(to: Float32.self)
-            let r = rp.assumingMemoryBound(to: Float32.self)
-            var inter = [Float32](repeating: 0, count: frames * 2)
-            for i in 0..<frames { inter[2 * i] = l[i]; inter[2 * i + 1] = r[i] }
-            inter.withUnsafeBytes { writeOut(Data(bytes: $0.baseAddress!, count: $0.count)) }
-        } else {
-            // Single buffer (already interleaved, or mono)
-            let buf = list[0]
-            guard let p = buf.mData else { return }
-            let bytes = Int(buf.mDataByteSize)
-            if buf.mNumberChannels >= 2 {
-                writeOut(Data(bytes: p, count: bytes))
-            } else {
-                let frames = bytes / MemoryLayout<Float32>.size
-                let m = p.assumingMemoryBound(to: Float32.self)
-                var inter = [Float32](repeating: 0, count: frames * 2)
-                for i in 0..<frames { inter[2 * i] = m[i]; inter[2 * i + 1] = m[i] }
-                inter.withUnsafeBytes { writeOut(Data(bytes: $0.baseAddress!, count: $0.count)) }
-            }
-        }
-
-        // Written (or concealed up to here) — expect the next buffer to start
-        // exactly where this one ended. Guard-return paths above skip this, so
-        // their loss is detected and concealed on the next callback.
-        if pts.isValid, frameCount > 0 {
-            nextPTS = CMTimeAdd(pts, CMTime(value: CMTimeValue(frameCount), timescale: 48000))
-        }
-    }
+}
+guard err == noErr, let pid = procID else {
+    fail("IOProc failed (err \(err))", code: 4)
+}
+guard AudioDeviceStart(aggID, pid) == noErr else {
+    fail("device start failed", code: 4)
 }
 
 signal(SIGPIPE, SIG_IGN)
-if #available(macOS 13.0, *) {
-    let cap = SysAudioCapture()
-    signal(SIGINT) { _ in exit(0) }
-    signal(SIGTERM) { _ in exit(0) }
-    Task { await cap.start() }
-    dispatchMain()
-} else {
-    elog("ppcapture: requires macOS 13+")
-    exit(1)
-}
+signal(SIGINT) { _ in exit(0) }
+signal(SIGTERM) { _ in exit(0) }
+
+elog("ppcapture: FORMAT \(rate) \(ch)")
+elog("ppcapture: capturing system audio via Core Audio tap (\(rate) Hz, \(ch) ch, f32le)")
+Thread.detachNewThread { ring.writerLoop() }
+dispatchMain()

@@ -104,6 +104,41 @@ type logWriter struct{ b *Broadcaster }
 
 func (w logWriter) Write(p []byte) (int, error) { w.b.pushLog(string(p)); return len(p), nil }
 
+// formatScanner tees helper stderr into the log ring while watching for the
+// one-time "FORMAT <rate> <channels>" announcement (the Core Audio tap's
+// stream format follows the output device, so ffmpeg's input args depend on it).
+type formatScanner struct {
+	b    *Broadcaster
+	mu   sync.Mutex
+	buf  []byte
+	done bool
+	ch   chan [2]int
+}
+
+func newFormatScanner(b *Broadcaster) *formatScanner {
+	return &formatScanner{b: b, ch: make(chan [2]int, 1)}
+}
+
+func (w *formatScanner) Write(p []byte) (int, error) {
+	w.b.pushLog(string(p))
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.done {
+		w.buf = append(w.buf, p...)
+		if i := strings.Index(string(w.buf), "FORMAT "); i >= 0 {
+			var r, c int
+			if n, _ := fmt.Sscanf(string(w.buf[i:]), "FORMAT %d %d", &r, &c); n == 2 && r > 0 && c > 0 {
+				w.done = true
+				w.ch <- [2]int{r, c}
+			}
+		}
+		if len(w.buf) > 8192 {
+			w.buf = w.buf[len(w.buf)-1024:]
+		}
+	}
+	return len(p), nil
+}
+
 func (b *Broadcaster) pushLog(chunk string) {
 	ts := time.Now().Format("15:04:05")
 	b.logMu.Lock()
@@ -147,7 +182,7 @@ func (b *Broadcaster) cleanRunDir() {
 	}
 }
 
-func (b *Broadcaster) buildArgs(device string) []string {
+func (b *Broadcaster) buildArgs(device string, inRate, inCh int) []string {
 	c := b.cfg
 	var input []string
 	switch device {
@@ -157,15 +192,15 @@ func (b *Broadcaster) buildArgs(device string) []string {
 		// at CPU speed.
 		input = []string{"-re", "-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=440:beep_factor=4:sample_rate=%d", c.SampleRate)}
 	case "mac":
-		// PCM piped in from the ScreenCaptureKit helper on stdin. The helper
-		// hardcodes 48 kHz/2ch (ppcapture.swift); raw f32le has no header, so
-		// declaring any other rate here would silently pitch-shift the whole
-		// stream — the input rate is therefore pinned, and c.SampleRate is only
-		// applied on the OUTPUT side (resample) below. nobuffer/low_delay/
-		// probesize keep ffmpeg from sitting on input before the encoder sees it.
+		// PCM piped in from the Core Audio tap helper on stdin. The tap's rate
+		// follows the OUTPUT device (44.1k or 48k) — the helper announces it
+		// via a "FORMAT <rate> <ch>" stderr line before audio flows, and we
+		// declare exactly that here (raw f32le has no header; a wrong rate
+		// would silently pitch-shift the whole stream). c.SampleRate is only
+		// applied on the OUTPUT side (resample) below.
 		input = []string{
 			"-fflags", "+nobuffer", "-flags", "+low_delay", "-probesize", "32", "-analyzeduration", "0",
-			"-f", "f32le", "-ar", "48000", "-ac", "2", "-i", "-",
+			"-f", "f32le", "-ar", strconv.Itoa(inRate), "-ac", strconv.Itoa(inCh), "-i", "-",
 		}
 	default:
 		input = []string{"-fflags", "+nobuffer", "-f", "avfoundation", "-thread_queue_size", "1024", "-i", ":" + device}
@@ -272,11 +307,9 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		return
 	}
 
-	ff := exec.Command(b.cfg.FFmpeg, b.buildArgs(device)...)
-	ff.Stderr = logWriter{b}
-
 	var helper *exec.Cmd
 	var pr, pw *os.File
+	var fscan *formatScanner
 	if device == "mac" {
 		var err error
 		if pr, pw, err = os.Pipe(); err != nil {
@@ -285,17 +318,22 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 			b.mu.Unlock()
 			return
 		}
+		fscan = newFormatScanner(b)
 		helper = exec.Command(b.helperPath)
 		helper.Stdout = pw
-		helper.Stderr = logWriter{b}
-		ff.Stdin = pr
+		helper.Stderr = fscan
 		b.helper = helper
 	}
-	b.cmd = ff
 	b.mu.Unlock()
 
 	b.pushLog("[partyparty] starting capture: " + deviceName)
 
+	// The helper starts FIRST and announces the tap's stream format (it
+	// follows the output device); ffmpeg's input args are built from it. The
+	// permission prompt (first use) can delay the announcement — wait
+	// generously, then fall back to 48k/2ch (ffmpeg just exits fast if wrong,
+	// surfacing the error note).
+	inRate, inCh := 48000, 2
 	if helper != nil {
 		if err := helper.Start(); err != nil {
 			pr.Close()
@@ -303,7 +341,32 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 			b.fail("system-audio helper failed: " + err.Error())
 			return
 		}
+		select {
+		case f := <-fscan.ch:
+			inRate, inCh = f[0], f[1]
+		case <-time.After(15 * time.Second):
+			b.pushLog("[partyparty] helper never announced its format (permission not granted?) — assuming 48000/2")
+		}
 	}
+
+	ff := exec.Command(b.cfg.FFmpeg, b.buildArgs(device, inRate, inCh)...)
+	ff.Stderr = logWriter{b}
+	if pr != nil {
+		ff.Stdin = pr
+	}
+
+	b.mu.Lock()
+	if device == "mac" && b.helper != helper {
+		// superseded by Stop()/a newer Start while we waited on the format
+		b.mu.Unlock()
+		_ = helper.Process.Kill()
+		pr.Close()
+		pw.Close()
+		return
+	}
+	b.cmd = ff
+	b.mu.Unlock()
+
 	if err := ff.Start(); err != nil {
 		if helper != nil {
 			_ = helper.Process.Kill()
@@ -418,7 +481,7 @@ func (b *Broadcaster) Status() Status {
 		case "test":
 			note = "No audio yet — ffmpeg is still starting."
 		case "mac":
-			note = "No audio yet. Grant Screen Recording permission (System Settings → Privacy & Security → Screen Recording), then Stop and Start again — and make sure something is playing. Already enabled? macOS silently unlinks the permission when the app updates: toggle partyparty OFF and back ON in that list, then Start again."
+			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again — and make sure something is playing. (If you denied it: System Settings → Privacy & Security → Screen & System Audio Recording → allow partyparty.)"
 		default:
 			note = "No audio yet. Grant microphone permission (System Settings → Privacy & Security → Microphone) and check that your source is routed to this device."
 		}

@@ -99,8 +99,10 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     }
 
     private func pushScreenPermission() {
-        let granted = CGPreflightScreenCaptureAccess()
-        webView.evaluateJavaScript("window.ppSetScreenPermission && window.ppSetScreenPermission(\(granted))")
+        // Core Audio taps prompt inline on first Go Live (one-click Allow, like
+        // microphone) — there's no preflight to check and no Settings dance, so
+        // the console never needs to warn ahead of time.
+        webView.evaluateJavaScript("window.ppSetScreenPermission && window.ppSetScreenPermission(true)")
     }
 
     // Port-free guest URL: register/unregister the pf-redirect LaunchDaemon. macOS

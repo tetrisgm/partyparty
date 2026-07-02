@@ -83,9 +83,12 @@ if [ -d "$SPK" ]; then
     codesign_one "$SPK"
   fi
 fi
-for b in ppcapture mediamtx ffmpeg partyparty-server pp-port80; do
+# ppcapture creates the Core Audio tap, so IT needs the audio-input
+# entitlement (hardened runtime denies audio otherwise). The rest don't.
+for b in mediamtx ffmpeg partyparty-server pp-port80; do
   codesign_one "$APP/Contents/Helpers/$b"
 done
+codesign_one "$APP/Contents/Helpers/ppcapture" "$ENT"
 codesign_one "$APP/Contents/MacOS/partyparty" "$ENT"
 codesign_one "$APP" "$ENT"
 
