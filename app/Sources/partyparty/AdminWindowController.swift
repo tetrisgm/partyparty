@@ -29,6 +29,10 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         win.center()
         win.setFrameAutosaveName("ConsoleWindow")
         win.minSize = NSSize(width: 860, height: 560)
+        // The console pages are light-first: match the chrome so the window
+        // never flashes/frames dark around them (follows the page, not the OS
+        // theme, until the pages grow a dark mode).
+        win.backgroundColor = NSColor(srgbRed: 0.961, green: 0.961, blue: 0.969, alpha: 1)
         super.init(window: win)
         win.delegate = self
 

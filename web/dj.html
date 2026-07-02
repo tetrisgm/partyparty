@@ -21,7 +21,7 @@
     --r-sm:10px; --r-md:14px; --r-pill:980px;
   }
   *{box-sizing:border-box}
-  body{margin:0;padding-bottom:96px;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
+  body{margin:0;padding-bottom:40px;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
   header.eventhead{max-width:680px;margin:0 auto;padding:30px 24px 16px;display:block}
   .ehost{color:var(--label-secondary);font-size:14px;font-weight:600;margin-bottom:2px}
@@ -35,11 +35,6 @@
   .badge.live{background:rgba(52,199,89,.15);color:#1d883d}
   .badge.error{background:rgba(255,59,48,.12);color:#c1281e} /* darkened for light-mode contrast, like its siblings */
   .badge.starting{background:rgba(255,149,0,.14);color:#b36b00}
-  .tabs{display:flex;gap:2px;padding:0 24px;max-width:680px;margin:0 auto;border-bottom:1px solid var(--separator)}
-  .tab{height:auto;background:transparent;color:var(--label-secondary);padding:10px 14px;border:none;border-bottom:2px solid transparent;border-radius:0;font-weight:600;font-size:13px;cursor:pointer;transition:color .15s}
-  .tab:hover{color:var(--label)}
-  .tab.active{color:var(--label);border-bottom-color:var(--accent)}
-  .tabpane[hidden]{display:none}
   .col{max-width:680px;margin:0 auto;padding:20px 24px}
   .card{background:var(--bg-elevated);border:1px solid var(--separator);border-radius:18px;padding:20px;box-shadow:var(--shadow)}
   .card + .card{margin-top:16px}
@@ -114,76 +109,103 @@
   .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
   .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
   .pdel:hover{color:var(--danger)}
-  /* the ONE Liquid-Glass surface: the floating Go-Live bar */
-  #livebar{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 24px;
-    background:var(--glass-bg);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
-    border-top:1px solid rgba(0,0,0,.08);box-shadow:0 -8px 32px rgba(0,0,0,.08)}
-  #livebar .inner{max-width:680px;margin:0 auto}
-  #liveBtn{display:block;width:100%;height:auto;padding:15px;font-size:16px;border-radius:var(--r-md);background:var(--success);color:#fff;transition:filter .15s;font-weight:700}
-  #liveBtn:hover{filter:brightness(1.04)}
-  #liveBtn.stop{background:var(--danger);color:#fff}
-  /* accessibility + capability fallbacks (kept from the dark theme) */
+  /* ── Admin action bar (sticky): source · refresh · share · settings · GO LIVE ── */
+  #actionbar{position:sticky;top:0;z-index:20;background:var(--glass-bg);
+    -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
+    border-bottom:1px solid var(--separator)}
+  .abinner{max-width:1060px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:10px}
+  .abinner select{width:auto;max-width:360px;flex:0 1 360px}
+  .abbtn{display:inline-flex;align-items:center;gap:7px;background:var(--fill);color:var(--label);border-radius:999px;height:34px;padding:0 16px}
+  .abbtn:hover{background:var(--fill-hover)}
+  .abinner .iconbtn{width:34px;height:34px;border-radius:999px}
+  .abspacer{flex:1}
+  .golive{height:40px;padding:0 28px;border-radius:999px;font-size:15px;font-weight:800}
+  .golive.go{background:var(--success);color:#fff;box-shadow:0 6px 18px rgba(52,199,89,.35)}
+  .golive.go:hover{filter:brightness(1.04)}
+  .golive.stop{background:var(--danger);color:#fff;box-shadow:0 6px 18px rgba(255,59,48,.3)}
+  /* ── The event page below the bar: desktop width, not a phone layout ── */
+  .page{max-width:1060px;margin:0 auto;padding:8px 24px 60px}
+  header.eventhead{max-width:none;padding:26px 0 14px}
+  .ename .ed{display:block;width:100%}
+  .ename .ed input{width:100%}
+  .estarts .ed input,.ehost .ed input{width:auto;min-width:200px}
+  /* pencil affordance: editable fields say so */
+  .ed::after{content:'✎';font-size:.55em;margin-left:8px;opacity:.28;vertical-align:middle;font-weight:400}
+  .ed:hover::after{opacity:.7}
+  .ed:has(input)::after{content:''}
+  .sharecard{position:relative}
+  .cardx{position:absolute;top:12px;right:12px;width:26px;height:26px;padding:0;border-radius:50%;background:var(--fill);color:var(--label-secondary);font-size:12px;line-height:1}
+  .cardx:hover{background:var(--fill-hover);color:var(--label)}
+  /* page tabs (the wall / participants) — segmented, Apple-style */
+  .ptabs{display:flex;gap:4px;background:var(--fill);border-radius:12px;padding:3px;width:fit-content;margin:18px 0 14px}
+  .ptab{height:32px;padding:0 18px;border-radius:9px;background:transparent;color:var(--label-secondary);font-weight:600}
+  .ptab.active{background:var(--bg-elevated);color:var(--label);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+  .pcount{margin-left:6px;background:var(--fill);border-radius:999px;padding:1px 7px;font-size:11px;color:var(--label-secondary)}
+  .pcount:empty{display:none}
+  .ptab.active .pcount{background:var(--fill)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
+  /* settings sheet */
+  .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
+  .sheetov.show{display:flex}
+  .sheet{position:relative;background:var(--bg-elevated);border-radius:18px;max-width:560px;width:100%;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.22)}
+  .sheet h3{color:var(--label)}
+    /* accessibility + capability fallbacks (kept from the dark theme) */
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-  @media (prefers-reduced-transparency:reduce){#livebar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
-  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#livebar{background:#fff}}
+  @media (prefers-reduced-transparency:reduce){#actionbar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#fff}}
 </style>
 </head>
 <body>
-<!-- The console IS the event page: the DJ sees what the party is, not an
-     admin panel. Host + title are click-to-edit; guests see them on their
-     welcome card. -->
-<header class="eventhead">
-  <div class="ehost">🎧 <span class="ed" id="hostEdit" title="Click to change your host name">the DJ</span> is hosting</div>
-  <h1 class="ename"><span class="ed" id="titleEdit" title="Click to rename the party">partyparty</span></h1>
-  <div class="estarts">🗓 <span class="ed" id="startsEdit" style="opacity:.6" title="Shown on the guests' welcome card — e.g. Saturday 9pm, rooftop">add date &amp; place</span></div>
-  <div class="emeta">
+<!-- ADMIN ACTION BAR: everything the DJ operates — source, sharing, settings,
+     Go Live — lives up here. Below it, the page IS the event. -->
+<div id="actionbar">
+  <div class="abinner">
+    <select id="device" title="🖥️ Mac output captures everything playing (macOS asks once — click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live — if a phone hears the beep, the network path works."></select>
+    <button class="iconbtn" id="refreshBtn" type="button" aria-label="Refresh sources" title="Refresh sources"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+    <button class="abbtn" id="shareOpenBtn" type="button" title="Show the guest link and QR">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
+      Share
+    </button>
+    <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <span class="abspacer"></span>
     <span class="badge" id="badge" style="display:none"></span>
-    <span class="muted" id="devname"></span>
-    <span class="muted" id="emetaCounts"></span>
+    <button class="golive go" id="liveBtn" type="button">Go Live</button>
   </div>
-</header>
-<nav class="tabs">
-  <button class="tab active" data-tab="broadcast">Broadcast</button>
-  <button class="tab" data-tab="settings">Settings</button>
-</nav>
+</div>
 
-<div class="tabpane" id="tab-broadcast">
-  <div class="col">
-    <div class="card">
-      <div class="cardhead">
-        <h2>What source do you want to broadcast?</h2>
-        <div class="cardhead-actions">
-          <button class="iconbtn" id="helpBtn" type="button" aria-label="Is it working?" title="Is it working?">?</button>
-          <button class="iconbtn" id="refreshBtn" type="button" aria-label="Refresh devices" title="Refresh devices"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
-        </div>
-      </div>
-      <select id="device"></select>
-      <div id="bcnote" class="warn" style="display:none">
-        <div id="bcnoteText"></div>
-        <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open System Audio Recording settings</button>
-      </div>
-      <button class="ghost" id="permBtnAlways" style="margin-top:10px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
-      <div id="helpNote" style="display:none">
-        <h3>① Capture everything on the Mac (easiest)</h3>
-        <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
-        <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
-        <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole above.</p>
-        <h3>③ Hardware controller / mixer</h3>
-        <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device above. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
-        <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
-        <div class="hint" style="margin-top:12px">Not sure it works? Pick <b>Test tone</b> and Go Live — if a guest hears the beep, your network path is good and you only need to fix the audio routing.</div>
-      </div>
+<div class="page">
+  <div id="bcnote" class="warn" style="display:none">
+    <div id="bcnoteText"></div>
+    <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open System Audio Recording settings</button>
+  </div>
+
+  <header class="eventhead">
+    <div class="ehost">🎧 <span class="ed" id="hostEdit" title="Click to change your host name">the DJ</span> is hosting</div>
+    <h1 class="ename"><span class="ed" id="titleEdit" title="Click to rename the party">partyparty</span></h1>
+    <div class="estarts">🗓 <span class="ed" id="startsEdit" style="opacity:.6" title="Shown on the guests' welcome card — e.g. Saturday 9pm, rooftop">add date &amp; place</span></div>
+    <div class="emeta">
+      <span class="muted" id="devname"></span>
+      <span class="muted" id="emetaCounts"></span>
     </div>
+  </header>
 
-    <div class="card">
-      <h2>Guests join here</h2>
-      <div class="url" id="url">—</div>
-      <div id="qr"></div>
-      <div class="hint">Guests scan this with their phone camera to open the player — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
-    </div>
+  <!-- Guest link + QR: open by default while you set up; close it and get it
+       back anytime from Share in the action bar. -->
+  <div class="card sharecard" id="shareCard">
+    <button class="cardx" id="shareCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
+    <h2>Guests join here</h2>
+    <div class="url" id="url">—</div>
+    <div id="qr"></div>
+    <div class="hint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+  </div>
 
-        <!-- The party wall: same feed the guests see, plus moderation. Posts,
-         photos, videos and the set recordings all live in one Finder folder. -->
+  <nav class="ptabs">
+    <button class="ptab active" data-ptab="wall" type="button">The wall</button>
+    <button class="ptab" data-ptab="people" type="button">Participants<span class="pcount" id="pcount"></span></button>
+  </nav>
+
+  <section id="ptab-wall">
     <div class="card" id="eventCard" style="display:none">
       <div class="cardhead">
         <h2 id="eventTitle">the party wall</h2>
@@ -205,11 +227,11 @@
       </div>
       <div class="hint">Everything guests post (and your set recordings) lands in one folder — drag straight from Finder. "Start a fresh wall" begins a new page; the old folder stays untouched.</div>
     </div>
+  </section>
 
+  <section id="ptab-people" hidden>
     <div class="card">
       <h2 id="listeners">0 listeners</h2>
-      <!-- One compact line, plain-English tooltip on hover (ⓘ used to be a
-           whole expandable block; nobody needs it open all the time). -->
       <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it — a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are — under about half a second and the room moves together.">
         <span>Delay from DJ <b id="djDelay">—</b></span>
         <span class="metricsep">·</span>
@@ -220,70 +242,97 @@
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
-  </div>
+    <div class="card">
+      <h2>On the wall</h2>
+      <div id="wallAuthors" class="chips"><span class="muted">Nobody has posted yet.</span></div>
+    </div>
+  </section>
 </div>
 
-<div class="tabpane" id="tab-settings" hidden>
-  <div class="col">
-    <div class="card">
-      <h2>Audio</h2>
-      <label for="quality">Audio quality</label>
-      <select id="quality">
-        <option value="64k">Minimum — 64 kbps</option>
-        <option value="96k">Low — 96 kbps</option>
-        <option value="128k">Medium — 128 kbps</option>
-        <option value="160k">Balanced — 160 kbps</option>
-        <option value="192k">High — 192 kbps</option>
-        <option value="256k">Very high — 256 kbps</option>
-        <option value="320k" selected>Max — 320 kbps</option>
-      </select>
-      <!-- Advanced-only: sane defaults for everyone else (stereo). One fixed
-           room profile now — the room aligns ~5s behind the DJ, no knob. -->
-      <div class="adv">
-        <label style="margin-top:12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
-          <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
-        </label>
-      </div>
-    </div>
-
-    <div id="inapp" class="card" style="display:none">
-      <h2>App</h2>
+<!-- Settings sheet (the gear): everything that isn't a during-the-party action. -->
+<div class="sheetov" id="settingsSheet">
+  <div class="sheet">
+    <button class="cardx" id="settingsCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
+    <h2 style="margin:0 0 14px">Settings</h2>
+    <label for="quality">Audio quality</label>
+    <select id="quality">
+      <option value="64k">Minimum — 64 kbps</option>
+      <option value="96k">Low — 96 kbps</option>
+      <option value="128k">Medium — 128 kbps</option>
+      <option value="160k">Balanced — 160 kbps</option>
+      <option value="192k">High — 192 kbps</option>
+      <option value="256k">Very high — 256 kbps</option>
+      <option value="320k" selected>Max — 320 kbps</option>
+    </select>
+    <div id="inapp" style="display:none;margin-top:14px">
       <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
     </div>
-
+    <button class="ghost" id="permBtnAlways" style="margin-top:14px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Source guide</summary>
+      <div id="helpNote" style="display:block">
+        <h3>① Capture everything on the Mac (easiest)</h3>
+        <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+        <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
+        <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
+        <h3>③ Hardware controller / mixer</h3>
+        <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
+        <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
+      </div>
+    </details>
     <label class="advcheck"><input type="checkbox" id="advToggle"> Show advanced settings</label>
-
-    <div class="card adv">
-      <h2>FFmpeg log</h2>
+    <div class="adv">
+      <label style="margin:0 0 12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
+        <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
+      </label>
+      <h3 style="font-size:13px;margin:12px 0 6px">FFmpeg log</h3>
       <pre id="log">—</pre>
-    </div>
-    <div class="card adv">
-      <h2>Network health</h2>
+      <h3 style="font-size:13px;margin:12px 0 6px">Network health</h3>
       <div class="stat"><span class="badge" id="healthPill">—</span><span class="muted" id="healthDetail" style="margin-left:6px"></span></div>
       <div id="healthSuggest" class="warn" style="display:none;margin-top:12px"></div>
-    </div>
-    <div class="card adv">
-      <h2>Network</h2>
+      <h3 style="font-size:13px;margin:12px 0 6px">Network</h3>
       <div id="ifaces"></div>
     </div>
   </div>
 </div>
-
-<div id="livebar"><div class="inner"><button class="go" id="liveBtn">Go Live</button></div></div>
 
 <script src="/vendor/qrcode.min.js"></script>
 <script>
   const $ = id => document.getElementById(id);
   let qrText = null, lastState = 'idle';
 
-  // Tabs
-  function showTab(name){
-    document.querySelectorAll('.tabpane').forEach(p => p.hidden = (p.id !== 'tab-' + name));
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-    localStorage.setItem('pp.tab', name);
+  // Page tabs: the wall / participants (the old Broadcast|Settings tabs are
+  // gone — admin actions live in the action bar, settings behind the gear).
+  function showPTab(name){
+    document.querySelectorAll('[id^="ptab-"]').forEach(p => p.hidden = (p.id !== 'ptab-' + name));
+    document.querySelectorAll('.ptab').forEach(t => t.classList.toggle('active', t.dataset.ptab === name));
+    localStorage.setItem('pp.ptab', name);
   }
-  document.querySelectorAll('.tab').forEach(t => t.onclick = () => showTab(t.dataset.tab));
-  showTab(localStorage.getItem('pp.tab') || 'broadcast');
+  document.querySelectorAll('.ptab').forEach(t => t.onclick = () => showPTab(t.dataset.ptab));
+  showPTab(localStorage.getItem('pp.ptab') || 'wall');
+
+  // Share card: open by default while setting up; closing sticks until the
+  // Share button brings it back.
+  {
+    const card = $('shareCard');
+    card.style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
+    $('shareCloseBtn').onclick = () => { card.style.display = 'none'; localStorage.setItem('pp.shareClosed', '1'); };
+    $('shareOpenBtn').onclick = () => {
+      const open = card.style.display !== 'none';
+      card.style.display = open ? 'none' : 'block';
+      localStorage.setItem('pp.shareClosed', open ? '1' : '0');
+      if (!open) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+  }
+
+  // Settings sheet (the gear).
+  {
+    const ov = $('settingsSheet');
+    $('settingsBtn').onclick = () => ov.classList.add('show');
+    $('settingsCloseBtn').onclick = () => ov.classList.remove('show');
+    ov.addEventListener('click', (e) => { if (e.target === ov) ov.classList.remove('show'); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ov.classList.remove('show'); });
+  }
 
   async function loadDevices(){
     const sel = $('device');
@@ -420,11 +469,6 @@
       startBroadcast();
     }
   };
-  $('helpBtn').onclick = () => {
-    const n = $('helpNote');
-    n.style.display = (n.style.display === 'none' || !n.style.display) ? 'block' : 'none';
-  };
-
   $('refreshBtn').onclick = () => {
     const b = $('refreshBtn');
     b.classList.add('spin');
@@ -471,11 +515,11 @@
       const secureReady = (s.activation && s.activation.ready) || (s.urls.primary || '').startsWith('https://');
       if (!live && !secureReady) {
         lb.textContent = '🔒 Setting up secure link…';
-        lb.className = 'go';
+        lb.className = 'golive go';
         lb.disabled = true;
       } else {
         lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop' : 'Go Live');
-        lb.className = live ? 'stop' : 'go';
+        lb.className = 'golive ' + (live ? 'stop' : 'go');
         lb.disabled = false;
       }
       // One room target regardless of per-guest delivery (a mixed room must
@@ -506,6 +550,7 @@
       const roster = s.roster || [];
       $('listeners').textContent = roster.length + (roster.length === 1 ? ' listener' : ' listeners');
       $('emetaCounts').textContent = roster.length ? '· ' + roster.length + ' listening' : '';
+      $('pcount').textContent = roster.length || '';
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
         ? (s.latencyTarget.toFixed(1) + ' s')
@@ -635,6 +680,7 @@
     const card = $('eventCard'), list = $('djFeed');
     const escT = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const nodes = new Map();
+    const authors = new Map(); // "emoji name" -> true (participants tab)
     let newestAct = 0, on = false;
     function render(p){
       const t = new Date(p.ts);
@@ -737,7 +783,7 @@
         if (r.status === 404) return;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
-        $('eventCounts').textContent = (data.total || 0) + ' posts · ' + (data.media || 0) + ' media';
+        $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
@@ -748,6 +794,12 @@
         for (const p of (data.posts || [])) {
           newestAct = Math.max(newestAct, p.act || p.ts);
           place(p);
+          if (!p.dj) authors.set(p.emoji + ' ' + (p.author || 'someone'), true);
+          for (const c of (p.comments || [])) if (!c.dj) authors.set(c.emoji + ' ' + (c.author || 'someone'), true);
+        }
+        // Participants tab: everyone who has joined the wall (pseudonyms).
+        if (authors.size) {
+          $('wallAuthors').innerHTML = [...authors.keys()].map(a => '<span class="chip">' + escT(a) + '</span>').join('');
         }
       } catch (e) {}
     }

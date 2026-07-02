@@ -20,7 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // forever (the LetsMove pattern).
         if moveToApplicationsIfNeeded() { return } // relaunching from the new home
 
-        updater = Updater()                   // background auto-update
+        // Background auto-update; the "install now?" prompt is suppressed
+        // while a broadcast is live (it just installs on quit instead).
+        updater = Updater(isBusy: { [weak self] in
+            let st = self?.poller?.status.state
+            return st == "live" || st == "starting"
+        })
         server.start()
         registerLoginItemByDefault()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
