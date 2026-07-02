@@ -77,6 +77,26 @@
   .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
   .pdel:hover{color:var(--danger, #ff453a)}
   .feedempty{color:var(--label-tertiary);font-size:13px;text-align:center;padding:22px 0}
+  /* Welcome gate: the one REQUIRED tap ("Let's party") doubles as the iOS
+     media-activation gesture — buffering starts the instant they're in. */
+  .welov{position:fixed;inset:0;background:rgba(0,0,0,.88);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;z-index:30;padding:22px}
+  .welov.show{display:flex}
+  .welcard{background:rgba(24,20,28,.97);border:1px solid rgba(255,255,255,.14);border-radius:24px;padding:30px 26px;max-width:420px;width:100%;text-align:center}
+  .welhost{color:var(--label-secondary);font-size:14px;margin-bottom:4px}
+  .weltitle{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 22px;background:linear-gradient(90deg,#ff3b7f,#ff9f0a);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .wellabel{color:var(--label-secondary);font-size:13px;margin:16px 0 8px;text-align:left}
+  .welopt{color:var(--label-tertiary)}
+  .welname{display:flex;gap:8px;align-items:center}
+  .welemoji,.welshuffle{font-size:22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto}
+  .welname input,.welcard input[type=email]{flex:1;width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left}
+  .welemojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:8px}
+  .welemojis[hidden]{display:none}
+  .welemojis button{font-size:20px;background:transparent;border:none;border-radius:10px;padding:7px 0;cursor:pointer}
+  .welemojis button:hover{background:rgba(255,255,255,.1)}
+  .welgo{width:100%;margin-top:22px;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:15px;font-size:17px;font-weight:800;cursor:pointer}
+  .welgo:active{transform:scale(.98)}
+  .saveall{display:inline-block;color:var(--accent);font-size:13px;font-weight:600;text-decoration:none;margin:0 2px 12px}
+  .saveall:hover{text-decoration:underline}
   /* keepsake claim card */
   .claimov{position:fixed;inset:0;background:rgba(0,0,0,.86);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:22;padding:28px;text-align:center}
   .claimov.show{display:flex}
@@ -128,6 +148,7 @@
   <section class="feed" id="feedSec" hidden>
     <div class="feedhead" id="feedTitle">the party wall</div>
     <div class="feedsub">photos, videos and shout-outs from everyone at this party</div>
+    <a class="saveall" id="saveAll" href="/api/media.zip" hidden>⬇️ Take all the media home</a>
     <div class="me">
       <span class="mechip" id="meChip" title="Tap to change your party name"></span>
       <span class="mechip" id="contactChip" style="font-weight:400;font-size:12px" title="Only the DJ can see this — used to send you the party page later"></span>
@@ -143,6 +164,23 @@
     </div>
     <div id="feedList"><div class="feedempty">Nothing here yet — start the wall 🎉</div></div>
   </section>
+
+  <div class="welov" id="welOv">
+    <div class="welcard">
+      <div class="welhost" id="welHost">the DJ is hosting</div>
+      <h2 class="weltitle" id="welTitle">the party</h2>
+      <div class="wellabel">What's your party name?</div>
+      <div class="welname">
+        <button class="welemoji" id="welEmoji" type="button" title="Pick your emoji">🪩</button>
+        <input id="welName" maxlength="40" autocomplete="off">
+        <button class="welshuffle" id="welShuffle" type="button" title="Shuffle">🎲</button>
+      </div>
+      <div class="welemojis" id="welEmojis" hidden></div>
+      <div class="wellabel">Share your email with <span id="welHost2">the DJ</span> for the party page later <span class="welopt">(optional — only they see it)</span></div>
+      <input id="welEmail" type="email" placeholder="you@example.com" autocapitalize="off" autocomplete="email">
+      <button class="welgo" id="welGo" type="button">Let's party 🎉</button>
+    </div>
+  </div>
 
   <div class="claimov" id="claimOv">
     <div class="claimcard">
@@ -713,8 +751,10 @@
       const ADJ = ['Neon','Disco','Velvet','Cosmic','Midnight','Glitter','Electric','Funky','Lunar','Turbo','Mellow','Wavy','Retro','Hyper','Groovy','Solar'];
       const NOUN = ['Flamingo','Fox','Panther','Comet','Otter','Sphinx','Cactus','Koala','Nebula','Mongoose','Tiger','Dolphin','Peacock','Yeti','Gecko','Falcon'];
       let h = 0; for (const ch of cid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-      let myName = localStorage.getItem('pp.guestName') || (ADJ[h % ADJ.length] + ' ' + NOUN[(h >> 4) % NOUN.length]);
-      let myEmoji = localStorage.getItem('pp.guestEmoji') || EMO[(h >> 8) % EMO.length];
+      // >>> not >>: h can exceed 2^31 and a signed shift would go NEGATIVE,
+      // indexing nothing and leaving the guest emoji-less.
+      let myName = localStorage.getItem('pp.guestName') || (ADJ[h % ADJ.length] + ' ' + NOUN[(h >>> 4) % NOUN.length]);
+      let myEmoji = localStorage.getItem('pp.guestEmoji') || EMO[(h >>> 8) % EMO.length];
 
       const meChip = $id('meChip');
       function paintChip(){ meChip.innerHTML = esc(myEmoji) + ' <b>' + esc(myName) + '</b>'; }
@@ -732,6 +772,65 @@
         };
         inp.addEventListener('blur', save);
         inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+      });
+
+      // ── Welcome gate ──
+      // iOS won't load media before a gesture, so the party's front door IS
+      // the gesture: pick a name, tap "Let's party", and the player element
+      // gets activated inside that tap — buffering starts immediately, and a
+      // guest who arrives before the DJ auto-starts when the set begins.
+      let welcomed = false;
+      try { welcomed = localStorage.getItem('pp.welcomed') === '1'; } catch (e) {}
+      const welOv = $id('welOv');
+      {
+        const grid = $id('welEmojis');
+        for (const e of EMO) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.textContent = e;
+          b.addEventListener('click', () => { $id('welEmoji').textContent = e; grid.hidden = true; });
+          grid.appendChild(b);
+        }
+        $id('welEmoji').addEventListener('click', () => { grid.hidden = !grid.hidden; });
+        $id('welShuffle').addEventListener('click', () => {
+          $id('welName').value = ADJ[Math.floor(Math.random() * ADJ.length)] + ' ' + NOUN[Math.floor(Math.random() * NOUN.length)];
+          $id('welEmoji').textContent = EMO[Math.floor(Math.random() * EMO.length)];
+        });
+      }
+      function maybeWelcome(data){
+        if (welcomed || welOv.classList.contains('show')) return;
+        $id('welHost').textContent = (data.host || 'the DJ') + ' is hosting';
+        $id('welTitle').textContent = data.title || 'the party';
+        $id('welHost2').textContent = data.host || 'the DJ';
+        $id('welName').value = myName;
+        $id('welEmoji').textContent = myEmoji;
+        welOv.classList.add('show');
+      }
+      $id('welGo').addEventListener('click', () => {
+        welcomed = true;
+        try { localStorage.setItem('pp.welcomed', '1'); } catch (e) {}
+        myName = $id('welName').value.trim() || myName;
+        myEmoji = $id('welEmoji').textContent;
+        try { localStorage.setItem('pp.guestName', myName); localStorage.setItem('pp.guestEmoji', myEmoji); } catch (e) {}
+        paintChip();
+        const email = $id('welEmail').value.trim();
+        if (email) {
+          myContact = email;
+          try { localStorage.setItem('pp.guestContact', email); } catch (e) {}
+          fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cid, contact: email }) }).catch(() => {});
+          paintContact();
+        }
+        welOv.classList.remove('show');
+        // THE gesture: activate the audio element right here. Live → start
+        // playing (aligned); idle → prime the element + auto-start later.
+        userPaused = false;
+        if (live) {
+          play().catch(() => {});
+        } else {
+          resumeWanted = true;             // poll auto-plays once the DJ is on
+          try { player.load(); } catch (e) {}
+          player.play().catch(() => {});   // expected to fail — it marks the element user-activated
+        }
       });
 
       // Optional contact — the claim-link fallback ("only the DJ sees this").
@@ -849,6 +948,10 @@
             feedSec.hidden = false; downhint.hidden = false;
             if (data.title) $id('feedTitle').textContent = data.title;
           }
+          maybeWelcome(data);
+          const sa = $id('saveAll');
+          sa.hidden = !(data.media > 0);
+          if (data.media > 0) sa.textContent = '⬇️ Take all the media home (' + data.media + (data.media === 1 ? ' file)' : ' files)');
           const fresh = (data.posts || []).filter(p => !seen.has(p.id));
           if (!fresh.length) return;
           const empty = feedList.querySelector('.feedempty');

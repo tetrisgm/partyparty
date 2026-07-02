@@ -1,8 +1,11 @@
 package server
 
 import (
+	"archive/zip"
 	"encoding/json"
+	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -35,10 +38,51 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		if posts == nil {
 			posts = []event.Post{}
 		}
+		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"title": s.Events.Title(), "posts": posts,
+			"title": meta.Title, "host": meta.Host, "posts": posts,
 			"total": total, "media": mediaCount, "dj": s.isDJ(r),
 		})
+	case "/api/event-config":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct{ Title, Host string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if err := s.Events.SetMeta(body.Title, body.Host); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/media.zip":
+		// "Everyone can take the media home": one tap streams the whole
+		// event's media as an uncompressed zip (photos/videos are already
+		// compressed — Store mode keeps a 2GB set from cooking the Mac).
+		files := s.Events.MediaFiles()
+		if len(files) == 0 {
+			http.Error(w, "no media yet", http.StatusNotFound)
+			return true
+		}
+		name := "partyparty-media-" + filepath.Base(s.Events.Dir()) + ".zip"
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
+		zw := zip.NewWriter(w)
+		for _, f := range files {
+			src, err := os.Open(f)
+			if err != nil {
+				continue
+			}
+			dst, err := zw.CreateHeader(&zip.FileHeader{Name: filepath.Base(f), Method: zip.Store})
+			if err == nil {
+				_, _ = io.Copy(dst, src)
+			}
+			src.Close()
+		}
+		_ = zw.Close()
 	case "/api/post":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -142,8 +186,10 @@ func (s *srv) eventState() map[string]any {
 		return nil
 	}
 	_, total, mediaCount := s.Events.Feed(1 << 62) // counts only, no post bodies
+	meta := s.Events.Meta()
 	return map[string]any{
-		"title": s.Events.Title(),
+		"title": meta.Title,
+		"host":  meta.Host,
 		"posts": total,
 		"media": mediaCount,
 		"dir":   s.Events.Dir(),

@@ -20,8 +20,15 @@
   *{box-sizing:border-box}
   body{margin:0;padding-bottom:96px;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
-  header{padding:18px 24px 14px;display:flex;align-items:center;gap:12px}
-  header h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.02em}
+  header.eventhead{max-width:680px;margin:0 auto;padding:26px 24px 16px;display:block}
+  .ehost{color:var(--label-secondary);font-size:14px;margin-bottom:2px}
+  .ename{margin:0 0 8px;font-size:34px;font-weight:800;letter-spacing:-.025em;line-height:1.15;
+    background:linear-gradient(90deg,#ff3b7f,#ff9f0a);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .emeta{display:flex;align-items:center;gap:10px;min-height:22px;flex-wrap:wrap}
+  .ed{cursor:text;border-bottom:1px dashed transparent}
+  .ed:hover{border-bottom-color:var(--label-tertiary)}
+  .ed input{background:transparent;border:none;outline:none;color:var(--label);font:inherit;letter-spacing:inherit;min-width:60px;-webkit-background-clip:initial;background-clip:initial}
+  .ename .ed input{color:var(--accent)}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);text-transform:capitalize}
   .badge.live{background:rgba(52,199,89,.18);color:var(--success)}
   .badge.error{background:rgba(255,69,58,.18);color:var(--danger)}
@@ -110,10 +117,17 @@
 </style>
 </head>
 <body>
-<header>
-  <h1>partyparty</h1>
-  <span class="badge" id="badge" style="display:none"></span>
-  <span class="muted" id="devname"></span>
+<!-- The console IS the event page: the DJ sees what the party is, not an
+     admin panel. Host + title are click-to-edit; guests see them on their
+     welcome card. -->
+<header class="eventhead">
+  <div class="ehost">🎧 <span class="ed" id="hostEdit" title="Click to change your host name">the DJ</span> is hosting</div>
+  <h1 class="ename"><span class="ed" id="titleEdit" title="Click to rename the party">partyparty</span></h1>
+  <div class="emeta">
+    <span class="badge" id="badge" style="display:none"></span>
+    <span class="muted" id="devname"></span>
+    <span class="muted" id="emetaCounts"></span>
+  </div>
 </header>
 <nav class="tabs">
   <button class="tab active" data-tab="broadcast">Broadcast</button>
@@ -155,22 +169,7 @@
       <div class="hint">Guests scan this with their phone camera to open the player — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
     </div>
 
-    <div class="card">
-      <h2 id="listeners">0 listeners</h2>
-      <!-- One compact line, plain-English tooltip on hover (ⓘ used to be a
-           whole expandable block; nobody needs it open all the time). -->
-      <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it — a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are — under about half a second and the room moves together.">
-        <span>Delay from DJ <b id="djDelay">—</b></span>
-        <span class="metricsep">·</span>
-        <span>Sync <b id="syncSpread">—</b></span>
-      </div>
-      <div class="kv adv"><span>Room target (everyone aligns to this)</span><span id="roomTarget">—</span></div>
-      <span class="advcheck" id="detailsToggle" style="display:inline-block;margin:8px 0 2px">Show details</span>
-      <div id="roster"></div>
-      <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
-    </div>
-
-    <!-- The party wall: same feed the guests see, plus moderation. Posts,
+        <!-- The party wall: same feed the guests see, plus moderation. Posts,
          photos, videos and the set recordings all live in one Finder folder. -->
     <div class="card" id="eventCard" style="display:none">
       <div class="cardhead">
@@ -192,6 +191,21 @@
         <button class="ghost" id="freshBtn" style="flex:1">Start a fresh wall</button>
       </div>
       <div class="hint">Everything guests post (and your set recordings) lands in one folder — drag straight from Finder. "Start a fresh wall" begins a new page; the old folder stays untouched.</div>
+    </div>
+
+    <div class="card">
+      <h2 id="listeners">0 listeners</h2>
+      <!-- One compact line, plain-English tooltip on hover (ⓘ used to be a
+           whole expandable block; nobody needs it open all the time). -->
+      <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it — a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are — under about half a second and the room moves together.">
+        <span>Delay from DJ <b id="djDelay">—</b></span>
+        <span class="metricsep">·</span>
+        <span>Sync <b id="syncSpread">—</b></span>
+      </div>
+      <div class="kv adv"><span>Room target (everyone aligns to this)</span><span id="roomTarget">—</span></div>
+      <span class="advcheck" id="detailsToggle" style="display:inline-block;margin:8px 0 2px">Show details</span>
+      <div id="roster"></div>
+      <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
   </div>
 </div>
@@ -478,6 +492,7 @@
       }
       const roster = s.roster || [];
       $('listeners').textContent = roster.length + (roster.length === 1 ? ' listener' : ' listeners');
+      $('emetaCounts').textContent = roster.length ? '· ' + roster.length + ' listening' : '';
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
         ? (s.latencyTarget.toFixed(1) + ' s')
@@ -552,6 +567,41 @@
   refresh();
   setInterval(refresh, 1000); // latency/sync numbers should feel live, not laggy
 
+  // ── Event identity: click-to-edit host + title in the header ──
+  function editable(id, field){
+    const el = $(id);
+    el.addEventListener('click', () => {
+      if (el.querySelector('input')) return;
+      const cur = el.textContent;
+      el.textContent = '';
+      const inp = document.createElement('input');
+      inp.value = cur; inp.maxLength = field === 'title' ? 80 : 40;
+      inp.size = Math.max(cur.length, 8);
+      el.appendChild(inp); inp.focus(); inp.select();
+      const save = () => {
+        const v = inp.value.trim() || cur;
+        el.textContent = v;
+        el.dataset.set = '1'; // header now user-authoritative until next feed sync
+        fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(field === 'title' ? { title: v } : { host: v }) }).catch(()=>{});
+      };
+      let saved = false;
+      const once = () => { if (!saved) { saved = true; save(); } };
+      inp.addEventListener('blur', once);
+      inp.addEventListener('change', once);
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+    });
+  }
+  editable('titleEdit', 'title');
+  editable('hostEdit', 'host');
+  function syncHeader(title, host){
+    for (const [id, v] of [['titleEdit', title], ['hostEdit', host]]) {
+      const el = $(id);
+      if (v && !el.querySelector('input') && el.textContent !== v) el.textContent = v;
+    }
+    if (title) document.title = title + ' — partyparty';
+  }
+
   // ── The party wall (DJ view): render + post + moderate ──
   (() => {
     const card = $('eventCard'), list = $('djFeed');
@@ -592,8 +642,9 @@
         const r = await fetch('/api/feed?since=' + newestTS, { cache:'no-store' });
         if (r.status === 404) return;
         const data = await r.json();
-        if (!on) { on = true; card.style.display = 'block'; if (data.title) $('eventTitle').textContent = data.title; }
+        if (!on) { on = true; card.style.display = 'block'; }
         $('eventCounts').textContent = (data.total || 0) + ' posts · ' + (data.media || 0) + ' media';
+        syncHeader(data.title, data.host);
         for (const p of (data.posts || [])) {
           if (seen.has(p.id)) continue;
           seen.add(p.id); newestTS = Math.max(newestTS, p.ts);

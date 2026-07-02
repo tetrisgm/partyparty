@@ -67,12 +67,19 @@ type Guest struct {
 	Created   int64  `json:"createdAt"` // unix millis
 }
 
+// Meta is the event's public identity (meta.json) — what the welcome card
+// shows: "<Host> is hosting <Title>". DJ-editable from the console.
+type Meta struct {
+	Title string `json:"title"`
+	Host  string `json:"host"`
+}
+
 // Store manages the current event directory. Safe for concurrent use.
 type Store struct {
 	mu      sync.Mutex
 	baseDir string
 	dir     string
-	title   string
+	meta    Meta
 	posts   []*Post
 	byID    map[string]*Post
 	guests  map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
@@ -95,7 +102,7 @@ func Open(baseDir string) (*Store, error) {
 	if dir == "" {
 		dir = filepath.Join(baseDir, date)
 	}
-	s := &Store{baseDir: baseDir, title: "party " + date}
+	s := &Store{baseDir: baseDir}
 	if err := s.use(dir); err != nil {
 		return nil, err
 	}
@@ -136,10 +143,38 @@ func (s *Store) use(dir string) error {
 	if data, err := os.ReadFile(filepath.Join(dir, "guests.json")); err == nil {
 		_ = json.Unmarshal(data, &guests)
 	}
+	meta := Meta{Title: "party " + filepath.Base(dir), Host: "the DJ"}
+	if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
+		_ = json.Unmarshal(data, &meta)
+	}
 	s.mu.Lock()
-	s.dir, s.posts, s.byID, s.guests = dir, posts, byID, guests
+	s.dir, s.posts, s.byID, s.guests, s.meta = dir, posts, byID, guests, meta
 	s.mu.Unlock()
 	return nil
+}
+
+// Meta returns the event's public identity.
+func (s *Store) Meta() Meta {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.meta
+}
+
+// SetMeta updates title/host (empty field = keep current) and persists.
+func (s *Store) SetMeta(title, host string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if t := clip(strings.TrimSpace(title), 80); t != "" {
+		s.meta.Title = t
+	}
+	if h := clip(strings.TrimSpace(host), 40); h != "" {
+		s.meta.Host = h
+	}
+	data, err := json.MarshalIndent(s.meta, "", " ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644)
 }
 
 // Fresh abandons the current feed and starts a new event directory (the old
@@ -173,11 +208,19 @@ func (s *Store) RecordingPath() string {
 	return filepath.Join(s.dir, "recordings", "set-"+time.Now().Format("20060102-150405")+".aac")
 }
 
-// Title returns the event's display title.
-func (s *Store) Title() string {
+// MediaFiles lists every stored media file (for the everything-zip).
+func (s *Store) MediaFiles() []string {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.title
+	dir := filepath.Join(s.dir, "media")
+	s.mu.Unlock()
+	entries, _ := os.ReadDir(dir)
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			files = append(files, filepath.Join(dir, e.Name()))
+		}
+	}
+	return files
 }
 
 func newID() string {
