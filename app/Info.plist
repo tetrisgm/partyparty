@@ -2,44 +2,52 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>partyparty</string>
-  <key>CFBundleDisplayName</key><string>partyparty</string>
-  <key>CFBundleIdentifier</key><string>net.ramine.partyparty</string>
-  <key>CFBundleExecutable</key><string>partyparty</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-  <key>CFBundleIconFile</key><string>icon</string>
-  <!-- Audio-only capture (Core Audio process taps): no Screen Recording nag. -->
-  <key>NSAudioCaptureUsageDescription</key>
-  <string>partyparty captures your Mac's audio so guests on your network can hear the music. It only listens to sound — it can't see your screen.</string>
-  <!-- Fallback for the ScreenCaptureKit path on pre-taps systems. -->
-  <key>NSScreenCaptureUsageDescription</key>
-  <string>partyparty captures your Mac's system audio to broadcast it to guests on your network.</string>
-  <!-- Required or macOS aborts ffmpeg when an input-device (mic/controller/interface) source is used. -->
-  <key>NSMicrophoneUsageDescription</key>
-  <string>partyparty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
-  <!-- The admin window is a WKWebView on the local Go server. ATS allows the
-       localhost exception (the literal 127.0.0.1 would be blocked). -->
-  <key>NSAppTransportSecurity</key>
-  <dict>
-    <key>NSExceptionDomains</key>
-    <dict>
-      <key>localhost</key>
-      <dict>
-        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
-        <key>NSIncludesSubdomains</key><true/>
-      </dict>
-    </dict>
-  </dict>
-  <key>SUFeedURL</key>
-  <string>https://party.ramine.net/appcast.xml</string>
-  <key>SUEnableAutomaticChecks</key><true/>
-  <key>SUScheduledCheckInterval</key><integer>86400</integer>
-  <!-- Sparkle EdDSA public key (not secret). Private key is in the login keychain
-       + the SPARKLE_ED_PRIVATE_KEY CI secret. See docs/RELEASING.md. -->
-  <key>SUPublicEDKey</key><string>qFmaq5ijn3m2sbiadmkBVvGIjz8v9+piqE/T+YZ1/u0=</string>
+	<key>CFBundleDisplayName</key>
+	<string>partyparty</string>
+	<key>CFBundleExecutable</key>
+	<string>partyparty</string>
+	<key>CFBundleIconFile</key>
+	<string>icon</string>
+	<key>CFBundleIdentifier</key>
+	<string>net.ramine.partyparty</string>
+	<key>CFBundleName</key>
+	<string>partyparty</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.2.0</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>partyparty captures your Mac's audio so guests on your network can hear the music. It only listens to sound — it can't see your screen.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>partyparty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>partyparty captures your Mac's system audio to broadcast it to guests on your network.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://party.ramine.net/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>qFmaq5ijn3m2sbiadmkBVvGIjz8v9+piqE/T+YZ1/u0=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
