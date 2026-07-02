@@ -325,7 +325,10 @@ export default {
         headers.set("content-type",
           key.endsWith(".dmg") ? "application/x-apple-diskimage" :
           key.endsWith(".pkg") ? "application/octet-stream" : "application/zip");
-        headers.set("content-disposition", `attachment; filename="${key}"`);
+        // The stable "latest" pkg downloads with a friendly, branded filename;
+        // versioned/other files keep their real name.
+        const dlName = key === "partyparty.pkg" ? "PartyParty Installer.pkg" : key;
+        headers.set("content-disposition", `attachment; filename="${dlName}"`);
         const isLatestAlias = key === "partyparty.zip" || key === "partyparty.pkg" || key === "partyparty.dmg";
         headers.set("cache-control", isLatestAlias ? "public, max-age=300" : "public, max-age=86400, immutable");
       }
