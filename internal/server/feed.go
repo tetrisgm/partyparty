@@ -40,20 +40,46 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"title": meta.Title, "host": meta.Host, "posts": posts,
-			"total": total, "media": mediaCount, "dj": s.isDJ(r),
+			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
+			"posts": posts, "total": total, "media": mediaCount, "dj": s.isDJ(r),
 		})
+	case "/api/comment":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		var body struct{ Post, CID, Author, Emoji, Text string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		c, err := s.Events.AddComment(body.Post, body.CID, body.Author, body.Emoji, body.Text, s.isDJ(r))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": c.ID})
+	case "/api/post-publish":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.SetPublish(r.URL.Query().Get("id"), r.URL.Query().Get("on") != "0"); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/event-config":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
-		var body struct{ Title, Host string }
+		var body struct{ Title, Host, Starts string }
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return true
 		}
-		if err := s.Events.SetMeta(body.Title, body.Host); err != nil {
+		if err := s.Events.SetMeta(body.Title, body.Host, body.Starts); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return true
 		}

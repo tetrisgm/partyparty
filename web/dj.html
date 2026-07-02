@@ -5,49 +5,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>partyparty — DJ console</title>
 <style>
+  /* Light, Apple-Snapshot/Apple-Music-web aesthetic — matches the guest page.
+     The console reads as the EVENT'S page; ops controls are quiet white cards. */
   :root{
-    color-scheme:dark;
+    color-scheme:light;
     --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    --bg:#000000; --bg-elevated:#1c1c1e; --bg-elevated-2:#2c2c2e;
-    --label:#f5f5f7; --label-secondary:#a1a1a8; --label-tertiary:#6e6e73;
-    --separator:rgba(255,255,255,.10); --fill:rgba(120,120,128,.24); --fill-hover:rgba(120,120,128,.34);
-    --link:#2997ff; --accent:#ff3b7f;
-    --success:#34c759; --warn:#ff9f0a; --danger:#ff453a;
-    --glass-bg:rgba(28,28,30,.62);
-    --r-sm:10px; --r-md:12px; --r-pill:980px;
+    --bg:#f5f5f7; --bg-elevated:#ffffff; --bg-elevated-2:#fbfbfd;
+    --label:#1d1d1f; --label-secondary:#6e6e73; --label-tertiary:#86868b;
+    --separator:rgba(0,0,0,.08); --fill:rgba(120,120,128,.10); --fill-hover:rgba(120,120,128,.16);
+    --link:#0071e3; --accent:#ff2d55;
+    --success:#34c759; --warn:#ff9500; --danger:#ff3b30;
+    --glass-bg:rgba(255,255,255,.72);
+    --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
+    --r-sm:10px; --r-md:14px; --r-pill:980px;
   }
   *{box-sizing:border-box}
   body{margin:0;padding-bottom:96px;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
-  header.eventhead{max-width:680px;margin:0 auto;padding:26px 24px 16px;display:block}
-  .ehost{color:var(--label-secondary);font-size:14px;margin-bottom:2px}
-  .ename{margin:0 0 8px;font-size:34px;font-weight:800;letter-spacing:-.025em;line-height:1.15;
-    background:linear-gradient(90deg,#ff3b7f,#ff9f0a);-webkit-background-clip:text;background-clip:text;color:transparent}
+  header.eventhead{max-width:680px;margin:0 auto;padding:30px 24px 16px;display:block}
+  .ehost{color:var(--label-secondary);font-size:14px;font-weight:600;margin-bottom:2px}
+  .ename{margin:0 0 6px;font-size:36px;font-weight:800;letter-spacing:-.025em;line-height:1.12;color:var(--label)}
+  .estarts{color:var(--label-secondary);font-size:14px;margin:0 0 8px}
   .emeta{display:flex;align-items:center;gap:10px;min-height:22px;flex-wrap:wrap}
   .ed{cursor:text;border-bottom:1px dashed transparent}
   .ed:hover{border-bottom-color:var(--label-tertiary)}
-  .ed input{background:transparent;border:none;outline:none;color:var(--label);font:inherit;letter-spacing:inherit;min-width:60px;-webkit-background-clip:initial;background-clip:initial}
-  .ename .ed input{color:var(--accent)}
+  .ed input{background:transparent;border:none;outline:none;color:var(--label);font:inherit;letter-spacing:inherit;min-width:60px}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);text-transform:capitalize}
-  .badge.live{background:rgba(52,199,89,.18);color:var(--success)}
-  .badge.error{background:rgba(255,69,58,.18);color:var(--danger)}
-  .badge.starting{background:rgba(255,159,10,.18);color:var(--warn)}
+  .badge.live{background:rgba(52,199,89,.15);color:#1d883d}
+  .badge.error{background:rgba(255,59,48,.12);color:var(--danger)}
+  .badge.starting{background:rgba(255,149,0,.14);color:#b36b00}
   .tabs{display:flex;gap:2px;padding:0 24px;max-width:680px;margin:0 auto;border-bottom:1px solid var(--separator)}
   .tab{height:auto;background:transparent;color:var(--label-secondary);padding:10px 14px;border:none;border-bottom:2px solid transparent;border-radius:0;font-weight:600;font-size:13px;cursor:pointer;transition:color .15s}
   .tab:hover{color:var(--label)}
   .tab.active{color:var(--label);border-bottom-color:var(--accent)}
   .tabpane[hidden]{display:none}
   .col{max-width:680px;margin:0 auto;padding:20px 24px}
-  .card{background:var(--bg-elevated);border:1px solid var(--separator);border-radius:var(--r-md);padding:20px}
+  .card{background:var(--bg-elevated);border:1px solid var(--separator);border-radius:18px;padding:20px;box-shadow:var(--shadow)}
   .card + .card{margin-top:16px}
-  .card h2{font-size:17px;font-weight:600;margin:0 0 14px;letter-spacing:-.01em;color:var(--label)}
+  .card h2{font-size:17px;font-weight:700;margin:0 0 14px;letter-spacing:-.01em;color:var(--label)}
   label{display:block;font-size:12px;color:var(--label-secondary);margin:0 0 6px}
   select,button{font:inherit}
   select{
-    width:100%;height:32px;padding:0 34px 0 12px;border-radius:var(--r-sm);background-color:var(--fill);color:var(--label);border:1px solid var(--separator);font-size:13px;
+    width:100%;height:34px;padding:0 34px 0 12px;border-radius:var(--r-sm);background-color:var(--fill);color:var(--label);border:1px solid var(--separator);font-size:13px;
     -webkit-appearance:none;appearance:none;
-    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%23a1a1a8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%236e6e73" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
     background-repeat:no-repeat;background-position:right 12px center;
   }
   .row{display:flex;gap:10px;margin-top:14px}
@@ -57,9 +59,9 @@
   button.ghost{background:var(--fill);color:var(--label)}
   button.ghost:hover{background:var(--fill-hover)}
   button:disabled{opacity:.4;cursor:default}
-  .url{font-size:22px;font-weight:600;color:var(--label);word-break:break-all;margin:2px 0;letter-spacing:-.01em}
+  .url{font-size:22px;font-weight:700;color:var(--label);word-break:break-all;margin:2px 0;letter-spacing:-.01em}
   .muted{color:var(--label-secondary);font-size:13px}
-  #qr{margin:16px 0;display:flex;justify-content:center;background:#fff;width:fit-content;padding:12px;border-radius:var(--r-md)}
+  #qr{margin:16px 0;display:flex;justify-content:center;background:#fff;width:fit-content;padding:12px;border-radius:var(--r-md);border:1px solid var(--separator)}
   .listener{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--separator);font-size:13px}
   .listener:last-child{border-bottom:none}
   .listener.det{align-items:flex-start}
@@ -73,15 +75,15 @@
   .ldetail{color:var(--label-secondary);font-size:11px;font-variant-numeric:tabular-nums;margin-top:2px}
   .listener .llat{color:var(--label-secondary);font-variant-numeric:tabular-nums}
   .stat{display:flex;gap:16px;align-items:baseline}
-  pre{background:#000;border:1px solid var(--separator);border-radius:var(--r-sm);padding:12px;font-family:var(--mono);font-size:12px;line-height:1.5;height:190px;overflow:auto;color:var(--label-secondary);white-space:pre-wrap;margin:0}
+  pre{background:var(--bg-elevated-2);border:1px solid var(--separator);border-radius:var(--r-sm);padding:12px;font-family:var(--mono);font-size:12px;line-height:1.5;height:190px;overflow:auto;color:var(--label-secondary);white-space:pre-wrap;margin:0}
   .kv{display:flex;justify-content:space-between;font-size:13px;color:var(--label-secondary);padding:7px 0;border-bottom:1px solid var(--separator)}
   .hint{font-size:11px;color:var(--label-tertiary);margin-top:10px;line-height:1.5}
-  .warn{background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.32);color:#ffd483;font-size:12px;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
+  .warn{background:rgba(255,149,0,.10);border:1px solid rgba(255,149,0,.35);color:#8a5200;font-size:12px;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
   #helpNote{border-top:1px solid var(--separator);margin-top:14px;padding-top:12px}
-  #helpNote h3{font-size:13px;font-weight:600;color:var(--label);margin:14px 0 4px}
+  #helpNote h3{font-size:13px;font-weight:700;color:var(--label);margin:14px 0 4px}
   #helpNote h3:first-child{margin-top:0}
   #helpNote p{font-size:12px;color:var(--label-secondary);line-height:1.6}
-  code{background:#000;border:1px solid var(--separator);border-radius:5px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--label)}
+  code{background:var(--fill);border:1px solid var(--separator);border-radius:5px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--label)}
   .advcheck{display:flex;align-items:center;gap:8px;color:var(--label-secondary);font-size:13px;cursor:pointer;margin:18px 2px 6px;user-select:none}
   .advcheck input{accent-color:var(--accent)}
   span.advcheck{color:var(--accent);font-weight:500}
@@ -101,19 +103,25 @@
   .iconbtn svg{display:block}
   .iconbtn.spin svg{animation:pp-spin .6s linear}
   @keyframes pp-spin{to{transform:rotate(360deg)}}
+  /* wall bits shared with the guest page */
+  .wpost{padding:11px 0;border-bottom:1px solid var(--separator);font-size:13px}
+  .wpost:last-child{border-bottom:none}
+  .wtext{margin-top:4px;color:var(--label);white-space:pre-wrap;word-break:break-word}
+  .wtext.big{font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .wcmt{font-size:12px;line-height:1.5;margin:3px 0 0 2px;color:var(--label)}
+  .wcmt b{font-weight:700}
+  .pubbtn{background:none;border:none;font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px;border-radius:6px;color:#1d883d;background:rgba(52,199,89,.12)}
+  .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
+  .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
+  .pdel:hover{color:var(--danger)}
   /* the ONE Liquid-Glass surface: the floating Go-Live bar */
   #livebar{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 24px;
     background:var(--glass-bg);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
-    border-top:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 -8px 32px rgba(0,0,0,.45)}
+    border-top:1px solid rgba(0,0,0,.08);box-shadow:0 -8px 32px rgba(0,0,0,.08)}
   #livebar .inner{max-width:680px;margin:0 auto}
-  #liveBtn{display:block;width:100%;height:auto;padding:15px;font-size:16px;border-radius:var(--r-md);background:var(--success);color:#03130a;transition:filter .15s}
-  #liveBtn:hover{filter:brightness(1.05)}
+  #liveBtn{display:block;width:100%;height:auto;padding:15px;font-size:16px;border-radius:var(--r-md);background:var(--success);color:#fff;transition:filter .15s;font-weight:700}
+  #liveBtn:hover{filter:brightness(1.04)}
   #liveBtn.stop{background:var(--danger);color:#fff}
-  #liveBtn:disabled{opacity:.5}
-  @supports (corner-shape:superellipse(2)){.card,select,button,.iconbtn,#liveBtn,#qr{corner-shape:superellipse(2)}}
-  @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){#livebar{background:#1c1c1e}}
-  @media (prefers-reduced-transparency:reduce){#livebar{background:#1c1c1e;-webkit-backdrop-filter:none;backdrop-filter:none}}
-  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
@@ -123,6 +131,7 @@
 <header class="eventhead">
   <div class="ehost">🎧 <span class="ed" id="hostEdit" title="Click to change your host name">the DJ</span> is hosting</div>
   <h1 class="ename"><span class="ed" id="titleEdit" title="Click to rename the party">partyparty</span></h1>
+  <div class="estarts">🗓 <span class="ed" id="startsEdit" style="opacity:.6" title="Shown on the guests' welcome card — e.g. Saturday 9pm, rooftop">add date &amp; place</span></div>
   <div class="emeta">
     <span class="badge" id="badge" style="display:none"></span>
     <span class="muted" id="devname"></span>
@@ -567,23 +576,29 @@
   refresh();
   setInterval(refresh, 1000); // latency/sync numbers should feel live, not laggy
 
-  // ── Event identity: click-to-edit host + title in the header ──
+  // ── Event identity: click-to-edit host + title + date in the header ──
+  const PH = { startsEdit: 'add date & place' };
   function editable(id, field){
     const el = $(id);
     el.addEventListener('click', () => {
       if (el.querySelector('input')) return;
-      const cur = el.textContent;
+      const isPH = PH[id] && el.textContent === PH[id];
+      const cur = isPH ? '' : el.textContent;
       el.textContent = '';
       const inp = document.createElement('input');
-      inp.value = cur; inp.maxLength = field === 'title' ? 80 : 40;
-      inp.size = Math.max(cur.length, 8);
+      inp.value = cur; inp.maxLength = 80;
+      inp.placeholder = PH[id] || '';
+      inp.size = Math.max(cur.length, 10);
       el.appendChild(inp); inp.focus(); inp.select();
       const save = () => {
-        const v = inp.value.trim() || cur;
-        el.textContent = v;
-        el.dataset.set = '1'; // header now user-authoritative until next feed sync
+        const v = inp.value.trim();
+        el.textContent = v || PH[id] || cur;
+        el.style.opacity = (!v && PH[id]) ? .6 : 1;
+        el.dataset.touched = '1'; // syncHeader must not clobber this before the feed catches up
+        // "-" clears optional fields server-side; required fields keep current.
+        const sendV = v || (PH[id] ? '-' : cur);
         fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify(field === 'title' ? { title: v } : { host: v }) }).catch(()=>{});
+          body: JSON.stringify({ [field]: sendV }) }).catch(()=>{});
       };
       let saved = false;
       const once = () => { if (!saved) { saved = true; save(); } };
@@ -594,20 +609,29 @@
   }
   editable('titleEdit', 'title');
   editable('hostEdit', 'host');
-  function syncHeader(title, host){
-    for (const [id, v] of [['titleEdit', title], ['hostEdit', host]]) {
+  editable('startsEdit', 'starts');
+  function syncHeader(title, host, starts){
+    for (const [id, v] of [['titleEdit', title], ['hostEdit', host], ['startsEdit', starts]]) {
       const el = $(id);
-      if (v && !el.querySelector('input') && el.textContent !== v) el.textContent = v;
+      if (el.querySelector('input')) continue; // never clobber mid-edit
+      if (el.dataset.touched) {
+        // Just edited: the feed lags ≤5s — don't revert. Release the guard
+        // once the server round-trips the new value.
+        if ((v && el.textContent === v) || (!v && PH[id] && el.textContent === PH[id])) delete el.dataset.touched;
+        continue;
+      }
+      if (v && el.textContent !== v) { el.textContent = v; el.style.opacity = 1; }
+      if (!v && PH[id] && el.textContent !== PH[id]) { el.textContent = PH[id]; el.style.opacity = .6; }
     }
     if (title) document.title = title + ' — partyparty';
   }
 
-  // ── The party wall (DJ view): render + post + moderate ──
+  // ── The party wall (DJ view): render + post + comment + moderate + curate ──
   (() => {
     const card = $('eventCard'), list = $('djFeed');
     const escT = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const seen = new Set();
-    let newestTS = 0, on = false;
+    const nodes = new Map();
+    let newestAct = 0, on = false;
     function render(p){
       const t = new Date(p.ts);
       const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
@@ -617,38 +641,94 @@
         if (m.type === 'video') return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:8px"></video>';
         return '<audio src="' + src + '" controls preload="none" style="width:220px"></audio>';
       }).join(' ');
+      const cmts = (p.comments || []).map(c =>
+        '<div class="wcmt"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' + escT(c.text) + '</div>').join('');
+      const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
       const el = document.createElement('div');
-      el.style.cssText = 'padding:9px 0;border-bottom:1px solid var(--separator);font-size:13px';
-      el.dataset.id = p.id;
+      el.className = 'wpost';
+      el.dataset.id = p.id; el.dataset.ts = p.ts;
       el.innerHTML = '<div style="display:flex;gap:7px;align-items:baseline">' +
         '<span>' + escT(p.emoji) + '</span><b>' + escT(p.author || 'someone') + '</b>' +
         (p.dj ? '<span style="background:var(--accent);color:#fff;border-radius:5px;font-size:9px;font-weight:800;padding:1px 5px">DJ</span>' : '') +
         '<span class="muted" style="font-size:11px">' + time + '</span>' +
-        '<button class="pdel" data-del="' + escT(p.id) + '" style="margin-left:auto;background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer">remove</button></div>' +
-        (p.text ? '<div style="margin-top:4px;color:var(--label);white-space:pre-wrap;word-break:break-word">' + escT(p.text) + '</div>' : '') +
-        (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '');
+        '<span style="margin-left:auto;display:flex;gap:6px;align-items:center">' +
+        '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Whether this post joins the party page when you publish it online later — guests at the party always see it">' + (p.noPublish ? 'not publishing' : 'will publish') + '</button>' +
+        '<button class="pdel" data-del="' + escT(p.id) + '">remove</button></span></div>' +
+        (p.text ? '<div class="wtext' + big + '">' + escT(p.text) + '</div>' : '') +
+        (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '') +
+        cmts +
+        '<div style="display:flex;gap:8px;margin-top:6px"><input maxlength="1000" placeholder="Comment as the DJ…" data-cpost="' + escT(p.id) + '" style="flex:1;background:var(--fill);border:none;border-radius:999px;padding:6px 12px;font:inherit;font-size:12px;color:var(--label);outline:none">' +
+        '<button data-csend="' + escT(p.id) + '" style="background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer">Post</button></div>';
       return el;
     }
+    function place(p){
+      const el = render(p);
+      const old = nodes.get(p.id);
+      if (old) {
+        const active = old.querySelector('input[data-cpost]');
+        if (active && (document.activeElement === active || active.value)) {
+          const ni = el.querySelector('input[data-cpost]');
+          if (ni) ni.value = active.value;
+          if (document.activeElement === active) { nodes.set(p.id, old); return; }
+        }
+        old.replaceWith(el);
+      } else {
+        let before = null;
+        for (const child of list.children) {
+          if (Number(child.dataset.ts || 0) < p.ts) { before = child; break; }
+        }
+        list.insertBefore(el, before);
+      }
+      nodes.set(p.id, el);
+    }
     list.addEventListener('click', async (e) => {
-      const id = e.target && e.target.dataset && e.target.dataset.del;
-      if (!id) return;
-      if (e.target.textContent !== 'sure?') { e.target.textContent = 'sure?'; setTimeout(() => { e.target.textContent = 'remove'; }, 2500); return; }
-      await fetch('/api/post-delete?id=' + encodeURIComponent(id), { method:'POST' });
-      const el = list.querySelector('[data-id="' + id + '"]');
-      if (el) el.remove();
+      const d = e.target && e.target.dataset || {};
+      if (d.del) {
+        if (e.target.textContent !== 'sure?') { e.target.textContent = 'sure?'; setTimeout(() => { e.target.textContent = 'remove'; }, 2500); return; }
+        await fetch('/api/post-delete?id=' + encodeURIComponent(d.del), { method:'POST' });
+        const el = nodes.get(d.del);
+        if (el) { el.remove(); nodes.delete(d.del); }
+        return;
+      }
+      if (d.pub) {
+        const on = d.off === '1'; // currently off → turn ON
+        await fetch('/api/post-publish?id=' + encodeURIComponent(d.pub) + '&on=' + (on ? '1' : '0'), { method:'POST' });
+        e.target.dataset.off = on ? '0' : '1';
+        e.target.classList.toggle('off', !on);
+        e.target.textContent = on ? 'will publish' : 'not publishing';
+        return;
+      }
+      if (d.csend) {
+        const inp = list.querySelector('input[data-cpost="' + d.csend + '"]');
+        const text = inp && inp.value.trim();
+        if (!text) return;
+        e.target.disabled = true;
+        try {
+          const r = await fetch('/api/comment', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ post: d.csend, cid:'dj', author:'DJ', emoji:'🎧', text }) });
+          if (r.ok) { inp.value = ''; await poll(); }
+        } catch (err) {}
+        e.target.disabled = false;
+      }
+    });
+    list.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const pid = e.target && e.target.dataset && e.target.dataset.cpost;
+      if (!pid) return;
+      const btn = list.querySelector('button[data-csend="' + pid + '"]');
+      if (btn) btn.click();
     });
     async function poll(){
       try {
-        const r = await fetch('/api/feed?since=' + newestTS, { cache:'no-store' });
+        const r = await fetch('/api/feed?since=' + newestAct, { cache:'no-store' });
         if (r.status === 404) return;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
         $('eventCounts').textContent = (data.total || 0) + ' posts · ' + (data.media || 0) + ' media';
-        syncHeader(data.title, data.host);
+        syncHeader(data.title, data.host, data.starts);
         for (const p of (data.posts || [])) {
-          if (seen.has(p.id)) continue;
-          seen.add(p.id); newestTS = Math.max(newestTS, p.ts);
-          list.insertBefore(render(p), list.firstChild);
+          newestAct = Math.max(newestAct, p.act || p.ts);
+          place(p);
         }
       } catch (e) {}
     }

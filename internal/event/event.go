@@ -32,27 +32,47 @@ type Media struct {
 	Size int64  `json:"size"`
 }
 
-// Post is one feed entry. CID is the author's private client id — it never
-// leaves the server in feed responses (it's the future "claim my posts"
-// proof), only the pseudonym does.
-type Post struct {
-	ID      string  `json:"id"`
-	TS      int64   `json:"ts"` // unix millis
-	CID     string  `json:"-"`
-	Author  string  `json:"author"`
-	Emoji   string  `json:"emoji"`
-	Text    string  `json:"text"`
-	Media   []Media `json:"media,omitempty"`
-	DJ      bool    `json:"dj,omitempty"`
-	Deleted bool    `json:"-"`
+// Comment is one reply under a post. Same privacy rule as posts: CID stays
+// server-side, the pseudonym travels.
+type Comment struct {
+	ID     string `json:"id"`
+	TS     int64  `json:"ts"`
+	CID    string `json:"-"`
+	Author string `json:"author"`
+	Emoji  string `json:"emoji"`
+	Text   string `json:"text"`
+	DJ     bool   `json:"dj,omitempty"`
 }
 
-// line is the on-disk journal record: a post or a tombstone.
+// Post is one feed entry. CID is the author's private client id — it never
+// leaves the server in feed responses (it's the future "claim my posts"
+// proof), only the pseudonym does. NoPublish marks posts the DJ excluded
+// from the future ONLINE page (they stay visible at the party — exclusion
+// is curation for later, removal is Delete).
+type Post struct {
+	ID  string `json:"id"`
+	TS  int64  `json:"ts"`  // unix millis (creation)
+	Act int64  `json:"act"` // last activity (creation/comment) — the feed cursor,
+	// so a comment on an old post still reaches every client
+	CID       string    `json:"-"`
+	Author    string    `json:"author"`
+	Emoji     string    `json:"emoji"`
+	Text      string    `json:"text"`
+	Media     []Media   `json:"media,omitempty"`
+	DJ        bool      `json:"dj,omitempty"`
+	Comments  []Comment `json:"comments,omitempty"`
+	NoPublish bool      `json:"noPublish,omitempty"`
+	Deleted   bool      `json:"-"`
+}
+
+// line is the on-disk journal record: a post, comment, tombstone, or flag.
 type line struct {
-	Op   string `json:"op"` // "post" | "delete"
-	ID   string `json:"id,omitempty"`
-	CID  string `json:"cid,omitempty"`
-	Post *Post  `json:"post,omitempty"`
+	Op      string   `json:"op"` // "post" | "delete" | "comment" | "publish"
+	ID      string   `json:"id,omitempty"`
+	CID     string   `json:"cid,omitempty"`
+	Post    *Post    `json:"post,omitempty"`
+	Comment *Comment `json:"comment,omitempty"`
+	On      bool     `json:"on,omitempty"` // publish flag value
 }
 
 // Guest is the private per-guest record (guests.json, DJ-only). It captures
@@ -68,10 +88,12 @@ type Guest struct {
 }
 
 // Meta is the event's public identity (meta.json) — what the welcome card
-// shows: "<Host> is hosting <Title>". DJ-editable from the console.
+// shows: "<Host> is hosting <Title>". DJ-editable from the console. Starts is
+// a free-text invite line ("Saturday 9pm — rooftop") for the pre-event page.
 type Meta struct {
-	Title string `json:"title"`
-	Host  string `json:"host"`
+	Title  string `json:"title"`
+	Host   string `json:"host"`
+	Starts string `json:"starts,omitempty"`
 }
 
 // Store manages the current event directory. Safe for concurrent use.
@@ -130,11 +152,27 @@ func (s *Store) use(dir string) error {
 			case l.Op == "post" && l.Post != nil:
 				p := *l.Post
 				p.CID = l.CID
+				if p.Act < p.TS {
+					p.Act = p.TS
+				}
 				posts = append(posts, &p)
 				byID[p.ID] = &p
 			case l.Op == "delete":
 				if p, ok := byID[l.ID]; ok {
 					p.Deleted = true
+				}
+			case l.Op == "comment" && l.Comment != nil:
+				if p, ok := byID[l.ID]; ok {
+					c := *l.Comment
+					c.CID = l.CID
+					p.Comments = append(p.Comments, c)
+					if p.Act < c.TS {
+						p.Act = c.TS
+					}
+				}
+			case l.Op == "publish":
+				if p, ok := byID[l.ID]; ok {
+					p.NoPublish = !l.On
 				}
 			}
 		}
@@ -160,8 +198,9 @@ func (s *Store) Meta() Meta {
 	return s.meta
 }
 
-// SetMeta updates title/host (empty field = keep current) and persists.
-func (s *Store) SetMeta(title, host string) error {
+// SetMeta updates title/host/starts (empty field = keep current; starts may
+// be cleared with the literal "-") and persists.
+func (s *Store) SetMeta(title, host, starts string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if t := clip(strings.TrimSpace(title), 80); t != "" {
@@ -169,6 +208,12 @@ func (s *Store) SetMeta(title, host string) error {
 	}
 	if h := clip(strings.TrimSpace(host), 40); h != "" {
 		s.meta.Host = h
+	}
+	if st := clip(strings.TrimSpace(starts), 80); st != "" {
+		if st == "-" {
+			st = ""
+		}
+		s.meta.Starts = st
 	}
 	data, err := json.MarshalIndent(s.meta, "", " ")
 	if err != nil {
@@ -317,8 +362,9 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 		}
 		verified = append(verified, Media{ID: m.ID, Type: typ, Name: name, Size: st.Size()})
 	}
+	now := time.Now().UnixMilli()
 	p := &Post{
-		ID: newID(), TS: time.Now().UnixMilli(), CID: cid,
+		ID: newID(), TS: now, Act: now, CID: cid,
 		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text,
 		Media: verified, DJ: dj,
 	}
@@ -351,6 +397,54 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 		}
 	}
 	return p, claimToken, nil
+}
+
+// AddComment appends a reply under a post.
+func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*Comment, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, errors.New("empty comment")
+	}
+	if len(text) > 1000 {
+		text = text[:1000]
+	}
+	c := &Comment{
+		ID: newID(), TS: time.Now().UnixMilli(), CID: cid,
+		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text, DJ: dj,
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[postID]
+	if !ok || p.Deleted {
+		return nil, errors.New("no such post")
+	}
+	if len(p.Comments) >= 500 {
+		return nil, errors.New("comment limit reached")
+	}
+	if err := s.appendLine(line{Op: "comment", ID: postID, CID: cid, Comment: c}); err != nil {
+		return nil, err
+	}
+	p.Comments = append(p.Comments, *c)
+	if p.Act < c.TS {
+		p.Act = c.TS
+	}
+	return c, nil
+}
+
+// SetPublish flags whether a post joins the future ONLINE page (DJ curation;
+// party visibility is unaffected).
+func (s *Store) SetPublish(postID string, on bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[postID]
+	if !ok || p.Deleted {
+		return errors.New("no such post")
+	}
+	if err := s.appendLine(line{Op: "publish", ID: postID, On: on}); err != nil {
+		return err
+	}
+	p.NoPublish = !on
+	return nil
 }
 
 // Delete tombstones a post (DJ moderation). Media files stay on disk — the
@@ -395,8 +489,9 @@ func (s *Store) saveGuestsLocked() error {
 	return os.WriteFile(filepath.Join(s.dir, "guests.json"), data, 0o600)
 }
 
-// Feed returns visible posts newer than sinceTS (0 = all), oldest first,
-// plus counts for the console.
+// Feed returns visible posts with activity newer than sinceTS (0 = all),
+// oldest first, plus counts for the console. Activity (not creation) is the
+// cursor so a comment on an old post still syncs to every client.
 func (s *Store) Feed(sinceTS int64) (posts []Post, total int, mediaCount int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -406,7 +501,7 @@ func (s *Store) Feed(sinceTS int64) (posts []Post, total int, mediaCount int) {
 		}
 		total++
 		mediaCount += len(p.Media)
-		if p.TS > sinceTS {
+		if p.Act > sinceTS {
 			posts = append(posts, *p)
 		}
 	}
