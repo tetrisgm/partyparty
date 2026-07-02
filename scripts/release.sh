@@ -28,9 +28,20 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' app/In
 echo ">> [1/5] build + notarize v$VERSION"
 make notarize
 
-echo ">> [2/5] package dist/partyparty-$VERSION.zip"
+echo ">> [2/5] package dist/partyparty-$VERSION.zip + installer pkg"
 rm -rf dist && mkdir -p dist
 ditto -c -k --keepParent "$APP" "dist/partyparty-$VERSION.zip"
+
+# The .pkg is the primary download: files installed by macOS Installer are NOT
+# quarantined, so the app's first launch has zero Gatekeeper dialogs — the
+# closest a Developer-ID app gets to "just install it" (the Zoom flow). The zip
+# stays for Sparkle enclosures + people who prefer a bare .app.
+productbuild --component "$APP" /Applications \
+  --sign "Developer ID Installer: Ramine Darabiha (52WM463HR2)" \
+  "dist/partyparty-$VERSION.pkg"
+xcrun notarytool submit "dist/partyparty-$VERSION.pkg" --keychain-profile pp-notary --wait
+xcrun stapler staple "dist/partyparty-$VERSION.pkg"
+spctl -a -vv -t install "dist/partyparty-$VERSION.pkg"
 
 echo ">> [3/5] sign the Sparkle appcast"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
@@ -42,9 +53,12 @@ else
 fi
 
 echo ">> [4/5] upload to R2"
-cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' alias
+cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
+cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.zip" --file "dist/partyparty-$VERSION.zip" --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty.zip"          --file "dist/partyparty.zip"          --content-type application/zip --remote
+"$WR" r2 object put "$BUCKET/partyparty-$VERSION.pkg" --file "dist/partyparty-$VERSION.pkg" --content-type application/octet-stream --remote
+"$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
 "$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
 
 echo ">> [5/5] deploy Worker + landing page"
