@@ -211,8 +211,17 @@
     function setPlayingUI(on){
       document.body.classList.toggle('playing', on);
       ico.textContent = on ? '❚❚' : '►';
-      btnlabel.textContent = on ? 'Playing' : (live ? 'Tap to listen' : 'Waiting for DJ');
+      btnlabel.textContent = on ? 'Playing' : (started ? 'Resume' : (live ? 'Tap to listen' : 'Waiting for DJ'));
+      try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = on ? 'playing' : 'paused'; } catch (e) {}
     }
+
+    // Pause = MUTE, not stop: the stream keeps playing at the live/room position
+    // silently, so resuming is instant AND still in sync with the room (a real
+    // pause on a live stream would resume behind live / eat a rebuffer). It's
+    // "muted, staying warm". iOS keeps foreground muted playback going; if it
+    // gets suspended while muted+locked, resume (foreground) restarts it.
+    function pauseGuest(){ userPaused = true; player.muted = true; setPlayingUI(false); setStatus('paused'); }
+    function resumeGuest(){ userPaused = false; player.muted = false; if (player.paused) player.play().catch(()=>{}); setPlayingUI(true); setStatus('live'); }
 
     // Fast, bounded retries: after a Wi-Fi blip we want audio back in ~1-2s,
     // not tens of seconds of exponential backoff (every second of stall is
@@ -336,14 +345,15 @@
       catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
     }
 
-    let userPaused = false; // deliberate pause: never auto-resumed
+    let userPaused = false; // deliberate pause (muted): never auto-resumed
     btn.addEventListener('click', () => {
-      if (document.body.classList.contains('playing')) { userPaused = true; try { player.pause(); } catch (e) {} }
-      else { if (!ready) return; userPaused = false; mediaSession(); play().catch(()=>{}); }   // ignore taps while preparing; register media session in the gesture
+      if (started && !player.muted) { pauseGuest(); }              // listening → mute (stay warm)
+      else if (started) { resumeGuest(); }                          // muted → unmute (instant, in sync)
+      else { if (!ready) return; userPaused = false; player.muted = false; mediaSession(); play().catch(()=>{}); } // first play (register media session in the gesture)
     });
 
     let errRetries = 0;
-    player.addEventListener('playing', () => { started = true; errRetries = 0; setPlayingUI(true); setStatus('live'); });
+    player.addEventListener('playing', () => { started = true; errRetries = 0; if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
     player.addEventListener('waiting', () => { stalledSinceBeat = true; setStatus('buffering…'); });
     // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
     // normal between refreshes) — only treat it as real when starved.
@@ -351,8 +361,12 @@
       if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
     });
     player.addEventListener('pause',   () => {
+      if (pendingReload) { location.reload(); return; } // safe moment: nothing playing
+      // We pause by MUTING, never player.pause(). A real pause here is a system
+      // interruption (phone call, Siri, another app) — if the user didn't ask
+      // for it, resume as soon as we can.
+      if (started && !userPaused) { player.play().catch(() => {}); return; }
       setPlayingUI(false); if (started) setStatus('paused');
-      if (pendingReload) location.reload(); // safe moment: nothing playing
     });
     player.addEventListener('error',   () => {
       setStatus('reconnecting…');
@@ -373,8 +387,8 @@
           title: titleEl.textContent || 'Live', artist: 'partyparty',
           artwork: [{ src: '/art-512.png', sizes: '512x512', type: 'image/png' }]
         });
-        navigator.mediaSession.setActionHandler('play',  () => { userPaused = false; player.play().catch(()=>{}); });
-        navigator.mediaSession.setActionHandler('pause', () => { userPaused = true; player.pause(); });
+        navigator.mediaSession.setActionHandler('play',  () => { if (started) resumeGuest(); else { player.play().catch(()=>{}); } });
+        navigator.mediaSession.setActionHandler('pause', () => { if (started) pauseGuest(); });
       } catch (e) {}
     }
 
@@ -486,7 +500,7 @@
       maybeRejoin(); // the ONLY recovery — fires under lock too (this tick keeps running there, field-verified)
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
-      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
+      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&del=' + (usingLL() ? 'llhls' : 'hls')
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION);
