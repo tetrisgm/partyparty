@@ -195,6 +195,21 @@ func main() {
 		if err := writeMTXConfig(cfg.PartDur, cfg.SegDur, cfg.SegCount); err != nil {
 			log.Fatalf("mediamtx config failed: %v", err)
 		}
+		// Reap orphaned MediaMTX from a force-quit run: it squats on the RTSP
+		// port with a STALE config+cert, and EnsureReady would happily connect
+		// to it and report the room engaged (field log: "listen tcp :8554:
+		// bind: address already in use" while everything LOOKED fine). Only
+		// processes running exactly OUR binary path are killed.
+		if out, err := exec.Command("pgrep", "-f", mtxBinPath).Output(); err == nil {
+			pids := strings.Fields(string(out))
+			for _, pid := range pids {
+				_ = exec.Command("kill", pid).Run()
+			}
+			if len(pids) > 0 {
+				log.Printf("reaped %d orphaned mediamtx process(es) from a previous run", len(pids))
+				time.Sleep(time.Second) // let the ports actually free
+			}
+		}
 		mtx = mediamtx.NewServer(mtxBinPath, cfgPath, bc.ExternalWriter())
 		// One fixed LL timing profile (part/seg/count from config) — the old
 		// per-latency-mode MediaMTX bouncing is gone with the latency selector.

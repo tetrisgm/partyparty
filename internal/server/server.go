@@ -230,6 +230,14 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				lat, hasLat = f, true
 			}
 		}
+		if q.Get("v") == "" {
+			// Legacy zombie tab: every page since 0.13 sends its version, but
+			// pages older than the self-refresh mechanism heartbeat FOREVER
+			// (field: a days-old Chrome tab inflating the listener count as a
+			// permanently-paused ghost). Acknowledge and ignore.
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
 		if _, known := s.seenCIDs.LoadOrStore(key, true); !known {
 			s.Diag.Printf("guest joined: %s ip=%s plat=%s pageV=%s", s.friendlyName(clientIP(r), r.UserAgent()), clientIP(r), q.Get("plat"), q.Get("v"))
 		}

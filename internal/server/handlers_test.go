@@ -415,7 +415,7 @@ func TestCaptiveProbes(t *testing.T) {
 func TestHeartbeatAndRoster(t *testing.T) {
 	env := newTestEnv(t, nil)
 	// Loopback RemoteAddr keeps friendlyName from spawning a reverse-DNS lookup.
-	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&lat=250&plat=hls&del=llhls&rate=1&buf=3.5", "127.0.0.1:5000")
+	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&lat=250&plat=hls&del=llhls&rate=1&buf=3.5&v=test" /* v required since 0.26: no-v heartbeats are legacy zombie tabs */, "127.0.0.1:5000")
 	if w.Code != http.StatusOK {
 		t.Fatalf("heartbeat = %d", w.Code)
 	}
