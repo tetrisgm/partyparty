@@ -115,8 +115,13 @@ type urls struct {
 func (s *srv) urls() urls {
 	ip := netinfo.PrimaryLanIP()
 	host := ip
-	if d := s.liveDomain(); d != "" {
-		host = d // guests reach the page via the domain (public DNS resolves it to this Mac's LAN IP)
+	// The PAGE/QR must always load, so it uses the raw LAN IP — some routers'
+	// DNS-rebind protection blocks the public-name→private-IP trick for the
+	// phones even when the Mac's own resolver passes (field-verified pain).
+	// Only the STREAM URL uses the activated domain (it needs the TLS cert);
+	// an explicit --domain still overrides for power users who know their DNS.
+	if s.Config.Domain != "" {
+		host = s.Config.Domain
 	}
 	return urls{
 		Primary:     fmt.Sprintf("http://%s:%d/", host, s.Config.Port),

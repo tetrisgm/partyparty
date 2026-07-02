@@ -208,22 +208,14 @@ func main() {
 						return
 					}
 					handler.SetActivation(res.Host)
-					log.Printf("activate: low latency ON — %s → this Mac (real cert)", res.Host)
-					for { // engage when idle — never kill a live set
-						st := bc.Status()
-						if st.State == "idle" || st.State == "error" {
-							if bc.Delivery() == "hls" {
-								if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err == nil {
-									bc.SetDelivery("llhls")
-									log.Printf("activate: low-latency delivery engaged")
-								} else {
-									log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
-								}
-							}
-							return
-						}
-						time.Sleep(5 * time.Second)
-					}
+					// Deliberately NOT auto-engaged: the Mac's resolution
+					// self-check can pass while the guests' phones are behind a
+					// rebind-protecting resolver (field-verified), and a room
+					// that can't load the stream is worse than 2s of latency.
+					// The console option un-gates; the DJ flips it after
+					// checking one phone.
+					log.Printf("activate: low latency READY (%s) — enable it in the console, test with one phone first", res.Host)
+					return
 				}
 				log.Printf("activate: low latency off — %s (retrying in 5 min)", res.Reason)
 				time.Sleep(5 * time.Minute)
