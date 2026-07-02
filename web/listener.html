@@ -464,27 +464,37 @@
     // This is start ALIGNMENT (the EXT-X-START idea done client-side), not
     // playback control — no rate nudges, no ongoing seeks, ever.
     let needsAlign = false;
+    function alignSeek(target){
+      const lat = measureLatency();
+      if (lat == null || player.readyState < 2) return null;
+      const delta = lat - target;              // >0 = too far behind → jump forward
+      if (Math.abs(delta) < 0.4) return false; // close enough — leave it alone
+      try {
+        const sk = player.seekable;
+        if (sk && sk.length) {
+          player.currentTime = Math.min(
+            Math.max(player.currentTime + delta, sk.start(0) + 0.5),
+            sk.end(sk.length - 1) - 0.5);
+        }
+      } catch (e) {}
+      return true;
+    }
     async function alignOnce(){
       if (!needsAlign) return;
       needsAlign = false;
       const target = latencyTarget || 5;
       for (let i = 0; i < 15 && started && !player.paused; i++) { // ≤3s for a PDT fix
-        const lat = measureLatency();
-        if (lat != null && player.readyState >= 2) {
-          const delta = lat - target;          // >0 = too far behind → jump forward
-          if (Math.abs(delta) < 0.4) return;   // close enough — leave it alone
-          try {
-            const sk = player.seekable;
-            if (sk && sk.length) {
-              player.currentTime = Math.min(
-                Math.max(player.currentTime + delta, sk.start(0) + 0.5),
-                sk.end(sk.length - 1) - 0.5);
-            }
-          } catch (e) {}
-          return;
-        }
-        await new Promise(r => setTimeout(r, 200));
+        const r = alignSeek(target);
+        if (r !== null) break;
+        await new Promise(r2 => setTimeout(r2, 200));
       }
+      // SECOND PASS (field data: the align-seek's own rebuffer stall costs
+      // ~0.7-1.2s, so every device parked ~6s instead of 5). One confirmation
+      // ~10s in — still the startup window, and the user explicitly OK'd
+      // gentle over-time correction. After this: hands off (rejoin only).
+      setTimeout(() => {
+        if (started && !player.paused) alignSeek(latencyTarget || 5);
+      }, 10000);
     }
 
     // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a

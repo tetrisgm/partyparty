@@ -94,6 +94,8 @@ srt: no
 webrtc: no
 rtsp: yes
 rtspAddress: :%d
+rtspTransports: [tcp]
+moq: no
 hls: yes
 hlsAddress: :%d
 hlsEncryption: yes

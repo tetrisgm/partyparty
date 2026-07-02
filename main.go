@@ -72,6 +72,9 @@ func (l *chanListener) Addr() net.Addr            { return l.addr }
 
 // telemetryLoop ships /api/status snapshots to the cloud while broadcasting.
 func telemetryLoop(port int, bc *broadcast.Broadcaster) {
+	if appVersion == "dev" {
+		return // dev/`go run` instances must not pollute the install's cloud namespace
+	}
 	id, secret := activate.InstallCreds()
 	if id == "" {
 		return // never registered — nothing to authenticate with
@@ -565,8 +568,8 @@ func uploadLogLoop(dl *diag.Logger, bc *broadcast.Broadcaster) {
 }
 
 func uploadLogOnce(dl *diag.Logger) {
-	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
-		return
+	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" || appVersion == "dev" {
+		return // dev instances share the Mac's install.json — keep their noise local
 	}
 	id, secret := activate.InstallCreds()
 	if id == "" {
