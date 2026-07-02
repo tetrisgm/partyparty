@@ -41,7 +41,7 @@ cp "$ROOT/assets/ffmpeg"           "$APP/Contents/Helpers/ffmpeg"
 cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
 cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
-[ -f "$ROOT/app/icon.icns" ] && cp "$ROOT/app/icon.icns" "$APP/Contents/Resources/icon.icns"
+cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
 
 # Sparkle framework (auto-update) — embed + make it discoverable via rpath.
 if [ -d "$BIN/Sparkle.framework" ]; then
