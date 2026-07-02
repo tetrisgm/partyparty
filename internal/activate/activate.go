@@ -105,12 +105,11 @@ func Try(host, token string, lanIP string, logf Logf) Result {
 }
 
 // TryBroker is the zero-config activation path (the Plex pattern): the install
-// registers with the party.ramine.net cert broker once, gets its own namespace
-// <id>.pp.ramine.net, issues a WILDCARD cert for *.<id>.pp.ramine.net locally
-// (the private key never leaves this Mac; the broker only publishes DNS
-// records), and uses IP-encoded hostnames (192-168-1-117.<id>.pp.ramine.net)
-// that are created once and correct forever — no record mutation at party time,
-// no propagation races when the venue changes. Fails soft like Try.
+// registers with the party.ramine.net cert broker once and gets a MEMORABLE
+// hostname (disco42.pp.ramine.net — no IP-encoded eyesores), issues an exact
+// cert for it locally (the private key never leaves this Mac; the broker only
+// publishes DNS records), and upserts the single A record to the current venue
+// IP at every launch. Fails soft like Try.
 func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	if lanIP == "" {
 		return Result{Reason: "no LAN IP yet"}
@@ -129,15 +128,14 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	if err != nil {
 		return Result{Reason: "broker: " + err.Error()}
 	}
-	wildcard := "*." + b.id + "." + b.base
-	host := strings.ReplaceAll(lanIP, ".", "-") + "." + b.id + "." + b.base
+	host := b.slug + "." + b.base
 
 	if !certUsable(certFile, host) {
-		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", wildcard)
-		if err := issueCert(ctx, b, wildcard, certFile, keyFile, dir, logf); err != nil {
+		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", host)
+		if err := issueCert(ctx, b, host, certFile, keyFile, dir, logf); err != nil {
 			return Result{Host: host, Reason: "certificate: " + err.Error()}
 		}
-		logf("activate: certificate issued for %s", wildcard)
+		logf("activate: certificate issued for %s", host)
 	}
 
 	var aResp struct{ Host string }
@@ -147,14 +145,14 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 
 	if err := verifyResolves(ctx, host, lanIP); err != nil {
 		return Result{Host: host, CertFile: certFile, KeyFile: keyFile,
-			Reason: "resolution check: " + err.Error() + " (router DNS-rebind protection? falling back to plain HLS)"}
+			Reason: "resolution check: " + err.Error() + " (router DNS-rebind protection?)"}
 	}
 	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
 }
 
 // brokerClient talks to the cert broker; it also implements txtPublisher.
 type brokerClient struct {
-	url, id, secret, base string
+	url, id, secret, base, slug string
 }
 
 func (b *brokerClient) post(ctx context.Context, path string, body any, out any) error {
@@ -194,28 +192,29 @@ func (b *brokerClient) publishTXT(ctx context.Context, _ string, value string) (
 }
 
 // loadOrRegisterInstall returns this Mac's broker identity, registering on
-// first use and persisting it (install.json, 0600).
+// first use and persisting it (install.json, 0600). Pre-slug installs (no
+// memorable hostname) re-register once to pick one up.
 func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf) (*brokerClient, error) {
 	path := filepath.Join(dir, "install.json")
-	var rec struct{ ID, Secret, Base string }
-	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil && rec.ID != "" {
-		return &brokerClient{url: brokerURL, id: rec.ID, secret: rec.Secret, base: rec.Base}, nil
+	var rec struct{ ID, Secret, Base, Slug string }
+	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil && rec.ID != "" && rec.Slug != "" {
+		return &brokerClient{url: brokerURL, id: rec.ID, secret: rec.Secret, base: rec.Base, slug: rec.Slug}, nil
 	}
 	b := &brokerClient{url: brokerURL}
-	var out struct{ ID, Secret, Base string }
+	var out struct{ ID, Secret, Base, Slug string }
 	if err := b.post(ctx, "/api/broker/register", map[string]any{}, &out); err != nil {
 		return nil, err
 	}
-	if out.ID == "" || out.Secret == "" || out.Base == "" {
+	if out.ID == "" || out.Secret == "" || out.Base == "" || out.Slug == "" {
 		return nil, errors.New("register: malformed response")
 	}
-	rec.ID, rec.Secret, rec.Base = out.ID, out.Secret, out.Base
+	rec.ID, rec.Secret, rec.Base, rec.Slug = out.ID, out.Secret, out.Base, out.Slug
 	data, _ := json.Marshal(rec)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return nil, err
 	}
-	logf("activate: registered install %s (namespace %s.%s)", out.ID, out.ID, out.Base)
-	b.id, b.secret, b.base = out.ID, out.Secret, out.Base
+	logf("activate: registered install %s → %s.%s", out.ID, out.Slug, out.Base)
+	b.id, b.secret, b.base, b.slug = out.ID, out.Secret, out.Base, out.Slug
 	return b, nil
 }
 
@@ -515,9 +514,9 @@ func (c *cfAPI) do(ctx context.Context, method, url string, body any, out any) e
 	}
 	defer resp.Body.Close()
 	var envelope struct {
-		Success bool            `json:"success"`
+		Success bool                       `json:"success"`
 		Errors  []struct{ Message string } `json:"errors"`
-		Result  json.RawMessage `json:"result"`
+		Result  json.RawMessage            `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return fmt.Errorf("cloudflare: bad response (%s)", resp.Status)

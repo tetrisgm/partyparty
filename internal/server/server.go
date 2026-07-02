@@ -58,6 +58,7 @@ type srv struct {
 	// background. Guarded by actMu.
 	actMu     sync.Mutex
 	actDomain string
+	actReason string // why activation isn't ready yet (console pending state)
 }
 
 func New(d Deps) *Srv {
@@ -73,6 +74,17 @@ type Srv struct{ srv }
 func (s *Srv) SetActivation(domain string) {
 	s.actMu.Lock()
 	s.actDomain = domain
+	s.actReason = ""
+	s.actMu.Unlock()
+}
+
+// SetActivationPending records why the secure link isn't ready yet — shown in
+// the console while Go Live is gated.
+func (s *Srv) SetActivationPending(reason string) {
+	s.actMu.Lock()
+	if s.actDomain == "" {
+		s.actReason = reason
+	}
 	s.actMu.Unlock()
 }
 
@@ -179,6 +191,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
+			"activation":     s.activationState(),
 			"latencyTarget":  s.latencyTarget(bc, health.Status),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
@@ -271,6 +284,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		device := q.Get("device")
 		if device == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "device required"})
+			return
+		}
+		// No broadcasting before the secure link exists (the test tone is
+		// allowed — it's the DJ's own rehearsal, no guests involved).
+		if device != "test" && !s.realCert() {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "secure guest link isn't ready yet — hold on (needs internet once)"})
 			return
 		}
 		opts := broadcast.Options{Bitrate: validBitrate(q.Get("bitrate")), HLSTime: latencySegDur(q.Get("latency"))}
@@ -520,6 +539,14 @@ func (s *srv) currentTarget() float64 {
 	bc := s.Broadcaster.Status()
 	health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
 	return s.latencyTarget(bc, health.Status)
+}
+
+// activationState reports the secure-link status for the console.
+func (s *srv) activationState() map[string]any {
+	s.actMu.Lock()
+	reason := s.actReason
+	s.actMu.Unlock()
+	return map[string]any{"ready": s.realCert(), "reason": reason}
 }
 
 // latencyTarget is the wall-clock delay behind the DJ that every listener

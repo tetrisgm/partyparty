@@ -409,8 +409,18 @@
       }
       const live = (st === 'live' || st === 'starting');
       const lb = $('liveBtn');
-      lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop' : 'Go Live');
-      lb.className = live ? 'stop' : 'go';
+      // No broadcasting before the secure guest link exists — the button says
+      // so instead of letting a set start that nobody could join properly.
+      const secureReady = (s.activation && s.activation.ready) || (s.urls.primary || '').startsWith('https://');
+      if (!live && !secureReady) {
+        lb.textContent = '🔒 Setting up secure link…';
+        lb.className = 'go';
+        lb.disabled = true;
+      } else {
+        lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop' : 'Go Live');
+        lb.className = live ? 'stop' : 'go';
+        lb.disabled = false;
+      }
       // One room target regardless of per-guest delivery (a mixed room must
       // still drop together), so the latency labels are static now.
       const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '');
@@ -427,7 +437,8 @@
         $('url').textContent = guestUrl;
         renderQR(guestUrl);
       } else {
-        $('url').textContent = '🔒 Setting up the secure guest link… (needs internet once)';
+        const why = (s.activation && s.activation.reason) ? ' — ' + s.activation.reason : ' (needs internet once)';
+        $('url').textContent = '🔒 Setting up the secure guest link…' + why;
         renderQR('');
       }
       const roster = s.roster || [];

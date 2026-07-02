@@ -326,8 +326,9 @@ func main() {
 						time.Sleep(5 * time.Second)
 					}
 				}
-				log.Printf("activate: low latency off — %s (retrying in 5 min)", res.Reason)
-				time.Sleep(5 * time.Minute)
+				handler.SetActivationPending(res.Reason)
+				log.Printf("activate: secure link not ready — %s (retrying in 30s)", res.Reason)
+				time.Sleep(30 * time.Second)
 			}
 		}()
 	}

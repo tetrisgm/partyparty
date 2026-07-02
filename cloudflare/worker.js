@@ -214,8 +214,20 @@ async function broker(request, env, pathname) {
   if (pathname === "/api/broker/register") {
     const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     const secret = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");
-    await env.DL.put(`broker/${id}.json`, JSON.stringify({ secret, created: Date.now() }));
-    return jsonResp(200, { id, secret, base: env.BROKER_BASE });
+    // Pretty, memorable hostname label (disco42, groove7…) — the guest link is
+    // https://<slug>.<base>:8443/, not an IP-encoded eyesore.
+    const WORDS = ["disco", "groove", "bass", "vinyl", "tempo", "fader", "reverb", "echo", "strobe", "neon",
+      "boombox", "sub", "beat", "drop", "loop", "mix", "vibe", "funk", "wave", "pulse",
+      "rhythm", "deck", "fade", "amp", "chorus", "riff", "snare", "hihat", "kick", "midi"];
+    let slug = "";
+    for (let tries = 0; tries < 10; tries++) {
+      const cand = WORDS[Math.floor(Math.random() * WORDS.length)] + String(Math.floor(Math.random() * 90) + 10);
+      if (!(await env.DL.get(`broker/slug/${cand}`))) { slug = cand; break; }
+    }
+    if (!slug) slug = "party" + id.slice(0, 6); // vanishingly unlikely
+    await env.DL.put(`broker/slug/${slug}`, id);
+    await env.DL.put(`broker/${id}.json`, JSON.stringify({ secret, slug, created: Date.now() }));
+    return jsonResp(200, { id, secret, base: env.BROKER_BASE, slug });
   }
 
   // Authenticated endpoints — writes are confined to <id>.<base>.
@@ -224,10 +236,14 @@ async function broker(request, env, pathname) {
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => (o ? o.json() : null));
   if (!rec || rec.secret !== body.secret) return jsonResp(403, { error: "bad credentials" });
 
+  // The install's namespace label: its pretty slug (new installs) or its raw
+  // id (pre-slug installs). Writes stay confined to that label.
+  const label = rec.slug || id;
+
   if (pathname === "/api/broker/txt") {
     const value = String(body.value || "");
     if (!value || value.length > 255) return jsonResp(400, { error: "bad value" });
-    const name = `_acme-challenge.${id}.${env.BROKER_BASE}`;
+    const name = `_acme-challenge.${label}.${env.BROKER_BASE}`;
     const old = await cfDNS(env, "GET", `?type=TXT&name=${name}`);
     for (const r of old || []) await cfDNS(env, "DELETE", "/" + r.id);
     await cfDNS(env, "POST", "", { type: "TXT", name, content: value, ttl: 60 });
@@ -237,10 +253,18 @@ async function broker(request, env, pathname) {
   if (pathname === "/api/broker/a") {
     const ip = String(body.ip || "");
     if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return jsonResp(400, { error: "bad ip" });
-    const name = `${ip.replaceAll(".", "-")}.${id}.${env.BROKER_BASE}`;
+    // Slugged installs: ONE record per install, upserted to the current venue
+    // IP (DNS-only, never proxied). Pre-slug installs keep the old IP-encoded
+    // create-once names.
+    const name = rec.slug
+      ? `${rec.slug}.${env.BROKER_BASE}`
+      : `${ip.replaceAll(".", "-")}.${id}.${env.BROKER_BASE}`;
     const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
-    if (!existing || !existing.length) {
-      // DNS-only (never proxied): guests must get the literal LAN IP back.
+    if (existing && existing.length) {
+      if (existing[0].content !== ip) {
+        await cfDNS(env, "PUT", "/" + existing[0].id, { type: "A", name, content: ip, ttl: 60, proxied: false });
+      }
+    } else {
       await cfDNS(env, "POST", "", { type: "A", name, content: ip, ttl: 60, proxied: false });
     }
     return jsonResp(200, { ok: true, host: name });
