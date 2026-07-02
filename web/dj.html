@@ -271,6 +271,15 @@
     }
   }
 
+  // Settings persist ONLY on explicit user change (pp.explicit guard). Old
+  // builds auto-saved whatever value each Go Live used, which cemented stale
+  // defaults (e.g. 160k) over new ones — migrate those away once.
+  if (!localStorage.getItem('pp.explicit')) {
+    localStorage.removeItem('pp.bitrate');
+    localStorage.removeItem('pp.latency');
+    localStorage.removeItem('pp.mono');
+  }
+  const markExplicit = () => localStorage.setItem('pp.explicit', '1');
   const savedQ = localStorage.getItem('pp.bitrate');
   if (savedQ) $('quality').value = savedQ;
   $('mono').checked = localStorage.getItem('pp.mono') === '1';
@@ -289,11 +298,12 @@
 
   const savedL = localStorage.getItem('pp.latency');
   if (savedL) $('latency').value = savedL;
-  $('quality').onchange = () => localStorage.setItem('pp.bitrate', $('quality').value);
-  $('mono').onchange = () => localStorage.setItem('pp.mono', $('mono').checked ? '1' : '0');
+  $('quality').onchange = () => { markExplicit(); localStorage.setItem('pp.bitrate', $('quality').value); };
+  $('mono').onchange = () => { markExplicit(); localStorage.setItem('pp.mono', $('mono').checked ? '1' : '0'); };
   // Latency changes apply immediately: restart the broadcast when live (this
   // was a silent no-op before — the value only took effect on the next start).
   $('latency').onchange = () => {
+    markExplicit();
     localStorage.setItem('pp.latency', $('latency').value);
     if (lastState === 'live' || lastState === 'starting') startBroadcast();
   };
@@ -313,10 +323,7 @@
     const bitrate = $('quality').value;
     const mono = $('mono').checked ? '1' : '0';
     const latency = $('latency').value;
-    localStorage.setItem('pp.device', device);
-    localStorage.setItem('pp.bitrate', bitrate);
-    localStorage.setItem('pp.mono', mono);
-    localStorage.setItem('pp.latency', latency);
+    localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
     await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name) +
       '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono + '&latency=' + encodeURIComponent(latency), { method:'POST' });
     refresh();

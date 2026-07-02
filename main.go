@@ -51,17 +51,26 @@ func main() {
 		}
 	}
 
-	// Automatic low-latency activation (the Plex pattern): with a live host +
-	// Cloudflare token configured, obtain/renew a real Let's Encrypt cert and
-	// point a public A record at this Mac's LAN IP. Fails soft (offline, no
-	// token, rebind-protecting router) — we just stay on plain HLS. The host can
-	// come from --live-host, the env var, or a persisted file (so the
-	// double-clicked .app activates without any shell environment).
+	// Automatic low-latency activation (the Plex pattern). Two paths, both
+	// fail-soft (offline, rebind-protecting router → plain HLS):
+	//   1. BYO: --live-host/env/file + the user's own Cloudflare token.
+	//   2. Broker (the DEFAULT — zero config): register with party.ramine.net,
+	//      wildcard cert for *.<id>.pp.ramine.net, IP-encoded hostname. This is
+	//      what makes low latency "just work" on any fresh install.
 	if cfg.LiveHost == "" {
 		cfg.LiveHost = activate.HostFromEnvOrFile()
 	}
-	if cfg.LiveHost != "" && cfg.Delivery != "hls" && cfg.CertFile == "" {
-		res := activate.Try(cfg.LiveHost, activate.TokenFromEnvOrFile(), netinfo.PrimaryLanIP(), log.Printf)
+	if cfg.Delivery != "hls" && cfg.CertFile == "" {
+		var res activate.Result
+		if token := activate.TokenFromEnvOrFile(); cfg.LiveHost != "" && token != "" {
+			res = activate.Try(cfg.LiveHost, token, netinfo.PrimaryLanIP(), log.Printf)
+		} else {
+			broker := os.Getenv("PARTYPARTY_BROKER")
+			if broker == "" {
+				broker = "https://party.ramine.net"
+			}
+			res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
+		}
 		if res.OK {
 			cfg.Domain, cfg.CertFile, cfg.KeyFile = res.Host, res.CertFile, res.KeyFile
 			log.Printf("activate: low latency ON — %s → this Mac (real cert)", res.Host)

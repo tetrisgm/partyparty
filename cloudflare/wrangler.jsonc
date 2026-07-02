@@ -15,9 +15,18 @@
   },
 
   // Downloads live here (partyparty.zip, appcast.xml). Created by deploy-site.sh.
+  // Also stores cert-broker install records (broker/<id>.json).
   "r2_buckets": [
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],
+
+  // Cert broker (the Plex pattern): installs get <id>.BROKER_BASE namespaces;
+  // the broker writes their DNS-01 TXT + IP-encoded A records for them. Needs
+  // the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN — Zone→DNS→Edit).
+  "vars": {
+    "BROKER_BASE": "pp.ramine.net",
+    "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"
+  },
 
   // Bind the Worker to the apex-of-record for the app. custom_domain:true makes
   // wrangler provision the DNS record + edge cert in the ramine.net zone.

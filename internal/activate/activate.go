@@ -104,6 +104,121 @@ func Try(host, token string, lanIP string, logf Logf) Result {
 	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
 }
 
+// TryBroker is the zero-config activation path (the Plex pattern): the install
+// registers with the party.ramine.net cert broker once, gets its own namespace
+// <id>.pp.ramine.net, issues a WILDCARD cert for *.<id>.pp.ramine.net locally
+// (the private key never leaves this Mac; the broker only publishes DNS
+// records), and uses IP-encoded hostnames (192-168-1-117.<id>.pp.ramine.net)
+// that are created once and correct forever — no record mutation at party time,
+// no propagation races when the venue changes. Fails soft like Try.
+func TryBroker(brokerURL, lanIP string, logf Logf) Result {
+	if lanIP == "" {
+		return Result{Reason: "no LAN IP yet"}
+	}
+	dir, err := stateDir()
+	if err != nil {
+		return Result{Reason: "no state dir: " + err.Error()}
+	}
+	certFile := filepath.Join(dir, "live-cert.pem")
+	keyFile := filepath.Join(dir, "live-key.pem")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
+	if err != nil {
+		return Result{Reason: "broker: " + err.Error()}
+	}
+	wildcard := "*." + b.id + "." + b.base
+	host := strings.ReplaceAll(lanIP, ".", "-") + "." + b.id + "." + b.base
+
+	if !certUsable(certFile, host) {
+		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", wildcard)
+		if err := issueCert(ctx, b, wildcard, certFile, keyFile, dir, logf); err != nil {
+			return Result{Host: host, Reason: "certificate: " + err.Error()}
+		}
+		logf("activate: certificate issued for %s", wildcard)
+	}
+
+	var aResp struct{ Host string }
+	if err := b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp); err != nil {
+		return Result{Host: host, Reason: "DNS update: " + err.Error()}
+	}
+
+	if err := verifyResolves(ctx, host, lanIP); err != nil {
+		return Result{Host: host, CertFile: certFile, KeyFile: keyFile,
+			Reason: "resolution check: " + err.Error() + " (router DNS-rebind protection? falling back to plain HLS)"}
+	}
+	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
+}
+
+// brokerClient talks to the cert broker; it also implements txtPublisher.
+type brokerClient struct {
+	url, id, secret, base string
+}
+
+func (b *brokerClient) post(ctx context.Context, path string, body any, out any) error {
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", b.url+path, bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		var e struct{ Error string }
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		if e.Error != "" {
+			return errors.New(e.Error)
+		}
+		return fmt.Errorf("broker: %s", resp.Status)
+	}
+	if out != nil {
+		return json.NewDecoder(resp.Body).Decode(out)
+	}
+	return nil
+}
+
+func (b *brokerClient) publishTXT(ctx context.Context, _ string, value string) (func(), error) {
+	// The broker derives the record name from the install id itself (writes are
+	// confined to the install's namespace); it also clears the previous TXT.
+	err := b.post(ctx, "/api/broker/txt", map[string]any{"id": b.id, "secret": b.secret, "value": value}, nil)
+	return func() {}, err
+}
+
+// loadOrRegisterInstall returns this Mac's broker identity, registering on
+// first use and persisting it (install.json, 0600).
+func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf) (*brokerClient, error) {
+	path := filepath.Join(dir, "install.json")
+	var rec struct{ ID, Secret, Base string }
+	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil && rec.ID != "" {
+		return &brokerClient{url: brokerURL, id: rec.ID, secret: rec.Secret, base: rec.Base}, nil
+	}
+	b := &brokerClient{url: brokerURL}
+	var out struct{ ID, Secret, Base string }
+	if err := b.post(ctx, "/api/broker/register", map[string]any{}, &out); err != nil {
+		return nil, err
+	}
+	if out.ID == "" || out.Secret == "" || out.Base == "" {
+		return nil, errors.New("register: malformed response")
+	}
+	rec.ID, rec.Secret, rec.Base = out.ID, out.Secret, out.Base
+	data, _ := json.Marshal(rec)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return nil, err
+	}
+	logf("activate: registered install %s (namespace %s.%s)", out.ID, out.ID, out.Base)
+	b.id, b.secret, b.base = out.ID, out.Secret, out.Base
+	return b, nil
+}
+
 // TokenFromEnvOrFile resolves the Cloudflare API token.
 func TokenFromEnvOrFile() string {
 	if t := strings.TrimSpace(os.Getenv("PARTYPARTY_CF_TOKEN")); t != "" {
@@ -168,7 +283,22 @@ func certUsable(certFile, host string) bool {
 
 // ---- ACME (Let's Encrypt, DNS-01) ----
 
-func issueCert(ctx context.Context, cf *cfAPI, host, certFile, keyFile, dir string, logf Logf) error {
+// txtPublisher publishes a DNS-01 challenge TXT record. Two implementations:
+// the user's own Cloudflare token (BYO), or the party.ramine.net cert broker
+// (zero-config — the Plex pattern; the token never leaves the broker).
+type txtPublisher interface {
+	publishTXT(ctx context.Context, name, value string) (cleanup func(), err error)
+}
+
+func (c *cfAPI) publishTXT(ctx context.Context, name, value string) (func(), error) {
+	recID, err := c.createTXT(ctx, name, value)
+	if err != nil {
+		return nil, err
+	}
+	return func() { _ = c.deleteRecord(context.Background(), recID) }, nil
+}
+
+func issueCert(ctx context.Context, pub txtPublisher, domain, certFile, keyFile, dir string, logf Logf) error {
 	acct, err := loadOrCreateKey(filepath.Join(dir, "acme-account-key.pem"))
 	if err != nil {
 		return err
@@ -179,7 +309,7 @@ func issueCert(ctx context.Context, cf *cfAPI, host, certFile, keyFile, dir stri
 		return fmt.Errorf("ACME register: %w", err)
 	}
 
-	order, err := client.AuthorizeOrder(ctx, acme.DomainIDs(host))
+	order, err := client.AuthorizeOrder(ctx, acme.DomainIDs(domain))
 	if err != nil {
 		return fmt.Errorf("ACME order: %w", err)
 	}
@@ -212,12 +342,15 @@ func issueCert(ctx context.Context, cf *cfAPI, host, certFile, keyFile, dir stri
 		if err != nil {
 			return err
 		}
-		txtName := "_acme-challenge." + host
-		recID, err := cf.createTXT(ctx, txtName, txtVal)
+		// The authorization identifier, NOT the order domain: a wildcard order
+		// for *.x.y authorizes the identifier "x.y", and that's where the
+		// challenge record must live (_acme-challenge.x.y).
+		txtName := "_acme-challenge." + authz.Identifier.Value
+		cl, err := pub.publishTXT(ctx, txtName, txtVal)
 		if err != nil {
 			return fmt.Errorf("challenge TXT: %w", err)
 		}
-		cleanup = append(cleanup, func() { _ = cf.deleteRecord(context.Background(), recID) })
+		cleanup = append(cleanup, cl)
 
 		logf("activate: waiting for DNS challenge to propagate…")
 		if err := waitTXT(ctx, txtName, txtVal); err != nil {
@@ -240,7 +373,7 @@ func issueCert(ctx context.Context, cf *cfAPI, host, certFile, keyFile, dir stri
 		return err
 	}
 	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		Subject: pkix.Name{CommonName: host}, DNSNames: []string{host},
+		Subject: pkix.Name{CommonName: domain}, DNSNames: []string{domain},
 	}, certKey)
 	if err != nil {
 		return err

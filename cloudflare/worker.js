@@ -180,9 +180,86 @@ function renderNotFound() {
   return shell({ title: `partyparty`, desc: `partyparty event page`, body });
 }
 
+// ---- Cert broker (the Plex pattern, vendor side) ----
+//
+// Lets ANY partyparty install get a real Let's Encrypt cert with zero config:
+// the app registers here once (an id + bearer secret + its own namespace
+// <id>.BROKER_BASE), runs ACME locally (private keys never leave the DJ's
+// Mac), and asks this broker to publish the DNS-01 challenge TXT and the
+// IP-encoded A records (192-168-1-117.<id>.pp.ramine.net -> 192.168.1.117 —
+// created once, correct forever). The Cloudflare DNS token lives ONLY here as
+// a Worker secret; each install can only write inside its own namespace.
+
+const jsonResp = (status, obj) =>
+  new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
+
+async function cfDNS(env, method, suffix, body) {
+  const url = `https://api.cloudflare.com/client/v4/zones/${env.CF_ZONE_ID}/dns_records${suffix}`;
+  const resp = await fetch(url, {
+    method,
+    headers: { authorization: `Bearer ${env.CF_DNS_TOKEN}`, "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await resp.json().catch(() => ({}));
+  if (!j.success) throw new Error("cloudflare: " + (j.errors && j.errors[0] ? j.errors[0].message : resp.status));
+  return j.result;
+}
+
+async function broker(request, env, pathname) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
+  const body = await request.json().catch(() => null);
+  if (!body) return jsonResp(400, { error: "bad json" });
+
+  if (pathname === "/api/broker/register") {
+    const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
+    const secret = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    await env.DL.put(`broker/${id}.json`, JSON.stringify({ secret, created: Date.now() }));
+    return jsonResp(200, { id, secret, base: env.BROKER_BASE });
+  }
+
+  // Authenticated endpoints — writes are confined to <id>.<base>.
+  const id = String(body.id || "");
+  if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
+  const rec = await env.DL.get(`broker/${id}.json`).then((o) => (o ? o.json() : null));
+  if (!rec || rec.secret !== body.secret) return jsonResp(403, { error: "bad credentials" });
+
+  if (pathname === "/api/broker/txt") {
+    const value = String(body.value || "");
+    if (!value || value.length > 255) return jsonResp(400, { error: "bad value" });
+    const name = `_acme-challenge.${id}.${env.BROKER_BASE}`;
+    const old = await cfDNS(env, "GET", `?type=TXT&name=${name}`);
+    for (const r of old || []) await cfDNS(env, "DELETE", "/" + r.id);
+    await cfDNS(env, "POST", "", { type: "TXT", name, content: value, ttl: 60 });
+    return jsonResp(200, { ok: true, name });
+  }
+
+  if (pathname === "/api/broker/a") {
+    const ip = String(body.ip || "");
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return jsonResp(400, { error: "bad ip" });
+    const name = `${ip.replaceAll(".", "-")}.${id}.${env.BROKER_BASE}`;
+    const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
+    if (!existing || !existing.length) {
+      // DNS-only (never proxied): guests must get the literal LAN IP back.
+      await cfDNS(env, "POST", "", { type: "A", name, content: ip, ttl: 60, proxied: false });
+    }
+    return jsonResp(200, { ok: true, host: name });
+  }
+
+  return jsonResp(404, { error: "unknown broker endpoint" });
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
+
+    if (pathname.startsWith("/api/broker/")) {
+      try {
+        return await broker(request, env, pathname);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
 
     const isFeed = pathname === "/appcast.xml";
     const isZip = ZIP_RE.test(pathname);
