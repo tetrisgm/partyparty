@@ -487,8 +487,8 @@
         if (!details) {
           return '<div class="listener">' + dot + '<span class="lname">Guest ' + (i + 1) + '</span></div>';
         }
-        const name = esc(r.name || 'Guest ' + (i + 1));
-        const lat = r.hasLatency ? Math.round(r.latencyMs) + ' ms behind' : 'measuring…';
+        const dev = esc(r.name || 'device');
+        const lat = r.hasLatency ? (r.latencyMs / 1000).toFixed(1) + ' s delay' : 'measuring…';
         const bits = [
           (r.delivery === 'llhls' ? 'low-latency' : 'compatible'),
           'buf ' + (r.bufS || 0).toFixed(0) + 's',
@@ -496,7 +496,7 @@
           (r.stalled ? 'stalled' : ''), (r.paused ? 'paused' : '')
         ].filter(Boolean).join(' · ');
         return '<div class="listener det">' + dot +
-          '<div class="lbody"><span class="lname">' + name + '  <span class="lip">' + esc(r.ip) + '</span></span>' +
+          '<div class="lbody"><span class="lname">Guest ' + (i + 1) + '  <span class="lip">' + dev + ' · ' + esc(r.ip) + '</span></span>' +
           '<div class="ldetail">' + lat + ' · ' + bits + '</div></div></div>';
       }).join('');
       const h = s.health || {};

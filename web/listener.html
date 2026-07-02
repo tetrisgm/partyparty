@@ -30,6 +30,8 @@
     transition:transform .15s ease,background .25s ease;
   }
   .btn:active{transform:scale(.96)}
+  .btn.preparing{background:#3a3a3f;color:#a1a1a8;cursor:default;animation:breathe 1.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.6}50%{opacity:.95}}
   body.playing .btn{background:var(--success);animation:pulse 2.2s infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,199,89,.5)}70%{box-shadow:0 0 0 28px rgba(52,199,89,0)}100%{box-shadow:0 0 0 0 rgba(52,199,89,0)}}
   .ico{font-size:50px;line-height:1}
@@ -46,9 +48,24 @@
   .vol input{flex:1;accent-color:var(--accent)}
   .foot{position:fixed;bottom:16px;left:0;right:0;color:var(--label-tertiary);font-size:12px;padding:0 20px}
   @media (prefers-reduced-motion:reduce){body.playing .btn,.eq i{animation:none}}
+  .share{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5}
+  .share:active{transform:scale(.95)}
+  .share svg{width:15px;height:15px}
+  .statline{color:var(--label-tertiary);font-size:12px;margin-top:6px;font-variant-numeric:tabular-nums}
+  .qrov{position:fixed;inset:0;background:rgba(0,0,0,.86);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:20;padding:24px}
+  .qrov.show{display:flex}
+  .qrbox{background:#fff;padding:16px;border-radius:20px;line-height:0}
+  .qrcap{color:var(--label);font-size:16px;font-weight:600}
+  .qrurl{color:var(--label-secondary);font-size:13px;word-break:break-all;max-width:88%}
+  .qrclose{background:var(--accent);color:#fff;border:none;border-radius:999px;padding:12px 30px;font-size:16px;font-weight:600;cursor:pointer}
 </style>
 </head>
 <body>
+  <button class="share" id="shareBtn" aria-label="Show QR code to share">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
+    Show QR
+  </button>
+
   <h1 id="title">partyparty</h1>
   <p class="sub">live from the decks</p>
 
@@ -66,7 +83,17 @@
     <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
   </div>
 
-  <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode. <span style="opacity:.55">v__PP_VERSION__</span></div>
+  <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
+  <div class="statline" id="statline">v__PP_VERSION__</div>
+
+  <div class="qrov" id="qrOverlay">
+    <div class="qrcap">Scan to join the party</div>
+    <div class="qrbox"><div id="qrShare"></div></div>
+    <div class="qrurl" id="qrUrl"></div>
+    <button class="qrclose" id="qrClose">Done</button>
+  </div>
+
+  <script src="/vendor/qrcode.min.js"></script>
 
   <audio id="player" playsinline preload="none"></audio>
   <script src="/vendor/hls.min.js"></script>
@@ -112,6 +139,8 @@
     // shared number is what makes the room drop together.
     let latencyTarget = 0;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
+    let attached = false, ready = false; // pre-buffer state (hls.js path)
+    const PREBUF = 2.5;                    // seconds of cushion before we let them tap
     // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
     // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
     // certain Androids) answer 'maybe' to the native-HLS probe but can't
@@ -213,15 +242,19 @@
         player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
       } else if (window.Hls && Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+        const target = latencyTarget || (usingLL() ? 2.3 : 8);
         const cfg = {
           lowLatencyMode: usingLL(),
-          // PASSIVE playback ("aligned start"): the playlist's EXT-X-START
-          // parks every device at the room target; nobody adjusts anything
-          // afterwards. hls.js's latency controller is fully disabled — no
-          // rate convergence (maxLiveSyncPlaybackRate 1 = verified early-exit)
-          // and NO liveSync/liveMaxLatency (they would override EXT-X-START
-          // and re-introduce forced seeks).
-          maxLiveSyncPlaybackRate: 1,
+          // Hold at the server's ROOM TARGET using hls.js's own gentle,
+          // pitch-preserved rate sync. Native iOS reaches the same distance on
+          // its own (LL: PART-HOLD-BACK; plain: injected EXT-X-START), so this
+          // is what stops hls.js (PC/Android/Chrome-iOS) from parking ~1s
+          // CLOSER to live than the iPhones — the "Ethernet PC is early" bug.
+          // liveSyncDuration deliberately overrides hls.js's tighter LL default;
+          // it's the reconciliation point. (Legal alone — the old crash was
+          // liveMaxLatencyDuration WITHOUT this.)
+          liveSyncDuration: target,
+          maxLiveSyncPlaybackRate: 1.5,
           liveDurationInfinity: true,
           backBufferLength: 30,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
@@ -255,20 +288,46 @@
       catch (e) { setStatus('player error — reload the page'); return false; }
     }
 
+    // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a
+    // guest never taps into silence and thinks it's broken; then "Tap to listen".
+    function updateIdleButton(){
+      if (started) return;
+      if (!live) { btnlabel.textContent = 'Waiting for DJ'; btn.classList.remove('preparing'); return; }
+      if (!ready) { btnlabel.textContent = 'Preparing…'; btn.classList.add('preparing'); setStatus('getting ready…'); }
+      else { btnlabel.textContent = 'Tap to listen'; btn.classList.remove('preparing'); setStatus('ready — tap to listen'); }
+    }
+
+    // On load, hls.js starts BUFFERING immediately (paused) so playback is
+    // instant on tap. iOS native can't pre-buffer before a user gesture
+    // (Apple), so it stays tappable right away and buffers on tap instead.
+    async function prebuffer(){
+      if (attached || started || !STREAM || !live) return;
+      if (LLSTREAM && llUsable === null) llUsable = (location.protocol === 'https:') ? true : await probeLL(LLSTREAM);
+      if (useNative) { ready = true; updateIdleButton(); return; }
+      attached = true;
+      if (!attachSafe()) return;
+      updateIdleButton();
+      const t0 = Date.now();
+      const iv = setInterval(() => {
+        if (started) { clearInterval(iv); return; }
+        if (bufferedAhead() >= PREBUF || player.readyState >= 3 || Date.now() - t0 > 8000) {
+          ready = true; clearInterval(iv); updateIdleButton();
+        }
+      }, 250);
+    }
+
     async function play(){
       if (!STREAM) { try { await poll(); } catch (e) {} }
-      // On the https origin (the only link guests are ever given) the page
-      // load itself proved DNS + TLS work — LL is used directly, no probe, no
-      // fallback. The probe path survives only for localhost/IP dev access.
       if (LLSTREAM && llUsable === null) llUsable = (location.protocol === 'https:') ? true : await probeLL(LLSTREAM);
-      if (!attachSafe()) return;
-      // Pre-buffer gate: give the player a moment to build a cushion before
-      // sound starts (fewer stalls in the first seconds). One-time, at start
-      // only — playback is never touched once running.
-      setStatus('getting ready…');
-      const t0 = Date.now();
-      while (Date.now() - t0 < 4000 && bufferedAhead() < 2.5 && player.readyState < 4) {
-        await new Promise(r => setTimeout(r, 200));
+      if (!attached && !attachSafe()) return;   // native / not-yet-prebuffered
+      // If not pre-buffered yet (native, or a fast tapper), give it a brief
+      // moment to build a cushion so it doesn't stall on the first seconds.
+      if (bufferedAhead() < PREBUF && player.readyState < 3) {
+        setStatus('getting ready…');
+        const t0 = Date.now();
+        while (Date.now() - t0 < 4000 && bufferedAhead() < PREBUF && player.readyState < 3) {
+          await new Promise(r => setTimeout(r, 150));
+        }
       }
       try { await player.play(); }
       catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
@@ -277,7 +336,7 @@
     let userPaused = false; // deliberate pause: never auto-resumed
     btn.addEventListener('click', () => {
       if (document.body.classList.contains('playing')) { userPaused = true; try { player.pause(); } catch (e) {} }
-      else { userPaused = false; mediaSession(); play().catch(()=>{}); }   // register the media session synchronously in the gesture
+      else { if (!ready) return; userPaused = false; mediaSession(); play().catch(()=>{}); }   // ignore taps while preparing; register media session in the gesture
     });
 
     let errRetries = 0;
@@ -335,9 +394,14 @@
         titleEl.textContent = s.name || 'partyparty';
         live = s.broadcast && s.broadcast.state === 'live';
         countEl.textContent = s.listeners ? ('● ' + s.listeners + ' listening') : '';
-        if (!started) {
-          setStatus(live ? 'ready — tap to listen' : 'waiting for the DJ…');
-          btnlabel.textContent = live ? 'Tap to listen' : 'Waiting for DJ';
+        if (!started) { updateIdleButton(); prebuffer(); }
+        // Keep-waiting-and-resume: if the DJ's Mac was killed and came back (or
+        // the stream dropped), a guest who was playing just picks up again —
+        // no reload, no re-tap. The tab keeps polling; when live returns we
+        // re-attach + play. (A NEW app version still triggers considerReload.)
+        else if (live && !userPaused && player.paused) {
+          if (player.error || player.readyState === 0) attachSafe();
+          player.play().catch(() => {});
         }
       } catch (e) { if (!started) setStatus('offline'); }
     }
@@ -433,6 +497,31 @@
       stalledSinceBeat = false;
       if (debug) showDebug(lat);
     }, 2000); // 2s: the DJ console's numbers should feel live
+
+    // Always-on info line under the footer: latency · buffer · version.
+    const statline = document.getElementById('statline');
+    setInterval(() => {
+      const lat = started ? measureLatency() : null;
+      const latTxt = lat != null ? lat.toFixed(1) + 's latency' : (started ? '…' : 'not playing');
+      statline.textContent = latTxt + ' · ' + bufferedAhead().toFixed(0) + 's buffer · v' + PAGE_VERSION;
+    }, 1000);
+
+    // Share: show a QR of THIS page so a guest can pass the party to a friend.
+    const shareBtn = document.getElementById('shareBtn'),
+          qrOverlay = document.getElementById('qrOverlay'),
+          qrUrl = document.getElementById('qrUrl'),
+          qrClose = document.getElementById('qrClose');
+    let qrDrawn = false;
+    shareBtn.addEventListener('click', () => {
+      if (!qrDrawn && window.QRCode) {
+        new QRCode(document.getElementById('qrShare'), { text: location.href, width: 232, height: 232, correctLevel: QRCode.CorrectLevel.M });
+        qrDrawn = true;
+      }
+      qrUrl.textContent = location.href;
+      qrOverlay.classList.add('show');
+    });
+    qrClose.addEventListener('click', () => qrOverlay.classList.remove('show'));
+    qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) qrOverlay.classList.remove('show'); });
   </script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -59,6 +60,8 @@ type srv struct {
 	actMu     sync.Mutex
 	actDomain string
 	actReason string // why activation isn't ready yet (console pending state)
+
+	hostCache sync.Map // ip -> resolved device name ("" = looked up, nothing useful)
 }
 
 func New(d Deps) *Srv {
@@ -217,7 +220,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
 		s.Listeners.Debug(key, q.Get("del"), rate, buf)
-		s.Listeners.Meta(key, clientIP(r), deviceName(r.UserAgent()))
+		s.Listeners.Meta(key, clientIP(r), s.friendlyName(clientIP(r), r.UserAgent()))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/delivery":
 		if r.Method != http.MethodPost {
@@ -362,9 +365,12 @@ func (s *srv) handleHLS(w http.ResponseWriter, r *http.Request) {
 		// rate control or corrective seeking (that was a field disaster on
 		// real iOS hardware). Players that ignore the tag park at their own
 		// default — worse spread for that device, zero artifacts: fails soft.
-		// --start-offset overrides the computed target for experiments.
+		// --start-offset overrides the computed target for experiments. In
+		// LL-HLS mode this plain playlist is only the fallback for probe-failed
+		// guests, so we DON'T inject (a 2.3s offset is impossible on 1s plain
+		// segments) — those outliers just park at their natural position.
 		offset := s.Config.StartOffset
-		if offset <= 0 {
+		if offset <= 0 && s.Broadcaster.Delivery() != "llhls" {
 			offset = s.currentTarget()
 		}
 		if offset > 0 {
@@ -447,6 +453,50 @@ func (s *srv) captiveLanding(w http.ResponseWriter) {
 	_, _ = w.Write([]byte(html))
 }
 
+// friendlyName prefers the device's real network name ("Ramine's iPhone",
+// resolved once via reverse DNS / mDNS off the LAN IP and cached) over the
+// generic UA label. macOS's resolver answers reverse mDNS for Apple devices, so
+// this often works on a home/party Wi-Fi; it fails gracefully to the UA label.
+func (s *srv) friendlyName(ip, ua string) string {
+	label := deviceName(ua)
+	if ip == "" || strings.HasPrefix(ip, "127.") || ip == "::1" || ip == "1" {
+		return label
+	}
+	if v, ok := s.hostCache.Load(ip); ok {
+		if name, _ := v.(string); name != "" {
+			return name // resolved to a real device name
+		}
+		return label // looked up already, nothing useful
+	}
+	// First sight of this IP: mark pending + resolve in the background.
+	s.hostCache.Store(ip, "")
+	go func(ip string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		names, err := net.DefaultResolver.LookupAddr(ctx, ip)
+		if err != nil || len(names) == 0 {
+			return
+		}
+		if n := cleanHostname(names[0]); n != "" {
+			s.hostCache.Store(ip, n)
+		}
+	}(ip)
+	return label
+}
+
+// cleanHostname turns "Ramines-iPhone.local." into "Ramines iPhone".
+func cleanHostname(h string) string {
+	h = strings.TrimSuffix(h, ".")
+	for _, suf := range []string{".local", ".lan", ".home", ".home.arpa"} {
+		h = strings.TrimSuffix(h, suf)
+	}
+	if h == "" || strings.Contains(h, ".") { // still an FQDN → not a friendly device name
+		return ""
+	}
+	h = strings.NewReplacer("-", " ", "_", " ").Replace(h)
+	return h
+}
+
 // deviceName derives a short friendly label from a User-Agent for the DJ's
 // details view (e.g. "iPhone · Safari", "Android · Chrome", "Mac · Chrome").
 func deviceName(ua string) string {
@@ -519,6 +569,21 @@ func kbps(bitrate string) int {
 	return n
 }
 
+// parseDurSeconds parses "500ms" / "1s" / "800ms" into seconds.
+func parseDurSeconds(d string) float64 {
+	d = strings.TrimSpace(d)
+	if strings.HasSuffix(d, "ms") {
+		n, _ := strconv.ParseFloat(strings.TrimSuffix(d, "ms"), 64)
+		return n / 1000
+	}
+	if strings.HasSuffix(d, "s") {
+		n, _ := strconv.ParseFloat(strings.TrimSuffix(d, "s"), 64)
+		return n
+	}
+	n, _ := strconv.ParseFloat(d, 64)
+	return n
+}
+
 // suggest returns a quality hint when the network is straining.
 func suggest(status string, bc broadcast.Status) string {
 	if status != "strain" && status != "congested" {
@@ -588,29 +653,40 @@ func (s *srv) activationState() map[string]any {
 	return map[string]any{"ready": s.realCert(), "reason": reason}
 }
 
-// latencyTarget is the wall-clock delay behind the DJ that every listener
-// aligns to — the sync contract for the room. Players park at this offset via
-// EXT-X-START when they join (the standard HLS mechanism), then play untouched.
+// latencyTarget is the wall-clock delay behind the DJ that the room aligns to —
+// the sync contract. It DIFFERS by delivery because native and hls.js park at
+// different natural points, and the target is what reconciles them:
+//   - LL-HLS: native iOS parks at PART-HOLD-BACK (2.5×part) by itself; the
+//     target ≈ that + ~1s player overhead, and hls.js is told (liveSyncDuration)
+//     to hold the SAME distance instead of running ~1s closer to live (the
+//     "Ethernet PC is early" bug). So all platforms land together at ~2.3s.
+//   - Plain HLS: everyone parks at the injected EXT-X-START; deep + generous
+//     (tightness ≫ closeness, product decree).
 //
-// ONE target for the whole room regardless of which delivery each guest ended
-// up on (LL-HLS guests simply carry more cushion) — a mixed room must still
-// drop together; that beats letting the LL cohort run 2s early. The base is
-// the plain-HLS constraint (low mode = 5s) and the server adapts within
-// [base, base+3]: stalls raise it 0.5s at a time (smooth — everyone drifts via
-// rate, no skips), 5+ clean minutes decay 0.25s. --latency-target pins it.
+// The server adapts within [base, base+3] on sustained stalls. --latency-target
+// pins it.
 func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	if s.Config.LatencyTarget > 0 {
 		return s.Config.LatencyTarget
 	}
-	seg := bc.SegDur
-	if seg <= 0 {
-		seg = 1
+	var base float64
+	if bc.Delivery == "llhls" {
+		part := parseDurSeconds(s.curPartDur)
+		if part <= 0 {
+			part = 0.5
+		}
+		base = 2.5*part + 1.0 // 500ms→2.25, 800ms→3.0, 1s→3.5
+	} else {
+		seg := bc.SegDur
+		if seg <= 0 {
+			seg = 1
+		}
+		// Field-calibrated, then deliberately generous: tightness-of-room beats
+		// closeness-to-DJ (product decree). A deep park position = fat buffer on
+		// every phone = fewer stalls = fewer drift events = a tighter room all
+		// night. The DJ-to-ear delay is the price and it's explicitly accepted.
+		base = 3*seg + 7 // low(1s)=10, balanced(2s)=13, stable(3s)=16
 	}
-	// Field-calibrated, then deliberately generous: tightness-of-room beats
-	// closeness-to-DJ (product decree). A deep park position = fat buffer on
-	// every phone = fewer stalls = fewer drift events = a tighter room all
-	// night. The DJ-to-ear delay is the price and it's explicitly accepted.
-	base := 3*seg + 7 // low(1s)=10, balanced(2s)=13, stable(3s)=16
 	s.adaptMu.Lock()
 	defer s.adaptMu.Unlock()
 	now := time.Now()

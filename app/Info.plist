@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.11.0</string>
+	<string>0.12.0</string>
 	<key>CFBundleVersion</key>
-	<string>23</string>
+	<string>24</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSAppTransportSecurity</key>
@@ -43,6 +43,8 @@
 	<string>partyparty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>partyparty captures your Mac's system audio to broadcast it to guests on your network.</string>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
