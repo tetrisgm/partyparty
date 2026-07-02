@@ -201,10 +201,11 @@
        connection test right where you'd need it. -->
   <div class="card" id="setupCard" style="display:none">
     <div class="cardhead" style="margin-bottom:8px">
-      <h2 style="display:flex;align-items:center;gap:10px;margin:0"><span class="spin16"></span>Setting up partyparty</h2>
+      <h2 style="margin:0">Setting up partyparty</h2>
     </div>
-    <div class="setupline" id="typeLine"></div>
+    <div id="setupLines"></div>
     <div class="setupline" id="pendingReason"></div>
+    <div style="margin-top:10px"><span class="spin16" style="display:inline-block"></span></div>
     <button class="ghost" id="netCheckBtn" style="margin-top:14px">Test the connection</button>
     <div id="netCheckOut" style="margin-top:10px;font-size:12px;line-height:1.7;text-align:left"></div>
   </div>
@@ -357,29 +358,38 @@
     'Securing your guest link…',
     'This can take a couple of minutes — it only happens once.',
   ];
+  // Lines APPEND (a growing activity log, not a replaced caption); ~5s
+  // between lines because activation genuinely takes a while, and the
+  // spinner sits below the last line so the card always reads as "working".
   let typeTimer = null, typing = false;
   function startPendingType(){
     if (typing) return;
     typing = true;
-    const el = $('typeLine');
-    let li = 0, ci = 0;
-    const tick = () => {
+    const box = $('setupLines');
+    box.innerHTML = '';
+    let li = 0;
+    const typeLine = () => {
       if (!typing) return;
+      const div = document.createElement('div');
+      div.className = 'setupline';
+      box.appendChild(div);
       const line = PENDING_LINES[li];
-      ci++;
-      el.textContent = line.slice(0, ci);
-      if (ci < line.length) {
-        el.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
-        typeTimer = setTimeout(tick, 26);
-        return;
-      }
-      if (li < PENDING_LINES.length - 1) {
-        li++; ci = 0;
-        el.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
-        typeTimer = setTimeout(tick, 1600);
-      } // final line rests, caret gone
+      let ci = 0;
+      const tick = () => {
+        if (!typing) return;
+        ci++;
+        div.textContent = line.slice(0, ci);
+        if (ci < line.length) {
+          div.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
+          typeTimer = setTimeout(tick, 26);
+          return;
+        }
+        li++;
+        if (li < PENDING_LINES.length) typeTimer = setTimeout(typeLine, 5000);
+      };
+      tick();
     };
-    tick();
+    typeLine();
   }
   function stopPendingType(){ typing = false; clearTimeout(typeTimer); }
 

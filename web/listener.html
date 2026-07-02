@@ -854,6 +854,22 @@
         $id('welEmoji').textContent = myEmoji;
         welOv.classList.add('show');
       }
+      // Any FIRST touch on the welcome card (name field, emoji, shuffle…) is
+      // a usable iOS gesture: start buffering muted RIGHT THEN, so by the
+      // time they hit "Let's party" the stream is buffered AND aligned — the
+      // button just unmutes. (Capture phase; runs before the tapped control.)
+      let primed = false;
+      welOv.addEventListener('click', () => {
+        if (primed || !welOv.classList.contains('show')) return;
+        primed = true;
+        userPaused = false;
+        try { player.muted = true; player.load(); } catch (e) {}
+        if (live) {
+          if (!attached) attachSafe();
+          player.play().catch(() => {}); // silent, aligned; 'playing' handler keeps UI idle while muted
+        }
+      }, true);
+
       $id('welGo').addEventListener('click', () => {
         welcomed = true;
         try { localStorage.setItem('pp.welcomed', '1'); } catch (e) {}
@@ -870,13 +886,18 @@
           paintContact();
         }
         welOv.classList.remove('show');
-        // THE gesture: activate the audio element right here. Live → start
-        // playing (aligned); idle → prime the element + auto-start later.
         userPaused = false;
-        if (live) {
+        mediaSession(); // register lock-screen controls inside the gesture
+        if (started) {
+          // The first welcome-card touch already started muted, aligned
+          // playback (see the prime listener) — this just opens the faders.
+          resumeGuest();
+        } else if (live) {
+          player.muted = false;
           play().catch(() => {});
         } else {
           resumeWanted = true;             // poll auto-plays once the DJ is on
+          player.muted = false;            // the prime muted it; auto-start must be AUDIBLE
           try { player.load(); } catch (e) {}
           player.play().catch(() => {});   // expected to fail — it marks the element user-activated
         }

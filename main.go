@@ -508,6 +508,20 @@ func main() {
 				diagLog.Printf("roster: %s", data)
 			}
 		}()
+		// A finished set is the moment the log matters most — ship it the
+		// moment broadcasting stops, not at the next 3-minute tick.
+		go func() {
+			prev := ""
+			for {
+				time.Sleep(2 * time.Second)
+				st := bc.Status().State
+				if (prev == "live" || prev == "starting") && (st == "idle" || st == "error") {
+					diagLog.Printf("broadcast ended (state=%s) — uploading session log", st)
+					uploadLogOnce(diagLog)
+				}
+				prev = st
+			}
+		}()
 		go uploadLogLoop(diagLog, bc)
 	}
 
