@@ -195,20 +195,14 @@ func main() {
 		if err := writeMTXConfig(cfg.PartDur, cfg.SegDur, cfg.SegCount); err != nil {
 			log.Fatalf("mediamtx config failed: %v", err)
 		}
-		// Reap orphaned MediaMTX from a force-quit run: it squats on the RTSP
-		// port with a STALE config+cert, and EnsureReady would happily connect
-		// to it and report the room engaged (field log: "listen tcp :8554:
-		// bind: address already in use" while everything LOOKED fine). Only
-		// processes running exactly OUR binary path are killed.
-		if out, err := exec.Command("pgrep", "-f", mtxBinPath).Output(); err == nil {
-			pids := strings.Fields(string(out))
-			for _, pid := range pids {
-				_ = exec.Command("kill", pid).Run()
-			}
-			if len(pids) > 0 {
-				log.Printf("reaped %d orphaned mediamtx process(es) from a previous run", len(pids))
-				time.Sleep(time.Second) // let the ports actually free
-			}
+		// Reap orphaned MediaMTX from force-quit runs: an orphan squats on the
+		// RTSP/HLS ports with a STALE config+cert, our replacement loses the
+		// bind, and guests get a stream no phone will accept while everything
+		// LOOKS engaged (field: friend broadcast 6 minutes to zero joinable
+		// guests). Reap by PORT OWNERSHIP — the orphan may be an old app
+		// version at a different binary path, so path matching isn't enough.
+		if n := mediamtx.ReapOrphans(cfg.RTSPPort, cfg.HLSPort); n > 0 {
+			log.Printf("reaped %d orphaned mediamtx process(es) from a previous run", n)
 		}
 		mtx = mediamtx.NewServer(mtxBinPath, cfgPath, bc.ExternalWriter())
 		// One fixed LL timing profile (part/seg/count from config) — the old
@@ -220,7 +214,7 @@ func main() {
 			return writeMTXConfig(cfg.PartDur, cfg.SegDur, cfg.SegCount)
 		}
 		if cfg.Delivery == "llhls" {
-			if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err != nil {
+			if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
 				log.Printf("mediamtx failed to start: %v — falling back to plain HLS", err)
 				bc.SetDelivery("hls")
 			}
@@ -443,7 +437,7 @@ func main() {
 							if bc.Delivery() != "hls" {
 								return
 							}
-							if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err != nil {
+							if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
 								log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
 								return
 							}
@@ -631,4 +625,19 @@ func humanizeActivation(reason string) string {
 	default:
 		return reason
 	}
+}
+
+// ensureMTXReady is EnsureReady with one reap-and-retry: if readiness fails
+// because a stale orphan owns the ports (or anything else mediamtx-shaped
+// squats there), kill it and try once more.
+func ensureMTXReady(mtx *mediamtx.Server, rtspPort, hlsPort int) error {
+	err := mtx.EnsureReady(rtspPort, 6*time.Second)
+	if err == nil {
+		return nil
+	}
+	if n := mediamtx.ReapOrphans(rtspPort, hlsPort); n > 0 {
+		log.Printf("reaped %d mediamtx orphan(s) after readiness failure — retrying", n)
+		return mtx.EnsureReady(rtspPort, 6*time.Second)
+	}
+	return err
 }

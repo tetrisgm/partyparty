@@ -323,6 +323,21 @@
       if (!cid) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem('pp.cid', cid); }
     } catch (e) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
+    // Guest-side error reporting into the DJ's session log. Field lesson: a
+    // phone whose join button silently failed was completely invisible —
+    // guests only heartbeat once PLAYING. Now the page phones home what broke.
+    function reportErr(kind, msg){
+      try {
+        fetch('/api/client-log', { method: 'POST', keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cid, v: PAGE_VERSION, kind, msg: String(msg == null ? '?' : msg).slice(0, 300) }) }).catch(() => {});
+      } catch (e) {}
+    }
+    window.addEventListener('error', (e) => reportErr('jserror',
+      (e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0)));
+    window.addEventListener('unhandledrejection', (e) => reportErr('promise',
+      e.reason && (e.reason.message || e.reason)));
+
     // NTP-style clock sync to the Mac (the master clock) so per-device latency is
     // comparable across phones. Keep the minimum-RTT sample.
     let clockOffset = 0, clockSynced = false;
@@ -552,7 +567,10 @@
         }
       }
       try { await player.play(); }
-      catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
+      catch (e) {
+        if (live) reportErr('play-failed', (e && e.name || '') + ' ' + (e && e.message || ''));
+        setStatus(live ? 'tap again to start' : 'waiting for the DJ…');
+      }
     }
 
     let userPaused = false; // deliberate pause (muted): never auto-resumed
@@ -588,6 +606,7 @@
       setPlayingUI(false); if (started) setStatus('paused');
     });
     player.addEventListener('error',   () => {
+      reportErr('media', 'code=' + (player.error && player.error.code) + ' ' + ((player.error && player.error.message) || '') + ' live=' + live);
       if (!live) return; // DJ stopped — poll() tears down and shows "Waiting for DJ"
       // The stream is supposedly live but the player keeps dying (e.g. the
       // server was reconfigured under us and this MediaSource is wedged): a
@@ -914,6 +933,15 @@
           try { player.load(); } catch (e) {}
           player.play().catch(() => {});   // expected to fail — it marks the element user-activated
         }
+        // Join-stuck detector: the DJ was live, the guest tapped, and nothing
+        // is playing seconds later — the exact silent failure that was
+        // invisible in the field. Report it with the player's state.
+        setTimeout(() => {
+          if (live && !userPaused && (player.paused || player.readyState < 2)) {
+            reportErr('join-stuck', 'paused=' + player.paused + ' rs=' + player.readyState +
+              ' muted=' + player.muted + ' err=' + (player.error && player.error.code) + ' src=' + (usingLL() ? 'll' : 'plain'));
+          }
+        }, 3500);
       });
 
       // Optional contact — the claim-link fallback ("only the DJ sees this").

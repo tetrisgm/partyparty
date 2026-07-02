@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"partyparty/internal/broadcast"
@@ -67,9 +68,10 @@ type srv struct {
 	actDomain string
 	actReason string // why activation isn't ready yet (console pending state)
 
-	hostCache sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
-	bonjour   sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
-	seenCIDs  sync.Map // cid -> true (first-heartbeat join logging)
+	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
+	bonjour    sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
+	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
+	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
 }
 
 func New(d Deps) *Srv {
@@ -218,6 +220,24 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.
 		writeJSON(w, http.StatusOK, map[string]any{"t": time.Now().UnixMilli()})
+	case "/api/client-log":
+		// Guest-side error reports into the session diagnostics. Field lesson:
+		// a phone whose JOIN button silently fails never heartbeats — it was
+		// completely invisible. Now the page tells us what broke.
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		var body struct{ CID, V, Kind, Msg string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return
+		}
+		nAny, _ := s.clientLogN.LoadOrStore(body.CID, new(int32))
+		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest — no log floods
+			s.Diag.Printf("client[%s v%s]: %s: %s", clientIP(r), clipStr(body.V, 16), clipStr(body.Kind, 16), clipStr(body.Msg, 300))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/heartbeat":
 		q := r.URL.Query()
 		key := q.Get("cid")
@@ -337,9 +357,15 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		// One fixed LL timing profile now (no latency modes, no MediaMTX
 		// bouncing) — but a start must still revive a silently-dead MediaMTX,
 		// or ffmpeg pushes into the void and guests see a "live" broadcast
-		// nobody can hear.
+		// nobody can hear. If a stale orphan owns the ports, reap and retry.
 		if s.Broadcaster.Delivery() == "llhls" && s.MTX != nil && !s.MTX.Running() {
-			if err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second); err != nil {
+			err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second)
+			if err != nil {
+				if n := mediamtx.ReapOrphans(s.Config.RTSPPort, s.Config.HLSPort); n > 0 {
+					err = s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second)
+				}
+			}
+			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency engine failed to start: " + err.Error()})
 				return
 			}
@@ -750,4 +776,11 @@ func lastN(s []string, n int) []string {
 		return s
 	}
 	return s[len(s)-n:]
+}
+
+func clipStr(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }

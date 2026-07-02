@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -175,7 +176,49 @@ func (s *Server) EnsureReady(rtspPort int, timeout time.Duration) error {
 	if err := s.Start(); err != nil {
 		return err
 	}
-	return WaitReady(fmt.Sprintf("127.0.0.1:%d", rtspPort), timeout)
+	if err := WaitReady(fmt.Sprintf("127.0.0.1:%d", rtspPort), timeout); err != nil {
+		return err
+	}
+	// The port answering is NOT enough: a stale orphan (old config, old CERT)
+	// can own it while OUR child died on "bind: address already in use" —
+	// field failure: the DJ broadcast into a zombie serving a certificate no
+	// phone accepts, and zero guests could join. Ready means OUR process.
+	if !s.Running() {
+		return fmt.Errorf("port %d is served by another mediamtx (stale orphan?) — our instance failed to bind", rtspPort)
+	}
+	return nil
+}
+
+// ReapOrphans kills leftover mediamtx processes squatting on our ports (a
+// force-quit skips child cleanup; the orphan may be from an OLD app version
+// at a different binary path, so path matching is not enough). Only processes
+// whose executable is named "mediamtx" are touched.
+func ReapOrphans(ports ...int) int {
+	killed := map[string]bool{}
+	for _, port := range ports {
+		out, err := exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%d", port), "-sTCP:LISTEN").Output()
+		if err != nil {
+			continue // nobody listening
+		}
+		for _, pid := range strings.Fields(string(out)) {
+			if killed[pid] {
+				continue
+			}
+			comm, err := exec.Command("ps", "-o", "comm=", "-p", pid).Output()
+			if err != nil {
+				continue
+			}
+			name := strings.TrimSpace(string(comm))
+			if strings.HasSuffix(name, "/mediamtx") || name == "mediamtx" {
+				_ = exec.Command("kill", pid).Run()
+				killed[pid] = true
+			}
+		}
+	}
+	if len(killed) > 0 {
+		time.Sleep(time.Second) // let the ports actually free
+	}
+	return len(killed)
 }
 
 func (s *Server) Running() bool {
