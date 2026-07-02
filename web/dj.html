@@ -380,8 +380,12 @@
       if (llOpt) {
         // LL-HLS needs a publicly-trusted cert — iPhones reject the self-signed
         // fallback, so don't let the DJ hand guests a stream they can't play.
+        // Activation runs in the background after launch, so this can flip from
+        // unavailable to available mid-session — set BOTH label states.
         llOpt.disabled = (s.llhlsAvailable === false) || (s.llhlsRealCert === false);
-        if (s.llhlsRealCert === false) llOpt.textContent = 'Low latency — needs an HTTPS cert (unavailable)';
+        llOpt.textContent = (s.llhlsRealCert === false)
+          ? 'Low latency — setting up (needs internet)…'
+          : 'Low latency — ~2s (LL-HLS)';
       }
       const badge = $('badge');
       badge.textContent = st;

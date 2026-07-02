@@ -48,10 +48,28 @@ type srv struct {
 	adaptDelta float64 // seconds above the base target, [0, 3]
 	lastAdj    time.Time
 	lastRaise  time.Time
+
+	// Async activation result (cert broker / BYO) — set after launch so the
+	// server can start serving instantly while certs are obtained in the
+	// background. Guarded by actMu.
+	actMu     sync.Mutex
+	actDomain string
 }
 
-func New(d Deps) http.Handler {
-	return &srv{Deps: d, vendor: http.FileServer(http.FS(d.Web)), curPartDur: d.Config.PartDur}
+func New(d Deps) *Srv {
+	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(d.Web)), curPartDur: d.Config.PartDur}}
+}
+
+// Srv is the exported handle: an http.Handler plus the async-activation hook.
+type Srv struct{ srv }
+
+// SetActivation records a completed low-latency activation (real cert +
+// resolvable domain). Guest/stream URLs and the console's LL-HLS gate flip
+// live on the next status poll.
+func (s *Srv) SetActivation(domain string) {
+	s.actMu.Lock()
+	s.actDomain = domain
+	s.actMu.Unlock()
 }
 
 var hlsFileRE = regexp.MustCompile(`^(stream\.m3u8|seg_\d+\.ts)$`)
@@ -97,8 +115,8 @@ type urls struct {
 func (s *srv) urls() urls {
 	ip := netinfo.PrimaryLanIP()
 	host := ip
-	if s.Config.Domain != "" {
-		host = s.Config.Domain // guests reach the page via the domain (router resolves it to this Mac)
+	if d := s.liveDomain(); d != "" {
+		host = d // guests reach the page via the domain (public DNS resolves it to this Mac's LAN IP)
 	}
 	return urls{
 		Primary:     fmt.Sprintf("http://%s:%d/", host, s.Config.Port),
@@ -258,6 +276,23 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Broadcaster.Stop()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/shutdown":
+		// Loopback-only orphan reaper: a force-quit app skips child cleanup and
+		// the leftover server squats on the port; the next launch asks it to
+		// exit. Never reachable from the LAN.
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if ip := clientIP(r); ip != "127.0.0.1" && ip != "::1" && ip != "1" {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "localhost only"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			os.Exit(0)
+		}()
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "unknown api"})
 	}
@@ -300,7 +335,7 @@ func (s *srv) handleHLS(w http.ResponseWriter, r *http.Request) {
 // plain-HLS playlist.
 func (s *srv) streamURL() string {
 	if s.Broadcaster.Delivery() == "llhls" {
-		host := s.Config.Domain
+		host := s.liveDomain()
 		if host == "" {
 			host = netinfo.PrimaryLanIP()
 		}
@@ -415,10 +450,27 @@ func validBitrate(v string) string {
 	}
 }
 
-// realCert reports whether a publicly-trusted cert is configured — the gate
-// for LL-HLS (iOS Safari rejects self-signed certs on LAN IPs).
+// realCert reports whether a publicly-trusted cert is available — the gate
+// for LL-HLS (iOS Safari rejects self-signed certs on LAN IPs). True when
+// explicitly configured or when async activation has completed.
 func (s *srv) realCert() bool {
-	return s.Config.Domain != "" && s.Config.CertFile != "" && s.Config.KeyFile != ""
+	if s.Config.Domain != "" && s.Config.CertFile != "" && s.Config.KeyFile != "" {
+		return true
+	}
+	s.actMu.Lock()
+	defer s.actMu.Unlock()
+	return s.actDomain != ""
+}
+
+// liveDomain is the hostname guests should use: the explicit --domain, or the
+// async-activated one, or "" (fall back to the LAN IP).
+func (s *srv) liveDomain() string {
+	if s.Config.Domain != "" {
+		return s.Config.Domain
+	}
+	s.actMu.Lock()
+	defer s.actMu.Unlock()
+	return s.actDomain
 }
 
 // latencyTarget is the wall-clock delay behind the DJ that every listener

@@ -51,40 +51,21 @@ func main() {
 		}
 	}
 
-	// Automatic low-latency activation (the Plex pattern). Two paths, both
-	// fail-soft (offline, rebind-protecting router → plain HLS):
-	//   1. BYO: --live-host/env/file + the user's own Cloudflare token.
-	//   2. Broker (the DEFAULT — zero config): register with party.ramine.net,
-	//      wildcard cert for *.<id>.pp.ramine.net, IP-encoded hostname. This is
-	//      what makes low latency "just work" on any fresh install.
+	// Low-latency activation is ASYNC (see below, after the server is up): a
+	// first cert issuance takes 30s-3min and blocking startup on it means a
+	// dead console ("white screen") the whole time. The server starts on plain
+	// HLS immediately; a completed activation flips delivery live.
 	if cfg.LiveHost == "" {
 		cfg.LiveHost = activate.HostFromEnvOrFile()
 	}
-	if cfg.Delivery != "hls" && cfg.CertFile == "" {
-		var res activate.Result
-		if token := activate.TokenFromEnvOrFile(); cfg.LiveHost != "" && token != "" {
-			res = activate.Try(cfg.LiveHost, token, netinfo.PrimaryLanIP(), log.Printf)
-		} else {
-			broker := os.Getenv("PARTYPARTY_BROKER")
-			if broker == "" {
-				broker = "https://party.ramine.net"
-			}
-			res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
-		}
-		if res.OK {
-			cfg.Domain, cfg.CertFile, cfg.KeyFile = res.Host, res.CertFile, res.KeyFile
-			log.Printf("activate: low latency ON — %s → this Mac (real cert)", res.Host)
-		} else {
-			log.Printf("activate: low latency off — %s", res.Reason)
-		}
-	}
+	deliveryFlag := cfg.Delivery // what the user asked for, pre-resolution
 
 	// LL-HLS is served over HTTPS; without a real (publicly-trusted) cert the
 	// self-signed cert on a bare LAN IP is rejected by iOS Safari, so guests would
 	// get a stream they can't play. "auto" therefore picks LL-HLS only when a real
-	// domain+cert is configured; otherwise plain HTTP HLS that plays everywhere.
-	// Passing --delivery llhls explicitly still forces it (e.g. testing with a
-	// trusted self-signed cert installed on the phone).
+	// domain+cert is configured explicitly; otherwise plain HLS now, upgraded in
+	// the background by activation. Passing --delivery llhls explicitly still
+	// forces it (e.g. testing with a trusted self-signed cert on the phone).
 	realCert := cfg.Domain != "" && cfg.CertFile != "" && cfg.KeyFile != ""
 	if cfg.Delivery == "auto" {
 		if realCert {
@@ -113,6 +94,7 @@ func main() {
 
 	var mtx *mediamtx.Server
 	var reconfigureLL func(partDur, segDur string, segCount int) error
+	var applyActivation func(certFile, keyFile string) error
 	if mtxBinPath != "" {
 		certPath, keyPath := cfg.CertFile, cfg.KeyFile
 		if certPath == "" || keyPath == "" {
@@ -147,6 +129,12 @@ func main() {
 			}
 			return mtx.EnsureReady(cfg.RTSPPort, 6*time.Second)
 		}
+		// Called by async activation: swap in the real cert and rewrite the
+		// MediaMTX config (MediaMTX isn't running yet in plain-HLS mode).
+		applyActivation = func(certFile, keyFile string) error {
+			certPath, keyPath = certFile, keyFile
+			return writeMTXConfig(cfg.PartDur, cfg.SegDur, cfg.SegCount)
+		}
 		if cfg.Delivery == "llhls" {
 			if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err != nil {
 				log.Printf("mediamtx failed to start: %v — falling back to plain HLS", err)
@@ -167,6 +155,19 @@ func main() {
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
+		// Almost certainly our own orphan: a force-quit app skips child cleanup
+		// and the old server squats on the port. Ask it to exit (loopback-only
+		// endpoint) and retry once.
+		cl := &http.Client{Timeout: 2 * time.Second}
+		if resp, perr := cl.Post(fmt.Sprintf("http://127.0.0.1:%d/api/shutdown", cfg.Port), "", nil); perr == nil {
+			resp.Body.Close()
+			time.Sleep(700 * time.Millisecond)
+			if ln, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port)); err == nil {
+				log.Printf("recovered port %d from a previous instance", cfg.Port)
+			}
+		}
+	}
 	if err != nil {
 		if errors.Is(err, syscall.EADDRINUSE) {
 			fmt.Printf("\n  Port %d is already in use. Try: partyparty --port 8001\n\n", cfg.Port)
@@ -181,6 +182,54 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
+
+	// Background low-latency activation (the Plex pattern) — the console is
+	// already serving; this never blocks startup. Two paths, both fail-soft:
+	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
+	// at party.ramine.net (per-install wildcard cert, IP-encoded hostname).
+	// On success we flip delivery to LL-HLS the moment the DJ is idle (never
+	// mid-set); on failure we retry every 5 minutes (Wi-Fi comes and goes).
+	if deliveryFlag != "hls" && cfg.Delivery == "hls" && cfg.CertFile == "" && mtx != nil && applyActivation != nil {
+		go func() {
+			for {
+				var res activate.Result
+				if token := activate.TokenFromEnvOrFile(); cfg.LiveHost != "" && token != "" {
+					res = activate.Try(cfg.LiveHost, token, netinfo.PrimaryLanIP(), log.Printf)
+				} else {
+					broker := os.Getenv("PARTYPARTY_BROKER")
+					if broker == "" {
+						broker = "https://party.ramine.net"
+					}
+					res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
+				}
+				if res.OK {
+					if err := applyActivation(res.CertFile, res.KeyFile); err != nil {
+						log.Printf("activate: mediamtx config failed: %v — staying on plain HLS", err)
+						return
+					}
+					handler.SetActivation(res.Host)
+					log.Printf("activate: low latency ON — %s → this Mac (real cert)", res.Host)
+					for { // engage when idle — never kill a live set
+						st := bc.Status()
+						if st.State == "idle" || st.State == "error" {
+							if bc.Delivery() == "hls" {
+								if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err == nil {
+									bc.SetDelivery("llhls")
+									log.Printf("activate: low-latency delivery engaged")
+								} else {
+									log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
+								}
+							}
+							return
+						}
+						time.Sleep(5 * time.Second)
+					}
+				}
+				log.Printf("activate: low latency off — %s (retrying in 5 min)", res.Reason)
+				time.Sleep(5 * time.Minute)
+			}
+		}()
+	}
 
 	fmt.Println()
 	fmt.Println("  partyparty is running")

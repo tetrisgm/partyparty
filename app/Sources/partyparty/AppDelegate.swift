@@ -12,6 +12,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var console: AdminWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before ANYTHING (especially the server child): offer to relocate to
+        // /Applications. Running from ~/Downloads breaks Sparkle updates and
+        // triggers Gatekeeper app-translocation; one click here fixes both
+        // forever (the LetsMove pattern).
+        if moveToApplicationsIfNeeded() { return } // relaunching from the new home
+
         server.start()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
@@ -20,6 +26,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         poller.onChange = { [weak self] s in self?.updateIcon(s) }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
+    }
+
+    // MARK: Self-install (move to /Applications)
+
+    /// Returns true when a move+relaunch is underway and this instance should
+    /// do nothing further.
+    private func moveToApplicationsIfNeeded() -> Bool {
+        let src = Bundle.main.bundleURL
+        if src.path.contains("/Applications/") { return false } // /Applications or ~/Applications
+        if UserDefaults.standard.bool(forKey: "PPSkipMove") { return false } // dev escape hatch
+
+        let fm = FileManager.default
+        var destDir = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        if !fm.isWritableFile(atPath: destDir.path) {
+            // Non-admin account: fall back to the per-user Applications folder.
+            destDir = fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
+            try? fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+        }
+        let dest = destDir.appendingPathComponent(src.lastPathComponent)
+
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Move \(appName) to the Applications folder?"
+        alert.informativeText = "It'll relaunch from there — updates and permissions work best that way. Takes a second, nothing to drag."
+        alert.addButton(withTitle: "Move to Applications")
+        alert.addButton(withTitle: "Not Now")
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+
+        do {
+            if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
+            try fm.copyItem(at: src, to: dest) // works even from a translocated (read-only) mount
+            // Strip quarantine on the new copy: the user already approved the
+            // Gatekeeper first-open, and without this a programmatic move (as
+            // opposed to a Finder drag) would still be app-translocated.
+            let xattr = Process()
+            xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+            xattr.arguments = ["-dr", "com.apple.quarantine", dest.path]
+            try? xattr.run(); xattr.waitUntilExit()
+
+            let cfg = NSWorkspace.OpenConfiguration()
+            cfg.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: dest, configuration: cfg) { _, _ in
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            }
+            return true
+        } catch {
+            let e = NSAlert()
+            e.messageText = "Couldn't move \(appName)"
+            e.informativeText = "\(error.localizedDescription)\n\nYou can drag it to Applications yourself — it'll keep working from here meanwhile."
+            e.runModal()
+            return false
+        }
     }
 
     // MARK: Menu-bar monitor
