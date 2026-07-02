@@ -245,6 +245,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	handler.StartDiscovery() // Bonjour: resolve guest IPs → friendly device names
+
 	httpSrv := &http.Server{Handler: handler}
 	go func() {
 		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {

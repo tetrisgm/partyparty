@@ -61,7 +61,8 @@ type srv struct {
 	actDomain string
 	actReason string // why activation isn't ready yet (console pending state)
 
-	hostCache sync.Map // ip -> resolved device name ("" = looked up, nothing useful)
+	hostCache sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
+	bonjour   sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
 }
 
 func New(d Deps) *Srv {
@@ -461,6 +462,12 @@ func (s *srv) friendlyName(ip, ua string) string {
 	label := deviceName(ua)
 	if ip == "" || strings.HasPrefix(ip, "127.") || ip == "::1" || ip == "1" {
 		return label
+	}
+	// Best: the device's FRIENDLY Bonjour name ("Ramine's iPhone").
+	if v, ok := s.bonjour.Load(ip); ok {
+		if name, _ := v.(string); name != "" {
+			return name
+		}
 	}
 	if v, ok := s.hostCache.Load(ip); ok {
 		if name, _ := v.(string); name != "" {
