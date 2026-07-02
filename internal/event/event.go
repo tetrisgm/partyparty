@@ -362,14 +362,17 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 		}
 		verified = append(verified, Media{ID: m.ID, Type: typ, Name: name, Size: st.Size()})
 	}
-	now := time.Now().UnixMilli()
 	p := &Post{
-		ID: newID(), TS: now, Act: now, CID: cid,
+		ID: newID(), CID: cid,
 		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text,
 		Media: verified, DJ: dj,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Stamp UNDER the lock: stamping outside let two concurrent posts journal
+	// out of timestamp order, and a client cursor could then skip one forever.
+	now := time.Now().UnixMilli()
+	p.TS, p.Act = now, now
 	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
 		return nil, "", err
 	}
@@ -380,21 +383,22 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	// claim link); only its hash persists here.
 	claimToken := ""
 	if !dj && cid != "" {
-		if g, ok := s.guests[cid]; !ok || g.TokenHash == "" {
+		g, ok := s.guests[cid]
+		if !ok {
+			g = &Guest{Created: p.TS}
+			s.guests[cid] = g
+		}
+		// Fill IN, never replace: a guest who left their email before their
+		// first post (SetContact creates the record) must not lose it here.
+		if g.TokenHash == "" {
 			raw := make([]byte, 16)
 			_, _ = rand.Read(raw)
 			claimToken = base64.RawURLEncoding.EncodeToString(raw)
 			sum := sha256.Sum256([]byte(claimToken))
-			s.guests[cid] = &Guest{
-				Pseudonym: p.Author, Emoji: p.Emoji,
-				TokenHash: hex.EncodeToString(sum[:]),
-				Created:   p.TS,
-			}
-			_ = s.saveGuestsLocked()
-		} else if g.Pseudonym != p.Author || g.Emoji != p.Emoji {
-			g.Pseudonym, g.Emoji = p.Author, p.Emoji // follow renames
-			_ = s.saveGuestsLocked()
+			g.TokenHash = hex.EncodeToString(sum[:])
 		}
+		g.Pseudonym, g.Emoji = p.Author, p.Emoji // follow renames
+		_ = s.saveGuestsLocked()
 	}
 	return p, claimToken, nil
 }
@@ -409,11 +413,12 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 		text = text[:1000]
 	}
 	c := &Comment{
-		ID: newID(), TS: time.Now().UnixMilli(), CID: cid,
+		ID: newID(), CID: cid,
 		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text, DJ: dj,
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	c.TS = time.Now().UnixMilli() // under the lock — keeps Act monotonic across clients
 	p, ok := s.byID[postID]
 	if !ok || p.Deleted {
 		return nil, errors.New("no such post")
@@ -490,23 +495,25 @@ func (s *Store) saveGuestsLocked() error {
 }
 
 // Feed returns visible posts with activity newer than sinceTS (0 = all),
-// oldest first, plus counts for the console. Activity (not creation) is the
-// cursor so a comment on an old post still syncs to every client.
-func (s *Store) Feed(sinceTS int64) (posts []Post, total int, mediaCount int) {
+// oldest first, plus ALL visible ids (so clients can prune DJ-removed posts
+// and previous-wall leftovers) and counts for the console. Activity (not
+// creation) is the cursor so a comment on an old post syncs to every client.
+func (s *Store) Feed(sinceTS int64) (posts []Post, ids []string, mediaCount int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	ids = []string{}
 	for _, p := range s.posts {
 		if p.Deleted {
 			continue
 		}
-		total++
+		ids = append(ids, p.ID)
 		mediaCount += len(p.Media)
 		if p.Act > sinceTS {
 			posts = append(posts, *p)
 		}
 	}
 	sort.Slice(posts, func(i, j int) bool { return posts[i].TS < posts[j].TS })
-	return posts, total, mediaCount
+	return posts, ids, mediaCount
 }
 
 func (s *Store) appendLine(l line) error {

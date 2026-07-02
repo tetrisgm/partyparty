@@ -43,8 +43,8 @@
     transition:transform .15s ease,background .25s ease,box-shadow .25s ease;
   }
   .btn:active{transform:scale(.97)}
-  .btn.preparing{background:#e8e8ed;color:var(--label-secondary);cursor:default;box-shadow:none;animation:breathe 1.6s ease-in-out infinite}
-  @keyframes breathe{0%,100%{opacity:.65}50%{opacity:1}}
+  .btn.preparing{background:#e2e2e7;color:#515154;cursor:default;box-shadow:none;animation:breathe 1.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.82}50%{opacity:1}} /* shallow trough — the label must stay legible in daylight */
   body.playing .btn{background:var(--success);box-shadow:0 8px 24px rgba(52,199,89,.3);animation:pulse 2.2s infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,199,89,.35)}70%{box-shadow:0 0 0 22px rgba(52,199,89,0)}100%{box-shadow:0 0 0 0 rgba(52,199,89,0)}}
   .ico{font-size:20px;line-height:1}
@@ -995,12 +995,20 @@
         const el = renderPost(p);
         const old = nodes.get(p.id);
         if (old) {
-          // Don't clobber a comment mid-typing.
           const active = old.querySelector('input');
-          if (active && (document.activeElement === active || active.value)) {
-            const newInput = el.querySelector('input');
-            if (newInput) newInput.value = active.value;
-            if (document.activeElement === active) { nodes.set(p.id, old); return; }
+          if (active && document.activeElement === active) {
+            // Mid-typing: the update must still LAND (the cursor has already
+            // advanced past this post — skipping would drop it forever, the
+            // exact way a guest's own just-sent comment used to vanish).
+            // Swap only the comments block; the focused input stays alive.
+            const oldC = old.querySelector('.pcmts'), newC = el.querySelector('.pcmts');
+            if (oldC && newC) oldC.replaceWith(newC);
+            else if (newC) old.insertBefore(newC, old.querySelector('.cbox'));
+            return; // nodes keeps the old (live) element
+          }
+          if (active && active.value) {
+            const ni = el.querySelector('input');
+            if (ni) ni.value = active.value; // carry an unfocused draft across
           }
           old.replaceWith(el);
         } else {
@@ -1040,7 +1048,8 @@
         if (!feedOn && !force) return;
         try {
           const r = await fetch('/api/feed?since=' + newestAct, { cache: 'no-store' });
-          if (r.status === 404) { feedOn = false; return; } // no event store
+          if (r.status === 404) return; // no event store (the interval keeps checking cheaply)
+          if (!r.ok) return;
           const data = await r.json();
           if (!feedOn) {
             feedOn = true;
@@ -1056,6 +1065,14 @@
           const sa = $id('saveAll');
           sa.hidden = !(data.media > 0);
           if (data.media > 0) sa.textContent = '⬇️ Take all the media home (' + data.media + (data.media === 1 ? ' file)' : ' files)');
+          // Prune what the server no longer returns: DJ-removed posts and,
+          // after "Start a fresh wall", the previous wall's entries.
+          if (Array.isArray(data.ids)) {
+            const alive = new Set(data.ids);
+            for (const [id, node] of [...nodes]) {
+              if (!alive.has(id)) { node.remove(); nodes.delete(id); }
+            }
+          }
           const fresh = (data.posts || []);
           if (!fresh.length) return;
           const empty = feedList.querySelector('.feedempty');
@@ -1067,7 +1084,9 @@
         } catch (e) {}
       }
       pollFeed(true);
-      setInterval(() => pollFeed(false), 5000);
+      // force while !feedOn: a failed FIRST poll (Wi-Fi blip at page load) must
+      // retry, or the wall + welcome gate would never appear at all.
+      setInterval(() => pollFeed(!feedOn), 5000);
     })();
   </script>
 </body>

@@ -34,14 +34,14 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {
 	case "/api/feed":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-		posts, total, mediaCount := s.Events.Feed(since)
+		posts, ids, mediaCount := s.Events.Feed(since)
 		if posts == nil {
 			posts = []event.Post{}
 		}
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
-			"posts": posts, "total": total, "media": mediaCount, "dj": s.isDJ(r),
+			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount, "dj": s.isDJ(r),
 		})
 	case "/api/comment":
 		if r.Method != http.MethodPost {
@@ -211,12 +211,12 @@ func (s *srv) eventState() map[string]any {
 	if s.Events == nil {
 		return nil
 	}
-	_, total, mediaCount := s.Events.Feed(1 << 62) // counts only, no post bodies
+	_, ids, mediaCount := s.Events.Feed(1 << 62) // counts only, no post bodies
 	meta := s.Events.Meta()
 	return map[string]any{
 		"title": meta.Title,
 		"host":  meta.Host,
-		"posts": total,
+		"posts": len(ids),
 		"media": mediaCount,
 		"dir":   s.Events.Dir(),
 	}

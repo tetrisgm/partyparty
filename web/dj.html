@@ -33,7 +33,7 @@
   .ed input{background:transparent;border:none;outline:none;color:var(--label);font:inherit;letter-spacing:inherit;min-width:60px}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);text-transform:capitalize}
   .badge.live{background:rgba(52,199,89,.15);color:#1d883d}
-  .badge.error{background:rgba(255,59,48,.12);color:var(--danger)}
+  .badge.error{background:rgba(255,59,48,.12);color:#c1281e} /* darkened for light-mode contrast, like its siblings */
   .badge.starting{background:rgba(255,149,0,.14);color:#b36b00}
   .tabs{display:flex;gap:2px;padding:0 24px;max-width:680px;margin:0 auto;border-bottom:1px solid var(--separator)}
   .tab{height:auto;background:transparent;color:var(--label-secondary);padding:10px 14px;border:none;border-bottom:2px solid transparent;border-radius:0;font-weight:600;font-size:13px;cursor:pointer;transition:color .15s}
@@ -122,6 +122,10 @@
   #liveBtn{display:block;width:100%;height:auto;padding:15px;font-size:16px;border-radius:var(--r-md);background:var(--success);color:#fff;transition:filter .15s;font-weight:700}
   #liveBtn:hover{filter:brightness(1.04)}
   #liveBtn.stop{background:var(--danger);color:#fff}
+  /* accessibility + capability fallbacks (kept from the dark theme) */
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  @media (prefers-reduced-transparency:reduce){#livebar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#livebar{background:#fff}}
 </style>
 </head>
 <body>
@@ -641,8 +645,9 @@
         if (m.type === 'video') return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:8px"></video>';
         return '<audio src="' + src + '" controls preload="none" style="width:220px"></audio>';
       }).join(' ');
-      const cmts = (p.comments || []).map(c =>
+      const cmtRows = (p.comments || []).map(c =>
         '<div class="wcmt"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' + escT(c.text) + '</div>').join('');
+      const cmts = cmtRows ? '<div class="wcmts">' + cmtRows + '</div>' : '';
       const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
       const el = document.createElement('div');
       el.className = 'wpost';
@@ -666,10 +671,18 @@
       const old = nodes.get(p.id);
       if (old) {
         const active = old.querySelector('input[data-cpost]');
-        if (active && (document.activeElement === active || active.value)) {
+        if (active && document.activeElement === active) {
+          // Mid-typing (incl. the DJ's own just-sent comment — Enter keeps the
+          // input focused in WKWebView): the cursor already moved past this
+          // post, so the update must land NOW. Swap only the comments block.
+          const oldC = old.querySelector('.wcmts'), newC = el.querySelector('.wcmts');
+          if (oldC && newC) oldC.replaceWith(newC);
+          else if (newC) old.insertBefore(newC, active.parentElement);
+          return;
+        }
+        if (active && active.value) {
           const ni = el.querySelector('input[data-cpost]');
           if (ni) ni.value = active.value;
-          if (document.activeElement === active) { nodes.set(p.id, old); return; }
         }
         old.replaceWith(el);
       } else {
@@ -726,6 +739,12 @@
         if (!on) { on = true; card.style.display = 'block'; }
         $('eventCounts').textContent = (data.total || 0) + ' posts · ' + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
+        if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
+          const alive = new Set(data.ids);
+          for (const [id, node] of [...nodes]) {
+            if (!alive.has(id)) { node.remove(); nodes.delete(id); }
+          }
+        }
         for (const p of (data.posts || [])) {
           newestAct = Math.max(newestAct, p.act || p.ts);
           place(p);
