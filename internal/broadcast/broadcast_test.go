@@ -370,3 +370,31 @@ func TestCleanRunDir(t *testing.T) {
 		t.Error("recent segment should be kept (mid-download guests)")
 	}
 }
+
+// TestCaptureNote verifies the helper's hogged-output markers flow through the
+// formatScanner into Status().Note (the Roon Exclusive-Mode field failure).
+func TestCaptureNote(t *testing.T) {
+	dir := t.TempDir()
+	runDir := filepath.Join(dir, "run")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	b := New(testCfg("ffmpeg"), runDir, "", "rtsp://127.0.0.1:8554/party")
+	fs := newFormatScanner(b)
+
+	if n := b.Status().Note; n != "" {
+		t.Fatalf("fresh broadcaster note = %q, want empty", n)
+	}
+	fs.Write([]byte("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=742\n"))
+	if n := b.Status().Note; !strings.Contains(n, "EXCLUSIVE") {
+		t.Fatalf("after CAPTURE-BLOCKED note = %q, want exclusive-control warning", n)
+	}
+	fs.Write([]byte("ppcapture: CAPTURE-OK\n"))
+	if n := b.Status().Note; n != "" {
+		t.Fatalf("after CAPTURE-OK note = %q, want cleared", n)
+	}
+	fs.Write([]byte("ppcapture: CAPTURE-STALLED no-frames\n"))
+	if n := b.Status().Note; !strings.Contains(n, "stalled") {
+		t.Fatalf("after CAPTURE-STALLED note = %q, want stall warning", n)
+	}
+}

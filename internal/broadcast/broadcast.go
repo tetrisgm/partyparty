@@ -67,9 +67,10 @@ type Broadcaster struct {
 	startedAt  time.Time
 	lastError  string
 
-	logMu    sync.Mutex
-	logLines []string
-	diag     io.Writer // session diagnostics tee (nil = off)
+	logMu       sync.Mutex
+	logLines    []string
+	diag        io.Writer // session diagnostics tee (nil = off)
+	captureNote string    // non-fatal capture warning (hogged output device), surfaced in Status
 }
 
 func New(cfg config.Config, runDir, helperPath, ingestURL string) *Broadcaster {
@@ -151,6 +152,18 @@ func newFormatScanner(b *Broadcaster) *formatScanner {
 
 func (w *formatScanner) Write(p []byte) (int, error) {
 	w.b.pushLog(string(p))
+	// Capture-health markers from the helper (a hogged/exclusive output device
+	// silently kills the tap; the helper detects the frame stall and says so).
+	if s := string(p); strings.Contains(s, "ppcapture: CAPTURE-") {
+		switch {
+		case strings.Contains(s, "CAPTURE-BLOCKED"):
+			w.b.setCaptureNote("Another app has taken EXCLUSIVE control of your Mac's audio output (e.g. Roon or Audirvana in Exclusive Mode) — partyparty can't capture it, so guests hear nothing. Turn OFF Exclusive/Hog Mode for this output in that app (or point it at a different device, or route it through BlackHole). It recovers on its own once released; if not, Stop and Go Live again.")
+		case strings.Contains(s, "CAPTURE-STALLED"):
+			w.b.setCaptureNote("The Mac's audio capture stalled — no sound is reaching guests. Try switching your output device (menu bar volume) or Stop and Go Live again.")
+		case strings.Contains(s, "CAPTURE-OK"):
+			w.b.setCaptureNote("")
+		}
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.done {
@@ -186,6 +199,20 @@ func (b *Broadcaster) pushLog(chunk string) {
 	if len(b.logLines) > 250 {
 		b.logLines = b.logLines[len(b.logLines)-250:]
 	}
+}
+
+// setCaptureNote records/clears the non-fatal capture warning (guarded by
+// logMu, like the log ring — the formatScanner that calls it never holds b.mu).
+func (b *Broadcaster) setCaptureNote(s string) {
+	b.logMu.Lock()
+	b.captureNote = s
+	b.logMu.Unlock()
+}
+
+func (b *Broadcaster) getCaptureNote() string {
+	b.logMu.Lock()
+	defer b.logMu.Unlock()
+	return b.captureNote
 }
 
 func (b *Broadcaster) Log() []string {
@@ -315,6 +342,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	b.Stop()
 
+	b.setCaptureNote("") // fresh start: drop any stale hogged-output warning
 	b.mu.Lock()
 	b.gen++
 	myGen := b.gen
@@ -597,10 +625,10 @@ func (b *Broadcaster) Status() Status {
 	if !b.startedAt.IsZero() {
 		since = b.startedAt.UnixMilli()
 	}
-	note := ""
+	note := b.getCaptureNote() // hogged/exclusive output device — highest priority
 	// A capture rate this low means the OUTPUT device is a Bluetooth headset
 	// in call (HFP) mode — guests would hear telephone-grade audio all night.
-	if (b.state == "live" || b.state == "starting") && b.device == "mac" && b.inRate > 0 && b.inRate < 44100 {
+	if note == "" && (b.state == "live" || b.state == "starting") && b.device == "mac" && b.inRate > 0 && b.inRate < 44100 {
 		note = fmt.Sprintf("Your Mac's audio output is running at %d kHz — that's Bluetooth-headset (call) quality, and guests hear it too. Switch the Mac's output to speakers or wired, then Stop and Go Live again.", b.inRate/1000)
 	}
 	if note == "" && b.state == "starting" && !b.startedAt.IsZero() && time.Since(b.startedAt) > 6*time.Second {

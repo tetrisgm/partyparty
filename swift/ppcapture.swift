@@ -37,8 +37,13 @@ final class PCMRing {
         buf = [Float32](repeating: 0, count: cap)
     }
 
+    private(set) var totalPushed = 0 // monotonic frame counter for the stall monitor
+
+    func pushedCount() -> Int { cond.lock(); defer { cond.unlock() }; return totalPushed }
+
     func push(_ p: UnsafePointer<Float32>, _ n: Int) {
         cond.lock()
+        totalPushed &+= n
         if used + n > cap {
             dropped += n // never block the HAL thread
             if dropped % (48000 * 2) < n { elog("ppcapture: output backpressure — dropped ~\(dropped / 96000)s so far") }
@@ -155,4 +160,56 @@ signal(SIGTERM) { _ in exit(0) }
 elog("ppcapture: FORMAT \(rate) \(ch)")
 elog("ppcapture: capturing system audio via Core Audio tap (\(rate) Hz, \(ch) ch, f32le)")
 Thread.detachNewThread { ring.writerLoop() }
+
+// Capture-health monitor. The global tap goes SILENT (no IOProc frames) when
+// another app takes EXCLUSIVE/HOG mode of the output device — Roon, Audirvana,
+// etc. in "Exclusive Mode" bypass the system mixer entirely, so there's nothing
+// to tap. The Mac side otherwise can't tell (ffmpeg keeps running on an empty
+// pipe), so we detect the frame stall here, attribute it to hog mode when we
+// can, and print machine-readable markers the parent surfaces to the DJ.
+func defaultOutputDevice() -> AudioObjectID {
+    var dev = AudioObjectID(0)
+    var addr = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size = UInt32(MemoryLayout<AudioObjectID>.size)
+    AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev)
+    return dev
+}
+func hogOwner(_ dev: AudioObjectID) -> pid_t {
+    var owner = pid_t(-1)
+    var addr = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyHogMode,
+        mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size = UInt32(MemoryLayout<pid_t>.size)
+    AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &owner)
+    return owner
+}
+Thread.detachNewThread {
+    let me = getpid()
+    var last = ring.pushedCount()
+    var stalledFor = 0
+    var flagged = false
+    while true {
+        Thread.sleep(forTimeInterval: 2)
+        let now = ring.pushedCount()
+        let advancing = now != last
+        last = now
+        if advancing {
+            if flagged { elog("ppcapture: CAPTURE-OK"); flagged = false }
+            stalledFor = 0
+            continue
+        }
+        stalledFor += 2
+        if stalledFor >= 4 && !flagged {
+            flagged = true
+            let owner = hogOwner(defaultOutputDevice())
+            if owner > 0 && owner != me {
+                elog("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=\(owner)")
+            } else {
+                elog("ppcapture: CAPTURE-STALLED no-frames")
+            }
+        }
+    }
+}
 dispatchMain()

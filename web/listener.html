@@ -273,7 +273,7 @@
     // mid-interruption listener about to auto-resume) should come back playing,
     // not parked silent at "Tap to listen" while the party continues.
     function reloadKeepingIntent(){
-      try { sessionStorage.setItem('pp.resume', (started || resumeWanted) && !userPaused ? '1' : '0'); } catch (e) {}
+      try { sessionStorage.setItem('pp.resume', (started || resumeWanted) && !userPaused && !yielded ? '1' : '0'); } catch (e) {}
       location.reload();
     }
     function considerReload(serverVersion){
@@ -403,7 +403,7 @@
     // Aligned RESUME: muted "pause" keeps playing, and field logs show it
     // drifting ~1s+ behind the room — unmuting must snap back to the target
     // (one-shot, same sanctioned move as the aligned start).
-    function resumeGuest(){ userPaused = false; player.muted = false; if (player.paused) player.play().catch(()=>{}); setPlayingUI(true); setStatus('live'); try { alignSeek(latencyTarget || 5); } catch (e) {} }
+    function resumeGuest(){ userPaused = false; yielded = false; claimAudio(); player.muted = false; if (player.paused) player.play().catch(()=>{}); setPlayingUI(true); setStatus('live'); try { alignSeek(latencyTarget || 5); } catch (e) {} }
 
     // Fast, bounded retries: after a Wi-Fi blip we want audio back in ~1-2s,
     // not tens of seconds of exponential backoff (every second of stall is
@@ -574,7 +574,46 @@
     }
 
     let userPaused = false; // deliberate pause (muted): never auto-resumed
+
+    // ── Single active tab ──
+    // Two open tabs playing the SAME stream = phasing/echo + doubled roster.
+    // Whichever tab most recently STARTED playing owns the audio; the others
+    // yield (pause + "playing in another tab — tap to listen here"). Claims
+    // carry a timestamp so the newest wins with no ping-pong (yielding never
+    // re-claims). BroadcastChannel where available, localStorage otherwise.
+    const tabId = 'tab-' + Math.random().toString(36).slice(2, 10);
+    let myClaim = 0, yielded = false, bchan = null;
+    try { bchan = new BroadcastChannel('pp-audio'); } catch (e) {}
+    function claimAudio(){
+      myClaim = Date.now();
+      yielded = false;
+      const msg = { tabId, ts: myClaim };
+      if (bchan) { try { bchan.postMessage(msg); } catch (e) {} }
+      try { localStorage.setItem('pp.audioclaim', JSON.stringify(msg)); } catch (e) {}
+    }
+    function onClaim(msg){
+      if (!msg || msg.tabId === tabId || msg.ts <= myClaim) return;
+      myClaim = msg.ts; // adopt so we don't out-race a fresher claim later
+      // Only yield if WE are the one currently making sound.
+      if (started && !userPaused && !player.muted && !player.paused) {
+        yielded = true;
+        // MUTE as well as pause: any path that later resurrects playback
+        // (DJ stop→restart auto-resume, version self-reload) then comes back
+        // SILENT instead of echoing the active tab — reclaim unmutes.
+        player.muted = true;
+        try { player.pause(); } catch (e) {}
+        setPlayingUI(false);
+        setStatus('playing on another tab — tap to listen here');
+      }
+    }
+    if (bchan) bchan.onmessage = (e) => onClaim(e.data);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'pp.audioclaim' && e.newValue) { try { onClaim(JSON.parse(e.newValue)); } catch (err) {} }
+    });
+
     btn.addEventListener('click', () => {
+      // A yielded tab (another tab took the audio) reclaims on tap.
+      if (yielded) { yielded = false; claimAudio(); userPaused = false; player.muted = false; recoverPlayback(); return; }
       // Interruption recovery: element paused by the SYSTEM (call/Siri) or
       // STALLED (no current data — the frozen-tab case) while not deliberately
       // muted. This tap means "come back", not "mute me". (Muted-pause keeps
@@ -582,11 +621,11 @@
       if (started && !userPaused && !player.muted && (player.paused || player.readyState < 3)) { recoverPlayback(); return; }
       if (started && !player.muted) { pauseGuest(); }              // listening → mute (stay warm)
       else if (started) { resumeGuest(); }                          // muted → unmute (instant, in sync)
-      else { if (!ready) return; userPaused = false; player.muted = false; mediaSession(); play().catch(()=>{}); } // first play (register media session in the gesture)
+      else { if (!ready) return; userPaused = false; player.muted = false; mediaSession(); claimAudio(); play().catch(()=>{}); } // first play (register media session in the gesture)
     });
 
     let errRetries = 0;
-    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; lastProgress = Date.now(); alignOnce(); if (!player.muted) { setPlayingUI(true); setStatus('live'); } });
+    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; lastProgress = Date.now(); alignOnce(); if (!player.muted && !yielded) { claimAudio(); setPlayingUI(true); setStatus('live'); } });
     player.addEventListener('waiting', () => {
       stalledSinceBeat = true;
       if (started) setStatus('buffering…'); // prebuffer 'waiting' must not flash a pill at an idle guest
@@ -633,8 +672,12 @@
       // for it, resume as soon as we can. If the resume is REJECTED (active
       // call), show the truth instead of a green "Playing" over silence; the
       // poll nudge keeps retrying and 'playing' restores the UI on success.
+      if (yielded) { setPlayingUI(false); setStatus('playing on another tab — tap to listen here'); return; }
       if (started && !userPaused) {
-        player.play().catch(() => { setPlayingUI(false); setStatus('paused by your phone — back soon'); });
+        // Try to resume (phone call/Siri ending). iOS blocks gesture-less
+        // resume after an AirPods/route change, so if it's rejected show a
+        // clear one-tap "Resume" instead of pretending it'll come back alone.
+        player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
         return;
       }
       setPlayingUI(false); if (started) setStatus('paused');
@@ -662,9 +705,19 @@
       // Coming back to the tab: reconnect if the interruption outlived the
       // live window, and check for a newer page version IMMEDIATELY (a tab
       // parked in the background for days must not keep running old code).
-      if (started && !userPaused) recoverPlayback();
+      // Foregrounding a yielded tab reclaims — you're clearly using THIS one.
+      if (yielded) { yielded = false; claimAudio(); userPaused = false; player.muted = false; recoverPlayback(); }
+      else if (started && !userPaused) recoverPlayback();
       poll();
     });
+    // AirPods / audio-route change: iOS pauses on removal and does NOT
+    // auto-resume on reinsert. Best-effort resume tied to the hardware event
+    // (may still need a tap on stricter iOS — the button says "Resume").
+    try {
+      navigator.mediaDevices && navigator.mediaDevices.addEventListener('devicechange', () => {
+        if (started && !userPaused && !yielded && player.paused) recoverPlayback();
+      });
+    } catch (e) {}
 
     function mediaSession(){
       if (!('mediaSession' in navigator)) return;
@@ -687,7 +740,7 @@
     let resumeWanted = false, resumeTries = 0;
     try { resumeWanted = sessionStorage.getItem('pp.resume') === '1'; sessionStorage.removeItem('pp.resume'); } catch (e) {}
     function stopPlayback(){
-      resumeWanted = started && !userPaused;
+      resumeWanted = started && !userPaused && !yielded; // a yielded tab must not auto-resume into audio
       try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
       try { player.removeAttribute('src'); player.load(); } catch (e) {}
       started = false; attached = false; ready = false; errRetries = 0;
@@ -724,7 +777,7 @@
           // — no re-tap, no reload (the element keeps its user-activation).
           // Cleared by 'playing' on success; a browser that blocks the
           // gesture-less play gets a few retries, then the bright tap button.
-          if (live && resumeWanted && ready && !userPaused) {
+          if (live && resumeWanted && ready && !userPaused && !yielded) {
             if (++resumeTries > 5) { resumeWanted = false; }
             else play().catch(() => {});
           }
@@ -733,7 +786,7 @@
         // *and* a STALL that never fired a pause event (Seth's frozen-tab case:
         // came back paused:false but stuck) — recoverPlayback re-attaches once
         // progress has been stale past the live window.
-        else if (started && live && !userPaused && (player.paused || stale())) {
+        else if (started && live && !userPaused && !yielded && (player.paused || stale())) {
           recoverPlayback();
         }
       } catch (e) { if (!started) setStatus('offline'); }
@@ -824,7 +877,7 @@
       maybeRejoin(); // the ONLY recovery — fires under lock too (this tick keeps running there, field-verified)
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
-      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
+      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&del=' + (usingLL() ? 'llhls' : 'hls')
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION);
