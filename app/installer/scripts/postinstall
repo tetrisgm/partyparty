@@ -1,0 +1,7 @@
+#!/bin/bash
+# Home-domain install runs as the user → launch the freshly-installed app so the
+# console opens automatically (pkgs don't auto-launch otherwise).
+APP="$HOME/Applications/partyparty.app"
+[ -d "$APP" ] || APP="/Applications/partyparty.app"
+/usr/bin/open "$APP" 2>/dev/null || true
+exit 0

@@ -47,12 +47,19 @@ ditto -c -k --keepParent "$APP" "dist/partyparty-$VERSION.zip"
 PKGSTAGE="dist/pkg-stage"
 rm -rf "$PKGSTAGE" && mkdir -p "$PKGSTAGE"
 ditto "$APP" "$PKGSTAGE/partyparty.app"
+# --scripts: postinstall launches the app (pkgs don't auto-launch).
 pkgbuild --identifier net.ramine.partyparty --version "$VERSION" \
-  --install-location /Applications --root "$PKGSTAGE" "dist/pp-component.pkg"
+  --install-location /Applications --root "$PKGSTAGE" \
+  --scripts "$ROOT/app/installer/scripts" "dist/pp-component.pkg"
+# Custom wizard: branded Welcome + Conclusion + corner art (light/dark aware).
 cat > dist/distribution.xml <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
   <title>partyparty</title>
+  <welcome file="welcome.html" mime-type="text/html"/>
+  <conclusion file="conclusion.html" mime-type="text/html"/>
+  <background file="background.png" alignment="bottomleft" scaling="none"/>
+  <background-darkAqua file="background.png" alignment="bottomleft" scaling="none"/>
   <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
   <options customize="never" require-scripts="false"/>
   <choices-outline><line choice="default"/></choices-outline>
@@ -60,7 +67,8 @@ cat > dist/distribution.xml <<XML
   <pkg-ref id="net.ramine.partyparty" version="$VERSION">pp-component.pkg</pkg-ref>
 </installer-gui-script>
 XML
-productbuild --distribution dist/distribution.xml --package-path dist \
+productbuild --distribution dist/distribution.xml --resources "$ROOT/app/installer" \
+  --package-path dist \
   --sign "Developer ID Installer: Ramine Darabiha (52WM463HR2)" \
   "dist/partyparty-$VERSION.pkg"
 rm -rf "$PKGSTAGE" dist/pp-component.pkg dist/distribution.xml
