@@ -288,15 +288,44 @@
   const savedQ = localStorage.getItem('pp.bitrate');
   if (savedQ) $('quality').value = savedQ;
   $('mono').checked = localStorage.getItem('pp.mono') === '1';
-  let lastLt = null;
+  let lastLt = null, lastStatus = null;
   function copySync(){
-    const lt = lastLt; if (!lt || !lt.count) return;
-    const txt = 'partyparty sync — ' + lt.count + ' phone(s)\n'
-      + 'Delay from DJ (glass-to-glass): ~' + (lt.medMs / 1000).toFixed(1) + ' s median\n'
-      + 'Dancer↔dancer spread: ' + Math.round(lt.spreadMs) + ' ms '
-      + '(behind live: closest ' + Math.round(lt.minMs) + ' ms / median ' + Math.round(lt.medMs) + ' ms / furthest ' + Math.round(lt.maxMs) + ' ms)';
+    const s = lastStatus; if (!s) return;
+    const lt = s.latency || {};
+    const roster = s.roster || [];
+    const spreadOf = (list) => { const v = list.filter(r=>r.hasLatency).map(r=>r.latencyMs).sort((a,b)=>a-b); return v.length ? {n:v.length, spread:Math.round(v[v.length-1]-v[0]), min:Math.round(v[0]), med:Math.round(v[Math.floor(v.length/2)]), max:Math.round(v[v.length-1])} : null; };
+    const ll = spreadOf(roster.filter(r=>r.delivery==='llhls'));
+    const pl = spreadOf(roster.filter(r=>r.delivery!=='llhls'));
+    const secs = (ms) => (ms/1000).toFixed(2) + ' s';
+    const L = [];
+    L.push('partyparty sync report');
+    L.push(new Date().toLocaleString() + ' · app v' + (s.appVersion || '?'));
+    L.push('');
+    L.push('Listeners: ' + roster.length + (roster.filter(r=>r.delivery==='llhls').length ? ' (' + roster.filter(r=>r.delivery==='llhls').length + ' low-latency)' : ''));
+    if (typeof s.latencyTarget === 'number') L.push('Room target: ~' + s.latencyTarget.toFixed(1) + ' s');
+    if (lt.count) {
+      L.push('Delay from DJ (glass-to-glass): ~' + (lt.medMs/1000).toFixed(2) + ' s median');
+      L.push('Dancer↔dancer spread: ' + Math.round(lt.spreadMs) + ' ms  (closest ' + Math.round(lt.minMs) + ' / median ' + Math.round(lt.medMs) + ' / furthest ' + Math.round(lt.maxMs) + ' ms)');
+    }
+    if (ll) L.push('  low-latency cohort: ' + ll.spread + ' ms across ' + ll.n + '  (min ' + ll.min + ' / med ' + ll.med + ' / max ' + ll.max + ')');
+    if (pl) L.push('  compatible cohort: ' + pl.spread + ' ms across ' + pl.n + '  (min ' + pl.min + ' / med ' + pl.med + ' / max ' + pl.max + ')');
+    const src = s.broadcast || {};
+    L.push('Source: ' + (src.deviceName || src.device || '?') + ' · ' + (src.bitrate || '?') + (src.channels===1?' mono':' stereo') + ' · ' + (src.delivery==='llhls'?'LL-HLS':'plain HLS'));
+    L.push('');
+    L.push('Devices:');
+    roster.forEach((r, i) => {
+      const bits = [
+        (r.delivery==='llhls' ? 'low-latency' : 'compatible'),
+        (r.hasLatency ? secs(r.latencyMs) + ' delay' : 'measuring'),
+        'buf ' + (r.bufS||0).toFixed(0) + 's',
+        (r.rate && Math.abs(r.rate-1)>0.001 ? r.rate.toFixed(2)+'x' : ''),
+        (r.stalled ? 'STALLED' : ''), (r.paused ? 'paused' : '')
+      ].filter(Boolean).join(' · ');
+      L.push('  ' + (i+1) + '. ' + (r.name || 'Guest') + '  [' + (r.ip||'?') + ']  ' + bits);
+    });
+    const txt = L.join('\n');
     if (navigator.clipboard) navigator.clipboard.writeText(txt);
-    const b = document.getElementById('copySync'); if (b) { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => b.textContent = o, 1200); }
+    const b = document.getElementById('copySync'); if (b) { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => b.textContent = o, 1400); }
   }
   { const cs = document.getElementById('copySync'); if (cs) cs.onclick = copySync; }
   { const ht = document.getElementById('latHelpToggle'), hb = document.getElementById('latHelp'); if (ht && hb) ht.onclick = () => hb.hidden = !hb.hidden; }
@@ -449,7 +478,7 @@
       const roster = s.roster || [];
       const llCount = roster.filter(r => r.delivery === 'llhls').length;
       $('listeners').textContent = roster.length + (llCount ? ' · ' + llCount + ' low-latency' : '');
-      const lt = s.latency || {}; lastLt = lt;
+      const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
         ? ((s.delivery === 'llhls' && llCount) ? '~1-2.5 s (low-latency room) · ' + s.latencyTarget.toFixed(1) + ' s for compatible fallback' : s.latencyTarget.toFixed(1) + ' s')
         : '—';

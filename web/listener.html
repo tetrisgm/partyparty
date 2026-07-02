@@ -21,8 +21,7 @@
     min-height:100dvh;padding:24px;text-align:center;overflow:hidden;
     -webkit-font-smoothing:antialiased;font-synthesis:none;letter-spacing:-.01em;
   }
-  h1{font-weight:600;font-size:28px;margin:0 0 4px;letter-spacing:-.02em}
-  .sub{color:var(--label-secondary);font-size:14px;margin:0 0 36px}
+  h1{font-weight:600;font-size:28px;margin:0 0 36px;letter-spacing:-.02em}
   .btn{
     width:200px;height:200px;border-radius:50%;border:none;cursor:pointer;
     background:var(--accent);color:#fff;font-size:17px;font-weight:600;
@@ -44,8 +43,6 @@
   .eq i:nth-child(2){animation-delay:.2s} .eq i:nth-child(3){animation-delay:.4s} .eq i:nth-child(4){animation-delay:.1s} .eq i:nth-child(5){animation-delay:.3s}
   @keyframes bounce{0%,100%{height:6px}50%{height:26px}}
   .count{color:var(--label-secondary);font-size:13px;margin-top:8px;min-height:16px}
-  .vol{margin-top:30px;width:220px;max-width:70vw;display:flex;align-items:center;gap:10px;color:var(--label-secondary)}
-  .vol input{flex:1;accent-color:var(--accent)}
   .foot{position:fixed;bottom:16px;left:0;right:0;color:var(--label-tertiary);font-size:12px;padding:0 20px}
   @media (prefers-reduced-motion:reduce){body.playing .btn,.eq i{animation:none}}
   .share{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5}
@@ -67,7 +64,6 @@
   </button>
 
   <h1 id="title">partyparty</h1>
-  <p class="sub">live from the decks</p>
 
   <button class="btn" id="btn" aria-label="Play">
     <span class="ico" id="ico">►</span>
@@ -75,13 +71,8 @@
   </button>
 
   <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-  <div class="pill"><span class="dot"></span><span id="pilltext">connecting…</span></div>
+  <div class="pill" id="pill"><span class="dot"></span><span id="pilltext">connecting…</span></div>
   <div class="count" id="count"></div>
-
-  <div class="vol">
-    <span>🔈</span>
-    <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
-  </div>
 
   <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
   <div class="statline" id="statline">v__PP_VERSION__</div>
@@ -95,7 +86,7 @@
 
   <script src="/vendor/qrcode.min.js"></script>
 
-  <audio id="player" playsinline preload="none"></audio>
+  <audio id="player" playsinline preload="auto"></audio>
   <script src="/vendor/hls.min.js"></script>
   <script>
     const player = document.getElementById('player');
@@ -213,7 +204,10 @@
       return null;
     }
 
-    function setStatus(t){ pilltext.textContent = t; }
+    // The pill only shows transient/problem states — "live" is redundant with
+    // the big play button, so it (and empty states) hide the pill entirely.
+    const pill = document.getElementById('pill');
+    function setStatus(t){ pilltext.textContent = t || ''; pill.style.display = (!t || t === 'live') ? 'none' : ''; }
     function setPlayingUI(on){
       document.body.classList.toggle('playing', on);
       ico.textContent = on ? '❚❚' : '►';
@@ -290,11 +284,14 @@
 
     // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a
     // guest never taps into silence and thinks it's broken; then "Tap to listen".
+    // Idle button carries the state itself (dim "Preparing…" → bright "Tap to
+    // listen"); no redundant status text. The pill stays hidden while idle.
     function updateIdleButton(){
       if (started) return;
-      if (!live) { btnlabel.textContent = 'Waiting for DJ'; btn.classList.remove('preparing'); return; }
-      if (!ready) { btnlabel.textContent = 'Preparing…'; btn.classList.add('preparing'); setStatus('getting ready…'); }
-      else { btnlabel.textContent = 'Tap to listen'; btn.classList.remove('preparing'); setStatus('ready — tap to listen'); }
+      setStatus('');
+      if (!live) { btnlabel.textContent = 'Waiting for DJ'; btn.classList.remove('preparing'); }
+      else if (!ready) { btnlabel.textContent = 'Preparing…'; btn.classList.add('preparing'); }
+      else { btnlabel.textContent = 'Tap to listen'; btn.classList.remove('preparing'); }
     }
 
     // On load, hls.js starts BUFFERING immediately (paused) so playback is
@@ -303,9 +300,15 @@
     async function prebuffer(){
       if (attached || started || !STREAM || !live) return;
       if (LLSTREAM && llUsable === null) llUsable = (location.protocol === 'https:') ? true : await probeLL(LLSTREAM);
-      if (useNative) { ready = true; updateIdleButton(); return; }
       attached = true;
-      if (!attachSafe()) return;
+      if (!attachSafe()) return; // native: sets src (desktop Safari preloads); iOS defers until the gesture
+      if (useNative) {
+        // iOS can't buffer before a gesture, so it's tappable immediately;
+        // desktop Safari preloads via preload="auto" and readyState will climb.
+        ready = true; updateIdleButton();
+        try { player.load(); } catch (e) {}
+        return;
+      }
       updateIdleButton();
       const t0 = Date.now();
       const iv = setInterval(() => {
@@ -362,13 +365,6 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') { syncClock(); if (started && !userPaused) player.play().catch(()=>{}); }
     });
-    document.getElementById('vol').addEventListener('input', e => { player.volume = Number(e.target.value); });
-    // iOS ignores programmatic volume (hardware buttons only) — hide the dead slider.
-    try {
-      player.volume = 0.7;
-      if (Math.abs(player.volume - 0.7) > 0.01) document.querySelector('.vol').style.display = 'none';
-      else player.volume = 1;
-    } catch (e) {}
 
     function mediaSession(){
       if (!('mediaSession' in navigator)) return;
@@ -393,7 +389,9 @@
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         titleEl.textContent = s.name || 'partyparty';
         live = s.broadcast && s.broadcast.state === 'live';
-        countEl.textContent = s.listeners ? ('● ' + s.listeners + ' listening') : '';
+        // "others" = everyone but you (you're in the count once you're playing).
+        const others = Math.max(0, (s.listeners || 0) - (started ? 1 : 0));
+        countEl.textContent = others ? ('● ' + others + ' other' + (others > 1 ? 's' : '') + ' listening') : '';
         if (!started) { updateIdleButton(); prebuffer(); }
         // Keep-waiting-and-resume: if the DJ's Mac was killed and came back (or
         // the stream dropped), a guest who was playing just picks up again —
