@@ -34,6 +34,10 @@ type Options struct {
 	Bitrate  string  // e.g. "256k"; "" = config default
 	Channels int     // 1 = mono, 2 = stereo; 0 = config default
 	HLSTime  float64 // segment length in seconds; 0 = config default
+	// RecordPath: also write the encoded set to this file (ADTS/AAC — raw and
+	// unkillable: no finalization step, so a crash mid-set loses nothing).
+	// "" = no recording. llhls delivery only (it rides the tee).
+	RecordPath string
 }
 
 // Broadcaster manages the capture pipeline: an FFmpeg process writing a live
@@ -201,10 +205,11 @@ func (b *Broadcaster) cleanRunDir() {
 // argSnap freezes the mutable encode settings for one Start — buildArgs runs
 // outside the lock and must not read live fields.
 type argSnap struct {
-	bitrate  string
-	channels int
-	hlsTime  float64
-	delivery string
+	bitrate    string
+	channels   int
+	hlsTime    float64
+	delivery   string
+	recordPath string
 }
 
 func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) []string {
@@ -266,11 +271,14 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 		// per-device (rebind-protecting routers, hostile resolvers) — engaging
 		// LL can never hand anyone a dead stream. use_fifo + onfail=ignore: a
 		// dying MediaMTX must never stall or kill the plain output.
-		args = append(args,
-			"-f", "tee", "-map", "0:a",
-			"["+hlsOpts+"]"+b.playlist+
-				"|[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]"+b.ingestURL,
-		)
+		tee := "[" + hlsOpts + "]" + b.playlist +
+			"|[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]" + b.ingestURL
+		if snap.recordPath != "" {
+			// Third leg: the set recording. Same encode, zero extra CPU;
+			// onfail=ignore so a full disk can never kill the live broadcast.
+			tee += "|[f=adts:onfail=ignore]" + snap.recordPath
+		}
+		args = append(args, "-f", "tee", "-map", "0:a", tee)
 	} else {
 		args = append(args,
 			"-muxdelay", "0", "-muxpreload", "0", "-flush_packets", "1",
@@ -336,7 +344,7 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 
 	// Snapshot the mutable encode settings while we still hold the lock —
 	// buildArgs runs later, outside it, and must not race SetDelivery/Start.
-	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery}
+	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery, recordPath: opts.RecordPath}
 
 	var helper *exec.Cmd
 	var pr, pw *os.File

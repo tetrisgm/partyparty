@@ -23,6 +23,7 @@ import (
 	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
+	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
 	"partyparty/internal/server"
@@ -203,6 +204,19 @@ func main() {
 	} else if cfg.Delivery == "llhls" {
 		bc.SetDelivery("hls")
 	}
+	// The event's social layer lives in a normal, Finder-visible folder — the
+	// DJ can open it and drag media/recordings straight out. Feed, uploads,
+	// and set recordings all land here; a restart mid-party resumes the same
+	// event. Fail-soft: no store just means no feed, never no broadcast.
+	var events *event.Store
+	if home, err := os.UserHomeDir(); err == nil {
+		if st, err := event.Open(filepath.Join(home, "Music", "partyparty")); err == nil {
+			events = st
+		} else {
+			log.Printf("event store unavailable: %v — feed disabled", err)
+		}
+	}
+
 	handler := server.New(server.Deps{
 		Config:      cfg,
 		Broadcaster: bc,
@@ -210,6 +224,7 @@ func main() {
 		RunDir:      runDir,
 		Web:         web,
 		MTX:         mtx,
+		Events:      events,
 		Version:     appVersion,
 	})
 

@@ -20,6 +20,7 @@ import (
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/devices"
+	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
 	"partyparty/internal/stats"
@@ -32,6 +33,10 @@ type Deps struct {
 	RunDir      string
 	Web         fs.FS
 	MTX         *mediamtx.Server // nil if mediamtx unavailable (LL-HLS disabled)
+
+	// Events is the party's social layer (feed + media + recordings).
+	// nil disables the feed endpoints.
+	Events *event.Store
 
 	// Version is the app build version — shown in UIs and broadcast to clients
 	// so stale player pages refresh themselves after an update.
@@ -109,7 +114,12 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.vendor.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/hls/"):
 		s.handleHLS(w, r)
+	case strings.HasPrefix(p, "/media/"):
+		s.handleMedia(w, r)
 	case strings.HasPrefix(p, "/api/"):
+		if s.handleFeedAPI(w, r) {
+			return
+		}
 		s.handleAPI(w, r)
 	default:
 		if s.Config.Captive {
@@ -197,6 +207,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
 			"roster":         s.Listeners.Roster(),
+			"event":          s.eventState(),
 		})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.
@@ -300,6 +311,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			opts.Channels = 1
 		case "0", "false":
 			opts.Channels = 2
+		}
+		// Record the set by default (opt-out via record=0): the event page can
+		// publish it later, and a recording nobody wanted deletes in one click.
+		if s.Events != nil && q.Get("record") != "0" && s.Broadcaster.Delivery() == "llhls" {
+			opts.RecordPath = s.Events.RecordingPath()
 		}
 		// One fixed LL timing profile now (no latency modes, no MediaMTX
 		// bouncing) — but a start must still revive a silently-dead MediaMTX,

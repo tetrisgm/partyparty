@@ -1,0 +1,167 @@
+package server
+
+import (
+	"encoding/json"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+
+	"partyparty/internal/event"
+)
+
+// The event feed: guests post text + photos/videos from the player page; the
+// DJ sees, posts to, and moderates the same feed from the console. Guests are
+// pseudonymous (fun name + emoji chosen client-side); their private cid rides
+// along server-side only, as the future "claim my posts" proof.
+
+// isDJ: the console is the app's own WKWebView on localhost — loopback is the
+// DJ, everyone else on the LAN is a guest. Same trust model as /api/shutdown.
+func (s *srv) isDJ(r *http.Request) bool {
+	ip := clientIP(r)
+	return ip == "127.0.0.1" || ip == "::1" || ip == "1"
+}
+
+func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
+	if s.Events == nil {
+		return false
+	}
+	switch r.URL.Path {
+	case "/api/feed":
+		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+		posts, total, mediaCount := s.Events.Feed(since)
+		if posts == nil {
+			posts = []event.Post{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"title": s.Events.Title(), "posts": posts,
+			"total": total, "media": mediaCount, "dj": s.isDJ(r),
+		})
+	case "/api/post":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		var body struct {
+			CID    string        `json:"cid"`
+			Author string        `json:"author"`
+			Emoji  string        `json:"emoji"`
+			Text   string        `json:"text"`
+			Media  []event.Media `json:"media"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		p, claimToken, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, s.isDJ(r))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		resp := map[string]any{"ok": true, "id": p.ID}
+		if claimToken != "" {
+			// First post from this guest: hand them their keepsake claim link
+			// exactly once. Token rides in the URL FRAGMENT (never reaches
+			// servers/logs); only its hash is stored here.
+			resp["claimUrl"] = "https://party.ramine.net/e/" + filepath.Base(s.Events.Dir()) + "/claim#g=" + claimToken
+		}
+		writeJSON(w, http.StatusOK, resp)
+	case "/api/upload":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, event.MaxUpload+(1<<20))
+		f, hdr, err := r.FormFile("file")
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
+			return true
+		}
+		defer f.Close()
+		m, err := s.Events.SaveMedia(hdr.Filename, f)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, m)
+	case "/api/guest-contact":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		var body struct{ CID, Contact string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if err := s.Events.SetContact(body.CID, body.Contact); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/post-delete":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.Delete(r.URL.Query().Get("id")); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/event-fresh":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.Fresh(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/open-media":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if runtime.GOOS == "darwin" {
+			_ = exec.Command("open", s.Events.Dir()).Start()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dir": s.Events.Dir()})
+	default:
+		return false
+	}
+	return true
+}
+
+// eventState summarizes the feed for /api/status (console header + badges).
+func (s *srv) eventState() map[string]any {
+	if s.Events == nil {
+		return nil
+	}
+	_, total, mediaCount := s.Events.Feed(1 << 62) // counts only, no post bodies
+	return map[string]any{
+		"title": s.Events.Title(),
+		"posts": total,
+		"media": mediaCount,
+		"dir":   s.Events.Dir(),
+	}
+}
+
+// handleMedia serves uploaded files (inline, cacheable — ids are immutable).
+func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
+	if s.Events == nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/media/")
+	p, ok := s.Events.MediaPath(id)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	http.ServeFile(w, r, p)
+}

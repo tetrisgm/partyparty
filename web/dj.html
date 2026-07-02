@@ -169,6 +169,30 @@
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
+
+    <!-- The party wall: same feed the guests see, plus moderation. Posts,
+         photos, videos and the set recordings all live in one Finder folder. -->
+    <div class="card" id="eventCard" style="display:none">
+      <div class="cardhead">
+        <h2 id="eventTitle">the party wall</h2>
+        <span class="muted" id="eventCounts"></span>
+      </div>
+      <div class="composer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
+        <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Post to the wall as the DJ…" style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="ghost" id="djAttachBtn" style="font-size:12px">📎 Attach</button>
+          <span class="muted" id="djAttachN" style="font-size:11px;align-self:center"></span>
+          <button class="go" id="djPostBtn" style="margin-left:auto;font-size:12px">Post</button>
+        </div>
+        <input type="file" id="djFiles" accept="image/*,video/*,audio/*" multiple hidden>
+      </div>
+      <div id="djFeed"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="ghost" id="openMediaBtn" style="flex:1">Open media folder</button>
+        <button class="ghost" id="freshBtn" style="flex:1">Start a fresh wall</button>
+      </div>
+      <div class="hint">Everything guests post (and your set recordings) lands in one folder — drag straight from Finder. "Start a fresh wall" begins a new page; the old folder stays untouched.</div>
+    </div>
   </div>
 </div>
 
@@ -527,6 +551,93 @@
   loadDevices();
   refresh();
   setInterval(refresh, 1000); // latency/sync numbers should feel live, not laggy
+
+  // ── The party wall (DJ view): render + post + moderate ──
+  (() => {
+    const card = $('eventCard'), list = $('djFeed');
+    const escT = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const seen = new Set();
+    let newestTS = 0, on = false;
+    function render(p){
+      const t = new Date(p.ts);
+      const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
+      const media = (p.media || []).map(m => {
+        const src = '/media/' + encodeURIComponent(m.id);
+        if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + src + '" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px" alt=""></a>';
+        if (m.type === 'video') return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:8px"></video>';
+        return '<audio src="' + src + '" controls preload="none" style="width:220px"></audio>';
+      }).join(' ');
+      const el = document.createElement('div');
+      el.style.cssText = 'padding:9px 0;border-bottom:1px solid var(--separator);font-size:13px';
+      el.dataset.id = p.id;
+      el.innerHTML = '<div style="display:flex;gap:7px;align-items:baseline">' +
+        '<span>' + escT(p.emoji) + '</span><b>' + escT(p.author || 'someone') + '</b>' +
+        (p.dj ? '<span style="background:var(--accent);color:#fff;border-radius:5px;font-size:9px;font-weight:800;padding:1px 5px">DJ</span>' : '') +
+        '<span class="muted" style="font-size:11px">' + time + '</span>' +
+        '<button class="pdel" data-del="' + escT(p.id) + '" style="margin-left:auto;background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer">remove</button></div>' +
+        (p.text ? '<div style="margin-top:4px;color:var(--label);white-space:pre-wrap;word-break:break-word">' + escT(p.text) + '</div>' : '') +
+        (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '');
+      return el;
+    }
+    list.addEventListener('click', async (e) => {
+      const id = e.target && e.target.dataset && e.target.dataset.del;
+      if (!id) return;
+      if (e.target.textContent !== 'sure?') { e.target.textContent = 'sure?'; setTimeout(() => { e.target.textContent = 'remove'; }, 2500); return; }
+      await fetch('/api/post-delete?id=' + encodeURIComponent(id), { method:'POST' });
+      const el = list.querySelector('[data-id="' + id + '"]');
+      if (el) el.remove();
+    });
+    async function poll(){
+      try {
+        const r = await fetch('/api/feed?since=' + newestTS, { cache:'no-store' });
+        if (r.status === 404) return;
+        const data = await r.json();
+        if (!on) { on = true; card.style.display = 'block'; if (data.title) $('eventTitle').textContent = data.title; }
+        $('eventCounts').textContent = (data.total || 0) + ' posts · ' + (data.media || 0) + ' media';
+        for (const p of (data.posts || [])) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id); newestTS = Math.max(newestTS, p.ts);
+          list.insertBefore(render(p), list.firstChild);
+        }
+      } catch (e) {}
+    }
+    poll(); setInterval(poll, 5000);
+
+    $('djAttachBtn').onclick = () => $('djFiles').click();
+    $('djFiles').onchange = () => { $('djAttachN').textContent = $('djFiles').files.length ? $('djFiles').files.length + ' selected' : ''; };
+    $('djPostBtn').onclick = async () => {
+      const files = [...$('djFiles').files];
+      const text = $('djPostText').value.trim();
+      if (!text && !files.length) return;
+      $('djPostBtn').disabled = true;
+      try {
+        const media = [];
+        for (let i = 0; i < files.length; i++) {
+          $('djPostBtn').textContent = (i + 1) + '/' + files.length + '…';
+          const fd = new FormData(); fd.append('file', files[i]);
+          const r = await fetch('/api/upload', { method:'POST', body: fd });
+          const m = await r.json();
+          if (!r.ok) throw new Error(m.error || 'upload failed');
+          media.push(m);
+        }
+        const r = await fetch('/api/post', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ cid:'dj', author:'DJ', emoji:'🎧', text, media }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'post failed');
+        $('djPostText').value = ''; $('djFiles').value = ''; $('djAttachN').textContent = '';
+        poll();
+      } catch (e) { $('djAttachN').textContent = e.message; }
+      finally { $('djPostBtn').disabled = false; $('djPostBtn').textContent = 'Post'; }
+    };
+    $('openMediaBtn').onclick = () => fetch('/api/open-media', { method:'POST' });
+    $('freshBtn').onclick = () => {
+      if ($('freshBtn').textContent !== 'Really start fresh?') {
+        $('freshBtn').textContent = 'Really start fresh?';
+        setTimeout(() => { $('freshBtn').textContent = 'Start a fresh wall'; }, 3000);
+        return;
+      }
+      fetch('/api/event-fresh', { method:'POST' }).then(() => location.reload());
+    };
+  })();
 
   // In-app controls — only when running inside the native menu-bar app.
   window.ppSetLoginState = (on) => { const c = $('loginItem'); if (c) c.checked = !!on; };
