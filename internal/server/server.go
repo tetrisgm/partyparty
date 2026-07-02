@@ -20,6 +20,7 @@ import (
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/devices"
+	"partyparty/internal/diag"
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
@@ -37,6 +38,10 @@ type Deps struct {
 	// Events is the party's social layer (feed + media + recordings).
 	// nil disables the feed endpoints.
 	Events *event.Store
+
+	// Diag is the session diagnostics log (nil = off): guest joins, room
+	// snapshots, anything support would need after a bad party.
+	Diag *diag.Logger
 
 	// Version is the app build version — shown in UIs and broadcast to clients
 	// so stale player pages refresh themselves after an update.
@@ -64,6 +69,7 @@ type srv struct {
 
 	hostCache sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	bonjour   sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
+	seenCIDs  sync.Map // cid -> true (first-heartbeat join logging)
 }
 
 func New(d Deps) *Srv {
@@ -223,6 +229,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
 				lat, hasLat = f, true
 			}
+		}
+		if _, known := s.seenCIDs.LoadOrStore(key, true); !known {
+			s.Diag.Printf("guest joined: %s ip=%s plat=%s pageV=%s", s.friendlyName(clientIP(r), r.UserAgent()), clientIP(r), q.Get("plat"), q.Get("v"))
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)

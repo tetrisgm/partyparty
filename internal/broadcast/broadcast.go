@@ -69,6 +69,7 @@ type Broadcaster struct {
 
 	logMu    sync.Mutex
 	logLines []string
+	diag     io.Writer // session diagnostics tee (nil = off)
 }
 
 func New(cfg config.Config, runDir, helperPath, ingestURL string) *Broadcaster {
@@ -119,6 +120,13 @@ func (b *Broadcaster) Delivery() string {
 // SystemAudioAvailable reports whether the "mac" source can be used.
 func (b *Broadcaster) SystemAudioAvailable() bool { return b.helperPath != "" }
 
+// SetDiag tees every log-ring line into the session diagnostics file.
+func (b *Broadcaster) SetDiag(w io.Writer) {
+	b.logMu.Lock()
+	b.diag = w
+	b.logMu.Unlock()
+}
+
 // ExternalWriter lets another subprocess (MediaMTX) log into our log ring.
 func (b *Broadcaster) ExternalWriter() io.Writer { return logWriter{b} }
 
@@ -165,6 +173,9 @@ func (b *Broadcaster) pushLog(chunk string) {
 	ts := time.Now().Format("15:04:05")
 	b.logMu.Lock()
 	defer b.logMu.Unlock()
+	if b.diag != nil {
+		_, _ = b.diag.Write([]byte(chunk))
+	}
 	for _, line := range strings.Split(chunk, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if strings.TrimSpace(line) == "" {

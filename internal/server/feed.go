@@ -220,6 +220,19 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/open-logs":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if s.Diag == nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "no session log"})
+			return true
+		}
+		if runtime.GOOS == "darwin" {
+			_ = exec.Command("open", filepath.Dir(s.Diag.Path())).Start()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": s.Diag.Path()})
 	case "/api/open-media":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})

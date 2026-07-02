@@ -234,10 +234,19 @@ async function broker(request, env, pathname) {
   }
 
   // Authenticated endpoints — writes are confined to <id>.<base>.
+  // Support/admin retrieval: ADMIN_KEY (a Worker secret) may stand in for an
+  // install's own secret on the read-only dump/list/get endpoints, so field
+  // problems can be pulled up by install id without asking anyone for creds.
+  const isAdmin = env.ADMIN_KEY && body.admin === env.ADMIN_KEY;
   const id = String(body.id || "");
   if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => (o ? o.json() : null));
-  if (!rec || rec.secret !== body.secret) return jsonResp(403, { error: "bad credentials" });
+  const READ_ONLY = ["/api/broker/telemetry-dump", "/api/broker/log-list", "/api/broker/log-get"];
+  if (isAdmin && READ_ONLY.includes(pathname)) {
+    // admin bypass — read-only endpoints only
+  } else if (!rec || rec.secret !== body.secret) {
+    return jsonResp(403, { error: "bad credentials" });
+  }
 
   // The install's namespace label: its pretty slug (new installs) or its raw
   // id (pre-slug installs). Writes stay confined to that label.
@@ -281,6 +290,35 @@ async function broker(request, env, pathname) {
     if (!body.snap) return jsonResp(400, { error: "no snap" });
     await env.DL.put(`telemetry/${id}/${Date.now()}.json`, JSON.stringify(body.snap));
     return jsonResp(200, { ok: true });
+  }
+  // Session diagnostics: the app ships its gzipped session log here every few
+  // minutes (and on quit). ~50-500KB per upload, replaced per session key.
+  if (pathname === "/api/broker/log") {
+    const session = String(body.session || "").replace(/[^a-zA-Z0-9._-]/g, "");
+    if (!body.log || !session) return jsonResp(400, { error: "no log/session" });
+    let bytes;
+    try {
+      bytes = Uint8Array.from(atob(body.log), (c) => c.charCodeAt(0));
+    } catch (e) {
+      return jsonResp(400, { error: "bad base64" });
+    }
+    if (bytes.length > 6_000_000) return jsonResp(413, { error: "log too large" });
+    await env.DL.put(`logs/${id}/${session}.log.gz`, bytes);
+    return jsonResp(200, { ok: true });
+  }
+  if (pathname === "/api/broker/log-list") {
+    const list = await env.DL.list({ prefix: `logs/${id}/`, limit: 1000 });
+    return jsonResp(200, { logs: list.objects.map((o) => ({ key: o.key, size: o.size, uploaded: o.uploaded })) });
+  }
+  if (pathname === "/api/broker/log-get") {
+    const key = String(body.key || "");
+    if (!key.startsWith(`logs/${id}/`)) return jsonResp(400, { error: "bad key" });
+    const o = await env.DL.get(key);
+    if (!o) return jsonResp(404, { error: "not found" });
+    const buf = new Uint8Array(await o.arrayBuffer());
+    let b64 = "";
+    for (let i = 0; i < buf.length; i += 0x8000) b64 += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return jsonResp(200, { key, gz: btoa(b64) });
   }
   if (pathname === "/api/broker/telemetry-dump") {
     const n = Math.min(Number(body.n) || 10, 50);

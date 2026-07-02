@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -16,6 +19,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +28,7 @@ import (
 	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
+	"partyparty/internal/diag"
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
@@ -205,6 +210,28 @@ func main() {
 	} else if cfg.Delivery == "llhls" {
 		bc.SetDelivery("hls")
 	}
+	// Session diagnostics (the Plex model): one verbose file per run in
+	// ~/Library/Logs/partyparty, teeing the stdlib logger AND the broadcast
+	// log ring, plus structured events (hardware, activation, guest joins,
+	// room snapshots). Shipped to the cloud below so field problems can be
+	// diagnosed without asking anyone to screenshot a console.
+	var diagLog *diag.Logger
+	if home, err := os.UserHomeDir(); err == nil {
+		if dl, err := diag.Open(filepath.Join(home, "Library", "Logs", "partyparty")); err == nil {
+			diagLog = dl
+			log.SetOutput(io.MultiWriter(os.Stderr, diagLog))
+			id, _ := activate.InstallCreds()
+			diagLog.Printf("partyparty v%s starting (%s)", appVersion, diagLog.Session())
+			diagLog.Printf("system: macOS %s · %s · %s", cmdOut("sw_vers", "-productVersion"), cmdOut("sysctl", "-n", "hw.model"), runtime.GOARCH)
+			diagLog.Printf("install: id=%s slug=%s", id, activate.InstallSlug())
+			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
+			diagLog.Printf("config: delivery=%s bitrate=%s part=%s seg=%s", cfg.Delivery, cfg.Bitrate, cfg.PartDur, cfg.SegDur)
+			bc.SetDiag(diagLog)
+		} else {
+			log.Printf("diagnostics log unavailable: %v", err)
+		}
+	}
+
 	// The event's social layer lives in a normal, Finder-visible folder — the
 	// DJ can open it and drag media/recordings straight out. Feed, uploads,
 	// and set recordings all land here; a restart mid-party resumes the same
@@ -226,6 +253,7 @@ func main() {
 		Web:         web,
 		MTX:         mtx,
 		Events:      events,
+		Diag:        diagLog,
 		Version:     appVersion,
 	})
 
@@ -461,10 +489,36 @@ func main() {
 		go telemetryLoop(cfg.Port, bc)
 	}
 
+	// Room snapshots into the diagnostics log: every 60s while live, who's
+	// listening and how well (latency/buffer/stalls) — the after-party answer
+	// to "the sound was bad", without anyone screenshotting anything.
+	if diagLog != nil {
+		go func() {
+			for {
+				time.Sleep(60 * time.Second)
+				st := bc.Status()
+				if st.State != "live" {
+					continue
+				}
+				roster := ls.Roster()
+				h := ls.Health(true, 0)
+				diagLog.Printf("room: %d listening · health=%s · source=%s %s %dch",
+					len(roster), h.Status, st.DeviceName, st.Bitrate, st.Channels)
+				data, _ := json.Marshal(roster)
+				diagLog.Printf("roster: %s", data)
+			}
+		}()
+		go uploadLogLoop(diagLog, bc)
+	}
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 
+	if diagLog != nil {
+		diagLog.Printf("shutting down (signal)")
+		uploadLogOnce(diagLog) // final flush — best effort, bounded
+	}
 	bc.Stop()
 	if mtx != nil {
 		mtx.Stop()
@@ -472,6 +526,59 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
+}
+
+// cmdOut runs a tiny probe command for the diagnostics header ("" on failure).
+func cmdOut(name string, args ...string) string {
+	out, err := exec.Command(name, args...).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// uploadLogLoop ships the session log to the cloud every 3 minutes while it
+// keeps growing (same auth + namespace as telemetry). PARTYPARTY_TELEMETRY=0
+// disables it along with the rest of the phone-home paths.
+func uploadLogLoop(dl *diag.Logger, bc *broadcast.Broadcaster) {
+	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
+		return
+	}
+	for {
+		time.Sleep(3 * time.Minute)
+		uploadLogOnce(dl)
+	}
+}
+
+func uploadLogOnce(dl *diag.Logger) {
+	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
+		return
+	}
+	id, secret := activate.InstallCreds()
+	if id == "" {
+		return // never registered — nowhere to file it under
+	}
+	data := dl.TailIfDirty(4 << 20)
+	if data == nil {
+		return
+	}
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	_, _ = zw.Write(data)
+	_ = zw.Close()
+	base := os.Getenv("PARTYPARTY_BROKER")
+	if base == "" {
+		base = "https://party.ramine.net"
+	}
+	body, _ := json.Marshal(map[string]any{
+		"id": id, "secret": secret,
+		"session": dl.Session(),
+		"log":     base64.StdEncoding.EncodeToString(gz.Bytes()),
+	})
+	cl := &http.Client{Timeout: 15 * time.Second}
+	if resp, err := cl.Post(base+"/api/broker/log", "application/json", bytes.NewReader(body)); err == nil {
+		resp.Body.Close()
+	}
 }
 
 // humanizeActivation turns raw activation errors into console-worthy English.

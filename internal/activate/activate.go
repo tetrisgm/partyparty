@@ -239,6 +239,20 @@ func InstallCreds() (id, secret string) {
 	return rec.ID, rec.Secret
 }
 
+// InstallSlug returns this install's memorable broker slug ("fader91"), or "".
+func InstallSlug() string {
+	dir, err := stateDir()
+	if err != nil {
+		return ""
+	}
+	var rec struct{ Slug string }
+	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
+	if err != nil || json.Unmarshal(data, &rec) != nil {
+		return ""
+	}
+	return rec.Slug
+}
+
 // TokenFromEnvOrFile resolves the Cloudflare API token.
 func TokenFromEnvOrFile() string {
 	if t := strings.TrimSpace(os.Getenv("PARTYPARTY_CF_TOKEN")); t != "" {
