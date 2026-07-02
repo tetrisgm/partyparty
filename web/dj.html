@@ -186,20 +186,12 @@
         <option value="256k">Very high — 256 kbps</option>
         <option value="320k" selected>Max — 320 kbps</option>
       </select>
-      <!-- Advanced-only: sane defaults for everyone else (stereo, low latency). -->
+      <!-- Advanced-only: sane defaults for everyone else (stereo). One fixed
+           room profile now — the room aligns ~5s behind the DJ, no knob. -->
       <div class="adv">
         <label style="margin-top:12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
           <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
         </label>
-        <div id="latencyBox">
-          <label for="latency" style="margin-top:14px">Latency vs. stability</label>
-          <select id="latency">
-            <option value="low" selected>Low latency — room syncs at ~2s</option>
-            <option value="balanced">Balanced — room syncs at ~3s</option>
-            <option value="stable">Maximum stability — room syncs at ~3.5s (weakest Wi-Fi)</option>
-          </select>
-          <div class="hint">Lower latency = less buffer, so it's more sensitive to drops — step toward Stable if audio cuts out on weak Wi-Fi. Changing this while live restarts the broadcast.</div>
-        </div>
       </div>
     </div>
 
@@ -335,17 +327,8 @@
     dt.onclick = () => { detailsOn = !detailsOn; localStorage.setItem('pp.rosterDetails', detailsOn ? '1' : '0'); paint(); refresh(); };
   }
 
-  const savedL = localStorage.getItem('pp.latency');
-  if (savedL) $('latency').value = savedL;
   $('quality').onchange = () => { markExplicit(); localStorage.setItem('pp.bitrate', $('quality').value); };
   $('mono').onchange = () => { markExplicit(); localStorage.setItem('pp.mono', $('mono').checked ? '1' : '0'); };
-  // Latency changes apply immediately: restart the broadcast when live (this
-  // was a silent no-op before — the value only took effect on the next start).
-  $('latency').onchange = () => {
-    markExplicit();
-    localStorage.setItem('pp.latency', $('latency').value);
-    if (lastState === 'live' || lastState === 'starting') startBroadcast();
-  };
   // Advanced view: reveal the FFmpeg log + network cards (hidden by default).
   const advOn = localStorage.getItem('pp.adv') === '1';
   $('advToggle').checked = advOn;
@@ -361,11 +344,10 @@
     const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
     const bitrate = $('quality').value;
     const mono = $('mono').checked ? '1' : '0';
-    const latency = $('latency').value;
     localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
     try {
       const r = await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name) +
-        '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono + '&latency=' + encodeURIComponent(latency), { method:'POST' });
+        '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono, { method:'POST' });
       if (!r.ok) {
         // Never fail silently — this exact hole is how "Maximum stability
         // bricked everything" felt like a mystery instead of an error message.

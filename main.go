@@ -161,7 +161,6 @@ func main() {
 	}
 
 	var mtx *mediamtx.Server
-	var reconfigureLL func(partDur, segDur string, segCount int) error
 	var applyActivation func(certFile, keyFile string) error
 	if mtxBinPath != "" {
 		certPath, keyPath := cfg.CertFile, cfg.KeyFile
@@ -187,29 +186,8 @@ func main() {
 			log.Fatalf("mediamtx config failed: %v", err)
 		}
 		mtx = mediamtx.NewServer(mtxBinPath, cfgPath, bc.ExternalWriter())
-		// The DJ's latency modes map to LL-HLS part durations; applying one
-		// rewrites mediamtx.yml and bounces MediaMTX (a few seconds of guest
-		// rebuffer — the console warns that changing it restarts the broadcast).
-		curPart, curSeg, curCount := cfg.PartDur, cfg.SegDur, cfg.SegCount
-		reconfigureLL = func(partDur, segDur string, segCount int) error {
-			// StopWait, not Stop: the replacement must not race the dying
-			// instance for the ports (that race bricked broadcasting in the
-			// field — the new MediaMTX lost the bind and silently died).
-			mtx.StopWait()
-			if err := writeMTXConfig(partDur, segDur, segCount); err != nil {
-				return err
-			}
-			if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err != nil {
-				// Don't leave a late-binding MediaMTX alive on a config the
-				// server thinks was rejected — kill it and put the previous
-				// timing back on disk so config and curPartDur stay in step.
-				mtx.StopWait()
-				_ = writeMTXConfig(curPart, curSeg, curCount)
-				return err
-			}
-			curPart, curSeg, curCount = partDur, segDur, segCount
-			return nil
-		}
+		// One fixed LL timing profile (part/seg/count from config) — the old
+		// per-latency-mode MediaMTX bouncing is gone with the latency selector.
 		// Called by async activation: swap in the real cert and rewrite the
 		// MediaMTX config (MediaMTX isn't running yet in plain-HLS mode).
 		applyActivation = func(certFile, keyFile string) error {
@@ -226,14 +204,13 @@ func main() {
 		bc.SetDelivery("hls")
 	}
 	handler := server.New(server.Deps{
-		Config:           cfg,
-		Broadcaster:      bc,
-		Listeners:        ls,
-		RunDir:           runDir,
-		Web:              web,
-		MTX:              mtx,
-		ReconfigureLLHLS: reconfigureLL,
-		Version:          appVersion,
+		Config:      cfg,
+		Broadcaster: bc,
+		Listeners:   ls,
+		RunDir:      runDir,
+		Web:         web,
+		MTX:         mtx,
+		Version:     appVersion,
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))

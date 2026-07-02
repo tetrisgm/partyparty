@@ -154,8 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // No Go Live / Stop here: starting or killing the party is a deliberate
         // act — both live in the console only. The menu bar just monitors.
-        menu.addItem(item("Open Console", #selector(showConsole)))
-        menu.addItem(.separator())
+        menu.addItem(item("Open \(appName)", #selector(showConsole)))
         menu.addItem(item("Check for Updates…", #selector(checkUpdates)))
         menu.addItem(item("Quit \(appName)", #selector(quit)))
     }

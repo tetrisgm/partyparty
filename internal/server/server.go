@@ -32,9 +32,6 @@ type Deps struct {
 	RunDir      string
 	Web         fs.FS
 	MTX         *mediamtx.Server // nil if mediamtx unavailable (LL-HLS disabled)
-	// ReconfigureLLHLS rewrites mediamtx.yml with new LL-HLS timing and bounces
-	// MediaMTX. nil when mediamtx is unavailable.
-	ReconfigureLLHLS func(partDur, segDur string, segCount int) error
 
 	// Version is the app build version — shown in UIs and broadcast to clients
 	// so stale player pages refresh themselves after an update.
@@ -44,13 +41,6 @@ type Deps struct {
 type srv struct {
 	Deps
 	vendor http.Handler
-
-	// llMu guards curPartDur AND serializes the whole LL reconfigure/revive
-	// critical section in /api/start: two concurrent latency changes would
-	// otherwise re-create the very MediaMTX port-bind race StopWait fixed
-	// (the second StopWait sees no process and sails straight into Start).
-	llMu       sync.Mutex
-	curPartDur string
 
 	// Adaptive room-latency target: the room finds its own floor instead of a
 	// hardcoded pessimistic delay. Raised when listeners stall, decayed slowly
@@ -72,7 +62,7 @@ type srv struct {
 }
 
 func New(d Deps) *Srv {
-	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(d.Web)), curPartDur: d.Config.PartDur}}
+	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(d.Web))}}
 }
 
 // Srv is the exported handle: an http.Handler plus the async-activation hook.
@@ -304,37 +294,22 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "secure guest link isn't ready yet — hold on (needs internet once)"})
 			return
 		}
-		opts := broadcast.Options{Bitrate: validBitrate(q.Get("bitrate")), HLSTime: latencySegDur(q.Get("latency"))}
+		opts := broadcast.Options{Bitrate: validBitrate(q.Get("bitrate"))}
 		switch q.Get("mono") {
 		case "1", "true":
 			opts.Channels = 1
 		case "0", "false":
 			opts.Channels = 2
 		}
-		// In LL-HLS the latency modes are part durations, applied by rewriting
-		// mediamtx.yml and bouncing MediaMTX before ffmpeg re-pushes. llMu
-		// serializes the bounce — concurrent latency changes must queue, not
-		// race the dying instance for its ports.
-		if s.Broadcaster.Delivery() == "llhls" && s.ReconfigureLLHLS != nil {
-			s.llMu.Lock()
-			if part, seg, n := latencyPartDur(q.Get("latency")); part != "" && part != s.curPartDur {
-				if err := s.ReconfigureLLHLS(part, seg, n); err != nil {
-					s.llMu.Unlock()
-					writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency reconfigure failed: " + err.Error()})
-					return
-				}
-				s.curPartDur = part
-			} else if s.MTX != nil && !s.MTX.Running() {
-				// Same settings but MediaMTX died under us — a start must
-				// revive it, or ffmpeg pushes into the void and guests see a
-				// "live" broadcast nobody can hear.
-				if err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second); err != nil {
-					s.llMu.Unlock()
-					writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency engine failed to start: " + err.Error()})
-					return
-				}
+		// One fixed LL timing profile now (no latency modes, no MediaMTX
+		// bouncing) — but a start must still revive a silently-dead MediaMTX,
+		// or ffmpeg pushes into the void and guests see a "live" broadcast
+		// nobody can hear.
+		if s.Broadcaster.Delivery() == "llhls" && s.MTX != nil && !s.MTX.Running() {
+			if err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "low-latency engine failed to start: " + err.Error()})
+				return
 			}
-			s.llMu.Unlock()
 		}
 		s.Broadcaster.Start(device, q.Get("name"), opts)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -699,14 +674,12 @@ func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	}
 	var base float64
 	if bc.Delivery == "llhls" {
-		s.llMu.Lock()
-		pd := s.curPartDur
-		s.llMu.Unlock()
-		part := parseDurSeconds(pd)
-		if part <= 0 {
-			part = 0.5
-		}
-		base = 2.5*part + 1.0 // 500ms→2.25, 800ms→3.0, 1s→3.5
+		// ONE room profile (user decree 2026-07-02): every device aligns at a
+		// fixed ~5s behind the DJ — a deep, deliberate cushion so phones start
+		// IN SYNC (aligned start) and stay there, instead of racing to be
+		// close-to-live and drifting apart. Adaptive delta can still raise it
+		// toward ~8s on strained Wi-Fi; 10s is the decreed ceiling.
+		base = 5.0
 	} else {
 		seg := bc.SegDur
 		if seg <= 0 {
@@ -737,41 +710,6 @@ func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 		}
 	}
 	return base + s.adaptDelta
-}
-
-// latencySegDur maps a latency mode to an HLS segment length (seconds).
-// Real-world glass-to-glass ≈ 4x this (Safari parks 3x TARGETDURATION behind
-// live, plus the segment being filled), so low/balanced/stable ≈ 4s/7-8s/10s.
-// 0 = keep the configured default.
-func latencySegDur(mode string) float64 {
-	switch mode {
-	case "low":
-		return 1
-	case "balanced":
-		return 2
-	case "stable":
-		return 3
-	default:
-		return 0
-	}
-}
-
-// latencyPartDur maps a latency mode to LL-HLS timing (part duration, segment
-// duration, playlist segment count). PART-HOLD-BACK = 2.5x part (gohlslib) and
-// the room target = hold-back + ~1s player overhead, so: low → 1.25s hold-back,
-// ~2.3s room; balanced → 2s hold-back, ~3s room; stable → 2.5s hold-back,
-// ~3.5s room. These MUST stay in step with the console's latency-select labels.
-func latencyPartDur(mode string) (string, string, int) {
-	switch mode {
-	case "low":
-		return "500ms", "1s", 16 // hold-back 1.25s — the standard cushion
-	case "balanced":
-		return "800ms", "2s", 16 // hold-back 2s
-	case "stable":
-		return "1000ms", "2s", 16 // hold-back 2.5s — party Wi-Fi armor
-	default:
-		return "", "", 0
-	}
 }
 
 func lastN(s []string, n int) []string {
