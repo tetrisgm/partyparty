@@ -39,3 +39,9 @@ jobs:
 
       - name: go build
         run: go build ./...
+
+      # -race: the broadcast/mediamtx suites deliberately hammer the
+      # start/stop/supersede paths concurrently. Tests use /bin/sh stubs in
+      # place of ffmpeg/mediamtx, so the empty asset stubs above are fine.
+      - name: go test
+        run: go test -race ./...
