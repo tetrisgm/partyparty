@@ -15,7 +15,7 @@
 // white content cards). Seed data now; R2 uploads + moderation later. Interactive
 // bits are marked coming-soon (honest live preview).
 
-const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg)$/;
+const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
 
@@ -298,9 +298,11 @@ export default {
         headers.set("content-type", "application/xml");
         headers.set("cache-control", "public, max-age=60");
       } else {
-        headers.set("content-type", key.endsWith(".pkg") ? "application/octet-stream" : "application/zip");
+        headers.set("content-type",
+          key.endsWith(".dmg") ? "application/x-apple-diskimage" :
+          key.endsWith(".pkg") ? "application/octet-stream" : "application/zip");
         headers.set("content-disposition", `attachment; filename="${key}"`);
-        const isLatestAlias = key === "partyparty.zip" || key === "partyparty.pkg";
+        const isLatestAlias = key === "partyparty.zip" || key === "partyparty.pkg" || key === "partyparty.dmg";
         headers.set("cache-control", isLatestAlias ? "public, max-age=300" : "public, max-age=86400, immutable");
       }
       return new Response(request.method === "HEAD" ? null : obj.body, { headers });

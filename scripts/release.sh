@@ -43,6 +43,18 @@ xcrun notarytool submit "dist/partyparty-$VERSION.pkg" --keychain-profile pp-not
 xcrun stapler staple "dist/partyparty-$VERSION.pkg"
 spctl -a -vv -t install "dist/partyparty-$VERSION.pkg"
 
+# Classic DMG as well ("partyparty Installer"): open → drag the app onto the
+# Applications shortcut in the window → done. Notarized+stapled: no Gatekeeper
+# blocks, no privacy-settings dance.
+DMGSTAGE="dist/dmg-stage"
+rm -rf "$DMGSTAGE" && mkdir -p "$DMGSTAGE"
+ditto "$APP" "$DMGSTAGE/partyparty.app"
+ln -s /Applications "$DMGSTAGE/Applications"
+hdiutil create -volname "partyparty Installer" -srcfolder "$DMGSTAGE" -ov -format UDZO -quiet "dist/partyparty-$VERSION.dmg"
+xcrun notarytool submit "dist/partyparty-$VERSION.dmg" --keychain-profile pp-notary --wait
+xcrun stapler staple "dist/partyparty-$VERSION.dmg"
+rm -rf "$DMGSTAGE"
+
 echo ">> [3/5] sign the Sparkle appcast"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
 # click "Always Allow"). Enclosure URLs point at party.ramine.net.
@@ -55,10 +67,13 @@ fi
 echo ">> [4/5] upload to R2"
 cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
 cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
+cp "dist/partyparty-$VERSION.dmg" dist/partyparty.dmg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.zip" --file "dist/partyparty-$VERSION.zip" --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty.zip"          --file "dist/partyparty.zip"          --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.pkg" --file "dist/partyparty-$VERSION.pkg" --content-type application/octet-stream --remote
 "$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
+"$WR" r2 object put "$BUCKET/partyparty-$VERSION.dmg" --file "dist/partyparty-$VERSION.dmg" --content-type application/x-apple-diskimage --remote
+"$WR" r2 object put "$BUCKET/partyparty.dmg"          --file "dist/partyparty.dmg"          --content-type application/x-apple-diskimage --remote
 "$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
 
 echo ">> [5/5] deploy Worker + landing page"

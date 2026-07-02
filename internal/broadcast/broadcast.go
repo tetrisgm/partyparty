@@ -418,7 +418,7 @@ func (b *Broadcaster) Status() Status {
 		case "test":
 			note = "No audio yet — ffmpeg is still starting."
 		case "mac":
-			note = "No audio yet. Grant Screen Recording permission (System Settings → Privacy & Security → Screen Recording), then Stop and Start again — and make sure something is playing."
+			note = "No audio yet. Grant Screen Recording permission (System Settings → Privacy & Security → Screen Recording), then Stop and Start again — and make sure something is playing. Already enabled? macOS silently unlinks the permission when the app updates: toggle partyparty OFF and back ON in that list, then Start again."
 		default:
 			note = "No audio yet. Grant microphone permission (System Settings → Privacy & Security → Microphone) and check that your source is routed to this device."
 		}
