@@ -535,10 +535,11 @@ func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	if seg <= 0 {
 		seg = 1
 	}
-	// Field-calibrated: at 5s the first minutes were rough and the adaptive
-	// controller settled the room at 6.5s — so start there instead of making
-	// every party rediscover it.
-	base := 3*seg + 3.5 // low(1s)=6.5, balanced(2s)=9.5, stable(3s)=12.5
+	// Field-calibrated, then deliberately generous: tightness-of-room beats
+	// closeness-to-DJ (product decree). A deep park position = fat buffer on
+	// every phone = fewer stalls = fewer drift events = a tighter room all
+	// night. The DJ-to-ear delay is the price and it's explicitly accepted.
+	base := 3*seg + 7 // low(1s)=10, balanced(2s)=13, stable(3s)=16
 	s.adaptMu.Lock()
 	defer s.adaptMu.Unlock()
 	now := time.Now()

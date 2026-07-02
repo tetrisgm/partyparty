@@ -58,7 +58,7 @@ func Parse() Config {
 	flag.StringVar(&c.Codec, "codec", env("PARTYPARTY_CODEC", "aac_at"), "AAC encoder (aac_at = Apple, best on macOS; aac = portable fallback)")
 	flag.IntVar(&c.SampleRate, "sample-rate", envInt("PARTYPARTY_SAMPLE_RATE", 48000), "audio sample rate")
 	flag.IntVar(&c.HLSTime, "hls-time", envInt("PARTYPARTY_HLS_TIME", 1), "HLS segment length in seconds (lower = less latency, less drop-cushion)")
-	flag.IntVar(&c.HLSList, "hls-list", envInt("PARTYPARTY_HLS_LIST", 16), "number of segments kept in the playlist (deep window = room to sync-align well behind live)")
+	flag.IntVar(&c.HLSList, "hls-list", envInt("PARTYPARTY_HLS_LIST", 24), "number of segments kept in the playlist (deep window: the room parks ~10s behind live and needs margin on both sides)")
 	flag.StringVar(&c.Device, "device", env("PARTYPARTY_DEVICE", "auto"), "default capture device index")
 	flag.BoolVar(&c.Captive, "captive", env("PARTYPARTY_CAPTIVE", "") == "1", "answer OS connectivity probes to trigger a captive portal")
 	flag.BoolVar(&c.Tone, "tone", false, "auto-start a 440 Hz test tone on launch")

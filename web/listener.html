@@ -120,18 +120,14 @@
     const isAppleUA = /iP(hone|ad|od)/.test(navigator.userAgent)
       || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) // iPadOS masquerading as Mac
       || (/Version\/[\d.]+.*Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)); // real Safari
-    const useNative = nativeHLS && isAppleUA;
-    const platform = useNative ? 'native' : 'hls';
-    // Chrome/Firefox/Edge on iOS are WebKit shells WITHOUT real MSE — they end
-    // up on a degraded playback path that syncs noticeably worse (field-
-    // verified). Safari is the real player on iOS; nudge people there.
+    // Chrome/Firefox/Edge on iOS are WebKit shells: same native HLS player as
+    // Safari underneath, but their (Managed)MSE support is flaky — hls.js there
+    // synced noticeably worse in the field. Route them to the NATIVE pipeline
+    // (identical to Safari, EXT-X-START honored) instead of telling people to
+    // switch browsers.
     const iosShellBrowser = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
-    if (iosShellBrowser) {
-      try {
-        const f = document.querySelector('.foot');
-        if (f) f.innerHTML = '<b style="color:#ff9f0a">For the best sync on iPhone, open this page in Safari.</b><br>' + f.innerHTML;
-      } catch (e) {}
-    }
+    const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
+    const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
 
     // Stable per-device id so the DJ console can track each listener across beats.
