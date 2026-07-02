@@ -66,7 +66,7 @@
     <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
   </div>
 
-  <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
+  <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode. <span style="opacity:.55">v__PP_VERSION__</span></div>
 
   <audio id="player" playsinline preload="none"></audio>
   <script src="/vendor/hls.min.js"></script>
@@ -78,6 +78,18 @@
     const pilltext = document.getElementById('pilltext');
     const titleEl = document.getElementById('title');
     const countEl = document.getElementById('count');
+    // Build version stamped by the server at serve time. When the server
+    // updates, open tabs would otherwise keep running old player logic forever
+    // — poll() compares and refreshes at a safe moment.
+    const PAGE_VERSION = '__PP_VERSION__';
+    const versioned = !PAGE_VERSION.includes('PP_VERSION'); // false in raw/dev serving
+    let pendingReload = false;
+    function considerReload(serverVersion){
+      if (!versioned || !serverVersion || serverVersion === PAGE_VERSION) return;
+      if (!started || player.paused) { location.reload(); return; }
+      pendingReload = true; // playing: reload at the next pause (never kill audio)
+    }
+
     let STREAM = null, delivery = 'llhls';
     // Low-latency upgrade: the server may advertise an LL-HLS URL on its
     // domain+cert. THIS DEVICE probes it (some routers' DNS-rebind protection
@@ -180,34 +192,31 @@
     const LOAD_POLICY = { default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: RETRY, errorRetry: RETRY } };
 
     // The stream THIS device plays: the probed LL-HLS upgrade, else plain.
-    const chosenStream = () => (llUsable && LLSTREAM) ? LLSTREAM : STREAM;
-    const usingLL = () => !!(llUsable && LLSTREAM);
+    // NATIVE players (Safari/iOS) never take LL: AVPlayer chases the LL
+    // PART-HOLD-BACK (~1s) and cannot sit at the room target without a
+    // tug-of-war (field disaster). LL is an hls.js-only option for now.
+    const chosenStream = () => (!useNative && llUsable && LLSTREAM) ? LLSTREAM : STREAM;
+    const usingLL = () => !!(!useNative && llUsable && LLSTREAM);
 
     function attach(){
       if (!STREAM) return;
       const src = chosenStream();
       if (useNative) {
-        player.src = src;                          // Safari/iOS — native (LL-)HLS, the lock-safe path
+        player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
       } else if (window.Hls && Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
-        const ll = usingLL();
-        const target = latencyTarget || 5;
         const cfg = {
-          lowLatencyMode: ll,
-          // hls.js's own latency controller is OFF (rate stays ours to drive):
-          // it aligns to playlist-edge distance, a different reference frame
-          // than the room's wall-clock target — the unified align() loop below
-          // handles convergence for every platform in one frame instead.
+          lowLatencyMode: usingLL(),
+          // PASSIVE playback ("aligned start"): the playlist's EXT-X-START
+          // parks every device at the room target; nobody adjusts anything
+          // afterwards. hls.js's latency controller is fully disabled — no
+          // rate convergence (maxLiveSyncPlaybackRate 1 = verified early-exit)
+          // and NO liveSync/liveMaxLatency (they would override EXT-X-START
+          // and re-introduce forced seeks).
           maxLiveSyncPlaybackRate: 1,
           liveDurationInfinity: true,
           backBufferLength: 30,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
-          // Initial park position ≈ the room target; align() takes it from
-          // there in wall-clock terms. liveMaxLatency is a distant safety
-          // ceiling only (it is only legal alongside liveSyncDuration — never
-          // set it alone, the constructor throws).
-          liveSyncDuration: target,
-          liveMaxLatencyDuration: target + 6,
         };
         hls = new Hls(cfg);
         let mediaErrors = 0;
@@ -240,7 +249,7 @@
 
     async function play(){
       if (!STREAM) { try { await poll(); } catch (e) {} }
-      if (LLSTREAM && llUsable === null) llUsable = await probeLL(LLSTREAM); // once per session
+      if (LLSTREAM && llUsable === null) llUsable = useNative ? false : await probeLL(LLSTREAM); // once per session; native never takes LL
       if (!attachSafe()) return;
       try { await player.play(); }
       catch (e) { setStatus(live ? 'tap again to start' : 'waiting for the DJ…'); }
@@ -260,7 +269,10 @@
     player.addEventListener('stalled', () => {
       if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
     });
-    player.addEventListener('pause',   () => { setPlayingUI(false); if (started) setStatus('paused'); });
+    player.addEventListener('pause',   () => {
+      setPlayingUI(false); if (started) setStatus('paused');
+      if (pendingReload) location.reload(); // safe moment: nothing playing
+    });
     player.addEventListener('error',   () => {
       setStatus('reconnecting…');
       // An LL stream that keeps failing mid-party (MediaMTX died, DNS flipped)
@@ -295,6 +307,7 @@
     async function poll(){
       try {
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
+        considerReload(s.appVersion);
         if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
         if (!LLSTREAM) llUsable = null; // reset if the DJ turns LL off
@@ -326,8 +339,8 @@
         'platform : ' + platform + '\n' +
         'state    : ' + (player.paused ? 'paused' : 'playing') + '  rs=' + player.readyState + '\n' +
         'latency  : ' + (lat != null ? lat.toFixed(2) + ' s' : 'n/a') + '\n' +
-        'target   : ' + (latencyTarget ? latencyTarget.toFixed(1) + ' s  err=' + (lat != null ? ((lat - latencyTarget) >= 0 ? '+' : '') + (lat - latencyTarget).toFixed(2) + 's' : '?') : 'n/a') + '  rate=' + player.playbackRate.toFixed(3) + '\n' +
-        'buffer   : ' + bufferedAhead().toFixed(1) + ' s ahead' + (Date.now() < slackUntil ? '  RELAXED(+2s)' : '') + (Date.now() < freezeUntil ? '  SETTLING' : '') + '\n' +
+        'target   : ' + (latencyTarget ? latencyTarget.toFixed(1) + ' s  err=' + (lat != null ? ((lat - latencyTarget) >= 0 ? '+' : '') + (lat - latencyTarget).toFixed(2) + 's' : '?') : 'n/a') + '\n' +
+        'buffer   : ' + bufferedAhead().toFixed(1) + ' s ahead  ·  ' + (usingLL() ? 'LL' : 'plain') + '  ·  v' + PAGE_VERSION + '\n' +
         'clock    : ' + (clockSynced ? (clockOffset >= 0 ? '+' : '') + Math.round(clockOffset) + ' ms' : 'syncing…') + '\n' +
         'stalls   : ' + stallCount;
     }
@@ -348,25 +361,18 @@
     // Wi-Fi spot, weak hardware) backs ITSELF off (+2s for 10 min, still
     // catching up best-effort) instead of dragging the whole room away from
     // the DJ. The console shows it as behind.
-    let stallTimes = [], slackUntil = 0;
-    function noteStarvation(){
-      const now = Date.now();
-      stallTimes.push(now);
-      stallTimes = stallTimes.filter(t => now - t < 120000);
-      if (stallTimes.length >= 3 && now > slackUntil) { slackUntil = now + 600000; stallTimes = []; }
-    }
-
-    // CONTROLLER v3 — rebuilt after a field disaster. v2 was bang-bang: ±8%
-    // rate steps (audible tempo wobble), hair-trigger seeks on noisy
-    // measurements (brutal half-second cuts), no buffer awareness (speeding up
-    // a starving player is how stalls are made), oscillating forever. Rules:
-    //   - measure on a MEDIAN of recent samples (PDT/clock noise is ±0.3s)
-    //   - rate capped at ±2% (inaudible pitch-preserved) and slew-limited
-    //     (0.5%/tick) — convergence is slow and invisible, by design
-    //   - never speed up with <3s buffered ahead; buffering → rate 1
-    //   - seek ONLY for gross desync (>4s), at most every 30s, then freeze
-    //     corrections 10s and drop stale samples while it settles
-    let latSamples = [], lastSeekAt = 0, freezeUntil = 0, curRate = 1;
+    // NO ACTIVE PLAYBACK CONTROL. v2/v3 tried rate nudges + corrective seeks;
+    // on real iOS hardware every playbackRate change is an audio-pipeline
+    // event (clicks), and AVPlayer fights external control — the room sounded
+    // cut-up and warbly. Architecture now: "aligned start, passive playback" —
+    // the playlist's EXT-X-START parks every joining device at the room
+    // target; playback then runs untouched at 1.0x forever. Devices stay in
+    // sync because they STARTED in sync.
+    //
+    // The one recovery is REJOIN: a device that stalled badly and sits far
+    // from the room for a sustained time re-attaches once (a single clean gap,
+    // parking it back at the room target) instead of being dragged around.
+    let latSamples = [], lastRejoinAt = 0;
     function bufferedAhead(){
       try {
         const t = player.currentTime, b = player.buffered;
@@ -374,60 +380,31 @@
       } catch (e) {}
       return 0;
     }
-    function setRate(r){
-      const step = 0.005; // slew limit per tick
-      if (r > curRate + step) r = curRate + step;
-      else if (r < curRate - step) r = curRate - step;
-      r = Math.round(r * 1000) / 1000;
-      if (r !== curRate) { curRate = r; try { player.playbackRate = r; } catch (e) {} }
-    }
-    function align(){
+    function maybeRejoin(){
       if (!started || player.paused || !latencyTarget) return;
-      const now = Date.now();
-      if (player.readyState < 3) { setRate(1); return; }   // buffering: never fight it
       const lat = measureLatency();
-      if (lat == null) return;
+      if (lat == null || player.readyState < 3) return; // only judge a healthy player
       latSamples.push(lat);
-      if (latSamples.length > 5) latSamples.shift();
-      if (now < freezeUntil || latSamples.length < 3) return;
-      const med = [...latSamples].sort((a, b) => a - b)[Math.floor(latSamples.length / 2)];
-      const tgt = latencyTarget + (now < slackUntil ? 2 : 0);
-      const err = med - tgt;                                // >0: behind the room
-      if (Math.abs(err) > 4 && now - lastSeekAt > 30000) {  // gross desync only
-        try {
-          const sk = player.seekable;
-          if (sk && sk.length) {
-            const lo = sk.start(sk.length - 1) + 0.5, hi = sk.end(sk.length - 1) - 2.0;
-            if (hi > lo) {
-              player.currentTime = Math.min(Math.max(player.currentTime + err, lo), hi);
-              lastSeekAt = now; freezeUntil = now + 10000; latSamples = [];
-            }
-          }
-        } catch (e) {}
-        setRate(1);
-        return;
-      }
-      let desired = 1;
-      if (Math.abs(err) > 0.3) desired = 1 + Math.max(-0.02, Math.min(0.02, err * 0.02));
-      if (desired > 1 && bufferedAhead() < 3) desired = 1;  // thin buffer: don't drain it faster
-      setRate(desired);
+      if (latSamples.length > 6) latSamples.shift();
+      const now = Date.now();
+      if (latSamples.length < 6 || now - lastRejoinAt < 120000) return;
+      // all of the last ~30s of samples far off, same side → genuinely adrift
+      const off = latSamples.every(v => v - latencyTarget > 3.5) || latSamples.every(v => v - latencyTarget < -3.5);
+      if (!off) return;
+      lastRejoinAt = now; latSamples = [];
+      attachSafe();                       // re-parks at EXT-X-START (room target)
+      player.play().catch(()=>{});
     }
-    try { player.preservesPitch = true; player.webkitPreservesPitch = true; } catch (e) {}
-    setInterval(() => { if (document.visibilityState === 'visible') align(); }, 2000);
 
     setInterval(() => {
       if (!started) return;
-      // Persistent starvation (not transient seek-refills) feeds the outlier
-      // backoff; align() also runs here so it keeps working under lock
-      // (field-verified: this 5s tick fires on a locked iPhone).
-      if (!player.paused && player.readyState < 3) noteStarvation();
-      align();
+      maybeRejoin(); // the ONLY recovery — fires under lock too (this 5s tick keeps running there, field-verified)
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (player.paused ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&del=' + (usingLL() ? 'llhls' : 'hls')
-        + '&rate=' + player.playbackRate.toFixed(3)
-        + '&buf=' + bufferedAhead().toFixed(1);
+        + '&buf=' + bufferedAhead().toFixed(1)
+        + '&v=' + encodeURIComponent(PAGE_VERSION);
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
       fetch(url, { cache: 'no-store' }).catch(() => {});
       stalledSinceBeat = false;

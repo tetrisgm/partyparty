@@ -25,7 +25,8 @@ if [ -z "$SIGN_ID" ]; then
 fi
 
 echo ">> Go server (-tags bundle)"
-"$GO" build -tags bundle -o "$ROOT/build/partyparty-server" "$ROOT"
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/app/Info.plist" 2>/dev/null || echo dev)"
+"$GO" build -tags bundle -ldflags "-X main.appVersion=$APP_VERSION" -o "$ROOT/build/partyparty-server" "$ROOT"
 
 echo ">> port-80 privileged daemon"
 "$GO" build -o "$ROOT/build/pp-port80" "$ROOT/cmd/pp-port80"

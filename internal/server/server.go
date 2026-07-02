@@ -34,6 +34,10 @@ type Deps struct {
 	// ReconfigureLLHLS rewrites mediamtx.yml with new LL-HLS timing and bounces
 	// MediaMTX. nil when mediamtx is unavailable.
 	ReconfigureLLHLS func(partDur, segDur string, segCount int) error
+
+	// Version is the app build version — shown in UIs and broadcast to clients
+	// so stale player pages refresh themselves after an update.
+	Version string
 }
 
 type srv struct {
@@ -138,6 +142,11 @@ func (s *srv) serveWeb(w http.ResponseWriter, name, cache string) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	if strings.HasSuffix(name, ".html") {
+		// Stamp the build version into the page so it can detect a server
+		// update and refresh itself (stale open tabs run old logic forever).
+		data = []byte(strings.ReplaceAll(string(data), "__PP_VERSION__", s.Version))
+	}
 	w.Header().Set("Content-Type", mimeFor(name))
 	if cache != "" {
 		w.Header().Set("Cache-Control", cache)
@@ -154,6 +163,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		health.Suggestion = suggest(health.Status, bc)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name":           s.Config.Name,
+			"appVersion":     s.Version,
 			"broadcast":      bc,
 			"listeners":      health.Listeners,
 			"listenersTotal": s.Listeners.TotalUnique(),
@@ -320,11 +330,21 @@ func (s *srv) handleHLS(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(file, ".m3u8") {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		// EXPERIMENTAL device-test lever: ask players to start closer to live
-		// than the default 3x target duration. Off unless --start-offset is set.
-		if s.Config.StartOffset > 0 {
+		// THE sync mechanism ("aligned start, passive playback"): every player
+		// that joins parks at the same program position — the room target —
+		// via the standard EXT-X-START tag, then plays untouched at 1.0x.
+		// Devices stay in sync because they STARTED in sync; no client-side
+		// rate control or corrective seeking (that was a field disaster on
+		// real iOS hardware). Players that ignore the tag park at their own
+		// default — worse spread for that device, zero artifacts: fails soft.
+		// --start-offset overrides the computed target for experiments.
+		offset := s.Config.StartOffset
+		if offset <= 0 {
+			offset = s.currentTarget()
+		}
+		if offset > 0 {
 			if data, err := os.ReadFile(filepath.Join(s.RunDir, file)); err == nil {
-				tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.1f,PRECISE=YES\n", s.Config.StartOffset)
+				tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.1f,PRECISE=YES\n", offset)
 				out := strings.Replace(string(data), "#EXTM3U\n", "#EXTM3U\n"+tag, 1)
 				_, _ = w.Write([]byte(out))
 				return
@@ -489,10 +509,17 @@ func (s *srv) liveDomain() string {
 	return s.actDomain
 }
 
+// currentTarget computes the room target for playlist injection (hot path:
+// every playlist fetch), reusing the same adaptive state as /api/status.
+func (s *srv) currentTarget() float64 {
+	bc := s.Broadcaster.Status()
+	health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
+	return s.latencyTarget(bc, health.Status)
+}
+
 // latencyTarget is the wall-clock delay behind the DJ that every listener
-// aligns to — the sync contract for the room. Players park wherever their
-// heuristics like (iOS versions differ by seconds); the room drops TOGETHER
-// because every client converges on this one number instead.
+// aligns to — the sync contract for the room. Players park at this offset via
+// EXT-X-START when they join (the standard HLS mechanism), then play untouched.
 //
 // ONE target for the whole room regardless of which delivery each guest ended
 // up on (LL-HLS guests simply carry more cushion) — a mixed room must still
@@ -556,11 +583,11 @@ func latencySegDur(mode string) float64 {
 func latencyPartDur(mode string) (string, string, int) {
 	switch mode {
 	case "low":
-		return "200ms", "1s", 7
+		return "200ms", "1s", 16
 	case "balanced":
-		return "350ms", "1s", 7
+		return "350ms", "1s", 16
 	case "stable":
-		return "500ms", "2s", 7
+		return "500ms", "2s", 16
 	default:
 		return "", "", 0
 	}

@@ -30,6 +30,11 @@ import (
 //go:embed all:web
 var webFS embed.FS
 
+// appVersion is stamped by the build (-ldflags "-X main.appVersion=..."). It is
+// shown in the UIs and broadcast to clients so stale player pages refresh
+// themselves after an update instead of running old logic forever.
+var appVersion = "dev"
+
 // telemetryLoop ships /api/status snapshots to the cloud while broadcasting.
 func telemetryLoop(port int, bc *broadcast.Broadcaster) {
 	id, secret := activate.InstallCreds()
@@ -187,6 +192,7 @@ func main() {
 		Web:              web,
 		MTX:              mtx,
 		ReconfigureLLHLS: reconfigureLL,
+		Version:          appVersion,
 	})
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -243,26 +249,15 @@ func main() {
 						return
 					}
 					handler.SetActivation(res.Host)
-					log.Printf("activate: low latency ON — %s (guests fall back to plain HLS per-device if their DNS blocks it)", res.Host)
-					// Auto-engage is SAFE now: llhls mode tees BOTH outputs, and
-					// each guest probes the LL URL itself, silently using plain
-					// HLS when its resolver/router says no. Engage when idle —
-					// never restart a live set.
-					for {
-						st := bc.Status()
-						if st.State == "idle" || st.State == "error" {
-							if bc.Delivery() == "hls" {
-								if err := mtx.EnsureReady(cfg.RTSPPort, 6*time.Second); err == nil {
-									bc.SetDelivery("llhls")
-									log.Printf("activate: low-latency delivery engaged")
-								} else {
-									log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
-								}
-							}
-							return
-						}
-						time.Sleep(5 * time.Second)
-					}
+					// NOT auto-engaged. Sync architecture is "aligned start,
+					// passive playback": every player parks at the playlist's
+					// EXT-X-START and is never touched again — but a NATIVE
+					// LL-HLS player chases its PART-HOLD-BACK (~1s) and cannot
+					// be parked at the room target without a tug-of-war (field
+					// disaster, twice). LL-HLS stays a manual/testing option
+					// until all-LL rooms are designed.
+					log.Printf("activate: low latency READY (%s) — manual option in the console (testing only)", res.Host)
+					return
 				}
 				log.Printf("activate: low latency off — %s (retrying in 5 min)", res.Reason)
 				time.Sleep(5 * time.Minute)

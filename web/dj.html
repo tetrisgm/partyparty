@@ -374,6 +374,13 @@
       const s = await (await fetch('/api/status', { cache:'no-store' })).json();
       const st = s.broadcast.state;
       lastState = st;
+      // Version pin (bottom-left) + self-refresh when the server updates
+      // beneath an open console — only while idle (never mid-broadcast).
+      if (s.appVersion) {
+        $('appver').textContent = 'v' + s.appVersion;
+        const mine = '__PP_VERSION__';
+        if (!mine.includes('PP_VERSION') && s.appVersion !== mine && st === 'idle') location.reload();
+      }
       const dsel = $('delivery');
       if (document.activeElement !== dsel) dsel.value = s.delivery || 'llhls';
       const llOpt = dsel.querySelector('option[value="llhls"]');
@@ -477,5 +484,6 @@
     window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready' });
   }
 </script>
+<div id="appver" style="position:fixed;left:12px;bottom:8px;font-size:11px;color:var(--label-tertiary);z-index:5"></div>
 </body>
 </html>

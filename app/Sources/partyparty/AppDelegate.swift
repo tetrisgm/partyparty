@@ -120,7 +120,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "error":    header = "Broadcast error — open console"
         default:         header = "Not broadcasting"
         }
-        let h = NSMenuItem(title: header, action: nil, keyEquivalent: "")
+        let ver = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let h = NSMenuItem(title: header + "  ·  v" + ver, action: nil, keyEquivalent: "")
         h.isEnabled = false
         menu.addItem(h)
         menu.addItem(.separator())
