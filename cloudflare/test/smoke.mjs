@@ -21,6 +21,9 @@ class FakeD1 {
     profileUpcomingEvents = [],
     profileRecentEvents = [],
     profilePosts = [],
+    wallPosts = [],
+    wallMedia = [],
+    wallComments = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -30,6 +33,9 @@ class FakeD1 {
     this.profileUpcomingEvents = profileUpcomingEvents;
     this.profileRecentEvents = profileRecentEvents;
     this.profilePosts = profilePosts;
+    this.wallPosts = wallPosts;
+    this.wallMedia = wallMedia;
+    this.wallComments = wallComments;
   }
 
   prepare(sql) {
@@ -116,6 +122,19 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM posts p JOIN events e")) {
       return { results: this.db.profilePosts };
+    }
+    if (sql.includes("FROM posts WHERE slug=?")) {
+      const slug = this.args[0];
+      const limit = Number(this.args[1]) || this.db.wallPosts.length;
+      return { results: this.db.wallPosts.filter((row) => row.slug === slug).slice(0, limit) };
+    }
+    if (sql.includes("FROM post_media WHERE post_id IN")) {
+      const ids = new Set(JSON.parse(this.args[0] || "[]"));
+      return { results: this.db.wallMedia.filter((row) => ids.has(row.post_id)) };
+    }
+    if (sql.includes("FROM post_comments WHERE post_id IN")) {
+      const ids = new Set(JSON.parse(this.args[0] || "[]"));
+      return { results: this.db.wallComments.filter((row) => ids.has(row.post_id)) };
     }
     return { results: [] };
   }
@@ -301,6 +320,58 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /Smoke Test Rooftop/);
     assert.match(html, /<audio id="setaudio"/);
+  }],
+  ["event wall renders approved posts and media without losing replay", async () => {
+    const resp = await fetchPath(`/e/${KNOWN_SLUG}`, {}, {
+      db: {
+        wallPosts: [{
+          id: "post-img",
+          slug: KNOWN_SLUG,
+          author: "Ava",
+          emoji: "\u2728",
+          text: "The lights hit right at midnight.",
+          approved: 1,
+          deleted_ms: null,
+          activity_ms: 1893456000000,
+          created_ms: 1893456000000,
+        }, {
+          id: "post-text",
+          slug: KNOWN_SLUG,
+          author: "Ben",
+          emoji: "",
+          text: "Bassline stayed locked.",
+          approved: 1,
+          deleted_ms: null,
+          activity_ms: 1893455900000,
+          created_ms: 1893455900000,
+        }],
+        wallMedia: [{
+          id: "media-img",
+          slug: KNOWN_SLUG,
+          post_id: "post-img",
+          media_key: `event/${KNOWN_SLUG}/media-img`,
+          media_type: "image",
+          mime_type: "image/jpeg",
+          name: "dancefloor.jpg",
+          sort_order: 0,
+        }],
+      },
+    });
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /<audio id="setaudio"/);
+    assert.match(html, /<div class="wave" id="wave"/);
+    assert.match(html, /The lights hit right at midnight\./);
+    assert.match(html, /Bassline stayed locked\./);
+    assert.match(html, /<img loading="lazy" src="\/event\/known-set\/media\/media-img"/);
+  }],
+  ["event wall handles ready set with no posts", async () => {
+    const resp = await fetchPath(`/e/${KNOWN_SLUG}`);
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /<audio id="setaudio"/);
+    assert.match(html, /<div class="wave" id="wave"/);
+    assert.match(html, /No posts yet\./);
   }],
   ["unknown event returns 404", async () => {
     const resp = await fetchPath("/e/unknown-set");

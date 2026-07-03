@@ -164,6 +164,16 @@ export async function getPostMedia(env, postIds) {
   return rows?.results || [];
 }
 
+export async function getPostComments(env, postIds) {
+  if (!env?.DB || !Array.isArray(postIds)) return [];
+  const ids = postIds.map((id) => String(id || "")).filter(Boolean).slice(0, 100);
+  if (!ids.length) return [];
+  const rows = await env.DB.prepare(
+    "SELECT * FROM post_comments WHERE post_id IN (SELECT value FROM json_each(?)) AND approved=1 AND deleted_ms IS NULL ORDER BY post_id, ts_ms"
+  ).bind(JSON.stringify(ids)).all();
+  return rows?.results || [];
+}
+
 export async function getSessionUser(env, request) {
   if (!env?.DB) return null;
   const cookies = parseCookies(request);
@@ -240,6 +250,17 @@ nav{max-width:940px;margin:0 auto;padding:16px 20px;display:flex;align-items:cen
 .wall .thumb{aspect-ratio:1;border-radius:12px;background-size:cover;background-position:center;background-color:var(--bg)}
 .wall .add{aspect-ratio:1;border-radius:12px;border:1px dashed var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ink2);font-size:12px;text-align:center;padding:8px;cursor:pointer}
 .wall .add:hover{border-color:var(--accent);color:var(--accent)}
+.wall.posts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.wallpost{min-width:0}
+.wallpost .who{display:flex;gap:8px;align-items:baseline;color:var(--ink2);font-size:13px;margin-bottom:8px}
+.wallpost .who b{color:var(--ink);font-weight:600}.wallpost .who time{margin-left:auto;color:var(--ink3);white-space:nowrap}
+.walltext{font-size:15px;line-height:1.5;margin:0 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.wallmedia{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.wallmedia img,.wallmedia video{width:100%;max-width:100%;border-radius:12px;background:var(--bg);object-fit:cover}.wallmedia img{aspect-ratio:1}.wallmedia video{aspect-ratio:16/10}
+.wallmedia audio{grid-column:1/-1;width:100%}
+.comments{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;display:grid;gap:7px}
+.comment{font-size:13px;color:var(--ink2);line-height:1.4}.comment b{color:var(--ink);font-weight:600}
+@media(max-width:640px){.wall.posts{grid-template-columns:1fr}.wallpost .who{flex-wrap:wrap}.wallpost .who time{margin-left:0}}
 .cardhint{color:var(--ink3);font-size:12px;margin-top:14px}
 .about p{margin:0 0 16px;color:var(--ink);font-size:15px;line-height:1.55;max-width:64ch}
 .slist{display:flex;gap:10px}
@@ -577,7 +598,7 @@ async function homeResponse(env) {
 
 // eventFromRow projects a D1 events row (+ its latest ready set) into the shape
 // renderEvent expects. A missing set yields an "upcoming" empty state.
-function eventFromRow(row, set, slug) {
+function eventFromRow(row, set, slug, wall = {}) {
   return {
     slug,
     title: row.title || "A partyparty set",
@@ -592,10 +613,66 @@ function eventFromRow(row, set, slug) {
     tagline: row.tagline || "",
     cover: row.cover_key ? `/event/${slug}/cover.jpg` : "/img/dance.jpg",
     about: row.about || "",
-    wall: [],
+    wall: Array.isArray(wall) ? wall : [],
+    posts: Array.isArray(wall.posts) ? wall.posts : [],
+    media: Array.isArray(wall.media) ? wall.media : [],
+    comments: Array.isArray(wall.comments) ? wall.comments : [],
     socials: {},
     set: set ? { id: set.id, durationMs: set.duration_ms } : null,
   };
+}
+
+function fmtPostTime(ms) {
+  const n = Number(ms) || 0;
+  if (!n) return "";
+  const delta = Math.max(0, nowMs() - n);
+  const min = 60000, hour = 60 * min, day = 24 * hour;
+  if (delta < min) return "just now";
+  if (delta < hour) return `${Math.floor(delta / min)}m ago`;
+  if (delta < day) return `${Math.floor(delta / hour)}h ago`;
+  if (delta < 7 * day) return `${Math.floor(delta / day)}d ago`;
+  try {
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(n));
+  } catch (_) {
+    return "";
+  }
+}
+
+function mediaUrl(slug, mediaId) {
+  return `/event/${encodeURIComponent(String(slug || ""))}/media/${encodeURIComponent(String(mediaId || ""))}`;
+}
+
+function renderWallMedia(slug, media) {
+  if (!media?.length) return "";
+  const items = media.map((m) => {
+    const src = esc(mediaUrl(slug, m.id));
+    const name = esc(m.name || "Event media");
+    if (m.media_type === "image") {
+      return `<img loading="lazy" src="${src}" alt="${name}">`;
+    }
+    if (m.media_type === "video") {
+      return `<video controls preload="none" src="${src}"></video>`;
+    }
+    if (m.media_type === "audio") {
+      return `<audio controls preload="none" src="${src}"></audio>`;
+    }
+    return "";
+  }).filter(Boolean).join("");
+  return items ? `<div class="wallmedia">${items}</div>` : "";
+}
+
+function renderWallPost(post, slug, media, comments) {
+  const who = post.author || (post.dj ? "DJ" : "Guest");
+  const timeMs = post.activity_ms || post.created_ms || post.ts_ms;
+  const timeText = fmtPostTime(timeMs);
+  const text = post.text ? `<p class="walltext">${esc(post.text)}</p>` : "";
+  const commentHtml = comments.length ? `<div class="comments">${comments.map((c) => `<div class="comment">${c.emoji ? `<span>${esc(c.emoji)}</span> ` : ""}<b>${esc(c.author || (c.dj ? "DJ" : "Guest"))}</b> ${esc(c.text || "")}</div>`).join("")}</div>` : "";
+  return `<article class="card wallpost">
+    <div class="who">${post.emoji ? `<span>${esc(post.emoji)}</span>` : ""}<b>${esc(who)}</b>${timeText ? `<time datetime="${esc(new Date(Number(timeMs) || 0).toISOString())}">${esc(timeText)}</time>` : ""}</div>
+    ${text}
+    ${renderWallMedia(slug, media)}
+    ${commentHtml}
+  </article>`;
 }
 
 function renderEvent(e) {
@@ -642,6 +719,45 @@ function renderEvent(e) {
   const upcomingCard = !e.set && e.status === "upcoming" ? `
   <div class="card"><p class="sub" style="margin:0">The set replay lands here once ${esc(e.dj || "the DJ")} plays. Check back after the party.</p></div>` : "";
 
+  const posts = Array.isArray(e.posts) ? e.posts : [];
+  const mediaByPost = new Map();
+  for (const m of (Array.isArray(e.media) ? e.media : [])) {
+    const pid = String(m.post_id || "");
+    if (!pid) continue;
+    const list = mediaByPost.get(pid) || [];
+    list.push(m);
+    mediaByPost.set(pid, list);
+  }
+  const commentsByPost = new Map();
+  for (const c of (Array.isArray(e.comments) ? e.comments : [])) {
+    const pid = String(c.post_id || "");
+    if (!pid) continue;
+    const list = commentsByPost.get(pid) || [];
+    list.push(c);
+    commentsByPost.set(pid, list);
+  }
+  const wallSection = posts.length ? `
+  <section>
+    <div class="sectionhead"><div><h2>The wall</h2><p>Everything the room shot tonight — approved by the DJ.</p></div></div>
+    <div class="wall posts">
+      ${posts.map((p) => renderWallPost(p, e.slug, mediaByPost.get(String(p.id || "")) || [], commentsByPost.get(String(p.id || "")) || [])).join("")}
+    </div>
+  </section>` : (e.wall || []).length ? `
+  <div class="card">
+    <h2>The wall</h2>
+    <p class="sub">Everything the room shot tonight — you approve what shows.</p>
+    <div class="wall">
+      ${(e.wall || []).map((s) => `<div class="thumb" style="background-image:url('${esc(s)}')"></div>`).join("")}
+      <div class="add" data-soon="${soon}"><div style="font-size:22px">＋</div>Add yours</div>
+    </div>
+    <div class="cardhint">Guests drop photos, videos and comments straight from their phone — moderated by the DJ. Coming soon.</div>
+  </div>` : `
+  <div class="card">
+    <h2>The wall</h2>
+    <p class="sub">No posts yet.</p>
+    <div class="cardhint">Guests drop photos, videos and comments straight from their phone — moderated by the DJ.</div>
+  </div>`;
+
   const waveScript = e.set ? `<script>
 (function(){var a=document.getElementById('setaudio'),w=document.getElementById('wave');if(!a||!w)return;var bars=[];
 fetch(w.getAttribute('data-peaks')).then(function(r){return r.json()}).then(function(d){var p=(d&&d.peaks)||[];w.innerHTML='';p.forEach(function(v){var b=document.createElement('i');b.style.height=Math.max(2,v)+'%';w.appendChild(b);bars.push(b)})}).catch(function(){});
@@ -664,15 +780,7 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
       </div>
     </div>
     ${liveCard}${playerCard}${upcomingCard}
-    <div class="card">
-      <h2>The wall</h2>
-      <p class="sub">Everything the room shot tonight — you approve what shows.</p>
-      <div class="wall">
-        ${(e.wall || []).map((s) => `<div class="thumb" style="background-image:url('${esc(s)}')"></div>`).join("")}
-        <div class="add" data-soon="${soon}"><div style="font-size:22px">＋</div>Add yours</div>
-      </div>
-      <div class="cardhint">Guests drop photos, videos and comments straight from their phone — moderated by the DJ. Coming soon.</div>
-    </div>
+    ${wallSection}
     ${aboutCard}
   </div>
   <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}`;
@@ -1217,7 +1325,13 @@ export default {
       const set = await env.DB.prepare(
         "SELECT * FROM event_sets WHERE slug=? AND state='ready' AND audio_key IS NOT NULL ORDER BY published_ms DESC LIMIT 1"
       ).bind(slug).first();
-      return new Response(renderEvent(eventFromRow(row, set, slug)), { headers: htmlHeaders });
+      const posts = await getApprovedPosts(env, slug, 60);
+      const postIds = posts.map((p) => p.id).filter(Boolean);
+      const [media, comments] = await Promise.all([
+        getPostMedia(env, postIds),
+        getPostComments(env, postIds),
+      ]);
+      return new Response(renderEvent(eventFromRow(row, set, slug, { posts, media, comments })), { headers: htmlHeaders });
     }
     const hm = pathname.match(HANDLE_RE);
     if (hm) {
