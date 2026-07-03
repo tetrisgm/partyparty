@@ -139,12 +139,18 @@ func (s *Store) Open(name string) (fs.File, error) {
 }
 
 // Version returns the effective content version stamped into served pages and
-// reported to clients: the app version plus the payload version, so a page
-// self-refreshes when EITHER the app or the payload changes.
+// reported to clients, so a page self-refreshes when EITHER the app or the
+// payload changes. On stock (embedded) content it is exactly the app version —
+// no UI change from before OTA — and gains a "/p<n>" suffix only while a newer
+// cloud payload is actually being served, where it doubles as a visible "this
+// Mac is running over-the-air content" indicator.
 func (s *Store) Version(appVersion string) string {
 	s.mu.RLock()
 	v := s.version
 	s.mu.RUnlock()
+	if v == s.embeddedVer {
+		return appVersion
+	}
 	return appVersion + "/p" + strconv.Itoa(v)
 }
 

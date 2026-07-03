@@ -120,6 +120,15 @@ func TestAdoptsNewerSignedPayload(t *testing.T) {
 	}
 }
 
+func TestVersionIsBareOnStockContent(t *testing.T) {
+	// No payload adopted: the served version must equal the app version exactly
+	// (no "/pN"), so stock content looks identical to pre-OTA behavior.
+	h := newHarness(t, 35, 36, 1, map[string]string{"listener.html": "x"})
+	if v := h.store.Version("0.36.0"); v != "0.36.0" {
+		t.Fatalf("stock version should be bare app version, got %q", v)
+	}
+}
+
 func TestRefusesDowngrade(t *testing.T) {
 	// Cloud advertises an OLDER payload than embedded — must not adopt.
 	h := newHarness(t, 40, 36, 1, map[string]string{"listener.html": "OLD 36"})
