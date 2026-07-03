@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import worker from "../worker.js";
+import worker, { cookieHeader, normalizeHandle, parseCookies, readJson } from "../worker.js";
 
 globalThis.caches ??= {
   default: {
@@ -174,6 +174,45 @@ async function fetchPath(path, init = {}) {
 }
 
 const tests = [
+  ["parseCookies decodes cookie header", async () => {
+    const req = new Request("https://party.ramine.net/", {
+      headers: { cookie: "sid=abc123; theme=dark%20mode; empty=; broken=%E0%A4%A" },
+    });
+    assert.deepEqual(parseCookies(req), {
+      sid: "abc123",
+      theme: "dark mode",
+      empty: "",
+      broken: "%E0%A4%A",
+    });
+  }],
+  ["cookieHeader emits secure defaults", async () => {
+    assert.equal(cookieHeader("sid", "a b", { maxAge: 60 }), "sid=a%20b; Max-Age=60; Path=/; HttpOnly; Secure; SameSite=Lax");
+    assert.equal(cookieHeader("sid", "", { httpOnly: false, secure: false, sameSite: "Strict", path: "/auth" }), "sid=; Path=/auth; SameSite=Strict");
+  }],
+  ["normalizeHandle gates and clips handles", async () => {
+    assert.equal(normalizeHandle(" DJ Ramine!! "), "dj.ramine");
+    assert.equal(normalizeHandle("already_good.name"), "already_good.name");
+    assert.equal(normalizeHandle("!!!"), "");
+    assert.equal(normalizeHandle("aaaaaaaaaa.bbbbbbbbbb.cccccccccc.dddddddddd"), "aaaaaaaaaa.bbbbbbbbbb.cccccccc");
+  }],
+  ["readJson parses valid small bodies only", async () => {
+    const good = new Request("https://party.ramine.net/api", {
+      method: "POST",
+      body: JSON.stringify({ ok: true }),
+      headers: { "content-type": "application/json" },
+    });
+    assert.deepEqual(await readJson(good), { ok: true });
+
+    const bad = new Request("https://party.ramine.net/api", { method: "POST", body: "{" });
+    assert.equal(await readJson(bad), null);
+
+    const tooLarge = new Request("https://party.ramine.net/api", {
+      method: "POST",
+      body: JSON.stringify({ ok: true }),
+      headers: { "content-length": "999" },
+    });
+    assert.equal(await readJson(tooLarge, 10), null);
+  }],
   ["landing delegates to ASSETS", async () => {
     const resp = await fetchPath("/");
     assert.equal(resp.status, 200);

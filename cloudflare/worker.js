@@ -29,6 +29,7 @@ const SETID_RE = /^[a-f0-9]{1,32}$/;
 const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
 const SITE_ORIGIN = "https://party.ramine.net";
 const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
+const SESSION_COOKIE = "pp_session";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -38,6 +39,148 @@ const absUrl = (s) => {
   try { return new URL(s || "/", SITE_ORIGIN).href; }
   catch (_) { return SITE_ORIGIN + "/"; }
 };
+
+export function parseCookies(request) {
+  const out = {};
+  const header = request?.headers?.get("cookie") || "";
+  for (const part of header.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    const name = part.slice(0, i).trim();
+    if (!name) continue;
+    const raw = part.slice(i + 1).trim();
+    try {
+      out[name] = decodeURIComponent(raw);
+    } catch (_) {
+      out[name] = raw;
+    }
+  }
+  return out;
+}
+
+export function cookieHeader(name, value, opts = {}) {
+  const cookieName = String(name || "").replace(/[\r\n;=]/g, "");
+  if (!cookieName) return "";
+  const o = opts || {};
+  const parts = [`${cookieName}=${encodeURIComponent(String(value == null ? "" : value))}`];
+  const maxAge = Number(o.maxAge);
+  if (Number.isFinite(maxAge)) parts.push(`Max-Age=${Math.trunc(maxAge)}`);
+  parts.push(`Path=${String(o.path || "/").replace(/[\r\n;]/g, "") || "/"}`);
+  if (o.httpOnly !== false) parts.push("HttpOnly");
+  if (o.secure !== false) parts.push("Secure");
+  parts.push(`SameSite=${String(o.sameSite || "Lax").replace(/[\r\n;]/g, "") || "Lax"}`);
+  return parts.join("; ");
+}
+
+export function normalizeHandle(s) {
+  const raw = String(s == null ? "" : s).trim().toLowerCase();
+  let out = "", lastSep = false;
+  for (const ch of raw) {
+    if ((ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === ".") {
+      out += ch;
+      lastSep = false;
+    } else if (out && !lastSep) {
+      out += ".";
+      lastSep = true;
+    }
+  }
+  out = out.replace(/^[._]+|[._]+$/g, "");
+  if (out.length > 30) out = out.slice(0, 30).replace(/[._]+$/g, "");
+  return /^[a-z0-9_.]{1,30}$/.test(out) ? out : "";
+}
+
+export async function readJson(request, maxBytes = 16384) {
+  const cap = Math.max(0, Number(maxBytes) || 0);
+  const len = Number(request?.headers?.get("content-length") || "0");
+  if (len && len > cap) return null;
+  try {
+    let text = "";
+    if (request?.body?.getReader) {
+      const reader = request.body.getReader();
+      const decoder = new TextDecoder();
+      let total = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > cap) {
+          await reader.cancel().catch(() => {});
+          return null;
+        }
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+    } else {
+      text = await request.text();
+      if (new TextEncoder().encode(text).byteLength > cap) return null;
+    }
+    return text ? JSON.parse(text) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export async function sha256Hex(str) {
+  const bytes = new TextEncoder().encode(String(str == null ? "" : str));
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export async function getEventBySlug(env, slug) {
+  if (!env?.DB || !SLUG_RE.test(String(slug || ""))) return null;
+  return await env.DB.prepare("SELECT * FROM events WHERE slug=?").bind(slug).first();
+}
+
+export async function getProfileByHandle(env, handle) {
+  const h = normalizeHandle(handle);
+  if (!env?.DB || !h) return null;
+  return await env.DB.prepare("SELECT * FROM dj_profiles WHERE handle=? AND published=1 LIMIT 1").bind(h).first();
+}
+
+export async function getLatestReadySet(env, slug) {
+  if (!env?.DB || !SLUG_RE.test(String(slug || ""))) return null;
+  return await env.DB.prepare(
+    "SELECT * FROM event_sets WHERE slug=? AND state='ready' AND audio_key IS NOT NULL ORDER BY published_ms DESC LIMIT 1"
+  ).bind(slug).first();
+}
+
+export async function getApprovedPosts(env, slug, limit) {
+  if (!env?.DB || !SLUG_RE.test(String(slug || ""))) return [];
+  const n = Math.max(1, Math.min(100, Number(limit) || 20));
+  const rows = await env.DB.prepare(
+    "SELECT * FROM posts WHERE slug=? AND approved=1 AND deleted_ms IS NULL ORDER BY activity_ms DESC LIMIT ?"
+  ).bind(slug, n).all();
+  return rows?.results || [];
+}
+
+export async function getPostMedia(env, postIds) {
+  if (!env?.DB || !Array.isArray(postIds)) return [];
+  const ids = postIds.map((id) => String(id || "")).filter(Boolean).slice(0, 100);
+  if (!ids.length) return [];
+  const rows = await env.DB.prepare(
+    "SELECT * FROM post_media WHERE post_id IN (SELECT value FROM json_each(?)) ORDER BY post_id, sort_order"
+  ).bind(JSON.stringify(ids)).all();
+  return rows?.results || [];
+}
+
+export async function getSessionUser(env, request) {
+  if (!env?.DB) return null;
+  const cookies = parseCookies(request);
+  const token = cookies[SESSION_COOKIE] || "";
+  if (!token) return null;
+  const tokenHash = await sha256Hex(token);
+  return await env.DB.prepare(
+    `SELECT u.*
+     FROM auth_sessions s
+     JOIN users u ON u.id=s.user_id
+     WHERE s.token_hash=? AND s.expires_ms>? AND s.revoked_ms IS NULL AND u.disabled_ms IS NULL
+     LIMIT 1`
+  ).bind(tokenHash, nowMs()).first();
+}
+
+export function nowMs() {
+  return Date.now();
+}
 
 const DEMO = {
   title: "Rooftop Sessions", dj: "Ramine",
