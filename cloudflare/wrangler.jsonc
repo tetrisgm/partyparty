@@ -33,6 +33,9 @@
   // the broker writes their DNS-01 TXT + IP-encoded A records for them. Needs
   // the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN — Zone→DNS→Edit).
   "vars": {
+    // Passwordless auth expects these env names when enabled:
+    // AUTH_DEV_LINKS, AUTH_DEV_SECRET, MXROUTE_SMTP_HOST, MXROUTE_SMTP_PORT,
+    // MXROUTE_SMTP_USER, MXROUTE_SMTP_FROM, and secret MXROUTE_SMTP_PASS.
     "BROKER_BASE": "party.ramine.net",
     "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"
   },

@@ -46,6 +46,12 @@ const MAX_COMMENTS_PER_IMPORT = 2000;
 const WALL_MEDIA_LIMIT = 240;
 const WALL_COMMENTS_PER_POST = 50;
 const READ_JSON_TOO_LARGE = new WeakSet();
+const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
+const MAGIC_LINK_RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAGIC_LINK_IP_CAP = 5;
+const MAGIC_LINK_EMAIL_CAP = 3;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AUTH_CLEANUP_GRACE_MS = 24 * 60 * 60 * 1000;
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -55,6 +61,23 @@ const absUrl = (s) => {
   try { return new URL(s || "/", SITE_ORIGIN).href; }
   catch (_) { return SITE_ORIGIN + "/"; }
 };
+
+function normalizeEmail(s) {
+  const email = String(s == null ? "" : s).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 320 ? email : "";
+}
+
+function safeRedirectPath(s) {
+  const path = String(s || "/").trim() || "/";
+  if (!path.startsWith("/") || path.startsWith("//")) return "/";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return "/";
+  try {
+    const u = new URL(path, SITE_ORIGIN);
+    return u.origin === SITE_ORIGIN ? `${u.pathname}${u.search}${u.hash}` : "/";
+  } catch (_) {
+    return "/";
+  }
+}
 
 function allowedPostMime(mediaType, mime) {
   const allowed = POST_MEDIA_MIME[mediaType] || [];
@@ -929,6 +952,209 @@ function renderNotFound() {
 const jsonResp = (status, obj) =>
   new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
 
+function expiredLinkResponse(status = 400) {
+  return new Response(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PartyParty sign-in link expired</title>
+<style>
+body{margin:0;font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#111;color:#fff;display:grid;min-height:100vh;place-items:center}
+main{max-width:420px;padding:32px;text-align:center}
+a{color:#9ad7ff}
+</style>
+</head>
+<body><main><h1>That sign-in link expired.</h1><p>Request a new link to continue to PartyParty.</p><p><a href="/">Back to PartyParty</a></p></main></body>
+</html>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+function verifyConfirmResponse(rawToken) {
+  return new Response(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in to partyparty</title>
+<style>
+body{margin:0;font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#111;color:#fff;display:grid;min-height:100vh;place-items:center}
+main{max-width:420px;padding:32px;text-align:center}
+button{border:0;border-radius:8px;background:#fff;color:#111;font:600 16px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:14px 22px;cursor:pointer}
+</style>
+</head>
+<body><main><h1>Sign in to partyparty</h1><form method="POST" action="/auth/verify"><input type="hidden" name="token" value="${esc(rawToken)}"><button type="submit">Continue</button></form></main></body>
+</html>`, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+async function sendViaMXroute(_env, _toEmail, _link) {
+  // U13: implement sendViaMXroute (SMTP over cloudflare:sockets)
+  throw new Error("mxroute sender not wired (U13)");
+}
+
+async function sendAuthEmail(env, toEmail, link, devMode = false) {
+  if (devMode) return true;
+  if (env.MXROUTE_SMTP_HOST && env.MXROUTE_SMTP_USER && env.MXROUTE_SMTP_PASS) {
+    return await sendViaMXroute(env, toEmail, link);
+  }
+  return false;
+}
+
+function authDevMode(request, env) {
+  return Boolean(
+    env.AUTH_DEV_LINKS === "1" &&
+    env.AUTH_DEV_SECRET &&
+    request.headers.get("x-auth-dev-secret") === env.AUTH_DEV_SECRET
+  );
+}
+
+function authLazyCleanup(env, now) {
+  if (!env?.DB || Math.random() >= 0.05) return;
+  const cutoff = now - AUTH_CLEANUP_GRACE_MS;
+  Promise.all([
+    env.DB.prepare("DELETE FROM auth_magic_tokens WHERE expires_ms < ? LIMIT 200").bind(cutoff).run(),
+    env.DB.prepare("DELETE FROM auth_sessions WHERE expires_ms < ? LIMIT 200").bind(cutoff).run(),
+  ]).catch(() => {});
+}
+
+async function readVerifyToken(request) {
+  const type = request.headers.get("content-type") || "";
+  if (type.includes("application/json")) {
+    const body = await readJson(request, 2048);
+    return String(body?.token || "");
+  }
+  const text = await request.text();
+  if (new TextEncoder().encode(text).byteLength > 2048) return "";
+  return String(new URLSearchParams(text).get("token") || "");
+}
+
+async function authRequestLink(request, env) {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
+  }
+  if (!env.DB) return jsonResp(503, { error: "auth db not configured" });
+  const body = await readJson(request, 2048);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+  const emailNorm = normalizeEmail(body.email);
+  if (!emailNorm) return jsonResp(400, { error: "bad email" });
+
+  const now = nowMs();
+  const since = now - MAGIC_LINK_RATE_WINDOW_MS;
+  const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+  const uaHash = await sha256Hex(request.headers.get("user-agent") || "");
+  authLazyCleanup(env, now);
+  // Soft, best-effort throttling: the count/insert pair is not atomic until this
+  // route gets a Durable Object gate, so the indexes and cleanup bound abuse cost.
+  const [ipCountRow, emailCountRow] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM auth_magic_tokens WHERE request_ip_hash=? AND created_ms>=?").bind(ipHash, since).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM auth_magic_tokens WHERE email_norm=? AND created_ms>=?").bind(emailNorm, since).first(),
+  ]);
+  if ((Number(ipCountRow?.n) || 0) >= MAGIC_LINK_IP_CAP || (Number(emailCountRow?.n) || 0) >= MAGIC_LINK_EMAIL_CAP) {
+    return jsonResp(429, { error: "rate limited" });
+  }
+
+  const rawToken = randHex(32);
+  const tokenHash = await sha256Hex(rawToken);
+  const redirectPath = safeRedirectPath(body.redirect);
+  await env.DB.prepare(
+    `INSERT INTO auth_magic_tokens
+       (id, token_hash, email_norm, user_id, purpose, redirect_path, created_ms, expires_ms, used_ms, request_ip_hash, user_agent_hash)
+     VALUES (?, ?, ?, NULL, 'login', ?, ?, ?, NULL, ?, ?)`
+  ).bind(randHex(16), tokenHash, emailNorm, redirectPath, now, now + MAGIC_LINK_TTL_MS, ipHash, uaHash).run();
+
+  const link = `${SITE_ORIGIN}/auth/verify?token=${encodeURIComponent(rawToken)}`;
+  const devMode = authDevMode(request, env);
+  let queued = true;
+  try {
+    queued = await sendAuthEmail(env, emailNorm, link, devMode) !== false;
+  } catch (_) {
+    queued = false;
+  }
+  const out = { ok: true };
+  if (devMode) out.devLink = link;
+  else if (!queued) out.queued = false;
+  return jsonResp(200, out);
+}
+
+async function authVerify(request, env) {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, POST" } });
+  }
+  if (!env.DB) return expiredLinkResponse(400);
+  const rawToken = request.method === "GET"
+    ? String(new URL(request.url).searchParams.get("token") || "")
+    : await readVerifyToken(request);
+  if (!/^[a-f0-9]{64}$/i.test(rawToken)) return expiredLinkResponse(400);
+  const now = nowMs();
+  const tokenHash = await sha256Hex(rawToken);
+  const row = await env.DB.prepare("SELECT * FROM auth_magic_tokens WHERE token_hash=? LIMIT 1").bind(tokenHash).first();
+  if (!row || row.used_ms != null || Number(row.expires_ms) < now) return expiredLinkResponse(400);
+  if (request.method === "GET") return verifyConfirmResponse(rawToken);
+
+  const mark = await env.DB.prepare("UPDATE auth_magic_tokens SET used_ms=? WHERE id=? AND used_ms IS NULL").bind(now, row.id).run();
+  if ((Number(mark?.meta?.changes) || 0) < 1) return expiredLinkResponse(400);
+
+  const emailNorm = normalizeEmail(row.email_norm);
+  if (!emailNorm) return expiredLinkResponse(400);
+  const displayName = clip(emailNorm.split("@")[0] || "Guest", 80);
+  await env.DB.prepare(
+    `INSERT INTO users (id, email, email_norm, display_name, created_ms, updated_ms, email_verified_ms, last_login_ms, disabled_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ON CONFLICT(email_norm) DO NOTHING`
+  ).bind(randHex(16), emailNorm, emailNorm, displayName, now, now, now, now).run();
+  let user = await env.DB.prepare("SELECT * FROM users WHERE email_norm=? LIMIT 1").bind(emailNorm).first();
+  if (!user?.id) return expiredLinkResponse(400);
+  await env.DB.prepare(
+    "UPDATE users SET last_login_ms=?, email_verified_ms=COALESCE(email_verified_ms, ?), updated_ms=? WHERE id=?"
+  ).bind(now, now, now, user.id).run();
+  user = { ...user, last_login_ms: now, email_verified_ms: user.email_verified_ms || now, updated_ms: now };
+
+  const sessionToken = randHex(32);
+  const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+  const uaHash = await sha256Hex(request.headers.get("user-agent") || "");
+  await env.DB.prepare(
+    `INSERT INTO auth_sessions
+       (id, token_hash, user_id, created_ms, expires_ms, last_seen_ms, revoked_ms, request_ip_hash, user_agent_hash)
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+  ).bind(randHex(16), await sha256Hex(sessionToken), user.id, now, now + SESSION_TTL_MS, now, ipHash, uaHash).run();
+
+  const headers = new Headers({ location: safeRedirectPath(row.redirect_path) });
+  headers.append("set-cookie", cookieHeader(SESSION_COOKIE, sessionToken, {
+    maxAge: SESSION_TTL_MS / 1000,
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+  }));
+  headers.set("cache-control", "no-store");
+  return new Response(null, { status: 302, headers });
+}
+
+async function authLogout(request, env) {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
+  }
+  const cookies = parseCookies(request);
+  const token = cookies[SESSION_COOKIE] || "";
+  if (env.DB && token) {
+    await env.DB.prepare("UPDATE auth_sessions SET revoked_ms=? WHERE token_hash=? AND revoked_ms IS NULL")
+      .bind(nowMs(), await sha256Hex(token)).run();
+  }
+  const headers = new Headers({ "content-type": "application/json" });
+  headers.append("set-cookie", cookieHeader(SESSION_COOKIE, "", { maxAge: 0, httpOnly: true, secure: true, sameSite: "Lax" }));
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+}
+
+async function authMe(request, env) {
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(200, { user: null });
+  return jsonResp(200, {
+    user: {
+      id: user.id,
+      email: user.email,
+      display_name: user.display_name,
+    },
+  });
+}
+
 async function rsvpCounts(env, slug) {
   const out = { coming: 0, not: 0 };
   const rows = await env.DB.prepare(
@@ -1770,6 +1996,38 @@ async function broker(request, env, pathname) {
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
+
+    if (pathname === "/api/auth/request-link") {
+      try {
+        return await authRequestLink(request, env);
+      } catch (_) {
+        return jsonResp(500, { error: "auth unavailable" });
+      }
+    }
+
+    if (pathname === "/auth/verify") {
+      try {
+        return await authVerify(request, env);
+      } catch (_) {
+        return expiredLinkResponse(400);
+      }
+    }
+
+    if (pathname === "/api/auth/logout") {
+      try {
+        return await authLogout(request, env);
+      } catch (_) {
+        return jsonResp(200, { ok: true });
+      }
+    }
+
+    if (pathname === "/api/me") {
+      try {
+        return await authMe(request, env);
+      } catch (_) {
+        return jsonResp(200, { user: null });
+      }
+    }
 
     if (pathname.startsWith("/api/broker/")) {
       try {

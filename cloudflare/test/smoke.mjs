@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import worker, { cookieHeader, normalizeHandle, parseCookies, readJson } from "../worker.js";
+import worker, { cookieHeader, normalizeHandle, parseCookies, readJson, sha256Hex } from "../worker.js";
 
 globalThis.caches ??= {
   default: {
@@ -34,6 +34,9 @@ class FakeD1 {
     events = [],
     eventSets = [],
     deviceInstalls = [],
+    authMagicTokens = [],
+    authUsers = [],
+    authSessions = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -67,6 +70,9 @@ class FakeD1 {
     for (const row of events) this.events.set(row.slug, { ...row });
     this.eventSets = eventSets.map((row) => ({ ...row }));
     this.deviceInstalls = new Map(deviceInstalls.map((row) => [row.install_id, { ...row }]));
+    this.authMagicTokens = new Map(authMagicTokens.map((row) => [row.id, { ...row }]));
+    this.authUsers = new Map(authUsers.map((row) => [row.id, { ...row }]));
+    this.authSessions = new Map(authSessions.map((row) => [row.id, { ...row }]));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
@@ -94,6 +100,48 @@ class FakeD1Statement {
 
   async first() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("COUNT(*) AS n FROM auth_magic_tokens WHERE request_ip_hash=?")) {
+      const [ipHash, sinceMs] = this.args;
+      let n = 0;
+      for (const row of this.db.authMagicTokens.values()) {
+        if (row.request_ip_hash === ipHash && Number(row.created_ms) >= Number(sinceMs)) n += 1;
+      }
+      return { n };
+    }
+    if (sql.includes("COUNT(*) AS n FROM auth_magic_tokens WHERE email_norm=?")) {
+      const [emailNorm, sinceMs] = this.args;
+      let n = 0;
+      for (const row of this.db.authMagicTokens.values()) {
+        if (row.email_norm === emailNorm && Number(row.created_ms) >= Number(sinceMs)) n += 1;
+      }
+      return { n };
+    }
+    if (sql.includes("FROM auth_magic_tokens WHERE token_hash=?")) {
+      const tokenHash = this.args[0];
+      for (const row of this.db.authMagicTokens.values()) {
+        if (row.token_hash === tokenHash) return { ...row };
+      }
+      return null;
+    }
+    if (sql.includes("FROM users WHERE email_norm=?")) {
+      const emailNorm = this.args[0];
+      for (const row of this.db.authUsers.values()) {
+        if (row.email_norm === emailNorm) return { ...row };
+      }
+      return null;
+    }
+    if (sql.includes("FROM auth_sessions s") && sql.includes("JOIN users u")) {
+      const [tokenHash, now] = this.args;
+      const session = [...this.db.authSessions.values()].find((row) =>
+        row.token_hash === tokenHash &&
+        Number(row.expires_ms) > Number(now) &&
+        row.revoked_ms == null
+      );
+      if (!session) return null;
+      const user = this.db.authUsers.get(session.user_id);
+      if (!user || user.disabled_ms != null) return null;
+      return { ...user };
+    }
     if (sql.includes("FROM post_media pm JOIN posts p")) {
       const [mediaId, slug] = this.args;
       const media = this.db.importedPostMedia.get(mediaId);
@@ -283,6 +331,110 @@ class FakeD1Statement {
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("DELETE FROM auth_magic_tokens WHERE expires_ms < ? LIMIT 200")) {
+      const cutoff = Number(this.args[0]);
+      let changes = 0;
+      for (const [id, row] of [...this.db.authMagicTokens.entries()]) {
+        if (changes >= 200) break;
+        if (Number(row.expires_ms) < cutoff) {
+          this.db.authMagicTokens.delete(id);
+          changes += 1;
+        }
+      }
+      return { success: true, meta: { changes } };
+    }
+    if (sql.includes("DELETE FROM auth_sessions WHERE expires_ms < ? LIMIT 200")) {
+      const cutoff = Number(this.args[0]);
+      let changes = 0;
+      for (const [id, row] of [...this.db.authSessions.entries()]) {
+        if (changes >= 200) break;
+        if (Number(row.expires_ms) < cutoff) {
+          this.db.authSessions.delete(id);
+          changes += 1;
+        }
+      }
+      return { success: true, meta: { changes } };
+    }
+    if (sql.includes("INSERT INTO auth_magic_tokens")) {
+      const [id, tokenHash, emailNorm, redirectPath, createdMs, expiresMs, ipHash, uaHash] = this.args;
+      this.db.authMagicTokens.set(id, {
+        id,
+        token_hash: tokenHash,
+        email_norm: emailNorm,
+        user_id: null,
+        purpose: "login",
+        redirect_path: redirectPath,
+        created_ms: createdMs,
+        expires_ms: expiresMs,
+        used_ms: null,
+        request_ip_hash: ipHash,
+        user_agent_hash: uaHash,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE auth_magic_tokens SET used_ms=? WHERE id=? AND used_ms IS NULL")) {
+      const [usedMs, id] = this.args;
+      const row = this.db.authMagicTokens.get(id);
+      if (!row || row.used_ms != null) return { success: true, meta: { changes: 0 } };
+      row.used_ms = usedMs;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE users SET last_login_ms=?")) {
+      const [lastLoginMs, emailVerifiedMs, updatedMs, id] = this.args;
+      const row = this.db.authUsers.get(id);
+      if (row) {
+        row.last_login_ms = lastLoginMs;
+        if (row.email_verified_ms == null) row.email_verified_ms = emailVerifiedMs;
+        row.updated_ms = updatedMs;
+      }
+      return { success: true, meta: { changes: row ? 1 : 0 } };
+    }
+    if (sql.includes("INSERT INTO users")) {
+      const [id, email, emailNorm, displayName, createdMs, updatedMs, emailVerifiedMs, lastLoginMs] = this.args;
+      if (sql.includes("ON CONFLICT(email_norm) DO NOTHING")) {
+        for (const row of this.db.authUsers.values()) {
+          if (row.email_norm === emailNorm) return { success: true, meta: { changes: 0 } };
+        }
+      }
+      this.db.authUsers.set(id, {
+        id,
+        email,
+        email_norm: emailNorm,
+        display_name: displayName,
+        created_ms: createdMs,
+        updated_ms: updatedMs,
+        email_verified_ms: emailVerifiedMs,
+        last_login_ms: lastLoginMs,
+        disabled_ms: null,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("INSERT INTO auth_sessions")) {
+      const [id, tokenHash, userId, createdMs, expiresMs, lastSeenMs, ipHash, uaHash] = this.args;
+      this.db.authSessions.set(id, {
+        id,
+        token_hash: tokenHash,
+        user_id: userId,
+        created_ms: createdMs,
+        expires_ms: expiresMs,
+        last_seen_ms: lastSeenMs,
+        revoked_ms: null,
+        request_ip_hash: ipHash,
+        user_agent_hash: uaHash,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE auth_sessions SET revoked_ms=? WHERE token_hash=? AND revoked_ms IS NULL")) {
+      const [revokedMs, tokenHash] = this.args;
+      let changes = 0;
+      for (const row of this.db.authSessions.values()) {
+        if (row.token_hash === tokenHash && row.revoked_ms == null) {
+          row.revoked_ms = revokedMs;
+          changes += 1;
+        }
+      }
+      return { success: true, meta: { changes } };
+    }
     if (sql.includes("UPDATE dj_profiles SET last_activity_ms=? WHERE id=?")) {
       const [lastActivityMs, profileId] = this.args;
       this.db.profileActivityBumps.push({ profileId, lastActivityMs });
@@ -573,11 +725,42 @@ function makeEnv(opts = {}) {
     BROKER_BASE: "party.example.test",
     CF_DNS_TOKEN: "token-test",
     CF_ZONE_ID: "zone-test",
+    ...(opts.env || {}),
   };
 }
 
 async function fetchPath(path, init = {}, envOpts = {}) {
   return worker.fetch(new Request(`https://party.ramine.net${path}`, init), makeEnv(envOpts));
+}
+
+const AUTH_DEV_SECRET = "smoke-dev-secret";
+
+async function requestDevLink(db, email, opts = {}) {
+  const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": opts.ip || "203.0.113.20",
+      "x-auth-dev-secret": AUTH_DEV_SECRET,
+    },
+    body: JSON.stringify({ email, redirect: opts.redirect }),
+  }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } }));
+  assert.equal(resp.status, 200);
+  const json = await resp.json();
+  assert.match(json.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
+  return json.devLink;
+}
+
+async function postVerify(db, token, opts = {}) {
+  return await worker.fetch(new Request("https://party.ramine.net/auth/verify", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "cf-connecting-ip": opts.ip || "203.0.113.21",
+      "user-agent": opts.userAgent || "smoke-auth",
+    },
+    body: new URLSearchParams({ token }).toString(),
+  }), makeEnv({ DB: db }));
 }
 
 const contentLength = (body) => String(new TextEncoder().encode(String(body)).byteLength);
@@ -621,6 +804,215 @@ const tests = [
       headers: { "content-length": "999" },
     });
     assert.equal(await readJson(tooLarge, 10), null);
+  }],
+  ["auth request-link gates devLink behind dev secret", async () => {
+    const db = new FakeD1();
+    const noHeader = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.20" },
+      body: JSON.stringify({ email: " Person@Example.COM ", redirect: "/dashboard" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } }));
+    const noHeaderJson = await noHeader.json();
+    assert.equal(noHeader.status, 200);
+    assert.equal(noHeaderJson.ok, true);
+    assert.equal("devLink" in noHeaderJson, false);
+    assert.equal(noHeaderJson.queued, false);
+
+    const withHeader = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.21",
+        "x-auth-dev-secret": AUTH_DEV_SECRET,
+      },
+      body: JSON.stringify({ email: " Dev@Example.COM ", redirect: "/dashboard" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } }));
+    const withHeaderJson = await withHeader.json();
+    assert.equal(withHeader.status, 200);
+    assert.equal(withHeaderJson.ok, true);
+    assert.match(withHeaderJson.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
+    assert.equal("queued" in withHeaderJson, false);
+
+    const failClosed = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.22",
+        "x-auth-dev-secret": AUTH_DEV_SECRET,
+      },
+      body: JSON.stringify({ email: "closed@example.com" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1" } }));
+    const failClosedJson = await failClosed.json();
+    assert.equal(failClosed.status, 200);
+    assert.equal(failClosedJson.ok, true);
+    assert.equal("devLink" in failClosedJson, false);
+    assert.equal(failClosedJson.queued, false);
+
+    assert.equal(db.authMagicTokens.size, 3);
+    const token = new URL(withHeaderJson.devLink).searchParams.get("token");
+    const row = [...db.authMagicTokens.values()].find((item) => item.email_norm === "dev@example.com");
+    assert.equal(row.email_norm, "dev@example.com");
+    assert.equal(row.redirect_path, "/dashboard");
+    assert.notEqual(row.token_hash, token);
+  }],
+  ["auth verify confirms on GET and consumes on POST", async () => {
+    const db = new FakeD1();
+    const devLink = await requestDevLink(db, "login@example.com", { ip: "203.0.113.23", redirect: "/after-login?ok=1" });
+    const token = new URL(devLink).searchParams.get("token");
+    const row = [...db.authMagicTokens.values()][0];
+
+    const confirm = await worker.fetch(new Request(devLink, {
+      headers: { "cf-connecting-ip": "203.0.113.21", "user-agent": "smoke-auth" },
+    }), makeEnv({ DB: db }));
+    const confirmHtml = await confirm.text();
+    assert.equal(confirm.status, 200);
+    assert.match(confirmHtml, /Sign in to partyparty/);
+    assert.match(confirmHtml, /method="POST" action="\/auth\/verify"/);
+    assert.equal(row.used_ms, null);
+    assert.equal(db.authUsers.size, 0);
+    assert.equal(db.authSessions.size, 0);
+
+    const head = await worker.fetch(new Request(devLink, { method: "HEAD" }), makeEnv({ DB: db }));
+    assert.equal(head.status, 405);
+    assert.equal(row.used_ms, null);
+    assert.equal(db.authSessions.size, 0);
+
+    const anon = await worker.fetch(new Request("https://party.ramine.net/api/me"), makeEnv({ DB: db }));
+    assert.deepEqual(await anon.json(), { user: null });
+
+    const verify = await postVerify(db, token, { ip: "203.0.113.21" });
+    const cookie = verify.headers.get("set-cookie") || "";
+    assert.equal(verify.status, 302);
+    assert.equal(verify.headers.get("location"), "/after-login?ok=1");
+    assert.match(cookie, /pp_session=[a-f0-9]{64}/);
+    assert.equal(db.authUsers.size, 1);
+    assert.equal(db.authSessions.size, 1);
+    assert.equal([...db.authUsers.values()][0].email, "login@example.com");
+
+    const reused = await postVerify(db, token);
+    assert.equal(reused.status, 400);
+    assert.match(await reused.text(), /sign-in link expired/i);
+  }],
+  ["auth verify rejects expired token", async () => {
+    const db = new FakeD1();
+    const rawToken = "a".repeat(64);
+    db.authMagicTokens.set("expired-token", {
+      id: "expired-token",
+      token_hash: await sha256Hex(rawToken),
+      email_norm: "expired@example.com",
+      user_id: null,
+      purpose: "login",
+      redirect_path: "/",
+      created_ms: Date.now() - 1200000,
+      expires_ms: Date.now() - 1000,
+      used_ms: null,
+      request_ip_hash: await sha256Hex("ip:203.0.113.22"),
+      user_agent_hash: await sha256Hex("smoke"),
+    });
+    const resp = await worker.fetch(new Request(`https://party.ramine.net/auth/verify?token=${rawToken}`), makeEnv({ DB: db }));
+    assert.equal(resp.status, 400);
+    assert.equal(db.authUsers.size, 0);
+    assert.equal(db.authSessions.size, 0);
+  }],
+  ["auth me and logout use session cookie without leaking tokens", async () => {
+    const db = new FakeD1();
+    const devLink = await requestDevLink(db, "me@example.com", { ip: "203.0.113.24" });
+    const token = new URL(devLink).searchParams.get("token");
+    const verify = await postVerify(db, token, { ip: "203.0.113.24" });
+    const cookie = (verify.headers.get("set-cookie") || "").split(";")[0];
+
+    const anon = await worker.fetch(new Request("https://party.ramine.net/api/me"), makeEnv({ DB: db }));
+    assert.deepEqual(await anon.json(), { user: null });
+
+    const me = await worker.fetch(new Request("https://party.ramine.net/api/me", {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    const meJson = await me.json();
+    assert.equal(me.status, 200);
+    assert.deepEqual(Object.keys(meJson.user).sort(), ["display_name", "email", "id"]);
+    assert.equal(meJson.user.email, "me@example.com");
+
+    const logout = await worker.fetch(new Request("https://party.ramine.net/api/auth/logout", {
+      method: "POST",
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    assert.equal(logout.status, 200);
+    assert.match(logout.headers.get("set-cookie") || "", /pp_session=; Max-Age=0/);
+
+    const after = await worker.fetch(new Request("https://party.ramine.net/api/me", {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    assert.deepEqual(await after.json(), { user: null });
+  }],
+  ["auth verify signs in existing user through conflict-safe insert", async () => {
+    const db = new FakeD1({
+      authUsers: [{
+        id: "existing-user",
+        email: "existing@example.com",
+        email_norm: "existing@example.com",
+        display_name: "Existing",
+        created_ms: 1,
+        updated_ms: 1,
+        email_verified_ms: 1,
+        last_login_ms: 1,
+        disabled_ms: null,
+      }],
+    });
+    const devLink = await requestDevLink(db, "existing@example.com", { ip: "203.0.113.25" });
+    const token = new URL(devLink).searchParams.get("token");
+    const verify = await postVerify(db, token, { ip: "203.0.113.25" });
+    assert.equal(verify.status, 302);
+    assert.equal(db.authUsers.size, 1);
+    assert.equal([...db.authSessions.values()][0].user_id, "existing-user");
+    assert.ok(Number(db.authUsers.get("existing-user").last_login_ms) > 1);
+  }],
+  ["auth request-link rate limits after sane cap", async () => {
+    const db = new FakeD1();
+    const env = makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } });
+    let resp;
+    for (let i = 0; i < 5; i += 1) {
+      resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.24" },
+        body: JSON.stringify({ email: `rate-${i}@example.com` }),
+      }), env);
+      assert.equal(resp.status, 200);
+    }
+    resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.24" },
+      body: JSON.stringify({ email: "rate-final@example.com" }),
+    }), env);
+    assert.equal(resp.status, 429);
+  }],
+  ["auth request-link does not reveal account existence", async () => {
+    const db = new FakeD1({
+      authUsers: [{
+        id: "known-user",
+        email: "known@example.com",
+        email_norm: "known@example.com",
+        display_name: "Known",
+        created_ms: 1,
+        updated_ms: 1,
+        email_verified_ms: 1,
+        last_login_ms: 1,
+        disabled_ms: null,
+      }],
+    });
+    const known = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.26", "x-auth-dev-secret": AUTH_DEV_SECRET },
+      body: JSON.stringify({ email: "known@example.com" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } }));
+    const unknown = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.27", "x-auth-dev-secret": AUTH_DEV_SECRET },
+      body: JSON.stringify({ email: "unknown@example.com" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } }));
+    assert.equal(known.status, 200);
+    assert.equal(unknown.status, 200);
+    assert.deepEqual(Object.keys(await known.json()).sort(), ["devLink", "ok"]);
+    assert.deepEqual(Object.keys(await unknown.json()).sort(), ["devLink", "ok"]);
   }],
   ["home renders useful empty state", async () => {
     const resp = await fetchPath("/");
