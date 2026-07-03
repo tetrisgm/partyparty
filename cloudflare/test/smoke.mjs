@@ -12,8 +12,11 @@ const KNOWN_SLUG = "known-set";
 const SET_ID = "abcdef123456";
 
 class FakeD1 {
-  constructor({ knownSlug = KNOWN_SLUG } = {}) {
+  constructor({ knownSlug = KNOWN_SLUG, homeEvents = [], featuredProfiles = [], replayEvents = [] } = {}) {
     this.knownSlug = knownSlug;
+    this.homeEvents = homeEvents;
+    this.featuredProfiles = featuredProfiles;
+    this.replayEvents = replayEvents;
   }
 
   prepare(sql) {
@@ -78,6 +81,16 @@ class FakeD1Statement {
   }
 
   async all() {
+    const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("WHERE e.visibility=? AND e.status IN")) {
+      return { results: this.db.homeEvents };
+    }
+    if (sql.includes("FROM featured_profiles f")) {
+      return { results: this.db.featuredProfiles };
+    }
+    if (sql.includes("WHERE e.visibility=? AND e.status=?")) {
+      return { results: this.db.replayEvents };
+    }
     return { results: [] };
   }
 
@@ -153,24 +166,24 @@ class FakeR2 {
   }
 }
 
-function makeEnv() {
+function makeEnv(opts = {}) {
   return {
-    DB: new FakeD1(),
+    DB: opts.DB || new FakeD1(opts.db || {}),
     DL: new FakeR2({
       [`event/${KNOWN_SLUG}/${SET_ID}.m4a`]: new FakeR2Object("fake-audio", { contentType: "audio/mp4" }),
       [`event/${KNOWN_SLUG}/${SET_ID}.peaks.json`]: new FakeR2Object('{"peaks":[10,50,80]}', { contentType: "application/json" }),
       [`event/${KNOWN_SLUG}/cover.jpg`]: new FakeR2Object("fake-jpeg", { contentType: "image/jpeg" }),
     }),
     ASSETS: {
-      fetch: async () => new Response("landing", { status: 200 }),
+      fetch: async () => new Response(opts.assetBody || "landing", { status: 200 }),
     },
     BROKER_BASE: "party.example.test",
     CF_ZONE_ID: "zone-test",
   };
 }
 
-async function fetchPath(path, init = {}) {
-  return worker.fetch(new Request(`https://party.ramine.net${path}`, init), makeEnv());
+async function fetchPath(path, init = {}, envOpts = {}) {
+  return worker.fetch(new Request(`https://party.ramine.net${path}`, init), makeEnv(envOpts));
 }
 
 const tests = [
@@ -213,8 +226,46 @@ const tests = [
     });
     assert.equal(await readJson(tooLarge, 10), null);
   }],
-  ["landing delegates to ASSETS", async () => {
+  ["home renders useful empty state", async () => {
     const resp = await fetchPath("/");
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /silent-disco popups/);
+    assert.match(html, /Get the app/);
+    assert.match(html, /\/partyparty\.zip/);
+    assert.notEqual(html.trim(), "");
+  }],
+  ["home renders public events and featured DJs", async () => {
+    const resp = await fetchPath("/", {}, {
+      db: {
+        homeEvents: [{
+          slug: "friday-rooftop",
+          title: "Friday Rooftop",
+          host: "Ramine",
+          scheduled_at_ms: 1893456000000,
+          location_name: "Mission Roof",
+          status: "upcoming",
+          visibility: "public",
+          cover_key: "event/friday-rooftop/cover.jpg",
+        }],
+        featuredProfiles: [{
+          id: "profile1",
+          handle: "dj.ramine",
+          display_name: "DJ Ramine",
+          bio: "House and rooftop sessions.",
+          published: 1,
+        }],
+      },
+    });
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /Friday Rooftop/);
+    assert.match(html, /href="\/e\/friday-rooftop"/);
+    assert.match(html, /@dj\.ramine/);
+    assert.match(html, /href="\/@dj\.ramine"/);
+  }],
+  ["about delegates to ASSETS", async () => {
+    const resp = await fetchPath("/about");
     assert.equal(resp.status, 200);
     assert.equal(await resp.text(), "landing");
   }],

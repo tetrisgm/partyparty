@@ -255,6 +255,24 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .wave i{flex:1 1 0;min-width:2px;min-height:2px;background:var(--line);border-radius:2px;transition:background .12s}
 .wave i.on{background:var(--accent)}
 .player audio{width:100%;margin-top:4px}
+.homehero{padding:52px 0 18px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:end}
+.homehero h1{font-size:clamp(38px,7vw,68px);line-height:.98;letter-spacing:-.04em;margin:0 0 14px;max-width:760px}
+.homehero p{color:var(--ink2);font-size:19px;line-height:1.42;margin:0;max-width:620px}
+.homehero .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.sectionhead{display:flex;justify-content:space-between;align-items:end;gap:18px;margin:30px 0 10px}
+.sectionhead h2{font-size:24px;letter-spacing:-.025em;margin:0}.sectionhead p{color:var(--ink2);font-size:14px;margin:4px 0 0}
+.eventgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.eventcard{display:grid;grid-template-columns:112px minmax(0,1fr);gap:16px;align-items:center}
+.eventcard .cov{aspect-ratio:1.25;border-radius:16px;background-size:cover;background-position:center;background-color:var(--bg)}
+.eventcard h3,.djcard h3{font-size:17px;line-height:1.18;margin:0 0 6px;letter-spacing:-.01em}
+.eventcard .meta,.djcard p{color:var(--ink2);font-size:13px;line-height:1.35;margin:0}
+.pill{display:inline-flex;align-items:center;border-radius:var(--pill);background:var(--bg);color:var(--ink2);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;margin-bottom:9px}
+.pill.live{background:rgba(255,59,92,.1);color:var(--live)}
+.djstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.djcard .av{width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg,#ff2d6f,#ff9500);background-size:cover;background-position:center;margin-bottom:14px}
+.emptyhome{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:16px;align-items:stretch}
+.emptyhome .big{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}.emptyhome p{color:var(--ink2);margin:0 0 18px}
+@media(max-width:760px){.homehero{grid-template-columns:1fr;padding-top:26px}.eventgrid,.djstrip,.emptyhome{grid-template-columns:1fr}.eventcard{grid-template-columns:92px minmax(0,1fr)}}
 `;
 
 const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -292,6 +310,146 @@ function fmtDur(ms) {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   const mm = h ? String(m).padStart(2, "0") : String(m);
   return (h ? h + ":" : "") + mm + ":" + String(sec).padStart(2, "0");
+}
+
+function fmtWhen(ms) {
+  const n = Number(ms) || 0;
+  if (!n) return "Date TBA";
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(n));
+  } catch (_) {
+    return "Date TBA";
+  }
+}
+
+async function getHomeEvents(env) {
+  if (!env?.DB) return [];
+  const rows = await env.DB.prepare(
+    `SELECT e.*, p.handle AS dj_handle, p.display_name AS dj_display_name
+     FROM events e
+     LEFT JOIN dj_profiles p ON p.id=e.dj_profile_id AND p.published=1
+     WHERE e.visibility=? AND e.status IN (?,?)
+     ORDER BY CASE WHEN e.status=? THEN 0 ELSE 1 END, e.scheduled_at_ms ASC
+     LIMIT ?`
+  ).bind("public", "upcoming", "live", "live", 12).all();
+  return rows?.results || [];
+}
+
+async function getFeaturedProfiles(env) {
+  if (!env?.DB) return [];
+  const now = nowMs();
+  const rows = await env.DB.prepare(
+    `SELECT p.*, f.label AS featured_label
+     FROM featured_profiles f
+     JOIN dj_profiles p ON p.id=f.profile_id
+     WHERE p.published=? AND (f.starts_ms IS NULL OR f.starts_ms<=?) AND (f.ends_ms IS NULL OR f.ends_ms>?)
+     ORDER BY f.rank ASC
+     LIMIT ?`
+  ).bind(1, now, now, 8).all();
+  return rows?.results || [];
+}
+
+async function getReplayEvents(env) {
+  if (!env?.DB) return [];
+  const rows = await env.DB.prepare(
+    `SELECT e.*, p.handle AS dj_handle, p.display_name AS dj_display_name
+     FROM events e
+     LEFT JOIN dj_profiles p ON p.id=e.dj_profile_id AND p.published=1
+     WHERE e.visibility=? AND e.status=?
+     ORDER BY COALESCE(e.last_activity_ms, e.scheduled_at_ms, e.updated_ms, e.created_ms, 0) DESC
+     LIMIT ?`
+  ).bind("public", "replay", 6).all();
+  return rows?.results || [];
+}
+
+function eventHost(row) {
+  return row.dj_display_name || row.host || (row.dj_handle ? "@" + row.dj_handle : "partyparty");
+}
+
+function eventCard(row) {
+  const slug = String(row.slug || "");
+  const cover = row.cover_key ? `/event/${esc(slug)}/cover.jpg` : "/img/dance.jpg";
+  const location = row.location_name || row.where_txt || "Location TBA";
+  const live = row.status === "live";
+  return `<a class="card eventcard" href="/e/${esc(slug)}">
+    <div class="cov" style="background-image:url('${cover}')"></div>
+    <div>
+      <span class="pill${live ? " live" : ""}">${live ? "Live now" : esc(row.status || "upcoming")}</span>
+      <h3>${esc(row.title || "A partyparty popup")}</h3>
+      <p class="meta">${esc(eventHost(row))} · ${esc(fmtWhen(row.scheduled_at_ms))}</p>
+      <p class="meta">${esc(location)}</p>
+    </div>
+  </a>`;
+}
+
+function profileCard(row) {
+  const handle = normalizeHandle(row.handle);
+  if (!handle) return "";
+  const avatar = row.avatar_key ? `background-image:url('/dj/${esc(handle)}/avatar.jpg')` : "";
+  const name = row.display_name || "@" + handle;
+  return `<a class="card djcard" href="/@${esc(handle)}">
+    <div class="av" style="${avatar}"></div>
+    <h3>${esc(name)}</h3>
+    <p>@${esc(handle)}</p>
+    ${row.bio ? `<p>${esc(clip(row.bio, 110))}</p>` : ""}
+  </a>`;
+}
+
+function emptyHome() {
+  return `<div class="emptyhome">
+    <div class="card">
+      <p class="big">Throw a silent-disco popup from your Mac.</p>
+      <p>partyparty gives each night a shareable page for the set replay, photos, clips and guest posts after the room clears.</p>
+      <a class="btn" href="/partyparty.zip">Get the app</a>
+    </div>
+    <div class="card">
+      <h2>Event pages are warming up</h2>
+      <p class="sub">Public parties and featured DJs will appear here as hosts publish them.</p>
+      <a class="btn lt sm" href="/about">About partyparty</a>
+    </div>
+  </div>`;
+}
+
+function renderHome({ events, profiles, replays }) {
+  const hasRows = events.length || profiles.length || replays.length;
+  const body = `<div class="page home">
+    <section class="homehero">
+      <div>
+        <h1>silent-disco popups, gathered after the night</h1>
+        <p>partyparty turns a Mac into a local silent-disco station, then gives every event a page for the replay and what guests captured.</p>
+        <div class="actions"><a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/about">About</a></div>
+      </div>
+    </section>
+    ${events.length ? `<section><div class="sectionhead"><div><h2>Upcoming &amp; live</h2><p>Public popups you can follow or revisit after the set.</p></div></div><div class="eventgrid">${events.map(eventCard).join("")}</div></section>` : ""}
+    ${profiles.length ? `<section><div class="sectionhead"><div><h2>Featured DJs</h2><p>Hosts shaping the next rooms.</p></div></div><div class="djstrip">${profiles.map(profileCard).join("")}</div></section>` : ""}
+    ${replays.length ? `<section><div class="sectionhead"><div><h2>Recent replays</h2><p>Sets that already landed.</p></div></div><div class="eventgrid">${replays.map(eventCard).join("")}</div></section>` : ""}
+    ${hasRows ? "" : emptyHome()}
+  </div>
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac</span></footer>`;
+  return shell({
+    title: "partyparty — silent-disco popups",
+    desc: "Mac-powered silent-disco popups with shareable event pages for replays, photos and clips.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/",
+    body,
+  });
+}
+
+async function homeResponse(env) {
+  const [events, profiles, replays] = await Promise.all([
+    getHomeEvents(env),
+    getFeaturedProfiles(env),
+    getReplayEvents(env),
+  ]);
+  return new Response(renderHome({ events, profiles, replays }), {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" },
+  });
 }
 
 // eventFromRow projects a D1 events row (+ its latest ready set) into the shape
@@ -898,6 +1056,19 @@ export default {
         s = await contentState(env);
       }
       return new Response(JSON.stringify({ ...s, changed: moved(s) }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+    }
+
+    if (pathname === "/about" || pathname === "/app") {
+      const u = new URL(request.url);
+      u.pathname = "/";
+      return env.ASSETS.fetch(new Request(u, request));
+    }
+
+    if (pathname === "/") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      return await homeResponse(env);
     }
 
     // Event pages: /e/<slug> is real (D1-backed); /@<handle> keeps the demo seed
