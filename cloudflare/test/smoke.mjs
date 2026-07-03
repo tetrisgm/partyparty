@@ -37,6 +37,7 @@ class FakeD1 {
     authMagicTokens = [],
     authUsers = [],
     authSessions = [],
+    installLinkTokens = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -73,6 +74,7 @@ class FakeD1 {
     this.authMagicTokens = new Map(authMagicTokens.map((row) => [row.id, { ...row }]));
     this.authUsers = new Map(authUsers.map((row) => [row.id, { ...row }]));
     this.authSessions = new Map(authSessions.map((row) => [row.id, { ...row }]));
+    this.installLinkTokens = new Map(installLinkTokens.map((row) => [row.id, { ...row }]));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
@@ -147,11 +149,31 @@ class FakeD1Statement {
       const row = this.db.profiles.find((profile) => profile.user_id === userId);
       return row ? { ...row } : null;
     }
+    if (sql.includes("COUNT(*) AS n FROM install_link_tokens WHERE user_id=?")) {
+      const [userId, now] = this.args;
+      let n = 0;
+      for (const row of this.db.installLinkTokens.values()) {
+        if (row.user_id === userId && row.used_ms == null && Number(row.expires_ms) > Number(now)) n += 1;
+      }
+      return { n };
+    }
+    if (sql.includes("FROM install_link_tokens WHERE code_hash=?")) {
+      const codeHash = this.args[0];
+      for (const row of this.db.installLinkTokens.values()) {
+        if (row.code_hash === codeHash) return { ...row };
+      }
+      return null;
+    }
+    if (sql.includes("FROM dj_profiles WHERE id=?")) {
+      const profileId = this.args[0];
+      const row = this.db.profiles.find((profile) => profile.id === profileId);
+      return row ? { ...row } : null;
+    }
     if (sql.includes("COUNT(*) AS n FROM device_installs WHERE user_id=?")) {
       const userId = this.args[0];
       let n = 0;
       for (const row of this.db.deviceInstalls.values()) {
-        if (row.user_id === userId) n += 1;
+        if (row.user_id === userId && (!sql.includes("revoked_ms IS NULL") || row.revoked_ms == null)) n += 1;
       }
       return { n };
     }
@@ -203,7 +225,10 @@ class FakeD1Statement {
       return row ? { install_id: row.install_id } : null;
     }
     if (sql.includes("FROM device_installs WHERE install_id=?")) {
-      return this.db.deviceInstalls.get(this.args[0]) || null;
+      const row = this.db.deviceInstalls.get(this.args[0]);
+      if (!row) return null;
+      if (sql.includes("revoked_ms IS NULL") && row.revoked_ms != null) return null;
+      return { ...row };
     }
     if (sql.includes("SELECT id FROM posts WHERE id=? AND slug=?")) {
       const [postId, slug] = this.args;
@@ -360,6 +385,18 @@ class FakeD1Statement {
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("DELETE FROM install_link_tokens WHERE (used_ms IS NOT NULL OR expires_ms < ?)")) {
+      const [now, createdCutoff] = this.args;
+      let changes = 0;
+      for (const [id, row] of [...this.db.installLinkTokens.entries()]) {
+        if (changes >= 200) break;
+        if ((row.used_ms != null || Number(row.expires_ms) < Number(now)) && Number(row.created_ms) < Number(createdCutoff)) {
+          this.db.installLinkTokens.delete(id);
+          changes += 1;
+        }
+      }
+      return { success: true, meta: { changes } };
+    }
     if (sql.includes("DELETE FROM auth_magic_tokens WHERE expires_ms < ? LIMIT 200")) {
       const cutoff = Number(this.args[0]);
       let changes = 0;
@@ -452,6 +489,58 @@ class FakeD1Statement {
         user_agent_hash: uaHash,
       });
       return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("INSERT INTO install_link_tokens")) {
+      const [id, codeHash, userId, profileId, createdMs, expiresMs] = this.args;
+      for (const row of this.db.installLinkTokens.values()) {
+        if (row.code_hash === codeHash) throw new Error("UNIQUE constraint failed: install_link_tokens.code_hash");
+      }
+      this.db.installLinkTokens.set(id, {
+        id,
+        code_hash: codeHash,
+        user_id: userId,
+        profile_id: profileId,
+        install_id: null,
+        created_ms: createdMs,
+        expires_ms: expiresMs,
+        used_ms: null,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE install_link_tokens SET used_ms=?, install_id=? WHERE id=? AND used_ms IS NULL")) {
+      const [usedMs, installId, id] = this.args;
+      const row = this.db.installLinkTokens.get(id);
+      if (!row || row.used_ms != null) return { success: true, meta: { changes: 0 } };
+      row.used_ms = usedMs;
+      row.install_id = installId;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("INSERT INTO device_installs")) {
+      const [installId, installSlug, userId, profileId, createdMs, linkedMs, lastSeenMs] = this.args;
+      const old = this.db.deviceInstalls.get(installId);
+      this.db.deviceInstalls.set(installId, {
+        install_id: installId,
+        install_slug: installSlug,
+        user_id: userId,
+        profile_id: profileId,
+        label: old?.label || "",
+        created_ms: old?.created_ms || createdMs,
+        linked_ms: linkedMs,
+        last_seen_ms: lastSeenMs,
+        revoked_ms: null,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE device_installs SET revoked_ms=? WHERE user_id=?")) {
+      const [revokedMs, userId, installId] = this.args;
+      let changes = 0;
+      for (const row of this.db.deviceInstalls.values()) {
+        if (row.user_id !== userId || row.revoked_ms != null) continue;
+        if (sql.includes("install_id=?") && row.install_id !== installId) continue;
+        row.revoked_ms = revokedMs;
+        changes += 1;
+      }
+      return { success: true, meta: { changes } };
     }
     if (sql.includes("UPDATE auth_sessions SET revoked_ms=? WHERE token_hash=? AND revoked_ms IS NULL")) {
       const [revokedMs, tokenHash] = this.args;
@@ -622,7 +711,7 @@ class FakeD1Statement {
       return { success: true };
     }
     if (sql.includes("INSERT INTO events") && sql.includes("?1") && sql.includes("last_activity_ms")) {
-      const [slug, installId, title, host, starts, whereTxt, tagline, about, now] = this.args;
+      const [slug, installId, title, host, starts, whereTxt, tagline, about, ownerUserId, djProfileId, now] = this.args;
       const old = this.db.events.get(slug);
       if (!old) {
         this.db.events.set(slug, {
@@ -635,6 +724,8 @@ class FakeD1Statement {
           tagline,
           about,
           status: "replay",
+          owner_user_id: ownerUserId,
+          dj_profile_id: djProfileId,
           created_ms: now,
           updated_ms: now,
           last_activity_ms: now,
@@ -649,6 +740,8 @@ class FakeD1Statement {
           tagline,
           about,
           status: "replay",
+          owner_user_id: ownerUserId || old.owner_user_id,
+          dj_profile_id: djProfileId || old.dj_profile_id,
           updated_ms: now,
           last_activity_ms: now,
         });
@@ -865,6 +958,19 @@ async function signInCookie(db, email, opts = {}) {
   const verify = await postVerify(db, token, opts);
   assert.equal(verify.status, 302);
   return (verify.headers.get("set-cookie") || "").split(";")[0];
+}
+
+async function seedInstallLinkToken(db, { id, code, userId, profileId, createdMs = Date.now(), expiresMs = Date.now() + 60_000, usedMs = null, installId = null }) {
+  db.installLinkTokens.set(id, {
+    id,
+    code_hash: await sha256Hex(code),
+    user_id: userId,
+    profile_id: profileId,
+    install_id: installId,
+    created_ms: createdMs,
+    expires_ms: expiresMs,
+    used_ms: usedMs,
+  });
 }
 
 const contentLength = (body) => String(new TextEncoder().encode(String(body)).byteLength);
@@ -1154,6 +1260,341 @@ const tests = [
     assert.match(html, /href="\/profile\/edit"/);
     assert.match(html, /href="\/events\/new">＋ Create event/);
     assert.match(html, /Owned Account Night/);
+    assert.match(html, /Link your Mac/);
+    assert.match(html, /install-link-create/);
+  }],
+  ["install-link create gates auth and profile, then returns a one-time code", async () => {
+    const anon = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+      method: "POST",
+    }), makeEnv({ DB: new FakeD1() }));
+    assert.equal(anon.status, 401);
+
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "link-create@example.com", { ip: "203.0.113.29" });
+    const noProfile = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+      method: "POST",
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    assert.equal(noProfile.status, 400);
+
+    const user = [...db.authUsers.values()][0];
+    db.profiles.push({
+      id: "profile-link-create",
+      user_id: user.id,
+      handle: "link.create",
+      display_name: "Link Create",
+      published: 1,
+    });
+    const created = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+      method: "POST",
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    const json = await created.json();
+    const token = [...db.installLinkTokens.values()][0];
+    assert.equal(created.status, 200);
+    assert.equal(json.ok, true);
+    assert.match(json.code, /^[a-f0-9]{32}$/);
+    assert.equal(typeof json.expiresMs, "number");
+    assert.equal(db.installLinkTokens.size, 1);
+    assert.equal(token.user_id, user.id);
+    assert.equal(token.profile_id, "profile-link-create");
+    assert.notEqual(token.code_hash, json.code);
+    assert.equal(token.install_id, null);
+    assert.equal(token.used_ms, null);
+  }],
+  ["broker link-install rejects bad secret", async () => {
+    const rawCode = "badc0dedbadc0dedbadc0dedbadc0ded";
+    const db = new FakeD1({
+      profiles: [{
+        id: "profile-bad-secret",
+        user_id: "user-bad-secret",
+        handle: "bad.secret",
+        published: 1,
+      }],
+      installLinkTokens: [{
+        id: "token-bad-secret",
+        code_hash: await sha256Hex(rawCode),
+        user_id: "user-bad-secret",
+        profile_id: "profile-bad-secret",
+        install_id: null,
+        created_ms: Date.now(),
+        expires_ms: Date.now() + 60_000,
+        used_ms: null,
+      }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "wrong", code: rawCode }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 403);
+    assert.equal(db.installLinkTokens.get("token-bad-secret").used_ms, null);
+    assert.equal(db.deviceInstalls.has("abc123abc123"), false);
+  }],
+  ["broker link-install rejects active cross-account takeover but allows same-user relink", async () => {
+    const otherCode = "11111111111111111111111111111111";
+    const sameCode = "22222222222222222222222222222222";
+    const db = new FakeD1({
+      profiles: [{
+        id: "profile-old",
+        user_id: "user-old",
+        handle: "old.link",
+        published: 1,
+      }, {
+        id: "profile-new",
+        user_id: "user-new",
+        handle: "new.link",
+        published: 1,
+      }, {
+        id: "profile-old-next",
+        user_id: "user-old",
+        handle: "old.next",
+        published: 1,
+      }],
+      deviceInstalls: [{
+        install_id: "abc123abc123",
+        install_slug: "disco12",
+        user_id: "user-old",
+        profile_id: "profile-old",
+        created_ms: Date.now() - 10_000,
+        linked_ms: Date.now() - 10_000,
+        last_seen_ms: Date.now() - 10_000,
+        revoked_ms: null,
+      }],
+    });
+    await seedInstallLinkToken(db, { id: "token-other-user", code: otherCode, userId: "user-new", profileId: "profile-new" });
+    await seedInstallLinkToken(db, { id: "token-same-user", code: sameCode, userId: "user-old", profileId: "profile-old-next" });
+
+    const takeover = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: otherCode }),
+    }), makeEnv({ DB: db }));
+    assert.equal(takeover.status, 409);
+    assert.equal(db.installLinkTokens.get("token-other-user").used_ms, null);
+    assert.equal(db.deviceInstalls.get("abc123abc123").user_id, "user-old");
+    assert.equal(db.deviceInstalls.get("abc123abc123").profile_id, "profile-old");
+
+    const same = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: sameCode }),
+    }), makeEnv({ DB: db }));
+    assert.equal(same.status, 200);
+    assert.equal(db.installLinkTokens.get("token-same-user").install_id, "abc123abc123");
+    assert.equal(db.deviceInstalls.get("abc123abc123").user_id, "user-old");
+    assert.equal(db.deviceInstalls.get("abc123abc123").profile_id, "profile-old-next");
+    assert.equal(db.deviceInstalls.get("abc123abc123").revoked_ms, null);
+  }],
+  ["install-link unlink revokes owner link and permits later relink to a new account", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "unlink-owner@example.com", { ip: "203.0.113.31" });
+    const owner = [...db.authUsers.values()][0];
+    db.profiles.push({
+      id: "profile-unlink-owner",
+      user_id: owner.id,
+      handle: "unlink.owner",
+      display_name: "Unlink Owner",
+      published: 1,
+    });
+    db.deviceInstalls.set("abc123abc123", {
+      install_id: "abc123abc123",
+      install_slug: "disco12",
+      user_id: owner.id,
+      profile_id: "profile-unlink-owner",
+      label: "",
+      created_ms: Date.now() - 10_000,
+      linked_ms: Date.now() - 10_000,
+      last_seen_ms: Date.now() - 10_000,
+      revoked_ms: null,
+    });
+
+    const unlink = await worker.fetch(new Request("https://party.ramine.net/api/install-link/unlink", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ install_id: "abc123abc123" }),
+    }), makeEnv({ DB: db }));
+    const unlinkJson = await unlink.json();
+    assert.equal(unlink.status, 200);
+    assert.deepEqual(unlinkJson, { ok: true, revoked: 1 });
+    assert.equal(typeof db.deviceInstalls.get("abc123abc123").revoked_ms, "number");
+
+    const relinkCode = "33333333333333333333333333333333";
+    db.profiles.push({
+      id: "profile-relink-new",
+      user_id: "user-relink-new",
+      handle: "relink.new",
+      published: 1,
+    });
+    await seedInstallLinkToken(db, { id: "token-relink-new", code: relinkCode, userId: "user-relink-new", profileId: "profile-relink-new" });
+    const relink = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: relinkCode }),
+    }), makeEnv({ DB: db }));
+    assert.equal(relink.status, 200);
+    assert.equal(db.deviceInstalls.get("abc123abc123").user_id, "user-relink-new");
+    assert.equal(db.deviceInstalls.get("abc123abc123").profile_id, "profile-relink-new");
+    assert.equal(db.deviceInstalls.get("abc123abc123").revoked_ms, null);
+  }],
+  ["revoked device install does not stamp owners or unlock profile events-window", async () => {
+    const now = Date.now();
+    const db = new FakeD1({
+      deviceInstalls: [{
+        install_id: "abc123abc123",
+        install_slug: "disco12",
+        user_id: "user-revoked",
+        profile_id: "profile-revoked",
+        created_ms: now - 10_000,
+        linked_ms: now - 10_000,
+        last_seen_ms: now - 10_000,
+        revoked_ms: now - 1_000,
+      }],
+      events: [{
+        slug: "profile-only-window",
+        install_id: "def456def456",
+        title: "Profile Only Window",
+        status: "upcoming",
+        dj_profile_id: "profile-revoked",
+        scheduled_at_ms: now + 60_000,
+        updated_ms: now,
+      }],
+    });
+
+    const publishMeta = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-publish", title: "Revoked Publish" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(publishMeta.status, 200);
+    assert.equal(db.events.get("revoked-publish").owner_user_id, null);
+    assert.equal(db.events.get("revoked-publish").dj_profile_id, null);
+
+    const eventUpsert = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-upsert", title: "Revoked Upsert" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(eventUpsert.status, 200);
+    assert.equal(db.events.get("revoked-upsert").owner_user_id, null);
+    assert.equal(db.events.get("revoked-upsert").dj_profile_id, null);
+
+    const windowResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/events-window", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", since_ms: now - 86_400_000, until_ms: now + 86_400_000 }),
+    }), makeEnv({ DB: db }));
+    const windowJson = await windowResp.json();
+    assert.equal(windowResp.status, 200);
+    assert.equal(windowJson.events.some((event) => event.slug === "profile-only-window"), false);
+  }],
+  ["broker link-install throttles repeated bad code guesses per install", async () => {
+    const env = makeEnv({ DB: new FakeD1() });
+    for (let i = 0; i < 10; i += 1) {
+      const guess = String(i).padStart(32, "0");
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: guess }),
+      }), env);
+      assert.equal(resp.status, 400);
+    }
+    const throttled = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }),
+    }), env);
+    assert.equal(throttled.status, 429);
+  }],
+  ["broker link-install binds install, rejects reuse and expired codes, then stamps broker writes", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "link-ok@example.com", { ip: "203.0.113.30" });
+    const user = [...db.authUsers.values()][0];
+    db.profiles.push({
+      id: "profile-link-ok",
+      user_id: user.id,
+      handle: "link.ok",
+      display_name: "Link OK",
+      published: 1,
+    });
+    const create = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+      method: "POST",
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    const code = (await create.json()).code;
+
+    const link = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code }),
+    }), makeEnv({ DB: db }));
+    const linkJson = await link.json();
+    const install = db.deviceInstalls.get("abc123abc123");
+    const token = [...db.installLinkTokens.values()][0];
+    assert.equal(link.status, 200);
+    assert.deepEqual(linkJson, { ok: true, handle: "link.ok" });
+    assert.equal(token.install_id, "abc123abc123");
+    assert.equal(typeof token.used_ms, "number");
+    assert.equal(install.install_slug, "disco12");
+    assert.equal(install.user_id, user.id);
+    assert.equal(install.profile_id, "profile-link-ok");
+    assert.equal(typeof install.linked_ms, "number");
+
+    const reused = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code }),
+    }), makeEnv({ DB: db }));
+    assert.equal(reused.status, 400);
+
+    const expiredCode = "feedcafefeedcafefeedcafefeedcafe";
+    db.installLinkTokens.set("expired-install-link", {
+      id: "expired-install-link",
+      code_hash: await sha256Hex(expiredCode),
+      user_id: user.id,
+      profile_id: "profile-link-ok",
+      install_id: null,
+      created_ms: Date.now() - 120_000,
+      expires_ms: Date.now() - 1,
+      used_ms: null,
+    });
+    const expired = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: expiredCode }),
+    }), makeEnv({ DB: db }));
+    assert.equal(expired.status, 400);
+    assert.equal(db.installLinkTokens.get("expired-install-link").used_ms, null);
+
+    const publishMeta = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        slug: "linked-publish",
+        title: "Linked Publish",
+      }),
+    }), makeEnv({ DB: db }));
+    const publishRow = db.events.get("linked-publish");
+    assert.equal(publishMeta.status, 200);
+    assert.equal(publishRow.owner_user_id, user.id);
+    assert.equal(publishRow.dj_profile_id, "profile-link-ok");
+
+    const eventUpsert = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        slug: "linked-upsert",
+        title: "Linked Upsert",
+      }),
+    }), makeEnv({ DB: db }));
+    const upsertRow = db.events.get("linked-upsert");
+    assert.equal(eventUpsert.status, 200);
+    assert.equal(upsertRow.owner_user_id, user.id);
+    assert.equal(upsertRow.dj_profile_id, "profile-link-ok");
   }],
   ["web event create API requires authentication", async () => {
     const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {

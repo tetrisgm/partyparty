@@ -53,6 +53,11 @@ const MAGIC_LINK_IP_CAP = 5;
 const MAGIC_LINK_EMAIL_CAP = 3;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const AUTH_CLEANUP_GRACE_MS = 24 * 60 * 60 * 1000;
+const INSTALL_LINK_TTL_MS = 10 * 60 * 1000;
+const INSTALL_LINK_USER_CAP = 5;
+const INSTALL_LINK_CLEANUP_GRACE_MS = 60 * 60 * 1000;
+const INSTALL_LINK_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
+const INSTALL_LINK_ATTEMPT_CAP = 10;
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1157,7 +1162,7 @@ async function accountResponse(request, env) {
   if (!user) return redirectResp("/login?redirect=/account");
   const [profile, installsRow, eventsRows] = await Promise.all([
     env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first(),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM device_installs WHERE user_id=?").bind(user.id).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM device_installs WHERE user_id=? AND revoked_ms IS NULL").bind(user.id).first(),
     env.DB.prepare(
       `SELECT slug, title, status, scheduled_at_ms, starts, where_txt, location_name
        FROM events
@@ -1187,6 +1192,16 @@ async function accountResponse(request, env) {
     const place = ev.location_name || ev.where_txt || "";
     return `<div class="minirow"><b>${esc(ev.title || ev.slug || "Untitled event")}</b><span>${esc([ev.status, when, place].filter(Boolean).join(" · "))}</span>${ev.slug ? `<a href="/e/${esc(ev.slug)}" style="color:var(--link);font-size:13px">View event</a>` : ""}</div>`;
   }).join("")}</div>` : `<p class="emptyline">No owned events yet.</p>`;
+  const linkMacCard = profile ? `<div class="card">
+    <h2>Link your Mac</h2>
+    <p class="emptyline">Generate a one-time code, then paste it into partyparty on your Mac.</p>
+    <div class="ecta"><button class="btn lt sm" id="install-link-create" type="button">Generate code</button></div>
+    <div id="install-link-out" class="minirow" style="display:none"></div>
+  </div>` : `<div class="card">
+    <h2>Link your Mac</h2>
+    <p class="emptyline">Create a DJ profile before linking an install.</p>
+    <div class="ecta"><a class="btn lt sm" href="/profile/edit">Create profile</a></div>
+  </div>`;
   const body = `<div class="page">
     <div class="card">
       <div class="accounthead">
@@ -1200,12 +1215,15 @@ async function accountResponse(request, env) {
     </div>
     <div class="accountgrid" style="margin-top:16px">
       ${profileCard}
-      <div class="card"><h2>Linked installs</h2><div class="stat">${esc(installs)}</div><p class="emptyline">Device management is coming soon.</p></div>
+      <div class="card"><h2>Linked installs</h2><div class="stat">${esc(installs)}</div><p class="emptyline">Active Mac links for this account.</p><div class="ecta"><button class="btn lt sm" id="install-link-unlink" type="button">Unlink</button></div><p class="hint" id="install-link-unlink-out" role="status"></p></div>
+      ${linkMacCard}
       <div class="card" style="grid-column:1/-1"><div class="sectionhead" style="margin:0 0 12px"><div><h2>Owned events</h2></div><a class="btn sm" href="/events/new">＋ Create event</a></div>${eventList}</div>
     </div>
   </div>
   <script>
 (function(){var b=document.getElementById('sign-out');if(!b)return;b.addEventListener('click',function(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/'})})})();
+(function(){var b=document.getElementById('install-link-create'),o=document.getElementById('install-link-out');if(!b||!o)return;b.addEventListener('click',function(){b.disabled=true;o.style.display='block';o.textContent='Generating...';fetch('/api/install-link/create',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){o.textContent=out.json&&out.json.error?out.json.error:'Could not generate a code.';return}var code=String(out.json.code||''),safe=code.replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});o.innerHTML='<b style="font-size:22px;letter-spacing:.08em;word-break:break-all">'+safe+'</b><span>Paste this code into the Mac app within 10 minutes.</span><button class="btn lt sm" id="install-link-copy" type="button">Copy</button>';var c=document.getElementById('install-link-copy');if(c)c.addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(code).then(function(){c.textContent='Copied'}).catch(function(){c.textContent='Copy failed'})})}).catch(function(){o.textContent='Could not generate a code.'}).finally(function(){b.disabled=false})})})();
+(function(){var b=document.getElementById('install-link-unlink'),o=document.getElementById('install-link-unlink-out');if(!b||!o)return;b.addEventListener('click',function(){b.disabled=true;o.textContent='Unlinking...';fetch('/api/install-link/unlink',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:'{}'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){o.textContent=out.json&&out.json.error?out.json.error:'Could not unlink.';return}o.textContent='Unlinked.';setTimeout(function(){location.reload()},500)}).catch(function(){o.textContent='Could not unlink.'}).finally(function(){b.disabled=false})})})();
   </script>
   <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
   return new Response(shell({
@@ -1675,6 +1693,106 @@ async function authMe(request, env) {
   });
 }
 
+async function installLinkCreate(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "link db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const profile = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+  if (!profile?.id) return jsonResp(400, { error: "create a DJ profile first", redirect: "/profile/edit" });
+
+  const now = nowMs();
+  cleanupInstallLinkTokens(env, now);
+  const live = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM install_link_tokens WHERE user_id=? AND used_ms IS NULL AND expires_ms>?"
+  ).bind(user.id, now).first();
+  if ((Number(live?.n) || 0) >= INSTALL_LINK_USER_CAP) return jsonResp(429, { error: "rate limited" });
+
+  let code = "";
+  let expiresMs = 0;
+  for (let i = 0; i < 3; i += 1) {
+    code = randHex(16);
+    expiresMs = now + INSTALL_LINK_TTL_MS;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO install_link_tokens
+           (id, code_hash, user_id, profile_id, install_id, created_ms, expires_ms, used_ms)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, NULL)`
+      ).bind(randHex(16), await sha256Hex(code), user.id, profile.id, now, expiresMs).run();
+      return jsonResp(200, { ok: true, code, expiresMs });
+    } catch (e) {
+      if (!/unique|constraint|install_link_tokens/i.test(String((e && e.message) || e))) throw e;
+    }
+  }
+  return jsonResp(500, { error: "could not create code" });
+}
+
+async function installLinkUnlink(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "link db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const wantsJson = String(request.headers.get("content-type") || "").includes("application/json");
+  const body = wantsJson ? await readJson(request, 1024) : {};
+  if (wantsJson && !body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+  const installId = String(body.install_id || body.id || "");
+  const now = nowMs();
+  let result;
+  if (installId) {
+    if (!/^[a-f0-9]{12}$/.test(installId)) return jsonResp(400, { error: "bad install_id" });
+    result = await env.DB.prepare(
+      "UPDATE device_installs SET revoked_ms=? WHERE user_id=? AND install_id=? AND revoked_ms IS NULL"
+    ).bind(now, user.id, installId).run();
+  } else {
+    result = await env.DB.prepare(
+      "UPDATE device_installs SET revoked_ms=? WHERE user_id=? AND revoked_ms IS NULL"
+    ).bind(now, user.id).run();
+  }
+  return jsonResp(200, { ok: true, revoked: Number(result?.meta?.changes) || 0 });
+}
+
+function cleanupInstallLinkTokens(env, now) {
+  try {
+    env.DB.prepare(
+      "DELETE FROM install_link_tokens WHERE (used_ms IS NOT NULL OR expires_ms < ?) AND created_ms < ? LIMIT 200"
+    ).bind(now, now - INSTALL_LINK_CLEANUP_GRACE_MS).run().catch(() => {});
+  } catch (_) { /* best effort */ }
+}
+
+function installLinkAttemptKey(id) {
+  return `broker/link-install-attempts/${id}.json`;
+}
+
+async function installLinkAttemptState(env, id, now) {
+  try {
+    const row = await env.DL.get(installLinkAttemptKey(id)).then((o) => (o ? o.json() : null));
+    if (!row || Number(row.start_ms) + INSTALL_LINK_ATTEMPT_WINDOW_MS <= now) return { start_ms: now, n: 0 };
+    return { start_ms: Number(row.start_ms) || now, n: Number(row.n) || 0 };
+  } catch (_) {
+    return { start_ms: now, n: 0 };
+  }
+}
+
+async function installLinkAttemptsExceeded(env, id, now) {
+  const state = await installLinkAttemptState(env, id, now);
+  return state.n >= INSTALL_LINK_ATTEMPT_CAP;
+}
+
+async function recordInstallLinkFailure(env, id, now) {
+  try {
+    const state = await installLinkAttemptState(env, id, now);
+    await env.DL.put(installLinkAttemptKey(id), JSON.stringify({ start_ms: state.start_ms, n: state.n + 1 }), {
+      httpMetadata: { contentType: "application/json" },
+    });
+  } catch (_) { /* defense-in-depth only */ }
+}
+
+async function clearInstallLinkFailures(env, id) {
+  try {
+    await env.DL.delete(installLinkAttemptKey(id));
+  } catch (_) { /* defense-in-depth only */ }
+}
+
 async function rsvpCounts(env, slug) {
   const out = { coming: 0, not: 0 };
   const rows = await env.DB.prepare(
@@ -2108,6 +2226,7 @@ function brokerJsonCap(pathname) {
   if (pathname === "/api/broker/log") return 8_100_000;
   if (pathname === "/api/broker/telemetry") return 128_000;
   if (pathname === "/api/broker/events-window") return 2_048;
+  if (pathname === "/api/broker/link-install") return 2_048;
   return 16_384;
 }
 
@@ -2176,6 +2295,60 @@ async function broker(request, env, pathname) {
   }
   const id = String(body.id || "");
   if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
+
+  if (pathname === "/api/broker/link-install") {
+    if (!env.DB) return jsonResp(503, { error: "link db not configured" });
+    const rec = await authInstall(env, id, body.secret || "");
+    if (!rec) return jsonResp(403, { error: "bad credentials" });
+    const now = nowMs();
+    if (await installLinkAttemptsExceeded(env, id, now)) return jsonResp(429, { error: "rate limited" });
+    const code = String(body.code || "").trim().toLowerCase();
+    if (!/^[a-f0-9]{32}$/.test(code)) {
+      await recordInstallLinkFailure(env, id, now);
+      return jsonResp(400, { error: "bad code" });
+    }
+    const token = await env.DB.prepare("SELECT * FROM install_link_tokens WHERE code_hash=? LIMIT 1")
+      .bind(await sha256Hex(code)).first();
+    if (!token || token.used_ms != null || Number(token.expires_ms) <= now) {
+      await recordInstallLinkFailure(env, id, now);
+      return jsonResp(400, { error: "invalid code" });
+    }
+    const profile = await env.DB.prepare("SELECT * FROM dj_profiles WHERE id=? LIMIT 1").bind(token.profile_id).first();
+    if (!profile?.id) {
+      await recordInstallLinkFailure(env, id, now);
+      return jsonResp(400, { error: "invalid code" });
+    }
+    const existing = await env.DB.prepare(
+      "SELECT user_id, profile_id, revoked_ms FROM device_installs WHERE install_id=? LIMIT 1"
+    ).bind(id).first();
+    if (existing && existing.revoked_ms == null && existing.user_id && existing.user_id !== token.user_id) {
+      return jsonResp(409, { error: "install already linked to another account; unlink it first" });
+    }
+
+    const mark = await env.DB.prepare(
+      "UPDATE install_link_tokens SET used_ms=?, install_id=? WHERE id=? AND used_ms IS NULL"
+    ).bind(now, id, token.id).run();
+    if ((Number(mark?.meta?.changes) || 0) < 1) {
+      await recordInstallLinkFailure(env, id, now);
+      return jsonResp(400, { error: "invalid code" });
+    }
+
+    await env.DB.prepare(
+      `INSERT INTO device_installs
+         (install_id, install_slug, user_id, profile_id, label, created_ms, linked_ms, last_seen_ms, revoked_ms)
+       VALUES (?, ?, ?, ?, '', ?, ?, ?, NULL)
+       ON CONFLICT(install_id) DO UPDATE SET
+         install_slug=excluded.install_slug,
+         user_id=excluded.user_id,
+         profile_id=excluded.profile_id,
+         linked_ms=excluded.linked_ms,
+         last_seen_ms=excluded.last_seen_ms,
+         revoked_ms=NULL`
+    ).bind(id, rec.slug || "", token.user_id, token.profile_id, now, now, now).run();
+    await clearInstallLinkFailures(env, id);
+    return jsonResp(200, { ok: true, handle: normalizeHandle(profile.handle) });
+  }
+
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => (o ? o.json() : null));
   const READ_ONLY = ["/api/broker/telemetry-dump", "/api/broker/log-list", "/api/broker/log-get"];
   if (isAdmin && READ_ONLY.includes(pathname)) {
@@ -2203,13 +2376,19 @@ async function broker(request, env, pathname) {
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
     if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
     const now = nowMs();
+    const linked = await env.DB.prepare(
+      "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+    ).bind(id).first();
+    const ownerUserId = linked?.user_id || null;
+    const djProfileId = linked?.profile_id || null;
     await env.DB.prepare(
-      `INSERT INTO events (slug, install_id, title, host, starts, where_txt, tagline, about, status, created_ms, updated_ms, last_activity_ms)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'replay',?9,?9,?9)
-       ON CONFLICT(slug) DO UPDATE SET title=?3, host=?4, starts=?5, where_txt=?6, tagline=?7, about=?8, status='replay', updated_ms=?9, last_activity_ms=?9
+      `INSERT INTO events (slug, install_id, title, host, starts, where_txt, tagline, about, status, owner_user_id, dj_profile_id, created_ms, updated_ms, last_activity_ms)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'replay',?9,?10,?11,?11,?11)
+       ON CONFLICT(slug) DO UPDATE SET title=?3, host=?4, starts=?5, where_txt=?6, tagline=?7, about=?8, status='replay',
+         owner_user_id=COALESCE(?9, owner_user_id), dj_profile_id=COALESCE(?10, dj_profile_id), updated_ms=?11, last_activity_ms=?11
        WHERE events.install_id=?2`
     ).bind(slug, id, clip(body.title, 200), clip(body.host, 80), clip(body.starts, 120),
-      clip(body.where, 120), clip(body.tagline, 200), clip(body.about, 4000), now).run();
+      clip(body.where, 120), clip(body.tagline, 200), clip(body.about, 4000), ownerUserId, djProfileId, now).run();
     // Re-verify ownership post-upsert (closes any claim race) before minting a set.
     const check = await env.DB.prepare("SELECT install_id, dj_profile_id FROM events WHERE slug=?").bind(slug).first();
     if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
@@ -2275,7 +2454,7 @@ async function broker(request, env, pathname) {
     if (has("rsvp_enabled")) updateCols.push(["rsvp_enabled", rsvpEnabled]);
 
     const linked = await env.DB.prepare(
-      "SELECT user_id, profile_id FROM device_installs WHERE install_id=? LIMIT 1"
+      "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
     ).bind(id).first();
     const ownerUserId = linked?.user_id || null;
     const djProfileId = linked?.profile_id || null;
@@ -2341,7 +2520,7 @@ async function broker(request, env, pathname) {
     limit = Math.min(100, limit);
 
     const linked = await env.DB.prepare(
-      "SELECT profile_id FROM device_installs WHERE install_id=? LIMIT 1"
+      "SELECT profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
     ).bind(id).first();
     const profileId = linked?.profile_id || null;
     const rows = await env.DB.prepare(
@@ -2546,6 +2725,22 @@ export default {
         return await authMe(request, env);
       } catch (_) {
         return jsonResp(200, { user: null });
+      }
+    }
+
+    if (pathname === "/api/install-link/create") {
+      try {
+        return await installLinkCreate(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    if (pathname === "/api/install-link/unlink") {
+      try {
+        return await installLinkUnlink(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
       }
     }
 
