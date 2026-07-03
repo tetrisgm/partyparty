@@ -6,6 +6,8 @@ struct ServerStatus {
     var listeners = 0
     var health = "idle"     // good | strain | congested | idle
     var struggling = 0
+    var captureBad = false  // real capture failure (hogged/stalled output)
+    var note = ""           // the human explanation, for the menu-bar tooltip
 }
 
 /// Thin client for the local Go server (menu-bar status monitor).
@@ -21,7 +23,11 @@ final class APIClient {
                 DispatchQueue.main.async { done(nil) }; return
             }
             var s = ServerStatus()
-            if let b = o["broadcast"] as? [String: Any] { s.state = b["state"] as? String ?? "idle" }
+            if let b = o["broadcast"] as? [String: Any] {
+                s.state = b["state"] as? String ?? "idle"
+                s.captureBad = (b["captureBad"] as? Bool) ?? false
+                s.note = b["note"] as? String ?? ""
+            }
             s.listeners = (o["listeners"] as? NSNumber)?.intValue ?? 0
             if let h = o["health"] as? [String: Any] {
                 s.health = h["status"] as? String ?? "idle"

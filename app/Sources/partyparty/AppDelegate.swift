@@ -124,9 +124,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    /// Glanceable state in the menu bar: 🕺 idle · 🕺 ● N live · 🕺 ⚠ N strained · 🕺 ⚠ error.
+    /// Glanceable state in the menu bar: 🕺 idle · 🕺 ● N live · 🕺 ⚠ N strained ·
+    /// 🕺 ⚠ error · 🕺 🔴 capture broken (red = guests hear nothing right now).
     private func updateIcon(_ s: ServerStatus) {
         guard let button = statusItem.button else { return }
+        // A dead capture (hogged/stalled output) is the loudest alarm: guests
+        // are getting silence while the DJ thinks it's fine.
+        if s.captureBad && (s.state == "live" || s.state == "starting") {
+            button.title = "🕺 🔴"
+            button.toolTip = s.note.isEmpty
+                ? "partyparty — audio capture problem; open the app for details"
+                : "partyparty — \(s.note)"
+            return
+        }
+        button.toolTip = appName
         switch s.state {
         case "live":
             let strained = (s.health == "strain" || s.health == "congested")
@@ -155,6 +166,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let h = NSMenuItem(title: header + "  ·  v" + ver, action: nil, keyEquivalent: "")
         h.isEnabled = false
         menu.addItem(h)
+
+        // Surface a live capture problem right here, prominently, with a
+        // one-click jump to the full explanation on the DJ screen.
+        if s.captureBad && (s.state == "live" || s.state == "starting") {
+            let warn = NSMenuItem(title: "🔴 Guests hear nothing — audio capture problem", action: #selector(showConsole), keyEquivalent: "")
+            warn.target = self
+            menu.addItem(warn)
+            if !s.note.isEmpty {
+                let detail = NSMenuItem(title: firstSentence(s.note), action: nil, keyEquivalent: "")
+                detail.isEnabled = false
+                menu.addItem(detail)
+            }
+        }
         menu.addItem(.separator())
 
         // No Go Live / Stop here: starting or killing the party is a deliberate
@@ -162,6 +186,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Open \(appName)", #selector(showConsole)))
         menu.addItem(item("Check for Updates…", #selector(checkUpdates)))
         menu.addItem(item("Quit \(appName)", #selector(quit)))
+    }
+
+    /// First sentence of a note, capped, for the compact menu detail line.
+    private func firstSentence(_ s: String) -> String {
+        let cut = s.split(separator: "—", maxSplits: 1).first.map(String.init) ?? s
+        let t = cut.trimmingCharacters(in: .whitespaces)
+        return t.count > 90 ? String(t.prefix(88)) + "…" : t
     }
 
     @objc private func checkUpdates() {

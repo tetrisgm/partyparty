@@ -386,12 +386,12 @@ func TestCaptureNote(t *testing.T) {
 		t.Fatalf("fresh broadcaster note = %q, want empty", n)
 	}
 	fs.Write([]byte("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=742\n"))
-	if n := b.Status().Note; !strings.Contains(n, "EXCLUSIVE") {
-		t.Fatalf("after CAPTURE-BLOCKED note = %q, want exclusive-control warning", n)
+	if st := b.Status(); !strings.Contains(st.Note, "EXCLUSIVE") || !st.CaptureBad {
+		t.Fatalf("after CAPTURE-BLOCKED note=%q captureBad=%v, want warning + true", st.Note, st.CaptureBad)
 	}
 	fs.Write([]byte("ppcapture: CAPTURE-OK\n"))
-	if n := b.Status().Note; n != "" {
-		t.Fatalf("after CAPTURE-OK note = %q, want cleared", n)
+	if st := b.Status(); st.Note != "" || st.CaptureBad {
+		t.Fatalf("after CAPTURE-OK note=%q captureBad=%v, want cleared + false", st.Note, st.CaptureBad)
 	}
 	fs.Write([]byte("ppcapture: CAPTURE-STALLED no-frames\n"))
 	if n := b.Status().Note; !strings.Contains(n, "stalled") {

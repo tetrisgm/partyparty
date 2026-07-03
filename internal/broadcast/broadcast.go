@@ -26,7 +26,8 @@ type Status struct {
 	Delivery   string  `json:"delivery"` // llhls | hls
 	SampleRate int     `json:"sampleRate"`
 	LastError  string  `json:"lastError"`
-	Note       string  `json:"note,omitempty"` // non-fatal hint, e.g. capture produces no audio yet
+	Note       string  `json:"note,omitempty"`       // non-fatal hint, e.g. capture produces no audio yet
+	CaptureBad bool    `json:"captureBad,omitempty"` // a real capture failure (hogged/stalled output) — menu-bar alarm
 }
 
 // Options are per-broadcast overrides; zero values fall back to config defaults.
@@ -66,6 +67,13 @@ type Broadcaster struct {
 	delivery   string  // active delivery mode: llhls | hls
 	startedAt  time.Time
 	lastError  string
+
+	// Last Start params + a throttle, so a tap wedged by a released exclusive
+	// device (Roon Exclusive Mode) can be auto-rebuilt without the DJ acting.
+	lastDevice      string
+	lastName        string
+	lastOpts        Options
+	lastAutoRestart time.Time
 
 	logMu       sync.Mutex
 	logLines    []string
@@ -162,6 +170,8 @@ func (w *formatScanner) Write(p []byte) (int, error) {
 			w.b.setCaptureNote("The Mac's audio capture stalled — no sound is reaching guests. Try switching your output device (menu bar volume) or Stop and Go Live again.")
 		case strings.Contains(s, "CAPTURE-OK"):
 			w.b.setCaptureNote("")
+		case strings.Contains(s, "CAPTURE-UNHOGGED"):
+			w.b.tryAutoRestart() // device released but tap wedged — rebuild it
 		}
 	}
 	w.mu.Lock()
@@ -199,6 +209,27 @@ func (b *Broadcaster) pushLog(chunk string) {
 	if len(b.logLines) > 250 {
 		b.logLines = b.logLines[len(b.logLines)-250:]
 	}
+}
+
+// tryAutoRestart rebuilds a mac capture whose tap wedged after an exclusive
+// app (Roon) released the output device — the aggregate device needs a fresh
+// tap. Throttled to once per 15s so a flapping device can't thrash the room,
+// and only for a live mac broadcast (test/device sources don't wedge this way).
+func (b *Broadcaster) tryAutoRestart() {
+	b.mu.Lock()
+	live := b.state == "live" || b.state == "starting"
+	mac := b.device == "mac"
+	throttled := time.Since(b.lastAutoRestart) < 15*time.Second
+	dev, name, opts := b.lastDevice, b.lastName, b.lastOpts
+	if live && mac && !throttled {
+		b.lastAutoRestart = time.Now()
+	}
+	b.mu.Unlock()
+	if !live || !mac || throttled {
+		return
+	}
+	b.pushLog("[partyparty] audio output was released by another app but capture is still stuck — rebuilding the tap")
+	go b.Start(dev, name, opts)
 }
 
 // setCaptureNote records/clears the non-fatal capture warning (guarded by
@@ -371,6 +402,7 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	}
 	b.device = device
 	b.deviceName = deviceName
+	b.lastDevice, b.lastName, b.lastOpts = device, deviceName, opts // for auto-restart after a wedged tap
 	b.state = "starting"
 	b.lastError = ""
 	b.startedAt = time.Now()
@@ -625,7 +657,8 @@ func (b *Broadcaster) Status() Status {
 	if !b.startedAt.IsZero() {
 		since = b.startedAt.UnixMilli()
 	}
-	note := b.getCaptureNote() // hogged/exclusive output device — highest priority
+	captureNote := b.getCaptureNote() // hogged/exclusive output device — highest priority
+	note := captureNote
 	// A capture rate this low means the OUTPUT device is a Bluetooth headset
 	// in call (HFP) mode — guests would hear telephone-grade audio all night.
 	if note == "" && (b.state == "live" || b.state == "starting") && b.device == "mac" && b.inRate > 0 && b.inRate < 44100 {
@@ -653,5 +686,6 @@ func (b *Broadcaster) Status() Status {
 		SampleRate: b.cfg.SampleRate,
 		LastError:  b.lastError,
 		Note:       note,
+		CaptureBad: captureNote != "",
 	}
 }

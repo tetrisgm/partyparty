@@ -190,25 +190,34 @@ Thread.detachNewThread {
     var last = ring.pushedCount()
     var stalledFor = 0
     var flagged = false
+    var wasHogged = false
     while true {
         Thread.sleep(forTimeInterval: 2)
         let now = ring.pushedCount()
         let advancing = now != last
         last = now
         if advancing {
-            if flagged { elog("ppcapture: CAPTURE-OK"); flagged = false }
+            if flagged { elog("ppcapture: CAPTURE-OK"); flagged = false; wasHogged = false }
             stalledFor = 0
             continue
         }
         stalledFor += 2
+        let owner = hogOwner(defaultOutputDevice())
+        let hoggedNow = owner > 0 && owner != me
         if stalledFor >= 4 && !flagged {
             flagged = true
-            let owner = hogOwner(defaultOutputDevice())
-            if owner > 0 && owner != me {
+            if hoggedNow {
+                wasHogged = true
                 elog("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=\(owner)")
             } else {
                 elog("ppcapture: CAPTURE-STALLED no-frames")
             }
+        } else if flagged && wasHogged && !hoggedNow {
+            // The exclusive app released the device but our tap is still wedged
+            // (frames never resumed) — the aggregate device needs a clean
+            // rebuild. Signal the parent to restart capture.
+            wasHogged = false
+            elog("ppcapture: CAPTURE-UNHOGGED")
         }
     }
 }
