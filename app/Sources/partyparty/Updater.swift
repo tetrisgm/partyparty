@@ -51,14 +51,25 @@ final class Updater: NSObject, SPUUpdaterDelegate {
         if promptedVersion == item.displayVersionString { return true } // already offered THIS build
         promptedVersion = item.displayVersionString // a newer staged build re-prompts; the same one won't
         DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
             let a = NSAlert()
             a.messageText = "partyparty \(item.displayVersionString) is ready"
             a.informativeText = "It's already downloaded. Install now, or it installs itself the next time partyparty starts."
             a.addButton(withTitle: "Install and Relaunch")
             a.addButton(withTitle: "On Next Start")
-            if a.runModal() == .alertFirstButtonReturn {
-                immediateInstallHandler()
+            NSApp.activate(ignoringOtherApps: true)
+            // Attach to the front window as a SHEET so it can NEVER hide behind
+            // it. A free-floating modal (runModal) opened behind the console
+            // window: the whole app went modal-blocked with nothing visible to
+            // click — menu grayed, couldn't quit. It looked like a freeze.
+            let win = NSApp.mainWindow ?? NSApp.keyWindow
+                ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeKey })
+            if let win = win {
+                win.makeKeyAndOrderFront(nil)
+                a.beginSheetModal(for: win) { resp in
+                    if resp == .alertFirstButtonReturn { immediateInstallHandler() }
+                }
+            } else {
+                if a.runModal() == .alertFirstButtonReturn { immediateInstallHandler() }
             }
         }
         return true

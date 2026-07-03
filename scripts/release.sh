@@ -21,11 +21,13 @@ WR="$ROOT/cloudflare/node_modules/.bin/wrangler"
 SPK="$ROOT/app/.build/artifacts/sparkle/Sparkle/bin"
 
 # Version scheme: <code-major>.<payload-increment>. The FIRST number is the code
-# (native/container) version — CODE_MAJOR, bumped by hand only on a native
-# release. The SECOND is the running OTA content version — web/PAYLOAD_VERSION.
-# So a glance says "code update" (first moved) vs "OTA update" (second moved).
-# Derived here, and CFBundleVersion (Sparkle's monotonic comparison key) is
-# auto-incremented, so no hand-editing of the plist per release.
+# (native/container) version — CODE_MAJOR, which you bump BEFORE every native
+# release (each native release IS a code update, so the first number moves). The
+# SECOND is the running OTA content version — web/PAYLOAD_VERSION (bumped by
+# publish-payload.sh, not here). So a glance says "code update" (first moved) vs
+# "OTA update" (second moved). The version is derived here, and CFBundleVersion
+# (Sparkle's monotonic comparison key) is auto-incremented, so no hand-editing
+# of the plist per release.
 CODE_MAJOR="$(tr -dc '0-9' < CODE_MAJOR)"
 PAYLOAD="$(tr -dc '0-9' < web/PAYLOAD_VERSION)"
 VERSION="$CODE_MAJOR.$PAYLOAD"
