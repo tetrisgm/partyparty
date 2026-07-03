@@ -19,6 +19,7 @@
 const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
+const POST_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/media\/([A-Za-z0-9_-]{1,64})$/;
 // Published set media (audio + waveform) and event cover, served range-aware
 // from R2 under event/<slug>/. File shapes are pinned so a slug can only reach
 // its own set/cover objects.
@@ -1210,6 +1211,63 @@ export default {
       // addressed by version and never change — cache hard.
       headers.set("cache-control", isManifest ? "public, max-age=60" : "public, max-age=86400, immutable");
       return new Response(request.method === "HEAD" ? null : obj.body, { headers });
+    }
+
+    // Approved guest post media. The D1 join is the privacy gate: media from
+    // unapproved/deleted posts or another slug is indistinguishable from missing.
+    const postMedia = pathname.match(POST_MEDIA_RE);
+    if (postMedia) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const row = await env.DB.prepare(
+        `SELECT pm.media_key, pm.mime_type, pm.media_type
+         FROM post_media pm
+         JOIN posts p ON p.id=pm.post_id
+         WHERE pm.id=? AND pm.slug=? AND p.approved=1 AND p.deleted_ms IS NULL`
+      ).bind(postMedia[2], postMedia[1]).first();
+      if (!row?.media_key) return new Response("Not found", { status: 404 });
+
+      const mediaType = String(row.media_type || "");
+      const ctype = row.mime_type || (mediaType === "video" ? "video/mp4" : mediaType === "audio" ? "audio/mpeg" : "image/jpeg");
+      const cache = "public, max-age=31536000, immutable";
+      const isRangeAware = mediaType === "video" || mediaType === "audio";
+      const rangeHdr = isRangeAware ? request.headers.get("range") : null;
+      if (rangeHdr) {
+        const head = await env.DL.head(row.media_key);
+        if (!head) return new Response("Not found", { status: 404 });
+        const size = head.size;
+        const mm = /^bytes=(\d*)-(\d*)$/.exec(rangeHdr);
+        let start = mm && mm[1] !== "" ? parseInt(mm[1], 10) : NaN;
+        let end = mm && mm[2] !== "" ? parseInt(mm[2], 10) : NaN;
+        if (mm) {
+          if (isNaN(start) && !isNaN(end)) { start = Math.max(0, size - end); end = size - 1; } // bytes=-N suffix
+          else if (!isNaN(start) && isNaN(end)) { end = size - 1; }                              // bytes=N-
+        }
+        if (mm && !isNaN(start) && !isNaN(end) && start <= end && start < size) {
+          end = Math.min(end, size - 1);
+          const obj = await env.DL.get(row.media_key, { range: { offset: start, length: end - start + 1 } });
+          if (!obj) return new Response("Not found", { status: 404 });
+          const h = new Headers();
+          h.set("content-type", ctype);
+          h.set("accept-ranges", "bytes");
+          h.set("content-range", `bytes ${start}-${end}/${size}`);
+          h.set("content-length", String(end - start + 1));
+          h.set("cache-control", cache);
+          h.set("etag", obj.httpEtag);
+          return new Response(request.method === "HEAD" ? null : obj.body, { status: 206, headers: h });
+        }
+        // malformed/unsatisfiable range → fall through to whole-object 200
+      }
+      const obj = await env.DL.get(row.media_key);
+      if (!obj) return new Response("Not found", { status: 404 });
+      const h = new Headers();
+      obj.writeHttpMetadata(h);
+      h.set("content-type", ctype);
+      h.set("accept-ranges", "bytes");
+      h.set("cache-control", cache);
+      h.set("etag", obj.httpEtag);
+      return new Response(request.method === "HEAD" ? null : obj.body, { headers: h });
     }
 
     // Published set media (audio + waveform) and the event cover, from R2 under

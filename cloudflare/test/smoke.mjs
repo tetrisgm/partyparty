@@ -57,6 +57,18 @@ class FakeD1Statement {
 
   async first() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("FROM post_media pm JOIN posts p")) {
+      const [mediaId, slug] = this.args;
+      const media = this.db.wallMedia.find((row) => row.id === mediaId && row.slug === slug);
+      if (!media) return null;
+      const post = this.db.wallPosts.find((row) => row.id === media.post_id && row.approved === 1 && row.deleted_ms == null);
+      if (!post) return null;
+      return {
+        media_key: media.media_key,
+        mime_type: media.mime_type,
+        media_type: media.media_type,
+      };
+    }
     if (sql.includes("FROM events WHERE slug=?")) {
       const slug = this.args[0];
       if (slug !== this.db.knownSlug) return null;
@@ -212,13 +224,15 @@ class FakeR2 {
 }
 
 function makeEnv(opts = {}) {
+  const r2Objects = {
+    [`event/${KNOWN_SLUG}/${SET_ID}.m4a`]: new FakeR2Object("fake-audio", { contentType: "audio/mp4" }),
+    [`event/${KNOWN_SLUG}/${SET_ID}.peaks.json`]: new FakeR2Object('{"peaks":[10,50,80]}', { contentType: "application/json" }),
+    [`event/${KNOWN_SLUG}/cover.jpg`]: new FakeR2Object("fake-jpeg", { contentType: "image/jpeg" }),
+    ...(opts.r2Objects || {}),
+  };
   return {
     DB: opts.DB || new FakeD1(opts.db || {}),
-    DL: new FakeR2({
-      [`event/${KNOWN_SLUG}/${SET_ID}.m4a`]: new FakeR2Object("fake-audio", { contentType: "audio/mp4" }),
-      [`event/${KNOWN_SLUG}/${SET_ID}.peaks.json`]: new FakeR2Object('{"peaks":[10,50,80]}', { contentType: "application/json" }),
-      [`event/${KNOWN_SLUG}/cover.jpg`]: new FakeR2Object("fake-jpeg", { contentType: "image/jpeg" }),
-    }),
+    DL: new FakeR2(r2Objects),
     ASSETS: {
       fetch: async () => new Response(opts.assetBody || "landing", { status: 200 }),
     },
@@ -422,6 +436,120 @@ const tests = [
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.match(html, /Rooftop Sessions/);
+  }],
+  ["approved post media returns object with stored content-type", async () => {
+    const resp = await fetchPath(`/event/${KNOWN_SLUG}/media/media-img`, {}, {
+      db: {
+        wallPosts: [{
+          id: "post-img",
+          slug: KNOWN_SLUG,
+          approved: 1,
+          deleted_ms: null,
+        }],
+        wallMedia: [{
+          id: "media-img",
+          slug: KNOWN_SLUG,
+          post_id: "post-img",
+          media_key: `event/${KNOWN_SLUG}/post-media/media-img`,
+          media_type: "image",
+          mime_type: "image/png",
+        }],
+      },
+      r2Objects: {
+        [`event/${KNOWN_SLUG}/post-media/media-img`]: new FakeR2Object("fake-png", { contentType: "image/png" }),
+      },
+    });
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get("content-type"), "image/png");
+    assert.equal(await resp.text(), "fake-png");
+  }],
+  ["unapproved post media returns 404", async () => {
+    const resp = await fetchPath(`/event/${KNOWN_SLUG}/media/media-img`, {}, {
+      db: {
+        wallPosts: [{
+          id: "post-img",
+          slug: KNOWN_SLUG,
+          approved: 0,
+          deleted_ms: null,
+        }],
+        wallMedia: [{
+          id: "media-img",
+          slug: KNOWN_SLUG,
+          post_id: "post-img",
+          media_key: `event/${KNOWN_SLUG}/post-media/media-img`,
+          media_type: "image",
+          mime_type: "image/jpeg",
+        }],
+      },
+      r2Objects: {
+        [`event/${KNOWN_SLUG}/post-media/media-img`]: new FakeR2Object("fake-jpeg", { contentType: "image/jpeg" }),
+      },
+    });
+    assert.equal(resp.status, 404);
+  }],
+  ["post media with wrong slug returns 404", async () => {
+    const resp = await fetchPath("/event/other-set/media/media-img", {}, {
+      db: {
+        wallPosts: [{
+          id: "post-img",
+          slug: KNOWN_SLUG,
+          approved: 1,
+          deleted_ms: null,
+        }],
+        wallMedia: [{
+          id: "media-img",
+          slug: KNOWN_SLUG,
+          post_id: "post-img",
+          media_key: `event/${KNOWN_SLUG}/post-media/media-img`,
+          media_type: "image",
+          mime_type: "image/jpeg",
+        }],
+      },
+      r2Objects: {
+        [`event/${KNOWN_SLUG}/post-media/media-img`]: new FakeR2Object("fake-jpeg", { contentType: "image/jpeg" }),
+      },
+    });
+    assert.equal(resp.status, 404);
+  }],
+  ["video post media supports byte ranges", async () => {
+    const resp = await fetchPath(`/event/${KNOWN_SLUG}/media/media-video`, {
+      headers: { range: "bytes=2-5" },
+    }, {
+      db: {
+        wallPosts: [{
+          id: "post-video",
+          slug: KNOWN_SLUG,
+          approved: 1,
+          deleted_ms: null,
+        }],
+        wallMedia: [{
+          id: "media-video",
+          slug: KNOWN_SLUG,
+          post_id: "post-video",
+          media_key: `event/${KNOWN_SLUG}/post-media/media-video`,
+          media_type: "video",
+          mime_type: "video/mp4",
+        }],
+      },
+      r2Objects: {
+        [`event/${KNOWN_SLUG}/post-media/media-video`]: new FakeR2Object("0123456789", { contentType: "video/mp4" }),
+      },
+    });
+    assert.equal(resp.status, 206);
+    assert.equal(resp.headers.get("content-type"), "video/mp4");
+    assert.equal(resp.headers.get("content-range"), "bytes 2-5/10");
+    assert.equal(resp.headers.get("content-length"), "4");
+    assert.equal(await resp.text(), "2345");
+  }],
+  ["set audio range still returns 206", async () => {
+    const resp = await fetchPath(`/event/${KNOWN_SLUG}/${SET_ID}.m4a`, {
+      headers: { range: "bytes=0-3" },
+    });
+    assert.equal(resp.status, 206);
+    assert.equal(resp.headers.get("content-type"), "audio/mp4");
+    assert.equal(resp.headers.get("content-range"), "bytes 0-3/10");
+    assert.equal(resp.headers.get("content-length"), "4");
+    assert.equal(await resp.text(), "fake");
   }],
   ["missing event media returns 404", async () => {
     const resp = await fetchPath(`/event/${KNOWN_SLUG}/deadbeef.m4a`);
