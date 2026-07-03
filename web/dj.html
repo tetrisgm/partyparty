@@ -55,6 +55,11 @@
   button.ghost:hover{background:var(--fill-hover)}
   button:disabled{opacity:.4;cursor:default}
   .url{font-size:22px;font-weight:700;color:var(--label);word-break:break-all;margin:2px 0;letter-spacing:-.01em}
+  .online-rows{display:grid;gap:10px;margin-top:12px}
+  .online-item{display:grid;gap:4px}
+  .online-url{display:flex;align-items:center;gap:8px;min-width:0}
+  .online-url .url{flex:1;min-width:0;font-size:13px;font-weight:600;margin:0}
+  .online-url button{height:26px;padding:0 10px;font-size:12px;flex:0 0 auto}
   .muted{color:var(--label-secondary);font-size:13px}
   #qr{margin:16px 0;display:flex;justify-content:center;background:#fff;width:fit-content;padding:12px;border-radius:var(--r-md);border:1px solid var(--separator)}
   .listener{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--separator);font-size:13px}
@@ -235,6 +240,25 @@
         <span id="pubCoverResult" class="hint" style="display:none"></span>
       </div>
     </div>
+
+    <div id="onlineSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
+      <h2 style="font-size:15px;margin:0 0 6px">partyparty online 🌐</h2>
+      <div class="hint" style="margin:0">Your set replays, profile, and events live at partyparty online.</div>
+      <div class="online-rows">
+        <div class="online-item">
+          <span class="muted">Your event page</span>
+          <div id="onlineEvent"></div>
+        </div>
+        <div class="online-item">
+          <span class="muted">Explore partyparty</span>
+          <div id="onlineHome"></div>
+        </div>
+        <div class="online-item">
+          <span class="muted">Sign in / account</span>
+          <div id="onlineLogin"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <nav class="ptabs">
@@ -342,6 +366,59 @@
 <script>
   const $ = id => document.getElementById(id);
   let qrText = null, lastState = 'idle';
+  const ONLINE_BASE = 'https://party.ramine.net';
+  let lastOnlineSlug = '';
+  function escT(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  async function copyText(text, btn){
+    let copied = false;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (e) {}
+    if (!copied) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        copied = document.execCommand('copy');
+        ta.remove();
+      } catch (e) {}
+    }
+    if (btn) {
+      const old = btn.textContent;
+      btn.textContent = copied ? 'Copied ✓' : 'Copy failed';
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    }
+  }
+  function renderOnlineUrl(id, url){
+    $(id).innerHTML = '<div class="online-url"><span class="url">' + escT(url) + '</span>' +
+      '<button class="ghost" type="button" data-copy-url="' + escT(url) + '">Copy</button></div>';
+  }
+  function renderOnline(slug){
+    lastOnlineSlug = typeof slug === 'string' ? slug.trim() : '';
+    const saved = localStorage.getItem('pp.lastEventUrl') || '';
+    const eventUrl = lastOnlineSlug ? (ONLINE_BASE + '/e/' + encodeURIComponent(lastOnlineSlug)) : saved;
+    if (eventUrl) {
+      renderOnlineUrl('onlineEvent', eventUrl);
+    } else {
+      $('onlineEvent').innerHTML = '<div class="hint" style="margin:0">Publish a set to create your shareable page.</div>';
+    }
+    renderOnlineUrl('onlineHome', ONLINE_BASE);
+    renderOnlineUrl('onlineLogin', ONLINE_BASE + '/login');
+  }
+  document.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest && e.target.closest('[data-copy-url]');
+    if (btn) copyText(btn.dataset.copyUrl, btn);
+  });
+  renderOnline('');
 
   // Black-box recorder (console side): JS errors + key admin actions folded
   // into the Mac session log. A broken console means the DJ can't operate, so
@@ -838,11 +915,15 @@
       const r = await fetch('/api/publish', { method:'POST' });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) throw new Error(d.error || 'publish failed');
+      if (d.url) {
+        localStorage.setItem('pp.lastEventUrl', d.url);
+        renderOnline(lastOnlineSlug);
+      }
       const bare = d.url.replace(/^https?:\/\//, '');
       const warn = d.warning ? ' · <span style="color:var(--label-secondary)">' + escT(d.warning) + '</span>' : '';
-      pubResult.innerHTML = 'Published → <a href="' + d.url + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">' + bare + '</a> · <span id="pubCopy" style="cursor:pointer;text-decoration:underline">copy link</span>' + warn;
+      pubResult.innerHTML = 'Published → <span style="color:var(--accent);font-weight:600">' + escT(bare) + '</span> · <span id="pubCopy" style="cursor:pointer;text-decoration:underline">copy link</span>' + warn;
       const c = $('pubCopy');
-      if (c) c.onclick = () => { if (navigator.clipboard) navigator.clipboard.writeText(d.url); c.textContent = 'copied ✓'; };
+      if (c) c.onclick = () => copyText(d.url, c);
     } catch (e) {
       pubResult.textContent = 'Couldn’t publish: ' + (e.message || e);
     } finally {
@@ -984,6 +1065,7 @@
         $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
         syncPublish(data.slug);
+        renderOnline(data.slug);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {
