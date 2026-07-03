@@ -239,6 +239,54 @@ func InstallCreds() (id, secret string) {
 	return rec.ID, rec.Secret
 }
 
+// CachedCert returns the previously-issued live cert/key paths when they exist
+// and the cert is currently valid (with an hour of margin) — so the TLS
+// listener can serve the instant it comes up instead of racing async
+// re-activation. ok=false means no usable cache (issue fresh).
+func CachedCert() (certFile, keyFile string, ok bool) {
+	dir, err := stateDir()
+	if err != nil {
+		return "", "", false
+	}
+	certFile = filepath.Join(dir, "live-cert.pem")
+	keyFile = filepath.Join(dir, "live-key.pem")
+	certPEM, err := os.ReadFile(certFile)
+	if err != nil {
+		return "", "", false
+	}
+	if _, err := os.Stat(keyFile); err != nil {
+		return "", "", false
+	}
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return "", "", false
+	}
+	c, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", "", false
+	}
+	now := time.Now()
+	if now.Before(c.NotBefore) || now.After(c.NotAfter.Add(-time.Hour)) {
+		return "", "", false // expired / not-yet-valid — don't serve it
+	}
+	return certFile, keyFile, true
+}
+
+// BrokerHost returns this install's guest hostname (<slug>.<base>) from the
+// persisted broker registration, or "" (BYO installs use their configured host).
+func BrokerHost() string {
+	dir, err := stateDir()
+	if err != nil {
+		return ""
+	}
+	var rec struct{ Base, Slug string }
+	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
+	if err != nil || json.Unmarshal(data, &rec) != nil || rec.Slug == "" || rec.Base == "" {
+		return ""
+	}
+	return rec.Slug + "." + rec.Base
+}
+
 // InstallSlug returns this install's memorable broker slug ("fader91"), or "".
 func InstallSlug() string {
 	dir, err := stateDir()

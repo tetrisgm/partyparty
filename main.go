@@ -326,6 +326,30 @@ func main() {
 			explicitCertLoaded = true
 		}
 	}
+	// Boot fast path: a cert issued on a previous run is cached (~90-day
+	// validity), so load it SYNCHRONOUSLY here before we serve. Otherwise the
+	// listener comes up with no cert, the DJ's already-open phone tab hammers
+	// it ("certificate not provisioned yet" x4 in every session log), and the
+	// console flashes "setting up the secure link" until async activation
+	// re-fetches. With the cache, the guest link is live and Go Live un-gated
+	// from t=0; async activation still runs to renew / engage LL.
+	if !explicitCertLoaded && cfg.CertFile == "" {
+		if cf, kf, ok := activate.CachedCert(); ok {
+			host := cfg.LiveHost
+			if host == "" {
+				host = activate.BrokerHost()
+			}
+			if host != "" {
+				if err := loadCert(cf, kf); err == nil {
+					if applyActivation != nil {
+						_ = applyActivation(cf, kf) // point MediaMTX's config at the real cert
+					}
+					handler.SetActivation(host)
+					log.Printf("cached cert loaded — %s ready immediately", host)
+				}
+			}
+		}
+	}
 	if rawLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
 		tlsSrv := &http.Server{
 			Handler: handler,

@@ -624,6 +624,17 @@
       else { if (!ready) return; userPaused = false; player.muted = false; mediaSession(); claimAudio(); play().catch(()=>{}); } // first play (register media session in the gesture)
     });
 
+    // The WHOLE hero is a resume target when the system paused us (AirPods
+    // pulled, call ended, tab frozen): iOS won't auto-resume a web audio
+    // element after a route change — a gesture is required — so make that
+    // gesture as forgiving as possible (tap anywhere up top, not just the
+    // button). Harmless in other states (recoverPlayback only acts when
+    // genuinely stuck). A muted-pause has readyState high, so it's excluded.
+    document.querySelector('.hero').addEventListener('click', (e) => {
+      if (e.target.closest('#btn') || e.target.closest('.share')) return; // their own handlers
+      if (started && !userPaused && !player.muted && !yielded && (player.paused || player.readyState < 3)) recoverPlayback();
+    });
+
     let errRetries = 0;
     player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; lastProgress = Date.now(); alignOnce(); if (!player.muted && !yielded) { claimAudio(); setPlayingUI(true); setStatus('live'); } });
     player.addEventListener('waiting', () => {
