@@ -605,6 +605,22 @@ class FakeD1Statement {
       }
       return { success: true };
     }
+    if (sql.includes("UPDATE events SET") && sql.includes("WHERE slug=? AND owner_user_id=?")) {
+      const setCols = (this.sql.match(/UPDATE events SET ([\s\S]+?)\s+WHERE slug=\? AND owner_user_id=\?/)?.[1] || "")
+        .split(",")
+        .map((s) => s.trim().split("=")[0].trim())
+        .filter(Boolean);
+      const slug = this.args[this.args.length - 2];
+      const ownerUserId = this.args[this.args.length - 1];
+      const old = this.db.events.get(slug);
+      if (old && old.owner_user_id === ownerUserId) {
+        const vals = this.args.slice(0, setCols.length);
+        const next = { ...old };
+        for (let i = 0; i < setCols.length; i += 1) next[setCols[i]] = vals[i];
+        this.db.events.set(slug, next);
+      }
+      return { success: true };
+    }
     if (sql.includes("INSERT INTO events") && sql.includes("?1") && sql.includes("last_activity_ms")) {
       const [slug, installId, title, host, starts, whereTxt, tagline, about, now] = this.args;
       const old = this.db.events.get(slug);
@@ -1136,7 +1152,150 @@ const tests = [
     assert.match(html, /Sign out/);
     assert.match(html, /acct\.dj/);
     assert.match(html, /href="\/profile\/edit"/);
+    assert.match(html, /href="\/events\/new">＋ Create event/);
     assert.match(html, /Owned Account Night/);
+  }],
+  ["web event create API requires authentication", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Anon Event" }),
+    }), makeEnv({ DB: new FakeD1() }));
+    assert.equal(resp.status, 401);
+  }],
+  ["web event create API requires a DJ profile", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "no-profile-event@example.com", { ip: "203.0.113.36" });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ title: "No Profile Event" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 400);
+    assert.deepEqual(json, { error: "create a DJ profile first", redirect: "/profile/edit" });
+
+    const page = await worker.fetch(new Request("https://party.ramine.net/events/new", {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(html, /Create your DJ profile first/);
+    assert.match(html, /href="\/profile\/edit"/);
+  }],
+  ["web event create API inserts a signed-in DJ-owned event", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "web-create@example.com", { ip: "203.0.113.37" });
+    const user = [...db.authUsers.values()].find((row) => row.email === "web-create@example.com");
+    db.profiles.push({
+      id: "profile-web-create",
+      user_id: user.id,
+      handle: "web.create",
+      display_name: "Web Create",
+      published: 1,
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        slug: "web-party",
+        title: "Web Party",
+        location_name: "Club Web",
+        scheduled_at_ms: 1893542400000,
+      }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    const row = db.events.get("web-party");
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json, { ok: true, slug: "web-party", url: "https://party.ramine.net/e/web-party" });
+    assert.equal(row.install_id, "");
+    assert.equal(row.owner_user_id, user.id);
+    assert.equal(row.dj_profile_id, "profile-web-create");
+    assert.equal(row.source, "web");
+    assert.equal(row.status, "upcoming");
+    assert.equal(row.visibility, "public");
+    assert.equal(row.rsvp_enabled, 1);
+    assert.equal(row.title, "Web Party");
+    assert.equal(row.location_name, "Club Web");
+    assert.equal(db.profileActivityBumps[0].profileId, "profile-web-create");
+  }],
+  ["web event create API rejects duplicate explicit slug", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "taken-web", install_id: "abc123abc123", owner_user_id: "other", title: "Taken" }],
+    });
+    const cookie = await signInCookie(db, "duplicate-web@example.com", { ip: "203.0.113.38" });
+    const user = [...db.authUsers.values()].find((row) => row.email === "duplicate-web@example.com");
+    db.profiles.push({
+      id: "profile-duplicate-web",
+      user_id: user.id,
+      handle: "duplicate.web",
+      display_name: "Duplicate Web",
+      published: 1,
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ slug: "taken-web", title: "New Title" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 409);
+    assert.deepEqual(json, { error: "slug taken" });
+    assert.equal(db.events.get("taken-web").title, "Taken");
+  }],
+  ["web event update API allows owner and rejects non-owner", async () => {
+    const db = new FakeD1();
+    const ownerCookie = await signInCookie(db, "web-owner@example.com", { ip: "203.0.113.39" });
+    const owner = [...db.authUsers.values()].find((row) => row.email === "web-owner@example.com");
+    db.profiles.push({
+      id: "profile-web-owner",
+      user_id: owner.id,
+      handle: "web.owner",
+      display_name: "Web Owner",
+      published: 1,
+    });
+    db.events.set("owned-web", {
+      slug: "owned-web",
+      install_id: "",
+      owner_user_id: owner.id,
+      dj_profile_id: "profile-web-owner",
+      title: "Old Web",
+      status: "upcoming",
+      source: "web",
+      visibility: "public",
+      rsvp_enabled: 1,
+    });
+    const update = await worker.fetch(new Request("https://party.ramine.net/api/events/owned-web", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: ownerCookie },
+      body: JSON.stringify({ title: "Owner Updated", location_name: "New Room", rsvp_enabled: 0 }),
+    }), makeEnv({ DB: db }));
+    const updateJson = await update.json();
+    const row = db.events.get("owned-web");
+    assert.equal(update.status, 200);
+    assert.deepEqual(updateJson, { ok: true });
+    assert.equal(row.title, "Owner Updated");
+    assert.equal(row.location_name, "New Room");
+    assert.equal(row.where_txt, "New Room");
+    assert.equal(row.rsvp_enabled, 0);
+    assert.equal(row.install_id, "");
+    assert.equal(row.status, "upcoming");
+
+    const otherCookie = await signInCookie(db, "web-other@example.com", { ip: "203.0.113.40" });
+    const other = [...db.authUsers.values()].find((item) => item.email === "web-other@example.com");
+    db.profiles.push({
+      id: "profile-web-other",
+      user_id: other.id,
+      handle: "web.other",
+      display_name: "Web Other",
+      published: 1,
+    });
+    const denied = await worker.fetch(new Request("https://party.ramine.net/api/events/owned-web", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: otherCookie },
+      body: JSON.stringify({ title: "Stolen" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(denied.status, 403);
+    assert.equal(db.events.get("owned-web").title, "Owner Updated");
   }],
   ["profile API creates signed-in user's fresh profile and public route renders it", async () => {
     const db = new FakeD1();
@@ -1159,6 +1318,7 @@ const tests = [
     assert.equal(page.status, 200);
     assert.match(html, /Fresh Name/);
     assert.match(html, /@fresh\.dj/);
+    assert.match(html, /href="\/events\/new">＋ Create event/);
   }],
   ["profile API rejects a different user claiming an existing normalized handle", async () => {
     const db = new FakeD1();

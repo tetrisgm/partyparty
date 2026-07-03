@@ -18,6 +18,7 @@
 
 const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
+const WEB_EVENT_API_RE = /^\/api\/events\/([A-Za-z0-9_.-]{1,48})$/;
 const RSVP_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/rsvp$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
 const POST_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/media\/([A-Za-z0-9_-]{1,64})$/;
@@ -77,6 +78,22 @@ function safeRedirectPath(s) {
   } catch (_) {
     return "/";
   }
+}
+
+function slugifyTitle(s) {
+  const raw = String(s == null ? "" : s).trim().toLowerCase();
+  let out = "", lastSep = false;
+  for (const ch of raw) {
+    if ((ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9")) {
+      out += ch;
+      lastSep = false;
+    } else if (out && !lastSep) {
+      out += "-";
+      lastSep = true;
+    }
+  }
+  out = out.replace(/^-+|-+$/g, "");
+  return out.slice(0, 48).replace(/-+$/g, "") || "event";
 }
 
 function allowedPostMime(mediaType, mime) {
@@ -392,7 +409,7 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .postitem:first-child{border-top:0;padding-top:0}.postitem p{font-size:15px;line-height:1.45;margin:0 0 6px}.postitem a{color:var(--link);font-size:13px}
 .emptyhome{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:16px;align-items:stretch}
 .emptyhome .big{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}.emptyhome p{color:var(--ink2);margin:0 0 18px}
-.authcard{max-width:520px;margin:48px auto 0}.authform{display:grid;gap:12px;margin-top:16px}.authform input,.authform textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}.authform textarea{min-height:104px;resize:vertical;line-height:1.45}.authform input:focus,.authform textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}.authform label{display:grid;gap:6px;color:var(--ink2);font-size:13px}.authform label span{font-weight:600;color:var(--ink)}.authform details{color:var(--ink2);font-size:13px}.authform summary{cursor:pointer;display:inline-flex;margin:2px 0 8px}.accounthead{display:flex;justify-content:space-between;align-items:start;gap:16px}.accounthead p{margin:4px 0 0;color:var(--ink2)}.accountgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.accountgrid .card{margin-top:0}.stat{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:10px 0 2px}.minirow{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.minirow:first-child{border-top:0;padding-top:0;margin-top:0}.minirow b{display:block;font-size:15px}.minirow span{display:block;color:var(--ink2);font-size:13px;margin-top:2px}
+.authcard{max-width:520px;margin:48px auto 0}.authform{display:grid;gap:12px;margin-top:16px}.authform input,.authform textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}.authform textarea{min-height:104px;resize:vertical;line-height:1.45}.authform input:focus,.authform textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}.authform label{display:grid;gap:6px;color:var(--ink2);font-size:13px}.authform label span{font-weight:600;color:var(--ink)}.authform .checkrow{display:flex;align-items:center;gap:10px;color:var(--ink);font-size:14px}.authform .checkrow input{width:18px;height:18px;padding:0;accent-color:var(--accent)}.authform details{color:var(--ink2);font-size:13px}.authform summary{cursor:pointer;display:inline-flex;margin:2px 0 8px}.accounthead{display:flex;justify-content:space-between;align-items:start;gap:16px}.accounthead p{margin:4px 0 0;color:var(--ink2)}.accountgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.accountgrid .card{margin-top:0}.stat{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:10px 0 2px}.minirow{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.minirow:first-child{border-top:0;padding-top:0;margin-top:0}.minirow b{display:block;font-size:15px}.minirow span{display:block;color:var(--ink2);font-size:13px;margin-top:2px}
 .rsvp{display:grid;gap:14px}.rsvphead{display:flex;justify-content:space-between;gap:16px;align-items:start}.rsvphead .sub{margin-bottom:0}.rsvpcounts{display:flex;gap:14px;align-items:center;color:var(--ink2);font-size:12px;white-space:nowrap}.rsvpcounts b{display:block;color:var(--ink);font-size:22px;line-height:1}.rsvprow{display:flex;gap:10px;flex-wrap:wrap}.rsvp .btn.active{background:var(--accent);color:#fff;border-color:transparent}.rsvpfields{display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:10px}.rsvpfields input{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink)}.rsvpfields input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}
 @media(max-width:760px){.homehero{grid-template-columns:1fr;padding-top:26px}.eventgrid,.djstrip,.emptyhome{grid-template-columns:1fr}.eventcard{grid-template-columns:92px minmax(0,1fr)}}
 @media(max-width:760px){.accountgrid{grid-template-columns:1fr}.accounthead{display:grid}.navlinks{gap:6px}.navlinks .btn.sm{padding:8px 12px}}
@@ -618,6 +635,7 @@ function renderProfile({ profile, upcoming, recent, posts }) {
     social("sc", profile.soundcloud_url, "#ff7700", "SoundCloud"),
     social("sp", profile.spotify_url, "#1db954", "Spotify"),
   ].join("");
+  const createEventCta = `<div class="ecta"><a class="btn ghost" href="/events/new">＋ Create event</a></div>`;
   const postsCard = `<section>
     <div class="sectionhead"><div><h2>Posts</h2><p>Notes from the DJ across their public nights.</p></div></div>
     <div class="card">
@@ -636,6 +654,7 @@ function renderProfile({ profile, upcoming, recent, posts }) {
         <div class="emeta">@${esc(handle)}${meta.length ? " · " + meta.join(" · ") : ""}</div>
         ${profile.bio ? `<p class="profilebio">${esc(profile.bio)}</p>` : ""}
         ${socials ? `<div class="slist">${socials}</div>` : ""}
+        ${createEventCta}
       </div>
     </div>
     ${profileEventSection("Upcoming", "Public parties coming up next.", upcoming, "No upcoming public events yet.")}
@@ -807,6 +826,251 @@ async function profileSocialsApi(request, env) {
   return jsonResp(200, { ok: true, ...next });
 }
 
+async function userDjProfile(env, user) {
+  if (!env?.DB || !user?.id) return null;
+  return await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+}
+
+function cleanEventFields(body, existing = {}) {
+  const has = (k) => Object.prototype.hasOwnProperty.call(body || {}, k);
+  const textSpecs = [
+    ["title", 200],
+    ["host", 80],
+    ["timezone", 80],
+    ["location_name", 200],
+    ["location_address", 300],
+    ["tagline", 200],
+    ["about", 4000],
+  ];
+  const out = {};
+  const provided = [];
+  for (const [key, len] of textSpecs) {
+    if (has(key)) {
+      out[key] = clip(body[key], len);
+      provided.push(key);
+    } else if (existing && Object.prototype.hasOwnProperty.call(existing, key)) {
+      out[key] = existing[key];
+    }
+  }
+  for (const key of ["scheduled_at_ms", "end_at_ms"]) {
+    if (has(key)) {
+      const raw = body[key];
+      if (raw == null || raw === "") {
+        out[key] = null;
+      } else {
+        const n = Number(raw);
+        if (!Number.isSafeInteger(n) || n < 0) return { error: `bad ${key}` };
+        out[key] = n;
+      }
+      provided.push(key);
+    } else if (existing && Object.prototype.hasOwnProperty.call(existing, key)) {
+      out[key] = existing[key];
+    }
+  }
+  if (has("visibility")) {
+    const visibility = String(body.visibility || "");
+    if (visibility !== "public" && visibility !== "unlisted") return { error: "bad visibility" };
+    out.visibility = visibility;
+    provided.push("visibility");
+  } else if (existing && Object.prototype.hasOwnProperty.call(existing, "visibility")) {
+    out.visibility = existing.visibility;
+  }
+  if (has("rsvp_enabled")) {
+    const rsvpEnabled = Number(body.rsvp_enabled);
+    if (!Number.isInteger(rsvpEnabled) || (rsvpEnabled !== 0 && rsvpEnabled !== 1)) {
+      return { error: "bad rsvp_enabled" };
+    }
+    out.rsvp_enabled = rsvpEnabled;
+    provided.push("rsvp_enabled");
+  } else if (existing && Object.prototype.hasOwnProperty.call(existing, "rsvp_enabled")) {
+    out.rsvp_enabled = existing.rsvp_enabled;
+  }
+  return { values: out, provided };
+}
+
+async function resolveWebEventSlug(env, body, title) {
+  const raw = String(body?.slug || "").trim();
+  if (raw) {
+    if (!SLUG_RE.test(raw)) return { error: "bad slug" };
+    const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(raw).first();
+    if (existing) return { error: "slug taken", status: 409 };
+    return { slug: raw };
+  }
+
+  const base = slugifyTitle(title).slice(0, 43).replace(/-+$/g, "") || "event";
+  for (let i = 0; i < 8; i += 1) {
+    const suffix = i === 0 ? "" : `-${randHex(2)}`;
+    const slug = (base.slice(0, 48 - suffix.length).replace(/-+$/g, "") || "event") + suffix;
+    const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(slug).first();
+    if (!existing) return { slug };
+  }
+  return { error: "slug taken", status: 409 };
+}
+
+async function createEventApi(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const profile = await userDjProfile(env, user);
+  if (!profile) return jsonResp(400, { error: "create a DJ profile first", redirect: "/profile/edit" });
+  const body = await readJson(request, 8192);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+
+  const cleaned = cleanEventFields(body, { visibility: "public", rsvp_enabled: 1 });
+  if (cleaned.error) return jsonResp(400, { error: cleaned.error });
+  const title = clip(cleaned.values.title, 200).trim();
+  if (!title) return jsonResp(400, { error: "bad title" });
+  const slugResult = await resolveWebEventSlug(env, body, title);
+  if (slugResult.error) return jsonResp(slugResult.status || 400, { error: slugResult.error });
+
+  const now = nowMs();
+  const scheduledAt = cleaned.values.scheduled_at_ms ?? null;
+  const locationName = cleaned.values.location_name || "";
+  const locationAddress = cleaned.values.location_address || "";
+  const whereTxt = clip(locationName || locationAddress, 160);
+  const starts = scheduledAt == null ? "" : fmtWhen(scheduledAt);
+  try {
+    await env.DB.prepare(
+      `INSERT INTO events (slug, install_id, owner_user_id, dj_profile_id, title, host, starts, scheduled_at_ms, end_at_ms, timezone, where_txt, location_name, location_address, tagline, about, visibility, rsvp_enabled, status, source, created_ms, updated_ms, last_activity_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      slugResult.slug, "", user.id, profile.id, title, cleaned.values.host || "", starts, scheduledAt,
+      cleaned.values.end_at_ms ?? null, cleaned.values.timezone || "", whereTxt, locationName, locationAddress,
+      cleaned.values.tagline || "", cleaned.values.about || "", cleaned.values.visibility || "public",
+      Number(cleaned.values.rsvp_enabled ?? 1), "upcoming", "web", now, now, now
+    ).run();
+  } catch (e) {
+    const msg = String(e?.message || e || "");
+    if (/unique|constraint|events\.slug/i.test(msg)) return jsonResp(409, { error: "slug taken" });
+    throw e;
+  }
+  await bumpDjProfileActivity(env, profile.id, now);
+  return jsonResp(200, { ok: true, slug: slugResult.slug, url: `https://party.ramine.net/e/${slugResult.slug}` });
+}
+
+async function updateEventApi(request, env, slug) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const profile = await userDjProfile(env, user);
+  if (!profile) return jsonResp(400, { error: "create a DJ profile first", redirect: "/profile/edit" });
+  const owner = await env.DB.prepare("SELECT owner_user_id FROM events WHERE slug=?").bind(slug).first();
+  if (!owner) return jsonResp(404, { error: "event not found" });
+  if (owner.owner_user_id !== user.id) return jsonResp(403, { error: "not your event" });
+  const body = await readJson(request, 8192);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+
+  const cleaned = cleanEventFields(body);
+  if (cleaned.error) return jsonResp(400, { error: cleaned.error });
+  if (cleaned.provided.includes("title") && !String(cleaned.values.title || "").trim()) {
+    return jsonResp(400, { error: "bad title" });
+  }
+  const cols = [];
+  const vals = [];
+  const map = {
+    title: "title",
+    host: "host",
+    scheduled_at_ms: "scheduled_at_ms",
+    end_at_ms: "end_at_ms",
+    timezone: "timezone",
+    location_name: "location_name",
+    location_address: "location_address",
+    tagline: "tagline",
+    about: "about",
+    visibility: "visibility",
+    rsvp_enabled: "rsvp_enabled",
+  };
+  for (const key of cleaned.provided) {
+    cols.push(`${map[key]}=?`);
+    vals.push(key === "title" ? String(cleaned.values[key] || "").trim() : cleaned.values[key]);
+  }
+  if (Object.prototype.hasOwnProperty.call(cleaned.values, "scheduled_at_ms")) {
+    cols.push("starts=?");
+    vals.push(cleaned.values.scheduled_at_ms == null ? "" : fmtWhen(cleaned.values.scheduled_at_ms));
+  }
+  if (Object.prototype.hasOwnProperty.call(cleaned.values, "location_name") ||
+      Object.prototype.hasOwnProperty.call(cleaned.values, "location_address")) {
+    const existing = await env.DB.prepare("SELECT location_name, location_address FROM events WHERE slug=?").bind(slug).first();
+    const locationName = Object.prototype.hasOwnProperty.call(cleaned.values, "location_name")
+      ? cleaned.values.location_name
+      : (existing?.location_name || "");
+    const locationAddress = Object.prototype.hasOwnProperty.call(cleaned.values, "location_address")
+      ? cleaned.values.location_address
+      : (existing?.location_address || "");
+    cols.push("where_txt=?");
+    vals.push(clip(locationName || locationAddress, 160));
+  }
+  const now = nowMs();
+  cols.push("updated_ms=?", "last_activity_ms=?");
+  vals.push(now, now);
+  await env.DB.prepare(
+    `UPDATE events SET ${cols.join(", ")} WHERE slug=? AND owner_user_id=?`
+  ).bind(...vals, slug, user.id).run();
+  await bumpDjProfileActivity(env, profile.id, now);
+  return jsonResp(200, { ok: true });
+}
+
+async function newEventResponse(request, env) {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
+  }
+  const user = await getSessionUser(env, request);
+  if (!user) return redirectResp("/login?redirect=/events/new");
+  const profile = await userDjProfile(env, user);
+  if (!profile) {
+    const body = `<div class="page">
+      <div class="card authcard">
+        <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Create event</h1>
+        <p class="sub">Create your DJ profile first, then add your event.</p>
+        <div class="ecta"><a class="btn" href="/profile/edit">Create DJ profile</a></div>
+      </div>
+    </div>
+    <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+    return new Response(shell({
+      title: "Create event · partyparty",
+      desc: "Create your partyparty event.",
+      ogImage: DEFAULT_OG_IMAGE,
+      url: "/events/new",
+      body,
+    }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  }
+
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Create event</h1>
+      <p class="sub">Signed in as ${esc(user.email || "")}</p>
+      <form class="authform" id="event-form">
+        <label><span>Title</span><input name="title" maxlength="200" required placeholder="Rooftop Sessions"></label>
+        <label><span>Slug</span><input name="slug" maxlength="48" autocomplete="off" placeholder="rooftop-sessions"></label>
+        <label><span>Date and time</span><input name="starts_at" type="datetime-local"></label>
+        <label><span>Timezone</span><input name="timezone" maxlength="80" placeholder="America/Los_Angeles"></label>
+        <label><span>Location name</span><input name="location_name" maxlength="200" placeholder="Mission Roof"></label>
+        <label><span>Location address</span><input name="location_address" maxlength="300" placeholder="123 Party St"></label>
+        <label><span>Tagline</span><input name="tagline" maxlength="200" placeholder="House, disco and sunset edits"></label>
+        <label><span>Description</span><textarea name="about" maxlength="4000"></textarea></label>
+        <label class="checkrow"><input name="visibility" type="checkbox" checked><span>Public</span></label>
+        <label class="checkrow"><input name="rsvp_enabled" type="checkbox" checked><span>RSVP enabled</span></label>
+        <div class="ecta"><button class="btn" type="submit">Create event</button><a class="btn lt" href="/account">Cancel</a></div>
+      </form>
+      <p class="hint" id="event-msg" role="status" style="margin:14px 0 0"></p>
+      <div id="event-link" style="margin-top:14px"></div>
+    </div>
+  </div>
+  <script>
+(function(){var f=document.getElementById('event-form'),m=document.getElementById('event-msg'),l=document.getElementById('event-link');if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';l.innerHTML='';var starts=f.elements.starts_at.value;var body={title:f.elements.title.value,slug:f.elements.slug.value,timezone:f.elements.timezone.value,location_name:f.elements.location_name.value,location_address:f.elements.location_address.value,tagline:f.elements.tagline.value,about:f.elements.about.value,visibility:f.elements.visibility.checked?'public':'unlisted',rsvp_enabled:f.elements.rsvp_enabled.checked?1:0};if(starts)body.scheduled_at_ms=new Date(starts).getTime();fetch('/api/events',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok)throw new Error(out.json&&out.json.error||'create failed');m.textContent='Created.';var a=document.createElement('a');a.className='btn lt';a.href='/e/'+out.json.slug;a.textContent='View /e/'+out.json.slug;l.appendChild(a)}).catch(function(e){m.textContent=e&&e.message?e.message:'Could not create event.'})})})();
+  </script>
+  <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+  return new Response(shell({
+    title: "Create event · partyparty",
+    desc: "Create your partyparty event.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/events/new",
+    body,
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
 async function profileEditResponse(request, env) {
   if (request.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
@@ -937,7 +1201,7 @@ async function accountResponse(request, env) {
     <div class="accountgrid" style="margin-top:16px">
       ${profileCard}
       <div class="card"><h2>Linked installs</h2><div class="stat">${esc(installs)}</div><p class="emptyline">Device management is coming soon.</p></div>
-      <div class="card" style="grid-column:1/-1"><h2>Owned events</h2>${eventList}</div>
+      <div class="card" style="grid-column:1/-1"><div class="sectionhead" style="margin:0 0 12px"><div><h2>Owned events</h2></div><a class="btn sm" href="/events/new">＋ Create event</a></div>${eventList}</div>
     </div>
   </div>
   <script>
@@ -2318,6 +2582,17 @@ export default {
       }
     }
 
+    if (pathname === "/events/new") {
+      try {
+        return await newEventResponse(request, env);
+      } catch (_) {
+        return new Response(renderNotFound(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+
     if (pathname === "/api/profile") {
       try {
         return await profileApi(request, env);
@@ -2329,6 +2604,23 @@ export default {
     if (pathname === "/api/profile/socials") {
       try {
         return await profileSocialsApi(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    if (pathname === "/api/events") {
+      try {
+        return await createEventApi(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    const webEventApi = pathname.match(WEB_EVENT_API_RE);
+    if (webEventApi) {
+      try {
+        return await updateEventApi(request, env, webEventApi[1]);
       } catch (e) {
         return jsonResp(500, { error: String((e && e.message) || e) });
       }
