@@ -67,6 +67,7 @@ type Broadcaster struct {
 	delivery   string  // active delivery mode: llhls | hls
 	startedAt  time.Time
 	lastError  string
+	captureUp  bool // this generation's tap actually announced a FORMAT (capture works — so an ffmpeg death is NOT a permission problem)
 
 	// Last Start params + a throttle, so a tap wedged by a released exclusive
 	// device (Roon Exclusive Mode) can be auto-rebuilt without the DJ acting.
@@ -74,6 +75,7 @@ type Broadcaster struct {
 	lastName        string
 	lastOpts        Options
 	lastAutoRestart time.Time
+	stallRebuilds   int // consecutive stall-triggered rebuilds; bounded so an unrecoverable stall can't thrash forever, reset on CAPTURE-OK
 
 	logMu       sync.Mutex
 	logLines    []string
@@ -167,13 +169,23 @@ func (w *formatScanner) Write(p []byte) (int, error) {
 		case strings.Contains(s, "CAPTURE-BLOCKED"):
 			w.b.setCaptureNote("Another app has taken EXCLUSIVE control of your Mac's audio output (e.g. Roon or Audirvana in Exclusive Mode) — partyparty can't capture it, so guests hear nothing. Turn OFF Exclusive/Hog Mode for this output in that app (or point it at a different device, or route it through BlackHole). It recovers on its own once released; if not, Stop and Go Live again.")
 		case strings.Contains(s, "CAPTURE-STALLED"):
-			w.b.setCaptureNote("The Mac's audio capture stalled — no sound is reaching guests. Try switching your output device (menu bar volume) or Stop and Go Live again.")
+			// Frames actually stopped flowing — the tap is genuinely wedged.
+			// Rebuild, but bounded (onStall) so an unrecoverable stall can't loop.
+			w.b.onStall()
 		case strings.Contains(s, "CAPTURE-OK"):
-			w.b.setCaptureNote("")
+			w.b.captureRecovered()
 		case strings.Contains(s, "CAPTURE-UNHOGGED"):
 			w.b.tryAutoRestart() // exclusive app released the device but tap wedged — rebuild
 		case strings.Contains(s, "CAPTURE-DEVICECHANGE"):
-			w.b.tryAutoRestart() // default output changed (AirPods grabbed the Mac) — rebuild against it
+			// The default output changed (AirPods grabbed the Mac, a display with
+			// speakers plugged in, monitor↔interface switch). The global tap's
+			// aggregate is bound to the OLD device and stops delivering usable
+			// frames, so rebuild against the new default — the fast path that
+			// front-runs the 4s stall detector. Throttled (15s) + debounced in
+			// the helper. This no longer wrongly reports a permission error on
+			// teardown (the gen-guard + captureUp fix), which was the real field
+			// bug — the rebuild itself is correct and necessary.
+			w.b.tryAutoRestart()
 		}
 	}
 	w.mu.Lock()
@@ -213,11 +225,17 @@ func (b *Broadcaster) pushLog(chunk string) {
 	}
 }
 
-// tryAutoRestart rebuilds a mac capture whose tap wedged after an exclusive
-// app (Roon) released the output device — the aggregate device needs a fresh
-// tap. Throttled to once per 15s so a flapping device can't thrash the room,
-// and only for a live mac broadcast (test/device sources don't wedge this way).
-func (b *Broadcaster) tryAutoRestart() {
+// maxStallRebuilds bounds consecutive stall-triggered rebuilds: after this many
+// without frames coming back (no CAPTURE-OK), stop rebuilding and warn instead,
+// so an unrecoverable stall can't thrash the room every throttle window forever.
+const maxStallRebuilds = 3
+
+// tryAutoRestart rebuilds a mac capture whose tap wedged — an exclusive app
+// (Roon) released the output device, or the default output changed under it.
+// Throttled to once per 15s so a flapping device can't thrash the room, and only
+// for a live mac broadcast (test/device sources don't wedge this way). Returns
+// true only when it actually kicked off a rebuild.
+func (b *Broadcaster) tryAutoRestart() bool {
 	b.mu.Lock()
 	live := b.state == "live" || b.state == "starting"
 	mac := b.device == "mac"
@@ -228,10 +246,41 @@ func (b *Broadcaster) tryAutoRestart() {
 	}
 	b.mu.Unlock()
 	if !live || !mac || throttled {
+		return false
+	}
+	b.pushLog("[partyparty] capture stalled (device yanked or exclusive-mode release) — rebuilding the tap")
+	go b.Start(dev, name, opts)
+	return true
+}
+
+// onStall reacts to a genuine frame stall (CAPTURE-STALLED): rebuild the tap,
+// but bound the attempts. A transient stall recovers on the first rebuild (and
+// CAPTURE-OK resets the count via captureRecovered); an UNRECOVERABLE stall
+// would otherwise rebuild every 15s forever, so after maxStallRebuilds we stop
+// and surface a persistent warning instead of thrashing the room silently.
+// Transient rebuilds show no note — Start clears it — so only a real, stuck
+// failure trips the menu-bar alarm.
+func (b *Broadcaster) onStall() {
+	b.mu.Lock()
+	exhausted := b.stallRebuilds >= maxStallRebuilds
+	b.mu.Unlock()
+	if exhausted {
+		b.setCaptureNote("The Mac's audio capture stalled and isn't recovering — no sound is reaching guests. Switch your output device (menu-bar volume), or Stop and Go Live again.")
 		return
 	}
-	b.pushLog("[partyparty] audio output was released by another app but capture is still stuck — rebuilding the tap")
-	go b.Start(dev, name, opts)
+	if b.tryAutoRestart() {
+		b.mu.Lock()
+		b.stallRebuilds++
+		b.mu.Unlock()
+	}
+}
+
+// captureRecovered clears the stall bookkeeping when frames resume (CAPTURE-OK).
+func (b *Broadcaster) captureRecovered() {
+	b.mu.Lock()
+	b.stallRebuilds = 0
+	b.mu.Unlock()
+	b.setCaptureNote("")
 }
 
 // setCaptureNote records/clears the non-fatal capture warning (guarded by
@@ -407,6 +456,7 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	b.lastDevice, b.lastName, b.lastOpts = device, deviceName, opts // for auto-restart after a wedged tap
 	b.state = "starting"
 	b.lastError = ""
+	b.captureUp = false // set true once this generation's tap announces a FORMAT
 	b.startedAt = time.Now()
 
 	if device == "mac" && b.helperPath == "" {
@@ -472,6 +522,11 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		select {
 		case f := <-fscan.ch:
 			inRate, inCh = f[0], f[1]
+			b.mu.Lock()
+			if b.gen == myGen {
+				b.captureUp = true // tap works — never blame permissions on a later ffmpeg death
+			}
+			b.mu.Unlock()
 			b.pushLog(fmt.Sprintf("[partyparty] capturing at %d Hz, %d channel(s)", inRate, inCh))
 		case <-time.After(15 * time.Second):
 			formatAssumed = true
@@ -537,6 +592,11 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		go func() {
 			select {
 			case f := <-fscan.ch:
+				b.mu.Lock()
+				if b.gen == myGen {
+					b.captureUp = true // the late FORMAT arrived — capture is up
+				}
+				b.mu.Unlock()
 				if f[0] == inRate && f[1] == inCh {
 					return // assumed right — leave the broadcast alone
 				}
@@ -553,7 +613,7 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		}()
 	}
 
-	go func(c, h *exec.Cmd) {
+	go func(c, h *exec.Cmd, gen uint64) {
 		werr := c.Wait()
 		if h != nil {
 			_ = h.Process.Kill()
@@ -562,26 +622,49 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if b.cmd != c {
-			return // superseded by a newer broadcast
+			return // a newer broadcast already took over — its handles, not ours
 		}
 		if b.state == "stopping" {
 			b.state = "idle"
 			b.pushLog("[partyparty] broadcast stopped")
-		} else {
-			b.state = "error"
-			if werr != nil {
-				b.lastError = "ffmpeg exited: " + werr.Error()
-			} else {
-				b.lastError = "ffmpeg exited"
-			}
-			if b.device == "mac" {
-				b.lastError += " — allow System Audio Recording for partyparty, then Start again."
-			}
-			b.pushLog("[partyparty] " + b.lastError)
+			b.cmd = nil
+			b.helper = nil
+			return
 		}
+		// A rebuild bumps gen at its very top (Stop's gen++) but publishes its new
+		// ffmpeg only after the format handshake, so for a moment b.cmd is still
+		// this dying one while gen has already moved on. That teardown is EXPECTED
+		// — don't flip to error. This was the field bug: a self-initiated rebuild
+		// looked like a crash and got mislabeled a permission error even though
+		// capture was healthy the whole time.
+		if b.gen != gen {
+			// Still drop OUR now-dead handles so a later Stop can't latch onto a
+			// reaped ffmpeg and lose its stopping->idle transition (wedging state
+			// at "stopping"). b.cmd==c here (top guard), but only clear b.helper
+			// if it's still ours — the successor may already own it.
+			b.cmd = nil
+			if b.helper == h {
+				b.helper = nil
+			}
+			return
+		}
+		b.state = "error"
+		if werr != nil {
+			b.lastError = "ffmpeg exited: " + werr.Error()
+		} else {
+			b.lastError = "ffmpeg exited"
+		}
+		// Only blame the System Audio Recording permission when the tap never came
+		// up (its real signature). If capture was working — a FORMAT was announced
+		// — a later ffmpeg death is a transient encoder problem, not a permission
+		// one; don't send the DJ chasing a settings toggle that isn't the issue.
+		if b.device == "mac" && !b.captureUp {
+			b.lastError += " — allow System Audio Recording for partyparty, then Start again."
+		}
+		b.pushLog("[partyparty] " + b.lastError)
 		b.cmd = nil
 		b.helper = nil
-	}(ff, helper)
+	}(ff, helper, myGen)
 }
 
 // fail records an error outcome — but only for the broadcast generation that
