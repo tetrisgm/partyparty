@@ -221,4 +221,28 @@ Thread.detachNewThread {
         }
     }
 }
+
+// Default-output-device change (AirPods connect to the Mac and macOS makes
+// them the current output, the DJ switches speakers↔interface, a display with
+// speakers is plugged in, …). The global tap's aggregate device is bound to
+// the OLD device's clock/format and stops delivering frames — guests get stuck
+// buffering with no recovery. The tap must be rebuilt against the new device
+// (which also re-reads its sample rate), so signal the parent to restart
+// capture. Debounced + throttled parent-side so a settling AirPods handshake
+// can't thrash the room.
+var devChangeAddr = AudioObjectPropertyAddress(
+    mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+    mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+var lastDevSignal = Date.distantPast
+AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &devChangeAddr, DispatchQueue.main) { _, _ in
+    // Settle briefly (a device switch fires several property changes), then
+    // signal once. The 2s local debounce plus the parent's 15s throttle keep
+    // a flapping connection from restarting repeatedly.
+    let now = Date()
+    if now.timeIntervalSince(lastDevSignal) < 2 { return }
+    lastDevSignal = now
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        elog("ppcapture: CAPTURE-DEVICECHANGE")
+    }
+}
 dispatchMain()

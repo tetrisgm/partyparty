@@ -171,7 +171,9 @@ func (w *formatScanner) Write(p []byte) (int, error) {
 		case strings.Contains(s, "CAPTURE-OK"):
 			w.b.setCaptureNote("")
 		case strings.Contains(s, "CAPTURE-UNHOGGED"):
-			w.b.tryAutoRestart() // device released but tap wedged — rebuild it
+			w.b.tryAutoRestart() // exclusive app released the device but tap wedged — rebuild
+		case strings.Contains(s, "CAPTURE-DEVICECHANGE"):
+			w.b.tryAutoRestart() // default output changed (AirPods grabbed the Mac) — rebuild against it
 		}
 	}
 	w.mu.Lock()
