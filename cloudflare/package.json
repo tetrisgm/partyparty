@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "description": "party.ramine.net — landing page (static assets) + app download (R2), served by one Worker.",
+  "type": "module",
   "scripts": {
+    "check": "node --check worker.js",
+    "smoke": "node test/smoke.mjs",
     "login": "wrangler login",
     "whoami": "wrangler whoami",
     "deploy": "wrangler deploy",
