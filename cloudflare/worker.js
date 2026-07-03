@@ -392,7 +392,7 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .postitem:first-child{border-top:0;padding-top:0}.postitem p{font-size:15px;line-height:1.45;margin:0 0 6px}.postitem a{color:var(--link);font-size:13px}
 .emptyhome{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:16px;align-items:stretch}
 .emptyhome .big{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}.emptyhome p{color:var(--ink2);margin:0 0 18px}
-.authcard{max-width:520px;margin:48px auto 0}.authform{display:grid;gap:12px;margin-top:16px}.authform input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}.authform input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}.authform details{color:var(--ink2);font-size:13px}.authform summary{cursor:pointer;display:inline-flex;margin:2px 0 8px}.accounthead{display:flex;justify-content:space-between;align-items:start;gap:16px}.accounthead p{margin:4px 0 0;color:var(--ink2)}.accountgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.accountgrid .card{margin-top:0}.stat{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:10px 0 2px}.minirow{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.minirow:first-child{border-top:0;padding-top:0;margin-top:0}.minirow b{display:block;font-size:15px}.minirow span{display:block;color:var(--ink2);font-size:13px;margin-top:2px}
+.authcard{max-width:520px;margin:48px auto 0}.authform{display:grid;gap:12px;margin-top:16px}.authform input,.authform textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}.authform textarea{min-height:104px;resize:vertical;line-height:1.45}.authform input:focus,.authform textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}.authform label{display:grid;gap:6px;color:var(--ink2);font-size:13px}.authform label span{font-weight:600;color:var(--ink)}.authform details{color:var(--ink2);font-size:13px}.authform summary{cursor:pointer;display:inline-flex;margin:2px 0 8px}.accounthead{display:flex;justify-content:space-between;align-items:start;gap:16px}.accounthead p{margin:4px 0 0;color:var(--ink2)}.accountgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.accountgrid .card{margin-top:0}.stat{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:10px 0 2px}.minirow{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.minirow:first-child{border-top:0;padding-top:0;margin-top:0}.minirow b{display:block;font-size:15px}.minirow span{display:block;color:var(--ink2);font-size:13px;margin-top:2px}
 .rsvp{display:grid;gap:14px}.rsvphead{display:flex;justify-content:space-between;gap:16px;align-items:start}.rsvphead .sub{margin-bottom:0}.rsvpcounts{display:flex;gap:14px;align-items:center;color:var(--ink2);font-size:12px;white-space:nowrap}.rsvpcounts b{display:block;color:var(--ink);font-size:22px;line-height:1}.rsvprow{display:flex;gap:10px;flex-wrap:wrap}.rsvp .btn.active{background:var(--accent);color:#fff;border-color:transparent}.rsvpfields{display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:10px}.rsvpfields input{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink)}.rsvpfields input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}
 @media(max-width:760px){.homehero{grid-template-columns:1fr;padding-top:26px}.eventgrid,.djstrip,.emptyhome{grid-template-columns:1fr}.eventcard{grid-template-columns:92px minmax(0,1fr)}}
 @media(max-width:760px){.accountgrid{grid-template-columns:1fr}.accounthead{display:grid}.navlinks{gap:6px}.navlinks .btn.sm{padding:8px 12px}}
@@ -708,6 +708,147 @@ function redirectResp(location) {
   return new Response(null, { status: 302, headers: { location, "cache-control": "no-store" } });
 }
 
+function defaultDisplayName(user) {
+  return clip(String(user?.email || "").split("@")[0] || user?.display_name || "DJ", 80);
+}
+
+function cleanProfileUrl(value) {
+  const raw = String(value == null ? "" : value).trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    return (u.protocol === "http:" || u.protocol === "https:") ? clip(u.href, 500) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function profileApi(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "profiles db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const body = await readJson(request, 4096);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+
+  const existing = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+  const hasHandle = Object.prototype.hasOwnProperty.call(body, "handle") && String(body.handle ?? "").trim() !== "";
+  if (!existing && !hasHandle) return jsonResp(400, { error: "bad handle" });
+
+  const handle = hasHandle ? normalizeHandle(body.handle) : normalizeHandle(existing?.handle);
+  if (!handle) return jsonResp(400, { error: "bad handle" });
+
+  const owner = await env.DB.prepare("SELECT user_id FROM dj_profiles WHERE handle=? LIMIT 1").bind(handle).first();
+  if (owner?.user_id && owner.user_id !== user.id) return jsonResp(409, { error: "handle taken" });
+
+  const hasDisplay = Object.prototype.hasOwnProperty.call(body, "display_name");
+  const hasBio = Object.prototype.hasOwnProperty.call(body, "bio");
+  const hasLocation = Object.prototype.hasOwnProperty.call(body, "location");
+  const displayName = hasDisplay
+    ? (clip(body.display_name, 80).trim() || defaultDisplayName(user))
+    : (existing?.display_name || defaultDisplayName(user));
+  const bio = hasBio ? clip(body.bio, 500) : (existing?.bio || "");
+  const location = hasLocation ? clip(body.location, 80) : (existing?.location || "");
+  const now = nowMs();
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO dj_profiles (id, user_id, handle, display_name, bio, location, published, created_ms, updated_ms, last_activity_ms)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         handle=excluded.handle,
+         display_name=excluded.display_name,
+         bio=excluded.bio,
+         location=excluded.location,
+         published=1,
+         updated_ms=excluded.updated_ms,
+         last_activity_ms=excluded.last_activity_ms
+       WHERE dj_profiles.user_id=?`
+    ).bind(randHex(16), user.id, handle, displayName, bio, location, now, now, now, user.id).run();
+  } catch (e) {
+    const msg = String(e?.message || e || "");
+    if (/unique|constraint|dj_profiles\.handle/i.test(msg)) return jsonResp(409, { error: "handle taken" });
+    throw e;
+  }
+
+  const row = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+  const finalHandle = normalizeHandle(row?.handle || handle);
+  return jsonResp(200, { ok: true, handle: finalHandle, url: `https://party.ramine.net/@${finalHandle}` });
+}
+
+async function profileSocialsApi(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "profiles db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const body = await readJson(request, 4096);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+
+  const existing = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+  if (!existing) return jsonResp(404, { error: "profile not found" });
+  const keys = ["website_url", "instagram_url", "soundcloud_url", "spotify_url"];
+  const next = {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      const clean = cleanProfileUrl(body[key]);
+      if (clean == null) return jsonResp(400, { error: `bad ${key}` });
+      next[key] = clean;
+    } else {
+      next[key] = existing[key] || "";
+    }
+  }
+
+  const now = nowMs();
+  await env.DB.prepare(
+    `UPDATE dj_profiles
+     SET website_url=?, instagram_url=?, soundcloud_url=?, spotify_url=?, updated_ms=?
+     WHERE user_id=?`
+  ).bind(next.website_url, next.instagram_url, next.soundcloud_url, next.spotify_url, now, user.id).run();
+  return jsonResp(200, { ok: true, ...next });
+}
+
+async function profileEditResponse(request, env) {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
+  }
+  const user = await getSessionUser(env, request);
+  if (!user) return redirectResp("/login?redirect=/profile/edit");
+  const profile = env.DB
+    ? await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first()
+    : null;
+  const handle = normalizeHandle(profile?.handle);
+  const profileUrl = handle ? `/@${handle}` : "";
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">DJ profile</h1>
+      <p class="sub">${handle ? `Editing @${esc(handle)}` : "Create your public DJ profile."}</p>
+      <form class="authform" id="profile-form">
+        <label><span>Handle</span><input name="handle" maxlength="30" autocomplete="off" required value="${esc(handle)}" placeholder="dj.name"></label>
+        <label><span>Display name</span><input name="display_name" maxlength="80" autocomplete="name" value="${esc(profile?.display_name || defaultDisplayName(user))}"></label>
+        <label><span>Bio</span><textarea name="bio" maxlength="500">${esc(profile?.bio || "")}</textarea></label>
+        <label><span>Location</span><input name="location" maxlength="80" autocomplete="address-level2" value="${esc(profile?.location || "")}"></label>
+        <label><span>Website</span><input name="website_url" type="url" value="${esc(profile?.website_url || "")}"></label>
+        <label><span>Instagram</span><input name="instagram_url" type="url" value="${esc(profile?.instagram_url || "")}"></label>
+        <label><span>SoundCloud</span><input name="soundcloud_url" type="url" value="${esc(profile?.soundcloud_url || "")}"></label>
+        <label><span>Spotify</span><input name="spotify_url" type="url" value="${esc(profile?.spotify_url || "")}"></label>
+        <div class="ecta"><button class="btn" type="submit">Save profile</button>${profileUrl ? `<a class="btn lt" id="profile-link" href="${esc(profileUrl)}">View /@${esc(handle)}</a>` : `<a class="btn lt" id="profile-link" href="#" style="display:none"></a>`}</div>
+      </form>
+      <p class="hint" id="profile-msg" role="status" style="margin:14px 0 0"></p>
+    </div>
+  </div>
+  <script>
+(function(){var f=document.getElementById('profile-form'),m=document.getElementById('profile-msg'),l=document.getElementById('profile-link');if(!f)return;function values(names){var out={};names.forEach(function(n){out[n]=f.elements[n].value});return out}f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';var core=values(['handle','display_name','bio','location']),socials=values(['website_url','instagram_url','soundcloud_url','spotify_url']);fetch('/api/profile',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(core)}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok)throw new Error(out.json&&out.json.error||'save failed');return fetch('/api/profile/socials',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(socials)}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j,core:out.json}})})}).then(function(out){if(!out.ok)throw new Error(out.json&&out.json.error||'save failed');m.textContent='Saved.';if(l&&out.core&&out.core.handle){l.href='/@'+out.core.handle;l.textContent='View /@'+out.core.handle;l.style.display='inline-flex'}}).catch(function(e){m.textContent=e&&e.message?e.message:'Could not save profile.'})})})();
+  </script>
+  <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+  return new Response(shell({
+    title: "DJ profile · partyparty",
+    desc: "Create or edit your partyparty DJ profile.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/profile/edit",
+    body,
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
 async function loginResponse(request, env) {
   if (request.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
@@ -770,12 +911,12 @@ async function accountResponse(request, env) {
     <p class="emptyline">${handle ? `@${esc(handle)}` : "Handle not set yet."}</p>
     <div class="ecta">
       ${handle ? `<a class="btn lt sm" href="/@${esc(handle)}">View profile</a>` : ""}
-      <a class="btn lt sm" href="#" data-soon="Profile editing is coming soon.">Edit profile</a>
+      <a class="btn lt sm" href="/profile/edit">Edit profile</a>
     </div>
   </div>` : `<div class="card">
     <h2>DJ profile</h2>
     <p class="emptyline">You haven't created a DJ profile yet.</p>
-    <div class="ecta"><a class="btn lt sm" href="#" data-soon="Profile creation is coming soon.">Create profile</a></div>
+    <div class="ecta"><a class="btn lt sm" href="/profile/edit">Create profile</a></div>
   </div>`;
   const eventList = events.length ? `<div>${events.map((ev) => {
     const when = ev.starts || fmtWhen(ev.scheduled_at_ms);
@@ -2163,6 +2304,33 @@ export default {
           status: 500,
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
         });
+      }
+    }
+
+    if (pathname === "/profile/edit") {
+      try {
+        return await profileEditResponse(request, env);
+      } catch (_) {
+        return new Response(renderNotFound(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+
+    if (pathname === "/api/profile") {
+      try {
+        return await profileApi(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    if (pathname === "/api/profile/socials") {
+      try {
+        return await profileSocialsApi(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
       }
     }
 

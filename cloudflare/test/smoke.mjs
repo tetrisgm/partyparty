@@ -220,7 +220,10 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM dj_profiles WHERE handle=?")) {
       const handle = this.args[0];
-      return this.db.profiles.find((row) => row.handle === handle && row.published === 1) || null;
+      const row = this.db.profiles.find((profile) =>
+        profile.handle === handle && (!sql.includes("published=1") || profile.published === 1)
+      );
+      return row ? { ...row } : null;
     }
     return null;
   }
@@ -460,6 +463,57 @@ class FakeD1Statement {
         }
       }
       return { success: true, meta: { changes } };
+    }
+    if (sql.includes("INSERT INTO dj_profiles")) {
+      const [id, userId, handle, displayName, bio, location, createdMs, updatedMs, lastActivityMs, scopeUserId] = this.args;
+      const handleOwner = this.db.profiles.find((profile) => profile.handle === handle);
+      if (handleOwner && handleOwner.user_id !== userId) {
+        throw new Error("UNIQUE constraint failed: dj_profiles.handle");
+      }
+      const existing = this.db.profiles.find((profile) => profile.user_id === userId);
+      if (existing) {
+        if (scopeUserId !== userId) return { success: true, meta: { changes: 0 } };
+        existing.handle = handle;
+        existing.display_name = displayName;
+        existing.bio = bio;
+        existing.location = location;
+        existing.published = 1;
+        existing.updated_ms = updatedMs;
+        existing.last_activity_ms = lastActivityMs;
+        return { success: true, meta: { changes: 1 } };
+      }
+      this.db.profiles.push({
+        id,
+        user_id: userId,
+        handle,
+        display_name: displayName,
+        bio,
+        location,
+        avatar_key: null,
+        hero_key: null,
+        website_url: "",
+        instagram_url: "",
+        soundcloud_url: "",
+        spotify_url: "",
+        primary_install_id: null,
+        published: 1,
+        created_ms: createdMs,
+        updated_ms: updatedMs,
+        last_activity_ms: lastActivityMs,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE dj_profiles") && sql.includes("website_url=?")) {
+      const [websiteUrl, instagramUrl, soundcloudUrl, spotifyUrl, updatedMs, userId] = this.args;
+      const row = this.db.profiles.find((profile) => profile.user_id === userId);
+      if (row) {
+        row.website_url = websiteUrl;
+        row.instagram_url = instagramUrl;
+        row.soundcloud_url = soundcloudUrl;
+        row.spotify_url = spotifyUrl;
+        row.updated_ms = updatedMs;
+      }
+      return { success: true, meta: { changes: row ? 1 : 0 } };
     }
     if (sql.includes("UPDATE dj_profiles SET last_activity_ms=? WHERE id=?")) {
       const [lastActivityMs, profileId] = this.args;
@@ -1081,7 +1135,122 @@ const tests = [
     assert.match(html, /acct@example\.com/);
     assert.match(html, /Sign out/);
     assert.match(html, /acct\.dj/);
+    assert.match(html, /href="\/profile\/edit"/);
     assert.match(html, /Owned Account Night/);
+  }],
+  ["profile API creates signed-in user's fresh profile and public route renders it", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "fresh@example.com", { ip: "203.0.113.30" });
+    const user = [...db.authUsers.values()][0];
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: " Fresh DJ ", display_name: "Fresh Name" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json, { ok: true, handle: "fresh.dj", url: "https://party.ramine.net/@fresh.dj" });
+    assert.equal(db.profiles.length, 1);
+    assert.equal(db.profiles[0].user_id, user.id);
+    assert.equal(db.profiles[0].handle, "fresh.dj");
+
+    const page = await worker.fetch(new Request("https://party.ramine.net/@fresh.dj"), makeEnv({ DB: db }));
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(html, /Fresh Name/);
+    assert.match(html, /@fresh\.dj/);
+  }],
+  ["profile API rejects a different user claiming an existing normalized handle", async () => {
+    const db = new FakeD1();
+    const cookieA = await signInCookie(db, "claim-a@example.com", { ip: "203.0.113.31" });
+    const first = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookieA },
+      body: JSON.stringify({ handle: "Taken Handle" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(first.status, 200);
+
+    const cookieB = await signInCookie(db, "claim-b@example.com", { ip: "203.0.113.32" });
+    const second = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookieB },
+      body: JSON.stringify({ handle: "taken.handle" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(second.status, 409);
+    assert.equal(db.profiles.length, 1);
+  }],
+  ["profile API rejects invalid handles", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "bad-handle@example.com", { ip: "203.0.113.33" });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "!!!" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 400);
+    assert.equal(db.profiles.length, 0);
+  }],
+  ["profile API requires authentication", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ handle: "anon.dj" }),
+    }), makeEnv({ DB: new FakeD1() }));
+    assert.equal(resp.status, 401);
+  }],
+  ["profile API persists owner display name and bio edits", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "edit-owner@example.com", { ip: "203.0.113.34" });
+    const create = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "edit.owner" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(create.status, 200);
+
+    const edit = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ display_name: "Owner Edited", bio: "Updated private owner copy.", location: "Oakland" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(edit.status, 200);
+    const row = db.profiles.find((profile) => profile.handle === "edit.owner");
+    assert.equal(row.display_name, "Owner Edited");
+    assert.equal(row.bio, "Updated private owner copy.");
+    assert.equal(row.location, "Oakland");
+  }],
+  ["profile socials reject javascript URLs and accept https URLs", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "socials@example.com", { ip: "203.0.113.35" });
+    const create = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "social.dj" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(create.status, 200);
+
+    const bad = await worker.fetch(new Request("https://party.ramine.net/api/profile/socials", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ website_url: "javascript:alert(1)" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(bad.status, 400);
+    assert.equal(db.profiles[0].website_url, "");
+
+    const good = await worker.fetch(new Request("https://party.ramine.net/api/profile/socials", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ website_url: "https://example.test/dj", instagram_url: "" }),
+    }), makeEnv({ DB: db }));
+    const json = await good.json();
+    assert.equal(good.status, 200);
+    assert.equal(json.website_url, "https://example.test/dj");
+    assert.equal(db.profiles[0].website_url, "https://example.test/dj");
+  }],
+  ["profile edit redirects anonymous users to login", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/profile/edit"), makeEnv({ DB: new FakeD1() }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?redirect=/profile/edit");
   }],
   ["login renders email form for anonymous users", async () => {
     const resp = await worker.fetch(new Request("https://party.ramine.net/login"), makeEnv({ DB: new FakeD1() }));
