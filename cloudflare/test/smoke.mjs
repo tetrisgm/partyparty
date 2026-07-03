@@ -45,6 +45,8 @@ class FakeD1 {
     this.wallPosts = wallPosts;
     this.wallMedia = wallMedia;
     this.wallComments = wallComments;
+    this.importedPosts = new Map(wallPosts.map((row) => [row.id, { ...row }]));
+    this.importedComments = new Map(wallComments.map((row) => [row.id, { ...row }]));
     this.rsvpEnabled = rsvpEnabled;
     this.events = new Map();
     this.events.set(knownSlug, {
@@ -218,6 +220,61 @@ class FakeD1Statement {
       this.db.profileActivityBumps.push({ profileId, lastActivityMs });
       const row = this.db.profiles.find((profile) => profile.id === profileId);
       if (row) row.last_activity_ms = lastActivityMs;
+    }
+    if (sql.includes("INSERT INTO posts") && sql.includes("source_install_id")) {
+      const [
+        id, slug, author, emoji, text, approved, tsMs, createdMs, authorCidHash, sourceInstallId,
+        dj, activityMs, updatedMs, approvedMs, deletedMs,
+      ] = this.args;
+      const old = this.db.importedPosts.get(id);
+      this.db.importedPosts.set(id, {
+        id,
+        slug,
+        author,
+        emoji,
+        text,
+        media_key: null,
+        media_type: null,
+        approved,
+        ts_ms: tsMs,
+        created_ms: old?.created_ms || createdMs,
+        author_cid_hash: authorCidHash,
+        source: "mac_sync",
+        source_install_id: sourceInstallId,
+        dj,
+        activity_ms: activityMs,
+        updated_ms: updatedMs,
+        approved_ms: approvedMs,
+        deleted_ms: deletedMs,
+      });
+      return { success: true };
+    }
+    if (sql.includes("INSERT INTO post_comments")) {
+      const [id, slug, postId, author, emoji, text, dj, approved, tsMs, createdMs, updatedMs, deletedMs] = this.args;
+      const old = this.db.importedComments.get(id);
+      this.db.importedComments.set(id, {
+        id,
+        slug,
+        post_id: postId,
+        author,
+        emoji,
+        text,
+        dj,
+        approved,
+        ts_ms: tsMs,
+        created_ms: old?.created_ms || createdMs,
+        updated_ms: updatedMs,
+        deleted_ms: deletedMs,
+      });
+      return { success: true };
+    }
+    if (sql.includes("UPDATE events SET updated_ms=?, last_activity_ms=?")) {
+      const [updatedMs, lastActivityMs, slug, installId] = this.args;
+      const old = this.db.events.get(slug);
+      if (old && old.install_id === installId) {
+        this.db.events.set(slug, { ...old, updated_ms: updatedMs, last_activity_ms: lastActivityMs });
+      }
+      return { success: true };
     }
     if (sql.includes("INSERT INTO events") && sql.includes("?1") && sql.includes("last_activity_ms")) {
       const [slug, installId, title, host, starts, whereTxt, tagline, about, now] = this.args;
@@ -932,6 +989,105 @@ const tests = [
     assert.equal(row.updated_ms, row.last_activity_ms);
     assert.equal(db.profileActivityBumps.length, 1);
     assert.deepEqual(db.profileActivityBumps[0], { profileId: "profile-publish", lastActivityMs: row.last_activity_ms });
+  }],
+  ["broker publish-posts imports curated posts and is idempotent", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-posts", install_id: "abc123abc123", title: "Owned Posts", status: "replay" }],
+    });
+    const body = {
+      id: "abc123abc123",
+      secret: "secret-a",
+      slug: "owned-posts",
+      posts: [{
+        localId: "post-one",
+        ts: 1000,
+        author: "Guest One",
+        emoji: "✨",
+        text: "Visible",
+        dj: false,
+        noPublish: false,
+        comments: [{ localId: "comment-one", ts: 1500, author: "DJ", emoji: "🎧", text: "Nice", dj: true }],
+      }, {
+        localId: "post-two",
+        ts: 2000,
+        author: "Guest Two",
+        emoji: "🙈",
+        text: "Hidden",
+        dj: false,
+        noPublish: true,
+        comments: [],
+      }],
+    };
+    const first = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }), makeEnv({ DB: db }));
+    const firstJson = await first.json();
+    const ids = [...db.importedPosts.keys()];
+    const visible = [...db.importedPosts.values()].find((row) => row.text === "Visible");
+    const hidden = [...db.importedPosts.values()].find((row) => row.text === "Hidden");
+    assert.equal(first.status, 200);
+    assert.deepEqual(firstJson, { ok: true, slug: "owned-posts", imported: 2, approved: 1 });
+    assert.equal(db.importedPosts.size, 2);
+    assert.equal(db.importedComments.size, 1);
+    assert.equal(visible.approved, 1);
+    assert.equal(hidden.approved, 0);
+    assert.equal(visible.activity_ms, 1500);
+
+    const second = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }), makeEnv({ DB: db }));
+    assert.equal(second.status, 200);
+    assert.equal(db.importedPosts.size, 2);
+    assert.deepEqual([...db.importedPosts.keys()], ids);
+  }],
+  ["broker publish-posts rejects slug owned by another install", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "other-posts", install_id: "def456def456", title: "Other", status: "replay" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        slug: "other-posts",
+        posts: [{ localId: "post-one", ts: 1, author: "Guest", emoji: "x", text: "Nope", comments: [] }],
+      }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 403);
+    assert.equal(db.importedPosts.size, 0);
+  }],
+  ["broker publish-posts tombstones deleted posts", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "deleted-posts", install_id: "abc123abc123", title: "Deleted Posts", status: "replay" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        slug: "deleted-posts",
+        posts: [{
+          localId: "deleted-one",
+          ts: 3000,
+          author: "Guest",
+          emoji: "🗑️",
+          text: "Gone",
+          deleted: true,
+          comments: [{ localId: "comment-deleted", ts: 3500, author: "Guest", emoji: "x", text: "Also gone" }],
+        }],
+      }),
+    }), makeEnv({ DB: db }));
+    const row = [...db.importedPosts.values()][0];
+    const comment = [...db.importedComments.values()][0];
+    assert.equal(resp.status, 200);
+    assert.equal(typeof row.deleted_ms, "number");
+    assert.equal(comment.deleted_ms, row.deleted_ms);
   }],
   ["broker event-status rejects non-owner install", async () => {
     const db = new FakeD1({

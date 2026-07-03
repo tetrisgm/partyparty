@@ -1118,6 +1118,96 @@ async function publishCover(request, env) {
   return jsonResp(200, { ok: true, key });
 }
 
+async function publishPosts(env, id, body) {
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const slug = String(body.slug || "");
+  if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+  const posts = Array.isArray(body.posts) ? body.posts : null;
+  if (!posts) return jsonResp(400, { error: "bad posts" });
+  if (posts.length > 2000) return jsonResp(413, { error: "too many posts" });
+
+  const owner = await env.DB.prepare("SELECT install_id, dj_profile_id FROM events WHERE slug=?").bind(slug).first();
+  if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not owner" });
+
+  const now = nowMs();
+  let imported = 0;
+  let approvedCount = 0;
+  for (const post of posts) {
+    const localId = String(post?.localId || "");
+    if (!localId || localId.length > 200) return jsonResp(400, { error: "bad post localId" });
+    const comments = Array.isArray(post.comments) ? post.comments : [];
+    if (comments.length > 500) return jsonResp(413, { error: "too many comments" });
+
+    const postId = (await sha256Hex(`${slug}:${id}:${localId}`)).slice(0, 32);
+    const ts = Math.max(0, Number(post.ts) || 0);
+    const deletedMs = post.deleted ? now : null;
+    const approved = post.noPublish ? 0 : 1;
+    const approvedMs = approved ? now : null;
+    let activityMs = ts;
+    for (const comment of comments) activityMs = Math.max(activityMs, Math.max(0, Number(comment?.ts) || 0));
+
+    await env.DB.prepare(
+      `INSERT INTO posts (
+         id, slug, author, emoji, text, media_key, media_type, approved, ts_ms, created_ms,
+         author_cid_hash, source, source_install_id, dj, activity_ms, updated_ms, approved_ms, deleted_ms
+       )
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, 'mac_sync', ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         author=excluded.author,
+         emoji=excluded.emoji,
+         text=excluded.text,
+         approved=excluded.approved,
+         ts_ms=excluded.ts_ms,
+         author_cid_hash=excluded.author_cid_hash,
+         source=excluded.source,
+         source_install_id=excluded.source_install_id,
+         dj=excluded.dj,
+         activity_ms=excluded.activity_ms,
+         updated_ms=excluded.updated_ms,
+         approved_ms=excluded.approved_ms,
+         deleted_ms=excluded.deleted_ms`
+    ).bind(
+      postId, slug, clip(post.author, 40), clip(post.emoji, 8), clip(post.text, 2000),
+      approved, ts, now, post.cidHash ? clip(post.cidHash, 128) : null, id,
+      post.dj ? 1 : 0, activityMs, now, approvedMs, deletedMs
+    ).run();
+
+    for (const comment of comments) {
+      const commentLocalId = String(comment?.localId || "");
+      if (!commentLocalId || commentLocalId.length > 200) return jsonResp(400, { error: "bad comment localId" });
+      const commentId = (await sha256Hex(`${postId}:${commentLocalId}`)).slice(0, 32);
+      const commentTs = Math.max(0, Number(comment.ts) || 0);
+      await env.DB.prepare(
+        `INSERT INTO post_comments (
+           id, slug, post_id, author, emoji, text, dj, approved, ts_ms, created_ms, updated_ms, deleted_ms
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           author=excluded.author,
+           emoji=excluded.emoji,
+           text=excluded.text,
+           dj=excluded.dj,
+           approved=excluded.approved,
+           ts_ms=excluded.ts_ms,
+           updated_ms=excluded.updated_ms,
+           deleted_ms=excluded.deleted_ms`
+      ).bind(
+        commentId, slug, postId, clip(comment.author, 40), clip(comment.emoji, 8), clip(comment.text, 2000),
+        comment.dj ? 1 : 0, approved, commentTs, now, now, deletedMs
+      ).run();
+    }
+
+    imported += 1;
+    if (approved) approvedCount += 1;
+  }
+
+  await env.DB.prepare(
+    "UPDATE events SET updated_ms=?, last_activity_ms=? WHERE slug=? AND install_id=?"
+  ).bind(now, now, slug, id).run();
+  await bumpDjProfileActivity(env, owner.dj_profile_id, now);
+  return jsonResp(200, { ok: true, slug, imported, approved: approvedCount });
+}
+
 async function broker(request, env, pathname) {
   // Reachability probe for the app's connection test (any method, no auth,
   // no side effects) — proves the venue's network can reach the broker.
@@ -1188,6 +1278,10 @@ async function broker(request, env, pathname) {
   // The install's namespace label: its pretty slug (new installs) or its raw
   // id (pre-slug installs). Writes stay confined to that label.
   const label = rec.slug || id;
+
+  if (pathname === "/api/broker/publish-posts") {
+    return await publishPosts(env, id, body);
+  }
 
   // Publish (metadata): claim/own the event slug and mint a pending set. The
   // two binary uploads (audio, peaks) follow on their own header-authed routes.
