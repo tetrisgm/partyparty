@@ -75,7 +75,10 @@ type Broadcaster struct {
 	lastName        string
 	lastOpts        Options
 	lastAutoRestart time.Time
-	stallRebuilds   int // consecutive stall-triggered rebuilds; bounded so an unrecoverable stall can't thrash forever, reset on CAPTURE-OK
+	stallRebuilds   int                     // consecutive stall-triggered rebuilds; bounded so an unrecoverable stall can't thrash forever, reset on CAPTURE-OK
+	overridesFn     func() config.Overrides // OTA encode overrides, re-read on each Start (nil = none)
+	recordBase      string                  // the user-requested recording path; rebuilds record to fresh segments off this so a device-yank never truncates it
+	recordSeg       int                     // recording segment counter, bumped per auto-restart
 
 	logMu       sync.Mutex
 	logLines    []string
@@ -136,6 +139,15 @@ func (b *Broadcaster) SetDiag(w io.Writer) {
 	b.logMu.Lock()
 	b.diag = w
 	b.logMu.Unlock()
+}
+
+// SetOverrides installs a provider for OTA encode overrides, re-read on each
+// Start so a config pushed mid-session applies on the next Go Live. Set once at
+// startup, before any broadcast.
+func (b *Broadcaster) SetOverrides(fn func() config.Overrides) {
+	b.mu.Lock()
+	b.overridesFn = fn
+	b.mu.Unlock()
 }
 
 // ExternalWriter lets another subprocess (MediaMTX) log into our log ring.
@@ -249,8 +261,20 @@ func (b *Broadcaster) tryAutoRestart() bool {
 		return false
 	}
 	b.pushLog("[partyparty] capture stalled (device yanked or exclusive-mode release) — rebuilding the tap")
-	go b.Start(dev, name, opts)
+	go b.startInternal(dev, name, opts, true)
 	return true
+}
+
+// segmentedRecordPath inserts "-<n+1>" before the extension so each rebuild's
+// recording lands in its own file ("set.aac" -> "set-2.aac"), never truncating
+// the prior one. A mid-set device yank then costs at most a brief audio gap, not
+// the whole recording.
+func segmentedRecordPath(base string, n int) string {
+	if base == "" {
+		return ""
+	}
+	ext := filepath.Ext(base)
+	return strings.TrimSuffix(base, ext) + "-" + strconv.Itoa(n+1) + ext
 }
 
 // onStall reacts to a genuine frame stall (CAPTURE-STALLED): rebuild the tap,
@@ -422,9 +446,39 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 // HLS. device is "test", "mac", or an avfoundation device index. Zero-valued
 // Options fields fall back to the configured defaults.
 func (b *Broadcaster) Start(device, deviceName string, opts Options) {
+	b.startInternal(device, deviceName, opts, false)
+}
+
+func (b *Broadcaster) startInternal(device, deviceName string, opts Options, rebuild bool) {
 	b.Stop()
 
 	b.setCaptureNote("") // fresh start: drop any stale hogged-output warning
+
+	// The caller's ORIGINAL sparse opts — stashed as lastOpts for auto-restart to
+	// replay, so a rebuild re-reads OTA overrides (not the frozen resolved values)
+	// and re-derives the recording segment from the un-mutated base path.
+	callerOpts := opts
+
+	// Apply OTA encode overrides the caller didn't set explicitly, re-read now so
+	// a config pushed mid-session lands on this Go Live. Done before the lock —
+	// it reads config.json. Each value is already strictly validated; anything
+	// unset here falls back to the (also OTA-adjusted at startup) cfg defaults.
+	b.mu.Lock()
+	ovFn := b.overridesFn
+	b.mu.Unlock()
+	if ovFn != nil {
+		ov := ovFn()
+		if opts.Bitrate == "" && ov.Bitrate != nil {
+			opts.Bitrate = *ov.Bitrate
+		}
+		if opts.Channels == 0 && ov.Channels != nil {
+			opts.Channels = *ov.Channels
+		}
+		if opts.HLSTime <= 0 && ov.HLSTime != nil {
+			opts.HLSTime = float64(*ov.HLSTime)
+		}
+	}
+
 	b.mu.Lock()
 	b.gen++
 	myGen := b.gen
@@ -437,6 +491,18 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	}
 	if opts.HLSTime <= 0 {
 		opts.HLSTime = float64(b.cfg.HLSTime)
+	}
+	// Recording continuity: a fresh (user) Start owns the base path; a rebuild
+	// records to a NEW segment file off that base so it never truncates what was
+	// captured before the device got yanked out from under the tap.
+	if opts.RecordPath != "" {
+		if rebuild {
+			b.recordSeg++
+			opts.RecordPath = segmentedRecordPath(b.recordBase, b.recordSeg)
+		} else {
+			b.recordBase = opts.RecordPath
+			b.recordSeg = 0
+		}
 	}
 	b.bitrate = opts.Bitrate
 	b.channels = opts.Channels
@@ -453,7 +519,7 @@ func (b *Broadcaster) Start(device, deviceName string, opts Options) {
 	}
 	b.device = device
 	b.deviceName = deviceName
-	b.lastDevice, b.lastName, b.lastOpts = device, deviceName, opts // for auto-restart after a wedged tap
+	b.lastDevice, b.lastName, b.lastOpts = device, deviceName, callerOpts // sparse: auto-restart re-resolves overrides + record segment
 	b.state = "starting"
 	b.lastError = ""
 	b.captureUp = false // set true once this generation's tap announces a FORMAT

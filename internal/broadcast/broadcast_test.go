@@ -317,6 +317,42 @@ func TestMacDeviceWithoutHelperErrors(t *testing.T) {
 	}
 }
 
+func TestOTAEncodeOverridesAppliedOnStart(t *testing.T) {
+	b, _, _ := newTestBroadcaster(t)
+	// The provider advertises OTA encode overrides (as a pushed config.json would).
+	b.SetOverrides(func() config.Overrides {
+		br, ch := "128k", 1
+		return config.Overrides{Bitrate: &br, Channels: &ch}
+	})
+	// Empty caller opts -> the OTA override fills them on this Go Live.
+	b.Start("test", "", Options{})
+	if st := b.Status(); st.Bitrate != "128k" || st.Channels != 1 {
+		t.Fatalf("OTA override not applied on Start: %+v", st)
+	}
+	b.Stop()
+	waitForState(t, b, "idle", 3*time.Second)
+
+	// An explicit caller value must still win over the OTA override.
+	b.Start("test", "", Options{Bitrate: "96k"})
+	if st := b.Status(); st.Bitrate != "96k" {
+		t.Fatalf("explicit opts should beat the OTA override, got %q", st.Bitrate)
+	}
+	b.Stop()
+	waitForState(t, b, "idle", 3*time.Second)
+}
+
+func TestSegmentedRecordPath(t *testing.T) {
+	if got := segmentedRecordPath("/e/set.aac", 1); got != "/e/set-2.aac" {
+		t.Fatalf("first rebuild segment = %q, want /e/set-2.aac", got)
+	}
+	if got := segmentedRecordPath("/e/set.aac", 2); got != "/e/set-3.aac" {
+		t.Fatalf("second rebuild segment = %q, want /e/set-3.aac", got)
+	}
+	if got := segmentedRecordPath("", 1); got != "" {
+		t.Fatalf("no recording -> empty, got %q", got)
+	}
+}
+
 func TestOptionsOverridesAndDefaults(t *testing.T) {
 	b, _, _ := newTestBroadcaster(t)
 

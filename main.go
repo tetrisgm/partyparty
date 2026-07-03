@@ -121,6 +121,50 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Over-the-air payload store — created FIRST so its config.json can adjust
+	// the streaming config before MediaMTX and the broadcaster are built from
+	// it. The store is an fs.FS serving the embedded copy until a newer verified
+	// cloud payload is adopted; the server reads all web content through it. Dev
+	// builds and telemetry-off instances never fetch. diagLog is assigned later
+	// (the diagnostics log opens below) — the store's logger closes over it.
+	var diagLog *diag.Logger
+	var payload *ota.Store
+	{
+		embVer := 0
+		if b, rerr := fs.ReadFile(web, "PAYLOAD_VERSION"); rerr == nil {
+			embVer, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+		}
+		contentBase := ""
+		if appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
+			base := os.Getenv("PARTYPARTY_BROKER")
+			if base == "" {
+				base = "https://party.ramine.net"
+			}
+			contentBase = base + "/content"
+		}
+		sd, _ := activate.StateDir()
+		diagf := func(f string, a ...any) {
+			if diagLog != nil {
+				diagLog.Printf(f, a...)
+			}
+		}
+		if st, oerr := ota.Open(web, embVer, sd, contentBase, appVersion, diagf); oerr == nil {
+			payload = st
+		} else {
+			log.Printf("ota disabled: %v", oerr)
+		}
+	}
+
+	// Apply OTA server overrides (bitrate, channels, HLS/LL timing, latency
+	// target) from the payload's config.json BEFORE anything is built from cfg.
+	// Every value is strictly validated, so an accepted override is always a safe
+	// pipeline setting; a bad or absent config leaves the built-in defaults
+	// untouched. MediaMTX LL-timing takes effect from launch; the broadcaster
+	// re-reads the encode params on each Go Live.
+	if payload != nil {
+		cfg = cfg.WithOverrides(config.ParseOverrides(payload.Config()))
+	}
+
 	// Resolve the capture helper + ffmpeg. In the default build these extract from
 	// the embedded copies; in the signed .app build (-tags bundle) they resolve to
 	// the pre-signed binaries in Contents/Helpers/.
@@ -229,7 +273,6 @@ func main() {
 	// log ring, plus structured events (hardware, activation, guest joins,
 	// room snapshots). Shipped to the cloud below so field problems can be
 	// diagnosed without asking anyone to screenshot a console.
-	var diagLog *diag.Logger
 	if home, err := os.UserHomeDir(); err == nil {
 		if dl, err := diag.Open(filepath.Join(home, "Library", "Logs", "partyparty")); err == nil {
 			diagLog = dl
@@ -240,6 +283,12 @@ func main() {
 			diagLog.Printf("install: id=%s slug=%s", id, activate.InstallSlug())
 			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
 			diagLog.Printf("config: delivery=%s bitrate=%s part=%s seg=%s", cfg.Delivery, cfg.Bitrate, cfg.PartDur, cfg.SegDur)
+			if payload != nil {
+				// The store's own "serving cached payload" line is emitted during
+				// Open() above, before this logger exists — so record the active
+				// payload version here for the shipped diagnostics.
+				diagLog.Printf("ota: serving payload %d (runtime %d)", payload.PayloadVersion(), ota.RuntimeVersion)
+			}
 			bc.SetDiag(diagLog)
 		} else {
 			log.Printf("diagnostics log unavailable: %v", err)
@@ -259,38 +308,15 @@ func main() {
 		}
 	}
 
-	// Over-the-air payload: keep the served web content (player, console,
-	// vendored libs, config.json of flags/tunables) current without a signed
-	// app update. The store is an fs.FS that serves the embedded copy until it
-	// has verified a newer, compatible cloud payload; the server reads through
-	// it, so a fix ships to guests within minutes and no relaunch. Dev builds
-	// and telemetry-off instances never fetch — they serve their local content.
-	var payload *ota.Store
-	{
-		embVer := 0
-		if b, rerr := fs.ReadFile(web, "PAYLOAD_VERSION"); rerr == nil {
-			embVer, _ = strconv.Atoi(strings.TrimSpace(string(b)))
-		}
-		contentBase := ""
-		if appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
-			base := os.Getenv("PARTYPARTY_BROKER")
-			if base == "" {
-				base = "https://party.ramine.net"
-			}
-			contentBase = base + "/content"
-		}
-		sd, _ := activate.StateDir()
-		diagf := func(f string, a ...any) {
-			if diagLog != nil {
-				diagLog.Printf(f, a...)
-			}
-		}
-		if st, oerr := ota.Open(web, embVer, sd, contentBase, appVersion, diagf); oerr == nil {
-			payload = st
-			go st.Run(context.Background())
-		} else {
-			log.Printf("ota disabled: %v", oerr)
-		}
+	// The broadcaster re-reads OTA encode overrides (bitrate, channels, HLS
+	// timing) on each Go Live, so a config pushed mid-session takes effect on the
+	// next broadcast without a relaunch. Then start the update loop (push + the
+	// periodic floor). Both are wired now that diagLog and bc exist.
+	if payload != nil {
+		bc.SetOverrides(func() config.Overrides {
+			return config.ParseOverrides(payload.Config())
+		})
+		go payload.Run(context.Background())
 	}
 
 	handler := server.New(server.Deps{
