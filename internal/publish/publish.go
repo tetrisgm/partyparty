@@ -179,6 +179,43 @@ func Publish(ctx context.Context, ffmpeg string, recordings []string, meta Meta,
 	return &Result{URL: url, Slug: slug, SetID: setID, Warning: warning}, nil
 }
 
+// PublishCover normalizes an event cover to JPEG when possible, then uploads it
+// to the online event page using the same install-secret broker auth as sets.
+func PublishCover(ctx context.Context, imgPath, slug string, creds Creds, base string) error {
+	if creds.ID == "" || creds.Secret == "" {
+		return errors.New("this Mac isn't registered yet — go live once first")
+	}
+	slug = strings.TrimSpace(slug)
+	if !validSlugRe.MatchString(slug) {
+		slug = autoSlug(creds.InstallSlug)
+	}
+
+	tmp, err := os.MkdirTemp("", "pcover-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+
+	upload := imgPath
+	jpg := filepath.Join(tmp, "cover.jpg")
+	if err := exec.CommandContext(ctx, "sips", "-s", "format", "jpeg", "-Z", "1600", imgPath, "--out", jpg).Run(); err == nil {
+		upload = jpg
+	}
+
+	err = putFile(ctx, base, creds, slug, "", "publish-cover", upload, "image/jpeg")
+	if errors.Is(err, errSlugTaken) {
+		auto := autoSlug(creds.InstallSlug)
+		if slug != auto {
+			slug = auto
+			err = putFile(ctx, base, creds, slug, "", "publish-cover", upload, "image/jpeg")
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("couldn't upload the cover: %w", err)
+	}
+	return nil
+}
+
 // autoSlug derives a collision-proof-across-installs slug from the install's own
 // broker slug + the date. Same-day sets share one page (latest set shows).
 func autoSlug(installSlug string) string {
@@ -376,7 +413,9 @@ func setPutHeaders(req *http.Request, creds Creds, slug, setID, ctype string) {
 	req.Header.Set("x-pp-id", creds.ID)
 	req.Header.Set("x-pp-secret", creds.Secret)
 	req.Header.Set("x-pp-slug", slug)
-	req.Header.Set("x-pp-set", setID)
+	if setID != "" {
+		req.Header.Set("x-pp-set", setID)
+	}
 }
 
 func doPut(req *http.Request) error {
@@ -385,6 +424,9 @@ func doPut(req *http.Request) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusConflict {
+		return errSlugTaken
+	}
 	if resp.StatusCode != http.StatusOK {
 		return errors.New(httpErr(resp))
 	}

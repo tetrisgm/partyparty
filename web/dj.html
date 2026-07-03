@@ -229,6 +229,11 @@
         <button class="go" id="pubBtn" type="button">Publish now</button>
       </div>
       <div id="pubResult" class="hint" style="margin-top:10px;display:none"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <input id="pubCoverFile" type="file" accept="image/*" style="display:none">
+        <button class="ghost" id="pubCoverBtn" type="button">Set cover image</button>
+        <span id="pubCoverResult" class="hint" style="display:none"></span>
+      </div>
     </div>
   </div>
 
@@ -787,6 +792,7 @@
   // ── Publish the recorded set to its online /e/<slug> replay page ──
   let pubSlugTouched = false;
   const pubSlug = $('pubSlug'), pubBtn = $('pubBtn'), pubResult = $('pubResult');
+  const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverResult = $('pubCoverResult');
   const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
   function syncPublish(slug){ // feed → field, unless the DJ is editing it
     if (pubSlug === document.activeElement || pubSlugTouched) return;
@@ -802,6 +808,27 @@
   pubSlug.addEventListener('input', () => { pubSlugTouched = true; });
   pubSlug.addEventListener('blur', savePubSlug);
   pubSlug.addEventListener('keydown', (e) => { if (e.key === 'Enter') pubSlug.blur(); });
+  pubCoverBtn.addEventListener('click', () => pubCoverFile.click());
+  pubCoverFile.addEventListener('change', async () => {
+    const file = pubCoverFile.files && pubCoverFile.files[0];
+    if (!file) return;
+    pubCoverBtn.disabled = true; const label = pubCoverBtn.textContent; pubCoverBtn.textContent = 'Uploading…';
+    pubCoverResult.style.display = 'inline';
+    pubCoverResult.textContent = 'Uploading cover…';
+    try {
+      await savePubSlug();
+      const fd = new FormData(); fd.append('file', file, file.name);
+      const r = await fetch('/api/event-cover', { method:'POST', body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'upload failed');
+      pubCoverResult.textContent = 'Cover image set';
+      pubCoverFile.value = '';
+    } catch (e) {
+      pubCoverResult.textContent = 'Couldn’t set cover: ' + (e.message || e);
+    } finally {
+      pubCoverBtn.disabled = false; pubCoverBtn.textContent = label;
+    }
+  });
   pubBtn.addEventListener('click', async () => {
     pubBtn.disabled = true; const label = pubBtn.textContent; pubBtn.textContent = 'Publishing…';
     pubResult.style.display = 'block';

@@ -199,6 +199,59 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, m)
+	case "/api/event-cover":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		const maxCoverUpload = 15 << 20
+		r.Body = http.MaxBytesReader(w, r.Body, maxCoverUpload+(1<<20))
+		f, hdr, err := r.FormFile("file")
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
+			return true
+		}
+		defer f.Close()
+		ext := strings.ToLower(filepath.Ext(hdr.Filename))
+		if len(ext) > 8 {
+			ext = ""
+		}
+		tmp, err := os.CreateTemp("", "pcover-*"+ext)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		tmpPath := tmp.Name()
+		defer os.Remove(tmpPath)
+		n, copyErr := io.Copy(tmp, io.LimitReader(f, maxCoverUpload+1))
+		closeErr := tmp.Close()
+		if copyErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": copyErr.Error()})
+			return true
+		}
+		if closeErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": closeErr.Error()})
+			return true
+		}
+		if n > maxCoverUpload {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "file too large"})
+			return true
+		}
+		id, secret := activate.InstallCreds()
+		base := os.Getenv("PARTYPARTY_BROKER")
+		if base == "" {
+			base = "https://party.ramine.net"
+		}
+		cctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+		defer cancel()
+		err = publish.PublishCover(cctx, tmpPath, s.Events.Slug(), publish.Creds{
+			ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
+		}, base)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/guest-contact":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})

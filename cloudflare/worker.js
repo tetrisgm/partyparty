@@ -378,14 +378,54 @@ async function publishUpload(request, env, pathname) {
   return jsonResp(200, { ok: true, key });
 }
 
+async function publishCover(request, env) {
+  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const id = request.headers.get("x-pp-id") || "";
+  const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
+  if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const slug = request.headers.get("x-pp-slug") || "";
+  if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+  // First-writer-wins, matching publish-meta: a cover can create/claim the
+  // event row before the set itself exists, but never steal another install's slug.
+  const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+  if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO events (slug, install_id, created_ms, updated_ms)
+     VALUES (?1,?2,?3,?3)
+     ON CONFLICT(slug) DO UPDATE SET updated_ms=?3
+     WHERE events.install_id=?2`
+  ).bind(slug, id, now).run();
+  const check = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+  if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
+
+  const cap = 8_000_000;
+  const cl = Number(request.headers.get("content-length") || "0");
+  if (!cl || cl > cap) return jsonResp(413, { error: "bad size" });
+  const key = `event/${slug}/cover.jpg`;
+  const put = await env.DL.put(key, request.body, { httpMetadata: { contentType: "image/jpeg" } });
+  const size = (put && typeof put.size === "number") ? put.size : cl;
+  if (size > cap) {
+    await env.DL.delete(key);
+    return jsonResp(413, { error: "too large" });
+  }
+  await env.DB.prepare("UPDATE events SET cover_key=?, updated_ms=? WHERE slug=? AND install_id=?").bind(key, now, slug, id).run();
+  await auditPublish(env, id, slug, "publish-cover");
+  return jsonResp(200, { ok: true, key });
+}
+
 async function broker(request, env, pathname) {
   // Reachability probe for the app's connection test (any method, no auth,
   // no side effects) — proves the venue's network can reach the broker.
   if (pathname === "/api/broker/ping") return jsonResp(200, { ok: true, t: Date.now() });
-  // Binary set uploads: header-authed + streamed, so they must run BEFORE the
+  // Binary uploads: header-authed + streamed, so they must run BEFORE the
   // POST-only guard and the request.json() parse below.
   if (pathname === "/api/broker/publish-audio" || pathname === "/api/broker/publish-peaks") {
     return await publishUpload(request, env, pathname);
+  }
+  if (pathname === "/api/broker/publish-cover") {
+    return await publishCover(request, env);
   }
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
