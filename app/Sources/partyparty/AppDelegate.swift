@@ -32,9 +32,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         api = APIClient(port: server.port)
         setupStatusItem()
         poller = StatusPoller(api: api)
-        poller.onChange = { [weak self] s in self?.updateIcon(s) }
+        poller.onChange = { [weak self] s in
+            self?.updateIcon(s)
+            self?.maybeTriggerAppUpdate(s)
+        }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
+    }
+
+    // Aggressive updates: the server's subscribe loop learns of a new build in
+    // seconds and flips appUpdate; pull it through Sparkle immediately (once)
+    // rather than waiting for Sparkle's hourly timer. Foreground focus triggers a
+    // check too, so an app the DJ is actively looking at stays current.
+    private var appUpdateTriggered = false
+    private func maybeTriggerAppUpdate(_ s: ServerStatus) {
+        guard s.appUpdate, !appUpdateTriggered else { return }
+        appUpdateTriggered = true
+        updater?.checkNow()
+    }
+
+    private var lastForegroundCheck = Date.distantPast
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard Date().timeIntervalSince(lastForegroundCheck) > 300 else { return } // at most every 5 min
+        lastForegroundCheck = Date()
+        updater?.checkNow()
     }
 
     // MARK: Self-install (move to /Applications)

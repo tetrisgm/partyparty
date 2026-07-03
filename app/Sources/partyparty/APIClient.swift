@@ -8,6 +8,7 @@ struct ServerStatus {
     var struggling = 0
     var captureBad = false  // real capture failure (hogged/stalled output)
     var note = ""           // the human explanation, for the menu-bar tooltip
+    var appUpdate = false   // cloud advertises a newer app build — pull it via Sparkle now
 }
 
 /// Thin client for the local Go server (menu-bar status monitor).

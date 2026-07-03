@@ -32,6 +32,16 @@ final class Updater: NSObject, SPUUpdaterDelegate {
         controller.checkForUpdates(nil)
     }
 
+    /// A silent, on-demand background check — used to react immediately to a
+    /// push signal (the server's subscribe loop saw a newer build) or to the app
+    /// coming to the foreground, instead of waiting for Sparkle's own timer.
+    /// Honors our automatic-download setting: it stages any update and routes
+    /// through willInstallUpdateOnQuit, so there's no UI unless one is ready and
+    /// a set isn't live.
+    func checkNow() {
+        controller.updater.checkForUpdatesInBackground()
+    }
+
     // Sparkle staged a silently-downloaded update and will install it on quit.
     // Offer the "now" shortcut — unless the DJ is mid-set, where any dialog is
     // wrong and quit-install already covers it.

@@ -39,6 +39,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -92,25 +93,30 @@ func (m manifest) signedMessage() []byte {
 // Because both the page handler and the /vendor/ FileServer read through this
 // one FS, a payload swap takes effect for every path at once, live.
 type Store struct {
-	embedded    fs.FS
-	embeddedVer int
-	stateDir    string
-	manifestURL string
-	pub         ed25519.PublicKey
-	client      *http.Client
-	diag        func(string, ...any)
+	embedded     fs.FS
+	embeddedVer  int
+	stateDir     string
+	manifestURL  string
+	subscribeURL string
+	appVersion   string // this app build, sent to /content/subscribe as `av`
+	pub          ed25519.PublicKey
+	client       *http.Client
+	diag         func(string, ...any)
 
-	mu      sync.RWMutex
-	active  fs.FS
-	version int
+	mu        sync.RWMutex
+	active    fs.FS
+	version   int
+	appUpdate bool // the cloud advertises a newer app build — surfaced so Sparkle can pull it now
 }
 
 // Open wires a Store around the embedded content. embeddedVer is the payload
 // version the binary shipped with (the adoption floor — a cloud payload older
-// than this is never adopted). manifestURL "" disables fetching (serves
-// embedded only). A previously-cached, newer payload is adopted immediately so
-// a restart doesn't regress to embedded.
-func Open(embedded fs.FS, embeddedVer int, stateDir, manifestURL string, diag func(string, ...any)) (*Store, error) {
+// than this is never adopted). contentBase is the cloud content root (e.g.
+// https://party.ramine.net/content); "" disables all fetching (serves embedded
+// only). appVersion is this build, sent to the subscribe endpoint so a newer
+// app build can be pushed. A previously-cached, newer payload is adopted
+// immediately so a restart doesn't regress to embedded.
+func Open(embedded fs.FS, embeddedVer int, stateDir, contentBase, appVersion string, diag func(string, ...any)) (*Store, error) {
 	pub, err := base64.StdEncoding.DecodeString(payloadSigningKeyB64)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("ota: bad embedded signing key")
@@ -118,11 +124,17 @@ func Open(embedded fs.FS, embeddedVer int, stateDir, manifestURL string, diag fu
 	if diag == nil {
 		diag = func(string, ...any) {}
 	}
+	manifestURL, subscribeURL := "", ""
+	if contentBase != "" {
+		base := strings.TrimRight(contentBase, "/")
+		manifestURL = base + "/manifest.json"
+		subscribeURL = base + "/subscribe"
+	}
 	s := &Store{
 		embedded: embedded, embeddedVer: embeddedVer,
-		stateDir: stateDir, manifestURL: manifestURL,
+		stateDir: stateDir, manifestURL: manifestURL, subscribeURL: subscribeURL, appVersion: appVersion,
 		pub:    ed25519.PublicKey(pub),
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: 35 * time.Second},
 		diag:   diag,
 		active: embedded, version: embeddedVer,
 	}
@@ -172,12 +184,26 @@ func (s *Store) Config() json.RawMessage {
 	return json.RawMessage(data)
 }
 
-// Loop refreshes shortly after boot, then every 15 minutes. Cheap: a single
-// small GET that no-ops unless a newer compatible payload exists.
-func (s *Store) Loop(ctx context.Context) {
+// AppUpdateAvailable reports whether the cloud advertises a newer app build than
+// this one. Surfaced in /api/status so the Swift app can ask Sparkle to pull it
+// immediately instead of waiting for Sparkle's own timer.
+func (s *Store) AppUpdateAvailable() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.appUpdate
+}
+
+// Run drives updates aggressively: a long-poll SUBSCRIBE that returns the
+// instant the cloud has a newer payload or app build (push-then-pull), plus a
+// slow periodic Refresh as a floor in case the subscribe wedges. Cheap at rest —
+// the subscribe mostly sits parked on the server; each return triggers at most a
+// small verified pull.
+func (s *Store) Run(ctx context.Context) {
 	if s.manifestURL == "" {
 		return
 	}
+	go s.subscribeLoop(ctx)
+
 	refresh := func() {
 		c, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
@@ -203,6 +229,111 @@ func (s *Store) Loop(ctx context.Context) {
 			refresh()
 		}
 	}
+}
+
+// subscribeLoop holds a long-poll to the cloud that returns as soon as a newer
+// payload or app build exists, then immediately acts and reconnects — so a
+// publish reaches this Mac in seconds. Errors (e.g. an older Worker with no
+// subscribe route) back off exponentially; the periodic Refresh floor still
+// covers updates meanwhile.
+func (s *Store) subscribeLoop(ctx context.Context) {
+	if s.subscribeURL == "" {
+		return
+	}
+	// Track the newest versions we've been TOLD about — not just what we run —
+	// and send those as the subscribe baseline. Otherwise a version we can't
+	// apply yet (an app update not installed, or a payload gated by minRuntime /
+	// failing to download) keeps the server returning "changed" on every
+	// reconnect, and the loop spins hammering the Worker. Advancing the baseline
+	// on notice means we hold until something GENUINELY newer appears; a fresh
+	// process (after an app update) or the periodic Refresh floor picks up
+	// anything we deferred.
+	seenPayload := s.PayloadVersion()
+	seenApp := s.appVersion
+	backoff := 2 * time.Second
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		if pv := s.PayloadVersion(); pv > seenPayload {
+			seenPayload = pv // adopted by the periodic floor in the meantime
+		}
+		respPayload, respApp, err := s.subscribeOnce(ctx, seenPayload, seenApp)
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff *= 2; backoff > 60*time.Second {
+				backoff = 60 * time.Second
+			}
+			continue
+		}
+		backoff = 2 * time.Second
+		if respPayload > seenPayload {
+			seenPayload = respPayload
+		}
+		if respApp != "" {
+			seenApp = respApp
+		}
+		// A small floor between reconnects: even with baseline tracking, never
+		// let a clean-but-instant return become a tight loop.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// subscribeOnce opens one long-poll with the caller's baseline (cv/av). It
+// resolves when the cloud advertises something newer or after the server's hold
+// window; then it acts (a verified payload Refresh and/or flagging an app
+// update) and returns the versions the cloud reported so the loop can advance
+// its baseline.
+func (s *Store) subscribeOnce(ctx context.Context, cv int, av string) (int, string, error) {
+	c, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+	u := fmt.Sprintf("%s?cv=%d&av=%s", s.subscribeURL, cv, url.QueryEscape(av))
+	req, err := http.NewRequestWithContext(c, http.MethodGet, u, nil)
+	if err != nil {
+		return 0, "", err
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, "", fmt.Errorf("ota: subscribe http %d", resp.StatusCode)
+	}
+	var st struct {
+		PayloadVersion int    `json:"payloadVersion"`
+		AppVersion     string `json:"appVersion"`
+		Changed        bool   `json:"changed"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&st); err != nil {
+		return 0, "", err
+	}
+	if st.PayloadVersion > s.PayloadVersion() {
+		s.diag("ota: subscribe — payload %d available, pulling", st.PayloadVersion)
+		if adopted, rerr := s.Refresh(ctx); adopted {
+			s.diag("ota: adopted payload %d", s.PayloadVersion())
+		} else if rerr != nil {
+			s.diag("ota: refresh after subscribe: %v", rerr)
+		}
+	}
+	if st.AppVersion != "" && st.AppVersion != s.appVersion {
+		s.mu.Lock()
+		wasNew := !s.appUpdate
+		s.appUpdate = true
+		s.mu.Unlock()
+		if wasNew {
+			s.diag("ota: subscribe — app build %s available (this is %s); Sparkle will pull it", st.AppVersion, s.appVersion)
+		}
+	}
+	return st.PayloadVersion, st.AppVersion, nil
 }
 
 // Refresh fetches the manifest, and if it names a newer compatible payload,

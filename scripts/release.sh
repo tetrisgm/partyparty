@@ -93,6 +93,11 @@ cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.pkg" --file "dist/partyparty-$VERSION.pkg" --content-type application/octet-stream --remote
 "$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
 "$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
+# One-line app-version marker so /content/subscribe can push app updates the
+# instant a build lands (the Mac then triggers Sparkle). Written last, after the
+# zip/appcast it points at are already up.
+printf '%s' "$VERSION" > dist/app-version
+"$WR" r2 object put "$BUCKET/content/app-version"     --file "dist/app-version"             --content-type text/plain --remote
 
 echo ">> [5/5] deploy Worker + landing page"
 ( cd cloudflare && "$WR" deploy )

@@ -262,6 +262,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"roster":         s.Listeners.Roster(),
 			"event":          s.eventState(),
 			"config":         s.payloadConfig(),
+			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
 		})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.

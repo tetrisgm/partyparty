@@ -196,6 +196,23 @@ function renderNotFound() {
 const jsonResp = (status, obj) =>
   new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
 
+// contentState reads the latest published versions cheaply from existing R2
+// artifacts: the payload version from the signed manifest, and the app version
+// from a one-line marker release.sh writes. Missing artifacts degrade to zeros
+// (nothing to update to) rather than erroring.
+async function contentState(env) {
+  let payloadVersion = 0, minRuntime = 1, appVersion = "";
+  try {
+    const m = await env.DL.get("content/manifest.json");
+    if (m) { const j = await m.json(); payloadVersion = j.payloadVersion || 0; minRuntime = j.minRuntime || 1; }
+  } catch (e) { /* leave defaults */ }
+  try {
+    const a = await env.DL.get("content/app-version");
+    if (a) appVersion = (await a.text()).trim();
+  } catch (e) { /* leave empty */ }
+  return { payloadVersion, minRuntime, appVersion };
+}
+
 async function cfDNS(env, method, suffix, body) {
   const url = `https://api.cloudflare.com/client/v4/zones/${env.CF_ZONE_ID}/dns_records${suffix}`;
   const resp = await fetch(url, {
@@ -413,6 +430,31 @@ export default {
       // addressed by version and never change — cache hard.
       headers.set("cache-control", isManifest ? "public, max-age=60" : "public, max-age=86400, immutable");
       return new Response(request.method === "HEAD" ? null : obj.body, { headers });
+    }
+
+    // Push-then-pull update signalling. /content/state.json is the tiny current
+    // state (latest payload + app versions); /content/subscribe is a long-poll
+    // that returns the instant either moves past what the caller already has, so
+    // a Mac learns about a new build in ~seconds instead of on a poll timer. The
+    // signal only ever triggers a PULL — the payload pull is still ed25519- +
+    // hash-verified and the app update is still Sparkle-signed — so this endpoint
+    // is safe to serve unsigned.
+    if (pathname === "/content/state.json" || pathname === "/content/subscribe") {
+      const first = await contentState(env);
+      if (pathname === "/content/state.json") {
+        return new Response(JSON.stringify(first), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+      }
+      const q = new URL(request.url).searchParams;
+      const cv = parseInt(q.get("cv") || "0", 10) || 0;
+      const av = q.get("av") || "";
+      const moved = (s) => (s.payloadVersion || 0) > cv || (!!s.appVersion && s.appVersion !== av);
+      let s = first;
+      const deadline = Date.now() + 20000; // hold ~20s, then let the Mac reconnect
+      while (!moved(s) && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        s = await contentState(env);
+      }
+      return new Response(JSON.stringify({ ...s, changed: moved(s) }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
     }
 
     // Event pages: /e/<slug> (canonical) and /@<handle> (demo, so shared links work).

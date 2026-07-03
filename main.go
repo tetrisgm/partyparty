@@ -271,13 +271,13 @@ func main() {
 		if b, rerr := fs.ReadFile(web, "PAYLOAD_VERSION"); rerr == nil {
 			embVer, _ = strconv.Atoi(strings.TrimSpace(string(b)))
 		}
-		manifestURL := ""
+		contentBase := ""
 		if appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
 			base := os.Getenv("PARTYPARTY_BROKER")
 			if base == "" {
 				base = "https://party.ramine.net"
 			}
-			manifestURL = base + "/content/manifest.json"
+			contentBase = base + "/content"
 		}
 		sd, _ := activate.StateDir()
 		diagf := func(f string, a ...any) {
@@ -285,9 +285,9 @@ func main() {
 				diagLog.Printf(f, a...)
 			}
 		}
-		if st, oerr := ota.Open(web, embVer, sd, manifestURL, diagf); oerr == nil {
+		if st, oerr := ota.Open(web, embVer, sd, contentBase, appVersion, diagf); oerr == nil {
 			payload = st
-			go st.Loop(context.Background())
+			go st.Run(context.Background())
 		} else {
 			log.Printf("ota disabled: %v", oerr)
 		}

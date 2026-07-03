@@ -45,13 +45,14 @@ func buildBundle(t *testing.T, files map[string]string) ([]byte, string) {
 // harness spins a server serving a manifest+bundle signed with a test key, and
 // a Store wired to that key and a fresh state dir.
 type harness struct {
-	priv    ed25519.PrivateKey
-	pub     ed25519.PublicKey
-	srv     *httptest.Server
-	store   *Store
-	bundle  []byte
-	man     manifest
-	manJSON func(manifest) []byte
+	priv          ed25519.PrivateKey
+	pub           ed25519.PublicKey
+	srv           *httptest.Server
+	store         *Store
+	bundle        []byte
+	man           manifest
+	manJSON       func(manifest) []byte
+	subAppVersion string // what /subscribe advertises as the latest app build
 }
 
 func newHarness(t *testing.T, embeddedVer, payloadVer, minRuntime int, files map[string]string) *harness {
@@ -68,6 +69,16 @@ func newHarness(t *testing.T, embeddedVer, payloadVer, minRuntime int, files map
 	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(h.manJSON(h.man))
 	})
+	// /subscribe advertises the current manifest's payload version and whatever
+	// app version the test set on the harness (h.subAppVersion). Returns at once.
+	mux.HandleFunc("/subscribe", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"payloadVersion": h.man.PayloadVersion,
+			"appVersion":     h.subAppVersion,
+			"changed":        true,
+		})
+	})
 	h.srv = httptest.NewServer(mux)
 
 	h.man = manifest{PayloadVersion: payloadVer, MinRuntime: minRuntime, URL: h.srv.URL + "/bundle.tgz", SHA256: sha}
@@ -80,8 +91,9 @@ func newHarness(t *testing.T, embeddedVer, payloadVer, minRuntime int, files map
 	}
 	h.store = &Store{
 		embedded: embedded, embeddedVer: embeddedVer,
-		stateDir: t.TempDir(), manifestURL: h.srv.URL + "/manifest.json",
-		pub: pub, client: h.srv.Client(), diag: func(f string, a ...any) { t.Logf(f, a...) },
+		stateDir: t.TempDir(), manifestURL: h.srv.URL + "/manifest.json", subscribeURL: h.srv.URL + "/subscribe",
+		appVersion: "1.0.0",
+		pub:        pub, client: h.srv.Client(), diag: func(f string, a ...any) { t.Logf(f, a...) },
 		active: embedded, version: embeddedVer,
 	}
 	t.Cleanup(h.srv.Close)
@@ -117,6 +129,41 @@ func TestAdoptsNewerSignedPayload(t *testing.T) {
 	}
 	if v := h.store.Version("0.36.0"); v != "0.36.0/p36" {
 		t.Fatalf("effective version wrong: %q", v)
+	}
+}
+
+func TestSubscribePushTriggersVerifiedPull(t *testing.T) {
+	// Embedded 35, cloud advertises payload 36 + a newer app build. One
+	// subscribe round must pull+verify+adopt the payload AND flag the app update.
+	h := newHarness(t, 35, 36, 1, map[string]string{"listener.html": "PUSHED 36"})
+	h.subAppVersion = "2.0.0" // newer than the store's appVersion "1.0.0"
+	np, na, err := h.store.subscribeOnce(context.Background(), 35, "1.0.0")
+	if err != nil {
+		t.Fatalf("subscribeOnce: %v", err)
+	}
+	if np != 36 || na != "2.0.0" {
+		t.Fatalf("subscribeOnce returned (%d,%q), want (36,\"2.0.0\")", np, na)
+	}
+	if h.store.PayloadVersion() != 36 {
+		t.Fatalf("push did not adopt payload: version=%d", h.store.PayloadVersion())
+	}
+	if got := read(t, h.store, "listener.html"); got != "PUSHED 36" {
+		t.Fatalf("served content not the pushed payload: %q", got)
+	}
+	if !h.store.AppUpdateAvailable() {
+		t.Fatal("app-update hint not set after a newer app build was advertised")
+	}
+}
+
+func TestSubscribeNoAppUpdateWhenSameVersion(t *testing.T) {
+	// Cloud advertises the SAME app version we run — no false app-update hint.
+	h := newHarness(t, 35, 35, 1, map[string]string{"listener.html": "x"}) // payload == embedded (no pull)
+	h.subAppVersion = "1.0.0"                                              // == store.appVersion
+	if _, _, err := h.store.subscribeOnce(context.Background(), 35, "1.0.0"); err != nil {
+		t.Fatalf("subscribeOnce: %v", err)
+	}
+	if h.store.AppUpdateAvailable() {
+		t.Fatal("app-update hint wrongly set for the same app version")
 	}
 }
 
