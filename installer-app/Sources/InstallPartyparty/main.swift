@@ -175,7 +175,12 @@ private struct InstallerRunner {
         let installedApp = try await installApp(extractedApp)
 
         await update(.status("Preparing first launch..."))
-        try await Self.runProcess("/usr/bin/xattr", ["-dr", "com.apple.quarantine", installedApp.path])
+        // Best-effort de-quarantine. The downloaded build is notarized + stapled, and files
+        // fetched via URLSession (unlike a browser download) normally carry NO
+        // com.apple.quarantine at all. `xattr -dr` also EACCES's on the read-only (mode 555)
+        // signed helper binaries. Either way a notarized+stapled app launches cleanly, so this
+        // must NEVER fail the install.
+        try? await Self.runProcess("/usr/bin/xattr", ["-dr", "com.apple.quarantine", installedApp.path])
 
         return installedApp
     }
