@@ -1285,6 +1285,39 @@ async function broker(request, env, pathname) {
     return jsonResp(200, { ok: true, slug, url: `https://party.ramine.net/e/${slug}`, status: check.status || "upcoming" });
   }
 
+  if (pathname === "/api/broker/event-status") {
+    if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+    const slug = String(body.slug || "");
+    const status = String(body.status || "");
+    if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+    if (!["upcoming", "live", "ended", "replay"].includes(status)) return jsonResp(400, { error: "bad status" });
+
+    const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+    if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not owner" });
+
+    const now = nowMs();
+    if (status === "live") {
+      await env.DB.prepare(
+        `UPDATE events
+         SET status=?, updated_ms=?, last_activity_ms=?, live_started_ms=COALESCE(live_started_ms, ?)
+         WHERE slug=? AND install_id=?`
+      ).bind(status, now, now, now, slug, id).run();
+    } else if (status === "ended" || status === "replay") {
+      await env.DB.prepare(
+        `UPDATE events
+         SET status=?, updated_ms=?, last_activity_ms=?, live_ended_ms=COALESCE(live_ended_ms, ?)
+         WHERE slug=? AND install_id=?`
+      ).bind(status, now, now, now, slug, id).run();
+    } else {
+      await env.DB.prepare(
+        `UPDATE events
+         SET status=?, updated_ms=?, last_activity_ms=?
+         WHERE slug=? AND install_id=?`
+      ).bind(status, now, now, slug, id).run();
+    }
+    return jsonResp(200, { ok: true, slug, status });
+  }
+
   if (pathname === "/api/broker/txt") {
     const value = String(body.value || "");
     if (!value || value.length > 255) return jsonResp(400, { error: "bad value" });

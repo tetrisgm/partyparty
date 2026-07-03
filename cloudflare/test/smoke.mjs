@@ -211,6 +211,19 @@ class FakeD1Statement {
         this.db.events.set(row.slug, next);
       }
     }
+    if (sql.includes("UPDATE events") && sql.includes("SET status=?")) {
+      const [status, updatedMs, lastActivityMs, maybeStamp, maybeSlug, maybeInstallId] = this.args;
+      const hasLiveStamp = sql.includes("live_started_ms=COALESCE") || sql.includes("live_ended_ms=COALESCE");
+      const slug = hasLiveStamp ? maybeSlug : this.args[3];
+      const installId = hasLiveStamp ? maybeInstallId : this.args[4];
+      const old = this.db.events.get(slug);
+      if (old && old.install_id === installId) {
+        const next = { ...old, status, updated_ms: updatedMs, last_activity_ms: lastActivityMs };
+        if (sql.includes("live_started_ms=COALESCE") && next.live_started_ms == null) next.live_started_ms = maybeStamp;
+        if (sql.includes("live_ended_ms=COALESCE") && next.live_ended_ms == null) next.live_ended_ms = maybeStamp;
+        this.db.events.set(slug, next);
+      }
+    }
     if (sql.includes("INSERT INTO event_rsvps")) {
       const isUser = sql.includes("ON CONFLICT(slug,user_id)");
       if (isUser) {
@@ -792,6 +805,49 @@ const tests = [
     assert.equal(json.status, "replay");
     assert.equal(row.title, "New Title");
     assert.equal(row.status, "replay");
+  }],
+  ["broker event-status rejects non-owner install", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-by-b", install_id: "def456def456", title: "Owned B", status: "upcoming" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-by-b", status: "live" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 403);
+    assert.equal(db.events.get("owned-by-b").status, "upcoming");
+    assert.equal(db.events.get("owned-by-b").live_started_ms, undefined);
+  }],
+  ["broker event-status owner sets live and stamps start", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-live", install_id: "abc123abc123", title: "Owned Live", status: "upcoming" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-live", status: "live" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    const row = db.events.get("owned-live");
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json, { ok: true, slug: "owned-live", status: "live" });
+    assert.equal(row.status, "live");
+    assert.equal(typeof row.live_started_ms, "number");
+    assert.equal(row.updated_ms, row.live_started_ms);
+    assert.equal(row.last_activity_ms, row.live_started_ms);
+  }],
+  ["broker event-status rejects invalid status", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-invalid-status", install_id: "abc123abc123", title: "Owned", status: "upcoming" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-invalid-status", status: "paused" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 400);
+    assert.equal(db.events.get("owned-invalid-status").status, "upcoming");
   }],
 ];
 
