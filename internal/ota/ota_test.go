@@ -129,8 +129,8 @@ func TestAdoptsNewerSignedPayload(t *testing.T) {
 	if got := string(h.store.Config()); got != `{"src":"ota","flag":true}` {
 		t.Fatalf("config not from payload: %q", got)
 	}
-	if v := h.store.Version("0.36.0"); v != "0.36.0/p36" {
-		t.Fatalf("effective version wrong: %q", v)
+	if v := h.store.Version("2.35"); v != "2.36" {
+		t.Fatalf("effective version wrong: %q, want 2.36 (major.currentPayload)", v)
 	}
 }
 
@@ -228,12 +228,16 @@ func TestVersionNewer(t *testing.T) {
 	}
 }
 
-func TestVersionIsBareOnStockContent(t *testing.T) {
-	// No payload adopted: the served version must equal the app version exactly
-	// (no "/pN"), so stock content looks identical to pre-OTA behavior.
+func TestVersionFormat(t *testing.T) {
+	// Stock (embedded) content shows major.<embeddedIncrement>; the code major
+	// comes from the app version, the increment from the current payload.
 	h := newHarness(t, 35, 36, 1, map[string]string{"listener.html": "x"})
-	if v := h.store.Version("0.36.0"); v != "0.36.0" {
-		t.Fatalf("stock version should be bare app version, got %q", v)
+	if v := h.store.Version("2.35"); v != "2.35" {
+		t.Fatalf("stock version = %q, want 2.35", v)
+	}
+	// A dev build (no dot) passes through unchanged.
+	if v := h.store.Version("dev"); v != "dev" {
+		t.Fatalf("dev version = %q, want dev", v)
 	}
 }
 

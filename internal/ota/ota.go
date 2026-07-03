@@ -152,20 +152,21 @@ func (s *Store) Open(name string) (fs.File, error) {
 	return a.Open(name)
 }
 
-// Version returns the effective content version stamped into served pages and
-// reported to clients, so a page self-refreshes when EITHER the app or the
-// payload changes. On stock (embedded) content it is exactly the app version —
-// no UI change from before OTA — and gains a "/p<n>" suffix only while a newer
-// cloud payload is actually being served, where it doubles as a visible "this
-// Mac is running over-the-air content" indicator.
+// Version returns the effective version stamped into served pages and reported
+// to clients: "<major>.<increment>" where major is the code/container version
+// (from the app build) and increment is the CURRENT payload version — the
+// running OTA content number, embedded or the newer cloud payload now served.
+// So the second number bumps on every OTA push and the first only on a native
+// app update, and a page self-refreshes whenever either moves. appVersion with
+// no "." (e.g. a "dev" build) passes through unchanged.
 func (s *Store) Version(appVersion string) string {
 	s.mu.RLock()
 	v := s.version
 	s.mu.RUnlock()
-	if v == s.embeddedVer {
-		return appVersion
+	if i := strings.IndexByte(appVersion, '.'); i >= 0 {
+		return appVersion[:i] + "." + strconv.Itoa(v)
 	}
-	return appVersion + "/p" + strconv.Itoa(v)
+	return appVersion
 }
 
 // PayloadVersion is the active payload version (for logging/status).

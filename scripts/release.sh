@@ -19,7 +19,20 @@ APP="build/partyparty.app"
 BUCKET="partyparty-dl"
 WR="$ROOT/cloudflare/node_modules/.bin/wrangler"
 SPK="$ROOT/app/.build/artifacts/sparkle/Sparkle/bin"
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' app/Info.plist)"
+
+# Version scheme: <code-major>.<payload-increment>. The FIRST number is the code
+# (native/container) version — CODE_MAJOR, bumped by hand only on a native
+# release. The SECOND is the running OTA content version — web/PAYLOAD_VERSION.
+# So a glance says "code update" (first moved) vs "OTA update" (second moved).
+# Derived here, and CFBundleVersion (Sparkle's monotonic comparison key) is
+# auto-incremented, so no hand-editing of the plist per release.
+CODE_MAJOR="$(tr -dc '0-9' < CODE_MAJOR)"
+PAYLOAD="$(tr -dc '0-9' < web/PAYLOAD_VERSION)"
+VERSION="$CODE_MAJOR.$PAYLOAD"
+BUILD="$(( $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' app/Info.plist) + 1 ))"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" app/Info.plist
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" app/Info.plist
+echo ">> version v$VERSION (build $BUILD)"
 
 [ -x "$WR" ] || { echo "wrangler missing — run: (cd cloudflare && npm install)"; exit 1; }
 "$WR" whoami >/dev/null 2>&1 || { echo "Not logged in — run: (cd cloudflare && npx wrangler login)"; exit 1; }
