@@ -595,11 +595,15 @@
     // ONCE on return — a re-attach, not an ongoing nudge — and only for a
     // clearly-abnormal drift, so a locked-and-in-sync listener (which stays near
     // target) and normal jitter are left completely alone.
+    let lastRealign = 0;
     function realignIfDrifted(){
       if (!started || player.paused || userPaused || yielded) return;
+      if (document.visibilityState !== 'visible') return; // don't seek a throttled/hidden tab — re-attach on return instead
+      if (Date.now() - lastRealign < 6000) return;         // cooldown: a discrete re-attach, never a rapid seek loop
       const target = latencyTarget || 5;
       const lat = measureLatency();
       if (lat != null && lat > target + 4) {
+        lastRealign = Date.now();
         logEvent('drift-realign', { lat: rnd(lat), target: rnd(target) });
         alignSeek(target);
       }
@@ -992,6 +996,7 @@
     setInterval(() => {
       if (!started) return;
       maybeRejoin(); // the ONLY recovery — fires under lock too (this tick keeps running there, field-verified)
+      realignIfDrifted(); // re-attach a badly-drifted stream whenever it happens (visible + gated + cooldown), not only on foreground
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
