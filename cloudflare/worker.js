@@ -250,7 +250,7 @@ export async function getApprovedPosts(env, slug, limit) {
   if (!env?.DB || !SLUG_RE.test(String(slug || ""))) return [];
   const n = Math.max(1, Math.min(100, Number(limit) || 20));
   const rows = await env.DB.prepare(
-    "SELECT * FROM posts WHERE slug=? AND approved=1 AND deleted_ms IS NULL ORDER BY activity_ms DESC LIMIT ?"
+    "SELECT * FROM posts WHERE slug=? AND approved=1 AND deleted_ms IS NULL ORDER BY COALESCE(activity_ms, created_ms, ts_ms, 0) ASC LIMIT ?"
   ).bind(slug, n).all();
   return rows?.results || [];
 }
@@ -363,17 +363,21 @@ nav{max-width:940px;margin:0 auto;padding:16px 20px;display:flex;align-items:cen
 .wall .thumb{aspect-ratio:1;border-radius:12px;background-size:cover;background-position:center;background-color:var(--bg)}
 .wall .add{aspect-ratio:1;border-radius:12px;border:1px dashed var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ink2);font-size:12px;text-align:center;padding:8px;cursor:pointer}
 .wall .add:hover{border-color:var(--accent);color:var(--accent)}
-.wall.posts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.wallpost{min-width:0}
-.wallpost .who{display:flex;gap:8px;align-items:baseline;color:var(--ink2);font-size:13px;margin-bottom:8px}
-.wallpost .who b{color:var(--ink);font-weight:600}.wallpost .who time{margin-left:auto;color:var(--ink3);white-space:nowrap}
+.timeline{position:relative;display:grid;gap:18px;margin-top:18px}
+.timeline:before{content:"";position:absolute;left:18px;top:18px;bottom:18px;width:1px;background:var(--line)}
+.tl-entry{position:relative;display:grid;grid-template-columns:38px minmax(0,1fr);gap:14px}
+.tl-dot{position:relative;z-index:1;width:36px;height:36px;border-radius:50%;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 0 0 4px var(--card)}
+.tl-dot.dj{border-color:var(--accent);box-shadow:0 0 0 4px var(--card),0 0 0 6px color-mix(in srgb,var(--accent) 20%,transparent)}
+.tl-body{min-width:0;padding-bottom:2px}
+.tl-who{display:flex;gap:8px;align-items:center;color:var(--ink2);font-size:13px;margin-bottom:7px}
+.tl-who b{color:var(--ink);font-weight:600}.tl-who time{color:var(--ink3);white-space:nowrap}.djchip{font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 36%,var(--line));border-radius:var(--pill);padding:2px 6px}
 .walltext{font-size:15px;line-height:1.5;margin:0 0 12px;white-space:pre-wrap;overflow-wrap:anywhere}
-.wallmedia{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
-.wallmedia img,.wallmedia video{width:100%;max-width:100%;border-radius:12px;background:var(--bg);object-fit:cover}.wallmedia img{aspect-ratio:1}.wallmedia video{aspect-ratio:16/10}
-.wallmedia audio{grid-column:1/-1;width:100%}
-.comments{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;display:grid;gap:7px}
+.tl-media{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.tl-media img,.tl-media video{width:100%;max-width:100%;border-radius:12px;background:var(--bg);object-fit:cover}.tl-media img{aspect-ratio:1}.tl-media video{aspect-ratio:16/10}
+.tl-media audio{grid-column:1/-1;width:100%}
+.comments{border-left:1px solid var(--line);margin:12px 0 0 6px;padding-left:12px;display:grid;gap:7px}
 .comment{font-size:13px;color:var(--ink2);line-height:1.4}.comment b{color:var(--ink);font-weight:600}
-@media(max-width:640px){.wall.posts{grid-template-columns:1fr}.wallpost .who{flex-wrap:wrap}.wallpost .who time{margin-left:0}}
+@media(max-width:640px){.tl-entry{gap:12px}.tl-who{flex-wrap:wrap}}
 .cardhint{color:var(--ink3);font-size:12px;margin-top:14px}
 .about p{margin:0 0 16px;color:var(--ink);font-size:15px;line-height:1.55;max-width:64ch}
 .slist{display:flex;gap:10px}
@@ -1299,21 +1303,28 @@ function renderWallMedia(slug, media) {
     }
     return "";
   }).filter(Boolean).join("");
-  return items ? `<div class="wallmedia">${items}</div>` : "";
+  return items ? `<div class="tl-media">${items}</div>` : "";
 }
 
 function renderWallPost(post, slug, media, comments) {
-  const who = post.author || (post.dj ? "DJ" : "Guest");
+  const isDj = Number(post.dj) === 1;
+  const who = post.author || (isDj ? "DJ" : "Guest");
   const timeMs = post.activity_ms || post.created_ms || post.ts_ms;
   const timeText = fmtPostTime(timeMs);
   const datetime = safeIso(timeMs);
   const text = post.text ? `<p class="walltext">${esc(post.text)}</p>` : "";
-  const commentHtml = comments.length ? `<div class="comments">${comments.map((c) => `<div class="comment">${c.emoji ? `<span>${esc(c.emoji)}</span> ` : ""}<b>${esc(c.author || (c.dj ? "DJ" : "Guest"))}</b> ${esc(c.text || "")}</div>`).join("")}</div>` : "";
-  return `<article class="card wallpost">
-    <div class="who">${post.emoji ? `<span>${esc(post.emoji)}</span>` : ""}<b>${esc(who)}</b>${timeText && datetime ? `<time datetime="${esc(datetime)}">${esc(timeText)}</time>` : ""}</div>
-    ${text}
-    ${renderWallMedia(slug, media)}
-    ${commentHtml}
+  const commentHtml = comments.length ? `<div class="comments">${comments.map((c) => {
+    const commentDj = Number(c.dj) === 1;
+    return `<div class="comment">${c.emoji ? `<span>${esc(c.emoji)}</span> ` : ""}<b>${esc(c.author || (commentDj ? "DJ" : "Guest"))}</b> ${esc(c.text || "")}</div>`;
+  }).join("")}</div>` : "";
+  return `<article class="tl-entry">
+    <div class="tl-dot${isDj ? " dj" : ""}" aria-hidden="true">${esc(post.emoji || "•")}</div>
+    <div class="tl-body">
+      <div class="tl-who"><b>${esc(who)}</b>${isDj ? `<span class="djchip">DJ</span>` : ""}${timeText && datetime ? `<time datetime="${esc(datetime)}">${esc(timeText)}</time>` : ""}</div>
+      ${text}
+      ${renderWallMedia(slug, media)}
+      ${commentHtml}
+    </div>
   </article>`;
 }
 
@@ -1413,12 +1424,13 @@ function renderEvent(e) {
     commentsByPost.set(pid, list);
   }
   const wallSection = posts.length ? `
-  <section>
-    <div class="sectionhead"><div><h2>The wall</h2><p>Everything the room shot tonight — approved by the DJ.</p></div></div>
-    <div class="wall posts">
+  <div class="card">
+    <h2>The night</h2>
+    <p class="sub">Everything the room shot tonight — approved by the DJ.</p>
+    <div class="timeline">
       ${posts.map((p) => renderWallPost(p, e.slug, mediaByPost.get(String(p.id || "")) || [], commentsByPost.get(String(p.id || "")) || [])).join("")}
     </div>
-  </section>` : (e.wall || []).length ? `
+  </div>` : (e.wall || []).length ? `
   <div class="card">
     <h2>The wall</h2>
     <p class="sub">Everything the room shot tonight — you approve what shows.</p>
@@ -1430,7 +1442,7 @@ function renderEvent(e) {
   </div>` : `
   <div class="card">
     <h2>The wall</h2>
-    <p class="sub">No posts yet.</p>
+    <p class="sub">No posts yet — guests' photos &amp; clips will appear here.</p>
     <div class="cardhint">Guests drop photos, videos and comments straight from their phone — moderated by the DJ.</div>
   </div>`;
 
