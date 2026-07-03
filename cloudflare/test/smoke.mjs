@@ -11,6 +11,11 @@ globalThis.caches ??= {
 const KNOWN_SLUG = "known-set";
 const SET_ID = "abcdef123456";
 
+const eventActivity = (row) =>
+  Number(row.last_activity_ms ?? row.published_ms ?? row.scheduled_at_ms ?? row.updated_ms ?? row.created_ms ?? 0) || 0;
+
+const bySlug = (a, b) => String(a.slug || "").localeCompare(String(b.slug || ""));
+
 class FakeD1 {
   constructor({
     knownSlug = KNOWN_SLUG,
@@ -57,6 +62,7 @@ class FakeD1 {
     });
     for (const row of events) this.events.set(row.slug, { ...row });
     this.deviceInstalls = new Map(deviceInstalls.map((row) => [row.install_id, { ...row }]));
+    this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
       const key = row.user_id ? `${row.slug}:user:${row.user_id}` : `${row.slug}:anon:${row.anon_key_hash}`;
@@ -145,19 +151,37 @@ class FakeD1Statement {
   async all() {
     const sql = this.sql.replace(/\s+/g, " ");
     if (sql.includes("WHERE e.visibility=? AND e.status IN")) {
-      return { results: this.db.homeEvents };
+      return {
+        results: [...this.db.homeEvents].sort((a, b) =>
+          (a.status === "live" ? 0 : 1) - (b.status === "live" ? 0 : 1) ||
+          (Number(a.scheduled_at_ms) || 0) - (Number(b.scheduled_at_ms) || 0) ||
+          bySlug(a, b)
+        ),
+      };
     }
     if (sql.includes("FROM featured_profiles f")) {
-      return { results: this.db.featuredProfiles };
+      return {
+        results: [...this.db.featuredProfiles].sort((a, b) =>
+          (Number(a.rank) || 0) - (Number(b.rank) || 0) ||
+          (Number(b.last_activity_ms) || 0) - (Number(a.last_activity_ms) || 0) ||
+          String(a.display_name || "").localeCompare(String(b.display_name || ""))
+        ),
+      };
     }
     if (sql.includes("WHERE e.visibility=? AND e.status=?")) {
-      return { results: this.db.replayEvents };
+      return { results: [...this.db.replayEvents].sort((a, b) => eventActivity(b) - eventActivity(a) || bySlug(a, b)) };
     }
     if (sql.includes("WHERE dj_profile_id=? AND visibility=? AND status IN")) {
-      return { results: this.db.profileUpcomingEvents };
+      return {
+        results: [...this.db.profileUpcomingEvents].sort((a, b) =>
+          (a.status === "live" ? 0 : 1) - (b.status === "live" ? 0 : 1) ||
+          (Number(a.scheduled_at_ms) || 0) - (Number(b.scheduled_at_ms) || 0) ||
+          bySlug(a, b)
+        ),
+      };
     }
     if (sql.includes("WHERE dj_profile_id=? AND visibility=? AND status=?")) {
-      return { results: this.db.profileRecentEvents };
+      return { results: [...this.db.profileRecentEvents].sort((a, b) => eventActivity(b) - eventActivity(a) || bySlug(a, b)) };
     }
     if (sql.includes("FROM posts p JOIN events e")) {
       return { results: this.db.profilePosts };
@@ -189,6 +213,46 @@ class FakeD1Statement {
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("UPDATE dj_profiles SET last_activity_ms=? WHERE id=?")) {
+      const [lastActivityMs, profileId] = this.args;
+      this.db.profileActivityBumps.push({ profileId, lastActivityMs });
+      const row = this.db.profiles.find((profile) => profile.id === profileId);
+      if (row) row.last_activity_ms = lastActivityMs;
+    }
+    if (sql.includes("INSERT INTO events") && sql.includes("?1") && sql.includes("last_activity_ms")) {
+      const [slug, installId, title, host, starts, whereTxt, tagline, about, now] = this.args;
+      const old = this.db.events.get(slug);
+      if (!old) {
+        this.db.events.set(slug, {
+          slug,
+          install_id: installId,
+          title,
+          host,
+          starts,
+          where_txt: whereTxt,
+          tagline,
+          about,
+          status: "replay",
+          created_ms: now,
+          updated_ms: now,
+          last_activity_ms: now,
+        });
+      } else if (old.install_id === installId) {
+        this.db.events.set(slug, {
+          ...old,
+          title,
+          host,
+          starts,
+          where_txt: whereTxt,
+          tagline,
+          about,
+          status: "replay",
+          updated_ms: now,
+          last_activity_ms: now,
+        });
+      }
+      return { success: true };
+    }
     if (sql.includes("INSERT INTO events") && sql.includes("last_activity_ms")) {
       const insertCols = (this.sql.match(/INSERT INTO events \(([^)]+)\)/)?.[1] || "")
         .split(",")
@@ -409,6 +473,15 @@ const tests = [
     const resp = await fetchPath("/", {}, {
       db: {
         homeEvents: [{
+          slug: "saturday-live",
+          title: "Saturday Live",
+          host: "DJ Now",
+          scheduled_at_ms: 1893542400000,
+          location_name: "Warehouse",
+          status: "live",
+          visibility: "public",
+          cover_key: "event/saturday-live/cover.jpg",
+        }, {
           slug: "friday-rooftop",
           title: "Friday Rooftop",
           host: "Ramine",
@@ -429,7 +502,11 @@ const tests = [
     });
     const html = await resp.text();
     assert.equal(resp.status, 200);
+    assert.ok(html.indexOf("Saturday Live") < html.indexOf("Friday Rooftop"));
+    assert.match(html, /<span class="statuspill live"><span class="dot"><\/span>Live<\/span>/);
+    assert.match(html, /<span class="statuspill upcoming">Upcoming<\/span>/);
     assert.match(html, /Friday Rooftop/);
+    assert.match(html, /href="\/e\/saturday-live"/);
     assert.match(html, /href="\/e\/friday-rooftop"/);
     assert.match(html, /@dj\.ramine/);
     assert.match(html, /href="\/@dj\.ramine"/);
@@ -590,6 +667,15 @@ const tests = [
           published: 1,
         }],
         profileUpcomingEvents: [{
+          slug: "someone-live",
+          title: "Someone Live",
+          host: "DJ Someone",
+          scheduled_at_ms: 1893542400000,
+          location_name: "Floor Room",
+          status: "live",
+          visibility: "public",
+          cover_key: "event/someone-live/cover.jpg",
+        }, {
           slug: "someone-rooftop",
           title: "Someone Rooftop",
           host: "DJ Someone",
@@ -605,6 +691,9 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /DJ Someone/);
     assert.match(html, /@someone/);
+    assert.ok(html.indexOf("Someone Live") < html.indexOf("Someone Rooftop"));
+    assert.match(html, /<span class="statuspill live"><span class="dot"><\/span>Live<\/span>/);
+    assert.match(html, /<span class="statuspill upcoming">Upcoming<\/span>/);
     assert.match(html, /href="\/e\/someone-rooftop"/);
     assert.doesNotMatch(html, /Rooftop Sessions/);
   }],
@@ -777,6 +866,9 @@ const tests = [
     assert.equal(row.rsvp_enabled, 1);
     assert.equal(row.owner_user_id, "user-1");
     assert.equal(row.dj_profile_id, "profile-1");
+    assert.equal(db.profileActivityBumps.length, 1);
+    assert.equal(db.profileActivityBumps[0].profileId, "profile-1");
+    assert.equal(db.profileActivityBumps[0].lastActivityMs, row.last_activity_ms);
   }],
   ["broker event-upsert returns 409 for slug owned by another install", async () => {
     const db = new FakeD1({
@@ -806,6 +898,41 @@ const tests = [
     assert.equal(row.title, "New Title");
     assert.equal(row.status, "replay");
   }],
+  ["broker publish-meta stamps replay activity and bumps DJ profile", async () => {
+    const db = new FakeD1({
+      events: [{
+        slug: "owned-publish",
+        install_id: "abc123abc123",
+        title: "Old Publish",
+        status: "live",
+        dj_profile_id: "profile-publish",
+        last_activity_ms: 1,
+      }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        slug: "owned-publish",
+        title: "Published Replay",
+        host: "DJ Publish",
+        starts: "Tonight",
+      }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    const row = db.events.get("owned-publish");
+    assert.equal(resp.status, 200);
+    assert.equal(json.ok, true);
+    assert.equal(json.slug, "owned-publish");
+    assert.equal(row.title, "Published Replay");
+    assert.equal(row.status, "replay");
+    assert.equal(typeof row.last_activity_ms, "number");
+    assert.equal(row.updated_ms, row.last_activity_ms);
+    assert.equal(db.profileActivityBumps.length, 1);
+    assert.deepEqual(db.profileActivityBumps[0], { profileId: "profile-publish", lastActivityMs: row.last_activity_ms });
+  }],
   ["broker event-status rejects non-owner install", async () => {
     const db = new FakeD1({
       events: [{ slug: "owned-by-b", install_id: "def456def456", title: "Owned B", status: "upcoming" }],
@@ -821,7 +948,7 @@ const tests = [
   }],
   ["broker event-status owner sets live and stamps start", async () => {
     const db = new FakeD1({
-      events: [{ slug: "owned-live", install_id: "abc123abc123", title: "Owned Live", status: "upcoming" }],
+      events: [{ slug: "owned-live", install_id: "abc123abc123", title: "Owned Live", status: "upcoming", dj_profile_id: "profile-live" }],
     });
     const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
       method: "POST",
@@ -836,6 +963,8 @@ const tests = [
     assert.equal(typeof row.live_started_ms, "number");
     assert.equal(row.updated_ms, row.live_started_ms);
     assert.equal(row.last_activity_ms, row.live_started_ms);
+    assert.equal(db.profileActivityBumps.length, 1);
+    assert.deepEqual(db.profileActivityBumps[0], { profileId: "profile-live", lastActivityMs: row.last_activity_ms });
   }],
   ["broker event-status rejects invalid status", async () => {
     const db = new FakeD1({

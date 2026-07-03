@@ -195,6 +195,17 @@ export function nowMs() {
   return Date.now();
 }
 
+async function bumpDjProfileActivity(env, profileId, activityMs = nowMs()) {
+  if (!env?.DB || !profileId) return;
+  try {
+    await env.DB.prepare(
+      "UPDATE dj_profiles SET last_activity_ms=? WHERE id=?"
+    ).bind(activityMs, profileId).run();
+  } catch (_) {
+    // Best-effort freshness; never fail the broker write on profile denormalization.
+  }
+}
+
 const DEMO = {
   title: "Rooftop Sessions", dj: "Ramine",
   when: "Saturday · 11pm", where: "Le Toit — Paris",
@@ -290,8 +301,11 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .eventcard .cov{aspect-ratio:1.25;border-radius:16px;background-size:cover;background-position:center;background-color:var(--bg)}
 .eventcard h3,.djcard h3{font-size:17px;line-height:1.18;margin:0 0 6px;letter-spacing:-.01em}
 .eventcard .meta,.djcard p{color:var(--ink2);font-size:13px;line-height:1.35;margin:0}
-.pill{display:inline-flex;align-items:center;border-radius:var(--pill);background:var(--bg);color:var(--ink2);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;margin-bottom:9px}
-.pill.live{background:rgba(255,59,92,.1);color:var(--live)}
+.eventcard .statuspill{background:var(--bg);backdrop-filter:none;border-color:var(--line);color:var(--ink2);font-size:11px;gap:6px;padding:4px 9px;margin-bottom:9px}
+.eventcard .statuspill .dot{width:7px;height:7px;box-shadow:none;animation:none}
+.eventcard .statuspill.live{background:rgba(255,59,92,.1);border-color:rgba(255,59,92,.18);color:var(--live)}
+.eventcard .statuspill.upcoming{background:rgba(52,199,89,.1);border-color:rgba(52,199,89,.18);color:var(--good)}
+.eventcard .statuspill.replay{background:rgba(255,45,111,.08);border-color:rgba(255,45,111,.16);color:var(--accent)}
 .djstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .djcard .av{width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg,#ff2d6f,#ff9500);background-size:cover;background-position:center;margin-bottom:14px}
 .profilehdr{min-height:380px}.profileav{width:92px;height:92px;border-radius:26px;background:linear-gradient(135deg,#ff2d6f,#ff9500);background-size:cover;background-position:center;border:2px solid rgba(255,255,255,.7);box-shadow:0 12px 34px rgba(0,0,0,.26);margin-bottom:14px}
@@ -372,7 +386,7 @@ async function getHomeEvents(env) {
      FROM events e
      LEFT JOIN dj_profiles p ON p.id=e.dj_profile_id AND p.published=1
      WHERE e.visibility=? AND e.status IN (?,?)
-     ORDER BY CASE WHEN e.status=? THEN 0 ELSE 1 END, e.scheduled_at_ms ASC
+     ORDER BY CASE WHEN e.status=? THEN 0 ELSE 1 END, e.scheduled_at_ms ASC, e.slug ASC
      LIMIT ?`
   ).bind("public", "upcoming", "live", "live", 12).all();
   return rows?.results || [];
@@ -386,7 +400,7 @@ async function getFeaturedProfiles(env) {
      FROM featured_profiles f
      JOIN dj_profiles p ON p.id=f.profile_id
      WHERE p.published=? AND (f.starts_ms IS NULL OR f.starts_ms<=?) AND (f.ends_ms IS NULL OR f.ends_ms>?)
-     ORDER BY f.rank ASC
+     ORDER BY f.rank ASC, p.last_activity_ms DESC, p.display_name ASC
      LIMIT ?`
   ).bind(1, now, now, 8).all();
   return rows?.results || [];
@@ -399,7 +413,7 @@ async function getReplayEvents(env) {
      FROM events e
      LEFT JOIN dj_profiles p ON p.id=e.dj_profile_id AND p.published=1
      WHERE e.visibility=? AND e.status=?
-     ORDER BY COALESCE(e.last_activity_ms, e.scheduled_at_ms, e.updated_ms, e.created_ms, 0) DESC
+     ORDER BY COALESCE(e.last_activity_ms, e.published_ms, e.scheduled_at_ms, e.updated_ms, e.created_ms, 0) DESC, e.slug ASC
      LIMIT ?`
   ).bind("public", "replay", 6).all();
   return rows?.results || [];
@@ -413,11 +427,16 @@ function eventCard(row) {
   const slug = String(row.slug || "");
   const cover = row.cover_key ? `/event/${esc(slug)}/cover.jpg` : "/img/dance.jpg";
   const location = row.location_name || row.where_txt || "Location TBA";
-  const live = row.status === "live";
+  const status = String(row.status || "upcoming");
+  const statusPill = status === "live"
+    ? `<span class="statuspill live"><span class="dot"></span>Live</span>`
+    : status === "replay"
+      ? `<span class="statuspill replay">Replay</span>`
+      : `<span class="statuspill upcoming">Upcoming</span>`;
   return `<a class="card eventcard" href="/e/${esc(slug)}">
     <div class="cov" style="background-image:url('${cover}')"></div>
     <div>
-      <span class="pill${live ? " live" : ""}">${live ? "Live now" : esc(row.status || "upcoming")}</span>
+      ${statusPill}
       <h3>${esc(row.title || "A partyparty popup")}</h3>
       <p class="meta">${esc(eventHost(row))} · ${esc(fmtWhen(row.scheduled_at_ms))}</p>
       <p class="meta">${esc(location)}</p>
@@ -444,8 +463,8 @@ async function getProfileUpcomingEvents(env, profileId) {
     `SELECT *
      FROM events
      WHERE dj_profile_id=? AND visibility=? AND status IN (?,?)
-     ORDER BY scheduled_at_ms ASC`
-  ).bind(profileId, "public", "upcoming", "live").all();
+     ORDER BY CASE WHEN status=? THEN 0 ELSE 1 END, scheduled_at_ms ASC, slug ASC`
+  ).bind(profileId, "public", "upcoming", "live", "live").all();
   return rows?.results || [];
 }
 
@@ -455,7 +474,7 @@ async function getProfileRecentEvents(env, profileId) {
     `SELECT *
      FROM events
      WHERE dj_profile_id=? AND visibility=? AND status=?
-     ORDER BY COALESCE(published_ms, scheduled_at_ms) DESC
+     ORDER BY COALESCE(last_activity_ms, published_ms, scheduled_at_ms, updated_ms, created_ms, 0) DESC, slug ASC
      LIMIT ?`
   ).bind(profileId, "public", "replay", 12).all();
   return rows?.results || [];
@@ -1180,17 +1199,18 @@ async function broker(request, env, pathname) {
     // (the Mac then retries with its collision-proof auto slug).
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
     if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
-    const now = Date.now();
+    const now = nowMs();
     await env.DB.prepare(
-      `INSERT INTO events (slug, install_id, title, host, starts, where_txt, tagline, about, status, created_ms, updated_ms)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'replay',?9,?9)
-       ON CONFLICT(slug) DO UPDATE SET title=?3, host=?4, starts=?5, where_txt=?6, tagline=?7, about=?8, updated_ms=?9
+      `INSERT INTO events (slug, install_id, title, host, starts, where_txt, tagline, about, status, created_ms, updated_ms, last_activity_ms)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'replay',?9,?9,?9)
+       ON CONFLICT(slug) DO UPDATE SET title=?3, host=?4, starts=?5, where_txt=?6, tagline=?7, about=?8, status='replay', updated_ms=?9, last_activity_ms=?9
        WHERE events.install_id=?2`
     ).bind(slug, id, clip(body.title, 200), clip(body.host, 80), clip(body.starts, 120),
       clip(body.where, 120), clip(body.tagline, 200), clip(body.about, 4000), now).run();
     // Re-verify ownership post-upsert (closes any claim race) before minting a set.
-    const check = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+    const check = await env.DB.prepare("SELECT install_id, dj_profile_id FROM events WHERE slug=?").bind(slug).first();
     if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    await bumpDjProfileActivity(env, check.dj_profile_id, now);
     const setId = randHex(12);
     await env.DB.prepare(
       `INSERT INTO event_sets (id, slug, duration_ms, size_bytes, recorded_ms, published_ms, state)
@@ -1280,8 +1300,9 @@ async function broker(request, env, pathname) {
        WHERE events.install_id=?`
     ).bind(...insertVals, ...updateCols.map(([, value]) => value), now, now, id).run();
 
-    const check = await env.DB.prepare("SELECT install_id, status FROM events WHERE slug=?").bind(slug).first();
+    const check = await env.DB.prepare("SELECT install_id, status, dj_profile_id FROM events WHERE slug=?").bind(slug).first();
     if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    await bumpDjProfileActivity(env, check.dj_profile_id, now);
     return jsonResp(200, { ok: true, slug, url: `https://party.ramine.net/e/${slug}`, status: check.status || "upcoming" });
   }
 
@@ -1292,7 +1313,7 @@ async function broker(request, env, pathname) {
     if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
     if (!["upcoming", "live", "ended", "replay"].includes(status)) return jsonResp(400, { error: "bad status" });
 
-    const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+    const owner = await env.DB.prepare("SELECT install_id, dj_profile_id FROM events WHERE slug=?").bind(slug).first();
     if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not owner" });
 
     const now = nowMs();
@@ -1315,6 +1336,7 @@ async function broker(request, env, pathname) {
          WHERE slug=? AND install_id=?`
       ).bind(status, now, now, slug, id).run();
     }
+    await bumpDjProfileActivity(env, owner.dj_profile_id, now);
     return jsonResp(200, { ok: true, slug, status });
   }
 
