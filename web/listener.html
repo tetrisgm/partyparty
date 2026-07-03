@@ -588,6 +588,23 @@
       }, 10000);
     }
 
+    // A tab throttled in the background can drift far behind live WITHOUT ever
+    // stalling — the playhead falls back while buffer piles up, so the stall
+    // recovery never fires and the guest ends up seconds behind the room (field:
+    // a guest returned from a tab-switch parked 22s back). Snap it to the room
+    // ONCE on return — a re-attach, not an ongoing nudge — and only for a
+    // clearly-abnormal drift, so a locked-and-in-sync listener (which stays near
+    // target) and normal jitter are left completely alone.
+    function realignIfDrifted(){
+      if (!started || player.paused || userPaused || yielded) return;
+      const target = latencyTarget || 5;
+      const lat = measureLatency();
+      if (lat != null && lat > target + 4) {
+        logEvent('drift-realign', { lat: rnd(lat), target: rnd(target) });
+        alignSeek(target);
+      }
+    }
+
     // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a
     // guest never taps into silence and thinks it's broken; then "Tap to listen".
     // Idle button carries the state itself (dim "Preparing…" → bright "Tap to
@@ -801,6 +818,10 @@
       // Foregrounding a yielded tab reclaims — you're clearly using THIS one.
       if (yielded) { yielded = false; claimAudio(); userPaused = false; player.muted = false; recoverPlayback(); }
       else if (started && !userPaused) recoverPlayback();
+      // After recovery settles, re-attach a stream that drifted far behind while
+      // the tab was throttled in the background (a stall would have reconnected;
+      // a silent drift wouldn't — this catches that).
+      setTimeout(realignIfDrifted, 1000);
       poll();
     });
     // AirPods / audio-route change: iOS pauses on removal and does NOT
