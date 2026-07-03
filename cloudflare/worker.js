@@ -18,6 +18,7 @@
 
 const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
+const RSVP_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/rsvp$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
 const POST_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/media\/([A-Za-z0-9_-]{1,64})$/;
 // Published set media (audio + waveform) and event cover, served range-aware
@@ -299,7 +300,9 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .postitem:first-child{border-top:0;padding-top:0}.postitem p{font-size:15px;line-height:1.45;margin:0 0 6px}.postitem a{color:var(--link);font-size:13px}
 .emptyhome{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:16px;align-items:stretch}
 .emptyhome .big{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}.emptyhome p{color:var(--ink2);margin:0 0 18px}
+.rsvp{display:grid;gap:14px}.rsvphead{display:flex;justify-content:space-between;gap:16px;align-items:start}.rsvphead .sub{margin-bottom:0}.rsvpcounts{display:flex;gap:14px;align-items:center;color:var(--ink2);font-size:12px;white-space:nowrap}.rsvpcounts b{display:block;color:var(--ink);font-size:22px;line-height:1}.rsvprow{display:flex;gap:10px;flex-wrap:wrap}.rsvp .btn.active{background:var(--accent);color:#fff;border-color:transparent}.rsvpfields{display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:10px}.rsvpfields input{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink)}.rsvpfields input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}
 @media(max-width:760px){.homehero{grid-template-columns:1fr;padding-top:26px}.eventgrid,.djstrip,.emptyhome{grid-template-columns:1fr}.eventcard{grid-template-columns:92px minmax(0,1fr)}}
+@media(max-width:560px){.rsvphead{display:grid}.rsvpcounts{justify-content:space-between}.rsvpfields{grid-template-columns:1fr 70px}}
 `;
 
 const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -620,6 +623,7 @@ function eventFromRow(row, set, slug, wall = {}) {
     comments: Array.isArray(wall.comments) ? wall.comments : [],
     socials: {},
     set: set ? { id: set.id, durationMs: set.duration_ms } : null,
+    rsvp_enabled: Number(row.rsvp_enabled) === 1 ? 1 : 0,
   };
 }
 
@@ -676,6 +680,39 @@ function renderWallPost(post, slug, media, comments) {
   </article>`;
 }
 
+function renderRsvpBlock(e) {
+  if (Number(e.rsvp_enabled) !== 1 || !e.slug) return "";
+  const endpoint = `/api/e/${encodeURIComponent(String(e.slug))}/rsvp`;
+  return `<div class="card rsvp" data-rsvp data-rsvp-api="${esc(endpoint)}">
+    <div class="rsvphead">
+      <div><h2>RSVP</h2><p class="sub">Let the host know if you can make it.</p></div>
+      <div class="rsvpcounts" aria-live="polite">
+        <span><b data-rsvp-coming>0</b> coming</span>
+        <span><b data-rsvp-not>0</b> can't</span>
+      </div>
+    </div>
+    <div class="rsvprow">
+      <button type="button" class="btn lt sm" data-rsvp-choice="coming">I'm coming</button>
+      <button type="button" class="btn lt sm" data-rsvp-choice="not">Can't make it</button>
+    </div>
+    <div class="rsvpfields">
+      <input data-rsvp-name maxlength="40" autocomplete="name" placeholder="Name (optional)">
+      <input data-rsvp-emoji maxlength="8" inputmode="text" autocomplete="off" placeholder="Emoji">
+    </div>
+  </div>`;
+}
+
+function rsvpScript(enabled) {
+  if (!enabled) return "";
+  return `<script>
+(function(){var root=document.querySelector('[data-rsvp]');if(!root)return;var api=root.getAttribute('data-rsvp-api'),coming=root.querySelector('[data-rsvp-coming]'),not=root.querySelector('[data-rsvp-not]'),name=root.querySelector('[data-rsvp-name]'),emoji=root.querySelector('[data-rsvp-emoji]'),buttons=[].slice.call(root.querySelectorAll('[data-rsvp-choice]'));
+function paint(d){if(!d)return;var c=d.counts||{};coming.textContent=String(c.coming||0);not.textContent=String(c.not||0);buttons.forEach(function(b){b.classList.toggle('active',b.getAttribute('data-rsvp-choice')===d.mine||b.getAttribute('data-rsvp-choice')===d.response)})}
+fetch(api,{headers:{accept:'application/json'}}).then(function(r){return r.ok?r.json():null}).then(paint).catch(function(){});
+buttons.forEach(function(b){b.addEventListener('click',function(){var choice=b.getAttribute('data-rsvp-choice');buttons.forEach(function(x){x.disabled=true});fetch(api,{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({response:choice,name:name&&name.value||'',emoji:emoji&&emoji.value||''})}).then(function(r){return r.ok?r.json():Promise.reject()}).then(function(d){d.mine=d.response;paint(d)}).catch(function(){if(typeof toast==='function')toast('RSVP did not save')}).finally(function(){buttons.forEach(function(x){x.disabled=false})})})});
+})();
+</script>`;
+}
+
 function renderEvent(e) {
   const soon = "Coming soon — event pages are in progress.";
   const statusPill = e.status === "live"
@@ -719,6 +756,7 @@ function renderEvent(e) {
     : `<button class="btn ghost sm" data-soon="${soon}">Share</button>`;
   const upcomingCard = !e.set && e.status === "upcoming" ? `
   <div class="card"><p class="sub" style="margin:0">The set replay lands here once ${esc(e.dj || "the DJ")} plays. Check back after the party.</p></div>` : "";
+  const rsvpCard = renderRsvpBlock(e);
 
   const posts = Array.isArray(e.posts) ? e.posts : [];
   const mediaByPost = new Map();
@@ -780,11 +818,11 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
         ${previewBadge}
       </div>
     </div>
-    ${liveCard}${playerCard}${upcomingCard}
+    ${liveCard}${playerCard}${upcomingCard}${rsvpCard}
     ${wallSection}
     ${aboutCard}
   </div>
-  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}`;
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}${rsvpScript(Number(e.rsvp_enabled) === 1)}`;
 
   const descBits = [e.when, e.where].filter(Boolean).join(" · ");
   const ogImage = e.cover && e.cover.indexOf("/event/") === 0 ? e.cover : DEFAULT_OG_IMAGE;
@@ -814,6 +852,100 @@ function renderNotFound() {
 
 const jsonResp = (status, obj) =>
   new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
+
+async function rsvpCounts(env, slug) {
+  const out = { coming: 0, not: 0 };
+  const rows = await env.DB.prepare(
+    "SELECT response, COUNT(*) AS n FROM event_rsvps WHERE slug=? GROUP BY response"
+  ).bind(slug).all();
+  for (const row of (rows?.results || [])) {
+    if (row.response === "coming") out.coming = Number(row.n) || 0;
+    if (row.response === "not") out.not = Number(row.n) || 0;
+  }
+  return out;
+}
+
+async function rsvpIdentity(env, request, mintAnon) {
+  const user = await getSessionUser(env, request);
+  if (user?.id) return { userId: String(user.id), anonHash: "", cookieId: "", minted: false };
+  const cookies = parseCookies(request);
+  let cookieId = cookies.pp_rsvp || "";
+  let minted = false;
+  if (!cookieId && mintAnon) {
+    cookieId = randHex(16);
+    minted = true;
+  }
+  return {
+    userId: "",
+    anonHash: cookieId ? await sha256Hex(cookieId) : "",
+    cookieId,
+    minted,
+  };
+}
+
+async function rsvpMine(env, slug, identity) {
+  if (identity.userId) {
+    const row = await env.DB.prepare(
+      "SELECT response FROM event_rsvps WHERE slug=? AND user_id=? LIMIT 1"
+    ).bind(slug, identity.userId).first();
+    return row?.response || null;
+  }
+  if (identity.anonHash) {
+    const row = await env.DB.prepare(
+      "SELECT response FROM event_rsvps WHERE slug=? AND anon_key_hash=? LIMIT 1"
+    ).bind(slug, identity.anonHash).first();
+    return row?.response || null;
+  }
+  return null;
+}
+
+async function eventRsvp(request, env, slug) {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, POST" } });
+  }
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const event = await getEventBySlug(env, slug);
+  if (!event) return jsonResp(404, { error: "event not found" });
+  if (Number(event.rsvp_enabled) !== 1) return jsonResp(403, { error: "rsvp disabled" });
+
+  if (request.method === "GET") {
+    const identity = await rsvpIdentity(env, request, false);
+    const [counts, mine] = await Promise.all([
+      rsvpCounts(env, slug),
+      rsvpMine(env, slug, identity),
+    ]);
+    return jsonResp(200, { counts, mine });
+  }
+
+  const body = await readJson(request, 2048);
+  const response = String(body?.response || "");
+  if (response !== "coming" && response !== "not") return jsonResp(400, { error: "bad response" });
+  const identity = await rsvpIdentity(env, request, true);
+  const now = nowMs();
+  const name = clip(body?.name, 40);
+  const emoji = clip(body?.emoji, 8);
+  const note = clip(body?.note, 140);
+  if (identity.userId) {
+    await env.DB.prepare(
+      `INSERT INTO event_rsvps (id, slug, user_id, anon_key_hash, name, emoji, response, note, created_ms, updated_ms)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(slug,user_id) WHERE user_id NOT NULL DO UPDATE SET
+         response=excluded.response, name=excluded.name, emoji=excluded.emoji, note=excluded.note, updated_ms=excluded.updated_ms`
+    ).bind(randHex(16), slug, identity.userId, name, emoji, response, note, now, now).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO event_rsvps (id, slug, user_id, anon_key_hash, name, emoji, response, note, created_ms, updated_ms)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(slug,anon_key_hash) WHERE anon_key_hash NOT NULL DO UPDATE SET
+         response=excluded.response, name=excluded.name, emoji=excluded.emoji, note=excluded.note, updated_ms=excluded.updated_ms`
+    ).bind(randHex(16), slug, identity.anonHash, name, emoji, response, note, now, now).run();
+  }
+
+  const counts = await rsvpCounts(env, slug);
+  const headers = new Headers({ "content-type": "application/json" });
+  if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
+  return new Response(JSON.stringify({ ok: true, response, counts }), { status: 200, headers });
+}
 
 // contentState returns the latest published versions, cached briefly so the
 // long-poll's repeated reads and every concurrent subscriber collapse to about
@@ -1159,6 +1291,15 @@ export default {
     if (pathname.startsWith("/api/broker/")) {
       try {
         return await broker(request, env, pathname);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    const rsvp = pathname.match(RSVP_RE);
+    if (rsvp) {
+      try {
+        return await eventRsvp(request, env, rsvp[1]);
       } catch (e) {
         return jsonResp(500, { error: String((e && e.message) || e) });
       }

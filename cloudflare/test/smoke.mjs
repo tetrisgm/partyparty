@@ -24,6 +24,8 @@ class FakeD1 {
     wallPosts = [],
     wallMedia = [],
     wallComments = [],
+    rsvpEnabled = 0,
+    rsvps = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -36,6 +38,12 @@ class FakeD1 {
     this.wallPosts = wallPosts;
     this.wallMedia = wallMedia;
     this.wallComments = wallComments;
+    this.rsvpEnabled = rsvpEnabled;
+    this.rsvps = new Map();
+    for (const row of rsvps) {
+      const key = row.user_id ? `${row.slug}:user:${row.user_id}` : `${row.slug}:anon:${row.anon_key_hash}`;
+      this.rsvps.set(key, { ...row });
+    }
   }
 
   prepare(sql) {
@@ -83,7 +91,16 @@ class FakeD1Statement {
         about: "A minimal event row for the smoke harness.",
         cover_key: "event/known-set/cover.jpg",
         status: "replay",
+        rsvp_enabled: this.db.rsvpEnabled,
       };
+    }
+    if (sql.includes("FROM event_rsvps WHERE slug=? AND user_id=?")) {
+      const [slug, userId] = this.args;
+      return this.db.rsvps.get(`${slug}:user:${userId}`) || null;
+    }
+    if (sql.includes("FROM event_rsvps WHERE slug=? AND anon_key_hash=?")) {
+      const [slug, anonHash] = this.args;
+      return this.db.rsvps.get(`${slug}:anon:${anonHash}`) || null;
     }
     if (sql.includes("FROM event_sets WHERE slug=?")) {
       const slug = this.args[0];
@@ -148,10 +165,56 @@ class FakeD1Statement {
       const ids = new Set(JSON.parse(this.args[0] || "[]"));
       return { results: this.db.wallComments.filter((row) => ids.has(row.post_id)) };
     }
+    if (sql.includes("FROM event_rsvps WHERE slug=? GROUP BY response")) {
+      const slug = this.args[0];
+      const counts = new Map();
+      for (const row of this.db.rsvps.values()) {
+        if (row.slug !== slug) continue;
+        counts.set(row.response, (counts.get(row.response) || 0) + 1);
+      }
+      return { results: [...counts.entries()].map(([response, n]) => ({ response, n })) };
+    }
     return { results: [] };
   }
 
   async run() {
+    const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("INSERT INTO event_rsvps")) {
+      const isUser = sql.includes("ON CONFLICT(slug,user_id)");
+      if (isUser) {
+        const [id, slug, userId, name, emoji, response, note, createdMs, updatedMs] = this.args;
+        const key = `${slug}:user:${userId}`;
+        const old = this.db.rsvps.get(key);
+        this.db.rsvps.set(key, {
+          id: old?.id || id,
+          slug,
+          user_id: userId,
+          anon_key_hash: null,
+          name,
+          emoji,
+          response,
+          note,
+          created_ms: old?.created_ms || createdMs,
+          updated_ms: updatedMs,
+        });
+      } else {
+        const [id, slug, anonHash, name, emoji, response, note, createdMs, updatedMs] = this.args;
+        const key = `${slug}:anon:${anonHash}`;
+        const old = this.db.rsvps.get(key);
+        this.db.rsvps.set(key, {
+          id: old?.id || id,
+          slug,
+          user_id: null,
+          anon_key_hash: anonHash,
+          name,
+          emoji,
+          response,
+          note,
+          created_ms: old?.created_ms || createdMs,
+          updated_ms: updatedMs,
+        });
+      }
+    }
     return { success: true };
   }
 }
@@ -334,6 +397,76 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /Smoke Test Rooftop/);
     assert.match(html, /<audio id="setaudio"/);
+  }],
+  ["event RSVP POST mints anonymous cookie and counts coming", async () => {
+    const db = new FakeD1({ rsvpEnabled: 1 });
+    const resp = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ response: "coming", name: "Ava", emoji: "\u2728", note: "See you there" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.match(resp.headers.get("set-cookie") || "", /pp_rsvp=/);
+    assert.deepEqual(json, { ok: true, response: "coming", counts: { coming: 1, not: 0 } });
+    assert.equal(db.rsvps.size, 1);
+  }],
+  ["event RSVP POST with same cookie updates same anonymous row", async () => {
+    const db = new FakeD1({ rsvpEnabled: 1 });
+    const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ response: "coming" }),
+    }), makeEnv({ DB: db }));
+    const cookie = (first.headers.get("set-cookie") || "").split(";")[0];
+    const second = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ response: "not", name: "Ava" }),
+    }), makeEnv({ DB: db }));
+    const json = await second.json();
+    assert.equal(second.status, 200);
+    assert.equal(second.headers.get("set-cookie"), null);
+    assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
+    assert.equal(db.rsvps.size, 1);
+  }],
+  ["event RSVP GET returns counts and mine", async () => {
+    const db = new FakeD1({ rsvpEnabled: 1 });
+    const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ response: "coming" }),
+    }), makeEnv({ DB: db }));
+    const cookie = (first.headers.get("set-cookie") || "").split(";")[0];
+    const resp = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get("set-cookie"), null);
+    assert.deepEqual(json, { counts: { coming: 1, not: 0 }, mine: "coming" });
+  }],
+  ["event RSVP POST rejects disabled event", async () => {
+    const resp = await fetchPath(`/api/e/${KNOWN_SLUG}/rsvp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ response: "coming" }),
+    }, { DB: new FakeD1({ rsvpEnabled: 0 }) });
+    assert.equal(resp.status, 403);
+  }],
+  ["event page renders RSVP only when enabled", async () => {
+    const enabled = await fetchPath(`/e/${KNOWN_SLUG}`, {}, { DB: new FakeD1({ rsvpEnabled: 1 }) });
+    const enabledHtml = await enabled.text();
+    assert.equal(enabled.status, 200);
+    assert.match(enabledHtml, /data-rsvp/);
+    assert.match(enabledHtml, /I'm coming/);
+    assert.match(enabledHtml, /Can't make it/);
+
+    const disabled = await fetchPath(`/e/${KNOWN_SLUG}`, {}, { DB: new FakeD1({ rsvpEnabled: 0 }) });
+    const disabledHtml = await disabled.text();
+    assert.equal(disabled.status, 200);
+    assert.doesNotMatch(disabledHtml, /data-rsvp/);
+    assert.doesNotMatch(disabledHtml, /I'm coming/);
   }],
   ["event wall renders approved posts and media without losing replay", async () => {
     const resp = await fetchPath(`/e/${KNOWN_SLUG}`, {}, {
