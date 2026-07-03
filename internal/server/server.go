@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,6 +73,7 @@ type srv struct {
 	bonjour    sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
 	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
+	clientEvN  int32    // global event ceiling — a rotating cid can't defeat this
 }
 
 func New(d Deps) *Srv {
@@ -236,6 +238,54 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		nAny, _ := s.clientLogN.LoadOrStore(body.CID, new(int32))
 		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest — no log floods
 			s.Diag.Printf("client[%s v%s]: %s: %s", clientIP(r), clipStr(body.V, 16), clipStr(body.Kind, 16), clipStr(body.Msg, 300))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/client-events":
+		// The black-box recorder: a batched, structured event stream from every
+		// client (open+environment, play/stall/recover/align/error, multi-tab,
+		// periodic health) folded into the session log so a guest's whole story
+		// is visible after the fact. Important events flag a prompt cloud upload.
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		var body struct {
+			CID, Tab, V, Plat, Page string
+			Events                  []map[string]any
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return
+		}
+		who := fmt.Sprintf("%s %s.%s v%s %s", clientIP(r), clipStr(body.CID, 14), clipStr(body.Tab, 12), clipStr(body.V, 16), clipStr(body.Page, 6))
+		if body.Page == "guest" || body.Page == "" { // enrich guest attribution with the device name
+			who = s.friendlyName(clientIP(r), r.UserAgent()) + " | " + who
+		}
+		nAny, _ := s.clientLogN.LoadOrStore("ev:"+body.CID, new(int32))
+		urgent := false
+		for i, ev := range body.Events {
+			if i >= 200 { // one batch is a burst, not a flood
+				break
+			}
+			if atomic.AddInt32(nAny.(*int32), 1) > 5000 { // generous per-session cap (no users yet)
+				break
+			}
+			// Global ceiling: a peer rotating cid every batch can't defeat the
+			// per-cid cap, so bound total logged events for the process too —
+			// past it we stop appending and stop forcing cloud uploads.
+			if atomic.AddInt32(&s.clientEvN, 1) > 500000 {
+				break
+			}
+			kind, _ := ev["k"].(string)
+			delete(ev, "k")
+			s.Diag.Printf("ev[%s] %s %s", who, clipStr(kind, 20), compactFields(ev))
+			switch kind {
+			case "error", "media", "play-failed", "join-stuck", "reconnect", "offline", "dj-stop":
+				urgent = true
+			}
+		}
+		if urgent {
+			s.Diag.MarkUrgent() // ship the log to the cloud within seconds, not on the 30s tick
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/heartbeat":
@@ -783,4 +833,34 @@ func clipStr(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// compactFields renders a client event's fields as one greppable line:
+// "+<t>ms #<seq> key=val …" with the rest sorted for stable diffs.
+func compactFields(m map[string]any) string {
+	var b strings.Builder
+	if t, ok := m["t"]; ok {
+		fmt.Fprintf(&b, "+%vms ", t)
+		delete(m, "t")
+	}
+	if n, ok := m["n"]; ok {
+		fmt.Fprintf(&b, "#%v ", n)
+		delete(m, "n")
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if m[k] == nil {
+			continue
+		}
+		s := fmt.Sprintf("%v", m[k])
+		if len(s) > 200 {
+			s = s[:200]
+		}
+		fmt.Fprintf(&b, "%s=%s ", k, s)
+	}
+	return strings.TrimSpace(b.String())
 }

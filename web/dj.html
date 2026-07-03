@@ -326,6 +326,35 @@
   const $ = id => document.getElementById(id);
   let qrText = null, lastState = 'idle';
 
+  // Black-box recorder (console side): JS errors + key admin actions folded
+  // into the Mac session log. A broken console means the DJ can't operate, so
+  // its errors must be visible in the cloud. Fire-and-forget.
+  const PP_V = '__PP_VERSION__';
+  const djEv = [];
+  let djSeq = 0, djT0 = Date.now();
+  function djLog(kind, fields){
+    try {
+      const e = Object.assign({ t: Date.now() - djT0, n: ++djSeq, k: kind }, fields || {});
+      djEv.push(e);
+      if (djEv.length >= 12 || kind === 'error') djFlush();
+    } catch (err) {}
+  }
+  function djFlush(beacon){
+    if (!djEv.length) return;
+    const batch = djEv.splice(0, djEv.length);
+    const body = JSON.stringify({ cid: 'dj-console', tab: 'dj', v: PP_V, plat: 'mac', page: 'dj', events: batch });
+    const requeue = () => { djEv.unshift.apply(djEv, batch); if (djEv.length > 200) djEv.splice(0, djEv.length - 200); };
+    try {
+      if (beacon && navigator.sendBeacon) { if (!navigator.sendBeacon('/api/client-events', body)) requeue(); return; }
+      fetch('/api/client-events', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body }).catch(() => { requeue(); });
+    } catch (err) { requeue(); }
+  }
+  setInterval(() => djFlush(), 5000);
+  window.addEventListener('pagehide', () => djFlush(true));
+  window.addEventListener('error', (e) => djLog('error', { msg: ((e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0)).slice(0, 300) }));
+  window.addEventListener('unhandledrejection', (e) => djLog('error', { msg: ('promise: ' + (e.reason && (e.reason.message || e.reason))).slice(0, 300) }));
+  try { djLog('open', { ua: navigator.userAgent.slice(0, 160), scr: screen.width + 'x' + screen.height }); } catch (e) {}
+
   // Page tabs: the wall / participants (the old Broadcast|Settings tabs are
   // gone — admin actions live in the action bar, settings behind the gear).
   function showPTab(name){
@@ -558,6 +587,7 @@
     try {
       const s = await (await fetch('/api/status', { cache:'no-store' })).json();
       const st = s.broadcast.state;
+      if (st !== lastState) djLog('bstate', { from: lastState, to: st, dev: s.broadcast.deviceName || '', bad: !!s.broadcast.captureBad });
       lastState = st;
       // Version pin (bottom-left) + self-refresh when the server updates
       // beneath an open console — only while idle (never mid-broadcast).

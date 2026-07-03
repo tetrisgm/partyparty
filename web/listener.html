@@ -323,20 +323,87 @@
       if (!cid) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem('pp.cid', cid); }
     } catch (e) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
-    // Guest-side error reporting into the DJ's session log. Field lesson: a
-    // phone whose join button silently failed was completely invisible —
-    // guests only heartbeat once PLAYING. Now the page phones home what broke.
-    function reportErr(kind, msg){
+    // Stable per-tab id (shared with the single-active-tab coordinator below).
+    const tabId = 'tab-' + Math.random().toString(36).slice(2, 10);
+
+    // ── Black-box recorder ──────────────────────────────────────────────
+    // A structured, batched event stream for EVERY meaningful thing this
+    // client does — open, environment, play/pause/stall/recover/align/error,
+    // connectivity, multi-tab, periodic health — POSTed to the Mac, folded
+    // into its session log, and uploaded to the cloud. This is how a guest's
+    // whole story (joined → played → stalled → lost) becomes visible for
+    // after-the-fact analysis. Fire-and-forget: it must NEVER touch playback.
+    // IMPORTANT declared before logEvent: an error thrown during early page
+    // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
+    // out of the temporal dead zone so that path can never throw.
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, offline: 1, 'dj-stop': 1 };
+    const evBuf = [];
+    let evSeq = 0, evStart = Date.now();
+    const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
+    function logEvent(kind, fields){
       try {
-        fetch('/api/client-log', { method: 'POST', keepalive: true,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cid, v: PAGE_VERSION, kind, msg: String(msg == null ? '?' : msg).slice(0, 300) }) }).catch(() => {});
-      } catch (e) {}
+        const e = { t: Date.now() - evStart, n: ++evSeq, k: kind };
+        if (fields) for (const key in fields) { const v = fields[key]; if (v !== undefined && v !== null) e[key] = v; }
+        evBuf.push(e);
+        if (evBuf.length > 300) evBuf.splice(0, evBuf.length - 300); // never grow unbounded if uploads hang
+        if (evBuf.length >= 24 || IMPORTANT[kind]) flushEvents();
+      } catch (err) {}
     }
-    window.addEventListener('error', (e) => reportErr('jserror',
+    let flushing = false, flushSince = 0, flushSeq = 0;
+    function flushEvents(beacon){
+      if (!evBuf.length) return;
+      // In-flight guard, but auto-release if a flush wedges (hung LAN socket)
+      // so events never silently stop reaching the Mac until pagehide.
+      if (flushing && !beacon && Date.now() - flushSince < 12000) return;
+      const batch = evBuf.splice(0, evBuf.length);
+      const body = JSON.stringify({ cid, tab: tabId, v: PAGE_VERSION, plat: platform, page: 'guest', events: batch });
+      // Put a failed batch back at the front (oldest-first) so the events most
+      // worth keeping — the stall/disconnect story — survive a network blip.
+      // Only on transport failure; an HTTP rejection means the server saw it.
+      const requeue = () => { evBuf.unshift.apply(evBuf, batch); if (evBuf.length > 300) evBuf.splice(0, evBuf.length - 300); };
+      try {
+        if (beacon && navigator.sendBeacon) { if (!navigator.sendBeacon('/api/client-events', body)) requeue(); return; }
+        flushing = true; flushSince = Date.now();
+        const mine = ++flushSeq;
+        fetch('/api/client-events', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body })
+          .catch(() => { requeue(); }).finally(() => { if (mine === flushSeq) flushing = false; });
+      } catch (err) { requeue(); flushing = false; }
+    }
+    setInterval(() => flushEvents(), 4000);
+    window.addEventListener('pagehide', () => { logEvent('pagehide', playSummary()); flushEvents(true); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) flushEvents(true); });
+
+    // reportErr kept as the error shorthand — now just an important event.
+    function reportErr(kind, msg){ logEvent(kind, { msg: String(msg == null ? '?' : msg).slice(0, 300) }); }
+    window.addEventListener('error', (e) => reportErr('error',
       (e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0)));
-    window.addEventListener('unhandledrejection', (e) => reportErr('promise',
-      e.reason && (e.reason.message || e.reason)));
+    window.addEventListener('unhandledrejection', (e) => reportErr('error',
+      'promise: ' + (e.reason && (e.reason.message || e.reason))));
+
+    // Environment snapshot — who/what is connecting (parse iOS/browser Mac-side).
+    (function(){
+      try {
+        const c = navigator.connection || {};
+        logEvent('open', {
+          ua: navigator.userAgent.slice(0, 180),
+          scr: screen.width + 'x' + screen.height + '@' + (window.devicePixelRatio || 1),
+          net: c.effectiveType || '', dl: c.downlink || 0,
+          lang: navigator.language || '', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone) || '',
+          native: useNative, mem: navigator.deviceMemory || 0, cores: navigator.hardwareConcurrency || 0,
+        });
+      } catch (e) {}
+    })();
+    // Connectivity edges.
+    window.addEventListener('online',  () => logEvent('online'));
+    window.addEventListener('offline', () => logEvent('offline'));
+    document.addEventListener('visibilitychange', () => logEvent('vis', { v: document.visibilityState }));
+
+    // playSummary: rolling per-session tallies for the pagehide "final state".
+    let sumStalls = 0, sumRecovers = 0, sumPlayMs = 0, sumPlayStart = 0, sumMaxLatency = 0;
+    function playSummary(){
+      const playing = sumPlayStart ? sumPlayMs + (Date.now() - sumPlayStart) : sumPlayMs;
+      return { stalls: sumStalls, recovers: sumRecovers, playMs: playing, maxLat: Math.round(sumMaxLatency * 10) / 10, ev: evSeq };
+    }
 
     // NTP-style clock sync to the Mac (the master clock) so per-device latency is
     // comparable across phones. Keep the minimum-RTT sample.
@@ -399,11 +466,11 @@
     // pause on a live stream would resume behind live / eat a rebuffer). It's
     // "muted, staying warm". iOS keeps foreground muted playback going; if it
     // gets suspended while muted+locked, resume (foreground) restarts it.
-    function pauseGuest(){ userPaused = true; player.muted = true; setPlayingUI(false); setStatus('paused'); }
+    function pauseGuest(){ userPaused = true; player.muted = true; setPlayingUI(false); setStatus('paused'); logEvent('mute'); }
     // Aligned RESUME: muted "pause" keeps playing, and field logs show it
     // drifting ~1s+ behind the room — unmuting must snap back to the target
     // (one-shot, same sanctioned move as the aligned start).
-    function resumeGuest(){ userPaused = false; yielded = false; claimAudio(); player.muted = false; if (player.paused) player.play().catch(()=>{}); setPlayingUI(true); setStatus('live'); try { alignSeek(latencyTarget || 5); } catch (e) {} }
+    function resumeGuest(){ userPaused = false; yielded = false; claimAudio(); player.muted = false; if (player.paused) player.play().catch(()=>{}); setPlayingUI(true); setStatus('live'); logEvent('unmute'); try { alignSeek(latencyTarget || 5); } catch (e) {} }
 
     // Fast, bounded retries: after a Wi-Fi blip we want audio back in ~1-2s,
     // not tens of seconds of exponential backoff (every second of stall is
@@ -495,6 +562,7 @@
             sk.end(sk.length - 1) - 0.5);
         }
       } catch (e) {}
+      logEvent('align', { lat: rnd(lat), target: rnd(target), delta: rnd(delta) });
       return true;
     }
     async function alignOnce(){
@@ -581,7 +649,7 @@
     // yield (pause + "playing in another tab — tap to listen here"). Claims
     // carry a timestamp so the newest wins with no ping-pong (yielding never
     // re-claims). BroadcastChannel where available, localStorage otherwise.
-    const tabId = 'tab-' + Math.random().toString(36).slice(2, 10);
+    // (tabId is defined up top — shared with the black-box recorder.)
     let myClaim = 0, yielded = false, bchan = null;
     try { bchan = new BroadcastChannel('pp-audio'); } catch (e) {}
     function claimAudio(){
@@ -604,6 +672,7 @@
         try { player.pause(); } catch (e) {}
         setPlayingUI(false);
         setStatus('playing on another tab — tap to listen here');
+        logEvent('yield');
       }
     }
     if (bchan) bchan.onmessage = (e) => onClaim(e.data);
@@ -636,10 +705,18 @@
     });
 
     let errRetries = 0;
-    player.addEventListener('playing', () => { started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; lastProgress = Date.now(); alignOnce(); if (!player.muted && !yielded) { claimAudio(); setPlayingUI(true); setStatus('live'); } });
+    player.addEventListener('playing', () => {
+      const wasStarted = started;
+      started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; lastProgress = Date.now();
+      if (!sumPlayStart && !player.muted) sumPlayStart = Date.now(); // audible play-time clock
+      logEvent('playing', { first: !wasStarted, lat: rnd(measureLatency()), buf: rnd(bufferedAhead()), muted: player.muted, ll: usingLL() });
+      alignOnce();
+      if (!player.muted && !yielded) { claimAudio(); setPlayingUI(true); setStatus('live'); }
+    });
     player.addEventListener('waiting', () => {
       stalledSinceBeat = true;
-      if (started) setStatus('buffering…'); // prebuffer 'waiting' must not flash a pill at an idle guest
+      if (started) { setStatus('buffering…'); sumStalls++; logEvent('stall', { buf: rnd(bufferedAhead()), rs: player.readyState, lat: rnd(measureLatency()) }); }
+      if (sumPlayStart) { sumPlayMs += Date.now() - sumPlayStart; sumPlayStart = 0; } // pause the play-time clock
       // A stall is a natural gap: if an app update has been waiting for a
       // "safe moment" to refresh this page, this is it — otherwise a page
       // that plays all night runs stale code all night.
@@ -670,8 +747,8 @@
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 8000; }
     function recoverPlayback(){
       if (player.error || player.readyState === 0 || stale()) {
-        reportErr('reconnect', 'err=' + (player.error && player.error.code) + ' rs=' + player.readyState +
-          ' staleMs=' + (lastProgress ? Date.now() - lastProgress : 0));
+        sumRecovers++;
+        logEvent('reconnect', { err: player.error && player.error.code, rs: player.readyState, staleMs: lastProgress ? Date.now() - lastProgress : 0 });
         attachSafe(); // fresh join at the live edge (aligned), not a nudge into dead air
       }
       player.play().catch(() => {});
@@ -770,7 +847,9 @@
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         if (!document.body.dataset.eventTitle) titleEl.textContent = s.name || 'partyparty'; // feed owns the title once the event loads
+        const wasLive = live;
         live = s.broadcast && s.broadcast.state === 'live';
+        if (live !== wasLive) logEvent(live ? 'dj-live' : 'dj-stop', { target: rnd(latencyTarget) });
         // "others" = everyone but you (you're in the count once you're playing).
         const others = Math.max(0, (s.listeners || 0) - (started ? 1 : 0));
         countEl.textContent = others ? ('● ' + others + ' other' + (others > 1 ? 's' : '') + ' listening') : '';
@@ -883,17 +962,22 @@
       player.play().catch(()=>{});
     }
 
+    let hbTick = 0;
     setInterval(() => {
       if (!started) return;
       maybeRejoin(); // the ONLY recovery — fires under lock too (this tick keeps running there, field-verified)
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
+      if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&del=' + (usingLL() ? 'llhls' : 'hls')
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION);
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
       fetch(url, { cache: 'no-store' }).catch(() => {});
+      // Periodic health into the recorder (~every 12s): the steady-state
+      // timeline between transitions — latency drift, buffer depth, rate.
+      if (++hbTick % 6 === 0) logEvent('health', { lat: rnd(lat), buf: rnd(bufferedAhead()), rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: usingLL() });
       stalledSinceBeat = false;
       if (debug) showDebug(lat);
     }, 2000); // 2s: the DJ console's numbers should feel live
@@ -1010,6 +1094,7 @@
 
       $id('welGo').addEventListener('click', () => {
         welcomed = true;
+        logEvent('lets-party', { live: live, ready: ready });
         try { localStorage.setItem('pp.welcomed', '1'); } catch (e) {}
         myName = $id('welName').value.trim() || myName;
         myEmoji = $id('welEmoji').textContent;

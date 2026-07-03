@@ -22,6 +22,7 @@ type Logger struct {
 	path    string
 	session string
 	dirty   bool
+	urgent  chan struct{} // nudges the uploader to ship NOW (a problem happened)
 }
 
 // Open creates ~/Library/Logs/partyparty/session-<ts>.log (Console.app finds
@@ -37,7 +38,27 @@ func Open(dir string) (*Logger, error) {
 		return nil, err
 	}
 	prune(dir, 14*24*time.Hour)
-	return &Logger{f: f, path: path, session: session}, nil
+	return &Logger{f: f, path: path, session: session, urgent: make(chan struct{}, 1)}, nil
+}
+
+// MarkUrgent nudges the upload loop to ship the log promptly (a client
+// reported an error/stall/etc). Non-blocking; coalesces bursts.
+func (l *Logger) MarkUrgent() {
+	if l == nil {
+		return
+	}
+	select {
+	case l.urgent <- struct{}{}:
+	default:
+	}
+}
+
+// Urgent is the channel the upload loop waits on for prompt-upload nudges.
+func (l *Logger) Urgent() <-chan struct{} {
+	if l == nil {
+		return nil
+	}
+	return l.urgent
 }
 
 func prune(dir string, maxAge time.Duration) {

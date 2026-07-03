@@ -588,18 +588,25 @@ func cmdOut(name string, args ...string) string {
 }
 
 // uploadLogLoop ships the session log to the cloud while it keeps growing —
-// every 45s DURING a broadcast (field problems need near-live visibility,
-// not a 3-minute-old picture), every 3 minutes otherwise. Same auth +
-// namespace as telemetry; PARTYPARTY_TELEMETRY=0 disables it all.
+// every 30s DURING a broadcast, every 3 minutes otherwise, and PROMPTLY (a
+// few seconds, debounced) whenever a client reports a problem so a failure is
+// analyzable almost live. Same auth + namespace as telemetry;
+// PARTYPARTY_TELEMETRY=0 disables it all.
 func uploadLogLoop(dl *diag.Logger, bc *broadcast.Broadcaster) {
 	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
 		return
 	}
 	for {
+		wait := 3 * time.Minute
 		if bc.Status().State == "live" {
-			time.Sleep(45 * time.Second)
-		} else {
-			time.Sleep(3 * time.Minute)
+			wait = 30 * time.Second
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-dl.Urgent():
+			timer.Stop()                // don't leak the abandoned timer when a nudge wins
+			time.Sleep(3 * time.Second) // let a burst of related events coalesce
+		case <-timer.C:
 		}
 		uploadLogOnce(dl)
 	}
