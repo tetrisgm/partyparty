@@ -32,6 +32,7 @@ class FakeD1 {
     rsvpEnabled = 0,
     rsvps = [],
     events = [],
+    eventSets = [],
     deviceInstalls = [],
   } = {}) {
     this.knownSlug = knownSlug;
@@ -64,6 +65,7 @@ class FakeD1 {
       rsvp_enabled: rsvpEnabled,
     });
     for (const row of events) this.events.set(row.slug, { ...row });
+    this.eventSets = eventSets.map((row) => ({ ...row }));
     this.deviceInstalls = new Map(deviceInstalls.map((row) => [row.install_id, { ...row }]));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
@@ -119,6 +121,8 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM event_sets WHERE slug=?")) {
       const slug = this.args[0];
+      const row = this.db.eventSets.find((set) => set.slug === slug && set.state === "ready");
+      if (row) return { id: row.id || SET_ID, slug, state: "ready", audio_key: row.audio_key || `event/${slug}/${row.id || SET_ID}.m4a` };
       if (slug !== this.db.knownSlug) return null;
       return {
         id: SET_ID,
@@ -162,6 +166,49 @@ class FakeD1Statement {
 
   async all() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("FROM events e") && sql.includes("COALESCE(rs.has_replay") && sql.includes("event_rsvps")) {
+      const [installId, profileId, _profileId2, sinceMs, untilMs, limitArg] = this.args;
+      const limit = Number(limitArg) || 50;
+      const rows = [...this.db.events.values()]
+        .filter((row) => row.install_id === installId || (profileId && row.dj_profile_id === profileId))
+        .filter((row) => {
+          const ts = row.scheduled_at_ms ?? row.published_ms ?? row.updated_ms;
+          return ts != null && Number(ts) >= Number(sinceMs) && Number(ts) <= Number(untilMs);
+        })
+        .map((row) => {
+          let coming = 0;
+          let notCount = 0;
+          for (const rsvp of this.db.rsvps.values()) {
+            if (rsvp.slug !== row.slug) continue;
+            if (rsvp.response === "coming") coming += 1;
+            if (rsvp.response === "not") notCount += 1;
+          }
+          return {
+            ...row,
+            has_replay: this.db.eventSets.some((set) => set.slug === row.slug && set.state === "ready") ? 1 : 0,
+            rsvp_coming: coming,
+            rsvp_not: notCount,
+          };
+        })
+        .sort((a, b) => {
+          const group = (row) => row.status === "live" ? 0 : row.status === "upcoming" ? 1 : 2;
+          const groupDiff = group(a) - group(b);
+          if (groupDiff) return groupDiff;
+          if (a.status === "upcoming" && b.status === "upcoming") {
+            const schedDiff = (Number(a.scheduled_at_ms ?? a.published_ms ?? a.updated_ms) || 0)
+              - (Number(b.scheduled_at_ms ?? b.published_ms ?? b.updated_ms) || 0);
+            if (schedDiff) return schedDiff;
+          }
+          if (group(a) === 2 && group(b) === 2) {
+            const activityDiff = (Number(b.last_activity_ms ?? b.published_ms ?? b.updated_ms) || 0)
+              - (Number(a.last_activity_ms ?? a.published_ms ?? a.updated_ms) || 0);
+            if (activityDiff) return activityDiff;
+          }
+          return bySlug(a, b);
+        })
+        .slice(0, limit);
+      return { results: rows };
+    }
     if (sql.includes("WHERE e.visibility=? AND e.status IN")) {
       return {
         results: [...this.db.homeEvents].sort((a, b) =>
@@ -1041,6 +1088,106 @@ const tests = [
       body: JSON.stringify({ id: "abc123abc123", secret: "wrong", slug: "ahead-bad-secret" }),
     });
     assert.equal(resp.status, 403);
+  }],
+  ["broker events-window rejects bad secret", async () => {
+    const resp = await fetchPath("/api/broker/events-window", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "wrong" }),
+    });
+    assert.equal(resp.status, 403);
+  }],
+  ["broker events-window returns owned events with replay and RSVP fields", async () => {
+    const now = Date.now();
+    const db = new FakeD1({
+      events: [{
+        slug: "window-upcoming",
+        install_id: "abc123abc123",
+        title: "Window Upcoming",
+        host: "DJ Window",
+        status: "upcoming",
+        visibility: "public",
+        scheduled_at_ms: now + 60_000,
+        end_at_ms: now + 3_600_000,
+        timezone: "America/Los_Angeles",
+        location_name: "Rooftop",
+        updated_ms: now - 1_000,
+        last_activity_ms: now - 1_000,
+      }, {
+        slug: "window-replay",
+        install_id: "abc123abc123",
+        title: "Window Replay",
+        host: "DJ Window",
+        status: "replay",
+        visibility: "unlisted",
+        scheduled_at_ms: null,
+        published_ms: now - 60_000,
+        updated_ms: now - 60_000,
+        last_activity_ms: now - 30_000,
+      }],
+      eventSets: [{ slug: "window-replay", state: "ready" }],
+      rsvps: [
+        { slug: "window-upcoming", user_id: "u1", response: "coming" },
+        { slug: "window-upcoming", user_id: "u2", response: "coming" },
+        { slug: "window-upcoming", user_id: "u3", response: "not" },
+      ],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/events-window", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", since_ms: now - 86_400_000, until_ms: now + 86_400_000 }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.equal(json.ok, true);
+    assert.equal(typeof json.serverMs, "number");
+    assert.deepEqual(json.events.map((event) => event.slug), ["window-upcoming", "window-replay"]);
+    assert.equal(json.events[0].url, "https://party.ramine.net/e/window-upcoming");
+    assert.equal(json.events[0].status, "upcoming");
+    assert.equal(json.events[0].visibility, "public");
+    assert.equal(json.events[0].scheduled_at_ms, now + 60_000);
+    assert.equal(json.events[0].end_at_ms, now + 3_600_000);
+    assert.equal(json.events[0].timezone, "America/Los_Angeles");
+    assert.equal(json.events[0].location_name, "Rooftop");
+    assert.equal(json.events[0].hasReplay, false);
+    assert.deepEqual(json.events[0].rsvp, { coming: 2, not: 1 });
+    assert.equal(json.events[1].url, "https://party.ramine.net/e/window-replay");
+    assert.equal(json.events[1].status, "replay");
+    assert.equal(json.events[1].hasReplay, true);
+    assert.deepEqual(json.events[1].rsvp, { coming: 0, not: 0 });
+  }],
+  ["broker events-window returns empty list for install with no events", async () => {
+    const resp = await fetchPath("/api/broker/events-window", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    });
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.equal(json.ok, true);
+    assert.deepEqual(json.events, []);
+    assert.equal(typeof json.serverMs, "number");
+  }],
+  ["broker events-window excludes events owned by another install", async () => {
+    const now = Date.now();
+    const db = new FakeD1({
+      events: [{
+        slug: "window-other",
+        install_id: "def456def456",
+        title: "Other",
+        status: "upcoming",
+        scheduled_at_ms: now + 60_000,
+        updated_ms: now,
+      }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/events-window", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", since_ms: now - 86_400_000, until_ms: now + 86_400_000 }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json.events, []);
   }],
     ["broker event-upsert creates fresh upcoming event", async () => {
     const db = new FakeD1({

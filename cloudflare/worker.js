@@ -1361,6 +1361,7 @@ function brokerJsonCap(pathname) {
   if (pathname === "/api/broker/publish-posts") return 1_000_000;
   if (pathname === "/api/broker/log") return 8_100_000;
   if (pathname === "/api/broker/telemetry") return 128_000;
+  if (pathname === "/api/broker/events-window") return 2_048;
   return 16_384;
 }
 
@@ -1560,6 +1561,93 @@ async function broker(request, env, pathname) {
     if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
     await bumpDjProfileActivity(env, check.dj_profile_id, now);
     return jsonResp(200, { ok: true, slug, url: `https://party.ramine.net/e/${slug}`, status: check.status || "upcoming" });
+  }
+
+  if (pathname === "/api/broker/events-window") {
+    if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+    const has = (k) => Object.prototype.hasOwnProperty.call(body, k);
+    const maxMs = 8640000000000000;
+    let sinceMs;
+    let untilMs;
+    if (has("since_ms")) {
+      sinceMs = Number(body.since_ms);
+      if (!Number.isSafeInteger(sinceMs) || sinceMs < 0) return jsonResp(400, { error: "bad since_ms" });
+    }
+    if (has("until_ms")) {
+      untilMs = Number(body.until_ms);
+      if (!Number.isSafeInteger(untilMs) || untilMs < 0) return jsonResp(400, { error: "bad until_ms" });
+    }
+    const serverMs = nowMs();
+    if (!has("since_ms") && !has("until_ms")) {
+      sinceMs = Math.max(0, serverMs - 7 * 24 * 60 * 60 * 1000);
+      untilMs = maxMs;
+    } else {
+      sinceMs = sinceMs ?? 0;
+      untilMs = untilMs ?? maxMs;
+    }
+    if (sinceMs > untilMs) return jsonResp(400, { error: "bad window" });
+
+    let limit = 50;
+    if (has("limit")) {
+      limit = Number(body.limit);
+      if (!Number.isSafeInteger(limit) || limit < 1) return jsonResp(400, { error: "bad limit" });
+    }
+    limit = Math.min(100, limit);
+
+    const linked = await env.DB.prepare(
+      "SELECT profile_id FROM device_installs WHERE install_id=? LIMIT 1"
+    ).bind(id).first();
+    const profileId = linked?.profile_id || null;
+    const rows = await env.DB.prepare(
+      `SELECT
+         e.slug, e.title, e.host, e.status, e.visibility, e.scheduled_at_ms, e.end_at_ms,
+         e.timezone, e.location_name, e.updated_ms, e.last_activity_ms,
+         COALESCE(rs.has_replay, 0) AS has_replay,
+         COALESCE(rv.coming, 0) AS rsvp_coming,
+         COALESCE(rv.not_count, 0) AS rsvp_not
+       FROM events e
+       LEFT JOIN (
+         SELECT slug, 1 AS has_replay
+         FROM event_sets
+         WHERE state='ready'
+         GROUP BY slug
+       ) rs ON rs.slug=e.slug
+       LEFT JOIN (
+         SELECT slug,
+                SUM(CASE WHEN response='coming' THEN 1 ELSE 0 END) AS coming,
+                SUM(CASE WHEN response='not' THEN 1 ELSE 0 END) AS not_count
+         FROM event_rsvps
+         GROUP BY slug
+       ) rv ON rv.slug=e.slug
+       WHERE (e.install_id=? OR (? IS NOT NULL AND e.dj_profile_id=?))
+         AND COALESCE(e.scheduled_at_ms, e.published_ms, e.updated_ms) BETWEEN ? AND ?
+       ORDER BY
+         CASE WHEN e.status='live' THEN 0 WHEN e.status='upcoming' THEN 1 ELSE 2 END,
+         CASE WHEN e.status='upcoming' THEN COALESCE(e.scheduled_at_ms, e.published_ms, e.updated_ms) END ASC,
+         CASE WHEN e.status NOT IN ('live', 'upcoming') THEN COALESCE(e.last_activity_ms, e.published_ms, e.updated_ms) END DESC,
+         e.slug ASC
+       LIMIT ?`
+    ).bind(id, profileId, profileId, sinceMs, untilMs, limit).all();
+    const events = (rows?.results || []).map((row) => ({
+      slug: row.slug,
+      title: row.title || "",
+      host: row.host || "",
+      status: row.status || "upcoming",
+      visibility: row.visibility || "unlisted",
+      scheduled_at_ms: row.scheduled_at_ms ?? null,
+      end_at_ms: row.end_at_ms ?? null,
+      timezone: row.timezone || "",
+      location_name: row.location_name || "",
+      updated_ms: row.updated_ms ?? null,
+      last_activity_ms: row.last_activity_ms ?? null,
+      url: `https://party.ramine.net/e/${row.slug}`,
+      hasReplay: !!row.has_replay,
+      rsvp: {
+        coming: Number(row.rsvp_coming) || 0,
+        not: Number(row.rsvp_not) || 0,
+      },
+    }));
+    return jsonResp(200, { ok: true, events, serverMs });
   }
 
   if (pathname === "/api/broker/event-status") {
