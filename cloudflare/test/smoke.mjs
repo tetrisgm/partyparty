@@ -26,6 +26,8 @@ class FakeD1 {
     wallComments = [],
     rsvpEnabled = 0,
     rsvps = [],
+    events = [],
+    deviceInstalls = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -39,6 +41,22 @@ class FakeD1 {
     this.wallMedia = wallMedia;
     this.wallComments = wallComments;
     this.rsvpEnabled = rsvpEnabled;
+    this.events = new Map();
+    this.events.set(knownSlug, {
+      slug: knownSlug,
+      install_id: "abc123abc123",
+      title: "Smoke Test Rooftop",
+      host: "Test DJ",
+      starts: "Tonight",
+      where_txt: "Test Venue",
+      tagline: "Harness replay",
+      about: "A minimal event row for the smoke harness.",
+      cover_key: "event/known-set/cover.jpg",
+      status: "replay",
+      rsvp_enabled: rsvpEnabled,
+    });
+    for (const row of events) this.events.set(row.slug, { ...row });
+    this.deviceInstalls = new Map(deviceInstalls.map((row) => [row.install_id, { ...row }]));
     this.rsvps = new Map();
     for (const row of rsvps) {
       const key = row.user_id ? `${row.slug}:user:${row.user_id}` : `${row.slug}:anon:${row.anon_key_hash}`;
@@ -79,20 +97,8 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM events WHERE slug=?")) {
       const slug = this.args[0];
-      if (slug !== this.db.knownSlug) return null;
-      return {
-        slug,
-        install_id: "abc123abc123",
-        title: "Smoke Test Rooftop",
-        host: "Test DJ",
-        starts: "Tonight",
-        where_txt: "Test Venue",
-        tagline: "Harness replay",
-        about: "A minimal event row for the smoke harness.",
-        cover_key: "event/known-set/cover.jpg",
-        status: "replay",
-        rsvp_enabled: this.db.rsvpEnabled,
-      };
+      const row = this.db.events.get(slug);
+      return row ? { ...row } : null;
     }
     if (sql.includes("FROM event_rsvps WHERE slug=? AND user_id=?")) {
       const [slug, userId] = this.args;
@@ -119,7 +125,11 @@ class FakeD1Statement {
     }
     if (sql.includes("SELECT install_id FROM events WHERE slug=?")) {
       const slug = this.args[0];
-      return slug === this.db.knownSlug ? { install_id: "abc123abc123" } : null;
+      const row = this.db.events.get(slug);
+      return row ? { install_id: row.install_id } : null;
+    }
+    if (sql.includes("FROM device_installs WHERE install_id=?")) {
+      return this.db.deviceInstalls.get(this.args[0]) || null;
     }
     if (sql.includes("SELECT slug FROM event_sets WHERE id=?")) {
       const setId = this.args[0];
@@ -179,6 +189,28 @@ class FakeD1Statement {
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("INSERT INTO events") && sql.includes("last_activity_ms")) {
+      const insertCols = (this.sql.match(/INSERT INTO events \(([^)]+)\)/)?.[1] || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const insertVals = this.args.slice(0, insertCols.length);
+      const row = Object.fromEntries(insertCols.map((col, i) => [col, insertVals[i]]));
+      const ownerId = this.args[this.args.length - 1];
+      const old = this.db.events.get(row.slug);
+      if (!old) {
+        this.db.events.set(row.slug, row);
+      } else if (old.install_id === ownerId) {
+        const setCols = (this.sql.match(/DO UPDATE SET ([\s\S]+?)\s+WHERE events\.install_id=\?/)?.[1] || "")
+          .split(",")
+          .map((s) => s.trim().split("=")[0].trim())
+          .filter(Boolean);
+        const updateVals = this.args.slice(insertCols.length, this.args.length - 1);
+        const next = { ...old };
+        for (let i = 0; i < setCols.length; i++) next[setCols[i]] = updateVals[i];
+        this.db.events.set(row.slug, next);
+      }
+    }
     if (sql.includes("INSERT INTO event_rsvps")) {
       const isUser = sql.includes("ON CONFLICT(slug,user_id)");
       if (isUser) {
@@ -291,6 +323,8 @@ function makeEnv(opts = {}) {
     [`event/${KNOWN_SLUG}/${SET_ID}.m4a`]: new FakeR2Object("fake-audio", { contentType: "audio/mp4" }),
     [`event/${KNOWN_SLUG}/${SET_ID}.peaks.json`]: new FakeR2Object('{"peaks":[10,50,80]}', { contentType: "application/json" }),
     [`event/${KNOWN_SLUG}/cover.jpg`]: new FakeR2Object("fake-jpeg", { contentType: "image/jpeg" }),
+    "broker/abc123abc123.json": new FakeR2Object(JSON.stringify({ secret: "secret-a", slug: "disco12", created: 1 }), { contentType: "application/json" }),
+    "broker/def456def456.json": new FakeR2Object(JSON.stringify({ secret: "secret-b", slug: "groove34", created: 1 }), { contentType: "application/json" }),
     ...(opts.r2Objects || {}),
   };
   return {
@@ -300,6 +334,7 @@ function makeEnv(opts = {}) {
       fetch: async () => new Response(opts.assetBody || "landing", { status: 200 }),
     },
     BROKER_BASE: "party.example.test",
+    CF_DNS_TOKEN: "token-test",
     CF_ZONE_ID: "zone-test",
   };
 }
@@ -691,6 +726,72 @@ const tests = [
   ["broker publish-cover rejects missing auth", async () => {
     const resp = await fetchPath("/api/broker/publish-cover", { method: "PUT", body: "cover" });
     assert.equal(resp.status, 403);
+  }],
+  ["broker event-upsert rejects bad secret", async () => {
+    const resp = await fetchPath("/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "wrong", slug: "ahead-bad-secret" }),
+    });
+    assert.equal(resp.status, 403);
+  }],
+  ["broker event-upsert creates fresh upcoming event", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        slug: "ahead-new",
+        title: "Ahead New",
+        host: "DJ Ahead",
+        starts: "Friday",
+        scheduled_at_ms: 1893456000000,
+        visibility: "public",
+      }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    const row = db.events.get("ahead-new");
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json, { ok: true, slug: "ahead-new", url: "https://party.ramine.net/e/ahead-new", status: "upcoming" });
+    assert.equal(row.status, "upcoming");
+    assert.equal(row.source, "install");
+    assert.equal(row.title, "Ahead New");
+    assert.equal(row.visibility, "public");
+    assert.equal(row.rsvp_enabled, 1);
+    assert.equal(row.owner_user_id, "user-1");
+    assert.equal(row.dj_profile_id, "profile-1");
+  }],
+  ["broker event-upsert returns 409 for slug owned by another install", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "taken-ahead", install_id: "def456def456", title: "Taken", status: "upcoming" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "taken-ahead", title: "Nope" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 409);
+    assert.equal(db.events.get("taken-ahead").title, "Taken");
+  }],
+  ["broker event-upsert updates owned title without clobbering replay status", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-replay", install_id: "abc123abc123", title: "Old Title", status: "replay" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-replay", title: "New Title" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    const row = db.events.get("owned-replay");
+    assert.equal(resp.status, 200);
+    assert.equal(json.status, "replay");
+    assert.equal(row.title, "New Title");
+    assert.equal(row.status, "replay");
   }],
 ];
 

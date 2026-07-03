@@ -1201,6 +1201,90 @@ async function broker(request, env, pathname) {
     return jsonResp(200, { ok: true, slug, setId, url: `https://${env.BROKER_BASE}/e/${slug}` });
   }
 
+  if (pathname === "/api/broker/event-upsert") {
+    if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+    const has = (k) => Object.prototype.hasOwnProperty.call(body, k);
+    const slug = String(body.slug || "");
+    if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+
+    const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+    if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+
+    const textSpecs = [
+      ["title", "title", 200],
+      ["host", "host", 80],
+      ["starts", "starts", 120],
+      ["where", "where_txt", 160],
+      ["location_name", "location_name", 200],
+      ["location_address", "location_address", 300],
+      ["tagline", "tagline", 200],
+      ["about", "about", 4000],
+      ["timezone", "timezone", 80],
+    ];
+    const vals = {};
+    const updateCols = [];
+    for (const [key, col, len] of textSpecs) {
+      vals[col] = has(key) ? clip(body[key], len) : null;
+      if (has(key)) updateCols.push([col, vals[col]]);
+    }
+
+    for (const key of ["scheduled_at_ms", "end_at_ms"]) {
+      if (has(key)) {
+        const n = Number(body[key]);
+        if (!Number.isSafeInteger(n) || n < 0) return jsonResp(400, { error: `bad ${key}` });
+        vals[key] = n;
+        updateCols.push([key, n]);
+      } else {
+        vals[key] = null;
+      }
+    }
+
+    const visibility = has("visibility") ? String(body.visibility || "") : "unlisted";
+    if (visibility !== "public" && visibility !== "unlisted") return jsonResp(400, { error: "bad visibility" });
+    vals.visibility = visibility;
+    if (has("visibility")) updateCols.push(["visibility", visibility]);
+
+    const rsvpEnabled = has("rsvp_enabled") ? Number(body.rsvp_enabled) : 1;
+    if (!Number.isInteger(rsvpEnabled) || (rsvpEnabled !== 0 && rsvpEnabled !== 1)) {
+      return jsonResp(400, { error: "bad rsvp_enabled" });
+    }
+    vals.rsvp_enabled = rsvpEnabled;
+    if (has("rsvp_enabled")) updateCols.push(["rsvp_enabled", rsvpEnabled]);
+
+    const linked = await env.DB.prepare(
+      "SELECT user_id, profile_id FROM device_installs WHERE install_id=? LIMIT 1"
+    ).bind(id).first();
+    const ownerUserId = linked?.user_id || null;
+    const djProfileId = linked?.profile_id || null;
+    if (ownerUserId) updateCols.push(["owner_user_id", ownerUserId]);
+    if (djProfileId) updateCols.push(["dj_profile_id", djProfileId]);
+
+    const now = nowMs();
+    const insertCols = [
+      "slug", "install_id", "title", "host", "starts", "tagline", "about", "where_txt",
+      "location_name", "location_address", "scheduled_at_ms", "end_at_ms", "timezone",
+      "visibility", "rsvp_enabled", "status", "source", "owner_user_id", "dj_profile_id",
+      "created_ms", "updated_ms", "last_activity_ms",
+    ];
+    const insertVals = [
+      slug, id, vals.title, vals.host, vals.starts, vals.tagline, vals.about, vals.where_txt,
+      vals.location_name, vals.location_address, vals.scheduled_at_ms, vals.end_at_ms, vals.timezone,
+      vals.visibility, vals.rsvp_enabled, "upcoming", "install", ownerUserId, djProfileId,
+      now, now, now,
+    ];
+    const updateSet = updateCols.map(([col]) => `${col}=?`).concat(["updated_ms=?", "last_activity_ms=?"]);
+    await env.DB.prepare(
+      `INSERT INTO events (${insertCols.join(", ")})
+       VALUES (${insertCols.map(() => "?").join(", ")})
+       ON CONFLICT(slug) DO UPDATE SET ${updateSet.join(", ")}
+       WHERE events.install_id=?`
+    ).bind(...insertVals, ...updateCols.map(([, value]) => value), now, now, id).run();
+
+    const check = await env.DB.prepare("SELECT install_id, status FROM events WHERE slug=?").bind(slug).first();
+    if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    return jsonResp(200, { ok: true, slug, url: `https://party.ramine.net/e/${slug}`, status: check.status || "upcoming" });
+  }
+
   if (pathname === "/api/broker/txt") {
     const value = String(body.value || "");
     if (!value || value.length > 255) return jsonResp(400, { error: "bad value" });
