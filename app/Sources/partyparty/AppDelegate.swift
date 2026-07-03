@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         poller.onChange = { [weak self] s in
             self?.updateIcon(s)
             self?.maybeTriggerAppUpdate(s)
+            self?.trackBroadcastEnd(s)
         }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
@@ -53,6 +54,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard Date().timeIntervalSince(lastAppUpdatePush) > 120 else { return }
         lastAppUpdatePush = Date()
         updater?.checkNow()
+    }
+
+    // An update found mid-set is deferred by the updater; the moment the DJ stops
+    // broadcasting, tell it to surface the held update (live -> not-live edge).
+    private var wasBroadcasting = false
+    private func trackBroadcastEnd(_ s: ServerStatus) {
+        let live = (s.state == "live" || s.state == "starting")
+        if wasBroadcasting && !live { updater?.broadcastDidEnd() }
+        wasBroadcasting = live
     }
 
     private var lastForegroundCheck = Date.distantPast

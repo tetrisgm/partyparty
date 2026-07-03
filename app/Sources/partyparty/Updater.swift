@@ -2,18 +2,26 @@ import AppKit
 import Foundation
 import Sparkle
 
-/// Wraps Sparkle's updater (EdDSA-verified, hourly background checks). Feed
-/// URL + public EdDSA key come from Info.plist (SUFeedURL / SUPublicEDKey),
-/// set by the release pipeline.
+/// Wraps Sparkle's updater (EdDSA-verified). Feed URL + public EdDSA key come
+/// from Info.plist (SUFeedURL / SUPublicEDKey), set by the release pipeline.
 ///
-/// Update UX (user decree): NEVER ask "do you want to download?" and never
-/// offer "Skip This Version". Scheduled checks download silently; once the
-/// update is staged we ask exactly one question — "Install now, or on next
-/// start?" — and never while a broadcast is live (it installs on quit then).
-final class Updater: NSObject, SPUUpdaterDelegate {
+/// Update model: scheduled checks download silently and Sparkle installs the
+/// latest on relaunch. We LET SPARKLE MANAGE the update — we do NOT take control
+/// via willInstallUpdateOnQuit. Returning YES there (the old code) stalls
+/// Sparkle's update session and stops ALL future checks until the app quits, so
+/// on this never-quit app a newer build wasn't picked up until relaunch — and
+/// "install now" would install a stale build, then prompt again (the double
+/// update). By not taking control, checks keep running and Sparkle always stages
+/// the latest, so one install lands you fully current.
+///
+/// The only thing we control is WHEN Sparkle's install prompt appears: never
+/// during a live set. The gentle-reminders hook defers it while broadcasting;
+/// Sparkle re-offers once the DJ is idle (its own timer plus our foreground /
+/// push checkNow()).
+final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
     private var controller: SPUStandardUpdaterController!
     private let isBusy: () -> Bool
-    private var promptedVersion: String? // the build we last offered — re-prompt only for a NEWER one
+    private var deferredWhileBusy = false // an update was withheld during a set; re-surface it once idle
 
     init(isBusy: @escaping () -> Bool) {
         self.isBusy = isBusy
@@ -21,57 +29,62 @@ final class Updater: NSObject, SPUUpdaterDelegate {
         controller = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: self,
-            userDriverDelegate: nil)
+            userDriverDelegate: self) // we drive gentle-reminder timing (defer mid-set)
         // Forced ON in code, not left to the first-run permission prompt or a
         // stale user default — every install should behave the same way.
         controller.updater.automaticallyChecksForUpdates = true
-        controller.updater.automaticallyDownloadsUpdates = true
+        // DOWNLOAD-ON-DEMAND, not auto-download. Auto-downloaded updates are
+        // presented by Sparkle's automatic driver, which BYPASSES the gentle
+        // reminder hook — so the "Install & Relaunch" window could pop mid-set.
+        // With auto-download off, updates flow through the scheduled driver, the
+        // only path that consults standardUserDriverShouldHandleShowingScheduledUpdate,
+        // so our "never during a set" deferral is actually honored.
+        controller.updater.automaticallyDownloadsUpdates = false
     }
 
     func checkForUpdates() {
+        // A manual check surfaces any update we were holding (showUpdateInFocus),
+        // so it's no longer "deferred". Clear the latch — otherwise, if the DJ
+        // manually checks mid-set and dismisses, broadcastDidEnd would later fire
+        // a fresh check and pop a spurious "you're up to date" dialog at set-end.
+        deferredWhileBusy = false
         controller.checkForUpdates(nil)
     }
 
-    /// A silent, on-demand background check — used to react immediately to a
-    /// push signal (the server's subscribe loop saw a newer build) or to the app
-    /// coming to the foreground, instead of waiting for Sparkle's own timer.
-    /// Honors our automatic-download setting: it stages any update and routes
-    /// through willInstallUpdateOnQuit, so there's no UI unless one is ready and
-    /// a set isn't live.
+    /// A silent background check — reacts to a push signal (the server saw a
+    /// newer build) or the app coming to the foreground, instead of waiting for
+    /// Sparkle's timer.
     func checkNow() {
         controller.updater.checkForUpdatesInBackground()
     }
 
-    // Sparkle staged a silently-downloaded update and will install it on quit.
-    // Offer the "now" shortcut — unless the DJ is mid-set, where any dialog is
-    // wrong and quit-install already covers it.
-    func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
-                 immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
-        if isBusy() { return true } // mid-set: silent install-on-quit — don't record, so a later idle moment can still offer it
-        if promptedVersion == item.displayVersionString { return true } // already offered THIS build
-        promptedVersion = item.displayVersionString // a newer staged build re-prompts; the same one won't
-        DispatchQueue.main.async {
-            let a = NSAlert()
-            a.messageText = "partyparty \(item.displayVersionString) is ready"
-            a.informativeText = "It's already downloaded. Install now, or it installs itself the next time partyparty starts."
-            a.addButton(withTitle: "Install and Relaunch")
-            a.addButton(withTitle: "On Next Start")
-            NSApp.activate(ignoringOtherApps: true)
-            // Attach to the front window as a SHEET so it can NEVER hide behind
-            // it. A free-floating modal (runModal) opened behind the console
-            // window: the whole app went modal-blocked with nothing visible to
-            // click — menu grayed, couldn't quit. It looked like a freeze.
-            let win = NSApp.mainWindow ?? NSApp.keyWindow
-                ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeKey })
-            if let win = win {
-                win.makeKeyAndOrderFront(nil)
-                a.beginSheetModal(for: win) { resp in
-                    if resp == .alertFirstButtonReturn { immediateInstallHandler() }
-                }
-            } else {
-                if a.runModal() == .alertFirstButtonReturn { immediateInstallHandler() }
-            }
+    /// Call when a broadcast ends. If we deferred an update during the set,
+    /// surface it now. MUST use checkForUpdates (routes to showing the held
+    /// update in focus) — checkForUpdatesInBackground can't resurrect the session
+    /// once a scheduled update is pending (it early-returns while one is in
+    /// progress), so the deferred update would otherwise never re-appear.
+    func broadcastDidEnd() {
+        guard deferredWhileBusy else { return }
+        deferredWhileBusy = false
+        controller.checkForUpdates(nil)
+    }
+
+    // MARK: Gentle scheduled-update reminders (SPUStandardUserDriverDelegate)
+
+    var supportsGentleScheduledUpdateReminders: Bool { true }
+
+    /// Idle -> let Sparkle show its update prompt now. Mid-set -> take
+    /// responsibility (return false), show nothing, and remember to re-surface it
+    /// via broadcastDidEnd() once the set ends — never interrupting a live set.
+    func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool {
+        if isBusy() {
+            deferredWhileBusy = true
+            return false
         }
         return true
     }
+
+    /// When we declared we'd handle showing (mid-set, returned false above), we
+    /// intentionally show nothing to defer past the live set. Nothing to do.
+    func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {}
 }
