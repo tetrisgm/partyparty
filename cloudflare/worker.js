@@ -301,6 +301,7 @@ a{color:inherit;text-decoration:none}img{display:block;max-width:100%}
 @supports(corner-shape:superellipse(2)){.hdr,.card,.thumb,.wc,.ev .cov{corner-shape:superellipse(2)}}
 nav{max-width:940px;margin:0 auto;padding:16px 20px;display:flex;align-items:center;justify-content:space-between}
 .brand{font-weight:600;font-size:19px;letter-spacing:-.02em}
+.navlinks{display:flex;align-items:center;gap:8px}
 .btn{display:inline-flex;align-items:center;gap:7px;font-size:15px;font-weight:600;padding:11px 20px;border-radius:var(--pill);border:1px solid transparent;cursor:pointer;background:var(--accent);color:#fff;transition:filter .15s,border-color .15s,background .15s}
 .btn:hover{filter:brightness(1.05)}
 .btn.sm{padding:9px 16px;font-size:14px}
@@ -391,8 +392,10 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .postitem:first-child{border-top:0;padding-top:0}.postitem p{font-size:15px;line-height:1.45;margin:0 0 6px}.postitem a{color:var(--link);font-size:13px}
 .emptyhome{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:16px;align-items:stretch}
 .emptyhome .big{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}.emptyhome p{color:var(--ink2);margin:0 0 18px}
+.authcard{max-width:520px;margin:48px auto 0}.authform{display:grid;gap:12px;margin-top:16px}.authform input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}.authform input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}.authform details{color:var(--ink2);font-size:13px}.authform summary{cursor:pointer;display:inline-flex;margin:2px 0 8px}.accounthead{display:flex;justify-content:space-between;align-items:start;gap:16px}.accounthead p{margin:4px 0 0;color:var(--ink2)}.accountgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.accountgrid .card{margin-top:0}.stat{font-size:34px;font-weight:700;letter-spacing:-.03em;margin:10px 0 2px}.minirow{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}.minirow:first-child{border-top:0;padding-top:0;margin-top:0}.minirow b{display:block;font-size:15px}.minirow span{display:block;color:var(--ink2);font-size:13px;margin-top:2px}
 .rsvp{display:grid;gap:14px}.rsvphead{display:flex;justify-content:space-between;gap:16px;align-items:start}.rsvphead .sub{margin-bottom:0}.rsvpcounts{display:flex;gap:14px;align-items:center;color:var(--ink2);font-size:12px;white-space:nowrap}.rsvpcounts b{display:block;color:var(--ink);font-size:22px;line-height:1}.rsvprow{display:flex;gap:10px;flex-wrap:wrap}.rsvp .btn.active{background:var(--accent);color:#fff;border-color:transparent}.rsvpfields{display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:10px}.rsvpfields input{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink)}.rsvpfields input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}
 @media(max-width:760px){.homehero{grid-template-columns:1fr;padding-top:26px}.eventgrid,.djstrip,.emptyhome{grid-template-columns:1fr}.eventcard{grid-template-columns:92px minmax(0,1fr)}}
+@media(max-width:760px){.accountgrid{grid-template-columns:1fr}.accounthead{display:grid}.navlinks{gap:6px}.navlinks .btn.sm{padding:8px 12px}}
 @media(max-width:560px){.rsvphead{display:grid}.rsvpcounts{justify-content:space-between}.rsvpfields{grid-template-columns:1fr 70px}}
 `;
 
@@ -403,7 +406,11 @@ const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden
 <g id="web"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 12h17M12 3.2c2.2 2.4 3.3 5.3 3.3 8.8s-1.1 6.4-3.3 8.8M12 3.2C9.8 5.6 8.7 8.5 8.7 12s1.1 6.4 3.3 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
 </defs></svg>`;
 
-const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><a class="btn lt sm" href="/partyparty.zip">Get the app</a></nav>`;
+const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><div class="navlinks"><a class="btn lt sm" href="/partyparty.zip">Get the app</a><a class="btn lt sm" id="nav-auth" href="/login">Sign in</a></div></nav>`;
+
+const NAV_AUTH_JS = `<script>
+(function(){var a=document.getElementById('nav-auth');if(!a||!window.fetch)return;fetch('/api/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.user){a.textContent='Account';a.href='/account'}else{a.textContent='Sign in';a.href='/login'}}).catch(function(){})})();
+</script>`;
 
 const TOAST_JS = `<div class="toast" id="t"></div><script>
 var tt;function toast(m){var e=document.getElementById('t');e.textContent=m;e.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){e.classList.remove('show')},2600)}
@@ -424,7 +431,7 @@ function shell({ title, desc, ogImage, url, body }) {
 <meta name="theme-color" content="#f5f5f7"><meta name="color-scheme" content="light">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
 <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
-<style>${CSS}</style></head><body>${SVGDEFS}${NAV}${body}${TOAST_JS}</body></html>`;
+<style>${CSS}</style></head><body>${SVGDEFS}${NAV}${body}${NAV_AUTH_JS}${TOAST_JS}</body></html>`;
 }
 
 function fmtDur(ms) {
@@ -695,6 +702,114 @@ async function homeResponse(env) {
   return new Response(renderHome({ events, profiles, replays }), {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" },
   });
+}
+
+function redirectResp(location) {
+  return new Response(null, { status: 302, headers: { location, "cache-control": "no-store" } });
+}
+
+async function loginResponse(request, env) {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
+  }
+  const user = await getSessionUser(env, request);
+  if (user) return redirectResp("/account");
+  const redirectPath = safeRedirectPath(new URL(request.url).searchParams.get("redirect"));
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
+      <p class="sub">Enter your email and we will send a sign-in link.</p>
+      <form class="authform" id="login-form">
+        <input type="email" name="email" autocomplete="email" required placeholder="you@example.com" aria-label="Email">
+        <details>
+          <summary>Developer</summary>
+          <input type="password" name="devSecret" autocomplete="off" placeholder="AUTH_DEV_SECRET" aria-label="AUTH_DEV_SECRET">
+        </details>
+        <button class="btn" type="submit">Send sign-in link</button>
+      </form>
+      <p class="hint" id="login-msg" role="status" style="margin:14px 0 0"></p>
+      <div id="login-dev" style="margin-top:14px"></div>
+    </div>
+  </div>
+  <script>
+(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}m.textContent='Check your email for your sign-in link.';if(out.json&&out.json.devLink){var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue (dev)';d.appendChild(a)}}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
+  </script>
+  <footer><span>🕺 partyparty</span><span>Account access</span></footer>`;
+  return new Response(shell({
+    title: "Sign in · partyparty",
+    desc: "Sign in to your partyparty account.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/login",
+    body,
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+async function accountResponse(request, env) {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
+  }
+  const user = await getSessionUser(env, request);
+  if (!user) return redirectResp("/login?redirect=/account");
+  const [profile, installsRow, eventsRows] = await Promise.all([
+    env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM device_installs WHERE user_id=?").bind(user.id).first(),
+    env.DB.prepare(
+      `SELECT slug, title, status, scheduled_at_ms, starts, where_txt, location_name
+       FROM events
+       WHERE owner_user_id=?
+       ORDER BY COALESCE(scheduled_at_ms, published_ms, updated_ms, created_ms, 0) DESC, slug ASC
+       LIMIT 6`
+    ).bind(user.id).all(),
+  ]);
+  const handle = normalizeHandle(profile?.handle);
+  const installs = Number(installsRow?.n) || 0;
+  const events = eventsRows?.results || [];
+  const profileCard = profile ? `<div class="card">
+    <h2>DJ profile</h2>
+    <p class="sub">${esc(profile.display_name || handle || "Your DJ profile")}</p>
+    <p class="emptyline">${handle ? `@${esc(handle)}` : "Handle not set yet."}</p>
+    <div class="ecta">
+      ${handle ? `<a class="btn lt sm" href="/@${esc(handle)}">View profile</a>` : ""}
+      <a class="btn lt sm" href="#" data-soon="Profile editing is coming soon.">Edit profile</a>
+    </div>
+  </div>` : `<div class="card">
+    <h2>DJ profile</h2>
+    <p class="emptyline">You haven't created a DJ profile yet.</p>
+    <div class="ecta"><a class="btn lt sm" href="#" data-soon="Profile creation is coming soon.">Create profile</a></div>
+  </div>`;
+  const eventList = events.length ? `<div>${events.map((ev) => {
+    const when = ev.starts || fmtWhen(ev.scheduled_at_ms);
+    const place = ev.location_name || ev.where_txt || "";
+    return `<div class="minirow"><b>${esc(ev.title || ev.slug || "Untitled event")}</b><span>${esc([ev.status, when, place].filter(Boolean).join(" · "))}</span>${ev.slug ? `<a href="/e/${esc(ev.slug)}" style="color:var(--link);font-size:13px">View event</a>` : ""}</div>`;
+  }).join("")}</div>` : `<p class="emptyline">No owned events yet.</p>`;
+  const body = `<div class="page">
+    <div class="card">
+      <div class="accounthead">
+        <div>
+          <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Account</h1>
+          <p>${esc(user.email || "")}</p>
+          <p>${esc(user.display_name || "")}</p>
+        </div>
+        <button class="btn lt sm" id="sign-out" type="button">Sign out</button>
+      </div>
+    </div>
+    <div class="accountgrid" style="margin-top:16px">
+      ${profileCard}
+      <div class="card"><h2>Linked installs</h2><div class="stat">${esc(installs)}</div><p class="emptyline">Device management is coming soon.</p></div>
+      <div class="card" style="grid-column:1/-1"><h2>Owned events</h2>${eventList}</div>
+    </div>
+  </div>
+  <script>
+(function(){var b=document.getElementById('sign-out');if(!b)return;b.addEventListener('click',function(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/'})})})();
+  </script>
+  <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+  return new Response(shell({
+    title: "Account · partyparty",
+    desc: "Your partyparty account.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/account",
+    body,
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 // eventFromRow projects a D1 events row (+ its latest ready set) into the shape
@@ -2026,6 +2141,28 @@ export default {
         return await authMe(request, env);
       } catch (_) {
         return jsonResp(200, { user: null });
+      }
+    }
+
+    if (pathname === "/login") {
+      try {
+        return await loginResponse(request, env);
+      } catch (_) {
+        return new Response(renderNotFound(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+
+    if (pathname === "/account") {
+      try {
+        return await accountResponse(request, env);
+      } catch (_) {
+        return new Response(renderNotFound(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        });
       }
     }
 

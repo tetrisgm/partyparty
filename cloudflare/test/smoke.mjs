@@ -142,6 +142,19 @@ class FakeD1Statement {
       if (!user || user.disabled_ms != null) return null;
       return { ...user };
     }
+    if (sql.includes("FROM dj_profiles WHERE user_id=?")) {
+      const userId = this.args[0];
+      const row = this.db.profiles.find((profile) => profile.user_id === userId);
+      return row ? { ...row } : null;
+    }
+    if (sql.includes("COUNT(*) AS n FROM device_installs WHERE user_id=?")) {
+      const userId = this.args[0];
+      let n = 0;
+      for (const row of this.db.deviceInstalls.values()) {
+        if (row.user_id === userId) n += 1;
+      }
+      return { n };
+    }
     if (sql.includes("FROM post_media pm JOIN posts p")) {
       const [mediaId, slug] = this.args;
       const media = this.db.importedPostMedia.get(mediaId);
@@ -214,6 +227,19 @@ class FakeD1Statement {
 
   async all() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("FROM events") && sql.includes("WHERE owner_user_id=?")) {
+      const userId = this.args[0];
+      return {
+        results: [...this.db.events.values()]
+          .filter((row) => row.owner_user_id === userId)
+          .sort((a, b) =>
+            (Number(b.scheduled_at_ms ?? b.published_ms ?? b.updated_ms ?? b.created_ms) || 0) -
+            (Number(a.scheduled_at_ms ?? a.published_ms ?? a.updated_ms ?? a.created_ms) || 0) ||
+            bySlug(a, b)
+          )
+          .slice(0, 6),
+      };
+    }
     if (sql.includes("FROM events e") && sql.includes("COALESCE(rs.has_replay") && sql.includes("event_rsvps")) {
       const [installId, profileId, _profileId2, sinceMs, untilMs, limitArg] = this.args;
       const limit = Number(limitArg) || 50;
@@ -763,6 +789,14 @@ async function postVerify(db, token, opts = {}) {
   }), makeEnv({ DB: db }));
 }
 
+async function signInCookie(db, email, opts = {}) {
+  const devLink = await requestDevLink(db, email, opts);
+  const token = new URL(devLink).searchParams.get("token");
+  const verify = await postVerify(db, token, opts);
+  assert.equal(verify.status, 302);
+  return (verify.headers.get("set-cookie") || "").split(";")[0];
+}
+
 const contentLength = (body) => String(new TextEncoder().encode(String(body)).byteLength);
 
 const tests = [
@@ -1013,6 +1047,57 @@ const tests = [
     assert.equal(unknown.status, 200);
     assert.deepEqual(Object.keys(await known.json()).sort(), ["devLink", "ok"]);
     assert.deepEqual(Object.keys(await unknown.json()).sort(), ["devLink", "ok"]);
+  }],
+  ["account redirects anonymous users to login", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/account"), makeEnv({ DB: new FakeD1() }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?redirect=/account");
+  }],
+  ["account renders signed-in user shell", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "acct@example.com", { ip: "203.0.113.28" });
+    const user = [...db.authUsers.values()][0];
+    db.profiles.push({
+      id: "profile-account",
+      user_id: user.id,
+      handle: "acct.dj",
+      display_name: "Account DJ",
+      published: 1,
+    });
+    db.deviceInstalls.set("install-account", { install_id: "install-account", user_id: user.id, profile_id: "profile-account" });
+    db.events.set("owned-account", {
+      slug: "owned-account",
+      owner_user_id: user.id,
+      title: "Owned Account Night",
+      status: "upcoming",
+      scheduled_at_ms: 1893542400000,
+    });
+
+    const resp = await worker.fetch(new Request("https://party.ramine.net/account", {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /acct@example\.com/);
+    assert.match(html, /Sign out/);
+    assert.match(html, /acct\.dj/);
+    assert.match(html, /Owned Account Night/);
+  }],
+  ["login renders email form for anonymous users", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/login"), makeEnv({ DB: new FakeD1() }));
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /type="email"/);
+    assert.match(html, /AUTH_DEV_SECRET/);
+  }],
+  ["login redirects signed-in users to account", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "login-redirect@example.com", { ip: "203.0.113.29" });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/login", {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/account");
   }],
   ["home renders useful empty state", async () => {
     const resp = await fetchPath("/");
