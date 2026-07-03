@@ -5,7 +5,8 @@
 //   GET /partyparty.zip         -> R2 (latest build)
 //   GET /partyparty-<ver>.zip   -> R2 (immutable, Sparkle enclosures)
 //   GET /e/<slug>               -> server-rendered EVENT page (gathers the night)
-//   GET /@<handle>              -> demo event (kept so shared links work)
+//   GET /@<handle>              -> server-rendered DJ PROFILE page
+//   GET /demo                   -> demo event
 //   GET /*                      -> static landing page (../site assets)
 //
 // Scope: partyparty is a Mac app for Wi-Fi silent-disco popups. Each EVENT gets a
@@ -270,6 +271,10 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .pill.live{background:rgba(255,59,92,.1);color:var(--live)}
 .djstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .djcard .av{width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg,#ff2d6f,#ff9500);background-size:cover;background-position:center;margin-bottom:14px}
+.profilehdr{min-height:380px}.profileav{width:92px;height:92px;border-radius:26px;background:linear-gradient(135deg,#ff2d6f,#ff9500);background-size:cover;background-position:center;border:2px solid rgba(255,255,255,.7);box-shadow:0 12px 34px rgba(0,0,0,.26);margin-bottom:14px}
+.profilebio{max-width:64ch;margin:12px 0 0;font-size:15px;line-height:1.55;opacity:.94}.profilehdr .slist{margin-top:16px}
+.emptyline{color:var(--ink2);font-size:14px;margin:0}.postlist{display:grid;gap:12px}.postitem{border-top:1px solid var(--line);padding-top:12px}
+.postitem:first-child{border-top:0;padding-top:0}.postitem p{font-size:15px;line-height:1.45;margin:0 0 6px}.postitem a{color:var(--link);font-size:13px}
 .emptyhome{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.55fr);gap:16px;align-items:stretch}
 .emptyhome .big{font-size:22px;font-weight:600;letter-spacing:-.02em;margin:0 0 8px}.emptyhome p{color:var(--ink2);margin:0 0 18px}
 @media(max-width:760px){.homehero{grid-template-columns:1fr;padding-top:26px}.eventgrid,.djstrip,.emptyhome{grid-template-columns:1fr}.eventcard{grid-template-columns:92px minmax(0,1fr)}}
@@ -279,6 +284,7 @@ const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden
 <g id="ig"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.3"/></g>
 <g id="sc"><path d="M9.5 17.5H18a3 3 0 0 0 .2-6A5.2 5.2 0 0 0 9.8 8.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3.2 12v5.5M5.6 10v7.5M8 9v8.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
 <g id="sp"><circle cx="12" cy="12" r="10"/><path d="M7 10.2c3-.9 6.6-.5 9.2 1.1M7.6 12.8c2.4-.7 5.4-.4 7.5 1M8.1 15.2c1.9-.5 4-.3 5.6.8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></g>
+<g id="web"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 12h17M12 3.2c2.2 2.4 3.3 5.3 3.3 8.8s-1.1 6.4-3.3 8.8M12 3.2C9.8 5.6 8.7 8.5 8.7 12s1.1 6.4 3.3 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
 </defs></svg>`;
 
 const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><a class="btn lt sm" href="/partyparty.zip">Get the app</a></nav>`;
@@ -326,6 +332,12 @@ function fmtWhen(ms) {
   } catch (_) {
     return "Date TBA";
   }
+}
+
+function social(id, url, bg, label = id, soon = "") {
+  if (!url) return "";
+  const attrs = soon ? ` data-soon="${esc(soon)}"` : ` target="_blank" rel="noopener noreferrer"`;
+  return `<a href="${esc(url)}"${attrs} style="background:${bg}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#${esc(id)}"/></svg></a>`;
 }
 
 async function getHomeEvents(env) {
@@ -399,6 +411,117 @@ function profileCard(row) {
     <p>@${esc(handle)}</p>
     ${row.bio ? `<p>${esc(clip(row.bio, 110))}</p>` : ""}
   </a>`;
+}
+
+async function getProfileUpcomingEvents(env, profileId) {
+  if (!env?.DB || !profileId) return [];
+  const rows = await env.DB.prepare(
+    `SELECT *
+     FROM events
+     WHERE dj_profile_id=? AND visibility=? AND status IN (?,?)
+     ORDER BY scheduled_at_ms ASC`
+  ).bind(profileId, "public", "upcoming", "live").all();
+  return rows?.results || [];
+}
+
+async function getProfileRecentEvents(env, profileId) {
+  if (!env?.DB || !profileId) return [];
+  const rows = await env.DB.prepare(
+    `SELECT *
+     FROM events
+     WHERE dj_profile_id=? AND visibility=? AND status=?
+     ORDER BY COALESCE(published_ms, scheduled_at_ms) DESC
+     LIMIT ?`
+  ).bind(profileId, "public", "replay", 12).all();
+  return rows?.results || [];
+}
+
+async function getProfilePosts(env, profileId) {
+  if (!env?.DB || !profileId) return [];
+  const rows = await env.DB.prepare(
+    `SELECT p.*, e.title AS event_title
+     FROM posts p
+     JOIN events e ON e.slug=p.slug
+     WHERE e.dj_profile_id=? AND e.visibility=? AND p.approved=? AND p.deleted_ms IS NULL AND p.dj=?
+     ORDER BY p.activity_ms DESC
+     LIMIT ?`
+  ).bind(profileId, "public", 1, 1, 6).all();
+  return rows?.results || [];
+}
+
+async function profileResponse(env, handle) {
+  const h = normalizeHandle(handle);
+  const htmlHeaders = { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" };
+  if (!env.DB) return new Response(renderNotFound(), { status: 503, headers: htmlHeaders });
+  const profile = await getProfileByHandle(env, h);
+  if (!profile) {
+    return new Response(renderNotFound(), {
+      status: 404,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30" },
+    });
+  }
+  const [upcoming, recent, posts] = await Promise.all([
+    getProfileUpcomingEvents(env, profile.id),
+    getProfileRecentEvents(env, profile.id),
+    getProfilePosts(env, profile.id),
+  ]);
+  return new Response(renderProfile({ profile, upcoming, recent, posts }), { headers: htmlHeaders });
+}
+
+function profileEventSection(title, sub, rows, empty) {
+  return `<section>
+    <div class="sectionhead"><div><h2>${esc(title)}</h2>${sub ? `<p>${esc(sub)}</p>` : ""}</div></div>
+    ${rows.length ? `<div class="eventgrid">${rows.map(eventCard).join("")}</div>` : `<div class="card"><p class="emptyline">${esc(empty)}</p></div>`}
+  </section>`;
+}
+
+function renderProfile({ profile, upcoming, recent, posts }) {
+  const handle = normalizeHandle(profile.handle);
+  const displayName = profile.display_name || handle;
+  const heroStyle = profile.hero_key
+    ? `background-image:url('/dj/${esc(handle)}/hero.jpg')`
+    : "background:linear-gradient(135deg,#30123f 0%,#a52c7c 48%,#ff9500 100%)";
+  const avatarStyle = profile.avatar_key ? `background-image:url('/dj/${esc(handle)}/avatar.jpg')` : "";
+  const meta = [profile.location].filter(Boolean).map(esc);
+  const socials = [
+    social("web", profile.website_url, "#111827", "Website"),
+    social("ig", profile.instagram_url, "#c13584", "Instagram"),
+    social("sc", profile.soundcloud_url, "#ff7700", "SoundCloud"),
+    social("sp", profile.spotify_url, "#1db954", "Spotify"),
+  ].join("");
+  const postsCard = `<section>
+    <div class="sectionhead"><div><h2>Posts</h2><p>Notes from the DJ across their public nights.</p></div></div>
+    <div class="card">
+      ${posts.length ? `<div class="postlist">${posts.map((p) => `<div class="postitem">
+        <p>${p.emoji ? `<span>${esc(p.emoji)}</span> ` : ""}${esc(p.text || "")}</p>
+        ${p.slug ? `<a href="/e/${esc(p.slug)}">${esc(p.event_title || p.slug)}</a>` : ""}
+      </div>`).join("")}</div>` : `<p class="emptyline">No posts yet.</p>`}
+    </div>
+  </section>`;
+  const body = `<div class="page">
+    <div class="hdr profilehdr">
+      <div class="cover" style="${heroStyle}"></div>
+      <div class="in">
+        <div class="profileav" style="${avatarStyle}"></div>
+        <h1 class="etitle">${esc(displayName)}</h1>
+        <div class="emeta">@${esc(handle)}${meta.length ? " · " + meta.join(" · ") : ""}</div>
+        ${profile.bio ? `<p class="profilebio">${esc(profile.bio)}</p>` : ""}
+        ${socials ? `<div class="slist">${socials}</div>` : ""}
+      </div>
+    </div>
+    ${profileEventSection("Upcoming", "Public parties coming up next.", upcoming, "No upcoming public events yet.")}
+    ${profileEventSection("Recent", "Replay pages from finished sets.", recent, "No public replays yet.")}
+    ${postsCard}
+  </div>
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>`;
+  const ogImage = profile.hero_key ? `/dj/${handle}/hero.jpg` : profile.avatar_key ? `/dj/${handle}/avatar.jpg` : DEFAULT_OG_IMAGE;
+  return shell({
+    title: `${displayName} (@${handle}) · partyparty`,
+    desc: profile.bio || `${displayName} on partyparty.`,
+    ogImage,
+    url: `/@${handle}`,
+    body,
+  });
 }
 
 function emptyHome() {
@@ -477,7 +600,6 @@ function eventFromRow(row, set, slug) {
 
 function renderEvent(e) {
   const soon = "Coming soon — event pages are in progress.";
-  const social = (id, url, bg) => url ? `<a href="${esc(url)}" data-soon="${soon}" style="background:${bg}" aria-label="${id}"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#${id}"/></svg></a>` : "";
   const statusPill = e.status === "live"
     ? `<span class="statuspill"><span class="dot"></span> Live · ${esc(e.listeners)} listening</span>`
     : e.status === "upcoming" ? `<span class="statuspill">Upcoming</span>`
@@ -509,8 +631,8 @@ function renderEvent(e) {
   </div>` : "";
 
   const aboutInner = (e.about ? `<p>${esc(e.about)}</p>` : "") +
-    (social("sc", e.socials?.soundcloud, "#ff7700") + social("ig", e.socials?.instagram, "#c13584") + social("sp", e.socials?.spotify, "#1db954")
-      ? `<div class="slist">${social("sc", e.socials?.soundcloud, "#ff7700")}${social("ig", e.socials?.instagram, "#c13584")}${social("sp", e.socials?.spotify, "#1db954")}</div>` : "");
+    (social("sc", e.socials?.soundcloud, "#ff7700", "SoundCloud", soon) + social("ig", e.socials?.instagram, "#c13584", "Instagram", soon) + social("sp", e.socials?.spotify, "#1db954", "Spotify", soon)
+      ? `<div class="slist">${social("sc", e.socials?.soundcloud, "#ff7700", "SoundCloud", soon)}${social("ig", e.socials?.instagram, "#c13584", "Instagram", soon)}${social("sp", e.socials?.spotify, "#1db954", "Spotify", soon)}</div>` : "");
   const aboutCard = aboutInner ? `<div class="card about"><h2>About this set</h2>${aboutInner}</div>` : "";
   const previewBadge = e.set ? "" : `<span class="preview">Preview · event pages in progress</span>`;
   const shareUrl = e.slug ? `${SITE_ORIGIN}/e/${esc(e.slug)}` : "";
@@ -1071,8 +1193,15 @@ export default {
       return await homeResponse(env);
     }
 
-    // Event pages: /e/<slug> is real (D1-backed); /@<handle> keeps the demo seed
-    // so old shared links still render something.
+    // Event pages: /e/<slug> is real (D1-backed). /demo keeps the original
+    // seed page around for smoke tests and examples.
+    if (pathname === "/demo") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      return new Response(renderEvent(DEMO), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
+    }
+
     const evm = pathname.match(EVENT_RE);
     if (evm) {
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -1090,8 +1219,12 @@ export default {
       ).bind(slug).first();
       return new Response(renderEvent(eventFromRow(row, set, slug)), { headers: htmlHeaders });
     }
-    if (HANDLE_RE.test(pathname)) {
-      return new Response(renderEvent(DEMO), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
+    const hm = pathname.match(HANDLE_RE);
+    if (hm) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      return await profileResponse(env, hm[1]);
     }
 
     return env.ASSETS.fetch(request);

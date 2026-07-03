@@ -12,11 +12,24 @@ const KNOWN_SLUG = "known-set";
 const SET_ID = "abcdef123456";
 
 class FakeD1 {
-  constructor({ knownSlug = KNOWN_SLUG, homeEvents = [], featuredProfiles = [], replayEvents = [] } = {}) {
+  constructor({
+    knownSlug = KNOWN_SLUG,
+    homeEvents = [],
+    featuredProfiles = [],
+    replayEvents = [],
+    profiles = [],
+    profileUpcomingEvents = [],
+    profileRecentEvents = [],
+    profilePosts = [],
+  } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
     this.featuredProfiles = featuredProfiles;
     this.replayEvents = replayEvents;
+    this.profiles = profiles;
+    this.profileUpcomingEvents = profileUpcomingEvents;
+    this.profileRecentEvents = profileRecentEvents;
+    this.profilePosts = profilePosts;
   }
 
   prepare(sql) {
@@ -77,6 +90,10 @@ class FakeD1Statement {
       const setId = this.args[0];
       return setId === SET_ID ? { slug: this.db.knownSlug } : null;
     }
+    if (sql.includes("FROM dj_profiles WHERE handle=?")) {
+      const handle = this.args[0];
+      return this.db.profiles.find((row) => row.handle === handle && row.published === 1) || null;
+    }
     return null;
   }
 
@@ -90,6 +107,15 @@ class FakeD1Statement {
     }
     if (sql.includes("WHERE e.visibility=? AND e.status=?")) {
       return { results: this.db.replayEvents };
+    }
+    if (sql.includes("WHERE dj_profile_id=? AND visibility=? AND status IN")) {
+      return { results: this.db.profileUpcomingEvents };
+    }
+    if (sql.includes("WHERE dj_profile_id=? AND visibility=? AND status=?")) {
+      return { results: this.db.profileRecentEvents };
+    }
+    if (sql.includes("FROM posts p JOIN events e")) {
+      return { results: this.db.profilePosts };
     }
     return { results: [] };
   }
@@ -280,8 +306,48 @@ const tests = [
     const resp = await fetchPath("/e/unknown-set");
     assert.equal(resp.status, 404);
   }],
-  ["handle route renders demo", async () => {
-    const resp = await fetchPath("/@handle");
+  ["profile route renders real DJ profile", async () => {
+    const resp = await fetchPath("/@someone", {}, {
+      db: {
+        profiles: [{
+          id: "profile-someone",
+          handle: "someone",
+          display_name: "DJ Someone",
+          bio: "Late-night house and balcony replays.",
+          location: "Oakland",
+          avatar_key: "dj/someone/avatar.jpg",
+          hero_key: "dj/someone/hero.jpg",
+          website_url: "https://example.test",
+          instagram_url: "",
+          soundcloud_url: "",
+          spotify_url: "",
+          published: 1,
+        }],
+        profileUpcomingEvents: [{
+          slug: "someone-rooftop",
+          title: "Someone Rooftop",
+          host: "DJ Someone",
+          scheduled_at_ms: 1893456000000,
+          location_name: "Roof Room",
+          status: "upcoming",
+          visibility: "public",
+          cover_key: "event/someone-rooftop/cover.jpg",
+        }],
+      },
+    });
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /DJ Someone/);
+    assert.match(html, /@someone/);
+    assert.match(html, /href="\/e\/someone-rooftop"/);
+    assert.doesNotMatch(html, /Rooftop Sessions/);
+  }],
+  ["unknown profile returns 404", async () => {
+    const resp = await fetchPath("/@nobody");
+    assert.equal(resp.status, 404);
+  }],
+  ["demo route renders demo", async () => {
+    const resp = await fetchPath("/demo");
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.match(html, /Rooftop Sessions/);
