@@ -34,6 +34,7 @@ import (
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
 	"partyparty/internal/ota"
+	"partyparty/internal/publish"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
 )
@@ -610,15 +611,32 @@ func main() {
 		// A finished set is the moment the log matters most — ship it the
 		// moment broadcasting stops, not at the next 3-minute tick.
 		go func() {
-			prev := ""
+			wasActive := false
+			var liveStart time.Time
 			for {
 				time.Sleep(2 * time.Second)
 				st := bc.Status().State
-				if (prev == "live" || prev == "starting") && (st == "idle" || st == "error") {
+				// "stopping" is a real, brief intermediate state on the way to
+				// idle. Treat any of live/starting/stopping as active and detect
+				// the end as active->settled, so a poll that samples "stopping"
+				// can't make us miss the end edge (a plain prev==live check did).
+				active := st == "live" || st == "starting" || st == "stopping"
+				if (st == "live" || st == "starting") && liveStart.IsZero() {
+					liveStart = time.Now()
+				}
+				if wasActive && !active {
 					diagLog.Printf("broadcast ended (state=%s) — uploading session log", st)
 					uploadLogOnce(diagLog)
+					// A cleanly-ended set of real length auto-publishes to its
+					// online page (the manual "Publish now" button has no such
+					// floor). Errors don't auto-publish — the DJ can still push
+					// it by hand.
+					if st == "idle" && events != nil {
+						maybeAutoPublish(events, cfg.FFmpeg, payload, time.Since(liveStart), diagLog)
+					}
+					liveStart = time.Time{}
 				}
-				prev = st
+				wasActive = active
 			}
 		}()
 		go uploadLogLoop(diagLog, bc)
@@ -704,6 +722,100 @@ func uploadLogOnce(dl *diag.Logger) {
 	if resp, err := cl.Post(base+"/api/broker/log", "application/json", bytes.NewReader(body)); err == nil {
 		resp.Body.Close()
 	}
+}
+
+// maybeAutoPublish publishes a finished set to its online /e/<slug> page — but
+// only for REAL sets. Dev builds and telemetry-off installs never publish (same
+// rule as logs/telemetry, so a dev instance sharing install.json stays quiet).
+// Sets shorter than the configured floor are skipped so sound-checks and test
+// blips don't spam the page, and a set already published (manually, or by a
+// prior auto) is skipped by signature. The upload itself runs off the poller.
+func maybeAutoPublish(events *event.Store, ffmpeg string, payload *ota.Store, dur time.Duration, dl *diag.Logger) {
+	if appVersion == "dev" || os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
+		return
+	}
+	var cfgJSON []byte
+	if payload != nil {
+		cfgJSON = payload.Config()
+	}
+	if !autoPublishEnabled(cfgJSON) {
+		return
+	}
+	if dur < autoPublishMinDur(cfgJSON) {
+		return // too short — a sound-check, not a set worth a page
+	}
+	// Snapshot the set NOW (not inside the goroutine): capture the exact
+	// recordings + meta + signature we validated, so a "New event"/next Go Live
+	// during the up-to-10-min upload can't swap what gets published (TOCTOU).
+	recordings := events.LatestSetRecordings()
+	if len(recordings) == 0 {
+		return // nothing recorded (recording off, or no audio captured)
+	}
+	sig := publish.Signature(recordings)
+	if sig == events.LastPublishedSig() {
+		return // already online (manual publish, or a prior auto)
+	}
+	id, secret := activate.InstallCreds()
+	if id == "" {
+		return // never registered — nowhere to publish
+	}
+	m := events.Meta()
+	base := os.Getenv("PARTYPARTY_BROKER")
+	if base == "" {
+		base = "https://party.ramine.net"
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		res, err := publish.Publish(ctx, ffmpeg, recordings, publish.Meta{
+			Slug: m.Slug, Title: m.Title, Host: m.Host, Starts: m.Starts,
+		}, publish.Creds{ID: id, Secret: secret, InstallSlug: activate.InstallSlug()}, base)
+		if dl == nil {
+			return
+		}
+		if err != nil {
+			dl.Printf("auto-publish failed: %v", err)
+			return
+		}
+		events.SetPublishedSig(sig)
+		if res.Warning != "" {
+			dl.Printf("auto-published set → %s (%s)", res.URL, res.Warning)
+		} else {
+			dl.Printf("auto-published set → %s", res.URL)
+		}
+	}()
+}
+
+// autoPublishEnabled reads the OTA flags.autoPublish switch (default on).
+func autoPublishEnabled(cfgJSON []byte) bool {
+	var c struct {
+		Flags struct {
+			AutoPublish *bool `json:"autoPublish"`
+		} `json:"flags"`
+	}
+	if len(cfgJSON) > 0 && json.Unmarshal(cfgJSON, &c) == nil && c.Flags.AutoPublish != nil {
+		return *c.Flags.AutoPublish
+	}
+	return true
+}
+
+// autoPublishMinDur is the minimum set length for auto-publish: env override,
+// else the OTA tunables.publishAutoMinSec, else 3 minutes.
+func autoPublishMinDur(cfgJSON []byte) time.Duration {
+	if v := os.Getenv("PARTYPARTY_PUBLISH_MIN_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	var c struct {
+		Tunables struct {
+			PublishAutoMinSec *int `json:"publishAutoMinSec"`
+		} `json:"tunables"`
+	}
+	if len(cfgJSON) > 0 && json.Unmarshal(cfgJSON, &c) == nil && c.Tunables.PublishAutoMinSec != nil && *c.Tunables.PublishAutoMinSec >= 0 {
+		return time.Duration(*c.Tunables.PublishAutoMinSec) * time.Second
+	}
+	return 3 * time.Minute
 }
 
 // humanizeActivation turns raw activation errors into console-worthy English.

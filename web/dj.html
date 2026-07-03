@@ -218,6 +218,18 @@
     <div class="url" id="url">—</div>
     <div id="qr"></div>
     <div class="hint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+
+    <div id="pubSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
+      <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
+      <div class="hint" style="margin:0 0 10px">When a set ends it auto-publishes to a shareable replay page. Publish the current recording now, or pick a custom link.</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="muted" style="white-space:nowrap">party.ramine.net/e/</span>
+        <input id="pubSlug" type="text" placeholder="auto" maxlength="48" spellcheck="false" autocapitalize="off"
+          style="flex:1;min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:8px 10px;color:var(--label);font:inherit;font-size:13px">
+        <button class="go" id="pubBtn" type="button">Publish now</button>
+      </div>
+      <div id="pubResult" class="hint" style="margin-top:10px;display:none"></div>
+    </div>
   </div>
 
   <nav class="ptabs">
@@ -771,6 +783,45 @@
   editable('titleEdit', 'title');
   editable('hostEdit', 'host');
   editable('startsEdit', 'starts');
+
+  // ── Publish the recorded set to its online /e/<slug> replay page ──
+  let pubSlugTouched = false;
+  const pubSlug = $('pubSlug'), pubBtn = $('pubBtn'), pubResult = $('pubResult');
+  const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
+  function syncPublish(slug){ // feed → field, unless the DJ is editing it
+    if (pubSlug === document.activeElement || pubSlugTouched) return;
+    if (typeof slug === 'string' && slug !== pubSlug.value) pubSlug.value = slug;
+  }
+  const savePubSlug = () => {
+    const v = normSlug(pubSlug.value);
+    if (v !== pubSlug.value) pubSlug.value = v;
+    pubSlugTouched = false;
+    return fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ slug: v }) }).catch(()=>{});
+  };
+  pubSlug.addEventListener('input', () => { pubSlugTouched = true; });
+  pubSlug.addEventListener('blur', savePubSlug);
+  pubSlug.addEventListener('keydown', (e) => { if (e.key === 'Enter') pubSlug.blur(); });
+  pubBtn.addEventListener('click', async () => {
+    pubBtn.disabled = true; const label = pubBtn.textContent; pubBtn.textContent = 'Publishing…';
+    pubResult.style.display = 'block';
+    pubResult.textContent = 'Remuxing and uploading your set — this can take a moment…';
+    try {
+      await savePubSlug(); // land the slug BEFORE publishing, else it uses the old/auto one
+      const r = await fetch('/api/publish', { method:'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'publish failed');
+      const bare = d.url.replace(/^https?:\/\//, '');
+      const warn = d.warning ? ' · <span style="color:var(--label-secondary)">' + escT(d.warning) + '</span>' : '';
+      pubResult.innerHTML = 'Published → <a href="' + d.url + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">' + bare + '</a> · <span id="pubCopy" style="cursor:pointer;text-decoration:underline">copy link</span>' + warn;
+      const c = $('pubCopy');
+      if (c) c.onclick = () => { if (navigator.clipboard) navigator.clipboard.writeText(d.url); c.textContent = 'copied ✓'; };
+    } catch (e) {
+      pubResult.textContent = 'Couldn’t publish: ' + (e.message || e);
+    } finally {
+      pubBtn.disabled = false; pubBtn.textContent = label;
+    }
+  });
   function syncHeader(title, host, starts){
     for (const [id, v] of [['titleEdit', title], ['hostEdit', host], ['startsEdit', starts]]) {
       const el = $(id);
@@ -905,6 +956,7 @@
         }
         $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
+        syncPublish(data.slug);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {

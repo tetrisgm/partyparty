@@ -1,4 +1,4 @@
 {
-  "flags": {},
-  "tunables": {}
+  "flags": { "autoPublish": true },
+  "tunables": { "publishAutoMinSec": 180 }
 }

@@ -54,7 +54,11 @@ import (
 // declares a higher minRuntime is NOT adopted until this is raised — that is
 // exactly the "major logic change requires a relaunch, everything else is just
 // downloaded" boundary.
-const RuntimeVersion = 1
+//
+// v2: the DJ console (web/dj.html) now depends on the server-side publish routes
+// (/api/publish, /api/event-config slug). Gating publish-capable web content at
+// minRuntime 2 keeps that UI off older builds that lack the routes.
+const RuntimeVersion = 2
 
 // payloadSigningKeyB64 is the ed25519 PUBLIC key every OTA manifest must be
 // signed with. The private half lives only on the release machine (never in

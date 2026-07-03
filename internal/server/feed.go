@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"partyparty/internal/activate"
 	"partyparty/internal/event"
+	"partyparty/internal/publish"
 )
 
 // The event feed: guests post text + photos/videos from the player page; the
@@ -53,7 +56,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
+			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
 			// dir = the event's identity; clients reset their cursor when it
 			// changes (switching to an OLDER event must replay its posts).
 			"dir":   filepath.Base(s.Events.Dir()),
@@ -90,7 +93,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
-		var body struct{ Title, Host, Starts string }
+		// Slug is a *pointer so a title/host edit that omits it doesn't wipe the
+		// DJ's chosen slug — only an explicit slug field touches it.
+		var body struct {
+			Title, Host, Starts string
+			Slug                *string
+		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return true
@@ -99,7 +107,26 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return true
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		if body.Slug != nil {
+			if _, err := s.Events.SetSlug(*body.Slug); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+				return true
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "slug": s.Events.Slug()})
+	case "/api/publish":
+		// Publish the current event's recorded set to its ONLINE /e/<slug> page
+		// (DJ-initiated; the button always publishes, no duration threshold).
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		res, err := s.publishCurrentSet(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": res.URL, "slug": res.Slug, "warning": res.Warning})
 	case "/api/media.zip":
 		// "Everyone can take the media home": one tap streams the whole
 		// event's media as an uncompressed zip (photos/videos are already
@@ -259,6 +286,21 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// publishCurrentSet remuxes + uploads the current event's set recording to its
+// online /e/<slug> page, reusing this install's broker identity for auth.
+func (s *srv) publishCurrentSet(ctx context.Context) (*publish.Result, error) {
+	id, secret := activate.InstallCreds()
+	base := os.Getenv("PARTYPARTY_BROKER")
+	if base == "" {
+		base = "https://party.ramine.net"
+	}
+	cctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
+	defer cancel()
+	return publish.FromEvent(cctx, s.Config.FFmpeg, s.Events, publish.Creds{
+		ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
+	}, base)
 }
 
 // eventState summarizes the feed for /api/status (console header + badges).

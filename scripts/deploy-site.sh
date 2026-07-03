@@ -20,6 +20,15 @@ WR="$ROOT/cloudflare/node_modules/.bin/wrangler"
 [ -x "$WR" ] || { echo "wrangler missing — run: (cd cloudflare && npm install)"; exit 1; }
 "$WR" whoami >/dev/null 2>&1 || { echo "Not logged in — run: (cd cloudflare && npx wrangler login)"; exit 1; }
 
+# D1 must be provisioned before deploy, or the Worker binds a bogus database and
+# every event/publish route breaks. Fail loudly on the placeholder.
+if grep -q "PASTE_DATABASE_ID_HERE" cloudflare/wrangler.jsonc; then
+  echo "D1 not configured. Run:  (cd cloudflare && npx wrangler d1 create partyparty-events)"
+  echo "paste the printed database_id into cloudflare/wrangler.jsonc (replacing PASTE_DATABASE_ID_HERE),"
+  echo "then apply the schema:  (cd cloudflare && npx wrangler d1 execute partyparty-events --remote --file=schema.sql)"
+  exit 1
+fi
+
 if [ ! -d "$APP" ]; then
   echo "No app bundle at $APP. Build it first: make notarize (or make app)"; exit 1
 fi

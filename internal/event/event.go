@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -94,6 +95,10 @@ type Meta struct {
 	Title  string `json:"title"`
 	Host   string `json:"host"`
 	Starts string `json:"starts,omitempty"`
+	// Slug is the DJ's chosen /e/<slug> for this event's ONLINE page. "" means
+	// auto-derive one from the install at publish time. Charset-gated (see
+	// SetSlug) to the Worker's EVENT_RE so a bad value can never reach the page.
+	Slug string `json:"slug,omitempty"`
 }
 
 // Store manages the current event directory. Safe for concurrent use.
@@ -237,15 +242,162 @@ func (s *Store) SetMeta(title, host, starts string) error {
 		}
 		s.meta.Starts = st
 	}
-	data, err := json.MarshalIndent(s.meta, "", " ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644); err != nil {
+	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
 	s.changed() // title/host edits reach parked long-polls too
 	return nil
+}
+
+func (s *Store) saveMetaLocked() error {
+	data, err := json.MarshalIndent(s.meta, "", " ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644)
+}
+
+// Slug returns the DJ's chosen online slug for this event ("" = auto at publish).
+func (s *Store) Slug() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.meta.Slug
+}
+
+// SetSlug stores a DJ-chosen /e/<slug>, normalized to the Worker's EVENT_RE
+// charset ([A-Za-z0-9_.-], 1-48). An empty/blank value clears it (revert to
+// the auto-derived slug at publish). Returns the normalized slug actually
+// stored. A value that normalizes to nothing usable is rejected.
+func (s *Store) SetSlug(raw string) (string, error) {
+	slug := NormalizeSlug(raw)
+	if strings.TrimSpace(raw) != "" && slug == "" {
+		return "", errors.New("slug must contain letters or numbers")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.Slug = slug
+	if err := s.saveMetaLocked(); err != nil {
+		return "", err
+	}
+	s.changed()
+	return slug, nil
+}
+
+// NormalizeSlug lowercases, keeps the Worker's EVENT_RE charset ([a-z0-9_.-])
+// as-is, turns any run of UNSUPPORTED characters into a single hyphen, trims
+// stray separators, and clips to 48 — yielding a value that always satisfies
+// EVENT_RE, or "" when nothing usable remains. Kept in lockstep with the
+// client-side normSlug() in web/dj.html so the preview matches what's stored.
+func NormalizeSlug(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range raw {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' {
+			b.WriteRune(r)
+			lastDash = false
+		} else if b.Len() > 0 && !lastDash {
+			b.WriteByte('-') // a run of unsupported chars collapses to one hyphen
+			lastDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-._")
+	if len(out) > 48 {
+		out = strings.Trim(out[:48], "-._")
+	}
+	return out
+}
+
+// RecordingFiles lists this event's set recordings (recordings/set-*.aac) in
+// PLAY order — the raw material a publish remuxes into one faststart .m4a.
+func (s *Store) RecordingFiles() []string {
+	s.mu.Lock()
+	dir := filepath.Join(s.dir, "recordings")
+	s.mu.Unlock()
+	entries, _ := os.ReadDir(dir)
+	var files []string
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasPrefix(n, "set-") || !strings.HasSuffix(n, ".aac") {
+			continue
+		}
+		files = append(files, filepath.Join(dir, n))
+	}
+	// A plain lexical sort is WRONG: segment 1 is "set-<ts>.aac" and its
+	// device-yank siblings are "set-<ts>-2.aac", "-3.aac". Because '-' (0x2D)
+	// sorts before '.' (0x2E), the base segment would land LAST and the set
+	// would play scrambled. Sort by (timestamp, segment#) instead — treating a
+	// bare base file as segment 1. The timestamp itself contains a hyphen
+	// (date-time), so parse structurally, not by the last '-'.
+	sort.SliceStable(files, func(i, j int) bool {
+		ti, si := recordingKey(filepath.Base(files[i]))
+		tj, sj := recordingKey(filepath.Base(files[j]))
+		if ti != tj {
+			return ti < tj
+		}
+		return si < sj
+	})
+	return files
+}
+
+// LatestSetRecordings returns just the MOST RECENT set's files — the newest
+// base "set-<ts>.aac" plus any device-yank segments sharing that <ts> — in play
+// order. This is what a publish uploads: one set, NOT every set ever recorded
+// in the event folder (each Go Live starts a fresh <ts>).
+func (s *Store) LatestSetRecordings() []string {
+	all := s.RecordingFiles() // play order: ts ascending, then segment
+	if len(all) == 0 {
+		return nil
+	}
+	lastTS, _ := recordingKey(filepath.Base(all[len(all)-1]))
+	var out []string
+	for _, f := range all {
+		if ts, _ := recordingKey(filepath.Base(f)); ts == lastTS {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// recordingKey extracts (timestamp, segment#) from a recording filename.
+// "set-20060102-150405.aac" -> ("20060102150405", 1);
+// "set-20060102-150405-2.aac" -> ("20060102150405", 2).
+func recordingKey(name string) (string, int) {
+	core := strings.TrimSuffix(strings.TrimPrefix(name, "set-"), ".aac")
+	parts := strings.Split(core, "-") // [date, time] or [date, time, N]
+	seg := 1
+	ts := core
+	if len(parts) >= 2 {
+		ts = parts[0] + parts[1]
+		if len(parts) >= 3 {
+			if n, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
+				seg = n
+			}
+		}
+	}
+	return ts, seg
+}
+
+// LastPublishedSig returns the signature of whatever was last published from
+// this event (or ""). Used to skip auto-publishing a set that was already
+// published (manually or by a prior auto).
+func (s *Store) LastPublishedSig() string {
+	s.mu.Lock()
+	p := filepath.Join(s.dir, "recordings", ".published")
+	s.mu.Unlock()
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// SetPublishedSig records the signature of the just-published set.
+func (s *Store) SetPublishedSig(sig string) {
+	s.mu.Lock()
+	p := filepath.Join(s.dir, "recordings", ".published")
+	s.mu.Unlock()
+	_ = os.WriteFile(p, []byte(sig), 0o644)
 }
 
 // Info describes one event folder for the console's event list.

@@ -18,12 +18,20 @@
 const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
+// Published set media (audio + waveform) and event cover, served range-aware
+// from R2 under event/<slug>/. File shapes are pinned so a slug can only reach
+// its own set/cover objects.
+const MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/([a-f0-9]{1,32}\.m4a|[a-f0-9]{1,32}\.peaks\.json|cover\.jpg)$/;
+const SLUG_RE = /^[A-Za-z0-9_.-]{1,48}$/;
+const SETID_RE = /^[a-f0-9]{1,32}$/;
 // OTA content: the signed manifest (pointer, short cache) and immutable,
 // versioned payload bundles. Served from R2 under the content/ prefix.
 const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
+const randHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 const DEMO = {
   title: "Rooftop Sessions", dj: "Ramine",
@@ -93,6 +101,11 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .nf{max-width:560px;margin:70px auto;text-align:center;padding:0 22px}
 .nf .art{width:96px;height:96px;border-radius:26px;margin:0 auto 22px;background:linear-gradient(135deg,#6d1a54,#a52c7c);display:grid;place-items:center;font-size:44px}
 .nf h1{font-size:32px;letter-spacing:-.025em;margin:0 0 10px}.nf p{color:var(--ink2);font-size:18px;margin:0 0 26px;line-height:1.5}
+.player .psub{color:var(--ink2);font-size:14px;margin:0 0 16px}
+.wave{display:flex;align-items:center;gap:2px;height:64px;cursor:pointer;margin-bottom:14px}
+.wave i{flex:1 1 0;min-width:2px;min-height:2px;background:var(--line);border-radius:2px;transition:background .12s}
+.wave i.on{background:var(--accent)}
+.player audio{width:100%;margin-top:4px}
 `;
 
 const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -121,6 +134,33 @@ function shell({ title, desc, ogImage, body }) {
 <style>${CSS}</style></head><body>${SVGDEFS}${NAV}${body}${TOAST_JS}</body></html>`;
 }
 
+function fmtDur(ms) {
+  const s = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return (h ? h + ":" : "") + mm + ":" + String(sec).padStart(2, "0");
+}
+
+// eventFromRow projects a D1 events row (+ its latest ready set) into the shape
+// renderEvent expects. A missing set yields an "upcoming" empty state.
+function eventFromRow(row, set, slug) {
+  return {
+    slug,
+    title: row.title || "A partyparty set",
+    dj: row.host || "",
+    when: row.starts || "",
+    where: row.where_txt || "",
+    status: set ? "replay" : (row.status || "upcoming"),
+    listeners: 0,
+    tagline: row.tagline || "",
+    cover: row.cover_key ? `/event/${slug}/cover.jpg` : "/img/dance.jpg",
+    about: row.about || "",
+    wall: [],
+    socials: {},
+    set: set ? { id: set.id, durationMs: set.duration_ms } : null,
+  };
+}
+
 function renderEvent(e) {
   const soon = "Coming soon — event pages are in progress.";
   const social = (id, url, bg) => url ? `<a href="${esc(url)}" data-soon="${soon}" style="background:${bg}" aria-label="${id}"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#${id}"/></svg></a>` : "";
@@ -129,6 +169,13 @@ function renderEvent(e) {
     : e.status === "upcoming" ? `<span class="statuspill">Upcoming</span>`
     : `<span class="statuspill">▶ Replay</span>`;
 
+  const metaBits = [e.when, e.where, e.dj ? "by " + e.dj : ""].filter(Boolean).map(esc);
+  const emeta = metaBits.length ? `<div class="emeta">${metaBits.join(" · ")}</div>` : "";
+  const ctaNote = e.status === "live" ? "Scan the QR at the party to listen"
+    : e.set ? "The set replay is below — press play" : "The replay lands here when the DJ finishes";
+
+  // Live (the demo seed) shows the animated now-playing bar; a published event
+  // shows the real replay player.
   const liveCard = e.status === "live" ? `
   <div class="card">
     <div class="livebar">
@@ -139,6 +186,29 @@ function renderEvent(e) {
     <div class="cardhint">To listen, scan the QR at the party — the set plays in your browser, no app. When the DJ stops, the replay lands here.</div>
   </div>` : "";
 
+  const playerCard = e.set ? `
+  <div class="card player">
+    <h2>The set ▶</h2>
+    <p class="psub">${esc(fmtDur(e.set.durationMs))} · silent-disco replay</p>
+    <div class="wave" id="wave" data-peaks="/event/${esc(e.slug)}/${esc(e.set.id)}.peaks.json"></div>
+    <audio id="setaudio" controls preload="none" src="/event/${esc(e.slug)}/${esc(e.set.id)}.m4a"></audio>
+  </div>` : "";
+
+  const aboutInner = (e.about ? `<p>${esc(e.about)}</p>` : "") +
+    (social("sc", e.socials?.soundcloud, "#ff7700") + social("ig", e.socials?.instagram, "#c13584") + social("sp", e.socials?.spotify, "#1db954")
+      ? `<div class="slist">${social("sc", e.socials?.soundcloud, "#ff7700")}${social("ig", e.socials?.instagram, "#c13584")}${social("sp", e.socials?.spotify, "#1db954")}</div>` : "");
+  const aboutCard = aboutInner ? `<div class="card about"><h2>About this set</h2>${aboutInner}</div>` : "";
+  const previewBadge = e.set ? "" : `<span class="preview">Preview · event pages in progress</span>`;
+
+  const waveScript = e.set ? `<script>
+(function(){var a=document.getElementById('setaudio'),w=document.getElementById('wave');if(!a||!w)return;var bars=[];
+fetch(w.getAttribute('data-peaks')).then(function(r){return r.json()}).then(function(d){var p=(d&&d.peaks)||[];w.innerHTML='';p.forEach(function(v){var b=document.createElement('i');b.style.height=Math.max(2,v)+'%';w.appendChild(b);bars.push(b)})}).catch(function(){});
+function paint(){if(!bars.length||!a.duration)return;var k=Math.floor((a.currentTime/a.duration)*bars.length);for(var i=0;i<bars.length;i++)bars[i].className=i<=k?'on':''}
+a.addEventListener('timeupdate',paint);
+w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBoundingClientRect();a.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*a.duration});
+})();
+</script>` : "";
+
   const body = `<div class="page">
     <div class="hdr">
       <div class="cover" style="background-image:url('${esc(e.cover)}')"></div>
@@ -146,12 +216,12 @@ function renderEvent(e) {
       <div class="in">
         ${statusPill}
         <h1 class="etitle">${esc(e.title)}</h1>
-        <div class="emeta">${esc(e.when)} · ${esc(e.where)} · by ${esc(e.dj)}</div>
-        <div class="ecta"><button class="btn" data-soon="${soon}">＋ Add your photos &amp; videos</button><span class="note">Scan the QR at the party to listen</span></div>
-        <span class="preview">Preview · app ships today, event pages in progress</span>
+        ${emeta}
+        <div class="ecta"><button class="btn" data-soon="${soon}">＋ Add your photos &amp; videos</button><span class="note">${esc(ctaNote)}</span></div>
+        ${previewBadge}
       </div>
     </div>
-    ${liveCard}
+    ${liveCard}${playerCard}
     <div class="card">
       <h2>The wall</h2>
       <p class="sub">Everything the room shot tonight — you approve what shows.</p>
@@ -161,15 +231,12 @@ function renderEvent(e) {
       </div>
       <div class="cardhint">Guests drop photos, videos and comments straight from their phone — moderated by the DJ. Coming soon.</div>
     </div>
-    <div class="card about">
-      <h2>About this set</h2>
-      <p>${esc(e.about)}</p>
-      <div class="slist">${social("sc", e.socials?.soundcloud, "#ff7700")}${social("ig", e.socials?.instagram, "#c13584")}${social("sp", e.socials?.spotify, "#1db954")}</div>
-    </div>
+    ${aboutCard}
   </div>
-  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>`;
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}`;
 
-  return shell({ title: `${e.title} · partyparty`, desc: `${e.title} — ${e.when} · ${e.where}. ${e.tagline}`, ogImage: e.cover, body });
+  const descBits = [e.when, e.where].filter(Boolean).join(" · ");
+  return shell({ title: `${e.title} · partyparty`, desc: `${e.title}${descBits ? " — " + descBits : ""}. ${e.tagline}`.trim(), ogImage: e.cover, body });
 }
 
 function renderNotFound() {
@@ -246,10 +313,80 @@ async function cfDNS(env, method, suffix, body) {
   return j.result;
 }
 
+// authInstall validates an install id + secret against its broker record and
+// returns the record (or null). The shared identity check behind every publish
+// route — same {id,secret} primitive the cert broker uses.
+async function authInstall(env, id, secret) {
+  if (!/^[a-f0-9]{12}$/.test(String(id || ""))) return null;
+  const rec = await env.DL.get(`broker/${id}.json`).then((o) => (o ? o.json() : null));
+  if (!rec || rec.secret !== secret) return null;
+  return rec;
+}
+
+// auditPublish appends a best-effort row to publish_events (forensics only —
+// never blocks or fails a publish).
+async function auditPublish(env, id, slug, action) {
+  try {
+    await env.DB.prepare("INSERT INTO publish_events (install_id, slug, action, ts_ms) VALUES (?,?,?,?)")
+      .bind(id, slug, action, Date.now()).run();
+  } catch (e) { /* best-effort */ }
+}
+
+// publishUpload streams a set's audio/waveform straight into R2. Header-authed
+// (creds can't ride the JSON body — the body IS the media), with the slug's
+// ownership re-checked against D1 on every call before any write, so a valid
+// install can only ever write inside an event it owns.
+async function publishUpload(request, env, pathname) {
+  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const id = request.headers.get("x-pp-id") || "";
+  const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
+  if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const slug = request.headers.get("x-pp-slug") || "";
+  const setId = request.headers.get("x-pp-set") || "";
+  if (!SLUG_RE.test(slug) || !SETID_RE.test(setId)) return jsonResp(400, { error: "bad slug/set" });
+  // Ownership: the slug must be owned by THIS install, and the set must belong
+  // to the slug — both re-checked here, independent of publish-meta.
+  const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+  if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not your event" });
+  const set = await env.DB.prepare("SELECT slug FROM event_sets WHERE id=?").bind(setId).first();
+  if (!set || set.slug !== slug) return jsonResp(404, { error: "no such set" });
+
+  const isAudio = pathname === "/api/broker/publish-audio";
+  const cap = isAudio ? 200_000_000 : 2_000_000;
+  const cl = Number(request.headers.get("content-length") || "0");
+  if (!cl || cl > cap) return jsonResp(413, { error: "bad size" });
+  const key = isAudio ? `event/${slug}/${setId}.m4a` : `event/${slug}/${setId}.peaks.json`;
+  const put = await env.DL.put(key, request.body, { httpMetadata: { contentType: isAudio ? "audio/mp4" : "application/json" } });
+  // Don't trust the declared content-length for what actually landed: R2 reports
+  // the real stored size, so a body that lied (small header, large stream) is
+  // deleted and rejected rather than persisted or recorded.
+  const size = (put && typeof put.size === "number") ? put.size : cl;
+  if (size > cap) {
+    await env.DL.delete(key);
+    return jsonResp(413, { error: "too large" });
+  }
+  if (isAudio) {
+    // Symmetric ready-flip: whichever of audio/peaks lands SECOND promotes the
+    // set. Otherwise a peaks-before-audio order (a retry, a reordered proxy)
+    // would strand a fully-uploaded set at 'pending' forever.
+    await env.DB.prepare("UPDATE event_sets SET audio_key=?, size_bytes=?, state=CASE WHEN peaks_key IS NOT NULL THEN 'ready' ELSE state END WHERE id=?").bind(key, size, setId).run();
+  } else {
+    await env.DB.prepare("UPDATE event_sets SET peaks_key=?, state=CASE WHEN audio_key IS NOT NULL THEN 'ready' ELSE state END WHERE id=?").bind(key, setId).run();
+  }
+  await auditPublish(env, id, slug, isAudio ? "publish-audio" : "publish-peaks");
+  return jsonResp(200, { ok: true, key });
+}
+
 async function broker(request, env, pathname) {
   // Reachability probe for the app's connection test (any method, no auth,
   // no side effects) — proves the venue's network can reach the broker.
   if (pathname === "/api/broker/ping") return jsonResp(200, { ok: true, t: Date.now() });
+  // Binary set uploads: header-authed + streamed, so they must run BEFORE the
+  // POST-only guard and the request.json() parse below.
+  if (pathname === "/api/broker/publish-audio" || pathname === "/api/broker/publish-peaks") {
+    return await publishUpload(request, env, pathname);
+  }
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
   const body = await request.json().catch(() => null);
@@ -308,6 +445,37 @@ async function broker(request, env, pathname) {
   // The install's namespace label: its pretty slug (new installs) or its raw
   // id (pre-slug installs). Writes stay confined to that label.
   const label = rec.slug || id;
+
+  // Publish (metadata): claim/own the event slug and mint a pending set. The
+  // two binary uploads (audio, peaks) follow on their own header-authed routes.
+  if (pathname === "/api/broker/publish-meta") {
+    if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+    const slug = String(body.slug || "");
+    if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+    // First-writer-wins: a slug already owned by ANOTHER install is off-limits
+    // (the Mac then retries with its collision-proof auto slug).
+    const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+    if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    const now = Date.now();
+    await env.DB.prepare(
+      `INSERT INTO events (slug, install_id, title, host, starts, where_txt, tagline, about, status, created_ms, updated_ms)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'replay',?9,?9)
+       ON CONFLICT(slug) DO UPDATE SET title=?3, host=?4, starts=?5, where_txt=?6, tagline=?7, about=?8, updated_ms=?9
+       WHERE events.install_id=?2`
+    ).bind(slug, id, clip(body.title, 200), clip(body.host, 80), clip(body.starts, 120),
+      clip(body.where, 120), clip(body.tagline, 200), clip(body.about, 4000), now).run();
+    // Re-verify ownership post-upsert (closes any claim race) before minting a set.
+    const check = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+    if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    const setId = randHex(12);
+    await env.DB.prepare(
+      `INSERT INTO event_sets (id, slug, duration_ms, size_bytes, recorded_ms, published_ms, state)
+       VALUES (?,?,?,?,?,?, 'pending')`
+    ).bind(setId, slug, Math.max(0, Number(body.duration_ms) || 0),
+      Math.max(0, Number(body.size_bytes) || 0), Math.max(0, Number(body.recorded_ms) || 0), now).run();
+    await auditPublish(env, id, slug, "publish-meta");
+    return jsonResp(200, { ok: true, slug, setId, url: `https://${env.BROKER_BASE}/e/${slug}` });
+  }
 
   if (pathname === "/api/broker/txt") {
     const value = String(body.value || "");
@@ -453,6 +621,57 @@ export default {
       return new Response(request.method === "HEAD" ? null : obj.body, { headers });
     }
 
+    // Published set media (audio + waveform) and the event cover, from R2 under
+    // event/<slug>/. Audio is served RANGE-AWARE (206) so <audio> can seek; it's
+    // content-addressed by set id, so cache hard.
+    const media = pathname.match(MEDIA_RE);
+    if (media) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const file = media[2];
+      const key = `event/${media[1]}/${file}`;
+      const isAudio = file.endsWith(".m4a");
+      const ctype = isAudio ? "audio/mp4" : file === "cover.jpg" ? "image/jpeg" : "application/json";
+      const cache = file === "cover.jpg" ? "public, max-age=300" : "public, max-age=31536000, immutable";
+      const rangeHdr = isAudio ? request.headers.get("range") : null;
+      if (rangeHdr) {
+        const head = await env.DL.head(key);
+        if (!head) return new Response("Not found", { status: 404 });
+        const size = head.size;
+        const mm = /^bytes=(\d*)-(\d*)$/.exec(rangeHdr);
+        let start = mm && mm[1] !== "" ? parseInt(mm[1], 10) : NaN;
+        let end = mm && mm[2] !== "" ? parseInt(mm[2], 10) : NaN;
+        if (mm) {
+          if (isNaN(start) && !isNaN(end)) { start = Math.max(0, size - end); end = size - 1; } // bytes=-N suffix
+          else if (!isNaN(start) && isNaN(end)) { end = size - 1; }                              // bytes=N-
+        }
+        if (mm && !isNaN(start) && !isNaN(end) && start <= end && start < size) {
+          end = Math.min(end, size - 1);
+          const obj = await env.DL.get(key, { range: { offset: start, length: end - start + 1 } });
+          if (!obj) return new Response("Not found", { status: 404 });
+          const h = new Headers();
+          h.set("content-type", ctype);
+          h.set("accept-ranges", "bytes");
+          h.set("content-range", `bytes ${start}-${end}/${size}`);
+          h.set("content-length", String(end - start + 1));
+          h.set("cache-control", cache);
+          h.set("etag", obj.httpEtag);
+          return new Response(request.method === "HEAD" ? null : obj.body, { status: 206, headers: h });
+        }
+        // malformed/unsatisfiable range → fall through to whole-object 200
+      }
+      const obj = await env.DL.get(key);
+      if (!obj) return new Response("Not found", { status: 404 });
+      const h = new Headers();
+      obj.writeHttpMetadata(h);
+      h.set("content-type", ctype);
+      h.set("accept-ranges", "bytes");
+      h.set("cache-control", cache);
+      h.set("etag", obj.httpEtag);
+      return new Response(request.method === "HEAD" ? null : obj.body, { headers: h });
+    }
+
     // Push-then-pull update signalling. /content/state.json is the tiny current
     // state (latest payload + app versions); /content/subscribe is a long-poll
     // that returns the instant either moves past what the caller already has, so
@@ -478,10 +697,27 @@ export default {
       return new Response(JSON.stringify({ ...s, changed: moved(s) }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
     }
 
-    // Event pages: /e/<slug> (canonical) and /@<handle> (demo, so shared links work).
-    if (EVENT_RE.test(pathname) || HANDLE_RE.test(pathname)) {
-      const html = renderEvent(DEMO); // seed; swaps for a real lookup (D1) later
-      return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
+    // Event pages: /e/<slug> is real (D1-backed); /@<handle> keeps the demo seed
+    // so old shared links still render something.
+    const evm = pathname.match(EVENT_RE);
+    if (evm) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const htmlHeaders = { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" };
+      if (!env.DB) return new Response(renderNotFound(), { status: 503, headers: htmlHeaders });
+      const slug = evm[1];
+      const row = await env.DB.prepare("SELECT * FROM events WHERE slug=?").bind(slug).first();
+      if (!row) {
+        return new Response(renderNotFound(), { status: 404, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30" } });
+      }
+      const set = await env.DB.prepare(
+        "SELECT * FROM event_sets WHERE slug=? AND state='ready' AND audio_key IS NOT NULL ORDER BY published_ms DESC LIMIT 1"
+      ).bind(slug).first();
+      return new Response(renderEvent(eventFromRow(row, set, slug)), { headers: htmlHeaders });
+    }
+    if (HANDLE_RE.test(pathname)) {
+      return new Response(renderEvent(DEMO), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
     }
 
     return env.ASSETS.fetch(request);
