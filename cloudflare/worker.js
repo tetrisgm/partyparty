@@ -27,6 +27,8 @@ const POST_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/media\/([A-Za-z0-9_-]{1
 const MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/([a-f0-9]{1,32}\.m4a|[a-f0-9]{1,32}\.peaks\.json|cover\.jpg)$/;
 const SLUG_RE = /^[A-Za-z0-9_.-]{1,48}$/;
 const SETID_RE = /^[a-f0-9]{1,32}$/;
+const POST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const POST_MEDIA_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 // OTA content: the signed manifest (pointer, short cache) and immutable,
 // versioned payload bundles. Served from R2 under the content/ prefix.
 const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
@@ -1118,6 +1120,82 @@ async function publishCover(request, env) {
   return jsonResp(200, { ok: true, key });
 }
 
+async function publishPostMedia(request, env) {
+  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const id = request.headers.get("x-pp-id") || "";
+  const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
+  if (!rec) return jsonResp(403, { error: "bad credentials" });
+
+  const slug = request.headers.get("x-pp-slug") || "";
+  const postId = request.headers.get("x-pp-post") || "";
+  const mediaId = request.headers.get("x-pp-media") || "";
+  const mediaType = request.headers.get("x-pp-media-type") || "";
+  if (!SLUG_RE.test(slug) || !POST_ID_RE.test(postId) || !POST_MEDIA_ID_RE.test(mediaId)) {
+    return jsonResp(400, { error: "bad slug/post/media" });
+  }
+  if (mediaType !== "image" && mediaType !== "video" && mediaType !== "audio") {
+    return jsonResp(400, { error: "bad media type" });
+  }
+
+  const rawMime = request.headers.get("x-pp-mime") || "";
+  const defaultMime = mediaType === "video" ? "video/mp4" : mediaType === "audio" ? "audio/mpeg" : "image/jpeg";
+  const mimeType = rawMime || defaultMime;
+  if (mimeType.length > 160 || !/^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,95}$/.test(mimeType)) {
+    return jsonResp(400, { error: "bad mime" });
+  }
+  const name = request.headers.get("x-pp-name") || "";
+  if (name.length > 240 || /[\x00-\x1F\x7F]/.test(name)) return jsonResp(400, { error: "bad name" });
+  const sortHeader = request.headers.get("x-pp-sort");
+  if (sortHeader != null && !/^-?\d+$/.test(sortHeader)) return jsonResp(400, { error: "bad sort" });
+  const sortOrder = sortHeader == null ? 0 : Number(sortHeader);
+  if (!Number.isSafeInteger(sortOrder)) return jsonResp(400, { error: "bad sort" });
+
+  const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+  if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not your event" });
+  const post = await env.DB.prepare("SELECT id FROM posts WHERE id=? AND slug=?").bind(postId, slug).first();
+  if (!post) return jsonResp(404, { error: "no such post" });
+  const existing = await env.DB.prepare("SELECT slug, post_id FROM post_media WHERE id=?").bind(mediaId).first();
+  if (existing && (existing.slug !== slug || existing.post_id !== postId)) {
+    return jsonResp(403, { error: "media id taken" });
+  }
+
+  const cap = 200_000_000;
+  const cl = Number(request.headers.get("content-length") || "0");
+  if (!cl || cl > cap) return jsonResp(413, { error: "bad size" });
+  const key = `event/${slug}/posts/${postId}/${mediaId}`;
+  const put = await env.DL.put(key, request.body, { httpMetadata: { contentType: mimeType } });
+  const size = (put && typeof put.size === "number") ? put.size : cl;
+  if (size > cap) {
+    await env.DL.delete(key);
+    return jsonResp(413, { error: "too large" });
+  }
+
+  const now = nowMs();
+  await env.DB.prepare(
+    `INSERT INTO post_media (
+       id, slug, post_id, media_key, media_type, mime_type, name, size_bytes, sort_order, created_ms
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       media_key=excluded.media_key,
+       media_type=excluded.media_type,
+       mime_type=excluded.mime_type,
+       name=excluded.name,
+       size_bytes=excluded.size_bytes,
+       sort_order=excluded.sort_order
+     WHERE post_media.slug=excluded.slug AND post_media.post_id=excluded.post_id`
+  ).bind(mediaId, slug, postId, key, mediaType, mimeType, name, size, sortOrder, now).run();
+  const saved = await env.DB.prepare("SELECT slug, post_id FROM post_media WHERE id=?").bind(mediaId).first();
+  if (!saved || saved.slug !== slug || saved.post_id !== postId) {
+    await env.DL.delete(key);
+    return jsonResp(403, { error: "media id taken" });
+  }
+  await env.DB.prepare("UPDATE events SET last_activity_ms=? WHERE slug=? AND install_id=?").bind(now, slug, id).run();
+  await auditPublish(env, id, slug, "publish-post-media");
+  return jsonResp(200, { ok: true, key, mediaId });
+}
+
 async function publishPosts(env, id, body) {
   if (!env.DB) return jsonResp(503, { error: "events db not configured" });
   const slug = String(body.slug || "");
@@ -1219,6 +1297,9 @@ async function broker(request, env, pathname) {
   }
   if (pathname === "/api/broker/publish-cover") {
     return await publishCover(request, env);
+  }
+  if (pathname === "/api/broker/publish-post-media") {
+    return await publishPostMedia(request, env);
   }
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });

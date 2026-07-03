@@ -47,6 +47,7 @@ class FakeD1 {
     this.wallComments = wallComments;
     this.importedPosts = new Map(wallPosts.map((row) => [row.id, { ...row }]));
     this.importedComments = new Map(wallComments.map((row) => [row.id, { ...row }]));
+    this.importedPostMedia = new Map(wallMedia.map((row) => [row.id, { ...row }]));
     this.rsvpEnabled = rsvpEnabled;
     this.events = new Map();
     this.events.set(knownSlug, {
@@ -93,10 +94,10 @@ class FakeD1Statement {
     const sql = this.sql.replace(/\s+/g, " ");
     if (sql.includes("FROM post_media pm JOIN posts p")) {
       const [mediaId, slug] = this.args;
-      const media = this.db.wallMedia.find((row) => row.id === mediaId && row.slug === slug);
-      if (!media) return null;
-      const post = this.db.wallPosts.find((row) => row.id === media.post_id && row.approved === 1 && row.deleted_ms == null);
-      if (!post) return null;
+      const media = this.db.importedPostMedia.get(mediaId);
+      if (!media || media.slug !== slug) return null;
+      const post = this.db.importedPosts.get(media.post_id);
+      if (!post || post.approved !== 1 || post.deleted_ms != null) return null;
       return {
         media_key: media.media_key,
         mime_type: media.mime_type,
@@ -138,6 +139,15 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM device_installs WHERE install_id=?")) {
       return this.db.deviceInstalls.get(this.args[0]) || null;
+    }
+    if (sql.includes("SELECT id FROM posts WHERE id=? AND slug=?")) {
+      const [postId, slug] = this.args;
+      const row = this.db.importedPosts.get(postId);
+      return row && row.slug === slug ? { id: row.id } : null;
+    }
+    if (sql.includes("SELECT slug, post_id FROM post_media WHERE id=?")) {
+      const row = this.db.importedPostMedia.get(this.args[0]);
+      return row ? { slug: row.slug, post_id: row.post_id } : null;
     }
     if (sql.includes("SELECT slug FROM event_sets WHERE id=?")) {
       const setId = this.args[0];
@@ -195,7 +205,7 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM post_media WHERE post_id IN")) {
       const ids = new Set(JSON.parse(this.args[0] || "[]"));
-      return { results: this.db.wallMedia.filter((row) => ids.has(row.post_id)) };
+      return { results: [...this.db.importedPostMedia.values()].filter((row) => ids.has(row.post_id)) };
     }
     if (sql.includes("FROM post_comments WHERE post_id IN")) {
       const ids = new Set(JSON.parse(this.args[0] || "[]"));
@@ -266,6 +276,35 @@ class FakeD1Statement {
         updated_ms: updatedMs,
         deleted_ms: deletedMs,
       });
+      return { success: true };
+    }
+    if (sql.includes("INSERT INTO post_media")) {
+      const [id, slug, postId, mediaKey, mediaType, mimeType, name, sizeBytes, sortOrder, createdMs] = this.args;
+      const old = this.db.importedPostMedia.get(id);
+      this.db.importedPostMedia.set(id, {
+        id,
+        slug,
+        post_id: postId,
+        media_key: mediaKey,
+        media_type: mediaType,
+        mime_type: mimeType,
+        name,
+        size_bytes: sizeBytes,
+        width: old?.width,
+        height: old?.height,
+        duration_ms: old?.duration_ms,
+        sort_order: sortOrder,
+        source_local_id: old?.source_local_id || "",
+        created_ms: old?.created_ms || createdMs,
+      });
+      return { success: true };
+    }
+    if (sql.includes("UPDATE events SET last_activity_ms=? WHERE slug=? AND install_id=?")) {
+      const [lastActivityMs, slug, installId] = this.args;
+      const old = this.db.events.get(slug);
+      if (old && old.install_id === installId) {
+        this.db.events.set(slug, { ...old, last_activity_ms: lastActivityMs });
+      }
       return { success: true };
     }
     if (sql.includes("UPDATE events SET updated_ms=?, last_activity_ms=?")) {
@@ -388,7 +427,11 @@ class FakeD1Statement {
 class FakeR2Object {
   constructor(body, { contentType = "application/octet-stream", etag = '"smoke-etag"' } = {}) {
     this.body = body;
-    this.size = typeof body === "string" ? new TextEncoder().encode(body).byteLength : body.byteLength;
+    this.size = typeof body === "string"
+      ? new TextEncoder().encode(body).byteLength
+      : body instanceof ArrayBuffer
+        ? body.byteLength
+        : body.byteLength;
     this.httpEtag = etag;
     this.httpMetadata = { contentType };
   }
@@ -407,6 +450,7 @@ class FakeR2Object {
 
   async arrayBuffer() {
     if (typeof this.body === "string") return new TextEncoder().encode(this.body).buffer;
+    if (this.body instanceof ArrayBuffer) return this.body;
     return this.body.buffer.slice(this.body.byteOffset, this.body.byteOffset + this.body.byteLength);
   }
 }
@@ -438,7 +482,8 @@ class FakeR2 {
 
   async put(key, body, opts = {}) {
     const contentType = opts.httpMetadata?.contentType || "application/octet-stream";
-    const obj = new FakeR2Object(body || "", { contentType });
+    const stored = body?.getReader ? new Uint8Array(await new Response(body).arrayBuffer()) : (body || "");
+    const obj = new FakeR2Object(stored, { contentType });
     this.objects.set(key, obj);
     return { size: obj.size };
   }
@@ -476,6 +521,8 @@ function makeEnv(opts = {}) {
 async function fetchPath(path, init = {}, envOpts = {}) {
   return worker.fetch(new Request(`https://party.ramine.net${path}`, init), makeEnv(envOpts));
 }
+
+const contentLength = (body) => String(new TextEncoder().encode(String(body)).byteLength);
 
 const tests = [
   ["parseCookies decodes cookie header", async () => {
@@ -1088,6 +1135,139 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.equal(typeof row.deleted_ms, "number");
     assert.equal(comment.deleted_ms, row.deleted_ms);
+  }],
+  ["broker publish-post-media rejects missing auth headers", async () => {
+    const resp = await fetchPath("/api/broker/publish-post-media", {
+      method: "PUT",
+      headers: {
+        "x-pp-slug": "owned-media",
+        "x-pp-post": "post-one",
+        "x-pp-media": "media-one",
+        "x-pp-media-type": "image",
+        "content-length": contentLength("image"),
+      },
+      body: "image",
+    });
+    assert.equal(resp.status, 403);
+  }],
+  ["broker publish-post-media rejects slug owned by another install", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "other-media", install_id: "def456def456", title: "Other", status: "replay" }],
+      wallPosts: [{ id: "post-one", slug: "other-media", approved: 1, deleted_ms: null }],
+    });
+    const env = makeEnv({ DB: db });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123",
+        "x-pp-secret": "secret-a",
+        "x-pp-slug": "other-media",
+        "x-pp-post": "post-one",
+        "x-pp-media": "media-one",
+        "x-pp-media-type": "image",
+        "content-length": contentLength("image"),
+      },
+      body: "image",
+    }), env);
+    assert.equal(resp.status, 403);
+    assert.equal(env.DL.objects.has("event/other-media/posts/post-one/media-one"), false);
+    assert.equal(db.importedPostMedia.size, 0);
+  }],
+  ["broker publish-post-media rejects missing post", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
+    });
+    const env = makeEnv({ DB: db });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123",
+        "x-pp-secret": "secret-a",
+        "x-pp-slug": "owned-media",
+        "x-pp-post": "missing-post",
+        "x-pp-media": "media-one",
+        "x-pp-media-type": "image",
+        "content-length": contentLength("image"),
+      },
+      body: "image",
+    }), env);
+    assert.equal(resp.status, 404);
+    assert.equal(env.DL.objects.has("event/owned-media/posts/missing-post/media-one"), false);
+    assert.equal(db.importedPostMedia.size, 0);
+  }],
+  ["broker publish-post-media writes R2 key and upserts post_media", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
+      wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
+    });
+    const env = makeEnv({ DB: db });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123",
+        "x-pp-secret": "secret-a",
+        "x-pp-slug": "owned-media",
+        "x-pp-post": "post-one",
+        "x-pp-media": "media-one",
+        "x-pp-media-type": "image",
+        "x-pp-mime": "image/png",
+        "x-pp-name": "photo.png",
+        "x-pp-sort": "2",
+        "content-length": contentLength("image-one"),
+      },
+      body: "image-one",
+    }), env);
+    const json = await resp.json();
+    const key = "event/owned-media/posts/post-one/media-one";
+    const obj = env.DL.objects.get(key);
+    const row = db.importedPostMedia.get("media-one");
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json, { ok: true, key, mediaId: "media-one" });
+    assert.equal(await obj.text(), "image-one");
+    assert.equal(obj.httpMetadata.contentType, "image/png");
+    assert.equal(row.media_key, key);
+    assert.equal(row.media_type, "image");
+    assert.equal(row.mime_type, "image/png");
+    assert.equal(row.name, "photo.png");
+    assert.equal(row.size_bytes, 9);
+    assert.equal(row.sort_order, 2);
+    assert.equal(typeof db.events.get("owned-media").last_activity_ms, "number");
+  }],
+  ["broker publish-post-media second PUT updates existing media row", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
+      wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
+    });
+    const env = makeEnv({ DB: db });
+    const upload = (body, name, sort) => worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123",
+        "x-pp-secret": "secret-a",
+        "x-pp-slug": "owned-media",
+        "x-pp-post": "post-one",
+        "x-pp-media": "media-one",
+        "x-pp-media-type": "audio",
+        "x-pp-mime": "audio/mpeg",
+        "x-pp-name": name,
+        "x-pp-sort": String(sort),
+        "content-length": contentLength(body),
+      },
+      body,
+    }), env);
+    const first = await upload("audio-one", "first.mp3", 1);
+    const firstRow = db.importedPostMedia.get("media-one");
+    const second = await upload("audio-two-longer", "second.mp3", 7);
+    const row = db.importedPostMedia.get("media-one");
+    const key = "event/owned-media/posts/post-one/media-one";
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(db.importedPostMedia.size, 1);
+    assert.equal(row.created_ms, firstRow.created_ms);
+    assert.equal(row.name, "second.mp3");
+    assert.equal(row.sort_order, 7);
+    assert.equal(row.size_bytes, 16);
+    assert.equal(await env.DL.objects.get(key).text(), "audio-two-longer");
   }],
   ["broker event-status rejects non-owner install", async () => {
     const db = new FakeD1({
