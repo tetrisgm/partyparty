@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "InstallPartyparty-arm64-apple-macosx-release.exe": ["<InstallPartyparty-arm64-apple-macosx-release.exe>"]
+  "InstallPartyparty-arm64-apple-macosx-release.module": ["<InstallPartyparty-arm64-apple-macosx-release.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<InstallPartyparty-arm64-apple-macosx-release.exe>","<InstallPartyparty-arm64-apple-macosx-release.module>"]
+  "test": ["<InstallPartyparty-arm64-apple-macosx-release.exe>","<InstallPartyparty-arm64-apple-macosx-release.module>"]
+default: "main"
+nodes:
+  "/Users/shokunin/dev/partyparty/installer-app/Sources/InstallPartyparty/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/shokunin/dev/partyparty/installer-app/Sources/InstallPartyparty/main.swift"]
+    outputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/sources"]
+    description: "Write auxiliary file /Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/sources"
+
+  "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main.swift.o"]
+    outputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.product/Objects.LinkFileList"
+
+  "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"]
+    outputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt"
+
+  "<InstallPartyparty-arm64-apple-macosx-release.exe>":
+    tool: phony
+    inputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty"]
+    outputs: ["<InstallPartyparty-arm64-apple-macosx-release.exe>"]
+
+  "<InstallPartyparty-arm64-apple-macosx-release.module>":
+    tool: phony
+    inputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main.swift.o","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/Modules/InstallPartyparty.swiftmodule"]
+    outputs: ["<InstallPartyparty-arm64-apple-macosx-release.module>"]
+
+  "C.InstallPartyparty-arm64-apple-macosx-release.exe":
+    tool: shell
+    inputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main.swift.o","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.product/Objects.LinkFileList"]
+    outputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty"]
+    description: "Linking ./.build/arm64-apple-macosx/release/InstallPartyparty"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-L","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release","-o","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty","-module-name","InstallPartyparty","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_InstallPartyparty_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx13.0","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g"]
+
+  "C.InstallPartyparty-arm64-apple-macosx-release.module":
+    tool: shell
+    inputs: ["/Users/shokunin/dev/partyparty/installer-app/Sources/InstallPartyparty/main.swift","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/sources"]
+    outputs: ["/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main.swift.o","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/Modules/InstallPartyparty.swiftmodule"]
+    description: "Compiling Swift Module 'InstallPartyparty' (1 sources)"
+    args: ["/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc","-module-name","InstallPartyparty","-emit-dependencies","-emit-module","-emit-module-path","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/Modules/InstallPartyparty.swiftmodule","-output-file-map","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/output-file-map.json","-whole-module-optimization","-num-threads","10","-c","@/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/sources","-I","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx13.0","-whole-module-optimization","-num-threads","10","-serialize-diagnostics","-O","-j10","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","InstallPartyparty_main","-swift-version","5","-plugin-path","/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing","-sdk","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-F","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-L","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-g","-Xcc","-isysroot","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk","-Xcc","-F","-Xcc","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xcc","-fPIC","-Xcc","-g","-package-name","installer_app"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/shokunin/dev/partyparty/installer-app/Sources/InstallPartyparty/","/Users/shokunin/dev/partyparty/installer-app/Package.swift","/Users/shokunin/dev/partyparty/installer-app/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

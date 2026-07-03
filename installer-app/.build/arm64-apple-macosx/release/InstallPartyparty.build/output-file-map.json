@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/InstallPartyparty.d",
+    "object": "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/InstallPartyparty.o",
+    "swift-dependencies": "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/primary.swiftdeps"
+  },
+  "/Users/shokunin/dev/partyparty/installer-app/Sources/InstallPartyparty/main.swift": {
+    "object": "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main.swift.o",
+    "swiftmodule": "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main.swiftdeps",
+    "diagnostics": "/Users/shokunin/dev/partyparty/installer-app/.build/arm64-apple-macosx/release/InstallPartyparty.build/main.dia"
+  }
+}
