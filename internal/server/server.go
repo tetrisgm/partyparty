@@ -26,6 +26,7 @@ import (
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
+	"partyparty/internal/ota"
 	"partyparty/internal/stats"
 )
 
@@ -36,6 +37,11 @@ type Deps struct {
 	RunDir      string
 	Web         fs.FS
 	MTX         *mediamtx.Server // nil if mediamtx unavailable (LL-HLS disabled)
+
+	// Payload is the over-the-air content store (nil = serve embedded Web
+	// only). When set, all web content and the version stamp come from it, so
+	// an adopted cloud payload is served without an app update.
+	Payload *ota.Store
 
 	// Events is the party's social layer (feed + media + recordings).
 	// nil disables the feed endpoints.
@@ -77,7 +83,43 @@ type srv struct {
 }
 
 func New(d Deps) *Srv {
-	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(d.Web))}}
+	webFS := d.Web
+	if d.Payload != nil {
+		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
+	}
+	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS))}}
+}
+
+// webFS is the live content source: the OTA payload store if present (which
+// serves the embedded copy until a newer payload is verified), else embedded.
+func (s *srv) webFS() fs.FS {
+	if s.Payload != nil {
+		return s.Payload
+	}
+	return s.Web
+}
+
+// version is the effective content version stamped into pages and reported to
+// clients. Payload-aware, so adopting a new payload changes the version and
+// stale tabs self-refresh — same mechanism as an app update.
+func (s *srv) version() string {
+	if s.Payload != nil {
+		return s.Payload.Version(s.Version)
+	}
+	return s.Version
+}
+
+// payloadConfig is the OTA config.json (feature flags + tunables) surfaced to
+// clients in /api/status, so remotely-shipped config takes effect with the
+// rest of the payload. Falls back to the embedded config when no store is set.
+func (s *srv) payloadConfig() json.RawMessage {
+	if s.Payload != nil {
+		return s.Payload.Config()
+	}
+	if data, err := fs.ReadFile(s.Web, "config.json"); err == nil && json.Valid(data) {
+		return json.RawMessage(data)
+	}
+	return nil
 }
 
 // Srv is the exported handle: an http.Handler plus the async-activation hook.
@@ -174,15 +216,16 @@ func (s *srv) urls() urls {
 }
 
 func (s *srv) serveWeb(w http.ResponseWriter, name, cache string) {
-	data, err := fs.ReadFile(s.Web, name)
+	data, err := fs.ReadFile(s.webFS(), name)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	if strings.HasSuffix(name, ".html") {
-		// Stamp the build version into the page so it can detect a server
-		// update and refresh itself (stale open tabs run old logic forever).
-		data = []byte(strings.ReplaceAll(string(data), "__PP_VERSION__", s.Version))
+		// Stamp the effective content version into the page so it can detect an
+		// app OR payload update and refresh itself (stale open tabs run old
+		// logic forever).
+		data = []byte(strings.ReplaceAll(string(data), "__PP_VERSION__", s.version()))
 	}
 	w.Header().Set("Content-Type", mimeFor(name))
 	if cache != "" {
@@ -200,7 +243,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		health.Suggestion = suggest(health.Status, bc)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name":           s.Config.Name,
-			"appVersion":     s.Version,
+			"appVersion":     s.version(),
 			"broadcast":      bc,
 			"listeners":      health.Listeners,
 			"listenersTotal": s.Listeners.TotalUnique(),
@@ -218,6 +261,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"latency":        s.Listeners.LatencySpread(),
 			"roster":         s.Listeners.Roster(),
 			"event":          s.eventState(),
+			"config":         s.payloadConfig(),
 		})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.

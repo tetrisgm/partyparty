@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,6 +33,7 @@ import (
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
+	"partyparty/internal/ota"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
 )
@@ -257,12 +259,47 @@ func main() {
 		}
 	}
 
+	// Over-the-air payload: keep the served web content (player, console,
+	// vendored libs, config.json of flags/tunables) current without a signed
+	// app update. The store is an fs.FS that serves the embedded copy until it
+	// has verified a newer, compatible cloud payload; the server reads through
+	// it, so a fix ships to guests within minutes and no relaunch. Dev builds
+	// and telemetry-off instances never fetch — they serve their local content.
+	var payload *ota.Store
+	{
+		embVer := 0
+		if b, rerr := fs.ReadFile(web, "PAYLOAD_VERSION"); rerr == nil {
+			embVer, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+		}
+		manifestURL := ""
+		if appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
+			base := os.Getenv("PARTYPARTY_BROKER")
+			if base == "" {
+				base = "https://party.ramine.net"
+			}
+			manifestURL = base + "/content/manifest.json"
+		}
+		sd, _ := activate.StateDir()
+		diagf := func(f string, a ...any) {
+			if diagLog != nil {
+				diagLog.Printf(f, a...)
+			}
+		}
+		if st, oerr := ota.Open(web, embVer, sd, manifestURL, diagf); oerr == nil {
+			payload = st
+			go st.Loop(context.Background())
+		} else {
+			log.Printf("ota disabled: %v", oerr)
+		}
+	}
+
 	handler := server.New(server.Deps{
 		Config:      cfg,
 		Broadcaster: bc,
 		Listeners:   ls,
 		RunDir:      runDir,
 		Web:         web,
+		Payload:     payload,
 		MTX:         mtx,
 		Events:      events,
 		Diag:        diagLog,

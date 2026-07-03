@@ -343,6 +343,11 @@ func stateDir() (string, error) {
 	return dir, os.MkdirAll(dir, 0o700)
 }
 
+// StateDir is the app's per-user state directory (certs, install creds, the OTA
+// payload cache) — ~/Library/Application Support/partyparty. Exported so other
+// packages can cache alongside without re-deriving the path.
+func StateDir() (string, error) { return stateDir() }
+
 // certUsable reports whether the cached cert covers host and has >renewWindow left.
 func certUsable(certFile, host string) bool {
 	data, err := os.ReadFile(certFile)

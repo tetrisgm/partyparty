@@ -18,6 +18,9 @@
 const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
+// OTA content: the signed manifest (pointer, short cache) and immutable,
+// versioned payload bundles. Served from R2 under the content/ prefix.
+const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -389,6 +392,26 @@ export default {
         const isLatestAlias = key === "partyparty.zip" || key === "partyparty.pkg" || key === "partyparty.dmg";
         headers.set("cache-control", isLatestAlias ? "public, max-age=300" : "public, max-age=86400, immutable");
       }
+      return new Response(request.method === "HEAD" ? null : obj.body, { headers });
+    }
+
+    // OTA content: the manifest and versioned payload bundles live in R2 under
+    // content/. The manifest is the pointer (kept fresh); bundles are immutable.
+    if (CONTENT_RE.test(pathname)) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const key = pathname.slice(1); // "content/manifest.json" | "content/payload-<v>.tar.gz"
+      const obj = await env.DL.get(key);
+      if (!obj) return new Response("Not found — run scripts/publish-payload.sh.", { status: 404 });
+      const headers = new Headers();
+      obj.writeHttpMetadata(headers);
+      headers.set("etag", obj.httpEtag);
+      const isManifest = key === "content/manifest.json";
+      headers.set("content-type", isManifest ? "application/json" : "application/gzip");
+      // Manifest is the pointer clients poll — short cache. Bundles are content-
+      // addressed by version and never change — cache hard.
+      headers.set("cache-control", isManifest ? "public, max-age=60" : "public, max-age=86400, immutable");
       return new Response(request.method === "HEAD" ? null : obj.body, { headers });
     }
 
