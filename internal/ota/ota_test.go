@@ -167,6 +167,28 @@ func TestSubscribeNoAppUpdateWhenSameVersion(t *testing.T) {
 	}
 }
 
+func TestVersionNewer(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"0.38.0", "0.37.0", true},
+		{"0.37.1", "0.37.0", true},
+		{"0.37.0", "0.37.0", false}, // equal is not newer
+		{"0.36.0", "0.37.0", false}, // older (rollback) must not trigger
+		{"1.0.0", "0.37.0", true},
+		{"", "0.37.0", false},           // empty never triggers
+		{"0.37", "0.37.0", false},       // 0.37 == 0.37.0 (trailing zero)
+		{"weird", "0.37.0", true},       // unparseable falls back to != (safe extra check)
+		{"0.37.0", "0.37.0-beta", true}, // b unparseable, differs -> fallback !=
+	}
+	for _, c := range cases {
+		if got := versionNewer(c.a, c.b); got != c.want {
+			t.Errorf("versionNewer(%q,%q)=%v want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
+
 func TestVersionIsBareOnStockContent(t *testing.T) {
 	// No payload adopted: the served version must equal the app version exactly
 	// (no "/pN"), so stock content looks identical to pre-OTA behavior.

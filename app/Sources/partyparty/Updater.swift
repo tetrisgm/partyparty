@@ -13,7 +13,7 @@ import Sparkle
 final class Updater: NSObject, SPUUpdaterDelegate {
     private var controller: SPUStandardUpdaterController!
     private let isBusy: () -> Bool
-    private var prompted = false // one prompt per staged update, not per check
+    private var promptedVersion: String? // the build we last offered — re-prompt only for a NEWER one
 
     init(isBusy: @escaping () -> Bool) {
         self.isBusy = isBusy
@@ -47,8 +47,9 @@ final class Updater: NSObject, SPUUpdaterDelegate {
     // wrong and quit-install already covers it.
     func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
                  immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
-        if prompted || isBusy() { return true } // silent install-on-quit
-        prompted = true
+        if isBusy() { return true } // mid-set: silent install-on-quit — don't record, so a later idle moment can still offer it
+        if promptedVersion == item.displayVersionString { return true } // already offered THIS build
+        promptedVersion = item.displayVersionString // a newer staged build re-prompts; the same one won't
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
             let a = NSAlert()

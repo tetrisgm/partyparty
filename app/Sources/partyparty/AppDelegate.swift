@@ -41,13 +41,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // Aggressive updates: the server's subscribe loop learns of a new build in
-    // seconds and flips appUpdate; pull it through Sparkle immediately (once)
-    // rather than waiting for Sparkle's hourly timer. Foreground focus triggers a
-    // check too, so an app the DJ is actively looking at stays current.
-    private var appUpdateTriggered = false
+    // seconds and flips appUpdate; pull it through Sparkle rather than waiting for
+    // its hourly timer. NOT a permanent one-shot — while the cloud still says a
+    // newer build exists, re-fire the silent check periodically so a transient
+    // failure is retried and a SECOND build published within a long-lived
+    // (never-quit) session is still picked up, instead of latching forever after
+    // the first attempt.
+    private var lastAppUpdatePush = Date.distantPast
     private func maybeTriggerAppUpdate(_ s: ServerStatus) {
-        guard s.appUpdate, !appUpdateTriggered else { return }
-        appUpdateTriggered = true
+        guard s.appUpdate else { return }
+        guard Date().timeIntervalSince(lastAppUpdatePush) > 120 else { return }
+        lastAppUpdatePush = Date()
         updater?.checkNow()
     }
 

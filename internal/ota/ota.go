@@ -103,6 +103,8 @@ type Store struct {
 	client       *http.Client
 	diag         func(string, ...any)
 
+	refreshMu sync.Mutex // serializes Refresh so the subscribe push and the periodic floor can't download/extract/swap the same payload dir concurrently
+
 	mu        sync.RWMutex
 	active    fs.FS
 	version   int
@@ -324,7 +326,10 @@ func (s *Store) subscribeOnce(ctx context.Context, cv int, av string) (int, stri
 			s.diag("ota: refresh after subscribe: %v", rerr)
 		}
 	}
-	if st.AppVersion != "" && st.AppVersion != s.appVersion {
+	// Only flag an app update when the advertised build is genuinely NEWER — not
+	// merely different — so a rolled-back or reformatted marker can't send every
+	// Mac chasing a Sparkle check for a version it already runs or is older.
+	if versionNewer(st.AppVersion, s.appVersion) {
 		s.mu.Lock()
 		wasNew := !s.appUpdate
 		s.appUpdate = true
@@ -336,11 +341,60 @@ func (s *Store) subscribeOnce(ctx context.Context, cv int, av string) (int, stri
 	return st.PayloadVersion, st.AppVersion, nil
 }
 
+// versionNewer reports whether dotted version a is strictly greater than b
+// (e.g. "0.38.0" > "0.37.0"). Both are parsed component-wise as integers; if
+// either doesn't parse cleanly it falls back to string inequality (err toward a
+// harmless extra Sparkle check rather than missing a real update).
+func versionNewer(a, b string) bool {
+	if a == "" {
+		return false
+	}
+	pa, oka := parseVersion(a)
+	pb, okb := parseVersion(b)
+	if !oka || !okb {
+		return a != b
+	}
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var x, y int
+		if i < len(pa) {
+			x = pa[i]
+		}
+		if i < len(pb) {
+			y = pb[i]
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
+
+func parseVersion(v string) ([]int, bool) {
+	parts := strings.Split(v, ".")
+	out := make([]int, len(parts))
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return nil, false
+		}
+		out[i] = n
+	}
+	return out, true
+}
+
 // Refresh fetches the manifest, and if it names a newer compatible payload,
 // verifies its signature, downloads and hash-checks the bundle, extracts it
 // atomically, and swaps it in. Returns (adopted, err). Any failure leaves the
 // currently-served content untouched — never worse than what was already up.
 func (s *Store) Refresh(ctx context.Context) (bool, error) {
+	// Serialize adoptions: the subscribe push and the periodic floor can both
+	// call Refresh at once, and the filesystem swap (download/extract/rename into
+	// the shared p<v> dir) is not otherwise safe to run twice concurrently — one
+	// goroutine could RemoveAll the dir another just made live. Whoever wins
+	// re-reads the version below, so the loser no-ops instead of re-downloading.
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+
 	m, err := s.fetchManifest(ctx)
 	if err != nil {
 		return false, err

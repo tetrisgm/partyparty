@@ -196,11 +196,32 @@ function renderNotFound() {
 const jsonResp = (status, obj) =>
   new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
 
-// contentState reads the latest published versions cheaply from existing R2
-// artifacts: the payload version from the signed manifest, and the app version
-// from a one-line marker release.sh writes. Missing artifacts degrade to zeros
-// (nothing to update to) rather than erroring.
+// contentState returns the latest published versions, cached briefly so the
+// long-poll's repeated reads and every concurrent subscriber collapse to about
+// one R2 read per window instead of ~2 reads every couple seconds per Mac. The
+// short TTL keeps push latency to a few seconds. Falls back to a direct read if
+// the edge cache is unavailable.
 async function contentState(env) {
+  const cache = caches.default;
+  const key = new Request("https://pp-internal-cache/content-state");
+  try {
+    const hit = await cache.match(key);
+    if (hit) return await hit.json();
+  } catch (e) { /* fall through to a direct read */ }
+  const state = await readContentState(env);
+  try {
+    await cache.put(key, new Response(JSON.stringify(state), {
+      headers: { "content-type": "application/json", "cache-control": "max-age=3" },
+    }));
+  } catch (e) { /* caching is best-effort */ }
+  return state;
+}
+
+// readContentState pulls the versions from existing R2 artifacts: the payload
+// version from the signed manifest, the app version from a one-line marker
+// release.sh writes. Missing artifacts degrade to zeros (nothing to update to)
+// rather than erroring.
+async function readContentState(env) {
   let payloadVersion = 0, minRuntime = 1, appVersion = "";
   try {
     const m = await env.DL.get("content/manifest.json");
