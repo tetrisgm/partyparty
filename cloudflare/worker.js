@@ -35,6 +35,17 @@ const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
 const SITE_ORIGIN = "https://party.ramine.net";
 const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 const SESSION_COOKIE = "pp_session";
+const POST_MEDIA_MIME = {
+  image: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"],
+  video: ["video/mp4", "video/quicktime", "video/webm"],
+  audio: ["audio/mpeg", "audio/mp4", "audio/aac", "audio/wav"],
+};
+const MAX_IMPORT_FUTURE_MS = 24 * 60 * 60 * 1000;
+const MAX_POSTS_PER_IMPORT = 200;
+const MAX_COMMENTS_PER_IMPORT = 2000;
+const WALL_MEDIA_LIMIT = 240;
+const WALL_COMMENTS_PER_POST = 50;
+const READ_JSON_TOO_LARGE = new WeakSet();
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -44,6 +55,39 @@ const absUrl = (s) => {
   try { return new URL(s || "/", SITE_ORIGIN).href; }
   catch (_) { return SITE_ORIGIN + "/"; }
 };
+
+function allowedPostMime(mediaType, mime) {
+  const allowed = POST_MEDIA_MIME[mediaType] || [];
+  const raw = String(mime || "").trim().toLowerCase();
+  if (!raw) return allowed[0] || "";
+  return allowed.includes(raw) ? raw : "";
+}
+
+function clampImportTs(value, now = nowMs()) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, now + MAX_IMPORT_FUTURE_MS);
+}
+
+function safeIso(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n < 0 || n > 8640000000000000) return "";
+  try {
+    return new Date(n).toISOString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function safeExternalUrl(url) {
+  if (!url) return "";
+  try {
+    const u = new URL(String(url));
+    return (u.protocol === "http:" || u.protocol === "https:") ? u.href : "";
+  } catch (_) {
+    return "";
+  }
+}
 
 export function parseCookies(request) {
   const out = {};
@@ -97,7 +141,11 @@ export function normalizeHandle(s) {
 export async function readJson(request, maxBytes = 16384) {
   const cap = Math.max(0, Number(maxBytes) || 0);
   const len = Number(request?.headers?.get("content-length") || "0");
-  if (len && len > cap) return null;
+  READ_JSON_TOO_LARGE.delete(request);
+  if (len && len > cap) {
+    READ_JSON_TOO_LARGE.add(request);
+    return null;
+  }
   try {
     let text = "";
     if (request?.body?.getReader) {
@@ -110,6 +158,7 @@ export async function readJson(request, maxBytes = 16384) {
         total += value.byteLength;
         if (total > cap) {
           await reader.cancel().catch(() => {});
+          READ_JSON_TOO_LARGE.add(request);
           return null;
         }
         text += decoder.decode(value, { stream: true });
@@ -117,7 +166,10 @@ export async function readJson(request, maxBytes = 16384) {
       text += decoder.decode();
     } else {
       text = await request.text();
-      if (new TextEncoder().encode(text).byteLength > cap) return null;
+      if (new TextEncoder().encode(text).byteLength > cap) {
+        READ_JSON_TOO_LARGE.add(request);
+        return null;
+      }
     }
     return text ? JSON.parse(text) : null;
   } catch (_) {
@@ -163,8 +215,8 @@ export async function getPostMedia(env, postIds) {
   const ids = postIds.map((id) => String(id || "")).filter(Boolean).slice(0, 100);
   if (!ids.length) return [];
   const rows = await env.DB.prepare(
-    "SELECT * FROM post_media WHERE post_id IN (SELECT value FROM json_each(?)) ORDER BY post_id, sort_order"
-  ).bind(JSON.stringify(ids)).all();
+    "SELECT * FROM post_media WHERE post_id IN (SELECT value FROM json_each(?)) ORDER BY post_id, sort_order LIMIT ?"
+  ).bind(JSON.stringify(ids), WALL_MEDIA_LIMIT).all();
   return rows?.results || [];
 }
 
@@ -172,10 +224,10 @@ export async function getPostComments(env, postIds) {
   if (!env?.DB || !Array.isArray(postIds)) return [];
   const ids = postIds.map((id) => String(id || "")).filter(Boolean).slice(0, 100);
   if (!ids.length) return [];
-  const rows = await env.DB.prepare(
-    "SELECT * FROM post_comments WHERE post_id IN (SELECT value FROM json_each(?)) AND approved=1 AND deleted_ms IS NULL ORDER BY post_id, ts_ms"
-  ).bind(JSON.stringify(ids)).all();
-  return rows?.results || [];
+  const batches = await Promise.all(ids.map((id) => env.DB.prepare(
+    "SELECT * FROM post_comments WHERE post_id=? AND approved=1 AND deleted_ms IS NULL ORDER BY ts_ms LIMIT ?"
+  ).bind(id, WALL_COMMENTS_PER_POST).all()));
+  return batches.flatMap((rows) => rows?.results || []);
 }
 
 export async function getSessionUser(env, request) {
@@ -376,9 +428,10 @@ function fmtWhen(ms) {
 }
 
 function social(id, url, bg, label = id, soon = "") {
-  if (!url) return "";
+  const href = safeExternalUrl(url);
+  if (!href) return "";
   const attrs = soon ? ` data-soon="${esc(soon)}"` : ` target="_blank" rel="noopener noreferrer"`;
-  return `<a href="${esc(url)}"${attrs} style="background:${bg}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#${esc(id)}"/></svg></a>`;
+  return `<a href="${esc(href)}"${attrs} style="background:${bg}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" fill="currentColor"><use href="#${esc(id)}"/></svg></a>`;
 }
 
 async function getHomeEvents(env) {
@@ -650,6 +703,7 @@ function eventFromRow(row, set, slug, wall = {}) {
 
 function fmtPostTime(ms) {
   const n = Number(ms) || 0;
+  if (!Number.isFinite(n) || n < 0 || n > 8640000000000000) return "";
   if (!n) return "";
   const delta = Math.max(0, nowMs() - n);
   const min = 60000, hour = 60 * min, day = 24 * hour;
@@ -691,10 +745,11 @@ function renderWallPost(post, slug, media, comments) {
   const who = post.author || (post.dj ? "DJ" : "Guest");
   const timeMs = post.activity_ms || post.created_ms || post.ts_ms;
   const timeText = fmtPostTime(timeMs);
+  const datetime = safeIso(timeMs);
   const text = post.text ? `<p class="walltext">${esc(post.text)}</p>` : "";
   const commentHtml = comments.length ? `<div class="comments">${comments.map((c) => `<div class="comment">${c.emoji ? `<span>${esc(c.emoji)}</span> ` : ""}<b>${esc(c.author || (c.dj ? "DJ" : "Guest"))}</b> ${esc(c.text || "")}</div>`).join("")}</div>` : "";
   return `<article class="card wallpost">
-    <div class="who">${post.emoji ? `<span>${esc(post.emoji)}</span>` : ""}<b>${esc(who)}</b>${timeText ? `<time datetime="${esc(new Date(Number(timeMs) || 0).toISOString())}">${esc(timeText)}</time>` : ""}</div>
+    <div class="who">${post.emoji ? `<span>${esc(post.emoji)}</span>` : ""}<b>${esc(who)}</b>${timeText && datetime ? `<time datetime="${esc(datetime)}">${esc(timeText)}</time>` : ""}</div>
     ${text}
     ${renderWallMedia(slug, media)}
     ${commentHtml}
@@ -886,19 +941,24 @@ async function rsvpCounts(env, slug) {
   return out;
 }
 
-async function rsvpIdentity(env, request, mintAnon) {
+async function rsvpIdentity(env, request, slug, mintAnon) {
   const user = await getSessionUser(env, request);
   if (user?.id) return { userId: String(user.id), anonHash: "", cookieId: "", minted: false };
   const cookies = parseCookies(request);
   let cookieId = cookies.pp_rsvp || "";
+  const cookieAnonHash = /^ip\.([a-f0-9]{64})$/.exec(cookieId)?.[1] || "";
+  if (cookieId && !cookieAnonHash && !/^[a-f0-9]{32}$/.test(cookieId)) cookieId = "";
   let minted = false;
+  let ipAnonHash = "";
   if (!cookieId && mintAnon) {
-    cookieId = randHex(16);
+    ipAnonHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}:${slug}`);
+    cookieId = `ip.${ipAnonHash}`;
     minted = true;
   }
+  const anonHash = cookieAnonHash || ipAnonHash || (cookieId ? await sha256Hex(cookieId) : "");
   return {
     userId: "",
-    anonHash: cookieId ? await sha256Hex(cookieId) : "",
+    anonHash,
     cookieId,
     minted,
   };
@@ -930,7 +990,7 @@ async function eventRsvp(request, env, slug) {
   if (Number(event.rsvp_enabled) !== 1) return jsonResp(403, { error: "rsvp disabled" });
 
   if (request.method === "GET") {
-    const identity = await rsvpIdentity(env, request, false);
+    const identity = await rsvpIdentity(env, request, slug, false);
     const [counts, mine] = await Promise.all([
       rsvpCounts(env, slug),
       rsvpMine(env, slug, identity),
@@ -941,7 +1001,7 @@ async function eventRsvp(request, env, slug) {
   const body = await readJson(request, 2048);
   const response = String(body?.response || "");
   if (response !== "coming" && response !== "not") return jsonResp(400, { error: "bad response" });
-  const identity = await rsvpIdentity(env, request, true);
+  const identity = await rsvpIdentity(env, request, slug, true);
   const now = nowMs();
   const name = clip(body?.name, 40);
   const emoji = clip(body?.emoji, 8);
@@ -1139,9 +1199,8 @@ async function publishPostMedia(request, env) {
   }
 
   const rawMime = request.headers.get("x-pp-mime") || "";
-  const defaultMime = mediaType === "video" ? "video/mp4" : mediaType === "audio" ? "audio/mpeg" : "image/jpeg";
-  const mimeType = rawMime || defaultMime;
-  if (mimeType.length > 160 || !/^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,95}$/.test(mimeType)) {
+  const mimeType = allowedPostMime(mediaType, rawMime);
+  if (!mimeType) {
     return jsonResp(400, { error: "bad mime" });
   }
   const name = request.headers.get("x-pp-name") || "";
@@ -1202,7 +1261,19 @@ async function publishPosts(env, id, body) {
   if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
   const posts = Array.isArray(body.posts) ? body.posts : null;
   if (!posts) return jsonResp(400, { error: "bad posts" });
-  if (posts.length > 2000) return jsonResp(413, { error: "too many posts" });
+  if (posts.length > MAX_POSTS_PER_IMPORT) return jsonResp(413, { error: "too many posts" });
+  let totalComments = 0;
+  for (const post of posts) {
+    const localId = String(post?.localId || "");
+    if (!localId || localId.length > 200) return jsonResp(400, { error: "bad post localId" });
+    const comments = Array.isArray(post.comments) ? post.comments : [];
+    totalComments += comments.length;
+    if (comments.length > 500 || totalComments > MAX_COMMENTS_PER_IMPORT) return jsonResp(413, { error: "too many comments" });
+    for (const comment of comments) {
+      const commentLocalId = String(comment?.localId || "");
+      if (!commentLocalId || commentLocalId.length > 200) return jsonResp(400, { error: "bad comment localId" });
+    }
+  }
 
   const owner = await env.DB.prepare("SELECT install_id, dj_profile_id FROM events WHERE slug=?").bind(slug).first();
   if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not owner" });
@@ -1217,12 +1288,12 @@ async function publishPosts(env, id, body) {
     if (comments.length > 500) return jsonResp(413, { error: "too many comments" });
 
     const postId = (await sha256Hex(`${slug}:${id}:${localId}`)).slice(0, 32);
-    const ts = Math.max(0, Number(post.ts) || 0);
+    const ts = clampImportTs(post.ts, now);
     const deletedMs = post.deleted ? now : null;
     const approved = post.noPublish ? 0 : 1;
     const approvedMs = approved ? now : null;
     let activityMs = ts;
-    for (const comment of comments) activityMs = Math.max(activityMs, Math.max(0, Number(comment?.ts) || 0));
+    for (const comment of comments) activityMs = Math.max(activityMs, clampImportTs(comment?.ts, now));
 
     await env.DB.prepare(
       `INSERT INTO posts (
@@ -1254,7 +1325,7 @@ async function publishPosts(env, id, body) {
       const commentLocalId = String(comment?.localId || "");
       if (!commentLocalId || commentLocalId.length > 200) return jsonResp(400, { error: "bad comment localId" });
       const commentId = (await sha256Hex(`${postId}:${commentLocalId}`)).slice(0, 32);
-      const commentTs = Math.max(0, Number(comment.ts) || 0);
+      const commentTs = clampImportTs(comment.ts, now);
       await env.DB.prepare(
         `INSERT INTO post_comments (
            id, slug, post_id, author, emoji, text, dj, approved, ts_ms, created_ms, updated_ms, deleted_ms
@@ -1286,6 +1357,13 @@ async function publishPosts(env, id, body) {
   return jsonResp(200, { ok: true, slug, imported, approved: approvedCount });
 }
 
+function brokerJsonCap(pathname) {
+  if (pathname === "/api/broker/publish-posts") return 1_000_000;
+  if (pathname === "/api/broker/log") return 8_100_000;
+  if (pathname === "/api/broker/telemetry") return 128_000;
+  return 16_384;
+}
+
 async function broker(request, env, pathname) {
   // Reachability probe for the app's connection test (any method, no auth,
   // no side effects) — proves the venue's network can reach the broker.
@@ -1303,8 +1381,11 @@ async function broker(request, env, pathname) {
   }
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
-  const body = await request.json().catch(() => null);
-  if (!body) return jsonResp(400, { error: "bad json" });
+  const jsonCap = brokerJsonCap(pathname);
+  const contentLength = Number(request.headers.get("content-length") || "0");
+  if (contentLength && contentLength > jsonCap) return jsonResp(413, { error: "too large" });
+  const body = await readJson(request, jsonCap);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
 
   if (pathname === "/api/broker/register") {
     const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
@@ -1419,7 +1500,7 @@ async function broker(request, env, pathname) {
     const vals = {};
     const updateCols = [];
     for (const [key, col, len] of textSpecs) {
-      vals[col] = has(key) ? clip(body[key], len) : null;
+      vals[col] = has(key) ? clip(body[key], len) : "";
       if (has(key)) updateCols.push([col, vals[col]]);
     }
 
@@ -1684,7 +1765,8 @@ export default {
       if (!row?.media_key) return new Response("Not found", { status: 404 });
 
       const mediaType = String(row.media_type || "");
-      const ctype = row.mime_type || (mediaType === "video" ? "video/mp4" : mediaType === "audio" ? "audio/mpeg" : "image/jpeg");
+      const ctype = allowedPostMime(mediaType, row.mime_type) || allowedPostMime(mediaType, "");
+      if (!ctype) return new Response("Not found", { status: 404 });
       const cache = "public, max-age=31536000, immutable";
       const isRangeAware = mediaType === "video" || mediaType === "audio";
       const rangeHdr = isRangeAware ? request.headers.get("range") : null;
@@ -1710,6 +1792,7 @@ export default {
           h.set("content-length", String(end - start + 1));
           h.set("cache-control", cache);
           h.set("etag", obj.httpEtag);
+          h.set("x-content-type-options", "nosniff");
           return new Response(request.method === "HEAD" ? null : obj.body, { status: 206, headers: h });
         }
         // malformed/unsatisfiable range → fall through to whole-object 200
@@ -1722,6 +1805,7 @@ export default {
       h.set("accept-ranges", "bytes");
       h.set("cache-control", cache);
       h.set("etag", obj.httpEtag);
+      h.set("x-content-type-options", "nosniff");
       return new Response(request.method === "HEAD" ? null : obj.body, { headers: h });
     }
 

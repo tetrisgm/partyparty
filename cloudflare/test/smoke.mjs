@@ -205,7 +205,18 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM post_media WHERE post_id IN")) {
       const ids = new Set(JSON.parse(this.args[0] || "[]"));
-      return { results: [...this.db.importedPostMedia.values()].filter((row) => ids.has(row.post_id)) };
+      const limit = Number(this.args[1]) || this.db.importedPostMedia.size;
+      return { results: [...this.db.importedPostMedia.values()].filter((row) => ids.has(row.post_id)).slice(0, limit) };
+    }
+    if (sql.includes("FROM post_comments WHERE post_id=?")) {
+      const [postId, limitArg] = this.args;
+      const limit = Number(limitArg) || this.db.importedComments.size;
+      return {
+        results: [...this.db.importedComments.values()]
+          .filter((row) => row.post_id === postId && row.approved === 1 && row.deleted_ms == null)
+          .sort((a, b) => (Number(a.ts_ms) || 0) - (Number(b.ts_ms) || 0))
+          .slice(0, limit),
+      };
     }
     if (sql.includes("FROM post_comments WHERE post_id IN")) {
       const ids = new Set(JSON.parse(this.args[0] || "[]"));
@@ -640,7 +651,7 @@ const tests = [
     assert.deepEqual(json, { ok: true, response: "coming", counts: { coming: 1, not: 0 } });
     assert.equal(db.rsvps.size, 1);
   }],
-  ["event RSVP POST with same cookie updates same anonymous row", async () => {
+    ["event RSVP POST with same cookie updates same anonymous row", async () => {
     const db = new FakeD1({ rsvpEnabled: 1 });
     const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
       method: "POST",
@@ -656,9 +667,27 @@ const tests = [
     const json = await second.json();
     assert.equal(second.status, 200);
     assert.equal(second.headers.get("set-cookie"), null);
-    assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
-    assert.equal(db.rsvps.size, 1);
-  }],
+      assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
+      assert.equal(db.rsvps.size, 1);
+    }],
+    ["event RSVP cookie-less POSTs from same IP collapse to one row", async () => {
+      const db = new FakeD1({ rsvpEnabled: 1 });
+      const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.10" },
+        body: JSON.stringify({ response: "coming" }),
+      }), makeEnv({ DB: db }));
+      const second = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.10" },
+        body: JSON.stringify({ response: "not" }),
+      }), makeEnv({ DB: db }));
+      const json = await second.json();
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
+      assert.equal(db.rsvps.size, 1);
+    }],
   ["event RSVP GET returns counts and mine", async () => {
     const db = new FakeD1({ rsvpEnabled: 1 });
     const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
@@ -738,10 +767,30 @@ const tests = [
     assert.match(html, /<audio id="setaudio"/);
     assert.match(html, /<div class="wave" id="wave"/);
     assert.match(html, /The lights hit right at midnight\./);
-    assert.match(html, /Bassline stayed locked\./);
-    assert.match(html, /<img loading="lazy" src="\/event\/known-set\/media\/media-img"/);
-  }],
-  ["event wall handles ready set with no posts", async () => {
+      assert.match(html, /Bassline stayed locked\./);
+      assert.match(html, /<img loading="lazy" src="\/event\/known-set\/media\/media-img"/);
+    }],
+    ["event wall ignores invalid timestamps instead of crashing", async () => {
+      const resp = await fetchPath(`/e/${KNOWN_SLUG}`, {}, {
+        db: {
+          wallPosts: [{
+            id: "post-huge-ts",
+            slug: KNOWN_SLUG,
+            author: "Ava",
+            text: "Still renders",
+            approved: 1,
+            deleted_ms: null,
+            activity_ms: 9007199254740991,
+            created_ms: 9007199254740991,
+          }],
+        },
+      });
+      const html = await resp.text();
+      assert.equal(resp.status, 200);
+      assert.match(html, /Still renders/);
+      assert.doesNotMatch(html, /datetime=/);
+    }],
+    ["event wall handles ready set with no posts", async () => {
     const resp = await fetchPath(`/e/${KNOWN_SLUG}`);
     const html = await resp.text();
     assert.equal(resp.status, 200);
@@ -798,10 +847,33 @@ const tests = [
     assert.ok(html.indexOf("Someone Live") < html.indexOf("Someone Rooftop"));
     assert.match(html, /<span class="statuspill live"><span class="dot"><\/span>Live<\/span>/);
     assert.match(html, /<span class="statuspill upcoming">Upcoming<\/span>/);
-    assert.match(html, /href="\/e\/someone-rooftop"/);
-    assert.doesNotMatch(html, /Rooftop Sessions/);
-  }],
-  ["unknown profile returns 404", async () => {
+      assert.match(html, /href="\/e\/someone-rooftop"/);
+      assert.doesNotMatch(html, /Rooftop Sessions/);
+    }],
+    ["profile route omits unsafe social URL schemes", async () => {
+      const resp = await fetchPath("/@unsafe", {}, {
+        db: {
+          profiles: [{
+            id: "profile-unsafe",
+            handle: "unsafe",
+            display_name: "DJ Unsafe",
+            bio: "Links under test.",
+            published: 1,
+            website_url: "javascript:alert(1)",
+            instagram_url: "data:text/html,hi",
+            soundcloud_url: "https://soundcloud.example.test/dj",
+            spotify_url: "http://spotify.example.test/dj",
+          }],
+        },
+      });
+      const html = await resp.text();
+      assert.equal(resp.status, 200);
+      assert.doesNotMatch(html, /javascript:alert/);
+      assert.doesNotMatch(html, /data:text\/html/);
+      assert.match(html, /href="https:\/\/soundcloud\.example\.test\/dj"/);
+      assert.match(html, /href="http:\/\/spotify\.example\.test\/dj"/);
+    }],
+    ["unknown profile returns 404", async () => {
     const resp = await fetchPath("/@nobody");
     assert.equal(resp.status, 404);
   }],
@@ -811,7 +883,7 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /Rooftop Sessions/);
   }],
-  ["approved post media returns object with stored content-type", async () => {
+    ["approved post media returns object with stored content-type", async () => {
     const resp = await fetchPath(`/event/${KNOWN_SLUG}/media/media-img`, {}, {
       db: {
         wallPosts: [{
@@ -833,10 +905,38 @@ const tests = [
         [`event/${KNOWN_SLUG}/post-media/media-img`]: new FakeR2Object("fake-png", { contentType: "image/png" }),
       },
     });
-    assert.equal(resp.status, 200);
-    assert.equal(resp.headers.get("content-type"), "image/png");
-    assert.equal(await resp.text(), "fake-png");
-  }],
+      assert.equal(resp.status, 200);
+      assert.equal(resp.headers.get("content-type"), "image/png");
+      assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
+      assert.equal(await resp.text(), "fake-png");
+    }],
+    ["approved post media coerces unsafe stored content-type", async () => {
+      const resp = await fetchPath(`/event/${KNOWN_SLUG}/media/media-html`, {}, {
+        db: {
+          wallPosts: [{
+            id: "post-img",
+            slug: KNOWN_SLUG,
+            approved: 1,
+            deleted_ms: null,
+          }],
+          wallMedia: [{
+            id: "media-html",
+            slug: KNOWN_SLUG,
+            post_id: "post-img",
+            media_key: `event/${KNOWN_SLUG}/post-media/media-html`,
+            media_type: "image",
+            mime_type: "text/html",
+          }],
+        },
+        r2Objects: {
+          [`event/${KNOWN_SLUG}/post-media/media-html`]: new FakeR2Object("<script>alert(1)</script>", { contentType: "text/html" }),
+        },
+      });
+      assert.equal(resp.status, 200);
+      assert.equal(resp.headers.get("content-type"), "image/jpeg");
+      assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
+      assert.equal(await resp.text(), "<script>alert(1)</script>");
+    }],
   ["unapproved post media returns 404", async () => {
     const resp = await fetchPath(`/event/${KNOWN_SLUG}/media/media-img`, {}, {
       db: {
@@ -909,9 +1009,10 @@ const tests = [
         [`event/${KNOWN_SLUG}/post-media/media-video`]: new FakeR2Object("0123456789", { contentType: "video/mp4" }),
       },
     });
-    assert.equal(resp.status, 206);
-    assert.equal(resp.headers.get("content-type"), "video/mp4");
-    assert.equal(resp.headers.get("content-range"), "bytes 2-5/10");
+      assert.equal(resp.status, 206);
+      assert.equal(resp.headers.get("content-type"), "video/mp4");
+      assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
+      assert.equal(resp.headers.get("content-range"), "bytes 2-5/10");
     assert.equal(resp.headers.get("content-length"), "4");
     assert.equal(await resp.text(), "2345");
   }],
@@ -941,7 +1042,7 @@ const tests = [
     });
     assert.equal(resp.status, 403);
   }],
-  ["broker event-upsert creates fresh upcoming event", async () => {
+    ["broker event-upsert creates fresh upcoming event", async () => {
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
     });
@@ -971,9 +1072,34 @@ const tests = [
     assert.equal(row.owner_user_id, "user-1");
     assert.equal(row.dj_profile_id, "profile-1");
     assert.equal(db.profileActivityBumps.length, 1);
-    assert.equal(db.profileActivityBumps[0].profileId, "profile-1");
-    assert.equal(db.profileActivityBumps[0].lastActivityMs, row.last_activity_ms);
-  }],
+      assert.equal(db.profileActivityBumps[0].profileId, "profile-1");
+      assert.equal(db.profileActivityBumps[0].lastActivityMs, row.last_activity_ms);
+    }],
+    ["broker event-upsert creates minimal fresh event with non-null text defaults", async () => {
+      const db = new FakeD1();
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: "abc123abc123",
+          secret: "secret-a",
+          slug: "ahead-minimal",
+        }),
+      }), makeEnv({ DB: db }));
+      const row = db.events.get("ahead-minimal");
+      assert.equal(resp.status, 200);
+      assert.equal(row.title, "");
+      assert.equal(row.host, "");
+      assert.equal(row.starts, "");
+      assert.equal(row.where_txt, "");
+      assert.equal(row.tagline, "");
+      assert.equal(row.about, "");
+      assert.equal(row.timezone, "");
+      assert.equal(row.location_name, "");
+      assert.equal(row.location_address, "");
+      assert.equal(row.scheduled_at_ms, null);
+      assert.equal(row.end_at_ms, null);
+    }],
   ["broker event-upsert returns 409 for slug owned by another install", async () => {
     const db = new FakeD1({
       events: [{ slug: "taken-ahead", install_id: "def456def456", title: "Taken", status: "upcoming" }],
@@ -1037,7 +1163,7 @@ const tests = [
     assert.equal(db.profileActivityBumps.length, 1);
     assert.deepEqual(db.profileActivityBumps[0], { profileId: "profile-publish", lastActivityMs: row.last_activity_ms });
   }],
-  ["broker publish-posts imports curated posts and is idempotent", async () => {
+    ["broker publish-posts imports curated posts and is idempotent", async () => {
     const db = new FakeD1({
       events: [{ slug: "owned-posts", install_id: "abc123abc123", title: "Owned Posts", status: "replay" }],
     });
@@ -1088,9 +1214,33 @@ const tests = [
       body: JSON.stringify(body),
     }), makeEnv({ DB: db }));
     assert.equal(second.status, 200);
-    assert.equal(db.importedPosts.size, 2);
-    assert.deepEqual([...db.importedPosts.keys()], ids);
-  }],
+      assert.equal(db.importedPosts.size, 2);
+      assert.deepEqual([...db.importedPosts.keys()], ids);
+    }],
+    ["broker publish-posts rejects aggregate post cap before writing", async () => {
+      const db = new FakeD1({
+        events: [{ slug: "owned-posts-cap", install_id: "abc123abc123", title: "Owned Posts", status: "replay" }],
+      });
+      const posts = Array.from({ length: 201 }, (_, i) => ({
+        localId: `post-${i}`,
+        ts: 1,
+        author: "Guest",
+        text: "Nope",
+        comments: [],
+      }));
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: "abc123abc123",
+          secret: "secret-a",
+          slug: "owned-posts-cap",
+          posts,
+        }),
+      }), makeEnv({ DB: db }));
+      assert.equal(resp.status, 413);
+      assert.equal(db.importedPosts.size, 0);
+    }],
   ["broker publish-posts rejects slug owned by another install", async () => {
     const db = new FakeD1({
       events: [{ slug: "other-posts", install_id: "def456def456", title: "Other", status: "replay" }],
@@ -1173,7 +1323,7 @@ const tests = [
     assert.equal(env.DL.objects.has("event/other-media/posts/post-one/media-one"), false);
     assert.equal(db.importedPostMedia.size, 0);
   }],
-  ["broker publish-post-media rejects missing post", async () => {
+    ["broker publish-post-media rejects missing post", async () => {
     const db = new FakeD1({
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
     });
@@ -1192,10 +1342,34 @@ const tests = [
       body: "image",
     }), env);
     assert.equal(resp.status, 404);
-    assert.equal(env.DL.objects.has("event/owned-media/posts/missing-post/media-one"), false);
-    assert.equal(db.importedPostMedia.size, 0);
-  }],
-  ["broker publish-post-media writes R2 key and upserts post_media", async () => {
+      assert.equal(env.DL.objects.has("event/owned-media/posts/missing-post/media-one"), false);
+      assert.equal(db.importedPostMedia.size, 0);
+    }],
+    ["broker publish-post-media rejects unsafe mime for media type", async () => {
+      const db = new FakeD1({
+        events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
+        wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
+      });
+      const env = makeEnv({ DB: db });
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+        method: "PUT",
+        headers: {
+          "x-pp-id": "abc123abc123",
+          "x-pp-secret": "secret-a",
+          "x-pp-slug": "owned-media",
+          "x-pp-post": "post-one",
+          "x-pp-media": "media-one",
+          "x-pp-media-type": "image",
+          "x-pp-mime": "text/html",
+          "content-length": contentLength("<script>alert(1)</script>"),
+        },
+        body: "<script>alert(1)</script>",
+      }), env);
+      assert.equal(resp.status, 400);
+      assert.equal(env.DL.objects.has("event/owned-media/posts/post-one/media-one"), false);
+      assert.equal(db.importedPostMedia.size, 0);
+    }],
+    ["broker publish-post-media writes R2 key and upserts post_media", async () => {
     const db = new FakeD1({
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
@@ -1269,9 +1443,9 @@ const tests = [
     assert.equal(row.size_bytes, 16);
     assert.equal(await env.DL.objects.get(key).text(), "audio-two-longer");
   }],
-  ["broker event-status rejects non-owner install", async () => {
-    const db = new FakeD1({
-      events: [{ slug: "owned-by-b", install_id: "def456def456", title: "Owned B", status: "upcoming" }],
+    ["broker event-status rejects non-owner install", async () => {
+      const db = new FakeD1({
+        events: [{ slug: "owned-by-b", install_id: "def456def456", title: "Owned B", status: "upcoming" }],
     });
     const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
       method: "POST",
@@ -1279,10 +1453,28 @@ const tests = [
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-by-b", status: "live" }),
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 403);
-    assert.equal(db.events.get("owned-by-b").status, "upcoming");
-    assert.equal(db.events.get("owned-by-b").live_started_ms, undefined);
+      assert.equal(db.events.get("owned-by-b").status, "upcoming");
+      assert.equal(db.events.get("owned-by-b").live_started_ms, undefined);
+    }],
+  ["broker event-status rejects over-cap JSON body", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-large-status", install_id: "abc123abc123", title: "Owned", status: "upcoming" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        slug: "owned-large-status",
+        status: "live",
+        pad: "x".repeat(17000),
+      }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 413);
+    assert.equal(db.events.get("owned-large-status").status, "upcoming");
   }],
-  ["broker event-status owner sets live and stamps start", async () => {
+    ["broker event-status owner sets live and stamps start", async () => {
     const db = new FakeD1({
       events: [{ slug: "owned-live", install_id: "abc123abc123", title: "Owned Live", status: "upcoming", dj_profile_id: "profile-live" }],
     });
