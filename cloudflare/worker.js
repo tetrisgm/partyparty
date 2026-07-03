@@ -27,11 +27,17 @@ const SETID_RE = /^[a-f0-9]{1,32}$/;
 // OTA content: the signed manifest (pointer, short cache) and immutable,
 // versioned payload bundles. Served from R2 under the content/ prefix.
 const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
+const SITE_ORIGIN = "https://party.ramine.net";
+const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
 const randHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
+const absUrl = (s) => {
+  try { return new URL(s || "/", SITE_ORIGIN).href; }
+  catch (_) { return SITE_ORIGIN + "/"; }
+};
 
 const DEMO = {
   title: "Rooftop Sessions", dj: "Ramine",
@@ -119,15 +125,19 @@ const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><a class="btn lt 
 const TOAST_JS = `<div class="toast" id="t"></div><script>
 var tt;function toast(m){var e=document.getElementById('t');e.textContent=m;e.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){e.classList.remove('show')},2600)}
 document.querySelectorAll('[data-soon]').forEach(function(el){el.addEventListener('click',function(ev){ev.preventDefault();toast(el.getAttribute('data-soon'))})});
+document.querySelectorAll('[data-share]').forEach(function(el){el.addEventListener('click',async function(ev){ev.preventDefault();var url=el.getAttribute('data-share-url')||location.href,title=el.getAttribute('data-share-title')||document.title,text=el.getAttribute('data-share-text')||'';try{if(navigator.share){await navigator.share({title:title,text:text,url:url});return}}catch(e){if(e&&e.name==='AbortError')return}try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(url)}else{var ta=document.createElement('textarea');ta.value=url;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta)}toast('Link copied')}catch(e){toast(url)}})});
 </script>`;
 
-function shell({ title, desc, ogImage, body }) {
+function shell({ title, desc, ogImage, url, body }) {
+  const pageUrl = absUrl(url || "/");
+  const imageUrl = absUrl(ogImage || DEFAULT_OG_IMAGE);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
-<meta property="og:type" content="website">${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
+<meta property="og:type" content="website"><meta property="og:url" content="${esc(pageUrl)}"><meta property="og:site_name" content="partyparty"><meta property="og:image" content="${esc(imageUrl)}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(imageUrl)}">
 <meta name="theme-color" content="#f5f5f7"><meta name="color-scheme" content="light">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
 <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
@@ -150,7 +160,10 @@ function eventFromRow(row, set, slug) {
     dj: row.host || "",
     when: row.starts || "",
     where: row.where_txt || "",
-    status: set ? "replay" : (row.status || "upcoming"),
+    // Drive the pill off whether a ready set exists, not the D1 status column
+    // (which defaults to 'replay') — a set-less event (cover/meta only) reads as
+    // "upcoming", which is what the empty-state card keys on.
+    status: set ? "replay" : "upcoming",
     listeners: 0,
     tagline: row.tagline || "",
     cover: row.cover_key ? `/event/${slug}/cover.jpg` : "/img/dance.jpg",
@@ -199,6 +212,12 @@ function renderEvent(e) {
       ? `<div class="slist">${social("sc", e.socials?.soundcloud, "#ff7700")}${social("ig", e.socials?.instagram, "#c13584")}${social("sp", e.socials?.spotify, "#1db954")}</div>` : "");
   const aboutCard = aboutInner ? `<div class="card about"><h2>About this set</h2>${aboutInner}</div>` : "";
   const previewBadge = e.set ? "" : `<span class="preview">Preview · event pages in progress</span>`;
+  const shareUrl = e.slug ? `${SITE_ORIGIN}/e/${esc(e.slug)}` : "";
+  const shareButton = e.slug
+    ? `<button class="btn ghost sm" data-share data-share-url="${shareUrl}" data-share-title="${esc(e.title)} · partyparty" data-share-text="${esc(e.tagline || "A partyparty set")}">Share</button>`
+    : `<button class="btn ghost sm" data-soon="${soon}">Share</button>`;
+  const upcomingCard = !e.set && e.status === "upcoming" ? `
+  <div class="card"><p class="sub" style="margin:0">The set replay lands here once ${esc(e.dj || "the DJ")} plays. Check back after the party.</p></div>` : "";
 
   const waveScript = e.set ? `<script>
 (function(){var a=document.getElementById('setaudio'),w=document.getElementById('wave');if(!a||!w)return;var bars=[];
@@ -212,7 +231,7 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
   const body = `<div class="page">
     <div class="hdr">
       <div class="cover" style="background-image:url('${esc(e.cover)}')"></div>
-      <div class="hactions"><button class="btn ghost sm" data-soon="${soon}">Share</button></div>
+      <div class="hactions">${shareButton}</div>
       <div class="in">
         ${statusPill}
         <h1 class="etitle">${esc(e.title)}</h1>
@@ -221,7 +240,7 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
         ${previewBadge}
       </div>
     </div>
-    ${liveCard}${playerCard}
+    ${liveCard}${playerCard}${upcomingCard}
     <div class="card">
       <h2>The wall</h2>
       <p class="sub">Everything the room shot tonight — you approve what shows.</p>
@@ -236,7 +255,8 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
   <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}`;
 
   const descBits = [e.when, e.where].filter(Boolean).join(" · ");
-  return shell({ title: `${e.title} · partyparty`, desc: `${e.title}${descBits ? " — " + descBits : ""}. ${e.tagline}`.trim(), ogImage: e.cover, body });
+  const ogImage = e.cover && e.cover.indexOf("/event/") === 0 ? e.cover : DEFAULT_OG_IMAGE;
+  return shell({ title: `${e.title} · partyparty`, desc: `${e.title}${descBits ? " — " + descBits : ""}. ${e.tagline}`.trim(), ogImage, url: e.slug ? `/e/${e.slug}` : "/", body });
 }
 
 function renderNotFound() {
