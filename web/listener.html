@@ -365,8 +365,13 @@
         if (beacon && navigator.sendBeacon) { if (!navigator.sendBeacon('/api/client-events', body)) requeue(); return; }
         flushing = true; flushSince = Date.now();
         const mine = ++flushSeq;
-        fetch('/api/client-events', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body })
-          .catch(() => { requeue(); }).finally(() => { if (mine === flushSeq) flushing = false; });
+        // Abort a wedged (never-settling) socket so its .catch fires and requeues
+        // the batch — otherwise a half-open Wi-Fi socket strands exactly the
+        // stall/disconnect events we most want until the page closes.
+        const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const ato = ac ? setTimeout(() => { try { ac.abort(); } catch (e) {} }, 10000) : 0;
+        fetch('/api/client-events', { method: 'POST', keepalive: true, signal: ac ? ac.signal : undefined, headers: { 'Content-Type': 'application/json' }, body })
+          .catch(() => { requeue(); }).finally(() => { if (ato) clearTimeout(ato); if (mine === flushSeq) flushing = false; });
       } catch (err) { requeue(); flushing = false; }
     }
     setInterval(() => flushEvents(), 4000);

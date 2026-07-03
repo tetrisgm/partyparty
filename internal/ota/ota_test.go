@@ -13,6 +13,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"testing/fstest"
@@ -164,6 +166,43 @@ func TestSubscribeNoAppUpdateWhenSameVersion(t *testing.T) {
 	}
 	if h.store.AppUpdateAvailable() {
 		t.Fatal("app-update hint wrongly set for the same app version")
+	}
+}
+
+func TestCachedPayloadRefusedWhenRuntimeTooOld(t *testing.T) {
+	// A cache written by a NEWER runtime (payload 50 needs runtime RuntimeVersion+1),
+	// then a downgrade to this (older) binary: loadCached must REFUSE it, not serve
+	// a payload that needs a server newer than this one.
+	h := newHarness(t, 35, 36, 1, map[string]string{"listener.html": "x"})
+	root := filepath.Join(h.store.stateDir, "payload")
+	if err := os.MkdirAll(filepath.Join(root, "p50"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(root, "p50", "listener.html"), []byte("NEEDS NEWER RUNTIME"), 0o644)
+	h.store.writeCurrent(50, RuntimeVersion+1)
+
+	embedded := fstest.MapFS{"listener.html": {Data: []byte("EMBEDDED v35")}}
+	st := &Store{
+		embedded: embedded, embeddedVer: 35, stateDir: h.store.stateDir,
+		pub: h.pub, client: h.srv.Client(), diag: func(string, ...any) {},
+		active: embedded, version: 35,
+	}
+	st.loadCached()
+	if st.PayloadVersion() != 35 {
+		t.Fatalf("adopted a cached payload needing a newer runtime: version=%d", st.PayloadVersion())
+	}
+	if got := read(t, st, "listener.html"); got != "EMBEDDED v35" {
+		t.Fatalf("served incompatible cached payload: %q", got)
+	}
+
+	// A legacy current.json (minRuntime 0) with a compatible payload still loads.
+	os.MkdirAll(filepath.Join(root, "p37"), 0o755)
+	os.WriteFile(filepath.Join(root, "p37", "listener.html"), []byte("COMPAT 37"), 0o644)
+	h.store.writeCurrent(37, 0) // 0 = legacy, must pass
+	st2 := &Store{embedded: embedded, embeddedVer: 35, stateDir: h.store.stateDir, pub: h.pub, client: h.srv.Client(), diag: func(string, ...any) {}, active: embedded, version: 35}
+	st2.loadCached()
+	if st2.PayloadVersion() != 37 {
+		t.Fatalf("legacy compatible cache not loaded: version=%d", st2.PayloadVersion())
 	}
 }
 

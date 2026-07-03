@@ -34,6 +34,7 @@ final class APIClient {
                 s.health = h["status"] as? String ?? "idle"
                 s.struggling = (h["struggling"] as? NSNumber)?.intValue ?? 0
             }
+            s.appUpdate = (o["appUpdate"] as? Bool) ?? false // drives the push-triggered Sparkle check
             DispatchQueue.main.async { done(s) }
         }.resume()
     }

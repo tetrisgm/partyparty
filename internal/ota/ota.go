@@ -423,7 +423,7 @@ func (s *Store) Refresh(ctx context.Context) (bool, error) {
 	s.active = os.DirFS(dir)
 	s.version = m.PayloadVersion
 	s.mu.Unlock()
-	s.writeCurrent(m.PayloadVersion)
+	s.writeCurrent(m.PayloadVersion, m.MinRuntime)
 	return true, nil
 }
 
@@ -574,43 +574,53 @@ func extractTar(r io.Reader, dir string) error {
 // loadCached adopts a previously-downloaded payload on startup if it is newer
 // than embedded and still on disk (it was signature+hash verified when written).
 func (s *Store) loadCached() {
-	v, err := s.readCurrent()
-	if err != nil || v <= s.embeddedVer {
+	c, err := s.readCurrent()
+	if err != nil || c.Version <= s.embeddedVer {
 		return
 	}
-	dir := filepath.Join(s.stateDir, "payload", fmt.Sprintf("p%d", v))
+	// Refuse a cached payload this runtime is too old for — otherwise a downgrade
+	// to an older binary would serve a payload that needs a newer server than it
+	// is (Refresh gates on minRuntime; the on-disk cache must too). A legacy
+	// current.json without minRuntime reads 0, which passes — correct, since
+	// every payload shipped so far requires runtime 1.
+	if c.MinRuntime > RuntimeVersion {
+		s.diag("ota: cached payload %d needs runtime %d > %d — ignoring", c.Version, c.MinRuntime, RuntimeVersion)
+		return
+	}
+	dir := filepath.Join(s.stateDir, "payload", fmt.Sprintf("p%d", c.Version))
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return
 	}
 	s.mu.Lock()
 	s.active = os.DirFS(dir)
-	s.version = v
+	s.version = c.Version
 	s.mu.Unlock()
-	s.diag("ota: serving cached payload %d", v)
+	s.diag("ota: serving cached payload %d", c.Version)
 }
 
 func (s *Store) currentPath() string {
 	return filepath.Join(s.stateDir, "payload", "current.json")
 }
 
-func (s *Store) readCurrent() (int, error) {
-	data, err := os.ReadFile(s.currentPath())
-	if err != nil {
-		return 0, err
-	}
-	var c struct {
-		Version int `json:"version"`
-	}
-	if err := json.Unmarshal(data, &c); err != nil {
-		return 0, err
-	}
-	return c.Version, nil
+type currentRec struct {
+	Version    int `json:"version"`
+	MinRuntime int `json:"minRuntime"`
 }
 
-func (s *Store) writeCurrent(v int) {
-	data, _ := json.Marshal(struct {
-		Version int `json:"version"`
-	}{v})
+func (s *Store) readCurrent() (currentRec, error) {
+	var c currentRec
+	data, err := os.ReadFile(s.currentPath())
+	if err != nil {
+		return c, err
+	}
+	if err := json.Unmarshal(data, &c); err != nil {
+		return c, err
+	}
+	return c, nil
+}
+
+func (s *Store) writeCurrent(v, minRuntime int) {
+	data, _ := json.Marshal(currentRec{Version: v, MinRuntime: minRuntime})
 	tmp := s.currentPath() + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return

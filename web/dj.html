@@ -346,7 +346,11 @@
     const requeue = () => { djEv.unshift.apply(djEv, batch); if (djEv.length > 200) djEv.splice(0, djEv.length - 200); };
     try {
       if (beacon && navigator.sendBeacon) { if (!navigator.sendBeacon('/api/client-events', body)) requeue(); return; }
-      fetch('/api/client-events', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body }).catch(() => { requeue(); });
+      // Abort a wedged socket so the batch requeues instead of stranding.
+      const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      const ato = ac ? setTimeout(() => { try { ac.abort(); } catch (e) {} }, 10000) : 0;
+      fetch('/api/client-events', { method: 'POST', keepalive: true, signal: ac ? ac.signal : undefined, headers: { 'Content-Type': 'application/json' }, body })
+        .catch(() => { requeue(); }).finally(() => { if (ato) clearTimeout(ato); });
     } catch (err) { requeue(); }
   }
   setInterval(() => djFlush(), 5000);

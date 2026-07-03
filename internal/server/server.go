@@ -80,6 +80,7 @@ type srv struct {
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
 	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
 	clientEvN  int32    // global event ceiling — a rotating cid can't defeat this
+	clientCIDs int32    // distinct-cid ceiling — a rotating cid can't grow clientLogN without bound
 }
 
 func New(d Deps) *Srv {
@@ -302,11 +303,26 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return
 		}
+		// Bound the memory a LAN peer can consume: an empty batch tracks nothing,
+		// the cid is length-clipped so the map key can't be huge, and a rotating
+		// cid can't grow clientLogN without limit — past the distinct-cid ceiling
+		// we accept-and-ignore (existing clients keep working). This closes the
+		// unauthenticated map-growth DoS the per-event cap alone didn't.
+		if len(body.Events) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
+		body.CID = clipStr(body.CID, 64)
 		who := fmt.Sprintf("%s %s.%s v%s %s", clientIP(r), clipStr(body.CID, 14), clipStr(body.Tab, 12), clipStr(body.V, 16), clipStr(body.Page, 6))
 		if body.Page == "guest" || body.Page == "" { // enrich guest attribution with the device name
 			who = s.friendlyName(clientIP(r), r.UserAgent()) + " | " + who
 		}
-		nAny, _ := s.clientLogN.LoadOrStore("ev:"+body.CID, new(int32))
+		key := "ev:" + body.CID
+		if _, seen := s.clientLogN.Load(key); !seen && atomic.AddInt32(&s.clientCIDs, 1) > 20000 {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return // distinct-client ceiling hit — stop tracking new cids
+		}
+		nAny, _ := s.clientLogN.LoadOrStore(key, new(int32))
 		urgent := false
 		for i, ev := range body.Events {
 			if i >= 200 { // one batch is a burst, not a flood
