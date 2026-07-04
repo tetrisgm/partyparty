@@ -12,6 +12,7 @@ const (
 	postLimitInterval     = 5 * time.Second
 	commentLimitInterval  = 2 * time.Second
 	reactionLimitInterval = time.Second
+	requestLimitInterval  = 15 * time.Second
 	limitEntryTTL         = time.Minute
 )
 
@@ -34,6 +35,7 @@ func newLimiter() *limiter {
 			"post":     postLimitInterval,
 			"comment":  commentLimitInterval,
 			"reaction": reactionLimitInterval,
+			"request":  requestLimitInterval,
 		},
 		now: time.Now,
 	}

@@ -76,6 +76,19 @@
   .reactbtn:active,.reactbtn.pulse{transform:scale(.94);background:#fff0f4}
   .reactbtn:disabled{opacity:.45}
   .reactambient{grid-column:1/-1;color:var(--label-secondary);font-size:12px;min-height:15px;text-align:center;font-variant-numeric:tabular-nums}
+  .trackrequest{width:min(370px,calc(100vw - 36px));margin-top:12px;background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:12px;box-shadow:0 1px 5px rgba(0,0,0,.08);text-align:left}
+  .trackrequest[hidden]{display:none}
+  .reqtitle{font-size:13px;font-weight:800;margin:0 0 8px}
+  .reqrow{display:flex;gap:8px}
+  .reqrow input,.trackrequest textarea{width:100%;background:var(--fill);border:none;border-radius:12px;color:var(--label);font:inherit;font-size:13px;outline:none}
+  .reqrow input{height:40px;padding:0 12px;flex:1;min-width:0}
+  .trackrequest textarea{margin-top:8px;min-height:38px;max-height:72px;resize:vertical;padding:9px 12px}
+  .reqsend{width:40px;height:40px;border:none;border-radius:50%;background:var(--accent);color:#fff;font-size:16px;font-weight:800;cursor:pointer;flex:0 0 auto;padding:0}
+  .reqsend:disabled{opacity:.45}
+  .vibes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .vibechip{height:28px;border:none;border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:12px;font-weight:700;padding:0 10px;cursor:pointer}
+  .vibechip.active{background:#fff0f4;color:var(--accent)}
+  .reqstatus{min-height:16px;margin-top:7px;color:var(--label-secondary);font-size:12px}
   .foot{color:var(--label-tertiary);font-size:12px;padding:0 20px;margin-top:30px}
   .downhint{position:absolute;bottom:12px;left:0;right:0;color:var(--label-secondary);font-size:13px;opacity:.9}
   .downhint .chev{display:block;font-size:16px;line-height:1;animation:nudge 2.4s ease-in-out infinite}
@@ -212,6 +225,22 @@
       <button class="reactbtn" type="button" data-react="more" aria-label="More like this" title="More like this">✨</button>
       <div class="reactambient" id="reactionAmbient"></div>
     </div>
+    <form class="trackrequest" id="requestBox" hidden>
+      <div class="reqtitle">Request a track</div>
+      <div class="reqrow">
+        <input id="requestText" maxlength="200" autocomplete="off" placeholder="Song / artist">
+        <button class="reqsend" id="requestSend" type="submit" aria-label="Send request">↗</button>
+      </div>
+      <textarea id="requestNote" maxlength="240" placeholder="Note for the DJ (optional)"></textarea>
+      <div class="vibes" id="requestVibes" aria-label="Vibe">
+        <button class="vibechip" type="button" data-vibe="harder">harder</button>
+        <button class="vibechip" type="button" data-vibe="softer">softer</button>
+        <button class="vibechip" type="button" data-vibe="faster">faster</button>
+        <button class="vibechip" type="button" data-vibe="slower">slower</button>
+        <button class="vibechip" type="button" data-vibe="more_like_this">more like this</button>
+      </div>
+      <div class="reqstatus" id="requestStatus"></div>
+    </form>
 
     <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
     <div class="statline" id="statline">v__PP_VERSION__</div>
@@ -1091,6 +1120,8 @@
       const reactionDefs = [
         ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'], ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
       ];
+      const requestBox = $id('requestBox'), requestText = $id('requestText'), requestNote = $id('requestNote'), requestVibes = $id('requestVibes'), requestSend = $id('requestSend'), requestStatus = $id('requestStatus');
+      let requestVibe = '';
       let reactionCounts = {};
       let nextReactionAt = 0;
       let currentFeatures = Object.assign({}, featureDefaults);
@@ -1168,6 +1199,39 @@
           if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { reactions: false }));
           if (r.status === 429) nextReactionAt = Date.now() + 1200;
         } catch (err) {}
+      });
+      requestVibes.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest && e.target.closest('button[data-vibe]');
+        if (!btn) return;
+        requestVibe = requestVibe === btn.dataset.vibe ? '' : btn.dataset.vibe;
+        for (const b of requestVibes.querySelectorAll('button[data-vibe]')) b.classList.toggle('active', b.dataset.vibe === requestVibe);
+      });
+      requestBox.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!featureOn('requests')) return;
+        const text = requestText.value.trim();
+        if (!text) { requestText.focus(); return; }
+        requestSend.disabled = true;
+        requestStatus.textContent = 'sending…';
+        try {
+          const r = await fetch('/api/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cid, text, note: requestNote.value.trim(), vibe: requestVibe }) });
+          const res = await r.json().catch(() => ({}));
+          if (r.ok) {
+            requestText.value = '';
+            requestNote.value = '';
+            requestVibe = '';
+            for (const b of requestVibes.querySelectorAll('button[data-vibe]')) b.classList.remove('active');
+            requestStatus.textContent = 'sent to the DJ ✓';
+          } else {
+            if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { requests: false }));
+            requestStatus.textContent = res.error || (r.status === 429 ? 'try again in a moment' : 'request failed');
+          }
+        } catch (err) {
+          requestStatus.textContent = 'request failed';
+        } finally {
+          requestSend.disabled = false;
+        }
       });
 
       // Party name: deterministic from cid so it's stable before any edit.
@@ -1323,6 +1387,7 @@
         const commentsOn = wallOn && featureOn('comments');
         const uploadsOn = wallOn && featureOn('uploads');
         updateReactionUI(reactionCounts);
+        requestBox.hidden = !featureOn('requests');
         if (feedOn) {
           feedSec.hidden = !wallOn;
           downhint.hidden = !wallOn;

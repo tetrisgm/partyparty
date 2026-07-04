@@ -140,6 +140,57 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		w.WriteHeader(http.StatusNoContent)
+	case "/api/requests":
+		switch r.Method {
+		case http.MethodGet:
+			if !s.isDJ(r) {
+				writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+				return true
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"requests": s.Events.ListRequests()})
+		case http.MethodPost:
+			if !s.featureOn("requests") {
+				writeFeatureDisabled(w)
+				return true
+			}
+			dj := s.isDJ(r)
+			var body struct {
+				CID  string `json:"cid"`
+				Text string `json:"text"`
+				Note string `json:"note"`
+				Vibe string `json:"vibe"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+				return true
+			}
+			body.Vibe = strings.TrimSpace(body.Vibe)
+			if !event.ValidRequestVibe(body.Vibe) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown vibe"})
+				return true
+			}
+			if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "request") {
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — requests are sparse", "retry": true})
+				return true
+			}
+			if _, err := s.Events.AddRequest(body.CID, body.Text, body.Note, body.Vibe); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+				return true
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET or POST required"})
+		}
+	case "/api/requests/state":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.SetRequestState(r.URL.Query().Get("id"), r.URL.Query().Get("state")); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/comment":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})

@@ -69,14 +69,27 @@ type Post struct {
 	Deleted   bool      `json:"-"`
 }
 
-// line is the on-disk journal record: a post, comment, tombstone, or flag.
+// Request is one private guest song request for the DJ. CID stays server-side;
+// requests are never included in the public/guest feed.
+type Request struct {
+	ID    string `json:"id"`
+	CID   string `json:"-"`
+	TS    int64  `json:"ts"`
+	Text  string `json:"text"`
+	Note  string `json:"note,omitempty"`
+	Vibe  string `json:"vibe,omitempty"`
+	State string `json:"state"`
+}
+
+// line is the on-disk journal record: a post, comment, request, tombstone, or flag.
 type line struct {
-	Op        string   `json:"op"` // "post" | "delete" | "comment" | "publish" | "thumb" | "mod" | "comment-delete"
+	Op        string   `json:"op"` // "post" | "delete" | "comment" | "request" | "request-state" | ...
 	ID        string   `json:"id,omitempty"`
 	CommentID string   `json:"commentId,omitempty"`
 	CID       string   `json:"cid,omitempty"`
 	Post      *Post    `json:"post,omitempty"`
 	Comment   *Comment `json:"comment,omitempty"`
+	Request   *Request `json:"request,omitempty"`
 	State     string   `json:"state,omitempty"`
 	On        bool     `json:"on,omitempty"` // publish flag value
 	MediaID   string   `json:"mediaId,omitempty"`
@@ -116,6 +129,11 @@ const (
 	StatePending  = "pending"
 	StateHidden   = "hidden"
 
+	RequestStateNew       = "new"
+	RequestStateDone      = "done"
+	RequestStateDismissed = "dismissed"
+	RequestStateStarred   = "starred"
+
 	ModerationPostModerate = "post_moderate"
 	ModerationPreApprove   = "pre_approve"
 )
@@ -142,6 +160,28 @@ func normalizeModerationMode(mode string) string {
 
 func validModerationMode(mode string) bool {
 	return mode == ModerationPostModerate || mode == ModerationPreApprove
+}
+
+func normalizeRequestState(state string) string {
+	switch state {
+	case RequestStateDone, RequestStateDismissed, RequestStateStarred:
+		return state
+	default:
+		return RequestStateNew
+	}
+}
+
+func validRequestState(state string) bool {
+	return state == RequestStateNew || state == RequestStateDone || state == RequestStateDismissed || state == RequestStateStarred
+}
+
+func ValidRequestVibe(vibe string) bool {
+	switch vibe {
+	case "", "harder", "softer", "faster", "slower", "more_like_this":
+		return true
+	default:
+		return false
+	}
 }
 
 func initialState(mode string) string {
@@ -194,6 +234,8 @@ type Store struct {
 	meta      Meta
 	posts     []*Post
 	byID      map[string]*Post
+	requests  []*Request
+	byReqID   map[string]*Request
 	guests    map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
 	reactions map[string]*reactionCounter
 	thumbQ    chan thumbJob
@@ -291,6 +333,7 @@ func (s *Store) use(dir string) error {
 		}
 	}
 	posts, byID := []*Post{}, map[string]*Post{}
+	requests, byReqID := []*Request{}, map[string]*Request{}
 	if data, err := os.ReadFile(filepath.Join(dir, "posts.jsonl")); err == nil {
 		for _, raw := range strings.Split(string(data), "\n") {
 			if strings.TrimSpace(raw) == "" {
@@ -355,6 +398,24 @@ func (s *Store) use(dir string) error {
 						p.Act = l.TS
 					}
 				}
+			case l.Op == "request" && l.Request != nil:
+				req := *l.Request
+				req.CID = l.CID
+				req.Text = clip(strings.TrimSpace(req.Text), 200)
+				req.Note = clip(strings.TrimSpace(req.Note), 240)
+				if !ValidRequestVibe(req.Vibe) {
+					req.Vibe = ""
+				}
+				req.State = normalizeRequestState(req.State)
+				if req.ID == "" {
+					req.ID = l.ID
+				}
+				requests = append(requests, &req)
+				byReqID[req.ID] = &req
+			case l.Op == "request-state" && validRequestState(l.State):
+				if req, ok := byReqID[l.ID]; ok {
+					req.State = l.State
+				}
 			case l.Op == "publish":
 				if p, ok := byID[l.ID]; ok {
 					p.NoPublish = !l.On
@@ -384,7 +445,7 @@ func (s *Store) use(dir string) error {
 	meta.Features = normalizeFeatures(meta.Features)
 	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
 	s.mu.Lock()
-	s.dir, s.posts, s.byID, s.guests, s.meta, s.reactions = dir, posts, byID, guests, meta, newReactionCounters()
+	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
 	s.mu.Unlock()
 	s.changed()
 	return nil
@@ -1118,6 +1179,78 @@ func (s *Store) SetContact(cid, contact string) error {
 	}
 	g.Contact = contact
 	return s.saveGuestsLocked()
+}
+
+// AddRequest stores one private song request for the DJ.
+func (s *Store) AddRequest(cid, text, note, vibe string) (*Request, error) {
+	text = clip(strings.TrimSpace(text), 200)
+	note = clip(strings.TrimSpace(note), 240)
+	vibe = strings.TrimSpace(vibe)
+	if text == "" {
+		return nil, errors.New("empty request")
+	}
+	if !ValidRequestVibe(vibe) {
+		return nil, errors.New("unknown vibe")
+	}
+	req := &Request{
+		ID: newID(), CID: cid, Text: text, Note: note, Vibe: vibe, State: RequestStateNew,
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	req.TS = time.Now().UnixMilli()
+	if err := s.appendLine(line{Op: "request", ID: req.ID, CID: cid, Request: req}); err != nil {
+		return nil, err
+	}
+	s.requests = append(s.requests, req)
+	if s.byReqID == nil {
+		s.byReqID = map[string]*Request{}
+	}
+	s.byReqID[req.ID] = req
+	s.changed()
+	return req, nil
+}
+
+// SetRequestState changes a DJ-only request queue item.
+func (s *Store) SetRequestState(id, state string) error {
+	if !validRequestState(state) {
+		return errors.New("unknown request state")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	req, ok := s.byReqID[id]
+	if !ok {
+		return errors.New("no such request")
+	}
+	if err := s.appendLine(line{Op: "request-state", ID: id, State: state, TS: time.Now().UnixMilli()}); err != nil {
+		return err
+	}
+	req.State = state
+	s.changed()
+	return nil
+}
+
+// ListRequests returns the DJ-only request queue, with starred items first and
+// newest first within each group.
+func (s *Store) ListRequests() []Request {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Request, 0, len(s.requests))
+	for _, req := range s.requests {
+		if req == nil {
+			continue
+		}
+		cp := *req
+		cp.State = normalizeRequestState(cp.State)
+		out = append(out, cp)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		is, js := out[i].State == RequestStateStarred, out[j].State == RequestStateStarred
+		if is != js {
+			return is
+		}
+		return out[i].TS > out[j].TS
+	})
+	return out
 }
 
 func (s *Store) saveGuestsLocked() error {

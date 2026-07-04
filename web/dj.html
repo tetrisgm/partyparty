@@ -141,6 +141,25 @@
   .djreact{background:var(--fill);border-radius:9px;padding:7px 8px;font-size:12px;font-weight:700;color:var(--label);display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
   .djreact.zero{color:var(--label-tertiary);font-weight:600}
   .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
+  .requestlist{display:grid;gap:8px}
+  .requestitem{border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;background:var(--bg-elevated-2)}
+  .requestitem.starred{border-color:rgba(255,149,0,.45);background:rgba(255,149,0,.08)}
+  .requestitem.done,.requestitem.dismissed{opacity:.62}
+  .requesttop{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .requesttext{font-size:14px;font-weight:800;color:var(--label);word-break:break-word}
+  .requesttime{margin-left:auto;color:var(--label-tertiary);font-size:11px;font-variant-numeric:tabular-nums;flex:0 0 auto}
+  .requestnote{color:var(--label-secondary);font-size:12px;line-height:1.45;margin-top:4px;white-space:pre-wrap;word-break:break-word}
+  .requestmeta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .vibebadge{border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:11px;font-weight:800;padding:2px 8px}
+  .reqstate{border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px}
+  .reqstate.starred{background:rgba(255,149,0,.18);color:#a15b00}
+  .reqstate.done{background:rgba(52,199,89,.14);color:#1d883d}
+  .reqstate.dismissed{background:rgba(255,59,48,.10);color:var(--danger)}
+  .requestactions{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+  .requestactions button{height:24px;padding:0 8px;font-size:11px;border-radius:7px;background:var(--fill);color:var(--label-secondary)}
+  .requestactions button:hover{background:var(--fill-hover);color:var(--label)}
+  .requestactions .danger{color:var(--danger)}
+  .requestempty{color:var(--label-tertiary);font-size:12px;padding:4px 0}
   /* ── Admin action bar (sticky): source · refresh · share · settings · GO LIVE ── */
   #actionbar{position:sticky;top:0;z-index:20;background:var(--glass-bg);
     -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
@@ -325,6 +344,15 @@
   </nav>
 
   <section id="ptab-wall">
+    <div class="card" id="requestCard" style="display:none">
+      <div class="cardhead">
+        <h2>Song requests</h2>
+        <span class="muted" id="requestCounts"></span>
+      </div>
+      <div class="hint" style="margin:0 0 12px">Requests provide signal to the DJ. They do not control the set.</div>
+      <div class="requestlist" id="requestList"><div class="requestempty">No requests yet.</div></div>
+    </div>
+
     <div class="card" id="eventCard" style="display:none">
       <div class="cardhead">
         <h2 id="eventTitle">the party wall</h2>
@@ -1236,6 +1264,54 @@
         '<button class="modbtn hide" data-mod="' + escT(item.post) + '"' + (item.comment ? ' data-comment="' + escT(item.comment) + '"' : '') + ' data-state="hidden">hide</button></div>'
       ).join('') : '<div class="muted" style="font-size:12px">No pending posts or comments.</div>';
     }
+    const requestVibeLabels = {
+      harder: 'harder', softer: 'softer', faster: 'faster', slower: 'slower', more_like_this: 'more like this'
+    };
+    function requestStateBadge(state){
+      state = (state === 'done' || state === 'dismissed' || state === 'starred') ? state : 'new';
+      return '<span class="reqstate ' + state + '">' + escT(state) + '</span>';
+    }
+    function requestButtons(req){
+      const id = escT(req.id || '');
+      const state = req.state === 'done' || req.state === 'dismissed' || req.state === 'starred' ? req.state : 'new';
+      let html = '';
+      if (state !== 'done') html += '<button data-req="' + id + '" data-state="done">Done</button>';
+      if (state !== 'dismissed') html += '<button class="danger" data-req="' + id + '" data-state="dismissed">Dismiss</button>';
+      html += state === 'starred'
+        ? '<button data-req="' + id + '" data-state="new">Unstar</button>'
+        : '<button data-req="' + id + '" data-state="starred">Star</button>';
+      if (state !== 'new' && state !== 'starred') html += '<button data-req="' + id + '" data-state="new">New</button>';
+      return html;
+    }
+    function renderRequests(requests){
+      const card = $('requestCard'), listEl = $('requestList');
+      card.style.display = 'block';
+      requests = Array.isArray(requests) ? requests : [];
+      $('requestCounts').textContent = requests.length ? requests.length + (requests.length === 1 ? ' request' : ' requests') : '';
+      if (!requests.length) {
+        listEl.innerHTML = '<div class="requestempty">No requests yet.</div>';
+        return;
+      }
+      listEl.innerHTML = requests.map(req => {
+        const state = req.state === 'done' || req.state === 'dismissed' || req.state === 'starred' ? req.state : 'new';
+        const t = new Date(req.ts || Date.now());
+        const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
+        const vibe = requestVibeLabels[req.vibe] ? '<span class="vibebadge">' + escT(requestVibeLabels[req.vibe]) + '</span>' : '';
+        return '<div class="requestitem ' + state + '">' +
+          '<div class="requesttop"><span class="requesttext">' + escT(req.text || '') + '</span><span class="requesttime">' + time + '</span></div>' +
+          (req.note ? '<div class="requestnote">' + escT(req.note) + '</div>' : '') +
+          '<div class="requestmeta">' + vibe + requestStateBadge(state) + '<span class="requestactions">' + requestButtons(req) + '</span></div>' +
+          '</div>';
+      }).join('');
+    }
+    async function pollRequests(){
+      try {
+        const r = await fetch('/api/requests', { cache:'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        renderRequests(data.requests || []);
+      } catch (e) {}
+    }
     function fallbackVideo(src){
       const v = document.createElement('video');
       v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
@@ -1377,6 +1453,17 @@
     }
     list.addEventListener('click', handleWallClick);
     $('modQueue').addEventListener('click', handleWallClick);
+    $('requestList').addEventListener('click', async (e) => {
+      const d = e.target && e.target.dataset || {};
+      if (!d.req || !d.state) return;
+      e.target.disabled = true;
+      try {
+        await fetch('/api/requests/state?id=' + encodeURIComponent(d.req) + '&state=' + encodeURIComponent(d.state), { method:'POST' });
+        await pollRequests();
+      } finally {
+        e.target.disabled = false;
+      }
+    });
     list.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const pid = e.target && e.target.dataset && e.target.dataset.cpost;
@@ -1407,6 +1494,7 @@
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderModerationMode(data.moderationMode || 'post_moderate');
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
+        pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {
