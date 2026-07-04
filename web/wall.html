@@ -175,8 +175,16 @@
       $('eventTitle').textContent = title;
       $('joinName').textContent = title || host;
       $('hostLine').textContent = host + ' is hosting';
-      $('nowPlaying').textContent = title || host || 'Live';
       document.title = (title || 'partyparty') + ' wall';
+    }
+    function renderNowPlaying(data){
+      const track = data && data.nowPlaying;
+      const on = featureOn(data && data.features || {}, 'trackId', false);
+      if (on && track && track.title) {
+        $('nowPlaying').textContent = track.artist ? track.title + ' — ' + track.artist : track.title;
+      } else {
+        $('nowPlaying').textContent = 'Live';
+      }
     }
     function renderStatus(s){
       lastStatusOK = Date.now();
@@ -331,6 +339,7 @@
     function renderFeed(data){
       setWallEnabled(featureOn(data.features || {}, 'wallMode', true));
       updateIdentity(data);
+      renderNowPlaying(data);
       renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
       renderLinkPrompt(data.onlineUrl || '', data.features || {});
       let switched = false;

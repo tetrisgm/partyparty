@@ -141,6 +141,16 @@
   .djreact{background:var(--fill);border-radius:9px;padding:7px 8px;font-size:12px;font-weight:700;color:var(--label);display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
   .djreact.zero{color:var(--label-tertiary);font-weight:600}
   .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
+  .trackcard.off{opacity:.7}
+  .trackform{display:flex;gap:8px;margin:0 0 10px}
+  .trackform input{flex:1;min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:9px 11px;color:var(--label);font:inherit;font-size:13px;outline:none}
+  .trackform input:focus{border-color:var(--accent)}
+  .trackcurrentdj{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin-bottom:8px}
+  .trackcurrentdj small{display:block;color:var(--label-tertiary);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+  .trackcurrentdj b{display:block;color:var(--label);font-size:15px;line-height:1.3;word-break:break-word}
+  .trackrecentdj{display:grid;gap:6px}
+  .trackrecentdj:empty{display:none}
+  .trackrecentdj div{background:var(--fill);border-radius:8px;padding:7px 9px;color:var(--label-secondary);font-size:12px;line-height:1.35;word-break:break-word}
   .requestlist{display:grid;gap:8px}
   .requestitem{border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;background:var(--bg-elevated-2)}
   .requestitem.starred{border-color:rgba(255,149,0,.45);background:rgba(255,149,0,.08)}
@@ -344,6 +354,23 @@
   </nav>
 
   <section id="ptab-wall">
+    <div class="card trackcard" id="trackCard" style="display:none">
+      <div class="cardhead">
+        <h2>Now playing</h2>
+        <span class="muted" id="trackAskCount"></span>
+      </div>
+      <form class="trackform" id="trackForm">
+        <input id="trackInput" maxlength="120" autocomplete="off" placeholder="Track title">
+        <button class="go" id="trackSetBtn" type="submit">Set</button>
+        <button class="ghost" id="trackClearBtn" type="button">Clear</button>
+      </form>
+      <div class="trackcurrentdj">
+        <small>Current</small>
+        <b id="trackCurrentDJ">No track shared.</b>
+      </div>
+      <div class="trackrecentdj" id="trackRecentDJ"></div>
+    </div>
+
     <div class="card" id="requestCard" style="display:none">
       <div class="cardhead">
         <h2>Song requests</h2>
@@ -1174,6 +1201,34 @@
       const def = reactionDefs.find(([key]) => key === top.key);
       $('djReactionSpike').textContent = (def ? def[1] : top.key) + ' ×' + top.n + ' just now';
     }
+    function trackFeatureOn(features){
+      return !!(features && Object.prototype.hasOwnProperty.call(features, 'trackId') ? features.trackId !== false : false);
+    }
+    function trackText(track){
+      if (!track || !track.title) return '';
+      return track.artist ? track.title + ' — ' + track.artist : track.title;
+    }
+    function renderTrackPanel(features, nowPlaying, recentTracks, askCount){
+      const card = $('trackCard');
+      card.style.display = 'block';
+      card.classList.toggle('off', !trackFeatureOn(features || {}));
+      const cur = trackText(nowPlaying);
+      $('trackCurrentDJ').textContent = cur || 'No track shared.';
+      const asks = Number(askCount || 0);
+      $('trackAskCount').textContent = trackFeatureOn(features || {})
+        ? (asks ? asks + (asks === 1 ? ' asked' : ' asked') + " what's playing" : "0 asked what's playing")
+        : 'Track ID off';
+      const list = $('trackRecentDJ');
+      list.textContent = '';
+      const recent = Array.isArray(recentTracks) ? recentTracks.slice(0, 8) : [];
+      for (const tr of recent) {
+        const text = trackText(tr);
+        if (!text) continue;
+        const item = document.createElement('div');
+        item.textContent = text;
+        list.appendChild(item);
+      }
+    }
     function renderFeatureToggles(features){
       const bar = $('featureToggles');
       if (!bar.dataset.ready) {
@@ -1464,6 +1519,33 @@
         e.target.disabled = false;
       }
     });
+    $('trackForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = $('trackInput');
+      const title = input.value.trim();
+      if (!title) { input.focus(); return; }
+      $('trackSetBtn').disabled = true;
+      try {
+        const r = await fetch('/api/track/current', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'track update failed');
+        input.value = '';
+        await poll();
+      } catch (err) {
+        input.title = err.message || 'track update failed';
+      } finally {
+        $('trackSetBtn').disabled = false;
+      }
+    });
+    $('trackClearBtn').addEventListener('click', async () => {
+      $('trackClearBtn').disabled = true;
+      try {
+        await fetch('/api/track/clear', { method:'POST' });
+        await poll();
+      } finally {
+        $('trackClearBtn').disabled = false;
+      }
+    });
     list.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const pid = e.target && e.target.dataset && e.target.dataset.cpost;
@@ -1492,6 +1574,7 @@
         syncPublish(data.slug);
         renderFeatureToggles(data.features || {});
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
+        renderTrackPanel(data.features || {}, data.nowPlaying || null, data.recentTracks || [], data.trackAsks || 0);
         renderModerationMode(data.moderationMode || 'post_moderate');
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         pollRequests();

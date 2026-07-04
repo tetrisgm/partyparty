@@ -462,6 +462,95 @@ func TestReactionsGateLimitAndFeedAggregates(t *testing.T) {
 	}
 }
 
+func TestTrackIDGateLimitFeedAndAskCount(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	now := time.Now()
+	s.limits.now = func() time.Time { return now }
+
+	postTrackAsk := func(cid string) *httptest.ResponseRecorder {
+		t.Helper()
+		data, err := json.Marshal(map[string]string{"cid": cid})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doBody(s, http.MethodPost, "/api/track-id-request", "192.168.1.44:3333", "application/json", bytes.NewBuffer(data))
+	}
+	feed := func(target, remote string) map[string]any {
+		t.Helper()
+		w := do(s, http.MethodGet, target, remote)
+		if w.Code != http.StatusOK {
+			t.Fatalf("feed status = %d, body %q", w.Code, w.Body.String())
+		}
+		return decodeJSON(t, w)
+	}
+
+	if w := postTrackAsk("c1"); w.Code != http.StatusForbidden {
+		t.Fatalf("track ask off status = %d, body %q; want 403", w.Code, w.Body.String())
+	}
+	if _, err := ev.SetCurrentTrack("Hidden Tune", "Private Artist", ""); err != nil {
+		t.Fatal(err)
+	}
+	body := feed("/api/feed", "192.168.1.44:3333")
+	if _, ok := body["nowPlaying"]; ok {
+		t.Fatalf("feed exposed nowPlaying while feature off: %#v", body["nowPlaying"])
+	}
+
+	if err := ev.SetFeature("trackId", true); err != nil {
+		t.Fatal(err)
+	}
+	body = feed("/api/feed", "192.168.1.44:3333")
+	nowPlaying, ok := body["nowPlaying"].(map[string]any)
+	if !ok || nowPlaying["title"] != "Hidden Tune" || nowPlaying["artist"] != "Private Artist" {
+		t.Fatalf("nowPlaying = %#v, want Hidden Tune/Private Artist", body["nowPlaying"])
+	}
+	recent, ok := body["recentTracks"].([]any)
+	if !ok || len(recent) != 0 {
+		t.Fatalf("recentTracks = %#v, want empty array", body["recentTracks"])
+	}
+
+	if w := postTrackAsk("c1"); w.Code != http.StatusNoContent {
+		t.Fatalf("first track ask status = %d, body %q; want 204", w.Code, w.Body.String())
+	}
+	if w := postTrackAsk("c1"); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited track ask status = %d, body %q; want 429", w.Code, w.Body.String())
+	}
+	if w := postTrackAsk("c2"); w.Code != http.StatusNoContent {
+		t.Fatalf("second guest track ask status = %d, body %q; want 204", w.Code, w.Body.String())
+	}
+
+	body = feed("/api/feed", "127.0.0.1:1234")
+	if body["trackAsks"] != float64(2) {
+		t.Fatalf("DJ trackAsks = %#v, want 2", body["trackAsks"])
+	}
+	body = feed("/api/feed", "192.168.1.44:3333")
+	if _, ok := body["trackAsks"]; ok {
+		t.Fatalf("guest feed exposed trackAsks: %#v", body["trackAsks"])
+	}
+
+	setBody := bytes.NewBufferString(`{"title":"Next Tune","artist":"Next Artist","note":"closing"}`)
+	w := doBody(s, http.MethodPost, "/api/track/current", "127.0.0.1:1234", "application/json", setBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ set track status = %d, body %q", w.Code, w.Body.String())
+	}
+	body = feed("/api/feed", "127.0.0.1:1234")
+	nowPlaying, ok = body["nowPlaying"].(map[string]any)
+	if !ok || nowPlaying["title"] != "Next Tune" || nowPlaying["artist"] != "Next Artist" {
+		t.Fatalf("DJ nowPlaying = %#v, want Next Tune/Next Artist", body["nowPlaying"])
+	}
+	recent, ok = body["recentTracks"].([]any)
+	if !ok || len(recent) != 1 {
+		t.Fatalf("DJ recentTracks = %#v, want one previous track", body["recentTracks"])
+	}
+	prev, ok := recent[0].(map[string]any)
+	if !ok || prev["title"] != "Hidden Tune" {
+		t.Fatalf("previous track = %#v, want Hidden Tune", recent[0])
+	}
+}
+
 func TestRequestsGateLimitPrivateAndDJList(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {

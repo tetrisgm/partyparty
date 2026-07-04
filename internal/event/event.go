@@ -81,20 +81,31 @@ type Request struct {
 	State string `json:"state"`
 }
 
-// line is the on-disk journal record: a post, comment, request, tombstone, or flag.
+// CurrentTrack is the DJ-shared "now playing" state. It is deliberately
+// manual for the MVP; future integrations can feed the same store method.
+type CurrentTrack struct {
+	Title  string `json:"title"`
+	Artist string `json:"artist,omitempty"`
+	Note   string `json:"note,omitempty"`
+	SetAt  int64  `json:"setAt"`
+}
+
+// line is the on-disk journal record: a post, comment, request, track update,
+// tombstone, or flag.
 type line struct {
-	Op        string   `json:"op"` // "post" | "delete" | "comment" | "request" | "request-state" | ...
-	ID        string   `json:"id,omitempty"`
-	CommentID string   `json:"commentId,omitempty"`
-	CID       string   `json:"cid,omitempty"`
-	Post      *Post    `json:"post,omitempty"`
-	Comment   *Comment `json:"comment,omitempty"`
-	Request   *Request `json:"request,omitempty"`
-	State     string   `json:"state,omitempty"`
-	On        bool     `json:"on,omitempty"` // publish flag value
-	MediaID   string   `json:"mediaId,omitempty"`
-	Thumb     string   `json:"thumb,omitempty"`
-	TS        int64    `json:"ts,omitempty"`
+	Op        string        `json:"op"` // "post" | "delete" | "comment" | "request" | "request-state" | ...
+	ID        string        `json:"id,omitempty"`
+	CommentID string        `json:"commentId,omitempty"`
+	CID       string        `json:"cid,omitempty"`
+	Post      *Post         `json:"post,omitempty"`
+	Comment   *Comment      `json:"comment,omitempty"`
+	Request   *Request      `json:"request,omitempty"`
+	Track     *CurrentTrack `json:"track,omitempty"`
+	State     string        `json:"state,omitempty"`
+	On        bool          `json:"on,omitempty"` // publish flag value
+	MediaID   string        `json:"mediaId,omitempty"`
+	Thumb     string        `json:"thumb,omitempty"`
+	TS        int64         `json:"ts,omitempty"`
 }
 
 // Guest is the private per-guest record (guests.json, DJ-only). It captures
@@ -228,18 +239,21 @@ func normalizeFeatures(in map[string]bool) map[string]bool {
 
 // Store manages the current event directory. Safe for concurrent use.
 type Store struct {
-	mu        sync.Mutex
-	baseDir   string
-	dir       string
-	meta      Meta
-	posts     []*Post
-	byID      map[string]*Post
-	requests  []*Request
-	byReqID   map[string]*Request
-	guests    map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
-	reactions map[string]*reactionCounter
-	thumbQ    chan thumbJob
-	thumbOnce sync.Once
+	mu           sync.Mutex
+	baseDir      string
+	dir          string
+	meta         Meta
+	posts        []*Post
+	byID         map[string]*Post
+	requests     []*Request
+	byReqID      map[string]*Request
+	guests       map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
+	reactions    map[string]*reactionCounter
+	currentTrack *CurrentTrack
+	recentTracks []CurrentTrack
+	trackAsks    []int64
+	thumbQ       chan thumbJob
+	thumbOnce    sync.Once
 
 	// Long-poll wakeup: closed and replaced on every visible mutation, so
 	// /api/feed?wait=1 can hold requests and answer the INSTANT something
@@ -256,6 +270,8 @@ type reactionCounter struct {
 const (
 	reactionWindow         = 60 * time.Second
 	reactionSpikeThreshold = 3
+	trackHistoryLimit      = 15
+	trackAskWindow         = 60 * time.Second
 )
 
 var reactionTypes = []string{"fire", "heart", "louder", "quieter", "rewind", "id", "more"}
@@ -334,6 +350,8 @@ func (s *Store) use(dir string) error {
 	}
 	posts, byID := []*Post{}, map[string]*Post{}
 	requests, byReqID := []*Request{}, map[string]*Request{}
+	var currentTrack *CurrentTrack
+	recentTracks := []CurrentTrack{}
 	if data, err := os.ReadFile(filepath.Join(dir, "posts.jsonl")); err == nil {
 		for _, raw := range strings.Split(string(data), "\n") {
 			if strings.TrimSpace(raw) == "" {
@@ -416,6 +434,25 @@ func (s *Store) use(dir string) error {
 				if req, ok := byReqID[l.ID]; ok {
 					req.State = l.State
 				}
+			case l.Op == "track-current" && l.Track != nil:
+				if currentTrack != nil && currentTrack.Title != "" {
+					recentTracks = append([]CurrentTrack{*currentTrack}, recentTracks...)
+					if len(recentTracks) > trackHistoryLimit {
+						recentTracks = recentTracks[:trackHistoryLimit]
+					}
+				}
+				tr := cleanTrack(*l.Track)
+				if tr.Title != "" {
+					currentTrack = &tr
+				}
+			case l.Op == "track-clear":
+				if currentTrack != nil && currentTrack.Title != "" {
+					recentTracks = append([]CurrentTrack{*currentTrack}, recentTracks...)
+					if len(recentTracks) > trackHistoryLimit {
+						recentTracks = recentTracks[:trackHistoryLimit]
+					}
+				}
+				currentTrack = nil
 			case l.Op == "publish":
 				if p, ok := byID[l.ID]; ok {
 					p.NoPublish = !l.On
@@ -446,6 +483,7 @@ func (s *Store) use(dir string) error {
 	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
+	s.currentTrack, s.recentTracks, s.trackAsks = currentTrack, recentTracks, nil
 	s.mu.Unlock()
 	s.changed()
 	return nil
@@ -1253,12 +1291,112 @@ func (s *Store) ListRequests() []Request {
 	return out
 }
 
+// SetCurrentTrack stores the DJ's manually shared now-playing track and rotates
+// the previous current track into the recent history.
+func (s *Store) SetCurrentTrack(title, artist, note string) (CurrentTrack, error) {
+	tr := cleanTrack(CurrentTrack{
+		Title:  title,
+		Artist: artist,
+		Note:   note,
+		SetAt:  time.Now().UnixMilli(),
+	})
+	if tr.Title == "" {
+		return CurrentTrack{}, errors.New("missing title")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.appendLine(line{Op: "track-current", Track: &tr, TS: tr.SetAt}); err != nil {
+		return CurrentTrack{}, err
+	}
+	s.rotateTrackLocked()
+	s.currentTrack = &tr
+	s.changed()
+	return tr, nil
+}
+
+// ClearCurrentTrack removes the public now-playing slot, keeping the last track
+// in the recent list.
+func (s *Store) ClearCurrentTrack() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.currentTrack == nil || s.currentTrack.Title == "" {
+		return nil
+	}
+	if err := s.appendLine(line{Op: "track-clear", TS: time.Now().UnixMilli()}); err != nil {
+		return err
+	}
+	s.rotateTrackLocked()
+	s.currentTrack = nil
+	s.changed()
+	return nil
+}
+
+func (s *Store) rotateTrackLocked() {
+	if s.currentTrack == nil || s.currentTrack.Title == "" {
+		return
+	}
+	s.recentTracks = append([]CurrentTrack{*s.currentTrack}, s.recentTracks...)
+	if len(s.recentTracks) > trackHistoryLimit {
+		s.recentTracks = s.recentTracks[:trackHistoryLimit]
+	}
+}
+
+// TrackSnapshot returns copies of now-playing and the capped recent history.
+func (s *Store) TrackSnapshot() (*CurrentTrack, []CurrentTrack) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var current *CurrentTrack
+	if s.currentTrack != nil && s.currentTrack.Title != "" {
+		cp := *s.currentTrack
+		current = &cp
+	}
+	recent := make([]CurrentTrack, len(s.recentTracks))
+	copy(recent, s.recentTracks)
+	return current, recent
+}
+
+func cleanTrack(tr CurrentTrack) CurrentTrack {
+	tr.Title = clip(strings.TrimSpace(tr.Title), 120)
+	tr.Artist = clip(strings.TrimSpace(tr.Artist), 120)
+	tr.Note = clip(strings.TrimSpace(tr.Note), 240)
+	if tr.Title == "" {
+		return CurrentTrack{}
+	}
+	if tr.SetAt <= 0 {
+		tr.SetAt = time.Now().UnixMilli()
+	}
+	return tr
+}
+
 func (s *Store) saveGuestsLocked() error {
 	data, err := json.MarshalIndent(s.guests, "", " ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(s.dir, "guests.json"), data, 0o600)
+}
+
+// AddTrackAsk records one guest "what's this track?" tap in a rolling window.
+func (s *Store) AddTrackAsk() {
+	now := time.Now().UnixMilli()
+	cutoff := now - trackAskWindow.Milliseconds()
+
+	s.mu.Lock()
+	s.trackAsks = append(pruneReactionHits(s.trackAsks, cutoff), now)
+	s.mu.Unlock()
+
+	s.changed()
+}
+
+// TrackAskCount returns the current rolling "what's this track?" count.
+func (s *Store) TrackAskCount() int {
+	now := time.Now().UnixMilli()
+	cutoff := now - trackAskWindow.Milliseconds()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.trackAsks = pruneReactionHits(s.trackAsks, cutoff)
+	return len(s.trackAsks)
 }
 
 // AddReaction records one anonymous crowd-telemetry tap in memory. Reactions

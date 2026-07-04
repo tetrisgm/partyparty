@@ -102,7 +102,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		meta := s.Events.Meta()
 		links := s.eventOnlineLinks()
 		reactions, spikes := s.Events.ReactionSnapshot()
-		writeJSON(w, http.StatusOK, map[string]any{
+		body := map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
 			"features": meta.Features, "moderationMode": meta.ModerationMode,
 			"reactions": reactions, "spikes": spikes,
@@ -111,7 +111,16 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			// changes (switching to an OLDER event must replay its posts).
 			"dir":   filepath.Base(s.Events.Dir()),
 			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount, "cursor": cursor, "dj": dj,
-		})
+		}
+		if s.featureOn("trackId") {
+			current, recent := s.Events.TrackSnapshot()
+			body["nowPlaying"] = feedTrackFrom(current)
+			body["recentTracks"] = feedTracksFrom(recent)
+			if dj {
+				body["trackAsks"] = s.Events.TrackAskCount()
+			}
+		}
+		writeJSON(w, http.StatusOK, body)
 	case "/api/reactions":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -191,6 +200,60 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/track/current":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct {
+			Title  string `json:"title"`
+			Artist string `json:"artist"`
+			Note   string `json:"note"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		tr, err := s.Events.SetCurrentTrack(body.Title, body.Artist, body.Note)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		_, recent := s.Events.TrackSnapshot()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "nowPlaying": tr, "recentTracks": recent})
+	case "/api/track/clear":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.ClearCurrentTrack(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		_, recent := s.Events.TrackSnapshot()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "recentTracks": recent})
+	case "/api/track-id-request":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		if !s.featureOn("trackId") {
+			writeFeatureDisabled(w)
+			return true
+		}
+		var body struct {
+			CID string `json:"cid"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if !s.limits.allow(guestLimitKey(body.CID, r), "track-id") {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many track asks", "retry": true})
+			return true
+		}
+		s.Events.AddTrackAsk()
+		w.WriteHeader(http.StatusNoContent)
 	case "/api/comment":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -748,6 +811,33 @@ func (s *srv) eventState() map[string]any {
 		"media":    mediaCount,
 		"dir":      s.Events.Dir(),
 	}
+}
+
+type feedTrack struct {
+	Title  string `json:"title"`
+	Artist string `json:"artist,omitempty"`
+	SetAt  int64  `json:"setAt"`
+}
+
+func feedTrackFrom(tr *event.CurrentTrack) *feedTrack {
+	if tr == nil || tr.Title == "" {
+		return nil
+	}
+	return &feedTrack{Title: tr.Title, Artist: tr.Artist, SetAt: tr.SetAt}
+}
+
+func feedTracksFrom(tracks []event.CurrentTrack) []feedTrack {
+	out := make([]feedTrack, 0, len(tracks))
+	for _, tr := range tracks {
+		if tr.Title == "" {
+			continue
+		}
+		out = append(out, feedTrack{Title: tr.Title, Artist: tr.Artist, SetAt: tr.SetAt})
+	}
+	if out == nil {
+		out = []feedTrack{}
+	}
+	return out
 }
 
 // handleMedia serves uploaded files (inline, cacheable — ids are immutable).

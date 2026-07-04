@@ -89,6 +89,18 @@
   .vibechip{height:28px;border:none;border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:12px;font-weight:700;padding:0 10px;cursor:pointer}
   .vibechip.active{background:#fff0f4;color:var(--accent)}
   .reqstatus{min-height:16px;margin-top:7px;color:var(--label-secondary);font-size:12px}
+  .trackid{width:min(370px,calc(100vw - 36px));margin-top:12px;background:var(--card);border:1px solid var(--separator);border-radius:18px;padding:13px 14px;box-shadow:var(--shadow);text-align:left}
+  .trackid[hidden]{display:none}
+  .tracktop{display:flex;align-items:center;gap:10px}
+  .trackcopy{min-width:0;flex:1}
+  .tracklabel{color:var(--label-tertiary);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
+  .trackcurrent{color:var(--label);font-size:14px;font-weight:800;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .trackask{flex:0 0 auto;border:none;background:var(--accent);color:#fff;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer}
+  .trackask:disabled{opacity:.55;cursor:default}
+  .trackstatus{min-height:15px;color:var(--label-secondary);font-size:12px;margin-top:7px}
+  .trackrecent{margin:8px 0 0;padding:8px 0 0;border-top:1px solid var(--separator);list-style:none;display:grid;gap:4px}
+  .trackrecent:empty{display:none}
+  .trackrecent li{color:var(--label-secondary);font-size:12px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .foot{color:var(--label-tertiary);font-size:12px;padding:0 20px;margin-top:30px}
   .downhint{position:absolute;bottom:12px;left:0;right:0;color:var(--label-secondary);font-size:13px;opacity:.9}
   .downhint .chev{display:block;font-size:16px;line-height:1;animation:nudge 2.4s ease-in-out infinite}
@@ -225,6 +237,17 @@
       <button class="reactbtn" type="button" data-react="more" aria-label="More like this" title="More like this">✨</button>
       <div class="reactambient" id="reactionAmbient"></div>
     </div>
+    <section class="trackid" id="trackBox" hidden>
+      <div class="tracktop">
+        <div class="trackcopy">
+          <div class="tracklabel">Now playing</div>
+          <div class="trackcurrent" id="trackCurrent">The DJ hasn't shared this one yet.</div>
+        </div>
+        <button class="trackask" id="trackAsk" type="button">What's this?</button>
+      </div>
+      <div class="trackstatus" id="trackStatus"></div>
+      <ul class="trackrecent" id="trackRecent"></ul>
+    </section>
     <form class="trackrequest" id="requestBox" hidden>
       <div class="reqtitle">Request a track</div>
       <div class="reqrow">
@@ -1113,6 +1136,7 @@
       const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink'), keepsakeLink = $id('keepsakeLink');
       const onlineCopy = onlineCard.querySelector('.onlinecopy');
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
+      const trackBox = $id('trackBox'), trackCurrent = $id('trackCurrent'), trackAsk = $id('trackAsk'), trackStatus = $id('trackStatus'), trackRecent = $id('trackRecent');
       const featureDefaults = {
         uploads: true, videoUploads: false, comments: true, reactions: false,
         requests: false, trackId: false, tippingLinks: true, wallMode: true
@@ -1123,7 +1147,9 @@
       const requestBox = $id('requestBox'), requestText = $id('requestText'), requestNote = $id('requestNote'), requestVibes = $id('requestVibes'), requestSend = $id('requestSend'), requestStatus = $id('requestStatus');
       let requestVibe = '';
       let reactionCounts = {};
+      let currentTrack = null;
       let nextReactionAt = 0;
+      let nextTrackAskAt = 0;
       let currentFeatures = Object.assign({}, featureDefaults);
       let featureSig = JSON.stringify(currentFeatures);
       let currentOnlineUrl = '';
@@ -1181,6 +1207,29 @@
         }
         reactionAmbient.textContent = top ? top.emoji + ' ×' + top.n : '';
       }
+      function trackText(track){
+        if (!track || !track.title) return '';
+        return track.artist ? track.title + ' — ' + track.artist : track.title;
+      }
+      function renderTrackID(nowPlaying, recentTracks){
+        currentTrack = nowPlaying && nowPlaying.title ? nowPlaying : null;
+        trackBox.hidden = !featureOn('trackId');
+        if (!featureOn('trackId')) {
+          trackStatus.textContent = '';
+          trackRecent.textContent = '';
+          return;
+        }
+        trackCurrent.textContent = currentTrack ? trackText(currentTrack) : "The DJ hasn't shared this one yet.";
+        trackRecent.textContent = '';
+        const recent = Array.isArray(recentTracks) ? recentTracks.slice(0, 5) : [];
+        for (const tr of recent) {
+          const text = trackText(tr);
+          if (!text) continue;
+          const li = document.createElement('li');
+          li.textContent = text;
+          trackRecent.appendChild(li);
+        }
+      }
       reactionBar.addEventListener('click', async (e) => {
         const btn = e.target && e.target.closest && e.target.closest('button[data-react]');
         if (!btn || !featureOn('reactions')) return;
@@ -1199,6 +1248,27 @@
           if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { reactions: false }));
           if (r.status === 429) nextReactionAt = Date.now() + 1200;
         } catch (err) {}
+      });
+      trackAsk.addEventListener('click', async () => {
+        if (!featureOn('trackId')) return;
+        const now = Date.now();
+        if (now < nextTrackAskAt) return;
+        nextTrackAskAt = now + 3000;
+        trackAsk.disabled = true;
+        trackStatus.textContent = currentTrack ? 'Now playing: ' + trackText(currentTrack) : "The DJ hasn't shared this one yet.";
+        try {
+          const r = await fetch('/api/track-id-request', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cid }) });
+          if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { trackId: false }));
+          if (r.status === 429) {
+            nextTrackAskAt = Date.now() + 3500;
+            trackStatus.textContent = 'asked already — check back in a moment';
+          }
+        } catch (err) {
+          trackStatus.textContent = currentTrack ? 'Now playing: ' + trackText(currentTrack) : "The DJ hasn't shared this one yet.";
+        } finally {
+          setTimeout(() => { trackAsk.disabled = false; }, Math.max(0, nextTrackAskAt - Date.now()));
+        }
       });
       requestVibes.addEventListener('click', (e) => {
         const btn = e.target && e.target.closest && e.target.closest('button[data-vibe]');
@@ -1387,6 +1457,7 @@
         const commentsOn = wallOn && featureOn('comments');
         const uploadsOn = wallOn && featureOn('uploads');
         updateReactionUI(reactionCounts);
+        renderTrackID(currentTrack, []);
         requestBox.hidden = !featureOn('requests');
         if (feedOn) {
           feedSec.hidden = !wallOn;
@@ -1662,6 +1733,7 @@
           const data = await r.json();
           const featureChanged = setFeatures(data.features || {});
           updateReactionUI(data.reactions || {});
+          renderTrackID(data.nowPlaying || null, data.recentTracks || []);
           if (featureChanged && feedOn) {
             newestAct = 0; nodes.clear(); expanded.clear(); feedList.innerHTML = '';
           }
