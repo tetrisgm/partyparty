@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +91,39 @@ func decodeJSON(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 		t.Fatalf("response is not valid JSON: %v\n%s", err, w.Body.String())
 	}
 	return m
+}
+
+func doBody(s *Srv, method, target, remoteAddr, contentType string, body *bytes.Buffer) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, body)
+	if remoteAddr != "" {
+		req.RemoteAddr = remoteAddr
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	return w
+}
+
+func multipartUpload(t *testing.T, name, contentType string) (*bytes.Buffer, string) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="file"; filename="`+name+`"`)
+	h.Set("Content-Type", contentType)
+	part, err := mw.CreatePart(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("media bytes")); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return body, mw.FormDataContentType()
 }
 
 func waitIdle(t *testing.T, bc *broadcast.Broadcaster) {
@@ -217,6 +253,141 @@ func TestUploadLooksLikeBigVideo(t *testing.T) {
 	}
 	if uploadLooksLikeBigVideo("photo.jpg", liveGuestVideoDeferBytes, liveGuestVideoDeferBytes) {
 		t.Fatal("large photo should not use the live video deferral path")
+	}
+}
+
+func TestEventFeatureGatesGuestWrites(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	guest := "192.168.1.44:3333"
+	postJSON := func(target, remote string, body any) *httptest.ResponseRecorder {
+		data, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doBody(s, http.MethodPost, target, remote, "application/json", bytes.NewBuffer(data))
+	}
+	assertDisabled := func(w *httptest.ResponseRecorder) {
+		t.Helper()
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, body %q; want 403", w.Code, w.Body.String())
+		}
+		body := decodeJSON(t, w)
+		if body["disabled"] != true || body["error"] == "" {
+			t.Fatalf("disabled response = %#v", body)
+		}
+	}
+
+	if err := ev.SetFeature("comments", false); err != nil {
+		t.Fatal(err)
+	}
+	assertDisabled(postJSON("/api/post", guest, map[string]any{"cid": "c1", "author": "Guest", "emoji": "🎉", "text": "hello"}))
+	if err := ev.SetFeature("comments", true); err != nil {
+		t.Fatal(err)
+	}
+	w := postJSON("/api/post", guest, map[string]any{"cid": "c1", "author": "Guest", "emoji": "🎉", "text": "hello"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("post on status = %d, body %q", w.Code, w.Body.String())
+	}
+	postID, _ := decodeJSON(t, w)["id"].(string)
+	if postID == "" {
+		t.Fatalf("post id missing: %q", w.Body.String())
+	}
+
+	if err := ev.SetFeature("comments", false); err != nil {
+		t.Fatal(err)
+	}
+	assertDisabled(postJSON("/api/comment", guest, map[string]any{"post": postID, "cid": "c2", "author": "Guest", "emoji": "🎉", "text": "reply"}))
+	if err := ev.SetFeature("comments", true); err != nil {
+		t.Fatal(err)
+	}
+	w = postJSON("/api/comment", guest, map[string]any{"post": postID, "cid": "c2", "author": "Guest", "emoji": "🎉", "text": "reply"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("comment on status = %d, body %q", w.Code, w.Body.String())
+	}
+
+	if err := ev.SetFeature("uploads", false); err != nil {
+		t.Fatal(err)
+	}
+	body, ct := multipartUpload(t, "photo.jpg", "image/jpeg")
+	assertDisabled(doBody(s, http.MethodPost, "/api/upload", guest, ct, body))
+	if err := ev.SetFeature("uploads", true); err != nil {
+		t.Fatal(err)
+	}
+	body, ct = multipartUpload(t, "photo.jpg", "image/jpeg")
+	w = doBody(s, http.MethodPost, "/api/upload", "192.168.1.45:3333", ct, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("image upload on status = %d, body %q", w.Code, w.Body.String())
+	}
+
+	if err := ev.SetFeature("videoUploads", false); err != nil {
+		t.Fatal(err)
+	}
+	body, ct = multipartUpload(t, "clip.mp4", "video/mp4")
+	assertDisabled(doBody(s, http.MethodPost, "/api/upload", "192.168.1.46:3333", ct, body))
+	if err := ev.SetFeature("videoUploads", true); err != nil {
+		t.Fatal(err)
+	}
+	body, ct = multipartUpload(t, "clip.mp4", "video/mp4")
+	w = doBody(s, http.MethodPost, "/api/upload", "192.168.1.47:3333", ct, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("video upload on status = %d, body %q", w.Code, w.Body.String())
+	}
+}
+
+func TestEventFeaturesDJBypass(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"wallMode", "uploads", "comments", "videoUploads"} {
+		if err := ev.SetFeature(name, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := New(Deps{Events: ev})
+	post := map[string]any{"cid": "dj", "author": "DJ", "emoji": "🎧", "text": "still posting"}
+	data, _ := json.Marshal(post)
+	w := doBody(s, http.MethodPost, "/api/post", "127.0.0.1:1234", "application/json", bytes.NewBuffer(data))
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ post status = %d, body %q", w.Code, w.Body.String())
+	}
+	body, ct := multipartUpload(t, "clip.mp4", "video/mp4")
+	w = doBody(s, http.MethodPost, "/api/upload", "127.0.0.1:1234", ct, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ upload status = %d, body %q", w.Code, w.Body.String())
+	}
+}
+
+func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+
+	w := do(s, http.MethodPost, "/api/event-features?name=requests&on=1", "192.168.1.44:3333")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("guest event-features status = %d, want 403", w.Code)
+	}
+	w = do(s, http.MethodPost, "/api/event-features?name=requests&on=1", "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ event-features status = %d, body %q", w.Code, w.Body.String())
+	}
+	w = do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333")
+	if w.Code != http.StatusOK {
+		t.Fatalf("feed status = %d, body %q", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	features, ok := body["features"].(map[string]any)
+	if !ok {
+		t.Fatalf("features missing/not object: %#v", body["features"])
+	}
+	if features["requests"] != true || features["videoUploads"] != false || features["uploads"] != true {
+		t.Fatalf("feed features = %#v", features)
 	}
 }
 

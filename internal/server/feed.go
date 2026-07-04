@@ -35,6 +35,46 @@ func (s *srv) isDJ(r *http.Request) bool {
 	return ip == "127.0.0.1" || ip == "::1" || ip == "1"
 }
 
+func (s *srv) featureOn(name string) bool {
+	if s.Events == nil {
+		return true
+	}
+	features := s.Events.Meta().Features
+	if on, ok := features[name]; ok {
+		return on
+	}
+	return true
+}
+
+func writeFeatureDisabled(w http.ResponseWriter) {
+	writeJSON(w, http.StatusForbidden, map[string]any{"error": "the DJ turned this off", "disabled": true})
+}
+
+func mediaHasVideo(media []event.Media) bool {
+	for _, m := range media {
+		if m.Type == "video" {
+			return true
+		}
+		switch strings.ToLower(filepath.Ext(m.ID)) {
+		case ".mp4", ".mov", ".m4v", ".webm":
+			return true
+		}
+	}
+	return false
+}
+
+func uploadLooksLikeVideo(name, contentType string) bool {
+	if strings.HasPrefix(strings.ToLower(contentType), "video/") {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".mp4", ".mov", ".m4v", ".webm":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	if s.Events == nil {
 		return false
@@ -62,6 +102,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		links := s.eventOnlineLinks()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
+			"features":   meta.Features,
 			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "claimBaseUrl": links.ClaimBaseURL, "published": links.Published,
 			// dir = the event's identity; clients reset their cursor when it
 			// changes (switching to an OLDER event must replay its posts).
@@ -73,12 +114,20 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return true
 		}
+		dj := s.isDJ(r)
+		if !dj && !s.featureOn("wallMode") {
+			writeFeatureDisabled(w)
+			return true
+		}
+		if !dj && !s.featureOn("comments") {
+			writeFeatureDisabled(w)
+			return true
+		}
 		var body struct{ Post, CID, Author, Emoji, Text string }
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return true
 		}
-		dj := s.isDJ(r)
 		if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "comment") {
 			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many comments", "retry": true})
 			return true
@@ -125,6 +174,16 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "slug": s.Events.Slug()})
+	case "/api/event-features":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.SetFeature(r.URL.Query().Get("name"), r.URL.Query().Get("on") != "0"); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "features": s.Events.Meta().Features})
 	case "/api/publish":
 		// Publish the current event's recorded set to its ONLINE /e/<slug> page
 		// (DJ-initiated; the button always publishes, no duration threshold).
@@ -193,6 +252,24 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		dj := s.isDJ(r)
+		if !dj {
+			if !s.featureOn("wallMode") {
+				writeFeatureDisabled(w)
+				return true
+			}
+			if strings.TrimSpace(body.Text) != "" && !s.featureOn("comments") {
+				writeFeatureDisabled(w)
+				return true
+			}
+			if len(body.Media) > 0 && !s.featureOn("uploads") {
+				writeFeatureDisabled(w)
+				return true
+			}
+			if mediaHasVideo(body.Media) && !s.featureOn("videoUploads") {
+				writeFeatureDisabled(w)
+				return true
+			}
+		}
 		if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "post") {
 			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many posts", "retry": true})
 			return true
@@ -220,7 +297,27 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return true
 		}
-		if !s.isDJ(r) {
+		dj := s.isDJ(r)
+		if !dj && !s.featureOn("wallMode") {
+			writeFeatureDisabled(w)
+			return true
+		}
+		if !dj && !s.featureOn("uploads") {
+			writeFeatureDisabled(w)
+			return true
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, event.MaxUpload+(1<<20))
+		f, hdr, err := r.FormFile("file")
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
+			return true
+		}
+		defer f.Close()
+		if !dj && uploadLooksLikeVideo(hdr.Filename, hdr.Header.Get("Content-Type")) && !s.featureOn("videoUploads") {
+			writeFeatureDisabled(w)
+			return true
+		}
+		if !dj {
 			key := uploadLimitKey(r)
 			if !s.limits.allow(key, "upload") {
 				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many uploads", "retry": true})
@@ -232,13 +329,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			}
 			defer s.limits.releaseUpload()
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, event.MaxUpload+(1<<20))
-		f, hdr, err := r.FormFile("file")
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
-			return true
-		}
-		defer f.Close()
 		if s.Broadcaster != nil && s.Broadcaster.Status().State == "live" && uploadLooksLikeBigVideo(hdr.Filename, hdr.Size, r.ContentLength) {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "your video will post after the set", "defer": true})
 			return true
@@ -526,11 +616,12 @@ func (s *srv) eventState() map[string]any {
 	_, ids, mediaCount := s.Events.Feed(1 << 62) // counts only, no post bodies
 	meta := s.Events.Meta()
 	return map[string]any{
-		"title": meta.Title,
-		"host":  meta.Host,
-		"posts": len(ids),
-		"media": mediaCount,
-		"dir":   s.Events.Dir(),
+		"title":    meta.Title,
+		"host":     meta.Host,
+		"features": meta.Features,
+		"posts":    len(ids),
+		"media":    mediaCount,
+		"dir":      s.Events.Dir(),
 	}
 }
 

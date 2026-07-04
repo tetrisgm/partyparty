@@ -96,13 +96,49 @@ type Guest struct {
 // shows: "<Host> is hosting <Title>". DJ-editable from the console. Starts is
 // a free-text invite line ("Saturday 9pm — rooftop") for the pre-event page.
 type Meta struct {
-	Title  string `json:"title"`
-	Host   string `json:"host"`
-	Starts string `json:"starts,omitempty"`
+	Title    string          `json:"title"`
+	Host     string          `json:"host"`
+	Starts   string          `json:"starts,omitempty"`
+	Features map[string]bool `json:"features,omitempty"`
 	// Slug is the DJ's chosen /e/<slug> for this event's ONLINE page. "" means
 	// auto-derive one from the install at publish time. Charset-gated (see
 	// SetSlug) to the Worker's EVENT_RE so a bad value can never reach the page.
 	Slug string `json:"slug,omitempty"`
+}
+
+var featureDefaults = map[string]bool{
+	"uploads":      true,
+	"videoUploads": false,
+	"comments":     true,
+	"reactions":    false,
+	"requests":     false,
+	"trackId":      false,
+	"tippingLinks": true,
+	"wallMode":     true,
+}
+
+// FeatureDefaults returns the canonical guest-feature switches and their
+// backward-compatible defaults.
+func FeatureDefaults() map[string]bool {
+	return normalizeFeatures(nil)
+}
+
+func validFeature(name string) bool {
+	_, ok := featureDefaults[name]
+	return ok
+}
+
+func normalizeFeatures(in map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(featureDefaults))
+	for k, v := range featureDefaults {
+		out[k] = v
+	}
+	for k, v := range in {
+		if validFeature(k) {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // Store manages the current event directory. Safe for concurrent use.
@@ -228,6 +264,7 @@ func (s *Store) use(dir string) error {
 	if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
 		_ = json.Unmarshal(data, &meta)
 	}
+	meta.Features = normalizeFeatures(meta.Features)
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.guests, s.meta = dir, posts, byID, guests, meta
 	s.mu.Unlock()
@@ -239,7 +276,9 @@ func (s *Store) use(dir string) error {
 func (s *Store) Meta() Meta {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.meta
+	m := s.meta
+	m.Features = normalizeFeatures(s.meta.Features)
+	return m
 }
 
 // SetMeta updates title/host/starts (empty field = keep current; starts may
@@ -298,6 +337,22 @@ func (s *Store) SetSlug(raw string) (string, error) {
 	}
 	s.changed()
 	return slug, nil
+}
+
+// SetFeature updates one DJ-controlled guest feature switch and persists it.
+func (s *Store) SetFeature(name string, on bool) error {
+	if !validFeature(name) {
+		return errors.New("unknown feature")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.Features = normalizeFeatures(s.meta.Features)
+	s.meta.Features[name] = on
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
 }
 
 // NormalizeSlug lowercases, keeps the Worker's EVENT_RE charset ([a-z0-9_.-])

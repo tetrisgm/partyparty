@@ -166,6 +166,16 @@
   .ptab.active .pcount{background:var(--fill)}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
+  .featurebar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .featuretoggle{position:relative;display:inline-flex;align-items:center;gap:7px;background:var(--fill);border:1px solid var(--separator);border-radius:999px;padding:6px 10px 6px 7px;font-size:12px;font-weight:600;color:var(--label-secondary);cursor:pointer;user-select:none}
+  .featuretoggle input{position:absolute;opacity:0;pointer-events:none}
+  .featuretoggle span{display:inline-flex;align-items:center;gap:7px}
+  .featuretoggle span::before{content:'';width:28px;height:16px;border-radius:999px;background:rgba(120,120,128,.28);box-shadow:inset 0 0 0 1px rgba(0,0,0,.05);transition:background .15s}
+  .featuretoggle span::after{content:'';position:absolute;left:9px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.22);transition:transform .15s}
+  .featuretoggle input:checked + span{color:var(--label)}
+  .featuretoggle input:checked + span::before{background:var(--success)}
+  .featuretoggle input:checked + span::after{transform:translateX(12px)}
+  .featuretoggle input:disabled + span{opacity:.55}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
   .sheetov.show{display:flex}
@@ -304,6 +314,7 @@
         <h2 id="eventTitle">the party wall</h2>
         <span class="muted" id="eventCounts"></span>
       </div>
+      <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
       <div class="composer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
         <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Post to the wall as the DJ…" style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
@@ -1068,6 +1079,42 @@
     const nodes = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
     let newestAct = 0, on = false, curDir = '';
+    const featureDefs = [
+      ['uploads', 'Uploads', true], ['videoUploads', 'Video', false], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
+      ['requests', 'Requests', false], ['trackId', 'Track ID', false], ['tippingLinks', 'Tips', true], ['wallMode', 'Wall', true]
+    ];
+    function renderFeatureToggles(features){
+      const bar = $('featureToggles');
+      if (!bar.dataset.ready) {
+        bar.innerHTML = featureDefs.map(([key, label]) =>
+          '<label class="featuretoggle"><input type="checkbox" data-feature="' + escT(key) + '"><span>' + escT(label) + '</span></label>'
+        ).join('');
+        bar.addEventListener('change', async (e) => {
+          const input = e.target;
+          const name = input && input.dataset && input.dataset.feature;
+          if (!name) return;
+          const on = input.checked;
+          input.disabled = true;
+          try {
+            const r = await fetch('/api/event-features?name=' + encodeURIComponent(name) + '&on=' + (on ? '1' : '0'), { method:'POST' });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || d.error) throw new Error(d.error || 'feature update failed');
+            renderFeatureToggles(d.features || {});
+          } catch (err) {
+            input.checked = !on;
+            input.title = err.message || 'feature update failed';
+          } finally {
+            input.disabled = false;
+          }
+        });
+        bar.dataset.ready = '1';
+      }
+      const f = features || {};
+      for (const [key, label, def] of featureDefs) {
+        const input = bar.querySelector('input[data-feature="' + key + '"]');
+        if (input) input.checked = Object.prototype.hasOwnProperty.call(f, key) ? f[key] !== false : def;
+      }
+    }
     function fallbackVideo(src){
       const v = document.createElement('video');
       v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
@@ -1207,6 +1254,7 @@
         $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
         syncPublish(data.slug);
+        renderFeatureToggles(data.features || {});
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);

@@ -18,6 +18,7 @@
     --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none!important}
   html,body{height:100%;margin:0}
   body{
     font-family:var(--sans);
@@ -211,7 +212,7 @@
       <span class="mechip" id="meChip" title="Tap to change your party name"></span>
       <span class="mechip" id="contactChip" style="font-weight:400;font-size:12px" title="Only the DJ can see this — used to send you the party page later"></span>
     </div>
-    <div class="composer">
+    <div class="composer" id="composer">
       <textarea id="ctext" rows="2" maxlength="2000" placeholder="Drop a shout-out…"></textarea>
       <div class="crow">
         <button class="attach" id="attachBtn" type="button">📎 Photos / videos</button>
@@ -1063,6 +1064,12 @@
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink'), keepsakeLink = $id('keepsakeLink');
       const onlineCopy = onlineCard.querySelector('.onlinecopy');
+      const featureDefaults = {
+        uploads: true, videoUploads: false, comments: true, reactions: false,
+        requests: false, trackId: false, tippingLinks: true, wallMode: true
+      };
+      let currentFeatures = Object.assign({}, featureDefaults);
+      let featureSig = JSON.stringify(currentFeatures);
       let currentOnlineUrl = '';
       let savedClaimUrl = '';
       try { savedClaimUrl = localStorage.getItem('pp.claimUrl') || ''; } catch (e) {}
@@ -1092,6 +1099,18 @@
         if (h && savedClaimUrl.indexOf(base + h) !== 0) saveClaimUrl(base + h);
       }
       paintOnlineLinks();
+      function setFeatures(features){
+        const next = Object.assign({}, featureDefaults, features || {});
+        const sig = JSON.stringify(next);
+        const changed = sig !== featureSig;
+        currentFeatures = next;
+        featureSig = sig;
+        applyFeatureUI();
+        return changed;
+      }
+      function featureOn(name){
+        return currentFeatures[name] !== false;
+      }
 
       // Party name: deterministic from cid so it's stable before any edit.
       const EMO = ['🪩','🕺','💃','🎧','🎶','✨','🔥','🦩','🍾','🎉','🌈','⚡️','🫧','🎊','🛼','🐆','🍒','🌙','👾','🦋','🐬','🍄','💎','🚀'];
@@ -1236,19 +1255,45 @@
       });
 
       // Composer
-      const ctext = $id('ctext'), cfiles = $id('cfiles'), attachN = $id('attachN'), postBtn = $id('postBtn');
+      const composer = $id('composer'), ctext = $id('ctext'), cfiles = $id('cfiles'), attachBtn = $id('attachBtn'), attachN = $id('attachN'), postBtn = $id('postBtn');
       const deferredVideos = [];
-      $id('attachBtn').addEventListener('click', () => cfiles.click());
+      function isVideoFile(file){
+        return !!file && ((file.type && file.type.indexOf('video/') === 0) || /\.(mp4|mov|m4v|webm)$/i.test(file.name || ''));
+      }
+      function applyFeatureUI(){
+        const wallOn = featureOn('wallMode');
+        const commentsOn = wallOn && featureOn('comments');
+        const uploadsOn = wallOn && featureOn('uploads');
+        if (feedOn) {
+          feedSec.hidden = !wallOn;
+          downhint.hidden = !wallOn;
+        }
+        composer.hidden = !(commentsOn || uploadsOn);
+        ctext.hidden = !commentsOn;
+        ctext.disabled = !commentsOn;
+        attachBtn.hidden = !uploadsOn;
+        attachBtn.disabled = !uploadsOn;
+        cfiles.disabled = !uploadsOn;
+        cfiles.accept = featureOn('videoUploads') ? 'image/*,video/*,audio/*' : 'image/*,audio/*';
+        attachBtn.textContent = featureOn('videoUploads') ? '📎 Photos / videos' : '📎 Photos';
+        postBtn.hidden = !(commentsOn || uploadsOn);
+        if (!uploadsOn) {
+          cfiles.value = '';
+          attachN.textContent = '';
+        }
+      }
+      attachBtn.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
       cfiles.addEventListener('change', () => {
+        if (!featureOn('uploads')) { cfiles.value = ''; attachN.textContent = ''; return; }
         let deferN = 0;
-        [...cfiles.files].forEach(f => { if (shouldDeferGuestVideo(f)) deferN++; });
+        [...cfiles.files].forEach(f => { if (featureOn('videoUploads') && shouldDeferGuestVideo(f)) deferN++; });
         attachN.textContent = deferN
           ? deferN + ' video' + (deferN > 1 ? 's' : '') + ' will post after the set'
           : (cfiles.files.length ? cfiles.files.length + ' selected' : '');
       });
       function shouldDeferGuestVideo(file){
         if (!live || !file || file.size < GUEST_DEFER_VIDEO_BYTES) return false;
-        return (file.type && file.type.indexOf('video/') === 0) || /\.(mp4|mov|m4v|webm)$/i.test(file.name || '');
+        return isVideoFile(file);
       }
       async function uploadOne(file){
         const fd = new FormData();
@@ -1287,8 +1332,10 @@
         }
       };
       async function submitPost(){
-        const files = [...cfiles.files], immediate = [];
-        const text = ctext.value.trim();
+        if (!featureOn('wallMode')) return;
+        const files = featureOn('uploads') ? [...cfiles.files].filter(f => featureOn('videoUploads') || !isVideoFile(f)) : [];
+        const immediate = [];
+        const text = featureOn('comments') ? ctext.value.trim() : '';
         if (!text && !files.length) return;
         postBtn.disabled = true;
         try {
@@ -1307,7 +1354,8 @@
             await postMedia(media, text);
             await pollFeed(true);
           }
-          ctext.value = ''; cfiles.value = '';
+          if (featureOn('comments')) ctext.value = '';
+          cfiles.value = '';
           attachN.textContent = queued ? 'your video will post after the set' : '';
           if (!live) drainDeferredVideos();
         } catch (e) {
@@ -1389,7 +1437,9 @@
           (p.text ? '<div class="ptext' + big + '">' + esc(p.text) + '</div>' : '') +
           (media ? '<div class="pmedia">' + media + '</div>' : '') +
           renderComments(p) +
-          '<div class="cbox"><input maxlength="1000" placeholder="Add a comment…" data-cpost="' + esc(p.id) + '"><button data-csend="' + esc(p.id) + '">Post</button></div>';
+          (featureOn('wallMode') && featureOn('comments')
+            ? '<div class="cbox"><input maxlength="1000" placeholder="Add a comment…" data-cpost="' + esc(p.id) + '"><button data-csend="' + esc(p.id) + '">Post</button></div>'
+            : '');
         return el;
       }
       // Insert or replace, keeping newest-first order by creation time.
@@ -1398,6 +1448,11 @@
         const old = nodes.get(p.id);
         if (old) {
           const active = old.querySelector('input');
+          if (active && (!featureOn('wallMode') || !featureOn('comments'))) {
+            old.replaceWith(el);
+            nodes.set(p.id, el);
+            return;
+          }
           if (active && document.activeElement === active) {
             // Mid-typing: the update must still LAND (the cursor has already
             // advanced past this post — skipping would drop it forever, the
@@ -1444,6 +1499,7 @@
         if (more) { expanded.add(more); newestAct = 0; nodes.clear(); feedList.innerHTML = ''; pollFeed(true); return; }
         const send = e.target && e.target.dataset && e.target.dataset.csend;
         if (send) {
+          if (!featureOn('wallMode') || !featureOn('comments')) return;
           const inp = feedList.querySelector('input[data-cpost="' + send + '"]');
           const text = inp && inp.value.trim();
           if (!text) return;
@@ -1451,7 +1507,9 @@
           try {
             const r = await fetch('/api/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ post: send, cid, author: myName, emoji: myEmoji, text }) });
+            const res = await r.json().catch(() => ({}));
             if (r.ok) { inp.value = ''; await pollFeed(true); }
+            else if (res.error) { inp.value = ''; inp.placeholder = res.error; }
           } catch (err) {}
           e.target.disabled = false;
         }
@@ -1474,9 +1532,13 @@
           if (r.status === 404) return false; // no event store
           if (!r.ok) return false;
           const data = await r.json();
+          const featureChanged = setFeatures(data.features || {});
+          if (featureChanged && feedOn) {
+            newestAct = 0; nodes.clear(); expanded.clear(); feedList.innerHTML = '';
+          }
           if (!feedOn) {
             feedOn = true;
-            feedSec.hidden = false; downhint.hidden = false;
+            feedSec.hidden = !featureOn('wallMode'); downhint.hidden = !featureOn('wallMode');
           }
           if (data.dir && data.dir !== curDir) {
             // The DJ switched events: reset the cursor so the other event's
@@ -1494,8 +1556,9 @@
           paintOnlineLinks();
           maybeWelcome(data);
           const sa = $id('saveAll');
-          sa.hidden = !(data.media > 0);
+          sa.hidden = !(featureOn('wallMode') && data.media > 0);
           if (data.media > 0) sa.textContent = '⬇️ Take all the media home (' + data.media + (data.media === 1 ? ' file)' : ' files)');
+          if (!featureOn('wallMode')) return true;
           // Prune what the server no longer returns: DJ-removed posts and,
           // after "Start a fresh wall", the previous wall's entries.
           if (Array.isArray(data.ids)) {
