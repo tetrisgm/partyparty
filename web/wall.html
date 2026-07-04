@@ -44,6 +44,8 @@
   .now b{font-size:clamp(22px,2.8vw,42px);line-height:1.05;display:block}
   .prompt{color:var(--label-secondary);font-size:clamp(14px,1.25vw,20px);line-height:1.35;font-weight:700}
   .prompt a{color:#fff;text-decoration:none;border-bottom:2px solid var(--accent)}
+  .promptqr{width:min(112px,38%);aspect-ratio:1;background:#fff;border-radius:8px;padding:7px;margin-top:10px}
+  .promptqr canvas,.promptqr img,.promptqr svg{width:100%!important;height:100%!important;display:block}
   .main{min-width:0;position:relative;display:grid;grid-template-rows:auto 1fr auto;gap:clamp(14px,1.8vw,26px)}
   .head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;min-width:0}
   .title{min-width:0}
@@ -159,15 +161,40 @@
       $('qr').innerHTML = '';
       new QRCode($('qr'), { text, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
     }
-    function renderLinkPrompt(url, features){
+    const tipTypes = new Set(['venmo', 'cashapp', 'paypal']);
+    function safeHTTP(url){
+      try {
+        const u = new URL(url);
+        return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : '';
+      } catch (e) { return ''; }
+    }
+    function primaryDJLink(links){
+      const list = Array.isArray(links) ? links : [];
+      return list.find(l => l && safeHTTP(l.url) && !tipTypes.has(l.type)) || list.find(l => l && safeHTTP(l.url)) || null;
+    }
+    function renderLinkPrompt(links, features){
       const on = featureOn(features || {}, 'tippingLinks', true);
-      if (!on || !url) {
+      const link = on ? primaryDJLink(links) : null;
+      const href = safeHTTP(link && link.url);
+      if (!href) {
         $('linkPrompt').hidden = true;
-        $('linkPrompt').innerHTML = '';
+        $('linkPrompt').textContent = '';
         return;
       }
-      $('linkPrompt').hidden = false;
-      $('linkPrompt').innerHTML = 'Follow the set after the party at <a href="' + esc(url) + '">' + esc(url.replace(/^https?:\/\//, '')) + '</a>';
+      const prompt = $('linkPrompt');
+      prompt.hidden = false;
+      prompt.textContent = '';
+      prompt.appendChild(document.createTextNode('Follow the DJ → '));
+      const a = document.createElement('a');
+      a.href = href; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = (link.label || '').trim() || href.replace(/^https?:\/\//, '');
+      prompt.appendChild(a);
+      if (typeof QRCode !== 'undefined') {
+        const q = document.createElement('div');
+        q.className = 'promptqr';
+        prompt.appendChild(q);
+        new QRCode(q, { text: href, width: 128, height: 128, correctLevel: QRCode.CorrectLevel.M });
+      }
     }
     function updateIdentity(data){
       const title = data.title || 'partyparty';
@@ -201,7 +228,7 @@
       const state = s.broadcast && s.broadcast.state || 'idle';
       $('livePill').textContent = state === 'live' ? 'Live now' : state === 'starting' ? 'Starting' : 'Ready';
       $('livePill').classList.toggle('live', state === 'live' || state === 'starting');
-      renderLinkPrompt(s.mirror && s.mirror.published ? s.mirror.url : '', event.features || {});
+      renderLinkPrompt(event.links || [], event.features || {});
     }
     async function pollStatus(){
       try {
@@ -341,7 +368,7 @@
       updateIdentity(data);
       renderNowPlaying(data);
       renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
-      renderLinkPrompt(data.onlineUrl || '', data.features || {});
+      renderLinkPrompt(data.links || [], data.features || {});
       let switched = false;
       if (data.dir && data.dir !== curDir) {
         curDir = data.dir;

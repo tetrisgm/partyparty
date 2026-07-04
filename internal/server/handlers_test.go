@@ -392,6 +392,70 @@ func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	}
 }
 
+func TestEventLinksEndpointAndFeatureGatedExposure(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := newTestEnv(t, nil)
+	env.srv.Events = ev
+	s := env.srv
+
+	postLinks := func(remote, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		return doBody(s, http.MethodPost, "/api/event-links", remote, "application/json", bytes.NewBufferString(body))
+	}
+	if w := postLinks("192.168.1.44:3333", `{"links":[{"type":"instagram","url":"https://instagram.com/dj","label":"DJ"}]}`); w.Code != http.StatusForbidden {
+		t.Fatalf("guest event-links status = %d, want 403", w.Code)
+	}
+	if w := postLinks("127.0.0.1:1234", `{"links":[{"type":"website","url":"javascript:alert(1)","label":"bad"}]}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("javascript link status = %d, body %q; want 400", w.Code, w.Body.String())
+	}
+	w := postLinks("127.0.0.1:1234", `{"links":[{"type":"instagram","url":"https://instagram.com/dj","label":"DJ <main>"},{"type":"paypal","url":"https://paypal.me/dj","label":""}]}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ event-links status = %d, body %q", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "<main>") {
+		t.Fatalf("event-links response did not JSON-escape label: %q", w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	links, ok := body["links"].([]any)
+	if !ok || len(links) != 2 {
+		t.Fatalf("endpoint links = %#v, want 2", body["links"])
+	}
+	first := links[0].(map[string]any)
+	if first["type"] != "instagram" || first["url"] != "https://instagram.com/dj" || first["label"] != "DJ <main>" {
+		t.Fatalf("first endpoint link = %#v", first)
+	}
+	second := links[1].(map[string]any)
+	if second["label"] != "PayPal" {
+		t.Fatalf("second endpoint link = %#v, want default PayPal label", second)
+	}
+
+	feed := decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
+	if got, ok := feed["links"].([]any); !ok || len(got) != 2 {
+		t.Fatalf("feed links while on = %#v, want 2", feed["links"])
+	}
+	status := decodeJSON(t, do(s, http.MethodGet, "/api/status", "127.0.0.1:1234"))
+	eventState := status["event"].(map[string]any)
+	if got, ok := eventState["links"].([]any); !ok || len(got) != 2 {
+		t.Fatalf("status event links while on = %#v, want 2", eventState["links"])
+	}
+
+	if err := ev.SetFeature("tippingLinks", false); err != nil {
+		t.Fatal(err)
+	}
+	feed = decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
+	if _, ok := feed["links"]; ok {
+		t.Fatalf("feed exposed links while tippingLinks off: %#v", feed["links"])
+	}
+	status = decodeJSON(t, do(s, http.MethodGet, "/api/status", "127.0.0.1:1234"))
+	eventState = status["event"].(map[string]any)
+	if _, ok := eventState["links"]; ok {
+		t.Fatalf("status exposed links while tippingLinks off: %#v", eventState["links"])
+	}
+}
+
 func TestReactionsGateLimitAndFeedAggregates(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {

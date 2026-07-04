@@ -120,6 +120,9 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				body["trackAsks"] = s.Events.TrackAskCount()
 			}
 		}
+		if dj || s.featureOn("tippingLinks") {
+			body["links"] = meta.Links
+		}
 		writeJSON(w, http.StatusOK, body)
 	case "/api/reactions":
 		if r.Method != http.MethodPost {
@@ -337,6 +340,23 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "features": s.Events.Meta().Features})
+	case "/api/event-links":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct {
+			Links []event.Link `json:"links"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if err := s.Events.SetLinks(body.Links); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": s.Events.Meta().Links})
 	case "/api/publish":
 		// Publish the current event's recorded set to its ONLINE /e/<slug> page
 		// (DJ-initiated; the button always publishes, no duration threshold).
@@ -803,7 +823,7 @@ func (s *srv) eventState() map[string]any {
 	}
 	_, ids, mediaCount := s.Events.Feed(1 << 62) // counts only, no post bodies
 	meta := s.Events.Meta()
-	return map[string]any{
+	body := map[string]any{
 		"title":    meta.Title,
 		"host":     meta.Host,
 		"features": meta.Features,
@@ -811,6 +831,10 @@ func (s *srv) eventState() map[string]any {
 		"media":    mediaCount,
 		"dir":      s.Events.Dir(),
 	}
+	if s.featureOn("tippingLinks") {
+		body["links"] = meta.Links
+	}
+	return body
 }
 
 type feedTrack struct {

@@ -183,6 +183,16 @@
   .onlinecard a:hover{text-decoration:underline}
   .onlinecopy{margin-bottom:4px}
   .keepsake{display:inline-block;font-size:12px}
+  .djlinks{background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:13px 14px;margin:0 0 12px;box-shadow:var(--shadow)}
+  .djlinks[hidden]{display:none}
+  .djlinks h3{margin:0 0 9px;font-size:14px;letter-spacing:0;color:var(--label)}
+  .linkgroup{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .linkgroup[hidden]{display:none}
+  .linkgroup::before{content:attr(data-label);flex:0 0 100%;color:var(--label-tertiary);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+  .djlinkchip{display:inline-flex;align-items:center;gap:7px;min-height:36px;max-width:100%;border-radius:999px;background:var(--fill);color:var(--label);padding:8px 12px;text-decoration:none;font-size:13px;font-weight:800}
+  .djlinkchip b{font-size:14px;line-height:1;flex:0 0 auto}
+  .djlinkchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .djlinkchip.tip{background:#fff0f4;color:var(--accent)}
   /* keepsake claim card */
   .claimov{position:fixed;inset:0;background:rgba(245,245,247,.82);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:22;padding:28px;text-align:center}
   .claimov.show{display:flex}
@@ -279,6 +289,11 @@
       <div class="onlinecopy">This party lives on here → <a id="onlineLink" target="_blank" rel="noopener"></a></div>
       <a class="keepsake" id="keepsakeLink" target="_blank" rel="noopener" hidden>Your keepsake link</a>
     </div>
+    <section class="djlinks" id="djLinks" hidden>
+      <h3>Follow / Tip the DJ</h3>
+      <div class="linkgroup" id="followLinks" data-label="Follow"></div>
+      <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
+    </section>
     <div class="me">
       <span class="mechip" id="meChip" title="Tap to change your party name"></span>
       <span class="mechip" id="contactChip" style="font-weight:400;font-size:12px" title="Only the DJ can see this — used to send you the party page later"></span>
@@ -1135,6 +1150,7 @@
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink'), keepsakeLink = $id('keepsakeLink');
       const onlineCopy = onlineCard.querySelector('.onlinecopy');
+      const djLinks = $id('djLinks'), followLinks = $id('followLinks'), tipLinks = $id('tipLinks');
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const trackBox = $id('trackBox'), trackCurrent = $id('trackCurrent'), trackAsk = $id('trackAsk'), trackStatus = $id('trackStatus'), trackRecent = $id('trackRecent');
       const featureDefaults = {
@@ -1152,6 +1168,7 @@
       let nextTrackAskAt = 0;
       let currentFeatures = Object.assign({}, featureDefaults);
       let featureSig = JSON.stringify(currentFeatures);
+      let currentLinks = [];
       let currentOnlineUrl = '';
       let savedClaimUrl = '';
       try { savedClaimUrl = localStorage.getItem('pp.claimUrl') || ''; } catch (e) {}
@@ -1192,6 +1209,47 @@
       }
       function featureOn(name){
         return currentFeatures[name] !== false;
+      }
+      const tipTypes = new Set(['venmo', 'cashapp', 'paypal']);
+      const linkIcons = {
+        instagram: '◎', soundcloud: '☁', bandcamp: '▰', mixcloud: '☁', resident_advisor: 'RA',
+        venmo: 'V', cashapp: '$', paypal: 'P', website: '↗', newsletter: '@', other: '↗'
+      };
+      function safeHTTP(url){
+        try {
+          const u = new URL(url);
+          return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : '';
+        } catch (e) { return ''; }
+      }
+      function addLinkChip(parent, link){
+        const href = safeHTTP(link && link.url);
+        if (!href) return 0;
+        const typ = link.type || 'other';
+        const a = document.createElement('a');
+        a.className = 'djlinkchip' + (tipTypes.has(typ) ? ' tip' : '');
+        a.href = href; a.target = '_blank'; a.rel = 'noopener';
+        const icon = document.createElement('b');
+        icon.textContent = linkIcons[typ] || linkIcons.other;
+        const label = document.createElement('span');
+        label.textContent = (link.label || '').trim() || 'Link';
+        a.appendChild(icon); a.appendChild(label);
+        parent.appendChild(a);
+        return 1;
+      }
+      function renderDJLinks(links){
+        currentLinks = Array.isArray(links) ? links : currentLinks;
+        followLinks.textContent = '';
+        tipLinks.textContent = '';
+        let followN = 0, tipN = 0;
+        if (featureOn('tippingLinks')) {
+          for (const link of currentLinks) {
+            if (tipTypes.has(link && link.type)) tipN += addLinkChip(tipLinks, link);
+            else followN += addLinkChip(followLinks, link);
+          }
+        }
+        followLinks.hidden = followN === 0;
+        tipLinks.hidden = tipN === 0;
+        djLinks.hidden = followN + tipN === 0;
       }
       function updateReactionUI(counts){
         reactionCounts = counts || reactionCounts || {};
@@ -1459,6 +1517,7 @@
         updateReactionUI(reactionCounts);
         renderTrackID(currentTrack, []);
         requestBox.hidden = !featureOn('requests');
+        renderDJLinks(currentLinks);
         if (feedOn) {
           feedSec.hidden = !wallOn;
           downhint.hidden = !wallOn;
@@ -1732,6 +1791,7 @@
           if (!r.ok) return false;
           const data = await r.json();
           const featureChanged = setFeatures(data.features || {});
+          renderDJLinks(data.links || []);
           updateReactionUI(data.reactions || {});
           renderTrackID(data.nowPlaying || null, data.recentTracks || []);
           if (featureChanged && feedOn) {

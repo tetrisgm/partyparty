@@ -221,6 +221,19 @@
   .featuretoggle input:checked + span::before{background:var(--success)}
   .featuretoggle input:checked + span::after{transform:translateX(12px)}
   .featuretoggle input:disabled + span{opacity:.55}
+  .linkeditor{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .linkeditor.off{opacity:.68}
+  .linkeditor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .linkeditor-head b{font-size:13px}
+  .linkeditor-head .muted{margin-left:auto;font-size:11px}
+  .linkrows{display:grid;gap:8px}
+  .linkrow{display:grid;grid-template-columns:145px 1fr 145px 28px;gap:8px;align-items:center}
+  .linkrow input{min-width:0;height:34px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 10px;color:var(--label);font:inherit;font-size:13px;outline:none}
+  .linkrow input:focus{border-color:var(--accent)}
+  .linkrow .bad{border-color:rgba(255,59,48,.65)}
+  .linkdel{width:28px;height:28px;padding:0;border-radius:999px;background:var(--fill);color:var(--label-secondary)}
+  .linkactions{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .linkstatus{font-size:12px;color:var(--label-secondary);min-height:16px}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
   .sheetov.show{display:flex}
@@ -231,6 +244,7 @@
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#fff}}
   @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}}
+  @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
 </style>
 </head>
 <body>
@@ -390,6 +404,15 @@
       </div>
       <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
       <div class="featurebar" id="moderationToggles" aria-label="Moderation mode"></div>
+      <div class="linkeditor" id="linkEditor">
+        <div class="linkeditor-head"><b>Follow / tip links</b><span class="muted" id="linkEditorState"></span></div>
+        <div class="linkrows" id="linkRows"></div>
+        <div class="linkactions">
+          <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
+          <button class="go" id="saveLinksBtn" type="button">Save links</button>
+          <span class="linkstatus" id="linkStatus"></span>
+        </div>
+      </div>
       <div class="reactionpanel" id="djReactions" hidden>
         <div class="reactiongrid" id="djReactionGrid"></div>
         <div class="spikeline" id="djReactionSpike"></div>
@@ -1167,10 +1190,80 @@
       ['uploads', 'Uploads', true], ['videoUploads', 'Video', false], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
       ['requests', 'Requests', false], ['trackId', 'Track ID', false], ['tippingLinks', 'Tips', true], ['wallMode', 'Wall', true]
     ];
+    const linkTypes = [
+      ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['mixcloud', 'Mixcloud'],
+      ['resident_advisor', 'Resident Advisor'], ['venmo', 'Venmo'], ['cashapp', 'Cash App'], ['paypal', 'PayPal'],
+      ['website', 'Website'], ['newsletter', 'Newsletter'], ['other', 'Other']
+    ];
     const reactionDefs = [
       ['fire', '🔥 fire'], ['heart', '❤️ heart'], ['louder', '🔊 louder'], ['quieter', '🔉 quieter'],
       ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
     ];
+    let linkSig = '';
+    function linkFeatureOn(features){
+      return !!(features && Object.prototype.hasOwnProperty.call(features, 'tippingLinks') ? features.tippingLinks !== false : true);
+    }
+    function validHTTPURL(v){
+      try {
+        const u = new URL((v || '').trim());
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch (e) { return false; }
+    }
+    function linkRow(link){
+      const row = document.createElement('div');
+      row.className = 'linkrow';
+      const sel = document.createElement('select');
+      sel.dataset.field = 'type';
+      for (const [value, label] of linkTypes) {
+        const opt = document.createElement('option');
+        opt.value = value; opt.textContent = label;
+        sel.appendChild(opt);
+      }
+      sel.value = link && link.type || 'other';
+      const url = document.createElement('input');
+      url.dataset.field = 'url'; url.type = 'url'; url.inputMode = 'url'; url.placeholder = 'https://...';
+      url.autocapitalize = 'off'; url.spellcheck = false; url.maxLength = 2048; url.value = link && link.url || '';
+      const label = document.createElement('input');
+      label.dataset.field = 'label'; label.placeholder = 'Label'; label.maxLength = 40; label.value = link && link.label || '';
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'linkdel'; del.title = 'Remove link'; del.setAttribute('aria-label', 'Remove link'); del.textContent = '×';
+      row.appendChild(sel); row.appendChild(url); row.appendChild(label); row.appendChild(del);
+      return row;
+    }
+    function renderLinkEditor(links, features){
+      const editor = $('linkEditor');
+      const rows = $('linkRows');
+      editor.classList.toggle('off', !linkFeatureOn(features || {}));
+      $('linkEditorState').textContent = linkFeatureOn(features || {}) ? '' : 'Tips toggle is off';
+      const clean = Array.isArray(links) ? links : [];
+      const sig = JSON.stringify(clean);
+      if (document.activeElement && rows.contains(document.activeElement) && sig === linkSig) return;
+      if (sig === linkSig && rows.children.length) return;
+      linkSig = sig;
+      rows.textContent = '';
+      for (const link of clean) rows.appendChild(linkRow(link));
+      if (!rows.children.length) rows.appendChild(linkRow({ type:'instagram', url:'', label:'' }));
+    }
+    function collectLinks(){
+      const links = [];
+      let bad = false;
+      for (const row of $('linkRows').querySelectorAll('.linkrow')) {
+        const type = row.querySelector('[data-field="type"]').value;
+        const url = row.querySelector('[data-field="url"]');
+        const label = row.querySelector('[data-field="label"]').value.trim();
+        const raw = url.value.trim();
+        url.classList.remove('bad');
+        if (!raw) continue;
+        if (!validHTTPURL(raw)) {
+          url.classList.add('bad');
+          bad = true;
+          continue;
+        }
+        links.push({ type, url: raw, label });
+      }
+      if (bad) throw new Error('Use full http or https links.');
+      return links;
+    }
     function reactionFeatureOn(features){
       return !!(features && Object.prototype.hasOwnProperty.call(features, 'reactions') ? features.reactions !== false : false);
     }
@@ -1286,6 +1379,37 @@
       const input = $('preApproveToggle');
       if (input) input.checked = currentModerationMode === 'pre_approve';
     }
+    $('addLinkBtn').addEventListener('click', () => {
+      $('linkRows').appendChild(linkRow({ type:'website', url:'', label:'' }));
+      const rows = $('linkRows').querySelectorAll('.linkrow');
+      const last = rows[rows.length - 1];
+      if (last) last.querySelector('[data-field="url"]').focus();
+    });
+    $('linkRows').addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest && e.target.closest('.linkdel');
+      if (!btn) return;
+      const row = btn.closest('.linkrow');
+      if (row) row.remove();
+      if (!$('linkRows').children.length) $('linkRows').appendChild(linkRow({ type:'instagram', url:'', label:'' }));
+    });
+    $('saveLinksBtn').addEventListener('click', async () => {
+      const status = $('linkStatus');
+      $('saveLinksBtn').disabled = true;
+      status.textContent = 'Saving…';
+      try {
+        const links = collectLinks();
+        const r = await fetch('/api/event-links', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ links }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'link save failed');
+        linkSig = '';
+        renderLinkEditor(d.links || [], {});
+        status.textContent = 'Saved';
+      } catch (err) {
+        status.textContent = err.message || 'link save failed';
+      } finally {
+        $('saveLinksBtn').disabled = false;
+      }
+    });
     const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
     function stateBadge(state){
       state = state === 'pending' || state === 'hidden' ? state : 'approved';
@@ -1576,6 +1700,7 @@
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderTrackPanel(data.features || {}, data.nowPlaying || null, data.recentTracks || [], data.trackAsks || 0);
         renderModerationMode(data.moderationMode || 'post_moderate');
+        renderLinkEditor(data.links || [], data.features || {});
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts

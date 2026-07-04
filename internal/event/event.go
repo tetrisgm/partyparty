@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -129,10 +130,17 @@ type Meta struct {
 	Starts         string          `json:"starts,omitempty"`
 	Features       map[string]bool `json:"features,omitempty"`
 	ModerationMode string          `json:"moderationMode,omitempty"`
+	Links          []Link          `json:"links,omitempty"`
 	// Slug is the DJ's chosen /e/<slug> for this event's ONLINE page. "" means
 	// auto-derive one from the install at publish time. Charset-gated (see
 	// SetSlug) to the Worker's EVENT_RE so a bad value can never reach the page.
 	Slug string `json:"slug,omitempty"`
+}
+
+type Link struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+	Type  string `json:"type"`
 }
 
 const (
@@ -148,6 +156,20 @@ const (
 	ModerationPostModerate = "post_moderate"
 	ModerationPreApprove   = "pre_approve"
 )
+
+var linkTypeLabels = map[string]string{
+	"instagram":        "Instagram",
+	"soundcloud":       "SoundCloud",
+	"bandcamp":         "Bandcamp",
+	"mixcloud":         "Mixcloud",
+	"resident_advisor": "Resident Advisor",
+	"venmo":            "Venmo",
+	"cashapp":          "Cash App",
+	"paypal":           "PayPal",
+	"website":          "Website",
+	"newsletter":       "Newsletter",
+	"other":            "Link",
+}
 
 func normalizeState(state string) string {
 	switch state {
@@ -235,6 +257,59 @@ func normalizeFeatures(in map[string]bool) map[string]bool {
 		}
 	}
 	return out
+}
+
+func validLinkType(typ string) bool {
+	_, ok := linkTypeLabels[typ]
+	return ok
+}
+
+func defaultLinkLabel(typ string) string {
+	if label, ok := linkTypeLabels[typ]; ok {
+		return label
+	}
+	return linkTypeLabels["other"]
+}
+
+func normalizeLinks(in []Link) ([]Link, error) {
+	if len(in) > 20 {
+		return nil, errors.New("too many links")
+	}
+	out := make([]Link, 0, len(in))
+	for _, l := range in {
+		typ := strings.ToLower(strings.TrimSpace(l.Type))
+		if typ == "" {
+			typ = "other"
+		}
+		if !validLinkType(typ) {
+			return nil, errors.New("unknown link type")
+		}
+		rawURL := strings.TrimSpace(l.URL)
+		if rawURL == "" {
+			continue
+		}
+		if len(rawURL) > 2048 {
+			return nil, errors.New("link URL is too long")
+		}
+		u, err := url.Parse(rawURL)
+		if err != nil || u == nil || u.Host == "" {
+			return nil, errors.New("link URL must be a full http or https URL")
+		}
+		scheme := strings.ToLower(u.Scheme)
+		if scheme != "http" && scheme != "https" {
+			return nil, errors.New("link URL must use http or https")
+		}
+		u.Scheme = scheme
+		label := clip(strings.TrimSpace(l.Label), 40)
+		if label == "" {
+			label = defaultLinkLabel(typ)
+		}
+		out = append(out, Link{Label: label, URL: u.String(), Type: typ})
+	}
+	if out == nil {
+		out = []Link{}
+	}
+	return out, nil
 }
 
 // Store manages the current event directory. Safe for concurrent use.
@@ -481,6 +556,7 @@ func (s *Store) use(dir string) error {
 	}
 	meta.Features = normalizeFeatures(meta.Features)
 	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
+	meta.Links, _ = normalizeLinks(meta.Links)
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
 	s.currentTrack, s.recentTracks, s.trackAsks = currentTrack, recentTracks, nil
@@ -496,6 +572,7 @@ func (s *Store) Meta() Meta {
 	m := s.meta
 	m.Features = normalizeFeatures(s.meta.Features)
 	m.ModerationMode = normalizeModerationMode(s.meta.ModerationMode)
+	m.Links = append([]Link(nil), s.meta.Links...)
 	return m
 }
 
@@ -566,6 +643,23 @@ func (s *Store) SetFeature(name string, on bool) error {
 	defer s.mu.Unlock()
 	s.meta.Features = normalizeFeatures(s.meta.Features)
 	s.meta.Features[name] = on
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// SetLinks replaces this event's follow/tip links after server-side URL
+// validation. Only absolute http(s) URLs are stored.
+func (s *Store) SetLinks(links []Link) error {
+	clean, err := normalizeLinks(links)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.Links = clean
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
