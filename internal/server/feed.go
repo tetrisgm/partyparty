@@ -248,6 +248,9 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
+		if p, ok := s.Events.MediaPath(m.ID); ok {
+			s.Events.EnqueueThumb(m.ID, p, m.Type)
+		}
 		writeJSON(w, http.StatusOK, m)
 	case "/api/event-cover":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
@@ -535,6 +538,17 @@ func (s *srv) eventState() map[string]any {
 func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
 	if s.Events == nil {
 		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/media/thumb/") {
+		id := strings.TrimPrefix(r.URL.Path, "/media/thumb/")
+		p, ok := s.Events.ThumbPath(id)
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		http.ServeFile(w, r, p)
 		return
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/media/")

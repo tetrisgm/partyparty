@@ -13,6 +13,7 @@ import (
 
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
+	"partyparty/internal/event"
 	"partyparty/internal/stats"
 )
 
@@ -172,6 +173,38 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 	if reach["state"] != "ok" || reach["reason"] != "" || reach["guestSeen"] != false {
 		t.Errorf("reachability = %v, want ok with no reason/guest", reach)
+	}
+}
+
+func TestMediaThumbRouteServesGuardedThumb(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := ev.SaveMedia("photo.jpg", strings.NewReader("original"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	thumbDir := filepath.Join(ev.Dir(), "media", "thumbs")
+	if err := os.WriteFile(filepath.Join(thumbDir, m.ID+".jpg"), []byte("thumb"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+
+	w := do(s, "GET", "/media/thumb/"+m.ID, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("thumb route = %d, body %q", w.Code, w.Body.String())
+	}
+	if got := w.Body.String(); got != "thumb" {
+		t.Fatalf("body = %q, want thumb", got)
+	}
+	if cc := w.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Fatalf("Cache-Control = %q, want immutable", cc)
+	}
+
+	w = do(s, "GET", "/media/thumb/../"+m.ID, "")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("traversal route = %d, want 404", w.Code)
 	}
 }
 

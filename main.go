@@ -392,6 +392,7 @@ func main() {
 	if home, err := os.UserHomeDir(); err == nil {
 		if st, err := event.Open(filepath.Join(home, "Music", "partyparty")); err == nil {
 			events = st
+			events.StartThumbWorker(cfg.FFmpeg)
 		} else {
 			log.Printf("event store unavailable: %v — feed disabled", err)
 		}

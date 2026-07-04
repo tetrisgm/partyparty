@@ -27,10 +27,11 @@ import (
 
 // Media is one uploaded file attached to a post.
 type Media struct {
-	ID   string `json:"id"`   // stored filename inside media/ (uuid + ext)
-	Type string `json:"type"` // image | video | audio
-	Name string `json:"name"` // original filename, sanitized (display only)
-	Size int64  `json:"size"`
+	ID    string `json:"id"`   // stored filename inside media/ (uuid + ext)
+	Type  string `json:"type"` // image | video | audio
+	Name  string `json:"name"` // original filename, sanitized (display only)
+	Size  int64  `json:"size"`
+	Thumb string `json:"thumb,omitempty"` // /media/thumb/<id>, generated async
 }
 
 // Comment is one reply under a post. Same privacy rule as posts: CID stays
@@ -68,12 +69,15 @@ type Post struct {
 
 // line is the on-disk journal record: a post, comment, tombstone, or flag.
 type line struct {
-	Op      string   `json:"op"` // "post" | "delete" | "comment" | "publish"
+	Op      string   `json:"op"` // "post" | "delete" | "comment" | "publish" | "thumb"
 	ID      string   `json:"id,omitempty"`
 	CID     string   `json:"cid,omitempty"`
 	Post    *Post    `json:"post,omitempty"`
 	Comment *Comment `json:"comment,omitempty"`
 	On      bool     `json:"on,omitempty"` // publish flag value
+	MediaID string   `json:"mediaId,omitempty"`
+	Thumb   string   `json:"thumb,omitempty"`
+	TS      int64    `json:"ts,omitempty"`
 }
 
 // Guest is the private per-guest record (guests.json, DJ-only). It captures
@@ -103,13 +107,15 @@ type Meta struct {
 
 // Store manages the current event directory. Safe for concurrent use.
 type Store struct {
-	mu      sync.Mutex
-	baseDir string
-	dir     string
-	meta    Meta
-	posts   []*Post
-	byID    map[string]*Post
-	guests  map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
+	mu        sync.Mutex
+	baseDir   string
+	dir       string
+	meta      Meta
+	posts     []*Post
+	byID      map[string]*Post
+	guests    map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
+	thumbQ    chan thumbJob
+	thumbOnce sync.Once
 
 	// Long-poll wakeup: closed and replaced on every visible mutation, so
 	// /api/feed?wait=1 can hold requests and answer the INSTANT something
@@ -159,7 +165,7 @@ func (s *Store) Wait() <-chan struct{} {
 
 // use switches the store to dir, creating the layout and replaying the journal.
 func (s *Store) use(dir string) error {
-	for _, sub := range []string{"", "media", "recordings"} {
+	for _, sub := range []string{"", "media", filepath.Join("media", "thumbs"), "recordings"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 			return err
 		}
@@ -199,6 +205,17 @@ func (s *Store) use(dir string) error {
 			case l.Op == "publish":
 				if p, ok := byID[l.ID]; ok {
 					p.NoPublish = !l.On
+				}
+			case l.Op == "thumb":
+				for _, p := range posts {
+					for i := range p.Media {
+						if p.Media[i].ID == l.MediaID {
+							p.Media[i].Thumb = l.Thumb
+							if p.Act < l.TS {
+								p.Act = l.TS
+							}
+						}
+					}
 				}
 			}
 		}
@@ -582,6 +599,79 @@ func (s *Store) MediaPath(id string) (string, bool) {
 	return p, true
 }
 
+func thumbURL(id string) string { return "/media/thumb/" + id }
+
+func thumbFileName(id string) string { return id + ".jpg" }
+
+func validMediaID(id string) bool {
+	return id != "" && id == filepath.Base(id) && !strings.HasPrefix(id, ".")
+}
+
+func (s *Store) thumbTargetPath(id string) (string, bool) {
+	if !validMediaID(id) {
+		return "", false
+	}
+	s.mu.Lock()
+	p := filepath.Join(s.dir, "media", "thumbs", thumbFileName(id))
+	s.mu.Unlock()
+	return p, true
+}
+
+// ThumbPath resolves a thumbnail id to its file, refusing path escapes.
+func (s *Store) ThumbPath(id string) (string, bool) {
+	p, ok := s.thumbTargetPath(id)
+	if !ok {
+		return "", false
+	}
+	if st, err := os.Stat(p); err != nil || st.IsDir() {
+		return "", false
+	}
+	return p, true
+}
+
+// SetMediaThumb records a generated thumbnail on every visible media entry
+// using the append-only journal, then wakes feed long-polls.
+func (s *Store) SetMediaThumb(mediaID string) error {
+	if _, ok := s.ThumbPath(mediaID); !ok {
+		return errors.New("no such thumbnail")
+	}
+	thumb := thumbURL(mediaID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var hits []struct {
+		p *Post
+		i int
+	}
+	for _, p := range s.posts {
+		if p.Deleted {
+			continue
+		}
+		for i := range p.Media {
+			if p.Media[i].ID == mediaID && p.Media[i].Thumb != thumb {
+				hits = append(hits, struct {
+					p *Post
+					i int
+				}{p: p, i: i})
+			}
+		}
+	}
+	if len(hits) == 0 {
+		return nil
+	}
+	now := time.Now().UnixMilli()
+	if err := s.appendLine(line{Op: "thumb", MediaID: mediaID, Thumb: thumb, TS: now}); err != nil {
+		return err
+	}
+	for _, h := range hits {
+		h.p.Media[h.i].Thumb = thumb
+		if h.p.Act < now {
+			h.p.Act = now
+		}
+	}
+	s.changed()
+	return nil
+}
+
 // AddPost validates, journals, and returns the stored post (plus a one-time
 // raw claim token when this is the guest's first post). Media entries are
 // re-verified against files actually present in this event's media dir.
@@ -611,7 +701,11 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 		if len(name) > 120 {
 			name = name[len(name)-120:]
 		}
-		verified = append(verified, Media{ID: m.ID, Type: typ, Name: name, Size: st.Size()})
+		vm := Media{ID: m.ID, Type: typ, Name: name, Size: st.Size()}
+		if _, ok := s.ThumbPath(m.ID); ok {
+			vm.Thumb = thumbURL(m.ID)
+		}
+		verified = append(verified, vm)
 	}
 	p := &Post{
 		ID: newID(), CID: cid,

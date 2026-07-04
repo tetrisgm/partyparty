@@ -119,6 +119,8 @@
   .wtext.big{font-size:20px;font-weight:700;letter-spacing:-.02em}
   .wcmt{font-size:12px;line-height:1.5;margin:3px 0 0 2px;color:var(--label)}
   .wcmt b{font-weight:700}
+  .wthumb{position:relative;display:inline-block}
+  .wplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:999px;background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
   .pubbtn{background:none;border:none;font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px;border-radius:6px;color:#1d883d;background:rgba(52,199,89,.12)}
   .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
   .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
@@ -1066,13 +1068,23 @@
     const nodes = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
     let newestAct = 0, on = false, curDir = '';
+    function fallbackVideo(src){
+      const v = document.createElement('video');
+      v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
+      v.style.width = '180px'; v.style.borderRadius = '8px';
+      return v;
+    }
     function render(p){
       const t = new Date(p.ts);
       const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
       const media = (p.media || []).map(m => {
         const src = '/media/' + encodeURIComponent(m.id);
-        if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + src + '" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px" alt=""></a>';
-        if (m.type === 'video') return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:8px"></video>';
+        const thumb = m.thumb || src;
+        if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(thumb) + '" data-fallback-src="' + src + '" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px" alt=""></a>';
+        if (m.type === 'video') {
+          if (m.thumb) return '<a class="wthumb" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(m.thumb) + '" data-fallback-video="' + src + '" loading="lazy" style="width:180px;height:110px;object-fit:cover;border-radius:8px;background:var(--fill)" alt=""><span class="wplay">▶</span></a>';
+          return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:8px"></video>';
+        }
         return '<audio src="' + src + '" controls preload="none" style="width:220px"></audio>';
       }).join(' ');
       const cmtRows = (p.comments || []).map(c =>
@@ -1124,6 +1136,23 @@
       }
       nodes.set(p.id, el);
     }
+    list.addEventListener('error', (e) => {
+      const img = e.target;
+      if (!img || img.tagName !== 'IMG') return;
+      const vsrc = img.dataset && img.dataset.fallbackVideo;
+      if (vsrc) {
+        const v = fallbackVideo(vsrc);
+        const wrap = img.closest('a');
+        if (wrap) wrap.replaceWith(v);
+        else img.replaceWith(v);
+        return;
+      }
+      const osrc = img.dataset && img.dataset.fallbackSrc;
+      if (osrc && img.src !== new URL(osrc, location.href).href) {
+        img.dataset.fallbackSrc = '';
+        img.src = osrc;
+      }
+    }, true);
     list.addEventListener('click', async (e) => {
       const d = e.target && e.target.dataset || {};
       if (d.del) {
