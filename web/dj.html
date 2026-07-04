@@ -123,6 +123,16 @@
   .wplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:999px;background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
   .pubbtn{background:none;border:none;font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px;border-radius:6px;color:#1d883d;background:rgba(52,199,89,.12)}
   .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
+  .statebadge{border-radius:999px;padding:1px 7px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;background:var(--fill);color:var(--label-secondary)}
+  .statebadge.pending{background:rgba(255,149,0,.16);color:#a15b00}
+  .statebadge.hidden{background:rgba(255,59,48,.12);color:var(--danger)}
+  .modbtn{background:none;border:none;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;padding:2px 4px}
+  .modbtn.hide,.modbtn.remove{color:var(--danger)}
+  .modqueue{border:1px solid rgba(255,149,0,.24);background:rgba(255,149,0,.07);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .modqueue h3{margin:0 0 8px;font-size:13px}
+  .moditem{display:flex;align-items:center;gap:8px;border-top:1px solid var(--separator);padding:8px 0;font-size:12px}
+  .moditem:first-of-type{border-top:none;padding-top:0}
+  .moditem .txt{flex:1;min-width:0;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
   .pdel:hover{color:var(--danger)}
   /* ── Admin action bar (sticky): source · refresh · share · settings · GO LIVE ── */
@@ -315,6 +325,11 @@
         <span class="muted" id="eventCounts"></span>
       </div>
       <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
+      <div class="featurebar" id="moderationToggles" aria-label="Moderation mode"></div>
+      <div class="modqueue" id="modQueue" hidden>
+        <h3>Pending moderation</h3>
+        <div id="modList"></div>
+      </div>
       <div class="composer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
         <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Post to the wall as the DJ…" style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
@@ -1077,8 +1092,9 @@
     const card = $('eventCard'), list = $('djFeed');
     const escT = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const nodes = new Map();
+    const allPosts = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
-    let newestAct = 0, on = false, curDir = '';
+    let newestAct = 0, on = false, curDir = '', currentModerationMode = 'post_moderate';
     const featureDefs = [
       ['uploads', 'Uploads', true], ['videoUploads', 'Video', false], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
       ['requests', 'Requests', false], ['trackId', 'Track ID', false], ['tippingLinks', 'Tips', true], ['wallMode', 'Wall', true]
@@ -1115,6 +1131,64 @@
         if (input) input.checked = Object.prototype.hasOwnProperty.call(f, key) ? f[key] !== false : def;
       }
     }
+    function renderModerationMode(mode){
+      currentModerationMode = mode === 'pre_approve' ? 'pre_approve' : 'post_moderate';
+      const bar = $('moderationToggles');
+      if (!bar.dataset.ready) {
+        bar.innerHTML = '<label class="featuretoggle" title="New wall posts and comments wait for DJ approval before guests see them."><input type="checkbox" id="preApproveToggle"><span>Pre-approve</span></label>';
+        $('preApproveToggle').addEventListener('change', async (e) => {
+          const mode = e.target.checked ? 'pre_approve' : 'post_moderate';
+          e.target.disabled = true;
+          try {
+            const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ moderationMode: mode }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || d.error) throw new Error(d.error || 'moderation update failed');
+            renderModerationMode(d.moderationMode || mode);
+          } catch (err) {
+            e.target.checked = currentModerationMode === 'pre_approve';
+            e.target.title = err.message || 'moderation update failed';
+          } finally {
+            e.target.disabled = false;
+          }
+        });
+        bar.dataset.ready = '1';
+      }
+      const input = $('preApproveToggle');
+      if (input) input.checked = currentModerationMode === 'pre_approve';
+    }
+    const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
+    function stateBadge(state){
+      state = state === 'pending' || state === 'hidden' ? state : 'approved';
+      return '<span class="statebadge ' + state + '">' + state + '</span>';
+    }
+    function modButtons(postID, commentID, state){
+      state = state === 'pending' || state === 'hidden' ? state : 'approved';
+      const cid = commentID ? ' data-comment="' + escT(commentID) + '"' : '';
+      let html = '';
+      if (state !== 'approved') html += '<button class="modbtn" data-mod="' + escT(postID) + '"' + cid + ' data-state="approved">approve</button>';
+      if (state !== 'hidden') html += '<button class="modbtn hide" data-mod="' + escT(postID) + '"' + cid + ' data-state="hidden">hide</button>';
+      if (state !== 'pending') html += '<button class="modbtn" data-mod="' + escT(postID) + '"' + cid + ' data-state="pending">mark pending</button>';
+      return html;
+    }
+    function renderModQueue(){
+      const items = [];
+      for (const p of allPosts.values()) {
+        if (stateOf(p) === 'pending') {
+          items.push({ post:p.id, author:(p.emoji || '') + ' ' + (p.author || 'someone'), text:p.text || (p.media && p.media.length ? p.media.length + ' media' : 'post') });
+        }
+        for (const c of (p.comments || [])) {
+          if (stateOf(c) === 'pending') {
+            items.push({ post:p.id, comment:c.id, author:(c.emoji || '') + ' ' + (c.author || 'someone'), text:c.text || 'comment' });
+          }
+        }
+      }
+      $('modQueue').hidden = currentModerationMode !== 'pre_approve' && items.length === 0;
+      $('modList').innerHTML = items.length ? items.map(item =>
+        '<div class="moditem"><span class="statebadge pending">pending</span><b>' + escT(item.author) + '</b><span class="txt">' + escT(item.text) + '</span>' +
+        '<button class="modbtn" data-mod="' + escT(item.post) + '"' + (item.comment ? ' data-comment="' + escT(item.comment) + '"' : '') + ' data-state="approved">approve</button>' +
+        '<button class="modbtn hide" data-mod="' + escT(item.post) + '"' + (item.comment ? ' data-comment="' + escT(item.comment) + '"' : '') + ' data-state="hidden">hide</button></div>'
+      ).join('') : '<div class="muted" style="font-size:12px">No pending posts or comments.</div>';
+    }
     function fallbackVideo(src){
       const v = document.createElement('video');
       v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
@@ -1135,7 +1209,11 @@
         return '<audio src="' + src + '" controls preload="none" style="width:220px"></audio>';
       }).join(' ');
       const cmtRows = (p.comments || []).map(c =>
-        '<div class="wcmt"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' + escT(c.text) + '</div>').join('');
+        '<div class="wcmt"><span style="display:flex;gap:6px;align-items:baseline"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' +
+        stateBadge(stateOf(c)) + '<span style="margin-left:auto;display:flex;gap:4px;align-items:center">' +
+        modButtons(p.id, c.id, stateOf(c)) +
+        '<button class="modbtn remove" data-cdel="' + escT(p.id) + '" data-comment="' + escT(c.id) + '">remove</button></span></span>' +
+        '<span>' + escT(c.text) + '</span></div>').join('');
       const cmts = cmtRows ? '<div class="wcmts">' + cmtRows + '</div>' : '';
       const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
       const el = document.createElement('div');
@@ -1145,8 +1223,10 @@
         '<span>' + escT(p.emoji) + '</span><b>' + escT(p.author || 'someone') + '</b>' +
         (p.dj ? '<span style="background:var(--accent);color:#fff;border-radius:5px;font-size:9px;font-weight:800;padding:1px 5px">DJ</span>' : '') +
         '<span class="muted" style="font-size:11px">' + time + '</span>' +
+        stateBadge(stateOf(p)) +
         '<span style="margin-left:auto;display:flex;gap:6px;align-items:center">' +
-        '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Whether this post joins the party page when you publish it online later — guests at the party always see it">' + (p.noPublish ? 'not publishing' : 'will publish') + '</button>' +
+        modButtons(p.id, '', stateOf(p)) +
+        '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Online page only: whether this post joins the replay page later. In-party visibility uses the moderation state controls.">' + (p.noPublish ? 'online: skip' : 'online: publish') + '</button>' +
         '<button class="pdel" data-del="' + escT(p.id) + '">remove</button></span></div>' +
         (p.text ? '<div class="wtext' + big + '">' + escT(p.text) + '</div>' : '') +
         (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '') +
@@ -1200,13 +1280,31 @@
         img.src = osrc;
       }
     }, true);
-    list.addEventListener('click', async (e) => {
+    async function handleWallClick(e){
       const d = e.target && e.target.dataset || {};
+      if (d.mod) {
+        e.target.disabled = true;
+        try {
+          const url = '/api/mod?id=' + encodeURIComponent(d.mod) + '&state=' + encodeURIComponent(d.state || 'approved') +
+            (d.comment ? '&commentId=' + encodeURIComponent(d.comment) : '');
+          await fetch(url, { method:'POST' });
+          await poll();
+        } finally {
+          e.target.disabled = false;
+        }
+        return;
+      }
+      if (d.cdel) {
+        if (e.target.textContent !== 'sure?') { e.target.textContent = 'sure?'; setTimeout(() => { e.target.textContent = 'remove'; }, 2500); return; }
+        await fetch('/api/comment-delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ postID:d.cdel, commentID:d.comment || '' }) });
+        await poll();
+        return;
+      }
       if (d.del) {
         if (e.target.textContent !== 'sure?') { e.target.textContent = 'sure?'; setTimeout(() => { e.target.textContent = 'remove'; }, 2500); return; }
         await fetch('/api/post-delete?id=' + encodeURIComponent(d.del), { method:'POST' });
         const el = nodes.get(d.del);
-        if (el) { el.remove(); nodes.delete(d.del); }
+        if (el) { el.remove(); nodes.delete(d.del); allPosts.delete(d.del); renderModQueue(); }
         return;
       }
       if (d.pub) {
@@ -1229,7 +1327,9 @@
         } catch (err) {}
         e.target.disabled = false;
       }
-    });
+    }
+    list.addEventListener('click', handleWallClick);
+    $('modQueue').addEventListener('click', handleWallClick);
     list.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const pid = e.target && e.target.dataset && e.target.dataset.cpost;
@@ -1246,28 +1346,33 @@
         if (!r.ok) return false;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
+        let switched = false;
         if (data.dir && data.dir !== curDir) {
           // Event switched: reset the cursor or an older event's posts (act <
           // our high-water mark) would never arrive.
-          curDir = data.dir; newestAct = 0; nodes.clear(); authors.clear(); list.innerHTML = '';
+          curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); allPosts.clear(); authors.clear(); list.innerHTML = '';
         }
+        if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
         $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
         syncPublish(data.slug);
         renderFeatureToggles(data.features || {});
+        renderModerationMode(data.moderationMode || 'post_moderate');
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {
-            if (!alive.has(id)) { node.remove(); nodes.delete(id); }
+            if (!alive.has(id)) { node.remove(); nodes.delete(id); allPosts.delete(id); }
           }
         }
         for (const p of (data.posts || [])) {
           newestAct = Math.max(newestAct, p.act || p.ts);
+          allPosts.set(p.id, p);
           place(p);
           if (!p.dj) authors.set(p.emoji + ' ' + (p.author || 'someone'), true);
           for (const c of (p.comments || [])) if (!c.dj) authors.set(c.emoji + ' ' + (c.author || 'someone'), true);
         }
+        renderModQueue();
         // Participants tab: everyone who has joined the wall (pseudonyms).
         if (authors.size) {
           $('wallAuthors').innerHTML = [...authors.keys()].map(a => '<span class="chip">' + escT(a) + '</span>').join('');

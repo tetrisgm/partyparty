@@ -391,6 +391,91 @@ func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	}
 }
 
+func TestModerationFeedAndRoutes(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ev.SetModerationMode(event.ModerationPreApprove); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	postJSON := func(target, remote string, body any) *httptest.ResponseRecorder {
+		data, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doBody(s, http.MethodPost, target, remote, "application/json", bytes.NewBuffer(data))
+	}
+	postsFrom := func(target, remote string) []any {
+		t.Helper()
+		w := do(s, http.MethodGet, target, remote)
+		if w.Code != http.StatusOK {
+			t.Fatalf("feed %s status = %d, body %q", target, w.Code, w.Body.String())
+		}
+		posts, ok := decodeJSON(t, w)["posts"].([]any)
+		if !ok {
+			t.Fatalf("posts missing/not array: %q", w.Body.String())
+		}
+		return posts
+	}
+
+	w := postJSON("/api/post", "192.168.1.44:3333", map[string]any{"cid": "c1", "author": "Guest", "emoji": "🎉", "text": "needs review"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("post status = %d, body %q", w.Code, w.Body.String())
+	}
+	postID, _ := decodeJSON(t, w)["id"].(string)
+	if postID == "" {
+		t.Fatal("post id missing")
+	}
+	if got := len(postsFrom("/api/feed?cid=c2", "192.168.1.45:3333")); got != 0 {
+		t.Fatalf("other guest posts = %d, want 0", got)
+	}
+	own := postsFrom("/api/feed?cid=c1", "192.168.1.44:3333")
+	if len(own) != 1 || own[0].(map[string]any)["state"] != event.StatePending {
+		t.Fatalf("own pending feed = %#v", own)
+	}
+	dj := postsFrom("/api/feed", "127.0.0.1:1234")
+	if len(dj) != 1 || dj[0].(map[string]any)["state"] != event.StatePending {
+		t.Fatalf("DJ pending feed = %#v", dj)
+	}
+
+	w = do(s, http.MethodPost, "/api/mod?id="+postID+"&state=approved", "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("mod status = %d, body %q", w.Code, w.Body.String())
+	}
+	other := postsFrom("/api/feed?cid=c2", "192.168.1.45:3333")
+	if len(other) != 1 || other[0].(map[string]any)["state"] != event.StateApproved {
+		t.Fatalf("approved guest feed = %#v", other)
+	}
+
+	w = postJSON("/api/comment", "192.168.1.45:3333", map[string]any{"post": postID, "cid": "c2", "author": "Other", "emoji": "✨", "text": "pending reply"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("comment status = %d, body %q", w.Code, w.Body.String())
+	}
+	commentID, _ := decodeJSON(t, w)["id"].(string)
+	if commentID == "" {
+		t.Fatal("comment id missing")
+	}
+	other = postsFrom("/api/feed?cid=c2", "192.168.1.45:3333")
+	comments, _ := other[0].(map[string]any)["comments"].([]any)
+	if len(comments) != 1 || comments[0].(map[string]any)["state"] != event.StatePending {
+		t.Fatalf("own pending comment feed = %#v", other)
+	}
+	own = postsFrom("/api/feed?cid=c1", "192.168.1.44:3333")
+	if comments, _ := own[0].(map[string]any)["comments"].([]any); len(comments) != 0 {
+		t.Fatalf("other guest saw pending comment: %#v", own)
+	}
+	w = postJSON("/api/comment-delete", "127.0.0.1:1234", map[string]any{"postID": postID, "commentID": commentID})
+	if w.Code != http.StatusOK {
+		t.Fatalf("comment-delete status = %d, body %q", w.Code, w.Body.String())
+	}
+	dj = postsFrom("/api/feed", "127.0.0.1:1234")
+	if comments, _ := dj[0].(map[string]any)["comments"].([]any); len(comments) != 0 {
+		t.Fatalf("comment survived delete: %#v", dj)
+	}
+}
+
 func TestPostOnlyEndpoints(t *testing.T) {
 	env := newTestEnv(t, nil)
 	for _, p := range []string{"/api/start", "/api/stop", "/api/delivery", "/api/shutdown", "/api/open-settings"} {

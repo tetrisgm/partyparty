@@ -82,18 +82,19 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {
 	case "/api/feed":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-		posts, ids, mediaCount := s.Events.Feed(since)
+		dj := s.isDJ(r)
+		posts, ids, mediaCount, cursor := s.Events.FeedFor(since, r.URL.Query().Get("cid"), dj)
 		// Long-poll (wait=1): nothing new → park until the next mutation (or
 		// ~25s heartbeat), then answer. Posts and comments land on every open
 		// page within a network round-trip instead of a polling interval.
-		if len(posts) == 0 && r.URL.Query().Get("wait") == "1" {
+		if len(posts) == 0 && cursor <= since && r.URL.Query().Get("wait") == "1" {
 			select {
 			case <-s.Events.Wait():
 			case <-time.After(25 * time.Second):
 			case <-r.Context().Done():
 				return true
 			}
-			posts, ids, mediaCount = s.Events.Feed(since)
+			posts, ids, mediaCount, cursor = s.Events.FeedFor(since, r.URL.Query().Get("cid"), dj)
 		}
 		if posts == nil {
 			posts = []event.Post{}
@@ -102,12 +103,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		links := s.eventOnlineLinks()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
-			"features":   meta.Features,
+			"features": meta.Features, "moderationMode": meta.ModerationMode,
 			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "claimBaseUrl": links.ClaimBaseURL, "published": links.Published,
 			// dir = the event's identity; clients reset their cursor when it
 			// changes (switching to an OLDER event must replay its posts).
 			"dir":   filepath.Base(s.Events.Dir()),
-			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount, "dj": s.isDJ(r),
+			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount, "cursor": cursor, "dj": dj,
 		})
 	case "/api/comment":
 		if r.Method != http.MethodPost {
@@ -158,6 +159,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		var body struct {
 			Title, Host, Starts string
 			Slug                *string
+			ModerationMode      *string `json:"moderationMode"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
@@ -173,7 +175,14 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				return true
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "slug": s.Events.Slug()})
+		if body.ModerationMode != nil {
+			if err := s.Events.SetModerationMode(*body.ModerationMode); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+				return true
+			}
+		}
+		meta := s.Events.Meta()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "slug": meta.Slug, "moderationMode": meta.ModerationMode})
 	case "/api/event-features":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -416,6 +425,41 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		if err := s.Events.Delete(r.URL.Query().Get("id")); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/mod":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		id, commentID, state := r.URL.Query().Get("id"), r.URL.Query().Get("commentId"), r.URL.Query().Get("state")
+		var err error
+		if commentID == "" {
+			err = s.Events.SetPostState(id, state)
+		} else {
+			err = s.Events.SetCommentState(id, commentID, state)
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/comment-delete":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct {
+			PostID    string `json:"postID"`
+			CommentID string `json:"commentID"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if err := s.Events.DeleteComment(body.PostID, body.CommentID); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}

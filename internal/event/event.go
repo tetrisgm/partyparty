@@ -43,6 +43,7 @@ type Comment struct {
 	Author string `json:"author"`
 	Emoji  string `json:"emoji"`
 	Text   string `json:"text"`
+	State  string `json:"state,omitempty"`
 	DJ     bool   `json:"dj,omitempty"`
 }
 
@@ -62,6 +63,7 @@ type Post struct {
 	Text      string    `json:"text"`
 	Media     []Media   `json:"media,omitempty"`
 	DJ        bool      `json:"dj,omitempty"`
+	State     string    `json:"state,omitempty"`
 	Comments  []Comment `json:"comments,omitempty"`
 	NoPublish bool      `json:"noPublish,omitempty"`
 	Deleted   bool      `json:"-"`
@@ -69,15 +71,17 @@ type Post struct {
 
 // line is the on-disk journal record: a post, comment, tombstone, or flag.
 type line struct {
-	Op      string   `json:"op"` // "post" | "delete" | "comment" | "publish" | "thumb"
-	ID      string   `json:"id,omitempty"`
-	CID     string   `json:"cid,omitempty"`
-	Post    *Post    `json:"post,omitempty"`
-	Comment *Comment `json:"comment,omitempty"`
-	On      bool     `json:"on,omitempty"` // publish flag value
-	MediaID string   `json:"mediaId,omitempty"`
-	Thumb   string   `json:"thumb,omitempty"`
-	TS      int64    `json:"ts,omitempty"`
+	Op        string   `json:"op"` // "post" | "delete" | "comment" | "publish" | "thumb" | "mod" | "comment-delete"
+	ID        string   `json:"id,omitempty"`
+	CommentID string   `json:"commentId,omitempty"`
+	CID       string   `json:"cid,omitempty"`
+	Post      *Post    `json:"post,omitempty"`
+	Comment   *Comment `json:"comment,omitempty"`
+	State     string   `json:"state,omitempty"`
+	On        bool     `json:"on,omitempty"` // publish flag value
+	MediaID   string   `json:"mediaId,omitempty"`
+	Thumb     string   `json:"thumb,omitempty"`
+	TS        int64    `json:"ts,omitempty"`
 }
 
 // Guest is the private per-guest record (guests.json, DJ-only). It captures
@@ -96,14 +100,55 @@ type Guest struct {
 // shows: "<Host> is hosting <Title>". DJ-editable from the console. Starts is
 // a free-text invite line ("Saturday 9pm — rooftop") for the pre-event page.
 type Meta struct {
-	Title    string          `json:"title"`
-	Host     string          `json:"host"`
-	Starts   string          `json:"starts,omitempty"`
-	Features map[string]bool `json:"features,omitempty"`
+	Title          string          `json:"title"`
+	Host           string          `json:"host"`
+	Starts         string          `json:"starts,omitempty"`
+	Features       map[string]bool `json:"features,omitempty"`
+	ModerationMode string          `json:"moderationMode,omitempty"`
 	// Slug is the DJ's chosen /e/<slug> for this event's ONLINE page. "" means
 	// auto-derive one from the install at publish time. Charset-gated (see
 	// SetSlug) to the Worker's EVENT_RE so a bad value can never reach the page.
 	Slug string `json:"slug,omitempty"`
+}
+
+const (
+	StateApproved = "approved"
+	StatePending  = "pending"
+	StateHidden   = "hidden"
+
+	ModerationPostModerate = "post_moderate"
+	ModerationPreApprove   = "pre_approve"
+)
+
+func normalizeState(state string) string {
+	switch state {
+	case StatePending, StateHidden:
+		return state
+	default:
+		return StateApproved
+	}
+}
+
+func validState(state string) bool {
+	return state == StateApproved || state == StatePending || state == StateHidden
+}
+
+func normalizeModerationMode(mode string) string {
+	if mode == ModerationPreApprove {
+		return ModerationPreApprove
+	}
+	return ModerationPostModerate
+}
+
+func validModerationMode(mode string) bool {
+	return mode == ModerationPostModerate || mode == ModerationPreApprove
+}
+
+func initialState(mode string) string {
+	if normalizeModerationMode(mode) == ModerationPreApprove {
+		return StatePending
+	}
+	return StateApproved
 }
 
 var featureDefaults = map[string]bool{
@@ -220,6 +265,10 @@ func (s *Store) use(dir string) error {
 			case l.Op == "post" && l.Post != nil:
 				p := *l.Post
 				p.CID = l.CID
+				p.State = normalizeState(p.State)
+				for i := range p.Comments {
+					p.Comments[i].State = normalizeState(p.Comments[i].State)
+				}
 				if p.Act < p.TS {
 					p.Act = p.TS
 				}
@@ -233,9 +282,38 @@ func (s *Store) use(dir string) error {
 				if p, ok := byID[l.ID]; ok {
 					c := *l.Comment
 					c.CID = l.CID
+					c.State = normalizeState(c.State)
 					p.Comments = append(p.Comments, c)
 					if p.Act < c.TS {
 						p.Act = c.TS
+					}
+				}
+			case l.Op == "comment-delete":
+				if p, ok := byID[l.ID]; ok {
+					for i := range p.Comments {
+						if p.Comments[i].ID == l.CommentID {
+							p.Comments = append(p.Comments[:i], p.Comments[i+1:]...)
+							break
+						}
+					}
+					if p.Act < l.TS {
+						p.Act = l.TS
+					}
+				}
+			case l.Op == "mod" && validState(l.State):
+				if p, ok := byID[l.ID]; ok {
+					if l.CommentID == "" {
+						p.State = l.State
+					} else {
+						for i := range p.Comments {
+							if p.Comments[i].ID == l.CommentID {
+								p.Comments[i].State = l.State
+								break
+							}
+						}
+					}
+					if p.Act < l.TS {
+						p.Act = l.TS
 					}
 				}
 			case l.Op == "publish":
@@ -265,6 +343,7 @@ func (s *Store) use(dir string) error {
 		_ = json.Unmarshal(data, &meta)
 	}
 	meta.Features = normalizeFeatures(meta.Features)
+	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.guests, s.meta = dir, posts, byID, guests, meta
 	s.mu.Unlock()
@@ -278,6 +357,7 @@ func (s *Store) Meta() Meta {
 	defer s.mu.Unlock()
 	m := s.meta
 	m.Features = normalizeFeatures(s.meta.Features)
+	m.ModerationMode = normalizeModerationMode(s.meta.ModerationMode)
 	return m
 }
 
@@ -348,6 +428,21 @@ func (s *Store) SetFeature(name string, on bool) error {
 	defer s.mu.Unlock()
 	s.meta.Features = normalizeFeatures(s.meta.Features)
 	s.meta.Features[name] = on
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// SetModerationMode switches between immediate approval and pre-approval.
+func (s *Store) SetModerationMode(mode string) error {
+	if !validModerationMode(mode) {
+		return errors.New("unknown moderation mode")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.ModerationMode = mode
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
@@ -773,6 +868,7 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	// out of timestamp order, and a client cursor could then skip one forever.
 	now := time.Now().UnixMilli()
 	p.TS, p.Act = now, now
+	p.State = initialState(s.meta.ModerationMode)
 	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
 		return nil, "", err
 	}
@@ -824,9 +920,13 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 	if !ok || p.Deleted {
 		return nil, errors.New("no such post")
 	}
+	if c.TS <= p.Act {
+		c.TS = p.Act + 1
+	}
 	if len(p.Comments) >= 500 {
 		return nil, errors.New("comment limit reached")
 	}
+	c.State = initialState(s.meta.ModerationMode)
 	if err := s.appendLine(line{Op: "comment", ID: postID, CID: cid, Comment: c}); err != nil {
 		return nil, err
 	}
@@ -851,6 +951,97 @@ func (s *Store) SetPublish(postID string, on bool) error {
 		return err
 	}
 	p.NoPublish = !on
+	s.changed()
+	return nil
+}
+
+// SetPostState changes in-party moderation visibility. It is separate from
+// NoPublish/SetPublish, which only curates the future online page.
+func (s *Store) SetPostState(id, state string) error {
+	if !validState(state) {
+		return errors.New("unknown state")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[id]
+	if !ok || p.Deleted {
+		return errors.New("no such post")
+	}
+	now := time.Now().UnixMilli()
+	if now <= p.Act {
+		now = p.Act + 1
+	}
+	if err := s.appendLine(line{Op: "mod", ID: id, State: state, TS: now}); err != nil {
+		return err
+	}
+	p.State = state
+	p.Act = now
+	s.changed()
+	return nil
+}
+
+// SetCommentState changes moderation visibility for one reply.
+func (s *Store) SetCommentState(postID, commentID, state string) error {
+	if !validState(state) {
+		return errors.New("unknown state")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[postID]
+	if !ok || p.Deleted {
+		return errors.New("no such post")
+	}
+	idx := -1
+	for i := range p.Comments {
+		if p.Comments[i].ID == commentID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return errors.New("no such comment")
+	}
+	now := time.Now().UnixMilli()
+	if now <= p.Act {
+		now = p.Act + 1
+	}
+	if err := s.appendLine(line{Op: "mod", ID: postID, CommentID: commentID, State: state, TS: now}); err != nil {
+		return err
+	}
+	p.Comments[idx].State = state
+	p.Act = now
+	s.changed()
+	return nil
+}
+
+// DeleteComment removes one reply from a post. It is a hard moderation removal
+// for the feed; the append-only journal preserves what happened.
+func (s *Store) DeleteComment(postID, commentID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[postID]
+	if !ok || p.Deleted {
+		return errors.New("no such post")
+	}
+	idx := -1
+	for i := range p.Comments {
+		if p.Comments[i].ID == commentID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return errors.New("no such comment")
+	}
+	now := time.Now().UnixMilli()
+	if now <= p.Act {
+		now = p.Act + 1
+	}
+	if err := s.appendLine(line{Op: "comment-delete", ID: postID, CommentID: commentID, TS: now}); err != nil {
+		return err
+	}
+	p.Comments = append(p.Comments[:idx], p.Comments[idx+1:]...)
+	p.Act = now
 	s.changed()
 	return nil
 }
@@ -898,11 +1089,20 @@ func (s *Store) saveGuestsLocked() error {
 	return os.WriteFile(filepath.Join(s.dir, "guests.json"), data, 0o600)
 }
 
-// Feed returns visible posts with activity newer than sinceTS (0 = all),
-// oldest first, plus ALL visible ids (so clients can prune DJ-removed posts
-// and previous-wall leftovers) and counts for the console. Activity (not
-// creation) is the cursor so a comment on an old post syncs to every client.
+// Feed returns non-deleted posts with activity newer than sinceTS (0 = all),
+// oldest first, plus all non-deleted ids and counts. Activity (not creation)
+// is the cursor so a comment on an old post syncs to every client.
 func (s *Store) Feed(sinceTS int64) (posts []Post, ids []string, mediaCount int) {
+	posts, ids, mediaCount, _ = s.FeedFor(sinceTS, "", true)
+	return posts, ids, mediaCount
+}
+
+// FeedFor returns the caller-visible feed. DJs see every non-deleted item;
+// guests see approved posts/comments plus their own pending posts/comments.
+// Cursor advances across every non-deleted activity, including items filtered
+// out for this caller, so invisible moderation updates do not cause clients to
+// re-request the same window forever.
+func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids []string, mediaCount int, cursor int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ids = []string{}
@@ -910,14 +1110,58 @@ func (s *Store) Feed(sinceTS int64) (posts []Post, ids []string, mediaCount int)
 		if p.Deleted {
 			continue
 		}
-		ids = append(ids, p.ID)
-		mediaCount += len(p.Media)
-		if p.Act > sinceTS {
-			posts = append(posts, *p)
+		if p.Act > cursor {
+			cursor = p.Act
+		}
+		if !postVisibleTo(p, cid, dj) {
+			continue
+		}
+		cp := *p
+		cp.State = normalizeState(cp.State)
+		cp.Comments = visibleComments(p.Comments, cid, dj)
+		ids = append(ids, cp.ID)
+		mediaCount += len(cp.Media)
+		if cp.Act > sinceTS {
+			posts = append(posts, cp)
 		}
 	}
 	sort.Slice(posts, func(i, j int) bool { return posts[i].TS < posts[j].TS })
-	return posts, ids, mediaCount
+	return posts, ids, mediaCount, cursor
+}
+
+func postVisibleTo(p *Post, cid string, dj bool) bool {
+	if dj {
+		return true
+	}
+	switch normalizeState(p.State) {
+	case StateApproved:
+		return true
+	case StatePending:
+		return cid != "" && p.CID == cid
+	default:
+		return false
+	}
+}
+
+func visibleComments(comments []Comment, cid string, dj bool) []Comment {
+	if len(comments) == 0 {
+		return nil
+	}
+	out := make([]Comment, 0, len(comments))
+	for _, c := range comments {
+		state := normalizeState(c.State)
+		if !dj {
+			if state == StateHidden {
+				continue
+			}
+			if state == StatePending && (cid == "" || c.CID != cid) {
+				continue
+			}
+		}
+		c.State = state
+		out = append(out, c)
+	}
+	return out
 }
 
 func (s *Store) appendLine(l line) error {

@@ -104,6 +104,9 @@
   .pmedia audio{width:100%}
   .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
   .pdel:hover{color:#ff3b30}
+  .post.pending{border-color:rgba(255,149,0,.26);background:rgba(255,149,0,.06)}
+  .pendingnote{color:var(--label-secondary);font-size:12px;font-weight:600;margin-top:8px}
+  .cmt .pendingnote{display:inline;margin-left:6px;font-size:11px}
   .feedempty{color:var(--label-tertiary);font-size:13px;text-align:center;padding:22px 0}
   /* comments */
   .pcmts{margin-top:10px;border-top:1px solid var(--separator);padding-top:8px}
@@ -1395,6 +1398,7 @@
         const d = new Date(ts);
         return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
       };
+      const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
       function renderComments(p){
         const all = p.comments || [];
         if (!all.length) return '';
@@ -1405,7 +1409,8 @@
         }
         for (const c of show) {
           html += '<div class="cmt"><b>' + esc(c.emoji) + ' ' + esc(c.author || 'someone') + '</b>' +
-            (c.dj ? '<span class="cdj">DJ</span>' : '') + ' ' + esc(c.text) + '</div>';
+            (c.dj ? '<span class="cdj">DJ</span>' : '') + ' ' + esc(c.text) +
+            (stateOf(c) === 'pending' ? '<span class="pendingnote">waiting for the DJ to approve</span>' : '') + '</div>';
         }
         html += '</div>';
         return html;
@@ -1428,14 +1433,16 @@
         }).join('');
         // Short text-only shout-outs land BIG — a "TUNE 🔥" is a shout, not a footnote.
         const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
+        const pending = stateOf(p) === 'pending';
         const el = document.createElement('div');
-        el.className = 'post'; el.dataset.id = p.id; el.dataset.ts = p.ts;
+        el.className = 'post' + (pending ? ' pending' : ''); el.dataset.id = p.id; el.dataset.ts = p.ts;
         el.innerHTML = '<div class="phead">' +
           '<span>' + esc(p.emoji) + '</span><span class="pname">' + esc(p.author || 'someone') + '</span>' +
           (p.dj ? '<span class="pdj">DJ</span>' : '') +
           '<span class="ptime">' + fmtTime(p.ts) + '</span></div>' +
           (p.text ? '<div class="ptext' + big + '">' + esc(p.text) + '</div>' : '') +
           (media ? '<div class="pmedia">' + media + '</div>' : '') +
+          (pending ? '<div class="pendingnote">waiting for the DJ to approve</div>' : '') +
           renderComments(p) +
           (featureOn('wallMode') && featureOn('comments')
             ? '<div class="cbox"><input maxlength="1000" placeholder="Add a comment…" data-cpost="' + esc(p.id) + '"><button data-csend="' + esc(p.id) + '">Post</button></div>'
@@ -1528,7 +1535,7 @@
           // instant anything happens — realtime without a hammering interval.
           // (Never on the FIRST load: an empty event would park the request
           // 25s and hold the welcome card hostage.)
-          const r = await fetch('/api/feed?since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store' });
+          const r = await fetch('/api/feed?cid=' + encodeURIComponent(cid) + '&since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store' });
           if (r.status === 404) return false; // no event store
           if (!r.ok) return false;
           const data = await r.json();
@@ -1540,11 +1547,13 @@
             feedOn = true;
             feedSec.hidden = !featureOn('wallMode'); downhint.hidden = !featureOn('wallMode');
           }
+          let switched = false;
           if (data.dir && data.dir !== curDir) {
             // The DJ switched events: reset the cursor so the other event's
             // (older-timestamped) posts actually arrive.
-            curDir = data.dir; newestAct = 0; nodes.clear(); expanded.clear(); feedList.innerHTML = '';
+            curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); expanded.clear(); feedList.innerHTML = '';
           }
+          if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { $id('feedTitle').textContent = data.title; titleEl.textContent = data.title; document.body.dataset.eventTitle = '1'; }
