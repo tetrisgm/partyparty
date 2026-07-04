@@ -53,6 +53,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 	web := fstest.MapFS{
 		"listener.html": {Data: []byte("<html>listener __PP_VERSION__</html>")},
 		"dj.html":       {Data: []byte("<html>dj __PP_VERSION__</html>")},
+		"wall.html":     {Data: []byte("<html>wall __PP_VERSION__</html>")},
 		"vendor/hls.js": {Data: []byte("// hls.js stub")},
 	}
 	s := New(Deps{
@@ -509,6 +510,10 @@ func TestModerationFeedAndRoutes(t *testing.T) {
 	if len(dj) != 1 || dj[0].(map[string]any)["state"] != event.StatePending {
 		t.Fatalf("DJ pending feed = %#v", dj)
 	}
+	guestOnLoopback := postsFrom("/api/feed?guest=1", "127.0.0.1:1234")
+	if len(guestOnLoopback) != 0 {
+		t.Fatalf("guest-forced loopback feed = %#v, want approved-only", guestOnLoopback)
+	}
 
 	w = do(s, http.MethodPost, "/api/mod?id="+postID+"&state=approved", "127.0.0.1:1234")
 	if w.Code != http.StatusOK {
@@ -756,6 +761,12 @@ func TestWebPagesAndRouting(t *testing.T) {
 	}
 	if w := do(env.srv, "GET", "/dj/", ""); w.Code != http.StatusOK {
 		t.Errorf("GET /dj/ = %d", w.Code)
+	}
+	if w := do(env.srv, "GET", "/wall", ""); !strings.Contains(w.Body.String(), "wall") {
+		t.Errorf("GET /wall body = %s", w.Body.String())
+	}
+	if w := do(env.srv, "GET", "/wall/", ""); w.Code != http.StatusOK {
+		t.Errorf("GET /wall/ = %d", w.Code)
 	}
 	if w := do(env.srv, "GET", "/favicon.ico", ""); w.Code != http.StatusNoContent {
 		t.Errorf("favicon = %d, want 204", w.Code)

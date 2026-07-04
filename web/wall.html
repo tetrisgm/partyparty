@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050509">
+<title>partyparty wall</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+    --bg:#050509; --panel:rgba(22,22,30,.76); --panel-strong:rgba(255,255,255,.11);
+    --label:#f5f5f7; --label-secondary:rgba(245,245,247,.72); --label-tertiary:rgba(245,245,247,.48);
+    --separator:rgba(255,255,255,.13); --accent:#ff2d55; --success:#34c759;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{width:100%;height:100%;margin:0;overflow:hidden}
+  body{
+    font-family:var(--sans);background:
+      radial-gradient(circle at 18% 10%,rgba(255,45,85,.24),transparent 34%),
+      radial-gradient(circle at 82% 22%,rgba(52,199,89,.13),transparent 28%),
+      linear-gradient(135deg,#050509 0%,#101018 48%,#09090f 100%);
+    color:var(--label);-webkit-font-smoothing:antialiased;font-synthesis:none;letter-spacing:0;
+  }
+  .screen{height:100dvh;width:100vw;padding:clamp(18px,2.3vw,36px);display:grid;grid-template-columns:minmax(300px,27vw) 1fr;gap:clamp(18px,2.2vw,34px)}
+  .side{min-width:0;display:grid;grid-template-rows:auto auto 1fr auto;gap:clamp(12px,1.5vw,22px)}
+  .join{
+    background:rgba(255,255,255,.08);border:1px solid var(--separator);border-radius:8px;
+    padding:clamp(16px,1.7vw,26px);box-shadow:0 22px 80px rgba(0,0,0,.34);
+  }
+  .eyebrow{font-size:clamp(13px,1.2vw,18px);font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+  .qrwrap{width:min(100%,330px);aspect-ratio:1;background:#fff;border-radius:8px;padding:14px;margin:0 auto 16px;display:grid;place-items:center}
+  #qr{width:100%;height:100%}
+  #qr canvas,#qr img,#qr svg{width:100%!important;height:100%!important;display:block}
+  .joinline{font-size:clamp(24px,2.7vw,44px);line-height:1.02;font-weight:900;letter-spacing:0;text-wrap:balance}
+  .url{margin-top:12px;color:var(--label-secondary);font-size:clamp(13px,1.05vw,17px);word-break:break-all;line-height:1.35}
+  .statbox{display:grid;grid-template-columns:1fr;gap:10px}
+  .metric{background:var(--panel);border:1px solid var(--separator);border-radius:8px;padding:14px 16px}
+  .metric b{display:block;font-size:clamp(34px,4.7vw,76px);line-height:.95;font-variant-numeric:tabular-nums;letter-spacing:0}
+  .metric span{display:block;color:var(--label-secondary);font-size:clamp(14px,1.25vw,20px);font-weight:700;margin-top:5px}
+  .now{align-self:end;background:rgba(255,45,85,.16);border:1px solid rgba(255,45,85,.30);border-radius:8px;padding:16px}
+  .now small{display:block;color:var(--label-secondary);font-size:clamp(12px,1vw,16px);font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+  .now b{font-size:clamp(22px,2.8vw,42px);line-height:1.05;display:block}
+  .prompt{color:var(--label-secondary);font-size:clamp(14px,1.25vw,20px);line-height:1.35;font-weight:700}
+  .prompt a{color:#fff;text-decoration:none;border-bottom:2px solid var(--accent)}
+  .main{min-width:0;position:relative;display:grid;grid-template-rows:auto 1fr auto;gap:clamp(14px,1.8vw,26px)}
+  .head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;min-width:0}
+  .title{min-width:0}
+  .host{color:var(--label-secondary);font-size:clamp(18px,2vw,34px);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  h1{font-size:clamp(42px,7vw,128px);line-height:.88;margin:0;font-weight:950;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .livepill{flex:0 0 auto;border:1px solid var(--separator);background:var(--panel);border-radius:999px;padding:10px 18px;font-size:clamp(14px,1.3vw,20px);font-weight:800;color:var(--label-secondary)}
+  .livepill.live{color:#d9ffe3;border-color:rgba(52,199,89,.34);background:rgba(52,199,89,.15)}
+  .collage{min-height:0;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(3,1fr);gap:clamp(7px,.9vw,14px)}
+  .tile{position:relative;min-width:0;min-height:0;border-radius:8px;overflow:hidden;background:rgba(255,255,255,.08);border:1px solid var(--separator);opacity:0;transform:scale(.985);transition:opacity .7s ease,transform .7s ease}
+  .tile.show{opacity:1;transform:scale(1)}
+  .tile.big{grid-column:span 2;grid-row:span 2}
+  .tile.wide{grid-column:span 2}
+  .tile img{width:100%;height:100%;object-fit:cover;display:block;background:#17171e}
+  .poster{width:100%;height:100%;display:grid;place-items:center;background:linear-gradient(135deg,rgba(255,45,85,.24),rgba(255,255,255,.08));color:#fff;font-size:clamp(34px,4vw,78px);font-weight:900}
+  .tile .vmark{position:absolute;left:12px;bottom:12px;width:42px;height:42px;border-radius:999px;background:rgba(0,0,0,.62);display:grid;place-items:center;font-size:18px}
+  .tile .by{position:absolute;left:0;right:0;bottom:0;padding:26px 11px 10px;background:linear-gradient(transparent,rgba(0,0,0,.68));font-weight:800;font-size:clamp(12px,1.05vw,16px);text-shadow:0 1px 8px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .empty{height:100%;display:grid;place-items:center;text-align:center;border:1px dashed rgba(255,255,255,.2);border-radius:8px;background:rgba(255,255,255,.05);padding:4vw}
+  .empty b{display:block;font-size:clamp(42px,7vw,118px);line-height:.95;letter-spacing:0}
+  .empty span{display:block;color:var(--label-secondary);font-size:clamp(18px,2vw,34px);font-weight:800;margin-top:18px}
+  .reactbar{min-height:clamp(52px,5vw,80px);display:flex;align-items:center;gap:10px;overflow:hidden}
+  .react{background:var(--panel);border:1px solid var(--separator);border-radius:999px;padding:9px 16px;font-size:clamp(18px,1.8vw,28px);font-weight:900;font-variant-numeric:tabular-nums;color:var(--label-secondary)}
+  .react.hot{color:#fff;background:rgba(255,45,85,.18);border-color:rgba(255,45,85,.38)}
+  .bursts{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .burst{position:absolute;font-size:clamp(40px,5.4vw,96px);filter:drop-shadow(0 8px 18px rgba(0,0,0,.45));animation:floatup 2.4s ease-out forwards}
+  @keyframes floatup{0%{opacity:0;transform:translateY(20px) scale(.85) rotate(-4deg)}12%{opacity:1}100%{opacity:0;transform:translateY(-210px) scale(1.18) rotate(6deg)}}
+  .off{height:100%;display:grid;place-items:center;text-align:center;padding:8vw}
+  .off b{font-size:clamp(42px,7vw,116px);line-height:.92;display:block}
+  .off span{font-size:clamp(18px,2vw,32px);font-weight:800;color:var(--label-secondary);display:block;margin-top:18px}
+  @media (max-width:900px){
+    .screen{grid-template-columns:1fr;grid-template-rows:auto 1fr;padding:16px;gap:16px}
+    .side{grid-template-columns:190px 1fr;grid-template-rows:auto auto;align-items:stretch}
+    .join{grid-row:1/3;padding:12px}.qrwrap{width:160px;padding:9px}.joinline{font-size:22px}.url{display:none}
+    .statbox{align-self:start}.now{align-self:stretch}
+    .prompt{display:none}.host{white-space:normal}h1{white-space:normal;font-size:clamp(42px,10vw,88px)}
+    .collage{grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr)}
+  }
+  @media (prefers-reduced-motion:reduce){*,.burst{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+  <main class="screen" id="wall">
+    <aside class="side">
+      <section class="join">
+        <div class="eyebrow">Join</div>
+        <div class="qrwrap"><div id="qr"></div></div>
+        <div class="joinline">Scan to join · <span id="joinName">partyparty</span></div>
+        <div class="url" id="joinUrl"></div>
+      </section>
+      <section class="statbox">
+        <div class="metric"><b id="listenerCount">0</b><span id="listenerLabel">listening</span></div>
+      </section>
+      <section class="now">
+        <small>Now playing</small>
+        <b id="nowPlaying">Live</b>
+      </section>
+      <div class="prompt" id="linkPrompt" hidden></div>
+    </aside>
+
+    <section class="main">
+      <div class="head">
+        <div class="title">
+          <div class="host" id="hostLine">the DJ is hosting</div>
+          <h1 id="eventTitle">partyparty</h1>
+        </div>
+        <div class="livepill" id="livePill">Live</div>
+      </div>
+      <div class="collage" id="collage"></div>
+      <div class="reactbar" id="reactBar" hidden></div>
+      <div class="bursts" id="bursts" aria-hidden="true"></div>
+    </section>
+  </main>
+
+  <section class="off" id="offState" hidden>
+    <div><b>Wall is off</b><span>The DJ has disabled the room display for this event.</span></div>
+  </section>
+
+  <script src="/vendor/qrcode.min.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const PAGE_VERSION = '__PP_VERSION__';
+    const MAX_MEDIA = 28;
+    const MAX_TILES = 18;
+    const MAX_BURSTS = 18;
+    const reactionDefs = [
+      ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'],
+      ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
+    ];
+    const media = new Map();
+    const tiles = [];
+    let newestAct = 0, feedOn = false, curDir = '', qrText = '', wallOn = true;
+    let lastStatusOK = 0;
+    const lastBurstAt = new Map();
+
+    function esc(s){
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function featureOn(features, name, def){
+      return Object.prototype.hasOwnProperty.call(features || {}, name) ? features[name] !== false : def;
+    }
+    function partyName(data){
+      const title = data && data.title || '';
+      const host = data && data.host || '';
+      return title || host || 'partyparty';
+    }
+    function setWallEnabled(on){
+      wallOn = on;
+      $('wall').hidden = !on;
+      $('offState').hidden = on;
+    }
+    function renderQR(text){
+      if (!text || text === qrText || typeof QRCode === 'undefined') return;
+      qrText = text;
+      $('qr').innerHTML = '';
+      new QRCode($('qr'), { text, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
+    }
+    function renderLinkPrompt(url, features){
+      const on = featureOn(features || {}, 'tippingLinks', true);
+      if (!on || !url) {
+        $('linkPrompt').hidden = true;
+        $('linkPrompt').innerHTML = '';
+        return;
+      }
+      $('linkPrompt').hidden = false;
+      $('linkPrompt').innerHTML = 'Follow the set after the party at <a href="' + esc(url) + '">' + esc(url.replace(/^https?:\/\//, '')) + '</a>';
+    }
+    function updateIdentity(data){
+      const title = data.title || 'partyparty';
+      const host = data.host || 'the DJ';
+      $('eventTitle').textContent = title;
+      $('joinName').textContent = title || host;
+      $('hostLine').textContent = host + ' is hosting';
+      $('nowPlaying').textContent = title || host || 'Live';
+      document.title = (title || 'partyparty') + ' wall';
+    }
+    function renderStatus(s){
+      lastStatusOK = Date.now();
+      if (s.appVersion && !PAGE_VERSION.includes('PP_VERSION') && s.appVersion !== PAGE_VERSION) location.reload();
+      const event = s.event || {};
+      setWallEnabled(featureOn(event.features || {}, 'wallMode', true));
+      updateIdentity({ title: event.title || s.name, host: event.host || 'the DJ' });
+      const count = Number(s.listeners || 0);
+      $('listenerCount').textContent = String(count);
+      $('listenerLabel').textContent = count === 1 ? 'listening' : 'listening';
+      const primary = s.urls && s.urls.primary || '';
+      $('joinUrl').textContent = primary;
+      renderQR(primary);
+      const state = s.broadcast && s.broadcast.state || 'idle';
+      $('livePill').textContent = state === 'live' ? 'Live now' : state === 'starting' ? 'Starting' : 'Ready';
+      $('livePill').classList.toggle('live', state === 'live' || state === 'starting');
+      renderLinkPrompt(s.mirror && s.mirror.published ? s.mirror.url : '', event.features || {});
+    }
+    async function pollStatus(){
+      try {
+        const r = await fetch('/api/status', { cache: 'no-store' });
+        if (!r.ok) return;
+        renderStatus(await r.json());
+      } catch (e) {}
+    }
+    function mediaSource(m){
+      const src = '/media/' + encodeURIComponent(m.id);
+      if (m.type === 'video') return m.thumb || '';
+      return m.thumb || src;
+    }
+    function rememberPost(p){
+      const list = Array.isArray(p.media) ? p.media : [];
+      for (const m of list) {
+        if (!m || (m.type !== 'image' && m.type !== 'video')) continue;
+        const key = p.id + ':' + m.id;
+        media.set(key, {
+          key, post: p.id, id: m.id, type: m.type, src: mediaSource(m),
+          fallback: '/media/' + encodeURIComponent(m.id),
+          author: ((p.emoji || '') + ' ' + (p.author || 'someone')).trim(),
+          ts: Number(p.ts || 0), act: Number(p.act || p.ts || 0)
+        });
+      }
+      capMedia();
+    }
+    function capMedia(){
+      const sorted = [...media.values()].sort((a, b) => (b.act - a.act) || (b.ts - a.ts));
+      for (const item of sorted.slice(MAX_MEDIA)) media.delete(item.key);
+    }
+    function pruneByIDs(ids){
+      if (!Array.isArray(ids)) return;
+      const alive = new Set(ids);
+      for (const [key, item] of [...media]) {
+        if (!alive.has(item.post)) media.delete(key);
+      }
+    }
+    function ensureTiles(n){
+      const collage = $('collage');
+      while (tiles.length < n) {
+        const el = document.createElement('div');
+        el.className = 'tile';
+        tiles.push(el);
+        collage.appendChild(el);
+      }
+      while (tiles.length > n) {
+        const el = tiles.pop();
+        el.remove();
+      }
+    }
+    function tileClass(i){
+      if (i === 0 || i === 7) return 'tile big';
+      if (i === 4 || i === 12) return 'tile wide';
+      return 'tile';
+    }
+    function renderCollage(){
+      const items = [...media.values()].sort((a, b) => (b.act - a.act) || (b.ts - a.ts)).slice(0, MAX_TILES);
+      const collage = $('collage');
+      if (!items.length) {
+        ensureTiles(0);
+        collage.innerHTML = '<div class="empty"><div><b>Scan to join</b><span>Photos and videos appear here after the DJ approves them.</span></div></div>';
+        return;
+      }
+      const empty = collage.querySelector('.empty');
+      if (empty) empty.remove();
+      ensureTiles(items.length);
+      items.forEach((item, i) => {
+        const el = tiles[i];
+        const cls = tileClass(i) + ' show';
+        if (el.dataset.key !== item.key || el.dataset.src !== item.src) {
+          el.className = tileClass(i);
+          el.dataset.key = item.key;
+          el.dataset.src = item.src;
+          const art = item.src
+            ? '<img src="' + esc(item.src) + '" data-fallback="' + esc(item.fallback) + '" loading="lazy" alt="">'
+            : '<div class="poster">▶</div>';
+          el.innerHTML = art +
+            (item.type === 'video' ? '<span class="vmark">▶</span>' : '') +
+            '<span class="by">' + esc(item.author) + '</span>';
+          requestAnimationFrame(() => { el.className = cls; });
+        } else {
+          el.className = cls;
+        }
+      });
+    }
+    $('collage').addEventListener('error', (e) => {
+      const img = e.target;
+      if (!img || img.tagName !== 'IMG') return;
+      const fallback = img.dataset && img.dataset.fallback;
+      if (fallback && img.src !== new URL(fallback, location.href).href) {
+        img.dataset.fallback = '';
+        img.src = fallback;
+      }
+    }, true);
+    function renderReactions(features, counts, spikes){
+      const on = featureOn(features || {}, 'reactions', false);
+      const bar = $('reactBar');
+      if (!on) {
+        bar.hidden = true;
+        bar.innerHTML = '';
+        return;
+      }
+      counts = counts || {};
+      spikes = spikes || {};
+      bar.hidden = false;
+      bar.innerHTML = reactionDefs.map(([key, glyph]) => {
+        const n = Number(counts[key] || 0);
+        return '<div class="react' + (n ? ' hot' : '') + '">' + glyph + ' ' + n + '</div>';
+      }).join('');
+      const now = Date.now();
+      for (const [key, glyph] of reactionDefs) {
+        const n = Number(spikes[key] || 0);
+        const last = lastBurstAt.get(key) || 0;
+        if (n > 0 && now - last > 4000) {
+          lastBurstAt.set(key, now);
+          burst(glyph, Math.min(n, 3));
+        }
+      }
+    }
+    function burst(glyph, n){
+      const box = $('bursts');
+      for (let i = 0; i < n; i++) {
+        const el = document.createElement('div');
+        el.className = 'burst';
+        el.textContent = glyph;
+        el.style.left = (18 + Math.random() * 70) + '%';
+        el.style.top = (58 + Math.random() * 28) + '%';
+        el.style.animationDelay = (i * 180) + 'ms';
+        box.appendChild(el);
+        while (box.children.length > MAX_BURSTS) box.firstElementChild.remove();
+        setTimeout(() => el.remove(), 2800);
+      }
+    }
+    function renderFeed(data){
+      setWallEnabled(featureOn(data.features || {}, 'wallMode', true));
+      updateIdentity(data);
+      renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
+      renderLinkPrompt(data.onlineUrl || '', data.features || {});
+      let switched = false;
+      if (data.dir && data.dir !== curDir) {
+        curDir = data.dir;
+        newestAct = 0;
+        switched = true;
+        media.clear();
+      }
+      if (data.cursor && !switched) newestAct = Math.max(newestAct, Number(data.cursor || 0));
+      pruneByIDs(data.ids);
+      for (const p of data.posts || []) {
+        newestAct = Math.max(newestAct, Number(p.act || p.ts || 0));
+        rememberPost(p);
+      }
+      renderCollage();
+    }
+    async function pollFeed(force){
+      if (!feedOn && !force) return false;
+      try {
+        const r = await fetch('/api/feed?guest=1&since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store' });
+        if (r.status === 404) {
+          renderCollage();
+          return false;
+        }
+        if (!r.ok) return false;
+        const data = await r.json();
+        if (!feedOn) feedOn = true;
+        renderFeed(data);
+        return true;
+      } catch (e) {
+        renderCollage();
+        return false;
+      }
+    }
+    setInterval(pollStatus, 5000);
+    setInterval(() => {
+      if (lastStatusOK && Date.now() - lastStatusOK > 30000) $('livePill').textContent = 'Reconnecting';
+    }, 5000);
+    pollStatus();
+    (async () => {
+      for (;;) {
+        const ok = await pollFeed(!feedOn);
+        await new Promise(r => setTimeout(r, ok && feedOn ? 150 : 5000));
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -82,7 +82,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {
 	case "/api/feed":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-		dj := s.isDJ(r)
+		dj := s.isDJ(r) && r.URL.Query().Get("guest") != "1"
 		posts, ids, mediaCount, cursor := s.Events.FeedFor(since, r.URL.Query().Get("cid"), dj)
 		// Long-poll (wait=1): nothing new → park until the next mutation (or
 		// ~25s heartbeat), then answer. Posts and comments land on every open

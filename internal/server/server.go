@@ -181,6 +181,8 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveWeb(w, "listener.html", "no-cache")
 	case p == "/dj" || p == "/dj/":
 		s.serveWeb(w, "dj.html", "no-cache")
+	case p == "/wall" || p == "/wall/":
+		s.serveWeb(w, "wall.html", "no-cache")
 	case p == "/art-512.png":
 		s.serveWeb(w, "art-512.png", "")
 	case p == "/favicon.ico":
