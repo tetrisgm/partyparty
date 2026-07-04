@@ -25,3 +25,4 @@ auto.key
 # generated Sparkle appcast / release artifacts + stray release zips
 /dist/
 /partyparty*.zip
+/e2e-sync

@@ -46,6 +46,9 @@ const MAX_POSTS_PER_IMPORT = 200;
 const MAX_COMMENTS_PER_IMPORT = 2000;
 const WALL_MEDIA_LIMIT = 240;
 const WALL_COMMENTS_PER_POST = 50;
+const POST_MEDIA_CAP_BYTES = 350_000_000;
+const POST_MEDIA_MULTIPART_MIN_PART_BYTES = 5_000_000;
+const POST_MEDIA_MULTIPART_MAX_PART_BYTES = 16_000_000;
 const READ_JSON_TOO_LARGE = new WeakSet();
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 const MAGIC_LINK_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -398,6 +401,22 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .homehero h1{font-size:clamp(38px,7vw,68px);line-height:.98;letter-spacing:-.04em;margin:0 0 14px;max-width:760px}
 .homehero p{color:var(--ink2);font-size:19px;line-height:1.42;margin:0;max-width:620px}
 .homehero .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.faqhero{padding:56px 0 18px}
+.faqhero h1{font-size:clamp(42px,7vw,72px);line-height:.98;letter-spacing:-.045em;margin:0 0 16px;max-width:760px}
+.faqhero p{color:var(--ink2);font-size:20px;line-height:1.42;margin:0;max-width:660px}
+.faqgrid{display:grid;gap:18px;margin-top:18px}
+.faqgroup{padding:28px}
+.faqgroup h2{font-size:24px;letter-spacing:-.025em;margin:0 0 6px}
+.faqintro{color:var(--ink2);font-size:14px;margin:0 0 4px}
+.faqitem{border-top:1px solid var(--line);padding-top:20px;margin-top:20px}
+.faqitem:first-of-type{border-top:0;padding-top:0}
+.faqitem h3{font-size:20px;line-height:1.2;letter-spacing:-.02em;margin:0 0 8px}
+.faqitem p{color:var(--ink2);font-size:15px;line-height:1.55;margin:0 0 10px;max-width:72ch}
+.faqitem p:last-child{margin-bottom:0}
+.faqlist{display:grid;gap:10px;margin:12px 0 0;padding:0;list-style:none}
+.faqlist li{color:var(--ink2);font-size:15px;line-height:1.5;margin:0;padding-left:18px;position:relative;max-width:74ch}
+.faqlist li:before{content:"";position:absolute;left:0;top:.7em;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.faqlist b{color:var(--ink);font-weight:600}
 .sectionhead{display:flex;justify-content:space-between;align-items:end;gap:18px;margin:30px 0 10px}
 .sectionhead h2{font-size:24px;letter-spacing:-.025em;margin:0}.sectionhead p{color:var(--ink2);font-size:14px;margin:4px 0 0}
 .eventgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -696,6 +715,177 @@ function emptyHome() {
   </div>`;
 }
 
+const FAQ_GROUPS = [{
+  title: "Getting started",
+  intro: "The short version: the DJ runs the room from a Mac, guests listen from their phones.",
+  items: [{
+    q: "What is partyparty?",
+    p: [
+      "A pop-up listening party. The DJ plays from their Mac; everyone nearby tunes in on their own phone and listens through their earbuds — a silent disco with no speakers and no shutdown. No app for guests: scan the QR, tap play.",
+    ],
+  }, {
+    q: "How do guests join?",
+    p: [
+      "Scan the QR (or open the link) in any phone browser — iPhone or Android. No app, no account, no sign-up. Tap play and you're in, in sync with the room.",
+    ],
+  }, {
+    q: "What do I need to host as the DJ?",
+    p: [
+      "A Mac with the partyparty app, and whatever you want to play. For bigger crowds, a small travel Wi-Fi router. That's it.",
+    ],
+  }],
+}, {
+  title: "Setups & networks",
+  intro: "partyparty is local first, so the network matters more than the internet.",
+  items: [{
+    q: "Do I need internet?",
+    p: [
+      "partyparty runs on your local network — the Mac streams the audio straight to nearby phones, not through the cloud. On any Wi-Fi with internet it just works. And the Mac can host its own network so you can throw a party with little or no internet — the goal is a party anywhere, even off the grid. Fully off-grid hosting is rolling out; see Setups below.",
+    ],
+  }, {
+    q: "What setups work?",
+    bullets: [
+      { title: "Everyone on the same Wi-Fi (home, apartment, venue):", body: "the simplest — guests join your Wi-Fi, scan, play." },
+      { title: "The Mac's own hotspot:", body: "host straight from the Mac for a small group, no extra gear." },
+      { title: "A travel Wi-Fi router you bring:", body: "the best option for a real party — most reliable, most phones." },
+      { title: "An iPhone Personal Hotspot:", body: "works for up to 5 phones." },
+      { title: "After the party:", body: "publish the set (and the night's photos & clips) to a shareable replay page online." },
+    ],
+  }],
+}, {
+  title: "Capacity & limits",
+  intro: "Capacity depends on the Wi-Fi radio carrying the room.",
+  items: [{
+    q: "How many people can join?",
+    p: [
+      "It depends on the network, not the app:",
+    ],
+    bullets: [
+      { title: "Real Wi-Fi (home / venue / a travel router):", body: "plenty." },
+      { title: "The Mac's own hotspot:", body: "a handful — it's the Mac's Wi-Fi radio doing double duty." },
+      { title: "An iPhone hotspot:", body: "5 (Apple's limit, not ours)." },
+    ],
+    after: [
+      "The DJ console shows a live capacity meter, so you can see if you're crowding the network — if so, bring a small travel router and you're golden.",
+    ],
+  }, {
+    q: "Is the audio good? Is it in sync?",
+    p: [
+      "Yes — it's low-latency, so the room hears the music together (about a second or two apart), each through their own earbuds. The connection is secure (HTTPS).",
+    ],
+  }, {
+    q: "Does it drain my guests' phones or use their data?",
+    p: [
+      "It's just a web page playing audio on your local network — no app, and on a local/offline network it uses no cellular data at all.",
+    ],
+  }],
+}, {
+  title: "Good to know",
+  intro: "The honest limitations, plus what stays private.",
+  items: [{
+    q: "What doesn't work — the honest limitations:",
+    bullets: [
+      { title: "Client-isolation Wi-Fi.", body: "Some guest, hotel, and corporate networks deliberately block devices from talking to each other. On those, phones can't reach the Mac. The fix: host from the Mac's own hotspot or a travel router you control." },
+      { title: "A first-time online setup.", body: "The very first time, the Mac needs internet once to set up its secure certificate. After that, it can run offline." },
+      { title: "Guests must be on the same network as the Mac.", body: "It's local audio, not a cloud radio station — bring guests onto your Wi-Fi or hotspot (share the network name, or they scan the QR after joining)." },
+      { title: "iPhone hotspot caps at 5 devices.", body: "That's an Apple limit no app can change — use a travel router for more." },
+    ],
+  }, {
+    q: "Is it private?",
+    p: [
+      "The audio streams over your own local network between the Mac and the phones in the room. Nothing about the live party requires the cloud.",
+    ],
+  }],
+}];
+
+function renderFaqParagraphs(lines) {
+  return (lines || []).map((line) => `<p>${esc(line)}</p>`).join("");
+}
+
+function renderFaqBullets(items) {
+  if (!items?.length) return "";
+  return `<ul class="faqlist">${items.map((item) => `<li>${item.title ? `<b>${esc(item.title)}</b> ` : ""}${esc(item.body || "")}</li>`).join("")}</ul>`;
+}
+
+function renderFaqItem(item) {
+  return `<article class="faqitem">
+    <h3>${esc(item.q)}</h3>
+    ${renderFaqParagraphs(item.p)}
+    ${renderFaqBullets(item.bullets)}
+    ${renderFaqParagraphs(item.after)}
+  </article>`;
+}
+
+function renderFaq() {
+  const title = "FAQ · How partyparty works";
+  const desc = "How to host a partyparty silent-disco popup from your Mac, including setup options, capacity and honest limitations.";
+  const pageUrl = absUrl("/faq");
+  const imageUrl = absUrl(DEFAULT_OG_IMAGE);
+  const faqCss = `
+body.faqbody{margin:0;background:#fff;color:#1d1d1f;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;font-size:17px;line-height:1.47;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body.faqbody *{box-sizing:border-box}
+body.faqbody a{color:inherit;text-decoration:none}
+.faqpage{--ink:#1d1d1f;--ink-2:#424245;--muted:#6e6e73;--hairline:#d2d2d7;--hairline-2:#e8e8ed;--bg:#ffffff;--bg-soft:#f5f5f7;--accent:#0066cc;--display:"Fraunces","SF Pro Display",-apple-system,Georgia,serif;max-width:820px;margin:0 auto;padding:0 24px 68px;background:var(--bg);color:var(--ink)}
+.faqpage a{color:var(--accent)}
+.faqback{display:inline-flex;align-items:center;gap:7px;margin:24px 0 0;color:var(--accent);font-size:14px;line-height:1.2}
+.faqback span{font-size:15px;transform:translateY(-1px)}
+.faqhero{position:relative;isolation:isolate;padding:80px 0 40px;text-align:center}
+.faqhero::before{content:"";position:absolute;z-index:-1;pointer-events:none;top:-52px;left:-24px;right:-24px;height:340px;background:radial-gradient(80% 320px at 50% 0,color-mix(in srgb,var(--accent) 7%,transparent),transparent 70%)}
+.faqeyebrow{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.14em;line-height:1.2;text-transform:uppercase;color:var(--muted);margin:0}
+.faqeyebrow::after{content:"";display:block;width:28px;height:2px;margin:10px auto 0;background:var(--accent)}
+.faqhero h1{font-family:var(--display);font-weight:600;font-size:clamp(38px,4.6vw,56px);line-height:1.04;letter-spacing:-.018em;text-wrap:balance;margin:14px 0 16px;color:var(--ink)}
+.faqdek{max-width:560px;margin:0 auto;color:var(--muted);font-size:20px;line-height:1.45}
+.faqcontent{padding:8px 0 0}
+.faqsection{margin-top:64px;padding-top:34px;border-top:1px solid var(--hairline)}
+.faqsection:first-child{margin-top:0}
+.faqsection h2{font-family:var(--display);font-size:clamp(26px,3.1vw,30px);font-weight:600;line-height:1.14;letter-spacing:-.01em;margin:0;color:var(--ink)}
+.faqintro{max-width:620px;margin:8px 0 0;color:var(--muted);font-size:16px;line-height:1.55}
+.faqitem{margin-top:30px}
+.faqitem h3{font-size:19px;font-weight:600;line-height:1.28;letter-spacing:0;margin:0 0 9px;color:var(--ink)}
+.faqitem p{max-width:72ch;margin:0 0 12px;color:var(--ink-2);font-size:17px;line-height:1.6}
+.faqitem p:last-child{margin-bottom:0}
+.faqlist{display:grid;gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.faqlist li{position:relative;max-width:74ch;margin:0;padding-left:18px;color:var(--ink-2);font-size:17px;line-height:1.58}
+.faqlist li::before{content:"";position:absolute;left:0;top:.72em;width:5px;height:5px;background:var(--accent)}
+.faqlist b{color:var(--ink);font-weight:600}
+.faqfooter{border-top:1px solid var(--hairline);margin-top:72px;padding:22px 0 0;color:var(--muted);font-size:14px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.faqfooter b{font-weight:600;color:var(--ink)}
+.faqfooter p{margin:0}
+@media(max-width:640px){.faqpage{padding:0 24px 52px}.faqback{margin-top:18px}.faqhero{padding:58px 0 34px}.faqhero::before{top:-38px;height:270px}.faqdek{font-size:18px}.faqsection{margin-top:52px;padding-top:28px}.faqitem{margin-top:26px}.faqfooter{display:grid;margin-top:58px}}
+`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:type" content="website"><meta property="og:url" content="${esc(pageUrl)}"><meta property="og:site_name" content="partyparty"><meta property="og:image" content="${esc(imageUrl)}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(imageUrl)}">
+<meta name="theme-color" content="#ffffff"><meta name="color-scheme" content="light">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>${faqCss}</style></head><body class="faqbody"><main class="faqpage">
+  <a class="faqback" href="/"><span aria-hidden="true">&larr;</span>${esc("Back to partyparty")}</a>
+  <section class="faqhero" aria-labelledby="faq-title">
+    <p class="faqeyebrow">${esc("PARTYPARTY · HELP")}</p>
+    <h1 id="faq-title">${esc("How partyparty works")}</h1>
+    <p class="faqdek">${esc("A pop-up listening party you host from your Mac. No app for guests — scan, tap, listen.")}</p>
+  </section>
+  <div class="faqcontent">
+    ${FAQ_GROUPS.map((group, i) => `<section class="faqsection" aria-labelledby="faq-section-${i}">
+      <h2 id="faq-section-${i}">${esc(group.title)}</h2>
+      <p class="faqintro">${esc(group.intro)}</p>
+      ${group.items.map(renderFaqItem).join("")}
+    </section>`).join("")}
+  </div>
+  <footer class="faqfooter">
+    <p><b>${esc("partyparty")}</b></p>
+    <p>${esc("Questions we didn't answer?")} <a href="/">${esc("Back to partyparty")}</a></p>
+  </footer>
+</main></body></html>`;
+}
+
 function renderHome({ events, profiles, replays }) {
   const hasRows = events.length || profiles.length || replays.length;
   const body = `<div class="page home">
@@ -711,7 +901,7 @@ function renderHome({ events, profiles, replays }) {
     ${replays.length ? `<section><div class="sectionhead"><div><h2>Recent replays</h2><p>Sets that already landed.</p></div></div><div class="eventgrid">${replays.map(eventCard).join("")}</div></section>` : ""}
     ${hasRows ? "" : emptyHome()}
   </div>
-  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac</span></footer>`;
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/faq" style="color:var(--link)">FAQ</a></span></footer>`;
   return shell({
     title: "partyparty — silent-disco popups",
     desc: "Mac-powered silent-disco popups with shareable event pages for replays, photos and clips.",
@@ -2056,8 +2246,7 @@ async function publishCover(request, env) {
   return jsonResp(200, { ok: true, key });
 }
 
-async function publishPostMedia(request, env) {
-  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+async function readPostMediaHeaders(request, env) {
   if (!env.DB) return jsonResp(503, { error: "events db not configured" });
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
@@ -2095,17 +2284,10 @@ async function publishPostMedia(request, env) {
     return jsonResp(403, { error: "media id taken" });
   }
 
-  const cap = 200_000_000;
-  const cl = Number(request.headers.get("content-length") || "0");
-  if (!cl || cl > cap) return jsonResp(413, { error: "bad size" });
-  const key = `event/${slug}/posts/${postId}/${mediaId}`;
-  const put = await env.DL.put(key, request.body, { httpMetadata: { contentType: mimeType } });
-  const size = (put && typeof put.size === "number") ? put.size : cl;
-  if (size > cap) {
-    await env.DL.delete(key);
-    return jsonResp(413, { error: "too large" });
-  }
+  return { id, slug, postId, mediaId, mediaType, mimeType, name, sortOrder, existing, key: `event/${slug}/posts/${postId}/${mediaId}` };
+}
 
+async function upsertPostMedia(env, meta, size, auditAction = "publish-post-media") {
   const now = nowMs();
   await env.DB.prepare(
     `INSERT INTO post_media (
@@ -2120,15 +2302,104 @@ async function publishPostMedia(request, env) {
        size_bytes=excluded.size_bytes,
        sort_order=excluded.sort_order
      WHERE post_media.slug=excluded.slug AND post_media.post_id=excluded.post_id`
-  ).bind(mediaId, slug, postId, key, mediaType, mimeType, name, size, sortOrder, now).run();
-  const saved = await env.DB.prepare("SELECT slug, post_id FROM post_media WHERE id=?").bind(mediaId).first();
-  if (!saved || saved.slug !== slug || saved.post_id !== postId) {
-    await env.DL.delete(key);
+  ).bind(meta.mediaId, meta.slug, meta.postId, meta.key, meta.mediaType, meta.mimeType, meta.name, size, meta.sortOrder, now).run();
+  const saved = await env.DB.prepare("SELECT slug, post_id FROM post_media WHERE id=?").bind(meta.mediaId).first();
+  if (!saved || saved.slug !== meta.slug || saved.post_id !== meta.postId) {
+    await env.DL.delete(meta.key);
     return jsonResp(403, { error: "media id taken" });
   }
-  await env.DB.prepare("UPDATE events SET last_activity_ms=? WHERE slug=? AND install_id=?").bind(now, slug, id).run();
-  await auditPublish(env, id, slug, "publish-post-media");
-  return jsonResp(200, { ok: true, key, mediaId });
+  await env.DB.prepare("UPDATE events SET last_activity_ms=? WHERE slug=? AND install_id=?").bind(now, meta.slug, meta.id).run();
+  await auditPublish(env, meta.id, meta.slug, auditAction);
+  return jsonResp(200, { ok: true, key: meta.key, mediaId: meta.mediaId });
+}
+
+async function publishPostMedia(request, env) {
+  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+  const meta = await readPostMediaHeaders(request, env);
+  if (meta instanceof Response) return meta;
+
+  const cl = Number(request.headers.get("content-length") || "0");
+  if (!cl || cl > POST_MEDIA_CAP_BYTES) return jsonResp(413, { error: "bad size" });
+  const put = await env.DL.put(meta.key, request.body, { httpMetadata: { contentType: meta.mimeType } });
+  const size = (put && typeof put.size === "number") ? put.size : cl;
+  if (size > POST_MEDIA_CAP_BYTES) {
+    await env.DL.delete(meta.key);
+    return jsonResp(413, { error: "too large" });
+  }
+
+  return await upsertPostMedia(env, meta, size);
+}
+
+async function publishPostMediaMultipartInit(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  const meta = await readPostMediaHeaders(request, env);
+  if (meta instanceof Response) return meta;
+  const declared = Number(request.headers.get("x-pp-size") || "0");
+  if (!declared || declared > POST_MEDIA_CAP_BYTES) return jsonResp(413, { error: "bad size" });
+  if (meta.existing) {
+    const obj = await env.DL.head(meta.key);
+    if (obj) return jsonResp(200, { ok: true, complete: true, key: meta.key, mediaId: meta.mediaId, size: obj.size || declared });
+  }
+  const upload = await env.DL.createMultipartUpload(meta.key, { httpMetadata: { contentType: meta.mimeType } });
+  return jsonResp(200, { ok: true, uploadId: upload.uploadId, key: meta.key, mediaId: meta.mediaId });
+}
+
+async function publishPostMediaMultipartPart(request, env) {
+  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+  const meta = await readPostMediaHeaders(request, env);
+  if (meta instanceof Response) return meta;
+  const uploadId = request.headers.get("x-pp-upload-id") || "";
+  if (!uploadId || /[\x00-\x1F\x7F]/.test(uploadId) || uploadId.length > 512) {
+    return jsonResp(400, { error: "bad upload id" });
+  }
+  const partNumber = Number(request.headers.get("x-pp-part-number") || "0");
+  if (!Number.isSafeInteger(partNumber) || partNumber < 1 || partNumber > 10000) {
+    return jsonResp(400, { error: "bad part number" });
+  }
+  const cl = Number(request.headers.get("content-length") || "0");
+  if (!cl || cl > POST_MEDIA_MULTIPART_MAX_PART_BYTES) return jsonResp(413, { error: "bad size" });
+
+  const upload = env.DL.resumeMultipartUpload(meta.key, uploadId);
+  const part = await upload.uploadPart(partNumber, request.body);
+  return jsonResp(200, { ok: true, partNumber, etag: part.etag });
+}
+
+async function publishPostMediaMultipartComplete(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  const meta = await readPostMediaHeaders(request, env);
+  if (meta instanceof Response) return meta;
+  const existingObj = meta.existing ? await env.DL.head(meta.key) : null;
+  if (meta.existing && existingObj) {
+    return jsonResp(200, { ok: true, key: meta.key, mediaId: meta.mediaId, size: existingObj.size || 0, complete: true });
+  }
+
+  const body = await readJson(request, 256_000);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+  const uploadId = String(body.uploadId || request.headers.get("x-pp-upload-id") || "");
+  if (!uploadId || /[\x00-\x1F\x7F]/.test(uploadId) || uploadId.length > 512) {
+    return jsonResp(400, { error: "bad upload id" });
+  }
+  const parts = Array.isArray(body.parts) ? body.parts.map((p) => ({
+    partNumber: Number(p && p.partNumber),
+    etag: String(p && p.etag || ""),
+  })) : [];
+  if (!parts.length || parts.length > 10000) return jsonResp(400, { error: "bad parts" });
+  for (let i = 0; i < parts.length; i += 1) {
+    const p = parts[i];
+    if (!Number.isSafeInteger(p.partNumber) || p.partNumber !== i + 1 || !p.etag || p.etag.length > 256) {
+      return jsonResp(400, { error: "bad parts" });
+    }
+  }
+
+  const upload = env.DL.resumeMultipartUpload(meta.key, uploadId);
+  const obj = await upload.complete(parts);
+  const head = (obj && typeof obj.size === "number") ? obj : await env.DL.head(meta.key);
+  const size = head && typeof head.size === "number" ? head.size : Number(body.size || "0");
+  if (!size || size > POST_MEDIA_CAP_BYTES) {
+    await env.DL.delete(meta.key);
+    return jsonResp(413, { error: "too large" });
+  }
+  return await upsertPostMedia(env, meta, size, "publish-post-media-multipart");
 }
 
 async function publishPosts(env, id, body) {
@@ -2256,6 +2527,15 @@ async function broker(request, env, pathname) {
   }
   if (pathname === "/api/broker/publish-post-media") {
     return await publishPostMedia(request, env);
+  }
+  if (pathname === "/api/broker/publish-post-media-multipart-init") {
+    return await publishPostMediaMultipartInit(request, env);
+  }
+  if (pathname === "/api/broker/publish-post-media-multipart-part") {
+    return await publishPostMediaMultipartPart(request, env);
+  }
+  if (pathname === "/api/broker/publish-post-media-multipart-complete") {
+    return await publishPostMediaMultipartComplete(request, env);
   }
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
@@ -3035,17 +3315,26 @@ export default {
       return new Response(JSON.stringify({ ...s, changed: moved(s) }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
     }
 
-    if (pathname === "/about" || pathname === "/app") {
-      const u = new URL(request.url);
-      u.pathname = "/";
-      return env.ASSETS.fetch(new Request(u, request));
-    }
-
     if (pathname === "/") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
       }
       return await homeResponse(env);
+    }
+
+    if (pathname === "/faq") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      return new Response(request.method === "HEAD" ? null : renderFaq(), {
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" },
+      });
+    }
+
+    if (pathname === "/about" || pathname === "/app") {
+      const u = new URL(request.url);
+      u.pathname = "/";
+      return env.ASSETS.fetch(new Request(u, request));
     }
 
     // Event pages: /e/<slug> is real (D1-backed). /demo keeps the original

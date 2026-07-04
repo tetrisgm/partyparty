@@ -30,6 +30,7 @@ import (
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/diag"
+	"partyparty/internal/dnsd"
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
@@ -37,6 +38,7 @@ import (
 	"partyparty/internal/publish"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
+	postsync "partyparty/internal/sync"
 )
 
 //go:embed all:web
@@ -183,6 +185,15 @@ func main() {
 	if cfg.LiveHost == "" {
 		cfg.LiveHost = activate.HostFromEnvOrFile()
 	}
+	activationHost := func() string {
+		if cfg.LiveHost != "" {
+			return cfg.LiveHost
+		}
+		if cfg.Domain != "" {
+			return cfg.Domain
+		}
+		return activate.BrokerHost()
+	}
 	deliveryFlag := cfg.Delivery // what the user asked for, pre-resolution
 
 	// LL-HLS is served over HTTPS; without a real (publicly-trusted) cert the
@@ -201,10 +212,66 @@ func main() {
 	}
 
 	ip := netinfo.PrimaryLanIP()
+	sharedIP := netinfo.SharedLanIP()
 	ingestURL := fmt.Sprintf("rtsp://localhost:%d/%s", cfg.RTSPPort, cfg.StreamPath)
 
 	bc := broadcast.New(cfg, runDir, helperPath, ingestURL)
 	ls := stats.New(20 * time.Second)
+
+	var localDNS *dnsd.Server
+	var dnsCancel context.CancelFunc
+	var refreshLocalDNS func(host string)
+	var captiveDNSHost string
+	if cfg.Captive {
+		host := activationHost()
+		if host == "" {
+			log.Printf("dns: captive DNS disabled: no activation host")
+		} else {
+			captiveDNSHost = host
+			localDNS = dnsd.New(dnsd.Config{
+				Addr:     dnsd.LocalAddr,
+				Hosts:    []string{host},
+				TargetIP: sharedIP,
+				TTL:      5 * time.Second,
+				Logf: func(format string, args ...any) {
+					if diagLog != nil {
+						diagLog.Printf(format, args...)
+						return
+					}
+					log.Printf(format, args...)
+				},
+			})
+			if err := localDNS.Start(); err != nil {
+				log.Printf("dns: captive DNS failed on %s: %v", dnsd.LocalAddr, err)
+				localDNS = nil
+			} else {
+				log.Printf("dns: captive DNS answering %s -> %s on %s", host, sharedIP, dnsd.LocalAddr)
+				refreshLocalDNS = func(host string) {
+					if host == "" {
+						host = activationHost()
+					}
+					if host == "" || localDNS == nil {
+						return
+					}
+					localDNS.Update([]string{host}, netinfo.SharedLanIP())
+				}
+				var dnsCtx context.Context
+				dnsCtx, dnsCancel = context.WithCancel(context.Background())
+				go func() {
+					t := time.NewTicker(5 * time.Second)
+					defer t.Stop()
+					for {
+						select {
+						case <-t.C:
+							refreshLocalDNS("")
+						case <-dnsCtx.Done():
+							return
+						}
+					}
+				}()
+			}
+		}
+	}
 
 	// MediaMTX (LL-HLS): embedded+extracted in dev, or from Contents/Helpers/ in
 	// the .app build; fall back to PATH if neither is present.
@@ -282,8 +349,11 @@ func main() {
 			diagLog.Printf("partyparty v%s starting (%s)", appVersion, diagLog.Session())
 			diagLog.Printf("system: macOS %s · %s · %s", cmdOut("sw_vers", "-productVersion"), cmdOut("sysctl", "-n", "hw.model"), runtime.GOARCH)
 			diagLog.Printf("install: id=%s slug=%s", id, activate.InstallSlug())
-			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
+			diagLog.Printf("network: lan=%s shared=%s interfaces=%+v", ip, sharedIP, netinfo.LanInterfaces())
 			diagLog.Printf("config: delivery=%s bitrate=%s part=%s seg=%s", cfg.Delivery, cfg.Bitrate, cfg.PartDur, cfg.SegDur)
+			if localDNS != nil && captiveDNSHost != "" {
+				diagLog.Printf("dns: captive DNS answering %s -> %s on %s", captiveDNSHost, sharedIP, dnsd.LocalAddr)
+			}
 			if payload != nil {
 				// The store's own "serving cached payload" line is emitted during
 				// Open() above, before this logger exists — so record the active
@@ -294,6 +364,24 @@ func main() {
 		} else {
 			log.Printf("diagnostics log unavailable: %v", err)
 		}
+	}
+	if cfg.Captive {
+		go func() {
+			time.Sleep(8 * time.Second)
+			if ip := netinfo.SharedBridgeIP(); ip != "" {
+				if diagLog != nil {
+					diagLog.Printf("hotspot: Internet Sharing bridge up at %s", ip)
+					return
+				}
+				log.Printf("hotspot: Internet Sharing bridge up at %s", ip)
+				return
+			}
+			if diagLog != nil {
+				diagLog.Printf("hotspot: no bridge detected — sharing may not have started (guide user to enable it)")
+				return
+			}
+			log.Printf("hotspot: no bridge detected — sharing may not have started (guide user to enable it)")
+		}()
 	}
 
 	// The event's social layer lives in a normal, Finder-visible folder — the
@@ -332,6 +420,7 @@ func main() {
 		Diag:        diagLog,
 		Version:     appVersion,
 	})
+	handler.StartSyncDrain(context.Background())
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
@@ -382,6 +471,75 @@ func main() {
 		certMu.Unlock()
 		return nil
 	}
+	var activationMu sync.Mutex
+	activationEngaged := false
+	markActivationEngaged := func() {
+		activationMu.Lock()
+		activationEngaged = true
+		activationMu.Unlock()
+	}
+	isActivationEngaged := func() bool {
+		activationMu.Lock()
+		defer activationMu.Unlock()
+		return activationEngaged
+	}
+	engageLowLatency := func(source string) {
+		if deliveryFlag == "hls" || mtx == nil || applyActivation == nil {
+			return
+		}
+		// Auto-engage: THE LL ROOM IS THE PRODUCT (the cert broker exists
+		// precisely for this). It is safe under the passive architecture: LL
+		// devices park at Apple's PART-HOLD-BACK by themselves — every iPhone
+		// at the SAME hold-back = self-syncing ~1.5s, and self-healing (the
+		// player re-chases hold-back after a stall). No client control anywhere.
+		// Guests whose DNS blocks the domain fail the probe and land on the teed
+		// plain stream as visible outliers — they never get a dead stream and
+		// never drag the room. Engage when idle; never restart a live set.
+		for {
+			st := bc.Status()
+			if st.State == "idle" || st.State == "error" {
+				if bc.Delivery() != "hls" {
+					return
+				}
+				if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
+					log.Printf("activate: mediamtx not ready after %s: %v — staying on plain HLS", source, err)
+					return
+				}
+				// Atomic idle-check + switch: a set that started during
+				// EnsureReady's up-to-6s wait must NOT be yanked
+				// (SetDelivery stops any broadcast). If one snuck in, loop
+				// and wait for the next idle gap.
+				if bc.SetDeliveryIfIdle("llhls") {
+					log.Printf("activate: low-latency room engaged (%s)", source)
+					return
+				}
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}
+	applyActivationResult := func(res activate.Result, source string) bool {
+		if !res.OK {
+			return false
+		}
+		if applyActivation != nil {
+			if err := applyActivation(res.CertFile, res.KeyFile); err != nil {
+				log.Printf("activate: mediamtx config failed after %s: %v — staying on plain HLS", source, err)
+				return false
+			}
+		}
+		if err := loadCert(res.CertFile, res.KeyFile); err != nil {
+			log.Printf("activate: cert load for the guest page failed after %s: %v", source, err)
+			return false
+		}
+		if refreshLocalDNS != nil {
+			refreshLocalDNS(res.Host)
+		}
+		handler.SetActivation(res.Host)
+		markActivationEngaged()
+		log.Printf("activate: secure link ready from %s — %s", source, res.Host)
+		engageLowLatency(source)
+		return true
+	}
 	explicitCertLoaded := false
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
 		if err := loadCert(cfg.CertFile, cfg.KeyFile); err != nil {
@@ -398,20 +556,8 @@ func main() {
 	// re-fetches. With the cache, the guest link is live and Go Live un-gated
 	// from t=0; async activation still runs to renew / engage LL.
 	if !explicitCertLoaded && cfg.CertFile == "" {
-		if cf, kf, ok := activate.CachedCert(); ok {
-			host := cfg.LiveHost
-			if host == "" {
-				host = activate.BrokerHost()
-			}
-			if host != "" {
-				if err := loadCert(cf, kf); err == nil {
-					if applyActivation != nil {
-						_ = applyActivation(cf, kf) // point MediaMTX's config at the real cert
-					}
-					handler.SetActivation(host)
-					log.Printf("cached cert loaded — %s ready immediately", host)
-				}
-			}
+		if res, ok := activate.CachedCertReady(activationHost()); ok {
+			applyActivationResult(res, "cached certificate")
 		}
 	}
 	if rawLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
@@ -482,15 +628,21 @@ func main() {
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
 	// at party.ramine.net (per-install wildcard cert, IP-encoded hostname).
-	// On success we flip delivery to LL-HLS the moment the DJ is idle (never
-	// mid-set); on failure we retry every 5 minutes (Wi-Fi comes and goes).
+	// Cached-cert engagement above is local-only and does not wait for this
+	// loop. Online refresh keeps trying to upsert DNS / renew; failures never
+	// tear down an already-engaged cached cert. On success we flip delivery to
+	// LL-HLS the moment the DJ is idle (never mid-set).
 	if deliveryFlag != "hls" && cfg.Delivery == "hls" && cfg.CertFile == "" && mtx != nil && applyActivation != nil {
 		go func() {
 			retryIn := 15 * time.Second // fast first retries (LE 503s often clear in seconds), then back off
 			for {
 				var res activate.Result
-				if token := activate.TokenFromEnvOrFile(); cfg.LiveHost != "" && token != "" {
-					res = activate.Try(cfg.LiveHost, token, netinfo.PrimaryLanIP(), log.Printf)
+				liveHost := cfg.LiveHost
+				if liveHost == "" {
+					liveHost = cfg.Domain
+				}
+				if token := activate.TokenFromEnvOrFile(); liveHost != "" && token != "" {
+					res = activate.Try(liveHost, token, netinfo.PrimaryLanIP(), log.Printf)
 				} else {
 					broker := os.Getenv("PARTYPARTY_BROKER")
 					if broker == "" {
@@ -499,50 +651,21 @@ func main() {
 					res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
 				}
 				if res.OK {
-					if err := applyActivation(res.CertFile, res.KeyFile); err != nil {
-						log.Printf("activate: mediamtx config failed: %v — staying on plain HLS", err)
-						return
+					if applyActivationResult(res, "online refresh") {
+						retryIn = 15 * time.Second
+						time.Sleep(30 * time.Minute)
+						continue
 					}
-					if err := loadCert(res.CertFile, res.KeyFile); err != nil {
-						log.Printf("activate: cert load for the guest page failed: %v", err)
-						return
-					}
-					handler.SetActivation(res.Host)
-					log.Printf("activate: low latency ON — %s", res.Host)
-					// Auto-engage: THE LL ROOM IS THE PRODUCT (the cert broker
-					// exists precisely for this). It is safe under the passive
-					// architecture: LL devices park at Apple's PART-HOLD-BACK
-					// by themselves — every iPhone at the SAME hold-back =
-					// self-syncing ~1.5s, and self-healing (the player
-					// re-chases hold-back after a stall). No client control
-					// anywhere. Guests whose DNS blocks the domain fail the
-					// probe and land on the teed plain stream as visible
-					// outliers — they never get a dead stream and never drag
-					// the room. Engage when idle; never restart a live set.
-					for {
-						st := bc.Status()
-						if st.State == "idle" || st.State == "error" {
-							if bc.Delivery() != "hls" {
-								return
-							}
-							if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
-								log.Printf("activate: mediamtx not ready: %v — staying on plain HLS", err)
-								return
-							}
-							// Atomic idle-check + switch: a set that started
-							// during EnsureReady's up-to-6s wait must NOT be
-							// yanked (SetDelivery stops any broadcast). If one
-							// snuck in, loop and wait for the next idle gap.
-							if bc.SetDeliveryIfIdle("llhls") {
-								log.Printf("activate: low-latency room engaged")
-								return
-							}
-						}
-						time.Sleep(5 * time.Second)
+					if res.Reason == "" {
+						res.Reason = "local activation apply failed"
 					}
 				}
-				handler.SetActivationPending(humanizeActivation(res.Reason))
-				log.Printf("activate: secure link not ready — %s (retrying in %s)", res.Reason, retryIn)
+				if !isActivationEngaged() {
+					handler.SetActivationPending(humanizeActivation(res.Reason))
+					log.Printf("activate: secure link not ready — %s (retrying in %s)", res.Reason, retryIn)
+				} else {
+					log.Printf("activate: online refresh not ready — %s (retrying in %s)", res.Reason, retryIn)
+				}
 				time.Sleep(retryIn)
 				if retryIn *= 2; retryIn > 4*time.Minute {
 					retryIn = 4 * time.Minute
@@ -560,7 +683,7 @@ func main() {
 	fmt.Println("  ───────────────────────────────────────────────")
 	fmt.Println("  Open the DJ console, choose a capture source, hit Start.")
 	if bc.Delivery() == "llhls" {
-		host := cfg.Domain
+		host := activationHost()
 		if host == "" {
 			host = ip
 		}
@@ -653,6 +776,12 @@ func main() {
 	bc.Stop()
 	if mtx != nil {
 		mtx.Stop()
+	}
+	if dnsCancel != nil {
+		dnsCancel()
+	}
+	if localDNS != nil {
+		_ = localDNS.Close()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -767,9 +896,10 @@ func maybeAutoPublish(events *event.Store, ffmpeg string, payload *ota.Store, du
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
+		creds := publish.Creds{ID: id, Secret: secret, InstallSlug: activate.InstallSlug()}
 		res, err := publish.Publish(ctx, ffmpeg, recordings, publish.Meta{
 			Slug: m.Slug, Title: m.Title, Host: m.Host, Starts: m.Starts,
-		}, publish.Creds{ID: id, Secret: secret, InstallSlug: activate.InstallSlug()}, base)
+		}, creds, base)
 		if dl == nil {
 			return
 		}
@@ -778,11 +908,30 @@ func maybeAutoPublish(events *event.Store, ffmpeg string, payload *ota.Store, du
 			return
 		}
 		events.SetPublishedSig(sig)
+		_, _ = events.SetSlug(res.Slug)
 		if res.Warning != "" {
 			dl.Printf("auto-published set → %s (%s)", res.URL, res.Warning)
 		} else {
 			dl.Printf("auto-published set → %s", res.URL)
 		}
+		autoSyncPosts(events, res.Slug, creds, base, dl)
+	}()
+}
+
+func autoSyncPosts(events *event.Store, slug string, creds publish.Creds, base string, dl *diag.Logger) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+		defer cancel()
+		res, err := postsync.SyncPosts(ctx, events.Dir(), creds, slug, base)
+		if err != nil {
+			dl.Printf("auto post sync failed: %v", err)
+			return
+		}
+		if res.Offline {
+			dl.Printf("auto post sync deferred: offline (%s)", res.LastError)
+			return
+		}
+		dl.Printf("auto post sync complete: posts=%d media=%d skipped_posts=%d skipped_media=%d", res.PostsPushed, res.MediaPushed, res.PostsSkipped, res.MediaSkipped)
 	}()
 }
 
@@ -842,13 +991,13 @@ func humanizeActivation(reason string) string {
 // because a stale orphan owns the ports (or anything else mediamtx-shaped
 // squats there), kill it and try once more.
 func ensureMTXReady(mtx *mediamtx.Server, rtspPort, hlsPort int) error {
-	err := mtx.EnsureReady(rtspPort, 6*time.Second)
+	err := mtx.EnsureReady(rtspPort, hlsPort, 6*time.Second)
 	if err == nil {
 		return nil
 	}
 	if n := mediamtx.ReapOrphans(rtspPort, hlsPort); n > 0 {
 		log.Printf("reaped %d mediamtx orphan(s) after readiness failure — retrying", n)
-		return mtx.EnsureReady(rtspPort, 6*time.Second)
+		return mtx.EnsureReady(rtspPort, hlsPort, 6*time.Second)
 	}
 	return err
 }

@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "partyparty-dev",
-      "runtimeExecutable": "go",
-      "runtimeArgs": ["run", ".", "-port", "18000", "-tls-port", "18443", "-rtsp-port", "18554", "-hls-port", "18888"],
-      "port": 18000
+      "name": "worker",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd cloudflare && exec node_modules/.bin/wrangler dev --local --port 8790 --ip 127.0.0.1"],
+      "port": 8790
     }
   ]
 }

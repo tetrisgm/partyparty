@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -13,6 +14,7 @@ import (
 	"io"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -168,15 +170,19 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// EnsureReady starts MediaMTX (if needed) and waits for its RTSP port. A
-// MediaMTX that launches but never opens its ingest port (port conflict, bad
-// config) is a hard error — callers fall back to plain HLS instead of showing
-// guests a dead stream.
-func (s *Server) EnsureReady(rtspPort int, timeout time.Duration) error {
+// EnsureReady starts MediaMTX (if needed) and waits for both its RTSP ingest
+// port and HTTPS HLS endpoint. A MediaMTX that launches but never opens either
+// guest-critical port (port conflict, bad config) is a hard error — callers
+// fall back to plain HLS instead of showing guests a dead stream.
+func (s *Server) EnsureReady(rtspPort, hlsPort int, timeout time.Duration) error {
 	if err := s.Start(); err != nil {
 		return err
 	}
-	if err := WaitReady(fmt.Sprintf("127.0.0.1:%d", rtspPort), timeout); err != nil {
+	deadline := time.Now().Add(timeout)
+	if err := WaitReady(fmt.Sprintf("127.0.0.1:%d", rtspPort), time.Until(deadline)); err != nil {
+		return err
+	}
+	if err := WaitHTTPSReady(fmt.Sprintf("127.0.0.1:%d", hlsPort), time.Until(deadline)); err != nil {
 		return err
 	}
 	// The port answering is NOT enough: a stale orphan (old config, old CERT)
@@ -238,6 +244,37 @@ func WaitReady(addr string, timeout time.Duration) error {
 		time.Sleep(150 * time.Millisecond)
 	}
 	return fmt.Errorf("mediamtx not accepting connections at %s after %s", addr, timeout)
+}
+
+// WaitHTTPSReady blocks until addr completes a TLS/HTTP request or timeout
+// elapses. Any HTTP status counts: readiness is about the guest-facing HTTPS
+// HLS listener existing, not a specific stream already being published.
+func WaitHTTPSReady(addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	url := "https://" + addr + "/"
+	for time.Now().Before(deadline) {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		if remaining > 300*time.Millisecond {
+			remaining = 300 * time.Millisecond
+		}
+		client := &http.Client{
+			Timeout: remaining,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+		resp, err := client.Get(url)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			return nil
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	return fmt.Errorf("mediamtx HLS endpoint not accepting HTTPS at %s after %s", addr, timeout)
 }
 
 // Stop signals MediaMTX to exit and returns immediately (shutdown path).

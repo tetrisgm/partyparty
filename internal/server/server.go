@@ -81,6 +81,11 @@ type srv struct {
 	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
 	clientEvN  int32    // global event ceiling — a rotating cid can't defeat this
 	clientCIDs int32    // distinct-cid ceiling — a rotating cid can't grow clientLogN without bound
+
+	syncDrainOnce    sync.Once
+	syncDrainKick    chan struct{}
+	syncDrainMu      sync.Mutex
+	syncDrainRunning bool
 }
 
 func New(d Deps) *Srv {
@@ -88,7 +93,7 @@ func New(d Deps) *Srv {
 	if d.Payload != nil {
 		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
 	}
-	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS))}}
+	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS)), syncDrainKick: make(chan struct{}, 1)}}
 }
 
 // webFS is the live content source: the OTA payload store if present (which
@@ -191,6 +196,13 @@ type urls struct {
 	Interfaces  []netinfo.Iface `json:"interfaces"`
 }
 
+type hotspotStatus struct {
+	Mode        string `json:"mode"`
+	BridgeUp    bool   `json:"bridgeUp"`
+	BridgeIP    string `json:"bridgeIP"`
+	BridgeIface string `json:"bridgeIface,omitempty"`
+}
+
 func (s *srv) urls() urls {
 	ip := netinfo.PrimaryLanIP()
 	// The Plex model: the ONLY advertised link is https:// on the activated
@@ -213,6 +225,21 @@ func (s *srv) urls() urls {
 		Port:        s.Config.Port,
 		HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
 		Interfaces:  netinfo.LanInterfaces(),
+	}
+}
+
+func (s *srv) hotspotState() hotspotStatus {
+	mode := "online"
+	if s.Config.Captive {
+		mode = "offline"
+	}
+	b := netinfo.SharedBridge()
+	bridgeUp := b.Address != "" && strings.HasPrefix(b.Address, "192.168.")
+	return hotspotStatus{
+		Mode:        mode,
+		BridgeUp:    bridgeUp,
+		BridgeIP:    b.Address,
+		BridgeIface: b.Iface,
 	}
 }
 
@@ -256,12 +283,14 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
 			"activation":     s.activationState(),
+			"hotspot":        s.hotspotState(),
 			"latencyTarget":  s.latencyTarget(bc, health.Status),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
 			"roster":         s.Listeners.Roster(),
 			"event":          s.eventState(),
+			"mirror":         s.eventMirrorState(),
 			"config":         s.payloadConfig(),
 			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
 		})
@@ -399,7 +428,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "low latency needs a real HTTPS certificate (--domain/--cert/--key) — iPhones can't play the self-signed fallback"})
 				return
 			}
-			if err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second); err != nil {
+			if err := s.MTX.EnsureReady(s.Config.RTSPPort, s.Config.HLSPort, 6*time.Second); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 				return
 			}
@@ -425,6 +454,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("pane") {
 		case "mic":
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone").Start()
+		case "sharing":
+			_ = exec.Command("open", "x-apple.systempreferences:com.apple.Sharing-Settings.extension").Start()
 		default: // "audio" / "screen" / anything → the audio-recording pane
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture").Start()
 		}
@@ -470,10 +501,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		// or ffmpeg pushes into the void and guests see a "live" broadcast
 		// nobody can hear. If a stale orphan owns the ports, reap and retry.
 		if s.Broadcaster.Delivery() == "llhls" && s.MTX != nil && !s.MTX.Running() {
-			err := s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second)
+			err := s.MTX.EnsureReady(s.Config.RTSPPort, s.Config.HLSPort, 6*time.Second)
 			if err != nil {
 				if n := mediamtx.ReapOrphans(s.Config.RTSPPort, s.Config.HLSPort); n > 0 {
-					err = s.MTX.EnsureReady(s.Config.RTSPPort, 6*time.Second)
+					err = s.MTX.EnsureReady(s.Config.RTSPPort, s.Config.HLSPort, 6*time.Second)
 				}
 			}
 			if err != nil {

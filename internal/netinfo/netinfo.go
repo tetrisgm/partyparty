@@ -12,6 +12,11 @@ type Iface struct {
 	Address string `json:"address"`
 }
 
+type Bridge struct {
+	Iface   string `json:"iface"`
+	Address string `json:"address"`
+}
+
 // VPN/tunnel interfaces a guest can never reach — exclude them from join URLs.
 func isTunnel(name string) bool {
 	for _, p := range []string{"utun", "tun", "tap", "ppp", "ipsec", "wg", "gif", "stf"} {
@@ -81,6 +86,34 @@ func PrimaryLanIP() string {
 	}
 	sort.SliceStable(list, func(i, j int) bool { return score(list[i].Address) < score(list[j].Address) })
 	return list[0].Address
+}
+
+// SharedLanIP returns the address guests should use when macOS Internet Sharing
+// is acting as the party network. Internet Sharing normally exposes bridge100
+// on 192.168.2.1; if that interface is absent, fall back to the normal LAN pick
+// so captive/offline mode still has a usable target on other sharing setups.
+func SharedLanIP() string {
+	if ip := SharedBridgeIP(); ip != "" {
+		return ip
+	}
+	return PrimaryLanIP()
+}
+
+func SharedBridgeIP() string {
+	if b := SharedBridge(); b.Address != "" {
+		return b.Address
+	}
+	return ""
+}
+
+func SharedBridge() Bridge {
+	list := LanInterfaces()
+	for _, ifc := range list {
+		if strings.HasPrefix(ifc.Iface, "bridge") {
+			return Bridge{Iface: ifc.Iface, Address: ifc.Address}
+		}
+	}
+	return Bridge{}
 }
 
 func LocalHostname() string {

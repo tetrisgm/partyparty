@@ -5,13 +5,29 @@ import ServiceManagement
 /// broadcast monitor — it does NOT duplicate the console: just live status,
 /// Open Console, Quit. Supervises the Go server child.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let server = ServerController()
+    private static let offlinePartyKey = "PPOfflinePartyEnabled"
+    private lazy var server = ServerController(captiveMode: offlinePartyEnabled)
+    private let portRedirects = PortRedirectController()
     private var updater: Updater!            // created AFTER the move check — Sparkle must
                                              // never download into a translocated/Downloads copy
     private var api: APIClient!
     private var poller: StatusPoller!
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
+    private var mainOfflineItem: NSMenuItem?
+
+    private var offlinePartyEnabled: Bool {
+        get {
+            let d = UserDefaults.standard
+            if d.object(forKey: Self.offlinePartyKey) != nil {
+                return d.bool(forKey: Self.offlinePartyKey)
+            }
+            return ProcessInfo.processInfo.environment["PARTYPARTY_CAPTIVE"] == "1"
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Self.offlinePartyKey)
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before ANYTHING (especially the server child): offer to relocate to
@@ -27,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return st == "live" || st == "starting"
         })
         server.start()
+        portRedirects.syncForCurrentMode(captive: offlinePartyEnabled)
         registerLoginItemByDefault()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
@@ -218,6 +235,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // No Go Live / Stop here: starting or killing the party is a deliberate
         // act — both live in the console only. The menu bar just monitors.
+        let offline = offlineMenuItem()
+        menu.addItem(offline)
+        menu.addItem(.separator())
         menu.addItem(item("Open \(appName)", #selector(showConsole)))
         menu.addItem(item("Check for Updates…", #selector(checkUpdates)))
         menu.addItem(item("Quit \(appName)", #selector(quit)))
@@ -245,6 +265,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let i = NSMenuItem(title: title, action: sel, keyEquivalent: "")
         i.target = self
         return i
+    }
+
+    private func offlineMenuItem() -> NSMenuItem {
+        let i = item("Host Offline Party", #selector(toggleOfflineParty))
+        i.state = offlinePartyEnabled ? .on : .off
+        i.toolTip = "Restart the local server in captive hotspot mode"
+        return i
+    }
+
+    private func updateOfflineMenuItems() {
+        mainOfflineItem?.state = offlinePartyEnabled ? .on : .off
+    }
+
+    @objc private func toggleOfflineParty() {
+        setOfflinePartyEnabled(!offlinePartyEnabled)
+    }
+
+    private func setOfflinePartyEnabled(_ enabled: Bool) {
+        guard enabled != offlinePartyEnabled else { return }
+        offlinePartyEnabled = enabled
+        updateOfflineMenuItems()
+        NSLog("partyparty: Host Offline Party \(enabled ? "enabled" : "disabled") — restarting server")
+        server.restart(captiveMode: enabled)
+        portRedirects.syncForCurrentMode(captive: enabled)
+        poller?.refresh()
     }
 
     // MARK: Login item
@@ -290,7 +335,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func quit() { NSApp.terminate(nil) }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
-    func applicationWillTerminate(_ notification: Notification) { server.stop() }
+    func applicationWillTerminate(_ notification: Notification) {
+        portRedirects.stop()
+        server.stop()
+    }
 
     // MARK: Main menu (window shortcuts incl. Cmd+W, plus copy/paste in the web view)
 
@@ -303,6 +351,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         appItem.submenu = appMenu
         _ = appMenu.addItem(withTitle: "About \(appName)",
                             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        let offline = offlineMenuItem()
+        mainOfflineItem = offline
+        appMenu.addItem(offline)
         appMenu.addItem(.separator())
         _ = appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())

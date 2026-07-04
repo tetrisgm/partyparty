@@ -109,10 +109,7 @@ func Publish(ctx context.Context, ffmpeg string, recordings []string, meta Meta,
 		return nil, errors.New("nothing to publish yet — record a set first")
 	}
 
-	slug := strings.TrimSpace(meta.Slug)
-	if !validSlugRe.MatchString(slug) {
-		slug = autoSlug(creds.InstallSlug)
-	}
+	slug := SlugForEvent(meta.Slug, creds.InstallSlug)
 
 	tmp, err := os.MkdirTemp("", "ppublish-")
 	if err != nil {
@@ -185,10 +182,7 @@ func PublishCover(ctx context.Context, imgPath, slug string, creds Creds, base s
 	if creds.ID == "" || creds.Secret == "" {
 		return errors.New("this Mac isn't registered yet — go live once first")
 	}
-	slug = strings.TrimSpace(slug)
-	if !validSlugRe.MatchString(slug) {
-		slug = autoSlug(creds.InstallSlug)
-	}
+	slug = SlugForEvent(slug, creds.InstallSlug)
 
 	tmp, err := os.MkdirTemp("", "pcover-")
 	if err != nil {
@@ -226,6 +220,16 @@ func autoSlug(installSlug string) string {
 	// Full date, not just MMDD — else next year's set on the same day would land
 	// on the same page and overwrite the link's latest set.
 	return base + "-" + time.Now().Format("20060102")
+}
+
+// SlugForEvent returns the cloud event slug used by publish paths: a valid
+// DJ-chosen slug when present, otherwise the install-derived automatic slug.
+func SlugForEvent(metaSlug, installSlug string) string {
+	slug := strings.TrimSpace(metaSlug)
+	if validSlugRe.MatchString(slug) {
+		return slug
+	}
+	return autoSlug(installSlug)
 }
 
 // remux joins the ADTS/AAC recording(s) into one faststart .m4a (stream-copy,

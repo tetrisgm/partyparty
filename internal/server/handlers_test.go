@@ -143,6 +143,19 @@ func TestStatusEndpoint(t *testing.T) {
 	if p, _ := urls["primary"].(string); !strings.HasPrefix(p, "http://") {
 		t.Errorf("primary url = %q, want http:// before activation", p)
 	}
+	hotspot, ok := body["hotspot"].(map[string]any)
+	if !ok {
+		t.Fatalf("hotspot is not an object: %T", body["hotspot"])
+	}
+	if hotspot["mode"] != "online" {
+		t.Errorf("hotspot.mode = %v, want online", hotspot["mode"])
+	}
+	if _, ok := hotspot["bridgeUp"].(bool); !ok {
+		t.Errorf("hotspot.bridgeUp missing/not bool: %v", hotspot["bridgeUp"])
+	}
+	if _, ok := hotspot["bridgeIP"].(string); !ok {
+		t.Errorf("hotspot.bridgeIP missing/not string: %v", hotspot["bridgeIP"])
+	}
 	act, ok := body["activation"].(map[string]any)
 	if !ok || act["ready"] != false {
 		t.Errorf("activation = %v, want ready:false", body["activation"])
@@ -152,6 +165,18 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 	if _, ok := body["roster"]; !ok {
 		t.Error("roster missing")
+	}
+}
+
+func TestUploadLooksLikeBigVideo(t *testing.T) {
+	if !uploadLooksLikeBigVideo("clip.MOV", liveGuestVideoDeferBytes, 0) {
+		t.Fatal("large video should be deferred while live")
+	}
+	if uploadLooksLikeBigVideo("clip.mov", liveGuestVideoDeferBytes-1, liveGuestVideoDeferBytes-1) {
+		t.Fatal("small video should upload immediately")
+	}
+	if uploadLooksLikeBigVideo("photo.jpg", liveGuestVideoDeferBytes, liveGuestVideoDeferBytes) {
+		t.Fatal("large photo should not use the live video deferral path")
 	}
 }
 
@@ -384,6 +409,10 @@ func TestWebPagesAndRouting(t *testing.T) {
 	}
 
 	captive := newTestEnv(t, func(c *config.Config) { c.Captive = true })
+	body := decodeJSON(t, do(captive.srv, "GET", "/api/status", ""))
+	if hotspot, _ := body["hotspot"].(map[string]any); hotspot["mode"] != "offline" {
+		t.Errorf("captive hotspot.mode = %v, want offline", hotspot["mode"])
+	}
 	w = do(captive.srv, "GET", "/no-such-page", "")
 	if w.Code != http.StatusFound {
 		t.Fatalf("unknown path (captive on) = %d, want 302", w.Code)

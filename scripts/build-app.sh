@@ -27,6 +27,7 @@ fi
 echo ">> Go server (-tags bundle)"
 APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/app/Info.plist" 2>/dev/null || echo dev)"
 "$GO" build -tags bundle -ldflags "-X main.appVersion=$APP_VERSION" -o "$ROOT/build/partyparty-server" "$ROOT"
+"$GO" build -o "$ROOT/build/pp-port80" "$ROOT/cmd/pp-port80"
 
 echo ">> Swift menu-bar app (release)"
 swift build -c release --package-path "$ROOT/app"
@@ -34,14 +35,16 @@ BIN="$(swift build -c release --package-path "$ROOT/app" --show-bin-path)"
 
 echo ">> assembling $APP"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "$APP/Contents/Frameworks" "$APP/Contents/Library/LaunchDaemons"
 cp "$BIN/partyparty"               "$APP/Contents/MacOS/partyparty"
 cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
+cp "$ROOT/build/pp-port80"         "$APP/Contents/Helpers/pp-port80"
 cp "$ROOT/assets/ffmpeg"           "$APP/Contents/Helpers/ffmpeg"
 cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
 cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/app/net.ramine.partyparty.port80.plist" "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port80.plist"
 
 # Sparkle framework (auto-update) — embed + make it discoverable via rpath.
 if [ -d "$BIN/Sparkle.framework" ]; then
@@ -79,7 +82,7 @@ if [ -d "$SPK" ]; then
 fi
 # ppcapture creates the Core Audio tap, so IT needs the audio-input
 # entitlement (hardened runtime denies audio otherwise). The rest don't.
-for b in mediamtx ffmpeg partyparty-server; do
+for b in mediamtx ffmpeg partyparty-server pp-port80; do
   codesign_one "$APP/Contents/Helpers/$b"
 done
 codesign_one "$APP/Contents/Helpers/ppcapture" "$ENT"

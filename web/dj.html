@@ -79,6 +79,8 @@
   .kv{display:flex;justify-content:space-between;font-size:13px;color:var(--label-secondary);padding:7px 0;border-bottom:1px solid var(--separator)}
   .hint{font-size:11px;color:var(--label-tertiary);margin-top:10px;line-height:1.5}
   .warn{background:rgba(255,149,0,.10);border:1px solid rgba(255,149,0,.35);color:#8a5200;font-size:12px;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
+  .offline-status{background:rgba(52,199,89,.11);border:1px solid rgba(52,199,89,.32);color:#1d883d;font-size:12px;font-weight:600;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
+  .offline-fallback button{margin-top:10px;width:100%}
   #helpNote{border-top:1px solid var(--separator);margin-top:14px;padding-top:12px}
   #helpNote h3{font-size:13px;font-weight:700;color:var(--label);margin:14px 0 4px}
   #helpNote h3:first-child{margin-top:0}
@@ -221,8 +223,15 @@
     <button class="cardx" id="shareCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
     <h2>Guests join here</h2>
     <div class="url" id="url">—</div>
+    <div class="offline-status" id="hotspotReady" style="display:none"></div>
+    <div class="hint" id="hotspotNoInternet" style="display:none">Guests (and this Mac) won't have internet while on this Wi-Fi — that's normal for the no-gear mode.</div>
     <div id="qr"></div>
-    <div class="hint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+    <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+    <div class="warn offline-fallback" id="hotspotFallback" style="display:none">
+      <div><b>Hotspot is not ready yet.</b></div>
+      <div>Turn on your Mac's hotspot: System Settings → General → Sharing → Internet Sharing → share to Wi-Fi.</div>
+      <button class="ghost" id="openSharingBtn" type="button">Open Sharing Settings</button>
+    </div>
 
     <div id="pubSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
       <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
@@ -234,6 +243,7 @@
         <button class="go" id="pubBtn" type="button">Publish now</button>
       </div>
       <div id="pubResult" class="hint" style="margin-top:10px;display:none"></div>
+      <div id="mirrorStatus" class="hint" style="margin-top:10px;display:none"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
         <input id="pubCoverFile" type="file" accept="image/*" style="display:none">
         <button class="ghost" id="pubCoverBtn" type="button">Set cover image</button>
@@ -402,10 +412,10 @@
     $(id).innerHTML = '<div class="online-url"><span class="url">' + escT(url) + '</span>' +
       '<button class="ghost" type="button" data-copy-url="' + escT(url) + '">Copy</button></div>';
   }
-  function renderOnline(slug){
+  function renderOnline(slug, url, published){
     lastOnlineSlug = typeof slug === 'string' ? slug.trim() : '';
     const saved = localStorage.getItem('pp.lastEventUrl') || '';
-    const eventUrl = lastOnlineSlug ? (ONLINE_BASE + '/e/' + encodeURIComponent(lastOnlineSlug)) : saved;
+    const eventUrl = url || (published && lastOnlineSlug ? (ONLINE_BASE + '/e/' + encodeURIComponent(lastOnlineSlug)) : saved);
     if (eventUrl) {
       renderOnlineUrl('onlineEvent', eventUrl);
     } else {
@@ -413,6 +423,22 @@
     }
     renderOnlineUrl('onlineHome', ONLINE_BASE);
     renderOnlineUrl('onlineLogin', ONLINE_BASE + '/login');
+  }
+  function renderMirror(m){
+    const el = $('mirrorStatus');
+    const url = m && m.url;
+    if (!m || !url || !m.published) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'block';
+    const pending = Number(m.pending || 0);
+    let sync = 'mirror complete';
+    if (pending > 0) sync = 'syncing photos & videos…';
+    if (m.error) sync = 'mirror will retry';
+    el.innerHTML = 'Your party is online → <span style="color:var(--accent);font-weight:600">' + escT(url) + '</span> ' +
+      '<button class="ghost" type="button" data-copy-url="' + escT(url) + '" style="height:24px;padding:0 9px;font-size:11px;margin-left:6px">Copy</button>' +
+      '<span style="color:var(--label-secondary)"> · ' + escT(sync) + '</span>';
   }
   document.addEventListener('click', (e) => {
     const btn = e.target && e.target.closest && e.target.closest('[data-copy-url]');
@@ -672,6 +698,7 @@
   };
   $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
   $('permBtnAlways').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
+  $('openSharingBtn').onclick = () => fetch('/api/open-settings?pane=sharing', { method:'POST' });
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
 
   function renderQR(text){
@@ -736,6 +763,12 @@
       // rather than an http link that undermines the whole cert story.
       const secure = s.urls.primary.startsWith('https://');
       const guestUrl = s.urls.primary;
+      const hotspot = s.hotspot || {};
+      const offlineMode = hotspot.mode === 'offline' || s.captive === true;
+      renderMirror(s.mirror);
+      if (s.mirror) {
+        renderOnline(s.mirror.slug || lastOnlineSlug, s.mirror.url || '', s.mirror.published);
+      }
       if (secure) {
         $('setupCard').style.display = 'none';
         stopPendingType();
@@ -743,11 +776,25 @@
         $('shareCard').style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
         $('url').textContent = guestUrl;
         renderQR(guestUrl);
+        const bridgeUp = !!hotspot.bridgeUp;
+        $('hotspotReady').style.display = offlineMode && bridgeUp ? 'block' : 'none';
+        $('hotspotNoInternet').style.display = offlineMode ? 'block' : 'none';
+        $('hotspotFallback').style.display = offlineMode && !bridgeUp ? 'block' : 'none';
+        $('shareHint').textContent = offlineMode
+          ? 'Guests join your Mac’s Wi-Fi, then scan this code. It opens in Safari/Chrome so it keeps playing in the background.'
+          : 'Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.';
+        if (offlineMode && bridgeUp) {
+          const bridge = hotspot.bridgeIP ? ' (' + hotspot.bridgeIP + ')' : '';
+          $('hotspotReady').textContent = 'Hotspot ready — guests can join your Wi-Fi, then scan.' + bridge;
+        }
         $('netCheckOut').textContent = ''; // stale diagnostics vanish once the link is up
       } else {
         // No guest link yet → no "Guests join here" theater. The setup card
         // owns this state: spinner, staged lines, connection test.
         $('shareCard').style.display = 'none';
+        $('hotspotReady').style.display = 'none';
+        $('hotspotNoInternet').style.display = 'none';
+        $('hotspotFallback').style.display = 'none';
         $('setupCard').style.display = 'block';
         startPendingType();
         $('pendingReason').textContent = (s.activation && s.activation.reason) || '';
@@ -917,7 +964,7 @@
       if (!r.ok || d.error) throw new Error(d.error || 'publish failed');
       if (d.url) {
         localStorage.setItem('pp.lastEventUrl', d.url);
-        renderOnline(lastOnlineSlug);
+        renderOnline(d.slug || lastOnlineSlug, d.url, true);
       }
       const bare = d.url.replace(/^https?:\/\//, '');
       const warn = d.warning ? ' · <span style="color:var(--label-secondary)">' + escT(d.warning) + '</span>' : '';
@@ -1065,7 +1112,7 @@
         $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
         syncHeader(data.title, data.host, data.starts);
         syncPublish(data.slug);
-        renderOnline(data.slug);
+        renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {

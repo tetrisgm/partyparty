@@ -140,6 +140,12 @@
   .saveall{display:inline-block;color:var(--accent);font-size:13px;font-weight:600;text-decoration:none;margin:0 2px 12px}
   .saveall[hidden]{display:none}
   .saveall:hover{text-decoration:underline}
+  .onlinecard{background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:13px 14px;margin:0 0 12px;box-shadow:var(--shadow);font-size:13px;line-height:1.45;color:var(--label-secondary)}
+  .onlinecard[hidden]{display:none}
+  .onlinecard a{color:var(--accent);font-weight:700;text-decoration:none;word-break:break-all}
+  .onlinecard a:hover{text-decoration:underline}
+  .onlinecopy{margin-bottom:4px}
+  .keepsake{display:inline-block;font-size:12px}
   /* keepsake claim card */
   .claimov{position:fixed;inset:0;background:rgba(245,245,247,.82);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:22;padding:28px;text-align:center}
   .claimov.show{display:flex}
@@ -195,6 +201,10 @@
     <div class="feedhead" id="feedTitle">the party wall</div>
     <div class="feedsub">photos, videos and shout-outs from everyone at this party</div>
     <a class="saveall" id="saveAll" href="/api/media.zip" hidden>⬇️ Take all the media home</a>
+    <div class="onlinecard" id="onlineCard" hidden>
+      <div class="onlinecopy">This party lives on here → <a id="onlineLink" target="_blank" rel="noopener"></a></div>
+      <a class="keepsake" id="keepsakeLink" target="_blank" rel="noopener" hidden>Your keepsake link</a>
+    </div>
     <div class="me">
       <span class="mechip" id="meChip" title="Tap to change your party name"></span>
       <span class="mechip" id="contactChip" style="font-weight:400;font-size:12px" title="Only the DJ can see this — used to send you the party page later"></span>
@@ -295,6 +305,8 @@
     let latencyTarget = 0;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let attached = false, ready = false; // pre-buffer state (hls.js path)
+    const GUEST_DEFER_VIDEO_BYTES = 32 * 1024 * 1024;
+    let drainDeferredVideos = async function(){};
     const PREBUF = 2.5;                    // seconds of cushion before we let them tap
     // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
     // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
@@ -880,6 +892,7 @@
         const wasLive = live;
         live = s.broadcast && s.broadcast.state === 'live';
         if (live !== wasLive) logEvent(live ? 'dj-live' : 'dj-stop', { target: rnd(latencyTarget) });
+        if (!live && wasLive) setTimeout(() => drainDeferredVideos(), 0);
         // "others" = everyone but you (you're in the count once you're playing).
         const others = Math.max(0, (s.listeners || 0) - (started ? 1 : 0));
         countEl.textContent = others ? ('● ' + others + ' other' + (others > 1 ? 's' : '') + ' listening') : '';
@@ -1046,6 +1059,37 @@
       const $id = (i) => document.getElementById(i);
       const feedSec = $id('feedSec'), feedList = $id('feedList'), downhint = $id('downhint');
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink'), keepsakeLink = $id('keepsakeLink');
+      const onlineCopy = onlineCard.querySelector('.onlinecopy');
+      let currentOnlineUrl = '';
+      let savedClaimUrl = '';
+      try { savedClaimUrl = localStorage.getItem('pp.claimUrl') || ''; } catch (e) {}
+      function claimHash(url){
+        const i = String(url || '').indexOf('#');
+        return i >= 0 ? String(url).slice(i) : '';
+      }
+      function paintOnlineLinks(){
+        onlineCopy.hidden = !currentOnlineUrl;
+        if (currentOnlineUrl) {
+          onlineLink.href = currentOnlineUrl;
+          onlineLink.textContent = currentOnlineUrl;
+        }
+        keepsakeLink.hidden = !savedClaimUrl;
+        if (savedClaimUrl) keepsakeLink.href = savedClaimUrl;
+        onlineCard.hidden = !currentOnlineUrl && !savedClaimUrl;
+      }
+      function saveClaimUrl(url){
+        if (!url) return;
+        savedClaimUrl = url;
+        try { localStorage.setItem('pp.claimUrl', url); } catch (e) {}
+        paintOnlineLinks();
+      }
+      function upgradeClaimBase(base){
+        if (!base || !savedClaimUrl) return;
+        const h = claimHash(savedClaimUrl);
+        if (h && savedClaimUrl.indexOf(base + h) !== 0) saveClaimUrl(base + h);
+      }
+      paintOnlineLinks();
 
       // Party name: deterministic from cid so it's stable before any edit.
       const EMO = ['🪩','🕺','💃','🎧','🎶','✨','🔥','🦩','🍾','🎉','🌈','⚡️','🫧','🎊','🛼','🐆','🍒','🌙','👾','🦋','🐬','🍄','💎','🚀'];
@@ -1191,36 +1235,79 @@
 
       // Composer
       const ctext = $id('ctext'), cfiles = $id('cfiles'), attachN = $id('attachN'), postBtn = $id('postBtn');
+      const deferredVideos = [];
       $id('attachBtn').addEventListener('click', () => cfiles.click());
       cfiles.addEventListener('change', () => {
-        attachN.textContent = cfiles.files.length ? cfiles.files.length + ' selected' : '';
+        let deferN = 0;
+        [...cfiles.files].forEach(f => { if (shouldDeferGuestVideo(f)) deferN++; });
+        attachN.textContent = deferN
+          ? deferN + ' video' + (deferN > 1 ? 's' : '') + ' will post after the set'
+          : (cfiles.files.length ? cfiles.files.length + ' selected' : '');
       });
+      function shouldDeferGuestVideo(file){
+        if (!live || !file || file.size < GUEST_DEFER_VIDEO_BYTES) return false;
+        return (file.type && file.type.indexOf('video/') === 0) || /\.(mp4|mov|m4v|webm)$/i.test(file.name || '');
+      }
+      async function uploadOne(file){
+        const fd = new FormData();
+        fd.append('file', file);
+        const r = await fetch('/api/upload', { method: 'POST', body: fd });
+        const m = await r.json();
+        if (!r.ok) throw new Error(m.error || 'upload failed');
+        return m;
+      }
+      async function postMedia(media, text){
+        const r = await fetch('/api/post', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cid, author: myName, emoji: myEmoji, text: text || '', media })
+        });
+        const res = await r.json();
+        if (!r.ok) throw new Error(res.error || 'post failed');
+        if (res.claimUrl) showClaim(res.claimUrl);
+      }
+      let drainingDeferred = false;
+      drainDeferredVideos = async function(){
+        if (live || drainingDeferred || !deferredVideos.length) return;
+        drainingDeferred = true;
+        try {
+          while (!live && deferredVideos.length) {
+            const file = deferredVideos.shift();
+            attachN.textContent = 'Posting queued video…';
+            const media = [await uploadOne(file)];
+            await postMedia(media, '');
+            await pollFeed(true);
+          }
+          attachN.textContent = '';
+        } catch (e) {
+          attachN.textContent = e.message || 'queued video failed — try again';
+        } finally {
+          drainingDeferred = false;
+        }
+      };
       async function submitPost(){
-        const files = [...cfiles.files];
+        const files = [...cfiles.files], immediate = [];
         const text = ctext.value.trim();
         if (!text && !files.length) return;
         postBtn.disabled = true;
         try {
-          const media = [];
-          for (let i = 0; i < files.length; i++) {
-            postBtn.textContent = 'Uploading ' + (i + 1) + '/' + files.length + '…';
-            const fd = new FormData();
-            fd.append('file', files[i]);
-            const r = await fetch('/api/upload', { method: 'POST', body: fd });
-            const m = await r.json();
-            if (!r.ok) throw new Error(m.error || 'upload failed');
-            media.push(m);
-          }
-          postBtn.textContent = 'Posting…';
-          const r = await fetch('/api/post', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cid, author: myName, emoji: myEmoji, text, media })
+          let queued = 0;
+          files.forEach(f => {
+            if (shouldDeferGuestVideo(f)) { deferredVideos.push(f); queued++; }
+            else immediate.push(f);
           });
-          const res = await r.json();
-          if (!r.ok) throw new Error(res.error || 'post failed');
-          ctext.value = ''; cfiles.value = ''; attachN.textContent = '';
-          if (res.claimUrl) showClaim(res.claimUrl);
-          await pollFeed(true);
+          const media = [];
+          for (let i = 0; i < immediate.length; i++) {
+            postBtn.textContent = 'Uploading ' + (i + 1) + '/' + immediate.length + '…';
+            media.push(await uploadOne(immediate[i]));
+          }
+          if (text || media.length) {
+            postBtn.textContent = 'Posting…';
+            await postMedia(media, text);
+            await pollFeed(true);
+          }
+          ctext.value = ''; cfiles.value = '';
+          attachN.textContent = queued ? 'your video will post after the set' : '';
+          if (!live) drainDeferredVideos();
         } catch (e) {
           attachN.textContent = e.message || 'failed — try again';
         } finally {
@@ -1232,7 +1319,7 @@
       // Keepsake claim link — shown exactly once (see feed.go). Also kept in
       // localStorage as a soft backup for re-display later.
       function showClaim(url){
-        try { localStorage.setItem('pp.claimUrl', url); } catch (e) {}
+        saveClaimUrl(url);
         $id('claimWho').textContent = myEmoji + ' You’re ' + myName;
         const ov = $id('claimOv');
         ov.classList.add('show');
@@ -1374,6 +1461,9 @@
           if (data.host) $id('hostedLine').textContent = data.host + ' is hosting';
           const st = $id('startsLine');
           st.hidden = !data.starts; if (data.starts) st.textContent = data.starts;
+          currentOnlineUrl = data.onlineUrl || '';
+          upgradeClaimBase(data.claimBaseUrl || '');
+          paintOnlineLinks();
           maybeWelcome(data);
           const sa = $id('saveAll');
           sa.hidden = !(data.media > 0);

@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -62,13 +63,22 @@ func waitFor(t *testing.T, d time.Duration, msg string, cond func() bool) {
 
 func freePort(t *testing.T) int {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	ln := listenLocalTCP(t)
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()
 	return port
+}
+
+func listenLocalTCP(t *testing.T) net.Listener {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		if strings.Contains(err.Error(), "operation not permitted") {
+			t.Skipf("local TCP bind is not permitted in this environment: %v", err)
+		}
+		t.Fatal(err)
+	}
+	return ln
 }
 
 func TestStartIdempotent(t *testing.T) {
@@ -221,10 +231,7 @@ func TestStartErrorMissingBinary(t *testing.T) {
 
 func TestWaitReady(t *testing.T) {
 	t.Run("success against a live listener", func(t *testing.T) {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
+		ln := listenLocalTCP(t)
 		defer ln.Close()
 		if err := WaitReady(ln.Addr().String(), 2*time.Second); err != nil {
 			t.Fatalf("WaitReady: %v", err)
@@ -246,6 +253,43 @@ func TestWaitReady(t *testing.T) {
 	})
 }
 
+func TestWaitHTTPSReady(t *testing.T) {
+	t.Run("success against a TLS HTTP listener", func(t *testing.T) {
+		ln := listenLocalTCP(t)
+		certPath := filepath.Join(t.TempDir(), "cert.pem")
+		keyPath := filepath.Join(t.TempDir(), "key.pem")
+		if err := GenerateSelfSignedCert(certPath, keyPath, []string{"127.0.0.1"}, nil); err != nil {
+			t.Fatal(err)
+		}
+		pair, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv := &http.Server{
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.NotFound(w, r)
+			}),
+		}
+		go func() {
+			_ = srv.Serve(tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{pair}}))
+		}()
+		defer srv.Close()
+		if err := WaitHTTPSReady(ln.Addr().String(), 2*time.Second); err != nil {
+			t.Fatalf("WaitHTTPSReady: %v", err)
+		}
+	})
+	t.Run("times out against a closed port", func(t *testing.T) {
+		addr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+		err := WaitHTTPSReady(addr, 400*time.Millisecond)
+		if err == nil {
+			t.Fatal("expected timeout error")
+		}
+		if !strings.Contains(err.Error(), addr) {
+			t.Fatalf("error should name the address, got: %v", err)
+		}
+	})
+}
+
 func TestEnsureReadyFailsWhenPortNeverOpens(t *testing.T) {
 	dir := t.TempDir()
 	pidLog := filepath.Join(dir, "pids")
@@ -253,7 +297,7 @@ func TestEnsureReadyFailsWhenPortNeverOpens(t *testing.T) {
 	defer s.StopWait()
 	// The stub never listens on anything, so EnsureReady must report a hard
 	// error (this is the port-conflict / bad-config detection path).
-	if err := s.EnsureReady(freePort(t), 400*time.Millisecond); err == nil {
+	if err := s.EnsureReady(freePort(t), freePort(t), 400*time.Millisecond); err == nil {
 		t.Fatal("EnsureReady should fail when the ingest port never opens")
 	}
 	if !s.Running() {

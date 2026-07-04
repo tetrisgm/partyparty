@@ -17,12 +17,16 @@ import (
 	"partyparty/internal/activate"
 	"partyparty/internal/event"
 	"partyparty/internal/publish"
+	postsync "partyparty/internal/sync"
 )
 
 // The event feed: guests post text + photos/videos from the player page; the
 // DJ sees, posts to, and moderates the same feed from the console. Guests are
 // pseudonymous (fun name + emoji chosen client-side); their private cid rides
 // along server-side only, as the future "claim my posts" proof.
+
+const liveGuestVideoDeferBytes int64 = 32 << 20
+const publicPartyBase = "https://party.ramine.net"
 
 // isDJ: the console is the app's own WKWebView on localhost — loopback is the
 // DJ, everyone else on the LAN is a guest. Same trust model as /api/shutdown.
@@ -55,8 +59,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			posts = []event.Post{}
 		}
 		meta := s.Events.Meta()
+		links := s.eventOnlineLinks()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
+			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "claimBaseUrl": links.ClaimBaseURL, "published": links.Published,
 			// dir = the event's identity; clients reset their cursor when it
 			// changes (switching to an OLDER event must replay its posts).
 			"dir":   filepath.Base(s.Events.Dir()),
@@ -126,7 +132,20 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 			return true
 		}
+		_, _ = s.Events.SetSlug(res.Slug)
+		s.syncCurrentPostsAsync(res.Slug)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": res.URL, "slug": res.Slug, "warning": res.Warning})
+	case "/api/sync-posts":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		res, err := s.syncCurrentPosts(r.Context(), "")
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sync": res})
 	case "/api/media.zip":
 		// "Everyone can take the media home": one tap streams the whole
 		// event's media as an uncompressed zip (photos/videos are already
@@ -178,7 +197,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			// First post from this guest: hand them their keepsake claim link
 			// exactly once. Token rides in the URL FRAGMENT (never reaches
 			// servers/logs); only its hash is stored here.
-			resp["claimUrl"] = "https://party.ramine.net/e/" + filepath.Base(s.Events.Dir()) + "/claim#g=" + claimToken
+			links := s.eventOnlineLinks()
+			claimBase := links.ClaimBaseURL
+			if claimBase == "" {
+				claimBase = publicPartyBase + "/e/" + filepath.Base(s.Events.Dir()) + "/claim"
+			}
+			resp["claimUrl"] = claimBase + "#g=" + claimToken
 		}
 		writeJSON(w, http.StatusOK, resp)
 	case "/api/upload":
@@ -193,6 +217,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		defer f.Close()
+		if s.Broadcaster != nil && s.Broadcaster.Status().State == "live" && uploadLooksLikeBigVideo(hdr.Filename, hdr.Size, r.ContentLength) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "your video will post after the set", "defer": true})
+			return true
+		}
 		m, err := s.Events.SaveMedia(hdr.Filename, f)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
@@ -341,6 +369,40 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+type eventLinks struct {
+	Slug         string
+	OnlineURL    string
+	ClaimBaseURL string
+	Published    bool
+}
+
+func (s *srv) eventOnlineLinks() eventLinks {
+	if s.Events == nil {
+		return eventLinks{}
+	}
+	installSlug := activate.InstallSlug()
+	metaSlug := s.Events.Slug()
+	slug := publish.SlugForEvent(metaSlug, installSlug)
+	if strings.TrimSpace(slug) == "" {
+		return eventLinks{}
+	}
+	published := metaSlug != "" || s.Events.LastPublishedSig() != ""
+	links := eventLinks{Slug: slug, ClaimBaseURL: publicPartyBase + "/e/" + slug + "/claim", Published: published}
+	if published {
+		links.OnlineURL = publicPartyBase + "/e/" + slug
+	}
+	return links
+}
+
+func uploadLooksLikeBigVideo(name string, fileSize, requestSize int64) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".mp4", ".mov", ".m4v", ".webm":
+	default:
+		return false
+	}
+	return fileSize >= liveGuestVideoDeferBytes || requestSize >= liveGuestVideoDeferBytes
+}
+
 // publishCurrentSet remuxes + uploads the current event's set recording to its
 // online /e/<slug> page, reusing this install's broker identity for auth.
 func (s *srv) publishCurrentSet(ctx context.Context) (*publish.Result, error) {
@@ -354,6 +416,81 @@ func (s *srv) publishCurrentSet(ctx context.Context) (*publish.Result, error) {
 	return publish.FromEvent(cctx, s.Config.FFmpeg, s.Events, publish.Creds{
 		ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
 	}, base)
+}
+
+func (s *srv) syncCurrentPosts(ctx context.Context, slug string) (postsync.Result, error) {
+	id, secret := activate.InstallCreds()
+	installSlug := activate.InstallSlug()
+	if slug == "" {
+		slug = publish.SlugForEvent(s.Events.Slug(), installSlug)
+	}
+	base := os.Getenv("PARTYPARTY_BROKER")
+	if base == "" {
+		base = "https://party.ramine.net"
+	}
+	cctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
+	defer cancel()
+	live := s.Broadcaster != nil && s.Broadcaster.Status().State == "live"
+	return postsync.SyncPostsWithOptions(cctx, s.Events.Dir(), publish.Creds{
+		ID: id, Secret: secret, InstallSlug: installSlug,
+	}, slug, base, postsync.Options{DeferLargeMedia: live})
+}
+
+func (s *srv) syncCurrentPostsAsync(slug string) {
+	if s.Events == nil {
+		return
+	}
+	go func() {
+		res, err := s.syncCurrentPosts(context.Background(), slug)
+		if s.Diag == nil {
+			return
+		}
+		if err != nil {
+			s.Diag.Printf("post sync failed: %v", err)
+			return
+		}
+		if res.Offline {
+			s.Diag.Printf("post sync deferred: offline (%s)", res.LastError)
+			return
+		}
+		s.Diag.Printf("post sync complete: posts=%d media=%d skipped_posts=%d skipped_media=%d deferred_media=%d", res.PostsPushed, res.MediaPushed, res.PostsSkipped, res.MediaSkipped, res.MediaDeferred)
+	}()
+}
+
+func (s *srv) eventMirrorState() map[string]any {
+	if s.Events == nil {
+		return nil
+	}
+	links := s.eventOnlineLinks()
+	if links.Slug == "" && links.OnlineURL == "" {
+		return nil
+	}
+	id, secret := activate.InstallCreds()
+	backlog, err := postsync.PendingBacklog(s.Events.Dir(), publish.Creds{
+		ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
+	}, links.Slug)
+	postsPending := backlog.PostsPending
+	mediaPending := backlog.MediaPending
+	uploadsPending := backlog.UploadsPending
+	mediaMissing := backlog.MediaMissing
+	pending := postsPending + mediaPending + uploadsPending + mediaMissing
+	setPublished := s.Events.LastPublishedSig() != ""
+	done := setPublished && links.OnlineURL != "" && pending == 0 && err == nil
+	m := map[string]any{
+		"slug":           links.Slug,
+		"url":            links.OnlineURL,
+		"published":      setPublished,
+		"pending":        pending,
+		"done":           done,
+		"postsPending":   postsPending,
+		"mediaPending":   mediaPending,
+		"uploadsPending": uploadsPending,
+		"mediaMissing":   mediaMissing,
+	}
+	if err != nil {
+		m["error"] = err.Error()
+	}
+	return m
 }
 
 // eventState summarizes the feed for /api/status (console header + badges).

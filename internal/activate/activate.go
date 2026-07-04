@@ -272,6 +272,29 @@ func CachedCert() (certFile, keyFile string, ok bool) {
 	return certFile, keyFile, true
 }
 
+// CachedCertReady returns the local live cert/key when they are immediately
+// usable for host. This is intentionally network-free: it only reads the
+// cached files and applies the same host + >renew-window check used before
+// deciding whether online activation must issue a replacement cert.
+func CachedCertReady(host string) (Result, bool) {
+	if host == "" {
+		return Result{Reason: "no cached activation host"}, false
+	}
+	dir, err := stateDir()
+	if err != nil {
+		return Result{Host: host, Reason: "no state dir: " + err.Error()}, false
+	}
+	certFile := filepath.Join(dir, "live-cert.pem")
+	keyFile := filepath.Join(dir, "live-key.pem")
+	if _, err := os.Stat(keyFile); err != nil {
+		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "no cached key"}, false
+	}
+	if !certUsable(certFile, host) {
+		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "cached certificate is missing, expired, near expiry, or for a different host"}, false
+	}
+	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}, true
+}
+
 // BrokerHost returns this install's guest hostname (<slug>.<base>) from the
 // persisted broker registration, or "" (BYO installs use their configured host).
 func BrokerHost() string {

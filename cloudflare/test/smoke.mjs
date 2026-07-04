@@ -865,6 +865,8 @@ class FakeR2Object {
 class FakeR2 {
   constructor(objects = {}) {
     this.objects = new Map(Object.entries(objects));
+    this.multipart = new Map();
+    this.multipartSeq = 0;
   }
 
   async get(key, opts = {}) {
@@ -893,6 +895,58 @@ class FakeR2 {
     const obj = new FakeR2Object(stored, { contentType });
     this.objects.set(key, obj);
     return { size: obj.size };
+  }
+
+  async createMultipartUpload(key, opts = {}) {
+    const uploadId = `upload-${++this.multipartSeq}`;
+    const state = {
+      key,
+      contentType: opts.httpMetadata?.contentType || "application/octet-stream",
+      parts: new Map(),
+    };
+    this.multipart.set(`${key}:${uploadId}`, state);
+    return this.resumeMultipartUpload(key, uploadId);
+  }
+
+  resumeMultipartUpload(key, uploadId) {
+    const r2 = this;
+    return {
+      key,
+      uploadId,
+      async uploadPart(partNumber, body) {
+        const state = r2.multipart.get(`${key}:${uploadId}`);
+        if (!state) throw new Error("No such multipart upload");
+        const bytes = new Uint8Array(await new Response(body).arrayBuffer());
+        const etag = `"part-${partNumber}-${bytes.byteLength}-${uploadId}"`;
+        state.parts.set(partNumber, { bytes, etag });
+        return { partNumber, etag };
+      },
+      async complete(parts) {
+        const state = r2.multipart.get(`${key}:${uploadId}`);
+        if (!state) throw new Error("No such multipart upload");
+        const chunks = [];
+        let size = 0;
+        for (let i = 0; i < parts.length; i += 1) {
+          const want = i + 1;
+          const part = parts[i];
+          if (part.partNumber !== want) throw new Error("parts must be ordered");
+          const stored = state.parts.get(want);
+          if (!stored || stored.etag !== part.etag) throw new Error("missing part");
+          chunks.push(stored.bytes);
+          size += stored.bytes.byteLength;
+        }
+        const out = new Uint8Array(size);
+        let offset = 0;
+        for (const chunk of chunks) {
+          out.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        const obj = new FakeR2Object(out, { contentType: state.contentType });
+        r2.objects.set(key, obj);
+        r2.multipart.delete(`${key}:${uploadId}`);
+        return { size: obj.size };
+      },
+    };
   }
 
   async delete(key) {
@@ -1884,6 +1938,7 @@ const tests = [
     assert.match(html, /silent-disco popups/);
     assert.match(html, /Get the app/);
     assert.match(html, /\/partyparty\.zip/);
+    assert.match(html, /href="\/faq"/);
     assert.notEqual(html.trim(), "");
   }],
   ["home renders public events and featured DJs", async () => {
@@ -1927,6 +1982,16 @@ const tests = [
     assert.match(html, /href="\/e\/friday-rooftop"/);
     assert.match(html, /@dj\.ramine/);
     assert.match(html, /href="\/@dj\.ramine"/);
+  }],
+  ["faq renders how it works page", async () => {
+    const resp = await fetchPath("/faq");
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /How partyparty works/);
+    assert.match(html, /Setups &amp; networks/);
+    assert.match(html, /Fraunces:opsz,wght/);
+    assert.match(html, /Questions we didn&#39;t answer\?/);
+    assert.match(html, /href="\/"/);
   }],
   ["about delegates to ASSETS", async () => {
     const resp = await fetchPath("/about");
@@ -2846,6 +2911,131 @@ const tests = [
     assert.equal(row.sort_order, 7);
     assert.equal(row.size_bytes, 16);
     assert.equal(await env.DL.objects.get(key).text(), "audio-two-longer");
+  }],
+  ["broker publish-post-media multipart rejects missing auth", async () => {
+    const resp = await fetchPath("/api/broker/publish-post-media-multipart-init", {
+      method: "POST",
+      headers: {
+        "x-pp-slug": "owned-media",
+        "x-pp-post": "post-one",
+        "x-pp-media": "media-one",
+        "x-pp-media-type": "video",
+        "x-pp-size": "10",
+      },
+    });
+    assert.equal(resp.status, 403);
+  }],
+  ["broker publish-post-media multipart requires ordered complete parts", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
+      wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
+    });
+    const env = makeEnv({ DB: db });
+    const headers = {
+      "x-pp-id": "abc123abc123",
+      "x-pp-secret": "secret-a",
+      "x-pp-slug": "owned-media",
+      "x-pp-post": "post-one",
+      "x-pp-media": "media-video",
+      "x-pp-media-type": "video",
+      "x-pp-mime": "video/mp4",
+      "x-pp-name": "clip.mp4",
+      "x-pp-sort": "4",
+      "x-pp-size": "10",
+    };
+    const init = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-init", {
+      method: "POST",
+      headers,
+    }), env);
+    assert.equal(init.status, 200);
+    const { uploadId } = await init.json();
+    const p1 = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-part", {
+      method: "PUT",
+      headers: { ...headers, "x-pp-upload-id": uploadId, "x-pp-part-number": "1", "content-length": "5" },
+      body: "hello",
+    }), env);
+    const p2 = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-part", {
+      method: "PUT",
+      headers: { ...headers, "x-pp-upload-id": uploadId, "x-pp-part-number": "2", "content-length": "5" },
+      body: "world",
+    }), env);
+    const j1 = await p1.json();
+    const j2 = await p2.json();
+    const bad = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-complete", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ uploadId, parts: [j2, j1], size: 10 }),
+    }), env);
+    assert.equal(bad.status, 400);
+    assert.equal(env.DL.objects.has("event/owned-media/posts/post-one/media-video"), false);
+    assert.equal(db.importedPostMedia.size, 0);
+  }],
+  ["broker publish-post-media multipart completes two parts and is idempotent", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
+      wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
+    });
+    const env = makeEnv({ DB: db });
+    const headers = {
+      "x-pp-id": "abc123abc123",
+      "x-pp-secret": "secret-a",
+      "x-pp-slug": "owned-media",
+      "x-pp-post": "post-one",
+      "x-pp-media": "media-video",
+      "x-pp-media-type": "video",
+      "x-pp-mime": "video/mp4",
+      "x-pp-name": "clip.mp4",
+      "x-pp-sort": "4",
+      "x-pp-size": "10",
+    };
+    const init = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-init", {
+      method: "POST",
+      headers,
+    }), env);
+    assert.equal(init.status, 200);
+    const { uploadId, mediaId } = await init.json();
+    assert.equal(mediaId, "media-video");
+    const uploadPart = async (partNumber, body) => {
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-part", {
+        method: "PUT",
+        headers: { ...headers, "x-pp-upload-id": uploadId, "x-pp-part-number": String(partNumber), "content-length": contentLength(body) },
+        body,
+      }), env);
+      assert.equal(resp.status, 200);
+      return await resp.json();
+    };
+    const firstP1 = await uploadPart(1, "hello");
+    const retryP1 = await uploadPart(1, "hello");
+    const p2 = await uploadPart(2, "world");
+    assert.equal(retryP1.etag, firstP1.etag);
+    const complete = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-complete", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ uploadId, parts: [retryP1, p2], size: 10 }),
+    }), env);
+    const json = await complete.json();
+    const key = "event/owned-media/posts/post-one/media-video";
+    const row = db.importedPostMedia.get("media-video");
+    assert.equal(complete.status, 200);
+    assert.deepEqual(json, { ok: true, key, mediaId: "media-video" });
+    assert.equal(await env.DL.objects.get(key).text(), "helloworld");
+    assert.equal(env.DL.objects.get(key).httpMetadata.contentType, "video/mp4");
+    assert.equal(row.media_key, key);
+    assert.equal(row.media_type, "video");
+    assert.equal(row.mime_type, "video/mp4");
+    assert.equal(row.name, "clip.mp4");
+    assert.equal(row.size_bytes, 10);
+    assert.equal(row.sort_order, 4);
+
+    const again = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-complete", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ uploadId, parts: [retryP1, p2], size: 10 }),
+    }), env);
+    const againJson = await again.json();
+    assert.equal(again.status, 200);
+    assert.equal(againJson.complete, true);
+    assert.equal(db.importedPostMedia.size, 1);
   }],
     ["broker event-status rejects non-owner install", async () => {
       const db = new FakeD1({

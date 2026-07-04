@@ -5,11 +5,15 @@ import Foundation
 final class ServerController {
     let port: Int
     private var process: Process?
+    private var captiveMode: Bool
     private var stopping = false
     private var restartCount = 0
     private var lastStart = Date.distantPast
 
-    init(port: Int = 8000) { self.port = port }
+    init(port: Int = 8000, captiveMode: Bool = false) {
+        self.port = port
+        self.captiveMode = captiveMode
+    }
 
     /// Locate the Go server binary. In the .app it ships at
     /// Contents/Helpers/partyparty-server (sibling of the Swift app in
@@ -35,9 +39,17 @@ final class ServerController {
             NSLog("partyparty: server binary not found (set PARTYPARTY_SERVER for dev)")
             return
         }
+        stopping = false
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = ["--no-open", "--port", String(port)]
+        var env = ProcessInfo.processInfo.environment
+        if captiveMode {
+            env["PARTYPARTY_CAPTIVE"] = "1"
+        } else {
+            env.removeValue(forKey: "PARTYPARTY_CAPTIVE")
+        }
+        p.environment = env
         p.terminationHandler = { [weak self] proc in
             DispatchQueue.main.async { self?.childExited(proc) }
         }
@@ -48,6 +60,13 @@ final class ServerController {
         } catch {
             NSLog("partyparty: failed to start server: \(error)")
         }
+    }
+
+    func restart(captiveMode: Bool) {
+        stop()
+        self.captiveMode = captiveMode
+        restartCount = 0
+        start()
     }
 
     /// Actual supervision: a crashed server comes back on its own (the app
