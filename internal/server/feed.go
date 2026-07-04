@@ -50,6 +50,35 @@ func writeFeatureDisabled(w http.ResponseWriter) {
 	writeJSON(w, http.StatusForbidden, map[string]any{"error": "the DJ turned this off", "disabled": true})
 }
 
+func writeEventEnded(w http.ResponseWriter) {
+	writeJSON(w, http.StatusConflict, map[string]any{"error": "this event has ended", "ended": true})
+}
+
+func confirmedDestructive(r *http.Request, token string) (bool, bool) {
+	confirmed := strings.TrimSpace(r.URL.Query().Get("confirm"))
+	removeRecordings := r.URL.Query().Get("removeRecordings") == "1" || r.URL.Query().Get("removeRecordings") == "true"
+	if r.Body != nil && r.ContentLength != 0 {
+		var body struct {
+			Confirm          string `json:"confirm"`
+			Confirmed        bool   `json:"confirmed"`
+			RemoveRecordings bool   `json:"removeRecordings"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&body) == nil {
+			if strings.TrimSpace(body.Confirm) != "" {
+				confirmed = strings.TrimSpace(body.Confirm)
+			}
+			if body.Confirmed {
+				confirmed = "true"
+			}
+			if body.RemoveRecordings {
+				removeRecordings = true
+			}
+		}
+	}
+	ok := confirmed == token || confirmed == "1" || strings.EqualFold(confirmed, "true")
+	return ok, removeRecordings
+}
+
 func mediaHasVideo(media []event.Media) bool {
 	for _, m := range media {
 		if m.Type == "video" {
@@ -104,7 +133,8 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		reactions, spikes := s.Events.ReactionSnapshot()
 		body := map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
-			"features": meta.Features, "moderationMode": meta.ModerationMode,
+			"features": meta.Features, "moderationMode": meta.ModerationMode, "retentionMode": meta.RetentionMode,
+			"status": meta.Status, "endedAt": meta.EndedAt,
 			"reactions": reactions, "spikes": spikes,
 			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "claimBaseUrl": links.ClaimBaseURL, "published": links.Published,
 			// dir = the event's identity; clients reset their cursor when it
@@ -127,6 +157,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/reactions":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		if !s.isDJ(r) && s.Events.Ended() {
+			writeEventEnded(w)
 			return true
 		}
 		if !s.featureOn("reactions") {
@@ -161,6 +195,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"requests": s.Events.ListRequests()})
 		case http.MethodPost:
+			if !s.isDJ(r) && s.Events.Ended() {
+				writeEventEnded(w)
+				return true
+			}
 			if !s.featureOn("requests") {
 				writeFeatureDisabled(w)
 				return true
@@ -240,6 +278,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return true
 		}
+		if !s.isDJ(r) && s.Events.Ended() {
+			writeEventEnded(w)
+			return true
+		}
 		if !s.featureOn("trackId") {
 			writeFeatureDisabled(w)
 			return true
@@ -263,6 +305,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		dj := s.isDJ(r)
+		if !dj && s.Events.Ended() {
+			writeEventEnded(w)
+			return true
+		}
 		if !dj && !s.featureOn("wallMode") {
 			writeFeatureDisabled(w)
 			return true
@@ -307,6 +353,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			Title, Host, Starts string
 			Slug                *string
 			ModerationMode      *string `json:"moderationMode"`
+			RetentionMode       *string `json:"retentionMode"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
@@ -328,8 +375,80 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				return true
 			}
 		}
+		if body.RetentionMode != nil {
+			if err := s.Events.SetRetentionMode(*body.RetentionMode); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+				return true
+			}
+		}
 		meta := s.Events.Meta()
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "slug": meta.Slug, "moderationMode": meta.ModerationMode})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "slug": meta.Slug, "moderationMode": meta.ModerationMode, "retentionMode": meta.RetentionMode})
+	case "/api/event-retention":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		mode := strings.TrimSpace(r.URL.Query().Get("mode"))
+		if mode == "" {
+			var body struct {
+				RetentionMode string `json:"retentionMode"`
+				Mode          string `json:"mode"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err == nil {
+				mode = body.RetentionMode
+				if mode == "" {
+					mode = body.Mode
+				}
+			}
+		}
+		if err := s.Events.SetRetentionMode(mode); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "retentionMode": s.Events.Meta().RetentionMode})
+	case "/api/event-end":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if err := s.Events.End(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		meta := s.Events.Meta()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": meta.Status, "endedAt": meta.EndedAt, "retentionMode": meta.RetentionMode})
+	case "/api/event-cleanup":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		ok, _ := confirmedDestructive(r, "DISCARD")
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "confirmation required"})
+			return true
+		}
+		res, err := s.Events.CleanupPendingHidden()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cleanup": res})
+	case "/api/event-delete":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		ok, removeRecordings := confirmedDestructive(r, event.DeleteEventConfirm)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "confirmation required"})
+			return true
+		}
+		res, err := s.Events.DeleteEventData(removeRecordings)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": res, "recordingsRemoved": removeRecordings})
 	case "/api/event-features":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -425,6 +544,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		dj := s.isDJ(r)
+		if !dj && s.Events.Ended() {
+			writeEventEnded(w)
+			return true
+		}
 		if !dj {
 			if !s.featureOn("wallMode") {
 				writeFeatureDisabled(w)
@@ -471,6 +594,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		dj := s.isDJ(r)
+		if !dj && s.Events.Ended() {
+			writeEventEnded(w)
+			return true
+		}
 		if !dj && !s.featureOn("wallMode") {
 			writeFeatureDisabled(w)
 			return true
@@ -824,12 +951,15 @@ func (s *srv) eventState() map[string]any {
 	_, ids, mediaCount := s.Events.Feed(1 << 62) // counts only, no post bodies
 	meta := s.Events.Meta()
 	body := map[string]any{
-		"title":    meta.Title,
-		"host":     meta.Host,
-		"features": meta.Features,
-		"posts":    len(ids),
-		"media":    mediaCount,
-		"dir":      s.Events.Dir(),
+		"title":         meta.Title,
+		"host":          meta.Host,
+		"features":      meta.Features,
+		"retentionMode": meta.RetentionMode,
+		"status":        meta.Status,
+		"endedAt":       meta.EndedAt,
+		"posts":         len(ids),
+		"media":         mediaCount,
+		"dir":           s.Events.Dir(),
 	}
 	if s.featureOn("tippingLinks") {
 		body["links"] = meta.Links

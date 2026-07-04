@@ -363,6 +363,127 @@ func TestEventFeaturesDJBypass(t *testing.T) {
 	}
 }
 
+func TestEventEndMarksEndedAndBlocksGuestWrites(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	guest := "192.168.1.44:3333"
+	postJSON := func(target, remote string, body any) *httptest.ResponseRecorder {
+		t.Helper()
+		data, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doBody(s, http.MethodPost, target, remote, "application/json", bytes.NewBuffer(data))
+	}
+	w := do(s, http.MethodPost, "/api/event-end", guest)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("guest event-end status = %d, want 403", w.Code)
+	}
+	w = do(s, http.MethodPost, "/api/event-end", "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ event-end status = %d, body %q", w.Code, w.Body.String())
+	}
+	if ev.Meta().Status != event.StatusEnded || !ev.Ended() {
+		t.Fatalf("event not ended: %#v", ev.Meta())
+	}
+	w = postJSON("/api/post", guest, map[string]any{"cid": "c1", "author": "Guest", "emoji": "🎉", "text": "too late"})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("guest post after end status = %d, body %q; want 409", w.Code, w.Body.String())
+	}
+	w = postJSON("/api/requests", guest, map[string]any{"cid": "c1", "text": "track"})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("guest request after end status = %d, body %q; want 409", w.Code, w.Body.String())
+	}
+	body, ct := multipartUpload(t, "photo.jpg", "image/jpeg")
+	w = doBody(s, http.MethodPost, "/api/upload", guest, ct, body)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("guest upload after end status = %d, body %q; want 409", w.Code, w.Body.String())
+	}
+	w = postJSON("/api/post", "127.0.0.1:1234", map[string]any{"cid": "dj", "author": "DJ", "emoji": "🎧", "text": "DJ can still post"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ post after end status = %d, body %q", w.Code, w.Body.String())
+	}
+}
+
+func TestEventRetentionCleanupDeleteConfirmAndDJOnly(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	guest := "192.168.1.44:3333"
+
+	if got := ev.Meta().RetentionMode; got != event.RetentionKeepApproved {
+		t.Fatalf("default retention = %q, want keep_approved", got)
+	}
+	w := do(s, http.MethodPost, "/api/event-retention?mode=tonight_only", guest)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("guest event-retention status = %d, want 403", w.Code)
+	}
+	w = do(s, http.MethodPost, "/api/event-retention?mode=tonight_only", "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ event-retention status = %d, body %q", w.Code, w.Body.String())
+	}
+	if got := ev.Meta().RetentionMode; got != event.RetentionTonightOnly {
+		t.Fatalf("retention mode = %q, want tonight_only", got)
+	}
+
+	media, err := ev.SaveMedia("photo.jpg", strings.NewReader("photo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post, _, err := ev.AddPost("cid", "Guest", "🎉", "", []event.Media{media}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ev.SetPostState(post.ID, event.StatePending); err != nil {
+		t.Fatal(err)
+	}
+
+	w = do(s, http.MethodPost, "/api/event-cleanup?confirm=1", guest)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("guest event-cleanup status = %d, want 403", w.Code)
+	}
+	w = do(s, http.MethodPost, "/api/event-cleanup", "127.0.0.1:1234")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("event-cleanup without confirm status = %d, body %q; want 400", w.Code, w.Body.String())
+	}
+	w = do(s, http.MethodPost, "/api/event-cleanup?confirm=1", "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("event-cleanup confirmed status = %d, body %q", w.Code, w.Body.String())
+	}
+	if _, ok := ev.MediaPath(media.ID); ok {
+		t.Fatal("cleanup did not remove pending media")
+	}
+
+	media, err = ev.SaveMedia("photo.jpg", strings.NewReader("photo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ev.AddPost("cid", "Guest", "🎉", "", []event.Media{media}, false); err != nil {
+		t.Fatal(err)
+	}
+	w = do(s, http.MethodPost, "/api/event-delete?confirm=1", guest)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("guest event-delete status = %d, want 403", w.Code)
+	}
+	w = do(s, http.MethodPost, "/api/event-delete", "127.0.0.1:1234")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("event-delete without confirm status = %d, body %q; want 400", w.Code, w.Body.String())
+	}
+	w = do(s, http.MethodPost, "/api/event-delete?confirm="+strings.ReplaceAll(event.DeleteEventConfirm, " ", "%20"), "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("event-delete confirmed status = %d, body %q", w.Code, w.Body.String())
+	}
+	_, ids, mediaCount := ev.Feed(0)
+	if len(ids) != 0 || mediaCount != 0 {
+		t.Fatalf("feed after event-delete ids=%v media=%d, want empty", ids, mediaCount)
+	}
+}
+
 func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {

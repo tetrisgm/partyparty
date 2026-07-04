@@ -130,6 +130,9 @@ type Meta struct {
 	Starts         string          `json:"starts,omitempty"`
 	Features       map[string]bool `json:"features,omitempty"`
 	ModerationMode string          `json:"moderationMode,omitempty"`
+	RetentionMode  string          `json:"retentionMode,omitempty"`
+	Status         string          `json:"status,omitempty"`
+	EndedAt        int64           `json:"endedAt,omitempty"`
 	Links          []Link          `json:"links,omitempty"`
 	// Slug is the DJ's chosen /e/<slug> for this event's ONLINE page. "" means
 	// auto-derive one from the install at publish time. Charset-gated (see
@@ -155,6 +158,15 @@ const (
 
 	ModerationPostModerate = "post_moderate"
 	ModerationPreApprove   = "pre_approve"
+
+	RetentionTonightOnly  = "tonight_only"
+	RetentionKeepApproved = "keep_approved"
+	RetentionArchiveAll   = "archive_all"
+
+	StatusActive = "active"
+	StatusEnded  = "ended"
+
+	DeleteEventConfirm = "DELETE EVENT DATA"
 )
 
 var linkTypeLabels = map[string]string{
@@ -193,6 +205,26 @@ func normalizeModerationMode(mode string) string {
 
 func validModerationMode(mode string) bool {
 	return mode == ModerationPostModerate || mode == ModerationPreApprove
+}
+
+func normalizeRetentionMode(mode string) string {
+	switch mode {
+	case RetentionTonightOnly, RetentionArchiveAll:
+		return mode
+	default:
+		return RetentionKeepApproved
+	}
+}
+
+func validRetentionMode(mode string) bool {
+	return mode == RetentionTonightOnly || mode == RetentionKeepApproved || mode == RetentionArchiveAll
+}
+
+func normalizeStatus(status string) string {
+	if status == StatusEnded {
+		return StatusEnded
+	}
+	return StatusActive
 }
 
 func normalizeRequestState(state string) string {
@@ -556,6 +588,8 @@ func (s *Store) use(dir string) error {
 	}
 	meta.Features = normalizeFeatures(meta.Features)
 	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
+	meta.RetentionMode = normalizeRetentionMode(meta.RetentionMode)
+	meta.Status = normalizeStatus(meta.Status)
 	meta.Links, _ = normalizeLinks(meta.Links)
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
@@ -572,6 +606,8 @@ func (s *Store) Meta() Meta {
 	m := s.meta
 	m.Features = normalizeFeatures(s.meta.Features)
 	m.ModerationMode = normalizeModerationMode(s.meta.ModerationMode)
+	m.RetentionMode = normalizeRetentionMode(s.meta.RetentionMode)
+	m.Status = normalizeStatus(s.meta.Status)
 	m.Links = append([]Link(nil), s.meta.Links...)
 	return m
 }
@@ -680,6 +716,45 @@ func (s *Store) SetModerationMode(mode string) error {
 	}
 	s.changed()
 	return nil
+}
+
+// SetRetentionMode stores the DJ's event-level retention choice. The default
+// is keep_approved so older events never become destructive by surprise.
+func (s *Store) SetRetentionMode(mode string) error {
+	if !validRetentionMode(mode) {
+		return errors.New("unknown retention mode")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.RetentionMode = mode
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// End marks the event ended. This is separate from stopping the broadcast and
+// does not delete anything; destructive retention actions require later calls.
+func (s *Store) End() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.Status = StatusEnded
+	if s.meta.EndedAt == 0 {
+		s.meta.EndedAt = time.Now().UnixMilli()
+	}
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// Ended reports whether public guest writes should be blocked.
+func (s *Store) Ended() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return normalizeStatus(s.meta.Status) == StatusEnded
 }
 
 // NormalizeSlug lowercases, keeps the Worker's EVENT_RE charset ([a-z0-9_.-])
@@ -1293,6 +1368,174 @@ func (s *Store) Delete(id string) error {
 	p.Deleted = true
 	s.changed()
 	return nil
+}
+
+// RetentionCleanupResult reports exactly what an explicit retention action
+// removed. No retention cleanup runs automatically.
+type RetentionCleanupResult struct {
+	PostsRemoved    int `json:"postsRemoved"`
+	CommentsRemoved int `json:"commentsRemoved"`
+	MediaRemoved    int `json:"mediaRemoved"`
+	ThumbsRemoved   int `json:"thumbsRemoved"`
+}
+
+func (s *Store) mediaFileLocked(id string) (string, bool) {
+	if !validMediaID(id) {
+		return "", false
+	}
+	p := filepath.Join(s.dir, "media", id)
+	rel, err := filepath.Rel(s.dir, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+	return p, true
+}
+
+func (s *Store) thumbFileLocked(id string) (string, bool) {
+	if !validMediaID(id) {
+		return "", false
+	}
+	p := filepath.Join(s.dir, "media", "thumbs", thumbFileName(id))
+	rel, err := filepath.Rel(s.dir, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+	return p, true
+}
+
+func removeFileIfExists(path string) (bool, error) {
+	if path == "" {
+		return false, nil
+	}
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// CleanupPendingHidden discards only pending/hidden posts and comments for the
+// current event. Approved posts, approved comments, and recordings survive.
+func (s *Store) CleanupPendingHidden() (RetentionCleanupResult, error) {
+	var res RetentionCleanupResult
+	var mediaFiles, thumbFiles []string
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UnixMilli()
+	for _, p := range s.posts {
+		if p.Deleted {
+			continue
+		}
+		if normalizeState(p.State) != StateApproved {
+			if err := s.appendLine(line{Op: "delete", ID: p.ID, TS: now}); err != nil {
+				return res, err
+			}
+			p.Deleted = true
+			res.PostsRemoved++
+			for _, m := range p.Media {
+				if mf, ok := s.mediaFileLocked(m.ID); ok {
+					mediaFiles = append(mediaFiles, mf)
+				}
+				if tf, ok := s.thumbFileLocked(m.ID); ok {
+					thumbFiles = append(thumbFiles, tf)
+				}
+			}
+			continue
+		}
+		kept := p.Comments[:0]
+		changed := false
+		for _, c := range p.Comments {
+			if normalizeState(c.State) == StateApproved {
+				kept = append(kept, c)
+				continue
+			}
+			if now <= p.Act {
+				now = p.Act + 1
+			}
+			if err := s.appendLine(line{Op: "comment-delete", ID: p.ID, CommentID: c.ID, TS: now}); err != nil {
+				return res, err
+			}
+			res.CommentsRemoved++
+			changed = true
+		}
+		if changed {
+			p.Comments = kept
+			p.Act = now
+		}
+	}
+	for _, f := range mediaFiles {
+		removed, err := removeFileIfExists(f)
+		if err != nil {
+			return res, err
+		}
+		if removed {
+			res.MediaRemoved++
+		}
+	}
+	for _, f := range thumbFiles {
+		removed, err := removeFileIfExists(f)
+		if err != nil {
+			return res, err
+		}
+		if removed {
+			res.ThumbsRemoved++
+		}
+	}
+	if res.PostsRemoved > 0 || res.CommentsRemoved > 0 || res.MediaRemoved > 0 || res.ThumbsRemoved > 0 {
+		s.changed()
+	}
+	return res, nil
+}
+
+// DeleteEventData removes this event's guest-created local content after the
+// caller has verified an explicit DJ confirmation. Recordings are preserved
+// unless removeRecordings is true.
+func (s *Store) DeleteEventData(removeRecordings bool) (RetentionCleanupResult, error) {
+	var res RetentionCleanupResult
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	postsPath := filepath.Join(s.dir, "posts.jsonl")
+	guestsPath := filepath.Join(s.dir, "guests.json")
+	mediaDir := filepath.Join(s.dir, "media")
+	recordingsDir := filepath.Join(s.dir, "recordings")
+	for _, p := range s.posts {
+		if !p.Deleted {
+			res.PostsRemoved++
+			res.MediaRemoved += len(p.Media)
+			res.CommentsRemoved += len(p.Comments)
+		}
+	}
+	if err := os.Remove(postsPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return res, err
+	}
+	if err := os.Remove(guestsPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return res, err
+	}
+	if err := os.RemoveAll(mediaDir); err != nil {
+		return res, err
+	}
+	if removeRecordings {
+		if err := os.RemoveAll(recordingsDir); err != nil {
+			return res, err
+		}
+	}
+	for _, sub := range []string{"media", filepath.Join("media", "thumbs"), "recordings"} {
+		if err := os.MkdirAll(filepath.Join(s.dir, sub), 0o755); err != nil {
+			return res, err
+		}
+	}
+	s.posts = nil
+	s.byID = map[string]*Post{}
+	s.requests = nil
+	s.byReqID = map[string]*Request{}
+	s.guests = map[string]*Guest{}
+	s.currentTrack = nil
+	s.recentTracks = nil
+	s.trackAsks = nil
+	s.changed()
+	return res, nil
 }
 
 // SetContact stores a guest's optional private contact (email/phone) — the

@@ -234,6 +234,13 @@
   .linkdel{width:28px;height:28px;padding:0;border-radius:999px;background:var(--fill);color:var(--label-secondary)}
   .linkactions{display:flex;align-items:center;gap:8px;margin-top:10px}
   .linkstatus{font-size:12px;color:var(--label-secondary);min-height:16px}
+  .retentionbox{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .retentiongrid{display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:start}
+  .retentiondesc{font-size:12px;color:var(--label-secondary);line-height:1.45}
+  .endflow{border:1px solid rgba(255,149,0,.28);background:rgba(255,149,0,.07);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .endflow.ended{border-color:rgba(255,59,48,.25);background:rgba(255,59,48,.06)}
+  .endactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .dangerbtn{background:var(--danger);color:#fff}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
   .sheetov.show{display:flex}
@@ -404,6 +411,24 @@
       </div>
       <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
       <div class="featurebar" id="moderationToggles" aria-label="Moderation mode"></div>
+      <div class="retentionbox">
+        <div class="retentiongrid">
+          <div>
+            <label for="retentionMode">Data retention</label>
+            <select id="retentionMode">
+              <option value="keep_approved">Keep approved</option>
+              <option value="archive_all">Archive all</option>
+              <option value="tonight_only">Tonight only</option>
+            </select>
+          </div>
+          <div class="retentiondesc" id="retentionDesc"></div>
+        </div>
+      </div>
+      <div class="endflow" id="endFlow">
+        <b id="endFlowTitle">End event</b>
+        <div class="retentiondesc" id="endFlowText"></div>
+        <div class="endactions" id="endFlowActions"></div>
+      </div>
       <div class="linkeditor" id="linkEditor">
         <div class="linkeditor-head"><b>Follow / tip links</b><span class="muted" id="linkEditorState"></span></div>
         <div class="linkrows" id="linkRows"></div>
@@ -1185,7 +1210,7 @@
     const nodes = new Map();
     const allPosts = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
-    let newestAct = 0, on = false, curDir = '', currentModerationMode = 'post_moderate';
+    let newestAct = 0, on = false, curDir = '', currentModerationMode = 'post_moderate', currentRetentionMode = 'keep_approved', currentEventStatus = 'active';
     const featureDefs = [
       ['uploads', 'Uploads', true], ['videoUploads', 'Video', false], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
       ['requests', 'Requests', false], ['trackId', 'Track ID', false], ['tippingLinks', 'Tips', true], ['wallMode', 'Wall', true]
@@ -1379,6 +1404,111 @@
       const input = $('preApproveToggle');
       if (input) input.checked = currentModerationMode === 'pre_approve';
     }
+    const retentionText = {
+      keep_approved: 'Approved uploads and comments survive. After the event, pending and hidden items can be discarded only after DJ confirmation.',
+      archive_all: 'Everything stays in this event folder. Ending the event blocks new guest posts but does not delete anything.',
+      tonight_only: 'Temporary event. At the end, export or publish a recap first; deleting event data is a separate confirmed action.'
+    };
+    function renderRetentionMode(mode){
+      currentRetentionMode = (mode === 'tonight_only' || mode === 'archive_all') ? mode : 'keep_approved';
+      const sel = $('retentionMode');
+      if (sel && sel.value !== currentRetentionMode) sel.value = currentRetentionMode;
+      $('retentionDesc').textContent = retentionText[currentRetentionMode] || retentionText.keep_approved;
+    }
+    function renderEndFlow(status, mode){
+      currentEventStatus = status === 'ended' ? 'ended' : 'active';
+      renderRetentionMode(mode || currentRetentionMode);
+      const box = $('endFlow');
+      const actions = $('endFlowActions');
+      box.classList.toggle('ended', currentEventStatus === 'ended');
+      actions.innerHTML = '';
+      if (currentEventStatus !== 'ended') {
+        $('endFlowTitle').textContent = 'End event';
+        $('endFlowText').textContent = 'Ending blocks new guest posts, comments, uploads, requests, and reactions. It does not delete anything.';
+        actions.innerHTML = '<button class="ghost" id="eventEndBtn" type="button">End Event</button>';
+        $('eventEndBtn').onclick = async () => {
+          const btn = $('eventEndBtn');
+          if (btn.textContent !== 'Confirm end event') {
+            btn.textContent = 'Confirm end event';
+            setTimeout(() => { if (btn.textContent === 'Confirm end event') btn.textContent = 'End Event'; }, 3500);
+            return;
+          }
+          btn.disabled = true;
+          try {
+            const r = await fetch('/api/event-end', { method:'POST' });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || d.error) throw new Error(d.error || 'end failed');
+            renderEndFlow(d.status || 'ended', d.retentionMode || currentRetentionMode);
+          } catch (e) {
+            $('endFlowText').textContent = e.message || 'Could not end event.';
+          } finally {
+            btn.disabled = false;
+          }
+        };
+        return;
+      }
+      $('endFlowTitle').textContent = 'Event ended';
+      if (currentRetentionMode === 'archive_all') {
+        $('endFlowText').textContent = 'Archive all is selected. No event data will be deleted.';
+        return;
+      }
+      if (currentRetentionMode === 'keep_approved') {
+        $('endFlowText').textContent = 'Approved content and recordings are kept. Pending and hidden posts/comments can be discarded after confirmation.';
+        actions.innerHTML = '<button class="ghost" id="eventCleanupBtn" type="button">Discard pending/hidden</button>';
+        $('eventCleanupBtn').onclick = async () => {
+          if (!window.confirm('Discard pending and hidden posts/comments for this event? Approved content and recordings will stay.')) return;
+          const btn = $('eventCleanupBtn');
+          btn.disabled = true; btn.textContent = 'Discarding…';
+          try {
+            const r = await fetch('/api/event-cleanup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ confirmed:true }) });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || d.error) throw new Error(d.error || 'cleanup failed');
+            btn.textContent = 'Discarded';
+            newestAct = 0; on = false; list.innerHTML = ''; nodes.clear(); allPosts.clear(); await poll();
+          } catch (e) {
+            btn.textContent = e.message || 'cleanup failed';
+          } finally {
+            setTimeout(() => { btn.disabled = false; btn.textContent = 'Discard pending/hidden'; }, 1800);
+          }
+        };
+        return;
+      }
+      $('endFlowText').textContent = 'This event is set to delete tonight. Export or publish a recap before deleting. Deletion removes guest posts and media from this event folder; recordings stay unless separately selected.';
+      actions.innerHTML = '<button class="go" id="eventRecapBtn" type="button">Generate recap</button><button class="dangerbtn" id="eventDeleteBtn" type="button">Delete event data</button>';
+      $('eventRecapBtn').onclick = () => pubBtn.click();
+      $('eventDeleteBtn').onclick = async () => {
+        const token = window.prompt('Type DELETE EVENT DATA to delete guest posts and media for this event. This cannot be undone.');
+        if (token !== 'DELETE EVENT DATA') return;
+        const btn = $('eventDeleteBtn');
+        btn.disabled = true; btn.textContent = 'Deleting…';
+        try {
+          const r = await fetch('/api/event-delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ confirm: token }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.error) throw new Error(d.error || 'delete failed');
+          newestAct = 0; on = false; list.innerHTML = ''; nodes.clear(); allPosts.clear(); authors.clear(); renderModQueue(); await poll();
+          btn.textContent = 'Event data deleted';
+        } catch (e) {
+          btn.textContent = e.message || 'delete failed';
+        } finally {
+          setTimeout(() => { btn.disabled = false; btn.textContent = 'Delete event data'; }, 2200);
+        }
+      };
+    }
+    $('retentionMode').addEventListener('change', async (e) => {
+      const mode = e.target.value;
+      e.target.disabled = true;
+      try {
+        const r = await fetch('/api/event-retention', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ retentionMode: mode }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'retention update failed');
+        renderEndFlow(currentEventStatus, d.retentionMode || mode);
+      } catch (err) {
+        renderRetentionMode(currentRetentionMode);
+        e.target.title = err.message || 'retention update failed';
+      } finally {
+        e.target.disabled = false;
+      }
+    });
     $('addLinkBtn').addEventListener('click', () => {
       $('linkRows').appendChild(linkRow({ type:'website', url:'', label:'' }));
       const rows = $('linkRows').querySelectorAll('.linkrow');
@@ -1700,6 +1830,7 @@
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderTrackPanel(data.features || {}, data.nowPlaying || null, data.recentTracks || [], data.trackAsks || 0);
         renderModerationMode(data.moderationMode || 'post_moderate');
+        renderEndFlow(data.status || 'active', data.retentionMode || 'keep_approved');
         renderLinkEditor(data.links || [], data.features || {});
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         pollRequests();
