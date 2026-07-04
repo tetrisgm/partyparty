@@ -751,6 +751,16 @@ const FAQ_GROUPS = [{
       { title: "An iPhone Personal Hotspot:", body: "works for up to 5 phones." },
       { title: "After the party:", body: "publish the set (and the night's photos & clips) to a shareable replay page online." },
     ],
+  }, {
+    q: "Does it work with no internet?",
+    p: [
+      "Yes. Your Mac can host its own Wi-Fi and run the whole party with zero internet — it becomes the network. Guests join that Wi-Fi and listen. Two honest notes: while they're on it their phones won't have internet, and it's best for a small group (a laptop's radio handles a handful of people — for a bigger crowd, bring a small travel router). One click starts it; if your Mac needs a nudge, it shows you the single setting to flip.",
+    ],
+  }, {
+    q: "What if the venue Wi-Fi is bad?",
+    p: [
+      "If guests can't reach you, the app notices and offers to switch to hosting your own Wi-Fi in one tap. It never quietly fails — you'll see exactly what's wrong.",
+    ],
   }],
 }, {
   title: "Capacity & limits",
@@ -777,6 +787,30 @@ const FAQ_GROUPS = [{
     q: "Does it drain my guests' phones or use their data?",
     p: [
       "It's just a web page playing audio on your local network — no app, and on a local/offline network it uses no cellular data at all.",
+    ],
+  }],
+}, {
+  title: "At the party",
+  intro: "Turn the page into tonight's party — every feature is yours to switch on or off.",
+  items: [{
+    q: "Can people do more than listen?",
+    p: [
+      "Yes, when you turn it on: guests can drop photos and short videos to the party wall, tap reactions (🔥 louder / rewind…) so you can read the room, request a track, and ask \"what's this?\" for the current song. Every one of these is a switch you control — flip any of them off instantly, mid-set.",
+    ],
+  }, {
+    q: "Is there a big-screen mode?",
+    p: [
+      "Yes — open the Wall on a TV or projector. It shows the join QR, the night's photos, live reactions, and what's playing. It's display-only, and shows only what you've approved.",
+    ],
+  }, {
+    q: "Who sees the photos — can I moderate?",
+    p: [
+      "You decide. Approve items before they appear, or let them post and hide anything after; remove any photo or comment; and turn uploads or comments off with one toggle. Nothing reaches the wall or the recap without your say-so.",
+    ],
+  }, {
+    q: "Do my photos and videos end up online after?",
+    p: [
+      "Yes. After the party, everything people captured — photos, videos, comments, and your set — mirrors to your event page automatically (uploaded once the set ends, so it never slows the music), and you get a shareable link. You can also export a self-contained recap to keep offline.",
     ],
   }],
 }, {
