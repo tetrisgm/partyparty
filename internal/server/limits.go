@@ -8,10 +8,11 @@ import (
 )
 
 const (
-	uploadLimitInterval  = 3 * time.Second
-	postLimitInterval    = 5 * time.Second
-	commentLimitInterval = 2 * time.Second
-	limitEntryTTL        = time.Minute
+	uploadLimitInterval   = 3 * time.Second
+	postLimitInterval     = 5 * time.Second
+	commentLimitInterval  = 2 * time.Second
+	reactionLimitInterval = time.Second
+	limitEntryTTL         = time.Minute
 )
 
 type limiter struct {
@@ -29,9 +30,10 @@ func newLimiter() *limiter {
 		uploads: make(chan struct{}, 2),
 		last:    make(map[string]time.Time),
 		intervals: map[string]time.Duration{
-			"upload":  uploadLimitInterval,
-			"post":    postLimitInterval,
-			"comment": commentLimitInterval,
+			"upload":   uploadLimitInterval,
+			"post":     postLimitInterval,
+			"comment":  commentLimitInterval,
+			"reaction": reactionLimitInterval,
 		},
 		now: time.Now,
 	}

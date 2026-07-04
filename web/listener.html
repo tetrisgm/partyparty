@@ -70,6 +70,12 @@
   .eq i:nth-child(2){animation-delay:.2s} .eq i:nth-child(3){animation-delay:.4s} .eq i:nth-child(4){animation-delay:.1s} .eq i:nth-child(5){animation-delay:.3s}
   @keyframes bounce{0%,100%{height:6px}50%{height:26px}}
   .count{color:var(--label-secondary);font-size:13px;margin-top:8px;min-height:16px}
+  .reactions{width:min(370px,calc(100vw - 36px));margin-top:14px;display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .reactions[hidden]{display:none}
+  .reactbtn{height:44px;border:none;border-radius:999px;background:var(--card);color:var(--label);font-size:21px;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;padding:0}
+  .reactbtn:active,.reactbtn.pulse{transform:scale(.94);background:#fff0f4}
+  .reactbtn:disabled{opacity:.45}
+  .reactambient{grid-column:1/-1;color:var(--label-secondary);font-size:12px;min-height:15px;text-align:center;font-variant-numeric:tabular-nums}
   .foot{color:var(--label-tertiary);font-size:12px;padding:0 20px;margin-top:30px}
   .downhint{position:absolute;bottom:12px;left:0;right:0;color:var(--label-secondary);font-size:13px;opacity:.9}
   .downhint .chev{display:block;font-size:16px;line-height:1;animation:nudge 2.4s ease-in-out infinite}
@@ -196,6 +202,16 @@
     <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
     <div class="pill" id="pill"><span class="dot"></span><span id="pilltext">connecting…</span></div>
     <div class="count" id="count"></div>
+    <div class="reactions" id="reactionBar" hidden>
+      <button class="reactbtn" type="button" data-react="fire" aria-label="Fire" title="Fire">🔥</button>
+      <button class="reactbtn" type="button" data-react="heart" aria-label="Heart" title="Heart">❤️</button>
+      <button class="reactbtn" type="button" data-react="louder" aria-label="Louder" title="Louder">🔊</button>
+      <button class="reactbtn" type="button" data-react="quieter" aria-label="Quieter" title="Quieter">🔉</button>
+      <button class="reactbtn" type="button" data-react="rewind" aria-label="Rewind" title="Rewind">⏪</button>
+      <button class="reactbtn" type="button" data-react="id" aria-label="Track ID" title="Track ID">❓</button>
+      <button class="reactbtn" type="button" data-react="more" aria-label="More like this" title="More like this">✨</button>
+      <div class="reactambient" id="reactionAmbient"></div>
+    </div>
 
     <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
     <div class="statline" id="statline">v__PP_VERSION__</div>
@@ -1067,10 +1083,16 @@
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink'), keepsakeLink = $id('keepsakeLink');
       const onlineCopy = onlineCard.querySelector('.onlinecopy');
+      const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const featureDefaults = {
         uploads: true, videoUploads: false, comments: true, reactions: false,
         requests: false, trackId: false, tippingLinks: true, wallMode: true
       };
+      const reactionDefs = [
+        ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'], ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
+      ];
+      let reactionCounts = {};
+      let nextReactionAt = 0;
       let currentFeatures = Object.assign({}, featureDefaults);
       let featureSig = JSON.stringify(currentFeatures);
       let currentOnlineUrl = '';
@@ -1114,6 +1136,39 @@
       function featureOn(name){
         return currentFeatures[name] !== false;
       }
+      function updateReactionUI(counts){
+        reactionCounts = counts || reactionCounts || {};
+        reactionBar.hidden = !featureOn('reactions');
+        if (!featureOn('reactions')) {
+          reactionAmbient.textContent = '';
+          return;
+        }
+        let top = null;
+        for (const [type, emoji] of reactionDefs) {
+          const n = Number(reactionCounts[type] || 0);
+          if (n > 0 && (!top || n > top.n)) top = { emoji, n };
+        }
+        reactionAmbient.textContent = top ? top.emoji + ' ×' + top.n : '';
+      }
+      reactionBar.addEventListener('click', async (e) => {
+        const btn = e.target && e.target.closest && e.target.closest('button[data-react]');
+        if (!btn || !featureOn('reactions')) return;
+        const now = Date.now();
+        if (now < nextReactionAt) return;
+        nextReactionAt = now + 1000;
+        const type = btn.dataset.react;
+        btn.classList.add('pulse');
+        setTimeout(() => btn.classList.remove('pulse'), 180);
+        const optimistic = Object.assign({}, reactionCounts);
+        optimistic[type] = Number(optimistic[type] || 0) + 1;
+        updateReactionUI(optimistic);
+        try {
+          const r = await fetch('/api/reactions', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cid, type }) });
+          if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { reactions: false }));
+          if (r.status === 429) nextReactionAt = Date.now() + 1200;
+        } catch (err) {}
+      });
 
       // Party name: deterministic from cid so it's stable before any edit.
       const EMO = ['🪩','🕺','💃','🎧','🎶','✨','🔥','🦩','🍾','🎉','🌈','⚡️','🫧','🎊','🛼','🐆','🍒','🌙','👾','🦋','🐬','🍄','💎','🚀'];
@@ -1267,6 +1322,7 @@
         const wallOn = featureOn('wallMode');
         const commentsOn = wallOn && featureOn('comments');
         const uploadsOn = wallOn && featureOn('uploads');
+        updateReactionUI(reactionCounts);
         if (feedOn) {
           feedSec.hidden = !wallOn;
           downhint.hidden = !wallOn;
@@ -1540,6 +1596,7 @@
           if (!r.ok) return false;
           const data = await r.json();
           const featureChanged = setFeatures(data.features || {});
+          updateReactionUI(data.reactions || {});
           if (featureChanged && feedOn) {
             newestAct = 0; nodes.clear(); expanded.clear(); feedList.innerHTML = '';
           }

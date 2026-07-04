@@ -101,15 +101,45 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		meta := s.Events.Meta()
 		links := s.eventOnlineLinks()
+		reactions, spikes := s.Events.ReactionSnapshot()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
 			"features": meta.Features, "moderationMode": meta.ModerationMode,
+			"reactions": reactions, "spikes": spikes,
 			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "claimBaseUrl": links.ClaimBaseURL, "published": links.Published,
 			// dir = the event's identity; clients reset their cursor when it
 			// changes (switching to an OLDER event must replay its posts).
 			"dir":   filepath.Base(s.Events.Dir()),
 			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount, "cursor": cursor, "dj": dj,
 		})
+	case "/api/reactions":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		if !s.featureOn("reactions") {
+			writeFeatureDisabled(w)
+			return true
+		}
+		var body struct{ CID, Type string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		body.Type = strings.TrimSpace(body.Type)
+		if !event.ValidReactionType(body.Type) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown reaction"})
+			return true
+		}
+		if !s.limits.allow(guestLimitKey(body.CID, r), "reaction") {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many reactions", "retry": true})
+			return true
+		}
+		if err := s.Events.AddReaction(body.Type); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		w.WriteHeader(http.StatusNoContent)
 	case "/api/comment":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})

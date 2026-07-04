@@ -391,6 +391,76 @@ func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	}
 }
 
+func TestReactionsGateLimitAndFeedAggregates(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	now := time.Now()
+	s.limits.now = func() time.Time { return now }
+
+	postReaction := func(cid, typ string) *httptest.ResponseRecorder {
+		t.Helper()
+		data, err := json.Marshal(map[string]string{"cid": cid, "type": typ})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doBody(s, http.MethodPost, "/api/reactions", "192.168.1.44:3333", "application/json", bytes.NewBuffer(data))
+	}
+	feed := func() map[string]any {
+		t.Helper()
+		w := do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333")
+		if w.Code != http.StatusOK {
+			t.Fatalf("feed status = %d, body %q", w.Code, w.Body.String())
+		}
+		return decodeJSON(t, w)
+	}
+
+	w := postReaction("c1", "fire")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("reactions off status = %d, body %q; want 403", w.Code, w.Body.String())
+	}
+	if err := ev.SetFeature("reactions", true); err != nil {
+		t.Fatal(err)
+	}
+
+	w = postReaction("c1", "nope")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid reaction status = %d, body %q; want 400", w.Code, w.Body.String())
+	}
+	w = postReaction("c1", "fire")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("first reaction status = %d, body %q; want 204", w.Code, w.Body.String())
+	}
+	w = postReaction("c1", "heart")
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited reaction status = %d, body %q; want 429", w.Code, w.Body.String())
+	}
+
+	for _, cid := range []string{"c2", "c3"} {
+		w = postReaction(cid, "fire")
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("burst reaction %s status = %d, body %q; want 204", cid, w.Code, w.Body.String())
+		}
+	}
+	body := feed()
+	reactions, ok := body["reactions"].(map[string]any)
+	if !ok {
+		t.Fatalf("reactions missing/not object: %#v", body["reactions"])
+	}
+	if reactions["fire"] != float64(3) || reactions["heart"] != float64(0) {
+		t.Fatalf("reactions = %#v, want fire=3 heart=0", reactions)
+	}
+	spikes, ok := body["spikes"].(map[string]any)
+	if !ok {
+		t.Fatalf("spikes missing/not object: %#v", body["spikes"])
+	}
+	if spikes["fire"] != float64(3) {
+		t.Fatalf("spikes = %#v, want fire=3", spikes)
+	}
+}
+
 func TestModerationFeedAndRoutes(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {

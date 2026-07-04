@@ -135,6 +135,12 @@
   .moditem .txt{flex:1;min-width:0;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
   .pdel:hover{color:var(--danger)}
+  .reactionpanel{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .reactionpanel[hidden]{display:none}
+  .reactiongrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px}
+  .djreact{background:var(--fill);border-radius:9px;padding:7px 8px;font-size:12px;font-weight:700;color:var(--label);display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
+  .djreact.zero{color:var(--label-tertiary);font-weight:600}
+  .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
   /* ── Admin action bar (sticky): source · refresh · share · settings · GO LIVE ── */
   #actionbar{position:sticky;top:0;z-index:20;background:var(--glass-bg);
     -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
@@ -326,6 +332,10 @@
       </div>
       <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
       <div class="featurebar" id="moderationToggles" aria-label="Moderation mode"></div>
+      <div class="reactionpanel" id="djReactions" hidden>
+        <div class="reactiongrid" id="djReactionGrid"></div>
+        <div class="spikeline" id="djReactionSpike"></div>
+      </div>
       <div class="modqueue" id="modQueue" hidden>
         <h3>Pending moderation</h3>
         <div id="modList"></div>
@@ -1099,6 +1109,40 @@
       ['uploads', 'Uploads', true], ['videoUploads', 'Video', false], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
       ['requests', 'Requests', false], ['trackId', 'Track ID', false], ['tippingLinks', 'Tips', true], ['wallMode', 'Wall', true]
     ];
+    const reactionDefs = [
+      ['fire', '🔥 fire'], ['heart', '❤️ heart'], ['louder', '🔊 louder'], ['quieter', '🔉 quieter'],
+      ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
+    ];
+    function reactionFeatureOn(features){
+      return !!(features && Object.prototype.hasOwnProperty.call(features, 'reactions') ? features.reactions !== false : false);
+    }
+    function renderReactions(features, counts, spikes){
+      const panel = $('djReactions');
+      if (!reactionFeatureOn(features)) {
+        panel.hidden = true;
+        $('djReactionGrid').innerHTML = '';
+        $('djReactionSpike').textContent = '';
+        return;
+      }
+      panel.hidden = false;
+      counts = counts || {};
+      spikes = spikes || {};
+      $('djReactionGrid').innerHTML = reactionDefs.map(([key, label]) => {
+        const n = Number(counts[key] || 0);
+        return '<div class="djreact' + (n ? '' : ' zero') + '"><span>' + escT(label) + '</span><span>×' + n + '</span></div>';
+      }).join('');
+      let top = null;
+      for (const [key, nRaw] of Object.entries(spikes)) {
+        const n = Number(nRaw || 0);
+        if (n > 0 && (!top || n > top.n)) top = { key, n };
+      }
+      if (!top) {
+        $('djReactionSpike').textContent = '';
+        return;
+      }
+      const def = reactionDefs.find(([key]) => key === top.key);
+      $('djReactionSpike').textContent = (def ? def[1] : top.key) + ' ×' + top.n + ' just now';
+    }
     function renderFeatureToggles(features){
       const bar = $('featureToggles');
       if (!bar.dataset.ready) {
@@ -1357,6 +1401,7 @@
         syncHeader(data.title, data.host, data.starts);
         syncPublish(data.slug);
         renderFeatureToggles(data.features || {});
+        renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderModerationMode(data.moderationMode || 'post_moderate');
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts

@@ -195,6 +195,7 @@ type Store struct {
 	posts     []*Post
 	byID      map[string]*Post
 	guests    map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
+	reactions map[string]*reactionCounter
 	thumbQ    chan thumbJob
 	thumbOnce sync.Once
 
@@ -203,6 +204,44 @@ type Store struct {
 	// happens — the wall feels realtime without a 1s hammering interval.
 	notifyMu sync.Mutex
 	notify   chan struct{}
+}
+
+type reactionCounter struct {
+	Total int
+	Hits  []int64 // unix millis, pruned to reactionWindow for live telemetry
+}
+
+const (
+	reactionWindow         = 60 * time.Second
+	reactionSpikeThreshold = 3
+)
+
+var reactionTypes = []string{"fire", "heart", "louder", "quieter", "rewind", "id", "more"}
+
+// ReactionTypes returns the canonical reaction telemetry keys.
+func ReactionTypes() []string {
+	out := make([]string, len(reactionTypes))
+	copy(out, reactionTypes)
+	return out
+}
+
+// ValidReactionType reports whether kind is one of the supported anonymous
+// reaction taps.
+func ValidReactionType(kind string) bool {
+	for _, t := range reactionTypes {
+		if kind == t {
+			return true
+		}
+	}
+	return false
+}
+
+func newReactionCounters() map[string]*reactionCounter {
+	out := make(map[string]*reactionCounter, len(reactionTypes))
+	for _, t := range reactionTypes {
+		out[t] = &reactionCounter{}
+	}
+	return out
 }
 
 // Open finds today's most recent event under baseDir (or creates one), so an
@@ -345,7 +384,7 @@ func (s *Store) use(dir string) error {
 	meta.Features = normalizeFeatures(meta.Features)
 	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
 	s.mu.Lock()
-	s.dir, s.posts, s.byID, s.guests, s.meta = dir, posts, byID, guests, meta
+	s.dir, s.posts, s.byID, s.guests, s.meta, s.reactions = dir, posts, byID, guests, meta, newReactionCounters()
 	s.mu.Unlock()
 	s.changed()
 	return nil
@@ -1087,6 +1126,74 @@ func (s *Store) saveGuestsLocked() error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(s.dir, "guests.json"), data, 0o600)
+}
+
+// AddReaction records one anonymous crowd-telemetry tap in memory. Reactions
+// are deliberately not wall posts; the live feed consumes only aggregates.
+func (s *Store) AddReaction(kind string) error {
+	kind = strings.TrimSpace(kind)
+	if !ValidReactionType(kind) {
+		return errors.New("unknown reaction")
+	}
+	now := time.Now().UnixMilli()
+	cutoff := now - reactionWindow.Milliseconds()
+
+	s.mu.Lock()
+	if s.reactions == nil {
+		s.reactions = newReactionCounters()
+	}
+	c := s.reactions[kind]
+	if c == nil {
+		c = &reactionCounter{}
+		s.reactions[kind] = c
+	}
+	c.Total++
+	c.Hits = append(pruneReactionHits(c.Hits, cutoff), now)
+	s.mu.Unlock()
+
+	s.changed()
+	return nil
+}
+
+// ReactionSnapshot returns the current last-60s counts and a sparse spike map.
+// Totals are retained in memory for later recap use, but the live payload stays
+// small and focused on what the DJ can act on right now.
+func (s *Store) ReactionSnapshot() (map[string]int, map[string]int) {
+	now := time.Now().UnixMilli()
+	cutoff := now - reactionWindow.Milliseconds()
+	counts := make(map[string]int, len(reactionTypes))
+	spikes := map[string]int{}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reactions == nil {
+		s.reactions = newReactionCounters()
+	}
+	for _, kind := range reactionTypes {
+		c := s.reactions[kind]
+		if c == nil {
+			c = &reactionCounter{}
+			s.reactions[kind] = c
+		}
+		c.Hits = pruneReactionHits(c.Hits, cutoff)
+		n := len(c.Hits)
+		counts[kind] = n
+		if n >= reactionSpikeThreshold {
+			spikes[kind] = n
+		}
+	}
+	return counts, spikes
+}
+
+func pruneReactionHits(hits []int64, cutoff int64) []int64 {
+	i := 0
+	for i < len(hits) && hits[i] < cutoff {
+		i++
+	}
+	if i == 0 {
+		return hits
+	}
+	return append(hits[:0], hits[i:]...)
 }
 
 // Feed returns non-deleted posts with activity newer than sinceTS (0 = all),
