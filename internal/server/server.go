@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/devices"
@@ -71,9 +72,22 @@ type srv struct {
 	// Async activation result (cert broker / BYO) — set after launch so the
 	// server can start serving instantly while certs are obtained in the
 	// background. Guarded by actMu.
-	actMu     sync.Mutex
-	actDomain string
-	actReason string // why activation isn't ready yet (console pending state)
+	actMu      sync.Mutex
+	actDomain  string
+	actReason  string // why activation isn't ready yet (console pending state)
+	actLast    activate.Result
+	actLastSet bool
+
+	// Honest fallback readiness: observable reachability only. The watchdog
+	// updates these fields for /api/status; it never changes delivery or
+	// network mode. Guarded by reachMu.
+	reachMu             sync.Mutex
+	reachState          string
+	reachReason         string
+	reachDegradedAt     time.Time
+	reachDegradedCycles int
+	guestSeenUntil      time.Time
+	guestStalledUntil   time.Time
 
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	bonjour    sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
@@ -138,7 +152,10 @@ func (s *Srv) SetActivation(domain string) {
 	s.actMu.Lock()
 	s.actDomain = domain
 	s.actReason = ""
+	s.actLast = activate.Result{OK: true, Host: domain}
+	s.actLastSet = true
 	s.actMu.Unlock()
+	s.updateReachability(time.Now(), nil, false)
 }
 
 // SetActivationPending records why the secure link isn't ready yet — shown in
@@ -283,6 +300,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
 			"activation":     s.activationState(),
+			"reachability":   s.reachability(),
 			"hotspot":        s.hotspotState(),
 			"latencyTarget":  s.latencyTarget(bc, health.Status),
 			"log":            lastN(s.Broadcaster.Log(), 60),
@@ -310,9 +328,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return
 		}
+		s.markGuestReach(clientEventLooksStalled(body.Kind) || clientEventLooksStalled(body.Msg))
 		nAny, _ := s.clientLogN.LoadOrStore(body.CID, new(int32))
 		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest — no log floods
-			s.Diag.Printf("client[%s v%s]: %s: %s", clientIP(r), clipStr(body.V, 16), clipStr(body.Kind, 16), clipStr(body.Msg, 300))
+			if s.Diag != nil {
+				s.Diag.Printf("client[%s v%s]: %s: %s", clientIP(r), clipStr(body.V, 16), clipStr(body.Kind, 16), clipStr(body.Msg, 300))
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/client-events":
@@ -346,6 +367,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if body.Page == "guest" || body.Page == "" { // enrich guest attribution with the device name
 			who = s.friendlyName(clientIP(r), r.UserAgent()) + " | " + who
 		}
+		guestStalled := false
 		key := "ev:" + body.CID
 		if _, seen := s.clientLogN.Load(key); !seen && atomic.AddInt32(&s.clientCIDs, 1) > 20000 {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -367,14 +389,20 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			kind, _ := ev["k"].(string)
+			if clientEventLooksStalled(kind) {
+				guestStalled = true
+			}
 			delete(ev, "k")
-			s.Diag.Printf("ev[%s] %s %s", who, clipStr(kind, 20), compactFields(ev))
+			if s.Diag != nil {
+				s.Diag.Printf("ev[%s] %s %s", who, clipStr(kind, 20), compactFields(ev))
+			}
 			switch kind {
 			case "error", "media", "play-failed", "join-stuck", "reconnect", "offline", "dj-stop":
 				urgent = true
 			}
 		}
-		if urgent {
+		s.markGuestReach(guestStalled)
+		if urgent && s.Diag != nil {
 			s.Diag.MarkUrgent() // ship the log to the cloud within seconds, not on the 30s tick
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -399,9 +427,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, known := s.seenCIDs.LoadOrStore(key, true); !known {
-			s.Diag.Printf("guest joined: %s ip=%s plat=%s pageV=%s", s.friendlyName(clientIP(r), r.UserAgent()), clientIP(r), q.Get("plat"), q.Get("v"))
+			if s.Diag != nil {
+				s.Diag.Printf("guest joined: %s ip=%s plat=%s pageV=%s", s.friendlyName(clientIP(r), r.UserAgent()), clientIP(r), q.Get("plat"), q.Get("v"))
+			}
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
+		s.markGuestReach(q.Get("stalled") == "1")
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
 		s.Listeners.Debug(key, q.Get("del"), rate, buf)

@@ -116,6 +116,23 @@ func (l *Listeners) TotalUnique() int {
 	return len(l.ever)
 }
 
+// Active returns the number of listeners that have heartbeated within the
+// active window, pruning expired clients the same way Health does.
+func (l *Listeners) Active() int {
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	active := 0
+	for ip, c := range l.clients {
+		if now.Sub(c.lastSeen) > l.window {
+			delete(l.clients, ip)
+			continue
+		}
+		active++
+	}
+	return active
+}
+
 type Health struct {
 	Status     string  `json:"status"` // good | strain | congested | idle
 	Listeners  int     `json:"listeners"`

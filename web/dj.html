@@ -81,6 +81,13 @@
   .warn{background:rgba(255,149,0,.10);border:1px solid rgba(255,149,0,.35);color:#8a5200;font-size:12px;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
   .offline-status{background:rgba(52,199,89,.11);border:1px solid rgba(52,199,89,.32);color:#1d883d;font-size:12px;font-weight:600;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
   .offline-fallback button{margin-top:10px;width:100%}
+  .honest-fallback{position:relative;display:flex;align-items:center;gap:14px;margin-top:0;margin-bottom:14px;padding:13px 44px 13px 14px}
+  .honest-fallback-main{flex:1;min-width:0}
+  .honest-fallback-title{font-size:14px;font-weight:700;color:var(--label);margin-bottom:3px}
+  .honest-fallback-reason{font-size:12px;color:#8a5200;line-height:1.45}
+  .honest-fallback .cardx{top:9px;right:9px}
+  .fallback-switch{height:auto;min-height:42px;padding:8px 13px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;flex:0 0 auto}
+  .fallback-switch small{font-size:10px;font-weight:600;line-height:1.25;opacity:.86}
   #helpNote{border-top:1px solid var(--separator);margin-top:14px;padding-top:12px}
   #helpNote h3{font-size:13px;font-weight:700;color:var(--label);margin:14px 0 4px}
   #helpNote h3:first-child{margin-top:0}
@@ -166,6 +173,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#fff}}
+  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}}
 </style>
 </head>
 <body>
@@ -190,6 +198,18 @@
   <div id="bcnote" class="warn" style="display:none">
     <div id="bcnoteText"></div>
     <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open System Audio Recording settings</button>
+  </div>
+
+  <div id="honestFallback" class="warn honest-fallback" style="display:none">
+    <button class="cardx" id="honestFallbackClose" type="button" aria-label="Dismiss" title="Dismiss">✕</button>
+    <div class="honest-fallback-main">
+      <div class="honest-fallback-title">Switch to your own Wi-Fi?</div>
+      <div class="honest-fallback-reason" id="honestFallbackReason"></div>
+    </div>
+    <button class="go fallback-switch" id="offlineSwitchBtn" type="button">
+      <span>Switch to my own Wi-Fi</span>
+      <small>(guests near you · no internet for them · ~10 phones)</small>
+    </button>
   </div>
 
   <header class="eventhead">
@@ -601,6 +621,7 @@
   if (savedQ) $('quality').value = savedQ;
   $('mono').checked = localStorage.getItem('pp.mono') === '1';
   let lastLt = null, lastStatus = null, startError = '';
+  let lastReachState = 'ok', reachPromptDismissed = false, offlineSwitchRequested = false;
   function copySync(){
     const s = lastStatus; if (!s) return;
     const lt = s.latency || {};
@@ -700,12 +721,56 @@
   $('permBtnAlways').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
   $('openSharingBtn').onclick = () => fetch('/api/open-settings?pane=sharing', { method:'POST' });
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
+  $('honestFallbackClose').onclick = () => {
+    reachPromptDismissed = true;
+    $('honestFallback').style.display = 'none';
+  };
+  $('offlineSwitchBtn').onclick = () => {
+    offlineSwitchRequested = true;
+    $('offlineSwitchBtn').disabled = true;
+    $('offlineSwitchBtn').querySelector('span').textContent = 'Switching…';
+    try {
+      const pp = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pp;
+      if (!pp) throw new Error('native bridge unavailable');
+      pp.postMessage({ action:'enableOfflineParty' });
+      djLog('offline-switch-request');
+    } catch (e) {
+      startError = 'Use Host Offline Party from the app menu to switch to your own Wi-Fi.';
+      offlineSwitchRequested = false;
+      $('offlineSwitchBtn').disabled = false;
+      $('offlineSwitchBtn').querySelector('span').textContent = 'Switch to my own Wi-Fi';
+    }
+  };
 
   function renderQR(text){
     if (text === qrText) return;
     qrText = text;
     $('qr').innerHTML = '';
     new QRCode($('qr'), { text, width:200, height:200, correctLevel: QRCode.CorrectLevel.M });
+  }
+
+  function renderHonestFallback(reach){
+    const state = reach && reach.state ? reach.state : 'ok';
+    if (state !== lastReachState) {
+      if (state !== 'prompt') {
+        reachPromptDismissed = false;
+        offlineSwitchRequested = false;
+      } else if (lastReachState !== 'prompt') {
+        reachPromptDismissed = false;
+        offlineSwitchRequested = false;
+      }
+      lastReachState = state;
+    }
+    const box = $('honestFallback');
+    if (state !== 'prompt' || reachPromptDismissed) {
+      box.style.display = 'none';
+      return;
+    }
+    $('honestFallbackReason').textContent = reach.reason || 'Guests near you cannot reach the online link from this network.';
+    const btn = $('offlineSwitchBtn');
+    btn.disabled = offlineSwitchRequested;
+    btn.querySelector('span').textContent = offlineSwitchRequested ? 'Switching…' : 'Switch to my own Wi-Fi';
+    box.style.display = 'flex';
   }
 
   async function refresh(){
@@ -736,7 +801,7 @@
       const lb = $('liveBtn');
       // No broadcasting before the secure guest link exists — the button says
       // so instead of letting a set start that nobody could join properly.
-      const secureReady = (s.activation && s.activation.ready) || (s.urls.primary || '').startsWith('https://');
+      const secureReady = s.llhlsRealCert === true;
       if (!live && !secureReady) {
         lb.textContent = '🔒 Setting up secure link…';
         lb.className = 'golive go';
@@ -753,6 +818,7 @@
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnoteText').textContent = note || '';
       $('screenPermBtn').style.display = 'block';
+      renderHonestFallback(s.reachability);
       // Once Mac-audio capture has actually gone live, the permission is
       // provably granted — the "permission not working?" escape hatch would
       // just be noise. It comes back if an error note ever shows.
@@ -761,7 +827,7 @@
       // Guests only ever get the https link (the Plex model). Until the cert
       // is provisioned there is nothing to advertise — show the pending state
       // rather than an http link that undermines the whole cert story.
-      const secure = s.urls.primary.startsWith('https://');
+      const secure = s.llhlsRealCert === true;
       const guestUrl = s.urls.primary;
       const hotspot = s.hotspot || {};
       const offlineMode = hotspot.mode === 'offline' || s.captive === true;

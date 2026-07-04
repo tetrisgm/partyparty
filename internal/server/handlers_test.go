@@ -166,6 +166,13 @@ func TestStatusEndpoint(t *testing.T) {
 	if _, ok := body["roster"]; !ok {
 		t.Error("roster missing")
 	}
+	reach, ok := body["reachability"].(map[string]any)
+	if !ok {
+		t.Fatalf("reachability missing/not an object: %T", body["reachability"])
+	}
+	if reach["state"] != "ok" || reach["reason"] != "" || reach["guestSeen"] != false {
+		t.Errorf("reachability = %v, want ok with no reason/guest", reach)
+	}
 }
 
 func TestUploadLooksLikeBigVideo(t *testing.T) {

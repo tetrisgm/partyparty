@@ -421,6 +421,7 @@ func main() {
 		Version:     appVersion,
 	})
 	handler.StartSyncDrain(context.Background())
+	handler.StartReachabilityWatchdog(context.Background())
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
@@ -518,6 +519,7 @@ func main() {
 		}
 	}
 	applyActivationResult := func(res activate.Result, source string) bool {
+		handler.SetActivationResult(res)
 		if !res.OK {
 			return false
 		}
@@ -650,6 +652,7 @@ func main() {
 					}
 					res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
 				}
+				handler.SetActivationResult(res)
 				if res.OK {
 					if applyActivationResult(res, "online refresh") {
 						retryIn = 15 * time.Second

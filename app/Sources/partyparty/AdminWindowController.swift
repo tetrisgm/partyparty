@@ -17,10 +17,12 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 /// A "pp" JS↔Swift bridge lets the in-app console toggle Start-at-Login and Quit.
 final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     private let port: Int
+    private let offlinePartyRequest: () -> Void
     private var webView: WKWebView!
 
-    init(port: Int) {
+    init(port: Int, offlinePartyRequest: @escaping () -> Void = {}) {
         self.port = port
+        self.offlinePartyRequest = offlinePartyRequest
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1140, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -85,6 +87,8 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         case "setLoginItem":
             setLoginItem(body["on"] as? Bool ?? false)
             pushLoginState()
+        case "enableOfflineParty":
+            offlinePartyRequest()
         case "ready":
             pushLoginState()
             pushScreenPermission()

@@ -321,7 +321,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Console window
 
     @objc private func showConsole() {
-        if console == nil { console = AdminWindowController(port: server.port) }
+        if console == nil {
+            console = AdminWindowController(port: server.port) { [weak self] in
+                self?.setOfflinePartyEnabled(true)
+            }
+        }
         NSApp.activate(ignoringOtherApps: true)
         console?.showWindow(nil)
         console?.window?.makeKeyAndOrderFront(nil)

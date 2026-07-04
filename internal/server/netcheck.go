@@ -25,15 +25,20 @@ type netCheck struct {
 
 const leDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 
+const (
+	netCheckPartyDNS = "Find the partyparty service (DNS)"
+	netCheckLEDNS    = "Find Let's Encrypt (DNS)"
+)
+
 func runNetChecks(brokerBase string) []netCheck {
 	cl := &http.Client{Timeout: 8 * time.Second}
 	checks := []struct {
 		name string
 		run  func() (string, error)
 	}{
-		{"Find the partyparty service (DNS)", func() (string, error) { return lookup("party.ramine.net") }},
+		{netCheckPartyDNS, func() (string, error) { return lookup("party.ramine.net") }},
 		{"Reach the partyparty service", func() (string, error) { return get(cl, brokerBase+"/api/broker/ping") }},
-		{"Find Let's Encrypt (DNS)", func() (string, error) { return lookup("acme-v02.api.letsencrypt.org") }},
+		{netCheckLEDNS, func() (string, error) { return lookup("acme-v02.api.letsencrypt.org") }},
 		{"Reach Let's Encrypt", func() (string, error) { return get(cl, leDirectory) }},
 		{"Let's Encrypt accepts requests", func() (string, error) { return leNonce(cl) }},
 	}
