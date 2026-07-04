@@ -240,6 +240,13 @@
   .endflow{border:1px solid rgba(255,149,0,.28);background:rgba(255,149,0,.07);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
   .endflow.ended{border-color:rgba(255,59,48,.25);background:rgba(255,59,48,.06)}
   .endactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .recapbox{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .recapbox[hidden]{display:none}
+  .recapbox b{display:block;margin-bottom:4px}
+  .recapactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .recapresult{font-size:12px;color:var(--label-secondary);line-height:1.45;margin-top:8px;word-break:break-word}
+  .recapresult a{color:var(--accent);font-weight:700;text-decoration:none}
+  .recapresult a:hover{text-decoration:underline}
   .dangerbtn{background:var(--danger);color:#fff}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
@@ -428,6 +435,15 @@
         <b id="endFlowTitle">End event</b>
         <div class="retentiondesc" id="endFlowText"></div>
         <div class="endactions" id="endFlowActions"></div>
+      </div>
+      <div class="recapbox" id="recapBox" hidden>
+        <b>After the event</b>
+        <div class="retentiondesc">Generate a local, self-contained recap before cleanup or deletion.</div>
+        <div class="recapactions">
+          <button class="go" id="generateRecapBtn" type="button">Generate recap</button>
+          <a class="abbtn" id="downloadRecapZip" href="/api/recap.zip" style="height:32px;text-decoration:none;display:none">Download recap (.zip)</a>
+        </div>
+        <div class="recapresult" id="recapResult"></div>
       </div>
       <div class="linkeditor" id="linkEditor">
         <div class="linkeditor-head"><b>Follow / tip links</b><span class="muted" id="linkEditorState"></span></div>
@@ -1415,9 +1431,52 @@
       if (sel && sel.value !== currentRetentionMode) sel.value = currentRetentionMode;
       $('retentionDesc').textContent = retentionText[currentRetentionMode] || retentionText.keep_approved;
     }
+    function recapHref(path){
+      if (!path) return '';
+      if (path[0] === '/') return 'file://' + encodeURI(path);
+      return encodeURI(path);
+    }
+    async function generateRecap(){
+      const btn = $('generateRecapBtn');
+      const result = $('recapResult');
+      const zip = $('downloadRecapZip');
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+      result.textContent = '';
+      try {
+        const r = await fetch('/api/recap/generate', { method:'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'recap failed');
+        const stats = d.summary || {};
+        const path = d.path || '';
+        const bits = [
+          (stats.posts || 0) + ' approved posts',
+          (stats.media || 0) + ' media',
+          (stats.comments || 0) + ' comments',
+          (stats.tracks || 0) + ' tracks'
+        ].join(' · ');
+        const href = recapHref(path);
+        result.innerHTML = 'Recap generated: ' + escT(bits) + (path ? '<br><a href="' + escT(href) + '" target="_blank" rel="noopener">Open recap/index.html locally</a><br><span>' + escT(path) + '</span>' : '');
+        zip.style.display = 'inline-flex';
+      } catch (e) {
+        result.textContent = e.message || 'Could not generate recap.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate recap';
+      }
+    }
+    function renderRecapBox(status){
+      const box = $('recapBox');
+      if (!box.dataset.ready) {
+        $('generateRecapBtn').onclick = generateRecap;
+        box.dataset.ready = '1';
+      }
+      box.hidden = status !== 'ended';
+    }
     function renderEndFlow(status, mode){
       currentEventStatus = status === 'ended' ? 'ended' : 'active';
       renderRetentionMode(mode || currentRetentionMode);
+      renderRecapBox(currentEventStatus);
       const box = $('endFlow');
       const actions = $('endFlowActions');
       box.classList.toggle('ended', currentEventStatus === 'ended');
@@ -1474,8 +1533,7 @@
         return;
       }
       $('endFlowText').textContent = 'This event is set to delete tonight. Export or publish a recap before deleting. Deletion removes guest posts and media from this event folder; recordings stay unless separately selected.';
-      actions.innerHTML = '<button class="go" id="eventRecapBtn" type="button">Generate recap</button><button class="dangerbtn" id="eventDeleteBtn" type="button">Delete event data</button>';
-      $('eventRecapBtn').onclick = () => pubBtn.click();
+      actions.innerHTML = '<button class="dangerbtn" id="eventDeleteBtn" type="button">Delete event data</button>';
       $('eventDeleteBtn').onclick = async () => {
         const token = window.prompt('Type DELETE EVENT DATA to delete guest posts and media for this event. This cannot be undone.');
         if (token !== 'DELETE EVENT DATA') return;

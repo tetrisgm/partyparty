@@ -450,7 +450,7 @@ func (s *Store) Wait() <-chan struct{} {
 
 // use switches the store to dir, creating the layout and replaying the journal.
 func (s *Store) use(dir string) error {
-	for _, sub := range []string{"", "media", filepath.Join("media", "thumbs"), "recordings"} {
+	for _, sub := range []string{"", "media", filepath.Join("media", "thumbs"), "recordings", "recap"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 			return err
 		}

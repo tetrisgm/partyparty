@@ -449,6 +449,61 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": res, "recordingsRemoved": removeRecordings})
+	case "/api/recap/generate":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		includeRequests := r.URL.Query().Get("includeRequests") == "1" || r.URL.Query().Get("includeRequests") == "true"
+		data, err := s.Events.GenerateRecap(event.RecapOptions{IncludeRequestDetails: includeRequests})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":      true,
+			"path":    filepath.Join(s.Events.RecapDir(), "index.html"),
+			"recap":   data,
+			"summary": data.Stats,
+		})
+	case "/api/recap.zip":
+		if !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
+			return true
+		}
+		recapDir := s.Events.RecapDir()
+		if st, err := os.Stat(filepath.Join(recapDir, "index.html")); err != nil || st.IsDir() {
+			http.Error(w, "generate recap first", http.StatusNotFound)
+			return true
+		}
+		name := "partyparty-recap-" + filepath.Base(s.Events.Dir()) + ".zip"
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
+		zw := zip.NewWriter(w)
+		_ = filepath.WalkDir(recapDir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || strings.HasPrefix(d.Name(), ".") {
+				return nil
+			}
+			rel, err := filepath.Rel(recapDir, path)
+			if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+				return nil
+			}
+			src, err := os.Open(path)
+			if err != nil {
+				return nil
+			}
+			defer src.Close()
+			dst, err := zw.CreateHeader(&zip.FileHeader{Name: filepath.ToSlash(rel), Method: zip.Store})
+			if err == nil {
+				_, _ = io.Copy(dst, src)
+			}
+			return nil
+		})
+		_ = zw.Close()
 	case "/api/event-features":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})

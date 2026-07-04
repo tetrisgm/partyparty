@@ -1,6 +1,7 @@
 package server
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"mime/multipart"
@@ -481,6 +482,60 @@ func TestEventRetentionCleanupDeleteConfirmAndDJOnly(t *testing.T) {
 	_, ids, mediaCount := ev.Feed(0)
 	if len(ids) != 0 || mediaCount != 0 {
 		t.Fatalf("feed after event-delete ids=%v media=%d, want empty", ids, mediaCount)
+	}
+}
+
+func TestRecapGenerateAndZipRoutes(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	media, err := ev.SaveMedia("photo.jpg", strings.NewReader("photo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ev.AddPost("cid", "Guest", "*", "approved post", []event.Media{media}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	guest := "192.168.1.44:3333"
+	w := do(s, http.MethodPost, "/api/recap/generate", guest)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("guest recap generate status = %d, want 403", w.Code)
+	}
+	w = do(s, http.MethodPost, "/api/recap/generate", "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ recap generate status = %d, body %q", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if body["path"] == "" {
+		t.Fatalf("recap response missing path: %#v", body)
+	}
+	if _, err := os.Stat(filepath.Join(ev.Dir(), "recap", "index.html")); err != nil {
+		t.Fatalf("recap index missing: %v", err)
+	}
+
+	w = do(s, http.MethodGet, "/api/recap.zip", guest)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("guest recap zip status = %d, want 403", w.Code)
+	}
+	w = do(s, http.MethodGet, "/api/recap.zip", "127.0.0.1:1234")
+	if w.Code != http.StatusOK {
+		t.Fatalf("recap zip status = %d, body %q", w.Code, w.Body.String())
+	}
+	zr, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, f := range zr.File {
+		got[f.Name] = true
+	}
+	for _, name := range []string{"index.html", "manifest.json", "assets/" + media.ID} {
+		if !got[name] {
+			t.Fatalf("zip missing %s; got %#v", name, got)
+		}
 	}
 }
 
