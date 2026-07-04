@@ -78,7 +78,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return true
 		}
-		c, err := s.Events.AddComment(body.Post, body.CID, body.Author, body.Emoji, body.Text, s.isDJ(r))
+		dj := s.isDJ(r)
+		if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "comment") {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many comments", "retry": true})
+			return true
+		}
+		c, err := s.Events.AddComment(body.Post, body.CID, body.Author, body.Emoji, body.Text, dj)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
@@ -187,7 +192,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return true
 		}
-		p, claimToken, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, s.isDJ(r))
+		dj := s.isDJ(r)
+		if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "post") {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many posts", "retry": true})
+			return true
+		}
+		p, claimToken, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, dj)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
@@ -209,6 +219,18 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return true
+		}
+		if !s.isDJ(r) {
+			key := uploadLimitKey(r)
+			if !s.limits.allow(key, "upload") {
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many uploads", "retry": true})
+				return true
+			}
+			if !s.limits.acquireUpload() {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "the party's busy — try again in a sec"})
+				return true
+			}
+			defer s.limits.releaseUpload()
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, event.MaxUpload+(1<<20))
 		f, hdr, err := r.FormFile("file")

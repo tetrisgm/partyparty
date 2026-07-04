@@ -60,6 +60,7 @@ type Deps struct {
 type srv struct {
 	Deps
 	vendor http.Handler
+	limits *limiter
 
 	// Adaptive room-latency target: the room finds its own floor instead of a
 	// hardcoded pessimistic delay. Raised when listeners stall, decayed slowly
@@ -107,7 +108,7 @@ func New(d Deps) *Srv {
 	if d.Payload != nil {
 		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
 	}
-	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS)), syncDrainKick: make(chan struct{}, 1)}}
+	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS)), limits: newLimiter(), syncDrainKick: make(chan struct{}, 1)}}
 }
 
 // webFS is the live content source: the OTA payload store if present (which
