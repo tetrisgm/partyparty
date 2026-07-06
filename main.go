@@ -202,13 +202,12 @@ func main() {
 	// domain+cert is configured explicitly; otherwise plain HLS now, upgraded in
 	// the background by activation. Passing --delivery llhls explicitly still
 	// forces it (e.g. testing with a trusted self-signed cert on the phone).
-	realCert := cfg.Domain != "" && cfg.CertFile != "" && cfg.KeyFile != ""
+	// HTTPS + LL-HLS is the ONLY real-world delivery path — there is no silent
+	// plain-HLS downgrade. "auto" always resolves to LL-HLS; without a cert, Go
+	// Live is refused (fail loud) and the offline party rides the cached cert.
+	// -delivery=hls remains only as a non-default dev/emergency escape hatch.
 	if cfg.Delivery == "auto" {
-		if realCert {
-			cfg.Delivery = "llhls"
-		} else {
-			cfg.Delivery = "hls"
-		}
+		cfg.Delivery = "llhls"
 	}
 
 	ip := netinfo.PrimaryLanIP()
@@ -327,12 +326,14 @@ func main() {
 		}
 		if cfg.Delivery == "llhls" {
 			if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
-				log.Printf("mediamtx failed to start: %v — falling back to plain HLS", err)
-				bc.SetDelivery("hls")
+				// No silent downgrade: stay LL-HLS. /api/start reaps + retries
+				// MediaMTX and refuses Go Live if it truly can't start, rather than
+				// serving a degraded plain-HLS stream nobody asked for.
+				log.Printf("mediamtx failed to start: %v — LL-HLS unavailable (no plain-HLS fallback)", err)
 			}
 		}
 	} else if cfg.Delivery == "llhls" {
-		bc.SetDelivery("hls")
+		log.Printf("mediamtx binary unavailable — LL-HLS cannot start (no plain-HLS fallback)")
 	}
 	// Session diagnostics (the Plex model): one verbose file per run in
 	// ~/Library/Logs/partyparty, teeing the stdlib logger AND the broadcast
