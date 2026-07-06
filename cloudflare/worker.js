@@ -1905,7 +1905,11 @@ async function authRequestLink(request, env) {
   let queued = true;
   try {
     queued = await sendAuthEmail(env, emailNorm, link, devMode) !== false;
-  } catch (_) {
+  } catch (e) {
+    console.warn("auth email send failed", {
+      code: e?.code || "",
+      message: e?.message || String(e || ""),
+    });
     queued = false;
   }
   const out = { ok: true };

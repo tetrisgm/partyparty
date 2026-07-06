@@ -14,6 +14,12 @@
     "binding": "ASSETS"
   },
 
+  // Passwordless sign-in email. Requires Email Sending to be onboarded for
+  // ramine.net in Cloudflare Email Service.
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
+
   // Downloads live here (partyparty.zip, appcast.xml). Created by deploy-site.sh.
   // Also stores cert-broker install records (broker/<id>.json) AND published set
   // media (event/<slug>/<set>.m4a + peaks + cover).
@@ -36,8 +42,8 @@
     // Passwordless auth expects these env names when enabled:
     // AUTH_DEV_LINKS, AUTH_DEV_SECRET, MXROUTE_SMTP_HOST, MXROUTE_SMTP_PORT,
     // MXROUTE_SMTP_USER, MXROUTE_SMTP_FROM, and secret MXROUTE_SMTP_PASS.
-    // Preferred production path: enable Cloudflare Email Sending for ramine.net
-    // and add a send_email binding named EMAIL; the Worker will use it first.
+    // Preferred production path: enable Cloudflare Email Sending for ramine.net.
+    // The EMAIL binding above is used first when Cloudflare accepts sends.
     // Optional from override: AUTH_EMAIL_FROM="partyparty <signin@ramine.net>".
     "BROKER_BASE": "party.ramine.net",
     "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"
