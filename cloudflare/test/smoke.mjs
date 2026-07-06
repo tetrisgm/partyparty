@@ -2395,6 +2395,42 @@ const tests = [
     assert.equal(self.status, 400);
     assert.equal(db.follows.length, 0);
   }],
+  ["event edit page: owner pre-fill, non-owner blocked, event-page Edit affordance", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "host@example.com", { ip: "203.0.113.50" });
+    const user = [...db.authUsers.values()].find((u) => u.email_norm === "host@example.com");
+    db.events.set("rooftop", {
+      slug: "rooftop", owner_user_id: user.id, title: "Rooftop Sessions", status: "upcoming",
+      visibility: "public", rsvp_enabled: 1, tagline: "Sunset edits", scheduled_at_ms: 1893542400000,
+    });
+
+    // Anonymous → redirect to login.
+    const anon = await worker.fetch(new Request("https://party.ramine.net/e/rooftop/edit"), makeEnv({ DB: db }));
+    assert.equal(anon.status, 302);
+    assert.match(anon.headers.get("location"), /\/login\?redirect=/);
+
+    // Owner → pre-filled edit form that submits to the update API, uncached.
+    const owner = await worker.fetch(new Request("https://party.ramine.net/e/rooftop/edit", { headers: { cookie } }), makeEnv({ DB: db }));
+    const ownerHtml = await owner.text();
+    assert.equal(owner.status, 200);
+    assert.match(ownerHtml, /Edit event/);
+    assert.match(ownerHtml, /Rooftop Sessions/);
+    assert.match(ownerHtml, /\/api\/events\/rooftop/);
+    assert.equal(owner.headers.get("cache-control"), "no-store");
+
+    // A different signed-in user → 403.
+    const otherCookie = await signInCookie(db, "stranger@example.com", { ip: "203.0.113.51" });
+    const other = await worker.fetch(new Request("https://party.ramine.net/e/rooftop/edit", { headers: { cookie: otherCookie } }), makeEnv({ DB: db }));
+    assert.equal(other.status, 403);
+    assert.match(await other.text(), /Not your event/);
+
+    // Event page: owner sees an Edit link (uncached); anonymous does not.
+    const ownerView = await worker.fetch(new Request("https://party.ramine.net/e/rooftop", { headers: { cookie } }), makeEnv({ DB: db }));
+    assert.match(await ownerView.text(), /href="\/e\/rooftop\/edit"/);
+    assert.equal(ownerView.headers.get("cache-control"), "private, no-store");
+    const anonView = await worker.fetch(new Request("https://party.ramine.net/e/rooftop"), makeEnv({ DB: db }));
+    assert.doesNotMatch(await anonView.text(), /href="\/e\/rooftop\/edit"/);
+  }],
   ["profile API rejects a different user claiming an existing normalized handle", async () => {
     const db = new FakeD1();
     const cookieA = await signInCookie(db, "claim-a@example.com", { ip: "203.0.113.31" });

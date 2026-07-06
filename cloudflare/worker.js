@@ -1416,6 +1416,62 @@ async function newEventResponse(request, env) {
   }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
+// Owner-only edit form over the existing POST /api/events/<slug> update API.
+async function editEventResponse(request, env, slug) {
+  if (request.method !== "GET") return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
+  const noStore = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" };
+  if (!env.DB) return new Response(renderNotFound(), { status: 503, headers: noStore });
+  const user = await getSessionUser(env, request);
+  if (!user) return redirectResp(`/login?redirect=${encodeURIComponent("/e/" + slug + "/edit")}`);
+  const ev = await env.DB.prepare("SELECT * FROM events WHERE slug=?").bind(slug).first();
+  if (!ev) return new Response(renderNotFound(), { status: 404, headers: noStore });
+  if (ev.owner_user_id !== user.id) {
+    return new Response(shell({
+      title: "Not your event · partyparty", desc: "", ogImage: DEFAULT_OG_IMAGE, url: "/e/" + slug + "/edit",
+      body: `<div class="page"><div class="card authcard"><h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Not your event</h1><p class="sub">You can only edit events on your own account.</p><div class="ecta"><a class="btn lt sm" href="/e/${esc(slug)}">View event</a></div></div></div>`,
+    }), { status: 403, headers: noStore });
+  }
+  const evData = {
+    title: ev.title || "", timezone: ev.timezone || "", location_name: ev.location_name || "",
+    location_address: ev.location_address || "", tagline: ev.tagline || "", about: ev.about || "",
+    visibility: ev.visibility || "public", rsvp_enabled: Number(ev.rsvp_enabled) ? 1 : 0,
+    scheduled_at_ms: Number(ev.scheduled_at_ms) || null,
+  };
+  const evJson = JSON.stringify(evData).replace(/</g, "\\u003c");
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Edit event</h1>
+      <p class="sub">/e/${esc(slug)} · signed in as ${esc(user.email || "")}</p>
+      <form class="authform" id="event-form">
+        <label><span>Title</span><input name="title" maxlength="200" required></label>
+        <label><span>Date and time</span><input name="starts_at" type="datetime-local"></label>
+        <label><span>Timezone</span><input name="timezone" maxlength="80" placeholder="America/Los_Angeles"></label>
+        <label><span>Location name</span><input name="location_name" maxlength="200"></label>
+        <label><span>Location address</span><input name="location_address" maxlength="300"></label>
+        <label><span>Tagline</span><input name="tagline" maxlength="200"></label>
+        <label><span>Description</span><textarea name="about" maxlength="4000"></textarea></label>
+        <label class="checkrow"><input name="visibility" type="checkbox"><span>Public</span></label>
+        <label class="checkrow"><input name="rsvp_enabled" type="checkbox"><span>RSVP enabled</span></label>
+        <div class="ecta"><button class="btn" type="submit">Save changes</button><a class="btn lt" href="/e/${esc(slug)}">Cancel</a></div>
+      </form>
+      <p class="hint" id="event-msg" role="status" style="margin:14px 0 0"></p>
+    </div>
+  </div>
+  <script>
+var EV = ${evJson};
+(function(){var f=document.getElementById('event-form');if(!f)return;f.elements.title.value=EV.title||'';f.elements.timezone.value=EV.timezone||'';f.elements.location_name.value=EV.location_name||'';f.elements.location_address.value=EV.location_address||'';f.elements.tagline.value=EV.tagline||'';f.elements.about.value=EV.about||'';f.elements.visibility.checked=EV.visibility!=='unlisted';f.elements.rsvp_enabled.checked=!!EV.rsvp_enabled;if(EV.scheduled_at_ms){var d=new Date(EV.scheduled_at_ms),p=function(n){return (n<10?'0':'')+n};f.elements.starts_at.value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())}
+var m=document.getElementById('event-msg');f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='Saving...';var starts=f.elements.starts_at.value;var body={title:f.elements.title.value,timezone:f.elements.timezone.value,location_name:f.elements.location_name.value,location_address:f.elements.location_address.value,tagline:f.elements.tagline.value,about:f.elements.about.value,visibility:f.elements.visibility.checked?'public':'unlisted',rsvp_enabled:f.elements.rsvp_enabled.checked?1:0};body.scheduled_at_ms=starts?new Date(starts).getTime():null;fetch('/api/events/${esc(slug)}',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok)throw new Error(out.json&&out.json.error||'save failed');m.textContent='Saved.';setTimeout(function(){location.href='/e/${esc(slug)}'},500)}).catch(function(e){m.textContent=e&&e.message?e.message:'Could not save.'})})})();
+  </script>
+  <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+  return new Response(shell({
+    title: `Edit ${evData.title || slug} · partyparty`,
+    desc: "Edit your partyparty event.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/e/" + slug + "/edit",
+    body,
+  }), { headers: noStore });
+}
+
 async function profileEditResponse(request, env) {
   if (request.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
@@ -1537,7 +1593,7 @@ async function accountResponse(request, env) {
   const eventList = events.length ? `<div>${events.map((ev) => {
     const when = ev.starts || fmtWhen(ev.scheduled_at_ms);
     const place = ev.location_name || ev.where_txt || "";
-    return `<div class="minirow"><b>${esc(ev.title || ev.slug || "Untitled event")}</b><span>${esc([ev.status, when, place].filter(Boolean).join(" · "))}</span>${ev.slug ? `<a href="/e/${esc(ev.slug)}" style="color:var(--link);font-size:13px">View event</a>` : ""}</div>`;
+    return `<div class="minirow"><b>${esc(ev.title || ev.slug || "Untitled event")}</b><span>${esc([ev.status, when, place].filter(Boolean).join(" · "))}</span>${ev.slug ? `<a href="/e/${esc(ev.slug)}" style="color:var(--link);font-size:13px">View</a> <a href="/e/${esc(ev.slug)}/edit" style="color:var(--link);font-size:13px">Edit</a>` : ""}</div>`;
   }).join("")}</div>` : `<p class="emptyline">No owned events yet.</p>`;
   const linkMacCard = profile ? `<div class="card">
     <h2>Link your Mac</h2>
@@ -1713,8 +1769,9 @@ buttons.forEach(function(b){b.addEventListener('click',function(){var choice=b.g
 </script>`;
 }
 
-function renderEvent(e) {
+function renderEvent(e, opts = {}) {
   const soon = "Coming soon — event pages are in progress.";
+  const ownerStrip = opts.isOwner && e.slug ? `<a class="btn ghost sm" href="/e/${esc(e.slug)}/edit">Edit</a>` : "";
   const statusPill = e.status === "live"
     ? `<span class="statuspill"><span class="dot"></span> Live · ${esc(e.listeners)} listening</span>`
     : e.status === "upcoming" ? `<span class="statuspill">Upcoming</span>`
@@ -1811,7 +1868,7 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
   const body = `<div class="page">
     <div class="hdr">
       <div class="cover" style="background-image:url('${esc(e.cover)}')"></div>
-      <div class="hactions">${shareButton}</div>
+      <div class="hactions">${ownerStrip}${shareButton}</div>
       <div class="in">
         ${statusPill}
         <h1 class="etitle">${esc(e.title)}</h1>
@@ -3866,6 +3923,11 @@ export default {
       return new Response(renderEvent(DEMO), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" } });
     }
 
+    const editm = pathname.match(/^\/e\/([A-Za-z0-9_.-]{1,48})\/edit$/);
+    if (editm) {
+      return await editEventResponse(request, env, editm[1]);
+    }
+
     const evm = pathname.match(EVENT_RE);
     if (evm) {
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -3887,7 +3949,12 @@ export default {
         getPostMedia(env, postIds),
         getPostComments(env, postIds),
       ]);
-      return new Response(renderEvent(eventFromRow(row, set, slug, { posts, media, comments })), { headers: htmlHeaders });
+      // Owner sees an Edit affordance; that personalized variant is uncached.
+      const viewer = await getSessionUser(env, request);
+      const isOwner = !!(viewer && row.owner_user_id && viewer.id === row.owner_user_id);
+      return new Response(renderEvent(eventFromRow(row, set, slug, { posts, media, comments }), { isOwner }), {
+        headers: isOwner ? { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" } : htmlHeaders,
+      });
     }
     const hm = pathname.match(HANDLE_RE);
     if (hm) {
