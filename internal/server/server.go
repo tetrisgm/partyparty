@@ -318,6 +318,78 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.
 		writeJSON(w, http.StatusOK, map[string]any{"t": time.Now().UnixMilli()})
+	case "/api/account/status":
+		if !s.requireDJ(w, r) {
+			return
+		}
+		broker := os.Getenv("PARTYPARTY_BROKER")
+		if broker == "" {
+			broker = "https://party.ramine.net"
+		}
+		status, _ := activate.AccountStatus(broker, func(format string, args ...any) {
+			if s.Diag != nil {
+				s.Diag.Printf(format, args...)
+			}
+		})
+		writeJSON(w, http.StatusOK, status)
+	case "/api/account/sign-out":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		broker := os.Getenv("PARTYPARTY_BROKER")
+		if broker == "" {
+			broker = "https://party.ramine.net"
+		}
+		if err := activate.SignOutAccount(broker, func(format string, args ...any) {
+			if s.Diag != nil {
+				s.Diag.Printf(format, args...)
+			}
+		}); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/account/open":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		broker := os.Getenv("PARTYPARTY_BROKER")
+		if broker == "" {
+			broker = "https://party.ramine.net"
+		}
+		_ = exec.Command("open", strings.TrimRight(broker, "/")+"/account").Start()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/link-install/start":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		broker := os.Getenv("PARTYPARTY_BROKER")
+		if broker == "" {
+			broker = "https://party.ramine.net"
+		}
+		linkURL, err := activate.StartInstallLink(broker, func(format string, args ...any) {
+			if s.Diag != nil {
+				s.Diag.Printf(format, args...)
+			}
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		_ = exec.Command("open", linkURL).Start()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": linkURL})
 	case "/api/link-install":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})

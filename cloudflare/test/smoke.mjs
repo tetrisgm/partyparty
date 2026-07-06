@@ -39,6 +39,7 @@ class FakeD1 {
     authUsers = [],
     authSessions = [],
     installLinkTokens = [],
+    installBrowserTokens = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -76,6 +77,7 @@ class FakeD1 {
     this.authUsers = new Map(authUsers.map((row) => [row.id, { ...row }]));
     this.authSessions = new Map(authSessions.map((row) => [row.id, { ...row }]));
     this.installLinkTokens = new Map(installLinkTokens.map((row) => [row.id, { ...row }]));
+    this.installBrowserTokens = new Map(installBrowserTokens.map((row) => [row.id, { ...row }]));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
@@ -158,6 +160,14 @@ class FakeD1Statement {
       }
       return { n };
     }
+    if (sql.includes("COUNT(*) AS n FROM install_browser_tokens WHERE install_id=?")) {
+      const [installId, now] = this.args;
+      let n = 0;
+      for (const row of this.db.installBrowserTokens.values()) {
+        if (row.install_id === installId && row.used_ms == null && Number(row.expires_ms) > Number(now)) n += 1;
+      }
+      return { n };
+    }
     if (sql.includes("FROM install_link_tokens WHERE code_hash=?")) {
       const codeHash = this.args[0];
       for (const row of this.db.installLinkTokens.values()) {
@@ -165,10 +175,32 @@ class FakeD1Statement {
       }
       return null;
     }
+    if (sql.includes("FROM install_browser_tokens WHERE token_hash=?")) {
+      const tokenHash = this.args[0];
+      for (const row of this.db.installBrowserTokens.values()) {
+        if (row.token_hash === tokenHash) return { ...row };
+      }
+      return null;
+    }
     if (sql.includes("FROM dj_profiles WHERE id=?")) {
       const profileId = this.args[0];
       const row = this.db.profiles.find((profile) => profile.id === profileId);
       return row ? { ...row } : null;
+    }
+    if (sql.includes("FROM device_installs di") && sql.includes("LEFT JOIN users u")) {
+      const installId = this.args[0];
+      const install = this.db.deviceInstalls.get(installId);
+      if (!install || install.revoked_ms != null) return null;
+      const user = this.db.authUsers.get(install.user_id) || {};
+      const profile = this.db.profiles.find((row) => row.id === install.profile_id) || {};
+      return {
+        user_id: install.user_id,
+        profile_id: install.profile_id,
+        email: user.email || "",
+        user_display_name: user.display_name || "",
+        handle: profile.handle || "",
+        profile_display_name: profile.display_name || "",
+      };
     }
     if (sql.includes("COUNT(*) AS n FROM device_installs WHERE user_id=?")) {
       const userId = this.args[0];
@@ -406,6 +438,18 @@ class FakeD1Statement {
       }
       return { success: true, meta: { changes } };
     }
+    if (sql.includes("DELETE FROM install_browser_tokens WHERE (used_ms IS NOT NULL OR expires_ms < ?)")) {
+      const [now, createdCutoff] = this.args;
+      let changes = 0;
+      for (const [id, row] of [...this.db.installBrowserTokens.entries()]) {
+        if (changes >= 200) break;
+        if ((row.used_ms != null || Number(row.expires_ms) < Number(now)) && Number(row.created_ms) < Number(createdCutoff)) {
+          this.db.installBrowserTokens.delete(id);
+          changes += 1;
+        }
+      }
+      return { success: true, meta: { changes } };
+    }
     if (sql.includes("DELETE FROM auth_magic_tokens WHERE expires_ms < ? LIMIT 200")) {
       const cutoff = Number(this.args[0]);
       let changes = 0;
@@ -516,12 +560,36 @@ class FakeD1Statement {
       });
       return { success: true, meta: { changes: 1 } };
     }
+    if (sql.includes("INSERT INTO install_browser_tokens")) {
+      const [id, tokenHash, installId, installSlug, createdMs, expiresMs, ipHash] = this.args;
+      for (const row of this.db.installBrowserTokens.values()) {
+        if (row.token_hash === tokenHash) throw new Error("UNIQUE constraint failed: install_browser_tokens.token_hash");
+      }
+      this.db.installBrowserTokens.set(id, {
+        id,
+        token_hash: tokenHash,
+        install_id: installId,
+        install_slug: installSlug,
+        created_ms: createdMs,
+        expires_ms: expiresMs,
+        used_ms: null,
+        request_ip_hash: ipHash,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
     if (sql.includes("UPDATE install_link_tokens SET used_ms=?, install_id=? WHERE id=? AND used_ms IS NULL")) {
       const [usedMs, installId, id] = this.args;
       const row = this.db.installLinkTokens.get(id);
       if (!row || row.used_ms != null) return { success: true, meta: { changes: 0 } };
       row.used_ms = usedMs;
       row.install_id = installId;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE install_browser_tokens SET used_ms=? WHERE id=? AND used_ms IS NULL")) {
+      const [usedMs, id] = this.args;
+      const row = this.db.installBrowserTokens.get(id);
+      if (!row || row.used_ms != null) return { success: true, meta: { changes: 0 } };
+      row.used_ms = usedMs;
       return { success: true, meta: { changes: 1 } };
     }
     if (sql.includes("INSERT INTO device_installs")) {
@@ -538,6 +606,14 @@ class FakeD1Statement {
         last_seen_ms: lastSeenMs,
         revoked_ms: null,
       });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE device_installs SET revoked_ms=?, last_seen_ms=? WHERE install_id=?")) {
+      const [revokedMs, lastSeenMs, installId] = this.args;
+      const row = this.db.deviceInstalls.get(installId);
+      if (!row || row.revoked_ms != null) return { success: true, meta: { changes: 0 } };
+      row.revoked_ms = revokedMs;
+      row.last_seen_ms = lastSeenMs;
       return { success: true, meta: { changes: 1 } };
     }
     if (sql.includes("UPDATE device_installs SET revoked_ms=? WHERE user_id=?")) {
@@ -1058,6 +1134,19 @@ async function seedInstallLinkToken(db, { id, code, userId, profileId, createdMs
   });
 }
 
+async function seedInstallBrowserToken(db, { id, token, installId = "abc123abc123", installSlug = "disco12", createdMs = Date.now(), expiresMs = Date.now() + 60_000, usedMs = null }) {
+  db.installBrowserTokens.set(id, {
+    id,
+    token_hash: await sha256Hex(token),
+    install_id: installId,
+    install_slug: installSlug,
+    created_ms: createdMs,
+    expires_ms: expiresMs,
+    used_ms: usedMs,
+    request_ip_hash: "",
+  });
+}
+
 const contentLength = (body) => String(new TextEncoder().encode(String(body)).byteLength);
 
 const tests = [
@@ -1441,6 +1530,8 @@ const tests = [
     assert.match(html, /href="\/events\/new">＋ Create event/);
     assert.match(html, /Owned Account Night/);
     assert.match(html, /Link your Mac/);
+    assert.match(html, /Sign in to link this Mac|choose Sign in to link this Mac/);
+    assert.match(html, /Use a code for an older app/);
     assert.match(html, /install-link-create/);
   }],
   ["install-link create gates auth and profile, then returns a one-time code", async () => {
@@ -1481,6 +1572,181 @@ const tests = [
     assert.notEqual(token.code_hash, json.code);
     assert.equal(token.install_id, null);
     assert.equal(token.used_ms, null);
+  }],
+  ["broker link-start returns a browser sign-in URL for a valid install", async () => {
+    const db = new FakeD1();
+    const bad = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "wrong" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(bad.status, 403);
+
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-start", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    const url = new URL(json.url);
+    const rawToken = url.searchParams.get("token") || "";
+    const token = [...db.installBrowserTokens.values()][0];
+    assert.equal(resp.status, 200);
+    assert.equal(json.ok, true);
+    assert.equal(url.pathname, "/link-mac");
+    assert.match(rawToken, /^[a-f0-9]{64}$/);
+    assert.equal(db.installBrowserTokens.size, 1);
+    assert.equal(token.install_id, "abc123abc123");
+    assert.equal(token.install_slug, "disco12");
+    assert.notEqual(token.token_hash, rawToken);
+    assert.equal(token.used_ms, null);
+  }],
+  ["broker account-status reports unlinked and linked install state", async () => {
+    const db = new FakeD1();
+    const unlinked = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), makeEnv({ DB: db }));
+    const unlinkedJson = await unlinked.json();
+    assert.equal(unlinked.status, 200);
+    assert.equal(unlinkedJson.ok, true);
+    assert.equal(unlinkedJson.linked, false);
+    assert.equal(unlinkedJson.install.slug, "disco12");
+    assert.equal(unlinkedJson.license.ok, false);
+
+    db.authUsers.set("user-account-status", {
+      id: "user-account-status",
+      email: "linked@example.com",
+      email_norm: "linked@example.com",
+      display_name: "Linked User",
+      created_ms: 1,
+      updated_ms: 1,
+      email_verified_ms: 1,
+      last_login_ms: 1,
+      disabled_ms: null,
+    });
+    db.profiles.push({
+      id: "profile-account-status",
+      user_id: "user-account-status",
+      handle: "linked.dj",
+      display_name: "Linked DJ",
+      published: 1,
+    });
+    db.deviceInstalls.set("abc123abc123", {
+      install_id: "abc123abc123",
+      install_slug: "disco12",
+      user_id: "user-account-status",
+      profile_id: "profile-account-status",
+      created_ms: 1,
+      linked_ms: 1,
+      last_seen_ms: 1,
+      revoked_ms: null,
+    });
+    db.events.set("linked-event", {
+      slug: "linked-event",
+      owner_user_id: "user-account-status",
+      title: "Linked Event",
+      status: "upcoming",
+      scheduled_at_ms: 1893542400000,
+    });
+
+    const linked = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), makeEnv({ DB: db }));
+    const linkedJson = await linked.json();
+    assert.equal(linked.status, 200);
+    assert.equal(linkedJson.linked, true);
+    assert.equal(linkedJson.user.email, "linked@example.com");
+    assert.equal(linkedJson.profile.handle, "linked.dj");
+    assert.equal(linkedJson.license.ok, true);
+    assert.equal(linkedJson.events[0].slug, "linked-event");
+
+    const unlinkResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-unlink", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), makeEnv({ DB: db }));
+    const unlinkJson = await unlinkResp.json();
+    assert.equal(unlinkResp.status, 200);
+    assert.equal(unlinkJson.ok, true);
+    assert.equal(unlinkJson.revoked, 1);
+    assert.equal(typeof db.deviceInstalls.get("abc123abc123").revoked_ms, "number");
+
+    const after = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), makeEnv({ DB: db }));
+    const afterJson = await after.json();
+    assert.equal(after.status, 200);
+    assert.equal(afterJson.linked, false);
+  }],
+  ["link-mac redirects through sign-in then links install to the account", async () => {
+    const rawToken = "4444444444444444444444444444444444444444444444444444444444444444";
+    const db = new FakeD1();
+    await seedInstallBrowserToken(db, { id: "browser-token-ok", token: rawToken });
+
+    const anon = await worker.fetch(new Request(`https://party.ramine.net/link-mac?token=${rawToken}`), makeEnv({ DB: db }));
+    assert.equal(anon.status, 302);
+    assert.equal(anon.headers.get("location"), `/login?redirect=${encodeURIComponent(`/link-mac?token=${rawToken}`)}`);
+    assert.equal(db.installBrowserTokens.get("browser-token-ok").used_ms, null);
+
+    const cookie = await signInCookie(db, "browser-link@example.com", { ip: "203.0.113.31" });
+    const user = [...db.authUsers.values()].find((row) => row.email_norm === "browser-link@example.com");
+    // Authenticated GET only CONFIRMS now — no bind, token still unused.
+    const confirm = await worker.fetch(new Request(`https://party.ramine.net/link-mac?token=${rawToken}`, {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    const confirmHtml = await confirm.text();
+    assert.equal(confirm.status, 200);
+    assert.match(confirmHtml, /Link this Mac/);
+    assert.match(confirmHtml, /method="POST"/i);
+    assert.equal(db.installBrowserTokens.get("browser-token-ok").used_ms, null);
+    assert.equal(db.deviceInstalls.has("abc123abc123"), false);
+
+    // The same-site POST performs the bind.
+    const linked = await worker.fetch(new Request(`https://party.ramine.net/link-mac`, {
+      method: "POST",
+      headers: { cookie, origin: "https://party.ramine.net", "content-type": "application/x-www-form-urlencoded" },
+      body: `token=${rawToken}`,
+    }), makeEnv({ DB: db }));
+    const html = await linked.text();
+    const install = db.deviceInstalls.get("abc123abc123");
+    const profile = db.profiles.find((row) => row.user_id === user.id);
+    assert.equal(linked.status, 200);
+    assert.match(html, /Mac linked/);
+    assert.ok(profile?.id);
+    assert.equal(profile.handle, "browser.link");
+    assert.equal(install.user_id, user.id);
+    assert.equal(install.profile_id, profile.id);
+    assert.equal(install.revoked_ms, null);
+    assert.equal(typeof db.installBrowserTokens.get("browser-token-ok").used_ms, "number");
+  }],
+  ["link-mac blocks CSRF: authed GET does not bind, cross-site POST rejected", async () => {
+    const rawToken = "5555555555555555555555555555555555555555555555555555555555555555";
+    const db = new FakeD1();
+    await seedInstallBrowserToken(db, { id: "browser-token-csrf", token: rawToken });
+    const cookie = await signInCookie(db, "csrf-victim@example.com", { ip: "203.0.113.32" });
+
+    const get = await worker.fetch(new Request(`https://party.ramine.net/link-mac?token=${rawToken}`, {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    assert.equal(get.status, 200);
+    assert.equal(db.installBrowserTokens.get("browser-token-csrf").used_ms, null);
+    assert.equal(db.deviceInstalls.has("abc123abc123"), false);
+
+    const evil = await worker.fetch(new Request(`https://party.ramine.net/link-mac`, {
+      method: "POST",
+      headers: { cookie, origin: "https://evil.example", "content-type": "application/x-www-form-urlencoded" },
+      body: `token=${rawToken}`,
+    }), makeEnv({ DB: db }));
+    const evilHtml = await evil.text();
+    assert.match(evilHtml, /Link blocked/);
+    assert.equal(db.installBrowserTokens.get("browser-token-csrf").used_ms, null);
+    assert.equal(db.deviceInstalls.has("abc123abc123"), false);
   }],
   ["broker link-install rejects bad secret", async () => {
     const rawCode = "badc0dedbadc0dedbadc0dedbadc0ded";
@@ -2132,6 +2398,11 @@ const tests = [
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 302);
     assert.equal(resp.headers.get("location"), "/account");
+    const next = await worker.fetch(new Request("https://party.ramine.net/login?redirect=/link-mac%3Ftoken%3Daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+      headers: { cookie },
+    }), makeEnv({ DB: db }));
+    assert.equal(next.status, 302);
+    assert.equal(next.headers.get("location"), "/link-mac?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   }],
   ["home renders useful empty state", async () => {
     const resp = await fetchPath("/");

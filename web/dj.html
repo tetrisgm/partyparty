@@ -23,6 +23,37 @@
   *{box-sizing:border-box}
   body{margin:0;padding-bottom:40px;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
+  body.account-locked{padding-bottom:0;overflow:hidden}
+  [hidden]{display:none!important}
+  .authgate{position:sticky;top:0;z-index:50;background:var(--bg-elevated);border-bottom:1px solid var(--separator);padding:9px 16px;box-shadow:var(--shadow)}
+  .authbanner-in{display:flex;align-items:center;gap:12px;flex-wrap:wrap;max-width:1120px;margin:0 auto}
+  .authbanner-msg{flex:1;min-width:220px;font-size:13px;line-height:1.4;color:var(--label-secondary)}
+  .authbanner-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .authbanner-actions .go{height:32px;padding:0 16px;border-radius:999px;font-size:13px}
+  .authbanner-actions .ghost{height:32px;padding:0 12px;border-radius:999px;font-size:13px}
+  .auth-card{width:min(520px,100%);background:var(--bg-elevated);border:1px solid var(--separator);border-radius:18px;padding:28px;box-shadow:var(--shadow)}
+  .auth-brand{font-weight:800;font-size:16px;margin-bottom:22px;color:var(--label)}
+  .auth-card h1{font-size:30px;line-height:1.12;letter-spacing:-.02em;margin:0 0 10px;color:var(--label)}
+  .auth-copy{font-size:14px;line-height:1.5;color:var(--label-secondary);margin:0 0 20px;max-width:430px}
+  .auth-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .auth-actions .go{height:40px;padding:0 22px;border-radius:999px}
+  .auth-actions .ghost{height:40px;border-radius:999px}
+  .auth-status{font-size:13px;line-height:1.5;color:var(--label-secondary);margin-top:16px;min-height:20px}
+  .auth-status.error{color:var(--danger)}
+  .auth-status.ok{color:#1d883d}
+  .auth-meta{border-top:1px solid var(--separator);margin-top:22px;padding-top:16px;display:grid;gap:7px;color:var(--label-secondary);font-size:13px}
+  .auth-meta b{color:var(--label)}
+  .settings-section{border-top:1px solid var(--separator);padding-top:16px;margin-top:16px}
+  .settings-section:first-of-type{border-top:none;padding-top:0;margin-top:0}
+  .settings-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .settings-title h3{font-size:15px;line-height:1.25;margin:0;color:var(--label)}
+  .accountbox{border:1px solid var(--separator);border-radius:var(--r-sm);background:var(--bg-elevated-2);padding:12px;display:grid;gap:9px}
+  .accountrow{display:flex;justify-content:space-between;gap:14px;border-top:1px solid var(--separator);padding-top:9px;color:var(--label-secondary)}
+  .accountrow:first-child{border-top:none;padding-top:0}
+  .accountrow b{font-weight:600;color:var(--label);text-align:right;word-break:break-word}
+  .account-empty{font-size:13px;color:var(--label-secondary);line-height:1.45}
+  .account-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  button.dangertext{color:var(--danger)}
   header.eventhead{max-width:680px;margin:0 auto;padding:30px 24px 16px;display:block}
   .ehost{color:var(--label-secondary);font-size:14px;font-weight:600;margin-bottom:2px}
   .ename{margin:0 0 6px;font-size:36px;font-weight:800;letter-spacing:-.025em;line-height:1.12;color:var(--label)}
@@ -262,6 +293,19 @@
 </style>
 </head>
 <body>
+<div id="authGate" class="authgate" hidden>
+  <div class="authbanner-in">
+    <span class="authbanner-msg" id="accountMsg" role="status">Sign in to publish your party online and link this Mac — not needed for an offline party.</span>
+    <span class="authbanner-actions">
+      <button class="go" id="accountSignInBtn" type="button">Sign in</button>
+      <button class="ghost" id="accountRetryBtn" type="button">I've signed in</button>
+      <button class="ghost" id="accountDismissBtn" type="button">Not now</button>
+    </span>
+  </div>
+  <div class="auth-meta" id="accountMeta" hidden></div>
+</div>
+
+<div id="appChrome">
 <!-- ADMIN ACTION BAR: everything the DJ operates — source, sharing, settings,
      Go Live — lives up here. Below it, the page IS the event. -->
 <div id="actionbar">
@@ -369,16 +413,8 @@
           <div id="onlineHome"></div>
         </div>
         <div class="online-item">
-          <span class="muted">Sign in / account</span>
+          <span class="muted">Account</span>
           <div id="onlineLogin"></div>
-        </div>
-        <div class="online-item">
-          <span class="muted">Link this Mac</span>
-          <div class="linkrow">
-            <input id="installLinkCode" maxlength="32" spellcheck="false" autocapitalize="off" autocomplete="one-time-code" placeholder="Account code">
-            <button class="ghost" id="installLinkBtn" type="button">Link</button>
-          </div>
-          <div id="installLinkMsg" class="hint" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -517,34 +553,56 @@
   <div class="sheet">
     <button class="cardx" id="settingsCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
     <h2 style="margin:0 0 14px">Settings</h2>
-    <label for="quality">Audio quality</label>
-    <select id="quality">
-      <option value="64k">Minimum — 64 kbps</option>
-      <option value="96k">Low — 96 kbps</option>
-      <option value="128k">Medium — 128 kbps</option>
-      <option value="160k">Balanced — 160 kbps</option>
-      <option value="192k">High — 192 kbps</option>
-      <option value="256k">Very high — 256 kbps</option>
-      <option value="320k" selected>Max — 320 kbps</option>
-    </select>
-    <div id="inapp" style="display:none;margin-top:14px">
-      <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
-    </div>
-    <button class="ghost" id="permBtnAlways" style="margin-top:14px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
-    <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session — hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
-    <details style="margin-top:14px">
-      <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Source guide</summary>
-      <div id="helpNote" style="display:block">
-        <h3>① Capture everything on the Mac (easiest)</h3>
-        <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
-        <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
-        <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
-        <h3>③ Hardware controller / mixer</h3>
-        <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
-        <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
+
+    <section class="settings-section">
+      <div class="settings-title">
+        <h3>Account</h3>
+        <span class="statebadge pending" id="accountSettingsBadge">Checking</span>
       </div>
-    </details>
-    <label class="advcheck"><input type="checkbox" id="advToggle"> Show advanced settings</label>
+      <div class="accountbox" id="settingsAccount">
+        <div class="account-empty">Checking account...</div>
+      </div>
+      <div class="account-actions">
+        <button class="ghost" id="accountOpenBtn" type="button">Manage account</button>
+        <button class="ghost" id="accountRefreshBtn" type="button">Refresh</button>
+        <button class="ghost dangertext" id="accountSignOutBtn" type="button">Sign out</button>
+      </div>
+      <div id="accountSettingsMsg" class="hint" style="display:none"></div>
+    </section>
+
+    <section class="settings-section">
+      <label for="quality">Audio quality</label>
+      <select id="quality">
+        <option value="64k">Minimum — 64 kbps</option>
+        <option value="96k">Low — 96 kbps</option>
+        <option value="128k">Medium — 128 kbps</option>
+        <option value="160k">Balanced — 160 kbps</option>
+        <option value="192k">High — 192 kbps</option>
+        <option value="256k">Very high — 256 kbps</option>
+        <option value="320k" selected>Max — 320 kbps</option>
+      </select>
+      <div id="inapp" style="display:none;margin-top:14px">
+        <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
+      </div>
+      <button class="ghost" id="permBtnAlways" style="margin-top:14px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
+      <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session — hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
+    </section>
+
+    <div class="settings-section">
+      <details>
+        <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Source guide</summary>
+        <div id="helpNote" style="display:block">
+          <h3>① Capture everything on the Mac (easiest)</h3>
+          <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+          <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
+          <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
+          <h3>③ Hardware controller / mixer</h3>
+          <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
+          <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
+        </div>
+      </details>
+      <label class="advcheck"><input type="checkbox" id="advToggle"> Show advanced settings</label>
+    </div>
     <div class="adv">
       <label style="margin:0 0 12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
         <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
@@ -558,6 +616,7 @@
       <div id="ifaces"></div>
     </div>
   </div>
+</div>
 </div>
 
 <script src="/vendor/qrcode.min.js"></script>
@@ -610,7 +669,7 @@
       $('onlineEvent').innerHTML = '<div class="hint" style="margin:0">Publish a set to create your shareable page.</div>';
     }
     renderOnlineUrl('onlineHome', ONLINE_BASE);
-    renderOnlineUrl('onlineLogin', ONLINE_BASE + '/login');
+    renderOnlineUrl('onlineLogin', ONLINE_BASE + '/account');
   }
   function renderMirror(m){
     const el = $('mirrorStatus');
@@ -633,6 +692,187 @@
     if (btn) copyText(btn.dataset.copyUrl, btn);
   });
   renderOnline('');
+
+  let accountLinked = false;
+  let currentAccountState = null;
+  let accountPoll = null;
+  let refreshTimer = null;
+  let accountWatchTimer = null;
+
+  function accountName(st){
+    const profile = st && st.profile || {};
+    const user = st && st.user || {};
+    return profile.displayName || (profile.handle ? '@' + profile.handle : '') || user.displayName || user.email || 'your account';
+  }
+  function accountEmail(st){
+    const user = st && st.user || {};
+    return user.email || '';
+  }
+  function accountHandle(st){
+    const profile = st && st.profile || {};
+    return profile.handle ? '@' + profile.handle : '';
+  }
+  function accountEventsSummary(st){
+    const events = st && Array.isArray(st.events) ? st.events : [];
+    if (!events.length) return 'No online events yet.';
+    return events.slice(0, 3).map(ev => ev.title || ev.slug).filter(Boolean).join(' · ');
+  }
+  function accountCheckedText(st){
+    const n = Number(st && st.checkedMs || 0);
+    if (!n) return '';
+    try { return new Date(n).toLocaleString(); } catch (e) { return ''; }
+  }
+  function renderSettingsAccount(st){
+    const box = $('settingsAccount');
+    const badge = $('accountSettingsBadge');
+    if (!box || !badge) return;
+    const linked = !!(st && st.linked);
+    const err = st && st.error;
+    badge.className = 'statebadge' + (linked ? '' : (err ? ' hidden' : ' pending'));
+    badge.textContent = linked ? 'Signed in' : (err ? 'Needs sign in' : 'Signed out');
+    $('accountOpenBtn').textContent = linked ? 'Manage account' : 'Sign in / Sign up';
+    $('accountSignOutBtn').style.display = linked ? '' : 'none';
+    if (!linked) {
+      box.innerHTML = '<div class="account-empty">' +
+        (err ? 'This Mac is not linked to an account. Sign in or sign up to verify the app, link this Mac, and enable secure guest links.' :
+          'Not signed in. Sign in or sign up to verify the app, link this Mac, and enable secure guest links.') +
+        '</div>';
+      return;
+    }
+    const install = st.install || {};
+    const license = st.license || {};
+    const rows = [
+      ['Account', accountName(st)],
+      ['Email', accountEmail(st) || 'No email on file'],
+      ['DJ profile', accountHandle(st) || 'Profile ready'],
+      ['This Mac', install.slug || install.id || 'Linked'],
+      ['Guest host', install.host || 'Assigned when online'],
+      ['License', license.ok ? 'Verified' : (license.reason || 'Needs review')],
+      ['Events', accountEventsSummary(st)],
+    ];
+    if (st.offline) rows.push(['Offline', 'Using saved verification on this Mac']);
+    const checked = accountCheckedText(st);
+    if (checked) rows.push(['Checked', checked]);
+    box.innerHTML = rows.map(row => '<div class="accountrow"><span>' + escT(row[0]) + '</span><b>' + escT(row[1]) + '</b></div>').join('');
+  }
+  function renderAccountState(st, checking){
+    const linked = !!(st && st.linked);
+    const msg = $('accountMsg');
+    const meta = $('accountMeta');
+    currentAccountState = st || null;
+    accountLinked = linked;
+    renderSettingsAccount(st || { linked: false });
+    // Offline-first: the console is ALWAYS available. Signing in only unlocks
+    // publishing the party online + linking this Mac — it never gates the local
+    // party (Go Live works at a zero-internet venue with no account).
+    startConsoleRefresh();
+    meta.hidden = true;
+    if (linked) {
+      clearInterval(accountPoll);
+      accountPoll = null;
+      $('authGate').hidden = true;
+      return;
+    }
+    const dismissed = sessionStorage.getItem('ppAuthBannerDismissed') === '1';
+    $('authGate').hidden = !!checking || dismissed;
+    msg.className = 'authbanner-msg' + (st && st.error ? ' error' : '');
+    if (st && st.error) {
+      msg.textContent = 'Offline — you can still run the party. Sign in later to publish it online.';
+    } else {
+      msg.textContent = 'Sign in to publish your party online and link this Mac — not needed for an offline party.';
+    }
+  }
+  async function loadAccountStatus(opts){
+    opts = opts || {};
+    if (!opts.silent) renderAccountState(null, true);
+    try {
+      const r = await fetch('/api/account/status', { cache: 'no-store' });
+      const st = await r.json().catch(() => ({}));
+      if (!r.ok && !st.error) st.error = 'account check failed';
+      renderAccountState(st, false);
+      return st;
+    } catch (e) {
+      const st = { linked: false, error: e && e.message ? e.message : 'account check failed' };
+      renderAccountState(st, false);
+      return st;
+    }
+  }
+  async function openAccountFromSettings(){
+    const btn = $('accountOpenBtn');
+    const msg = $('accountSettingsMsg');
+    const linked = !!(currentAccountState && currentAccountState.linked);
+    msg.style.display = 'block';
+    msg.textContent = linked ? 'Opening your account in the browser...' : 'Opening sign-in in the browser...';
+    btn.disabled = true;
+    try {
+      if (!linked) {
+        await startAccountSignIn();
+        msg.textContent = 'Finish sign-in in your browser. The app will unlock automatically.';
+        return;
+      }
+      const r = await fetch('/api/account/open', { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not open account.');
+      msg.textContent = 'Account opened in your browser.';
+    } catch (e) {
+      msg.textContent = e && e.message ? e.message : 'Could not open account.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  async function signOutAccount(){
+    const btn = $('accountSignOutBtn');
+    const msg = $('accountSettingsMsg');
+    btn.disabled = true;
+    msg.style.display = 'block';
+    msg.textContent = 'Signing out...';
+    try {
+      const r = await fetch('/api/account/sign-out', { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not sign out.');
+      msg.textContent = 'Signed out.';
+      $('settingsSheet').classList.remove('show');
+      await loadAccountStatus();
+    } catch (e) {
+      msg.textContent = e && e.message ? e.message : 'Could not sign out.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  function startAccountPoll(){
+    clearInterval(accountPoll);
+    accountPoll = setInterval(() => loadAccountStatus({ silent: true }), 2000);
+  }
+  async function startAccountSignIn(){
+    const btn = $('accountSignInBtn');
+    const msg = $('accountMsg');
+    btn.disabled = true;
+    msg.className = 'auth-status';
+    msg.textContent = 'Opening sign-in / sign-up in your browser...';
+    try {
+      const r = await fetch('/api/link-install/start', { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not start sign-in.');
+      msg.textContent = 'Finish sign-in in your browser. partyparty will unlock here automatically.';
+      startAccountPoll();
+    } catch (e) {
+      msg.className = 'auth-status error';
+      msg.textContent = e && e.message ? e.message : 'Could not start sign-in.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  $('accountSignInBtn').onclick = startAccountSignIn;
+  $('accountRetryBtn').onclick = () => loadAccountStatus();
+  $('accountDismissBtn').onclick = () => { try { sessionStorage.setItem('ppAuthBannerDismissed', '1'); } catch (e) {} $('authGate').hidden = true; };
+  $('accountOpenBtn').onclick = openAccountFromSettings;
+  $('accountRefreshBtn').onclick = () => {
+    const msg = $('accountSettingsMsg');
+    msg.style.display = 'block';
+    msg.textContent = 'Refreshing account...';
+    loadAccountStatus({ silent: true }).then(() => { msg.textContent = 'Account refreshed.'; });
+  };
+  $('accountSignOutBtn').onclick = signOutAccount;
 
   // Black-box recorder (console side): JS errors + key admin actions folded
   // into the Mac session log. A broken console means the DJ can't operate, so
@@ -847,39 +1087,6 @@
     document.body.classList.toggle('show-adv', $('advToggle').checked);
     localStorage.setItem('pp.adv', $('advToggle').checked ? '1' : '0');
   };
-
-  async function linkInstall() {
-    const inp = $('installLinkCode');
-    const msg = $('installLinkMsg');
-    const btn = $('installLinkBtn');
-    const code = (inp.value || '').trim().toLowerCase();
-    msg.style.display = 'block';
-    if (!/^[a-f0-9]{32}$/.test(code)) {
-      msg.textContent = 'Enter the 32-character code from your account page.';
-      inp.focus();
-      return;
-    }
-    btn.disabled = true;
-    msg.textContent = 'Linking…';
-    try {
-      const r = await fetch('/api/link-install', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'Could not link this Mac.');
-      inp.value = '';
-      msg.textContent = j.handle ? ('Linked to @' + j.handle + '.') : 'Linked.';
-      refresh();
-    } catch (e) {
-      msg.textContent = e && e.message ? e.message : 'Could not link this Mac.';
-    } finally {
-      btn.disabled = false;
-    }
-  }
-  $('installLinkBtn').onclick = linkInstall;
-  $('installLinkCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') linkInstall(); });
 
   async function startBroadcast() {
     const sel = $('device');
@@ -1142,9 +1349,22 @@
     }
   }
 
-  loadDevices();
-  refresh();
-  setInterval(refresh, 1000); // latency/sync numbers should feel live, not laggy
+  function startConsoleRefresh(){
+    if (refreshTimer) return;
+    loadDevices();
+    refresh();
+    refreshTimer = setInterval(refresh, 1000); // latency/sync numbers should feel live, not laggy
+    if (!accountWatchTimer) {
+      accountWatchTimer = setInterval(() => {
+        if (accountLinked) loadAccountStatus({ silent: true });
+      }, 60000);
+    }
+  }
+  function stopConsoleRefresh(){
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  loadAccountStatus();
 
   // ── Event identity: click-to-edit host + title + date in the header ──
   const PH = { startsEdit: 'add date & place' };

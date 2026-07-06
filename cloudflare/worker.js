@@ -61,6 +61,8 @@ const INSTALL_LINK_USER_CAP = 5;
 const INSTALL_LINK_CLEANUP_GRACE_MS = 60 * 60 * 1000;
 const INSTALL_LINK_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const INSTALL_LINK_ATTEMPT_CAP = 10;
+const INSTALL_BROWSER_LINK_TTL_MS = 10 * 60 * 1000;
+const INSTALL_BROWSER_LINK_INSTALL_CAP = 5;
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -964,6 +966,38 @@ function defaultDisplayName(user) {
   return clip(String(user?.email || "").split("@")[0] || user?.display_name || "DJ", 80);
 }
 
+function defaultHandle(user) {
+  return normalizeHandle(String(user?.email || "").split("@")[0] || user?.display_name || "dj") || "dj";
+}
+
+function handleCandidate(base, suffix) {
+  const tail = suffix ? `.${suffix}` : "";
+  const stem = String(base || "dj").slice(0, 30 - tail.length).replace(/[._]+$/g, "") || "dj";
+  return normalizeHandle(stem + tail) || `dj.${suffix || "1"}`;
+}
+
+async function ensureUserDjProfile(env, user, now = nowMs()) {
+  let profile = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+  if (profile?.id) return profile;
+
+  const base = defaultHandle(user);
+  const displayName = defaultDisplayName(user);
+  for (let i = 0; i < 8; i += 1) {
+    const handle = handleCandidate(base, i ? i + 1 : 0);
+    try {
+      await env.DB.prepare(
+        `INSERT INTO dj_profiles (id, user_id, handle, display_name, bio, location, published, created_ms, updated_ms, last_activity_ms)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
+      ).bind(randHex(16), user.id, handle, displayName, "", "", now, now, now).run();
+      profile = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+      if (profile?.id) return profile;
+    } catch (e) {
+      if (!/unique|constraint|dj_profiles\.handle/i.test(String(e?.message || e || ""))) throw e;
+    }
+  }
+  throw new Error("could not create DJ profile");
+}
+
 function cleanProfileUrl(value) {
   const raw = String(value == null ? "" : value).trim();
   if (!raw) return "";
@@ -1350,9 +1384,9 @@ async function loginResponse(request, env) {
   if (request.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
   }
-  const user = await getSessionUser(env, request);
-  if (user) return redirectResp("/account");
   const redirectPath = safeRedirectPath(new URL(request.url).searchParams.get("redirect") || "/account");
+  const user = await getSessionUser(env, request);
+  if (user) return redirectResp(redirectPath || "/account");
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
@@ -1422,13 +1456,16 @@ async function accountResponse(request, env) {
   }).join("")}</div>` : `<p class="emptyline">No owned events yet.</p>`;
   const linkMacCard = profile ? `<div class="card">
     <h2>Link your Mac</h2>
-    <p class="emptyline">Generate a one-time code, then paste it into partyparty on your Mac.</p>
-    <div class="ecta"><button class="btn lt sm" id="install-link-create" type="button">Generate code</button></div>
-    <div id="install-link-out" class="minirow" style="display:none"></div>
+    <p class="emptyline">Open partyparty on your Mac and choose Sign in to link this Mac.</p>
+    <details style="margin-top:12px">
+      <summary class="emptyline" style="cursor:pointer">Use a code for an older app</summary>
+      <div class="ecta"><button class="btn lt sm" id="install-link-create" type="button">Generate code</button></div>
+      <div id="install-link-out" class="minirow" style="display:none"></div>
+    </details>
   </div>` : `<div class="card">
     <h2>Link your Mac</h2>
-    <p class="emptyline">Create a DJ profile before linking an install.</p>
-    <div class="ecta"><a class="btn lt sm" href="/profile/edit">Create profile</a></div>
+    <p class="emptyline">Open partyparty on your Mac and sign in from there. A profile will be created automatically.</p>
+    <div class="ecta"><a class="btn lt sm" href="/login">Sign in here</a></div>
   </div>`;
   const body = `<div class="page">
     <div class="card">
@@ -2095,11 +2132,169 @@ async function installLinkUnlink(request, env) {
   return jsonResp(200, { ok: true, revoked: Number(result?.meta?.changes) || 0 });
 }
 
+async function installBrowserLinkStart(env, id, rec, request) {
+  if (!env.DB) return jsonResp(503, { error: "link db not configured" });
+  const now = nowMs();
+  cleanupInstallLinkTokens(env, now);
+  const live = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM install_browser_tokens WHERE install_id=? AND used_ms IS NULL AND expires_ms>?"
+  ).bind(id, now).first();
+  if ((Number(live?.n) || 0) >= INSTALL_BROWSER_LINK_INSTALL_CAP) return jsonResp(429, { error: "rate limited" });
+
+  for (let i = 0; i < 3; i += 1) {
+    const token = randHex(32);
+    try {
+      await env.DB.prepare(
+        `INSERT INTO install_browser_tokens
+           (id, token_hash, install_id, install_slug, created_ms, expires_ms, used_ms, request_ip_hash)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
+      ).bind(
+        randHex(16),
+        await sha256Hex(token),
+        id,
+        clip(rec?.slug || "", 64),
+        now,
+        now + INSTALL_BROWSER_LINK_TTL_MS,
+        await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`)
+      ).run();
+      return jsonResp(200, {
+        ok: true,
+        url: `${SITE_ORIGIN}/link-mac?token=${encodeURIComponent(token)}`,
+        expiresMs: now + INSTALL_BROWSER_LINK_TTL_MS,
+      });
+    } catch (e) {
+      if (!/unique|constraint|install_browser_tokens/i.test(String((e && e.message) || e))) throw e;
+    }
+  }
+  return jsonResp(500, { error: "could not create sign-in link" });
+}
+
+function linkMacPage(title, message, extra = "") {
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 8px">${esc(title)}</h1>
+      <p class="sub">${esc(message)}</p>
+      ${extra}
+    </div>
+  </div>
+  <footer><span>🕺 partyparty</span><span>Mac link</span></footer>`;
+  return new Response(shell({
+    title: `${title} · partyparty`,
+    desc: "Link your Mac to your partyparty account.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/link-mac",
+    body,
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
+}
+
+// The confirmation interstitial. GET renders this (no state change); the actual
+// account<->install bind only happens on the same-site POST it submits — so a
+// cross-site GET carrying the victim's SameSite=Lax cookie cannot silently link
+// their account to an attacker's Mac.
+function linkMacConfirmPage(user, rawToken) {
+  const who = esc(user.email || "your account");
+  const extra = `<form method="POST" action="/link-mac" style="margin-top:16px">
+      <input type="hidden" name="token" value="${esc(rawToken)}">
+      <div class="ecta">
+        <button class="btn" type="submit">Link this Mac to ${who}</button>
+        <a class="btn lt sm" href="/account">Not now</a>
+      </div>
+    </form>`;
+  return linkMacPage(
+    "Link this Mac?",
+    `Linking lets this Mac publish parties to ${user.email || "your account"} and see your events. Only do this if you just started sign-in from partyparty on this Mac.`,
+    extra
+  );
+}
+
+async function linkMacResponse(request, env) {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, POST" } });
+  }
+  if (!env.DB) return linkMacPage("Link unavailable", "Account linking is not configured yet.");
+
+  const isPost = request.method === "POST";
+  let rawToken;
+  if (isPost) {
+    // Defense in depth on top of SameSite=Lax: reject cross-site form posts.
+    const origin = request.headers.get("origin") || "";
+    if (origin && origin !== SITE_ORIGIN) {
+      return linkMacPage("Link blocked", "That request didn’t come from partyparty. Start sign-in again from the app on your Mac.");
+    }
+    const form = await request.formData().catch(() => null);
+    rawToken = String((form && form.get("token")) || "").trim().toLowerCase();
+  } else {
+    rawToken = String(new URL(request.url).searchParams.get("token") || "").trim().toLowerCase();
+  }
+  if (!/^[a-f0-9]{64}$/.test(rawToken)) {
+    return linkMacPage("Link expired", "Open partyparty on your Mac and start sign-in again.");
+  }
+
+  const tokenHash = await sha256Hex(rawToken);
+  const row = await env.DB.prepare("SELECT * FROM install_browser_tokens WHERE token_hash=? LIMIT 1").bind(tokenHash).first();
+  const now = nowMs();
+  if (!row || row.used_ms != null || Number(row.expires_ms) <= now) {
+    return linkMacPage("Link expired", "Open partyparty on your Mac and start sign-in again.");
+  }
+
+  const user = await getSessionUser(env, request);
+  if (!user) {
+    return redirectResp(`/login?redirect=${encodeURIComponent(`/link-mac?token=${rawToken}`)}`);
+  }
+
+  const profile = await ensureUserDjProfile(env, user, now);
+  const existing = await env.DB.prepare(
+    "SELECT user_id, profile_id, revoked_ms FROM device_installs WHERE install_id=? LIMIT 1"
+  ).bind(row.install_id).first();
+  if (existing && existing.revoked_ms == null && existing.user_id && existing.user_id !== user.id) {
+    return linkMacPage(
+      "Mac already linked",
+      "This Mac is linked to a different account. Unlink it from that account first.",
+      `<div class="ecta"><a class="btn lt sm" href="/account">Account</a></div>`
+    );
+  }
+
+  // GET only confirms — no binding. The state change happens on the POST below.
+  if (!isPost) {
+    return linkMacConfirmPage(user, rawToken);
+  }
+
+  const mark = await env.DB.prepare(
+    "UPDATE install_browser_tokens SET used_ms=? WHERE id=? AND used_ms IS NULL"
+  ).bind(now, row.id).run();
+  if ((Number(mark?.meta?.changes) || 0) < 1) {
+    return linkMacPage("Link expired", "Open partyparty on your Mac and start sign-in again.");
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO device_installs
+       (install_id, install_slug, user_id, profile_id, label, created_ms, linked_ms, last_seen_ms, revoked_ms)
+     VALUES (?, ?, ?, ?, '', ?, ?, ?, NULL)
+     ON CONFLICT(install_id) DO UPDATE SET
+       install_slug=excluded.install_slug,
+       user_id=excluded.user_id,
+       profile_id=excluded.profile_id,
+       linked_ms=excluded.linked_ms,
+       last_seen_ms=excluded.last_seen_ms,
+       revoked_ms=NULL`
+  ).bind(row.install_id, row.install_slug || "", user.id, profile.id, now, now, now).run();
+
+  return linkMacPage(
+    "Mac linked",
+    `This Mac is now linked to ${user.email || "your account"}.`,
+    `<div class="ecta"><a class="btn sm" href="/account">View account</a><a class="btn lt sm" href="/">Go to website</a></div>`
+  );
+}
+
 function cleanupInstallLinkTokens(env, now) {
   try {
-    env.DB.prepare(
+    const jobs = [env.DB.prepare(
       "DELETE FROM install_link_tokens WHERE (used_ms IS NOT NULL OR expires_ms < ?) AND created_ms < ? LIMIT 200"
-    ).bind(now, now - INSTALL_LINK_CLEANUP_GRACE_MS).run().catch(() => {});
+    ).bind(now, now - INSTALL_LINK_CLEANUP_GRACE_MS).run()];
+    jobs.push(env.DB.prepare(
+      "DELETE FROM install_browser_tokens WHERE (used_ms IS NOT NULL OR expires_ms < ?) AND created_ms < ? LIMIT 200"
+    ).bind(now, now - INSTALL_LINK_CLEANUP_GRACE_MS).run());
+    Promise.all(jobs).catch(() => {});
   } catch (_) { /* best effort */ }
 }
 
@@ -2294,6 +2489,65 @@ async function authInstall(env, id, secret) {
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => (o ? o.json() : null));
   if (!rec || rec.secret !== secret) return null;
   return rec;
+}
+
+async function brokerAccountStatus(env, id, rec) {
+  if (!env.DB) return jsonResp(503, { error: "account db not configured" });
+  const linked = await env.DB.prepare(
+    `SELECT
+       di.user_id,
+       di.profile_id,
+       u.email,
+       u.display_name AS user_display_name,
+       p.handle,
+       p.display_name AS profile_display_name
+     FROM device_installs di
+     LEFT JOIN users u ON u.id=di.user_id
+     LEFT JOIN dj_profiles p ON p.id=di.profile_id
+     WHERE di.install_id=? AND di.revoked_ms IS NULL
+     LIMIT 1`
+  ).bind(id).first();
+  if (!linked?.user_id) {
+    return jsonResp(200, {
+      ok: true,
+      linked: false,
+      install: { id, slug: rec.slug || "", host: `${rec.slug || id}.${env.BROKER_BASE}` },
+      license: { ok: false, reason: "sign in required" },
+    });
+  }
+  const events = await env.DB.prepare(
+    `SELECT slug, title, status, scheduled_at_ms, starts, where_txt, location_name
+     FROM events
+     WHERE owner_user_id=?
+     ORDER BY COALESCE(scheduled_at_ms, published_ms, updated_ms, created_ms, 0) DESC, slug ASC
+     LIMIT 6`
+  ).bind(linked.user_id).all();
+  return jsonResp(200, {
+    ok: true,
+    linked: true,
+    user: {
+      id: linked.user_id,
+      email: linked.email || "",
+      displayName: linked.user_display_name || "",
+    },
+    profile: {
+      id: linked.profile_id || "",
+      handle: normalizeHandle(linked.handle),
+      displayName: linked.profile_display_name || "",
+    },
+    install: { id, slug: rec.slug || "", host: `${rec.slug || id}.${env.BROKER_BASE}` },
+    license: { ok: true, source: "account" },
+    events: events?.results || [],
+  });
+}
+
+async function brokerAccountUnlink(env, id) {
+  if (!env.DB) return jsonResp(503, { error: "account db not configured" });
+  const now = nowMs();
+  const result = await env.DB.prepare(
+    "UPDATE device_installs SET revoked_ms=?, last_seen_ms=? WHERE install_id=? AND revoked_ms IS NULL"
+  ).bind(now, now, id).run();
+  return jsonResp(200, { ok: true, revoked: Number(result?.meta?.changes) || 0 });
 }
 
 // auditPublish appends a best-effort row to publish_events (forensics only —
@@ -2652,6 +2906,9 @@ function brokerJsonCap(pathname) {
   if (pathname === "/api/broker/telemetry") return 128_000;
   if (pathname === "/api/broker/events-window") return 2_048;
   if (pathname === "/api/broker/link-install") return 2_048;
+  if (pathname === "/api/broker/link-start") return 2_048;
+  if (pathname === "/api/broker/account-status") return 2_048;
+  if (pathname === "/api/broker/account-unlink") return 2_048;
   return 16_384;
 }
 
@@ -2721,6 +2978,24 @@ async function broker(request, env, pathname) {
   }
   const id = String(body.id || "");
   if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
+
+  if (pathname === "/api/broker/link-start") {
+    const rec = await authInstall(env, id, body.secret || "");
+    if (!rec) return jsonResp(403, { error: "bad credentials" });
+    return await installBrowserLinkStart(env, id, rec, request);
+  }
+
+  if (pathname === "/api/broker/account-status") {
+    const rec = await authInstall(env, id, body.secret || "");
+    if (!rec) return jsonResp(403, { error: "bad credentials" });
+    return await brokerAccountStatus(env, id, rec);
+  }
+
+  if (pathname === "/api/broker/account-unlink") {
+    const rec = await authInstall(env, id, body.secret || "");
+    if (!rec) return jsonResp(403, { error: "bad credentials" });
+    return await brokerAccountUnlink(env, id);
+  }
 
   if (pathname === "/api/broker/link-install") {
     if (!env.DB) return jsonResp(503, { error: "link db not configured" });
@@ -3170,6 +3445,14 @@ export default {
         return await installLinkUnlink(request, env);
       } catch (e) {
         return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    if (pathname === "/link-mac") {
+      try {
+        return await linkMacResponse(request, env);
+      } catch (_) {
+        return linkMacPage("Link unavailable", "Open partyparty on your Mac and start sign-in again.");
       }
     }
 

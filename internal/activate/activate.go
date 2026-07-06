@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,53 @@ type Result struct {
 	CertFile string
 	KeyFile  string
 	Reason   string // why activation is off/failed (for the log)
+}
+
+type AccountState struct {
+	OK        bool           `json:"ok"`
+	Linked    bool           `json:"linked"`
+	Offline   bool           `json:"offline,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	CheckedMS int64          `json:"checkedMs,omitempty"`
+	User      AccountUser    `json:"user,omitempty"`
+	Profile   AccountProfile `json:"profile,omitempty"`
+	Install   AccountInstall `json:"install,omitempty"`
+	License   AccountLicense `json:"license,omitempty"`
+	Events    []AccountEvent `json:"events,omitempty"`
+}
+
+type AccountUser struct {
+	ID          string `json:"id,omitempty"`
+	Email       string `json:"email,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+}
+
+type AccountProfile struct {
+	ID          string `json:"id,omitempty"`
+	Handle      string `json:"handle,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+}
+
+type AccountInstall struct {
+	ID   string `json:"id,omitempty"`
+	Slug string `json:"slug,omitempty"`
+	Host string `json:"host,omitempty"`
+}
+
+type AccountLicense struct {
+	OK     bool   `json:"ok"`
+	Source string `json:"source,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type AccountEvent struct {
+	Slug          string `json:"slug,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Status        string `json:"status,omitempty"`
+	ScheduledAtMS int64  `json:"scheduled_at_ms,omitempty"`
+	Starts        string `json:"starts,omitempty"`
+	Where         string `json:"where_txt,omitempty"`
+	LocationName  string `json:"location_name,omitempty"`
 }
 
 type Logf func(format string, args ...any)
@@ -182,6 +230,137 @@ func LinkInstall(brokerURL, code string, logf Logf) (string, error) {
 		return "", err
 	}
 	return out.Handle, nil
+}
+
+// StartInstallLink creates a short-lived browser handoff URL. The local install
+// authenticates to the broker with its id/secret; the user then signs in on the
+// website and the website binds this install to that account.
+func StartInstallLink(brokerURL string, logf Logf) (string, error) {
+	dir, err := stateDir()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
+	if err != nil {
+		return "", err
+	}
+	var out struct{ URL string }
+	if err := b.post(ctx, "/api/broker/link-start", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
+		return "", err
+	}
+	u, err := url.Parse(out.URL)
+	base, berr := url.Parse(brokerURL)
+	if err != nil || berr != nil || u.Scheme != "https" || u.Host == "" || u.Host != base.Host {
+		return "", errors.New("broker returned a bad sign-in URL")
+	}
+	return out.URL, nil
+}
+
+// AccountStatus verifies the local install against the broker and returns the
+// linked web account. A successful linked response is cached locally so the app
+// can still open at an offline venue after the account was verified once.
+func AccountStatus(brokerURL string, logf Logf) (AccountState, error) {
+	dir, err := stateDir()
+	if err != nil {
+		return AccountState{OK: false, Linked: false, Error: err.Error()}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
+	if err != nil {
+		return cachedAccountOrError(dir, err)
+	}
+	var out AccountState
+	if err := b.post(ctx, "/api/broker/account-status", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
+		return cachedAccountOrError(dir, err)
+	}
+	if out.CheckedMS == 0 {
+		out.CheckedMS = time.Now().UnixMilli()
+	}
+	if out.Install.ID == "" {
+		out.Install.ID = b.id
+	}
+	if out.Install.Slug == "" {
+		out.Install.Slug = b.slug
+	}
+	if out.Linked {
+		if err := saveAccountCache(dir, out); err != nil && logf != nil {
+			logf("activate: could not save account cache: %v", err)
+		}
+	} else {
+		if err := clearAccountCache(dir); err != nil && logf != nil {
+			logf("activate: could not clear account cache: %v", err)
+		}
+	}
+	return out, nil
+}
+
+func SignOutAccount(brokerURL string, logf Logf) error {
+	dir, err := stateDir()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
+	if err != nil {
+		return err
+	}
+	var out struct {
+		OK      bool `json:"ok"`
+		Revoked int  `json:"revoked"`
+	}
+	if err := b.post(ctx, "/api/broker/account-unlink", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
+		return err
+	}
+	if !out.OK {
+		return errors.New("sign out failed")
+	}
+	return clearAccountCache(dir)
+}
+
+func cachedAccountOrError(dir string, err error) (AccountState, error) {
+	if st, ok := loadAccountCache(dir); ok && st.Linked {
+		st.Offline = true
+		st.Error = err.Error()
+		return st, nil
+	}
+	return AccountState{OK: false, Linked: false, Error: err.Error(), CheckedMS: time.Now().UnixMilli()}, err
+}
+
+func accountCachePath(dir string) string {
+	return filepath.Join(dir, "account.json")
+}
+
+func clearAccountCache(dir string) error {
+	if err := os.Remove(accountCachePath(dir)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func loadAccountCache(dir string) (AccountState, bool) {
+	data, err := os.ReadFile(accountCachePath(dir))
+	if err != nil {
+		return AccountState{}, false
+	}
+	var st AccountState
+	if json.Unmarshal(data, &st) != nil || !st.Linked {
+		return AccountState{}, false
+	}
+	return st, true
+}
+
+func saveAccountCache(dir string, st AccountState) error {
+	st.Offline = false
+	st.Error = ""
+	data, err := json.Marshal(st)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(accountCachePath(dir), data, 0o600)
 }
 
 func isHexN(s string, n int) bool {

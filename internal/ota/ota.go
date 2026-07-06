@@ -58,7 +58,13 @@ import (
 // v2: the DJ console (web/dj.html) now depends on the server-side publish routes
 // (/api/publish, /api/event-config slug). Gating publish-capable web content at
 // minRuntime 2 keeps that UI off older builds that lack the routes.
-const RuntimeVersion = 2
+// v3: the DJ console can start account linking through /api/link-install/start,
+// which opens the browser sign-in handoff without a copied code.
+// v4: the DJ console can lock on /api/account/status and use the native offline
+// account cache before showing party controls.
+// v5: the DJ console Settings account panel can open the web account page and
+// sign out through native /api/account/open and /api/account/sign-out routes.
+const RuntimeVersion = 5
 
 // payloadSigningKeyB64 is the ed25519 PUBLIC key every OTA manifest must be
 // signed with. The private half lives only on the release machine (never in
