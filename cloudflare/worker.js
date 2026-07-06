@@ -625,7 +625,7 @@ async function getProfilePosts(env, profileId) {
   return rows?.results || [];
 }
 
-async function profileResponse(env, handle) {
+async function profileResponse(env, request, handle) {
   const h = normalizeHandle(handle);
   const htmlHeaders = { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" };
   if (!env.DB) return new Response(renderNotFound(), { status: 503, headers: htmlHeaders });
@@ -636,12 +636,18 @@ async function profileResponse(env, handle) {
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30" },
     });
   }
+  const viewer = await getSessionUser(env, request);
+  const isOwner = !!(viewer && profile.user_id && viewer.id === profile.user_id);
   const [upcoming, recent, posts] = await Promise.all([
     getProfileUpcomingEvents(env, profile.id),
     getProfileRecentEvents(env, profile.id),
     getProfilePosts(env, profile.id),
   ]);
-  return new Response(renderProfile({ profile, upcoming, recent, posts }), { headers: htmlHeaders });
+  // The owner variant carries owner-only actions (Create event / Edit profile),
+  // so it must never be served from a shared public cache.
+  return new Response(renderProfile({ profile, upcoming, recent, posts, isOwner }), {
+    headers: isOwner ? { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" } : htmlHeaders,
+  });
 }
 
 function profileEventSection(title, sub, rows, empty) {
@@ -651,7 +657,7 @@ function profileEventSection(title, sub, rows, empty) {
   </section>`;
 }
 
-function renderProfile({ profile, upcoming, recent, posts }) {
+function renderProfile({ profile, upcoming, recent, posts, isOwner }) {
   const handle = normalizeHandle(profile.handle);
   const displayName = profile.display_name || handle;
   const heroStyle = profile.hero_key
@@ -665,7 +671,11 @@ function renderProfile({ profile, upcoming, recent, posts }) {
     social("sc", profile.soundcloud_url, "#ff7700", "SoundCloud"),
     social("sp", profile.spotify_url, "#1db954", "Spotify"),
   ].join("");
-  const createEventCta = `<div class="ecta"><a class="btn ghost" href="/events/new">＋ Create event</a></div>`;
+  // Owner-only actions. A stranger viewing this profile must NOT see "Create event"
+  // (that made every visitor look like the owner). Follow lands with the follow model.
+  const ownerActions = isOwner
+    ? `<div class="ecta"><a class="btn" href="/events/new">＋ Create event</a><a class="btn ghost" href="/profile/edit">Edit profile</a></div>`
+    : "";
   const postsCard = `<section>
     <div class="sectionhead"><div><h2>Posts</h2><p>Notes from the DJ across their public nights.</p></div></div>
     <div class="card">
@@ -684,7 +694,7 @@ function renderProfile({ profile, upcoming, recent, posts }) {
         <div class="emeta">@${esc(handle)}${meta.length ? " · " + meta.join(" · ") : ""}</div>
         ${profile.bio ? `<p class="profilebio">${esc(profile.bio)}</p>` : ""}
         ${socials ? `<div class="slist">${socials}</div>` : ""}
-        ${createEventCta}
+        ${ownerActions}
       </div>
     </div>
     ${profileEventSection("Upcoming", "Public parties coming up next.", upcoming, "No upcoming public events yet.")}
@@ -1387,16 +1397,19 @@ async function loginResponse(request, env) {
   const redirectPath = safeRedirectPath(new URL(request.url).searchParams.get("redirect") || "/account");
   const user = await getSessionUser(env, request);
   if (user) return redirectResp(redirectPath || "/account");
+  // The admin passcode is a support/dev fallback, not a consumer affordance — only
+  // surface it when explicitly asked for via /login?admin=1.
+  const showAdmin = new URL(request.url).searchParams.get("admin") != null;
+  const adminField = showAdmin
+    ? `<details open><summary>Admin passcode</summary><input type="password" name="devSecret" autocomplete="off" placeholder="Admin passcode" aria-label="Admin passcode"></details>`
+    : "";
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
       <p class="sub">Enter your email and we will send a sign-in link.</p>
       <form class="authform" id="login-form">
         <input type="email" name="email" autocomplete="email" required placeholder="you@example.com" aria-label="Email">
-        <details>
-          <summary>Admin passcode</summary>
-          <input type="password" name="devSecret" autocomplete="off" placeholder="Admin passcode" aria-label="Admin passcode">
-        </details>
+        ${adminField}
         <button class="btn" type="submit">Send sign-in link</button>
       </form>
       <p class="hint" id="login-msg" role="status" style="margin:14px 0 0"></p>
@@ -1404,7 +1417,7 @@ async function loginResponse(request, env) {
     </div>
   </div>
   <script>
-(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',credentials:'same-origin',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}if(out.json&&out.json.redirect){m.textContent='Signing in...';location.href=out.json.redirect;return}if(out.json&&out.json.devLink){m.textContent='Admin sign-in link ready.';var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue';d.appendChild(a);return}if(out.json&&out.json.queued===false){m.textContent='Email sign-in is temporarily unavailable. Use the admin passcode or try again later.';return}m.textContent='Check your email for your sign-in link.'}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
+(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret?f.elements.devSecret.value:'',h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',credentials:'same-origin',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}if(out.json&&out.json.redirect){m.textContent='Signing in...';location.href=out.json.redirect;return}if(out.json&&out.json.devLink){m.textContent='Admin sign-in link ready.';var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue';d.appendChild(a);return}if(out.json&&out.json.queued===false){m.textContent='Email sign-in is temporarily unavailable. Use the admin passcode or try again later.';return}m.textContent='Check your email for your sign-in link.'}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
   </script>
   <footer><span>🕺 partyparty</span><span>Account access</span></footer>`;
   return new Response(shell({
@@ -1654,11 +1667,13 @@ function renderEvent(e) {
     <audio id="setaudio" controls preload="none" src="/event/${esc(e.slug)}/${esc(e.set.id)}.m4a"></audio>
   </div>` : "";
 
-  const aboutInner = (e.about ? `<p>${esc(e.about)}</p>` : "") +
-    (social("sc", e.socials?.soundcloud, "#ff7700", "SoundCloud", soon) + social("ig", e.socials?.instagram, "#c13584", "Instagram", soon) + social("sp", e.socials?.spotify, "#1db954", "Spotify", soon)
-      ? `<div class="slist">${social("sc", e.socials?.soundcloud, "#ff7700", "SoundCloud", soon)}${social("ig", e.socials?.instagram, "#c13584", "Instagram", soon)}${social("sp", e.socials?.spotify, "#1db954", "Spotify", soon)}</div>` : "");
+  // Real outbound social links (no dead "coming soon" toast); absent URLs render nothing.
+  const socialLinks = social("sc", e.socials?.soundcloud, "#ff7700", "SoundCloud")
+    + social("ig", e.socials?.instagram, "#c13584", "Instagram")
+    + social("sp", e.socials?.spotify, "#1db954", "Spotify");
+  const aboutInner = (e.about ? `<p>${esc(e.about)}</p>` : "") + (socialLinks ? `<div class="slist">${socialLinks}</div>` : "");
   const aboutCard = aboutInner ? `<div class="card about"><h2>About this set</h2>${aboutInner}</div>` : "";
-  const previewBadge = e.set ? "" : `<span class="preview">Preview · event pages in progress</span>`;
+  const previewBadge = "";
   const shareUrl = e.slug ? `${SITE_ORIGIN}/e/${esc(e.slug)}` : "";
   const shareButton = e.slug
     ? `<button class="btn ghost sm" data-share data-share-url="${shareUrl}" data-share-title="${esc(e.title)} · partyparty" data-share-text="${esc(e.tagline || "A partyparty set")}">Share</button>`
@@ -1697,9 +1712,8 @@ function renderEvent(e) {
     <p class="sub">Everything the room shot tonight — you approve what shows.</p>
     <div class="wall">
       ${(e.wall || []).map((s) => `<div class="thumb" style="background-image:url('${esc(s)}')"></div>`).join("")}
-      <div class="add" data-soon="${soon}"><div style="font-size:22px">＋</div>Add yours</div>
     </div>
-    <div class="cardhint">Guests drop photos, videos and comments straight from their phone — moderated by the DJ. Coming soon.</div>
+    <div class="cardhint">Guests' photos, videos and comments from the night — moderated by the DJ.</div>
   </div>` : `
   <div class="card">
     <h2>The wall</h2>
@@ -1724,7 +1738,7 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
         ${statusPill}
         <h1 class="etitle">${esc(e.title)}</h1>
         ${emeta}
-        <div class="ecta"><button class="btn" data-soon="${soon}">＋ Add your photos &amp; videos</button><span class="note">${esc(ctaNote)}</span></div>
+        <div class="ecta"><span class="note">${esc(ctaNote)}</span></div>
         ${previewBadge}
       </div>
     </div>
@@ -3794,7 +3808,7 @@ export default {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
       }
-      return await profileResponse(env, hm[1]);
+      return await profileResponse(env, request, hm[1]);
     }
 
     return env.ASSETS.fetch(request);

@@ -2287,7 +2287,17 @@ const tests = [
     assert.equal(page.status, 200);
     assert.match(html, /Fresh Name/);
     assert.match(html, /@fresh\.dj/);
-    assert.match(html, /href="\/events\/new">＋ Create event/);
+    // A non-owner (anonymous) visitor must NOT see owner-only actions.
+    assert.doesNotMatch(html, /Create event/);
+    assert.equal(page.headers.get("cache-control"), "public, max-age=60");
+
+    // The owner (signed-in) sees Create event + Edit profile, uncached.
+    const ownerPage = await worker.fetch(new Request("https://party.ramine.net/@fresh.dj", { headers: { cookie } }), makeEnv({ DB: db }));
+    const ownerHtml = await ownerPage.text();
+    assert.equal(ownerPage.status, 200);
+    assert.match(ownerHtml, /href="\/events\/new">＋ Create event/);
+    assert.match(ownerHtml, /href="\/profile\/edit">Edit profile/);
+    assert.equal(ownerPage.headers.get("cache-control"), "private, no-store");
   }],
   ["profile API rejects a different user claiming an existing normalized handle", async () => {
     const db = new FakeD1();
@@ -2386,9 +2396,14 @@ const tests = [
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.match(html, /type="email"/);
-    assert.match(html, /Admin passcode/);
+    // Admin passcode is demoted — not shown on the default consumer login.
+    assert.doesNotMatch(html, /Admin passcode/);
     assert.match(html, /redirect="\/account"/);
     assert.match(html, /Email sign-in is temporarily unavailable/);
+
+    // ...but it's available behind /login?admin=1 for support/dev.
+    const adminResp = await worker.fetch(new Request("https://party.ramine.net/login?admin=1"), makeEnv({ DB: new FakeD1() }));
+    assert.match(await adminResp.text(), /Admin passcode/);
   }],
   ["login redirects signed-in users to account", async () => {
     const db = new FakeD1();
