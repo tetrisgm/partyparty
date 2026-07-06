@@ -1883,15 +1883,18 @@ async function authRequestLink(request, env) {
   const since = now - MAGIC_LINK_RATE_WINDOW_MS;
   const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
   const uaHash = await sha256Hex(request.headers.get("user-agent") || "");
+  const devMode = authDevMode(request, env, emailNorm);
   authLazyCleanup(env, now);
   // Soft, best-effort throttling: the count/insert pair is not atomic until this
   // route gets a Durable Object gate, so the indexes and cleanup bound abuse cost.
-  const [ipCountRow, emailCountRow] = await Promise.all([
-    env.DB.prepare("SELECT COUNT(*) AS n FROM auth_magic_tokens WHERE request_ip_hash=? AND created_ms>=?").bind(ipHash, since).first(),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM auth_magic_tokens WHERE email_norm=? AND created_ms>=?").bind(emailNorm, since).first(),
-  ]);
-  if ((Number(ipCountRow?.n) || 0) >= MAGIC_LINK_IP_CAP || (Number(emailCountRow?.n) || 0) >= MAGIC_LINK_EMAIL_CAP) {
-    return jsonResp(429, { error: "rate limited" });
+  if (!devMode) {
+    const [ipCountRow, emailCountRow] = await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS n FROM auth_magic_tokens WHERE request_ip_hash=? AND created_ms>=?").bind(ipHash, since).first(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM auth_magic_tokens WHERE email_norm=? AND created_ms>=?").bind(emailNorm, since).first(),
+    ]);
+    if ((Number(ipCountRow?.n) || 0) >= MAGIC_LINK_IP_CAP || (Number(emailCountRow?.n) || 0) >= MAGIC_LINK_EMAIL_CAP) {
+      return jsonResp(429, { error: "rate limited" });
+    }
   }
 
   const rawToken = randHex(32);
@@ -1904,7 +1907,6 @@ async function authRequestLink(request, env) {
   ).bind(randHex(16), tokenHash, emailNorm, redirectPath, now, now + MAGIC_LINK_TTL_MS, ipHash, uaHash).run();
 
   const link = `${SITE_ORIGIN}/auth/verify?token=${encodeURIComponent(rawToken)}`;
-  const devMode = authDevMode(request, env, emailNorm);
   let queued = true;
   try {
     queued = await sendAuthEmail(env, emailNorm, link, devMode) !== false;

@@ -1342,6 +1342,35 @@ const tests = [
     }), env);
     assert.equal(resp.status, 429);
   }],
+  ["auth request-link lets allowlisted admin bypass rate limit", async () => {
+    const createdMs = Date.now();
+    const ipHash = await sha256Hex("ip:203.0.113.24");
+    const authMagicTokens = Array.from({ length: 5 }, (_, i) => ({
+      id: `rate-token-${i}`,
+      token_hash: `rate-token-hash-${i}`,
+      email_norm: `rate-${i}@example.com`,
+      redirect_path: "/",
+      created_ms: createdMs,
+      expires_ms: createdMs + 60_000,
+      used_ms: null,
+      request_ip_hash: ipHash,
+      user_agent_hash: "",
+    }));
+    const db = new FakeD1({ authMagicTokens });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.24",
+        "x-auth-dev-secret": AUTH_DEV_SECRET,
+      },
+      body: JSON.stringify({ email: "Ramine@Ramine.NET", redirect: "/account" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.equal(json.ok, true);
+    assert.match(json.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=/);
+  }],
   ["auth request-link does not reveal account existence", async () => {
     const db = new FakeD1({
       authUsers: [{
