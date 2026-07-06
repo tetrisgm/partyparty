@@ -1918,7 +1918,7 @@ const tests = [
     assert.equal(db.deviceInstalls.get("abc123abc123").profile_id, "profile-relink-new");
     assert.equal(db.deviceInstalls.get("abc123abc123").revoked_ms, null);
   }],
-  ["revoked device install does not stamp owners or unlock profile events-window", async () => {
+  ["revoked device install cannot publish or unlock profile events-window", async () => {
     const now = Date.now();
     const db = new FakeD1({
       deviceInstalls: [{
@@ -1942,23 +1942,23 @@ const tests = [
       }],
     });
 
+    // A revoked install is no longer linked → cloud publish is refused outright
+    // (going live online requires a live account link).
     const publishMeta = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-publish", title: "Revoked Publish" }),
     }), makeEnv({ DB: db }));
-    assert.equal(publishMeta.status, 200);
-    assert.equal(db.events.get("revoked-publish").owner_user_id, null);
-    assert.equal(db.events.get("revoked-publish").dj_profile_id, null);
+    assert.equal(publishMeta.status, 403);
+    assert.equal(db.events.has("revoked-publish"), false);
 
     const eventUpsert = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-upsert", title: "Revoked Upsert" }),
     }), makeEnv({ DB: db }));
-    assert.equal(eventUpsert.status, 200);
-    assert.equal(db.events.get("revoked-upsert").owner_user_id, null);
-    assert.equal(db.events.get("revoked-upsert").dj_profile_id, null);
+    assert.equal(eventUpsert.status, 403);
+    assert.equal(db.events.has("revoked-upsert"), false);
 
     const windowResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/events-window", {
       method: "POST",
@@ -1968,6 +1968,42 @@ const tests = [
     const windowJson = await windowResp.json();
     assert.equal(windowResp.status, 200);
     assert.equal(windowJson.events.some((event) => event.slug === "profile-only-window"), false);
+  }],
+  ["cloud publish requires a linked account: unlinked install is refused, linked one passes", async () => {
+    // Unlinked (registered in R2, but no device_installs link) → publish refused.
+    const unlinked = new FakeD1();
+    const metaU = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "needs-link", title: "Nope" }),
+    }), makeEnv({ DB: unlinked }));
+    assert.equal(metaU.status, 403);
+    assert.equal(JSON.parse(await metaU.text()).reason, "not_linked");
+    assert.equal(unlinked.events.has("needs-link"), false);
+    const upsertU = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "needs-link2", title: "Nope" }),
+    }), makeEnv({ DB: unlinked }));
+    assert.equal(upsertU.status, 403);
+    assert.equal(unlinked.events.has("needs-link2"), false);
+
+    // Linked → publish succeeds.
+    const linked = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-lp", profile_id: "profile-lp" }],
+    });
+    const metaL = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "linked-pub", title: "Yes" }),
+    }), makeEnv({ DB: linked }));
+    assert.equal(metaL.status, 200);
+    assert.equal(linked.events.get("linked-pub").dj_profile_id, "profile-lp");
+
+    // Escape hatch: BROKER_ALLOW_UNLINKED_PUBLISH=1 lets an unlinked install publish.
+    const hatch = new FakeD1();
+    const metaH = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "hatch-pub", title: "Hatch" }),
+    }), makeEnv({ DB: hatch, env: { BROKER_ALLOW_UNLINKED_PUBLISH: "1" } }));
+    assert.equal(metaH.status, 200);
   }],
   ["broker link-install throttles repeated bad code guesses per install", async () => {
     const env = makeEnv({ DB: new FakeD1() });
@@ -3174,7 +3210,9 @@ const tests = [
       assert.equal(db.profileActivityBumps[0].lastActivityMs, row.last_activity_ms);
     }],
     ["broker event-upsert creates minimal fresh event with non-null text defaults", async () => {
-      const db = new FakeD1();
+      const db = new FakeD1({
+        deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
+      });
       const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -3200,6 +3238,7 @@ const tests = [
     }],
   ["broker event-upsert returns 409 for slug owned by another install", async () => {
     const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
       events: [{ slug: "taken-ahead", install_id: "def456def456", title: "Taken", status: "upcoming" }],
     });
     const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
@@ -3212,6 +3251,7 @@ const tests = [
   }],
   ["broker event-upsert updates owned title without clobbering replay status", async () => {
     const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
       events: [{ slug: "owned-replay", install_id: "abc123abc123", title: "Old Title", status: "replay" }],
     });
     const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
@@ -3228,6 +3268,7 @@ const tests = [
   }],
   ["broker publish-meta stamps replay activity and bumps DJ profile", async () => {
     const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-publish", profile_id: "profile-publish" }],
       events: [{
         slug: "owned-publish",
         install_id: "abc123abc123",

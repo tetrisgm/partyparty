@@ -1948,6 +1948,21 @@ async function requireLinkedInstallForDNS(env, id) {
   return null;
 }
 
+// Going live to the cloud (claiming/creating an online event) requires this Mac
+// to be linked to an account. This never touches the LOCAL offline party — the
+// broker is only ever called when publishing online. "License" today == linked.
+async function requireLinkedInstallForPublish(env, id) {
+  if (env.BROKER_ALLOW_UNLINKED_PUBLISH === "1") return null;
+  if (!env.DB) return jsonResp(503, { error: "account link required" });
+  const linked = await env.DB.prepare(
+    "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+  ).bind(id).first();
+  if (!linked?.user_id || !linked?.profile_id) {
+    return jsonResp(403, { error: "link this Mac to your account to publish your party online", reason: "not_linked" });
+  }
+  return null;
+}
+
 function expiredLinkResponse(status = 400) {
   return new Response(`<!doctype html>
 <html lang="en">
@@ -3210,6 +3225,15 @@ async function broker(request, env, pathname) {
   // The install's namespace label. DNS writes below upgrade pre-slug installs
   // to a pretty slug before touching Cloudflare.
   let label = rec.slug || id;
+
+  // Going live online: claiming/creating a cloud event requires a linked account.
+  // Downstream media/post/audio uploads all require an event that this install owns,
+  // so gating the two create routes gates the whole publish chain. The LOCAL offline
+  // party never reaches the broker, so this can't block a party at a no-internet venue.
+  if (pathname === "/api/broker/publish-meta" || pathname === "/api/broker/event-upsert") {
+    const gate = await requireLinkedInstallForPublish(env, id);
+    if (gate) return gate;
+  }
 
   if (pathname === "/api/broker/publish-posts") {
     return await publishPosts(env, id, body);
