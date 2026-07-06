@@ -40,6 +40,7 @@ class FakeD1 {
     authSessions = [],
     installLinkTokens = [],
     installBrowserTokens = [],
+    follows = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -78,6 +79,7 @@ class FakeD1 {
     this.authSessions = new Map(authSessions.map((row) => [row.id, { ...row }]));
     this.installLinkTokens = new Map(installLinkTokens.map((row) => [row.id, { ...row }]));
     this.installBrowserTokens = new Map(installBrowserTokens.map((row) => [row.id, { ...row }]));
+    this.follows = follows.map((row) => ({ ...row }));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
@@ -283,6 +285,10 @@ class FakeD1Statement {
       );
       return row ? { ...row } : null;
     }
+    if (sql.includes("FROM follows WHERE follower_user_id=? AND dj_profile_id=?")) {
+      const [userId, profileId] = this.args;
+      return this.db.follows.some((f) => f.follower_user_id === userId && f.dj_profile_id === profileId) ? { 1: 1 } : null;
+    }
     return null;
   }
 
@@ -421,11 +427,35 @@ class FakeD1Statement {
       }
       return { results: [...counts.entries()].map(([response, n]) => ({ response, n })) };
     }
+    if (sql.includes("FROM follows f") && sql.includes("JOIN dj_profiles p")) {
+      const userId = this.args[0];
+      const rows = this.db.follows
+        .filter((f) => f.follower_user_id === userId)
+        .sort((a, b) => Number(b.created_ms) - Number(a.created_ms))
+        .map((f) => this.db.profiles.find((p) => p.id === f.dj_profile_id && p.published === 1))
+        .filter(Boolean)
+        .map((p) => ({ ...p }));
+      return { results: rows };
+    }
     return { results: [] };
   }
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("INSERT INTO follows")) {
+      const [userId, profileId, createdMs] = this.args;
+      if (this.db.follows.some((f) => f.follower_user_id === userId && f.dj_profile_id === profileId)) {
+        return { success: true, meta: { changes: 0 } };
+      }
+      this.db.follows.push({ follower_user_id: userId, dj_profile_id: profileId, created_ms: createdMs });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("DELETE FROM follows WHERE follower_user_id=? AND dj_profile_id=?")) {
+      const [userId, profileId] = this.args;
+      const before = this.db.follows.length;
+      this.db.follows = this.db.follows.filter((f) => !(f.follower_user_id === userId && f.dj_profile_id === profileId));
+      return { success: true, meta: { changes: before - this.db.follows.length } };
+    }
     if (sql.includes("DELETE FROM install_link_tokens WHERE (used_ms IS NOT NULL OR expires_ms < ?)")) {
       const [now, createdCutoff] = this.args;
       let changes = 0;
@@ -2298,6 +2328,67 @@ const tests = [
     assert.match(ownerHtml, /href="\/events\/new">＋ Create event/);
     assert.match(ownerHtml, /href="\/profile\/edit">Edit profile/);
     assert.equal(ownerPage.headers.get("cache-control"), "private, no-store");
+  }],
+  ["follow toggles, drives button state, and the home 'DJs you follow' section", async () => {
+    const db = new FakeD1({
+      profiles: [{ id: "profile-star", user_id: "user-star", handle: "star.dj", display_name: "Star DJ", published: 1 }],
+    });
+    const cookie = await signInCookie(db, "fan@example.com", { ip: "203.0.113.40" });
+
+    // Signed-out profile → "Sign in to follow", no follow button.
+    const anonHtml = await (await worker.fetch(new Request("https://party.ramine.net/@star.dj"), makeEnv({ DB: db }))).text();
+    assert.match(anonHtml, /Sign in to follow/);
+    assert.doesNotMatch(anonHtml, /id="followbtn"/);
+
+    // Signed-in non-owner → Follow button (not yet following), uncached.
+    const before = await worker.fetch(new Request("https://party.ramine.net/@star.dj", { headers: { cookie } }), makeEnv({ DB: db }));
+    assert.match(await before.text(), /id="followbtn"[^>]*data-following="0"/);
+    assert.equal(before.headers.get("cache-control"), "private, no-store");
+
+    // Follow (POST) is idempotent.
+    const follow = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+      method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "star.dj" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(follow.status, 200);
+    assert.deepEqual(await follow.json(), { ok: true, following: true });
+    await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+      method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "star.dj" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(db.follows.length, 1);
+
+    // Profile now shows "Following".
+    assert.match(await (await worker.fetch(new Request("https://party.ramine.net/@star.dj", { headers: { cookie } }), makeEnv({ DB: db }))).text(), /id="followbtn"[^>]*data-following="1"/);
+
+    // Signed-in home shows the personalized section, uncached; anon home doesn't.
+    const home = await worker.fetch(new Request("https://party.ramine.net/", { headers: { cookie } }), makeEnv({ DB: db }));
+    assert.match(await home.text(), /DJs you follow/);
+    assert.equal(home.headers.get("cache-control"), "private, no-store");
+    const anonHome = await worker.fetch(new Request("https://party.ramine.net/"), makeEnv({ DB: db }));
+    assert.doesNotMatch(await anonHome.text(), /DJs you follow/);
+    assert.equal(anonHome.headers.get("cache-control"), "public, max-age=60");
+
+    // Unfollow (DELETE).
+    const unfollow = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+      method: "DELETE", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "star.dj" }),
+    }), makeEnv({ DB: db }));
+    assert.deepEqual(await unfollow.json(), { ok: true, following: false });
+    assert.equal(db.follows.length, 0);
+  }],
+  ["follow rejects anonymous callers and self-follow", async () => {
+    const db = new FakeD1();
+    const anon = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ handle: "someone" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(anon.status, 401);
+
+    const cookie = await signInCookie(db, "self@example.com", { ip: "203.0.113.41" });
+    const user = [...db.authUsers.values()].find((u) => u.email_norm === "self@example.com");
+    db.profiles.push({ id: "profile-self", user_id: user.id, handle: "self.dj", display_name: "Self DJ", published: 1 });
+    const self = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+      method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "self.dj" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(self.status, 400);
+    assert.equal(db.follows.length, 0);
   }],
   ["profile API rejects a different user claiming an existing normalized handle", async () => {
     const db = new FakeD1();

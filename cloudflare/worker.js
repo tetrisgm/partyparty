@@ -538,6 +538,51 @@ async function getFeaturedProfiles(env) {
   return rows?.results || [];
 }
 
+async function isFollowing(env, userId, profileId) {
+  if (!env?.DB || !userId || !profileId) return false;
+  const row = await env.DB.prepare(
+    "SELECT 1 FROM follows WHERE follower_user_id=? AND dj_profile_id=? LIMIT 1"
+  ).bind(userId, profileId).first();
+  return !!row;
+}
+
+async function getFollowedProfiles(env, userId) {
+  if (!env?.DB || !userId) return [];
+  const rows = await env.DB.prepare(
+    `SELECT p.*
+     FROM follows f
+     JOIN dj_profiles p ON p.id=f.dj_profile_id AND p.published=1
+     WHERE f.follower_user_id=?
+     ORDER BY f.created_ms DESC
+     LIMIT 24`
+  ).bind(userId).all();
+  return rows?.results || [];
+}
+
+// POST = follow, DELETE = unfollow. Auth required; local party never depends on this.
+async function followApi(request, env) {
+  if (request.method !== "POST" && request.method !== "DELETE") {
+    return jsonResp(405, { error: "POST or DELETE" });
+  }
+  if (!env.DB) return jsonResp(503, { error: "not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const body = await readJson(request, 512);
+  const handle = normalizeHandle(body?.handle || "");
+  if (!handle) return jsonResp(400, { error: "handle required" });
+  const profile = await getProfileByHandle(env, handle);
+  if (!profile) return jsonResp(404, { error: "not found" });
+  if (profile.user_id === user.id) return jsonResp(400, { error: "cannot follow yourself" });
+  if (request.method === "DELETE") {
+    await env.DB.prepare("DELETE FROM follows WHERE follower_user_id=? AND dj_profile_id=?").bind(user.id, profile.id).run();
+    return jsonResp(200, { ok: true, following: false });
+  }
+  await env.DB.prepare(
+    "INSERT INTO follows (follower_user_id, dj_profile_id, created_ms) VALUES (?,?,?) ON CONFLICT(follower_user_id, dj_profile_id) DO NOTHING"
+  ).bind(user.id, profile.id, nowMs()).run();
+  return jsonResp(200, { ok: true, following: true });
+}
+
 async function getReplayEvents(env) {
   if (!env?.DB) return [];
   const rows = await env.DB.prepare(
@@ -638,15 +683,17 @@ async function profileResponse(env, request, handle) {
   }
   const viewer = await getSessionUser(env, request);
   const isOwner = !!(viewer && profile.user_id && viewer.id === profile.user_id);
-  const [upcoming, recent, posts] = await Promise.all([
+  const [upcoming, recent, posts, following] = await Promise.all([
     getProfileUpcomingEvents(env, profile.id),
     getProfileRecentEvents(env, profile.id),
     getProfilePosts(env, profile.id),
+    viewer && !isOwner ? isFollowing(env, viewer.id, profile.id) : Promise.resolve(false),
   ]);
-  // The owner variant carries owner-only actions (Create event / Edit profile),
-  // so it must never be served from a shared public cache.
-  return new Response(renderProfile({ profile, upcoming, recent, posts, isOwner }), {
-    headers: isOwner ? { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" } : htmlHeaders,
+  // Any signed-in view is personalized (owner actions, or the Follow/Following
+  // state), so it must never be served from a shared public cache. Anonymous
+  // views are identical for everyone and stay cacheable.
+  return new Response(renderProfile({ profile, upcoming, recent, posts, isOwner, viewerSignedIn: !!viewer, following }), {
+    headers: viewer ? { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" } : htmlHeaders,
   });
 }
 
@@ -657,7 +704,7 @@ function profileEventSection(title, sub, rows, empty) {
   </section>`;
 }
 
-function renderProfile({ profile, upcoming, recent, posts, isOwner }) {
+function renderProfile({ profile, upcoming, recent, posts, isOwner, viewerSignedIn, following }) {
   const handle = normalizeHandle(profile.handle);
   const displayName = profile.display_name || handle;
   const heroStyle = profile.hero_key
@@ -671,11 +718,22 @@ function renderProfile({ profile, upcoming, recent, posts, isOwner }) {
     social("sc", profile.soundcloud_url, "#ff7700", "SoundCloud"),
     social("sp", profile.spotify_url, "#1db954", "Spotify"),
   ].join("");
-  // Owner-only actions. A stranger viewing this profile must NOT see "Create event"
-  // (that made every visitor look like the owner). Follow lands with the follow model.
-  const ownerActions = isOwner
-    ? `<div class="ecta"><a class="btn" href="/events/new">＋ Create event</a><a class="btn ghost" href="/profile/edit">Edit profile</a></div>`
-    : "";
+  // Header actions vary by viewer: the owner gets Create event / Edit profile; a
+  // signed-in visitor gets Follow/Following; a signed-out visitor gets a sign-in
+  // prompt. A stranger must never see "Create event" (that made every visitor look
+  // like the owner).
+  let viewerActions = "";
+  let followScript = "";
+  if (isOwner) {
+    viewerActions = `<div class="ecta"><a class="btn" href="/events/new">＋ Create event</a><a class="btn ghost" href="/profile/edit">Edit profile</a></div>`;
+  } else if (viewerSignedIn) {
+    viewerActions = `<div class="ecta"><button class="btn${following ? " ghost" : ""}" id="followbtn" data-follow="${esc(handle)}" data-following="${following ? "1" : "0"}">${following ? "Following" : "＋ Follow"}</button></div>`;
+    followScript = `<script>
+(function(){var b=document.getElementById('followbtn');if(!b||!window.fetch)return;b.addEventListener('click',function(){var on=b.getAttribute('data-following')==='1';b.disabled=true;fetch('/api/follow',{method:on?'DELETE':'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({handle:b.getAttribute('data-follow')})}).then(function(r){return r.ok?r.json():Promise.reject()}).then(function(d){var f=!!d.following;b.setAttribute('data-following',f?'1':'0');b.textContent=f?'Following':'＋ Follow';b.className=f?'btn ghost':'btn'}).catch(function(){}).finally(function(){b.disabled=false})})})();
+</script>`;
+  } else {
+    viewerActions = `<div class="ecta"><a class="btn" href="/login?redirect=${encodeURIComponent("/@" + handle)}">Sign in to follow</a></div>`;
+  }
   const postsCard = `<section>
     <div class="sectionhead"><div><h2>Posts</h2><p>Notes from the DJ across their public nights.</p></div></div>
     <div class="card">
@@ -694,14 +752,15 @@ function renderProfile({ profile, upcoming, recent, posts, isOwner }) {
         <div class="emeta">@${esc(handle)}${meta.length ? " · " + meta.join(" · ") : ""}</div>
         ${profile.bio ? `<p class="profilebio">${esc(profile.bio)}</p>` : ""}
         ${socials ? `<div class="slist">${socials}</div>` : ""}
-        ${ownerActions}
+        ${viewerActions}
       </div>
     </div>
     ${profileEventSection("Upcoming", "Public parties coming up next.", upcoming, "No upcoming public events yet.")}
     ${profileEventSection("Recent", "Replay pages from finished sets.", recent, "No public replays yet.")}
     ${postsCard}
   </div>
-  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>`;
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>
+  ${followScript}`;
   const ogImage = profile.hero_key ? `/dj/${handle}/hero.jpg` : profile.avatar_key ? `/dj/${handle}/avatar.jpg` : DEFAULT_OG_IMAGE;
   return shell({
     title: `${displayName} (@${handle}) · partyparty`,
@@ -932,16 +991,21 @@ body.faqbody a{color:inherit;text-decoration:none}
 </main></body></html>`;
 }
 
-function renderHome({ events, profiles, replays }) {
-  const hasRows = events.length || profiles.length || replays.length;
+function renderHome({ events, profiles, replays, followed, viewerSignedIn }) {
+  const followedRows = Array.isArray(followed) ? followed : [];
+  const hasRows = events.length || profiles.length || replays.length || followedRows.length;
+  const heroActions = viewerSignedIn
+    ? `<a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/account">Your account</a><a class="btn lt" href="/about">About</a>`
+    : `<a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/login">Sign in</a><a class="btn lt" href="/about">About</a>`;
   const body = `<div class="page home">
     <section class="homehero">
       <div>
         <h1>silent-disco popups, gathered after the night</h1>
         <p>partyparty turns a Mac into a local silent-disco station, then gives every event a page for the replay and what guests captured.</p>
-        <div class="actions"><a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/login">Sign in</a><a class="btn lt" href="/about">About</a></div>
+        <div class="actions">${heroActions}</div>
       </div>
     </section>
+    ${followedRows.length ? `<section><div class="sectionhead"><div><h2>DJs you follow</h2><p>New nights from the hosts you follow.</p></div></div><div class="djstrip">${followedRows.map(profileCard).join("")}</div></section>` : ""}
     ${events.length ? `<section><div class="sectionhead"><div><h2>Upcoming &amp; live</h2><p>Public popups you can follow or revisit after the set.</p></div></div><div class="eventgrid">${events.map(eventCard).join("")}</div></section>` : ""}
     ${profiles.length ? `<section><div class="sectionhead"><div><h2>Featured DJs</h2><p>Hosts shaping the next rooms.</p></div></div><div class="djstrip">${profiles.map(profileCard).join("")}</div></section>` : ""}
     ${replays.length ? `<section><div class="sectionhead"><div><h2>Recent replays</h2><p>Sets that already landed.</p></div></div><div class="eventgrid">${replays.map(eventCard).join("")}</div></section>` : ""}
@@ -957,14 +1021,18 @@ function renderHome({ events, profiles, replays }) {
   });
 }
 
-async function homeResponse(env) {
-  const [events, profiles, replays] = await Promise.all([
+async function homeResponse(env, request) {
+  const viewer = await getSessionUser(env, request);
+  const [events, profiles, replays, followed] = await Promise.all([
     getHomeEvents(env),
     getFeaturedProfiles(env),
     getReplayEvents(env),
+    viewer ? getFollowedProfiles(env, viewer.id) : Promise.resolve([]),
   ]);
-  return new Response(renderHome({ events, profiles, replays }), {
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" },
+  // A signed-in home carries the personalized "DJs you follow" strip, so it can't
+  // be shared from a public cache; the signed-out home is identical for everyone.
+  return new Response(renderHome({ events, profiles, replays, followed, viewerSignedIn: !!viewer }), {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": viewer ? "private, no-store" : "public, max-age=60" },
   });
 }
 
@@ -3538,6 +3606,14 @@ export default {
       }
     }
 
+    if (pathname === "/api/follow") {
+      try {
+        return await followApi(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
     const webEventApi = pathname.match(WEB_EVENT_API_RE);
     if (webEventApi) {
       try {
@@ -3753,7 +3829,7 @@ export default {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
       }
-      return await homeResponse(env);
+      return await homeResponse(env, request);
     }
 
     if (pathname === "/faq") {
