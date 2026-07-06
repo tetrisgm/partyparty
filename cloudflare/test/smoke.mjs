@@ -1150,6 +1150,36 @@ const tests = [
     assert.equal(row.redirect_path, "/dashboard");
     assert.notEqual(row.token_hash, token);
   }],
+  ["auth request-link limits dev secret to configured emails", async () => {
+    const db = new FakeD1();
+    const denied = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.123",
+        "x-auth-dev-secret": AUTH_DEV_SECRET,
+      },
+      body: JSON.stringify({ email: "other@example.com", redirect: "/account" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
+    const deniedJson = await denied.json();
+    assert.equal(denied.status, 200);
+    assert.equal("devLink" in deniedJson, false);
+    assert.equal(deniedJson.queued, false);
+
+    const allowed = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.124",
+        "x-auth-dev-secret": AUTH_DEV_SECRET,
+      },
+      body: JSON.stringify({ email: " Ramine@Ramine.NET ", redirect: "/account" }),
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
+    const allowedJson = await allowed.json();
+    assert.equal(allowed.status, 200);
+    assert.match(allowedJson.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
+    assert.equal("queued" in allowedJson, false);
+  }],
   ["auth request-link sends through EMAIL binding when configured", async () => {
     const db = new FakeD1();
     const sent = [];
@@ -2057,8 +2087,8 @@ const tests = [
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.match(html, /type="email"/);
-    assert.match(html, /AUTH_DEV_SECRET/);
-    assert.match(html, /Sign-in email is not configured yet/);
+    assert.match(html, /Admin passcode/);
+    assert.match(html, /Email sign-in is temporarily unavailable/);
   }],
   ["login redirects signed-in users to account", async () => {
     const db = new FakeD1();

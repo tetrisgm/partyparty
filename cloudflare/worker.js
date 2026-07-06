@@ -1360,8 +1360,8 @@ async function loginResponse(request, env) {
       <form class="authform" id="login-form">
         <input type="email" name="email" autocomplete="email" required placeholder="you@example.com" aria-label="Email">
         <details>
-          <summary>Developer</summary>
-          <input type="password" name="devSecret" autocomplete="off" placeholder="AUTH_DEV_SECRET" aria-label="AUTH_DEV_SECRET">
+          <summary>Admin passcode</summary>
+          <input type="password" name="devSecret" autocomplete="off" placeholder="Admin passcode" aria-label="Admin passcode">
         </details>
         <button class="btn" type="submit">Send sign-in link</button>
       </form>
@@ -1370,7 +1370,7 @@ async function loginResponse(request, env) {
     </div>
   </div>
   <script>
-(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}if(out.json&&out.json.devLink){m.textContent='Developer sign-in link ready.';var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue (dev)';d.appendChild(a);return}if(out.json&&out.json.queued===false){m.textContent='Sign-in email is not configured yet. Try again later.';return}m.textContent='Check your email for your sign-in link.'}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
+(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}if(out.json&&out.json.devLink){m.textContent='Admin sign-in link ready.';var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue';d.appendChild(a);return}if(out.json&&out.json.queued===false){m.textContent='Email sign-in is temporarily unavailable. Use the admin passcode or try again later.';return}m.textContent='Check your email for your sign-in link.'}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
   </script>
   <footer><span>🕺 partyparty</span><span>Account access</span></footer>`;
   return new Response(shell({
@@ -1838,12 +1838,15 @@ async function sendAuthEmail(env, toEmail, link, devMode = false) {
   return false;
 }
 
-function authDevMode(request, env) {
-  return Boolean(
-    env.AUTH_DEV_LINKS === "1" &&
-    env.AUTH_DEV_SECRET &&
-    request.headers.get("x-auth-dev-secret") === env.AUTH_DEV_SECRET
-  );
+function authDevMode(request, env, emailNorm = "") {
+  if (env.AUTH_DEV_LINKS !== "1" || !env.AUTH_DEV_SECRET) return false;
+  if (request.headers.get("x-auth-dev-secret") !== env.AUTH_DEV_SECRET) return false;
+  const allowed = String(env.AUTH_DEV_EMAILS || "")
+    .split(",")
+    .map((s) => normalizeEmail(s))
+    .filter(Boolean);
+  if (!allowed.length) return true;
+  return allowed.includes(normalizeEmail(emailNorm));
 }
 
 function authLazyCleanup(env, now) {
@@ -1901,7 +1904,7 @@ async function authRequestLink(request, env) {
   ).bind(randHex(16), tokenHash, emailNorm, redirectPath, now, now + MAGIC_LINK_TTL_MS, ipHash, uaHash).run();
 
   const link = `${SITE_ORIGIN}/auth/verify?token=${encodeURIComponent(rawToken)}`;
-  const devMode = authDevMode(request, env);
+  const devMode = authDevMode(request, env, emailNorm);
   let queued = true;
   try {
     queued = await sendAuthEmail(env, emailNorm, link, devMode) !== false;
