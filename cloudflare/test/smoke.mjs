@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import worker, { cookieHeader, normalizeHandle, parseCookies, readJson, sha256Hex } from "../worker.js";
 
 globalThis.caches ??= {
@@ -1149,6 +1150,38 @@ const tests = [
     assert.equal(row.redirect_path, "/dashboard");
     assert.notEqual(row.token_hash, token);
   }],
+  ["auth request-link sends through EMAIL binding when configured", async () => {
+    const db = new FakeD1();
+    const sent = [];
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.28",
+      },
+      body: JSON.stringify({ email: "mail@example.com", redirect: "/account" }),
+    }), makeEnv({
+      DB: db,
+      env: {
+        AUTH_EMAIL_FROM: "partyparty <signin@ramine.net>",
+        EMAIL: {
+          send: async (message) => {
+            sent.push(message);
+            return { messageId: "msg-1" };
+          },
+        },
+      },
+    }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json, { ok: true });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].to, "mail@example.com");
+    assert.deepEqual(sent[0].from, { email: "signin@ramine.net", name: "partyparty" });
+    assert.match(sent[0].subject, /Sign in/);
+    assert.match(sent[0].text, /https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}/);
+    assert.match(sent[0].html, /Continue to partyparty/);
+  }],
   ["auth verify confirms on GET and consumes on POST", async () => {
     const db = new FakeD1();
     const devLink = await requestDevLink(db, "login@example.com", { ip: "203.0.113.23", redirect: "/after-login?ok=1" });
@@ -2025,6 +2058,7 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /type="email"/);
     assert.match(html, /AUTH_DEV_SECRET/);
+    assert.match(html, /Sign-in email is not configured yet/);
   }],
   ["login redirects signed-in users to account", async () => {
     const db = new FakeD1();
@@ -2041,9 +2075,18 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /silent-disco popups/);
     assert.match(html, /Get the app/);
+    assert.match(html, /Sign in/);
     assert.match(html, /\/partyparty\.zip/);
+    assert.match(html, /href="\/login"/);
     assert.match(html, /href="\/faq"/);
     assert.notEqual(html.trim(), "");
+  }],
+  ["static landing exposes account access", async () => {
+    const html = await readFile(new URL("../../site/index.html", import.meta.url), "utf8");
+    assert.match(html, /id="nav-auth" href="\/login">Sign in/);
+    assert.match(html, /Sign in once to link your Mac/);
+    assert.match(html, /No guest account needed/);
+    assert.match(html, /fetch\('\/api\/me'/);
   }],
   ["home renders public events and featured DJs", async () => {
     const resp = await fetchPath("/", {}, {

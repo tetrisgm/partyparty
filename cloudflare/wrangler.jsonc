@@ -36,6 +36,9 @@
     // Passwordless auth expects these env names when enabled:
     // AUTH_DEV_LINKS, AUTH_DEV_SECRET, MXROUTE_SMTP_HOST, MXROUTE_SMTP_PORT,
     // MXROUTE_SMTP_USER, MXROUTE_SMTP_FROM, and secret MXROUTE_SMTP_PASS.
+    // Preferred production path: enable Cloudflare Email Sending for ramine.net
+    // and add a send_email binding named EMAIL; the Worker will use it first.
+    // Optional from override: AUTH_EMAIL_FROM="partyparty <signin@ramine.net>".
     "BROKER_BASE": "party.ramine.net",
     "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"
   },

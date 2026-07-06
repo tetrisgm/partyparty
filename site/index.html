@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>partyparty — throw a DJ popup where speakers would get you shut down</title>
-<meta name="description" content="A free macOS app for silent-disco DJ popups. Go Live, guests scan a QR, it plays in their browser — no app, no login, no internet. Everyone in earbuds means no permit, no noise complaint, no shutdown.">
+<meta name="description" content="A free macOS app for silent-disco DJ popups. Hosts sign in to link their Mac; guests scan a QR and listen in their browser without an app or account. Everyone in earbuds means no permit, no noise complaint, no shutdown.">
 <meta property="og:title" content="partyparty">
-<meta property="og:description" content="Turn your Mac into a silent-disco rig. No rented headsets, no app for guests, no internet, no shutdown.">
+<meta property="og:description" content="Turn your Mac into a silent-disco rig. Hosts sign in to link their Mac; guests need no app or account.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#000000">
 <meta name="color-scheme" content="light">
@@ -69,11 +69,15 @@
   header .wrap{display:flex;align-items:center;justify-content:space-between;height:52px;max-width:var(--wide)}
   .brand{display:flex;align-items:center;gap:8px;font-size:19px;font-weight:600;letter-spacing:-.02em;color:#fff;transition:color .3s}
   .brand .m{font-size:21px}
+  .nav-actions{display:flex;align-items:center;gap:10px}
+  header .nav-link{font-size:14px;font-weight:600;color:#fff;opacity:.92;padding:8px 4px}
+  header .nav-link:hover{text-decoration:underline;text-underline-offset:3px;opacity:1}
   header .nav-cta{font-size:14px;padding:8px 16px;min-height:36px;color:#fff;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.08)}
   header .nav-cta:hover{background:rgba(255,255,255,.16)}
   header.scrolled{background:var(--glass-bg);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);
     border-bottom-color:var(--separator);box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 1px 0 rgba(0,0,0,.04)}
   header.scrolled .brand{color:#1d1d1f}
+  header.scrolled .nav-link{color:#1d1d1f}
   header.scrolled .nav-cta{color:#fff;background:var(--accent);border-color:transparent}
   header.scrolled .nav-cta:hover{filter:brightness(1.04)}
 
@@ -260,6 +264,7 @@
   @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){header.scrolled{background:rgba(255,255,255,.96)}}
   @media (prefers-reduced-transparency:reduce){header.scrolled{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @media (prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}html.js .reveal{opacity:1;transform:none}}
+  @media(max-width:420px){header .nav-link{font-size:13px}.nav-actions{gap:8px}header .nav-cta{padding:8px 12px}}
 </style>
 </head>
 <body>
@@ -274,7 +279,10 @@
 <header id="hdr">
   <div class="wrap">
     <a class="brand" href="#top"><span class="m">🕺</span> partyparty</a>
-    <a class="btn nav-cta" href="https://party.ramine.net/install-partyparty.zip">Download</a>
+    <div class="nav-actions">
+      <a class="nav-link" id="nav-auth" href="/login">Sign in</a>
+      <a class="btn nav-cta" href="https://party.ramine.net/install-partyparty.zip">Download</a>
+    </div>
   </div>
 </header>
 
@@ -284,9 +292,10 @@
     <div class="hero-copy">
       <span class="pill-eyebrow"><span class="dot"></span> Silent popups · anywhere · offline</span>
       <h1>Throw a party where speakers would get you shut down.</h1>
-      <p class="lede">partyparty turns your Mac into a silent-disco rig — no rented headsets, no app for guests. Hit Go Live, hand out a QR, and your set plays in everyone's own earbuds. Nothing in the air means no permit and no noise complaint. Works with zero internet.</p>
+      <p class="lede">partyparty turns your Mac into a silent-disco rig — no rented headsets, no app for guests. Sign in once to link your Mac, hit Go Live, hand out a QR, and your set plays in everyone's own earbuds. Nothing in the air means no permit and no noise complaint. Works with zero internet.</p>
       <div class="cta">
         <a class="btn btn-primary btn-lg" href="https://party.ramine.net/install-partyparty.zip">Download for macOS</a>
+        <a class="btn btn-ghost btn-lg" href="/login" style="color:#fff;border-color:rgba(255,255,255,.4)">Sign in</a>
         <a class="btn btn-ghost btn-lg" href="#how" style="color:#fff;border-color:rgba(255,255,255,.4)">How it works</a>
       </div>
       <div class="meta">Open it and it's installed — no password, no dragging, no settings · Free · Apple Silicon · macOS 26+</div>
@@ -310,7 +319,7 @@
     <div class="sec-head center reveal">
       <p class="eyebrow">Two parts, one night</p>
       <h2>The app you run. The page for the night.</h2>
-      <p class="lede center" style="margin-top:16px">The app throws the party. The event page gathers it — the photos, videos and clips from everyone there. No account needed.</p>
+      <p class="lede center" style="margin-top:16px">The app throws the party. The event page gathers it — the photos, videos and clips from everyone there. No guest account needed.</p>
     </div>
     <div class="halves">
       <div class="half reveal">
@@ -326,7 +335,7 @@
         <div class="body">
           <div class="k k-soon">● Coming soon</div>
           <h3>The event page — keep it</h3>
-          <p>Every popup gets a page: guests drop the photos, videos and comments from the night to a wall you approve, and the set saves as a replay. Any browser — no app, no account.</p>
+          <p>Every popup gets a page: guests drop the photos, videos and comments from the night to a wall you approve, and the set saves as a replay. Any browser — no app, no guest account.</p>
         </div>
       </div>
     </div>
@@ -375,7 +384,7 @@
       <p class="eyebrow">The no-app moat</p>
       <h2>Guests install nothing.</h2>
       <p class="lede" style="margin-top:16px">A popup dies the second you ask 40 strangers to download an app. Hand out a QR, they scan it, the stream opens in the browser already on their phone.</p>
-      <div class="feat"><span class="ic">📲</span><div><b>Scan a QR → plays in the browser</b><p>Zero downloads, zero accounts. iPhone or Android, no difference.</p></div></div>
+      <div class="feat"><span class="ic">📲</span><div><b>Scan a QR → plays in the browser</b><p>Zero downloads, zero guest accounts. iPhone or Android, no difference.</p></div></div>
       <div class="feat"><span class="ic">⚙️</span><div><b>No per-guest config, ever</b><p>No group name, no jitter buffer, no audio-device picker. SonoBus makes them do all three first.</p></div></div>
       <div class="feat"><span class="ic">🎧</span><div><b>Their earbuds, not your rentals</b><p>Everyone uses the headphones already in their pocket. Nothing to rent or hand out.</p></div></div>
     </div>
@@ -448,7 +457,7 @@
       <p class="lede" style="margin-top:16px">Every popup gets a page that gathers the night: guests drop photos, videos and comments to a wall you approve, and the set saves as a replay. <b style="color:var(--label)">This part is what we're building next</b> — the live audio, browser join, sync and locked-phone playback ship today.</p>
       <div class="feat"><span class="ic">📸</span><div><b>One page collects the whole night</b><p>Photos, videos and comments land on your event page, moderated — instead of scattering across 40 camera rolls.</p></div></div>
       <div class="feat"><span class="ic">⏺️</span><div><b>Stop the set, it's already saved</b><p>The full set auto-saves as a replay the moment you finish. Anyone who missed it presses play.</p></div></div>
-      <div class="feat"><span class="ic">📲</span><div><b>Nothing to set up for guests</b><p>No login, no app, no account — they scan the QR, drop their photos and clips, and you approve what shows.</p></div></div>
+      <div class="feat"><span class="ic">📲</span><div><b>Nothing to set up for guests</b><p>No guest login, no app, no account — they scan the QR, drop their photos and clips, and you approve what shows.</p></div></div>
     </div>
   </div>
 </section>
@@ -484,7 +493,7 @@
     <div class="sec-head reveal"><p class="eyebrow">Step by step</p><h2>What actually happens.</h2></div>
     <div class="steps">
       <div class="step reveal"><div class="n">1</div><h4>Hit Go Live on your Mac</h4><p>Pick your source — system audio or a mic. It broadcasts over Wi-Fi with a QR to hand out.</p></div>
-      <div class="step reveal"><div class="n">2</div><h4>Guests scan the QR</h4><p>The stream opens in their phone browser — iPhone or Android, no app, no account.</p></div>
+      <div class="step reveal"><div class="n">2</div><h4>Guests scan the QR</h4><p>The stream opens in their phone browser — iPhone or Android, no app, no guest account.</p></div>
       <div class="step reveal"><div class="n">3</div><h4>The room plays in sync</h4><p>Every phone is time-aligned to your Mac, and keeps playing when the screen locks.</p></div>
       <div class="step reveal"><div class="n">4</div><h4>It's saved to the page</h4><p>Stop the stream and the set becomes a replay on the event page <span style="color:var(--warn)">(soon)</span>.</p></div>
     </div>
@@ -499,6 +508,7 @@
     <h2 class="reveal" style="font-size:clamp(36px,5vw,60px)">Turn down for what?</h2>
     <p class="lede center reveal" style="color:rgba(245,245,247,.86);margin:16px auto 28px">There's nothing to turn down — the sound's in every earbud, not in the air. Free Mac app: hit Go Live, hand out a QR, and throw a party anywhere speakers would get you shut down.</p>
     <a class="btn btn-primary btn-lg reveal" href="https://party.ramine.net/install-partyparty.zip">Download for macOS</a>
+    <a class="btn btn-ghost btn-lg reveal" href="/login" style="color:#fff;border-color:rgba(255,255,255,.4);margin-left:10px">Sign in</a>
     <div class="meta reveal" style="margin-top:14px">Apple Silicon · macOS 26+ · free</div>
   </div></div>
 </section>
@@ -506,13 +516,25 @@
 <footer>
   <div class="wrap">
     <div class="brand">🕺 partyparty</div>
-    <div class="fine">Made by Ramine · <a href="https://party.ramine.net/faq">FAQ</a> · Photos via Unsplash · <span id="yr">2026</span></div>
+    <div class="fine">Made by Ramine · <a href="/login">Sign in</a> · <a href="https://party.ramine.net/faq">FAQ</a> · Photos via Unsplash · <span id="yr">2026</span></div>
   </div>
 </footer>
 
 <script>
   document.documentElement.className = 'js';
   const hdr = document.getElementById('hdr');
+  const navAuth = document.getElementById('nav-auth');
+  if (navAuth && window.fetch) {
+    fetch('/api/me', { credentials:'same-origin', cache:'no-store' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => {
+        if (j && j.user) {
+          navAuth.textContent = 'Account';
+          navAuth.href = '/account';
+        }
+      })
+      .catch(() => {});
+  }
   const onScroll = () => hdr.classList.toggle('scrolled', scrollY > 20);
   addEventListener('scroll', onScroll, { passive:true }); onScroll();
   const io = new IntersectionObserver((es) => {

@@ -705,12 +705,12 @@ function emptyHome() {
     <div class="card">
       <p class="big">Throw a silent-disco popup from your Mac.</p>
       <p>partyparty gives each night a shareable page for the set replay, photos, clips and guest posts after the room clears.</p>
-      <a class="btn" href="/partyparty.zip">Get the app</a>
+      <div class="ecta"><a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/login">Sign in</a></div>
     </div>
     <div class="card">
-      <h2>Event pages are warming up</h2>
-      <p class="sub">Public parties and featured DJs will appear here as hosts publish them.</p>
-      <a class="btn lt sm" href="/about">About partyparty</a>
+      <h2>Link your Mac</h2>
+      <p class="sub">Sign in to create your account, generate a one-time code, and paste it into the Mac app.</p>
+      <a class="btn lt sm" href="/login">Account access</a>
     </div>
   </div>`;
 }
@@ -927,7 +927,7 @@ function renderHome({ events, profiles, replays }) {
       <div>
         <h1>silent-disco popups, gathered after the night</h1>
         <p>partyparty turns a Mac into a local silent-disco station, then gives every event a page for the replay and what guests captured.</p>
-        <div class="actions"><a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/about">About</a></div>
+        <div class="actions"><a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/login">Sign in</a><a class="btn lt" href="/about">About</a></div>
       </div>
     </section>
     ${events.length ? `<section><div class="sectionhead"><div><h2>Upcoming &amp; live</h2><p>Public popups you can follow or revisit after the set.</p></div></div><div class="eventgrid">${events.map(eventCard).join("")}</div></section>` : ""}
@@ -935,7 +935,7 @@ function renderHome({ events, profiles, replays }) {
     ${replays.length ? `<section><div class="sectionhead"><div><h2>Recent replays</h2><p>Sets that already landed.</p></div></div><div class="eventgrid">${replays.map(eventCard).join("")}</div></section>` : ""}
     ${hasRows ? "" : emptyHome()}
   </div>
-  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/faq" style="color:var(--link)">FAQ</a></span></footer>`;
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/login" style="color:var(--link)">Sign in</a> · <a href="/faq" style="color:var(--link)">FAQ</a></span></footer>`;
   return shell({
     title: "partyparty — silent-disco popups",
     desc: "Mac-powered silent-disco popups with shareable event pages for replays, photos and clips.",
@@ -1370,7 +1370,7 @@ async function loginResponse(request, env) {
     </div>
   </div>
   <script>
-(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}m.textContent='Check your email for your sign-in link.';if(out.json&&out.json.devLink){var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue (dev)';d.appendChild(a)}}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
+(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}if(out.json&&out.json.devLink){m.textContent='Developer sign-in link ready.';var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue (dev)';d.appendChild(a);return}if(out.json&&out.json.queued===false){m.textContent='Sign-in email is not configured yet. Try again later.';return}m.textContent='Check your email for your sign-in link.'}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
   </script>
   <footer><span>🕺 partyparty</span><span>Account access</span></footer>`;
   return new Response(shell({
@@ -1798,8 +1798,40 @@ async function sendViaMXroute(_env, _toEmail, _link) {
   throw new Error("mxroute sender not wired (U13)");
 }
 
+function authEmailFrom(env) {
+  const raw = String(env.AUTH_EMAIL_FROM || "partyparty@ramine.net").trim();
+  const match = /^(?:"?([^"<>]*)"?\s*)?<([^<>]+)>$/.exec(raw);
+  const email = normalizeEmail(match ? match[2] : raw) || "partyparty@ramine.net";
+  const name = clip((match ? match[1] : env.AUTH_EMAIL_FROM_NAME) || "partyparty", 80).trim() || "partyparty";
+  return { email, name };
+}
+
+function authEmailBody(link) {
+  const safeLink = esc(link);
+  const text = `Sign in to partyparty:\n\n${link}\n\nThis link expires in 15 minutes. If you did not request it, you can ignore this email.`;
+  const html = `<!doctype html><html><body style="margin:0;background:#f5f5f7;color:#1d1d1f;font:16px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <main style="max-width:520px;margin:0 auto;padding:32px 20px">
+    <h1 style="font-size:28px;line-height:1.1;margin:0 0 12px">Sign in to partyparty</h1>
+    <p style="margin:0 0 20px;color:#424245">Use this link to finish signing in and link your Mac.</p>
+    <p style="margin:0 0 24px"><a href="${safeLink}" style="display:inline-block;background:#ff2d6f;color:#fff;text-decoration:none;border-radius:999px;padding:12px 18px;font-weight:700">Continue to partyparty</a></p>
+    <p style="margin:0;color:#6e6e73;font-size:14px">This link expires in 15 minutes. If you did not request it, you can ignore this email.</p>
+  </main></body></html>`;
+  return { subject: "Sign in to partyparty", text, html };
+}
+
 async function sendAuthEmail(env, toEmail, link, devMode = false) {
   if (devMode) return true;
+  if (env.EMAIL && typeof env.EMAIL.send === "function") {
+    const body = authEmailBody(link);
+    await env.EMAIL.send({
+      to: toEmail,
+      from: authEmailFrom(env),
+      subject: body.subject,
+      text: body.text,
+      html: body.html,
+    });
+    return true;
+  }
   if (env.MXROUTE_SMTP_HOST && env.MXROUTE_SMTP_USER && env.MXROUTE_SMTP_PASS) {
     return await sendViaMXroute(env, toEmail, link);
   }
