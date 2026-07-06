@@ -937,7 +937,9 @@ func autoSyncPosts(events *event.Store, slug string, creds publish.Creds, base s
 	}()
 }
 
-// autoPublishEnabled reads the OTA flags.autoPublish switch (default on).
+// autoPublishEnabled reads the OTA flags.autoPublish switch (default OFF).
+// Auto-publish is opt-in: the DJ turns it on in the console settings (which
+// drives /api/stop?publish=1), or an OTA push can force it on for a fleet.
 func autoPublishEnabled(cfgJSON []byte) bool {
 	var c struct {
 		Flags struct {
@@ -947,7 +949,7 @@ func autoPublishEnabled(cfgJSON []byte) bool {
 	if len(cfgJSON) > 0 && json.Unmarshal(cfgJSON, &c) == nil && c.Flags.AutoPublish != nil {
 		return *c.Flags.AutoPublish
 	}
-	return true
+	return false
 }
 
 // autoPublishMinDur is the minimum set length for auto-publish: env override,
