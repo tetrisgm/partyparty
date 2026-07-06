@@ -96,7 +96,7 @@ rtmp: no
 srt: no
 webrtc: no
 rtsp: yes
-rtspAddress: :%d
+rtspAddress: 127.0.0.1:%d
 rtspTransports: [tcp]
 moq: no
 hls: yes

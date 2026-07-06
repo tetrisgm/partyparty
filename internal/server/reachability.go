@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"os"
 	"strings"
 	"time"
 
@@ -53,11 +52,7 @@ func (s *srv) runReachabilityWatchdog(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			broker := os.Getenv("PARTYPARTY_BROKER")
-			if broker == "" {
-				broker = "https://party.ramine.net"
-			}
-			s.updateReachability(time.Now(), runNetChecks(broker), true)
+			s.updateReachability(time.Now(), runNetChecks(s.netCheckOptions()), true)
 			if s.reachability().State == reachabilityOK {
 				stableOK++
 			} else {

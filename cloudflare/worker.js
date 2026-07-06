@@ -1715,16 +1715,49 @@ function renderNotFound() {
 
 // ---- Cert broker (the Plex pattern, vendor side) ----
 //
-// Lets ANY partyparty install get a real Let's Encrypt cert with zero config:
+// Lets linked partyparty installs get a real Let's Encrypt cert with zero config:
 // the app registers here once (an id + bearer secret + its own namespace
 // <id>.BROKER_BASE), runs ACME locally (private keys never leave the DJ's
 // Mac), and asks this broker to publish the DNS-01 challenge TXT and the
-// IP-encoded A records (192-168-1-117.<id>.pp.ramine.net -> 192.168.1.117 —
-// created once, correct forever). The Cloudflare DNS token lives ONLY here as
-// a Worker secret; each install can only write inside its own namespace.
+// slugged A record (<slug>.BROKER_BASE -> current LAN IP). The Cloudflare DNS
+// token lives ONLY here as a Worker secret; certificate DNS writes require the
+// install to be linked to a signed-in account.
 
 const jsonResp = (status, obj) =>
   new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
+
+const BROKER_SLUG_WORDS = ["disco", "groove", "bass", "vinyl", "tempo", "fader", "reverb", "echo", "strobe", "neon",
+  "boombox", "sub", "beat", "drop", "loop", "mix", "vibe", "funk", "wave", "pulse",
+  "rhythm", "deck", "fade", "amp", "chorus", "riff", "snare", "hihat", "kick", "midi"];
+
+async function newBrokerSlug(env, id) {
+  for (let tries = 0; tries < 10; tries++) {
+    const cand = BROKER_SLUG_WORDS[Math.floor(Math.random() * BROKER_SLUG_WORDS.length)] + String(Math.floor(Math.random() * 90) + 10);
+    if (!(await env.DL.get(`broker/slug/${cand}`))) return cand;
+  }
+  return "party" + id.slice(0, 6);
+}
+
+async function ensureBrokerSlug(env, id, rec) {
+  if (rec.slug) return rec.slug;
+  const slug = await newBrokerSlug(env, id);
+  rec.slug = slug;
+  await env.DL.put(`broker/slug/${slug}`, id);
+  await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+  return slug;
+}
+
+async function requireLinkedInstallForDNS(env, id) {
+  if (env.BROKER_ALLOW_UNLINKED_DNS === "1") return null;
+  if (!env.DB) return jsonResp(503, { error: "account link required" });
+  const linked = await env.DB.prepare(
+    "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+  ).bind(id).first();
+  if (!linked?.user_id || !linked?.profile_id) {
+    return jsonResp(403, { error: "link this Mac to your account before requesting certificates" });
+  }
+  return null;
+}
 
 function expiredLinkResponse(status = 400) {
   return new Response(`<!doctype html>
@@ -2584,15 +2617,7 @@ async function broker(request, env, pathname) {
     const secret = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");
     // Pretty, memorable hostname label (disco42, groove7…) — the guest link is
     // https://<slug>.<base>:8443/, not an IP-encoded eyesore.
-    const WORDS = ["disco", "groove", "bass", "vinyl", "tempo", "fader", "reverb", "echo", "strobe", "neon",
-      "boombox", "sub", "beat", "drop", "loop", "mix", "vibe", "funk", "wave", "pulse",
-      "rhythm", "deck", "fade", "amp", "chorus", "riff", "snare", "hihat", "kick", "midi"];
-    let slug = "";
-    for (let tries = 0; tries < 10; tries++) {
-      const cand = WORDS[Math.floor(Math.random() * WORDS.length)] + String(Math.floor(Math.random() * 90) + 10);
-      if (!(await env.DL.get(`broker/slug/${cand}`))) { slug = cand; break; }
-    }
-    if (!slug) slug = "party" + id.slice(0, 6); // vanishingly unlikely
+    const slug = await newBrokerSlug(env, id);
     await env.DL.put(`broker/slug/${slug}`, id);
     await env.DL.put(`broker/${id}.json`, JSON.stringify({ secret, slug, created: Date.now() }));
     return jsonResp(200, { id, secret, base: env.BROKER_BASE, slug });
@@ -2683,9 +2708,9 @@ async function broker(request, env, pathname) {
     return jsonResp(403, { error: "bad credentials" });
   }
 
-  // The install's namespace label: its pretty slug (new installs) or its raw
-  // id (pre-slug installs). Writes stay confined to that label.
-  const label = rec.slug || id;
+  // The install's namespace label. DNS writes below upgrade pre-slug installs
+  // to a pretty slug before touching Cloudflare.
+  let label = rec.slug || id;
 
   if (pathname === "/api/broker/publish-posts") {
     return await publishPosts(env, id, body);
@@ -2936,6 +2961,9 @@ async function broker(request, env, pathname) {
   }
 
   if (pathname === "/api/broker/txt") {
+    const linkedErr = await requireLinkedInstallForDNS(env, id);
+    if (linkedErr) return linkedErr;
+    label = await ensureBrokerSlug(env, id, rec);
     const value = String(body.value || "");
     if (!value || value.length > 255) return jsonResp(400, { error: "bad value" });
     const name = `_acme-challenge.${label}.${env.BROKER_BASE}`;
@@ -2946,14 +2974,14 @@ async function broker(request, env, pathname) {
   }
 
   if (pathname === "/api/broker/a") {
+    const linkedErr = await requireLinkedInstallForDNS(env, id);
+    if (linkedErr) return linkedErr;
+    label = await ensureBrokerSlug(env, id, rec);
     const ip = String(body.ip || "");
     if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return jsonResp(400, { error: "bad ip" });
-    // Slugged installs: ONE record per install, upserted to the current venue
-    // IP (DNS-only, never proxied). Pre-slug installs keep the old IP-encoded
-    // create-once names.
-    const name = rec.slug
-      ? `${rec.slug}.${env.BROKER_BASE}`
-      : `${ip.replaceAll(".", "-")}.${id}.${env.BROKER_BASE}`;
+    // ONE slugged record per install, upserted to the current venue IP
+    // (DNS-only, never proxied). The cert binds to this domain, not the IP.
+    const name = `${label}.${env.BROKER_BASE}`;
     const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
     if (existing && existing.length) {
       if (existing[0].content !== ip) {

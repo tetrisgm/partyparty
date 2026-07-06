@@ -372,6 +372,14 @@
           <span class="muted">Sign in / account</span>
           <div id="onlineLogin"></div>
         </div>
+        <div class="online-item">
+          <span class="muted">Link this Mac</span>
+          <div class="linkrow">
+            <input id="installLinkCode" maxlength="32" spellcheck="false" autocapitalize="off" autocomplete="one-time-code" placeholder="Account code">
+            <button class="ghost" id="installLinkBtn" type="button">Link</button>
+          </div>
+          <div id="installLinkMsg" class="hint" style="display:none"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -840,6 +848,39 @@
     localStorage.setItem('pp.adv', $('advToggle').checked ? '1' : '0');
   };
 
+  async function linkInstall() {
+    const inp = $('installLinkCode');
+    const msg = $('installLinkMsg');
+    const btn = $('installLinkBtn');
+    const code = (inp.value || '').trim().toLowerCase();
+    msg.style.display = 'block';
+    if (!/^[a-f0-9]{32}$/.test(code)) {
+      msg.textContent = 'Enter the 32-character code from your account page.';
+      inp.focus();
+      return;
+    }
+    btn.disabled = true;
+    msg.textContent = 'Linking…';
+    try {
+      const r = await fetch('/api/link-install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not link this Mac.');
+      inp.value = '';
+      msg.textContent = j.handle ? ('Linked to @' + j.handle + '.') : 'Linked.';
+      refresh();
+    } catch (e) {
+      msg.textContent = e && e.message ? e.message : 'Could not link this Mac.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  $('installLinkBtn').onclick = linkInstall;
+  $('installLinkCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') linkInstall(); });
+
   async function startBroadcast() {
     const sel = $('device');
     const device = sel.value;
@@ -959,10 +1000,11 @@
       }
       const live = (st === 'live' || st === 'starting');
       const lb = $('liveBtn');
-      // No broadcasting before the secure guest link exists — the button says
-      // so instead of letting a set start that nobody could join properly.
+      // LL-HLS needs a trusted cert; plain HLS is the offline fallback and can
+      // start while activation keeps trying in the background.
       const secureReady = s.llhlsRealCert === true;
-      if (!live && !secureReady) {
+      const canStart = s.delivery !== 'llhls' || secureReady;
+      if (!live && !canStart) {
         lb.textContent = '🔒 Setting up secure link…';
         lb.className = 'golive go';
         lb.disabled = true;
@@ -984,18 +1026,16 @@
       // just be noise. It comes back if an error note ever shows.
       if (st === 'live' && s.broadcast.device === 'mac') localStorage.setItem('pp.audioOK', '1');
       $('permBtnAlways').style.display = (note || localStorage.getItem('pp.audioOK') !== '1') ? 'block' : 'none';
-      // Guests only ever get the https link (the Plex model). Until the cert
-      // is provisioned there is nothing to advertise — show the pending state
-      // rather than an http link that undermines the whole cert story.
       const secure = s.llhlsRealCert === true;
       const guestUrl = s.urls.primary;
+      const linkReady = !!guestUrl && (secure || s.delivery === 'hls');
       const hotspot = s.hotspot || {};
       const offlineMode = hotspot.mode === 'offline' || s.captive === true;
       renderMirror(s.mirror);
       if (s.mirror) {
         renderOnline(s.mirror.slug || lastOnlineSlug, s.mirror.url || '', s.mirror.published);
       }
-      if (secure) {
+      if (linkReady) {
         $('setupCard').style.display = 'none';
         stopPendingType();
         // the share card returns to the DJ's open/closed preference
@@ -1006,7 +1046,9 @@
         $('hotspotReady').style.display = offlineMode && bridgeUp ? 'block' : 'none';
         $('hotspotNoInternet').style.display = offlineMode ? 'block' : 'none';
         $('hotspotFallback').style.display = offlineMode && !bridgeUp ? 'block' : 'none';
-        $('shareHint').textContent = offlineMode
+        $('shareHint').textContent = !secure
+          ? 'Compatible mode is live over local Wi-Fi. The secure low-latency link will take over after the certificate is ready.'
+          : offlineMode
           ? 'Guests join your Mac’s Wi-Fi, then scan this code. It opens in Safari/Chrome so it keeps playing in the background.'
           : 'Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.';
         if (offlineMode && bridgeUp) {

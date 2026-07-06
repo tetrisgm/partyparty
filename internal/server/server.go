@@ -318,6 +318,33 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.
 		writeJSON(w, http.StatusOK, map[string]any{"t": time.Now().UnixMilli()})
+	case "/api/link-install":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		var body struct{ Code string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return
+		}
+		broker := os.Getenv("PARTYPARTY_BROKER")
+		if broker == "" {
+			broker = "https://party.ramine.net"
+		}
+		handle, err := activate.LinkInstall(broker, body.Code, func(format string, args ...any) {
+			if s.Diag != nil {
+				s.Diag.Printf(format, args...)
+			}
+		})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "handle": handle})
 	case "/api/client-log":
 		// Guest-side error reports into the session diagnostics. Field lesson:
 		// a phone whose JOIN button silently fails never heartbeats — it was
@@ -446,6 +473,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return
 		}
+		if !s.requireDJ(w, r) {
+			return
+		}
 		mode := r.URL.Query().Get("mode")
 		if mode != "llhls" && mode != "hls" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "mode must be llhls or hls"})
@@ -482,6 +512,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return
 		}
+		if !s.requireDJ(w, r) {
+			return
+		}
 		// System-audio capture (Core Audio process tap) lives under
 		// Privacy & Security → "Screen & System Audio Recording" on modern macOS
 		// (the ScreenCapture TCC pane). Open it so the DJ can toggle partyparty on.
@@ -495,6 +528,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/devices":
+		if !s.requireDJ(w, r) {
+			return
+		}
 		devs := devices.List(s.Config.FFmpeg)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"devices":     devs,
@@ -506,15 +542,18 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return
 		}
+		if !s.requireDJ(w, r) {
+			return
+		}
 		q := r.URL.Query()
 		device := q.Get("device")
 		if device == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "device required"})
 			return
 		}
-		// No broadcasting before the secure link exists (the test tone is
-		// allowed — it's the DJ's own rehearsal, no guests involved).
-		if device != "test" && !s.realCert() {
+		// LL-HLS needs a publicly-trusted cert. Plain HLS is the offline-safe
+		// fallback and must be able to start before activation completes.
+		if device != "test" && s.Broadcaster.Delivery() == "llhls" && !s.realCert() {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "secure guest link isn't ready yet — hold on (needs internet once)"})
 			return
 		}
@@ -551,6 +590,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case "/api/stop":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
 			return
 		}
 		s.Broadcaster.Stop()
@@ -853,7 +895,7 @@ func validBitrate(v string) string {
 }
 
 // realCert reports whether the https guest link is actually SERVABLE — the
-// gate for LL-HLS and Go Live (iOS Safari rejects self-signed certs on LAN
+// gate for LL-HLS (iOS Safari rejects self-signed certs on LAN
 // IPs). True only once SetActivation ran, which main.go does strictly after a
 // cert loaded and the TLS listener bound: raw --cert/--key config presence
 // used to count, and a bad key or busy port then advertised an https link no

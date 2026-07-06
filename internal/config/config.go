@@ -29,7 +29,7 @@ type Config struct {
 	RTSPPort    int
 	HLSPort     int
 	StreamPath  string
-	Domain      string // public hostname for the cert/URL; "" = use LAN IP (self-signed)
+	Domain      string // public hostname for the cert/URL; "" = plain-HLS IP until broker activation
 	CertFile    string // real cert (fullchain); "" = self-signed
 	KeyFile     string
 	LiveHost    string // Plex-style low-latency host (auto cert + A record via Cloudflare); "" = off
@@ -73,7 +73,7 @@ func Parse() Config {
 	flag.IntVar(&c.RTSPPort, "rtsp-port", envInt("PARTYPARTY_RTSP_PORT", 8554), "MediaMTX RTSP ingest port")
 	flag.IntVar(&c.HLSPort, "hls-port", envInt("PARTYPARTY_HLS_PORT", 8888), "MediaMTX LL-HLS (HTTPS) port")
 	flag.StringVar(&c.StreamPath, "stream-path", env("PARTYPARTY_STREAM_PATH", "party"), "MediaMTX stream path name")
-	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty = LAN IP + self-signed")
+	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty = plain-HLS IP until broker activation")
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")

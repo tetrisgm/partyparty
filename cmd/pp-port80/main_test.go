@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseWifiDevice(t *testing.T) {
 	out := `Hardware Port: Ethernet
@@ -52,6 +55,21 @@ partyparty-adhoc
 	}
 	if !serviceExists(got, adhocService) {
 		t.Fatalf("serviceExists(%#v, %q) = false", got, adhocService)
+	}
+}
+
+func TestPFRuleUsesDetectedBridge(t *testing.T) {
+	got := pfRule("bridge42")
+	for _, want := range []string{
+		"rdr pass on bridge42 inet proto tcp from any to any port 80 -> 127.0.0.1 port 8000",
+		"rdr pass on bridge42 inet proto udp from any to any port 53 -> 127.0.0.1 port 5354",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("pfRule missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "bridge100") {
+		t.Fatalf("pfRule should not hard-code bridge100:\n%s", got)
 	}
 }
 

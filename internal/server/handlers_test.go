@@ -27,6 +27,8 @@ type testEnv struct {
 	runDir string
 }
 
+const djAddr = "127.0.0.1:1234"
+
 // newTestEnv builds a Srv over a stub ffmpeg, a temp run dir, an in-memory web
 // FS, and no MediaMTX (MTX nil → LL-HLS unavailable).
 func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
@@ -970,7 +972,7 @@ func TestModerationFeedAndRoutes(t *testing.T) {
 
 func TestPostOnlyEndpoints(t *testing.T) {
 	env := newTestEnv(t, nil)
-	for _, p := range []string{"/api/start", "/api/stop", "/api/delivery", "/api/shutdown", "/api/open-settings"} {
+	for _, p := range []string{"/api/start", "/api/stop", "/api/delivery", "/api/shutdown", "/api/open-settings", "/api/link-install"} {
 		w := do(env.srv, "GET", p, "")
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, w.Code)
@@ -994,10 +996,45 @@ func TestShutdownRejectedFromLAN(t *testing.T) {
 	}
 }
 
+func TestDJControlEndpointsRejectedFromLAN(t *testing.T) {
+	env := newTestEnv(t, nil)
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/start?device=test"},
+		{http.MethodPost, "/api/stop"},
+		{http.MethodPost, "/api/delivery?mode=hls"},
+		{http.MethodPost, "/api/open-settings?pane=audio"},
+		{http.MethodPost, "/api/link-install"},
+		{http.MethodGet, "/api/devices"},
+	} {
+		w := do(env.srv, tc.method, tc.path, "192.168.1.44:3333")
+		if w.Code != http.StatusForbidden {
+			t.Errorf("%s %s = %d, want 403", tc.method, tc.path, w.Code)
+		}
+		if body := decodeJSON(t, w); body["error"] != "DJ only" {
+			t.Errorf("%s %s error = %v", tc.method, tc.path, body["error"])
+		}
+	}
+}
+
+func TestLinkInstallRejectsBadCode(t *testing.T) {
+	env := newTestEnv(t, nil)
+	body := bytes.NewBufferString(`{"code":"not-a-code"}`)
+	w := doBody(env.srv, "POST", "/api/link-install", djAddr, "application/json", body)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("link-install bad code = %d, want 400", w.Code)
+	}
+	if body := decodeJSON(t, w); body["error"] != "bad code" {
+		t.Errorf("error = %v", body["error"])
+	}
+}
+
 func TestStartValidationAndLifecycle(t *testing.T) {
 	env := newTestEnv(t, nil)
 
-	w := do(env.srv, "POST", "/api/start", "")
+	w := do(env.srv, "POST", "/api/start", djAddr)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("start without device = %d, want 400", w.Code)
 	}
@@ -1005,17 +1042,33 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 		t.Errorf("error = %v", body["error"])
 	}
 
-	// Real device before activation: rejected (no secure guest link yet).
-	w = do(env.srv, "POST", "/api/start?device=0", "")
+	// Plain HLS is the offline-safe fallback: it can start before cert activation.
+	w = do(env.srv, "POST", "/api/start?device=0", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("start real device in hls without cert = %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	if env.bc.Status().State != "starting" {
+		t.Fatal("broadcaster should have started in hls")
+	}
+	w = do(env.srv, "POST", "/api/stop", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("stop after hls start = %d", w.Code)
+	}
+	waitIdle(t, env.bc)
+
+	// LL-HLS still needs the real cert; otherwise iOS rejects the stream URL.
+	env.bc.SetDelivery("llhls")
+	w = do(env.srv, "POST", "/api/start?device=0", djAddr)
 	if w.Code != http.StatusConflict {
-		t.Fatalf("start real device without cert = %d, want 409", w.Code)
+		t.Fatalf("start llhls real device without cert = %d, want 409", w.Code)
 	}
 	if env.bc.Status().State != "idle" {
 		t.Fatal("broadcaster should not have started")
 	}
+	env.bc.SetDelivery("hls")
 
 	// The test tone is always allowed — the DJ's own rehearsal.
-	w = do(env.srv, "POST", "/api/start?device=test&bitrate=999k", "")
+	w = do(env.srv, "POST", "/api/start?device=test&bitrate=999k", djAddr)
 	if w.Code != http.StatusOK {
 		t.Fatalf("start test tone = %d, want 200 (%s)", w.Code, w.Body.String())
 	}
@@ -1027,7 +1080,7 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 		t.Errorf("bitrate = %q, want default 320k (bad value must not pass through)", st.Bitrate)
 	}
 
-	w = do(env.srv, "POST", "/api/stop", "")
+	w = do(env.srv, "POST", "/api/stop", djAddr)
 	if w.Code != http.StatusOK {
 		t.Fatalf("stop = %d", w.Code)
 	}
@@ -1035,7 +1088,7 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 
 	// After activation the real-device gate opens.
 	env.srv.SetActivation("party.example.net")
-	w = do(env.srv, "POST", "/api/start?device=0&mono=1", "")
+	w = do(env.srv, "POST", "/api/start?device=0&mono=1", djAddr)
 	if w.Code != http.StatusOK {
 		t.Fatalf("start real device after activation = %d, want 200 (%s)", w.Code, w.Body.String())
 	}
@@ -1043,20 +1096,20 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 	if st.State != "starting" || st.Channels != 1 {
 		t.Fatalf("state/channels = %q/%d, want starting/1 (mono)", st.State, st.Channels)
 	}
-	do(env.srv, "POST", "/api/stop", "")
+	do(env.srv, "POST", "/api/stop", djAddr)
 	waitIdle(t, env.bc)
 }
 
 func TestDeliveryEndpoint(t *testing.T) {
 	env := newTestEnv(t, nil)
 
-	w := do(env.srv, "POST", "/api/delivery?mode=bogus", "")
+	w := do(env.srv, "POST", "/api/delivery?mode=bogus", djAddr)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("bogus mode = %d, want 400", w.Code)
 	}
 
 	// MTX is nil → llhls is structurally unavailable.
-	w = do(env.srv, "POST", "/api/delivery?mode=llhls", "")
+	w = do(env.srv, "POST", "/api/delivery?mode=llhls", djAddr)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("llhls without mediamtx = %d, want 400", w.Code)
 	}
@@ -1064,7 +1117,7 @@ func TestDeliveryEndpoint(t *testing.T) {
 		t.Errorf("error = %v", body["error"])
 	}
 
-	w = do(env.srv, "POST", "/api/delivery?mode=hls", "")
+	w = do(env.srv, "POST", "/api/delivery?mode=hls", djAddr)
 	if w.Code != http.StatusOK {
 		t.Fatalf("hls mode = %d, want 200", w.Code)
 	}

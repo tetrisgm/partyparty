@@ -321,7 +321,7 @@ func TestWriteConfig(t *testing.T) {
 	}
 	got := string(data)
 	for _, want := range []string{
-		"rtspAddress: :8554",
+		"rtspAddress: 127.0.0.1:8554",
 		"hlsAddress: :8888",
 		"hlsSegmentCount: 7",
 		"hlsSegmentDuration: 1s",

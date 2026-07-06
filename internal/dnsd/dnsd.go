@@ -33,6 +33,7 @@ type Config struct {
 	Hosts    []string
 	TargetIP string
 	TTL      time.Duration // A-record TTL (default 5s)
+	CatchAll bool          // answer every A query with TargetIP (captive mode)
 	Logf     func(format string, args ...any)
 }
 
@@ -44,6 +45,7 @@ type Server struct {
 	mu     sync.RWMutex
 	hosts  map[string]struct{}
 	target net.IP
+	all    bool
 	logf   func(format string, args ...any)
 
 	runMu sync.Mutex
@@ -63,6 +65,7 @@ func New(cfg Config) *Server {
 	s := &Server{addr: cfg.Addr, ttl: ttl, logf: cfg.Logf}
 	s.SetHosts(cfg.Hosts)
 	s.SetTarget(cfg.TargetIP)
+	s.SetCatchAll(cfg.CatchAll)
 	return s
 }
 
@@ -70,6 +73,13 @@ func New(cfg Config) *Server {
 func (s *Server) Update(hosts []string, ip string) {
 	s.SetHosts(hosts)
 	s.SetTarget(ip)
+}
+
+// SetCatchAll changes whether the server answers A queries for every hostname.
+func (s *Server) SetCatchAll(on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.all = on
 }
 
 // SetTarget changes the IPv4 address returned by later A responses.
@@ -205,6 +215,9 @@ func (s *Server) owns(name string) bool {
 	name = normalizeHost(name)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.all {
+		return true
+	}
 	_, ok := s.hosts[name]
 	return ok
 }

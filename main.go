@@ -224,52 +224,50 @@ func main() {
 	var captiveDNSHost string
 	if cfg.Captive {
 		host := activationHost()
-		if host == "" {
-			log.Printf("dns: captive DNS disabled: no activation host")
-		} else {
-			captiveDNSHost = host
-			localDNS = dnsd.New(dnsd.Config{
-				Addr:     dnsd.LocalAddr,
-				Hosts:    []string{host},
-				TargetIP: sharedIP,
-				TTL:      5 * time.Second,
-				Logf: func(format string, args ...any) {
-					if diagLog != nil {
-						diagLog.Printf(format, args...)
-						return
-					}
-					log.Printf(format, args...)
-				},
-			})
-			if err := localDNS.Start(); err != nil {
-				log.Printf("dns: captive DNS failed on %s: %v", dnsd.LocalAddr, err)
-				localDNS = nil
-			} else {
-				log.Printf("dns: captive DNS answering %s -> %s on %s", host, sharedIP, dnsd.LocalAddr)
-				refreshLocalDNS = func(host string) {
-					if host == "" {
-						host = activationHost()
-					}
-					if host == "" || localDNS == nil {
-						return
-					}
-					localDNS.Update([]string{host}, netinfo.SharedLanIP())
+		hosts := captiveDNSHosts(host)
+		captiveDNSHost = strings.Join(hosts, ", ")
+		localDNS = dnsd.New(dnsd.Config{
+			Addr:     dnsd.LocalAddr,
+			Hosts:    hosts,
+			TargetIP: sharedIP,
+			TTL:      5 * time.Second,
+			CatchAll: true,
+			Logf: func(format string, args ...any) {
+				if diagLog != nil {
+					diagLog.Printf(format, args...)
+					return
 				}
-				var dnsCtx context.Context
-				dnsCtx, dnsCancel = context.WithCancel(context.Background())
-				go func() {
-					t := time.NewTicker(5 * time.Second)
-					defer t.Stop()
-					for {
-						select {
-						case <-t.C:
-							refreshLocalDNS("")
-						case <-dnsCtx.Done():
-							return
-						}
-					}
-				}()
+				log.Printf(format, args...)
+			},
+		})
+		if err := localDNS.Start(); err != nil {
+			log.Printf("dns: captive DNS failed on %s: %v", dnsd.LocalAddr, err)
+			localDNS = nil
+		} else {
+			log.Printf("dns: captive DNS answering %s plus catch-all -> %s on %s", captiveDNSHost, sharedIP, dnsd.LocalAddr)
+			refreshLocalDNS = func(host string) {
+				if host == "" {
+					host = activationHost()
+				}
+				if localDNS == nil {
+					return
+				}
+				localDNS.Update(captiveDNSHosts(host), netinfo.SharedLanIP())
 			}
+			var dnsCtx context.Context
+			dnsCtx, dnsCancel = context.WithCancel(context.Background())
+			go func() {
+				t := time.NewTicker(5 * time.Second)
+				defer t.Stop()
+				for {
+					select {
+					case <-t.C:
+						refreshLocalDNS("")
+					case <-dnsCtx.Done():
+						return
+					}
+				}
+			}()
 		}
 	}
 
@@ -352,7 +350,7 @@ func main() {
 			diagLog.Printf("network: lan=%s shared=%s interfaces=%+v", ip, sharedIP, netinfo.LanInterfaces())
 			diagLog.Printf("config: delivery=%s bitrate=%s part=%s seg=%s", cfg.Delivery, cfg.Bitrate, cfg.PartDur, cfg.SegDur)
 			if localDNS != nil && captiveDNSHost != "" {
-				diagLog.Printf("dns: captive DNS answering %s -> %s on %s", captiveDNSHost, sharedIP, dnsd.LocalAddr)
+				diagLog.Printf("dns: captive DNS answering %s plus catch-all -> %s on %s", captiveDNSHost, sharedIP, dnsd.LocalAddr)
 			}
 			if payload != nil {
 				// The store's own "serving cached payload" line is emitted during
@@ -630,7 +628,7 @@ func main() {
 	// Background low-latency activation (the Plex pattern) — the console is
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
-	// at party.ramine.net (per-install wildcard cert, IP-encoded hostname).
+	// at party.ramine.net (per-install slugged domain + DNS-01 cert).
 	// Cached-cert engagement above is local-only and does not wait for this
 	// loop. Online refresh keeps trying to upsert DNS / renew; failures never
 	// tear down an already-engaged cached cert. On success we flip delivery to
@@ -971,6 +969,25 @@ func autoPublishMinDur(cfgJSON []byte) time.Duration {
 	return 3 * time.Minute
 }
 
+func captiveDNSHosts(host string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(h string) {
+		h = strings.TrimSpace(strings.TrimSuffix(h, "."))
+		if h == "" || seen[h] {
+			return
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	add(host)
+	add("party")
+	add("party.lan")
+	add("partyparty")
+	add("partyparty.lan")
+	return out
+}
+
 // humanizeActivation turns raw activation errors into console-worthy English.
 // The DJ saw "certificate: ACME register: 503 : 503 Service Unavailable" in
 // the field — accurate, useless, and scary. The retry loop is automatic; the
@@ -978,6 +995,8 @@ func autoPublishMinDur(cfgJSON []byte) time.Duration {
 func humanizeActivation(reason string) string {
 	r := strings.ToLower(reason)
 	switch {
+	case strings.Contains(r, "link this mac") || strings.Contains(r, "account link"):
+		return "link this Mac to your partyparty account before secure low-latency setup can finish"
 	case strings.Contains(r, "acme") || strings.Contains(r, "letsencrypt") || strings.Contains(r, "let's encrypt"):
 		return "the free certificate service (Let's Encrypt) isn't answering right now — retrying automatically, this usually clears in a few minutes"
 	case strings.Contains(r, "register") || strings.Contains(r, "broker") || strings.Contains(r, "party.ramine.net"):

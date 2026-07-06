@@ -63,13 +63,26 @@ func TestCachedCertReadyBrokerHostFromInstallJSON(t *testing.T) {
 	}
 }
 
-func TestCachedCertReadyRejectsNearExpiry(t *testing.T) {
-	setupStateDir(t)
+func TestCachedCertReadyAcceptsNearExpiry(t *testing.T) {
+	dir := setupStateDir(t)
 	writeCachedLiveCert(t, "dj.example.net", renewWindow-time.Hour)
 
 	res, ok := CachedCertReady("dj.example.net")
+	if !ok || !res.OK {
+		t.Fatalf("CachedCertReady near expiry = (%+v, %v), want usable until close to expiry", res, ok)
+	}
+	if certUsable(filepath.Join(dir, "live-cert.pem"), "dj.example.net") {
+		t.Fatalf("certUsable near expiry = true, want false so online activation renews")
+	}
+}
+
+func TestCachedCertReadyRejectsExpired(t *testing.T) {
+	setupStateDir(t)
+	writeCachedLiveCert(t, "dj.example.net", -time.Hour)
+
+	res, ok := CachedCertReady("dj.example.net")
 	if ok || res.OK {
-		t.Fatalf("CachedCertReady near expiry = (%+v, %v), want not usable", res, ok)
+		t.Fatalf("CachedCertReady expired = (%+v, %v), want not usable", res, ok)
 	}
 }
 

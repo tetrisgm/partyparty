@@ -30,10 +30,6 @@ import (
 // evaluates — so the rule takes effect without ever editing the system ruleset.
 const anchor = "com.apple/net.ramine.partyparty"
 
-const rule = "" +
-	"rdr pass on bridge100 inet proto tcp from any to any port 80 -> 127.0.0.1 port 8000\n" +
-	"rdr pass on bridge100 inet proto udp from any to any port 53 -> 127.0.0.1 port 5354\n"
-
 const pfctl = "/sbin/pfctl"
 
 const (
@@ -56,8 +52,8 @@ type sharingState struct {
 
 func main() {
 	log.SetPrefix("pp-port80: ")
-	token := loadRule()
 	sharing := enableSharing()
+	token := loadRule()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
@@ -70,8 +66,15 @@ func main() {
 // returning the enable token to release later. Never uses bare -e / -f pf.conf
 // (which would clobber Internet Sharing / VPNs / other pf users).
 func loadRule() string {
+	iface, _ := bridgeIP()
+	if iface == "" {
+		iface = "bridge100"
+		log.Printf("pf: no active bridge detected; falling back to %s", iface)
+	} else {
+		log.Printf("pf: redirecting captive traffic on %s", iface)
+	}
 	c := loggedCommand(pfctl, "-a", anchor, "-f", "-")
-	c.Stdin = strings.NewReader(rule)
+	c.Stdin = strings.NewReader(pfRule(iface))
 	out, err := c.CombinedOutput()
 	logResult(pfctl, out, err)
 	if err != nil {
@@ -85,6 +88,14 @@ func loadRule() string {
 		return m[1]
 	}
 	return ""
+}
+
+func pfRule(iface string) string {
+	return fmt.Sprintf(
+		"rdr pass on %s inet proto tcp from any to any port 80 -> 127.0.0.1 port 8000\n"+
+			"rdr pass on %s inet proto udp from any to any port 53 -> 127.0.0.1 port 5354\n",
+		iface, iface,
+	)
 }
 
 func teardown(token string) {

@@ -29,9 +29,9 @@
     { "binding": "DB", "database_name": "partyparty-events", "database_id": "5344bf77-632f-45b4-b0f5-13f49faaf94a" }
   ],
 
-  // Cert broker (the Plex pattern): installs get <id>.BROKER_BASE namespaces;
-  // the broker writes their DNS-01 TXT + IP-encoded A records for them. Needs
-  // the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN — Zone→DNS→Edit).
+  // Cert broker (the Plex pattern): linked installs get slugged hostnames under
+  // BROKER_BASE; the broker writes DNS-01 TXT + DNS-only A records for them.
+  // Needs the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN — Zone→DNS→Edit).
   "vars": {
     // Passwordless auth expects these env names when enabled:
     // AUTH_DEV_LINKS, AUTH_DEV_SECRET, MXROUTE_SMTP_HOST, MXROUTE_SMTP_PORT,

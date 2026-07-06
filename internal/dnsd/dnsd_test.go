@@ -61,6 +61,24 @@ func TestNonOwnedHostReturnsNoAnswers(t *testing.T) {
 	}
 }
 
+func TestCatchAllAQueryReturnsTarget(t *testing.T) {
+	s := newTestServerWithConfig(t, Config{
+		Addr:     "127.0.0.1:0",
+		Hosts:    []string{"dj.ramine.net"},
+		TargetIP: "192.168.2.44",
+		CatchAll: true,
+	})
+
+	resp := exchange(t, s, queryPacket(0x1006, "captive.apple.com", typeA))
+	got := parseResponse(t, resp)
+	if len(got.answers) != 1 {
+		t.Fatalf("answers = %d, want 1", len(got.answers))
+	}
+	if got.answers[0].ip.String() != "192.168.2.44" {
+		t.Fatalf("ip = %s, want 192.168.2.44", got.answers[0].ip)
+	}
+}
+
 func TestOwnedAAAAQueryReturnsNoAnswers(t *testing.T) {
 	s := newTestServer(t, []string{"dj.ramine.net"}, "192.168.2.44")
 

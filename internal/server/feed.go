@@ -35,6 +35,14 @@ func (s *srv) isDJ(r *http.Request) bool {
 	return ip == "127.0.0.1" || ip == "::1" || ip == "1"
 }
 
+func (s *srv) requireDJ(w http.ResponseWriter, r *http.Request) bool {
+	if s.isDJ(r) {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+	return false
+}
+
 func (s *srv) featureOn(name string) bool {
 	if s.Events == nil {
 		return true
@@ -825,11 +833,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
-		broker := os.Getenv("PARTYPARTY_BROKER")
-		if broker == "" {
-			broker = "https://party.ramine.net"
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"checks": runNetChecks(broker)})
+		writeJSON(w, http.StatusOK, map[string]any{"checks": runNetChecks(s.netCheckOptions())})
 	case "/api/events":
 		if !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})

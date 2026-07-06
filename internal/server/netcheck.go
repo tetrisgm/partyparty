@@ -6,8 +6,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
+
+	"partyparty/internal/activate"
+	"partyparty/internal/dnsd"
 )
 
 // /api/netcheck (DJ-only): one button in the console runs the exact network
@@ -26,22 +32,84 @@ type netCheck struct {
 const leDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 
 const (
-	netCheckPartyDNS = "Find the partyparty service (DNS)"
+	netCheckPartyDNS = "Find the guest link (DNS)"
 	netCheckLEDNS    = "Find Let's Encrypt (DNS)"
 )
 
-func runNetChecks(brokerBase string) []netCheck {
+type netCheckOptions struct {
+	BrokerBase string
+	GuestHost  string
+	GuestURL   string
+	Captive    bool
+}
+
+func (s *srv) netCheckOptions() netCheckOptions {
+	broker := os.Getenv("PARTYPARTY_BROKER")
+	if broker == "" {
+		broker = "https://party.ramine.net"
+	}
+	host := s.liveDomain()
+	if host == "" {
+		host = activate.BrokerHost()
+	}
+	return netCheckOptions{
+		BrokerBase: broker,
+		GuestHost:  host,
+		GuestURL:   s.urls().Primary,
+		Captive:    s.Config.Captive,
+	}
+}
+
+func runNetChecks(opts netCheckOptions) []netCheck {
+	brokerBase := opts.BrokerBase
+	if brokerBase == "" {
+		brokerBase = "https://party.ramine.net"
+	}
 	cl := &http.Client{Timeout: 8 * time.Second}
-	checks := []struct {
+	var checks []struct {
 		name string
 		run  func() (string, error)
-	}{
-		{netCheckPartyDNS, func() (string, error) { return lookup("party.ramine.net") }},
-		{"Reach the partyparty service", func() (string, error) { return get(cl, brokerBase+"/api/broker/ping") }},
-		{netCheckLEDNS, func() (string, error) { return lookup("acme-v02.api.letsencrypt.org") }},
-		{"Reach Let's Encrypt", func() (string, error) { return get(cl, leDirectory) }},
-		{"Let's Encrypt accepts requests", func() (string, error) { return leNonce(cl) }},
 	}
+	guestHost := strings.TrimSpace(opts.GuestHost)
+	if guestHost == "" {
+		guestHost = hostFromURL(brokerBase)
+	}
+	if guestHost != "" {
+		checks = append(checks, struct {
+			name string
+			run  func() (string, error)
+		}{netCheckPartyDNS, func() (string, error) { return lookup(guestHost) }})
+	}
+	if opts.Captive && guestHost != "" {
+		checks = append(checks, struct {
+			name string
+			run  func() (string, error)
+		}{"Resolve guest link through offline DNS", func() (string, error) { return lookupWithServer(guestHost, dnsd.LocalAddr) }})
+	}
+	if opts.GuestURL != "" {
+		checks = append(checks, struct {
+			name string
+			run  func() (string, error)
+		}{"Open the guest link from this Mac", func() (string, error) { return get(cl, opts.GuestURL) }})
+	}
+	checks = append(checks,
+		struct {
+			name string
+			run  func() (string, error)
+		}{"Reach the partyparty service", func() (string, error) { return get(cl, brokerBase+"/api/broker/ping") }},
+		struct {
+			name string
+			run  func() (string, error)
+		}{netCheckLEDNS, func() (string, error) { return lookup("acme-v02.api.letsencrypt.org") }},
+		struct {
+			name string
+			run  func() (string, error)
+		}{"Reach Let's Encrypt", func() (string, error) { return get(cl, leDirectory) }},
+		struct {
+			name string
+			run  func() (string, error)
+		}{"Let's Encrypt accepts requests", func() (string, error) { return leNonce(cl) }},
+	)
 	out := make([]netCheck, len(checks))
 	var wg sync.WaitGroup
 	for i, c := range checks {
@@ -64,12 +132,28 @@ func runNetChecks(brokerBase string) []netCheck {
 	return out
 }
 
+func hostFromURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
 func lookup(host string) (string, error) {
+	return lookupWithResolver(host, &net.Resolver{PreferGo: true})
+}
+
+func lookupWithServer(host, server string) (string, error) {
+	return lookupWithResolver(host, &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, server)
+	}})
+}
+
+func lookupWithResolver(host string, r *net.Resolver) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
-	// PreferGo sidesteps macOS mDNSResponder's negative cache (the same trap
-	// the activation self-check hit) — this tests the NETWORK, not the cache.
-	r := &net.Resolver{PreferGo: true}
 	ips, err := r.LookupHost(ctx, host)
 	if err != nil {
 		return "", err

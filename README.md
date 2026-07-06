@@ -15,7 +15,7 @@ See [PLAN.md](PLAN.md) for the full design rationale and the research behind the
 
 ## Requirements
 
-- **Running the built binary: just macOS 13+ (Apple Silicon).** FFmpeg, the LL-HLS server (MediaMTX),
+- **Running the built binary: macOS 26+ (Apple Silicon).** FFmpeg, the LL-HLS server (MediaMTX),
   and the system-audio helper are all **embedded** — nothing to install.
 - To **build** from source: **Go 1.26+** (`brew install go`), **Xcode command-line tools**
   (`xcode-select --install`), and **MediaMTX** (`brew install mediamtx`). `make` also downloads a
@@ -96,7 +96,7 @@ and run partyparty; point the router's DNS/portal at the Mac's IP.
 --hls-list 10         segments kept in the playlist
 --tone                auto-start a test tone on launch
 --delivery llhls      delivery: llhls (low-latency, MediaMTX+HTTPS) or hls (plain HTTP)
---domain HOST         public hostname matching your cert (guests use it); empty = LAN IP + self-signed
+--domain HOST         public hostname matching your cert (guests use the domain, never an IP cert)
 --cert / --key FILE   TLS cert (fullchain) + key for LL-HLS; empty = auto self-signed
 --hls-port 8888       MediaMTX LL-HLS (HTTPS) port
 --rtsp-port 8554      MediaMTX RTSP ingest port
@@ -159,9 +159,8 @@ which violates the project's hard requirement.
 
 ### LL-HLS needs HTTPS
 
-LL-HLS only hits low latency over HTTPS. partyparty auto-generates a **self-signed** cert by default —
-fine for your own phones and small groups (each must trust it once), but you can't ask a room of
-strangers to trust a self-signed cert.
+LL-HLS only hits low latency over HTTPS. partyparty can auto-generate a **self-signed** cert for
+development, but real parties need a domain with a publicly-trusted certificate.
 
 For a real party, use a **publicly-trusted cert for a domain you own** so guests get zero warnings:
 

@@ -156,6 +156,44 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
 }
 
+// LinkInstall binds this local install id/secret to a signed-in web account via
+// a one-time code generated at /account. Certificate DNS writes are broker-gated
+// on this link.
+func LinkInstall(brokerURL, code string, logf Logf) (string, error) {
+	code = strings.TrimSpace(strings.ToLower(code))
+	if !isHexN(code, 32) {
+		return "", errors.New("bad code")
+	}
+	dir, err := stateDir()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
+	if err != nil {
+		return "", err
+	}
+	var out struct{ Handle string }
+	if err := b.post(ctx, "/api/broker/link-install", map[string]any{"id": b.id, "secret": b.secret, "code": code}, &out); err != nil {
+		return "", err
+	}
+	return out.Handle, nil
+}
+
+func isHexN(s string, n int) bool {
+	if len(s) != n {
+		return false
+	}
+	for _, c := range s {
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // brokerClient talks to the cert broker; it also implements txtPublisher.
 type brokerClient struct {
 	url, id, secret, base, slug string
@@ -273,9 +311,9 @@ func CachedCert() (certFile, keyFile string, ok bool) {
 }
 
 // CachedCertReady returns the local live cert/key when they are immediately
-// usable for host. This is intentionally network-free: it only reads the
-// cached files and applies the same host + >renew-window check used before
-// deciding whether online activation must issue a replacement cert.
+// valid for host. This is intentionally network-free: a party can start
+// offline with a still-valid cached cert even when online activation would
+// prefer to renew it soon.
 func CachedCertReady(host string) (Result, bool) {
 	if host == "" {
 		return Result{Reason: "no cached activation host"}, false
@@ -289,8 +327,8 @@ func CachedCertReady(host string) (Result, bool) {
 	if _, err := os.Stat(keyFile); err != nil {
 		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "no cached key"}, false
 	}
-	if !certUsable(certFile, host) {
-		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "cached certificate is missing, expired, near expiry, or for a different host"}, false
+	if !certValid(certFile, host, time.Hour) {
+		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "cached certificate is missing, expired, or for a different host"}, false
 	}
 	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}, true
 }
@@ -373,6 +411,10 @@ func StateDir() (string, error) { return stateDir() }
 
 // certUsable reports whether the cached cert covers host and has >renewWindow left.
 func certUsable(certFile, host string) bool {
+	return certValid(certFile, host, renewWindow)
+}
+
+func certValid(certFile, host string, minRemaining time.Duration) bool {
 	data, err := os.ReadFile(certFile)
 	if err != nil {
 		return false
@@ -388,7 +430,11 @@ func certUsable(certFile, host string) bool {
 	if err := cert.VerifyHostname(host); err != nil {
 		return false
 	}
-	return time.Until(cert.NotAfter) > renewWindow
+	now := time.Now()
+	if now.Before(cert.NotBefore) {
+		return false
+	}
+	return time.Until(cert.NotAfter) > minRemaining
 }
 
 // ---- ACME (Let's Encrypt, DNS-01) ----

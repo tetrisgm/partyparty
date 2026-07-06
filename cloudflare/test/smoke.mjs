@@ -980,6 +980,28 @@ function makeEnv(opts = {}) {
   };
 }
 
+async function withCloudflareDNSMock(fn) {
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    if (!req.url.startsWith("https://api.cloudflare.com/client/v4/")) {
+      return oldFetch(input, init);
+    }
+    const text = req.method === "GET" ? "" : await req.clone().text();
+    const body = text ? JSON.parse(text) : null;
+    calls.push({ method: req.method, url: req.url, body });
+    return new Response(JSON.stringify({ success: true, result: req.method === "GET" ? [] : { id: "dns-record" } }), {
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    return await fn(calls);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+}
+
 async function fetchPath(path, init = {}, envOpts = {}) {
   return worker.fetch(new Request(`https://party.ramine.net${path}`, init), makeEnv(envOpts));
 }
@@ -1657,6 +1679,88 @@ const tests = [
     assert.equal(eventUpsert.status, 200);
     assert.equal(upsertRow.owner_user_id, user.id);
     assert.equal(upsertRow.dj_profile_id, "profile-link-ok");
+  }],
+  ["broker DNS writes require a linked account install", async () => {
+    await withCloudflareDNSMock(async (calls) => {
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
+      }), makeEnv({ DB: new FakeD1() }));
+      const json = await resp.json();
+      assert.equal(resp.status, 403);
+      assert.deepEqual(json, { error: "link this Mac to your account before requesting certificates" });
+      assert.equal(calls.length, 0);
+    });
+  }],
+  ["broker DNS writes use the linked install slug domain", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{
+        install_id: "abc123abc123",
+        install_slug: "disco12",
+        user_id: "user-dns",
+        profile_id: "profile-dns",
+        revoked_ms: null,
+      }],
+    });
+    await withCloudflareDNSMock(async (calls) => {
+      const aResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
+      }), makeEnv({ DB: db }));
+      const aJson = await aResp.json();
+      assert.equal(aResp.status, 200);
+      assert.equal(aJson.host, "disco12.party.example.test");
+      const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
+      assert.equal(aPost.body.name, "disco12.party.example.test");
+      assert.equal(aPost.body.content, "192.168.2.1");
+      assert.equal(aPost.body.proxied, false);
+
+      const txtResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/txt", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", value: "challenge-token" }),
+      }), makeEnv({ DB: db }));
+      const txtJson = await txtResp.json();
+      assert.equal(txtResp.status, 200);
+      assert.equal(txtJson.name, "_acme-challenge.disco12.party.example.test");
+      const txtPost = calls.find((c) => c.method === "POST" && c.body?.type === "TXT");
+      assert.equal(txtPost.body.name, "_acme-challenge.disco12.party.example.test");
+      assert.equal(txtPost.body.content, "challenge-token");
+    });
+  }],
+  ["broker DNS writes upgrade legacy installs to a slug instead of IP-encoded hostnames", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{
+        install_id: "abc123abc123",
+        install_slug: "",
+        user_id: "user-legacy-dns",
+        profile_id: "profile-legacy-dns",
+        revoked_ms: null,
+      }],
+    });
+    const env = makeEnv({
+      DB: db,
+      r2Objects: {
+        "broker/abc123abc123.json": new FakeR2Object(JSON.stringify({ secret: "secret-a", created: 1 }), { contentType: "application/json" }),
+      },
+    });
+    await withCloudflareDNSMock(async (calls) => {
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
+      }), env);
+      const json = await resp.json();
+      assert.equal(resp.status, 200);
+      assert.match(json.host, /^[a-z]+[0-9]{2}\.party\.example\.test$/);
+      assert.equal(json.host.includes("192-168-2-1"), false);
+      const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
+      assert.equal(aPost.body.name, json.host);
+      const updated = await env.DL.get("broker/abc123abc123.json").then((o) => o.json());
+      assert.equal(`${updated.slug}.party.example.test`, json.host);
+    });
   }],
   ["web event create API requires authentication", async () => {
     const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
