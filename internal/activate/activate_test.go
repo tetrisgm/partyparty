@@ -63,6 +63,25 @@ func TestCachedCertReadyBrokerHostFromInstallJSON(t *testing.T) {
 	}
 }
 
+func TestBrokerRememberHostUpdatesCachedBase(t *testing.T) {
+	dir := setupStateDir(t)
+	b := &brokerClient{
+		id:     "install-id",
+		secret: "install-secret",
+		base:   "pp.example.net",
+		slug:   "disco42",
+	}
+	if err := b.rememberHost(dir, "disco42.party.example.net"); err != nil {
+		t.Fatal(err)
+	}
+	if got := BrokerHost(); got != "disco42.party.example.net" {
+		t.Fatalf("BrokerHost after rememberHost = %q, want disco42.party.example.net", got)
+	}
+	if b.base != "party.example.net" {
+		t.Fatalf("broker base = %q, want party.example.net", b.base)
+	}
+}
+
 func TestCachedCertReadyAcceptsNearExpiry(t *testing.T) {
 	dir := setupStateDir(t)
 	writeCachedLiveCert(t, "dj.example.net", renewWindow-time.Hour)

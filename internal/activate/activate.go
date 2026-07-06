@@ -140,6 +140,9 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	if host == "" {
 		host = b.slug + "." + b.base
 	}
+	if err := b.rememberHost(dir, host); err != nil {
+		logf("activate: could not persist broker host %s: %v", host, err)
+	}
 
 	if !certUsable(certFile, host) {
 		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", host)
@@ -260,6 +263,31 @@ func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf
 	logf("activate: registered install %s → %s.%s", out.ID, out.Slug, out.Base)
 	b.id, b.secret, b.base, b.slug = out.ID, out.Secret, out.Base, out.Slug
 	return b, nil
+}
+
+func (b *brokerClient) rememberHost(dir, host string) error {
+	base, ok := brokerBaseFromHost(host, b.slug)
+	if !ok {
+		return nil
+	}
+	b.base = base
+	rec := struct{ ID, Secret, Base, Slug string }{ID: b.id, Secret: b.secret, Base: b.base, Slug: b.slug}
+	data, _ := json.Marshal(rec)
+	return os.WriteFile(filepath.Join(dir, "install.json"), data, 0o600)
+}
+
+func brokerBaseFromHost(host, slug string) (string, bool) {
+	host = strings.TrimSpace(strings.TrimSuffix(host, "."))
+	slug = strings.TrimSpace(strings.TrimSuffix(slug, "."))
+	prefix := slug + "."
+	if host == "" || slug == "" || !strings.HasPrefix(host, prefix) {
+		return "", false
+	}
+	base := strings.TrimPrefix(host, prefix)
+	if base == "" || strings.Contains(base, "/") {
+		return "", false
+	}
+	return base, true
 }
 
 // InstallCreds returns this Mac's broker identity for authenticated calls
