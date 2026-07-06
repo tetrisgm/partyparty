@@ -668,6 +668,26 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.Broadcaster.Stop()
+		// Opt-in auto-publish (DJ toggle, default off): push the just-ended set to
+		// its shareable /e/<slug> page. Fire-and-forget — publish is slow (remux +
+		// upload) and needs a linked account + connectivity, so it must never hold
+		// up the Stop response or the local party.
+		if r.URL.Query().Get("publish") == "1" {
+			go func() {
+				res, err := s.publishCurrentSet(context.Background())
+				if err != nil {
+					if s.Diag != nil {
+						s.Diag.Printf("auto-publish failed: %v", err)
+					}
+					return
+				}
+				_, _ = s.Events.SetSlug(res.Slug)
+				s.syncCurrentPostsAsync(res.Slug)
+				if s.Diag != nil {
+					s.Diag.Printf("auto-published set -> %s", res.URL)
+				}
+			}()
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/shutdown":
 		// Loopback-only orphan reaper: a force-quit app skips child cleanup and

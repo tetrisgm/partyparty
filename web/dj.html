@@ -384,7 +384,7 @@
 
     <div id="pubSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
       <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
-      <div class="hint" style="margin:0 0 10px">When a set ends it auto-publishes to a shareable replay page. Publish the current recording now, or pick a custom link.</div>
+      <div class="hint" style="margin:0 0 10px">Publish the current recording to a shareable replay page now — or pick a custom link. Turn on auto-publish in Settings to do this automatically whenever a set ends.</div>
       <div style="display:flex;gap:8px;align-items:center">
         <span class="muted" style="white-space:nowrap">party.ramine.net/e/</span>
         <input id="pubSlug" type="text" placeholder="auto" maxlength="48" spellcheck="false" autocapitalize="off"
@@ -581,6 +581,8 @@
         <option value="256k">Very high — 256 kbps</option>
         <option value="320k" selected>Max — 320 kbps</option>
       </select>
+      <label class="inapp-check" style="margin-top:14px"><input type="checkbox" id="autoPublish"> Auto-publish the replay when I end a set</label>
+      <div class="hint" style="margin:5px 0 0">Off by default. When on, ending a set uploads its recording to a shareable page automatically (needs you signed in + online).</div>
       <div id="inapp" style="display:none;margin-top:14px">
         <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
       </div>
@@ -1114,11 +1116,13 @@
   // one toggle: green Go Live when idle, red Stop when live/starting
   $('liveBtn').onclick = () => {
     if (lastState === 'live' || lastState === 'starting') {
-      fetch('/api/stop', { method:'POST' }).then(refresh);
+      const pub = (localStorage.getItem('pp.autoPublish') === '1') ? '?publish=1' : '';
+      fetch('/api/stop' + pub, { method:'POST' }).then(refresh);
     } else {
       startBroadcast();
     }
   };
+  (function(){ const a = $('autoPublish'); if (!a) return; a.checked = localStorage.getItem('pp.autoPublish') === '1'; a.onchange = () => { try { localStorage.setItem('pp.autoPublish', a.checked ? '1' : '0'); } catch (e) {} }; })();
   $('refreshBtn').onclick = () => {
     const b = $('refreshBtn');
     b.classList.add('spin');
