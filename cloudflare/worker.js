@@ -1503,9 +1503,13 @@ async function accountResponse(request, env) {
   }
   const user = await getSessionUser(env, request);
   if (!user) return redirectResp("/login?redirect=/account");
-  const [profile, installsRow, eventsRows] = await Promise.all([
+  const [profile, installsRes, eventsRows] = await Promise.all([
     env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first(),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM device_installs WHERE user_id=? AND revoked_ms IS NULL").bind(user.id).first(),
+    env.DB.prepare(
+      `SELECT install_id, install_slug, label, linked_ms, last_seen_ms
+       FROM device_installs WHERE user_id=? AND revoked_ms IS NULL
+       ORDER BY COALESCE(last_seen_ms, linked_ms, 0) DESC LIMIT 20`
+    ).bind(user.id).all(),
     env.DB.prepare(
       `SELECT slug, title, status, scheduled_at_ms, starts, where_txt, location_name
        FROM events
@@ -1515,7 +1519,7 @@ async function accountResponse(request, env) {
     ).bind(user.id).all(),
   ]);
   const handle = normalizeHandle(profile?.handle);
-  const installs = Number(installsRow?.n) || 0;
+  const deviceInstalls = installsRes?.results || [];
   const events = eventsRows?.results || [];
   const profileCard = profile ? `<div class="card">
     <h2>DJ profile</h2>
@@ -1548,6 +1552,12 @@ async function accountResponse(request, env) {
     <p class="emptyline">Open partyparty on your Mac and sign in from there. A profile will be created automatically.</p>
     <div class="ecta"><a class="btn lt sm" href="/login">Sign in here</a></div>
   </div>`;
+  const deviceRows = deviceInstalls.length ? deviceInstalls.map((d) => {
+    const name = d.label && String(d.label).trim() ? d.label : (d.install_slug ? "Mac · " + d.install_slug : "This Mac");
+    const seen = d.last_seen_ms ? "Last seen " + fmtWhen(d.last_seen_ms) : (d.linked_ms ? "Linked " + fmtWhen(d.linked_ms) : "");
+    return `<div class="minirow"><b>${esc(name)}</b><span>${esc(seen)}</span><button class="btn lt sm" data-unlink-install="${esc(d.install_id)}" type="button">Unlink</button></div>`;
+  }).join("") : `<p class="emptyline">No Macs linked yet. Open partyparty on your Mac and sign in to link it.</p>`;
+  const devicesCard = `<div class="card"><div class="sectionhead" style="margin:0 0 12px"><div><h2>Devices</h2><p>Macs linked to your account.</p></div></div>${deviceRows}<p class="hint" id="device-unlink-out" role="status"></p></div>`;
   const body = `<div class="page">
     <div class="card">
       <div class="accounthead">
@@ -1561,7 +1571,7 @@ async function accountResponse(request, env) {
     </div>
     <div class="accountgrid" style="margin-top:16px">
       ${profileCard}
-      <div class="card"><h2>Linked installs</h2><div class="stat">${esc(installs)}</div><p class="emptyline">Active Mac links for this account.</p><div class="ecta"><button class="btn lt sm" id="install-link-unlink" type="button">Unlink</button></div><p class="hint" id="install-link-unlink-out" role="status"></p></div>
+      ${devicesCard}
       ${linkMacCard}
       <div class="card" style="grid-column:1/-1"><div class="sectionhead" style="margin:0 0 12px"><div><h2>Owned events</h2></div><a class="btn sm" href="/events/new">＋ Create event</a></div>${eventList}</div>
     </div>
@@ -1569,7 +1579,7 @@ async function accountResponse(request, env) {
   <script>
 (function(){var b=document.getElementById('sign-out');if(!b)return;b.addEventListener('click',function(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/'})})})();
 (function(){var b=document.getElementById('install-link-create'),o=document.getElementById('install-link-out');if(!b||!o)return;b.addEventListener('click',function(){b.disabled=true;o.style.display='block';o.textContent='Generating...';fetch('/api/install-link/create',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){o.textContent=out.json&&out.json.error?out.json.error:'Could not generate a code.';return}var code=String(out.json.code||''),safe=code.replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});o.innerHTML='<b style="font-size:22px;letter-spacing:.08em;word-break:break-all">'+safe+'</b><span>Paste this code into the Mac app within 10 minutes.</span><button class="btn lt sm" id="install-link-copy" type="button">Copy</button>';var c=document.getElementById('install-link-copy');if(c)c.addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(code).then(function(){c.textContent='Copied'}).catch(function(){c.textContent='Copy failed'})})}).catch(function(){o.textContent='Could not generate a code.'}).finally(function(){b.disabled=false})})})();
-(function(){var b=document.getElementById('install-link-unlink'),o=document.getElementById('install-link-unlink-out');if(!b||!o)return;b.addEventListener('click',function(){b.disabled=true;o.textContent='Unlinking...';fetch('/api/install-link/unlink',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:'{}'}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){o.textContent=out.json&&out.json.error?out.json.error:'Could not unlink.';return}o.textContent='Unlinked.';setTimeout(function(){location.reload()},500)}).catch(function(){o.textContent='Could not unlink.'}).finally(function(){b.disabled=false})})})();
+(function(){var out=document.getElementById('device-unlink-out');document.querySelectorAll('[data-unlink-install]').forEach(function(b){b.addEventListener('click',function(){var id=b.getAttribute('data-unlink-install');b.disabled=true;if(out)out.textContent='Unlinking...';fetch('/api/install-link/unlink',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({install_id:id})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(o){if(!o.ok){if(out)out.textContent=o.json&&o.json.error?o.json.error:'Could not unlink.';b.disabled=false;return}if(out)out.textContent='Unlinked.';setTimeout(function(){location.reload()},400)}).catch(function(){if(out)out.textContent='Could not unlink.';b.disabled=false})})})})();
   </script>
   <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
   return new Response(shell({

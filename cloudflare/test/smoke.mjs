@@ -437,6 +437,11 @@ class FakeD1Statement {
         .map((p) => ({ ...p }));
       return { results: rows };
     }
+    if (sql.includes("FROM device_installs WHERE user_id=?") && sql.includes("revoked_ms IS NULL") && !sql.includes("COUNT")) {
+      const userId = this.args[0];
+      const rows = [...this.db.deviceInstalls.values()].filter((r) => r.user_id === userId && r.revoked_ms == null);
+      return { results: rows.map((r) => ({ ...r })) };
+    }
     return { results: [] };
   }
 
