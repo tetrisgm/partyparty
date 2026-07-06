@@ -46,6 +46,7 @@
     // The EMAIL binding above is used first when Cloudflare accepts sends.
     // Optional from override: AUTH_EMAIL_FROM="partyparty <signin@ramine.net>".
     "AUTH_DEV_LINKS": "1",
+    "AUTH_DEV_DIRECT": "1",
     "AUTH_DEV_EMAILS": "ramine@ramine.net",
     "BROKER_BASE": "party.ramine.net",
     "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"

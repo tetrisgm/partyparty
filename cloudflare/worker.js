@@ -1352,7 +1352,7 @@ async function loginResponse(request, env) {
   }
   const user = await getSessionUser(env, request);
   if (user) return redirectResp("/account");
-  const redirectPath = safeRedirectPath(new URL(request.url).searchParams.get("redirect"));
+  const redirectPath = safeRedirectPath(new URL(request.url).searchParams.get("redirect") || "/account");
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
@@ -1370,7 +1370,7 @@ async function loginResponse(request, env) {
     </div>
   </div>
   <script>
-(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}if(out.json&&out.json.devLink){m.textContent='Admin sign-in link ready.';var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue';d.appendChild(a);return}if(out.json&&out.json.queued===false){m.textContent='Email sign-in is temporarily unavailable. Use the admin passcode or try again later.';return}m.textContent='Check your email for your sign-in link.'}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
+(function(){var f=document.getElementById('login-form'),m=document.getElementById('login-msg'),d=document.getElementById('login-dev'),redirect=${JSON.stringify(redirectPath)};if(!f)return;f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';d.innerHTML='';var email=f.elements.email.value,secret=f.elements.devSecret.value,h={'content-type':'application/json'};if(secret)h['x-auth-dev-secret']=secret;fetch('/api/auth/request-link',{method:'POST',credentials:'same-origin',headers:h,body:JSON.stringify({email:email,redirect:redirect})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){m.textContent='Could not send a sign-in link. Check the email and try again.';return}if(out.json&&out.json.redirect){m.textContent='Signing in...';location.href=out.json.redirect;return}if(out.json&&out.json.devLink){m.textContent='Admin sign-in link ready.';var a=document.createElement('a');a.className='btn lt';a.href=out.json.devLink;a.textContent='Continue';d.appendChild(a);return}if(out.json&&out.json.queued===false){m.textContent='Email sign-in is temporarily unavailable. Use the admin passcode or try again later.';return}m.textContent='Check your email for your sign-in link.'}).catch(function(){m.textContent='Could not send a sign-in link. Try again.'})})})();
   </script>
   <footer><span>🕺 partyparty</span><span>Account access</span></footer>`;
   return new Response(shell({
@@ -1723,8 +1723,11 @@ function renderNotFound() {
 // token lives ONLY here as a Worker secret; certificate DNS writes require the
 // install to be linked to a signed-in account.
 
-const jsonResp = (status, obj) =>
-  new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
+const jsonResp = (status, obj, headers = undefined) => {
+  const h = new Headers(headers || {});
+  h.set("content-type", "application/json");
+  return new Response(JSON.stringify(obj), { status, headers: h });
+};
 
 const BROKER_SLUG_WORDS = ["disco", "groove", "bass", "vinyl", "tempo", "fader", "reverb", "echo", "strobe", "neon",
   "boombox", "sub", "beat", "drop", "loop", "mix", "vibe", "funk", "wave", "pulse",
@@ -1838,15 +1841,23 @@ async function sendAuthEmail(env, toEmail, link, devMode = false) {
   return false;
 }
 
-function authDevMode(request, env, emailNorm = "") {
-  if (env.AUTH_DEV_LINKS !== "1" || !env.AUTH_DEV_SECRET) return false;
-  if (request.headers.get("x-auth-dev-secret") !== env.AUTH_DEV_SECRET) return false;
-  const allowed = String(env.AUTH_DEV_EMAILS || "")
+function authDevEmailAllowlist(env) {
+  return String(env.AUTH_DEV_EMAILS || "")
     .split(",")
     .map((s) => normalizeEmail(s))
     .filter(Boolean);
+}
+
+function authDevMode(request, env, emailNorm = "") {
+  if (env.AUTH_DEV_LINKS !== "1" || !env.AUTH_DEV_SECRET) return false;
+  if (request.headers.get("x-auth-dev-secret") !== env.AUTH_DEV_SECRET) return false;
+  const allowed = authDevEmailAllowlist(env);
   if (!allowed.length) return true;
   return allowed.includes(normalizeEmail(emailNorm));
+}
+
+function authDevDirectMode(request, env, emailNorm = "") {
+  return env.AUTH_DEV_DIRECT === "1" && authDevMode(request, env, emailNorm);
 }
 
 function authLazyCleanup(env, now) {
@@ -1869,6 +1880,41 @@ async function readVerifyToken(request) {
   return String(new URLSearchParams(text).get("token") || "");
 }
 
+async function createAuthSession(env, request, emailNorm, now = nowMs()) {
+  if (!emailNorm) return null;
+  const displayName = clip(emailNorm.split("@")[0] || "Guest", 80);
+  await env.DB.prepare(
+    `INSERT INTO users (id, email, email_norm, display_name, created_ms, updated_ms, email_verified_ms, last_login_ms, disabled_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     ON CONFLICT(email_norm) DO NOTHING`
+  ).bind(randHex(16), emailNorm, emailNorm, displayName, now, now, now, now).run();
+  let user = await env.DB.prepare("SELECT * FROM users WHERE email_norm=? LIMIT 1").bind(emailNorm).first();
+  if (!user?.id) return null;
+  await env.DB.prepare(
+    "UPDATE users SET last_login_ms=?, email_verified_ms=COALESCE(email_verified_ms, ?), updated_ms=? WHERE id=?"
+  ).bind(now, now, now, user.id).run();
+  user = { ...user, last_login_ms: now, email_verified_ms: user.email_verified_ms || now, updated_ms: now };
+
+  const sessionToken = randHex(32);
+  const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+  const uaHash = await sha256Hex(request.headers.get("user-agent") || "");
+  await env.DB.prepare(
+    `INSERT INTO auth_sessions
+       (id, token_hash, user_id, created_ms, expires_ms, last_seen_ms, revoked_ms, request_ip_hash, user_agent_hash)
+     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
+  ).bind(randHex(16), await sha256Hex(sessionToken), user.id, now, now + SESSION_TTL_MS, now, ipHash, uaHash).run();
+
+  return {
+    user,
+    cookie: cookieHeader(SESSION_COOKIE, sessionToken, {
+      maxAge: SESSION_TTL_MS / 1000,
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    }),
+  };
+}
+
 async function authRequestLink(request, env) {
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
@@ -1884,6 +1930,7 @@ async function authRequestLink(request, env) {
   const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
   const uaHash = await sha256Hex(request.headers.get("user-agent") || "");
   const devMode = authDevMode(request, env, emailNorm);
+  const devDirect = authDevDirectMode(request, env, emailNorm);
   authLazyCleanup(env, now);
   // Soft, best-effort throttling: the count/insert pair is not atomic until this
   // route gets a Durable Object gate, so the indexes and cleanup bound abuse cost.
@@ -1918,9 +1965,20 @@ async function authRequestLink(request, env) {
     queued = false;
   }
   const out = { ok: true };
-  if (devMode) out.devLink = link;
-  else if (!queued) out.queued = false;
-  return jsonResp(200, out);
+  const headers = new Headers();
+  if (devMode) {
+    out.devLink = link;
+    if (devDirect) {
+      const session = await createAuthSession(env, request, emailNorm, now);
+      if (session?.cookie) {
+        headers.append("set-cookie", session.cookie);
+        out.redirect = redirectPath || "/account";
+      }
+    }
+  } else if (!queued) {
+    out.queued = false;
+  }
+  return jsonResp(200, out, headers);
 }
 
 async function authVerify(request, env) {
@@ -1943,35 +2001,11 @@ async function authVerify(request, env) {
 
   const emailNorm = normalizeEmail(row.email_norm);
   if (!emailNorm) return expiredLinkResponse(400);
-  const displayName = clip(emailNorm.split("@")[0] || "Guest", 80);
-  await env.DB.prepare(
-    `INSERT INTO users (id, email, email_norm, display_name, created_ms, updated_ms, email_verified_ms, last_login_ms, disabled_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
-     ON CONFLICT(email_norm) DO NOTHING`
-  ).bind(randHex(16), emailNorm, emailNorm, displayName, now, now, now, now).run();
-  let user = await env.DB.prepare("SELECT * FROM users WHERE email_norm=? LIMIT 1").bind(emailNorm).first();
-  if (!user?.id) return expiredLinkResponse(400);
-  await env.DB.prepare(
-    "UPDATE users SET last_login_ms=?, email_verified_ms=COALESCE(email_verified_ms, ?), updated_ms=? WHERE id=?"
-  ).bind(now, now, now, user.id).run();
-  user = { ...user, last_login_ms: now, email_verified_ms: user.email_verified_ms || now, updated_ms: now };
-
-  const sessionToken = randHex(32);
-  const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
-  const uaHash = await sha256Hex(request.headers.get("user-agent") || "");
-  await env.DB.prepare(
-    `INSERT INTO auth_sessions
-       (id, token_hash, user_id, created_ms, expires_ms, last_seen_ms, revoked_ms, request_ip_hash, user_agent_hash)
-     VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`
-  ).bind(randHex(16), await sha256Hex(sessionToken), user.id, now, now + SESSION_TTL_MS, now, ipHash, uaHash).run();
+  const session = await createAuthSession(env, request, emailNorm, now);
+  if (!session?.cookie) return expiredLinkResponse(400);
 
   const headers = new Headers({ location: safeRedirectPath(row.redirect_path) });
-  headers.append("set-cookie", cookieHeader(SESSION_COOKIE, sessionToken, {
-    maxAge: SESSION_TTL_MS / 1000,
-    httpOnly: true,
-    secure: true,
-    sameSite: "Lax",
-  }));
+  headers.append("set-cookie", session.cookie);
   headers.set("cache-control", "no-store");
   return new Response(null, { status: 302, headers });
 }

@@ -1160,7 +1160,7 @@ const tests = [
         "x-auth-dev-secret": AUTH_DEV_SECRET,
       },
       body: JSON.stringify({ email: "other@example.com", redirect: "/account" }),
-    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_DIRECT: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
     const deniedJson = await denied.json();
     assert.equal(denied.status, 200);
     assert.equal("devLink" in deniedJson, false);
@@ -1174,10 +1174,12 @@ const tests = [
         "x-auth-dev-secret": AUTH_DEV_SECRET,
       },
       body: JSON.stringify({ email: " Ramine@Ramine.NET ", redirect: "/account" }),
-    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_DIRECT: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
     const allowedJson = await allowed.json();
     assert.equal(allowed.status, 200);
     assert.match(allowedJson.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
+    assert.equal(allowedJson.redirect, "/account");
+    assert.match(allowed.headers.get("set-cookie") || "", /pp_session=[a-f0-9]{64}/);
     assert.equal("queued" in allowedJson, false);
   }],
   ["auth request-link sends through EMAIL binding when configured", async () => {
@@ -1365,11 +1367,13 @@ const tests = [
         "x-auth-dev-secret": AUTH_DEV_SECRET,
       },
       body: JSON.stringify({ email: "Ramine@Ramine.NET", redirect: "/account" }),
-    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
+    }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_DIRECT: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
     const json = await resp.json();
     assert.equal(resp.status, 200);
     assert.equal(json.ok, true);
     assert.match(json.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=/);
+    assert.equal(json.redirect, "/account");
+    assert.match(resp.headers.get("set-cookie") || "", /pp_session=[a-f0-9]{64}/);
   }],
   ["auth request-link does not reveal account existence", async () => {
     const db = new FakeD1({
@@ -2117,6 +2121,7 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /type="email"/);
     assert.match(html, /Admin passcode/);
+    assert.match(html, /redirect="\/account"/);
     assert.match(html, /Email sign-in is temporarily unavailable/);
   }],
   ["login redirects signed-in users to account", async () => {
