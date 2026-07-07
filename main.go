@@ -631,10 +631,12 @@ func main() {
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
 	// at party.ramine.net (per-install slugged domain + DNS-01 cert).
 	// Cached-cert engagement above is local-only and does not wait for this
-	// loop. Online refresh keeps trying to upsert DNS / renew; failures never
-	// tear down an already-engaged cached cert. On success we flip delivery to
-	// LL-HLS the moment the DJ is idle (never mid-set).
-	if deliveryFlag != "hls" && cfg.Delivery == "hls" && cfg.CertFile == "" && mtx != nil && applyActivation != nil {
+	// loop. Online refresh keeps trying to upsert DNS / issue + renew the cert;
+	// failures never tear down an already-engaged cached cert. Runs whenever we
+	// have no explicit cert — delivery is always LL-HLS now, so the old
+	// cfg.Delivery=="hls" gate would have (wrongly) disabled all online
+	// issuance/renewal.
+	if deliveryFlag != "hls" && cfg.CertFile == "" && mtx != nil && applyActivation != nil {
 		go func() {
 			retryIn := 15 * time.Second // fast first retries (LE 503s often clear in seconds), then back off
 			for {
