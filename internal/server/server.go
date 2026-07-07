@@ -107,6 +107,8 @@ type srv struct {
 	syncDrainKick    chan struct{}
 	syncDrainMu      sync.Mutex
 	syncDrainRunning bool
+
+	devNoLoginLogOnce sync.Once
 }
 
 func New(d Deps) *Srv {
@@ -191,9 +193,29 @@ func (s *srv) setAccountActivated(v bool) {
 }
 
 func (s *srv) accountActivated() bool {
+	if s.devNoLogin() {
+		return true
+	}
 	s.actMu.Lock()
 	defer s.actMu.Unlock()
 	return s.accActivated
+}
+
+func (s *srv) devNoLogin() bool {
+	if os.Getenv("PP_DEV_NO_LOGIN") != "1" {
+		return false
+	}
+	active := s.Version == "dev"
+	if s.Diag != nil {
+		s.devNoLoginLogOnce.Do(func() {
+			if active {
+				s.Diag.Printf("WARNING: PP_DEV_NO_LOGIN=1 active; DJ account activation is bypassed for local development")
+				return
+			}
+			s.Diag.Printf("WARNING: PP_DEV_NO_LOGIN=1 ignored; app version %q is not a dev build", s.Version)
+		})
+	}
+	return active
 }
 
 var hlsFileRE = regexp.MustCompile(`^(stream\.m3u8|seg_\d+\.ts)$`)
@@ -347,6 +369,15 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"t": time.Now().UnixMilli()})
 	case "/api/account/status":
 		if !s.requireDJ(w, r) {
+			return
+		}
+		if s.devNoLogin() {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":        true,
+				"linked":    true,
+				"devBypass": true,
+				"checkedMs": time.Now().UnixMilli(),
+			})
 			return
 		}
 		broker := os.Getenv("PARTYPARTY_BROKER")
