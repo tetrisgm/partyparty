@@ -419,7 +419,9 @@
         </div>
       </div>
       <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
-      <div class="hint" style="margin:0 0 10px">Publish the current recording to a shareable replay page now — or pick a custom link. Turn on auto-publish in Settings to do this automatically whenever a set ends.</div>
+      <div class="hint" style="margin:0 0 10px">Name tonight's party and add a cover, then publish the recording to a shareable page — or turn on auto-publish in Settings.</div>
+      <input id="pubTitle" type="text" placeholder="Name tonight's party (shown on the page)" maxlength="120"
+        style="width:100%;box-sizing:border-box;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:9px 11px;color:var(--label);font:inherit;font-size:14px;margin:0 0 10px">
       <div style="display:flex;gap:8px;align-items:center">
         <span class="muted" style="white-space:nowrap">party.ramine.net/e/</span>
         <input id="pubSlug" type="text" placeholder="auto" maxlength="48" spellcheck="false" autocapitalize="off"
@@ -1526,6 +1528,14 @@
 
   // ── Publish the recorded set to its online /e/<slug> replay page ──
   let pubSlugTouched = false;
+  // Curate at the publish moment: name the party right here; it saves to the
+  // event (same /api/event-config the header title uses) and shows on the page.
+  (function(){
+    const t = $('pubTitle');
+    if (t) t.addEventListener('change', () => {
+      fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: t.value.trim() }) }).catch(() => {});
+    });
+  })();
   const pubSlug = $('pubSlug'), pubBtn = $('pubBtn'), pubResult = $('pubResult');
   const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverResult = $('pubCoverResult');
   const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
@@ -1635,6 +1645,8 @@
       if (v && el.textContent !== v) { el.textContent = v; el.style.opacity = 1; }
       if (!v && PH[id] && el.textContent !== PH[id]) { el.textContent = PH[id]; el.style.opacity = .6; }
     }
+    const pt = $('pubTitle');
+    if (pt && document.activeElement !== pt) pt.value = title || '';
     if (title) document.title = title + ' — partyparty';
   }
 
