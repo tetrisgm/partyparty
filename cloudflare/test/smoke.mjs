@@ -1205,13 +1205,13 @@ function googleClaims(extra = {}) {
     ...extra,
   };
 }
-async function withGoogleTokenMock(idToken, fn) {
+async function withGoogleTokenMock(idToken, fn, { status = 200 } = {}) {
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const req = input instanceof Request ? input : new Request(input, init);
     if (req.url === "https://oauth2.googleapis.com/token") {
       return new Response(JSON.stringify({ id_token: idToken, access_token: "at" }),
-        { headers: { "content-type": "application/json" } });
+        { status, headers: { "content-type": "application/json" } });
     }
     return oldFetch(input, init);
   };
@@ -1245,13 +1245,13 @@ function appleClaims(env, extra = {}) {
     ...extra,
   };
 }
-async function withAppleTokenMock(idToken, fn) {
+async function withAppleTokenMock(idToken, fn, { status = 200 } = {}) {
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const req = input instanceof Request ? input : new Request(input, init);
     if (req.url === "https://appleid.apple.com/auth/token") {
       return new Response(JSON.stringify({ id_token: idToken, access_token: "at" }),
-        { headers: { "content-type": "application/json" } });
+        { status, headers: { "content-type": "application/json" } });
     }
     return oldFetch(input, init);
   };
@@ -1260,11 +1260,20 @@ async function withAppleTokenMock(idToken, fn) {
 function appleCallbackReq(db, env, { code = "auth-code", state = "a".repeat(32), cookieState = null, redirect = "/account" } = {}) {
   const cState = cookieState === null ? state : cookieState;
   const cookie = `${OAUTH_STATE_COOKIE_NAME}=a|${cState}|${encodeURIComponent(redirect)}`;
+  const body = new URLSearchParams({ state });
+  if (code !== null) body.set("code", code);
   return worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {
     method: "POST",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded", "cf-connecting-ip": "203.0.113.31", "user-agent": "smoke-oauth" },
-    body: new URLSearchParams({ code, state }).toString(),
+    body: body.toString(),
   }), makeEnv({ DB: db, env }));
+}
+function assertOAuthFailure(resp, db, error) {
+  assert.equal(resp.status, 302);
+  assert.equal(resp.headers.get("location"), `/login?error=${error}`);
+  const sc = resp.headers.get("set-cookie") || "";
+  assert.ok(!sc.includes("pp_session="), "does not set a session cookie");
+  assert.equal(db.authSessions.size, 0, "does not create an auth session");
 }
 
 const tests = [
@@ -3892,22 +3901,43 @@ const tests = [
     const db = new FakeD1({});
     const resp = await withGoogleTokenMock(fakeIdToken(googleClaims()),
       () => googleCallbackReq(db, { state: "aaaaaaaa", cookieState: "bbbbbbbb" }));
-    assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/login?error=state");
+    assertOAuthFailure(resp, db, "state");
+  }],
+  ["google callback rejects a non-2xx token endpoint response", async () => {
+    const db = new FakeD1({});
+    const resp = await withGoogleTokenMock(fakeIdToken(googleClaims()),
+      () => googleCallbackReq(db, {}), { status: 400 });
+    assertOAuthFailure(resp, db, "verify");
+  }],
+  ["google callback rejects a malformed id_token", async () => {
+    const db = new FakeD1({});
+    const resp = await withGoogleTokenMock("not-a-jwt", () => googleCallbackReq(db, {}));
+    assertOAuthFailure(resp, db, "verify");
+  }],
+  ["google callback rejects an id_token missing email", async () => {
+    const db = new FakeD1({});
+    const claims = googleClaims();
+    delete claims.email;
+    const resp = await withGoogleTokenMock(fakeIdToken(claims), () => googleCallbackReq(db, {}));
+    assertOAuthFailure(resp, db, "verify");
+  }],
+  ["google callback rejects an expired id_token", async () => {
+    const db = new FakeD1({});
+    const resp = await withGoogleTokenMock(fakeIdToken(googleClaims({ exp: Math.floor(Date.now() / 1000) - 60 })),
+      () => googleCallbackReq(db, {}));
+    assertOAuthFailure(resp, db, "verify");
   }],
   ["google callback rejects an unverified email", async () => {
     const db = new FakeD1({});
     const resp = await withGoogleTokenMock(fakeIdToken(googleClaims({ email_verified: false })),
       () => googleCallbackReq(db, {}));
-    assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/login?error=verify");
+    assertOAuthFailure(resp, db, "verify");
   }],
   ["google callback rejects a wrong audience", async () => {
     const db = new FakeD1({});
     const resp = await withGoogleTokenMock(fakeIdToken(googleClaims({ aud: "someone-else.apps.googleusercontent.com" })),
       () => googleCallbackReq(db, {}));
-    assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/login?error=verify");
+    assertOAuthFailure(resp, db, "verify");
   }],
   ["login page shows Continue with Google only when configured", async () => {
     const on = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}), env: GOOGLE_TEST_ENV }));
@@ -3950,23 +3980,58 @@ const tests = [
   }],
   ["apple callback rejects a forged state (CSRF)", async () => {
     const env = await makeAppleEnv();
+    const db = new FakeD1({});
     const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env)),
-      () => appleCallbackReq(new FakeD1({}), env, { state: "aaaaaaaa", cookieState: "bbbbbbbb" }));
-    assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/login?error=state");
+      () => appleCallbackReq(db, env, { state: "aaaaaaaa", cookieState: "bbbbbbbb" }));
+    assertOAuthFailure(resp, db, "state");
+  }],
+  ["apple callback rejects a missing code", async () => {
+    const env = await makeAppleEnv();
+    const db = new FakeD1({});
+    const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env)),
+      () => appleCallbackReq(db, env, { code: null }));
+    assertOAuthFailure(resp, db, "state");
+  }],
+  ["apple callback rejects a non-2xx token endpoint response", async () => {
+    const env = await makeAppleEnv();
+    const db = new FakeD1({});
+    const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env)),
+      () => appleCallbackReq(db, env, {}), { status: 500 });
+    assertOAuthFailure(resp, db, "verify");
+  }],
+  ["apple callback rejects a malformed id_token", async () => {
+    const env = await makeAppleEnv();
+    const db = new FakeD1({});
+    const resp = await withAppleTokenMock("not-a-jwt", () => appleCallbackReq(db, env, {}));
+    assertOAuthFailure(resp, db, "verify");
+  }],
+  ["apple callback rejects an id_token missing email", async () => {
+    const env = await makeAppleEnv();
+    const db = new FakeD1({});
+    const claims = appleClaims(env);
+    delete claims.email;
+    const resp = await withAppleTokenMock(fakeIdToken(claims), () => appleCallbackReq(db, env, {}));
+    assertOAuthFailure(resp, db, "verify");
+  }],
+  ["apple callback rejects an expired id_token", async () => {
+    const env = await makeAppleEnv();
+    const db = new FakeD1({});
+    const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env, { exp: Math.floor(Date.now() / 1000) - 60 })),
+      () => appleCallbackReq(db, env, {}));
+    assertOAuthFailure(resp, db, "verify");
   }],
   ["apple callback rejects a wrong audience", async () => {
     const env = await makeAppleEnv();
+    const db = new FakeD1({});
     const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env, { aud: "com.someone.else" })),
-      () => appleCallbackReq(new FakeD1({}), env, {}));
-    assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/login?error=verify");
+      () => appleCallbackReq(db, env, {}));
+    assertOAuthFailure(resp, db, "verify");
   }],
   ["apple callback rejects a GET (form_post is POST only)", async () => {
     const env = await makeAppleEnv();
-    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {}), makeEnv({ DB: new FakeD1({}), env }));
-    assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/login?error=method");
+    const db = new FakeD1({});
+    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {}), makeEnv({ DB: db, env }));
+    assertOAuthFailure(resp, db, "method");
   }],
   ["login page shows Continue with Apple only when configured", async () => {
     const env = await makeAppleEnv();
