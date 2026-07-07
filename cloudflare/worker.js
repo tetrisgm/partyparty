@@ -3792,6 +3792,18 @@ export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
 
+    // Apple Sign in with Apple domain verification. Served from a secret the
+    // owner sets (wrangler secret put APPLE_DOMAIN_ASSOC < the downloaded file)
+    // so the public verification token stays out of the repo.
+    if (pathname === "/.well-known/apple-developer-domain-association.txt") {
+      if (env.APPLE_DOMAIN_ASSOC) {
+        return new Response(env.APPLE_DOMAIN_ASSOC, {
+          headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+      return new Response("Not configured", { status: 404 });
+    }
+
     if (pathname === "/api/auth/request-link") {
       try {
         return await authRequestLink(request, env);
