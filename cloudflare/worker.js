@@ -247,6 +247,19 @@ async function getEventAliasTarget(env, oldSlug) {
   return event ? slug : "";
 }
 
+// A slug that already has a keepsake alias (someone renamed away from it, so old
+// /e/<slug> links still redirect) is RESERVED — so those links never break or get
+// silently repointed to a different owner's event. Only the event the alias
+// currently points TO may reclaim the old slug (this lets an owner undo their own
+// rename). `currentSlug` is the slug of the event trying to claim it — "" for a
+// brand-new event. Returns true when the slug is reserved against that event.
+async function slugReservedByAlias(env, slug, currentSlug = "") {
+  if (!env?.DB || !SLUG_RE.test(String(slug || ""))) return false;
+  const alias = await env.DB.prepare("SELECT slug FROM event_aliases WHERE old_slug=?").bind(String(slug)).first();
+  if (!alias) return false;
+  return String(alias.slug || "") !== String(currentSlug || "");
+}
+
 async function recordEventAlias(env, oldSlug, slug, now, target = {}) {
   oldSlug = String(oldSlug || "").trim();
   slug = String(slug || "").trim();
@@ -1283,6 +1296,7 @@ async function resolveWebEventSlug(env, body, title) {
     if (!SLUG_RE.test(raw)) return { error: "bad slug" };
     const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(raw).first();
     if (existing) return { error: "slug taken", status: 409 };
+    if (await slugReservedByAlias(env, raw, "")) return { error: "slug reserved", status: 409 };
     return { slug: raw };
   }
 
@@ -1363,6 +1377,7 @@ async function updateEventApi(request, env, slug) {
     if (nextSlug !== slug) {
       const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(nextSlug).first();
       if (existing) return jsonResp(409, { error: "slug taken" });
+      if (await slugReservedByAlias(env, nextSlug, slug)) return jsonResp(409, { error: "slug reserved" });
     }
   }
   const cols = [];
@@ -3293,6 +3308,7 @@ async function publishCover(request, env) {
   // event row before the set itself exists, but never steal another install's slug.
   const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
   if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+  if (!owner && await slugReservedByAlias(env, slug, "")) return jsonResp(409, { error: "slug reserved" });
   const now = Date.now();
   await env.DB.prepare(
     `INSERT INTO events (slug, install_id, created_ms, updated_ms)
@@ -3761,6 +3777,7 @@ async function broker(request, env, pathname) {
     // (the Mac then retries with its collision-proof auto slug).
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
     if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (!owner && await slugReservedByAlias(env, slug, "")) return jsonResp(409, { error: "slug reserved" });
     const now = nowMs();
     const linked = await env.DB.prepare(
       "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
@@ -3799,6 +3816,7 @@ async function broker(request, env, pathname) {
 
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
     if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (!owner && await slugReservedByAlias(env, slug, oldSlug)) return jsonResp(409, { error: "slug reserved" });
     if (oldSlug && oldSlug !== slug && !owner) {
       const oldOwner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(oldSlug).first();
       if (oldOwner) {

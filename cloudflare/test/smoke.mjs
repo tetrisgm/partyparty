@@ -3651,10 +3651,10 @@ const tests = [
     assert.equal(db.events.get("ahead-new").title, "Ahead New");
     assert.equal(db.eventAliases.get("ahead-old").slug, "ahead-new");
   }],
-  ["broker event rename does not delete another owner's live keepsake alias", async () => {
+  ["broker event rename is REJECTED when the slug is reserved by another's keepsake", async () => {
     // Owner A renamed party -> rave (alias party->rave; rave is live). Owner B
-    // now reclaims the freed slug "party". B's rename must NOT destroy A's live
-    // keepsake redirect. (Regression for the v17 alias review finding.)
+    // tries to reclaim the freed slug "party" — the reservation model blocks it
+    // (409 slug reserved) so A's keepsake link never breaks. (v17 alias finding.)
     const db = new FakeD1({
       deviceInstalls: [
         { install_id: "abc123abc123", user_id: "user-a", profile_id: "profile-a" },
@@ -3671,9 +3671,45 @@ const tests = [
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "def456def456", secret: "secret-b", old_slug: "b-old", slug: "party", title: "B Event" }),
     }), makeEnv({ DB: db }));
-    assert.equal(resp.status, 200);
-    // A's keepsake survives because a live event still exists at its target.
+    assert.equal(resp.status, 409);
+    assert.equal((await resp.json()).error, "slug reserved");
+    // A's keepsake is untouched — B never got the slug.
     assert.equal(db.eventAliases.get("party").slug, "rave");
+    assert.equal(db.events.has("party"), false);
+  }],
+  ["broker event-upsert lets the SAME owner reclaim their own aliased slug", async () => {
+    // Install A renamed party -> rave (alias party->rave points at A's event).
+    // A renames rave -> party (undo). Allowed: the alias points to A's own event.
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-a", profile_id: "profile-a" }],
+      events: [{ slug: "rave", install_id: "abc123abc123", title: "A Rave", status: "upcoming" }],
+      eventAliases: [{ old_slug: "party", slug: "rave", created_ms: 1 }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", old_slug: "rave", slug: "party", title: "A Rave" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 200);
+    assert.equal(db.events.has("party"), true);          // reclaimed
+    assert.equal(db.events.has("rave"), false);          // moved off rave
+    assert.equal(db.eventAliases.get("rave").slug, "party"); // new keepsake rave->party
+  }],
+  ["web event create API rejects a slug reserved by a keepsake alias", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "rave", owner_user_id: "other", title: "Rave" }],
+      eventAliases: [{ old_slug: "party", slug: "rave", created_ms: 1 }],
+    });
+    const cookie = await signInCookie(db, "reserve-web@example.com", { ip: "203.0.113.39" });
+    const user = [...db.authUsers.values()].find((row) => row.email === "reserve-web@example.com");
+    db.profiles.push({ id: "profile-reserve-web", user_id: user.id, handle: "reserve.web", display_name: "Reserve Web", published: 1 });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ title: "New", slug: "party" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 409);
+    assert.equal((await resp.json()).error, "slug reserved");
   }],
   ["broker publish-meta stamps replay activity and bumps DJ profile", async () => {
     const db = new FakeD1({
