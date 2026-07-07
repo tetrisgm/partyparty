@@ -826,7 +826,8 @@
     opts = opts || {};
     if (!opts.silent) renderAccountState(null, true);
     try {
-      const r = await fetch('/api/account/status', { cache: 'no-store' });
+      const url = opts.fresh ? '/api/account/status?fresh=1' : '/api/account/status';
+      const r = await fetch(url, { cache: 'no-store' });
       const st = await r.json().catch(() => ({}));
       if (!r.ok && !st.error) st.error = 'account check failed';
       renderAccountState(st, false);
@@ -872,7 +873,7 @@
       if (!r.ok) throw new Error(j.error || 'Could not sign out.');
       msg.textContent = 'Signed out.';
       $('settingsSheet').classList.remove('show');
-      await loadAccountStatus();
+      await loadAccountStatus({ fresh: true });
     } catch (e) {
       msg.textContent = e && e.message ? e.message : 'Could not sign out.';
     } finally {
@@ -908,7 +909,7 @@
     const msg = $('accountSettingsMsg');
     msg.style.display = 'block';
     msg.textContent = 'Refreshing account...';
-    loadAccountStatus({ silent: true }).then(() => { msg.textContent = 'Account refreshed.'; });
+    loadAccountStatus({ silent: true, fresh: true }).then(() => { msg.textContent = 'Account refreshed.'; });
   };
   $('accountSignOutBtn').onclick = signOutAccount;
 

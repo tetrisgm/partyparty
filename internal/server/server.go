@@ -85,6 +85,11 @@ type srv struct {
 	// Refreshed by the /api/account/status handler that the console polls.
 	accActivated bool
 
+	// Last /api/account/status result, so the console's activation poll does not
+	// broker-roundtrip every 2s. Guarded by accStatusMu.
+	accStatusMu sync.Mutex
+	accStatus   accountStatusCache
+
 	// Honest fallback readiness: observable reachability only. The watchdog
 	// updates these fields for /api/status; it never changes delivery or
 	// network mode. Guarded by reachMu.
@@ -114,7 +119,7 @@ func New(d Deps) *Srv {
 	if d.Payload != nil {
 		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
 	}
-	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS)), limits: newLimiter(), syncDrainKick: make(chan struct{}, 1)}}
+	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS)), limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1)}}
 }
 
 // webFS is the live content source: the OTA payload store if present (which
@@ -194,6 +199,50 @@ func (s *srv) accountActivated() bool {
 	s.actMu.Lock()
 	defer s.actMu.Unlock()
 	return s.accActivated
+}
+
+const accountStatusCacheTTL = 15 * time.Second
+
+type accountStatusSource func() (activate.AccountState, error)
+
+type accountStatusCache struct {
+	ttl       time.Duration
+	status    activate.AccountState
+	checkedAt time.Time
+	set       bool
+}
+
+func newAccountStatusCache(ttl time.Duration) accountStatusCache {
+	return accountStatusCache{ttl: ttl}
+}
+
+func (c *accountStatusCache) lookup(now func() time.Time, fresh bool, source accountStatusSource) (activate.AccountState, bool, error) {
+	if !fresh && c.set && c.ttl > 0 && now().Sub(c.checkedAt) < c.ttl {
+		return c.status, false, nil
+	}
+	status, err := source()
+	c.status = status
+	c.checkedAt = now()
+	c.set = true
+	return status, true, err
+}
+
+func (c *accountStatusCache) clear() {
+	ttl := c.ttl
+	*c = accountStatusCache{ttl: ttl}
+}
+
+func (s *srv) cachedAccountStatus(fresh bool, source accountStatusSource) activate.AccountState {
+	s.accStatusMu.Lock()
+	defer s.accStatusMu.Unlock()
+	status, _, _ := s.accStatus.lookup(time.Now, fresh, source)
+	return status
+}
+
+func (s *srv) clearAccountStatusCache() {
+	s.accStatusMu.Lock()
+	s.accStatus.clear()
+	s.accStatusMu.Unlock()
 }
 
 var hlsFileRE = regexp.MustCompile(`^(stream\.m3u8|seg_\d+\.ts)$`)
@@ -353,16 +402,20 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if broker == "" {
 			broker = "https://party.ramine.net"
 		}
-		status, _ := activate.AccountStatus(broker, func(format string, args ...any) {
-			if s.Diag != nil {
-				s.Diag.Printf(format, args...)
-			}
+		fresh := r.URL.Query().Get("fresh") == "1"
+		status := s.cachedAccountStatus(fresh, func() (activate.AccountState, error) {
+			status, err := activate.AccountStatus(broker, func(format string, args ...any) {
+				if s.Diag != nil {
+					s.Diag.Printf(format, args...)
+				}
+			})
+			// status.Linked is true both online-linked and offline-cached-linked
+			// (the cache only ever returns Linked when this Mac was linked before),
+			// so it is the single activation signal. It latches the process
+			// activated; a sign-out re-gates on the next launch, not mid-session.
+			s.setAccountActivated(status.Linked)
+			return status, err
 		})
-		// status.Linked is true both online-linked and offline-cached-linked (the
-		// cache only ever returns Linked when this Mac was linked before), so it
-		// is the single activation signal. It latches the process activated; a
-		// sign-out re-gates on the next launch, not mid-session.
-		s.setAccountActivated(status.Linked)
 		writeJSON(w, http.StatusOK, status)
 	case "/api/account/sign-out":
 		if r.Method != http.MethodPost {
@@ -384,6 +437,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
+		s.clearAccountStatusCache()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/account/open":
 		if r.Method != http.MethodPost {
