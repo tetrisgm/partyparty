@@ -41,6 +41,7 @@ class FakeD1 {
     installLinkTokens = [],
     installBrowserTokens = [],
     follows = [],
+    eventAliases = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -80,6 +81,7 @@ class FakeD1 {
     this.installLinkTokens = new Map(installLinkTokens.map((row) => [row.id, { ...row }]));
     this.installBrowserTokens = new Map(installBrowserTokens.map((row) => [row.id, { ...row }]));
     this.follows = follows.map((row) => ({ ...row }));
+    this.eventAliases = new Map(eventAliases.map((row) => [row.old_slug, { ...row }]));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
@@ -223,6 +225,11 @@ class FakeD1Statement {
         mime_type: media.mime_type,
         media_type: media.media_type,
       };
+    }
+    if (sql.includes("FROM event_aliases WHERE old_slug=?")) {
+      const oldSlug = this.args[0];
+      const row = this.db.eventAliases.get(oldSlug);
+      return row ? { ...row } : null;
     }
     if (sql.includes("FROM events WHERE slug=?")) {
       const slug = this.args[0];
@@ -508,6 +515,32 @@ class FakeD1Statement {
         }
       }
       return { success: true, meta: { changes } };
+    }
+    if (sql.includes("DELETE FROM event_aliases WHERE old_slug=?")) {
+      const oldSlug = this.args[0];
+      const existed = this.db.eventAliases.delete(oldSlug);
+      return { success: true, meta: { changes: existed ? 1 : 0 } };
+    }
+    if (sql.includes("UPDATE event_aliases SET slug=? WHERE slug=?")) {
+      const [slug, oldTarget] = this.args;
+      let changes = 0;
+      for (const row of this.db.eventAliases.values()) {
+        if (row.slug === oldTarget) {
+          row.slug = slug;
+          changes += 1;
+        }
+      }
+      return { success: true, meta: { changes } };
+    }
+    if (sql.includes("INSERT INTO event_aliases")) {
+      const [oldSlug, slug, createdMs] = this.args;
+      const old = this.db.eventAliases.get(oldSlug);
+      this.db.eventAliases.set(oldSlug, {
+        old_slug: oldSlug,
+        slug,
+        created_ms: old?.created_ms ?? createdMs,
+      });
+      return { success: true, meta: { changes: old ? 0 : 1 } };
     }
     if (sql.includes("INSERT INTO auth_magic_tokens")) {
       const [id, tokenHash, emailNorm, redirectPath, createdMs, expiresMs, ipHash, uaHash] = this.args;
@@ -814,6 +847,16 @@ class FakeD1Statement {
       }
       return { success: true };
     }
+    if (sql.includes("UPDATE events SET slug=? WHERE slug=? AND install_id=?")) {
+      const [nextSlug, slug, installId] = this.args;
+      const old = this.db.events.get(slug);
+      if (old && old.install_id === installId && !this.db.events.has(nextSlug)) {
+        this.db.events.delete(slug);
+        this.db.events.set(nextSlug, { ...old, slug: nextSlug });
+        return { success: true, meta: { changes: 1 } };
+      }
+      return { success: true, meta: { changes: 0 } };
+    }
     if (sql.includes("UPDATE events SET") && sql.includes("WHERE slug=? AND owner_user_id=?")) {
       const setCols = (this.sql.match(/UPDATE events SET ([\s\S]+?)\s+WHERE slug=\? AND owner_user_id=\?/)?.[1] || "")
         .split(",")
@@ -826,7 +869,9 @@ class FakeD1Statement {
         const vals = this.args.slice(0, setCols.length);
         const next = { ...old };
         for (let i = 0; i < setCols.length; i += 1) next[setCols[i]] = vals[i];
-        this.db.events.set(slug, next);
+        const nextSlug = next.slug || slug;
+        if (nextSlug !== slug) this.db.events.delete(slug);
+        this.db.events.set(nextSlug, next);
       }
       return { success: true };
     }
@@ -2613,6 +2658,47 @@ const tests = [
     assert.equal(denied.status, 403);
     assert.equal(db.events.get("owned-web").title, "Owner Updated");
   }],
+  ["web event update API renames slug and old event link redirects", async () => {
+    const db = new FakeD1();
+    const ownerCookie = await signInCookie(db, "web-rename@example.com", { ip: "203.0.113.41" });
+    const owner = [...db.authUsers.values()].find((row) => row.email === "web-rename@example.com");
+    db.profiles.push({
+      id: "profile-web-rename",
+      user_id: owner.id,
+      handle: "web.rename",
+      display_name: "Web Rename",
+      published: 1,
+    });
+    db.events.set("old-web", {
+      slug: "old-web",
+      install_id: "",
+      owner_user_id: owner.id,
+      dj_profile_id: "profile-web-rename",
+      title: "Old Web",
+      status: "upcoming",
+      source: "web",
+      visibility: "public",
+      rsvp_enabled: 1,
+    });
+    const update = await worker.fetch(new Request("https://party.ramine.net/api/events/old-web", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: ownerCookie },
+      body: JSON.stringify({ slug: "new-web", title: "Renamed Web" }),
+    }), makeEnv({ DB: db }));
+    const updateJson = await update.json();
+    assert.equal(update.status, 200);
+    assert.deepEqual(updateJson, { ok: true });
+    assert.equal(db.events.has("old-web"), false);
+    assert.equal(db.events.get("new-web").title, "Renamed Web");
+    assert.equal(db.eventAliases.get("old-web").slug, "new-web");
+
+    const oldPage = await worker.fetch(new Request("https://party.ramine.net/e/old-web"), makeEnv({ DB: db }));
+    assert.equal(oldPage.status, 301);
+    assert.equal(oldPage.headers.get("location"), "/e/new-web");
+
+    const unknown = await worker.fetch(new Request("https://party.ramine.net/e/unknown-web"), makeEnv({ DB: db }));
+    assert.equal(unknown.status, 404);
+  }],
   ["profile API creates signed-in user's fresh profile and public route renders it", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "fresh@example.com", { ip: "203.0.113.30" });
@@ -3541,6 +3627,29 @@ const tests = [
     assert.equal(json.status, "replay");
     assert.equal(row.title, "New Title");
     assert.equal(row.status, "replay");
+  }],
+  ["broker event-upsert records alias when old_slug is renamed", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
+      events: [{ slug: "ahead-old", install_id: "abc123abc123", title: "Ahead Old", status: "upcoming" }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "abc123abc123",
+        secret: "secret-a",
+        old_slug: "ahead-old",
+        slug: "ahead-new",
+        title: "Ahead New",
+      }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.equal(json.slug, "ahead-new");
+    assert.equal(db.events.has("ahead-old"), false);
+    assert.equal(db.events.get("ahead-new").title, "Ahead New");
+    assert.equal(db.eventAliases.get("ahead-old").slug, "ahead-new");
   }],
   ["broker publish-meta stamps replay activity and bumps DJ profile", async () => {
     const db = new FakeD1({
