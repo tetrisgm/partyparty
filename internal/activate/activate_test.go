@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -79,6 +80,80 @@ func TestBrokerRememberHostUpdatesCachedBase(t *testing.T) {
 	}
 	if b.base != "party.example.net" {
 		t.Fatalf("broker base = %q, want party.example.net", b.base)
+	}
+}
+
+func TestCachedAccountOrErrorUsesLinkedCacheOffline(t *testing.T) {
+	dir := setupStateDir(t)
+	if err := saveAccountCache(dir, AccountState{
+		OK:      true,
+		Linked:  true,
+		Offline: true,
+		Error:   "old error",
+		User:    AccountUser{ID: "user-1", Email: "dj@example.net"},
+		Install: AccountInstall{ID: "install-1", Slug: "disco42", Host: "disco42.pp.example.net"},
+		License: AccountLicense{
+			OK:     true,
+			Source: "account",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cause := errors.New("network unavailable")
+	st, err := cachedAccountOrError(dir, cause)
+	if err != nil {
+		t.Fatalf("cachedAccountOrError with linked cache returned error: %v", err)
+	}
+	if !st.OK || !st.Linked || !st.Offline {
+		t.Fatalf("cached state = %+v, want OK/Linked/Offline true", st)
+	}
+	if st.Error != cause.Error() {
+		t.Fatalf("cached state error = %q, want %q", st.Error, cause.Error())
+	}
+	if st.User.Email != "dj@example.net" || st.Install.Slug != "disco42" || !st.License.OK {
+		t.Fatalf("cached state did not preserve account fields: %+v", st)
+	}
+}
+
+func TestCachedAccountOrErrorWithoutLinkedCacheReturnsUnlinkedError(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, dir string)
+	}{
+		{name: "no cache"},
+		{
+			name: "unlinked cache ignored",
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				if err := saveAccountCache(dir, AccountState{OK: true, Linked: false}); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupStateDir(t)
+			if tt.setup != nil {
+				tt.setup(t, dir)
+			}
+
+			cause := errors.New("network unavailable")
+			st, err := cachedAccountOrError(dir, cause)
+			if !errors.Is(err, cause) {
+				t.Fatalf("error = %v, want %v", err, cause)
+			}
+			if st.OK || st.Linked || st.Offline {
+				t.Fatalf("state = %+v, want OK/Linked/Offline false", st)
+			}
+			if st.Error != cause.Error() {
+				t.Fatalf("state error = %q, want %q", st.Error, cause.Error())
+			}
+			if st.CheckedMS == 0 {
+				t.Fatal("CheckedMS = 0, want current timestamp")
+			}
+		})
 	}
 }
 
