@@ -310,7 +310,6 @@
     <span class="authbanner-msg" id="accountMsg" role="status">Verifying this Mac's account.</span>
     <span class="authbanner-actions">
       <button class="go" id="accountSignInBtn" type="button">Sign in / Sign up</button>
-      <button class="ghost" id="accountRetryBtn" type="button">I've signed in</button>
     </span>
     <div class="auth-meta" id="accountMeta" hidden></div>
   </div>
@@ -904,7 +903,6 @@
     }
   }
   $('accountSignInBtn').onclick = startAccountSignIn;
-  $('accountRetryBtn').onclick = () => loadAccountStatus();
   $('accountOpenBtn').onclick = openAccountFromSettings;
   $('accountRefreshBtn').onclick = () => {
     const msg = $('accountSettingsMsg');

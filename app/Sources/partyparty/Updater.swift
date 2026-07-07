@@ -30,16 +30,15 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
             startingUpdater: true,
             updaterDelegate: self,
             userDriverDelegate: self) // we drive gentle-reminder timing (defer mid-set)
-        // Forced ON in code, not left to the first-run permission prompt or a
-        // stale user default — every install should behave the same way.
+        // Checks forced ON so every install keeps looking for updates.
         controller.updater.automaticallyChecksForUpdates = true
-        // DOWNLOAD-ON-DEMAND, not auto-download. Auto-downloaded updates are
-        // presented by Sparkle's automatic driver, which BYPASSES the gentle
-        // reminder hook — so the "Install & Relaunch" window could pop mid-set.
-        // With auto-download off, updates flow through the scheduled driver, the
-        // only path that consults standardUserDriverShouldHandleShowingScheduledUpdate,
-        // so our "never during a set" deferral is actually honored.
-        controller.updater.automaticallyDownloadsUpdates = false
+        // Auto-install (automaticallyDownloadsUpdates) is DELIBERATELY not forced
+        // here. It follows the Info.plist default (SUAutomaticallyUpdate = true)
+        // and, once the user toggles "install automatically in the future" in
+        // Sparkle's dialog, THAT choice persists in user defaults. Forcing it off
+        // on every launch silently reset the user's choice — the owner's bug
+        // report. The gentle-reminder hook below still holds the update prompt
+        // until a live set ends, so respecting the choice doesn't interrupt a set.
     }
 
     func checkForUpdates() {
