@@ -1184,6 +1184,48 @@ async function seedInstallBrowserToken(db, { id, token, installId = "abc123abc12
 
 const contentLength = (body) => String(new TextEncoder().encode(String(body)).byteLength);
 
+// --- Google OAuth test helpers ---
+const OAUTH_STATE_COOKIE_NAME = "pp_oauth";
+const GOOGLE_TEST_ENV = { AUTH_GOOGLE_ID: "gid.apps.googleusercontent.com", AUTH_GOOGLE_SECRET: "gsecret" };
+function b64urlJson(obj) {
+  return Buffer.from(JSON.stringify(obj), "utf8").toString("base64")
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function fakeIdToken(claims) {
+  return `${b64urlJson({ alg: "RS256", typ: "JWT" })}.${b64urlJson(claims)}.sig`;
+}
+function googleClaims(extra = {}) {
+  return {
+    aud: GOOGLE_TEST_ENV.AUTH_GOOGLE_ID,
+    iss: "https://accounts.google.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    email: "dj@example.com",
+    email_verified: true,
+    sub: "google-sub-1",
+    ...extra,
+  };
+}
+async function withGoogleTokenMock(idToken, fn) {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    if (req.url === "https://oauth2.googleapis.com/token") {
+      return new Response(JSON.stringify({ id_token: idToken, access_token: "at" }),
+        { headers: { "content-type": "application/json" } });
+    }
+    return oldFetch(input, init);
+  };
+  try { return await fn(); } finally { globalThis.fetch = oldFetch; }
+}
+function googleCallbackReq(db, { code = "auth-code", state = "s".repeat(32), cookieState = null, redirect = "/account" } = {}) {
+  const cState = cookieState === null ? state : cookieState;
+  const cookie = `${OAUTH_STATE_COOKIE_NAME}=g|${cState}|${encodeURIComponent(redirect)}`;
+  return worker.fetch(new Request(
+    `https://party.ramine.net/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+    { headers: { cookie, "cf-connecting-ip": "203.0.113.30", "user-agent": "smoke-oauth" } },
+  ), makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
+}
+
 const tests = [
   ["parseCookies decodes cookie header", async () => {
     const req = new Request("https://party.ramine.net/", {
@@ -3769,6 +3811,70 @@ const tests = [
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 400);
     assert.equal(db.events.get("owned-invalid-status").status, "upcoming");
+  }],
+  ["google sign-in start redirects to Google and sets a state cookie", async () => {
+    const db = new FakeD1({});
+    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/google?redirect=/account", {}),
+      makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
+    assert.equal(resp.status, 302);
+    const loc = resp.headers.get("location") || "";
+    assert.ok(loc.startsWith("https://accounts.google.com/o/oauth2/v2/auth"), "redirects to Google");
+    const locUrl = new URL(loc);
+    assert.equal(locUrl.searchParams.get("client_id"), GOOGLE_TEST_ENV.AUTH_GOOGLE_ID);
+    assert.equal(locUrl.searchParams.get("redirect_uri"), "https://party.ramine.net/auth/google/callback");
+    assert.equal(locUrl.searchParams.get("response_type"), "code");
+    const state = locUrl.searchParams.get("state");
+    assert.ok(state && state.length >= 16, "carries a state nonce");
+    const sc = resp.headers.get("set-cookie") || "";
+    assert.ok(sc.startsWith("pp_oauth="), "sets the oauth state cookie");
+    assert.ok(sc.includes(state), "state cookie carries the same nonce");
+  }],
+  ["google sign-in is unavailable when unconfigured", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/google", {}), makeEnv({ DB: new FakeD1({}) }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login");
+  }],
+  ["google callback creates a session for a verified email", async () => {
+    const db = new FakeD1({});
+    const resp = await withGoogleTokenMock(fakeIdToken(googleClaims()), () => googleCallbackReq(db, { redirect: "/account" }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/account");
+    const sessionCookie = (resp.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(sessionCookie.length > 0, "sets a session cookie");
+    // The session must actually authenticate.
+    const me = await worker.fetch(new Request("https://party.ramine.net/api/me", { headers: { cookie: sessionCookie } }),
+      makeEnv({ DB: db }));
+    const meJson = await me.json();
+    assert.equal(meJson.user && meJson.user.email, "dj@example.com");
+  }],
+  ["google callback rejects a forged state (CSRF)", async () => {
+    const db = new FakeD1({});
+    const resp = await withGoogleTokenMock(fakeIdToken(googleClaims()),
+      () => googleCallbackReq(db, { state: "aaaaaaaa", cookieState: "bbbbbbbb" }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?error=state");
+  }],
+  ["google callback rejects an unverified email", async () => {
+    const db = new FakeD1({});
+    const resp = await withGoogleTokenMock(fakeIdToken(googleClaims({ email_verified: false })),
+      () => googleCallbackReq(db, {}));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?error=verify");
+  }],
+  ["google callback rejects a wrong audience", async () => {
+    const db = new FakeD1({});
+    const resp = await withGoogleTokenMock(fakeIdToken(googleClaims({ aud: "someone-else.apps.googleusercontent.com" })),
+      () => googleCallbackReq(db, {}));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?error=verify");
+  }],
+  ["login page shows Continue with Google only when configured", async () => {
+    const on = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}), env: GOOGLE_TEST_ENV }));
+    const onBody = await on.text();
+    assert.ok(onBody.includes("Continue with Google"), "button present when configured");
+    assert.ok(onBody.includes("/auth/google?redirect="), "button links to /auth/google");
+    const off = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}) }));
+    assert.ok(!(await off.text()).includes("Continue with Google"), "button hidden when unconfigured");
   }],
 ];
 

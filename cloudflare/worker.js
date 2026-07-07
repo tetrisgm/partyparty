@@ -1527,10 +1527,28 @@ async function loginResponse(request, env) {
   const adminField = showAdmin
     ? `<details open><summary>Admin passcode</summary><input type="password" name="devSecret" autocomplete="off" placeholder="Admin passcode" aria-label="Admin passcode"></details>`
     : "";
+  const oauthRedirect = encodeURIComponent(redirectPath || "/account");
+  const oauthBtnStyle = "display:block;width:100%;box-sizing:border-box;text-align:center;margin:0 0 8px";
+  const providerBtns = [
+    hasGoogleProvider(env)
+      ? `<a class="btn lt" style="${oauthBtnStyle}" href="/auth/google?redirect=${oauthRedirect}">Continue with Google</a>`
+      : "",
+    hasAppleProvider(env)
+      ? `<a class="btn lt" style="${oauthBtnStyle}" href="/auth/apple?redirect=${oauthRedirect}"> Continue with Apple</a>`
+      : "",
+  ].filter(Boolean).join("");
+  const providerBlock = providerBtns
+    ? `<div style="margin:0 0 12px">${providerBtns}</div>
+       <div style="display:flex;align-items:center;gap:10px;color:var(--ink3);font-size:12px;margin:0 0 14px"><span style="flex:1;height:1px;background:var(--line)"></span>or use email<span style="flex:1;height:1px;background:var(--line)"></span></div>`
+    : "";
+  const emailSub = providerBlock
+    ? "We will send a sign-in link to your email."
+    : "Enter your email and we will send a sign-in link.";
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
-      <p class="sub">Enter your email and we will send a sign-in link.</p>
+      <p class="sub">${emailSub}</p>
+      ${providerBlock}
       <form class="authform" id="login-form">
         <input type="email" name="email" autocomplete="email" required placeholder="you@example.com" aria-label="Email">
         ${adminField}
@@ -2208,6 +2226,109 @@ async function authVerify(request, env) {
   const headers = new Headers({ location: safeRedirectPath(row.redirect_path) });
   headers.append("set-cookie", session.cookie);
   headers.set("cache-control", "no-store");
+  return new Response(null, { status: 302, headers });
+}
+
+// ---- OAuth (Google / Apple) — same accounts as magic-link, keyed by verified
+// email. Both providers hand back a verified email, so each funnels into
+// createAuthSession exactly like the magic-link tail. Mirrors Write's env-var
+// naming (AUTH_GOOGLE_ID/SECRET, AUTH_APPLE_*). ----
+const OAUTH_STATE_COOKIE = "pp_oauth";
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
+function hasGoogleProvider(env) { return !!(env && env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET); }
+function hasAppleProvider(env) {
+  return !!(env && env.AUTH_APPLE_ID && env.AUTH_APPLE_TEAM_ID && env.AUTH_APPLE_KEY_ID && env.AUTH_APPLE_PRIVATE_KEY);
+}
+
+function decodeJwtPayload(jwt) {
+  try {
+    const part = String(jwt || "").split(".")[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
+    return JSON.parse(atob(b64 + pad));
+  } catch (_) { return null; }
+}
+
+// State cookie packs provider + CSRF nonce + the post-login redirect (kept
+// server-side in an HttpOnly cookie, never round-tripped through the provider).
+function oauthStateCookie(prov, nonce, redirect) {
+  return cookieHeader(OAUTH_STATE_COOKIE, `${prov}|${nonce}|${encodeURIComponent(redirect)}`,
+    { maxAge: 600, httpOnly: true, secure: true, sameSite: "Lax" });
+}
+function clearOauthStateCookie() {
+  return cookieHeader(OAUTH_STATE_COOKIE, "", { maxAge: 0, httpOnly: true, secure: true, sameSite: "Lax" });
+}
+function oauthError(reason) {
+  const h = new Headers({ location: `/login?error=${encodeURIComponent(reason || "oauth")}`, "cache-control": "no-store" });
+  h.append("set-cookie", clearOauthStateCookie());
+  return new Response(null, { status: 302, headers: h });
+}
+// Reads + validates the state cookie against the returned state param (CSRF).
+// Returns { redirect } on success, null on mismatch.
+function readOauthState(request, prov, returnedState) {
+  const saved = parseCookies(request)[OAUTH_STATE_COOKIE] || "";
+  const [p, nonce, enc] = saved.split("|");
+  if (!p || p !== prov || !nonce || !returnedState || nonce !== returnedState) return null;
+  let redirect = "/account";
+  try { redirect = safeRedirectPath(decodeURIComponent(enc || "")) || "/account"; } catch (_) {}
+  return { redirect };
+}
+
+async function googleAuthStart(request, env) {
+  if (!hasGoogleProvider(env)) return redirectResp("/login");
+  const redirect = safeRedirectPath(new URL(request.url).searchParams.get("redirect") || "/account") || "/account";
+  const nonce = randHex(16);
+  const params = new URLSearchParams({
+    client_id: env.AUTH_GOOGLE_ID,
+    redirect_uri: `${SITE_ORIGIN}/auth/google/callback`,
+    response_type: "code",
+    scope: "openid email profile",
+    state: nonce,
+    prompt: "select_account",
+  });
+  const headers = new Headers({ location: `${GOOGLE_AUTH_URL}?${params.toString()}`, "cache-control": "no-store" });
+  headers.append("set-cookie", oauthStateCookie("g", nonce, redirect));
+  return new Response(null, { status: 302, headers });
+}
+
+async function googleAuthCallback(request, env) {
+  if (!hasGoogleProvider(env) || !env.DB) return oauthError("unavailable");
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code") || "";
+  const st = readOauthState(request, "g", url.searchParams.get("state") || "");
+  if (!code || !st) return oauthError("state");
+  // Exchange the code server-to-server, authenticated with our client secret.
+  let tok = null;
+  try {
+    const resp = await fetch(GOOGLE_TOKEN_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: env.AUTH_GOOGLE_ID,
+        client_secret: env.AUTH_GOOGLE_SECRET,
+        redirect_uri: `${SITE_ORIGIN}/auth/google/callback`,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+    if (resp.ok) tok = await resp.json();
+  } catch (_) { /* fall through to error */ }
+  const claims = decodeJwtPayload(tok && tok.id_token);
+  // The id_token arrived directly from Google's token endpoint over TLS,
+  // authenticated with our secret — validate the binding claims.
+  const good = claims && claims.aud === env.AUTH_GOOGLE_ID &&
+    (claims.iss === "https://accounts.google.com" || claims.iss === "accounts.google.com") &&
+    Number(claims.exp) * 1000 > nowMs() && claims.email && claims.email_verified === true;
+  const emailNorm = good ? normalizeEmail(claims.email) : "";
+  if (!emailNorm) return oauthError("verify");
+  const session = await createAuthSession(env, request, emailNorm);
+  if (!session || !session.cookie) return oauthError("session");
+  const headers = new Headers({ location: st.redirect, "cache-control": "no-store" });
+  headers.append("set-cookie", session.cookie);
+  headers.append("set-cookie", clearOauthStateCookie());
   return new Response(null, { status: 302, headers });
 }
 
@@ -3586,6 +3707,22 @@ export default {
         return await authVerify(request, env);
       } catch (_) {
         return expiredLinkResponse(400);
+      }
+    }
+
+    if (pathname === "/auth/google") {
+      try {
+        return await googleAuthStart(request, env);
+      } catch (_) {
+        return redirectResp("/login");
+      }
+    }
+
+    if (pathname === "/auth/google/callback") {
+      try {
+        return await googleAuthCallback(request, env);
+      } catch (_) {
+        return oauthError("oauth");
       }
     }
 
