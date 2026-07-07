@@ -43,11 +43,12 @@
   .auth-status.ok{color:#1d883d}
   /* Activation gate: a blocking full-screen sign-in the app requires before the
      console runs. Guest pages (listener/wall) are separate files, never gated. */
-  .gate-brand,.gate-title{display:none}
+  .gate-brand,.gate-title,.gate-explain{display:none}
   .authgate.blocking{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;border-bottom:none;box-shadow:none;background:var(--bg)}
   .authgate.blocking .authbanner-in{flex-direction:column;text-align:center;align-items:center;max-width:400px;gap:5px;background:var(--bg-elevated);border:1px solid var(--separator);border-radius:20px;padding:38px 30px;box-shadow:var(--shadow)}
   .authgate.blocking .gate-brand{display:block;font-weight:700;font-size:14px;letter-spacing:-.01em;color:var(--label-secondary);margin-bottom:6px}
   .authgate.blocking .gate-title{display:block;font-size:25px;letter-spacing:-.03em;font-weight:650;margin:0 0 4px}
+  .authgate.blocking .gate-explain{display:block;color:var(--label-secondary);font-size:13px;line-height:1.4;margin:-1px 0 6px;max-width:360px}
   .authgate.blocking .authbanner-msg{flex:none;min-width:0;font-size:14px;line-height:1.5}
   .authgate.blocking .authbanner-actions{flex-direction:column;width:100%;margin-top:18px;gap:9px}
   .authgate.blocking .authbanner-actions .go,.authgate.blocking .authbanner-actions .ghost{width:100%;height:42px;font-size:14px}
@@ -307,6 +308,7 @@
   <div class="authbanner-in">
     <span class="gate-brand">🕺 partyparty</span>
     <span class="gate-title" id="accountTitle">Checking activation…</span>
+    <span class="gate-explain" id="accountExplain">Sign in to publish your parties online and link this Mac. You do this once.</span>
     <span class="authbanner-msg" id="accountMsg" role="status">Verifying this Mac's account.</span>
     <span class="authbanner-actions">
       <button class="go" id="accountSignInBtn" type="button">Sign in / Sign up</button>
@@ -723,8 +725,16 @@
   let consoleActivated = false;
   let currentAccountState = null;
   let accountPoll = null;
+  let accountRetryTimer = null;
+  let accountRetryDelayMs = 3000;
+  let accountSigningIn = false;
   let refreshTimer = null;
   let accountWatchTimer = null;
+  const ACCOUNT_GATE_EXPLANATION = 'Sign in to publish your parties online and link this Mac. You do this once.';
+  const ACCOUNT_OFFLINE_MESSAGE = 'You’re offline — connect to the internet once to activate, then partyparty works offline at your venue.';
+  const ACCOUNT_SIGNING_MESSAGE = 'Finish sign-in in your browser. partyparty will unlock here automatically.';
+  const ACCOUNT_RETRY_MIN_MS = 3000;
+  const ACCOUNT_RETRY_MAX_MS = 30000;
 
   function accountName(st){
     const profile = st && st.profile || {};
@@ -748,6 +758,25 @@
     const n = Number(st && st.checkedMs || 0);
     if (!n) return '';
     try { return new Date(n).toLocaleString(); } catch (e) { return ''; }
+  }
+  function stopAccountRetry(){
+    if (accountRetryTimer) clearTimeout(accountRetryTimer);
+    accountRetryTimer = null;
+  }
+  function stopAccountPoll(){
+    if (accountPoll) clearInterval(accountPoll);
+    accountPoll = null;
+    accountSigningIn = false;
+  }
+  function scheduleAccountRetry(){
+    if (consoleActivated || accountLinked || accountSigningIn) return;
+    stopAccountRetry();
+    const delay = accountRetryDelayMs || ACCOUNT_RETRY_MIN_MS;
+    accountRetryTimer = setTimeout(() => {
+      accountRetryTimer = null;
+      loadAccountStatus({ silent: true });
+    }, delay);
+    accountRetryDelayMs = Math.min(delay * 2, ACCOUNT_RETRY_MAX_MS);
   }
   function renderSettingsAccount(st){
     const box = $('settingsAccount');
@@ -787,20 +816,23 @@
     const gate = $('authGate');
     const msg = $('accountMsg');
     const title = $('accountTitle');
+    const explain = $('accountExplain');
     currentAccountState = st || null;
     accountLinked = linked;
     renderSettingsAccount(st || { linked: false });
+    if (explain) explain.textContent = ACCOUNT_GATE_EXPLANATION;
     // Activation model: the app requires a linked account before it runs. Once
     // this Mac shows linked (online, or offline on a cached prior activation),
     // latch consoleActivated so the console stays up for the whole session — a
     // later sign-out never locks a live party; it re-gates on the next launch.
     if (linked) consoleActivated = true;
     if (consoleActivated) {
+      stopAccountRetry();
+      if (linked) stopAccountPoll();
       gate.hidden = true;
       gate.classList.remove('blocking');
       document.body.classList.remove('account-locked');
       startConsoleRefresh();
-      if (linked) { clearInterval(accountPoll); accountPoll = null; }
       return;
     }
     // Not activated this session — block everything. No console, no capture, no
@@ -816,11 +848,16 @@
       msg.textContent = 'Verifying this Mac’s account.';
       return;
     }
+    if (accountSigningIn) {
+      title.textContent = 'Finish sign-in';
+      msg.className = 'auth-status' + (st && st.error ? ' error' : '');
+      msg.textContent = (st && st.error) ? ACCOUNT_OFFLINE_MESSAGE : ACCOUNT_SIGNING_MESSAGE;
+      return;
+    }
     title.textContent = 'Sign in to start';
     msg.className = 'authbanner-msg' + (st && st.error ? ' error' : '');
-    msg.textContent = (st && st.error)
-      ? 'Can’t reach the internet to activate. partyparty signs in online once, then works offline — connect and try again.'
-      : 'Create your account or sign in to activate partyparty on this Mac. You do this once — then it works offline.';
+    msg.textContent = (st && st.error) ? ACCOUNT_OFFLINE_MESSAGE : 'Create your account or sign in to activate partyparty on this Mac.';
+    scheduleAccountRetry();
   }
   async function loadAccountStatus(opts){
     opts = opts || {};
@@ -881,12 +918,17 @@
     }
   }
   function startAccountPoll(){
-    clearInterval(accountPoll);
+    accountSigningIn = true;
+    stopAccountRetry();
+    if (accountPoll) clearInterval(accountPoll);
     accountPoll = setInterval(() => loadAccountStatus({ silent: true }), 2000);
   }
   async function startAccountSignIn(){
     const btn = $('accountSignInBtn');
     const msg = $('accountMsg');
+    stopAccountPoll();
+    accountSigningIn = true;
+    stopAccountRetry();
     btn.disabled = true;
     msg.className = 'auth-status';
     msg.textContent = 'Opening sign-in / sign-up in your browser...';
@@ -894,11 +936,13 @@
       const r = await fetch('/api/link-install/start', { method: 'POST' });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || 'Could not start sign-in.');
-      msg.textContent = 'Finish sign-in in your browser. partyparty will unlock here automatically.';
+      msg.textContent = ACCOUNT_SIGNING_MESSAGE;
       startAccountPoll();
     } catch (e) {
+      stopAccountPoll();
       msg.className = 'auth-status error';
       msg.textContent = e && e.message ? e.message : 'Could not start sign-in.';
+      scheduleAccountRetry();
     } finally {
       btn.disabled = false;
     }
