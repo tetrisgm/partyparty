@@ -2599,9 +2599,13 @@ async function linkMacResponse(request, env) {
   const isPost = request.method === "POST";
   let rawToken;
   if (isPost) {
-    // Defense in depth on top of SameSite=Lax: reject cross-site form posts.
+    // Defense in depth on top of SameSite=Lax (which already stops a cross-site
+    // POST from carrying the session cookie, so no bind can happen). Only reject
+    // a genuinely foreign origin. WebKit sends Origin: "null" on a same-site form
+    // POST when the page is served no-referrer (this confirm page is) — allow
+    // that, plus a missing origin; block only a real different site.
     const origin = request.headers.get("origin") || "";
-    if (origin && origin !== SITE_ORIGIN) {
+    if (origin && origin !== SITE_ORIGIN && origin !== "null") {
       return linkMacPage("Link blocked", "That request didn’t come from partyparty. Start sign-in again from the app on your Mac.");
     }
     const form = await request.formData().catch(() => null);
