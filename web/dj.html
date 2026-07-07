@@ -41,6 +41,13 @@
   .auth-status{font-size:13px;line-height:1.5;color:var(--label-secondary);margin-top:16px;min-height:20px}
   .auth-status.error{color:var(--danger)}
   .auth-status.ok{color:#1d883d}
+  /* End-of-set "publish the party" moment */
+  .setwrap{margin:0 0 14px;border-radius:12px;background:rgba(255,45,85,.08);border:1px solid rgba(255,45,85,.28);padding:12px 14px}
+  .setwrap[hidden]{display:none}
+  .setwrap-in{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .setwrap-msg{flex:1;min-width:200px;font-size:14px;line-height:1.35;font-weight:500}
+  .setwrap-in .go{white-space:nowrap}
+  .setwrap.done{background:rgba(52,199,89,.09);border-color:rgba(52,199,89,.32)}
   /* Activation gate: a blocking full-screen sign-in the app requires before the
      console runs. Guest pages (listener/wall) are separate files, never gated. */
   .gate-brand,.gate-title,.gate-explain{display:none}
@@ -405,6 +412,12 @@
     </div>
 
     <div id="pubSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
+      <div id="setWrap" class="setwrap" hidden>
+        <div class="setwrap-in">
+          <span class="setwrap-msg" id="setWrapMsg">🎉 Set wrapped — publish tonight's party page so everyone can relive it.</span>
+          <button class="go" id="setWrapBtn" type="button">Publish the party</button>
+        </div>
+      </div>
       <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
       <div class="hint" style="margin:0 0 10px">Publish the current recording to a shareable replay page now — or pick a custom link. Turn on auto-publish in Settings to do this automatically whenever a set ends.</div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -1294,6 +1307,8 @@
       const s = await (await fetch('/api/status', { cache:'no-store' })).json();
       const st = s.broadcast.state;
       if (st !== lastState) djLog('bstate', { from: lastState, to: st, dev: s.broadcast.deviceName || '', bad: !!s.broadcast.captureBad });
+      if ((lastState === 'live' || lastState === 'starting') && st === 'idle') onSetEnded(s.event);
+      if (st === 'live' || st === 'starting') hideSetWrap();
       lastState = st;
       // Version pin (bottom-left) + self-refresh when the server updates
       // beneath an open console — only while idle (never mid-broadcast).
@@ -1549,6 +1564,39 @@
       pubCoverBtn.disabled = false; pubCoverBtn.textContent = label;
     }
   });
+  // End-of-set moment: when a set wraps, invite the DJ to publish the party page
+  // right where they're looking, then show the live link. Reuses the publish flow.
+  function onSetEnded(ev){
+    const wrap = $('setWrap'), msg = $('setWrapMsg'), btn = $('setWrapBtn');
+    if (!wrap) return;
+    wrap.classList.remove('done');
+    const posts = (ev && Number(ev.posts)) || 0, media = (ev && Number(ev.media)) || 0;
+    const bits = [];
+    if (posts) bits.push(posts + (posts === 1 ? ' post' : ' posts'));
+    if (media) bits.push(media + (media === 1 ? ' photo/clip' : ' photos & clips'));
+    const haul = bits.length ? ' — your guests dropped ' + bits.join(' and ') : '';
+    if (localStorage.getItem('pp.autoPublish') === '1') {
+      msg.textContent = '🎉 Set wrapped' + haul + '. Publishing your party page automatically — the link appears below.';
+      btn.hidden = true;
+    } else {
+      msg.textContent = '🎉 Set wrapped' + haul + '. Publish tonight’s party page so everyone can relive it.';
+      btn.hidden = false;
+    }
+    wrap.hidden = false;
+    try { wrap.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+  }
+  function hideSetWrap(){ const w = $('setWrap'); if (w) { w.hidden = true; w.classList.remove('done'); } }
+  function setWrapPublished(url){
+    const wrap = $('setWrap'), msg = $('setWrapMsg'), btn = $('setWrapBtn');
+    if (!wrap || !url) return;
+    wrap.classList.add('done');
+    btn.hidden = true;
+    const bare = String(url).replace(/^https?:\/\//, '');
+    msg.innerHTML = '✅ Your party page is live — <a href="' + escT(url) + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">' + escT(bare) + '</a> · <span id="setWrapCopy" style="cursor:pointer;text-decoration:underline">copy link</span>';
+    const c = $('setWrapCopy'); if (c) c.onclick = () => copyText(url, c);
+    wrap.hidden = false;
+  }
+  if ($('setWrapBtn')) $('setWrapBtn').onclick = () => { const p = $('pubBtn'); if (p) { try { p.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} p.click(); } };
   pubBtn.addEventListener('click', async () => {
     pubBtn.disabled = true; const label = pubBtn.textContent; pubBtn.textContent = 'Publishing…';
     pubResult.style.display = 'block';
@@ -1561,6 +1609,7 @@
       if (d.url) {
         localStorage.setItem('pp.lastEventUrl', d.url);
         renderOnline(d.slug || lastOnlineSlug, d.url, true);
+        setWrapPublished(d.url);
       }
       const bare = d.url.replace(/^https?:\/\//, '');
       const warn = d.warning ? ' · <span style="color:var(--label-secondary)">' + escT(d.warning) + '</span>' : '';
