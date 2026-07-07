@@ -1033,6 +1033,7 @@ func TestLinkInstallRejectsBadCode(t *testing.T) {
 
 func TestStartValidationAndLifecycle(t *testing.T) {
 	env := newTestEnv(t, nil)
+	env.srv.setAccountActivated(true) // past the activation gate; this test covers device/lifecycle
 
 	w := do(env.srv, "POST", "/api/start", djAddr)
 	if w.Code != http.StatusBadRequest {

@@ -78,6 +78,12 @@ type srv struct {
 	actReason  string // why activation isn't ready yet (console pending state)
 	actLast    activate.Result
 	actLastSet bool
+	// accActivated: this Mac's DJ account is linked, or running on a cached
+	// prior activation (offline party after first sign-in). The console requires
+	// it before it renders and /api/start refuses without it. Default false =
+	// blocked, so a never-activated or signed-out install cannot go live.
+	// Refreshed by the /api/account/status handler that the console polls.
+	accActivated bool
 
 	// Honest fallback readiness: observable reachability only. The watchdog
 	// updates these fields for /api/status; it never changes delivery or
@@ -167,6 +173,27 @@ func (s *Srv) SetActivationPending(reason string) {
 		s.actReason = reason
 	}
 	s.actMu.Unlock()
+}
+
+// setAccountActivated latches this process "activated" the first time the DJ
+// account shows linked (or offline-cached-linked). The /api/account/status
+// handler the console polls calls it; /api/start reads it. It only ever latches
+// TRUE — a later sign-out/revoke never blocks a live party mid-set; it takes
+// effect on the next launch (fresh process starts back at false). Default false
+// means a never-activated install cannot go live.
+func (s *srv) setAccountActivated(v bool) {
+	if !v {
+		return
+	}
+	s.actMu.Lock()
+	s.accActivated = true
+	s.actMu.Unlock()
+}
+
+func (s *srv) accountActivated() bool {
+	s.actMu.Lock()
+	defer s.actMu.Unlock()
+	return s.accActivated
 }
 
 var hlsFileRE = regexp.MustCompile(`^(stream\.m3u8|seg_\d+\.ts)$`)
@@ -331,6 +358,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				s.Diag.Printf(format, args...)
 			}
 		})
+		// status.Linked is true both online-linked and offline-cached-linked (the
+		// cache only ever returns Linked when this Mac was linked before), so it
+		// is the single activation signal. It latches the process activated; a
+		// sign-out re-gates on the next launch, not mid-session.
+		s.setAccountActivated(status.Linked)
 		writeJSON(w, http.StatusOK, status)
 	case "/api/account/sign-out":
 		if r.Method != http.MethodPost {
@@ -615,6 +647,13 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !s.requireDJ(w, r) {
+			return
+		}
+		// Activation gate: the app requires a linked DJ account (or a cached prior
+		// activation for offline use) before it can go live. Guests are never
+		// touched by this — only this localhost-only DJ action.
+		if !s.accountActivated() {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "not_activated"})
 			return
 		}
 		q := r.URL.Query()

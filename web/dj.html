@@ -41,6 +41,16 @@
   .auth-status{font-size:13px;line-height:1.5;color:var(--label-secondary);margin-top:16px;min-height:20px}
   .auth-status.error{color:var(--danger)}
   .auth-status.ok{color:#1d883d}
+  /* Activation gate: a blocking full-screen sign-in the app requires before the
+     console runs. Guest pages (listener/wall) are separate files, never gated. */
+  .gate-brand,.gate-title{display:none}
+  .authgate.blocking{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;border-bottom:none;box-shadow:none;background:var(--bg)}
+  .authgate.blocking .authbanner-in{flex-direction:column;text-align:center;align-items:center;max-width:400px;gap:5px;background:var(--bg-elevated);border:1px solid var(--separator);border-radius:20px;padding:38px 30px;box-shadow:var(--shadow)}
+  .authgate.blocking .gate-brand{display:block;font-weight:700;font-size:14px;letter-spacing:-.01em;color:var(--label-secondary);margin-bottom:6px}
+  .authgate.blocking .gate-title{display:block;font-size:25px;letter-spacing:-.03em;font-weight:650;margin:0 0 4px}
+  .authgate.blocking .authbanner-msg{flex:none;min-width:0;font-size:14px;line-height:1.5}
+  .authgate.blocking .authbanner-actions{flex-direction:column;width:100%;margin-top:18px;gap:9px}
+  .authgate.blocking .authbanner-actions .go,.authgate.blocking .authbanner-actions .ghost{width:100%;height:42px;font-size:14px}
   .auth-meta{border-top:1px solid var(--separator);margin-top:22px;padding-top:16px;display:grid;gap:7px;color:var(--label-secondary);font-size:13px}
   .auth-meta b{color:var(--label)}
   .settings-section{border-top:1px solid var(--separator);padding-top:16px;margin-top:16px}
@@ -292,17 +302,18 @@
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
 </style>
 </head>
-<body>
-<div id="authGate" class="authgate" hidden>
+<body class="account-locked">
+<div id="authGate" class="authgate blocking">
   <div class="authbanner-in">
-    <span class="authbanner-msg" id="accountMsg" role="status">Sign in to publish your party online and link this Mac — not needed for an offline party.</span>
+    <span class="gate-brand">🕺 partyparty</span>
+    <span class="gate-title" id="accountTitle">Checking activation…</span>
+    <span class="authbanner-msg" id="accountMsg" role="status">Verifying this Mac's account.</span>
     <span class="authbanner-actions">
-      <button class="go" id="accountSignInBtn" type="button">Sign in</button>
+      <button class="go" id="accountSignInBtn" type="button">Sign in / Sign up</button>
       <button class="ghost" id="accountRetryBtn" type="button">I've signed in</button>
-      <button class="ghost" id="accountDismissBtn" type="button">Not now</button>
     </span>
+    <div class="auth-meta" id="accountMeta" hidden></div>
   </div>
-  <div class="auth-meta" id="accountMeta" hidden></div>
 </div>
 
 <div id="appChrome">
@@ -706,6 +717,11 @@
   renderOnline('');
 
   let accountLinked = false;
+  // Startup activation latch: once this Mac shows linked (online or on a cached
+  // prior activation), the console unlocks and STAYS unlocked for the session —
+  // a later sign-out/revoke never locks a live party mid-set; it takes effect on
+  // the next launch. Matches the server-side accActivated latch.
+  let consoleActivated = false;
   let currentAccountState = null;
   let accountPoll = null;
   let refreshTimer = null;
@@ -769,30 +785,43 @@
   }
   function renderAccountState(st, checking){
     const linked = !!(st && st.linked);
+    const gate = $('authGate');
     const msg = $('accountMsg');
-    const meta = $('accountMeta');
+    const title = $('accountTitle');
     currentAccountState = st || null;
     accountLinked = linked;
     renderSettingsAccount(st || { linked: false });
-    // Offline-first: the console is ALWAYS available. Signing in only unlocks
-    // publishing the party online + linking this Mac — it never gates the local
-    // party (Go Live works at a zero-internet venue with no account).
-    startConsoleRefresh();
-    meta.hidden = true;
-    if (linked) {
-      clearInterval(accountPoll);
-      accountPoll = null;
-      $('authGate').hidden = true;
+    // Activation model: the app requires a linked account before it runs. Once
+    // this Mac shows linked (online, or offline on a cached prior activation),
+    // latch consoleActivated so the console stays up for the whole session — a
+    // later sign-out never locks a live party; it re-gates on the next launch.
+    if (linked) consoleActivated = true;
+    if (consoleActivated) {
+      gate.hidden = true;
+      gate.classList.remove('blocking');
+      document.body.classList.remove('account-locked');
+      startConsoleRefresh();
+      if (linked) { clearInterval(accountPoll); accountPoll = null; }
       return;
     }
-    const dismissed = sessionStorage.getItem('ppAuthBannerDismissed') === '1';
-    $('authGate').hidden = !!checking || dismissed;
-    msg.className = 'authbanner-msg' + (st && st.error ? ' error' : '');
-    if (st && st.error) {
-      msg.textContent = 'Offline — you can still run the party. Sign in later to publish it online.';
-    } else {
-      msg.textContent = 'Sign in to publish your party online and link this Mac — not needed for an offline party.';
+    // Not activated this session — block everything. No console, no capture, no
+    // Go Live until the DJ signs in (which links this Mac to an account).
+    stopConsoleRefresh();
+    gate.hidden = false;
+    gate.classList.add('blocking');
+    document.body.classList.add('account-locked');
+    $('accountMeta').hidden = true;
+    if (checking) {
+      title.textContent = 'Checking activation…';
+      msg.className = 'authbanner-msg';
+      msg.textContent = 'Verifying this Mac’s account.';
+      return;
     }
+    title.textContent = 'Sign in to start';
+    msg.className = 'authbanner-msg' + (st && st.error ? ' error' : '');
+    msg.textContent = (st && st.error)
+      ? 'Can’t reach the internet to activate. partyparty signs in online once, then works offline — connect and try again.'
+      : 'Create your account or sign in to activate partyparty on this Mac. You do this once — then it works offline.';
   }
   async function loadAccountStatus(opts){
     opts = opts || {};
@@ -876,7 +905,6 @@
   }
   $('accountSignInBtn').onclick = startAccountSignIn;
   $('accountRetryBtn').onclick = () => loadAccountStatus();
-  $('accountDismissBtn').onclick = () => { try { sessionStorage.setItem('ppAuthBannerDismissed', '1'); } catch (e) {} $('authGate').hidden = true; };
   $('accountOpenBtn').onclick = openAccountFromSettings;
   $('accountRefreshBtn').onclick = () => {
     const msg = $('accountSettingsMsg');
