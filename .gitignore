@@ -26,3 +26,6 @@ auto.key
 /dist/
 /partyparty*.zip
 /e2e-sync
+
+# Codex loop logs (local)
+codex/logs/
