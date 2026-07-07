@@ -3651,6 +3651,30 @@ const tests = [
     assert.equal(db.events.get("ahead-new").title, "Ahead New");
     assert.equal(db.eventAliases.get("ahead-old").slug, "ahead-new");
   }],
+  ["broker event rename does not delete another owner's live keepsake alias", async () => {
+    // Owner A renamed party -> rave (alias party->rave; rave is live). Owner B
+    // now reclaims the freed slug "party". B's rename must NOT destroy A's live
+    // keepsake redirect. (Regression for the v17 alias review finding.)
+    const db = new FakeD1({
+      deviceInstalls: [
+        { install_id: "abc123abc123", user_id: "user-a", profile_id: "profile-a" },
+        { install_id: "def456def456", user_id: "user-b", profile_id: "profile-b" },
+      ],
+      events: [
+        { slug: "rave", install_id: "abc123abc123", title: "A Rave", status: "upcoming" },
+        { slug: "b-old", install_id: "def456def456", title: "B Event", status: "upcoming" },
+      ],
+      eventAliases: [{ old_slug: "party", slug: "rave", created_ms: 1 }],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "def456def456", secret: "secret-b", old_slug: "b-old", slug: "party", title: "B Event" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 200);
+    // A's keepsake survives because a live event still exists at its target.
+    assert.equal(db.eventAliases.get("party").slug, "rave");
+  }],
   ["broker publish-meta stamps replay activity and bumps DJ profile", async () => {
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-publish", profile_id: "profile-publish" }],

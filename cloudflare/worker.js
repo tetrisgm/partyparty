@@ -261,7 +261,18 @@ async function recordEventAlias(env, oldSlug, slug, now, target = {}) {
   const oldEvent = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(oldSlug).first();
   if (oldEvent) return false;
 
-  await env.DB.prepare("DELETE FROM event_aliases WHERE old_slug=?").bind(slug).run();
+  // Reclaiming a live event at `slug` shadows any alias whose old_slug == slug
+  // (the live event always wins in getEventAliasTarget), so clear that alias —
+  // but ONLY if it is already dead (its target no longer resolves). Never
+  // destroy another owner's LIVE keepsake redirect that happens to share this
+  // old_slug. (Deeper cross-owner slug-reuse is tracked for a reservation model.)
+  const shadowed = await env.DB.prepare("SELECT slug FROM event_aliases WHERE old_slug=?").bind(slug).first();
+  if (shadowed) {
+    const stillLive = await env.DB.prepare("SELECT 1 FROM events WHERE slug=?").bind(String(shadowed.slug || "")).first();
+    if (!stillLive) {
+      await env.DB.prepare("DELETE FROM event_aliases WHERE old_slug=?").bind(slug).run();
+    }
+  }
   await env.DB.prepare("UPDATE event_aliases SET slug=? WHERE slug=?").bind(slug, oldSlug).run();
   await env.DB.prepare(
     `INSERT INTO event_aliases (old_slug, slug, created_ms)
