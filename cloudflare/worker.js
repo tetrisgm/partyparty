@@ -238,6 +238,39 @@ export async function getEventBySlug(env, slug) {
   return await env.DB.prepare("SELECT * FROM events WHERE slug=?").bind(slug).first();
 }
 
+async function getEventAliasTarget(env, oldSlug) {
+  if (!env?.DB || !SLUG_RE.test(String(oldSlug || ""))) return "";
+  const alias = await env.DB.prepare("SELECT slug FROM event_aliases WHERE old_slug=?").bind(oldSlug).first();
+  const slug = String(alias?.slug || "");
+  if (!SLUG_RE.test(slug) || slug === oldSlug) return "";
+  const event = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(slug).first();
+  return event ? slug : "";
+}
+
+async function recordEventAlias(env, oldSlug, slug, now, target = {}) {
+  oldSlug = String(oldSlug || "").trim();
+  slug = String(slug || "").trim();
+  if (!env?.DB || !SLUG_RE.test(oldSlug) || !SLUG_RE.test(slug) || oldSlug === slug) return false;
+
+  const event = await env.DB.prepare("SELECT slug, install_id, owner_user_id FROM events WHERE slug=?").bind(slug).first();
+  if (!event) return false;
+  if (target.install_id != null && event.install_id !== target.install_id) return false;
+  if (target.owner_user_id != null && event.owner_user_id !== target.owner_user_id) return false;
+
+  // Only aliases for retired slugs redirect. Active event slugs keep their own pages.
+  const oldEvent = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(oldSlug).first();
+  if (oldEvent) return false;
+
+  await env.DB.prepare("DELETE FROM event_aliases WHERE old_slug=?").bind(slug).run();
+  await env.DB.prepare("UPDATE event_aliases SET slug=? WHERE slug=?").bind(slug, oldSlug).run();
+  await env.DB.prepare(
+    `INSERT INTO event_aliases (old_slug, slug, created_ms)
+     VALUES (?, ?, ?)
+     ON CONFLICT(old_slug) DO UPDATE SET slug=excluded.slug`
+  ).bind(oldSlug, slug, now || nowMs()).run();
+  return true;
+}
+
 export async function getProfileByHandle(env, handle) {
   const h = normalizeHandle(handle);
   if (!env?.DB || !h) return null;
@@ -1312,8 +1345,21 @@ async function updateEventApi(request, env, slug) {
   if (cleaned.provided.includes("title") && !String(cleaned.values.title || "").trim()) {
     return jsonResp(400, { error: "bad title" });
   }
+  const hasSlug = Object.prototype.hasOwnProperty.call(body, "slug");
+  const nextSlug = hasSlug ? String(body.slug || "").trim() : slug;
+  if (hasSlug) {
+    if (!SLUG_RE.test(nextSlug)) return jsonResp(400, { error: "bad slug" });
+    if (nextSlug !== slug) {
+      const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(nextSlug).first();
+      if (existing) return jsonResp(409, { error: "slug taken" });
+    }
+  }
   const cols = [];
   const vals = [];
+  if (nextSlug !== slug) {
+    cols.push("slug=?");
+    vals.push(nextSlug);
+  }
   const map = {
     title: "title",
     host: "host",
@@ -1353,6 +1399,9 @@ async function updateEventApi(request, env, slug) {
   await env.DB.prepare(
     `UPDATE events SET ${cols.join(", ")} WHERE slug=? AND owner_user_id=?`
   ).bind(...vals, slug, user.id).run();
+  if (nextSlug !== slug) {
+    await recordEventAlias(env, slug, nextSlug, now, { owner_user_id: user.id });
+  }
   await bumpDjProfileActivity(env, profile.id, now);
   return jsonResp(200, { ok: true });
 }
@@ -3501,9 +3550,18 @@ async function broker(request, env, pathname) {
     const has = (k) => Object.prototype.hasOwnProperty.call(body, k);
     const slug = String(body.slug || "");
     if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+    const oldSlug = String(body.old_slug || body.previous_slug || body.previousSlug || "").trim();
+    if (oldSlug && !SLUG_RE.test(oldSlug)) return jsonResp(400, { error: "bad old_slug" });
 
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
     if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (oldSlug && oldSlug !== slug && !owner) {
+      const oldOwner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(oldSlug).first();
+      if (oldOwner) {
+        if (oldOwner.install_id !== id) return jsonResp(403, { error: "not owner" });
+        await env.DB.prepare("UPDATE events SET slug=? WHERE slug=? AND install_id=?").bind(slug, oldSlug, id).run();
+      }
+    }
 
     const textSpecs = [
       ["title", "title", 200],
@@ -3577,6 +3635,9 @@ async function broker(request, env, pathname) {
 
     const check = await env.DB.prepare("SELECT install_id, status, dj_profile_id FROM events WHERE slug=?").bind(slug).first();
     if (!check || check.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (oldSlug && oldSlug !== slug) {
+      await recordEventAlias(env, oldSlug, slug, now, { install_id: id });
+    }
     await bumpDjProfileActivity(env, check.dj_profile_id, now);
     return jsonResp(200, { ok: true, slug, url: `https://party.ramine.net/e/${slug}`, status: check.status || "upcoming" });
   }
@@ -4225,6 +4286,13 @@ export default {
       const slug = evm[1];
       const row = await env.DB.prepare("SELECT * FROM events WHERE slug=?").bind(slug).first();
       if (!row) {
+        const targetSlug = await getEventAliasTarget(env, slug);
+        if (targetSlug) {
+          return new Response(null, {
+            status: 301,
+            headers: { location: `/e/${targetSlug}`, "cache-control": "public, max-age=300" },
+          });
+        }
         return new Response(renderNotFound(), { status: 404, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30" } });
       }
       const set = await env.DB.prepare(
