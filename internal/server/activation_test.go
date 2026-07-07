@@ -69,6 +69,31 @@ func TestAccountStatusReportsDevNoLoginBypass(t *testing.T) {
 	}
 }
 
+func TestDevNoLoginRequiresEnvAndDevVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string
+		version string
+		want    bool
+	}{
+		{name: "unset env dev build", version: "dev", want: false},
+		{name: "enabled env dev build", env: "1", version: "dev", want: true},
+		{name: "disabled env dev build", env: "0", version: "dev", want: false},
+		{name: "enabled env release build", env: "1", version: "test-1.2.3", want: false},
+		{name: "enabled env empty version", env: "1", version: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("PP_DEV_NO_LOGIN", tt.env)
+			s := newTestEnv(t, nil).srv
+			s.Version = tt.version
+			if got := s.devNoLogin(); got != tt.want {
+				t.Fatalf("devNoLogin() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // Activation latches TRUE for the process: an unlinked poll never activates, and
 // a later sign-out never clears it mid-session (re-gates on next launch only).
 func TestAccountActivationLatch(t *testing.T) {
@@ -87,6 +112,11 @@ func TestAccountActivationLatch(t *testing.T) {
 	s.setAccountActivated(false)
 	if !s.accountActivated() {
 		t.Fatal("latch broken: activation cleared mid-session")
+	}
+
+	fresh := newTestEnv(t, nil).srv
+	if fresh.accountActivated() {
+		t.Fatal("fresh srv after a latched srv must not inherit activation")
 	}
 }
 

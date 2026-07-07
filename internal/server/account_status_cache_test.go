@@ -54,4 +54,14 @@ func TestAccountStatusCacheLookupCachesAndFreshBypasses(t *testing.T) {
 	if !refreshed || hits != 3 || status.CheckedMS != 3 {
 		t.Fatalf("expired lookup = status %d refreshed %v hits %d, want status 3 refreshed true hits 3", status.CheckedMS, refreshed, hits)
 	}
+
+	now = now.Add(2 * time.Second)
+	cache.clear()
+	status, refreshed, err = cache.lookup(clock, false, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !refreshed || hits != 4 || status.CheckedMS != 4 {
+		t.Fatalf("lookup after clear = status %d refreshed %v hits %d, want status 4 refreshed true hits 4", status.CheckedMS, refreshed, hits)
+	}
 }
