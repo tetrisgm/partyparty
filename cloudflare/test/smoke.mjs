@@ -3030,6 +3030,12 @@ const tests = [
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.match(html, /Smoke Test Rooftop/);
+    assert.match(html, /class="eventtop"/);
+    assert.match(html, /<b>DJ<\/b>Test DJ/);
+    assert.match(html, /<b>Date<\/b>Tonight/);
+    assert.match(html, /<b>Place<\/b>Test Venue/);
+    assert.match(html, /src="\/event\/known-set\/cover\.jpg"/);
+    assert.match(html, /Replay player/);
     assert.match(html, /<audio id="setaudio"/);
   }],
   ["event RSVP POST mints anonymous cookie and counts coming", async () => {
@@ -3154,17 +3160,59 @@ const tests = [
           name: "dancefloor.jpg",
           sort_order: 0,
         }],
+        wallComments: [{
+          id: "comment-img",
+          post_id: "post-img",
+          author: "Mia",
+          emoji: "\u2764\ufe0f",
+          text: "Still thinking about this.",
+          approved: 1,
+          deleted_ms: null,
+          ts_ms: 1893456100000,
+        }],
       },
     });
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.match(html, /<audio id="setaudio"/);
     assert.match(html, /<div class="wave" id="wave"/);
+    assert.match(html, /<div class="media-grid"/);
     assert.match(html, /<div class="timeline"/);
     assert.match(html, /The lights hit right at midnight\./);
     assert.match(html, /Bassline stayed locked\./);
+    assert.match(html, /Still thinking about this\./);
     assert.ok(html.indexOf("Bassline stayed locked.") < html.indexOf("The lights hit right at midnight."));
-    assert.match(html, /<img loading="lazy" src="\/event\/known-set\/media\/media-img"/);
+    assert.match(html, /<img loading="lazy" decoding="async" src="\/event\/known-set\/media\/media-img"/);
+  }],
+  ["event media gallery renders approved video tiles", async () => {
+    const resp = await fetchPath(`/e/${KNOWN_SLUG}`, {}, {
+      db: {
+        wallPosts: [{
+          id: "post-video",
+          slug: KNOWN_SLUG,
+          author: "Ava",
+          text: "Clip from the opener.",
+          approved: 1,
+          deleted_ms: null,
+          activity_ms: 1893456000000,
+          created_ms: 1893456000000,
+        }],
+        wallMedia: [{
+          id: "media-video",
+          slug: KNOWN_SLUG,
+          post_id: "post-video",
+          media_key: `event/${KNOWN_SLUG}/media-video`,
+          media_type: "video",
+          mime_type: "video/mp4",
+          name: "opener.mp4",
+          sort_order: 0,
+        }],
+      },
+    });
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /<div class="media-grid"/);
+    assert.match(html, /<video controls preload="metadata" playsinline src="\/event\/known-set\/media\/media-video"/);
   }],
   ["event wall ignores invalid timestamps instead of crashing", async () => {
     const resp = await fetchPath(`/e/${KNOWN_SLUG}`, {}, {
@@ -3192,7 +3240,8 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(html, /<audio id="setaudio"/);
     assert.match(html, /<div class="wave" id="wave"/);
-    assert.match(html, /No posts yet — guests' photos &amp; clips will appear here\./);
+    assert.match(html, /No photos or clips yet\. Approved guest media will collect here after the party\./);
+    assert.match(html, /No comments yet\. Guest notes will appear here once the DJ approves them\./);
   }],
   ["unknown event returns 404", async () => {
     const resp = await fetchPath("/e/unknown-set");

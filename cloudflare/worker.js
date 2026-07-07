@@ -413,6 +413,44 @@ nav{max-width:940px;margin:0 auto;padding:16px 20px;display:flex;align-items:cen
 .card{background:var(--card);border-radius:var(--r);padding:24px;margin-top:16px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 0 0 1px var(--hair)}
 .card h2{font-size:20px;font-weight:600;letter-spacing:-.02em;margin:0 0 6px}
 .card .sub{color:var(--ink2);font-size:14px;margin:0 0 16px}
+.eventtop{display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,320px);gap:20px;align-items:stretch;margin-top:12px}
+.eventintro{min-width:0;padding:14px 0 10px;display:flex;flex-direction:column;justify-content:center}
+.eventactions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.eventactions .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line);box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.eventactions .btn.ghost:hover{border-color:var(--accent)}
+.eventeyebrow{margin:0 0 12px;color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.eventintro .statuspill{background:rgba(255,45,111,.08);backdrop-filter:none;border-color:rgba(255,45,111,.18);color:var(--accent);margin:0 0 12px}
+.eventintro .statuspill .dot{box-shadow:none;animation:none}
+.eventtitle{font-size:44px;line-height:1.04;font-weight:700;margin:0;color:var(--ink);letter-spacing:0;overflow-wrap:anywhere}
+.eventtagline{color:var(--ink2);font-size:17px;line-height:1.45;margin:14px 0 0;max-width:58ch}
+.eventmeta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.eventmeta span{display:inline-flex;align-items:center;gap:6px;min-height:32px;border:1px solid var(--line);border-radius:var(--pill);padding:6px 11px;background:#fff;color:var(--ink2);font-size:13px;line-height:1.2}
+.eventmeta b{font-weight:600;color:var(--ink)}
+.eventcover{min-height:260px;border-radius:24px;overflow:hidden;background:linear-gradient(135deg,#fff 0%,#f5f5f7 48%,#ffe8f0 100%);box-shadow:0 1px 2px rgba(0,0,0,.04),0 0 0 1px var(--hair)}
+.eventcover img{width:100%;height:100%;min-height:260px;object-fit:cover}
+.eventcover.fallback{display:grid;place-items:end;padding:22px;color:var(--ink)}
+.eventcover.fallback span{font-size:13px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em}
+.replayhero{position:relative;overflow:hidden;padding:28px;border-color:rgba(255,45,111,.16);background:linear-gradient(180deg,#fff 0%,#fff8fb 100%)}
+.replayhero:before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:var(--accent)}
+.replayhead{position:relative;display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:18px}
+.replaylabel{margin:0 0 6px;color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.replayhero h2{font-size:28px;line-height:1.08;letter-spacing:0;margin:0}
+.replaymeta{color:var(--ink2);font-size:14px;line-height:1.35;margin:8px 0 0}
+.replayduration{white-space:nowrap;border:1px solid var(--line);border-radius:var(--pill);background:#fff;color:var(--ink);font-size:13px;font-weight:600;padding:8px 12px}
+.replayhero .wave{height:108px;margin:0 0 16px;padding:12px;border:1px solid var(--line);border-radius:16px;background:#fff}
+.replayhero .wave i{background:#ececf0}
+.replayhero audio{width:100%;display:block}
+.media-card .sectionhead,.commentcard .sectionhead{margin:0 0 14px}
+.media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.media-tile{margin:0;border-radius:14px;overflow:hidden;background:var(--bg);position:relative;box-shadow:0 0 0 1px var(--line)}
+.media-tile img,.media-tile video{width:100%;aspect-ratio:1;object-fit:cover;background:var(--bg);display:block}
+.media-tile video{cursor:pointer}
+.media-tile figcaption{position:absolute;left:0;right:0;bottom:0;padding:18px 10px 9px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.52));color:#fff;font-size:12px;font-weight:600;line-height:1.2;opacity:0;transition:opacity .15s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.media-tile:hover figcaption,.media-tile:focus-within figcaption{opacity:1}
+.commentcard .timeline{margin-top:4px}
+.commentcard .comments{background:var(--bg);border-left:0;border-radius:12px;margin:12px 0 0;padding:10px 12px}
+.commentcard .comment{font-size:13px}
+.emptykeepsake{display:grid;gap:8px;color:var(--ink2);font-size:14px;line-height:1.45;margin:0}
 .livebar{display:flex;align-items:center;gap:14px}
 .livebar .eq{display:flex;gap:3px;align-items:flex-end;height:26px}
 .livebar .eq i{width:4px;background:var(--accent);border-radius:2px;animation:bar 1s ease-in-out infinite}
@@ -500,7 +538,9 @@ footer{max-width:940px;margin:0 auto;padding:28px 20px 60px;color:var(--ink3);fo
 .rsvp{display:grid;gap:14px}.rsvphead{display:flex;justify-content:space-between;gap:16px;align-items:start}.rsvphead .sub{margin-bottom:0}.rsvpcounts{display:flex;gap:14px;align-items:center;color:var(--ink2);font-size:12px;white-space:nowrap}.rsvpcounts b{display:block;color:var(--ink);font-size:22px;line-height:1}.rsvprow{display:flex;gap:10px;flex-wrap:wrap}.rsvp .btn.active{background:var(--accent);color:#fff;border-color:transparent}.rsvpfields{display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:10px}.rsvpfields input{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink)}.rsvpfields input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,45,111,.12)}
 @media(max-width:760px){.homehero{grid-template-columns:1fr;padding-top:26px}.eventgrid,.djstrip,.emptyhome{grid-template-columns:1fr}.eventcard{grid-template-columns:92px minmax(0,1fr)}}
 @media(max-width:760px){.accountgrid{grid-template-columns:1fr}.accounthead{display:grid}.navlinks{gap:6px}.navlinks .btn.sm{padding:8px 12px}}
+@media(max-width:760px){.eventtop{grid-template-columns:1fr;gap:14px}.eventcover{order:-1;min-height:220px}.eventcover img{min-height:220px}.eventtitle{font-size:36px}.eventtagline{font-size:16px}.replayhead{display:grid}.replayduration{justify-self:start}.media-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.media-tile figcaption{display:none}}
 @media(max-width:560px){.rsvphead{display:grid}.rsvpcounts{justify-content:space-between}.rsvpfields{grid-template-columns:1fr 70px}}
+@media(max-width:560px){.eventpage{padding-left:16px;padding-right:16px}.eventactions{margin-bottom:14px}.eventtitle{font-size:32px}.eventmeta span{font-size:12px}.replayhero{padding:22px}.replayhero h2{font-size:24px}.replayhero .wave{height:86px}.commentcard .tl-entry{grid-template-columns:32px minmax(0,1fr)}.commentcard .tl-dot{width:30px;height:30px;font-size:15px}.commentcard .timeline:before{left:15px}}
 `;
 
 const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -1743,19 +1783,21 @@ async function accountResponse(request, env) {
 // eventFromRow projects a D1 events row (+ its latest ready set) into the shape
 // renderEvent expects. A missing set yields an "upcoming" empty state.
 function eventFromRow(row, set, slug, wall = {}) {
+  const when = row.starts || (row.scheduled_at_ms ? fmtWhen(row.scheduled_at_ms) : "");
+  const where = row.location_name || row.where_txt || row.location_address || "";
   return {
     slug,
     title: row.title || "A partyparty set",
     dj: row.host || "",
-    when: row.starts || "",
-    where: row.where_txt || "",
+    when,
+    where,
     // Drive the pill off whether a ready set exists, not the D1 status column
     // (which defaults to 'replay') — a set-less event (cover/meta only) reads as
     // "upcoming", which is what the empty-state card keys on.
     status: set ? "replay" : "upcoming",
     listeners: 0,
     tagline: row.tagline || "",
-    cover: row.cover_key ? `/event/${slug}/cover.jpg` : "/img/dance.jpg",
+    cover: row.cover_key ? `/event/${slug}/cover.jpg` : "",
     about: row.about || "",
     wall: Array.isArray(wall) ? wall : [],
     posts: Array.isArray(wall.posts) ? wall.posts : [],
@@ -1788,21 +1830,34 @@ function mediaUrl(slug, mediaId) {
   return `/event/${encodeURIComponent(String(slug || ""))}/media/${encodeURIComponent(String(mediaId || ""))}`;
 }
 
-function renderWallMedia(slug, media) {
+function renderGalleryMedia(slug, media) {
   if (!media?.length) return "";
   const items = media.map((m) => {
     const src = esc(mediaUrl(slug, m.id));
-    const name = esc(m.name || "Event media");
+    const name = esc(m.name || "Guest media");
     if (m.media_type === "image") {
-      return `<img loading="lazy" src="${src}" alt="${name}">`;
+      return `<figure class="media-tile"><img loading="lazy" decoding="async" src="${src}" alt="${name}"><figcaption>${name}</figcaption></figure>`;
     }
     if (m.media_type === "video") {
-      return `<video controls preload="none" src="${src}"></video>`;
-    }
-    if (m.media_type === "audio") {
-      return `<audio controls preload="none" src="${src}"></audio>`;
+      return `<figure class="media-tile"><video controls preload="metadata" playsinline src="${src}" aria-label="${name}"></video><figcaption>${name}</figcaption></figure>`;
     }
     return "";
+  }).filter(Boolean).join("");
+  return items ? `<div class="media-grid">${items}</div>` : "";
+}
+
+function renderSeedGallery(items) {
+  if (!items?.length) return "";
+  const html = items.map((src) => `<figure class="media-tile"><img loading="lazy" decoding="async" src="${esc(src)}" alt="Party photo"></figure>`).join("");
+  return html ? `<div class="media-grid">${html}</div>` : "";
+}
+
+function renderPostAudio(slug, media) {
+  if (!media?.length) return "";
+  const items = media.map((m) => {
+    if (m.media_type !== "audio") return "";
+    const src = esc(mediaUrl(slug, m.id));
+    return `<audio controls preload="none" src="${src}"></audio>`;
   }).filter(Boolean).join("");
   return items ? `<div class="tl-media">${items}</div>` : "";
 }
@@ -1818,12 +1873,14 @@ function renderWallPost(post, slug, media, comments) {
     const commentDj = Number(c.dj) === 1;
     return `<div class="comment">${c.emoji ? `<span>${esc(c.emoji)}</span> ` : ""}<b>${esc(c.author || (commentDj ? "DJ" : "Guest"))}</b> ${esc(c.text || "")}</div>`;
   }).join("")}</div>` : "";
+  const audioHtml = renderPostAudio(slug, media);
+  if (!text && !commentHtml && !audioHtml) return "";
   return `<article class="tl-entry">
     <div class="tl-dot${isDj ? " dj" : ""}" aria-hidden="true">${esc(post.emoji || "•")}</div>
     <div class="tl-body">
       <div class="tl-who"><b>${esc(who)}</b>${isDj ? `<span class="djchip">DJ</span>` : ""}${timeText && datetime ? `<time datetime="${esc(datetime)}">${esc(timeText)}</time>` : ""}</div>
       ${text}
-      ${renderWallMedia(slug, media)}
+      ${audioHtml}
       ${commentHtml}
     </div>
   </article>`;
@@ -1863,17 +1920,21 @@ buttons.forEach(function(b){b.addEventListener('click',function(){var choice=b.g
 }
 
 function renderEvent(e, opts = {}) {
-  const soon = "Coming soon — event pages are in progress.";
+  const soon = "Coming soon - event pages are in progress.";
   const ownerStrip = opts.isOwner && e.slug ? `<a class="btn ghost sm" href="/e/${esc(e.slug)}/edit">Edit</a>` : "";
   const statusPill = e.status === "live"
     ? `<span class="statuspill"><span class="dot"></span> Live · ${esc(e.listeners)} listening</span>`
     : e.status === "upcoming" ? `<span class="statuspill">Upcoming</span>`
-    : `<span class="statuspill">▶ Replay</span>`;
-
-  const metaBits = [e.when, e.where, e.dj ? "by " + e.dj : ""].filter(Boolean).map(esc);
-  const emeta = metaBits.length ? `<div class="emeta">${metaBits.join(" · ")}</div>` : "";
-  const ctaNote = e.status === "live" ? "Scan the QR at the party to listen"
-    : e.set ? "The set replay is below — press play" : "The replay lands here when the DJ finishes";
+    : `<span class="statuspill">Replay</span>`;
+  const meta = [
+    e.dj ? `<span><b>DJ</b>${esc(e.dj)}</span>` : "",
+    e.when ? `<span><b>Date</b>${esc(e.when)}</span>` : "",
+    e.where ? `<span><b>Place</b>${esc(e.where)}</span>` : "",
+  ].filter(Boolean).join("");
+  const eventMeta = meta ? `<div class="eventmeta">${meta}</div>` : "";
+  const coverBlock = e.cover
+    ? `<div class="eventcover"><img loading="eager" decoding="async" src="${esc(e.cover)}" alt="${esc(e.title)} cover"></div>`
+    : `<div class="eventcover fallback" aria-hidden="true"><span>partyparty</span></div>`;
 
   // Live (the demo seed) shows the animated now-playing bar; a published event
   // shows the real replay player.
@@ -1888,12 +1949,18 @@ function renderEvent(e, opts = {}) {
   </div>` : "";
 
   const playerCard = e.set ? `
-  <div class="card player">
-    <h2>The set ▶</h2>
-    <p class="psub">${esc(fmtDur(e.set.durationMs))} · silent-disco replay</p>
+  <section class="card replayhero player" aria-labelledby="replay-title">
+    <div class="replayhead">
+      <div>
+        <p class="replaylabel">Replay player</p>
+        <h2 id="replay-title">The set, saved from the room</h2>
+        <p class="replaymeta">${esc(e.tagline || "A low-latency partyparty replay from the DJ's Mac.")}</p>
+      </div>
+      <span class="replayduration">${esc(fmtDur(e.set.durationMs))}</span>
+    </div>
     <div class="wave" id="wave" data-peaks="/event/${esc(e.slug)}/${esc(e.set.id)}.peaks.json"></div>
     <audio id="setaudio" controls preload="none" src="/event/${esc(e.slug)}/${esc(e.set.id)}.m4a"></audio>
-  </div>` : "";
+  </section>` : "";
 
   // Real outbound social links (no dead "coming soon" toast); absent URLs render nothing.
   const socialLinks = social("sc", e.socials?.soundcloud, "#ff7700", "SoundCloud")
@@ -1901,7 +1968,6 @@ function renderEvent(e, opts = {}) {
     + social("sp", e.socials?.spotify, "#1db954", "Spotify");
   const aboutInner = (e.about ? `<p>${esc(e.about)}</p>` : "") + (socialLinks ? `<div class="slist">${socialLinks}</div>` : "");
   const aboutCard = aboutInner ? `<div class="card about"><h2>About this set</h2>${aboutInner}</div>` : "";
-  const previewBadge = "";
   const shareUrl = e.slug ? `${SITE_ORIGIN}/e/${esc(e.slug)}` : "";
   const shareButton = e.slug
     ? `<button class="btn ghost sm" data-share data-share-url="${shareUrl}" data-share-title="${esc(e.title)} · partyparty" data-share-text="${esc(e.tagline || "A partyparty set")}">Share</button>`
@@ -1911,8 +1977,9 @@ function renderEvent(e, opts = {}) {
   const rsvpCard = renderRsvpBlock(e);
 
   const posts = Array.isArray(e.posts) ? e.posts : [];
+  const media = Array.isArray(e.media) ? e.media : [];
   const mediaByPost = new Map();
-  for (const m of (Array.isArray(e.media) ? e.media : [])) {
+  for (const m of media) {
     const pid = String(m.post_id || "");
     if (!pid) continue;
     const list = mediaByPost.get(pid) || [];
@@ -1927,27 +1994,32 @@ function renderEvent(e, opts = {}) {
     list.push(c);
     commentsByPost.set(pid, list);
   }
-  const wallSection = posts.length ? `
-  <div class="card">
-    <h2>The night</h2>
-    <p class="sub">Everything the room shot tonight — approved by the DJ.</p>
-    <div class="timeline">
-      ${posts.map((p) => renderWallPost(p, e.slug, mediaByPost.get(String(p.id || "")) || [], commentsByPost.get(String(p.id || "")) || [])).join("")}
-    </div>
-  </div>` : (e.wall || []).length ? `
-  <div class="card">
-    <h2>The wall</h2>
-    <p class="sub">Everything the room shot tonight — you approve what shows.</p>
-    <div class="wall">
-      ${(e.wall || []).map((s) => `<div class="thumb" style="background-image:url('${esc(s)}')"></div>`).join("")}
-    </div>
-    <div class="cardhint">Guests' photos, videos and comments from the night — moderated by the DJ.</div>
-  </div>` : `
-  <div class="card">
-    <h2>The wall</h2>
-    <p class="sub">No posts yet — guests' photos &amp; clips will appear here.</p>
-    <div class="cardhint">Guests drop photos, videos and comments straight from their phone — moderated by the DJ.</div>
-  </div>`;
+  const gallery = renderGalleryMedia(e.slug, media);
+  const seedGallery = gallery ? "" : renderSeedGallery(e.wall || []);
+  const gallerySection = gallery || seedGallery ? `
+  <section class="card media-card" aria-labelledby="media-title">
+    <div class="sectionhead"><div><h2 id="media-title">Photos &amp; video</h2><p>Guest captures approved by the DJ.</p></div></div>
+    ${gallery || seedGallery}
+  </section>` : `
+  <section class="card media-card" aria-labelledby="media-title">
+    <div class="sectionhead"><div><h2 id="media-title">Photos &amp; video</h2><p>Guest captures approved by the DJ.</p></div></div>
+    <p class="emptykeepsake">No photos or clips yet. Approved guest media will collect here after the party.</p>
+  </section>`;
+  const timelineItems = posts.map((p) => renderWallPost(
+    p,
+    e.slug,
+    mediaByPost.get(String(p.id || "")) || [],
+    commentsByPost.get(String(p.id || "")) || []
+  )).filter(Boolean).join("");
+  const commentSection = timelineItems ? `
+  <section class="card commentcard" aria-labelledby="comments-title">
+    <div class="sectionhead"><div><h2 id="comments-title">Comments</h2><p>Notes and replies from the night, in order.</p></div></div>
+    <div class="timeline">${timelineItems}</div>
+  </section>` : `
+  <section class="card commentcard" aria-labelledby="comments-title">
+    <div class="sectionhead"><div><h2 id="comments-title">Comments</h2><p>Notes and replies from the night, in order.</p></div></div>
+    <p class="emptykeepsake">No comments yet. Guest notes will appear here once the DJ approves them.</p>
+  </section>`;
 
   const waveScript = e.set ? `<script>
 (function(){var a=document.getElementById('setaudio'),w=document.getElementById('wave');if(!a||!w)return;var bars=[];
@@ -1958,20 +2030,21 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
 })();
 </script>` : "";
 
-  const body = `<div class="page">
-    <div class="hdr">
-      <div class="cover" style="background-image:url('${esc(e.cover)}')"></div>
-      <div class="hactions">${ownerStrip}${shareButton}</div>
-      <div class="in">
+  const body = `<div class="page eventpage">
+    <section class="eventtop" aria-labelledby="event-title">
+      <div class="eventintro">
+        <div class="eventactions">${ownerStrip}${shareButton}</div>
+        <p class="eventeyebrow">partyparty keepsake</p>
         ${statusPill}
-        <h1 class="etitle">${esc(e.title)}</h1>
-        ${emeta}
-        <div class="ecta"><span class="note">${esc(ctaNote)}</span></div>
-        ${previewBadge}
+        <h1 class="eventtitle" id="event-title">${esc(e.title)}</h1>
+        ${e.tagline ? `<p class="eventtagline">${esc(e.tagline)}</p>` : ""}
+        ${eventMeta}
       </div>
-    </div>
+      ${coverBlock}
+    </section>
     ${liveCard}${playerCard}${upcomingCard}${rsvpCard}
-    ${wallSection}
+    ${gallerySection}
+    ${commentSection}
     ${aboutCard}
   </div>
   <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}${rsvpScript(Number(e.rsvp_enabled) === 1)}`;
