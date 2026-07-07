@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import worker, { cookieHeader, normalizeHandle, parseCookies, readJson, sha256Hex } from "../worker.js";
+import worker, { cookieHeader, normalizeHandle, parseCookies, readJson, sendViaMXroute, sha256Hex } from "../worker.js";
 
 globalThis.caches ??= {
   default: {
@@ -1120,6 +1120,102 @@ async function fetchPath(path, init = {}, envOpts = {}) {
 
 const AUTH_DEV_SECRET = "smoke-dev-secret";
 
+function smtpSuccessReplies() {
+  return [
+    "220 mxroute ESMTP ready\r\n",
+    "250-mxroute greets party.ramine.net\r\n250 AUTH LOGIN PLAIN\r\n",
+    "334 VXNlcm5hbWU6\r\n",
+    "334 UGFzc3dvcmQ6\r\n",
+    "235 2.7.0 Authentication successful\r\n",
+    "250 2.1.0 Sender ok\r\n",
+    "250 2.1.5 Recipient ok\r\n",
+    "354 End data with <CR><LF>.<CR><LF>\r\n",
+    "250 2.0.0 Queued\r\n",
+    "221 2.0.0 Bye\r\n",
+  ];
+}
+
+function fakeSmtpConnect(replies = smtpSuccessReplies()) {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const calls = [];
+  const writes = [];
+  let closed = false;
+  const connect = (address, options) => {
+    calls.push({ address, options });
+    return {
+      opened: Promise.resolve({ remoteAddress: address.hostname, localAddress: "127.0.0.1" }),
+      readable: new ReadableStream({
+        start(controller) {
+          for (const reply of replies) controller.enqueue(encoder.encode(reply));
+          controller.close();
+        },
+      }),
+      writable: new WritableStream({
+        write(chunk) {
+          writes.push(decoder.decode(chunk));
+        },
+      }),
+      close: async () => { closed = true; },
+      startTls() {
+        throw new Error("unexpected STARTTLS in implicit TLS smoke test");
+      },
+    };
+  };
+  return {
+    calls,
+    writes,
+    connect,
+    get closed() { return closed; },
+  };
+}
+
+function fakeStartTlsSmtpConnect() {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const calls = [];
+  const writes = [];
+  let upgraded = false;
+  const socketFor = (replies, startTlsSocket = null) => ({
+    opened: Promise.resolve({ remoteAddress: "mail.mxrouting.test", localAddress: "127.0.0.1" }),
+    readable: new ReadableStream({
+      start(controller) {
+        for (const reply of replies) controller.enqueue(encoder.encode(reply));
+        controller.close();
+      },
+    }),
+    writable: new WritableStream({
+      write(chunk) {
+        writes.push(decoder.decode(chunk));
+      },
+    }),
+    close: async () => {},
+    startTls() {
+      upgraded = true;
+      return startTlsSocket;
+    },
+  });
+  const secure = socketFor([
+    "250 mxroute greets party.ramine.net\r\n",
+    ...smtpSuccessReplies().slice(2),
+  ]);
+  const plain = socketFor([
+    "220 mxroute ESMTP ready\r\n",
+    "250-STARTTLS\r\n250 AUTH LOGIN PLAIN\r\n",
+    "220 2.0.0 Ready to start TLS\r\n",
+  ], secure);
+  const connect = (address, options) => {
+    calls.push({ address, options });
+    return plain;
+  };
+  return {
+    calls,
+    writes,
+    connect,
+    get upgraded() { return upgraded; },
+  };
+}
+
 async function requestDevLink(db, email, opts = {}) {
   const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
     method: "POST",
@@ -1316,6 +1412,61 @@ const tests = [
     });
     assert.equal(await readJson(tooLarge, 10), null);
   }],
+  ["sendViaMXroute walks SMTP AUTH LOGIN over implicit TLS", async () => {
+    const smtp = fakeSmtpConnect();
+    const ok = await sendViaMXroute({
+      AUTH_EMAIL_SERVER: "smtps://signin%40mail.example.test:p%40ssword@mail.mxrouting.test:465",
+      AUTH_EMAIL_FROM: "partyparty <signin@mail.example.test>",
+      BROKER_BASE: "party.ramine.net",
+      __TEST_SMTP_CONNECT: smtp.connect,
+    }, "User@Example.COM", "https://party.ramine.net/auth/verify?token=abc123");
+
+    assert.equal(ok, true);
+    assert.deepEqual(smtp.calls, [{
+      address: { hostname: "mail.mxrouting.test", port: 465 },
+      options: { secureTransport: "on" },
+    }]);
+    assert.deepEqual(smtp.writes.slice(0, 7), [
+      "EHLO party.ramine.net\r\n",
+      "AUTH LOGIN\r\n",
+      `${Buffer.from("signin@mail.example.test", "utf8").toString("base64")}\r\n`,
+      `${Buffer.from("p@ssword", "utf8").toString("base64")}\r\n`,
+      "MAIL FROM:<signin@mail.example.test>\r\n",
+      "RCPT TO:<user@example.com>\r\n",
+      "DATA\r\n",
+    ]);
+    assert.match(smtp.writes[7], /From: "partyparty" <signin@mail\.example\.test>/);
+    assert.match(smtp.writes[7], /To: <user@example\.com>/);
+    assert.match(smtp.writes[7], /Content-Type: multipart\/alternative; boundary="pp-[a-f0-9]+"/);
+    assert.match(smtp.writes[7], /Sign in to partyparty/);
+    assert.match(smtp.writes[7], /Continue to partyparty/);
+    assert.ok(smtp.writes[7].endsWith("\r\n.\r\n"));
+    assert.equal(smtp.writes[8], "QUIT\r\n");
+    assert.equal(smtp.closed, false);
+  }],
+  ["sendViaMXroute upgrades smtp URLs with STARTTLS", async () => {
+    const smtp = fakeStartTlsSmtpConnect();
+    const ok = await sendViaMXroute({
+      AUTH_EMAIL_SERVER: "smtp://signin%40mail.example.test:p%40ssword@mail.mxrouting.test:587",
+      AUTH_EMAIL_FROM: "partyparty <signin@mail.example.test>",
+      BROKER_BASE: "party.ramine.net",
+      __TEST_SMTP_CONNECT: smtp.connect,
+    }, "starttls@example.com", "https://party.ramine.net/auth/verify?token=starttls");
+
+    assert.equal(ok, true);
+    assert.deepEqual(smtp.calls, [{
+      address: { hostname: "mail.mxrouting.test", port: 587 },
+      options: { secureTransport: "starttls" },
+    }]);
+    assert.equal(smtp.upgraded, true);
+    assert.deepEqual(smtp.writes.slice(0, 4), [
+      "EHLO party.ramine.net\r\n",
+      "STARTTLS\r\n",
+      "EHLO party.ramine.net\r\n",
+      "AUTH LOGIN\r\n",
+    ]);
+    assert.equal(smtp.writes[7], "RCPT TO:<starttls@example.com>\r\n");
+  }],
   ["auth request-link gates devLink behind dev secret", async () => {
     const db = new FakeD1();
     const noHeader = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
@@ -1397,6 +1548,39 @@ const tests = [
     assert.equal(allowedJson.redirect, "/account");
     assert.match(allowed.headers.get("set-cookie") || "", /pp_session=[a-f0-9]{64}/);
     assert.equal("queued" in allowedJson, false);
+  }],
+  ["auth request-link sends through AUTH_EMAIL_SERVER before EMAIL binding", async () => {
+    const db = new FakeD1();
+    const smtp = fakeSmtpConnect();
+    const fallback = [];
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "203.0.113.29",
+      },
+      body: JSON.stringify({ email: "mxroute@example.com", redirect: "/account" }),
+    }), makeEnv({
+      DB: db,
+      env: {
+        AUTH_EMAIL_SERVER: "smtps://signin%40mail.example.test:p%40ssword@mail.mxrouting.test:465",
+        AUTH_EMAIL_FROM: "partyparty <signin@mail.example.test>",
+        __TEST_SMTP_CONNECT: smtp.connect,
+        EMAIL: {
+          send: async (message) => {
+            fallback.push(message);
+            return { messageId: "fallback" };
+          },
+        },
+      },
+    }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.deepEqual(json, { ok: true });
+    assert.equal(smtp.calls.length, 1);
+    assert.equal(fallback.length, 0);
+    assert.equal(smtp.writes[5], "RCPT TO:<mxroute@example.com>\r\n");
+    assert.match(smtp.writes[7], /https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}/);
   }],
   ["auth request-link sends through EMAIL binding when configured", async () => {
     const db = new FakeD1();
