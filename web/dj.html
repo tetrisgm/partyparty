@@ -376,6 +376,16 @@
     <div class="hint" id="hotspotNoInternet" style="display:none">Guests (and this Mac) won't have internet while on this Wi-Fi — that's normal for the no-gear mode.</div>
     <div id="qr"></div>
     <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+    <details id="wifiJoin" style="margin-top:12px">
+      <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →</summary>
+      <div style="margin-top:10px">
+        <div class="hint" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your hotspot). Their phone camera joins it from this QR — then they scan the party QR above.</div>
+        <input id="wifiSsid" placeholder="Wi-Fi network name (SSID)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px;margin-bottom:8px">
+        <input id="wifiPass" placeholder="Wi-Fi password (leave blank if open)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px">
+        <div id="wifiQr" style="margin-top:12px"></div>
+        <div class="hint" id="wifiQrHint" style="display:none;margin-top:6px"><b>①</b> Scan to join the Wi-Fi · then the party QR above is <b>②</b></div>
+      </div>
+    </details>
     <div class="warn offline-fallback" id="hotspotFallback" style="display:none">
       <div><b>Hotspot is not ready yet.</b></div>
       <div>Turn on your Mac's hotspot: System Settings → General → Sharing → Internet Sharing → share to Wi-Fi.</div>
@@ -1160,6 +1170,29 @@
     $('qr').innerHTML = '';
     new QRCode($('qr'), { text, width:200, height:200, correctLevel: QRCode.CorrectLevel.M });
   }
+
+  // Optional "join the Wi-Fi" QR — for venue networks where guests aren't already
+  // on the Wi-Fi. One QR can't both join Wi-Fi AND open a URL, and iOS only
+  // auto-joins a WIFI: QR from the Camera app, so it's a two-step flow.
+  function esc80211(s){ return String(s).replace(/([\\;,":])/g, '\\$1'); }
+  function renderWifiQr(){
+    const s = $('wifiSsid'), p = $('wifiPass'); if (!s) return;
+    const ssid = (s.value || '').trim(), pass = p ? p.value : '';
+    try { localStorage.setItem('pp.wifiSsid', ssid); localStorage.setItem('pp.wifiPass', pass); } catch (e) {}
+    const box = $('wifiQr'), hint = $('wifiQrHint');
+    box.innerHTML = '';
+    if (!ssid) { box.style.cssText = 'margin-top:12px'; hint.style.display = 'none'; return; }
+    const payload = 'WIFI:T:' + (pass ? 'WPA' : 'nopass') + ';S:' + esc80211(ssid) + ';' + (pass ? 'P:' + esc80211(pass) + ';' : '') + ';';
+    new QRCode(box, { text: payload, width:180, height:180, correctLevel: QRCode.CorrectLevel.M });
+    box.style.cssText = 'margin-top:12px;display:flex;justify-content:center;background:#fff;padding:10px;border-radius:12px;width:fit-content';
+    hint.style.display = 'block';
+  }
+  (function(){
+    const s = $('wifiSsid'), p = $('wifiPass'); if (!s || !p) return;
+    try { s.value = localStorage.getItem('pp.wifiSsid') || ''; p.value = localStorage.getItem('pp.wifiPass') || ''; } catch (e) {}
+    s.oninput = renderWifiQr; p.oninput = renderWifiQr;
+    if (s.value) { $('wifiJoin').open = true; renderWifiQr(); }
+  })();
 
   function renderHonestFallback(reach){
     const state = reach && reach.state ? reach.state : 'ok';
