@@ -2015,13 +2015,242 @@ button{border:0;border-radius:8px;background:#fff;color:#111;font:600 16px/1 -ap
 </html>`, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
-async function sendViaMXroute(_env, _toEmail, _link) {
-  // U13: implement sendViaMXroute (SMTP over cloudflare:sockets)
-  throw new Error("mxroute sender not wired (U13)");
+function safeDecodeComponent(s) {
+  try { return decodeURIComponent(s || ""); }
+  catch (_) { return s || ""; }
+}
+
+function mxrouteSmtpConfigPresent(env) {
+  if (String(env.AUTH_EMAIL_SERVER || "").trim()) return true;
+  return !!(env.MXROUTE_SMTP_HOST && env.MXROUTE_SMTP_USER && env.MXROUTE_SMTP_PASS);
+}
+
+function mxrouteSmtpConfig(env) {
+  const rawUrl = String(env.AUTH_EMAIL_SERVER || "").trim();
+  if (rawUrl) {
+    try {
+      const u = new URL(rawUrl);
+      if (u.protocol !== "smtps:" && u.protocol !== "smtp:") return null;
+      const hostname = u.hostname;
+      const port = Number(u.port || (u.protocol === "smtps:" ? 465 : 587));
+      const username = safeDecodeComponent(u.username);
+      const password = safeDecodeComponent(u.password);
+      if (!hostname || !Number.isInteger(port) || port <= 0 || !username || !password) return null;
+      return {
+        hostname,
+        port,
+        username,
+        password,
+        secureTransport: u.protocol === "smtps:" ? "on" : "starttls",
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  const hostname = String(env.MXROUTE_SMTP_HOST || "").trim();
+  const username = String(env.MXROUTE_SMTP_USER || "").trim();
+  const password = String(env.MXROUTE_SMTP_PASS || "");
+  const port = Number(String(env.MXROUTE_SMTP_PORT || "465").trim() || "465");
+  if (!hostname || !username || !password || !Number.isInteger(port) || port <= 0) return null;
+  return {
+    hostname,
+    port,
+    username,
+    password,
+    secureTransport: port === 465 ? "on" : "starttls",
+  };
+}
+
+function smtpSafeHeloHost(env) {
+  const raw = String(env.AUTH_EMAIL_HELO || env.BROKER_BASE || "party.ramine.net").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9.-]{0,252}[a-z0-9]$/.test(raw) ? raw : "party.ramine.net";
+}
+
+function smtpBase64(s) {
+  let bin = "";
+  for (const b of new TextEncoder().encode(String(s || ""))) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+function smtpHeaderValue(s) {
+  return String(s || "").replace(/[\r\n]+/g, " ").trim();
+}
+
+function smtpAddressHeader(addr) {
+  const email = normalizeEmail(addr?.email) || "partyparty@ramine.net";
+  const name = smtpHeaderValue(addr?.name || "");
+  if (!name) return `<${email}>`;
+  const quoted = name.replace(/["\\]/g, "\\$&");
+  return `"${quoted}" <${email}>`;
+}
+
+function smtpNormalizeData(s) {
+  return String(s || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.startsWith(".") ? `.${line}` : line)
+    .join("\r\n");
+}
+
+function smtpMessageId(fromEmail) {
+  const domain = String(fromEmail || "").split("@")[1] || "party.ramine.net";
+  return `<${randHex(16)}@${domain}>`;
+}
+
+function authEmailMimeMessage(env, toEmail, link) {
+  const from = authEmailFrom(env);
+  const body = authEmailBody(link);
+  const boundary = `pp-${randHex(16)}`;
+  const headers = [
+    `From: ${smtpAddressHeader(from)}`,
+    `To: <${normalizeEmail(toEmail)}>`,
+    `Subject: ${smtpHeaderValue(body.subject)}`,
+    "MIME-Version: 1.0",
+    `Date: ${new Date().toUTCString()}`,
+    `Message-ID: ${smtpMessageId(from.email)}`,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+  ];
+  return `${headers.join("\r\n")}\r\n\r\n` +
+    `--${boundary}\r\n` +
+    "Content-Type: text/plain; charset=utf-8\r\n" +
+    "Content-Transfer-Encoding: 7bit\r\n\r\n" +
+    `${body.text}\r\n\r\n` +
+    `--${boundary}\r\n` +
+    "Content-Type: text/html; charset=utf-8\r\n" +
+    "Content-Transfer-Encoding: 7bit\r\n\r\n" +
+    `${body.html}\r\n\r\n` +
+    `--${boundary}--`;
+}
+
+class SmtpReplyReader {
+  constructor(reader) {
+    this.reader = reader;
+    this.decoder = new TextDecoder();
+    this.buffer = "";
+  }
+
+  async read() {
+    const lines = [];
+    for (;;) {
+      const idx = this.buffer.indexOf("\n");
+      if (idx < 0) {
+        const { value, done } = await this.reader.read();
+        if (done) throw new Error("smtp connection closed before reply");
+        this.buffer += this.decoder.decode(value, { stream: true });
+        continue;
+      }
+      const line = this.buffer.slice(0, idx).replace(/\r$/, "");
+      this.buffer = this.buffer.slice(idx + 1);
+      const code = Number(line.slice(0, 3));
+      if (!Number.isInteger(code)) throw new Error(`smtp malformed reply: ${line}`);
+      lines.push(line);
+      if (line[3] !== "-") return { code, lines };
+    }
+  }
+}
+
+async function smtpWrite(writer, data) {
+  await writer.write(new TextEncoder().encode(data));
+}
+
+async function smtpExpect(replies, expected, step) {
+  const reply = await replies.read();
+  const codes = Array.isArray(expected) ? expected : [expected];
+  if (!codes.includes(reply.code)) {
+    throw new Error(`smtp ${step} failed with ${reply.code}`);
+  }
+  return reply;
+}
+
+async function smtpAuthLogin(connectFn, config, message) {
+  let socket = null;
+  let reader = null;
+  let writer = null;
+  let ok = false;
+
+  const openStreams = () => {
+    reader = socket.readable.getReader();
+    writer = socket.writable.getWriter();
+    return new SmtpReplyReader(reader);
+  };
+
+  try {
+    socket = connectFn(
+      { hostname: config.hostname, port: config.port },
+      { secureTransport: config.secureTransport }
+    );
+    if (socket.opened) await socket.opened;
+    let replies = openStreams();
+
+    await smtpExpect(replies, 220, "greeting");
+    await smtpWrite(writer, `EHLO ${config.heloHost}\r\n`);
+    await smtpExpect(replies, 250, "ehlo");
+
+    if (config.secureTransport === "starttls") {
+      await smtpWrite(writer, "STARTTLS\r\n");
+      await smtpExpect(replies, 220, "starttls");
+      try { reader.releaseLock(); } catch (_) {}
+      try { writer.releaseLock(); } catch (_) {}
+      socket = socket.startTls();
+      if (socket.opened) await socket.opened;
+      replies = openStreams();
+      await smtpWrite(writer, `EHLO ${config.heloHost}\r\n`);
+      await smtpExpect(replies, 250, "ehlo after starttls");
+    }
+
+    await smtpWrite(writer, "AUTH LOGIN\r\n");
+    await smtpExpect(replies, 334, "auth username challenge");
+    await smtpWrite(writer, `${smtpBase64(config.username)}\r\n`);
+    await smtpExpect(replies, 334, "auth password challenge");
+    await smtpWrite(writer, `${smtpBase64(config.password)}\r\n`);
+    await smtpExpect(replies, 235, "auth");
+    await smtpWrite(writer, `MAIL FROM:<${config.fromEmail}>\r\n`);
+    await smtpExpect(replies, 250, "mail from");
+    await smtpWrite(writer, `RCPT TO:<${config.toEmail}>\r\n`);
+    await smtpExpect(replies, [250, 251], "rcpt to");
+    await smtpWrite(writer, "DATA\r\n");
+    await smtpExpect(replies, 354, "data");
+    await smtpWrite(writer, `${smtpNormalizeData(message)}\r\n.\r\n`);
+    await smtpExpect(replies, 250, "message");
+    await smtpWrite(writer, "QUIT\r\n");
+    await smtpExpect(replies, 221, "quit");
+    ok = true;
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    try { reader?.releaseLock?.(); } catch (_) {}
+    try { writer?.releaseLock?.(); } catch (_) {}
+    if (!ok) {
+      try { await socket?.close?.(); } catch (_) {}
+    }
+  }
+}
+
+async function mxrouteConnectFn(env) {
+  if (typeof env.__TEST_SMTP_CONNECT === "function") return env.__TEST_SMTP_CONNECT;
+  const mod = await import("cloudflare:sockets");
+  return mod.connect;
+}
+
+export async function sendViaMXroute(env, toEmail, link) {
+  const config = mxrouteSmtpConfig(env);
+  const toNorm = normalizeEmail(toEmail);
+  if (!config || !toNorm) return false;
+  const from = authEmailFrom(env);
+  const connectFn = await mxrouteConnectFn(env);
+  return await smtpAuthLogin(connectFn, {
+    ...config,
+    heloHost: smtpSafeHeloHost(env),
+    fromEmail: from.email,
+    toEmail: toNorm,
+  }, authEmailMimeMessage(env, toNorm, link));
 }
 
 function authEmailFrom(env) {
-  const raw = String(env.AUTH_EMAIL_FROM || "partyparty@ramine.net").trim();
+  const raw = String(env.AUTH_EMAIL_FROM || env.MXROUTE_SMTP_FROM || "partyparty@ramine.net").trim();
   const match = /^(?:"?([^"<>]*)"?\s*)?<([^<>]+)>$/.exec(raw);
   const email = normalizeEmail(match ? match[2] : raw) || "partyparty@ramine.net";
   const name = clip((match ? match[1] : env.AUTH_EMAIL_FROM_NAME) || "partyparty", 80).trim() || "partyparty";
@@ -2043,6 +2272,9 @@ function authEmailBody(link) {
 
 async function sendAuthEmail(env, toEmail, link, devMode = false) {
   if (devMode) return true;
+  if (mxrouteSmtpConfigPresent(env) && await sendViaMXroute(env, toEmail, link)) {
+    return true;
+  }
   if (env.EMAIL && typeof env.EMAIL.send === "function") {
     const body = authEmailBody(link);
     await env.EMAIL.send({
@@ -2053,9 +2285,6 @@ async function sendAuthEmail(env, toEmail, link, devMode = false) {
       html: body.html,
     });
     return true;
-  }
-  if (env.MXROUTE_SMTP_HOST && env.MXROUTE_SMTP_USER && env.MXROUTE_SMTP_PASS) {
-    return await sendViaMXroute(env, toEmail, link);
   }
   return false;
 }
