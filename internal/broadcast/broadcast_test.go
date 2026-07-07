@@ -161,20 +161,19 @@ func TestStartShowsStartingAndStopReturnsToIdle(t *testing.T) {
 	waitAllDead(t, pidLog, 4*time.Second)
 }
 
-func TestStatusFlipsToLiveOnSegments(t *testing.T) {
+func TestStatusFlipsToLiveOnProgress(t *testing.T) {
 	b, _, runDir := newTestBroadcaster(t)
 	b.Start("test", "", Options{})
 	if st := b.Status(); st.State != "starting" {
 		t.Fatalf("state = %q, want starting", st.State)
 	}
-	// Segments-on-disk is the liveness signal: fake the playlist the encoder
-	// would write.
-	playlist := filepath.Join(runDir, "stream.m3u8")
-	if err := os.WriteFile(playlist, []byte("#EXTM3U\n#EXTINF:1.0,\nseg_00001.ts\n"), 0o644); err != nil {
+	// Liveness is ffmpeg's -progress output: fake the progress block it writes
+	// ~1s after real frames start flowing.
+	if err := os.WriteFile(filepath.Join(runDir, "progress.txt"), []byte("frame=42\nout_time_us=1000000\nprogress=continue\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if st := b.Status(); st.State != "live" {
-		t.Fatalf("state with segments = %q, want live", st.State)
+		t.Fatalf("state after progress = %q, want live", st.State)
 	}
 	b.Stop()
 	waitForState(t, b, "idle", 3*time.Second)
@@ -197,7 +196,7 @@ func TestSetDeliveryIfIdle(t *testing.T) {
 	if b.SetDeliveryIfIdle("llhls") {
 		t.Fatal("must refuse while starting")
 	}
-	if err := os.WriteFile(filepath.Join(runDir, "stream.m3u8"), []byte("#EXTM3U\nseg_00001.ts\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(runDir, "progress.txt"), []byte("progress=continue\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if st := b.Status(); st.State != "live" {

@@ -162,8 +162,8 @@ func TestStatusEndpoint(t *testing.T) {
 	if bc["state"] != "idle" {
 		t.Errorf("broadcast.state = %v, want idle", bc["state"])
 	}
-	if body["streamUrl"] != "/hls/stream.m3u8" {
-		t.Errorf("streamUrl = %v", body["streamUrl"])
+	if _, ok := body["streamUrl"]; ok {
+		t.Errorf("streamUrl should be gone (HTTPS-only, LL-HLS only): %v", body["streamUrl"])
 	}
 	if body["llhlsAvailable"] != false {
 		t.Errorf("llhlsAvailable = %v, want false (MTX nil)", body["llhlsAvailable"])
@@ -1124,92 +1124,6 @@ func TestDeliveryEndpoint(t *testing.T) {
 	}
 	if env.bc.Delivery() != "hls" {
 		t.Errorf("delivery = %q", env.bc.Delivery())
-	}
-}
-
-func TestHLSPlaylistInjection(t *testing.T) {
-	playlist := "#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:1.0,\nseg_00001.ts\n"
-
-	t.Run("plain HLS injects the room target", func(t *testing.T) {
-		env := newTestEnv(t, nil)
-		if err := os.WriteFile(filepath.Join(env.runDir, "stream.m3u8"), []byte(playlist), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		w := do(env.srv, "GET", "/hls/stream.m3u8", "")
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d", w.Code)
-		}
-		if ct := w.Header().Get("Content-Type"); ct != "application/vnd.apple.mpegurl" {
-			t.Errorf("content-type = %q", ct)
-		}
-		body := w.Body.String()
-		// base 3*1+7 = 10 with zero adaptive delta
-		if !strings.Contains(body, "#EXT-X-START:TIME-OFFSET=-10.0,PRECISE=YES") {
-			t.Errorf("EXT-X-START tag missing/wrong:\n%s", body)
-		}
-		if !strings.HasPrefix(body, "#EXTM3U\n#EXT-X-START") {
-			t.Errorf("tag not injected directly after #EXTM3U:\n%s", body)
-		}
-	})
-
-	t.Run("llhls delivery leaves the fallback playlist untouched", func(t *testing.T) {
-		env := newTestEnv(t, func(c *config.Config) { c.Delivery = "llhls" })
-		if err := os.WriteFile(filepath.Join(env.runDir, "stream.m3u8"), []byte(playlist), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		w := do(env.srv, "GET", "/hls/stream.m3u8", "")
-		if w.Code != http.StatusOK {
-			t.Fatalf("status = %d", w.Code)
-		}
-		if strings.Contains(w.Body.String(), "#EXT-X-START") {
-			t.Errorf("llhls fallback playlist must not get an injected offset:\n%s", w.Body.String())
-		}
-	})
-
-	t.Run("explicit start-offset overrides", func(t *testing.T) {
-		env := newTestEnv(t, func(c *config.Config) { c.StartOffset = 2.5 })
-		if err := os.WriteFile(filepath.Join(env.runDir, "stream.m3u8"), []byte(playlist), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		w := do(env.srv, "GET", "/hls/stream.m3u8", "")
-		if !strings.Contains(w.Body.String(), "#EXT-X-START:TIME-OFFSET=-2.5,PRECISE=YES") {
-			t.Errorf("start-offset override not injected:\n%s", w.Body.String())
-		}
-	})
-}
-
-func TestHLSFileFiltering(t *testing.T) {
-	env := newTestEnv(t, nil)
-
-	for _, p := range []string{
-		"/hls/evil.txt",
-		"/hls/seg_abc.ts",
-		"/hls/other.m3u8",
-		"/hls/../../etc/passwd",
-	} {
-		if w := do(env.srv, "GET", p, ""); w.Code != http.StatusNotFound {
-			t.Errorf("GET %s = %d, want 404", p, w.Code)
-		}
-	}
-
-	// Well-formed but absent → 404 from the file server.
-	if w := do(env.srv, "GET", "/hls/seg_99999.ts", ""); w.Code != http.StatusNotFound {
-		t.Errorf("missing segment = %d, want 404", w.Code)
-	}
-
-	// A real segment is served with never-cache headers.
-	if err := os.WriteFile(filepath.Join(env.runDir, "seg_00001.ts"), []byte("tsdata"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	w := do(env.srv, "GET", "/hls/seg_00001.ts", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("segment = %d, want 200", w.Code)
-	}
-	if ct := w.Header().Get("Content-Type"); ct != "video/mp2t" {
-		t.Errorf("content-type = %q", ct)
-	}
-	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
-		t.Errorf("cache-control = %q, want no-store", cc)
 	}
 }
 

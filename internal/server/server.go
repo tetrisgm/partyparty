@@ -9,9 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path"
-	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -267,8 +264,6 @@ func (s *srv) devNoLogin() bool {
 	return active
 }
 
-var hlsFileRE = regexp.MustCompile(`^(stream\.m3u8|seg_\d+\.ts)$`)
-
 func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.captiveProbe(w, r) {
 		return
@@ -288,8 +283,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(p, "/vendor/"):
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
-	case strings.HasPrefix(p, "/hls/"):
-		s.handleHLS(w, r)
 	case strings.HasPrefix(p, "/media/"):
 		s.handleMedia(w, r)
 	case strings.HasPrefix(p, "/api/"):
@@ -395,7 +388,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"listenersTotal": s.Listeners.TotalUnique(),
 			"health":         health,
 			"urls":           s.urls(),
-			"streamUrl":      s.streamURL(),
 			"llhlsUrl":       s.llhlsURL(),
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
@@ -833,59 +825,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "unknown api"})
 	}
-}
-
-// handleHLS serves the plain-HLS files (delivery=hls). For delivery=llhls,
-// MediaMTX serves the stream and this path is unused. Listener counting is via
-// /api/heartbeat, so this just serves files.
-func (s *srv) handleHLS(w http.ResponseWriter, r *http.Request) {
-	file := path.Base(r.URL.Path)
-	if !hlsFileRE.MatchString(file) {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if strings.HasSuffix(file, ".m3u8") {
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		// THE sync mechanism ("aligned start, passive playback"): every player
-		// that joins parks at the same program position — the room target —
-		// via the standard EXT-X-START tag, then plays untouched at 1.0x.
-		// Devices stay in sync because they STARTED in sync; no client-side
-		// rate control or corrective seeking (that was a field disaster on
-		// real iOS hardware). Players that ignore the tag park at their own
-		// default — worse spread for that device, zero artifacts: fails soft.
-		// --start-offset overrides the computed target for experiments. In
-		// LL-HLS mode this plain playlist is only the fallback for probe-failed
-		// guests, so we DON'T inject (a 2.3s offset is impossible on 1s plain
-		// segments) — those outliers just park at their natural position.
-		offset := s.Config.StartOffset
-		if offset <= 0 && s.Broadcaster.Delivery() != "llhls" {
-			offset = s.currentTarget()
-		}
-		if offset > 0 {
-			if data, err := os.ReadFile(filepath.Join(s.RunDir, file)); err == nil {
-				tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.1f,PRECISE=YES\n", offset)
-				out := strings.Replace(string(data), "#EXTM3U\n", "#EXTM3U\n"+tag, 1)
-				_, _ = w.Write([]byte(out))
-				return
-			}
-		}
-	} else {
-		w.Header().Set("Content-Type", "video/mp2t")
-		// no-store: each live segment URL is fetched once per client, so caching
-		// buys nothing — but a cached segment surviving a broadcast restart can
-		// replay the PREVIOUS set's audio under the same URL. Never cache.
-		w.Header().Set("Cache-Control", "no-store")
-	}
-	http.ServeFile(w, r, filepath.Join(s.RunDir, file))
-}
-
-// streamURL is the baseline every device can play: our plain-HLS playlist
-// (in llhls mode the tee still writes it). The LL-HLS URL is advertised
-// separately (llhlsURL) and each guest probes it, falling back here.
-func (s *srv) streamURL() string {
-	return "/hls/stream.m3u8"
 }
 
 // llhlsURL is the low-latency upgrade a guest MAY use if its device can

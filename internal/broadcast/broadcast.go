@@ -49,7 +49,6 @@ type Broadcaster struct {
 	runDir     string
 	helperPath string // path to the extracted ppcapture binary ("" if unavailable)
 	ingestURL  string // RTSP push target for MediaMTX (llhls delivery)
-	playlist   string
 
 	mu  sync.Mutex
 	gen uint64 // bumped by every Start/Stop; an in-flight Start whose
@@ -92,7 +91,6 @@ func New(cfg config.Config, runDir, helperPath, ingestURL string) *Broadcaster {
 		runDir:     runDir,
 		helperPath: helperPath,
 		ingestURL:  ingestURL,
-		playlist:   filepath.Join(runDir, "stream.m3u8"),
 		state:      "idle",
 		bitrate:    cfg.Bitrate,
 		channels:   cfg.Channels,
@@ -334,7 +332,7 @@ func (b *Broadcaster) cleanRunDir() {
 	for _, e := range entries {
 		n := e.Name()
 		switch {
-		case strings.HasSuffix(n, ".m3u8"):
+		case n == "progress.txt" || strings.HasSuffix(n, ".m3u8"):
 			_ = os.Remove(filepath.Join(b.runDir, n))
 		case strings.HasSuffix(n, ".ts") || strings.HasSuffix(n, ".m4s"):
 			// Keep very recent segments so guests mid-download during a source
@@ -381,7 +379,10 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	default:
 		input = []string{"-fflags", "+nobuffer", "-f", "avfoundation", "-thread_queue_size", "1024", "-i", ":" + device}
 	}
-	args := []string{"-hide_banner", "-loglevel", "warning"}
+	// -progress writes a "progress=" block ~1s after real frames start flowing —
+	// a delivery-independent liveness signal (see producingOutput) that replaces
+	// the old "plain-HLS segments on disk" check now that we don't tee plain HLS.
+	args := []string{"-hide_banner", "-loglevel", "warning", "-progress", b.progressFile()}
 	args = append(args, input...)
 	args = append(args,
 		"-vn",
@@ -389,56 +390,16 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 		"-ar", strconv.Itoa(c.SampleRate),
 		"-c:a", c.Codec, "-b:a", snap.bitrate,
 	)
-	// The plain-HLS output ALWAYS exists — it's the delivery every device can
-	// play. Flags: muxdelay/muxpreload 0 + flush_packets keep PROGRAM-DATE-TIME
-	// honest; temp_file = atomic playlist publish (no truncated m3u8 under
-	// polling load); discont_start marks restarts; delete_threshold keeps
-	// just-rotated segments for laggard phones; epoch sequence numbers never
-	// rewind under a guest across restarts.
-	hlsOpts := strings.Join([]string{
-		"hls_time=" + strconv.FormatFloat(snap.hlsTime, 'g', -1, 64),
-		"hls_list_size=" + strconv.Itoa(c.HLSList),
-		"hls_flags=delete_segments+omit_endlist+append_list+independent_segments+program_date_time+temp_file+discont_start",
-		"hls_delete_threshold=10",
-		"hls_start_number_source=epoch",
-		"hls_segment_type=mpegts",
-		"hls_segment_filename=" + filepath.Join(b.runDir, "seg_%05d.ts"),
-		// NOTE: muxdelay/muxpreload are ffmpeg CLI options, not AVOptions — they
-		// don't exist inside a tee slave (and this build's hls muxer lacks
-		// hls_ts_options). Their absence adds a small CONSTANT mux delay that
-		// shifts every listener equally, so room sync is unaffected.
-		"flush_packets=1",
-	}, ":")
-
-	if snap.delivery == "llhls" {
-		// BOTH flavors from one encode (tee muxer): the plain playlist for
-		// everyone, plus an RTSP push that MediaMTX repackages into LL-HLS over
-		// HTTPS. Guests probe the LL URL themselves and fall back to plain
-		// per-device (rebind-protecting routers, hostile resolvers) — engaging
-		// LL can never hand anyone a dead stream. use_fifo + onfail=ignore: a
-		// dying MediaMTX must never stall or kill the plain output.
-		tee := "[" + hlsOpts + "]" + b.playlist +
-			"|[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]" + b.ingestURL
-		if snap.recordPath != "" {
-			// Third leg: the set recording. Same encode, zero extra CPU;
-			// onfail=ignore so a full disk can never kill the live broadcast.
-			tee += "|[f=adts:onfail=ignore]" + snap.recordPath
-		}
-		args = append(args, "-f", "tee", "-map", "0:a", tee)
-	} else {
-		args = append(args,
-			"-muxdelay", "0", "-muxpreload", "0", "-flush_packets", "1",
-			"-f", "hls",
-			"-hls_time", strconv.FormatFloat(snap.hlsTime, 'g', -1, 64),
-			"-hls_list_size", strconv.Itoa(c.HLSList),
-			"-hls_flags", "delete_segments+omit_endlist+append_list+independent_segments+program_date_time+temp_file+discont_start",
-			"-hls_delete_threshold", "10",
-			"-hls_start_number_source", "epoch",
-			"-hls_segment_type", "mpegts",
-			"-hls_segment_filename", filepath.Join(b.runDir, "seg_%05d.ts"),
-			b.playlist,
-		)
+	// HTTPS-only: guests are LL-HLS only (the client no longer offers a plain
+	// fallback), so we push a single RTSP stream MediaMTX repackages into LL-HLS
+	// over HTTPS, plus the optional recording — no plain-HLS playlist at all.
+	// use_fifo + onfail=ignore: a dying MediaMTX must never stall or kill the
+	// recording, and a full disk must never kill the live broadcast.
+	tee := "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]" + b.ingestURL
+	if snap.recordPath != "" {
+		tee += "|[f=adts:onfail=ignore]" + snap.recordPath
 	}
+	args = append(args, "-f", "tee", "-map", "0:a", tee)
 	return args
 }
 
@@ -787,21 +748,29 @@ func (b *Broadcaster) Stop() {
 	}(cmd, helper)
 }
 
-func (b *Broadcaster) hasSegments() bool {
-	data, err := os.ReadFile(b.playlist)
+// progressFile is where ffmpeg's -progress output goes, and the liveness source.
+func (b *Broadcaster) progressFile() string { return filepath.Join(b.runDir, "progress.txt") }
+
+// producingOutput reports whether ffmpeg has actually started encoding this set
+// — the delivery-independent liveness signal that replaces the old plain-HLS
+// "segments on disk" check now that we no longer tee plain HLS. ffmpeg's
+// -progress file gets its first "progress=" block ~1s after real frames flow,
+// so starting->live flips exactly when audio is going out. cleanRunDir clears
+// it every Start, so any content is the current set.
+func (b *Broadcaster) producingOutput() bool {
+	data, err := os.ReadFile(b.progressFile())
 	if err != nil {
 		return false
 	}
-	s := string(data)
-	return strings.Contains(s, ".ts") || strings.Contains(s, ".m4s")
+	return strings.Contains(string(data), "progress=")
 }
 
 func (b *Broadcaster) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.state == "starting" && b.hasSegments() {
-		// Both modes write the plain playlist (llhls tees it alongside the
-		// RTSP push), so segments-on-disk is the truthful liveness signal.
+	if b.state == "starting" && b.producingOutput() {
+		// ffmpeg is actually encoding (its -progress file has a progress block) —
+		// the truthful, delivery-independent liveness signal.
 		b.state = "live"
 	}
 	var since int64
