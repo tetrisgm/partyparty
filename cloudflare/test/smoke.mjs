@@ -1226,6 +1226,47 @@ function googleCallbackReq(db, { code = "auth-code", state = "s".repeat(32), coo
   ), makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
 }
 
+// --- Apple OAuth test helpers --- (generates a real P-256 .p8 so the ES256
+// client-secret signing path actually runs)
+async function makeAppleEnv() {
+  const kp = await globalThis.crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const b64 = Buffer.from(new Uint8Array(await globalThis.crypto.subtle.exportKey("pkcs8", kp.privateKey))).toString("base64");
+  const pem = `-----BEGIN PRIVATE KEY-----\n${b64.replace(/(.{64})/g, "$1\n")}\n-----END PRIVATE KEY-----\n`;
+  return { AUTH_APPLE_ID: "net.ramine.party.web", AUTH_APPLE_TEAM_ID: "TEAM123456", AUTH_APPLE_KEY_ID: "KEY1234567", AUTH_APPLE_PRIVATE_KEY: pem };
+}
+function appleClaims(env, extra = {}) {
+  return {
+    aud: env.AUTH_APPLE_ID,
+    iss: "https://appleid.apple.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    email: "dj@icloud.com",
+    email_verified: "true",
+    sub: "apple-sub-1",
+    ...extra,
+  };
+}
+async function withAppleTokenMock(idToken, fn) {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    if (req.url === "https://appleid.apple.com/auth/token") {
+      return new Response(JSON.stringify({ id_token: idToken, access_token: "at" }),
+        { headers: { "content-type": "application/json" } });
+    }
+    return oldFetch(input, init);
+  };
+  try { return await fn(); } finally { globalThis.fetch = oldFetch; }
+}
+function appleCallbackReq(db, env, { code = "auth-code", state = "a".repeat(32), cookieState = null, redirect = "/account" } = {}) {
+  const cState = cookieState === null ? state : cookieState;
+  const cookie = `${OAUTH_STATE_COOKIE_NAME}=a|${cState}|${encodeURIComponent(redirect)}`;
+  return worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {
+    method: "POST",
+    headers: { cookie, "content-type": "application/x-www-form-urlencoded", "cf-connecting-ip": "203.0.113.31", "user-agent": "smoke-oauth" },
+    body: new URLSearchParams({ code, state }).toString(),
+  }), makeEnv({ DB: db, env }));
+}
+
 const tests = [
   ["parseCookies decodes cookie header", async () => {
     const req = new Request("https://party.ramine.net/", {
@@ -3875,6 +3916,64 @@ const tests = [
     assert.ok(onBody.includes("/auth/google?redirect="), "button links to /auth/google");
     const off = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}) }));
     assert.ok(!(await off.text()).includes("Continue with Google"), "button hidden when unconfigured");
+  }],
+  ["apple sign-in start redirects to Apple with form_post and a None-SameSite cookie", async () => {
+    const env = await makeAppleEnv();
+    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple?redirect=/account", {}), makeEnv({ DB: new FakeD1({}), env }));
+    assert.equal(resp.status, 302);
+    const loc = resp.headers.get("location") || "";
+    assert.ok(loc.startsWith("https://appleid.apple.com/auth/authorize"), "redirects to Apple");
+    const locUrl = new URL(loc);
+    assert.equal(locUrl.searchParams.get("client_id"), env.AUTH_APPLE_ID);
+    assert.equal(locUrl.searchParams.get("response_mode"), "form_post");
+    assert.equal(locUrl.searchParams.get("scope"), "name email");
+    const sc = resp.headers.get("set-cookie") || "";
+    assert.ok(sc.startsWith("pp_oauth="), "sets the oauth state cookie");
+    assert.ok(/SameSite=None/i.test(sc), "state cookie is SameSite=None so it survives the cross-site form_post");
+  }],
+  ["apple sign-in is unavailable when unconfigured", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple", {}), makeEnv({ DB: new FakeD1({}) }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login");
+  }],
+  ["apple callback mints the ES256 client secret and creates a session", async () => {
+    const env = await makeAppleEnv();
+    const db = new FakeD1({});
+    const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env)), () => appleCallbackReq(db, env, {}));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/account");
+    const sessionCookie = (resp.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(sessionCookie.length > 0, "sets a session cookie");
+    const me = await worker.fetch(new Request("https://party.ramine.net/api/me", { headers: { cookie: sessionCookie } }), makeEnv({ DB: db }));
+    const meJson = await me.json();
+    assert.equal(meJson.user && meJson.user.email, "dj@icloud.com");
+  }],
+  ["apple callback rejects a forged state (CSRF)", async () => {
+    const env = await makeAppleEnv();
+    const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env)),
+      () => appleCallbackReq(new FakeD1({}), env, { state: "aaaaaaaa", cookieState: "bbbbbbbb" }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?error=state");
+  }],
+  ["apple callback rejects a wrong audience", async () => {
+    const env = await makeAppleEnv();
+    const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env, { aud: "com.someone.else" })),
+      () => appleCallbackReq(new FakeD1({}), env, {}));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?error=verify");
+  }],
+  ["apple callback rejects a GET (form_post is POST only)", async () => {
+    const env = await makeAppleEnv();
+    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {}), makeEnv({ DB: new FakeD1({}), env }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "/login?error=method");
+  }],
+  ["login page shows Continue with Apple only when configured", async () => {
+    const env = await makeAppleEnv();
+    const on = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}), env }));
+    assert.ok((await on.text()).includes("Continue with Apple"), "button present when configured");
+    const off = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}) }));
+    assert.ok(!(await off.text()).includes("Continue with Apple"), "button hidden when unconfigured");
   }],
 ];
 

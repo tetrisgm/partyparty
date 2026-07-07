@@ -2254,9 +2254,9 @@ function decodeJwtPayload(jwt) {
 
 // State cookie packs provider + CSRF nonce + the post-login redirect (kept
 // server-side in an HttpOnly cookie, never round-tripped through the provider).
-function oauthStateCookie(prov, nonce, redirect) {
+function oauthStateCookie(prov, nonce, redirect, sameSite = "Lax") {
   return cookieHeader(OAUTH_STATE_COOKIE, `${prov}|${nonce}|${encodeURIComponent(redirect)}`,
-    { maxAge: 600, httpOnly: true, secure: true, sameSite: "Lax" });
+    { maxAge: 600, httpOnly: true, secure: true, sameSite });
 }
 function clearOauthStateCookie() {
   return cookieHeader(OAUTH_STATE_COOKIE, "", { maxAge: 0, httpOnly: true, secure: true, sameSite: "Lax" });
@@ -2322,6 +2322,104 @@ async function googleAuthCallback(request, env) {
   const good = claims && claims.aud === env.AUTH_GOOGLE_ID &&
     (claims.iss === "https://accounts.google.com" || claims.iss === "accounts.google.com") &&
     Number(claims.exp) * 1000 > nowMs() && claims.email && claims.email_verified === true;
+  const emailNorm = good ? normalizeEmail(claims.email) : "";
+  if (!emailNorm) return oauthError("verify");
+  const session = await createAuthSession(env, request, emailNorm);
+  if (!session || !session.cookie) return oauthError("session");
+  const headers = new Headers({ location: st.redirect, "cache-control": "no-store" });
+  headers.append("set-cookie", session.cookie);
+  headers.append("set-cookie", clearOauthStateCookie());
+  return new Response(null, { status: 302, headers });
+}
+
+const APPLE_AUTH_URL = "https://appleid.apple.com/auth/authorize";
+const APPLE_TOKEN_URL = "https://appleid.apple.com/auth/token";
+const APPLE_ISS = "https://appleid.apple.com";
+
+function b64urlBytes(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlStr(str) {
+  return b64urlBytes(new TextEncoder().encode(str));
+}
+
+// Sign in with Apple's "client secret" is an ES256 (P-256) JWT we mint on the
+// fly, signed with the downloaded .p8 key. Web Crypto's ECDSA sign returns raw
+// r||s, which is already the JWS ES256 signature format — no DER unwrap needed.
+async function importApplePrivateKey(pem) {
+  const b64 = String(pem || "")
+    .replace(/\\n/g, "\n")
+    .replace(/-----[^-]+-----/g, "")
+    .replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return crypto.subtle.importKey("pkcs8", der.buffer, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+}
+async function appleClientSecret(env, now = nowMs()) {
+  const iat = Math.floor(now / 1000);
+  const header = { alg: "ES256", kid: env.AUTH_APPLE_KEY_ID, typ: "JWT" };
+  const payload = { iss: env.AUTH_APPLE_TEAM_ID, iat, exp: iat + 300, aud: APPLE_ISS, sub: env.AUTH_APPLE_ID };
+  const signingInput = `${b64urlStr(JSON.stringify(header))}.${b64urlStr(JSON.stringify(payload))}`;
+  const key = await importApplePrivateKey(env.AUTH_APPLE_PRIVATE_KEY);
+  const sig = new Uint8Array(await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(signingInput)));
+  return `${signingInput}.${b64urlBytes(sig)}`;
+}
+
+async function appleAuthStart(request, env) {
+  if (!hasAppleProvider(env)) return redirectResp("/login");
+  const redirect = safeRedirectPath(new URL(request.url).searchParams.get("redirect") || "/account") || "/account";
+  const nonce = randHex(16);
+  const params = new URLSearchParams({
+    client_id: env.AUTH_APPLE_ID,
+    redirect_uri: `${SITE_ORIGIN}/auth/apple/callback`,
+    response_type: "code",
+    scope: "name email",
+    response_mode: "form_post",
+    state: nonce,
+  });
+  const headers = new Headers({ location: `${APPLE_AUTH_URL}?${params.toString()}`, "cache-control": "no-store" });
+  // form_post lands as a cross-site POST from appleid.apple.com, so the state
+  // cookie must be SameSite=None to be sent back with it (Lax would be dropped).
+  headers.append("set-cookie", oauthStateCookie("a", nonce, redirect, "None"));
+  return new Response(null, { status: 302, headers });
+}
+
+async function appleAuthCallback(request, env) {
+  if (!hasAppleProvider(env) || !env.DB) return oauthError("unavailable");
+  if (request.method !== "POST") return oauthError("method");
+  const form = await request.formData().catch(() => null);
+  if (!form) return oauthError("form");
+  const code = String(form.get("code") || "");
+  const st = readOauthState(request, "a", String(form.get("state") || ""));
+  if (!code || !st) return oauthError("state");
+  let secret;
+  try {
+    secret = await appleClientSecret(env);
+  } catch (_) {
+    return oauthError("secret");
+  }
+  let tok = null;
+  try {
+    const resp = await fetch(APPLE_TOKEN_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: env.AUTH_APPLE_ID,
+        client_secret: secret,
+        redirect_uri: `${SITE_ORIGIN}/auth/apple/callback`,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+    if (resp.ok) tok = await resp.json();
+  } catch (_) { /* fall through to error */ }
+  const claims = decodeJwtPayload(tok && tok.id_token);
+  // Apple reports email_verified as a boolean or the string "true".
+  const emailVerified = !!claims && (claims.email_verified === true || claims.email_verified === "true");
+  const good = claims && claims.aud === env.AUTH_APPLE_ID && claims.iss === APPLE_ISS &&
+    Number(claims.exp) * 1000 > nowMs() && claims.email && emailVerified;
   const emailNorm = good ? normalizeEmail(claims.email) : "";
   if (!emailNorm) return oauthError("verify");
   const session = await createAuthSession(env, request, emailNorm);
@@ -3721,6 +3819,22 @@ export default {
     if (pathname === "/auth/google/callback") {
       try {
         return await googleAuthCallback(request, env);
+      } catch (_) {
+        return oauthError("oauth");
+      }
+    }
+
+    if (pathname === "/auth/apple") {
+      try {
+        return await appleAuthStart(request, env);
+      } catch (_) {
+        return redirectResp("/login");
+      }
+    }
+
+    if (pathname === "/auth/apple/callback") {
+      try {
+        return await appleAuthCallback(request, env);
       } catch (_) {
         return oauthError("oauth");
       }
