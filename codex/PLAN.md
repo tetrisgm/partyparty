@@ -13,7 +13,7 @@ Written 2026-07-07, after shipping OAuth sign-in + the DJ activation gate (v15.4
 - **Read `AGENTS.md` (repo root) first** — sacred guardrails + the exact verify commands.
 
 ## Current task queue (`codex/tasks/`)
-1. **01-resend-email** — send magic-link email via Resend (Cloudflare's `EMAIL` binding can't reach arbitrary recipients, so email sign-in currently fails).
+1. **01-mxroute-email** — wire magic-link email through **MXroute SMTP** (implement the `sendViaMXroute` stub over `cloudflare:sockets`). Email transport is MXroute SMTP — NEVER a paid email API (no Resend).
 2. **02-account-status-cache** — stop the console's 2s activation poll from hammering the broker.
 3. **03-dev-no-login** — a double-guarded env bypass of the activation gate for local dev/testing.
 4. **04-claim-alias** — keepsake links: old event slugs still resolve after a rename.
