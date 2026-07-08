@@ -244,6 +244,26 @@
   .ed:hover::after{opacity:.7}
   .ed:has(input)::after{content:''}
   .sharecard{position:relative}
+  .guest-setup{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:14px;margin:0 0 16px;display:grid;gap:12px}
+  .guest-setup-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+  .guest-setup-copy{min-width:0}
+  .guest-setup h3{font-size:17px;line-height:1.25;margin:0 0 4px;color:var(--label);letter-spacing:-.01em}
+  .guest-setup p{font-size:13px;line-height:1.5;margin:0;color:var(--label-secondary)}
+  .guest-setup-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:0 0 auto;max-width:260px}
+  .guest-setup-actions button{height:30px;white-space:nowrap}
+  .guest-action-note{font-size:12px;font-weight:700;color:var(--label-secondary);line-height:1.35;text-align:right}
+  .guest-selftest{border-top:1px solid var(--separator);padding-top:10px;font-size:12px;line-height:1.5;color:var(--label-secondary)}
+  .guest-selftest.ok{color:#1d883d;font-weight:700}
+  .guest-hotspot-card{border:1px solid rgba(255,149,0,.32);background:rgba(255,149,0,.08);border-radius:var(--r-sm);padding:11px;display:grid;gap:8px}
+  .guest-hotspot-card[hidden]{display:none}
+  .guest-hotspot-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .guest-hotspot-top b{font-size:13px;color:var(--label)}
+  .guest-hotspot-steps{font-size:12px;color:#8a5200;line-height:1.5}
+  .guest-hotspot-card button{height:30px;flex:0 0 auto}
+  .guest-qr-grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:14px;align-items:start}
+  .guest-qr-panel[hidden]{display:none}
+  .guest-qr-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--label-tertiary);margin-bottom:6px}
+  .party-qr-panel .url{font-size:18px}
   .spin16{width:16px;height:16px;border-radius:50%;border:2px solid var(--separator);border-top-color:var(--accent);animation:pp-spin .9s linear infinite;flex:0 0 auto}
   /* one voice for the whole setup story — no bold-vs-gray hierarchy */
   .setupline{font-size:14px;color:var(--label-secondary);text-align:left;min-height:20px;line-height:1.55;margin-top:2px}
@@ -306,7 +326,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#fff}}
-  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}}
+  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-hotspot-card button{width:100%}.guest-qr-grid{grid-template-columns:1fr}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
 </style>
 </head>
@@ -390,22 +410,52 @@
        back anytime from Share in the action bar. -->
   <div class="card sharecard" id="shareCard">
     <button class="cardx" id="shareCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
-    <h2>Guests join here</h2>
-    <div class="url" id="url">—</div>
-    <div class="offline-status" id="hotspotReady" style="display:none"></div>
-    <div class="hint" id="hotspotNoInternet" style="display:none">Guests (and this Mac) won't have internet while on this Wi-Fi — that's normal for the no-gear mode.</div>
-    <div id="qr"></div>
-    <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
-    <details id="wifiJoin" style="margin-top:12px">
-      <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →</summary>
-      <div style="margin-top:10px">
-        <div class="hint" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your hotspot). Their phone camera joins it from this QR — then they scan the party QR above.</div>
-        <input id="wifiSsid" placeholder="Wi-Fi network name (SSID)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px;margin-bottom:8px">
-        <input id="wifiPass" placeholder="Wi-Fi password (leave blank if open)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px">
-        <div id="wifiQr" style="margin-top:12px"></div>
-        <div class="hint" id="wifiQrHint" style="display:none;margin-top:6px"><b>①</b> Scan to join the Wi-Fi · then the party QR above is <b>②</b></div>
+    <h2>Guest setup</h2>
+    <div class="guest-setup" id="guestSetupStrip" hidden>
+      <div class="guest-setup-top">
+        <div class="guest-setup-copy">
+          <h3 id="guestSetupHeadline">Checking your network…</h3>
+          <p id="guestSetupWriteup">Looking for the best way guests should join.</p>
+        </div>
+        <div class="guest-setup-actions" id="guestSetupActions"></div>
       </div>
-    </details>
+      <div class="guest-selftest" id="guestSetupSelfTest">Before guests arrive, scan this yourself to confirm they can connect.</div>
+      <div class="warn" id="guestSetupNudge" hidden>
+        No one's connected yet — this Wi-Fi may be blocking guests from reaching your Mac. Try a hotspot.
+        <button class="ghost" type="button" data-open-wifi-sharing style="margin-top:8px;width:100%">Try a hotspot</button>
+      </div>
+      <div class="guest-hotspot-card" id="guestHotspotCard" hidden>
+        <div class="guest-hotspot-top">
+          <b id="guestHotspotTitle">Hotspot option</b>
+          <button class="ghost" type="button" data-open-wifi-sharing>Turn on Internet Sharing</button>
+        </div>
+        <div class="guest-hotspot-steps">In Sharing, flip on Internet Sharing, name it <b>partyparty</b>, security <b>None</b>, then have guests scan both codes.</div>
+        <div class="hint" id="guestSetupSharingStatus" style="display:none;margin-top:0"></div>
+      </div>
+    </div>
+    <div class="guest-qr-grid" id="guestQrGrid">
+      <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
+        <div class="guest-qr-label">Party QR</div>
+        <div class="url" id="url">—</div>
+        <div class="offline-status" id="hotspotReady" style="display:none"></div>
+        <div class="hint" id="hotspotNoInternet" style="display:none">Guests (and this Mac) won't have internet while on this Wi-Fi — that's normal for the no-gear mode.</div>
+        <div id="qr"></div>
+        <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+      </div>
+      <div class="guest-qr-panel" id="wifiQrPanel" hidden>
+        <div class="guest-qr-label">Join Wi-Fi QR</div>
+        <details id="wifiJoin" style="margin-top:0">
+          <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)"><span id="wifiJoinSummary">Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →</span></summary>
+          <div style="margin-top:10px">
+            <div class="hint" id="wifiJoinHelp" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your hotspot). Their phone camera joins it from this QR — then they scan the party QR.</div>
+            <input id="wifiSsid" placeholder="Wi-Fi network name (SSID)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px;margin-bottom:8px">
+            <input id="wifiPass" placeholder="Wi-Fi password (leave blank if open)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px">
+            <div id="wifiQr" style="margin-top:12px"></div>
+            <div class="hint" id="wifiQrHint" style="display:none;margin-top:6px"><b>①</b> Scan to join the Wi-Fi · then the party QR is <b>②</b></div>
+          </div>
+        </details>
+      </div>
+    </div>
     <div class="warn offline-fallback" id="hotspotFallback" style="display:none">
       <div><b>Hotspot is not ready yet.</b></div>
       <div>Turn on your Mac's hotspot: System Settings → General → Sharing → Internet Sharing → share to Wi-Fi.</div>
@@ -730,6 +780,11 @@
   document.addEventListener('click', (e) => {
     const btn = e.target && e.target.closest && e.target.closest('[data-copy-url]');
     if (btn) copyText(btn.dataset.copyUrl, btn);
+    const wifiBtn = e.target && e.target.closest && e.target.closest('[data-open-wifi-sharing]');
+    if (wifiBtn) {
+      e.preventDefault();
+      openWifiSharing(wifiBtn);
+    }
   });
   renderOnline('');
 
@@ -1058,6 +1113,7 @@
       const open = card.style.display !== 'none';
       card.style.display = open ? 'none' : 'block';
       localStorage.setItem('pp.shareClosed', open ? '1' : '0');
+      renderGuestSetup(lastNetworkSituation, lastGuestSetupOpts || {});
       if (!open) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
   }
@@ -1260,7 +1316,7 @@
   };
   $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
   $('permBtnAlways').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
-  $('openSharingBtn').onclick = () => fetch('/api/open-settings?pane=sharing', { method:'POST' });
+  $('openSharingBtn').onclick = () => openWifiSharing($('openSharingBtn'));
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
   $('honestFallbackClose').onclick = () => {
     reachPromptDismissed = true;
@@ -1282,6 +1338,32 @@
       $('offlineSwitchBtn').querySelector('span').textContent = 'Switch to my own Wi-Fi';
     }
   };
+
+  async function openWifiSharing(btn){
+    const status = $('guestSetupSharingStatus');
+    const buttons = Array.from(document.querySelectorAll('[data-open-wifi-sharing]'));
+    if (btn && buttons.indexOf(btn) < 0) buttons.push(btn);
+    buttons.forEach(b => { b.disabled = true; });
+    if (status) {
+      status.style.display = 'block';
+      status.textContent = 'Opening Sharing settings...';
+    }
+    try {
+      const r = await fetch('/api/open-wifi-sharing', { method:'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || (j && j.ok === false)) throw new Error((j && j.error) || 'Could not open Sharing.');
+      if (status) status.textContent = 'Sharing settings opened.';
+    } catch (e) {
+      try {
+        await fetch('/api/open-settings?pane=sharing', { method:'POST' });
+        if (status) status.textContent = 'Sharing settings opened.';
+      } catch (err) {
+        if (status) status.textContent = 'Open System Settings > General > Sharing > Internet Sharing.';
+      }
+    } finally {
+      buttons.forEach(b => { b.disabled = false; });
+    }
+  }
 
   function renderQR(text){
     if (text === qrText) return;
@@ -1309,7 +1391,8 @@
   (function(){
     const s = $('wifiSsid'), p = $('wifiPass'); if (!s || !p) return;
     try { s.value = localStorage.getItem('pp.wifiSsid') || ''; p.value = localStorage.getItem('pp.wifiPass') || ''; } catch (e) {}
-    s.oninput = renderWifiQr; p.oninput = renderWifiQr;
+    const markManual = () => { try { localStorage.removeItem('pp.wifiAuto'); } catch (e) {} renderWifiQr(); };
+    s.oninput = markManual; p.oninput = markManual;
     if (s.value) { $('wifiJoin').open = true; renderWifiQr(); }
   })();
 
@@ -1335,6 +1418,223 @@
     btn.disabled = offlineSwitchRequested;
     btn.querySelector('span').textContent = offlineSwitchRequested ? 'Switching…' : 'Switch to my own Wi-Fi';
     box.style.display = 'flex';
+  }
+
+  const GUEST_SETUP_NUDGE_MS = 20000;
+  let lastNetworkSituation = null, networkSituationLoading = false, lastGuestSetupOpts = null;
+  let guestSetupConfirmed = false, lastGuestSetupGuestCount = null, guestSetupQrShownAt = 0, lastGuestSetupSituation = '';
+
+  function guestSetupPlan(info){
+    const situation = String((info && info.situation) || '').trim();
+    const plans = {
+      shared_wifi_ready: {
+        headline: "You're set — guests just scan the code.",
+        writeup: 'Everyone on this Wi-Fi can reach your Mac. Show the QR.',
+        action: 'party',
+        showPartyQr: true,
+        showWifiQr: false,
+        showHotspotCard: false,
+        wifiMode: ''
+      },
+      ethernet_can_host: {
+        headline: 'Host a Wi-Fi for your guests.',
+        writeup: "Your Mac's on a cable, so it can share Wi-Fi to guests and they'll still have internet.",
+        action: 'sharing',
+        showPartyQr: true,
+        showWifiQr: true,
+        showHotspotCard: true,
+        wifiMode: 'hotspot',
+        hotspotTitle: 'Set up the guest hotspot'
+      },
+      wifi_no_internet: {
+        headline: 'Share the Wi-Fi and the link.',
+        writeup: 'Guests on this Wi-Fi can reach you, but the smart link needs internet. Give them the Wi-Fi + this link, or make a hotspot.',
+        action: 'wifi_and_hotspot',
+        showPartyQr: true,
+        showWifiQr: true,
+        showHotspotCard: true,
+        wifiMode: 'venue',
+        hotspotTitle: 'Hotspot option'
+      },
+      no_network: {
+        headline: 'No Wi-Fi here — make your Mac a hotspot.',
+        writeup: "Guests will connect straight to your Mac. Heads up: they won't have internet while connected — perfect for an offline party.",
+        action: 'sharing',
+        showPartyQr: true,
+        showWifiQr: true,
+        showHotspotCard: true,
+        wifiMode: 'hotspot',
+        hotspotTitle: 'Set up the guest hotspot'
+      },
+      hotspot_active: {
+        headline: "Hotspot's on — guests join your Mac's Wi-Fi, then scan.",
+        writeup: 'They connect to your hotspot first, then the party QR opens it.',
+        action: 'two_step',
+        showPartyQr: true,
+        showWifiQr: true,
+        showHotspotCard: false,
+        wifiMode: 'hotspot'
+      }
+    };
+    return plans[situation] ? Object.assign({ situation: situation }, plans[situation]) : null;
+  }
+
+  function renderGuestSetupActions(plan){
+    const actions = $('guestSetupActions');
+    if (!actions) return;
+    if (!plan) {
+      actions.innerHTML = '';
+      return;
+    }
+    if (plan.action === 'sharing') {
+      actions.innerHTML = '<button class="go" type="button" data-open-wifi-sharing>Turn on Internet Sharing</button>';
+    } else if (plan.action === 'wifi_and_hotspot') {
+      actions.innerHTML = '<span class="guest-action-note">Use both QR codes below.</span><button class="ghost" type="button" data-open-wifi-sharing>Try a hotspot</button>';
+    } else if (plan.action === 'two_step') {
+      actions.innerHTML = '<span class="guest-action-note">Show both QR codes below.</span>';
+    } else {
+      actions.innerHTML = '<span class="guest-action-note">Show the party QR below.</span>';
+    }
+  }
+
+  function setGuestWifiMode(mode){
+    const panel = $('wifiQrPanel'), details = $('wifiJoin');
+    const summary = $('wifiJoinSummary'), help = $('wifiJoinHelp');
+    const s = $('wifiSsid'), p = $('wifiPass');
+    if (!panel || !details || !summary || !help || !s || !p) return;
+    if (mode === 'optional') {
+      panel.hidden = false;
+      details.open = false;
+      summary.textContent = 'Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →';
+      help.textContent = 'Enter the Wi-Fi guests should join (the venue’s, or your hotspot). Their phone camera joins it from this QR, then they scan the party QR.';
+      renderWifiQr();
+      return;
+    }
+    if (!mode) {
+      panel.hidden = true;
+      details.open = false;
+      return;
+    }
+    panel.hidden = false;
+    details.open = true;
+    if (mode === 'hotspot') {
+      summary.textContent = "Step 1: join your Mac's Wi-Fi";
+      help.textContent = 'Name the hotspot partyparty with security None. Phones scan this first, then the party QR.';
+      let auto = false;
+      try { auto = localStorage.getItem('pp.wifiAuto') === 'hotspot'; } catch (e) {}
+      if (!s.value.trim() || auto) {
+        s.value = 'partyparty';
+        p.value = '';
+        try { localStorage.setItem('pp.wifiAuto', 'hotspot'); } catch (e) {}
+      }
+    } else {
+      summary.textContent = 'Step 1: join the venue Wi-Fi';
+      help.textContent = 'Enter the Wi-Fi guests should join. Their phone camera joins it from this QR, then they scan the party QR.';
+      try {
+        if (localStorage.getItem('pp.wifiAuto') === 'hotspot' && s.value.trim().toLowerCase() === 'partyparty' && !p.value) {
+          s.value = '';
+          localStorage.removeItem('pp.wifiAuto');
+        }
+      } catch (e) {}
+    }
+    renderWifiQr();
+  }
+
+  function renderGuestSelfTest(guestCount){
+    const el = $('guestSetupSelfTest');
+    if (!el) return;
+    if (Number.isFinite(guestCount)) {
+      if (guestCount >= 1 && (lastGuestSetupGuestCount === 0 || lastGuestSetupGuestCount == null || guestSetupConfirmed)) {
+        guestSetupConfirmed = true;
+      }
+      lastGuestSetupGuestCount = guestCount;
+    }
+    el.className = 'guest-selftest' + (guestSetupConfirmed ? ' ok' : '');
+    el.textContent = guestSetupConfirmed
+      ? '✓ Guests can reach you.'
+      : 'Before guests arrive, scan this yourself to confirm they can connect.';
+  }
+
+  function renderGuestSetup(info, opts){
+    opts = opts || {};
+    lastGuestSetupOpts = opts;
+    const strip = $('guestSetupStrip');
+    if (!strip) return;
+    const linkReady = !!opts.linkReady;
+    const plan = guestSetupPlan(info);
+    const guestUrl = (info && info.primaryUrl) || opts.guestUrl || '';
+    const fallbackGuestCount = Number(opts.guestCount || 0);
+    const endpointGuestCount = Number(info && info.guestCount);
+    const guestCount = Number.isFinite(endpointGuestCount) ? endpointGuestCount : fallbackGuestCount;
+    if (!linkReady) {
+      strip.hidden = true;
+      return;
+    }
+    const activePlan = plan || {
+      situation: 'checking',
+      headline: 'Checking your network…',
+      writeup: 'Show the party QR while partyparty checks the best guest path.',
+      action: 'party',
+      showPartyQr: true,
+      showWifiQr: false,
+      showHotspotCard: false,
+      wifiMode: ''
+    };
+    strip.hidden = false;
+    $('guestSetupHeadline').textContent = activePlan.headline;
+    $('guestSetupWriteup').textContent = activePlan.writeup;
+    renderGuestSetupActions(activePlan);
+    if (guestUrl) {
+      $('url').textContent = guestUrl;
+      renderQR(guestUrl);
+    }
+    const partyPanel = $('partyQrPanel');
+    if (partyPanel) partyPanel.hidden = !activePlan.showPartyQr;
+    const wifiMode = (!plan || activePlan.situation === 'shared_wifi_ready')
+      ? 'optional'
+      : (activePlan.showWifiQr ? activePlan.wifiMode : '');
+    setGuestWifiMode(wifiMode);
+    renderGuestSelfTest(guestCount);
+
+    const situationChanged = activePlan.situation !== lastGuestSetupSituation;
+    if (situationChanged) {
+      guestSetupQrShownAt = 0;
+      lastGuestSetupSituation = activePlan.situation;
+    }
+    const shareVisible = $('shareCard') && $('shareCard').style.display !== 'none';
+    const partyQrShown = !!(linkReady && activePlan.showPartyQr && shareVisible && (!partyPanel || !partyPanel.hidden));
+    if (partyQrShown && !guestSetupConfirmed) {
+      if (!guestSetupQrShownAt) guestSetupQrShownAt = Date.now();
+    } else {
+      guestSetupQrShownAt = 0;
+    }
+    const nudgeEligible = activePlan.situation === 'shared_wifi_ready' || activePlan.situation === 'wifi_no_internet';
+    const showNudge = nudgeEligible && !guestSetupConfirmed && guestCount === 0 &&
+      guestSetupQrShownAt && (Date.now() - guestSetupQrShownAt >= GUEST_SETUP_NUDGE_MS);
+    const nudge = $('guestSetupNudge');
+    if (nudge) nudge.hidden = !showNudge;
+    const hotspotCard = $('guestHotspotCard');
+    if (hotspotCard) {
+      hotspotCard.hidden = !(activePlan.showHotspotCard || showNudge);
+      $('guestHotspotTitle').textContent = activePlan.hotspotTitle || 'Hotspot option';
+    }
+  }
+
+  async function refreshNetworkSituation(opts){
+    if (lastNetworkSituation) renderGuestSetup(lastNetworkSituation, opts);
+    if (networkSituationLoading) return;
+    networkSituationLoading = true;
+    try {
+      const r = await fetch('/api/network-situation', { cache:'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data && data.error ? data.error : 'network situation unavailable');
+      lastNetworkSituation = data;
+      renderGuestSetup(data, opts);
+    } catch (e) {
+      renderGuestSetup(lastNetworkSituation, opts);
+    } finally {
+      networkSituationLoading = false;
+    }
   }
 
   async function refresh(){
@@ -1394,6 +1694,7 @@
       const secure = s.llhlsRealCert === true;
       const guestUrl = s.urls.primary;
       const linkReady = !!guestUrl && (secure || s.delivery === 'hls');
+      const roster = s.roster || [];
       const hotspot = s.hotspot || {};
       const offlineMode = hotspot.mode === 'offline' || s.captive === true;
       renderMirror(s.mirror);
@@ -1433,7 +1734,7 @@
         $('pendingReason').textContent = (s.activation && s.activation.reason) || '';
         renderQR('');
       }
-      const roster = s.roster || [];
+      refreshNetworkSituation({ linkReady: linkReady, guestUrl: guestUrl, guestCount: roster.length });
       $('listeners').textContent = roster.length + (roster.length === 1 ? ' listener' : ' listeners');
       $('emetaCounts').textContent = roster.length ? '· ' + roster.length + ' listening' : '';
       $('pcount').textContent = roster.length || '';
