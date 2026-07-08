@@ -212,7 +212,13 @@ func main() {
 
 	ip := netinfo.PrimaryLanIP()
 	sharedIP := netinfo.SharedLanIP()
-	ingestURL := fmt.Sprintf("rtsp://localhost:%d/%s", cfg.RTSPPort, cfg.StreamPath)
+	// 127.0.0.1, NOT "localhost": MediaMTX binds its RTSP ingest to 127.0.0.1
+	// (IPv4 loopback) only. On Macs where "localhost" resolves to ::1 (IPv6)
+	// first, ffmpeg's RTSP publish hits [::1]:RTSP → Connection refused → the
+	// tee's onfail=ignore drops it silently → MediaMTX never gets the stream and
+	// guests get "no stream available on path 'party'" (the DJ still shows "live"
+	// off the recording leg). Match the bind address exactly. Field-confirmed.
+	ingestURL := fmt.Sprintf("rtsp://127.0.0.1:%d/%s", cfg.RTSPPort, cfg.StreamPath)
 
 	bc := broadcast.New(cfg, runDir, helperPath, ingestURL)
 	ls := stats.New(20 * time.Second)
