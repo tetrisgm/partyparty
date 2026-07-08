@@ -88,7 +88,7 @@ type ConfigOpts struct {
 
 // WriteConfig writes a minimal LL-HLS mediamtx.yml.
 func WriteConfig(path string, o ConfigOpts) error {
-	yml := fmt.Sprintf(`logLevel: warn
+	yml := fmt.Sprintf(`logLevel: info
 api: no
 metrics: no
 playback: no
