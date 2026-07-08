@@ -43,6 +43,18 @@ Verify the whole chain without wiring audio yet:
 make tone                # starts a 440 Hz test tone; open the guest URL and you should hear a beep
 ```
 
+Automated stream checks:
+
+```bash
+bash scripts/stream-selftest.sh --browser
+```
+
+That first runs the ffmpeg guest decoder self-test, then runs a headless Chromium
+guest against the actual `web/listener.html`. The browser test verifies the LL-HLS
+manifest fetch, media buffering, playback progress, and non-zero WebAudio RMS from
+the 440 Hz tone. Known limit: headless Chromium exercises the hls.js path, not iOS
+Safari's native HLS path; both paths share the same listener stream guards.
+
 ## Choosing a capture source
 
 | You want to capture… | Do this | Then select |
