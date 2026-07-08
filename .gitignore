@@ -29,3 +29,4 @@ auto.key
 
 # Codex loop logs (local)
 codex/logs/
+node_modules/

@@ -593,6 +593,21 @@
     const chosenStream = () => LLSTREAM || STREAM;   // LL always; STREAM = dev fallback only
     const usingLL = () => !!LLSTREAM;
 
+    // Rate-limited, live-gated re-attach: recover from a stale/broken HLS session
+    // (e.g. MediaMTX invalidating the session when the publisher rebuilds on a
+    // capture-devicechange) WITHOUT tight-looping. A persistently-404 stream (DJ
+    // stopped) must never spin attach() — gate on `live` and a cooldown.
+    let lastReattach = 0;
+    function reattach(){
+      if (!live) return;
+      const now = Date.now();
+      if (now - lastReattach < 2500) return;
+      lastReattach = now;
+      setStatus('reconnecting…');
+      attach();
+      if (started && !userPaused && !yielded) player.play().catch(()=>{});
+    }
+
     function attach(){
       // Guard on the stream we ACTUALLY play (LL-HLS), not the retired plain-HLS
       // STREAM. HTTPS-only removed streamUrl from /api/status, so STREAM is now
@@ -633,14 +648,10 @@
             && (httpCode === 401 || httpCode === 403 || httpCode === 404 || httpCode === 410);
           if (staleSession) {
             // MediaMTX invalidates HLS sessions when the publisher is rebuilt.
-            // hls.js may report the stale playlist as a non-fatal load error,
-            // so handle it before the fatal-only recovery branch.
-            try {
-              networkErrors++;
-              setStatus('reconnecting…');
-              attach();
-              if (started && !userPaused && !yielded) player.play().catch(()=>{});
-            } catch (e) {}
+            // hls.js may report the stale playlist as a non-fatal load error, so
+            // handle it before the fatal-only branch — but rate-limited via
+            // reattach() so a persistent 404 can't spin the player.
+            try { networkErrors++; reattach(); } catch (e) {}
             return;
           }
           if (!d || !d.fatal) return;
@@ -656,15 +667,12 @@
               // treated the same way: rebuild from the master manifest instead
               // of trying to restart a stale loader in place.
               if (networkErrors > 2) {
-                setStatus('reconnecting…');
-                attach();
-                if (started && !userPaused && !yielded) player.play().catch(()=>{});
+                reattach();
               } else {
                 hls.startLoad();
               }
             } else {
-              attach(); // last resort: rebuild the whole player
-              if (started && !userPaused && !yielded) player.play().catch(()=>{});
+              reattach(); // last resort: rebuild the whole player (rate-limited)
             }
           } catch (e) {}
         });
