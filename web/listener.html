@@ -350,10 +350,12 @@
     <button class="qrclose" id="qrClose">Done</button>
   </div>
 
-  <script src="/vendor/qrcode.min.js"></script>
-
+  <!-- Vendor scripts load LAZILY, not eagerly (perf): hls.js (404KB) only on the
+       hls.js player path — Apple devices use native HLS and never touch it, and
+       we're iPhone-first — and qrcode (20KB) only when a guest taps Share. That
+       keeps ~424KB of download+parse off the join -> first-audio path. See
+       loadHls()/loadQR() below. -->
   <audio id="player" playsinline preload="auto"></audio>
-  <script src="/vendor/hls.min.js"></script>
   <script>
     const player = document.getElementById('player');
     const btn = document.getElementById('btn');
@@ -414,6 +416,27 @@
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
     const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
+
+    // ── Lazy vendor loading (perf) ──────────────────────────────────────
+    // Keep unused KB off the join -> first-audio path. hls.js (404KB) is only
+    // used on the hls.js path; the Apple/iOS majority uses native HLS and never
+    // touches it. qrcode (20KB) is only needed if a guest taps Share. Each
+    // loader is idempotent and resolves false on error so callers never hang.
+    function loadScript(src){
+      return new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = src; s.async = true;
+        s.onload = () => resolve(true);
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+      });
+    }
+    let hlsReady = null, qrReady = null;
+    function loadHls(){ return hlsReady || (hlsReady = loadScript('/vendor/hls.min.js')); }
+    function loadQR(){ return qrReady || (qrReady = loadScript('/vendor/qrcode.min.js')); }
+    // Warm hls.js NOW on the hls path so it's parsed and ready by attach time
+    // (attach still waits on it defensively). Apple never fetches it.
+    if (platform === 'hls') loadHls();
 
     // Stable per-device id so the DJ console can track each listener across beats.
     // Wrapped: a localStorage throw (locked-down browser) must not abort the script
@@ -618,7 +641,15 @@
       if (useNative) {
         player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
         needsAlign = usingLL();                    // one aligned-start seek when playback begins
-      } else if (window.Hls && Hls.isSupported()) {
+      } else if (!window.Hls) {
+        // hls.js path, but the lazily-loaded script isn't in yet: wait for it,
+        // then re-attach. NEVER fall through to player.src=src on this path — a
+        // non-Apple browser can't play HLS natively (the silent-forever-loading
+        // bug). loadHls() resolves false only on a load error, where we degrade
+        // to the same bare attempt the final else makes.
+        loadHls().then((ok) => { ok ? attach() : (player.src = src); });
+        return;
+      } else if (Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
         const target = latencyTarget || (usingLL() ? 5 : 8);
         const cfg = {
@@ -1170,13 +1201,16 @@
           qrUrl = document.getElementById('qrUrl'),
           qrClose = document.getElementById('qrClose');
     let qrDrawn = false;
-    shareBtn.addEventListener('click', () => {
-      if (!qrDrawn && window.QRCode) {
-        new QRCode(document.getElementById('qrShare'), { text: location.href, width: 232, height: 232, correctLevel: QRCode.CorrectLevel.M });
-        qrDrawn = true;
-      }
+    shareBtn.addEventListener('click', async () => {
       qrUrl.textContent = location.href;
-      qrOverlay.classList.add('show');
+      qrOverlay.classList.add('show');           // open instantly; QR paints when its script lands
+      if (!qrDrawn) {
+        await loadQR();                            // 20KB, fetched only on demand
+        if (window.QRCode) {
+          new QRCode(document.getElementById('qrShare'), { text: location.href, width: 232, height: 232, correctLevel: QRCode.CorrectLevel.M });
+          qrDrawn = true;
+        }
+      }
     });
     qrClose.addEventListener('click', () => qrOverlay.classList.remove('show'));
     qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) qrOverlay.classList.remove('show'); });
