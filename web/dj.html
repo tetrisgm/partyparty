@@ -52,10 +52,13 @@
      console runs. Guest pages (listener/wall) are separate files, never gated. */
   .gate-brand,.gate-title,.gate-explain{display:none}
   .authgate.blocking{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;border-bottom:none;box-shadow:none;background:var(--bg)}
-  .authgate.blocking .authbanner-in{flex-direction:column;text-align:center;align-items:center;max-width:400px;gap:5px;background:var(--bg-elevated);border:1px solid var(--separator);border-radius:20px;padding:38px 30px;box-shadow:var(--shadow)}
+  .authgate.blocking .authbanner-in{flex-direction:column;text-align:center;align-items:center;max-width:440px;gap:5px;background:var(--bg-elevated);border:1px solid var(--separator);border-radius:20px;padding:38px 30px;box-shadow:var(--shadow)}
   .authgate.blocking .gate-brand{display:block;font-weight:700;font-size:14px;letter-spacing:-.01em;color:var(--label-secondary);margin-bottom:6px}
   .authgate.blocking .gate-title{display:block;font-size:25px;letter-spacing:-.03em;font-weight:650;margin:0 0 4px}
-  .authgate.blocking .gate-explain{display:block;color:var(--label-secondary);font-size:13px;line-height:1.4;margin:-1px 0 6px;max-width:360px}
+  .authgate.blocking .gate-explain{display:block;color:var(--label-secondary);font-size:13px;line-height:1.45;margin:-1px 0 8px;max-width:380px}
+  .auth-steps{display:none}
+  .authgate.blocking .auth-steps{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:2px 0 10px}
+  .authgate.blocking .auth-steps span{background:var(--fill);border:1px solid var(--separator);border-radius:999px;padding:5px 9px;color:var(--label-secondary);font-size:12px;font-weight:600}
   .authgate.blocking .authbanner-msg{flex:none;min-width:0;font-size:14px;line-height:1.5}
   .authgate.blocking .authbanner-actions{flex-direction:column;width:100%;margin-top:18px;gap:9px}
   .authgate.blocking .authbanner-actions .go,.authgate.blocking .authbanner-actions .ghost{width:100%;height:42px;font-size:14px}
@@ -225,7 +228,14 @@
     -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
     border-bottom:1px solid var(--separator)}
   .abinner{max-width:1060px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:10px}
-  .abinner select{width:auto;max-width:360px;flex:0 1 360px}
+  .source-picker{display:grid;gap:4px;min-width:280px;max-width:520px;flex:1 1 460px}
+  .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+  .source-step label{margin:0;color:var(--label);font-size:12px;font-weight:800;line-height:1.25}
+  .source-guide-link{height:auto;padding:0;background:transparent;color:var(--link);font-size:12px;font-weight:700;white-space:nowrap}
+  .source-guide-link:hover{background:transparent;text-decoration:underline}
+  .source-row{display:flex;align-items:center;gap:6px;min-width:0}
+  .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none}
+  .source-hint{font-size:11px;color:var(--label-tertiary);line-height:1.3}
   .abbtn{display:inline-flex;align-items:center;gap:7px;background:var(--fill);color:var(--label);border-radius:999px;height:34px;padding:0 16px}
   .abbtn:hover{background:var(--fill-hover)}
   .abinner .iconbtn{width:34px;height:34px;border-radius:999px}
@@ -250,10 +260,12 @@
   .guest-setup-copy{min-width:0}
   .guest-setup h3{font-size:17px;line-height:1.25;margin:0 0 4px;color:var(--label);letter-spacing:-.01em}
   .guest-setup p{font-size:13px;line-height:1.5;margin:0;color:var(--label-secondary)}
-  .guest-setup-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:0 0 auto;max-width:260px}
+  .guest-setup-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:0 0 auto;max-width:360px}
   .guest-setup-actions button{height:30px;white-space:nowrap}
   .guest-action-note{font-size:12px;font-weight:700;color:var(--label-secondary);line-height:1.35;text-align:right}
   .guest-selftest{border-top:1px solid var(--separator);padding-top:10px;font-size:12px;line-height:1.5;color:var(--label-secondary)}
+  .guest-selftest.testing{color:var(--label);font-weight:600}
+  .guest-selftest.error{color:var(--danger);font-weight:700}
   .guest-selftest.ok{color:#1d883d;font-weight:700}
   .guest-setup-nudge{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
   .guest-setup-nudge span{font-size:13px;line-height:1.45}
@@ -326,20 +338,36 @@
   .sheetov.show{display:flex}
   .sheet{position:relative;background:var(--bg-elevated);border-radius:18px;max-width:560px;width:100%;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.22)}
   .sheet h3{color:var(--label)}
+  .softaskov{position:fixed;inset:0;background:rgba(0,0,0,.26);display:none;align-items:center;justify-content:center;padding:22px;z-index:90}
+  .softaskov.show{display:flex}
+  .softask{position:relative;background:var(--bg-elevated);border:1px solid var(--separator);border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.22);max-width:420px;width:100%;padding:24px}
+  .softask h2{font-size:21px;line-height:1.18;margin:0 0 8px;color:var(--label)}
+  .softask p{font-size:14px;line-height:1.5;color:var(--label-secondary);margin:0}
+  .softask-actions{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}
+  .softask-actions button{height:36px;border-radius:999px;padding:0 18px}
+  .console-footer{position:fixed;right:14px;bottom:8px;z-index:6;font-size:11px;color:var(--label-tertiary)}
+  .console-footer a{color:var(--label-tertiary);text-decoration:none;font-weight:600}
+  .console-footer a:hover{color:var(--link);text-decoration:underline}
     /* accessibility + capability fallbacks (kept from the dark theme) */
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#fff}}
   @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
+  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.source-picker{flex-basis:100%;max-width:none}.abspacer{display:none}.golive{margin-left:auto}}
 </style>
 </head>
 <body class="account-locked">
 <div id="authGate" class="authgate blocking">
   <div class="authbanner-in">
-    <span class="gate-brand">🕺 partyparty</span>
-    <span class="gate-title" id="accountTitle">Checking activation…</span>
-    <span class="gate-explain" id="accountExplain">Sign in to publish your parties online and link this Mac. You do this once.</span>
+    <span class="gate-brand">partyparty beta</span>
+    <span class="gate-title" id="accountTitle">partyparty · early access</span>
+    <span class="gate-explain" id="accountExplain">Turn this Mac into a LAN party server: guests scan a QR to listen and post on your Wi-Fi. One-time sign-in links this Mac so you can publish and replay sets online.</span>
+    <div class="auth-steps" aria-label="First-run steps">
+      <span>1. Sign in once</span>
+      <span>2. Pick your audio source</span>
+      <span>3. Go Live — guests scan a QR</span>
+    </div>
     <span class="authbanner-msg" id="accountMsg" role="status">Verifying this Mac's account.</span>
     <span class="authbanner-actions">
       <button class="go" id="accountSignInBtn" type="button">Sign in / Sign up</button>
@@ -354,8 +382,17 @@
      Go Live — lives up here. Below it, the page IS the event. -->
 <div id="actionbar">
   <div class="abinner">
-    <select id="device" title="🖥️ Mac output captures everything playing (macOS asks once — click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live — if a phone hears the beep, the network path works."></select>
-    <button class="iconbtn" id="refreshBtn" type="button" aria-label="Refresh sources" title="Refresh sources"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+    <div class="source-picker">
+      <div class="source-step">
+        <label id="sourceStepLabel" for="device">1. Pick what guests hear</label>
+        <button class="source-guide-link" id="sourceGuideBtn" type="button">What should I pick?</button>
+      </div>
+      <div class="source-row">
+        <select id="device" aria-labelledby="sourceStepLabel" title="🖥️ Mac output captures everything playing (macOS asks once — click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live — if a phone hears the beep, the network path works."></select>
+        <button class="iconbtn" id="refreshBtn" type="button" aria-label="Refresh sources" title="Refresh sources"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+      </div>
+      <div class="source-hint">Mac output = everything playing · Test tone = prove the connection first</div>
+    </div>
     <button class="abbtn" id="shareOpenBtn" type="button" title="Show the guest link and QR">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
       Share
@@ -638,6 +675,17 @@
   </section>
 </div>
 
+<div class="softaskov" id="captureSoftAsk" role="presentation" hidden>
+  <div class="softask" role="dialog" aria-modal="true" aria-labelledby="captureSoftTitle" aria-describedby="captureSoftCopy">
+    <h2 id="captureSoftTitle">Let partyparty capture your Mac's audio so guests hear what you're playing</h2>
+    <p id="captureSoftCopy">You'll see one macOS prompt after you choose Allow. This is what lets the party hear the actual set, not silence.</p>
+    <div class="softask-actions">
+      <button class="ghost" id="captureSoftLater" type="button">Not now</button>
+      <button class="go" id="captureSoftAllow" type="button">Allow</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings sheet (the gear): everything that isn't a during-the-party action. -->
 <div class="sheetov" id="settingsSheet">
   <div class="sheet">
@@ -683,7 +731,7 @@
     </section>
 
     <div class="settings-section">
-      <details>
+      <details id="sourceGuideDetails">
         <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Source guide</summary>
         <div id="helpNote" style="display:block">
           <h3>① Capture everything on the Mac (easiest)</h3>
@@ -712,6 +760,10 @@
   </div>
 </div>
 </div>
+
+<footer class="console-footer">
+  <a href="mailto:ramine@ramine.net?subject=partyparty%20beta">Send beta feedback</a>
+</footer>
 
 <script src="/vendor/qrcode.min.js"></script>
 <script>
@@ -800,7 +852,8 @@
   let accountSigningIn = false;
   let refreshTimer = null;
   let accountWatchTimer = null;
-  const ACCOUNT_GATE_EXPLANATION = 'Sign in to publish your parties online and link this Mac. You do this once.';
+  const ACCOUNT_GATE_TITLE = 'partyparty · early access';
+  const ACCOUNT_GATE_EXPLANATION = 'Turn this Mac into a LAN party server: guests scan a QR to listen and post on your Wi-Fi. One-time sign-in links this Mac so you can publish and replay sets online.';
   const ACCOUNT_OFFLINE_MESSAGE = 'You’re offline — connect to the internet once to activate, then partyparty works offline at your venue.';
   const ACCOUNT_SIGNING_MESSAGE = 'Finish signing in — partyparty unlocks here automatically.';
   const ACCOUNT_RETRY_MIN_MS = 3000;
@@ -890,6 +943,7 @@
     currentAccountState = st || null;
     accountLinked = linked;
     renderSettingsAccount(st || { linked: false });
+    if (title) title.textContent = ACCOUNT_GATE_TITLE;
     if (explain) explain.textContent = ACCOUNT_GATE_EXPLANATION;
     // Activation model: the app requires a linked account before it runs. Once
     // this Mac shows linked (online, or offline on a cached prior activation),
@@ -913,20 +967,17 @@
     document.body.classList.add('account-locked');
     $('accountMeta').hidden = true;
     if (checking) {
-      title.textContent = 'Checking activation…';
       msg.className = 'authbanner-msg';
-      msg.textContent = 'Verifying this Mac’s account.';
+      msg.textContent = 'Checking whether this Mac is linked.';
       return;
     }
     if (accountSigningIn) {
-      title.textContent = 'Finish sign-in';
       msg.className = 'auth-status' + (st && st.error ? ' error' : '');
       msg.textContent = (st && st.error) ? ACCOUNT_OFFLINE_MESSAGE : ACCOUNT_SIGNING_MESSAGE;
       return;
     }
-    title.textContent = 'Sign in to start';
     msg.className = 'authbanner-msg' + (st && st.error ? ' error' : '');
-    msg.textContent = (st && st.error) ? ACCOUNT_OFFLINE_MESSAGE : 'Create your account or sign in to activate partyparty on this Mac.';
+    msg.textContent = (st && st.error) ? ACCOUNT_OFFLINE_MESSAGE : 'Sign in once to activate this Mac. Guests still join over Wi-Fi with no account.';
     scheduleAccountRetry();
   }
   async function loadAccountStatus(opts){
@@ -1168,6 +1219,17 @@
     ov.addEventListener('click', (e) => { if (e.target === ov) ov.classList.remove('show'); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ov.classList.remove('show'); });
   }
+  function openSourceGuide(){
+    const ov = $('settingsSheet');
+    if (ov) ov.classList.add('show');
+    const details = $('sourceGuideDetails');
+    if (details) details.open = true;
+    setTimeout(() => {
+      const guide = $('helpNote');
+      if (guide) guide.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  }
+  $('sourceGuideBtn').onclick = openSourceGuide;
 
   let capturePermission = { state: 'undetermined', kind: 'systemAudio' };
   function selectedCaptureDevice(){
@@ -1339,13 +1401,41 @@
     localStorage.setItem('pp.adv', $('advToggle').checked ? '1' : '0');
   };
 
-  async function startBroadcast() {
+  let captureSoftAskAccepted = false;
+  function showCaptureSoftAsk(){
+    const ov = $('captureSoftAsk');
+    if (!ov) return;
+    ov.hidden = false;
+    ov.classList.add('show');
+    setTimeout(() => {
+      const allow = $('captureSoftAllow');
+      if (allow) allow.focus();
+    }, 0);
+  }
+  function hideCaptureSoftAsk(){
+    const ov = $('captureSoftAsk');
+    if (!ov) return;
+    ov.classList.remove('show');
+    ov.hidden = true;
+  }
+  function shouldSoftAskForCapture(opts){
+    opts = opts || {};
+    return !captureSoftAskAccepted && !opts.allowUndetermined && capturePermissionApplies() && effectiveCapturePermissionState() === 'undetermined';
+  }
+
+  async function startBroadcast(opts) {
+    opts = opts || {};
+    if (shouldSoftAskForCapture(opts)) {
+      showCaptureSoftAsk();
+      return false;
+    }
     const sel = $('device');
     const device = sel.value;
     const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
     const bitrate = $('quality').value;
     const mono = $('mono').checked ? '1' : '0';
     localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
+    let ok = false;
     try {
       const r = await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name) +
         '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono, { method:'POST' });
@@ -1356,11 +1446,13 @@
         try { const e = await r.json(); if (e && e.error) startError = e.error; } catch (e) {}
       } else {
         startError = '';
+        ok = true;
       }
     } catch (e) {
       startError = 'Could not reach the app — is it still running?';
     }
     refresh();
+    return ok;
   }
   // one toggle: green Go Live when idle, red Stop when live/starting
   $('liveBtn').onclick = () => {
@@ -1371,6 +1463,12 @@
       startBroadcast();
     }
   };
+  $('captureSoftAllow').onclick = () => {
+    captureSoftAskAccepted = true;
+    hideCaptureSoftAsk();
+    startBroadcast({ allowUndetermined: true });
+  };
+  $('captureSoftLater').onclick = hideCaptureSoftAsk;
   (function(){ const a = $('autoPublish'); if (!a) return; a.checked = localStorage.getItem('pp.autoPublish') === '1'; a.onchange = () => { try { localStorage.setItem('pp.autoPublish', a.checked ? '1' : '0'); } catch (e) {} }; })();
   $('refreshBtn').onclick = () => {
     const b = $('refreshBtn');
@@ -1466,6 +1564,7 @@
   const GUEST_SETUP_NUDGE_MS = 60000;
   let lastNetworkSituation = null, networkSituationLoading = false, lastGuestSetupOpts = null;
   let guestSetupConfirmed = false, lastGuestSetupGuestCount = null, guestSetupQrShownAt = 0, lastGuestSetupSituation = '', guestSetupNudgeDismissed = false;
+  let guestConnectionTestActive = false, guestConnectionTestMessage = '';
 
   function guestSetupPlan(info){
     const situation = String((info && info.situation) || '').trim();
@@ -1530,11 +1629,12 @@
       actions.innerHTML = '';
       return;
     }
-    if (plan.action === 'two_step') {
-      actions.innerHTML = '<span class="guest-action-note">Show both QR codes below.</span>';
-    } else {
-      actions.innerHTML = '<span class="guest-action-note">Show the party QR below.</span>';
-    }
+    const note = plan.action === 'two_step' ? 'Show both QR codes below.' : 'Show the party QR below.';
+    const label = guestConnectionTestActive ? 'Test tone live' : (guestSetupConfirmed ? 'Test again' : 'Test a guest connection');
+    actions.innerHTML = '<button class="ghost" id="guestTestBtn" type="button">' + escT(label) + '</button>' +
+      '<span class="guest-action-note">' + escT(note) + '</span>';
+    const btn = $('guestTestBtn');
+    if (btn) btn.disabled = lastState === 'starting';
   }
 
   function setGuestWifiMode(mode){
@@ -1580,16 +1680,68 @@
     const el = $('guestSetupSelfTest');
     if (!el) return;
     if (Number.isFinite(guestCount)) {
-      if (guestCount >= 1 && (lastGuestSetupGuestCount === 0 || lastGuestSetupGuestCount == null || guestSetupConfirmed)) {
+      if (guestCount >= 1 && (guestConnectionTestActive || lastGuestSetupGuestCount === 0 || lastGuestSetupGuestCount == null || guestSetupConfirmed)) {
         guestSetupConfirmed = true;
+        guestConnectionTestActive = false;
+        guestConnectionTestMessage = '';
       }
       lastGuestSetupGuestCount = guestCount;
     }
-    el.className = 'guest-selftest' + (guestSetupConfirmed ? ' ok' : '');
+    const error = !!guestConnectionTestMessage && !guestConnectionTestActive && !guestSetupConfirmed;
+    el.className = 'guest-selftest' + (guestSetupConfirmed ? ' ok' : (error ? ' error' : (guestConnectionTestActive ? ' testing' : '')));
     el.textContent = guestSetupConfirmed
       ? '✓ Guests can reach you.'
-      : 'Before guests arrive, scan this yourself to confirm they can connect.';
+      : (guestConnectionTestMessage || 'Before guests arrive, scan this yourself to confirm they can connect.');
   }
+
+  function selectTestToneSource(){
+    const sel = $('device');
+    if (!sel) return false;
+    const hasTest = [...sel.options].some(o => o.value === 'test');
+    if (!hasTest) return false;
+    sel.value = 'test';
+    syncCaptureSourceSelection();
+    localStorage.setItem('pp.device', 'test');
+    return true;
+  }
+  async function startGuestConnectionTest(){
+    guestSetupConfirmed = false;
+    guestConnectionTestActive = true;
+    guestConnectionTestMessage = 'Starting a 440 Hz test tone. Scan the Party QR with a phone and confirm you hear the beep.';
+    renderGuestSelfTest(lastGuestSetupGuestCount);
+    renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
+    if (lastState === 'live' || lastState === 'starting') {
+      if (selectedCaptureDevice() === 'test') {
+        guestConnectionTestMessage = 'Test tone is live. Scan the Party QR with a phone and confirm you hear the 440 Hz beep.';
+      } else {
+        guestConnectionTestActive = false;
+        guestConnectionTestMessage = 'Stop the current broadcast first, then run the test tone before guests arrive.';
+      }
+      renderGuestSelfTest(lastGuestSetupGuestCount);
+      renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
+      return;
+    }
+    if (!selectTestToneSource()) {
+      guestConnectionTestActive = false;
+      guestConnectionTestMessage = 'Test tone source is not available yet. Refresh sources and try again.';
+      renderGuestSelfTest(lastGuestSetupGuestCount);
+      renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
+      return;
+    }
+    const ok = await startBroadcast({ allowUndetermined: true });
+    if (ok) {
+      guestConnectionTestMessage = 'Test tone is live. Scan the Party QR with a phone and confirm you hear the 440 Hz beep.';
+    } else {
+      guestConnectionTestActive = false;
+      guestConnectionTestMessage = startError || 'Could not start the test tone.';
+    }
+    renderGuestSelfTest(lastGuestSetupGuestCount);
+    renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
+  }
+  $('guestSetupActions').addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest && e.target.closest('#guestTestBtn');
+    if (btn) startGuestConnectionTest();
+  });
 
   function renderGuestSetup(info, opts){
     opts = opts || {};
