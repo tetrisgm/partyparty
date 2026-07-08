@@ -1887,7 +1887,7 @@ const tests = [
     assert.match(html, /Owned Account Night/);
     assert.match(html, /Link your Mac/);
     assert.match(html, /Sign in to link this Mac|choose Sign in to link this Mac/);
-    assert.match(html, /Use a code for an older app/);
+    assert.match(html, /Older app version only/);
     assert.match(html, /install-link-create/);
   }],
   ["install-link create gates auth and profile, then returns a one-time code", async () => {
@@ -1967,9 +1967,17 @@ const tests = [
     const unlinkedJson = await unlinked.json();
     assert.equal(unlinked.status, 200);
     assert.equal(unlinkedJson.ok, true);
+    assert.equal(unlinkedJson.providersAvailable, false);
     assert.equal(unlinkedJson.linked, false);
     assert.equal(unlinkedJson.install.slug, "disco12");
     assert.equal(unlinkedJson.license.ok, false);
+
+    const providersOn = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
+    assert.equal((await providersOn.json()).providersAvailable, true);
 
     db.authUsers.set("user-account-status", {
       id: "user-account-status",
@@ -2014,6 +2022,7 @@ const tests = [
     }), makeEnv({ DB: db }));
     const linkedJson = await linked.json();
     assert.equal(linked.status, 200);
+    assert.equal(linkedJson.providersAvailable, false);
     assert.equal(linkedJson.linked, true);
     assert.equal(linkedJson.user.email, "linked@example.com");
     assert.equal(linkedJson.profile.handle, "linked.dj");
@@ -2921,19 +2930,35 @@ const tests = [
     assert.equal(resp.status, 302);
     assert.equal(resp.headers.get("location"), "/login?redirect=/profile/edit");
   }],
-  ["login renders email form for anonymous users", async () => {
+  ["login renders fallback when no consumer auth providers are configured", async () => {
     const resp = await worker.fetch(new Request("https://party.ramine.net/login"), makeEnv({ DB: new FakeD1() }));
     const html = await resp.text();
     assert.equal(resp.status, 200);
-    assert.match(html, /type="email"/);
+    assert.doesNotMatch(html, /type="email"/);
+    assert.match(html, /No self-serve sign-in methods are configured/);
+    assert.match(html, /Older app version only/);
+    assert.match(html, /href="\/account"/);
+    assert.match(html, /href="\/login\?admin=1&amp;redirect=%2Faccount"/);
     // Admin passcode is demoted — not shown on the default consumer login.
     assert.doesNotMatch(html, /Admin passcode/);
-    assert.match(html, /redirect="\/account"/);
-    assert.match(html, /Email sign-in is temporarily unavailable/);
 
     // ...but it's available behind /login?admin=1 for support/dev.
     const adminResp = await worker.fetch(new Request("https://party.ramine.net/login?admin=1"), makeEnv({ DB: new FakeD1() }));
     assert.match(await adminResp.text(), /Admin passcode/);
+  }],
+  ["login renders email form when MXroute email is configured", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/login"), makeEnv({
+      DB: new FakeD1(),
+      env: {
+        AUTH_EMAIL_SERVER: "smtps://signin%40mail.example.test:p%40ssword@mail.mxrouting.test:465",
+      },
+    }));
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.match(html, /type="email"/);
+    assert.match(html, /New to partyparty\? Your account is created automatically/);
+    assert.match(html, /redirect="\/account"/);
+    assert.match(html, /Email sign-in is temporarily unavailable/);
   }],
   ["login redirects signed-in users to account", async () => {
     const db = new FakeD1();

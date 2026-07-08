@@ -23,6 +23,19 @@ See [PLAN.md](PLAN.md) for the full design rationale and the research behind the
 - Optional: a virtual audio device (`brew install blackhole-2ch`) only if you want to capture a
   single app in isolation. Capturing the whole Mac output needs **no** extra install.
 
+## Uninstalling
+
+partyparty registers only user-space app pieces:
+
+- the app bundle in `~/Applications/partyparty.app`
+- Sparkle's updater/XPC service registration for that app
+- the optional macOS login item, if you turned on launch at login
+- the in-bundle FFmpeg, MediaMTX, and system-audio helpers
+
+Nothing is installed to `/Library`, and partyparty does not leave behind an audio driver, kext,
+or system extension. To uninstall, quit partyparty and drag `~/Applications/partyparty.app` to
+the Trash. If you enabled launch at login, also remove the partyparty login item in System Settings.
+
 ## Quick start
 
 ```bash
