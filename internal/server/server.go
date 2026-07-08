@@ -408,6 +408,15 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.
 		writeJSON(w, http.StatusOK, map[string]any{"t": time.Now().UnixMilli()})
+	case "/api/network-situation":
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		writeJSON(w, http.StatusOK, s.networkSituation())
 	case "/api/account/status":
 		if !s.requireDJ(w, r) {
 			return
@@ -708,10 +717,20 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		case "mic":
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone").Start()
 		case "sharing":
-			_ = exec.Command("open", "x-apple.systempreferences:com.apple.Sharing-Settings.extension").Start()
+			openSharingSettings()
 		default: // "audio" / "screen" / anything → the audio-recording pane
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture").Start()
 		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/open-wifi-sharing":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		openSharingSettings()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/devices":
 		if !s.requireDJ(w, r) {
