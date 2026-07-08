@@ -320,6 +320,7 @@
     <span class="authbanner-actions">
       <button class="go" id="accountSignInBtn" type="button">Sign in / Sign up</button>
     </span>
+    <button class="lt sm" id="accountBrowserBtn" type="button" hidden style="margin-top:10px">Trouble? Sign in with your browser</button>
     <div class="auth-meta" id="accountMeta" hidden></div>
   </div>
 </div>
@@ -747,7 +748,7 @@
   let accountWatchTimer = null;
   const ACCOUNT_GATE_EXPLANATION = 'Sign in to publish your parties online and link this Mac. You do this once.';
   const ACCOUNT_OFFLINE_MESSAGE = 'You’re offline — connect to the internet once to activate, then partyparty works offline at your venue.';
-  const ACCOUNT_SIGNING_MESSAGE = 'Finish sign-in in your browser. partyparty will unlock here automatically.';
+  const ACCOUNT_SIGNING_MESSAGE = 'Finish signing in — partyparty unlocks here automatically.';
   const ACCOUNT_RETRY_MIN_MS = 3000;
   const ACCOUNT_RETRY_MAX_MS = 30000;
 
@@ -895,12 +896,12 @@
     const msg = $('accountSettingsMsg');
     const linked = !!(currentAccountState && currentAccountState.linked);
     msg.style.display = 'block';
-    msg.textContent = linked ? 'Opening your account in the browser...' : 'Opening sign-in in the browser...';
+    msg.textContent = linked ? 'Opening your account in the browser...' : 'Opening sign-in…';
     btn.disabled = true;
     try {
       if (!linked) {
         await startAccountSignIn();
-        msg.textContent = 'Finish sign-in in your browser. The app will unlock automatically.';
+        msg.textContent = 'Finish signing in — the app unlocks automatically.';
         return;
       }
       const r = await fetch('/api/account/open', { method: 'POST' });
@@ -939,6 +940,11 @@
     accountPoll = setInterval(() => loadAccountStatus({ silent: true }), 2000);
   }
   async function startAccountSignIn(){
+    // In the native app, host sign-in in an in-app window (no browser bounce,
+    // no polling): ask Go for the one-time link URL, hand it to native, and let
+    // it call window.ppAccountLinked() when the bind lands. Outside the app
+    // (dev browser) fall back to the system browser + status poll.
+    const inApp = !!(window.ppNative && window.webkit?.messageHandlers?.pp);
     const btn = $('accountSignInBtn');
     const msg = $('accountMsg');
     stopAccountPoll();
@@ -946,13 +952,18 @@
     stopAccountRetry();
     btn.disabled = true;
     msg.className = 'auth-status';
-    msg.textContent = 'Opening sign-in / sign-up in your browser...';
+    msg.textContent = inApp ? 'Opening sign-in…' : 'Opening sign-in / sign-up in your browser...';
     try {
-      const r = await fetch('/api/link-install/start', { method: 'POST' });
+      const r = await fetch('/api/link-install/start' + (inApp ? '?inapp=1' : ''), { method: 'POST' });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || 'Could not start sign-in.');
+      if (inApp) {
+        if (!j.url) throw new Error('Could not open the sign-in window.');
+        window.webkit.messageHandlers.pp.postMessage({ action: 'openSignIn', url: j.url });
+      } else {
+        startAccountPoll();
+      }
       msg.textContent = ACCOUNT_SIGNING_MESSAGE;
-      startAccountPoll();
     } catch (e) {
       stopAccountPoll();
       msg.className = 'auth-status error';
@@ -960,6 +971,28 @@
       scheduleAccountRetry();
     } finally {
       btn.disabled = false;
+    }
+  }
+  // Escape hatch: if embedded sign-in is refused (some OAuth providers block
+  // web views), fall back to the system browser + poll — the original flow.
+  async function startAccountSignInBrowser(){
+    const msg = $('accountMsg');
+    stopAccountPoll();
+    accountSigningIn = true;
+    stopAccountRetry();
+    msg.className = 'auth-status';
+    msg.textContent = 'Opening sign-in in your browser...';
+    try {
+      const r = await fetch('/api/link-install/start', { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not start sign-in.');
+      msg.textContent = 'Finish sign-in in your browser. partyparty unlocks here automatically.';
+      startAccountPoll();
+    } catch (e) {
+      stopAccountPoll();
+      msg.className = 'auth-status error';
+      msg.textContent = e && e.message ? e.message : 'Could not start sign-in.';
+      scheduleAccountRetry();
     }
   }
   $('accountSignInBtn').onclick = startAccountSignIn;
@@ -2433,9 +2466,25 @@
 
   // In-app controls — only when running inside the native menu-bar app.
   window.ppSetLoginState = (on) => { const c = $('loginItem'); if (c) c.checked = !!on; };
+  // Native calls this when in-app sign-in completes — drop the gate via one
+  // fresh status re-check (no polling). Clear accountSigningIn first so that if
+  // the re-check comes back not-linked (a transient blip), renderAccountState
+  // falls through to reschedule a retry instead of staying stuck.
+  window.ppAccountLinked = () => { accountSigningIn = false; loadAccountStatus({ fresh: true }); };
+  // Native calls this when the in-app sign-in window closes. If the DJ closed it
+  // without finishing, clear the "finishing sign-in" state and re-check so the
+  // gate recovers (a not-linked result reschedules retries) instead of promising
+  // an auto-unlock that will never come. No-op once the console is activated.
+  window.ppSignInClosed = () => {
+    if (consoleActivated) return;
+    accountSigningIn = false;
+    loadAccountStatus({ fresh: true });
+  };
   if (window.ppNative) {
     $('inapp').style.display = 'block';
     $('loginItem').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setLoginItem', on: $('loginItem').checked });
+    const bb = $('accountBrowserBtn');
+    if (bb) { bb.hidden = false; bb.onclick = startAccountSignInBrowser; }
     window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready' });
   }
 </script>

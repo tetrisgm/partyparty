@@ -3046,7 +3046,11 @@ async function linkMacResponse(request, env) {
   return linkMacPage(
     "Mac linked",
     `This Mac is now linked to ${user.email || "your account"}.`,
-    `<div class="ecta"><a class="btn sm" href="/account">View account</a><a class="btn lt sm" href="/">Go to website</a></div>`
+    // The hidden marker lets partyparty's in-app sign-in window detect that the
+    // bind landed (a native-injected script watches for [data-pp-linked] and
+    // signals the app to drop its activation gate). Harmless in a plain browser.
+    `<span data-pp-linked="1" hidden></span>` +
+      `<div class="ecta"><a class="btn sm" href="/account">View account</a><a class="btn lt sm" href="/">Go to website</a></div>`
   );
 }
 

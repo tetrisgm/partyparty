@@ -497,7 +497,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
-		_ = exec.Command("open", linkURL).Start()
+		// inapp=1: the native app hosts sign-in in its own in-app window (no
+		// browser bounce), so just hand back the URL. Otherwise (browser
+		// fallback / dev) open the system browser as before.
+		if r.URL.Query().Get("inapp") != "1" {
+			_ = exec.Command("open", linkURL).Start()
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": linkURL})
 	case "/api/link-install":
 		if r.Method != http.MethodPost {
