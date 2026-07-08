@@ -773,6 +773,60 @@ func main() {
 				wasActive = active
 			}
 		}()
+		// Go-live health: a few seconds after the broadcast reports "live", ask
+		// MediaMTX's own manifest whether the guest stream actually landed.
+		// ffmpeg's -progress only proves the encoder runs — the recording tee leg
+		// alone keeps it "live" — NOT that the RTSP publish reached MediaMTX. This
+		// catches a false-live ("Live" but guests hear nothing) within ~7s, ships
+		// the verdict urgently, and lets the console tell the DJ honestly.
+		if mtx != nil {
+			go func() {
+				word := func(c bool, a, b string) string {
+					if c {
+						return a
+					}
+					return b
+				}
+				lastLive := false
+				for {
+					time.Sleep(2 * time.Second)
+					live := bc.Status().State == "live"
+					if live && !lastLive && bc.Delivery() == "llhls" {
+						time.Sleep(5 * time.Second) // let LL-HLS parts+segments accumulate
+						if bc.Status().State != "live" {
+							lastLive = live
+							continue
+						}
+						before, _ := bc.ProgressSnapshot()
+						time.Sleep(2 * time.Second)
+						after, size := bc.ProgressSnapshot()
+						capFlowing := after > before && after > 2_000_000 // out_time advancing, >2s encoded
+						pub, code, body := mediamtx.PathPublishing(cfg.HLSPort, cfg.StreamPath)
+						verdict := "HEALTHY"
+						switch {
+						case !capFlowing:
+							verdict = "CAPTURE-DEAD"
+						case !pub:
+							verdict = "DEAD-STREAM"
+						}
+						diagLog.Printf("go-live health: verdict=%s capture=%s(out_time_us=%d size=%d) mtx=%s(http=%d body=%q) guests=%d path=%s port=%d",
+							verdict, word(capFlowing, "flowing", "STALLED"), after, size,
+							word(pub, "publishing", "NO-PUBLISHER"), code, body, len(ls.Roster()), cfg.StreamPath, cfg.HLSPort)
+						switch verdict {
+						case "HEALTHY":
+							handler.SetStreamHealth("")
+						case "DEAD-STREAM":
+							diagLog.MarkUrgent()
+							handler.SetStreamHealth("You’re Live, but no audio is reaching guests — the low-latency engine never received the stream. Stop and Go Live again.")
+						case "CAPTURE-DEAD":
+							diagLog.MarkUrgent()
+							handler.SetStreamHealth("You’re Live, but no audio is being captured — make sure something is playing and the right source is selected, then Stop and Go Live again.")
+						}
+					}
+					lastLive = live
+				}
+			}()
+		}
 		go uploadLogLoop(diagLog, bc)
 	}
 

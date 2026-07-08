@@ -277,6 +277,36 @@ func WaitHTTPSReady(addr string, timeout time.Duration) error {
 	return fmt.Errorf("mediamtx HLS endpoint not accepting HTTPS at %s after %s", addr, timeout)
 }
 
+// PathPublishing asks MediaMTX's own guest-facing truth — the local LL-HLS
+// master manifest — whether a live publisher exists on the given path. This is
+// the HONEST liveness the app must consult before trusting "live": ffmpeg's
+// -progress only proves the encoder is running (the recording tee leg alone
+// keeps it running), NOT that the RTSP publish leg actually landed in MediaMTX.
+// Returns publishing=true when the manifest is a real playlist; false (with the
+// body prefix) when MediaMTX answers its "no stream is available on path
+// '<path>'" JSON — byte-for-byte what a guest sees. localhost-only, same
+// InsecureSkipVerify transport as WaitHTTPSReady.
+func PathPublishing(hlsPort int, path string) (publishing bool, httpCode int, bodyPrefix string) {
+	url := fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", hlsPort, path)
+	client := &http.Client{
+		Timeout:   2 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return false, 0, "http error: " + err.Error()
+	}
+	defer resp.Body.Close()
+	buf := make([]byte, 160)
+	n, _ := io.ReadFull(resp.Body, buf)
+	body := strings.TrimSpace(string(buf[:n]))
+	prefix := body
+	if len(prefix) > 80 {
+		prefix = prefix[:80]
+	}
+	return strings.HasPrefix(body, "#EXTM3U"), resp.StatusCode, prefix
+}
+
 // Stop signals MediaMTX to exit and returns immediately (shutdown path).
 func (s *Server) Stop() { s.stop(false) }
 

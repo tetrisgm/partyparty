@@ -111,6 +111,13 @@ type srv struct {
 	syncDrainRunning bool
 
 	devNoLoginLogOnce sync.Once
+
+	// streamHealthNote: set by the go-live health check (main.go) when the
+	// broadcast reports "live" but MediaMTX has no publisher on the path —
+	// i.e. guests hear nothing. Surfaced in /api/status so the console tells
+	// the DJ honestly instead of showing a false "Live". Guarded by healthMu.
+	healthMu         sync.Mutex
+	streamHealthNote string
 }
 
 func New(d Deps) *Srv {
@@ -201,6 +208,21 @@ func (s *srv) accountActivated() bool {
 	s.actMu.Lock()
 	defer s.actMu.Unlock()
 	return s.accActivated
+}
+
+// SetStreamHealth records the go-live health verdict (main.go's health check).
+// Empty = healthy (guests can hear); non-empty = a DJ-facing warning that the
+// broadcast shows "live" but the guest stream never reached MediaMTX.
+func (s *Srv) SetStreamHealth(note string) {
+	s.healthMu.Lock()
+	s.streamHealthNote = note
+	s.healthMu.Unlock()
+}
+
+func (s *srv) streamHealthText() string {
+	s.healthMu.Lock()
+	defer s.healthMu.Unlock()
+	return s.streamHealthNote
 }
 
 const accountStatusCacheTTL = 15 * time.Second
@@ -404,6 +426,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"mirror":         s.eventMirrorState(),
 			"config":         s.payloadConfig(),
 			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
+			"streamHealth":   s.streamHealthText(),
 		})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.

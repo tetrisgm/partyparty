@@ -128,6 +128,7 @@
   .kv{display:flex;justify-content:space-between;font-size:13px;color:var(--label-secondary);padding:7px 0;border-bottom:1px solid var(--separator)}
   .hint{font-size:11px;color:var(--label-tertiary);margin-top:10px;line-height:1.5}
   .warn{background:rgba(255,149,0,.10);border:1px solid rgba(255,149,0,.35);color:#8a5200;font-size:12px;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
+  .warn.danger-note{background:rgba(255,59,48,.10);border-color:rgba(255,59,48,.42);color:#a01109;font-weight:600}
   .offline-status{background:rgba(52,199,89,.11);border:1px solid rgba(52,199,89,.32);color:#1d883d;font-size:12px;font-weight:600;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
   .offline-fallback button{margin-top:10px;width:100%}
   .honest-fallback{position:relative;display:flex;align-items:center;gap:14px;margin-top:0;margin-bottom:14px;padding:13px 44px 13px 14px}
@@ -1649,8 +1650,13 @@
       // One room target regardless of per-guest delivery (a mixed room must
       // still drop together), so the latency labels are static now.
       if (st === 'live' || st === 'starting') startError = ''; // a successful start clears the sticky error
-      const note = s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '') || startError;
+      // streamHealth (from the go-live health check) is the critical one: the
+      // broadcast reports "live" but MediaMTX never got the stream, so guests
+      // hear nothing. It takes priority over ordinary notes and shows red.
+      const streamHealth = s.streamHealth || '';
+      const note = streamHealth || s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '') || startError;
       $('bcnote').style.display = note ? 'block' : 'none';
+      $('bcnote').classList.toggle('danger-note', !!streamHealth);
       $('bcnoteText').textContent = note || '';
       $('screenPermBtn').style.display = 'block';
       renderHonestFallback(s.reachability);

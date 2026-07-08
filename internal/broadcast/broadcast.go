@@ -765,6 +765,33 @@ func (b *Broadcaster) producingOutput() bool {
 	return strings.Contains(string(data), "progress=")
 }
 
+// ProgressSnapshot reads the current out_time_us and total_size from ffmpeg's
+// -progress file — a read-only sibling of producingOutput(). The go-live health
+// check samples it twice to tell whether the encoder is actually ADVANCING
+// (capture is flowing) vs frozen (tap wedged / no input), independent of whether
+// the guest RTSP leg ever published. Do NOT fold this into producingOutput — that
+// function's presence-of-"progress=" check drives the live transition and must
+// keep its exact semantics.
+func (b *Broadcaster) ProgressSnapshot() (outTimeUs int64, totalSize int64) {
+	data, err := os.ReadFile(b.progressFile())
+	if err != nil {
+		return 0, 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if v, ok := strings.CutPrefix(line, "out_time_us="); ok {
+			if n, e := strconv.ParseInt(v, 10, 64); e == nil {
+				outTimeUs = n
+			}
+		} else if v, ok := strings.CutPrefix(line, "total_size="); ok {
+			if n, e := strconv.ParseInt(v, 10, 64); e == nil {
+				totalSize = n
+			}
+		}
+	}
+	return outTimeUs, totalSize
+}
+
 func (b *Broadcaster) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
