@@ -254,12 +254,15 @@
   .guest-action-note{font-size:12px;font-weight:700;color:var(--label-secondary);line-height:1.35;text-align:right}
   .guest-selftest{border-top:1px solid var(--separator);padding-top:10px;font-size:12px;line-height:1.5;color:var(--label-secondary)}
   .guest-selftest.ok{color:#1d883d;font-weight:700}
+  .guest-setup-nudge{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .guest-setup-nudge span{font-size:13px;line-height:1.45}
+  .guest-nudge-dismiss{width:26px;height:26px;padding:0;border-radius:50%;flex:0 0 auto;background:var(--fill);color:var(--label-secondary);font-size:12px;line-height:1}
+  .guest-nudge-dismiss:hover{background:var(--fill-hover);color:var(--label)}
   .guest-hotspot-card{border:1px solid rgba(255,149,0,.32);background:rgba(255,149,0,.08);border-radius:var(--r-sm);padding:11px;display:grid;gap:8px}
   .guest-hotspot-card[hidden]{display:none}
   .guest-hotspot-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .guest-hotspot-top b{font-size:13px;color:var(--label)}
   .guest-hotspot-steps{font-size:12px;color:#8a5200;line-height:1.5}
-  .guest-hotspot-card button{height:30px;flex:0 0 auto}
   .guest-qr-grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:14px;align-items:start}
   .guest-qr-panel[hidden]{display:none}
   .guest-qr-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--label-tertiary);margin-bottom:6px}
@@ -326,7 +329,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#fff}}
-  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-hotspot-card button{width:100%}.guest-qr-grid{grid-template-columns:1fr}}
+  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
 </style>
 </head>
@@ -420,17 +423,15 @@
         <div class="guest-setup-actions" id="guestSetupActions"></div>
       </div>
       <div class="guest-selftest" id="guestSetupSelfTest">Before guests arrive, scan this yourself to confirm they can connect.</div>
-      <div class="warn" id="guestSetupNudge" hidden>
-        No one's connected yet — this Wi-Fi may be blocking guests from reaching your Mac. Try a hotspot.
-        <button class="ghost" type="button" data-open-wifi-sharing style="margin-top:8px;width:100%">Try a hotspot</button>
+      <div class="warn guest-setup-nudge" id="guestSetupNudge" hidden>
+        <span>Guests not connecting? Make sure they're on the same Wi-Fi as this Mac.</span>
+        <button class="guest-nudge-dismiss" id="guestSetupNudgeClose" type="button" aria-label="Dismiss" title="Dismiss">✕</button>
       </div>
       <div class="guest-hotspot-card" id="guestHotspotCard" hidden>
         <div class="guest-hotspot-top">
-          <b id="guestHotspotTitle">Hotspot option</b>
-          <button class="ghost" type="button" data-open-wifi-sharing>Turn on Internet Sharing</button>
+          <b id="guestHotspotTitle">iPhone Personal Hotspot</b>
         </div>
-        <div class="guest-hotspot-steps">In Sharing, flip on Internet Sharing, name it <b>partyparty</b>, security <b>None</b>, then have guests scan both codes.</div>
-        <div class="hint" id="guestSetupSharingStatus" style="display:none;margin-top:0"></div>
+        <div class="guest-hotspot-steps" id="guestHotspotSteps">No Wi-Fi here? On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.</div>
       </div>
     </div>
     <div class="guest-qr-grid" id="guestQrGrid">
@@ -438,7 +439,7 @@
         <div class="guest-qr-label">Party QR</div>
         <div class="url" id="url">—</div>
         <div class="offline-status" id="hotspotReady" style="display:none"></div>
-        <div class="hint" id="hotspotNoInternet" style="display:none">Guests (and this Mac) won't have internet while on this Wi-Fi — that's normal for the no-gear mode.</div>
+        <div class="hint" id="hotspotNoInternet" style="display:none">Guests need to be on the same Wi-Fi as this Mac before scanning.</div>
         <div id="qr"></div>
         <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
       </div>
@@ -447,7 +448,7 @@
         <details id="wifiJoin" style="margin-top:0">
           <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)"><span id="wifiJoinSummary">Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →</span></summary>
           <div style="margin-top:10px">
-            <div class="hint" id="wifiJoinHelp" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your hotspot). Their phone camera joins it from this QR — then they scan the party QR.</div>
+            <div class="hint" id="wifiJoinHelp" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your iPhone hotspot). Their phone camera joins it from this QR — then they scan the party QR.</div>
             <input id="wifiSsid" placeholder="Wi-Fi network name (SSID)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px;margin-bottom:8px">
             <input id="wifiPass" placeholder="Wi-Fi password (leave blank if open)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px">
             <div id="wifiQr" style="margin-top:12px"></div>
@@ -457,9 +458,8 @@
       </div>
     </div>
     <div class="warn offline-fallback" id="hotspotFallback" style="display:none">
-      <div><b>Hotspot is not ready yet.</b></div>
-      <div>Turn on your Mac's hotspot: System Settings → General → Sharing → Internet Sharing → share to Wi-Fi.</div>
-      <button class="ghost" id="openSharingBtn" type="button">Open Sharing Settings</button>
+      <div><b>No Wi-Fi here?</b></div>
+      <div>On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.</div>
     </div>
 
     <div id="pubSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
@@ -780,11 +780,6 @@
   document.addEventListener('click', (e) => {
     const btn = e.target && e.target.closest && e.target.closest('[data-copy-url]');
     if (btn) copyText(btn.dataset.copyUrl, btn);
-    const wifiBtn = e.target && e.target.closest && e.target.closest('[data-open-wifi-sharing]');
-    if (wifiBtn) {
-      e.preventDefault();
-      openWifiSharing(wifiBtn);
-    }
   });
   renderOnline('');
 
@@ -1316,11 +1311,14 @@
   };
   $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
   $('permBtnAlways').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
-  $('openSharingBtn').onclick = () => openWifiSharing($('openSharingBtn'));
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
   $('honestFallbackClose').onclick = () => {
     reachPromptDismissed = true;
     $('honestFallback').style.display = 'none';
+  };
+  $('guestSetupNudgeClose').onclick = () => {
+    guestSetupNudgeDismissed = true;
+    $('guestSetupNudge').hidden = true;
   };
   $('offlineSwitchBtn').onclick = () => {
     offlineSwitchRequested = true;
@@ -1338,32 +1336,6 @@
       $('offlineSwitchBtn').querySelector('span').textContent = 'Switch to my own Wi-Fi';
     }
   };
-
-  async function openWifiSharing(btn){
-    const status = $('guestSetupSharingStatus');
-    const buttons = Array.from(document.querySelectorAll('[data-open-wifi-sharing]'));
-    if (btn && buttons.indexOf(btn) < 0) buttons.push(btn);
-    buttons.forEach(b => { b.disabled = true; });
-    if (status) {
-      status.style.display = 'block';
-      status.textContent = 'Opening Sharing settings...';
-    }
-    try {
-      const r = await fetch('/api/open-wifi-sharing', { method:'POST' });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || (j && j.ok === false)) throw new Error((j && j.error) || 'Could not open Sharing.');
-      if (status) status.textContent = 'Sharing settings opened.';
-    } catch (e) {
-      try {
-        await fetch('/api/open-settings?pane=sharing', { method:'POST' });
-        if (status) status.textContent = 'Sharing settings opened.';
-      } catch (err) {
-        if (status) status.textContent = 'Open System Settings > General > Sharing > Internet Sharing.';
-      }
-    } finally {
-      buttons.forEach(b => { b.disabled = false; });
-    }
-  }
 
   function renderQR(text){
     if (text === qrText) return;
@@ -1420,9 +1392,10 @@
     box.style.display = 'flex';
   }
 
-  const GUEST_SETUP_NUDGE_MS = 20000;
+  const IPHONE_HOTSPOT_GUIDANCE = 'No Wi-Fi here? On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.';
+  const GUEST_SETUP_NUDGE_MS = 60000;
   let lastNetworkSituation = null, networkSituationLoading = false, lastGuestSetupOpts = null;
-  let guestSetupConfirmed = false, lastGuestSetupGuestCount = null, guestSetupQrShownAt = 0, lastGuestSetupSituation = '';
+  let guestSetupConfirmed = false, lastGuestSetupGuestCount = null, guestSetupQrShownAt = 0, lastGuestSetupSituation = '', guestSetupNudgeDismissed = false;
 
   function guestSetupPlan(info){
     const situation = String((info && info.situation) || '').trim();
@@ -1437,38 +1410,39 @@
         wifiMode: ''
       },
       ethernet_can_host: {
-        headline: 'Host a Wi-Fi for your guests.',
-        writeup: "Your Mac's on a cable, so it can share Wi-Fi to guests and they'll still have internet.",
-        action: 'sharing',
+        headline: "Use your iPhone's Personal Hotspot.",
+        writeup: IPHONE_HOTSPOT_GUIDANCE,
+        action: 'two_step',
         showPartyQr: true,
         showWifiQr: true,
         showHotspotCard: true,
-        wifiMode: 'hotspot',
-        hotspotTitle: 'Set up the guest hotspot'
+        wifiMode: 'iphone_hotspot',
+        hotspotTitle: 'iPhone Personal Hotspot',
+        hotspotSteps: IPHONE_HOTSPOT_GUIDANCE
       },
       wifi_no_internet: {
         headline: 'Share the Wi-Fi and the link.',
-        writeup: 'Guests on this Wi-Fi can reach you, but the smart link needs internet. Give them the Wi-Fi + this link, or make a hotspot.',
-        action: 'wifi_and_hotspot',
+        writeup: 'Guests on this Wi-Fi can reach you, but the smart link needs internet. Give them the Wi-Fi + this link.',
+        action: 'two_step',
         showPartyQr: true,
         showWifiQr: true,
-        showHotspotCard: true,
-        wifiMode: 'venue',
-        hotspotTitle: 'Hotspot option'
+        showHotspotCard: false,
+        wifiMode: 'venue'
       },
       no_network: {
-        headline: 'No Wi-Fi here — make your Mac a hotspot.',
-        writeup: "Guests will connect straight to your Mac. Heads up: they won't have internet while connected — perfect for an offline party.",
-        action: 'sharing',
+        headline: "Use your iPhone's Personal Hotspot.",
+        writeup: IPHONE_HOTSPOT_GUIDANCE,
+        action: 'two_step',
         showPartyQr: true,
         showWifiQr: true,
         showHotspotCard: true,
-        wifiMode: 'hotspot',
-        hotspotTitle: 'Set up the guest hotspot'
+        wifiMode: 'iphone_hotspot',
+        hotspotTitle: 'iPhone Personal Hotspot',
+        hotspotSteps: IPHONE_HOTSPOT_GUIDANCE
       },
       hotspot_active: {
-        headline: "Hotspot's on — guests join your Mac's Wi-Fi, then scan.",
-        writeup: 'They connect to your hotspot first, then the party QR opens it.',
+        headline: "Hotspot's on — guests join the same Wi-Fi, then scan.",
+        writeup: 'They connect to the same hotspot as this Mac first, then the party QR opens it.',
         action: 'two_step',
         showPartyQr: true,
         showWifiQr: true,
@@ -1486,11 +1460,7 @@
       actions.innerHTML = '';
       return;
     }
-    if (plan.action === 'sharing') {
-      actions.innerHTML = '<button class="go" type="button" data-open-wifi-sharing>Turn on Internet Sharing</button>';
-    } else if (plan.action === 'wifi_and_hotspot') {
-      actions.innerHTML = '<span class="guest-action-note">Use both QR codes below.</span><button class="ghost" type="button" data-open-wifi-sharing>Try a hotspot</button>';
-    } else if (plan.action === 'two_step') {
+    if (plan.action === 'two_step') {
       actions.innerHTML = '<span class="guest-action-note">Show both QR codes below.</span>';
     } else {
       actions.innerHTML = '<span class="guest-action-note">Show the party QR below.</span>';
@@ -1506,7 +1476,7 @@
       panel.hidden = false;
       details.open = false;
       summary.textContent = 'Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →';
-      help.textContent = 'Enter the Wi-Fi guests should join (the venue’s, or your hotspot). Their phone camera joins it from this QR, then they scan the party QR.';
+      help.textContent = 'Enter the Wi-Fi guests should join (the venue’s, or your iPhone hotspot). Their phone camera joins it from this QR, then they scan the party QR.';
       renderWifiQr();
       return;
     }
@@ -1517,25 +1487,21 @@
     }
     panel.hidden = false;
     details.open = true;
-    if (mode === 'hotspot') {
-      summary.textContent = "Step 1: join your Mac's Wi-Fi";
-      help.textContent = 'Name the hotspot partyparty with security None. Phones scan this first, then the party QR.';
-      let auto = false;
-      try { auto = localStorage.getItem('pp.wifiAuto') === 'hotspot'; } catch (e) {}
-      if (!s.value.trim() || auto) {
-        s.value = 'partyparty';
-        p.value = '';
-        try { localStorage.setItem('pp.wifiAuto', 'hotspot'); } catch (e) {}
+    try {
+      if (localStorage.getItem('pp.wifiAuto') === 'hotspot' && s.value.trim().toLowerCase() === 'partyparty' && !p.value) {
+        s.value = '';
       }
+      localStorage.removeItem('pp.wifiAuto');
+    } catch (e) {}
+    if (mode === 'iphone_hotspot') {
+      summary.textContent = "Step 1: join your iPhone's hotspot";
+      help.textContent = 'Enter your iPhone hotspot name and password. Guests scan this first, then the party QR.';
+    } else if (mode === 'hotspot') {
+      summary.textContent = 'Step 1: join the hotspot Wi-Fi';
+      help.textContent = 'Enter the hotspot Wi-Fi name and password. Guests scan this first, then the party QR.';
     } else {
       summary.textContent = 'Step 1: join the venue Wi-Fi';
       help.textContent = 'Enter the Wi-Fi guests should join. Their phone camera joins it from this QR, then they scan the party QR.';
-      try {
-        if (localStorage.getItem('pp.wifiAuto') === 'hotspot' && s.value.trim().toLowerCase() === 'partyparty' && !p.value) {
-          s.value = '';
-          localStorage.removeItem('pp.wifiAuto');
-        }
-      } catch (e) {}
     }
     renderWifiQr();
   }
@@ -1600,6 +1566,7 @@
     if (situationChanged) {
       guestSetupQrShownAt = 0;
       lastGuestSetupSituation = activePlan.situation;
+      guestSetupNudgeDismissed = false;
     }
     const shareVisible = $('shareCard') && $('shareCard').style.display !== 'none';
     const partyQrShown = !!(linkReady && activePlan.showPartyQr && shareVisible && (!partyPanel || !partyPanel.hidden));
@@ -1609,14 +1576,15 @@
       guestSetupQrShownAt = 0;
     }
     const nudgeEligible = activePlan.situation === 'shared_wifi_ready' || activePlan.situation === 'wifi_no_internet';
-    const showNudge = nudgeEligible && !guestSetupConfirmed && guestCount === 0 &&
+    const showNudge = nudgeEligible && !guestSetupNudgeDismissed && !guestSetupConfirmed && guestCount === 0 &&
       guestSetupQrShownAt && (Date.now() - guestSetupQrShownAt >= GUEST_SETUP_NUDGE_MS);
     const nudge = $('guestSetupNudge');
     if (nudge) nudge.hidden = !showNudge;
     const hotspotCard = $('guestHotspotCard');
     if (hotspotCard) {
-      hotspotCard.hidden = !(activePlan.showHotspotCard || showNudge);
+      hotspotCard.hidden = !activePlan.showHotspotCard;
       $('guestHotspotTitle').textContent = activePlan.hotspotTitle || 'Hotspot option';
+      $('guestHotspotSteps').textContent = activePlan.hotspotSteps || IPHONE_HOTSPOT_GUIDANCE;
     }
   }
 
@@ -1715,11 +1683,11 @@
         $('shareHint').textContent = !secure
           ? 'Compatible mode is live over local Wi-Fi. The secure low-latency link will take over after the certificate is ready.'
           : offlineMode
-          ? 'Guests join your Mac’s Wi-Fi, then scan this code. It opens in Safari/Chrome so it keeps playing in the background.'
+          ? 'Guests join the same Wi-Fi as this Mac, then scan this code. It opens in Safari/Chrome so it keeps playing in the background.'
           : 'Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.';
         if (offlineMode && bridgeUp) {
           const bridge = hotspot.bridgeIP ? ' (' + hotspot.bridgeIP + ')' : '';
-          $('hotspotReady').textContent = 'Hotspot ready — guests can join your Wi-Fi, then scan.' + bridge;
+          $('hotspotReady').textContent = 'Wi-Fi ready — guests join the same network, then scan.' + bridge;
         }
         $('netCheckOut').textContent = ''; // stale diagnostics vanish once the link is up
       } else {
@@ -1797,7 +1765,7 @@
       $('log').scrollTop = $('log').scrollHeight;
       $('ifaces').innerHTML = (s.urls.interfaces || []).map(i =>
         '<div class="kv"><span>' + esc(i.iface) + '</span><span>' + esc(i.address) + '</span></div>'
-      ).join('') || '<div class="muted">no LAN interface found — start your hotspot</div>';
+      ).join('') || '<div class="muted">no LAN interface found — join your iPhone Personal Hotspot</div>';
     } catch (e) {
       // /api/status unreachable — the one moment a start error MUST still
       // show (Go Live against a quit/crashed app would otherwise be silent).
@@ -2758,7 +2726,7 @@
         if ((data.checks || []).every(c => c.ok)) {
           out.innerHTML += '<div class="muted" style="margin-top:6px">Everything reachable — the certificate should come through on the next retry. If it stays stuck, send me a screenshot of this.</div>';
         } else {
-          out.innerHTML += '<div class="muted" style="margin-top:6px">Something on this network is blocking a hop ❌ above — try a phone hotspot for the one-time setup; after that the party works offline.</div>';
+          out.innerHTML += '<div class="muted" style="margin-top:6px">Something on this network is blocking a hop ❌ above — try your iPhone Personal Hotspot for the one-time setup; after that the party works offline.</div>';
         }
       } catch (e) { out.textContent = 'Test failed to run — is the app still up?'; }
       $('netCheckBtn').disabled = false;

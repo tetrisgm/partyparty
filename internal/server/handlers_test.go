@@ -972,7 +972,7 @@ func TestModerationFeedAndRoutes(t *testing.T) {
 
 func TestPostOnlyEndpoints(t *testing.T) {
 	env := newTestEnv(t, nil)
-	for _, p := range []string{"/api/start", "/api/stop", "/api/delivery", "/api/shutdown", "/api/open-settings", "/api/open-wifi-sharing", "/api/link-install"} {
+	for _, p := range []string{"/api/start", "/api/stop", "/api/delivery", "/api/shutdown", "/api/open-settings", "/api/link-install"} {
 		w := do(env.srv, "GET", p, "")
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, w.Code)
@@ -1006,7 +1006,6 @@ func TestDJControlEndpointsRejectedFromLAN(t *testing.T) {
 		{http.MethodPost, "/api/stop"},
 		{http.MethodPost, "/api/delivery?mode=hls"},
 		{http.MethodPost, "/api/open-settings?pane=audio"},
-		{http.MethodPost, "/api/open-wifi-sharing"},
 		{http.MethodPost, "/api/link-install"},
 		{http.MethodGet, "/api/network-situation"},
 		{http.MethodGet, "/api/devices"},

@@ -17,8 +17,6 @@ const (
 	networkSituationWifiNoInternet  = "wifi_no_internet"
 	networkSituationNoNetwork       = "no_network"
 	networkSituationHotspotActive   = "hotspot_active"
-
-	sharingSettingsURL = "x-apple.systempreferences:com.apple.Sharing-Settings.extension"
 )
 
 type networkSituation struct {
@@ -203,8 +201,4 @@ func bridge100Up() bool {
 		return false
 	}
 	return ifc.Flags&net.FlagUp != 0
-}
-
-func openSharingSettings() {
-	_ = exec.Command("open", sharingSettingsURL).Start()
 }
