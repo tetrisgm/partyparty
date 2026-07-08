@@ -9,7 +9,7 @@
 <meta property="og:description" content="Turn your Mac into a silent-disco rig. Hosts sign in to link their Mac; guests need no app or account.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#000000">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
 <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <style>
@@ -33,6 +33,14 @@
     --label:#f5f5f7; --label-secondary:#a1a1a8; --label-tertiary:#6e6e73;
     --separator:rgba(255,255,255,.12); --fill:rgba(120,120,128,.24);
     --link:#2997ff; --accent:#ff3b7f; --accent-hover:#ff5590; --glass-bg:rgba(28,28,30,.62);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#000000; --bg-secondary:#1c1c1e; --bg-tertiary:#2c2c2e;
+      --label:#f5f5f7; --label-secondary:#a1a1a8; --label-tertiary:#6e6e73;
+      --separator:rgba(255,255,255,.12); --fill:rgba(120,120,128,.24);
+      --link:#2997ff; --accent:#ff3b7f; --accent-hover:#ff5590; --glass-bg:rgba(28,28,30,.62);
+    }
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
@@ -226,6 +234,10 @@
   .hero .lede{color:rgba(245,245,247,.9);max-width:56ch;margin:0 auto 30px}
   .cta{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .meta{margin-top:18px;font-size:13px;color:rgba(245,245,247,.6)}
+  .download-stack{display:inline-flex;flex-direction:column;align-items:center;gap:8px}
+  .download-stack .btn{width:100%}
+  .download-meta{max-width:300px;text-align:center;font-size:13px;line-height:1.35;color:rgba(245,245,247,.68)}
+  section:not(.dark) .download-meta{color:var(--label-tertiary)}
   .moment.center-moment{min-height:auto}
   .moment.center-moment .cta-in{position:relative;z-index:1;text-align:center;padding:120px 0}
 
@@ -260,6 +272,15 @@
   .k-ship{color:var(--success)}
   .k-soon{color:var(--warn)}
 
+  /* honest trust */
+  .trust-line{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:44px;align-items:end}
+  .trust-copy{margin:0;font-size:clamp(23px,3vw,34px);line-height:1.14;letter-spacing:-.02em;color:var(--label)}
+  .trust-copy span{color:var(--label-secondary)}
+  .trust-stat{border-top:1px solid var(--separator);padding-top:18px}
+  .trust-stat b{display:block;font-size:36px;line-height:1;font-weight:600;letter-spacing:-.02em;color:var(--label)}
+  .trust-stat p{margin:8px 0 0;color:var(--label-secondary);font-size:15px;line-height:1.45}
+  @media(max-width:760px){.trust-line{grid-template-columns:1fr;gap:26px}.trust-stat{max-width:320px}}
+
   /* reveal */
   html.js .reveal{opacity:0;transform:translateY(24px);transition:opacity .6s var(--ease-apple),transform .6s var(--ease-apple)}
   html.js .reveal.in{opacity:1;transform:none}
@@ -268,6 +289,13 @@
   @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){header.scrolled{background:rgba(255,255,255,.96)}}
   @media (prefers-reduced-transparency:reduce){header.scrolled{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @media (prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}html.js .reveal{opacity:1;transform:none}}
+  @media (prefers-color-scheme: dark){
+    header.scrolled{box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 1px 0 rgba(0,0,0,.35)}
+    header.scrolled .brand,header.scrolled .nav-link{color:var(--label)}
+    @supports not ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){header.scrolled{background:rgba(28,28,30,.96)}}
+    @media (prefers-reduced-transparency:reduce){header.scrolled{background:#1c1c1e}}
+  }
+  @media(max-width:560px){.cta{align-items:stretch}.download-stack{width:100%;align-items:stretch}.download-meta{max-width:none}.cta .btn{width:100%}}
   @media(max-width:420px){header .nav-link{font-size:13px}.nav-actions{gap:8px}header .nav-cta{padding:8px 12px}}
 </style>
 </head>
@@ -299,11 +327,13 @@
       <h1>Throw a party where speakers would get you shut down.</h1>
       <p class="lede">partyparty turns your Mac into a silent-disco rig — no rented headsets, no app for guests. Sign in once to link your Mac, hit Go Live, hand out a QR, and your set plays in everyone's own earbuds. Nothing in the air means no permit and no noise complaint. Works with zero internet.</p>
       <div class="cta">
-        <a class="btn btn-primary btn-lg" href="/partyparty.pkg">Download for macOS</a>
+        <span class="download-stack">
+          <a class="btn btn-primary btn-lg" href="/partyparty.pkg">Download for macOS</a>
+          <span class="download-meta" data-version-line>Free · Apple Silicon · macOS 26+</span>
+        </span>
         <a class="btn btn-ghost btn-lg" href="/login" style="color:#fff;border-color:rgba(255,255,255,.4)">Sign in</a>
         <a class="btn btn-ghost btn-lg" href="#how-it-works" style="color:#fff;border-color:rgba(255,255,255,.4)">How it works</a>
       </div>
-      <div class="meta">Open it and it's installed — no password, no dragging, no settings · Free · Apple Silicon · macOS 26+</div>
     </div>
     <div class="stage hero-stage">
       <div class="laptop">
@@ -535,6 +565,20 @@
   </div>
 </section>
 
+<!-- TRUST (restrained, no fabricated proof) -->
+<section class="band-secondary">
+  <div class="wrap trust-line reveal">
+    <div>
+      <p class="eyebrow">Trust, honestly</p>
+      <p class="trust-copy">I built partyparty for the nights where a real speaker would end the party before it starts. <span>No fake crowd numbers, no borrowed testimonials — just the rig I wanted in the room.</span></p>
+    </div>
+    <div class="trust-stat">
+      <b>0 internet</b>
+      <p>The live audio runs on local Wi-Fi between the DJ's Mac and every phone.</p>
+    </div>
+  </div>
+</section>
+
 <!-- FINAL CTA (black product moment) -->
 <section class="moment dark center-moment">
   <div class="bg">
@@ -547,9 +591,13 @@
   <div class="wrap"><div class="cta-in">
     <h2 class="reveal" style="font-size:clamp(36px,5vw,60px)">Turn down for what?</h2>
     <p class="lede center reveal" style="color:rgba(245,245,247,.86);margin:16px auto 28px">There's nothing to turn down — the sound's in every earbud, not in the air. Free Mac app: hit Go Live, hand out a QR, and throw a party anywhere speakers would get you shut down.</p>
-    <a class="btn btn-primary btn-lg reveal" href="/partyparty.pkg">Download for macOS</a>
-    <a class="btn btn-ghost btn-lg reveal" href="/login" style="color:#fff;border-color:rgba(255,255,255,.4);margin-left:10px">Sign in</a>
-    <div class="meta reveal" style="margin-top:14px">Apple Silicon · macOS 26+ · free</div>
+    <div class="cta reveal" style="justify-content:center">
+      <span class="download-stack">
+        <a class="btn btn-primary btn-lg" href="/partyparty.pkg">Download for macOS</a>
+        <span class="download-meta" data-version-line>Free · Apple Silicon · macOS 26+</span>
+      </span>
+      <a class="btn btn-ghost btn-lg" href="/login" style="color:#fff;border-color:rgba(255,255,255,.4)">Sign in</a>
+    </div>
   </div></div>
 </section>
 
@@ -577,6 +625,25 @@
   }
   const onScroll = () => hdr.classList.toggle('scrolled', scrollY > 20);
   addEventListener('scroll', onScroll, { passive:true }); onScroll();
+  const versionEls = document.querySelectorAll('[data-version-line]');
+  if (versionEls.length && window.fetch) {
+    const baseVersionLine = 'Free · Apple Silicon · macOS 26+';
+    fetch('/api/version', { cache:'no-store' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => {
+        if (!j || !j.version) return;
+        let text = baseVersionLine + ' · v' + j.version;
+        if (j.date) {
+          const dateText = String(j.date);
+          const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateText) ? dateText + 'T00:00:00Z' : dateText);
+          if (!Number.isNaN(d.getTime())) {
+            text += ' · updated ' + new Intl.DateTimeFormat('en-US', { month:'short', year:'numeric' }).format(d);
+          }
+        }
+        versionEls.forEach((el) => { el.textContent = text; });
+      })
+      .catch(() => {});
+  }
   const io = new IntersectionObserver((es) => {
     es.forEach((e,i) => { if (e.isIntersecting){ e.target.style.transitionDelay = Math.min(i*60,180)+'ms'; e.target.classList.add('in'); io.unobserve(e.target); } });
   }, { rootMargin:'0px 0px -8% 0px', threshold:.12 });
