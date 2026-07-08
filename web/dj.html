@@ -344,7 +344,7 @@
     <span class="authbanner-actions">
       <button class="go" id="accountSignInBtn" type="button">Sign in / Sign up</button>
     </span>
-    <button class="lt sm" id="accountBrowserBtn" type="button" hidden style="margin-top:10px">Trouble? Sign in with your browser</button>
+    <button class="lt sm" id="accountBrowserBtn" type="button" hidden style="margin-top:10px">Having trouble? Open sign-in in your browser</button>
     <div class="auth-meta" id="accountMeta" hidden></div>
   </div>
 </div>
@@ -371,6 +371,7 @@
   <div id="bcnote" class="warn" style="display:none">
     <div id="bcnoteText"></div>
     <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open System Audio Recording settings</button>
+    <div class="hint" id="capturePermHint" style="margin:6px 0 0">Turn on partyparty in the list.</div>
   </div>
 
   <div id="honestFallback" class="warn honest-fallback" style="display:none">
@@ -674,8 +675,10 @@
       <div class="hint" style="margin:5px 0 0">Off by default. When on, ending a set uploads its recording to a shareable page automatically (needs you signed in + online).</div>
       <div id="inapp" style="display:none;margin-top:14px">
         <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
+        <div class="hint" style="margin:5px 0 0">partyparty opens at login so your party’s ready — turn this off in Settings.</div>
       </div>
       <button class="ghost" id="permBtnAlways" style="margin-top:14px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
+      <div class="hint" id="permBtnHint" style="margin:5px 0 0">Turn on partyparty in the list.</div>
       <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session — hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
     </section>
 
@@ -1166,6 +1169,69 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ov.classList.remove('show'); });
   }
 
+  let capturePermission = { state: 'undetermined', kind: 'systemAudio' };
+  function selectedCaptureDevice(){
+    const sel = $('device');
+    return (sel && sel.value) || localStorage.getItem('pp.device') || 'mac';
+  }
+  function captureKindForDevice(device){
+    return device === 'mac' ? 'systemAudio' : 'microphone';
+  }
+  function capturePermissionApplies(){
+    return selectedCaptureDevice() !== 'test';
+  }
+  function captureSettingsPane(){
+    return capturePermission.kind === 'microphone' ? 'mic' : 'audio';
+  }
+  function captureSettingsLabel(){
+    return capturePermission.kind === 'microphone' ? 'Open Microphone settings' : 'Open System Audio Recording settings';
+  }
+  function effectiveCapturePermissionState(){
+    if (!capturePermissionApplies()) return 'granted';
+    if (capturePermission.kind === 'systemAudio' &&
+        capturePermission.state === 'undetermined' &&
+        localStorage.getItem('pp.audioOK') === '1') return 'granted';
+    return capturePermission.state || 'undetermined';
+  }
+  function updateCapturePermissionUI(){
+    const label = captureSettingsLabel();
+    const top = $('screenPermBtn');
+    const always = $('permBtnAlways');
+    const alwaysHint = $('permBtnHint');
+    if (top) top.textContent = label;
+    if (always) always.textContent = 'Audio permission not working? ' + label + ' →';
+    if (alwaysHint) alwaysHint.style.display = always && always.style.display !== 'none' ? 'block' : 'none';
+  }
+  function capturePermissionNote(live){
+    if (live || !capturePermissionApplies()) return '';
+    const state = effectiveCapturePermissionState();
+    if (state === 'denied') {
+      if (capturePermission.kind === 'microphone') {
+        return 'Microphone access is off for partyparty. Open Microphone settings and turn on partyparty in the list.';
+      }
+      return 'System Audio Recording access is off for partyparty. Open System Audio Recording settings and turn on partyparty in the list.';
+    }
+    if (state === 'undetermined' && capturePermission.kind === 'systemAudio') {
+      return 'System audio permission has not been confirmed yet. If Go Live does not prompt or capture audio, open System Audio Recording settings and turn on partyparty in the list.';
+    }
+    return '';
+  }
+  function syncCaptureSourceSelection(){
+    const device = selectedCaptureDevice();
+    const kind = captureKindForDevice(device);
+    capturePermission = {
+      state: capturePermission.kind === kind ? capturePermission.state : 'undetermined',
+      kind
+    };
+    updateCapturePermissionUI();
+    try {
+      window.webkit?.messageHandlers?.pp?.postMessage({ action:'captureSourceChanged', device });
+    } catch (e) {}
+  }
+  function openCapturePermissionSettings(){
+    return fetch('/api/open-settings?pane=' + encodeURIComponent(captureSettingsPane()), { method:'POST' });
+  }
+
   async function loadDevices(){
     const sel = $('device');
     const prev = sel.value;
@@ -1194,8 +1260,10 @@
       else if (has(saved)) sel.value = saved;
       else if (data.systemAudio) sel.value = 'mac';
       if (sel.selectedIndex < 0) sel.selectedIndex = 0;    // vanished device: never an empty pick
+      syncCaptureSourceSelection();
     } catch (e) {
       sel.innerHTML = '<option value="test">🔔 Test tone (440 Hz)</option>';
+      syncCaptureSourceSelection();
     }
   }
 
@@ -1310,8 +1378,9 @@
     setTimeout(() => b.classList.remove('spin'), 600);
     loadDevices();
   };
-  $('screenPermBtn').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
-  $('permBtnAlways').onclick = () => fetch('/api/open-settings?pane=audio', { method:'POST' });
+  $('device').onchange = syncCaptureSourceSelection;
+  $('screenPermBtn').onclick = openCapturePermissionSettings;
+  $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
   $('honestFallbackClose').onclick = () => {
     reachPromptDismissed = true;
@@ -1654,17 +1723,23 @@
       // broadcast reports "live" but MediaMTX never got the stream, so guests
       // hear nothing. It takes priority over ordinary notes and shows red.
       const streamHealth = s.streamHealth || '';
-      const note = streamHealth || s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '') || startError;
+      const permissionNote = capturePermissionNote(live);
+      const note = streamHealth || s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '') || startError || permissionNote;
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnote').classList.toggle('danger-note', !!streamHealth);
       $('bcnoteText').textContent = note || '';
       $('screenPermBtn').style.display = 'block';
+      $('capturePermHint').style.display = 'block';
       renderHonestFallback(s.reachability);
       // Once Mac-audio capture has actually gone live, the permission is
       // provably granted — the "permission not working?" escape hatch would
       // just be noise. It comes back if an error note ever shows.
       if (st === 'live' && s.broadcast.device === 'mac') localStorage.setItem('pp.audioOK', '1');
-      $('permBtnAlways').style.display = (note || localStorage.getItem('pp.audioOK') !== '1') ? 'block' : 'none';
+      const effectivePermission = effectiveCapturePermissionState();
+      const showPermButton = capturePermissionApplies() && (note || effectivePermission !== 'granted');
+      $('permBtnAlways').style.display = showPermButton ? 'block' : 'none';
+      $('permBtnHint').style.display = showPermButton ? 'block' : 'none';
+      updateCapturePermissionUI();
       const secure = s.llhlsRealCert === true;
       const guestUrl = s.urls.primary;
       const linkReady = !!guestUrl && (secure || s.delivery === 'hls');
@@ -2741,11 +2816,32 @@
 
   // In-app controls — only when running inside the native menu-bar app.
   window.ppSetLoginState = (on) => { const c = $('loginItem'); if (c) c.checked = !!on; };
+  window.ppSetCapturePermission = (payload) => {
+    const p = payload || {};
+    const state = (p.state === 'granted' || p.state === 'denied' || p.state === 'undetermined') ? p.state : 'undetermined';
+    const kind = (p.kind === 'microphone' || p.kind === 'systemAudio') ? p.kind : captureKindForDevice(selectedCaptureDevice());
+    capturePermission = { state, kind };
+    updateCapturePermissionUI();
+  };
+  window.ppSetScreenPermission = (granted) => {
+    window.ppSetCapturePermission({ state: granted ? 'granted' : 'denied', kind: 'systemAudio' });
+  };
   // Native calls this when in-app sign-in completes — drop the gate via one
   // fresh status re-check (no polling). Clear accountSigningIn first so that if
   // the re-check comes back not-linked (a transient blip), renderAccountState
   // falls through to reschedule a retry instead of staying stuck.
   window.ppAccountLinked = () => { accountSigningIn = false; loadAccountStatus({ fresh: true }); };
+  window.ppSignInStalled = () => {
+    if (consoleActivated) return;
+    const msg = $('accountMsg');
+    msg.className = 'auth-status';
+    msg.textContent = 'Having trouble? Open sign-in in your browser.';
+    const bb = $('accountBrowserBtn');
+    if (bb) {
+      bb.hidden = false;
+      bb.textContent = 'Having trouble? Open sign-in in your browser';
+    }
+  };
   // Native calls this when the in-app sign-in window closes. If the DJ closed it
   // without finishing, clear the "finishing sign-in" state and re-check so the
   // gate recovers (a not-linked result reschedules retries) instead of promising
@@ -2760,7 +2856,7 @@
     $('loginItem').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setLoginItem', on: $('loginItem').checked });
     const bb = $('accountBrowserBtn');
     if (bb) { bb.hidden = false; bb.onclick = startAccountSignInBrowser; }
-    window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready' });
+    window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready', device: selectedCaptureDevice() });
   }
 </script>
 <div id="appver" style="position:fixed;left:12px;bottom:8px;font-size:11px;color:var(--label-tertiary);z-index:5"></div>

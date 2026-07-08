@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import WebKit
 import ServiceManagement
 import CoreGraphics
@@ -16,9 +17,21 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 /// The DJ console as a real, resizable window hosting web/dj.html in a WKWebView.
 /// A "pp" JS↔Swift bridge lets the in-app console toggle Start-at-Login and Quit.
 final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+    private enum CapturePermissionKind: String {
+        case systemAudio
+        case microphone
+    }
+
+    private enum CapturePermissionState: String {
+        case granted
+        case denied
+        case undetermined
+    }
+
     private let port: Int
     private let offlinePartyRequest: () -> Void
     private var webView: WKWebView!
+    private var capturePermissionKind: CapturePermissionKind = .systemAudio
     // Held strongly while the in-app cloud sign-in window is open.
     private var signInWC: SignInWindowController?
 
@@ -72,12 +85,12 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pushLoginState()
-        pushScreenPermission()
+        pushCapturePermission()
     }
 
-    // Re-check Screen Recording when the user returns from System Settings.
+    // Re-check capture permissions when the user returns from System Settings.
     func windowDidBecomeKey(_ notification: Notification) {
-        pushScreenPermission()
+        pushCapturePermission()
     }
 
     // JS -> Swift
@@ -93,9 +106,15 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             offlinePartyRequest()
         case "openSignIn":
             openSignIn(body["url"] as? String)
+        case "captureSourceChanged":
+            setCaptureSource(body["device"] as? String)
         case "ready":
             pushLoginState()
-            pushScreenPermission()
+            if let device = body["device"] as? String {
+                setCaptureSource(device)
+            } else {
+                pushCapturePermission()
+            }
         default:
             break
         }
@@ -112,6 +131,9 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             url: url,
             onComplete: { [weak self] in
                 self?.webView.evaluateJavaScript("window.ppAccountLinked && window.ppAccountLinked()")
+            },
+            onStall: { [weak self] in
+                self?.webView.evaluateJavaScript("window.ppSignInStalled && window.ppSignInStalled()")
             },
             onClose: { [weak self] closed in
                 guard let self else { return }
@@ -150,11 +172,51 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         webView.evaluateJavaScript("window.ppSetLoginState && window.ppSetLoginState(\(enabled))")
     }
 
-    private func pushScreenPermission() {
-        // Core Audio taps prompt inline on first Go Live (one-click Allow, like
-        // microphone) — there's no preflight to check and no Settings dance, so
-        // the console never needs to warn ahead of time.
-        webView.evaluateJavaScript("window.ppSetScreenPermission && window.ppSetScreenPermission(true)")
+    private func setCaptureSource(_ device: String?) {
+        capturePermissionKind = (device == "mac") ? .systemAudio : .microphone
+        pushCapturePermission()
+    }
+
+    private func capturePermissionState(for kind: CapturePermissionKind) -> CapturePermissionState {
+        switch kind {
+        case .microphone:
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .authorized:
+                return .granted
+            case .denied, .restricted:
+                return .denied
+            case .notDetermined:
+                return .undetermined
+            @unknown default:
+                return .undetermined
+            }
+        case .systemAudio:
+            // Core Audio process taps prompt when the tap is created, but the SDK
+            // exposes no status-only authorization API equivalent to AVFoundation's
+            // microphone preflight. Do not claim success until capture proves it.
+            return .undetermined
+        }
+    }
+
+    private func pushCapturePermission() {
+        let state = capturePermissionState(for: capturePermissionKind)
+        let payload = [
+            "state": state.rawValue,
+            "kind": capturePermissionKind.rawValue,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let legacyGranted = state == .granted ? "true" : "false"
+        webView.evaluateJavaScript("""
+        (function () {
+          var payload = \(json);
+          if (window.ppSetCapturePermission) {
+            window.ppSetCapturePermission(payload);
+          } else if (window.ppSetScreenPermission) {
+            window.ppSetScreenPermission(\(legacyGranted));
+          }
+        })();
+        """)
     }
 }
 
@@ -168,8 +230,10 @@ final class SignInWindowController: NSWindowController, NSWindowDelegate, WKNavi
     private var webView: WKWebView!
     private let startURL: URL
     private let onComplete: () -> Void
+    private let onStall: () -> Void
     private let onClose: (SignInWindowController) -> Void
     private(set) var completed = false
+    private var stallTimer: Timer?
 
     // A real desktop-Safari UA so Google/Apple OAuth run embedded instead of
     // refusing a WKWebView (same approach as the Write app's in-app sign-in).
@@ -190,9 +254,10 @@ final class SignInWindowController: NSWindowController, NSWindowDelegate, WKNavi
     })();
     """
 
-    init(url: URL, onComplete: @escaping () -> Void, onClose: @escaping (SignInWindowController) -> Void) {
+    init(url: URL, onComplete: @escaping () -> Void, onStall: @escaping () -> Void, onClose: @escaping (SignInWindowController) -> Void) {
         self.startURL = url
         self.onComplete = onComplete
+        self.onStall = onStall
         self.onClose = onClose
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 720),
@@ -227,6 +292,11 @@ final class SignInWindowController: NSWindowController, NSWindowDelegate, WKNavi
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        stallTimer?.invalidate()
+        stallTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
+            guard let self, !self.completed else { return }
+            self.onStall()
+        }
     }
 
     // Keep OAuth popups (target=_blank / window.open) in this same web view
@@ -245,11 +315,15 @@ final class SignInWindowController: NSWindowController, NSWindowDelegate, WKNavi
               body["action"] as? String == "signInComplete" else { return }
         if completed { return }
         completed = true
+        stallTimer?.invalidate()
+        stallTimer = nil
         onComplete()
         DispatchQueue.main.async { [weak self] in self?.close() }
     }
 
     func windowWillClose(_ notification: Notification) {
+        stallTimer?.invalidate()
+        stallTimer = nil
         onClose(self)
     }
 }

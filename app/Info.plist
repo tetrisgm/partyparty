@@ -41,8 +41,6 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>partyparty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
-	<key>NSScreenCaptureUsageDescription</key>
-	<string>partyparty captures your Mac's system audio to broadcast it to guests on your network.</string>
 	<key>SUAutomaticallyUpdate</key>
 	<true/>
 	<key>SUEnableAutomaticChecks</key>
