@@ -833,6 +833,12 @@ func verifyResolves(ctx context.Context, host, lanIP string) error {
 	return lastErr
 }
 
+// VerifyResolves checks whether host resolves to lanIP using the same
+// guest-path resolver check as activation.
+func VerifyResolves(ctx context.Context, host, lanIP string) error {
+	return verifyResolves(ctx, host, lanIP)
+}
+
 // ---- Cloudflare DNS API (token-scoped: Zone → DNS → Edit) ----
 
 type cfAPI struct {
