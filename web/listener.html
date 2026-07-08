@@ -624,7 +624,25 @@
         };
         hls = new Hls(cfg);
         let mediaErrors = 0;
+        let networkErrors = 0;
         hls.on(Hls.Events.ERROR, (_e, d) => {
+          if (!d) return;
+          const code = d.response && (d.response.code || d.response.status);
+          const httpCode = Number(code);
+          const staleSession = d.type === Hls.ErrorTypes.NETWORK_ERROR
+            && (httpCode === 401 || httpCode === 403 || httpCode === 404 || httpCode === 410);
+          if (staleSession) {
+            // MediaMTX invalidates HLS sessions when the publisher is rebuilt.
+            // hls.js may report the stale playlist as a non-fatal load error,
+            // so handle it before the fatal-only recovery branch.
+            try {
+              networkErrors++;
+              setStatus('reconnecting…');
+              attach();
+              if (started && !userPaused && !yielded) player.play().catch(()=>{});
+            } catch (e) {}
+            return;
+          }
           if (!d || !d.fatal) return;
           try {
             if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
@@ -633,13 +651,24 @@
               if (mediaErrors > 1) hls.swapAudioCodec();
               hls.recoverMediaError();
             } else if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              hls.startLoad();
+              networkErrors++;
+              // Repeated fatal network errors without an explicit HTTP code are
+              // treated the same way: rebuild from the master manifest instead
+              // of trying to restart a stale loader in place.
+              if (networkErrors > 2) {
+                setStatus('reconnecting…');
+                attach();
+                if (started && !userPaused && !yielded) player.play().catch(()=>{});
+              } else {
+                hls.startLoad();
+              }
             } else {
               attach(); // last resort: rebuild the whole player
+              if (started && !userPaused && !yielded) player.play().catch(()=>{});
             }
           } catch (e) {}
         });
-        hls.on(Hls.Events.FRAG_BUFFERED, () => { mediaErrors = 0; });
+        hls.on(Hls.Events.FRAG_BUFFERED, () => { mediaErrors = 0; networkErrors = 0; });
         hls.loadSource(src); hls.attachMedia(player);
       } else {
         player.src = src;

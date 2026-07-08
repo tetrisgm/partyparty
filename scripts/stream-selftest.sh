@@ -10,6 +10,7 @@
 #
 #   scripts/stream-selftest.sh            # happy path
 #   scripts/stream-selftest.sh --rebuild  # kill+restart the publisher mid-stream, re-check
+#   scripts/stream-selftest.sh --browser  # ffmpeg guest + real browser listener page
 #   TEE_RTSP='<custom rtsp leg opts>' scripts/stream-selftest.sh   # test a cure variant
 #
 # PASS = the guest decoded >= MIN_SECS of audio. Exit 0 on PASS, 1 on FAIL.
@@ -24,9 +25,25 @@ WORK="$(mktemp -d)"
 RTSP_PORT=18554
 HLS_PORT=18888
 MIN_SECS="${MIN_SECS:-4}"
-REBUILD=0; [ "${1:-}" = "--rebuild" ] && REBUILD=1
+REBUILD=0
+BROWSER=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --rebuild) REBUILD=1 ;;
+    --browser) BROWSER=1 ;;
+    *)
+      echo "usage: $0 [--rebuild] [--browser]"
+      exit 2
+      ;;
+  esac
+  shift
+done
 PIDS=()
-cleanup(){ for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null; done; rm -rf "$WORK"; }
+cleanup(){
+  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null; done
+  for p in "${PIDS[@]:-}"; do wait "$p" 2>/dev/null || true; done
+  rm -rf "$WORK"
+}
 trap cleanup EXIT
 
 echo ">> ffmpeg=$FF"
@@ -126,7 +143,6 @@ grep -iE "is publishing|is reading|created|error|already" "$WORK/mtx.log" | tail
 
 if [ "${s1:-0}" -ge "$MIN_SECS" ] && [ "${s2:-0}" -ge "$MIN_SECS" ] && [ "$a1" = "1" ] && [ "$a2" = "1" ]; then
   echo "RESULT: PASS — a guest received the DJ's actual audio end-to-end (decoded + non-silent)."
-  exit 0
 else
   echo "RESULT: FAIL — guest did NOT receive the DJ's audio (reproduces 'guests hear nothing')."
   echo "  decoded>=${MIN_SECS}s: #1=$([ "${s1:-0}" -ge "$MIN_SECS" ] && echo ok || echo NO) #2=$([ "${s2:-0}" -ge "$MIN_SECS" ] && echo ok || echo NO) | non-silent: #1=$([ "$a1" = 1 ] && echo ok || echo NO) #2=$([ "$a2" = 1 ] && echo ok || echo NO)"
@@ -134,9 +150,11 @@ else
   exit 1
 fi
 
-# NOTE: the LISTENER PAGE (web/listener.html) player is verified separately with a
-# real browser — serve web/ with a mock /api/status (broadcast.state=live,
-# llhlsUrl=<this stream>) and drive it with the preview tools: before the v48 fix
-# it sat on "Preparing…" / 0 buffer / no fetch; after, it fetches, buffers, and
-# plays (paused=false, currentTime advances). That path is what the STREAM-guard
-# bug lived in and is NOT exercised by the ffmpeg guest above.
+if [ "$BROWSER" = "1" ]; then
+  echo ">> browser guest E2E (actual listener.html + Playwright Chromium + WebAudio RMS)"
+  cleanup
+  trap - EXIT
+  node "$ROOT/scripts/stream-e2e.mjs"
+fi
+
+exit 0
