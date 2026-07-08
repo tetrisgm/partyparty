@@ -716,21 +716,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("pane") {
 		case "mic":
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone").Start()
-		case "sharing":
-			openSharingSettings()
 		default: // "audio" / "screen" / anything → the audio-recording pane
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture").Start()
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	case "/api/open-wifi-sharing":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		openSharingSettings()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/devices":
 		if !s.requireDJ(w, r) {
