@@ -82,45 +82,61 @@ start_pub(){
     > "$WORK/pub.log" 2>&1 & PIDS+=($!); PUB_PID=$!
 }
 
-# GUEST: pull the HTTPS LL-HLS and decode it; report decoded audio seconds.
+# GUEST: pull the HTTPS LL-HLS, decode it, and measure the audio LEVEL — so we
+# confirm the guest receives the DJ's actual SOUND, not just some bytes or
+# silence. Returns "secs|mean_dB|raw".
 guest_decode_secs(){
-  local out
-  out="$("$FF" -hide_banner -loglevel error -stats -nostdin -tls_verify 0 -rw_timeout 8000000 \
-        -i "https://127.0.0.1:$HLS_PORT/party/index.m3u8" -t 6 -map 0:a -f null - 2>&1 || true)"
-  # ffmpeg prints "time=00:00:06.00" on the stats line; grab the last one.
-  local t
-  t="$(printf '%s\n' "$out" | grep -oE 'time=[0-9:.]+' | tail -1 | sed 's/time=//')"
-  if [ -z "$t" ]; then echo "0|$out"; return; fi
-  # HH:MM:SS.xx -> seconds (integer)
-  local secs
-  secs="$(printf '%s\n' "$t" | awk -F: '{printf "%d", ($1*3600)+($2*60)+$3}')"
-  echo "${secs:-0}|$t"
+  # raw ffmpeg output -> a file (NOT the return value; it's multi-line and would
+  # corrupt the caller's field-split). Return a clean single-line "secs|mean".
+  "$FF" -hide_banner -loglevel info -stats -nostdin -tls_verify 0 -rw_timeout 8000000 \
+    -i "https://127.0.0.1:$HLS_PORT/party/index.m3u8" -t 6 -map 0:a -af volumedetect -f null - \
+    > "$WORK/guest.log" 2>&1 || true
+  local t secs mean
+  t="$(grep -oE 'time=[0-9:.]+' "$WORK/guest.log" | tail -1 | sed 's/time=//')"
+  secs="$(printf '%s' "$t" | awk -F: '{printf "%d", ($1*3600)+($2*60)+$3}')"
+  mean="$(grep -oE 'mean_volume: -?[0-9.]+' "$WORK/guest.log" | tail -1 | grep -oE '\-?[0-9.]+' | head -1)"
+  printf '%s|%s' "${secs:-0}" "${mean:-none}"
 }
+# A guest "heard the DJ" only if it decoded >= MIN_SECS AND the audio is not
+# silence. mean_volume near -90dB = silence; a real tone/track sits far above.
+SILENCE_FLOOR="${SILENCE_FLOOR:--70}"
 
 echo ">> starting mediamtx + publisher (tee rtsp opts: $TEE_RTSP)"
 start_mtx; sleep 2; start_pub; sleep 5
 
-echo ">> GUEST pull #1 (happy path)"
-r1="$(guest_decode_secs)"; s1="${r1%%|*}"
-echo "   guest decoded ${s1}s of audio  (need >= ${MIN_SECS}s)"
+not_silent(){ awk -v m="$1" -v f="$SILENCE_FLOOR" 'BEGIN{ if(m=="none"){exit 1}; exit !(m+0 > f+0) }'; }
 
-s2="$s1"
+echo ">> GUEST pull #1 (happy path)"
+r1="$(guest_decode_secs)"; s1="${r1%%|*}"; m1="${r1##*|}"
+echo "   guest decoded ${s1}s of audio, mean_volume ${m1}dB  (need >= ${MIN_SECS}s and > ${SILENCE_FLOOR}dB)"
+not_silent "$m1" && a1=1 || a1=0
+
+s2="$s1"; a2="$a1"
 if [ "$REBUILD" = "1" ]; then
   echo ">> injecting capture-rebuild: kill+restart the publisher (like CAPTURE-DEVICECHANGE)"
   kill "$PUB_PID" 2>/dev/null; sleep 1; start_pub; sleep 5
   echo ">> GUEST pull #2 (after rebuild)"
-  r2="$(guest_decode_secs)"; s2="${r2%%|*}"
-  echo "   guest decoded ${s2}s of audio after rebuild  (need >= ${MIN_SECS}s)"
+  r2="$(guest_decode_secs)"; s2="${r2%%|*}"; m2="${r2##*|}"
+  echo "   guest decoded ${s2}s of audio, mean_volume ${m2}dB after rebuild"
+  not_silent "$m2" && a2=1 || a2=0
 fi
 
 echo "== mediamtx publish/read events =="
 grep -iE "is publishing|is reading|created|error|already" "$WORK/mtx.log" | tail -8
 
-if [ "${s1:-0}" -ge "$MIN_SECS" ] && [ "${s2:-0}" -ge "$MIN_SECS" ]; then
-  echo "RESULT: PASS — a guest received playable audio end-to-end."
+if [ "${s1:-0}" -ge "$MIN_SECS" ] && [ "${s2:-0}" -ge "$MIN_SECS" ] && [ "$a1" = "1" ] && [ "$a2" = "1" ]; then
+  echo "RESULT: PASS — a guest received the DJ's actual audio end-to-end (decoded + non-silent)."
   exit 0
 else
-  echo "RESULT: FAIL — guest did NOT receive enough playable audio (this reproduces 'guests hear nothing')."
-  echo "---- guest ffmpeg detail ----"; printf '%s\n' "${r1#*|}" | tail -20
+  echo "RESULT: FAIL — guest did NOT receive the DJ's audio (reproduces 'guests hear nothing')."
+  echo "  decoded>=${MIN_SECS}s: #1=$([ "${s1:-0}" -ge "$MIN_SECS" ] && echo ok || echo NO) #2=$([ "${s2:-0}" -ge "$MIN_SECS" ] && echo ok || echo NO) | non-silent: #1=$([ "$a1" = 1 ] && echo ok || echo NO) #2=$([ "$a2" = 1 ] && echo ok || echo NO)"
+  echo "---- guest ffmpeg detail ----"; tail -20 "$WORK/guest.log" 2>/dev/null
   exit 1
 fi
+
+# NOTE: the LISTENER PAGE (web/listener.html) player is verified separately with a
+# real browser — serve web/ with a mock /api/status (broadcast.state=live,
+# llhlsUrl=<this stream>) and drive it with the preview tools: before the v48 fix
+# it sat on "Preparing…" / 0 buffer / no fetch; after, it fetches, buffers, and
+# plays (paused=false, currentTime advances). That path is what the STREAM-guard
+# bug lived in and is NOT exercised by the ffmpeg guest above.
