@@ -594,7 +594,11 @@
     const usingLL = () => !!LLSTREAM;
 
     function attach(){
-      if (!STREAM) return;
+      // Guard on the stream we ACTUALLY play (LL-HLS), not the retired plain-HLS
+      // STREAM. HTTPS-only removed streamUrl from /api/status, so STREAM is now
+      // always null — the old `if (!STREAM) return` silently bailed out of every
+      // playback (native AND hls.js), leaving every guest stuck on "Preparing".
+      if (!chosenStream()) return;
       const src = chosenStream();
       if (useNative) {
         player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
@@ -726,7 +730,7 @@
     // instant on tap. iOS native can't pre-buffer before a user gesture
     // (Apple), so it stays tappable right away and buffers on tap instead.
     async function prebuffer(){
-      if (attached || started || !STREAM || !live) return;
+      if (attached || started || !chosenStream() || !live) return;
       attached = true;
       // A throwing attach must NOT burn the flag — leaving attached=true with
       // no player wedges the page at "Preparing…" forever; clearing it makes
@@ -750,7 +754,7 @@
     }
 
     async function play(){
-      if (!STREAM) { try { await poll(); } catch (e) {} }
+      if (!chosenStream()) { try { await poll(); } catch (e) {} }
       if (!attached && !attachSafe()) return;   // native / not-yet-prebuffered
       // If not pre-buffered yet (native, or a fast tapper), give it a brief
       // moment to build a cushion so it doesn't stall on the first seconds.
