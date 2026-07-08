@@ -550,7 +550,7 @@ const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden
 <g id="web"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 12h17M12 3.2c2.2 2.4 3.3 5.3 3.3 8.8s-1.1 6.4-3.3 8.8M12 3.2C9.8 5.6 8.7 8.5 8.7 12s1.1 6.4 3.3 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
 </defs></svg>`;
 
-const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><div class="navlinks"><a class="btn lt sm" href="/partyparty.zip">Get the app</a><a class="btn lt sm" id="nav-auth" href="/login">Sign in</a></div></nav>`;
+const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><div class="navlinks"><a class="btn lt sm" href="/live">Live</a><a class="btn lt sm" href="/partyparty.pkg">Get the app</a><a class="btn lt sm" id="nav-auth" href="/login">Sign in</a></div></nav>`;
 
 const NAV_AUTH_JS = `<script>
 (function(){var a=document.getElementById('nav-auth');if(!a||!window.fetch)return;fetch('/api/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.user){a.textContent='Account';a.href='/account'}else{a.textContent='Sign in';a.href='/login'}}).catch(function(){})})();
@@ -873,7 +873,7 @@ function emptyHome() {
     <div class="card">
       <p class="big">Throw a silent-disco popup from your Mac.</p>
       <p>partyparty gives each night a shareable page for the set replay, photos, clips and guest posts after the room clears.</p>
-      <div class="ecta"><a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/login">Sign in</a></div>
+      <div class="ecta"><a class="btn" href="/partyparty.pkg">Get the app</a><a class="btn lt" href="/login">Sign in</a></div>
     </div>
     <div class="card">
       <h2>Link your Mac</h2>
@@ -1097,8 +1097,8 @@ function renderHome({ events, profiles, replays, followed, viewerSignedIn }) {
   const followedRows = Array.isArray(followed) ? followed : [];
   const hasRows = events.length || profiles.length || replays.length || followedRows.length;
   const heroActions = viewerSignedIn
-    ? `<a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/account">Your account</a><a class="btn lt" href="/about">About</a>`
-    : `<a class="btn" href="/partyparty.zip">Get the app</a><a class="btn lt" href="/login">Sign in</a><a class="btn lt" href="/about">About</a>`;
+    ? `<a class="btn" href="/partyparty.pkg">Get the app</a><a class="btn lt" href="/account">Your account</a><a class="btn lt" href="/about">About</a>`
+    : `<a class="btn" href="/partyparty.pkg">Get the app</a><a class="btn lt" href="/login">Sign in</a><a class="btn lt" href="/about">About</a>`;
   const body = `<div class="page home">
     <section class="homehero">
       <div>
@@ -2101,7 +2101,7 @@ function renderNotFound() {
     <div class="art">🕺</div>
     <h1>That event isn't here.</h1>
     <p>Every partyparty popup gets a page that gathers the night — photos, videos and clips from everyone there. Throw one and share the link.</p>
-    <a class="btn" style="padding:13px 24px;font-size:16px" href="/partyparty.zip">Get the app</a>
+    <a class="btn" style="padding:13px 24px;font-size:16px" href="/partyparty.pkg">Get the app</a>
     <p style="font-size:13px;margin-top:22px">Event pages are in progress. <a href="/" style="color:var(--link)">See what partyparty is ›</a></p>
   </div>`;
   return shell({ title: `partyparty`, desc: `partyparty event page`, body });
@@ -4634,6 +4634,19 @@ export default {
     }
 
     if (pathname === "/") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      // Decision C (2026-07): the polished marketing page is the landing for
+      // EVERYONE (was the events aggregator). Serve the static site/index.html
+      // via the ASSETS binding — same mechanism as /about below. The live/
+      // upcoming/replays aggregator moved to /live (+ /home alias).
+      const u = new URL(request.url);
+      u.pathname = "/";
+      return env.ASSETS.fetch(new Request(u, request));
+    }
+
+    if (pathname === "/live" || pathname === "/home") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
       }

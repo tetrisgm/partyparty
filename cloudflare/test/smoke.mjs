@@ -2772,10 +2772,11 @@ const tests = [
     assert.match(await (await worker.fetch(new Request("https://party.ramine.net/@star.dj", { headers: { cookie } }), makeEnv({ DB: db }))).text(), /id="followbtn"[^>]*data-following="1"/);
 
     // Signed-in home shows the personalized section, uncached; anon home doesn't.
-    const home = await worker.fetch(new Request("https://party.ramine.net/", { headers: { cookie } }), makeEnv({ DB: db }));
+    // (The events aggregator lives at /live since decision C; / is the marketing page.)
+    const home = await worker.fetch(new Request("https://party.ramine.net/live", { headers: { cookie } }), makeEnv({ DB: db }));
     assert.match(await home.text(), /DJs you follow/);
     assert.equal(home.headers.get("cache-control"), "private, no-store");
-    const anonHome = await worker.fetch(new Request("https://party.ramine.net/"), makeEnv({ DB: db }));
+    const anonHome = await worker.fetch(new Request("https://party.ramine.net/live"), makeEnv({ DB: db }));
     assert.doesNotMatch(await anonHome.text(), /DJs you follow/);
     assert.equal(anonHome.headers.get("cache-control"), "public, max-age=60");
 
@@ -2974,14 +2975,21 @@ const tests = [
     assert.equal(next.status, 302);
     assert.equal(next.headers.get("location"), "/link-mac?token=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   }],
-  ["home renders useful empty state", async () => {
-    const resp = await fetchPath("/");
+  ["/ serves the static marketing page (decision C)", async () => {
+    // The root is the marketing landing for everyone; it delegates to the
+    // ASSETS binding (the static site/index.html), not the aggregator.
+    const resp = await fetchPath("/", {}, { assetBody: "STATIC_LANDING_MARKER" });
+    assert.equal(resp.status, 200);
+    assert.equal(await resp.text(), "STATIC_LANDING_MARKER");
+  }],
+  ["/live renders the aggregator's useful empty state", async () => {
+    const resp = await fetchPath("/live");
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.match(html, /silent-disco popups/);
     assert.match(html, /Get the app/);
     assert.match(html, /Sign in/);
-    assert.match(html, /\/partyparty\.zip/);
+    assert.match(html, /\/partyparty\.pkg/);
     assert.match(html, /href="\/login"/);
     assert.match(html, /href="\/faq"/);
     assert.notEqual(html.trim(), "");
@@ -2993,8 +3001,8 @@ const tests = [
     assert.match(html, /No guest account needed/);
     assert.match(html, /fetch\('\/api\/me'/);
   }],
-  ["home renders public events and featured DJs", async () => {
-    const resp = await fetchPath("/", {}, {
+  ["/live renders public events and featured DJs", async () => {
+    const resp = await fetchPath("/live", {}, {
       db: {
         homeEvents: [{
           slug: "saturday-live",
