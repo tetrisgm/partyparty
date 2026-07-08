@@ -997,6 +997,11 @@ const FAQ_GROUPS = [{
     p: [
       "The audio streams over your own local network between the Mac and the phones in the room. Nothing about the live party requires the cloud.",
     ],
+  }, {
+    q: "How do I uninstall it?",
+    p: [
+      "Quit partyparty and drag the app from ~/Applications to the Trash. The app's footprint is the .app bundle, Sparkle's updater/XPC registration, an optional login item, and the FFmpeg, MediaMTX, and system-audio helpers inside the bundle. Nothing is installed to /Library, and no audio driver or kext is left behind.",
+    ],
   }],
 }];
 
@@ -1644,33 +1649,68 @@ async function loginResponse(request, env) {
     : "";
   const oauthRedirect = encodeURIComponent(redirectPath || "/account");
   const oauthBtnStyle = "display:block;width:100%;box-sizing:border-box;text-align:center;margin:0 0 8px";
+  const hasGoogle = hasGoogleProvider(env);
+  const hasApple = hasAppleProvider(env);
+  const emailConfigured = authEmailConfigured(env);
+  const providersAvailable = hasGoogle || hasApple || emailConfigured;
+  if (!providersAvailable && !showAdmin) {
+    const adminUrl = `/login?admin=1&redirect=${encodeURIComponent(redirectPath || "/account")}`;
+    const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
+      <p class="sub">No self-serve sign-in methods are configured for this partyparty server.</p>
+      <div class="minirow" style="margin-top:14px">
+        <b>Older app version only</b>
+        <span>If you are already signed in, open Account and use Link your Mac → Older app version only to generate a one-time code.</span>
+        <a class="btn lt sm" href="/account">Open account linking</a>
+      </div>
+      <p class="hint" style="margin:14px 0 0">Recovery: ask the site owner to enable Google, Apple, or MXroute SMTP sign-in, or use the admin passcode recovery link.</p>
+      <div class="ecta"><a class="btn lt sm" href="${esc(adminUrl)}">Admin recovery</a></div>
+    </div>
+  </div>
+  <footer><span>🕺 partyparty</span><span>Account access</span></footer>`;
+    return new Response(shell({
+      title: "Sign in · partyparty",
+      desc: "Sign in to your partyparty account.",
+      ogImage: DEFAULT_OG_IMAGE,
+      url: "/login",
+      body,
+    }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+  }
   const providerBtns = [
-    hasGoogleProvider(env)
+    hasGoogle
       ? `<a class="btn lt" style="${oauthBtnStyle}" href="/auth/google?redirect=${oauthRedirect}">Continue with Google</a>`
       : "",
-    hasAppleProvider(env)
+    hasApple
       ? `<a class="btn lt" style="${oauthBtnStyle}" href="/auth/apple?redirect=${oauthRedirect}"> Continue with Apple</a>`
       : "",
   ].filter(Boolean).join("");
-  const providerBlock = providerBtns
+  const showEmailForm = emailConfigured || showAdmin;
+  const providerBlock = providerBtns && showEmailForm
     ? `<div style="margin:0 0 12px">${providerBtns}</div>
        <div style="display:flex;align-items:center;gap:10px;color:var(--ink3);font-size:12px;margin:0 0 14px"><span style="flex:1;height:1px;background:var(--line)"></span>or use email<span style="flex:1;height:1px;background:var(--line)"></span></div>`
+    : providerBtns
+      ? `<div style="margin:0 0 12px">${providerBtns}</div>`
     : "";
-  const emailSub = providerBlock
+  const emailSub = showEmailForm && providerBtns
     ? "We will send a sign-in link to your email."
-    : "Enter your email and we will send a sign-in link.";
-  const body = `<div class="page">
-    <div class="card authcard">
-      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
-      <p class="sub">${emailSub}</p>
-      ${providerBlock}
-      <form class="authform" id="login-form">
+    : showEmailForm
+      ? "Enter your email and we will send a sign-in link."
+      : "Choose a sign-in provider to continue.";
+  const emailForm = showEmailForm ? `<form class="authform" id="login-form">
         <input type="email" name="email" autocomplete="email" required placeholder="you@example.com" aria-label="Email">
         ${adminField}
         <button class="btn" type="submit">Send sign-in link</button>
       </form>
       <p class="hint" id="login-msg" role="status" style="margin:14px 0 0"></p>
-      <div id="login-dev" style="margin-top:14px"></div>
+      <div id="login-dev" style="margin-top:14px"></div>` : "";
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Sign in</h1>
+      <p class="sub">${emailSub}</p>
+      <p class="hint" style="margin:0 0 14px">New to partyparty? Your account is created automatically the first time you sign in — nothing to fill out.</p>
+      ${providerBlock}
+      ${emailForm}
     </div>
   </div>
   <script>
@@ -1728,11 +1768,13 @@ async function accountResponse(request, env) {
     const place = ev.location_name || ev.where_txt || "";
     return `<div class="minirow"><b>${esc(ev.title || ev.slug || "Untitled event")}</b><span>${esc([ev.status, when, place].filter(Boolean).join(" · "))}</span>${ev.slug ? `<a href="/e/${esc(ev.slug)}" style="color:var(--link);font-size:13px">View</a> <a href="/e/${esc(ev.slug)}/edit" style="color:var(--link);font-size:13px">Edit</a>` : ""}</div>`;
   }).join("")}</div>` : `<p class="emptyline">No owned events yet.</p>`;
+  // Fallback-only: current apps link through the browser-token /link-mac flow.
+  // Keep this paste-a-code path for older app versions and recovery cases.
   const linkMacCard = profile ? `<div class="card">
     <h2>Link your Mac</h2>
     <p class="emptyline">Open partyparty on your Mac and choose Sign in to link this Mac.</p>
     <details style="margin-top:12px">
-      <summary class="emptyline" style="cursor:pointer">Use a code for an older app</summary>
+      <summary class="emptyline" style="cursor:pointer">Older app version only</summary>
       <div class="ecta"><button class="btn lt sm" id="install-link-create" type="button">Generate code</button></div>
       <div id="install-link-out" class="minirow" style="display:none"></div>
     </details>
@@ -2171,6 +2213,15 @@ function safeDecodeComponent(s) {
 function mxrouteSmtpConfigPresent(env) {
   if (String(env.AUTH_EMAIL_SERVER || "").trim()) return true;
   return !!(env.MXROUTE_SMTP_HOST && env.MXROUTE_SMTP_USER && env.MXROUTE_SMTP_PASS);
+}
+
+function authEmailConfigured(env) {
+  if (!env) return false;
+  return !!mxrouteSmtpConfig(env) || !!(env.EMAIL && typeof env.EMAIL.send === "function");
+}
+
+function authProvidersAvailable(env) {
+  return hasGoogleProvider(env) || hasAppleProvider(env) || authEmailConfigured(env);
 }
 
 function mxrouteSmtpConfig(env) {
@@ -3261,6 +3312,7 @@ async function authInstall(env, id, secret) {
 
 async function brokerAccountStatus(env, id, rec) {
   if (!env.DB) return jsonResp(503, { error: "account db not configured" });
+  const providersAvailable = authProvidersAvailable(env);
   const linked = await env.DB.prepare(
     `SELECT
        di.user_id,
@@ -3278,6 +3330,7 @@ async function brokerAccountStatus(env, id, rec) {
   if (!linked?.user_id) {
     return jsonResp(200, {
       ok: true,
+      providersAvailable,
       linked: false,
       install: { id, slug: rec.slug || "", host: `${rec.slug || id}.${env.BROKER_BASE}` },
       license: { ok: false, reason: "sign in required" },
@@ -3292,6 +3345,7 @@ async function brokerAccountStatus(env, id, rec) {
   ).bind(linked.user_id).all();
   return jsonResp(200, {
     ok: true,
+    providersAvailable,
     linked: true,
     user: {
       id: linked.user_id,
