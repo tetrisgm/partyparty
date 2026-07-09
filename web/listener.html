@@ -586,8 +586,6 @@
     let latencyTarget = 0;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let attached = false, ready = false; // pre-buffer state (hls.js path)
-    const GUEST_DEFER_VIDEO_BYTES = 32 * 1024 * 1024;
-    let drainDeferredVideos = async function(){};
     const PREBUF = 2.5;                    // seconds of cushion before we let them tap
     // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
     // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
@@ -1277,7 +1275,6 @@
         const wasLive = live;
         live = s.broadcast && s.broadcast.state === 'live';
         if (live !== wasLive) logEvent(live ? 'dj-live' : 'dj-stop', { target: rnd(latencyTarget) });
-        if (!live && wasLive) setTimeout(() => drainDeferredVideos(), 0);
         // "others" = everyone but you (you're in the count once you're playing).
         const totalListeners = Number(s.listeners || 0);
         paintGuests(s.roster || [], totalListeners);
@@ -1456,7 +1453,7 @@
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const trackBox = $id('trackBox'), trackCurrent = $id('trackCurrent'), trackAsk = $id('trackAsk'), trackStatus = $id('trackStatus'), trackRecent = $id('trackRecent');
       const featureDefaults = {
-        uploads: true, videoUploads: false, comments: true, reactions: false,
+        uploads: true, videoUploads: true, comments: true, reactions: false,
         requests: false, trackId: false, tippingLinks: false, wallMode: true
       };
       const reactionDefs = [
@@ -1816,7 +1813,7 @@
       // Composer
       const composer = $id('composer'), ctext = $id('ctext'), cfiles = $id('cfiles'), attachBtn = $id('attachBtn'), attachN = $id('attachN'), postBtn = $id('postBtn');
       const trayComment = $id('trayComment'), trayShare = $id('trayShare');
-      const deferredVideos = [];
+      let pendingFiles = [];
       const albumItems = new Map();
       function albumMediaHTML(item){
         const src = '/media/' + encodeURIComponent(item.id);
@@ -1890,22 +1887,23 @@
         postBtn.hidden = !(commentsOn || uploadsOn);
         if (!uploadsOn) {
           cfiles.value = '';
+          pendingFiles = [];
           attachN.textContent = '';
         }
       }
+      function fileAllowed(file){
+        return !!file && (featureOn('videoUploads') || !isVideoFile(file));
+      }
+      function setPendingFiles(files, append){
+        const incoming = [...(files || [])].filter(fileAllowed);
+        pendingFiles = append ? pendingFiles.concat(incoming) : incoming;
+        attachN.textContent = pendingFiles.length ? pendingFiles.length + ' selected' : '';
+      }
       attachBtn.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
       cfiles.addEventListener('change', () => {
-        if (!featureOn('uploads')) { cfiles.value = ''; attachN.textContent = ''; return; }
-        let deferN = 0;
-        [...cfiles.files].forEach(f => { if (featureOn('videoUploads') && shouldDeferGuestVideo(f)) deferN++; });
-        attachN.textContent = deferN
-          ? deferN + ' video' + (deferN > 1 ? 's' : '') + ' will post after the set'
-          : (cfiles.files.length ? cfiles.files.length + ' selected' : '');
+        if (!featureOn('uploads')) { cfiles.value = ''; pendingFiles = []; attachN.textContent = ''; return; }
+        setPendingFiles(cfiles.files, false);
       });
-      function shouldDeferGuestVideo(file){
-        if (!live || !file || file.size < GUEST_DEFER_VIDEO_BYTES) return false;
-        return isVideoFile(file);
-      }
       async function uploadOne(file){
         const fd = new FormData();
         fd.append('file', file);
@@ -1923,42 +1921,17 @@
         if (!r.ok) throw new Error(res.error || 'post failed');
         if (res.claimUrl) showClaim(res.claimUrl);
       }
-      let drainingDeferred = false;
-      drainDeferredVideos = async function(){
-        if (live || drainingDeferred || !deferredVideos.length) return;
-        drainingDeferred = true;
-        try {
-          while (!live && deferredVideos.length) {
-            const file = deferredVideos.shift();
-            attachN.textContent = 'Posting queued video…';
-            const media = [await uploadOne(file)];
-            await postMedia(media, '');
-            await pollFeed(true);
-          }
-          attachN.textContent = '';
-        } catch (e) {
-          attachN.textContent = e.message || 'queued video failed — try again';
-        } finally {
-          drainingDeferred = false;
-        }
-      };
       async function submitPost(){
         if (!featureOn('wallMode')) return;
-        const files = featureOn('uploads') ? [...cfiles.files].filter(f => featureOn('videoUploads') || !isVideoFile(f)) : [];
-        const immediate = [];
+        const files = featureOn('uploads') ? pendingFiles.slice() : [];
         const text = featureOn('comments') ? ctext.value.trim() : '';
         if (!text && !files.length) return;
         postBtn.disabled = true;
         try {
-          let queued = 0;
-          files.forEach(f => {
-            if (shouldDeferGuestVideo(f)) { deferredVideos.push(f); queued++; }
-            else immediate.push(f);
-          });
           const media = [];
-          for (let i = 0; i < immediate.length; i++) {
-            postBtn.textContent = 'Uploading ' + (i + 1) + '/' + immediate.length + '…';
-            media.push(await uploadOne(immediate[i]));
+          for (let i = 0; i < files.length; i++) {
+            postBtn.textContent = 'Uploading ' + (i + 1) + '/' + files.length + '…';
+            media.push(await uploadOne(files[i]));
           }
           if (text || media.length) {
             postBtn.textContent = 'Posting…';
@@ -1967,8 +1940,8 @@
           }
           if (featureOn('comments')) ctext.value = '';
           cfiles.value = '';
-          attachN.textContent = queued ? 'your video will post after the set' : '';
-          if (!live) drainDeferredVideos();
+          pendingFiles = [];
+          attachN.textContent = '';
         } catch (e) {
           attachN.textContent = e.message || 'failed — try again';
         } finally {

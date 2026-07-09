@@ -21,21 +21,3 @@ func TestLimiterAllowIntervals(t *testing.T) {
 		t.Fatal("post after the interval should be allowed")
 	}
 }
-
-func TestLimiterUploadSemaphore(t *testing.T) {
-	l := newLimiter()
-
-	if !l.acquireUpload() {
-		t.Fatal("first upload acquire should succeed")
-	}
-	if !l.acquireUpload() {
-		t.Fatal("second upload acquire should succeed")
-	}
-	if l.acquireUpload() {
-		t.Fatal("third concurrent upload acquire should be denied")
-	}
-	l.releaseUpload()
-	if !l.acquireUpload() {
-		t.Fatal("upload acquire after release should succeed")
-	}
-}

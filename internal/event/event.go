@@ -262,7 +262,7 @@ func initialState(mode string) string {
 
 var featureDefaults = map[string]bool{
 	"uploads":      true,
-	"videoUploads": false,
+	"videoUploads": true,
 	"comments":     true,
 	"reactions":    false,
 	"requests":     false,
@@ -1022,11 +1022,9 @@ var mediaExt = map[string]string{
 	".mp3": "audio", ".m4a": "audio", ".aac": "audio", ".wav": "audio",
 }
 
-// MaxUpload caps one file (full-quality phone video is the point, so be
-// generous — this is a LAN).
-const MaxUpload = 2 << 30 // 2 GiB
-
 // SaveMedia streams one uploaded file to the media dir and returns its entry.
+// There is intentionally no app-level size cap: guests may post full-quality
+// phone videos over the LAN, and the Mac should store the original bytes.
 func (s *Store) SaveMedia(origName string, r io.Reader) (Media, error) {
 	ext := strings.ToLower(filepath.Ext(origName))
 	typ, ok := mediaExt[ext]
@@ -1041,13 +1039,10 @@ func (s *Store) SaveMedia(origName string, r io.Reader) (Media, error) {
 	if err != nil {
 		return Media{}, err
 	}
-	n, err := io.Copy(f, io.LimitReader(r, MaxUpload+1))
+	n, err := io.Copy(f, r)
 	f.Close()
-	if err != nil || n > MaxUpload {
+	if err != nil {
 		os.Remove(dst)
-		if n > MaxUpload {
-			return Media{}, fmt.Errorf("file too large (max 2 GB)")
-		}
 		return Media{}, err
 	}
 	name := filepath.Base(origName)

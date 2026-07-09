@@ -8,7 +8,6 @@ import (
 )
 
 const (
-	uploadLimitInterval   = 3 * time.Second
 	postLimitInterval     = 5 * time.Second
 	commentLimitInterval  = 2 * time.Second
 	reactionLimitInterval = time.Second
@@ -18,8 +17,6 @@ const (
 )
 
 type limiter struct {
-	uploads chan struct{}
-
 	mu          sync.Mutex
 	last        map[string]time.Time
 	intervals   map[string]time.Duration
@@ -29,10 +26,8 @@ type limiter struct {
 
 func newLimiter() *limiter {
 	return &limiter{
-		uploads: make(chan struct{}, 2),
-		last:    make(map[string]time.Time),
+		last: make(map[string]time.Time),
 		intervals: map[string]time.Duration{
-			"upload":   uploadLimitInterval,
 			"post":     postLimitInterval,
 			"comment":  commentLimitInterval,
 			"reaction": reactionLimitInterval,
@@ -40,22 +35,6 @@ func newLimiter() *limiter {
 			"track-id": trackIDLimitInterval,
 		},
 		now: time.Now,
-	}
-}
-
-func (l *limiter) acquireUpload() bool {
-	select {
-	case l.uploads <- struct{}{}:
-		return true
-	default:
-		return false
-	}
-}
-
-func (l *limiter) releaseUpload() {
-	select {
-	case <-l.uploads:
-	default:
 	}
 }
 
@@ -92,16 +71,6 @@ func (l *limiter) allow(key, kind string) bool {
 
 func guestLimitKey(cid string, r *http.Request) string {
 	if cid = strings.TrimSpace(cid); cid != "" {
-		return cid
-	}
-	return clientIP(r)
-}
-
-func uploadLimitKey(r *http.Request) string {
-	if cid := strings.TrimSpace(r.URL.Query().Get("cid")); cid != "" {
-		return cid
-	}
-	if cid := strings.TrimSpace(r.Header.Get("X-Party-CID")); cid != "" {
 		return cid
 	}
 	return clientIP(r)

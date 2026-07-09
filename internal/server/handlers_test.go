@@ -280,18 +280,6 @@ func TestMediaThumbRouteServesGuardedThumb(t *testing.T) {
 	}
 }
 
-func TestUploadLooksLikeBigVideo(t *testing.T) {
-	if !uploadLooksLikeBigVideo("clip.MOV", liveGuestVideoDeferBytes, 0) {
-		t.Fatal("large video should be deferred while live")
-	}
-	if uploadLooksLikeBigVideo("clip.mov", liveGuestVideoDeferBytes-1, liveGuestVideoDeferBytes-1) {
-		t.Fatal("small video should upload immediately")
-	}
-	if uploadLooksLikeBigVideo("photo.jpg", liveGuestVideoDeferBytes, liveGuestVideoDeferBytes) {
-		t.Fatal("large photo should not use the live video deferral path")
-	}
-}
-
 func TestEventFeatureGatesGuestWrites(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
@@ -371,6 +359,23 @@ func TestEventFeatureGatesGuestWrites(t *testing.T) {
 	w = doBody(s, http.MethodPost, "/api/upload", "192.168.1.47:3333", ct, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("video upload on status = %d, body %q", w.Code, w.Body.String())
+	}
+}
+
+func TestGuestUploadsAreNotRateLimited(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	guest := "192.168.1.44:3333"
+
+	for _, name := range []string{"one.jpg", "two.jpg", "three.mov"} {
+		body, ct := multipartUpload(t, name, "application/octet-stream")
+		w := doBody(s, http.MethodPost, "/api/upload", guest, ct, body)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s upload status = %d, body %q", name, w.Code, w.Body.String())
+		}
 	}
 }
 
@@ -597,7 +602,7 @@ func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	if !ok {
 		t.Fatalf("features missing/not object: %#v", body["features"])
 	}
-	if features["requests"] != true || features["videoUploads"] != false || features["uploads"] != true {
+	if features["requests"] != true || features["videoUploads"] != true || features["uploads"] != true {
 		t.Fatalf("feed features = %#v", features)
 	}
 }

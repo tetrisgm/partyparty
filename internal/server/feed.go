@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,7 +26,6 @@ import (
 // pseudonymous (fun name + emoji chosen client-side); their private cid rides
 // along server-side only, as the future "claim my posts" proof.
 
-const liveGuestVideoDeferBytes int64 = 32 << 20
 const publicPartyBase = "https://party.ramine.net"
 
 var tipLinkTypes = map[string]bool{
@@ -691,34 +691,22 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeFeatureDisabled(w)
 			return true
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, event.MaxUpload+(1<<20))
-		f, hdr, err := r.FormFile("file")
+		mr, err := r.MultipartReader()
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
 			return true
 		}
-		defer f.Close()
-		if !dj && uploadLooksLikeVideo(hdr.Filename, hdr.Header.Get("Content-Type")) && !s.featureOn("videoUploads") {
+		part, err := nextUploadedFile(mr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
+			return true
+		}
+		defer part.Close()
+		if !dj && uploadLooksLikeVideo(part.FileName(), part.Header.Get("Content-Type")) && !s.featureOn("videoUploads") {
 			writeFeatureDisabled(w)
 			return true
 		}
-		if !dj {
-			key := uploadLimitKey(r)
-			if !s.limits.allow(key, "upload") {
-				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many uploads", "retry": true})
-				return true
-			}
-			if !s.limits.acquireUpload() {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "the party's busy — try again in a sec"})
-				return true
-			}
-			defer s.limits.releaseUpload()
-		}
-		if s.Broadcaster != nil && s.Broadcaster.Status().State == "live" && uploadLooksLikeBigVideo(hdr.Filename, hdr.Size, r.ContentLength) {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "your video will post after the set", "defer": true})
-			return true
-		}
-		m, err := s.Events.SaveMedia(hdr.Filename, f)
+		m, err := s.Events.SaveMedia(part.FileName(), part)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
@@ -951,13 +939,17 @@ func (s *srv) eventOnlineLinks() eventLinks {
 	return links
 }
 
-func uploadLooksLikeBigVideo(name string, fileSize, requestSize int64) bool {
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".mp4", ".mov", ".m4v", ".webm":
-	default:
-		return false
+func nextUploadedFile(mr *multipart.Reader) (*multipart.Part, error) {
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			return nil, err
+		}
+		if part.FormName() == "file" && part.FileName() != "" {
+			return part, nil
+		}
+		_ = part.Close()
 	}
-	return fileSize >= liveGuestVideoDeferBytes || requestSize >= liveGuestVideoDeferBytes
 }
 
 // publishCurrentSet remuxes + uploads the current event's set recording to its
