@@ -99,8 +99,8 @@ from pathlib import Path
 version = sys.argv[1]
 p = Path("cloudflare/worker.js")
 s = p.read_text()
-s2 = re.sub(r'const APP_VERSION = "[^"]+";', f'const APP_VERSION = "{version}";', s, count=1)
-if s2 == s:
+s2, n = re.subn(r'const APP_VERSION = "[^"]+";', f'const APP_VERSION = "{version}";', s, count=1)
+if n != 1:
     raise SystemExit("cloudflare/worker.js APP_VERSION constant not found")
 p.write_text(s2)
 PY
