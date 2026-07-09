@@ -3005,7 +3005,7 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.match(resp.headers.get("content-type") || "", /application\/json/);
     assert.equal(resp.headers.get("cache-control"), "public, max-age=300");
-    assert.deepEqual(await resp.json(), { version: `${codeMajor}.${payloadVersion}`, date: "2026-07-08" });
+    assert.deepEqual(await resp.json(), { version: `${codeMajor}.${payloadVersion}`, date: "2026-07-09" });
   }],
   ["/live renders the aggregator's useful empty state", async () => {
     const resp = await fetchPath("/live");
