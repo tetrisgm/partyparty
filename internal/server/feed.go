@@ -912,6 +912,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
+		if err := s.Events.ExportArchive(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
 		if runtime.GOOS == "darwin" {
 			_ = exec.Command("open", s.Events.Dir()).Start()
 		}

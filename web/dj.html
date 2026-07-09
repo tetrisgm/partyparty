@@ -422,6 +422,7 @@
   #eventCard .cardhead{margin-bottom:16px}
   #eventCard .cardhead h2{font-size:20px}
   #eventCard > .composer{background:rgba(255,255,255,.06)!important;border-radius:18px!important;padding:16px!important;margin-bottom:14px!important}
+  #eventCard > .composer.dropping{border-color:var(--accent)!important;background:rgba(255,45,111,.12)!important;box-shadow:0 0 0 3px rgba(255,45,111,.16)}
   #eventCard textarea{font-size:16px!important}
   #djFeed{display:grid;gap:12px}
   #djFeed .wpost{border:1px solid var(--separator);border-radius:18px;background:rgba(255,255,255,.035);padding:18px}
@@ -846,8 +847,8 @@
         <h2 id="eventTitle">Party feed</h2>
         <span class="muted" id="eventCounts"></span>
       </div>
-      <div class="composer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
-        <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post for the party feed..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
+      <div class="composer" id="djComposer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
+        <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post, or drop photos/videos here..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
           <button class="ghost" id="djAttachBtn" type="button" style="font-size:12px">📷 Add photo/video</button>
           <span class="muted" id="djAttachN" style="font-size:11px;align-self:center"></span>
@@ -3464,10 +3465,66 @@
       }
     })();
 
+    let djPendingFiles = [];
+    function supportedDropFile(file){
+      if (!file) return false;
+      const typ = (file.type || '').toLowerCase();
+      if (typ.startsWith('image/') || typ.startsWith('video/') || typ.startsWith('audio/')) return true;
+      return /\.(jpe?g|png|gif|heic|heif|webp|mp4|mov|m4v|webm|mp3|m4a|aac|wav)$/i.test(file.name || '');
+    }
+    function setDJFiles(files, append){
+      const incoming = [...(files || [])].filter(supportedDropFile);
+      djPendingFiles = append ? djPendingFiles.concat(incoming) : incoming;
+      $('djAttachN').textContent = djPendingFiles.length ? djPendingFiles.length + ' selected' : '';
+    }
+    function filesFromTransfer(dt){
+      const out = [];
+      if (!dt) return out;
+      if (dt.items && dt.items.length) {
+        for (const item of dt.items) {
+          if (item.kind !== 'file') continue;
+          const f = item.getAsFile();
+          if (f) out.push(f);
+        }
+      }
+      if (!out.length && dt.files) out.push(...dt.files);
+      return out;
+    }
+    function transferHasFiles(dt){
+      if (!dt) return false;
+      if (dt.types && Array.from(dt.types).includes('Files')) return true;
+      if (dt.items && Array.from(dt.items).some(item => item.kind === 'file')) return true;
+      return !!(dt.files && dt.files.length);
+    }
     $('djAttachBtn').onclick = () => $('djFiles').click();
-    $('djFiles').onchange = () => { $('djAttachN').textContent = $('djFiles').files.length ? $('djFiles').files.length + ' selected' : ''; };
+    $('djFiles').onchange = () => setDJFiles($('djFiles').files, false);
+    const djComposer = $('djComposer');
+    if (djComposer) {
+      ['dragenter', 'dragover'].forEach(type => djComposer.addEventListener(type, (e) => {
+        if (!transferHasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        djComposer.classList.add('dropping');
+      }));
+      ['dragleave', 'dragend'].forEach(type => djComposer.addEventListener(type, () => {
+        djComposer.classList.remove('dropping');
+      }));
+      djComposer.addEventListener('drop', (e) => {
+        const files = filesFromTransfer(e.dataTransfer);
+        if (!files.length) return;
+        e.preventDefault();
+        djComposer.classList.remove('dropping');
+        setDJFiles(files, true);
+      });
+    }
+    $('djPostText').addEventListener('paste', (e) => {
+      const files = filesFromTransfer(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      setDJFiles(files, true);
+    });
     $('djPostBtn').onclick = async () => {
-      const files = [...$('djFiles').files];
+      const files = djPendingFiles.slice();
       const text = $('djPostText').value.trim();
       if (!text && !files.length) return;
       $('djPostBtn').disabled = true;
@@ -3484,7 +3541,7 @@
         const r = await fetch('/api/post', { method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ cid:'dj', author:'DJ', emoji:'🎧', text, media }) });
         if (!r.ok) throw new Error((await r.json()).error || 'post failed');
-        $('djPostText').value = ''; $('djFiles').value = ''; $('djAttachN').textContent = '';
+        $('djPostText').value = ''; $('djFiles').value = ''; djPendingFiles = []; $('djAttachN').textContent = '';
         poll();
       } catch (e) { $('djAttachN').textContent = e.message; }
       finally { $('djPostBtn').disabled = false; $('djPostBtn').textContent = 'Post'; }
