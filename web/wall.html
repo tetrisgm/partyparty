@@ -168,13 +168,15 @@
         return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : '';
       } catch (e) { return ''; }
     }
-    function primaryDJLink(links){
+    function primaryDJLink(links, includeTips){
       const list = Array.isArray(links) ? links : [];
-      return list.find(l => l && safeHTTP(l.url) && !tipTypes.has(l.type)) || list.find(l => l && safeHTTP(l.url)) || null;
+      return list.find(l => l && safeHTTP(l.url) && !tipTypes.has(l.type)) ||
+        (includeTips ? list.find(l => l && safeHTTP(l.url)) : null) ||
+        null;
     }
     function renderLinkPrompt(links, features){
-      const on = featureOn(features || {}, 'tippingLinks', true);
-      const link = on ? primaryDJLink(links) : null;
+      const tipsOn = featureOn(features || {}, 'tippingLinks', false);
+      const link = primaryDJLink(links, tipsOn);
       const href = safeHTTP(link && link.url);
       if (!href) {
         $('linkPrompt').hidden = true;

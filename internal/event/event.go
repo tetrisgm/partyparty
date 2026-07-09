@@ -263,7 +263,7 @@ var featureDefaults = map[string]bool{
 	"reactions":    false,
 	"requests":     false,
 	"trackId":      false,
-	"tippingLinks": true,
+	"tippingLinks": false,
 	"wallMode":     true,
 }
 

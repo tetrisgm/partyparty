@@ -248,21 +248,20 @@
   #actionbar{position:sticky;top:0;z-index:20;background:var(--glass-bg);
     -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
     border-bottom:1px solid var(--separator)}
-  .abinner{max-width:1060px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:10px}
+  .abinner{max-width:none;margin:0;padding:10px 20px;display:flex;align-items:center;gap:10px}
   .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:auto}
   .source-picker{display:flex;align-items:center;gap:8px;min-width:230px;max-width:330px;flex:0 1 330px}
   .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
   .source-step label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-  .source-guide-link{height:auto;padding:0;background:transparent;color:var(--link);font-size:12px;font-weight:700;white-space:nowrap}
-  .source-guide-link:hover{background:transparent;text-decoration:underline}
   .source-row{position:relative;display:flex;align-items:center;gap:6px;min-width:0;flex:1}
   .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:999px;height:42px;font-weight:700;background-color:var(--bg-elevated);color:transparent}
   .source-row select option{color:var(--label);background:var(--bg-elevated)}
-  .device-display{position:absolute;left:16px;right:48px;z-index:1;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
+  .device-display{position:absolute;left:16px;right:16px;z-index:1;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
   .source-hint{display:none}
   .abbtn{display:inline-flex;align-items:center;gap:7px;background:var(--fill);color:var(--label);border-radius:999px;height:34px;padding:0 16px}
   .abbtn:hover{background:var(--fill-hover)}
   .abinner .iconbtn{width:34px;height:34px;border-radius:999px}
+  .source-help{font-size:15px;font-weight:850}
   .abspacer{flex:1}
   .golive{height:40px;padding:0 28px;border-radius:999px;font-size:15px;font-weight:800}
   .golive.go{background:var(--success);color:#fff;box-shadow:0 8px 22px rgba(52,199,89,.33)}
@@ -289,6 +288,7 @@
   .eventmeta span{display:inline-flex;align-items:center;gap:7px;min-height:38px;border:1px solid var(--separator);border-radius:999px;padding:8px 14px;background:rgba(255,255,255,.03);color:var(--label-secondary);font-size:14px}
   .eventmeta b{color:var(--label);font-weight:700}
   .hostlinks{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px;padding-top:24px;border-top:1px solid var(--separator)}
+  .hostlinks[hidden]{display:none}
   .hostlinks .ll{display:inline-flex;align-items:center;gap:7px;height:44px;border:1px solid var(--separator);border-radius:999px;padding:0 17px;background:rgba(255,255,255,.03);color:var(--label);font-size:14px;font-weight:750}
   .hostlinks .ll.accent{background:var(--accent);border-color:transparent;color:#fff}
   .hostlinks .ll.add{border-style:dashed;color:var(--link);background:transparent}
@@ -315,6 +315,7 @@
   .cover-status{position:absolute;left:50%;top:16px;z-index:4;display:none;max-width:calc(100% - 32px);padding:7px 12px;border-radius:999px;background:rgba(20,20,24,.48);color:#fff;font-size:12px;font-weight:700;transform:translateX(-50%);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
   .cover-status.error{background:rgba(255,69,58,.78)}
   .livestrip{margin-top:20px;display:flex;align-items:center;gap:18px}
+  .livestrip[hidden]{display:none}
   .wave{flex:1;height:54px;display:flex;align-items:center;gap:5px;overflow:hidden}
   .wave i{flex:1;min-width:12px;background:linear-gradient(180deg,var(--accent),#d82664);border-radius:3px;opacity:.9;animation:bar 1.15s ease-in-out infinite}
   @keyframes bar{0%,100%{height:25%}50%{height:92%}}
@@ -355,13 +356,17 @@
   @keyframes pp-blink{50%{opacity:0}}
   .cardx{position:absolute;top:12px;right:12px;width:26px;height:26px;padding:0;border-radius:50%;background:var(--fill);color:var(--label-secondary);font-size:12px;line-height:1}
   .cardx:hover{background:var(--fill-hover);color:var(--label)}
-  /* page tabs (the wall / participants) — segmented, Apple-style */
-  .ptabs{display:flex;gap:4px;background:transparent;border:1px solid var(--separator);border-radius:999px;padding:4px;width:fit-content;margin:34px 0 16px}
+  /* Party feed + desktop guest rail. */
+  .ptabs{display:none}
   .ptab{height:40px;padding:0 24px;border-radius:999px;background:transparent;color:var(--label-secondary);font-weight:750}
   .ptab.active{background:var(--bg-elevated);color:var(--label);box-shadow:0 1px 4px rgba(0,0,0,.16)}
   .pcount{margin-left:6px;background:var(--fill);border-radius:999px;padding:1px 7px;font-size:11px;color:var(--label-secondary)}
   .pcount:empty{display:none}
   .ptab.active .pcount{background:var(--fill)}
+  .party-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start;margin-top:28px}
+  .party-feed-col{min-width:0}
+  .guest-sidebar{position:sticky;top:72px;display:grid;gap:16px;min-width:0}
+  .guest-sidebar .card{margin-top:0}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
   .featurebar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
@@ -411,8 +416,9 @@
   #eventCard textarea{font-size:16px!important}
   #djFeed{display:grid;gap:12px}
   #djFeed .wpost{border:1px solid var(--separator);border-radius:18px;background:rgba(255,255,255,.035);padding:18px}
-  #requestCard,#trackCard{display:none!important;margin-bottom:16px}
-  body.event-manage-open #requestCard,body.event-manage-open #trackCard{display:block!important}
+  #requestCard{display:none!important;margin-bottom:16px}
+  #trackCard{display:none!important}
+  body.event-manage-open #requestCard{display:block!important}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
   .sheetov.show{display:flex}
@@ -441,6 +447,7 @@
   @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.event-actions{justify-content:flex-start}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:100%}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.titlerow{flex-direction:column}.event-actions{justify-content:flex-start}}
+  @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}}
 </style>
 </head>
 <body class="account-locked">
@@ -476,10 +483,9 @@
       <div class="source-row">
         <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
         <select id="device" aria-labelledby="sourceStepLabel" title="🖥️ Mac output captures everything playing (macOS asks once — click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live — if a phone hears the beep, the network path works."></select>
-        <button class="iconbtn" id="refreshBtn" type="button" aria-label="Refresh sources" title="Refresh sources"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       </div>
     </div>
-    <button class="source-guide-link" id="sourceGuideBtn" type="button">What should I pick?</button>
+    <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
     <button class="abbtn" id="shareOpenBtn" type="button" title="Show the guest link and QR">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
       Share
@@ -532,7 +538,6 @@
       <span id="pubCoverResult" class="cover-status" role="status"></span>
     </div>
     <header class="card eventhead herocard" id="eventHead">
-    <span class="statuspill" id="eventStatusPill"><span class="livedot"></span> Not live</span>
     <div class="titlerow">
       <h1 class="ename"><span id="titleEdit">partyparty</span></h1>
       <div class="event-actions">
@@ -546,11 +551,7 @@
       <span id="devnameWrap" hidden>▶ <b id="devname"></b></span>
       <span id="emetaCountsWrap" hidden><b id="emetaCounts"></b></span>
     </div>
-    <div class="hostlinks" id="heroLinks">
-      <button class="ll accent" type="button" id="heroFollowBtn">＋ Follow</button>
-      <button class="ll" type="button" id="heroTipBtn">Tip the DJ</button>
-      <button class="ll add" type="button" id="heroAddLinkBtn">＋ Add link</button>
-    </div>
+    <div class="hostlinks" id="heroLinks" hidden></div>
     <div class="eventedit" id="eventEditPanel" aria-label="Edit event details">
       <h2>Edit event</h2>
       <div class="eventform-grid">
@@ -559,7 +560,7 @@
           <input id="eventTitleInput" type="text" maxlength="80" autocomplete="off" spellcheck="false">
         </label>
         <label class="eventform-field">
-          <span>Host</span>
+          <span>Host / creator</span>
           <input id="eventHostInput" type="text" maxlength="40" autocomplete="off" spellcheck="false">
         </label>
         <label class="eventform-field wide">
@@ -580,12 +581,11 @@
     </header>
   </div>
 
-  <div class="card livestrip">
+  <div class="card livestrip" id="liveStrip" hidden>
     <div class="wave" aria-hidden="true">
       <i style="animation-delay:0s"></i><i style="animation-delay:.08s"></i><i style="animation-delay:.18s"></i><i style="animation-delay:.31s"></i><i style="animation-delay:.12s"></i><i style="animation-delay:.44s"></i><i style="animation-delay:.26s"></i><i style="animation-delay:.52s"></i><i style="animation-delay:.2s"></i><i style="animation-delay:.39s"></i><i style="animation-delay:.05s"></i><i style="animation-delay:.58s"></i><i style="animation-delay:.34s"></i><i style="animation-delay:.66s"></i>
     </div>
-    <div class="nowplaying-pill">Now playing<b id="heroTrackText">No track shared.</b></div>
-    <div class="listening"><b id="heroListeners">0</b> listening</div>
+    <div class="nowplaying-pill">Now playing<b id="heroTrackText"></b></div>
   </div>
 
   <!-- First-run activation gets its OWN box (there's no point advertising
@@ -705,11 +705,8 @@
     </div>
   </div>
 
-  <nav class="ptabs">
-    <button class="ptab active" data-ptab="wall" type="button">Party feed<span class="pcount" id="feedCount"></span></button>
-    <button class="ptab" data-ptab="people" type="button">Guests<span class="pcount" id="pcount"></span></button>
-  </nav>
-
+  <div class="party-grid">
+    <main class="party-feed-col">
   <section id="ptab-wall">
     <div class="card trackcard" id="trackCard" style="display:none">
       <div class="cardhead">
@@ -723,7 +720,7 @@
       </form>
       <div class="trackcurrentdj">
         <small>Current</small>
-        <b id="trackCurrentDJ">No track shared.</b>
+        <b id="trackCurrentDJ"></b>
       </div>
       <div class="trackrecentdj" id="trackRecentDJ"></div>
     </div>
@@ -743,11 +740,11 @@
         <span class="muted" id="eventCounts"></span>
       </div>
       <div class="composer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
-        <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Share a track, a shout-out, a photo..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
+        <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post for the party feed..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="ghost" id="djAttachBtn" style="font-size:12px">📎 Attach</button>
+          <button class="ghost" id="djAttachBtn" type="button" style="font-size:12px">📷 Add photo/video</button>
           <span class="muted" id="djAttachN" style="font-size:11px;align-self:center"></span>
-          <button class="go" id="djPostBtn" style="margin-left:auto;font-size:12px">Post</button>
+          <button class="go" id="djPostBtn" type="button" style="margin-left:auto;font-size:12px">Post</button>
         </div>
         <input type="file" id="djFiles" accept="image/*,video/*,audio/*" multiple hidden>
       </div>
@@ -785,7 +782,7 @@
         <div class="recapresult" id="recapResult"></div>
       </div>
       <div class="linkeditor" id="linkEditor">
-        <div class="linkeditor-head"><b>Follow / tip links</b><span class="muted" id="linkEditorState"></span></div>
+        <div class="linkeditor-head"><b>DJ links</b><span class="muted" id="linkEditorState"></span></div>
         <div class="linkrows" id="linkRows"></div>
         <div class="linkactions">
           <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
@@ -814,8 +811,8 @@
               <input id="createEventTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Warehouse Friday">
             </label>
             <label class="eventform-field">
-              <span>Host</span>
-              <input id="createEventHost" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="the DJ">
+              <span>Host / creator</span>
+              <input id="createEventHost" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Your DJ name">
             </label>
             <label class="eventform-field wide">
               <span>Date and place</span>
@@ -839,10 +836,11 @@
       <div id="djFeed"></div>
     </div>
   </section>
+    </main>
 
-  <section id="ptab-people" hidden>
+  <aside id="ptab-people" class="guest-sidebar">
     <div class="card">
-      <h2 id="listeners">0 listeners</h2>
+      <h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2>
       <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it — a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are — under about half a second and the room moves together.">
         <span>Delay from DJ <b id="djDelay">—</b></span>
         <span class="metricsep">·</span>
@@ -857,7 +855,8 @@
       <h2>On the wall</h2>
       <div id="wallAuthors" class="chips"><span class="muted">Nobody has posted yet.</span></div>
     </div>
-  </section>
+  </aside>
+  </div>
 </div>
 
 <div class="softaskov" id="captureSoftAsk" role="presentation" hidden>
@@ -1354,8 +1353,17 @@
     document.querySelectorAll('.ptab').forEach(t => t.classList.toggle('active', t.dataset.ptab === name));
     localStorage.setItem('pp.ptab', name);
   }
-  document.querySelectorAll('.ptab').forEach(t => t.onclick = () => showPTab(t.dataset.ptab));
-  showPTab(localStorage.getItem('pp.ptab') || 'wall');
+  {
+    const tabs = document.querySelectorAll('.ptab');
+    if (tabs.length) {
+      tabs.forEach(t => t.onclick = () => showPTab(t.dataset.ptab));
+      showPTab(localStorage.getItem('pp.ptab') || 'wall');
+    } else {
+      const wall = $('ptab-wall'), people = $('ptab-people');
+      if (wall) wall.hidden = false;
+      if (people) people.hidden = false;
+    }
+  }
 
   // Share card: open by default while setting up; closing sticks until the
   // Share button brings it back.
@@ -1433,7 +1441,12 @@
     const ov = $('sourceGuideSheet');
     if (ov) ov.classList.remove('show');
   }
-  $('sourceGuideBtn').onclick = openSourceGuide;
+  function toggleSourceGuide(){
+    const ov = $('sourceGuideSheet');
+    if (!ov) return;
+    ov.classList.toggle('show');
+  }
+  $('sourceGuideBtn').onclick = toggleSourceGuide;
   if ($('sourceGuideCloseBtn')) $('sourceGuideCloseBtn').onclick = closeSourceGuide;
   {
     const gov = $('sourceGuideSheet');
@@ -1554,6 +1567,14 @@
       updateDeviceDisplay();
       syncCaptureSourceSelection();
     }
+  }
+
+  let lastDevicePickerRefresh = 0;
+  function refreshDevicesForPicker(){
+    const now = Date.now();
+    if (now - lastDevicePickerRefresh < 1000) return;
+    lastDevicePickerRefresh = now;
+    loadDevices();
   }
 
   // Settings persist ONLY on explicit user change (pp.explicit guard). Old
@@ -1697,13 +1718,9 @@
   };
   $('captureSoftLater').onclick = hideCaptureSoftAsk;
   (function(){ const a = $('autoPublish'); if (!a) return; a.checked = localStorage.getItem('pp.autoPublish') === '1'; a.onchange = () => { try { localStorage.setItem('pp.autoPublish', a.checked ? '1' : '0'); } catch (e) {} }; })();
-  $('refreshBtn').onclick = () => {
-    const b = $('refreshBtn');
-    b.classList.add('spin');
-    setTimeout(() => b.classList.remove('spin'), 600);
-    loadDevices();
-  };
   $('device').onchange = syncCaptureSourceSelection;
+  $('device').addEventListener('pointerdown', refreshDevicesForPicker);
+  $('device').addEventListener('focus', refreshDevicesForPicker);
   $('screenPermBtn').onclick = openCapturePermissionSettings;
   $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
@@ -2073,12 +2090,6 @@
       badge.textContent = st;
       badge.className = 'badge ' + (st === 'live' ? 'live' : st === 'error' ? 'error' : st === 'starting' ? 'starting' : '');
       badge.style.display = (st && st !== 'idle') ? '' : 'none';
-      const statusPill = $('eventStatusPill');
-      if (statusPill) {
-        const liveish = st === 'live' || st === 'starting';
-        statusPill.classList.toggle('live', liveish);
-        statusPill.innerHTML = '<span class="livedot"></span> ' + (st === 'starting' ? 'Starting' : (st === 'live' ? 'Live now' : 'Not live'));
-      }
       if ((st === 'live' || st === 'starting') && s.broadcast.deviceName) {
         const ch = s.broadcast.channels === 1 ? 'mono' : 'stereo';
         const delay = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) ? ' · ~' + s.latencyTarget.toFixed(1) + 's delay' : '';
@@ -2171,11 +2182,9 @@
         renderQR('');
       }
       refreshNetworkSituation({ linkReady: linkReady, guestUrl: guestUrl, guestCount: roster.length });
-      $('listeners').textContent = roster.length + (roster.length === 1 ? ' listener' : ' listeners');
-      $('heroListeners').textContent = roster.length;
       $('emetaCounts').textContent = roster.length ? roster.length + ' listening' : '';
       $('emetaCountsWrap').hidden = !roster.length;
-      $('pcount').textContent = roster.length || '';
+      if ($('pcount')) $('pcount').textContent = roster.length || '';
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
         ? (s.latencyTarget.toFixed(1) + ' s')
@@ -2296,10 +2305,6 @@
   }
   if ($('eventEditBtn')) $('eventEditBtn').onclick = () => setEventEditOpen(!eventEditOpen);
   if ($('eventEditCancelBtn')) $('eventEditCancelBtn').onclick = () => setEventEditOpen(false);
-  if ($('heroAddLinkBtn')) $('heroAddLinkBtn').onclick = () => {
-    setEventEditOpen(true);
-    setTimeout(() => { const e = $('linkEditor'); if (e) e.scrollIntoView({ behavior:'smooth', block:'center' }); }, 120);
-  };
   async function saveEventDetails(){
     const title = inputValue('eventTitleInput');
     const host = inputValue('eventHostInput');
@@ -2594,8 +2599,10 @@
     }
   });
   function syncHeader(title, host, starts, slug){
+    const accountHost = accountName(currentAccountState || {});
+    const fallbackHost = accountHost && accountHost !== 'your account' ? accountHost : 'the DJ';
     eventMeta.title = title || 'partyparty';
-    eventMeta.host = host || 'the DJ';
+    eventMeta.host = (host && host !== 'the DJ') ? host : fallbackHost;
     eventMeta.starts = starts || '';
     if (typeof slug === 'string') eventMeta.slug = slug;
     $('titleEdit').textContent = eventMeta.title;
@@ -2618,29 +2625,67 @@
     const nodes = new Map();
     const allPosts = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
-    let newestAct = 0, on = false, curDir = '', currentModerationMode = 'post_moderate', currentRetentionMode = 'keep_approved', currentEventStatus = 'active';
+    let newestAct = 0, on = false, curDir = '', currentModerationMode = 'post_moderate', currentRetentionMode = 'keep_approved', currentEventStatus = 'active', currentEventFeatures = {};
     const featureDefs = [
       ['uploads', 'Uploads', true], ['videoUploads', 'Video', false], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
-      ['requests', 'Requests', false], ['trackId', 'Track ID', false], ['tippingLinks', 'Tips', true], ['wallMode', 'Wall', true]
+      ['requests', 'Requests', false], ['tippingLinks', 'Tips', false], ['wallMode', 'Wall', true]
     ];
     const linkTypes = [
       ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['mixcloud', 'Mixcloud'],
       ['resident_advisor', 'Resident Advisor'], ['venmo', 'Venmo'], ['cashapp', 'Cash App'], ['paypal', 'PayPal'],
       ['website', 'Website'], ['newsletter', 'Newsletter'], ['other', 'Other']
     ];
+    const linkTypeLabels = new Map(linkTypes);
+    const defaultLinkTypes = ['instagram', 'soundcloud', 'venmo'];
+    const tipTypes = new Set(['venmo', 'cashapp', 'paypal']);
     const reactionDefs = [
       ['fire', '🔥 fire'], ['heart', '❤️ heart'], ['louder', '🔊 louder'], ['quieter', '🔉 quieter'],
       ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
     ];
     let linkSig = '';
     function linkFeatureOn(features){
-      return !!(features && Object.prototype.hasOwnProperty.call(features, 'tippingLinks') ? features.tippingLinks !== false : true);
+      return !!(features && Object.prototype.hasOwnProperty.call(features, 'tippingLinks') ? features.tippingLinks !== false : false);
     }
     function validHTTPURL(v){
       try {
         const u = new URL((v || '').trim());
         return u.protocol === 'http:' || u.protocol === 'https:';
       } catch (e) { return false; }
+    }
+    function isTipLink(link){
+      return tipTypes.has(link && link.type);
+    }
+    function linkLabel(link){
+      return ((link && link.label) || '').trim() || linkTypeLabels.get(link && link.type) || 'Link';
+    }
+    function renderHeroLinks(links, features){
+      const wrap = $('heroLinks');
+      if (!wrap) return;
+      const tipsOn = linkFeatureOn(features || {});
+      const clean = (Array.isArray(links) ? links : [])
+        .filter(link => link && validHTTPURL(link.url) && (!isTipLink(link) || tipsOn));
+      wrap.hidden = clean.length === 0;
+      wrap.textContent = '';
+      for (const link of clean) {
+        const a = document.createElement('a');
+        a.className = 'll' + (isTipLink(link) ? ' tip' : '');
+        a.href = link.url.trim();
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = linkLabel(link);
+        wrap.appendChild(a);
+      }
+    }
+    function editorRows(links){
+      const list = Array.isArray(links) ? links : [];
+      const picked = new Map();
+      const rest = [];
+      for (const link of list) {
+        const type = link && link.type;
+        if (defaultLinkTypes.includes(type) && !picked.has(type)) picked.set(type, link);
+        else rest.push(link);
+      }
+      return defaultLinkTypes.map(type => picked.get(type) || { type, url:'', label:'' }).concat(rest);
     }
     function linkRow(link){
       const row = document.createElement('div');
@@ -2667,15 +2712,14 @@
       const editor = $('linkEditor');
       const rows = $('linkRows');
       editor.classList.toggle('off', !linkFeatureOn(features || {}));
-      $('linkEditorState').textContent = linkFeatureOn(features || {}) ? '' : 'Tips toggle is off';
-      const clean = Array.isArray(links) ? links : [];
+      $('linkEditorState').textContent = linkFeatureOn(features || {}) ? 'Tips visible' : 'Tip links hidden until Tips is on';
+      const clean = editorRows(links);
       const sig = JSON.stringify(clean);
       if (document.activeElement && rows.contains(document.activeElement) && sig === linkSig) return;
       if (sig === linkSig && rows.children.length) return;
       linkSig = sig;
       rows.textContent = '';
       for (const link of clean) rows.appendChild(linkRow(link));
-      if (!rows.children.length) rows.appendChild(linkRow({ type:'instagram', url:'', label:'' }));
     }
     function collectLinks(){
       const links = [];
@@ -2736,12 +2780,19 @@
     }
     function renderTrackPanel(features, nowPlaying, recentTracks, askCount){
       const card = $('trackCard');
-      card.style.display = 'block';
-      card.classList.toggle('off', !trackFeatureOn(features || {}));
       const cur = trackText(nowPlaying);
-      $('trackCurrentDJ').textContent = cur || 'No track shared.';
+      const liveStrip = $('liveStrip');
+      if (liveStrip) liveStrip.hidden = !cur;
       const heroTrack = $('heroTrackText');
-      if (heroTrack) heroTrack.textContent = cur || 'No track shared.';
+      if (heroTrack) heroTrack.textContent = cur || '';
+      card.style.display = 'none';
+      if (!cur && !trackFeatureOn(features || {})) {
+        $('trackRecentDJ').textContent = '';
+        $('trackAskCount').textContent = '';
+        return;
+      }
+      card.classList.toggle('off', !trackFeatureOn(features || {}));
+      $('trackCurrentDJ').textContent = cur || '';
       const asks = Number(askCount || 0);
       $('trackAskCount').textContent = trackFeatureOn(features || {})
         ? (asks ? asks + (asks === 1 ? ' asked' : ' asked') + " what's playing" : "0 asked what's playing")
@@ -2972,7 +3023,7 @@
       if (!btn) return;
       const row = btn.closest('.linkrow');
       if (row) row.remove();
-      if (!$('linkRows').children.length) $('linkRows').appendChild(linkRow({ type:'instagram', url:'', label:'' }));
+      if (!$('linkRows').children.length) renderLinkEditor([], currentEventFeatures);
     });
     $('saveLinksBtn').addEventListener('click', async () => {
       const status = $('linkStatus');
@@ -2984,7 +3035,8 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok || d.error) throw new Error(d.error || 'link save failed');
         linkSig = '';
-        renderLinkEditor(d.links || [], {});
+        renderLinkEditor(d.links || [], currentEventFeatures);
+        renderHeroLinks(d.links || [], currentEventFeatures);
         status.textContent = 'Saved';
       } catch (err) {
         status.textContent = err.message || 'link save failed';
@@ -3279,12 +3331,14 @@
         if ($('feedCount')) $('feedCount').textContent = data.total || '';
         syncHeader(data.title, data.host, data.starts, data.slug);
         syncPublish(data.slug);
+        currentEventFeatures = data.features || {};
         renderFeatureToggles(data.features || {});
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderTrackPanel(data.features || {}, data.nowPlaying || null, data.recentTracks || [], data.trackAsks || 0);
         renderModerationMode(data.moderationMode || 'post_moderate');
         renderEndFlow(data.status || 'active', data.retentionMode || 'keep_approved');
         renderLinkEditor(data.links || [], data.features || {});
+        renderHeroLinks(data.links || [], data.features || {});
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
@@ -3350,7 +3404,8 @@
       setFormStatus('createEventStatus', '', '');
       if (open) {
         $('createEventTitle').value = '';
-        $('createEventHost').value = eventMeta.host || 'the DJ';
+        const accountHost = accountName(currentAccountState || {});
+        $('createEventHost').value = (eventMeta.host && eventMeta.host !== 'the DJ') ? eventMeta.host : accountHost;
         $('createEventStarts').value = '';
         $('createEventSlug').value = '';
         setTimeout(() => $('createEventTitle').focus(), 80);

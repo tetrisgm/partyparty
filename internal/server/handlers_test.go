@@ -614,26 +614,26 @@ func TestEventLinksEndpointAndFeatureGatedExposure(t *testing.T) {
 	}
 
 	feed := decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
-	if got, ok := feed["links"].([]any); !ok || len(got) != 2 {
-		t.Fatalf("feed links while on = %#v, want 2", feed["links"])
+	if got, ok := feed["links"].([]any); !ok || len(got) != 1 {
+		t.Fatalf("feed links with tips off = %#v, want normal link only", feed["links"])
 	}
 	status := decodeJSON(t, do(s, http.MethodGet, "/api/status", "127.0.0.1:1234"))
 	eventState := status["event"].(map[string]any)
-	if got, ok := eventState["links"].([]any); !ok || len(got) != 2 {
-		t.Fatalf("status event links while on = %#v, want 2", eventState["links"])
+	if got, ok := eventState["links"].([]any); !ok || len(got) != 1 {
+		t.Fatalf("status event links with tips off = %#v, want normal link only", eventState["links"])
 	}
 
-	if err := ev.SetFeature("tippingLinks", false); err != nil {
+	if err := ev.SetFeature("tippingLinks", true); err != nil {
 		t.Fatal(err)
 	}
 	feed = decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
-	if _, ok := feed["links"]; ok {
-		t.Fatalf("feed exposed links while tippingLinks off: %#v", feed["links"])
+	if got, ok := feed["links"].([]any); !ok || len(got) != 2 {
+		t.Fatalf("feed links with tips on = %#v, want 2", feed["links"])
 	}
 	status = decodeJSON(t, do(s, http.MethodGet, "/api/status", "127.0.0.1:1234"))
 	eventState = status["event"].(map[string]any)
-	if _, ok := eventState["links"]; ok {
-		t.Fatalf("status exposed links while tippingLinks off: %#v", eventState["links"])
+	if got, ok := eventState["links"].([]any); !ok || len(got) != 2 {
+		t.Fatalf("status event links with tips on = %#v, want 2", eventState["links"])
 	}
 }
 

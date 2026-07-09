@@ -28,6 +28,12 @@ import (
 const liveGuestVideoDeferBytes int64 = 32 << 20
 const publicPartyBase = "https://party.ramine.net"
 
+var tipLinkTypes = map[string]bool{
+	"cashapp": true,
+	"paypal":  true,
+	"venmo":   true,
+}
+
 // isDJ: the console is the app's own WKWebView on localhost — loopback is the
 // DJ, everyone else on the LAN is a guest. Same trust model as /api/shutdown.
 func (s *srv) isDJ(r *http.Request) bool {
@@ -41,6 +47,20 @@ func (s *srv) requireDJ(w http.ResponseWriter, r *http.Request) bool {
 	}
 	writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 	return false
+}
+
+func publicEventLinks(links []event.Link, includeTips bool) []event.Link {
+	if len(links) == 0 {
+		return nil
+	}
+	out := make([]event.Link, 0, len(links))
+	for _, link := range links {
+		if tipLinkTypes[link.Type] && !includeTips {
+			continue
+		}
+		out = append(out, link)
+	}
+	return out
 }
 
 func (s *srv) featureOn(name string) bool {
@@ -158,8 +178,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				body["trackAsks"] = s.Events.TrackAskCount()
 			}
 		}
-		if dj || s.featureOn("tippingLinks") {
+		if dj {
 			body["links"] = meta.Links
+		} else if links := publicEventLinks(meta.Links, s.featureOn("tippingLinks")); len(links) > 0 {
+			body["links"] = links
 		}
 		writeJSON(w, http.StatusOK, body)
 	case "/api/reactions":
@@ -1042,8 +1064,8 @@ func (s *srv) eventState() map[string]any {
 		"media":         mediaCount,
 		"dir":           s.Events.Dir(),
 	}
-	if s.featureOn("tippingLinks") {
-		body["links"] = meta.Links
+	if links := publicEventLinks(meta.Links, s.featureOn("tippingLinks")); len(links) > 0 {
+		body["links"] = links
 	}
 	return body
 }

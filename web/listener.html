@@ -475,7 +475,7 @@
       <a class="keepsake" id="keepsakeLink" target="_blank" rel="noopener" hidden>Your keepsake link</a>
     </div>
     <section class="djlinks" id="djLinks" hidden>
-      <h3>Follow / Tip the DJ</h3>
+      <h3>DJ links</h3>
       <div class="linkgroup" id="followLinks" data-label="Follow"></div>
       <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
     </section>
@@ -484,9 +484,9 @@
       <span class="mechip" id="contactChip" style="font-weight:400;font-size:12px" title="Only the DJ can see this — used to send you the party page later"></span>
     </div>
     <div class="composer" id="composer">
-      <textarea id="ctext" rows="2" maxlength="2000" placeholder="Drop a shout-out…"></textarea>
+      <textarea id="ctext" rows="2" maxlength="2000" placeholder="Write a post or add a photo…"></textarea>
       <div class="crow">
-        <button class="attach" id="attachBtn" type="button">📎 Photos / videos</button>
+        <button class="attach" id="attachBtn" type="button">📷 Add photo/video</button>
         <span class="attachn" id="attachN"></span>
         <button class="postbtn" id="postBtn" type="button">Post</button>
       </div>
@@ -1457,7 +1457,7 @@
       const trackBox = $id('trackBox'), trackCurrent = $id('trackCurrent'), trackAsk = $id('trackAsk'), trackStatus = $id('trackStatus'), trackRecent = $id('trackRecent');
       const featureDefaults = {
         uploads: true, videoUploads: false, comments: true, reactions: false,
-        requests: false, trackId: false, tippingLinks: true, wallMode: true
+        requests: false, trackId: false, tippingLinks: false, wallMode: true
       };
       const reactionDefs = [
         ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'], ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
@@ -1517,6 +1517,11 @@
         instagram: '◎', soundcloud: '☁', bandcamp: '▰', mixcloud: '☁', resident_advisor: 'RA',
         venmo: 'V', cashapp: '$', paypal: 'P', website: '↗', newsletter: '@', other: '↗'
       };
+      const linkLabels = {
+        instagram: 'Instagram', soundcloud: 'SoundCloud', bandcamp: 'Bandcamp', mixcloud: 'Mixcloud',
+        resident_advisor: 'Resident Advisor', venmo: 'Venmo', cashapp: 'Cash App', paypal: 'PayPal',
+        website: 'Website', newsletter: 'Newsletter', other: 'Link'
+      };
       function safeHTTP(url){
         try {
           const u = new URL(url);
@@ -1533,7 +1538,7 @@
         const icon = document.createElement('b');
         icon.textContent = linkIcons[typ] || linkIcons.other;
         const label = document.createElement('span');
-        label.textContent = (link.label || '').trim() || 'Link';
+        label.textContent = (link.label || '').trim() || linkLabels[typ] || 'Link';
         a.appendChild(icon); a.appendChild(label);
         parent.appendChild(a);
         return 1;
@@ -1543,10 +1548,12 @@
         followLinks.textContent = '';
         tipLinks.textContent = '';
         let followN = 0, tipN = 0;
-        if (featureOn('tippingLinks')) {
-          for (const link of currentLinks) {
-            if (tipTypes.has(link && link.type)) tipN += addLinkChip(tipLinks, link);
-            else followN += addLinkChip(followLinks, link);
+        const tipsOn = featureOn('tippingLinks');
+        for (const link of currentLinks) {
+          if (tipTypes.has(link && link.type)) {
+            if (tipsOn) tipN += addLinkChip(tipLinks, link);
+          } else {
+            followN += addLinkChip(followLinks, link);
           }
         }
         followLinks.hidden = followN === 0;
@@ -1879,7 +1886,7 @@
         attachBtn.disabled = !uploadsOn;
         cfiles.disabled = !uploadsOn;
         cfiles.accept = featureOn('videoUploads') ? 'image/*,video/*,audio/*' : 'image/*,audio/*';
-        attachBtn.textContent = featureOn('videoUploads') ? '📎 Photos / videos' : '📎 Photos';
+        attachBtn.textContent = featureOn('videoUploads') ? '📷 Add photo/video' : '📷 Add photo';
         postBtn.hidden = !(commentsOn || uploadsOn);
         if (!uploadsOn) {
           cfiles.value = '';
