@@ -52,18 +52,22 @@ app: $(HELPER) $(MEDIAMTX) $(FFMPEG)
 notarize: app
 	./scripts/notarize.sh
 
+# Owner-facing ship command: verify, build, publish downloads/site, then flip
+# app/update feeds. One-time: cd cloudflare && npm install && npx wrangler login
+ship:
+	./scripts/ship.sh
+
 # Publish the landing page + current app download to party.ramine.net
-# (Cloudflare Worker + R2). One-time: cd cloudflare && npm install && npx wrangler login
+# (Cloudflare Worker + R2). Lower-level helper; prefer `make ship`.
 deploy-site:
 	./scripts/deploy-site.sh
 
-# Cut a full versioned release (build, notarize, sign appcast, publish to R2).
-# Bump CFBundleShortVersionString in app/Info.plist first.
-release:
-	./scripts/release.sh
+# Back-compat alias for the old owner command. It now goes through ship so
+# versioning, verification, artifact order, and feed flips stay centralized.
+release: ship
 
 clean:
 	rm -f $(BINARY) $(HELPER)
 	rm -rf build
 
-.PHONY: helper build run tone devices app notarize deploy-site release clean
+.PHONY: helper build run tone devices app notarize ship deploy-site release clean

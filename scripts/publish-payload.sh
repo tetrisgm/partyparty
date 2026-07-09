@@ -14,9 +14,8 @@
 # (never in the repo), and the bundle bytes are pinned by a SHA-256 the signed
 # manifest carries. The Mac verifies both before serving and refuses downgrades.
 #
-# Usage:
-#   1. bump web/PAYLOAD_VERSION (must exceed the shipped/embedded version)
-#   2. scripts/publish-payload.sh
+# Lower-level implementation detail. Owners should run:
+#   scripts/ship.sh --payload-only
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
@@ -75,12 +74,14 @@ cat > "$MANIFEST" <<JSON
 }
 JSON
 
-echo ">> [3/4] upload bundle, then manifest (order matters — never point at a missing bundle)"
+echo ">> [3/5] upload versioned bundle"
 "$WR" r2 object put "$BUCKET/content/payload-$VERSION.tar.gz" --file "$BUNDLE"   --content-type application/gzip --remote
-"$WR" r2 object put "$BUCKET/content/manifest.json"           --file "$MANIFEST" --content-type application/json --remote
 
-echo ">> [4/4] deploy Worker (idempotent — ensures the /content/ route is live)"
+echo ">> [4/5] deploy Worker (idempotent — ensures the /content/ route is live)"
 ( cd cloudflare && "$WR" deploy )
+
+echo ">> [5/5] flip signed payload manifest"
+"$WR" r2 object put "$BUCKET/content/manifest.json"           --file "$MANIFEST" --content-type application/json --remote
 
 echo
 echo "Published payload v$VERSION (minRuntime $MINRUNTIME)"

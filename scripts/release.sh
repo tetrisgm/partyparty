@@ -9,9 +9,8 @@
 # `pp-notary` notarytool profile, and the Sparkle key in your login keychain.
 # (The CI equivalent is .github/workflows/release.yml, triggered by a git tag.)
 #
-# Usage:
-#   1. bump CFBundleShortVersionString (+ CFBundleVersion) in app/Info.plist
-#   2. make release
+# Lower-level implementation detail. Owners should run:
+#   scripts/ship.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
@@ -100,7 +99,7 @@ else
   "$SPK/generate_appcast" --download-url-prefix "https://party.ramine.net/" dist
 fi
 
-echo ">> [4/5] upload to R2"
+echo ">> [4/6] upload release artifacts to R2"
 cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
 cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.zip" --file "dist/partyparty-$VERSION.zip" --content-type application/zip --remote
@@ -108,14 +107,16 @@ cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.pkg" --file "dist/partyparty-$VERSION.pkg" --content-type application/octet-stream --remote
 "$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
 "$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
+
+echo ">> [5/6] deploy Worker + landing page"
+( cd cloudflare && "$WR" deploy )
+
+echo ">> [6/6] flip app-update marker"
 # One-line app-version marker so /content/subscribe can push app updates the
 # instant a build lands (the Mac then triggers Sparkle). Written last, after the
-# zip/appcast it points at are already up.
+# zip/appcast and Worker deployment it points at are already up.
 printf '%s' "$VERSION" > dist/app-version
 "$WR" r2 object put "$BUCKET/content/app-version"     --file "dist/app-version"             --content-type text/plain --remote
-
-echo ">> [5/5] deploy Worker + landing page"
-( cd cloudflare && "$WR" deploy )
 
 echo
 echo "Released v$VERSION"
