@@ -2982,11 +2982,21 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.equal(await resp.text(), "STATIC_LANDING_MARKER");
   }],
+  ["/api/version returns the download freshness payload", async () => {
+    const codeMajor = (await readFile(new URL("../../CODE_MAJOR", import.meta.url), "utf8")).replace(/\D/g, "");
+    const payloadVersion = (await readFile(new URL("../../web/PAYLOAD_VERSION", import.meta.url), "utf8")).replace(/\D/g, "");
+    const resp = await fetchPath("/api/version");
+    assert.equal(resp.status, 200);
+    assert.match(resp.headers.get("content-type") || "", /application\/json/);
+    assert.equal(resp.headers.get("cache-control"), "public, max-age=300");
+    assert.deepEqual(await resp.json(), { version: `${codeMajor}.${payloadVersion}`, date: "2026-07-08" });
+  }],
   ["/live renders the aggregator's useful empty state", async () => {
     const resp = await fetchPath("/live");
     const html = await resp.text();
     assert.equal(resp.status, 200);
-    assert.match(html, /silent-disco popups/);
+    assert.match(html, /speakers would get you shut down/);
+    assert.match(html, /coming soon/);
     assert.match(html, /Get the app/);
     assert.match(html, /Sign in/);
     assert.match(html, /\/partyparty\.pkg/);
@@ -3000,6 +3010,8 @@ const tests = [
     assert.match(html, /Sign in once to link your Mac/);
     assert.match(html, /No guest account needed/);
     assert.match(html, /fetch\('\/api\/me'/);
+    assert.match(html, /fetch\('\/api\/version'/);
+    assert.match(html, /No fake crowd numbers/);
   }],
   ["/live renders public events and featured DJs", async () => {
     const resp = await fetchPath("/live", {}, {

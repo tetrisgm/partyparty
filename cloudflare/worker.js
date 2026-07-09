@@ -2,19 +2,18 @@
 //
 // Routes:
 //   GET /appcast.xml            -> R2 (Sparkle update feed)
-//   GET /partyparty.zip         -> R2 (latest build)
+//   GET /partyparty.pkg         -> R2 (canonical user download)
+//   GET /api/version            -> JSON app version + freshness for download CTAs
+//   GET /partyparty.zip         -> R2 (legacy Sparkle update alias)
 //   GET /partyparty-<ver>.zip   -> R2 (immutable, Sparkle enclosures)
 //   GET /e/<slug>               -> server-rendered EVENT page (gathers the night)
 //   GET /@<handle>              -> server-rendered DJ PROFILE page
 //   GET /demo                   -> demo event
 //   GET /*                      -> static landing page (../site assets)
 //
-// Scope: partyparty is a Mac app for Wi-Fi silent-disco popups. Each EVENT gets a
-// page that gathers the night — photos, videos, comments guests drop, that the DJ
-// approves. NOT a social platform: no profiles, no followers, no feed. The page
-// design follows Apple's Snapshot language (a cover-backed header card + stacked
-// white content cards). Seed data now; R2 uploads + moderation later. Interactive
-// bits are marked coming-soon (honest live preview).
+// Scope: partyparty is a Mac app for Wi-Fi silent-disco popups: no speakers, no
+// guest app, local Wi-Fi audio. Event keepsakes/replays are coming soon and are
+// marked as preview surfaces. NOT a social platform: no follower feed.
 
 const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
@@ -35,6 +34,9 @@ const POST_MEDIA_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
 const SITE_ORIGIN = "https://party.ramine.net";
 const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
+// Derived from CODE_MAJOR + web/PAYLOAD_VERSION for this beta polish build.
+const APP_VERSION = "26.50";
+const APP_VERSION_DATE = "2026-07-08";
 const SESSION_COOKIE = "pp_session";
 const POST_MEDIA_MIME = {
   image: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"],
@@ -871,8 +873,8 @@ function renderProfile({ profile, upcoming, recent, posts, isOwner, viewerSigned
 function emptyHome() {
   return `<div class="emptyhome">
     <div class="card">
-      <p class="big">Throw a silent-disco popup from your Mac.</p>
-      <p>partyparty gives each night a shareable page for the set replay, photos, clips and guest posts after the room clears.</p>
+      <p class="big">Throw a party where speakers would get you shut down.</p>
+      <p>partyparty turns your Mac into a local silent-disco rig: guests scan a QR, listen in their browser, and the live audio stays on the room's Wi-Fi. Keepsake event pages for replays, photos and clips are coming soon.</p>
       <div class="ecta"><a class="btn" href="/partyparty.pkg">Get the app</a><a class="btn lt" href="/login">Sign in</a></div>
     </div>
     <div class="card">
@@ -1102,8 +1104,8 @@ function renderHome({ events, profiles, replays, followed, viewerSignedIn }) {
   const body = `<div class="page home">
     <section class="homehero">
       <div>
-        <h1>silent-disco popups, gathered after the night</h1>
-        <p>partyparty turns a Mac into a local silent-disco station, then gives every event a page for the replay and what guests captured.</p>
+        <h1>throw a party where speakers would get you shut down</h1>
+        <p>partyparty turns a Mac into a local silent-disco rig. Guests scan a QR, listen in their phone browser, and the music runs on the room's Wi-Fi with zero internet. Keepsake event pages for replays, photos and clips are coming soon.</p>
         <div class="actions">${heroActions}</div>
       </div>
     </section>
@@ -1115,8 +1117,8 @@ function renderHome({ events, profiles, replays, followed, viewerSignedIn }) {
   </div>
   <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/login" style="color:var(--link)">Sign in</a> · <a href="/faq" style="color:var(--link)">FAQ</a></span></footer>`;
   return shell({
-    title: "partyparty — silent-disco popups",
-    desc: "Mac-powered silent-disco popups with shareable event pages for replays, photos and clips.",
+    title: "partyparty — silent-disco popups without speakers",
+    desc: "Mac-powered silent-disco popups: no speakers, no guest app, local Wi-Fi audio. Keepsake event pages are coming soon.",
     ogImage: DEFAULT_OG_IMAGE,
     url: "/",
     body,
@@ -4320,6 +4322,17 @@ export default {
       } catch (_) {
         return jsonResp(200, { user: null });
       }
+    }
+
+    if (pathname === "/api/version") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const headers = { "cache-control": "public, max-age=300" };
+      if (request.method === "HEAD") {
+        return new Response(null, { headers: { ...headers, "content-type": "application/json" } });
+      }
+      return jsonResp(200, { version: APP_VERSION, date: APP_VERSION_DATE }, headers);
     }
 
     if (pathname === "/api/install-link/create") {
