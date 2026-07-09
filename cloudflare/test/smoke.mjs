@@ -847,6 +847,22 @@ class FakeD1Statement {
       }
       return { success: true };
     }
+    if (sql.includes("UPDATE events SET cover_key=?, updated_ms=? WHERE slug=? AND install_id=?")) {
+      const [coverKey, updatedMs, slug, installId] = this.args;
+      const old = this.db.events.get(slug);
+      if (old && old.install_id === installId) {
+        this.db.events.set(slug, { ...old, cover_key: coverKey, updated_ms: updatedMs });
+      }
+      return { success: true };
+    }
+    if (sql.includes("UPDATE events SET cover_key=NULL, updated_ms=? WHERE slug=? AND install_id=?")) {
+      const [updatedMs, slug, installId] = this.args;
+      const old = this.db.events.get(slug);
+      if (old && old.install_id === installId) {
+        this.db.events.set(slug, { ...old, cover_key: null, updated_ms: updatedMs });
+      }
+      return { success: true };
+    }
     if (sql.includes("UPDATE events SET slug=? WHERE slug=? AND install_id=?")) {
       const [nextSlug, slug, installId] = this.args;
       const old = this.db.events.get(slug);
@@ -3523,6 +3539,20 @@ const tests = [
   ["broker publish-cover rejects missing auth", async () => {
     const resp = await fetchPath("/api/broker/publish-cover", { method: "PUT", body: "cover" });
     assert.equal(resp.status, 403);
+  }],
+  ["broker publish-cover delete clears object and event cover", async () => {
+    const env = makeEnv();
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-cover", {
+      method: "DELETE",
+      headers: {
+        "x-pp-id": "abc123abc123",
+        "x-pp-secret": "secret-a",
+        "x-pp-slug": KNOWN_SLUG,
+      },
+    }), env);
+    assert.equal(resp.status, 200);
+    assert.equal(await env.DL.get(`event/${KNOWN_SLUG}/cover.jpg`), null);
+    assert.equal(env.DB.events.get(KNOWN_SLUG).cover_key, null);
   }],
   ["broker event-upsert rejects bad secret", async () => {
     const resp = await fetchPath("/api/broker/event-upsert", {

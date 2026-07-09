@@ -706,8 +706,30 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		writeJSON(w, http.StatusOK, m)
 	case "/api/event-cover":
-		if r.Method != http.MethodPost || !s.isDJ(r) {
+		if !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if r.Method == http.MethodDelete {
+			id, secret := activate.InstallCreds()
+			base := os.Getenv("PARTYPARTY_BROKER")
+			if base == "" {
+				base = "https://party.ramine.net"
+			}
+			cctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+			defer cancel()
+			err := publish.DeleteCover(cctx, s.Events.Slug(), publish.Creds{
+				ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
+			}, base)
+			if err != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+				return true
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return true
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST or DELETE required"})
 			return true
 		}
 		const maxCoverUpload = 15 << 20

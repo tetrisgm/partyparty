@@ -210,6 +210,27 @@ func PublishCover(ctx context.Context, imgPath, slug string, creds Creds, base s
 	return nil
 }
 
+// DeleteCover removes the online event cover using the same install-secret
+// broker auth as publishing. The local Mac remains the source of truth for
+// live/offline guest service; this only edits the public replay page.
+func DeleteCover(ctx context.Context, slug string, creds Creds, base string) error {
+	if creds.ID == "" || creds.Secret == "" {
+		return errors.New("this Mac isn't registered yet — go live once first")
+	}
+	slug = SlugForEvent(slug, creds.InstallSlug)
+	err := deleteCover(ctx, base, creds, slug)
+	if errors.Is(err, errSlugTaken) {
+		auto := autoSlug(creds.InstallSlug)
+		if slug != auto {
+			err = deleteCover(ctx, base, creds, auto)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("couldn't remove the cover: %w", err)
+	}
+	return nil
+}
+
 // autoSlug derives a collision-proof-across-installs slug from the install's own
 // broker slug + the date. Same-day sets share one page (latest set shows).
 func autoSlug(installSlug string) string {
@@ -412,6 +433,15 @@ func putBytes(ctx context.Context, base string, creds Creds, slug, setID, endpoi
 	return doPut(req)
 }
 
+func deleteCover(ctx context.Context, base string, creds Creds, slug string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, base+"/api/broker/publish-cover", nil)
+	if err != nil {
+		return err
+	}
+	setPutHeaders(req, creds, slug, "", "application/octet-stream")
+	return doRequest(req)
+}
+
 func setPutHeaders(req *http.Request, creds Creds, slug, setID, ctype string) {
 	req.Header.Set("content-type", ctype)
 	req.Header.Set("x-pp-id", creds.ID)
@@ -423,6 +453,10 @@ func setPutHeaders(req *http.Request, creds Creds, slug, setID, ctype string) {
 }
 
 func doPut(req *http.Request) error {
+	return doRequest(req)
+}
+
+func doRequest(req *http.Request) error {
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err

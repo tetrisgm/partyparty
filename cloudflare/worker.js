@@ -3432,13 +3432,23 @@ async function publishUpload(request, env, pathname) {
 }
 
 async function publishCover(request, env) {
-  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+  if (request.method !== "PUT" && request.method !== "DELETE") return jsonResp(405, { error: "PUT or DELETE required" });
   if (!env.DB) return jsonResp(503, { error: "events db not configured" });
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
   const slug = request.headers.get("x-pp-slug") || "";
   if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+  if (request.method === "DELETE") {
+    const row = await env.DB.prepare("SELECT install_id, cover_key FROM events WHERE slug=?").bind(slug).first();
+    if (row && row.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (!row) return jsonResp(200, { ok: true });
+    if (row.cover_key) await env.DL.delete(row.cover_key);
+    const now = Date.now();
+    await env.DB.prepare("UPDATE events SET cover_key=NULL, updated_ms=? WHERE slug=? AND install_id=?").bind(now, slug, id).run();
+    await auditPublish(env, id, slug, "delete-cover");
+    return jsonResp(200, { ok: true });
+  }
   // First-writer-wins, matching publish-meta: a cover can create/claim the
   // event row before the set itself exists, but never steal another install's slug.
   const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
