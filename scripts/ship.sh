@@ -91,6 +91,19 @@ fi
 set_version_files() {
   printf '%s\n' "$NEXT_CODE" > CODE_MAJOR
   printf '%s\n' "$NEXT_PAYLOAD" > web/PAYLOAD_VERSION
+  python3 - "$VERSION" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+version = sys.argv[1]
+p = Path("cloudflare/worker.js")
+s = p.read_text()
+s2 = re.sub(r'const APP_VERSION = "[^"]+";', f'const APP_VERSION = "{version}";', s, count=1)
+if s2 == s:
+    raise SystemExit("cloudflare/worker.js APP_VERSION constant not found")
+p.write_text(s2)
+PY
 }
 
 verify_go() {
@@ -116,6 +129,10 @@ verify_swift() {
 
 echo ">> ship partyparty $VERSION ($MODE)"
 
+if [ "$DRY_RUN" != "1" ]; then
+  set_version_files
+fi
+
 if [ "$SKIP_TESTS" != "1" ]; then
   echo ">> verify Go"
   verify_go
@@ -128,7 +145,7 @@ if [ "$SKIP_TESTS" != "1" ]; then
 fi
 
 if [ "$DRY_RUN" = "1" ]; then
-  echo ">> dry-run: would set CODE_MAJOR=$NEXT_CODE and web/PAYLOAD_VERSION=$NEXT_PAYLOAD"
+  echo ">> dry-run: would set CODE_MAJOR=$NEXT_CODE, web/PAYLOAD_VERSION=$NEXT_PAYLOAD, and Worker APP_VERSION=$VERSION"
   if [ "$MODE" = "payload" ]; then
     echo ">> dry-run: would publish signed OTA payload via scripts/publish-payload.sh"
   else
@@ -138,8 +155,6 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "Dry-run complete; nothing built for release and nothing published."
   exit 0
 fi
-
-set_version_files
 
 if [ "$MODE" = "payload" ]; then
   echo ">> publish OTA payload $VERSION"
