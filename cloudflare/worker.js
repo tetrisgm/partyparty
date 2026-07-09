@@ -34,8 +34,10 @@ const POST_MEDIA_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
 const SITE_ORIGIN = "https://party.ramine.net";
 const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-// Derived from CODE_MAJOR + web/PAYLOAD_VERSION for this beta polish build.
-const APP_VERSION = "26.50";
+// Fallback only — /api/version reads the live content/app-version R2 marker at
+// runtime (release.sh keeps it current). Keep this ~current so the fallback path
+// is never badly stale.
+const APP_VERSION = "27.51";
 const APP_VERSION_DATE = "2026-07-08";
 const SESSION_COOKIE = "pp_session";
 const POST_MEDIA_MIME = {
@@ -4332,7 +4334,20 @@ export default {
       if (request.method === "HEAD") {
         return new Response(null, { headers: { ...headers, "content-type": "application/json" } });
       }
-      return jsonResp(200, { version: APP_VERSION, date: APP_VERSION_DATE }, headers);
+      // Read the CURRENT version from the R2 marker release.sh keeps up to date
+      // (content/app-version) so this can never go stale; date = when that marker
+      // was last written (the release date). Fall back to the compiled constants
+      // only if the read fails.
+      let version = APP_VERSION, date = APP_VERSION_DATE;
+      try {
+        const a = await env.DL.get("content/app-version");
+        if (a) {
+          const v = (await a.text()).trim();
+          if (v) version = v;
+          if (a.uploaded) date = new Date(a.uploaded).toISOString().slice(0, 10);
+        }
+      } catch (e) { /* keep the fallback constants */ }
+      return jsonResp(200, { version, date }, headers);
     }
 
     if (pathname === "/api/install-link/create") {
