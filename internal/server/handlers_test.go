@@ -1139,6 +1139,55 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 	waitIdle(t, env.bc)
 }
 
+func TestStartStopCreatesDJFeedPosts(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.setAccountActivated(true)
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ev.SetMeta("Rooftop Ritual", "Ramine", "-"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ev.SetModerationMode(event.ModerationPreApprove); err != nil {
+		t.Fatal(err)
+	}
+	env.srv.Events = ev
+
+	w := do(env.srv, http.MethodPost, "/api/start?device=test", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("start status = %d, body %q", w.Code, w.Body.String())
+	}
+	w = do(env.srv, http.MethodPost, "/api/stop", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("stop status = %d, body %q", w.Code, w.Body.String())
+	}
+	waitIdle(t, env.bc)
+
+	w = do(env.srv, http.MethodGet, "/api/feed?guest=1", "192.168.1.44:3333")
+	if w.Code != http.StatusOK {
+		t.Fatalf("feed status = %d, body %q", w.Code, w.Body.String())
+	}
+	posts, ok := decodeJSON(t, w)["posts"].([]any)
+	if !ok {
+		t.Fatalf("posts missing/not array: %q", w.Body.String())
+	}
+	if len(posts) != 2 {
+		t.Fatalf("posts len = %d, want 2: %#v", len(posts), posts)
+	}
+	got := map[string]bool{}
+	for _, raw := range posts {
+		p := raw.(map[string]any)
+		if p["author"] != "Ramine" || p["emoji"] != "🎧" || p["dj"] != true || p["state"] != event.StateApproved {
+			t.Fatalf("stream post = %#v", p)
+		}
+		got[p["text"].(string)] = true
+	}
+	if !got["Started the stream."] || !got["Stopped the stream."] {
+		t.Fatalf("stream posts = %#v", got)
+	}
+}
+
 func TestDeliveryEndpoint(t *testing.T) {
 	env := newTestEnv(t, nil)
 

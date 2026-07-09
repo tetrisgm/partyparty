@@ -1185,7 +1185,11 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	// out of timestamp order, and a client cursor could then skip one forever.
 	now := time.Now().UnixMilli()
 	p.TS, p.Act = now, now
-	p.State = initialState(s.meta.ModerationMode)
+	if dj {
+		p.State = StateApproved
+	} else {
+		p.State = initialState(s.meta.ModerationMode)
+	}
 	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
 		return nil, "", err
 	}

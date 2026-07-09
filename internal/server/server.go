@@ -856,6 +856,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Broadcaster.Start(device, q.Get("name"), opts)
+		s.addStreamFeedPost("Started the stream.")
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/stop":
 		if r.Method != http.MethodPost {
@@ -865,7 +866,17 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if !s.requireDJ(w, r) {
 			return
 		}
+		wasStreaming := false
+		if s.Broadcaster != nil {
+			switch s.Broadcaster.Status().State {
+			case "starting", "live":
+				wasStreaming = true
+			}
+		}
 		s.Broadcaster.Stop()
+		if wasStreaming {
+			s.addStreamFeedPost("Stopped the stream.")
+		}
 		// Opt-in auto-publish (DJ toggle, default off): push the just-ended set to
 		// its shareable /e/<slug> page. Fire-and-forget — publish is slow (remux +
 		// upload) and needs a linked account + connectivity, so it must never hold
@@ -906,6 +917,20 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}()
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "unknown api"})
+	}
+}
+
+func (s *srv) addStreamFeedPost(text string) {
+	if s.Events == nil {
+		return
+	}
+	meta := s.Events.Meta()
+	author := strings.TrimSpace(meta.Host)
+	if author == "" {
+		author = "the DJ"
+	}
+	if _, _, err := s.Events.AddPost("dj", author, "🎧", text, nil, true); err != nil && s.Diag != nil {
+		s.Diag.Printf("stream feed post failed: %v", err)
 	}
 }
 
