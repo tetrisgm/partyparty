@@ -142,8 +142,10 @@
   .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
   .dot-g{background:var(--success)} .dot-y{background:var(--warn)} .dot-r{background:var(--danger)} .dot-x{background:var(--label-tertiary)}
   .listener .lname{flex:1;color:var(--label)}
+  .listener.host .lname{font-weight:750}
   .listener .lbody{flex:1;min-width:0}
   .listener .lbody .lname{display:block}
+  .hostpill{display:inline-flex;align-items:center;height:18px;border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:10px;font-weight:800;padding:0 7px;margin-left:6px;text-transform:uppercase;letter-spacing:.03em}
   .lip{color:var(--label-tertiary);font-size:11px;font-variant-numeric:tabular-nums;font-weight:400}
   .ldetail{color:var(--label-secondary);font-size:11px;font-variant-numeric:tabular-nums;margin-top:2px}
   .listener .llat{color:var(--label-secondary);font-variant-numeric:tabular-nums}
@@ -368,10 +370,11 @@
   .pcount{margin-left:6px;background:var(--fill);border-radius:999px;padding:1px 7px;font-size:11px;color:var(--label-secondary)}
   .pcount:empty{display:none}
   .ptab.active .pcount{background:var(--fill)}
-  .party-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start;margin-top:18px}
+  .party-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:stretch;margin-top:18px}
   .party-feed-col{min-width:0}
-  .guest-sidebar{position:sticky;top:72px;display:grid;gap:16px;min-width:0}
-  .guest-sidebar .card{margin-top:0}
+  .guest-sidebar{position:sticky;top:72px;display:grid;gap:16px;min-width:0;align-self:stretch}
+  .guest-sidebar .card{margin-top:0;height:100%;min-height:280px;display:flex;flex-direction:column}
+  #roster{flex:1}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
   .featurebar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
@@ -384,6 +387,8 @@
   .featuretoggle input:checked + span::before{background:var(--success)}
   .featuretoggle input:checked + span::after{transform:translateX(12px)}
   .featuretoggle input:disabled + span{opacity:.55}
+  .feed-settings{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+  .feed-settings:empty{display:none}
   .linkeditor{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
   .linkeditor.off{opacity:.68}
   .linkeditor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
@@ -453,7 +458,7 @@
   @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.event-actions{justify-content:flex-start}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.titlerow{flex-direction:column}.event-actions{justify-content:flex-start}}
-  @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}}
+  @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
 </style>
 </head>
 <body class="account-locked">
@@ -732,7 +737,6 @@
       <a class="abbtn" href="/wall" target="_blank" rel="noopener" style="height:32px;text-decoration:none">Open wall (TV)</a>
     </div>
     <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
-    <div class="featurebar" id="moderationToggles" aria-label="Moderation mode"></div>
     <div class="retentionbox">
       <div class="retentiongrid">
         <div>
@@ -847,6 +851,7 @@
         <h2 id="eventTitle">Party feed</h2>
         <span class="muted" id="eventCounts"></span>
       </div>
+      <div class="feed-settings" id="moderationToggles" aria-label="Party feed settings"></div>
       <div class="composer" id="djComposer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
         <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post, or drop photos/videos here..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
@@ -2253,7 +2258,8 @@
       refreshNetworkSituation({ linkReady: linkReady, guestUrl: guestUrl, guestCount: roster.length });
       $('emetaCounts').textContent = roster.length ? roster.length + ' listening' : '';
       $('emetaCountsWrap').hidden = !roster.length;
-      if ($('pcount')) $('pcount').textContent = roster.length || '';
+      const peopleCount = roster.length + 1;
+      if ($('pcount')) $('pcount').textContent = peopleCount;
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
         ? (s.latencyTarget.toFixed(1) + ' s')
@@ -2277,7 +2283,9 @@
       }
       const details = detailsOn && document.body.classList.contains('event-manage-open');
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-      $('roster').innerHTML = roster.map((r, i) => {
+      const hostName = eventMeta.host || accountEventHost() || 'the DJ';
+      const hostRow = '<div class="listener host"><span class="ldot dot-g"></span><span class="lname">' + esc(hostName) + '<span class="hostpill">DJ</span></span></div>';
+      const guestRows = roster.map((r, i) => {
         // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
         // red stalled · gray paused.
         const cls = r.paused ? 'dot-x'
@@ -2300,6 +2308,7 @@
           '<div class="lbody"><span class="lname">Guest ' + (i + 1) + '  <span class="lip">' + dev + ' · ' + esc(r.ip) + '</span></span>' +
           '<div class="ldetail">' + lat + ' · ' + bits + '</div></div></div>';
       }).join('');
+      $('roster').innerHTML = hostRow + guestRows;
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
       const txt = { good:'Good', strain:'Strain', congested:'Congested', idle:'Idle' };
@@ -2939,7 +2948,7 @@
       currentModerationMode = mode === 'pre_approve' ? 'pre_approve' : 'post_moderate';
       const bar = $('moderationToggles');
       if (!bar.dataset.ready) {
-        bar.innerHTML = '<label class="featuretoggle" title="New wall posts and comments wait for DJ approval before guests see them."><input type="checkbox" id="preApproveToggle"><span>Pre-approve</span></label>';
+        bar.innerHTML = '<label class="featuretoggle" title="When enabled, guest posts and comments wait for approval before guests see them."><input type="checkbox" id="preApproveToggle"><span>Require approval</span></label>';
         $('preApproveToggle').addEventListener('change', async (e) => {
           const mode = e.target.checked ? 'pre_approve' : 'post_moderate';
           e.target.disabled = true;
@@ -3142,10 +3151,12 @@
     const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
     function stateBadge(state){
       state = state === 'pending' || state === 'hidden' ? state : 'approved';
+      if (currentModerationMode !== 'pre_approve' && state === 'approved') return '';
       return '<span class="statebadge ' + state + '">' + state + '</span>';
     }
     function modButtons(postID, commentID, state){
       state = state === 'pending' || state === 'hidden' ? state : 'approved';
+      if (currentModerationMode !== 'pre_approve' && state === 'approved') return '';
       const cid = commentID ? ' data-comment="' + escT(commentID) + '"' : '';
       let html = '';
       if (state !== 'approved') html += '<button class="modbtn" data-mod="' + escT(postID) + '"' + cid + ' data-state="approved">approve</button>';

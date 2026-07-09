@@ -1247,7 +1247,11 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 	if len(p.Comments) >= 500 {
 		return nil, errors.New("comment limit reached")
 	}
-	c.State = initialState(s.meta.ModerationMode)
+	if dj {
+		c.State = StateApproved
+	} else {
+		c.State = initialState(s.meta.ModerationMode)
+	}
 	if err := s.appendLine(line{Op: "comment", ID: postID, CID: cid, Comment: c}); err != nil {
 		return nil, err
 	}

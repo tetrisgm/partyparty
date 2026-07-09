@@ -109,6 +109,20 @@ func TestPreApproveInitialState(t *testing.T) {
 	if c.State != StatePending {
 		t.Fatalf("pre-approve comment state = %q, want pending", c.State)
 	}
+	djPost, _, err := st.AddPost("dj", "Ramine", "🎧", "host update", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if djPost.State != StateApproved {
+		t.Fatalf("pre-approve DJ post state = %q, want approved", djPost.State)
+	}
+	djComment, err := st.AddComment(p.ID, "dj", "Ramine", "🎧", "host reply", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if djComment.State != StateApproved {
+		t.Fatalf("pre-approve DJ comment state = %q, want approved", djComment.State)
+	}
 }
 
 func TestDeleteCommentDropsOnReplay(t *testing.T) {
