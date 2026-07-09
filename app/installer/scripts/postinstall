@@ -3,5 +3,9 @@
 # console opens automatically (pkgs don't auto-launch otherwise).
 APP="$HOME/Applications/partyparty.app"
 [ -d "$APP" ] || APP="/Applications/partyparty.app"
-/usr/bin/open "$APP" 2>/dev/null || true
+# Installer scripts can run with TMPDIR pointing into a PKInstallSandbox path
+# that disappears as soon as installation completes. The app writes its runtime
+# MediaMTX config under os.TempDir(), so scrub the installer temp environment
+# before handing launch off to LaunchServices.
+TMPDIR=/tmp TMP=/tmp TEMP=/tmp /usr/bin/open "$APP" 2>/dev/null || true
 exit 0
