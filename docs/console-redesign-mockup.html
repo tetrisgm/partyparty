@@ -43,9 +43,7 @@
   .statuspill.off{background:var(--bg);color:var(--ink3);border:1px solid var(--line)}
   .titlerow{display:flex;align-items:flex-start;gap:16px;justify-content:space-between}
   .eventtitle{font-size:44px;line-height:1.04;font-weight:700;margin:0;letter-spacing:-.02em;overflow-wrap:anywhere}
-  .eventtitle .ed{border-bottom:1px dashed transparent;cursor:text}
-  .eventtitle .ed:hover{border-bottom-color:var(--line)}
-  .sharelink{flex:0 0 auto;margin-top:6px}
+  .titleactions{display:flex;gap:8px;flex:0 0 auto;margin-top:6px;flex-wrap:wrap;justify-content:flex-end}
   .hostline{margin:16px 0 0;font-size:17px;color:var(--ink2)}
   .hostline b{color:var(--ink);font-weight:600}
   .eventmeta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -56,6 +54,10 @@
   .hostlinks .ll:hover{border-color:var(--accent)}
   .hostlinks .ll.accent{background:var(--accent);color:#fff;border-color:transparent}
   .hostlinks .add{color:var(--link);border-style:dashed}
+  .editpanel{display:none;margin-top:20px;padding-top:20px;border-top:1px solid var(--hair)}
+  .herocard.editing .editpanel{display:block}
+  .editgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .editactions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   .eventcover{border-radius:22px;overflow:hidden;background:linear-gradient(135deg,#fff 0%,#f5f5f7 46%,#ffe8f0 100%);box-shadow:inset 0 0 0 1px var(--hair);display:grid;place-items:center;min-height:230px;color:var(--ink3);font-size:13px;font-weight:600;text-align:center;padding:20px}
   @media (prefers-color-scheme:dark){.eventcover{background:linear-gradient(135deg,#242427 0%,#1a1a1d 50%,#3a1626 100%)}}
   .eventcover .cam{font-size:30px;margin-bottom:8px;opacity:.5}
@@ -97,8 +99,10 @@
 
   .sectlabel{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);margin:0 0 10px}
 
-  /* the "new event" empty state */
-  .newwrap{margin-top:40px}
+  /* separate "new event" state, not rendered below an existing event */
+  .newwrap{margin-top:40px;border-top:1px solid var(--hair);padding-top:22px}
+  .newwrap summary{cursor:pointer;color:var(--ink2);font-size:13px;font-weight:700}
+  .newwrap summary b{color:var(--ink)}
   .newcard{padding:30px;border:1px dashed var(--line);background:var(--card)}
   .field{margin-top:16px}
   .field label{display:block;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px}
@@ -110,7 +114,7 @@
   .golive-lg{margin-top:16px;width:100%;justify-content:center;padding:15px;font-size:17px;background:var(--live);opacity:.5;cursor:not-allowed}
 
   .callout{margin:34px 0 0;font-size:13px;color:var(--ink3);border-left:3px solid var(--accent);padding:4px 0 4px 14px}
-  @media(max-width:760px){.eventtop{grid-template-columns:1fr}.eventcover{order:-1;min-height:180px}.eventtitle{font-size:34px}.field2{grid-template-columns:1fr}.titlerow{flex-wrap:wrap}}
+  @media(max-width:760px){.eventtop{grid-template-columns:1fr}.eventcover{order:-1;min-height:180px}.eventtitle{font-size:34px}.field2,.editgrid{grid-template-columns:1fr}.titlerow{flex-wrap:wrap}.titleactions{justify-content:flex-start}}
 </style>
 
 <div class="topbar">
@@ -126,11 +130,14 @@
 
   <!-- ═══ LIVE EVENT (the reskinned console) ═══ -->
   <div class="eventtop">
-    <div class="card herocard">
+    <div class="card herocard" data-event-card>
       <span class="statuspill live"><span class="livedot"></span> Live now</span>
       <div class="titlerow">
-        <h1 class="eventtitle"><span class="ed">Rooftop Ritual</span></h1>
-        <button class="btn sharelink">🔗 Share Link</button>
+        <h1 class="eventtitle">Rooftop Ritual</h1>
+        <div class="titleactions">
+          <button class="btn lt sm" type="button" data-edit-event aria-expanded="false" aria-controls="eventEditPanel">✎ Edit event</button>
+          <button class="btn sm" type="button">🔗 Share Link</button>
+        </div>
       </div>
       <p class="hostline">hosted by <b>Ramine</b></p>
       <div class="eventmeta">
@@ -142,6 +149,19 @@
         <span class="ll">💸 Tip the DJ</span>
         <span class="ll">📸 @ramine</span>
         <span class="ll add">＋ Add link</span>
+      </div>
+      <div class="editpanel" id="eventEditPanel">
+        <p class="sectlabel">Edit event details</p>
+        <div class="field"><label>Event name</label><input class="inp big" value="Rooftop Ritual"></div>
+        <div class="editgrid">
+          <div class="field"><label>When</label><input class="inp" value="Sat, Jul 12 · 9:00 PM"></div>
+          <div class="field"><label>Where</label><input class="inp" value="The Mission rooftop"></div>
+        </div>
+        <div class="field"><label>Hosted by</label><input class="inp" value="Ramine"></div>
+        <div class="editactions">
+          <button class="btn lt sm" type="button">Cancel</button>
+          <button class="btn sm" type="button">Save changes</button>
+        </div>
       </div>
     </div>
     <div class="card eventcover"><div><div class="cam">🖼️</div>Add a cover<br><span class="muted" style="font-weight:400">drag an image or tap</span></div></div>
@@ -167,22 +187,32 @@
     <div class="card post"><span class="av" style="background:#34c759">J</span><div><div class="who">Jonas<span class="t">5m</span></div><p class="body">who's the opener? need the ID</p></div></div>
   </div>
 
-  <!-- ═══ NEW EVENT (before you go live — required fields, no pre-fill) ═══ -->
-  <div class="newwrap">
-    <p class="sectlabel">▸ And here's the "new party" state — nothing pre-filled, required before Go Live</p>
-    <div class="card newcard">
-      <span class="statuspill off">Not live yet</span>
-      <div class="field"><label>Event name</label><input class="inp big" placeholder="Name your party…"></div>
+  <!-- ═══ CREATE EVENT (separate route/state — only appears when creating) ═══ -->
+  <details class="newwrap">
+    <summary><b>Separate create-event state</b> — open this only when the DJ is creating a new event</summary>
+    <div class="card newcard" style="margin-top:14px">
+      <span class="statuspill off">New event</span>
+      <div class="field"><label>Event name</label><input class="inp big" placeholder="Name your party..."></div>
       <div class="field2">
         <div class="field"><label>When</label><input class="inp" placeholder="Sat, Jul 12 · 9 PM"></div>
         <div class="field"><label>Where</label><input class="inp" placeholder="The Mission rooftop"></div>
       </div>
       <div class="field"><label>Hosted by</label><input class="inp" placeholder="Your name"></div>
       <div class="hostlinks" style="border:0;padding-top:14px"><span class="ll add">＋ Add a link (follow, tips, socials)</span></div>
-      <div class="reqnote">🔒 An event name, date &amp; place, and host are needed before you can start streaming.</div>
-      <button class="btn golive-lg">Go Live</button>
+      <div class="reqnote">🔒 These fields create the event page that later receives the recorded set, track list, guest photos, videos, and wall posts.</div>
+      <button class="btn golive-lg">Create event</button>
     </div>
-  </div>
+  </details>
 
-  <div class="callout">Everything migrates in: the source picker &amp; Go Live (top bar), Share Link (QR + guest link), the wall as the party feed, participants as the guest list, follow/tip links moved up beside the event details, publish-to-/e/, sync, permissions — all kept, just wearing the event-page design instead of the admin panel.</div>
+  <div class="callout">Existing events are display-first: title, host, date, place, cover, follow/tip links, party feed, guests, recorded set, track list, photos, and videos are visible as the event page. Editing is explicit through “Edit event.” The create-event form is a separate state and should not appear below an already-created event.</div>
 </div>
+
+<script>
+  const card = document.querySelector('[data-event-card]');
+  const edit = document.querySelector('[data-edit-event]');
+  edit.addEventListener('click', () => {
+    const on = card.classList.toggle('editing');
+    edit.setAttribute('aria-expanded', String(on));
+    edit.textContent = on ? 'Done' : '✎ Edit event';
+  });
+</script>

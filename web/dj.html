@@ -76,13 +76,35 @@
   .account-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   button.dangertext{color:var(--danger)}
   header.eventhead{max-width:680px;margin:0 auto;padding:30px 24px 16px;display:block}
+  .eventhead-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+  .event-titleblock{min-width:0;flex:1}
+  .event-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:0 0 auto}
+  .event-actions .ghost{height:30px;border-radius:999px;white-space:nowrap}
   .ehost{color:var(--label-secondary);font-size:14px;font-weight:600;margin-bottom:2px}
   .ename{margin:0 0 6px;font-size:36px;font-weight:800;letter-spacing:-.025em;line-height:1.12;color:var(--label)}
   .estarts{color:var(--label-secondary);font-size:14px;margin:0 0 8px}
   .emeta{display:flex;align-items:center;gap:10px;min-height:22px;flex-wrap:wrap}
-  .ed{cursor:text;border-bottom:1px dashed transparent}
-  .ed:hover{border-bottom-color:var(--label-tertiary)}
-  .ed input{background:transparent;border:none;outline:none;color:var(--label);font:inherit;letter-spacing:inherit;min-width:60px}
+  .eventedit{display:none;margin-top:14px;border:1px solid var(--separator);background:var(--bg-elevated);border-radius:var(--r-md);padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.03)}
+  .eventedit.show{display:block}
+  .eventedit h2{font-size:15px;line-height:1.25;margin:0 0 10px;color:var(--label)}
+  .eventform-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .eventform-field{display:grid;gap:5px;min-width:0}
+  .eventform-field.wide{grid-column:1/-1}
+  .eventform-field span{font-size:12px;color:var(--label-secondary)}
+  .eventform-field input{width:100%;min-width:0;height:36px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 11px;color:var(--label);font:inherit;font-size:13px;outline:none}
+  .eventform-field input:focus{border-color:var(--accent);background:var(--bg-elevated)}
+  .eventform-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .eventform-status{font-size:12px;line-height:1.45;color:var(--label-secondary);min-height:17px;margin-right:auto}
+  .eventform-status.error{color:var(--danger);font-weight:700}
+  .eventform-status.ok{color:#1d883d;font-weight:700}
+  .pub-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .pub-summary-copy{min-width:240px;flex:1}
+  .pub-summary-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pub-fields{display:none;margin-top:12px;border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:12px}
+  .pub-fields.show{display:grid;gap:10px}
+  .pub-row{display:flex;gap:8px;align-items:center}
+  .eventcreate{display:none;margin:10px 0 12px;border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:12px}
+  .eventcreate.show{display:block}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);text-transform:capitalize}
   .badge.live{background:rgba(52,199,89,.15);color:#1d883d}
   .badge.error{background:rgba(255,59,48,.12);color:#c1281e} /* darkened for light-mode contrast, like its siblings */
@@ -247,13 +269,6 @@
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   .page{max-width:1060px;margin:0 auto;padding:8px 24px 60px}
   header.eventhead{max-width:none;padding:26px 0 14px}
-  .ename .ed{display:block;width:100%}
-  .ename .ed input{width:100%}
-  .estarts .ed input,.ehost .ed input{width:auto;min-width:200px}
-  /* pencil affordance: editable fields say so */
-  .ed::after{content:'✎';font-size:.55em;margin-left:8px;opacity:.28;vertical-align:middle;font-weight:400}
-  .ed:hover::after{opacity:.7}
-  .ed:has(input)::after{content:''}
   .sharecard{position:relative}
   .guest-setup{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:14px;margin:0 0 16px;display:grid;gap:12px}
   .guest-setup-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
@@ -358,7 +373,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#fff}}
-  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}}
+  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.eventhead-top{flex-direction:column}.event-actions{justify-content:flex-start}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.source-picker{flex-basis:100%;max-width:none}.abspacer{display:none}.golive{margin-left:auto}}
 </style>
@@ -429,10 +444,43 @@
     </button>
   </div>
 
-  <header class="eventhead">
-    <div class="ehost">🎧 <span class="ed" id="hostEdit" title="Click to change your host name">the DJ</span> is hosting</div>
-    <h1 class="ename"><span class="ed" id="titleEdit" title="Click to rename the party">partyparty</span></h1>
-    <div class="estarts">🗓 <span class="ed" id="startsEdit" style="opacity:.6" title="Shown on the guests' welcome card — e.g. Saturday 9pm, rooftop">add date &amp; place</span></div>
+  <header class="eventhead" id="eventHead">
+    <div class="eventhead-top">
+      <div class="event-titleblock">
+        <div class="ehost">🎧 <span id="hostEdit">the DJ</span> is hosting</div>
+        <h1 class="ename"><span id="titleEdit">partyparty</span></h1>
+        <div class="estarts">🗓 <span id="startsEdit" style="opacity:.6">add date &amp; place</span></div>
+      </div>
+      <div class="event-actions">
+        <button class="ghost" id="eventEditBtn" type="button">Edit event</button>
+      </div>
+    </div>
+    <div class="eventedit" id="eventEditPanel" aria-label="Edit event details">
+      <h2>Edit event</h2>
+      <div class="eventform-grid">
+        <label class="eventform-field">
+          <span>Event name</span>
+          <input id="eventTitleInput" type="text" maxlength="80" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="eventform-field">
+          <span>Host</span>
+          <input id="eventHostInput" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="eventform-field wide">
+          <span>Date and place</span>
+          <input id="eventStartsInput" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Saturday 9pm, rooftop">
+        </label>
+        <label class="eventform-field wide">
+          <span>Online page</span>
+          <input id="eventSlugInput" type="text" maxlength="48" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Auto">
+        </label>
+      </div>
+      <div class="eventform-actions">
+        <span class="eventform-status" id="eventEditStatus"></span>
+        <button class="ghost" id="eventEditCancelBtn" type="button">Cancel</button>
+        <button class="go" id="eventEditSaveBtn" type="button">Save event</button>
+      </div>
+    </div>
     <div class="emeta">
       <span class="muted" id="devname"></span>
       <span class="muted" id="emetaCounts"></span>
@@ -514,22 +562,30 @@
           <button class="go" id="setWrapBtn" type="button">Publish the party</button>
         </div>
       </div>
-      <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
-      <div class="hint" style="margin:0 0 10px">Name tonight's party and add a cover, then publish the recording to a shareable page — or turn on auto-publish in Settings.</div>
-      <input id="pubTitle" type="text" placeholder="Name tonight's party (shown on the page)" maxlength="120"
-        style="width:100%;box-sizing:border-box;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:9px 11px;color:var(--label);font:inherit;font-size:14px;margin:0 0 10px">
-      <div style="display:flex;gap:8px;align-items:center">
-        <span class="muted" style="white-space:nowrap">party.ramine.net/e/</span>
-        <input id="pubSlug" type="text" placeholder="auto" maxlength="48" spellcheck="false" autocapitalize="off"
-          style="flex:1;min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:8px 10px;color:var(--label);font:inherit;font-size:13px">
-        <button class="go" id="pubBtn" type="button">Publish now</button>
+      <div class="pub-summary">
+        <div class="pub-summary-copy">
+          <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
+          <div class="hint" style="margin:0">Create the replay page when the set is ready. Event details live up top; cover art and publish controls stay here.</div>
+        </div>
+        <div class="pub-summary-actions">
+          <button class="ghost" id="pubFieldsBtn" type="button">Publish options</button>
+        </div>
       </div>
-      <div id="pubResult" class="hint" style="margin-top:10px;display:none"></div>
-      <div id="mirrorStatus" class="hint" style="margin-top:10px;display:none"></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
-        <input id="pubCoverFile" type="file" accept="image/*" style="display:none">
-        <button class="ghost" id="pubCoverBtn" type="button">Set cover image</button>
-        <span id="pubCoverResult" class="hint" style="display:none"></span>
+      <div class="pub-fields" id="pubFields">
+        <input id="pubTitle" type="hidden" value="">
+        <div class="pub-row">
+          <span class="muted" style="white-space:nowrap">party.ramine.net/e/</span>
+          <input id="pubSlug" type="text" placeholder="auto" maxlength="48" spellcheck="false" autocapitalize="off"
+            style="flex:1;min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:8px 10px;color:var(--label);font:inherit;font-size:13px">
+          <button class="go" id="pubBtn" type="button">Publish now</button>
+        </div>
+        <div id="pubResult" class="hint" style="display:none"></div>
+        <div id="mirrorStatus" class="hint" style="display:none"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="pubCoverFile" type="file" accept="image/*" style="display:none">
+          <button class="ghost" id="pubCoverBtn" type="button">Set cover image</button>
+          <span id="pubCoverResult" class="hint" style="display:none"></span>
+        </div>
       </div>
     </div>
 
@@ -654,7 +710,32 @@
         <button class="ghost" id="eventsBtn" style="flex:1">Your events</button>
       </div>
       <div id="eventsPanel" hidden style="margin-top:12px;border-top:1px solid var(--separator);padding-top:12px">
-        <button class="ghost" id="freshBtn" style="width:100%">＋ New event</button>
+        <button class="ghost" id="freshBtn" style="width:100%">＋ Create new event</button>
+        <div class="eventcreate" id="createEventPanel">
+          <div class="eventform-grid">
+            <label class="eventform-field">
+              <span>Event name</span>
+              <input id="createEventTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Warehouse Friday">
+            </label>
+            <label class="eventform-field">
+              <span>Host</span>
+              <input id="createEventHost" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="the DJ">
+            </label>
+            <label class="eventform-field wide">
+              <span>Date and place</span>
+              <input id="createEventStarts" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Saturday 9pm, rooftop">
+            </label>
+            <label class="eventform-field wide">
+              <span>Online page</span>
+              <input id="createEventSlug" type="text" maxlength="48" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Auto">
+            </label>
+          </div>
+          <div class="eventform-actions">
+            <span class="eventform-status" id="createEventStatus"></span>
+            <button class="ghost" id="createEventCancelBtn" type="button">Cancel</button>
+            <button class="go" id="createEventSaveBtn" type="button">Create event</button>
+          </div>
+        </div>
         <div id="eventsList" style="margin-top:8px"></div>
       </div>
       <div class="hint">Everything guests post (and your set recordings) lands in one folder — drag straight from Finder. "Your events" lists every party page; a new event starts a fresh one and the old folders stay untouched.</div>
@@ -2055,54 +2136,88 @@
   }
   loadAccountStatus();
 
-  // ── Event identity: click-to-edit host + title + date in the header ──
+  // ── Event identity: display first, edit only when requested ──
   const PH = { startsEdit: 'add date & place' };
-  function editable(id, field){
+  const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
+  const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', slug: '' };
+  let eventEditOpen = false;
+  function setFormStatus(id, msg, kind){
     const el = $(id);
-    el.addEventListener('click', () => {
-      if (el.querySelector('input')) return;
-      const isPH = PH[id] && el.textContent === PH[id];
-      const cur = isPH ? '' : el.textContent;
-      el.textContent = '';
-      const inp = document.createElement('input');
-      inp.value = cur; inp.maxLength = 80;
-      inp.placeholder = PH[id] || '';
-      inp.size = Math.max(cur.length, 10);
-      el.appendChild(inp); inp.focus(); inp.select();
-      const save = () => {
-        const v = inp.value.trim();
-        el.textContent = v || PH[id] || cur;
-        el.style.opacity = (!v && PH[id]) ? .6 : 1;
-        el.dataset.touched = '1'; // syncHeader must not clobber this before the feed catches up
-        // "-" clears optional fields server-side; required fields keep current.
-        const sendV = v || (PH[id] ? '-' : cur);
-        fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ [field]: sendV }) }).catch(()=>{});
-      };
-      let saved = false;
-      const once = () => { if (!saved) { saved = true; save(); } };
-      inp.addEventListener('blur', once);
-      inp.addEventListener('change', once);
-      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
-    });
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('error', kind === 'error');
+    el.classList.toggle('ok', kind === 'ok');
   }
-  editable('titleEdit', 'title');
-  editable('hostEdit', 'host');
-  editable('startsEdit', 'starts');
+  function inputValue(id){ const el = $(id); return el ? el.value.trim() : ''; }
+  function setInputValue(id, value){ const el = $(id); if (el && document.activeElement !== el) el.value = value || ''; }
+  function fillEventEditForm(){
+    setInputValue('eventTitleInput', eventMeta.title);
+    setInputValue('eventHostInput', eventMeta.host);
+    setInputValue('eventStartsInput', eventMeta.starts);
+    setInputValue('eventSlugInput', eventMeta.slug);
+    setFormStatus('eventEditStatus', '', '');
+  }
+  function setEventEditOpen(open){
+    eventEditOpen = !!open;
+    const panel = $('eventEditPanel'), btn = $('eventEditBtn');
+    if (panel) panel.classList.toggle('show', eventEditOpen);
+    if (btn) btn.textContent = eventEditOpen ? 'Close edit' : 'Edit event';
+    if (eventEditOpen) fillEventEditForm();
+  }
+  if ($('eventEditBtn')) $('eventEditBtn').onclick = () => setEventEditOpen(!eventEditOpen);
+  if ($('eventEditCancelBtn')) $('eventEditCancelBtn').onclick = () => setEventEditOpen(false);
+  async function saveEventDetails(){
+    const title = inputValue('eventTitleInput');
+    const host = inputValue('eventHostInput');
+    const starts = inputValue('eventStartsInput');
+    const rawSlug = inputValue('eventSlugInput');
+    const slug = normSlug(rawSlug);
+    if (!title) { setFormStatus('eventEditStatus', 'Add an event name.', 'error'); $('eventTitleInput').focus(); return; }
+    if (!host) { setFormStatus('eventEditStatus', 'Add a host name.', 'error'); $('eventHostInput').focus(); return; }
+    if (rawSlug && rawSlug !== slug) $('eventSlugInput').value = slug;
+    const btn = $('eventEditSaveBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    setFormStatus('eventEditStatus', 'Saving…', '');
+    try {
+      const body = { title, host, starts: starts || '-', slug };
+      const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'save failed');
+      eventMeta.title = title; eventMeta.host = host; eventMeta.starts = starts; eventMeta.slug = slug;
+      syncHeader(title, host, starts, slug);
+      syncPublish(slug);
+      setFormStatus('eventEditStatus', 'Saved.', 'ok');
+      setTimeout(() => setEventEditOpen(false), 250);
+    } catch (e) {
+      setFormStatus('eventEditStatus', 'Couldn’t save: ' + (e.message || e), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save event'; }
+    }
+  }
+  if ($('eventEditSaveBtn')) $('eventEditSaveBtn').onclick = saveEventDetails;
+  ['eventTitleInput', 'eventHostInput', 'eventStartsInput', 'eventSlugInput'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveEventDetails(); }
+      if (e.key === 'Escape') { e.preventDefault(); setEventEditOpen(false); }
+    });
+  });
 
   // ── Publish the recorded set to its online /e/<slug> replay page ──
   let pubSlugTouched = false;
-  // Curate at the publish moment: name the party right here; it saves to the
-  // event (same /api/event-config the header title uses) and shows on the page.
-  (function(){
-    const t = $('pubTitle');
-    if (t) t.addEventListener('change', () => {
-      fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: t.value.trim() }) }).catch(() => {});
-    });
-  })();
   const pubSlug = $('pubSlug'), pubBtn = $('pubBtn'), pubResult = $('pubResult');
+  const pubFields = $('pubFields'), pubFieldsBtn = $('pubFieldsBtn');
   const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverResult = $('pubCoverResult');
-  const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
+  function setPubFieldsOpen(open, focus){
+    if (!pubFields) return;
+    pubFields.classList.toggle('show', !!open);
+    if (pubFieldsBtn) pubFieldsBtn.textContent = open ? 'Hide publish options' : 'Publish options';
+    if (open && focus) {
+      try { pubFields.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+      setTimeout(() => { const t = $('pubSlug') || $('pubBtn'); if (t) t.focus(); }, 120);
+    }
+  }
+  if (pubFieldsBtn) pubFieldsBtn.onclick = () => setPubFieldsOpen(!pubFields.classList.contains('show'), true);
   function syncPublish(slug){ // feed → field, unless the DJ is editing it
     if (pubSlug === document.activeElement || pubSlugTouched) return;
     if (typeof slug === 'string' && slug !== pubSlug.value) pubSlug.value = slug;
@@ -2170,7 +2285,7 @@
     const c = $('setWrapCopy'); if (c) c.onclick = () => copyText(url, c);
     wrap.hidden = false;
   }
-  if ($('setWrapBtn')) $('setWrapBtn').onclick = () => { const p = $('pubBtn'); if (p) { try { p.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} p.click(); } };
+  if ($('setWrapBtn')) $('setWrapBtn').onclick = () => setPubFieldsOpen(true, true);
   pubBtn.addEventListener('click', async () => {
     pubBtn.disabled = true; const label = pubBtn.textContent; pubBtn.textContent = 'Publishing…';
     pubResult.style.display = 'block';
@@ -2196,22 +2311,22 @@
       pubBtn.disabled = false; pubBtn.textContent = label;
     }
   });
-  function syncHeader(title, host, starts){
-    for (const [id, v] of [['titleEdit', title], ['hostEdit', host], ['startsEdit', starts]]) {
-      const el = $(id);
-      if (el.querySelector('input')) continue; // never clobber mid-edit
-      if (el.dataset.touched) {
-        // Just edited: the feed lags ≤5s — don't revert. Release the guard
-        // once the server round-trips the new value.
-        if ((v && el.textContent === v) || (!v && PH[id] && el.textContent === PH[id])) delete el.dataset.touched;
-        continue;
-      }
-      if (v && el.textContent !== v) { el.textContent = v; el.style.opacity = 1; }
-      if (!v && PH[id] && el.textContent !== PH[id]) { el.textContent = PH[id]; el.style.opacity = .6; }
+  function syncHeader(title, host, starts, slug){
+    eventMeta.title = title || 'partyparty';
+    eventMeta.host = host || 'the DJ';
+    eventMeta.starts = starts || '';
+    if (typeof slug === 'string') eventMeta.slug = slug;
+    $('titleEdit').textContent = eventMeta.title;
+    $('hostEdit').textContent = eventMeta.host;
+    $('startsEdit').textContent = eventMeta.starts || PH.startsEdit;
+    $('startsEdit').style.opacity = eventMeta.starts ? 1 : .6;
+    if (eventEditOpen) {
+      const active = document.activeElement;
+      if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm();
     }
     const pt = $('pubTitle');
-    if (pt && document.activeElement !== pt) pt.value = title || '';
-    if (title) document.title = title + ' — partyparty';
+    if (pt && document.activeElement !== pt) pt.value = eventMeta.title || '';
+    if (eventMeta.title) document.title = eventMeta.title + ' — partyparty';
   }
 
   // ── The party wall (DJ view): render + post + comment + moderate + curate ──
@@ -2877,7 +2992,7 @@
         }
         if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
         $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
-        syncHeader(data.title, data.host, data.starts);
+        syncHeader(data.title, data.host, data.starts, data.slug);
         syncPublish(data.slug);
         renderFeatureToggles(data.features || {});
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
@@ -2942,14 +3057,59 @@
       finally { $('djPostBtn').disabled = false; $('djPostBtn').textContent = 'Post'; }
     };
     $('openMediaBtn').onclick = () => fetch('/api/open-media', { method:'POST' });
-    $('freshBtn').onclick = () => {
-      if ($('freshBtn').textContent !== 'Start a new event page?') {
-        $('freshBtn').textContent = 'Start a new event page?';
-        setTimeout(() => { $('freshBtn').textContent = '＋ New event'; }, 3000);
-        return;
+    function setCreateEventOpen(open){
+      const panel = $('createEventPanel'), btn = $('freshBtn');
+      if (!panel || !btn) return;
+      panel.classList.toggle('show', !!open);
+      btn.textContent = open ? 'Close new event' : '＋ Create new event';
+      setFormStatus('createEventStatus', '', '');
+      if (open) {
+        $('createEventTitle').value = '';
+        $('createEventHost').value = eventMeta.host || 'the DJ';
+        $('createEventStarts').value = '';
+        $('createEventSlug').value = '';
+        setTimeout(() => $('createEventTitle').focus(), 80);
       }
-      fetch('/api/event-fresh', { method:'POST' }).then(() => location.reload());
-    };
+    }
+    $('freshBtn').onclick = () => setCreateEventOpen(!$('createEventPanel').classList.contains('show'));
+    $('createEventCancelBtn').onclick = () => setCreateEventOpen(false);
+    async function createEvent(){
+      const title = inputValue('createEventTitle');
+      const host = inputValue('createEventHost');
+      const starts = inputValue('createEventStarts');
+      const rawSlug = inputValue('createEventSlug');
+      const slug = normSlug(rawSlug);
+      if (!title) { setFormStatus('createEventStatus', 'Add an event name.', 'error'); $('createEventTitle').focus(); return; }
+      if (!host) { setFormStatus('createEventStatus', 'Add a host name.', 'error'); $('createEventHost').focus(); return; }
+      if (!starts) { setFormStatus('createEventStatus', 'Add the date and place.', 'error'); $('createEventStarts').focus(); return; }
+      if (rawSlug && rawSlug !== slug) $('createEventSlug').value = slug;
+      const btn = $('createEventSaveBtn');
+      btn.disabled = true; btn.textContent = 'Creating…';
+      setFormStatus('createEventStatus', 'Creating event page…', '');
+      try {
+        let r = await fetch('/api/event-fresh', { method:'POST' });
+        let d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'new event failed');
+        r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ title, host, starts, slug }) });
+        d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'event setup failed');
+        setFormStatus('createEventStatus', 'Created.', 'ok');
+        location.reload();
+      } catch (e) {
+        setFormStatus('createEventStatus', 'Couldn’t create: ' + (e.message || e), 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Create event';
+      }
+    }
+    $('createEventSaveBtn').onclick = createEvent;
+    ['createEventTitle', 'createEventHost', 'createEventStarts', 'createEventSlug'].forEach(id => {
+      const el = $(id);
+      if (el) el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); createEvent(); }
+        if (e.key === 'Escape') { e.preventDefault(); setCreateEventOpen(false); }
+      });
+    });
     // "Your events" — the Partiful list: every party page, switchable.
     $('eventsBtn').onclick = async () => {
       const panel = $('eventsPanel');
