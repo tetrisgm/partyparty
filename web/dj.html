@@ -244,7 +244,7 @@
   .requestactions button:hover{background:var(--fill-hover);color:var(--label)}
   .requestactions .danger{color:var(--danger)}
   .requestempty{color:var(--label-tertiary);font-size:12px;padding:4px 0}
-  /* ── Admin action bar (sticky): source · refresh · share · settings · GO LIVE ── */
+  /* ── Admin action bar (sticky): source · share · settings · GO LIVE ── */
   #actionbar{position:sticky;top:0;z-index:20;background:var(--glass-bg);
     -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
     border-bottom:1px solid var(--separator)}
@@ -263,7 +263,7 @@
   .abinner .iconbtn{width:34px;height:34px;border-radius:999px}
   .source-help{font-size:15px;font-weight:850}
   .abspacer{flex:1}
-  .golive{height:40px;padding:0 28px;border-radius:999px;font-size:15px;font-weight:800}
+  .golive{height:52px;min-width:148px;padding:0 34px;border-radius:999px;font-size:17px;font-weight:850}
   .golive.go{background:var(--success);color:#fff;box-shadow:0 8px 22px rgba(52,199,89,.33)}
   .golive.go:hover{filter:brightness(1.04)}
   .golive.stop{background:transparent;color:var(--accent);border:1px solid var(--accent);box-shadow:none}
@@ -292,9 +292,9 @@
   .hostlinks .ll{display:inline-flex;align-items:center;gap:7px;height:44px;border:1px solid var(--separator);border-radius:999px;padding:0 17px;background:rgba(255,255,255,.03);color:var(--label);font-size:14px;font-weight:750}
   .hostlinks .ll.accent{background:var(--accent);border-color:transparent;color:#fff}
   .hostlinks .ll.add{border-style:dashed;color:var(--link);background:transparent}
-  .eventcover{position:relative;width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);overflow:hidden;border:0;border-radius:0;padding:0;box-shadow:none;height:clamp(300px,34vw,460px);display:block;text-align:center;background:linear-gradient(135deg,#262629 0%,#171719 52%,#3f1027 100%);color:var(--label-secondary)}
-  .cover-media{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}
-  .cover-media img{width:100%;height:100%;object-fit:cover;display:none}
+  .eventcover{position:relative;width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);overflow:hidden;border:0;border-radius:0;padding:0;box-shadow:none;height:clamp(300px,34vw,460px);display:block;text-align:center;background:#101012;color:var(--label-secondary)}
+  .cover-media{position:absolute;inset:0;display:block;overflow:hidden;background:#101012}
+  .cover-media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:none}
   .eventcover.has-cover .cover-media img{display:block}
   .cover-empty{position:absolute;inset:0;display:grid;place-items:center;padding:28px;transition:opacity .16s ease}
   .eventcover.has-cover .cover-empty{opacity:0;pointer-events:none}
@@ -340,6 +340,11 @@
   .guest-setup-nudge span{font-size:13px;line-height:1.45}
   .guest-nudge-dismiss{width:26px;height:26px;padding:0;border-radius:50%;flex:0 0 auto;background:var(--fill);color:var(--label-secondary);font-size:12px;line-height:1}
   .guest-nudge-dismiss:hover{background:var(--fill-hover);color:var(--label)}
+  .profile-nudge{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-color:rgba(255,45,111,.28);background:linear-gradient(135deg,rgba(255,45,111,.13),rgba(255,255,255,.035))}
+  .profile-nudge[hidden]{display:none}
+  .profile-nudge h2{font-size:17px;margin:0 0 4px}
+  .profile-nudge p{font-size:13px;line-height:1.45;color:var(--label-secondary);margin:0}
+  .profile-nudge-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
   .guest-hotspot-card{border:1px solid rgba(255,149,0,.32);background:rgba(255,149,0,.08);border-radius:var(--r-sm);padding:11px;display:grid;gap:8px}
   .guest-hotspot-card[hidden]{display:none}
   .guest-hotspot-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -437,16 +442,13 @@
   .sourceguide-body h3:first-child{margin-top:2px}
   .sourceguide-body p{font-size:13px;line-height:1.5;color:var(--label-secondary);margin:0}
   .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:5px}
-  .console-footer{position:fixed;right:14px;bottom:8px;z-index:6;font-size:11px;color:var(--label-tertiary)}
-  .console-footer a{color:var(--label-tertiary);text-decoration:none;font-weight:600}
-  .console-footer a:hover{color:var(--link);text-decoration:underline}
     /* accessibility + capability fallbacks (kept from the dark theme) */
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
   @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.event-actions{justify-content:flex-start}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:100%}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
-  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.titlerow{flex-direction:column}.event-actions{justify-content:flex-start}}
+  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.titlerow{flex-direction:column}.event-actions{justify-content:flex-start}}
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}}
 </style>
 </head>
@@ -601,6 +603,17 @@
     <div style="margin-top:10px"><span class="spin16" style="display:inline-block"></span></div>
     <button class="ghost" id="netCheckBtn" style="margin-top:14px">Test the connection</button>
     <div id="netCheckOut" style="margin-top:10px;font-size:12px;line-height:1.7;text-align:left"></div>
+  </div>
+
+  <div class="card profile-nudge" id="profileSetupNudge" hidden>
+    <div>
+      <h2>Set your DJ profile</h2>
+      <p>Your event pages use this name for hosted by and public profile links.</p>
+    </div>
+    <div class="profile-nudge-actions">
+      <button class="ghost" id="profileSetupDismissBtn" type="button">Not now</button>
+      <button class="go" id="profileSetupOpenBtn" type="button">Set DJ profile</button>
+    </div>
   </div>
 
   <!-- Guest link + QR: open by default while you set up; close it and get it
@@ -903,6 +916,7 @@
       </div>
       <div class="account-actions">
         <button class="ghost" id="accountOpenBtn" type="button">Manage account</button>
+        <button class="ghost" id="accountEditProfileBtn" type="button">Edit DJ profile</button>
         <button class="ghost" id="accountRefreshBtn" type="button">Refresh</button>
         <button class="ghost dangertext" id="accountSignOutBtn" type="button">Sign out</button>
       </div>
@@ -961,10 +975,6 @@
   </div>
 </div>
 </div>
-
-<footer class="console-footer">
-  <a href="mailto:ramine@ramine.net?subject=partyparty%20beta">Send beta feedback</a>
-</footer>
 
 <script src="/vendor/qrcode.min.js"></script>
 <script>
@@ -1063,9 +1073,15 @@
   const ACCOUNT_RETRY_MAX_MS = 30000;
 
   function accountName(st){
+    const host = accountHostName(st);
+    if (host) return host;
+    const user = st && st.user || {};
+    return user.email || 'your account';
+  }
+  function accountHostName(st){
     const profile = st && st.profile || {};
     const user = st && st.user || {};
-    return profile.displayName || (profile.handle ? '@' + profile.handle : '') || user.displayName || user.email || 'your account';
+    return profile.displayName || (profile.handle ? '@' + profile.handle : '') || user.displayName || '';
   }
   function accountEmail(st){
     const user = st && st.user || {};
@@ -1074,6 +1090,20 @@
   function accountHandle(st){
     const profile = st && st.profile || {};
     return profile.handle ? '@' + profile.handle : '';
+  }
+  function accountProfileComplete(st){
+    const profile = st && st.profile || {};
+    const user = st && st.user || {};
+    return !!((profile.displayName || user.displayName) && profile.handle);
+  }
+  function renderProfileNudge(st){
+    const nudge = $('profileSetupNudge');
+    if (!nudge) return;
+    const linked = !!(st && st.linked);
+    const complete = accountProfileComplete(st);
+    const dismissed = localStorage.getItem('pp.profileNudgeDismissed') === '1';
+    if (complete) localStorage.removeItem('pp.profileNudgeDismissed');
+    nudge.hidden = !linked || complete || dismissed;
   }
   function accountEventsSummary(st){
     const events = st && Array.isArray(st.events) ? st.events : [];
@@ -1113,6 +1143,7 @@
     badge.className = 'statebadge' + (linked ? '' : (err ? ' hidden' : ' pending'));
     badge.textContent = linked ? 'Signed in' : (err ? 'Needs sign in' : 'Signed out');
     $('accountOpenBtn').textContent = linked ? 'Manage account' : 'Sign in / Sign up';
+    $('accountEditProfileBtn').style.display = linked ? '' : 'none';
     $('accountSignOutBtn').style.display = linked ? '' : 'none';
     if (!linked) {
       box.innerHTML = '<div class="account-empty">' +
@@ -1123,10 +1154,12 @@
     }
     const install = st.install || {};
     const license = st.license || {};
+    const hostName = accountHostName(st);
     const rows = [
       ['Account', accountName(st)],
       ['Email', accountEmail(st) || 'No email on file'],
-      ['DJ profile', accountHandle(st) || 'Profile ready'],
+      ['DJ name', hostName || 'Set your DJ profile name'],
+      ['DJ profile', accountHandle(st) || 'Create a handle'],
       ['This Mac', install.slug || install.id || 'Linked'],
       ['Guest host', install.host || 'Assigned when online'],
       ['License', license.ok ? 'Verified' : (license.reason || 'Needs review')],
@@ -1146,6 +1179,7 @@
     currentAccountState = st || null;
     accountLinked = linked;
     renderSettingsAccount(st || { linked: false });
+    renderProfileNudge(st || { linked: false });
     if (title) title.textContent = ACCOUNT_GATE_TITLE;
     if (explain) explain.textContent = ACCOUNT_GATE_EXPLANATION;
     // Activation model: the app requires a linked account before it runs. Once
@@ -1218,6 +1252,29 @@
       msg.textContent = 'Account opened in your browser.';
     } catch (e) {
       msg.textContent = e && e.message ? e.message : 'Could not open account.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  async function openProfileFromSettings(){
+    const btn = $('accountEditProfileBtn');
+    const msg = $('accountSettingsMsg');
+    const linked = !!(currentAccountState && currentAccountState.linked);
+    msg.style.display = 'block';
+    if (!linked) {
+      msg.textContent = 'Sign in first, then create your DJ profile.';
+      await startAccountSignIn();
+      return;
+    }
+    btn.disabled = true;
+    msg.textContent = 'Opening your DJ profile...';
+    try {
+      const r = await fetch('/api/account/profile', { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not open profile.');
+      msg.textContent = 'Profile editor opened in your browser.';
+    } catch (e) {
+      msg.textContent = e && e.message ? e.message : 'Could not open profile.';
     } finally {
       btn.disabled = false;
     }
@@ -1305,6 +1362,12 @@
   }
   $('accountSignInBtn').onclick = startAccountSignIn;
   $('accountOpenBtn').onclick = openAccountFromSettings;
+  $('accountEditProfileBtn').onclick = openProfileFromSettings;
+  $('profileSetupOpenBtn').onclick = openProfileFromSettings;
+  $('profileSetupDismissBtn').onclick = () => {
+    localStorage.setItem('pp.profileNudgeDismissed', '1');
+    renderProfileNudge(currentAccountState || { linked: false });
+  };
   $('accountRefreshBtn').onclick = () => {
     const msg = $('accountSettingsMsg');
     msg.style.display = 'block';
@@ -1369,7 +1432,7 @@
   // Share button brings it back.
   {
     const card = $('shareCard');
-    card.style.display = localStorage.getItem('pp.shareClosed') === '0' ? 'block' : 'none';
+    card.style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
     $('shareCloseBtn').onclick = () => { card.style.display = 'none'; localStorage.setItem('pp.shareClosed', '1'); };
     $('shareOpenBtn').onclick = () => {
       const open = card.style.display !== 'none';
@@ -2152,7 +2215,7 @@
         $('setupCard').style.display = 'none';
         stopPendingType();
         // the share card returns to the DJ's open/closed preference
-        $('shareCard').style.display = localStorage.getItem('pp.shareClosed') === '0' ? 'block' : 'none';
+        $('shareCard').style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
         $('url').textContent = guestUrl;
         renderQR(guestUrl);
         const bridgeUp = !!hotspot.bridgeUp;
@@ -2277,6 +2340,24 @@
   const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
   const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', slug: '' };
   let eventEditOpen = false;
+  let hostAutofillSaved = '';
+  function isPlaceholderHost(host){
+    const h = String(host || '').trim().toLowerCase();
+    return h === '' || h === 'the dj';
+  }
+  function accountEventHost(){
+    const host = accountHostName(currentAccountState || {});
+    return host && host !== 'your account' ? host : '';
+  }
+  function persistAccountEventHost(host){
+    if (!host || isPlaceholderHost(host) || hostAutofillSaved === host) return;
+    hostAutofillSaved = host;
+    fetch('/api/event-config', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ host })
+    }).catch(() => { hostAutofillSaved = ''; });
+  }
   function setFormStatus(id, msg, kind){
     const el = $(id);
     if (!el) return;
@@ -2599,10 +2680,10 @@
     }
   });
   function syncHeader(title, host, starts, slug){
-    const accountHost = accountName(currentAccountState || {});
-    const fallbackHost = accountHost && accountHost !== 'your account' ? accountHost : 'the DJ';
+    const fallbackHost = accountEventHost() || 'the DJ';
+    const shouldAutofillHost = isPlaceholderHost(host);
     eventMeta.title = title || 'partyparty';
-    eventMeta.host = (host && host !== 'the DJ') ? host : fallbackHost;
+    eventMeta.host = shouldAutofillHost ? fallbackHost : host;
     eventMeta.starts = starts || '';
     if (typeof slug === 'string') eventMeta.slug = slug;
     $('titleEdit').textContent = eventMeta.title;
@@ -2616,6 +2697,7 @@
     const pt = $('pubTitle');
     if (pt && document.activeElement !== pt) pt.value = eventMeta.title || '';
     if (eventMeta.title) document.title = eventMeta.title + ' — partyparty';
+    if (shouldAutofillHost && fallbackHost !== 'the DJ') persistAccountEventHost(fallbackHost);
   }
 
   // ── The party wall (DJ view): render + post + comment + moderate + curate ──

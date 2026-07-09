@@ -511,6 +511,20 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = exec.Command("open", strings.TrimRight(broker, "/")+"/account").Start()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/account/profile":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		broker := os.Getenv("PARTYPARTY_BROKER")
+		if broker == "" {
+			broker = "https://party.ramine.net"
+		}
+		_ = exec.Command("open", strings.TrimRight(broker, "/")+"/profile/edit").Start()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/link-install/start":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
