@@ -431,6 +431,36 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
 			"streamHealth":   s.streamHealthText(),
 		})
+	case "/api/update/check":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		payloadChanged := false
+		if s.Payload != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+			defer cancel()
+			adopted, err := s.Payload.Refresh(ctx)
+			if err != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]any{
+					"ok":         false,
+					"error":      err.Error(),
+					"appVersion": s.version(),
+					"appUpdate":  s.Payload.AppUpdateAvailable(),
+				})
+				return
+			}
+			payloadChanged = adopted
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":             true,
+			"appVersion":     s.version(),
+			"payloadChanged": payloadChanged,
+			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
+		})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate.
 		writeJSON(w, http.StatusOK, map[string]any{"t": time.Now().UnixMilli()})

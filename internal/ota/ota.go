@@ -5,16 +5,21 @@
 // pages — so making that layer updatable over the wire means a fix reaches
 // every DJ's Mac and their guests within minutes, with no relaunch.
 //
-// Two version lines, one compatibility contract:
+// One visible app version, two internal compatibility counters:
 //
-//   - RuntimeVersion (this file, a const) is the CONTAINER: the native app and
+//   - RuntimeVersion (this file, a const) is the native container/API floor:
 //     its server API. It changes only when the app changes how it talks to
 //     clients, and it moves only via a signed Sparkle update (Apple won't run
-//     downloaded native code any other way). This is the floor.
-//   - payloadVersion is the CONTENT: the web bundle. It advances freely over
-//     the air. Each payload declares the minRuntime it needs; the Mac adopts a
-//     payload only when minRuntime <= RuntimeVersion, so a payload that depends
-//     on a new server route simply waits for the Sparkle update that ships it.
+//     downloaded native code any other way).
+//   - payloadVersion is the web bundle/content counter. It advances freely over
+//     the air. Each payload declares the minRuntime it needs; the Mac adopts it
+//     only when minRuntime <= RuntimeVersion, so content that depends on a new
+//     server route waits for the Sparkle update that ships that route.
+//
+// The product-facing version combines the native major version with the active
+// payload counter. If the app has downloaded payload 55, the UI says 35.55 and
+// behaves as 35.55; the lower-level counters exist only to keep OTA content
+// compatible with the native runtime that is actually installed.
 //
 // Security is not optional here: a payload is executable JavaScript we hand to
 // guests' phones, so an unverified payload is remote code execution. Every

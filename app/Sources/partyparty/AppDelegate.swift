@@ -214,7 +214,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "error":    header = "Broadcast error — open console"
         default:         header = "Not broadcasting"
         }
-        let ver = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let bundleVer = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let ver = s.appVersion.isEmpty ? bundleVer : s.appVersion
         let h = NSMenuItem(title: header + "  ·  v" + ver, action: nil, keyEquivalent: "")
         h.isEnabled = false
         menu.addItem(h)
@@ -258,7 +259,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !isInstalled {
             if moveToApplicationsIfNeeded(interactive: true) { return } // relaunching
         }
-        updater.checkForUpdates()
+        api.checkUpdates { [weak self] result in
+            guard let self = self else { return }
+            self.poller.refresh()
+            guard let result = result else {
+                self.updater.checkForUpdates()
+                return
+            }
+            if result.appUpdate {
+                self.updater.checkForUpdates()
+                return
+            }
+            let v = result.appVersion.isEmpty ? appVersion : result.appVersion
+            self.showUpToDate(version: v, adoptedContent: result.payloadChanged)
+        }
+    }
+
+    private func showUpToDate(version: String, adoptedContent: Bool) {
+        let alert = NSAlert()
+        alert.messageText = adoptedContent ? "\(appName) updated" : "\(appName) is up to date"
+        alert.informativeText = "You're running v\(version)."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func item(_ title: String, _ sel: Selector) -> NSMenuItem {
