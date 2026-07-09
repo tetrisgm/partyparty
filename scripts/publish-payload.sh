@@ -4,9 +4,10 @@
 # DJ's Mac fetches, verifies, and serves it within ~15 minutes; guests get it
 # on their next page load. No Sparkle, no relaunch.
 #
-# This is the "minor version" path. Bump web/PAYLOAD_VERSION, edit web/*, run
-# this. Reach for scripts/release.sh (the "major"/container path) only when the
-# native app or its API changed — i.e. when you also bumped ota.RuntimeVersion.
+# This is the "minor version" path. The owner-facing scripts/ship.sh
+# --payload-only command bumps web/PAYLOAD_VERSION and then calls this. Reach
+# for scripts/ship.sh (the "major"/container path) only when the native app or
+# its API changed — i.e. when you also bumped ota.RuntimeVersion.
 #
 # Security: the payload is executable JS we hand to guests' phones, so the
 # manifest is ed25519-signed with the private key at
@@ -38,14 +39,14 @@ trap 'rm -rf "$WORK"' EXIT
 BUNDLE="$WORK/payload-$VERSION.tar.gz"
 URL="$BASE/content/payload-$VERSION.tar.gz"
 
-echo ">> [1/4] build bundle from web/ (payload v$VERSION, minRuntime $MINRUNTIME)"
+echo ">> [1/5] build bundle from web/ (payload v$VERSION, minRuntime $MINRUNTIME)"
 # Exactly what the Mac serves — the contents of web/, no web/ prefix. Skip
 # macOS cruft so the bundle is clean.
 tar --exclude='.DS_Store' --exclude='._*' -czf "$BUNDLE" -C web .
 SHA="$(shasum -a 256 "$BUNDLE" | awk '{print $1}')"
 echo "   sha256=$SHA  size=$(wc -c < "$BUNDLE" | tr -d ' ')B"
 
-echo ">> [2/4] sign manifest (ed25519)"
+echo ">> [2/5] sign manifest (ed25519)"
 # The signed message must match ota.manifest.signedMessage() byte-for-byte:
 # "partyparty-payload-v1\n<ver>\n<minRuntime>\n<url>\n<sha>" (NO trailing \n).
 SIG="$(

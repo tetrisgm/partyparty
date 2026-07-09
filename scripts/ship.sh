@@ -8,6 +8,7 @@
 #   scripts/ship.sh 29.52                 # explicit full native app release
 #   scripts/ship.sh --payload-only        # OTA web payload release, bumps Y in X.Y
 #   scripts/ship.sh 28.53 --payload-only  # explicit OTA web payload release
+#   scripts/ship.sh --dry-run             # verify/plan only, publish nothing
 #   scripts/ship.sh --allow-dirty
 #   scripts/ship.sh --skip-tests
 set -euo pipefail
@@ -18,6 +19,7 @@ MODE="app"
 VERSION=""
 ALLOW_DIRTY=0
 SKIP_TESTS=0
+DRY_RUN=0
 
 usage() {
   sed -n '1,12p' "$0" >&2
@@ -29,6 +31,7 @@ while [ "$#" -gt 0 ]; do
     --payload-only|--ota-only) MODE="payload" ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
     --skip-tests) SKIP_TESTS=1 ;;
+    --dry-run|--no-publish) DRY_RUN=1 ;;
     -h|--help) usage; exit 0 ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -112,7 +115,6 @@ verify_swift() {
 }
 
 echo ">> ship partyparty $VERSION ($MODE)"
-set_version_files
 
 if [ "$SKIP_TESTS" != "1" ]; then
   echo ">> verify Go"
@@ -124,6 +126,20 @@ if [ "$SKIP_TESTS" != "1" ]; then
     verify_swift
   fi
 fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo ">> dry-run: would set CODE_MAJOR=$NEXT_CODE and web/PAYLOAD_VERSION=$NEXT_PAYLOAD"
+  if [ "$MODE" = "payload" ]; then
+    echo ">> dry-run: would publish signed OTA payload via scripts/publish-payload.sh"
+  else
+    echo ">> dry-run: would publish native app via scripts/release.sh"
+  fi
+  echo
+  echo "Dry-run complete; nothing built for release and nothing published."
+  exit 0
+fi
+
+set_version_files
 
 if [ "$MODE" = "payload" ]; then
   echo ">> publish OTA payload $VERSION"

@@ -2,8 +2,8 @@
 # Cut a release from your Mac and publish it to party.ramine.net.
 #
 # Does everything: build + Developer-ID sign + notarize + staple, package the
-# versioned zip, sign the Sparkle appcast, and push the versioned zip + a
-# "latest" alias + appcast.xml to R2, then deploy the Worker + landing page.
+# versioned zip, sign the Sparkle appcast, push versioned downloads + "latest"
+# aliases to R2, deploy the Worker + landing page, then flip update feeds.
 #
 # No GitHub/CI secrets required — uses your local Developer ID cert, the
 # `pp-notary` notarytool profile, and the Sparkle key in your login keychain.
@@ -39,10 +39,10 @@ echo ">> version v$VERSION (build $BUILD)"
 "$WR" whoami >/dev/null 2>&1 || { echo "Not logged in — run: (cd cloudflare && npx wrangler login)"; exit 1; }
 [ -x "$SPK/generate_appcast" ] || { echo "Sparkle tools missing — run: swift build --package-path app"; exit 1; }
 
-echo ">> [1/5] build + notarize v$VERSION"
+echo ">> [1/6] build + notarize v$VERSION"
 make notarize
 
-echo ">> [2/5] package dist/partyparty-$VERSION.zip + installer pkg"
+echo ">> [2/6] package dist/partyparty-$VERSION.zip + installer pkg"
 rm -rf dist && mkdir -p dist
 ditto -c -k --keepParent "$APP" "dist/partyparty-$VERSION.zip"
 
@@ -90,7 +90,7 @@ xcrun notarytool submit "dist/partyparty-$VERSION.pkg" --keychain-profile pp-not
 xcrun stapler staple "dist/partyparty-$VERSION.pkg"
 spctl -a -vv -t install "dist/partyparty-$VERSION.pkg" || true
 
-echo ">> [3/5] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
+echo ">> [3/6] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
 # click "Always Allow"). Enclosure URLs point at party.ramine.net.
 if [ -n "${SPARKLE_ED_KEY_FILE:-}" ]; then
@@ -103,15 +103,17 @@ echo ">> [4/6] upload release artifacts to R2"
 cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
 cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.zip" --file "dist/partyparty-$VERSION.zip" --content-type application/zip --remote
-"$WR" r2 object put "$BUCKET/partyparty.zip"          --file "dist/partyparty.zip"          --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.pkg" --file "dist/partyparty-$VERSION.pkg" --content-type application/octet-stream --remote
+"$WR" r2 object put "$BUCKET/partyparty.zip"          --file "dist/partyparty.zip"          --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
-"$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
 
 echo ">> [5/6] deploy Worker + landing page"
 ( cd cloudflare && "$WR" deploy )
 
-echo ">> [6/6] flip app-update marker"
+echo ">> [6/6] flip appcast + app-update marker"
+# Sparkle's appcast is an update feed, so it flips only after the versioned
+# artifacts, stable public downloads, and Worker route are already live.
+"$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
 # One-line app-version marker so /content/subscribe can push app updates the
 # instant a build lands (the Mac then triggers Sparkle). Written last, after the
 # zip/appcast and Worker deployment it points at are already up.
