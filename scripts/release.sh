@@ -90,7 +90,7 @@ xcrun notarytool submit "dist/partyparty-$VERSION.pkg" --keychain-profile pp-not
 xcrun stapler staple "dist/partyparty-$VERSION.pkg"
 spctl -a -vv -t install "dist/partyparty-$VERSION.pkg" || true
 
-echo ">> [3/6] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
+echo ">> [3/7] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
 # click "Always Allow"). Enclosure URLs point at party.ramine.net.
 if [ -n "${SPARKLE_ED_KEY_FILE:-}" ]; then
@@ -99,7 +99,17 @@ else
   "$SPK/generate_appcast" --download-url-prefix "https://party.ramine.net/" dist
 fi
 
-echo ">> [4/6] upload release artifacts to R2"
+echo ">> [4/7] verify app bundle + appcast metadata"
+"$ROOT/scripts/verify-release-artifacts.py" \
+  --version "$VERSION" \
+  --build "$BUILD" \
+  --app "$APP" \
+  --zip "dist/partyparty-$VERSION.zip" \
+  --appcast "dist/appcast.xml" \
+  --base-url "https://party.ramine.net" \
+  --require-newer-than-installed
+
+echo ">> [5/7] upload release artifacts to R2"
 cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
 cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.zip" --file "dist/partyparty-$VERSION.zip" --content-type application/zip --remote
@@ -107,10 +117,10 @@ cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty.zip"          --file "dist/partyparty.zip"          --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
 
-echo ">> [5/6] deploy Worker + landing page"
+echo ">> [6/7] deploy Worker + landing page"
 ( cd cloudflare && "$WR" deploy )
 
-echo ">> [6/6] flip appcast + app-update marker"
+echo ">> [7/7] flip appcast + app-update marker"
 # Sparkle's appcast is an update feed, so it flips only after the versioned
 # artifacts, stable public downloads, and Worker route are already live.
 "$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
@@ -119,6 +129,17 @@ echo ">> [6/6] flip appcast + app-update marker"
 # zip/appcast and Worker deployment it points at are already up.
 printf '%s' "$VERSION" > dist/app-version
 "$WR" r2 object put "$BUCKET/content/app-version"     --file "dist/app-version"             --content-type text/plain --remote
+
+echo ">> verify public appcast + download metadata"
+"$ROOT/scripts/verify-release-artifacts.py" \
+  --version "$VERSION" \
+  --build "$BUILD" \
+  --app "$APP" \
+  --zip "dist/partyparty-$VERSION.zip" \
+  --appcast "dist/appcast.xml" \
+  --base-url "https://party.ramine.net" \
+  --require-newer-than-installed \
+  --public
 
 echo
 echo "Released v$VERSION"
