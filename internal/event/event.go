@@ -183,6 +183,10 @@ var linkTypeLabels = map[string]string{
 	"other":            "Link",
 }
 
+func isLegacyAutoTitle(title, dirName string) bool {
+	return strings.TrimSpace(title) == "party "+strings.TrimSpace(dirName)
+}
+
 func normalizeState(state string) string {
 	switch state {
 	case StatePending, StateHidden:
@@ -582,15 +586,23 @@ func (s *Store) use(dir string) error {
 	if data, err := os.ReadFile(filepath.Join(dir, "guests.json")); err == nil {
 		_ = json.Unmarshal(data, &guests)
 	}
-	meta := Meta{Title: "party " + filepath.Base(dir), Host: "the DJ"}
+	dirName := filepath.Base(dir)
+	meta := Meta{Title: "partyparty", Host: "the DJ"}
 	if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
 		_ = json.Unmarshal(data, &meta)
 	}
+	legacyAutoTitle := isLegacyAutoTitle(meta.Title, dirName)
 	meta.Features = normalizeFeatures(meta.Features)
 	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
 	meta.RetentionMode = normalizeRetentionMode(meta.RetentionMode)
 	meta.Status = normalizeStatus(meta.Status)
 	meta.Links, _ = normalizeLinks(meta.Links)
+	if legacyAutoTitle {
+		meta.Title = "partyparty"
+		if data, err := json.MarshalIndent(meta, "", " "); err == nil {
+			_ = os.WriteFile(filepath.Join(dir, "meta.json"), data, 0o644)
+		}
+	}
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
 	s.currentTrack, s.recentTracks, s.trackAsks = currentTrack, recentTracks, nil
@@ -897,12 +909,15 @@ func (s *Store) List() []Info {
 			continue
 		}
 		dir := filepath.Join(base, e.Name())
-		info := Info{Dir: e.Name(), Title: "party " + e.Name(), Current: dir == cur}
+		info := Info{Dir: e.Name(), Title: "partyparty", Current: dir == cur}
 		if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
 			var m Meta
 			if json.Unmarshal(data, &m) == nil {
 				if m.Title != "" {
 					info.Title = m.Title
+					if isLegacyAutoTitle(info.Title, e.Name()) {
+						info.Title = "partyparty"
+					}
 				}
 				info.Starts = m.Starts
 			}

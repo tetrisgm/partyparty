@@ -244,12 +244,12 @@
   .requestactions button:hover{background:var(--fill-hover);color:var(--label)}
   .requestactions .danger{color:var(--danger)}
   .requestempty{color:var(--label-tertiary);font-size:12px;padding:4px 0}
-  /* ── Admin action bar (sticky): source · share · settings · GO LIVE ── */
+  /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
   #actionbar{position:sticky;top:0;z-index:20;background:var(--glass-bg);
     -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
     border-bottom:1px solid var(--separator)}
   .abinner{max-width:none;margin:0;padding:10px 20px;display:flex;align-items:center;gap:10px}
-  .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:auto}
+  .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:0}
   .source-picker{display:flex;align-items:center;gap:8px;min-width:230px;max-width:330px;flex:0 1 330px}
   .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
   .source-step label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -262,7 +262,7 @@
   .abbtn:hover{background:var(--fill-hover)}
   .abinner .iconbtn{width:34px;height:34px;border-radius:999px}
   .source-help{font-size:15px;font-weight:850}
-  .abspacer{flex:1}
+  .abspacer{flex:1;min-width:20px}
   .golive{height:52px;min-width:148px;padding:0 34px;border-radius:999px;font-size:17px;font-weight:850}
   .golive.go{background:var(--success);color:#fff;box-shadow:0 8px 22px rgba(52,199,89,.33)}
   .golive.go:hover{filter:brightness(1.04)}
@@ -282,6 +282,8 @@
   .event-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:0 0 auto;margin-top:6px}
   .event-actions .ghost,.event-actions .go{height:38px;border-radius:999px;padding:0 16px}
   .event-actions .go{background:var(--accent);color:#fff}
+  .event-action{display:inline-flex;align-items:center;gap:7px}
+  .event-action svg{width:15px;height:15px;display:block}
   .ehost{font-size:18px;color:var(--label-secondary);font-weight:500;margin:20px 0 0}
   .ehost b{color:var(--label);font-weight:750}
   .eventmeta{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
@@ -308,8 +310,6 @@
   .cover-action:disabled{cursor:default;opacity:.55}
   .cover-action.change{display:none}
   .eventcover.has-cover .cover-action.change{display:inline-flex;align-items:center}
-  .cover-action.remove{display:none}
-  .eventcover.has-cover .cover-action.remove{display:inline-flex;align-items:center}
   .cover-drop-hint{position:absolute;inset:0;z-index:3;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.28);color:#fff;font-size:14px;font-weight:750;opacity:0;pointer-events:none;transition:opacity .16s ease}
   .eventcover.dragging .cover-drop-hint{opacity:1}
   .cover-status{position:absolute;left:50%;top:16px;z-index:4;display:none;max-width:calc(100% - 32px);padding:7px 12px;border-radius:999px;background:rgba(20,20,24,.48);color:#fff;font-size:12px;font-weight:700;transform:translateX(-50%);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
@@ -368,7 +368,7 @@
   .pcount{margin-left:6px;background:var(--fill);border-radius:999px;padding:1px 7px;font-size:11px;color:var(--label-secondary)}
   .pcount:empty{display:none}
   .ptab.active .pcount{background:var(--fill)}
-  .party-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start;margin-top:28px}
+  .party-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start;margin-top:18px}
   .party-feed-col{min-width:0}
   .guest-sidebar{position:sticky;top:72px;display:grid;gap:16px;min-width:0}
   .guest-sidebar .card{margin-top:0}
@@ -411,10 +411,14 @@
   .recapresult a{color:var(--accent);font-weight:700;text-decoration:none}
   .recapresult a:hover{text-decoration:underline}
   .dangerbtn{background:var(--danger);color:#fff}
-  .event-admin-tools{display:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:16px;padding:14px;margin:0 0 16px}
+  .event-admin-tools{display:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:16px;padding:14px;margin:18px 0 0}
   body.event-manage-open .event-admin-tools{display:block}
+  body:not(.event-manage-open) .guest-sidebar .metrics,
+  body:not(.event-manage-open) .guest-sidebar .kv,
+  body:not(.event-manage-open) .guest-sidebar #detailsToggle,
+  body:not(.event-manage-open) .guest-sidebar #copySync{display:none!important}
   body.event-manage-open .eventhead .eventedit{display:block}
-  #eventCard{padding:24px}
+  #eventCard{padding:24px;margin-top:0!important}
   #eventCard .cardhead{margin-bottom:16px}
   #eventCard .cardhead h2{font-size:20px}
   #eventCard > .composer{background:rgba(255,255,255,.06)!important;border-radius:18px!important;padding:16px!important;margin-bottom:14px!important}
@@ -446,7 +450,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
-  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.event-actions{justify-content:flex-start}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:100%}}
+  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.event-actions{justify-content:flex-start}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.titlerow{flex-direction:column}.event-actions{justify-content:flex-start}}
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}}
@@ -478,6 +482,7 @@
 <div id="actionbar">
   <div class="abinner">
     <span class="brandmark">🕺 partyparty</span>
+    <span class="abspacer"></span>
     <div class="source-picker">
       <div class="source-step">
         <label id="sourceStepLabel" for="device">Audio source</label>
@@ -488,12 +493,7 @@
       </div>
     </div>
     <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
-    <button class="abbtn" id="shareOpenBtn" type="button" title="Show the guest link and QR">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
-      Share
-    </button>
     <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-    <span class="abspacer"></span>
     <span class="badge" id="badge" style="display:none"></span>
     <button class="golive go" id="liveBtn" type="button">Go Live</button>
   </div>
@@ -526,8 +526,8 @@
         <div class="cover-empty">
           <div>
             <div class="cam">🖼️</div>
-            <b>Add a cover</b>
-            <span class="muted">Drop an image here or choose one from your Mac.</span>
+            <b>Drop an image</b>
+            <span class="muted">Or shuffle a starting image and keep the one that fits.</span>
           </div>
         </div>
       </div>
@@ -535,7 +535,6 @@
       <div class="cover-toolbar">
         <button class="cover-action change" id="pubCoverChangeBtn" type="button">Shuffle image</button>
         <button class="cover-action" id="pubCoverBtn" type="button">Upload image</button>
-        <button class="cover-action remove" id="pubCoverRemoveBtn" type="button">Reset</button>
       </div>
       <span id="pubCoverResult" class="cover-status" role="status"></span>
     </div>
@@ -543,8 +542,18 @@
     <div class="titlerow">
       <h1 class="ename"><span id="titleEdit">partyparty</span></h1>
       <div class="event-actions">
-        <button class="ghost" id="eventEditBtn" type="button">Edit event</button>
-        <button class="go" id="eventShareBtn" type="button">Share Link</button>
+        <button class="ghost event-action" id="openFolderBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/></svg>
+          View folder
+        </button>
+        <button class="ghost event-action" id="eventEditBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Edit event
+        </button>
+        <button class="go event-action" id="eventShareBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
+          Share Link
+        </button>
       </div>
     </div>
     <div class="ehost">hosted by <b id="hostEdit">the DJ</b></div>
@@ -718,6 +727,92 @@
     </div>
   </div>
 
+  <div class="card event-admin-tools" id="eventManagePanel">
+    <div class="featurebar">
+      <a class="abbtn" href="/wall" target="_blank" rel="noopener" style="height:32px;text-decoration:none">Open wall (TV)</a>
+    </div>
+    <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
+    <div class="featurebar" id="moderationToggles" aria-label="Moderation mode"></div>
+    <div class="retentionbox">
+      <div class="retentiongrid">
+        <div>
+          <label for="retentionMode">Data retention</label>
+          <select id="retentionMode">
+            <option value="keep_approved">Keep approved</option>
+            <option value="archive_all">Archive all</option>
+            <option value="tonight_only">Tonight only</option>
+          </select>
+        </div>
+        <div class="retentiondesc" id="retentionDesc"></div>
+      </div>
+    </div>
+    <div class="endflow" id="endFlow">
+      <b id="endFlowTitle">End event</b>
+      <div class="retentiondesc" id="endFlowText"></div>
+      <div class="endactions" id="endFlowActions"></div>
+    </div>
+    <div class="recapbox" id="recapBox" hidden>
+      <b>After the event</b>
+      <div class="retentiondesc">Generate a local, self-contained recap before cleanup or deletion.</div>
+      <div class="recapactions">
+        <button class="go" id="generateRecapBtn" type="button">Generate recap</button>
+        <a class="abbtn" id="downloadRecapZip" href="/api/recap.zip" style="height:32px;text-decoration:none;display:none">Download recap (.zip)</a>
+      </div>
+      <div class="recapresult" id="recapResult"></div>
+    </div>
+    <div class="linkeditor" id="linkEditor">
+      <div class="linkeditor-head"><b>DJ links</b><span class="muted" id="linkEditorState"></span></div>
+      <div class="linkrows" id="linkRows"></div>
+      <div class="linkactions">
+        <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
+        <button class="go" id="saveLinksBtn" type="button">Save links</button>
+        <span class="linkstatus" id="linkStatus"></span>
+      </div>
+    </div>
+    <div class="reactionpanel" id="djReactions" hidden>
+      <div class="reactiongrid" id="djReactionGrid"></div>
+      <div class="spikeline" id="djReactionSpike"></div>
+    </div>
+    <div class="modqueue" id="modQueue" hidden>
+      <h3>Pending moderation</h3>
+      <div id="modList"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="openMediaBtn" style="flex:1">View contents folder</button>
+      <button class="ghost" id="eventsBtn" style="flex:1">Your events</button>
+    </div>
+    <div id="eventsPanel" hidden style="margin-top:12px;border-top:1px solid var(--separator);padding-top:12px">
+      <button class="ghost" id="freshBtn" style="width:100%">＋ Create new event</button>
+      <div class="eventcreate" id="createEventPanel">
+        <div class="eventform-grid">
+          <label class="eventform-field">
+            <span>Event name</span>
+            <input id="createEventTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Warehouse Friday">
+          </label>
+          <label class="eventform-field">
+            <span>Host / creator</span>
+            <input id="createEventHost" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Your DJ name">
+          </label>
+          <label class="eventform-field wide">
+            <span>Date and place</span>
+            <input id="createEventStarts" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Saturday 9pm, rooftop">
+          </label>
+          <label class="eventform-field wide">
+            <span>Online page</span>
+            <input id="createEventSlug" type="text" maxlength="48" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Auto">
+          </label>
+        </div>
+        <div class="eventform-actions">
+          <span class="eventform-status" id="createEventStatus"></span>
+          <button class="ghost" id="createEventCancelBtn" type="button">Cancel</button>
+          <button class="go" id="createEventSaveBtn" type="button">Create event</button>
+        </div>
+      </div>
+      <div id="eventsList" style="margin-top:8px"></div>
+    </div>
+    <div class="hint">Everything guests post and your set recordings land in one event folder. Your events lists every party page; a new event starts a fresh one and the old folders stay untouched.</div>
+  </div>
+
   <div class="party-grid">
     <main class="party-feed-col">
   <section id="ptab-wall">
@@ -761,91 +856,6 @@
         </div>
         <input type="file" id="djFiles" accept="image/*,video/*,audio/*" multiple hidden>
       </div>
-      <div class="event-admin-tools" id="eventManagePanel">
-      <div class="featurebar">
-        <a class="abbtn" href="/wall" target="_blank" rel="noopener" style="height:32px;text-decoration:none">Open wall (TV)</a>
-      </div>
-      <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
-      <div class="featurebar" id="moderationToggles" aria-label="Moderation mode"></div>
-      <div class="retentionbox">
-        <div class="retentiongrid">
-          <div>
-            <label for="retentionMode">Data retention</label>
-            <select id="retentionMode">
-              <option value="keep_approved">Keep approved</option>
-              <option value="archive_all">Archive all</option>
-              <option value="tonight_only">Tonight only</option>
-            </select>
-          </div>
-          <div class="retentiondesc" id="retentionDesc"></div>
-        </div>
-      </div>
-      <div class="endflow" id="endFlow">
-        <b id="endFlowTitle">End event</b>
-        <div class="retentiondesc" id="endFlowText"></div>
-        <div class="endactions" id="endFlowActions"></div>
-      </div>
-      <div class="recapbox" id="recapBox" hidden>
-        <b>After the event</b>
-        <div class="retentiondesc">Generate a local, self-contained recap before cleanup or deletion.</div>
-        <div class="recapactions">
-          <button class="go" id="generateRecapBtn" type="button">Generate recap</button>
-          <a class="abbtn" id="downloadRecapZip" href="/api/recap.zip" style="height:32px;text-decoration:none;display:none">Download recap (.zip)</a>
-        </div>
-        <div class="recapresult" id="recapResult"></div>
-      </div>
-      <div class="linkeditor" id="linkEditor">
-        <div class="linkeditor-head"><b>DJ links</b><span class="muted" id="linkEditorState"></span></div>
-        <div class="linkrows" id="linkRows"></div>
-        <div class="linkactions">
-          <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
-          <button class="go" id="saveLinksBtn" type="button">Save links</button>
-          <span class="linkstatus" id="linkStatus"></span>
-        </div>
-      </div>
-      <div class="reactionpanel" id="djReactions" hidden>
-        <div class="reactiongrid" id="djReactionGrid"></div>
-        <div class="spikeline" id="djReactionSpike"></div>
-      </div>
-      <div class="modqueue" id="modQueue" hidden>
-        <h3>Pending moderation</h3>
-        <div id="modList"></div>
-      </div>
-      <div class="row" style="margin-top:12px">
-        <button class="ghost" id="openMediaBtn" style="flex:1">Open media folder</button>
-        <button class="ghost" id="eventsBtn" style="flex:1">Your events</button>
-      </div>
-      <div id="eventsPanel" hidden style="margin-top:12px;border-top:1px solid var(--separator);padding-top:12px">
-        <button class="ghost" id="freshBtn" style="width:100%">＋ Create new event</button>
-        <div class="eventcreate" id="createEventPanel">
-          <div class="eventform-grid">
-            <label class="eventform-field">
-              <span>Event name</span>
-              <input id="createEventTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Warehouse Friday">
-            </label>
-            <label class="eventform-field">
-              <span>Host / creator</span>
-              <input id="createEventHost" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Your DJ name">
-            </label>
-            <label class="eventform-field wide">
-              <span>Date and place</span>
-              <input id="createEventStarts" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Saturday 9pm, rooftop">
-            </label>
-            <label class="eventform-field wide">
-              <span>Online page</span>
-              <input id="createEventSlug" type="text" maxlength="48" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Auto">
-            </label>
-          </div>
-          <div class="eventform-actions">
-            <span class="eventform-status" id="createEventStatus"></span>
-            <button class="ghost" id="createEventCancelBtn" type="button">Cancel</button>
-            <button class="go" id="createEventSaveBtn" type="button">Create event</button>
-          </div>
-        </div>
-        <div id="eventsList" style="margin-top:8px"></div>
-      </div>
-      <div class="hint">Everything guests post (and your set recordings) lands in one folder — drag straight from Finder. "Your events" lists every party page; a new event starts a fresh one and the old folders stay untouched.</div>
-      </div>
       <div id="djFeed"></div>
     </div>
   </section>
@@ -864,11 +874,8 @@
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
-    <div class="card">
-      <h2>On the wall</h2>
-      <div id="wallAuthors" class="chips"><span class="muted">Nobody has posted yet.</span></div>
-    </div>
   </aside>
+  <div id="wallAuthors" hidden></div>
   </div>
 </div>
 
@@ -1429,20 +1436,19 @@
   }
 
   // Share card: open by default while setting up; closing sticks until the
-  // Share button brings it back.
+  // event Share Link button brings it back.
   {
     const card = $('shareCard');
-    card.style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
-    $('shareCloseBtn').onclick = () => { card.style.display = 'none'; localStorage.setItem('pp.shareClosed', '1'); };
-    $('shareOpenBtn').onclick = () => {
-      const open = card.style.display !== 'none';
-      card.style.display = open ? 'none' : 'block';
-      localStorage.setItem('pp.shareClosed', open ? '1' : '0');
+    const setShareOpen = (open, scroll) => {
+      card.style.display = open ? 'block' : 'none';
+      localStorage.setItem('pp.shareClosed', open ? '0' : '1');
       renderGuestSetup(lastNetworkSituation, lastGuestSetupOpts || {});
-      if (!open) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (open && scroll) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
+    card.style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
+    $('shareCloseBtn').onclick = () => setShareOpen(false, false);
     const heroShare = $('eventShareBtn');
-    if (heroShare) heroShare.onclick = () => $('shareOpenBtn').click();
+    if (heroShare) heroShare.onclick = () => setShareOpen(card.style.display === 'none', true);
   }
 
   // First-run activation sequence: staged lines, typed character by
@@ -2269,7 +2275,7 @@
       } else {
         $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('copySync').style.display = 'none';
       }
-      const details = detailsOn;
+      const details = detailsOn && document.body.classList.contains('event-manage-open');
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
       $('roster').innerHTML = roster.map((r, i) => {
         // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
@@ -2374,15 +2380,21 @@
     setInputValue('eventSlugInput', eventMeta.slug);
     setFormStatus('eventEditStatus', '', '');
   }
+  function renderEventEditButton(open){
+    const btn = $('eventEditBtn');
+    if (!btn) return;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' + (open ? 'Done' : 'Edit event');
+  }
   function setEventEditOpen(open){
     eventEditOpen = !!open;
-    const panel = $('eventEditPanel'), btn = $('eventEditBtn');
+    const panel = $('eventEditPanel');
     if (panel) panel.classList.toggle('show', eventEditOpen);
     document.body.classList.toggle('event-manage-open', eventEditOpen);
     const head = $('eventHead');
     if (head) head.classList.toggle('editing', eventEditOpen);
-    if (btn) btn.textContent = eventEditOpen ? 'Done' : 'Edit event';
+    renderEventEditButton(eventEditOpen);
     if (eventEditOpen) fillEventEditForm();
+    refresh();
   }
   if ($('eventEditBtn')) $('eventEditBtn').onclick = () => setEventEditOpen(!eventEditOpen);
   if ($('eventEditCancelBtn')) $('eventEditCancelBtn').onclick = () => setEventEditOpen(false);
@@ -2427,13 +2439,19 @@
   let pubSlugTouched = false;
   const pubSlug = $('pubSlug'), pubBtn = $('pubBtn'), pubResult = $('pubResult');
   const pubFields = $('pubFields'), pubFieldsBtn = $('pubFieldsBtn');
-  const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverChangeBtn = $('pubCoverChangeBtn'), pubCoverRemoveBtn = $('pubCoverRemoveBtn'), pubCoverResult = $('pubCoverResult'), eventCover = $('eventCover'), eventCoverImg = $('eventCoverImg');
+  const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverChangeBtn = $('pubCoverChangeBtn'), pubCoverResult = $('pubCoverResult'), eventCover = $('eventCover'), eventCoverImg = $('eventCoverImg');
   const COVER_PILE = [
     '/covers/hero.jpg',
     '/covers/dance.webp',
     '/covers/decks.webp',
     '/covers/crowd.webp',
-    '/covers/party.jpg'
+    '/covers/party.jpg',
+    '/covers/concert.webp',
+    '/covers/club-lights.webp',
+    '/covers/dancefloor.webp',
+    '/covers/rooftop.webp',
+    '/covers/warehouse.webp',
+    '/covers/soundcheck.webp'
   ];
   let coverPreviewURL = '';
   let currentCover = { kind: '', index: 0, src: '', uploaded: false, file: null };
@@ -2444,10 +2462,9 @@
     pubCoverResult.classList.toggle('error', kind === 'error');
   }
   function setCoverBusy(on){
-    [pubCoverBtn, pubCoverChangeBtn, pubCoverRemoveBtn].forEach((b) => { if (b) b.disabled = !!on; });
+    [pubCoverBtn, pubCoverChangeBtn].forEach((b) => { if (b) b.disabled = !!on; });
     if (pubCoverBtn) pubCoverBtn.textContent = on ? 'Uploading' : 'Upload image';
     if (pubCoverChangeBtn) pubCoverChangeBtn.textContent = on ? 'Working' : 'Shuffle image';
-    if (pubCoverRemoveBtn) pubCoverRemoveBtn.textContent = on ? 'Resetting' : 'Reset';
   }
   function coverStorageKey(){
     return 'pp.coverIndex.' + (eventMeta.slug || 'current');
@@ -2479,8 +2496,8 @@
     setCoverImage(src);
     rememberCoverIndex(next);
     currentCover = { kind: 'curated', index: next, src, uploaded: false, file: null };
-    if (opts.status) setCoverStatus(onlinePagePublished ? 'Cover picked. Updating the online page…' : 'Cover picked', '');
-    if (opts.upload) return uploadCurrentCover('Cover image set');
+    if (opts.status) setCoverStatus('', '');
+    if (opts.upload) return uploadCurrentCover('');
   }
   function coverFilename(src){
     const name = String(src || '').split('/').pop() || 'cover.jpg';
@@ -2520,7 +2537,7 @@
     try {
       const picked = await currentCoverBlob();
       await uploadCoverBlob(picked.blob, picked.filename);
-      setCoverStatus(successMessage || 'Cover image set', '');
+      setCoverStatus(successMessage || '', '');
       return true;
     } catch (e) {
       setCoverStatus('Couldn’t set cover: ' + (e.message || e), 'error');
@@ -2552,16 +2569,13 @@
     setCoverStatus('Uploading cover…', '');
     try {
       await uploadCoverBlob(file, file.name);
-      setCoverStatus('Cover image set', '');
+      setCoverStatus('', '');
       if (pubCoverFile) pubCoverFile.value = '';
     } catch (e) {
       setCoverStatus('Couldn’t set cover: ' + (e.message || e), 'error');
     } finally {
       setCoverBusy(false);
     }
-  }
-  async function resetCoverImage(){
-    await selectCuratedCover(0, { status: true, upload: onlinePagePublished });
   }
   function setPubFieldsOpen(open, focus){
     if (!pubFields) return;
@@ -2590,7 +2604,6 @@
   selectCuratedCover(savedCoverIndex());
   if (pubCoverBtn) pubCoverBtn.addEventListener('click', pickCover);
   if (pubCoverChangeBtn) pubCoverChangeBtn.addEventListener('click', shuffleCoverImage);
-  if (pubCoverRemoveBtn) pubCoverRemoveBtn.addEventListener('click', resetCoverImage);
   if (pubCoverFile) pubCoverFile.addEventListener('change', () => uploadCoverFile(pubCoverFile.files && pubCoverFile.files[0]));
   if (eventCover) {
     eventCover.addEventListener('dragenter', (e) => {
@@ -3477,7 +3490,18 @@
       } catch (e) { $('djAttachN').textContent = e.message; }
       finally { $('djPostBtn').disabled = false; $('djPostBtn').textContent = 'Post'; }
     };
-    $('openMediaBtn').onclick = () => fetch('/api/open-media', { method:'POST' });
+    function todayEventDate(){
+      try {
+        return new Date().toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+      } catch (e) {
+        return new Date().toISOString().slice(0, 10);
+      }
+    }
+    function openCurrentEventFolder(){
+      return fetch('/api/open-media', { method:'POST' });
+    }
+    if ($('openMediaBtn')) $('openMediaBtn').onclick = openCurrentEventFolder;
+    if ($('openFolderBtn')) $('openFolderBtn').onclick = openCurrentEventFolder;
     function setCreateEventOpen(open){
       const panel = $('createEventPanel'), btn = $('freshBtn');
       if (!panel || !btn) return;
@@ -3488,7 +3512,7 @@
         $('createEventTitle').value = '';
         const accountHost = accountName(currentAccountState || {});
         $('createEventHost').value = (eventMeta.host && eventMeta.host !== 'the DJ') ? eventMeta.host : accountHost;
-        $('createEventStarts').value = '';
+        $('createEventStarts').value = todayEventDate();
         $('createEventSlug').value = '';
         setTimeout(() => $('createEventTitle').focus(), 80);
       }
