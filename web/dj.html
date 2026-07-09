@@ -20,7 +20,7 @@
     --r-sm:10px; --r-md:14px; --r-pill:980px;
   }
   *{box-sizing:border-box}
-  body{margin:0;padding-bottom:40px;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
+  body{margin:0;padding-bottom:40px;overflow-x:hidden;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
   body.account-locked{padding-bottom:0;overflow:hidden}
   [hidden]{display:none!important}
@@ -271,6 +271,7 @@
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   .page{max-width:1060px;margin:0 auto;padding:28px 24px 72px}
   .eventtop{display:grid;grid-template-columns:1fr;gap:18px;align-items:stretch}
+  .eventtop > .card + .card{margin-top:0}
   header.eventhead{width:100%;max-width:none;padding:30px}
   .herocard{min-height:0}
   .statuspill{display:inline-flex;align-items:center;gap:8px;width:fit-content;border-radius:999px;padding:8px 14px;margin:0 0 22px;background:var(--fill);color:var(--label-secondary);font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
@@ -291,7 +292,7 @@
   .hostlinks .ll{display:inline-flex;align-items:center;gap:7px;height:44px;border:1px solid var(--separator);border-radius:999px;padding:0 17px;background:rgba(255,255,255,.03);color:var(--label);font-size:14px;font-weight:750}
   .hostlinks .ll.accent{background:var(--accent);border-color:transparent;color:#fff}
   .hostlinks .ll.add{border-style:dashed;color:var(--link);background:transparent}
-  .eventcover{position:relative;overflow:hidden;border-radius:24px;height:clamp(260px,30vw,340px);display:block;text-align:center;background:linear-gradient(135deg,#262629 0%,#171719 52%,#3f1027 100%);color:var(--label-secondary)}
+  .eventcover{position:relative;width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);overflow:hidden;border:0;border-radius:0;padding:0;box-shadow:none;height:clamp(300px,34vw,460px);display:block;text-align:center;background:linear-gradient(135deg,#262629 0%,#171719 52%,#3f1027 100%);color:var(--label-secondary)}
   .cover-media{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}
   .cover-media img{width:100%;height:100%;object-fit:cover;display:none}
   .eventcover.has-cover .cover-media img{display:block}
@@ -300,7 +301,7 @@
   .eventcover .cam{font-size:36px;margin-bottom:12px;opacity:.62}
   .cover-empty b{display:block;color:var(--label);font-size:17px;margin-bottom:4px}
   .cover-empty .muted{display:block;max-width:320px;margin:0 auto;color:var(--label-secondary);font-size:13px;line-height:1.45}
-  .cover-toolbar{position:absolute;left:50%;bottom:16px;z-index:4;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:calc(100% - 32px);padding:5px;border-radius:999px;background:rgba(20,20,24,.46);box-shadow:0 16px 40px -26px rgba(0,0,0,.5);opacity:0;pointer-events:none;transform:translateX(-50%);transition:opacity .16s ease;-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%)}
+  .cover-toolbar{position:absolute;left:50%;bottom:16px;z-index:4;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:calc(100% - 32px);padding:5px;border-radius:999px;background:rgba(20,20,24,.46);box-shadow:0 16px 40px -26px rgba(0,0,0,.5);opacity:1;pointer-events:auto;transform:translateX(-50%);transition:opacity .16s ease;-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%)}
   .eventcover:not(.has-cover) .cover-toolbar,.eventcover:hover .cover-toolbar,.eventcover:focus-within .cover-toolbar,.eventcover.dragging .cover-toolbar,body.event-manage-open .eventcover .cover-toolbar{opacity:1;pointer-events:auto}
   .cover-action{min-height:32px;border:0;border-radius:999px;padding:0 12px;background:rgba(255,255,255,.18);color:#fff;font:650 12px/1 var(--sans);cursor:pointer}
   .cover-action:hover,.cover-action:focus-visible{background:rgba(255,255,255,.28)}
@@ -524,9 +525,9 @@
       </div>
       <div class="cover-drop-hint" aria-hidden="true">Drop to replace image</div>
       <div class="cover-toolbar">
-        <button class="cover-action change" id="pubCoverChangeBtn" type="button">Change image</button>
+        <button class="cover-action change" id="pubCoverChangeBtn" type="button">Shuffle image</button>
         <button class="cover-action" id="pubCoverBtn" type="button">Upload image</button>
-        <button class="cover-action remove" id="pubCoverRemoveBtn" type="button">Remove</button>
+        <button class="cover-action remove" id="pubCoverRemoveBtn" type="button">Reset</button>
       </div>
       <span id="pubCoverResult" class="cover-status" role="status"></span>
     </div>
@@ -972,6 +973,7 @@
   let qrText = null, lastState = 'idle';
   const ONLINE_BASE = 'https://party.ramine.net';
   let lastOnlineSlug = '';
+  let onlinePagePublished = false;
   function escT(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
@@ -1008,6 +1010,7 @@
   }
   function renderOnline(slug, url, published){
     lastOnlineSlug = typeof slug === 'string' ? slug.trim() : '';
+    onlinePagePublished = !!published;
     const saved = localStorage.getItem('pp.lastEventUrl') || '';
     const eventUrl = url || (published && lastOnlineSlug ? (ONLINE_BASE + '/e/' + encodeURIComponent(lastOnlineSlug)) : saved);
     if (eventUrl) {
@@ -2339,7 +2342,15 @@
   const pubSlug = $('pubSlug'), pubBtn = $('pubBtn'), pubResult = $('pubResult');
   const pubFields = $('pubFields'), pubFieldsBtn = $('pubFieldsBtn');
   const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverChangeBtn = $('pubCoverChangeBtn'), pubCoverRemoveBtn = $('pubCoverRemoveBtn'), pubCoverResult = $('pubCoverResult'), eventCover = $('eventCover'), eventCoverImg = $('eventCoverImg');
+  const COVER_PILE = [
+    '/covers/hero.jpg',
+    '/covers/dance.webp',
+    '/covers/decks.webp',
+    '/covers/crowd.webp',
+    '/covers/party.jpg'
+  ];
   let coverPreviewURL = '';
+  let currentCover = { kind: '', index: 0, src: '', uploaded: false, file: null };
   function setCoverStatus(msg, kind){
     if (!pubCoverResult) return;
     pubCoverResult.textContent = msg || '';
@@ -2349,16 +2360,101 @@
   function setCoverBusy(on){
     [pubCoverBtn, pubCoverChangeBtn, pubCoverRemoveBtn].forEach((b) => { if (b) b.disabled = !!on; });
     if (pubCoverBtn) pubCoverBtn.textContent = on ? 'Uploading' : 'Upload image';
+    if (pubCoverChangeBtn) pubCoverChangeBtn.textContent = on ? 'Working' : 'Shuffle image';
+    if (pubCoverRemoveBtn) pubCoverRemoveBtn.textContent = on ? 'Resetting' : 'Reset';
+  }
+  function coverStorageKey(){
+    return 'pp.coverIndex.' + (eventMeta.slug || 'current');
+  }
+  function savedCoverIndex(){
+    const keyed = localStorage.getItem(coverStorageKey());
+    const generic = keyed == null ? localStorage.getItem('pp.coverIndex') : keyed;
+    const n = Number(generic);
+    return Number.isFinite(n) && n >= 0 ? n % COVER_PILE.length : Math.floor(Math.random() * COVER_PILE.length);
+  }
+  function rememberCoverIndex(index){
+    localStorage.setItem('pp.coverIndex', String(index));
+    localStorage.setItem(coverStorageKey(), String(index));
+  }
+  function setCoverImage(src){
+    if (!eventCover || !eventCoverImg || !src) return;
+    if (coverPreviewURL && coverPreviewURL !== src) {
+      URL.revokeObjectURL(coverPreviewURL);
+      coverPreviewURL = '';
+    }
+    eventCoverImg.src = src;
+    eventCover.classList.add('has-cover');
+  }
+  function selectCuratedCover(index, opts){
+    opts = opts || {};
+    if (!COVER_PILE.length) return;
+    const next = ((Number(index) || 0) % COVER_PILE.length + COVER_PILE.length) % COVER_PILE.length;
+    const src = COVER_PILE[next];
+    setCoverImage(src);
+    rememberCoverIndex(next);
+    currentCover = { kind: 'curated', index: next, src, uploaded: false, file: null };
+    if (opts.status) setCoverStatus(onlinePagePublished ? 'Cover picked. Updating the online page…' : 'Cover picked', '');
+    if (opts.upload) return uploadCurrentCover('Cover image set');
+  }
+  function coverFilename(src){
+    const name = String(src || '').split('/').pop() || 'cover.jpg';
+    return name.indexOf('.') > 0 ? name : 'cover.jpg';
   }
   function showCoverPreview(file){
     if (!file || !eventCover || !eventCoverImg) return;
     if (coverPreviewURL) URL.revokeObjectURL(coverPreviewURL);
     coverPreviewURL = URL.createObjectURL(file);
-    eventCoverImg.src = coverPreviewURL;
-    eventCover.classList.add('has-cover');
+    setCoverImage(coverPreviewURL);
+    currentCover = { kind: 'upload', index: -1, src: coverPreviewURL, uploaded: false, file };
   }
   function pickCover(){ if (pubCoverFile) pubCoverFile.click(); }
   function hasFileDrop(e){ return e && e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'); }
+  async function currentCoverBlob(){
+    if (!currentCover || !currentCover.src) throw new Error('no cover selected');
+    if (currentCover.kind === 'upload' && currentCover.file) {
+      return { blob: currentCover.file, filename: currentCover.file.name || 'cover.jpg' };
+    }
+    const r = await fetch(currentCover.src, { cache:'force-cache' });
+    if (!r.ok) throw new Error('cover image unavailable');
+    return { blob: await r.blob(), filename: coverFilename(currentCover.src) };
+  }
+  async function uploadCoverBlob(blob, filename){
+    await savePubSlug();
+    const fd = new FormData();
+    fd.append('file', blob, filename || 'cover.jpg');
+    const r = await fetch('/api/event-cover', { method:'POST', body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || 'upload failed');
+    currentCover.uploaded = true;
+  }
+  async function uploadCurrentCover(successMessage){
+    if (!currentCover || !currentCover.src) return true;
+    setCoverBusy(true);
+    setCoverStatus('Uploading cover…', '');
+    try {
+      const picked = await currentCoverBlob();
+      await uploadCoverBlob(picked.blob, picked.filename);
+      setCoverStatus(successMessage || 'Cover image set', '');
+      return true;
+    } catch (e) {
+      setCoverStatus('Couldn’t set cover: ' + (e.message || e), 'error');
+      return false;
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+  async function ensureCoverUploaded(){
+    if (!currentCover || !currentCover.src || currentCover.uploaded) return;
+    const picked = await currentCoverBlob();
+    await uploadCoverBlob(picked.blob, picked.filename);
+  }
+  async function shuffleCoverImage(){
+    let next = Math.floor(Math.random() * COVER_PILE.length);
+    if (COVER_PILE.length > 1 && currentCover.kind === 'curated') {
+      while (next === currentCover.index) next = Math.floor(Math.random() * COVER_PILE.length);
+    }
+    await selectCuratedCover(next, { status: true, upload: onlinePagePublished });
+  }
   async function uploadCoverFile(file){
     if (!file) return;
     if (!file.type || file.type.indexOf('image/') !== 0) {
@@ -2369,11 +2465,7 @@
     setCoverBusy(true);
     setCoverStatus('Uploading cover…', '');
     try {
-      await savePubSlug();
-      const fd = new FormData(); fd.append('file', file, file.name);
-      const r = await fetch('/api/event-cover', { method:'POST', body: fd });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) throw new Error(d.error || 'upload failed');
+      await uploadCoverBlob(file, file.name);
       setCoverStatus('Cover image set', '');
       if (pubCoverFile) pubCoverFile.value = '';
     } catch (e) {
@@ -2382,25 +2474,8 @@
       setCoverBusy(false);
     }
   }
-  async function removeCoverImage(){
-    if (!eventCover) return;
-    setCoverBusy(true);
-    setCoverStatus('Removing cover…', '');
-    try {
-      await savePubSlug();
-      const r = await fetch('/api/event-cover', { method:'DELETE' });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) throw new Error(d.error || 'remove failed');
-      if (coverPreviewURL) URL.revokeObjectURL(coverPreviewURL);
-      coverPreviewURL = '';
-      if (eventCoverImg) eventCoverImg.removeAttribute('src');
-      eventCover.classList.remove('has-cover');
-      setCoverStatus('Cover removed', '');
-    } catch (e) {
-      setCoverStatus('Couldn’t remove cover: ' + (e.message || e), 'error');
-    } finally {
-      setCoverBusy(false);
-    }
+  async function resetCoverImage(){
+    await selectCuratedCover(0, { status: true, upload: onlinePagePublished });
   }
   function setPubFieldsOpen(open, focus){
     if (!pubFields) return;
@@ -2426,9 +2501,10 @@
   pubSlug.addEventListener('input', () => { pubSlugTouched = true; });
   pubSlug.addEventListener('blur', savePubSlug);
   pubSlug.addEventListener('keydown', (e) => { if (e.key === 'Enter') pubSlug.blur(); });
+  selectCuratedCover(savedCoverIndex());
   if (pubCoverBtn) pubCoverBtn.addEventListener('click', pickCover);
-  if (pubCoverChangeBtn) pubCoverChangeBtn.addEventListener('click', pickCover);
-  if (pubCoverRemoveBtn) pubCoverRemoveBtn.addEventListener('click', removeCoverImage);
+  if (pubCoverChangeBtn) pubCoverChangeBtn.addEventListener('click', shuffleCoverImage);
+  if (pubCoverRemoveBtn) pubCoverRemoveBtn.addEventListener('click', resetCoverImage);
   if (pubCoverFile) pubCoverFile.addEventListener('change', () => uploadCoverFile(pubCoverFile.files && pubCoverFile.files[0]));
   if (eventCover) {
     eventCover.addEventListener('dragenter', (e) => {
@@ -2493,6 +2569,11 @@
     pubResult.textContent = 'Remuxing and uploading your set — this can take a moment…';
     try {
       await savePubSlug(); // land the slug BEFORE publishing, else it uses the old/auto one
+      if (currentCover && currentCover.src && !currentCover.uploaded) {
+        pubResult.textContent = 'Uploading cover image…';
+        await ensureCoverUploaded();
+        pubResult.textContent = 'Remuxing and uploading your set — this can take a moment…';
+      }
       const r = await fetch('/api/publish', { method:'POST' });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) throw new Error(d.error || 'publish failed');

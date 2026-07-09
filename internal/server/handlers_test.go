@@ -57,6 +57,9 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 		"listener.html": {Data: []byte("<html>listener __PP_VERSION__</html>")},
 		"dj.html":       {Data: []byte("<html>dj __PP_VERSION__</html>")},
 		"wall.html":     {Data: []byte("<html>wall __PP_VERSION__</html>")},
+		"covers/hero.jpg": {
+			Data: []byte("jpg stub"),
+		},
 		"vendor/hls.js": {Data: []byte("// hls.js stub")},
 	}
 	s := New(Deps{
@@ -1163,6 +1166,13 @@ func TestWebPagesAndRouting(t *testing.T) {
 	}
 	if cc := w.Header().Get("Cache-Control"); cc != "public, max-age=3600" {
 		t.Errorf("vendor cache-control = %q", cc)
+	}
+	w = do(env.srv, "GET", "/covers/hero.jpg", "")
+	if w.Code != http.StatusOK {
+		t.Errorf("cover = %d", w.Code)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "public, max-age=3600" {
+		t.Errorf("cover cache-control = %q", cc)
 	}
 	if w := do(env.srv, "GET", "/no-such-page", ""); w.Code != http.StatusNotFound {
 		t.Errorf("unknown path (captive off) = %d, want 404", w.Code)
