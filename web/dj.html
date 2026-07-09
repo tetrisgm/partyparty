@@ -345,6 +345,12 @@
   .softask p{font-size:14px;line-height:1.5;color:var(--label-secondary);margin:0}
   .softask-actions{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}
   .softask-actions button{height:36px;border-radius:999px;padding:0 18px}
+  /* "What should I pick?" — a focused guide popover, NOT the full Settings sheet. */
+  .softask.sourceguide{max-width:460px;max-height:82vh;overflow:auto;text-align:left;padding-top:34px}
+  .sourceguide-body h3{font-size:13.5px;font-weight:700;margin:16px 0 4px;color:var(--label)}
+  .sourceguide-body h3:first-child{margin-top:2px}
+  .sourceguide-body p{font-size:13px;line-height:1.5;color:var(--label-secondary);margin:0}
+  .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:5px}
   .console-footer{position:fixed;right:14px;bottom:8px;z-index:6;font-size:11px;color:var(--label-tertiary)}
   .console-footer a{color:var(--label-tertiary);text-decoration:none;font-weight:600}
   .console-footer a:hover{color:var(--link);text-decoration:underline}
@@ -682,6 +688,23 @@
     <div class="softask-actions">
       <button class="ghost" id="captureSoftLater" type="button">Not now</button>
       <button class="go" id="captureSoftAllow" type="button">Allow</button>
+    </div>
+  </div>
+</div>
+
+<!-- "What should I pick?" — a focused guide popover (not the whole Settings sheet). -->
+<div class="softaskov" id="sourceGuideSheet" role="presentation">
+  <div class="softask sourceguide" role="dialog" aria-modal="true" aria-labelledby="sourceGuideTitle">
+    <button class="cardx" id="sourceGuideCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
+    <h2 id="sourceGuideTitle">What should I pick?</h2>
+    <div class="sourceguide-body">
+      <h3>① Capture everything on the Mac (easiest)</h3>
+      <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+      <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
+      <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
+      <h3>③ Hardware controller / mixer</h3>
+      <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
+      <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
     </div>
   </div>
 </div>
@@ -1220,16 +1243,22 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ov.classList.remove('show'); });
   }
   function openSourceGuide(){
-    const ov = $('settingsSheet');
+    const ov = $('sourceGuideSheet');   // focused popover, NOT the full Settings sheet
     if (ov) ov.classList.add('show');
-    const details = $('sourceGuideDetails');
-    if (details) details.open = true;
-    setTimeout(() => {
-      const guide = $('helpNote');
-      if (guide) guide.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 0);
+  }
+  function closeSourceGuide(){
+    const ov = $('sourceGuideSheet');
+    if (ov) ov.classList.remove('show');
   }
   $('sourceGuideBtn').onclick = openSourceGuide;
+  if ($('sourceGuideCloseBtn')) $('sourceGuideCloseBtn').onclick = closeSourceGuide;
+  {
+    const gov = $('sourceGuideSheet');
+    if (gov) {
+      gov.addEventListener('click', (e) => { if (e.target === gov) closeSourceGuide(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSourceGuide(); });
+    }
+  }
 
   let capturePermission = { state: 'undetermined', kind: 'systemAudio' };
   function selectedCaptureDevice(){
