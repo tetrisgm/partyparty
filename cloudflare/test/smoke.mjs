@@ -3007,6 +3007,15 @@ const tests = [
     assert.equal(resp.headers.get("cache-control"), "public, max-age=300");
     assert.deepEqual(await resp.json(), { version: `${codeMajor}.${payloadVersion}`, date: "2026-07-09" });
   }],
+  ["/api/version does not let an older native marker hide a payload release", async () => {
+    const codeMajor = (await readFile(new URL("../../CODE_MAJOR", import.meta.url), "utf8")).replace(/\D/g, "");
+    const payloadVersion = (await readFile(new URL("../../web/PAYLOAD_VERSION", import.meta.url), "utf8")).replace(/\D/g, "");
+    const resp = await fetchPath("/api/version", {}, {
+      r2Objects: { "content/app-version": new FakeR2Object(`${codeMajor}.${Math.max(0, Number(payloadVersion) - 1)}`) },
+    });
+    assert.equal(resp.status, 200);
+    assert.deepEqual(await resp.json(), { version: `${codeMajor}.${payloadVersion}`, date: "2026-07-09" });
+  }],
   ["/live renders the aggregator's useful empty state", async () => {
     const resp = await fetchPath("/live");
     const html = await resp.text();

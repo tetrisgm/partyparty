@@ -92,6 +92,7 @@ set_version_files() {
   printf '%s\n' "$NEXT_CODE" > CODE_MAJOR
   printf '%s\n' "$NEXT_PAYLOAD" > web/PAYLOAD_VERSION
   python3 - "$VERSION" <<'PY'
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -102,7 +103,11 @@ s = p.read_text()
 s2, n = re.subn(r'const APP_VERSION = "[^"]+";', f'const APP_VERSION = "{version}";', s, count=1)
 if n != 1:
     raise SystemExit("cloudflare/worker.js APP_VERSION constant not found")
-p.write_text(s2)
+s3, n = re.subn(r'const APP_VERSION_DATE = "[^"]+";',
+                f'const APP_VERSION_DATE = "{datetime.date.today().isoformat()}";', s2, count=1)
+if n != 1:
+    raise SystemExit("cloudflare/worker.js APP_VERSION_DATE constant not found")
+p.write_text(s3)
 PY
 }
 

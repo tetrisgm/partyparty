@@ -360,6 +360,14 @@ export function nowMs() {
   return Date.now();
 }
 
+function compareProductVersions(a, b) {
+  const pa = /^(\d+)\.(\d+)$/.exec(String(a || "").trim());
+  const pb = /^(\d+)\.(\d+)$/.exec(String(b || "").trim());
+  if (!pa || !pb) return Number.NEGATIVE_INFINITY;
+  const major = Number(pa[1]) - Number(pb[1]);
+  return major || (Number(pa[2]) - Number(pb[2]));
+}
+
 async function bumpDjProfileActivity(env, profileId, activityMs = nowMs()) {
   if (!env?.DB || !profileId) return;
   try {
@@ -4344,17 +4352,19 @@ export default {
       if (request.method === "HEAD") {
         return new Response(null, { headers: { ...headers, "content-type": "application/json" } });
       }
-      // Read the CURRENT version from the R2 marker release.sh keeps up to date
-      // (content/app-version) so this can never go stale; date = when that marker
-      // was last written (the release date). Fall back to the compiled constants
-      // only if the read fails.
+      // A full native release writes content/app-version for Sparkle push. A
+      // payload-only release intentionally leaves that marker alone, so an old
+      // native marker must not hide the newer effective version compiled into
+      // this Worker by ship.sh.
       let version = APP_VERSION, date = APP_VERSION_DATE;
       try {
         const a = await env.DL.get("content/app-version");
         if (a) {
           const v = (await a.text()).trim();
-          if (v) version = v;
-          if (a.uploaded) date = new Date(a.uploaded).toISOString().slice(0, 10);
+          if (v && compareProductVersions(v, version) >= 0) {
+            version = v;
+            if (a.uploaded) date = new Date(a.uploaded).toISOString().slice(0, 10);
+          }
         }
       } catch (e) { /* keep the fallback constants */ }
       return jsonResp(200, { version, date }, headers);
