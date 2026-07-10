@@ -287,19 +287,20 @@
   .statuspill{display:inline-flex;align-items:center;gap:8px;width:fit-content;border-radius:999px;padding:8px 14px;margin:0 0 22px;background:var(--fill);color:var(--label-secondary);font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
   .statuspill.live{background:var(--accent);color:#fff}
   .statuspill .livedot{width:8px;height:8px;border-radius:50%;background:currentColor}
+  .eventhead-grid{display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:30px;align-items:stretch;min-height:200px}
+  .event-copy{min-width:0;display:flex;flex-direction:column;justify-content:center}
   .titlerow{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
   .event-titleblock{min-width:0;flex:1}
   .ename{font-size:54px;line-height:1.02;margin:0;color:var(--label);font-weight:850;letter-spacing:-.025em;overflow-wrap:anywhere}
-  .event-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:0 0 auto;margin-top:6px}
-  .event-actions .ghost,.event-actions .go{height:38px;border-radius:999px;padding:0 16px}
-  .event-actions .go{background:var(--accent);color:#fff}
-  .event-action{display:inline-flex;align-items:center;gap:7px}
-  .event-action svg{width:15px;height:15px;display:block}
-  .ehost{font-size:18px;color:var(--label-secondary);font-weight:500;margin:20px 0 0}
-  .ehost b{color:var(--label);font-weight:750}
-  .eventmeta{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
-  .eventmeta span{display:inline-flex;align-items:center;gap:7px;min-height:38px;border:1px solid var(--separator);border-radius:999px;padding:8px 14px;background:rgba(255,255,255,.03);color:var(--label-secondary);font-size:14px}
-  .eventmeta b{color:var(--label);font-weight:700}
+  .ehost{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:18px;color:var(--label-secondary);font-weight:500;margin:20px 0 0}
+  .host-by{display:inline-flex;align-items:center;min-width:0}
+  .host-by b{color:var(--label);font-weight:750;overflow-wrap:anywhere}
+  .schedule-inline{min-height:34px;max-width:100%;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--separator);border-radius:999px;padding:6px 11px;background:var(--fill);color:var(--link);font:700 13px/1.25 var(--sans);text-align:left}
+  .schedule-inline:hover{background:var(--fill-hover)}
+  .schedule-inline.has-value{border-color:transparent;background:transparent;color:var(--label-secondary);padding-left:2px}
+  .schedule-inline.has-value:hover{background:var(--fill)}
+  .schedule-inline svg{width:15px;height:15px;display:block;flex:0 0 auto}
+  .schedule-inline span{min-width:0;overflow-wrap:anywhere}
   .hostlinks{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px;padding-top:24px;border-top:1px solid var(--separator)}
   .hostlinks[hidden]{display:none}
   .hostlinks .ll{display:inline-flex;align-items:center;gap:7px;height:44px;border:1px solid var(--separator);border-radius:999px;padding:0 17px;background:rgba(255,255,255,.03);color:var(--label);font-size:14px;font-weight:750}
@@ -334,7 +335,12 @@
   .nowplaying-pill b{display:block;color:var(--label);font-size:14px;line-height:1.25;margin-top:2px;word-break:break-word}
   .listening{font-size:14px;font-weight:650;color:var(--label-secondary);white-space:nowrap}
   .listening b{font-size:25px;color:var(--label);font-weight:850}
-  .sharecard{position:relative}
+  .event-qr{display:grid;place-items:center;align-self:stretch;min-width:0}
+  .event-qr .party-qr-panel{width:100%;height:100%;display:grid;place-items:center}
+  #qr{width:200px;height:200px;margin:0;overflow:hidden;border-radius:12px;background:#fff}
+  #qr canvas,#qr img{display:block;max-width:100%;max-height:100%}
+  .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+  .share-support{display:none!important}
   .guest-setup{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:14px;margin:0 0 16px;display:grid;gap:12px}
   .guest-setup-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
   .guest-setup-copy{min-width:0}
@@ -445,10 +451,6 @@
   .eventedit[data-field="host"] [data-edit-group="host"],
   .eventedit[data-field="schedule"] [data-edit-group="schedule"]{display:grid}
   #guestSetupStrip,#wifiQrPanel,#hotspotFallback,#shareHint,#hotspotReady,#hotspotNoInternet,#pubSet,#onlineSet,#devnameWrap{display:none!important}
-  .guest-qr-grid{grid-template-columns:1fr;place-items:center}
-  .party-qr-panel{width:min(100%,480px);display:grid;justify-items:center}
-  .party-qr-panel .url{font-size:15px;text-align:center;margin:4px 0 0}
-  #qr{margin:6px 0 12px}
   .party-grid{grid-template-columns:minmax(0,1fr) 360px}
   .guesthead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .guesthead h2{margin:0!important}
@@ -463,9 +465,9 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
-  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.event-actions{justify-content:flex-start}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
+  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
-  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.titlerow{flex-direction:column}.event-actions{justify-content:flex-start}}
+  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.ehost{align-items:flex-start;gap:8px 10px}.schedule-inline{white-space:normal}.titlerow{flex-direction:column}}
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
 </style>
 </head>
@@ -556,21 +558,31 @@
       <span id="pubCoverResult" class="cover-status" role="status"></span>
     </div>
     <header class="card eventhead herocard" id="eventHead">
-    <div class="titlerow">
-      <h1 class="ename"><span id="titleEdit">partyparty</span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
-      <div class="event-actions">
-        <button class="go event-action" id="eventShareBtn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
-          Share Wi-Fi link
-        </button>
+    <div class="eventhead-grid">
+      <div class="event-copy">
+        <div class="titlerow">
+          <h1 class="ename"><span id="titleEdit">partyparty</span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
+        </div>
+        <div class="ehost">
+          <span class="host-by">hosted by&nbsp;<b id="hostEdit">the DJ</b><button class="fieldedit" type="button" data-event-field="host" aria-label="Edit host" title="Edit host"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></span>
+          <button class="schedule-inline" id="scheduleEditBtn" type="button" data-event-field="schedule" aria-label="Add date, time, and place" title="Add date, time, and place">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+            <span id="startsEdit">add date &amp; place</span>
+          </button>
+          <span id="devnameWrap" hidden>▶ <b id="devname"></b></span>
+        </div>
+        <div class="hostlinks" id="heroLinks" hidden></div>
+      </div>
+      <div class="event-qr" id="shareCard" hidden>
+        <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
+          <div class="offline-status" id="hotspotReady" style="display:none"></div>
+          <div class="hint" id="hotspotNoInternet" style="display:none">Guests need to be on the same Wi-Fi as this Mac before scanning.</div>
+          <div id="qr" role="img" aria-label="Party Wi-Fi link QR code"></div>
+          <div class="visually-hidden" id="url">—</div>
+          <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+        </div>
       </div>
     </div>
-    <div class="ehost">hosted by <b id="hostEdit">the DJ</b><button class="fieldedit" type="button" data-event-field="host" aria-label="Edit host" title="Edit host"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
-    <div class="eventmeta">
-      <span>🗓 <b id="startsEdit" style="opacity:.6">add date &amp; place</b><button class="fieldedit" type="button" data-event-field="schedule" aria-label="Edit date, time, and place" title="Edit date, time, and place"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></span>
-      <span id="devnameWrap" hidden>▶ <b id="devname"></b></span>
-    </div>
-    <div class="hostlinks" id="heroLinks" hidden></div>
     <div class="eventedit" id="eventEditPanel" aria-label="Edit event details">
       <h2 id="eventEditHeading">Edit event</h2>
       <div class="eventform-grid">
@@ -637,11 +649,9 @@
     </div>
   </div>
 
-  <!-- Guest link + QR: open by default while you set up; close it and get it
-       back anytime from Share in the action bar. -->
-  <div class="card sharecard" id="shareCard">
-    <button class="cardx" id="shareCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
-    <h2>Share event link</h2>
+  <!-- Hidden support state for guest setup, Wi-Fi QR, publish, and online links.
+       The party QR itself lives in the event header. -->
+  <div class="share-support" id="shareSupport" hidden>
     <div class="guest-setup" id="guestSetupStrip" hidden>
       <div class="guest-setup-top">
         <div class="guest-setup-copy">
@@ -662,27 +672,18 @@
         <div class="guest-hotspot-steps" id="guestHotspotSteps">No Wi-Fi here? On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.</div>
       </div>
     </div>
-    <div class="guest-qr-grid" id="guestQrGrid">
-      <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
-        <div class="offline-status" id="hotspotReady" style="display:none"></div>
-        <div class="hint" id="hotspotNoInternet" style="display:none">Guests need to be on the same Wi-Fi as this Mac before scanning.</div>
-        <div id="qr"></div>
-        <div class="url" id="url">—</div>
-        <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
-      </div>
-      <div class="guest-qr-panel" id="wifiQrPanel" hidden>
-        <div class="guest-qr-label">Join Wi-Fi QR</div>
-        <details id="wifiJoin" style="margin-top:0">
-          <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)"><span id="wifiJoinSummary">Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →</span></summary>
-          <div style="margin-top:10px">
-            <div class="hint" id="wifiJoinHelp" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your iPhone hotspot). Their phone camera joins it from this QR — then they scan the party QR.</div>
-            <input id="wifiSsid" placeholder="Wi-Fi network name (SSID)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px;margin-bottom:8px">
-            <input id="wifiPass" placeholder="Wi-Fi password (leave blank if open)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px">
-            <div id="wifiQr" style="margin-top:12px"></div>
-            <div class="hint" id="wifiQrHint" style="display:none;margin-top:6px"><b>①</b> Scan to join the Wi-Fi · then the party QR is <b>②</b></div>
-          </div>
-        </details>
-      </div>
+    <div class="guest-qr-panel" id="wifiQrPanel" hidden>
+      <div class="guest-qr-label">Join Wi-Fi QR</div>
+      <details id="wifiJoin" style="margin-top:0">
+        <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)"><span id="wifiJoinSummary">Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →</span></summary>
+        <div style="margin-top:10px">
+          <div class="hint" id="wifiJoinHelp" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your iPhone hotspot). Their phone camera joins it from this QR — then they scan the party QR.</div>
+          <input id="wifiSsid" placeholder="Wi-Fi network name (SSID)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px;margin-bottom:8px">
+          <input id="wifiPass" placeholder="Wi-Fi password (leave blank if open)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px">
+          <div id="wifiQr" style="margin-top:12px"></div>
+          <div class="hint" id="wifiQrHint" style="display:none;margin-top:6px"><b>①</b> Scan to join the Wi-Fi · then the party QR is <b>②</b></div>
+        </div>
+      </details>
     </div>
     <div class="warn offline-fallback" id="hotspotFallback" style="display:none">
       <div><b>No Wi-Fi here?</b></div>
@@ -720,7 +721,6 @@
 
     <div id="onlineSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
       <h2 style="font-size:15px;margin:0 0 6px">partyparty online 🌐</h2>
-      <div class="hint" style="margin:0">Your set replays, profile, and events live at partyparty online.</div>
       <div class="online-rows">
         <div class="online-item">
           <span class="muted">Your event page</span>
@@ -740,7 +740,7 @@
 
   <div class="card event-admin-tools" id="eventManagePanel">
     <div class="linkeditor" id="linkEditor">
-      <div class="linkeditor-head"><b>DJ links</b></div>
+      <div class="linkeditor-head"><b>Your links</b></div>
       <div class="linkrows" id="linkRows"></div>
       <div class="linkactions">
         <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
@@ -1416,22 +1416,6 @@
     }
   }
 
-  // Share card: open by default while setting up; closing sticks until the
-  // event Share Link button brings it back.
-  {
-    const card = $('shareCard');
-    const setShareOpen = (open, scroll) => {
-      card.style.display = open ? 'block' : 'none';
-      localStorage.setItem('pp.shareClosed', open ? '0' : '1');
-      renderGuestSetup(lastNetworkSituation, lastGuestSetupOpts || {});
-      if (open && scroll) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    };
-    card.style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
-    $('shareCloseBtn').onclick = () => setShareOpen(false, false);
-    const heroShare = $('eventShareBtn');
-    if (heroShare) heroShare.onclick = () => setShareOpen(card.style.display === 'none', true);
-  }
-
   // First-run activation sequence: staged lines, typed character by
   // character — something honest to watch while the certificate arrives.
   const PENDING_LINES = [
@@ -2071,7 +2055,7 @@
       renderQR(guestUrl);
     }
     const partyPanel = $('partyQrPanel');
-    if (partyPanel) partyPanel.hidden = !activePlan.showPartyQr;
+    if (partyPanel) partyPanel.hidden = !linkReady;
     const wifiMode = (!plan || activePlan.situation === 'shared_wifi_ready')
       ? 'optional'
       : (activePlan.showWifiQr ? activePlan.wifiMode : '');
@@ -2084,8 +2068,8 @@
       lastGuestSetupSituation = activePlan.situation;
       guestSetupNudgeDismissed = false;
     }
-    const shareVisible = $('shareCard') && $('shareCard').style.display !== 'none';
-    const partyQrShown = !!(linkReady && activePlan.showPartyQr && shareVisible && (!partyPanel || !partyPanel.hidden));
+    const shareVisible = $('shareCard') && !$('shareCard').hidden;
+    const partyQrShown = !!(linkReady && shareVisible && (!partyPanel || !partyPanel.hidden));
     if (partyQrShown && !guestSetupConfirmed) {
       if (!guestSetupQrShownAt) guestSetupQrShownAt = Date.now();
     } else {
@@ -2201,8 +2185,7 @@
       if (linkReady) {
         $('setupCard').style.display = 'none';
         stopPendingType();
-        // the share card returns to the DJ's open/closed preference
-        $('shareCard').style.display = localStorage.getItem('pp.shareClosed') === '1' ? 'none' : 'block';
+        $('shareCard').hidden = false;
         $('url').textContent = guestUrl;
         renderQR(guestUrl);
         const bridgeUp = !!hotspot.bridgeUp;
@@ -2222,7 +2205,7 @@
       } else {
         // No guest link yet → no "Guests join here" theater. The setup card
         // owns this state: spinner, staged lines, connection test.
-        $('shareCard').style.display = 'none';
+        $('shareCard').hidden = true;
         $('hotspotReady').style.display = 'none';
         $('hotspotNoInternet').style.display = 'none';
         $('hotspotFallback').style.display = 'none';
@@ -2794,7 +2777,13 @@
     $('titleEdit').textContent = eventMeta.title;
     $('hostEdit').textContent = eventMeta.host;
     $('startsEdit').textContent = eventMeta.starts || PH.startsEdit;
-    $('startsEdit').style.opacity = eventMeta.starts ? 1 : .6;
+    const scheduleBtn = $('scheduleEditBtn');
+    if (scheduleBtn) {
+      scheduleBtn.classList.toggle('has-value', !!eventMeta.starts);
+      const label = eventMeta.starts ? 'Edit date, time, and place' : 'Add date, time, and place';
+      scheduleBtn.setAttribute('aria-label', label);
+      scheduleBtn.title = label;
+    }
     syncEventCover(eventMeta.cover);
     if (eventEditField) {
       const active = document.activeElement;
