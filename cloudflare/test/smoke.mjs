@@ -4354,6 +4354,33 @@ const tests = [
     assert.equal(resp.status, 400);
     assert.equal(db.events.get("owned-invalid-status").status, "upcoming");
   }],
+  ["broker diagnostics require install auth and stay scoped", async () => {
+    let resp = await fetchPath("/api/broker/log-list", {
+      method: "POST",
+      body: JSON.stringify({ id: "abc123abc123", secret: "wrong" }),
+    });
+    assert.equal(resp.status, 403);
+
+    resp = await fetchPath("/api/broker/log-list", {
+      method: "POST",
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    });
+    assert.equal(resp.status, 200);
+    assert.deepEqual(await resp.json(), { logs: [] });
+
+    resp = await fetchPath("/api/broker/log-get", {
+      method: "POST",
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", key: "logs/def456def456/session-1.log.gz" }),
+    });
+    assert.equal(resp.status, 400);
+
+    resp = await fetchPath("/api/broker/telemetry-dump", {
+      method: "POST",
+      body: JSON.stringify({ id: "abc123abc123", secret: "wrong", admin: "admin-secret", n: 3 }),
+    }, { env: { ADMIN_KEY: "admin-secret" } });
+    assert.equal(resp.status, 200);
+    assert.deepEqual(await resp.json(), { entries: [] });
+  }],
   ["google sign-in start redirects to Google and sets a state cookie", async () => {
     const db = new FakeD1({});
     const resp = await worker.fetch(new Request("https://party.ramine.net/auth/google?redirect=/account", {}),
@@ -4394,6 +4421,26 @@ const tests = [
     const resp = await withGoogleTokenMock(fakeIdToken(googleClaims()),
       () => googleCallbackReq(db, { state: "aaaaaaaa", cookieState: "bbbbbbbb" }));
     assertOAuthFailure(resp, db, "state");
+  }],
+  ["google callback rejects a missing code before token exchange", async () => {
+    const db = new FakeD1({});
+    const state = "s".repeat(32);
+    let tokenFetches = 0;
+    const oldFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      if (req.url === "https://oauth2.googleapis.com/token") tokenFetches++;
+      return oldFetch(input, init);
+    };
+    try {
+      const resp = await worker.fetch(new Request(`https://party.ramine.net/auth/google/callback?state=${state}`, {
+        headers: { cookie: `${OAUTH_STATE_COOKIE_NAME}=g|${state}|/account` },
+      }), makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
+      assertOAuthFailure(resp, db, "state");
+      assert.equal(tokenFetches, 0);
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
   }],
   ["google callback rejects a non-2xx token endpoint response", async () => {
     const db = new FakeD1({});
@@ -4476,6 +4523,29 @@ const tests = [
     const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env)),
       () => appleCallbackReq(db, env, { state: "aaaaaaaa", cookieState: "bbbbbbbb" }));
     assertOAuthFailure(resp, db, "state");
+  }],
+  ["apple callback rejects a missing state before token exchange", async () => {
+    const env = await makeAppleEnv();
+    const db = new FakeD1({});
+    const state = "a".repeat(32);
+    let tokenFetches = 0;
+    const oldFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      if (req.url === "https://appleid.apple.com/auth/token") tokenFetches++;
+      return oldFetch(input, init);
+    };
+    try {
+      const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {
+        method: "POST",
+        headers: { cookie: `${OAUTH_STATE_COOKIE_NAME}=a|${state}|/account`, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ code: "auth-code" }).toString(),
+      }), makeEnv({ DB: db, env }));
+      assertOAuthFailure(resp, db, "state");
+      assert.equal(tokenFetches, 0);
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
   }],
   ["apple callback rejects a missing code", async () => {
     const env = await makeAppleEnv();

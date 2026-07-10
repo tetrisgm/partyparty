@@ -1,6 +1,11 @@
 package server
 
-import "testing"
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 // The DJ app requires a linked account before it can go live. /api/start must
 // refuse with not_activated until activated, then defer to the normal flow.
@@ -66,6 +71,77 @@ func TestAccountStatusReportsDevNoLoginBypass(t *testing.T) {
 	m := decodeJSON(t, w)
 	if m["linked"] != true || m["devBypass"] != true {
 		t.Fatalf("dev bypass status = %v, want linked/devBypass true", m)
+	}
+}
+
+func TestAccountStatusHandlerCachesAndFreshBypasses(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	registerHits := 0
+	statusHits := 0
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		switch r.URL.Path {
+		case "/api/broker/register":
+			registerHits++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "abc123abc123", "secret": "secret-a", "base": "party.test", "slug": "cache77",
+			})
+		case "/api/broker/account-status":
+			statusHits++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok": true, "linked": statusHits >= 2, "checkedMs": statusHits,
+				"install": map[string]any{"id": "abc123abc123", "slug": "cache77"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer broker.Close()
+	t.Setenv("PARTYPARTY_BROKER", broker.URL)
+
+	env := newTestEnv(t, nil)
+	w := do(env.srv, "GET", "/api/account/status", djAddr)
+	if w.Code != 200 {
+		t.Fatalf("initial account status = %d, want 200\n%s", w.Code, w.Body.String())
+	}
+	if registerHits != 1 || statusHits != 1 {
+		t.Fatalf("initial broker hits register=%d status=%d, want 1/1", registerHits, statusHits)
+	}
+	if m := decodeJSON(t, w); m["linked"] != false {
+		t.Fatalf("initial linked = %v, want false", m["linked"])
+	}
+
+	w = do(env.srv, "GET", "/api/account/status", djAddr)
+	if w.Code != 200 {
+		t.Fatalf("cached account status = %d, want 200\n%s", w.Code, w.Body.String())
+	}
+	if registerHits != 1 || statusHits != 1 {
+		t.Fatalf("cached broker hits register=%d status=%d, want unchanged 1/1", registerHits, statusHits)
+	}
+
+	w = do(env.srv, "GET", "/api/account/status?fresh=1", djAddr)
+	if w.Code != 200 {
+		t.Fatalf("fresh account status = %d, want 200\n%s", w.Code, w.Body.String())
+	}
+	if registerHits != 1 || statusHits != 2 {
+		t.Fatalf("fresh broker hits register=%d status=%d, want 1/2", registerHits, statusHits)
+	}
+	if m := decodeJSON(t, w); m["linked"] != true {
+		t.Fatalf("fresh linked = %v, want true", m["linked"])
+	}
+	if !env.srv.accountActivated() {
+		t.Fatal("fresh linked status did not latch account activation")
+	}
+
+	w = do(env.srv, "GET", "/api/account/status", djAddr)
+	if w.Code != 200 {
+		t.Fatalf("post-fresh cached account status = %d, want 200\n%s", w.Code, w.Body.String())
+	}
+	if registerHits != 1 || statusHits != 2 {
+		t.Fatalf("post-fresh cached broker hits register=%d status=%d, want unchanged 1/2", registerHits, statusHits)
+	}
+	if m := decodeJSON(t, w); m["linked"] != true {
+		t.Fatalf("post-fresh cached linked = %v, want true", m["linked"])
 	}
 }
 
