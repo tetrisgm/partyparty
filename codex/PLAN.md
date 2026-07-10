@@ -1,5 +1,11 @@
 # partyparty — next-steps plan (Codex handoff)
 
+## Immediate handoff
+
+The verified listener synchronization fix is ready for a full `48.59` release,
+installation, and physical iOS validation. Read [`codex/HANDOFF.md`](HANDOFF.md)
+before doing any other queued work.
+
 Written 2026-07-07, after shipping OAuth sign-in + the DJ activation gate (v15.47).
 
 ## Shipped (context)
