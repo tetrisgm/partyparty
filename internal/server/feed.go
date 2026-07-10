@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,8 +24,8 @@ import (
 
 // The event feed: guests post text + photos/videos from the player page; the
 // DJ sees, posts to, and moderates the same feed from the console. Guests are
-// pseudonymous (fun name + emoji chosen client-side); their private cid rides
-// along server-side only, as the future "claim my posts" proof.
+// pseudonymous (fun name + emoji chosen client-side); their private cid stays
+// server-side so the Mac can associate identity and optional subscriptions.
 
 const publicPartyBase = "https://party.ramine.net"
 
@@ -164,7 +165,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			"features": meta.Features, "moderationMode": meta.ModerationMode, "retentionMode": meta.RetentionMode,
 			"status": meta.Status, "endedAt": meta.EndedAt,
 			"reactions": reactions, "spikes": spikes,
-			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "claimBaseUrl": links.ClaimBaseURL, "published": links.Published,
+			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "published": links.Published,
 			// dir = the event's identity; clients reset their cursor when it
 			// changes (switching to an OLDER event must replay its posts).
 			"dir":   filepath.Base(s.Events.Dir()),
@@ -655,24 +656,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many posts", "retry": true})
 			return true
 		}
-		p, claimToken, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, dj)
+		p, _, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, dj)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
-		resp := map[string]any{"ok": true, "id": p.ID}
-		if claimToken != "" {
-			// First post from this guest: hand them their keepsake claim link
-			// exactly once. Token rides in the URL FRAGMENT (never reaches
-			// servers/logs); only its hash is stored here.
-			links := s.eventOnlineLinks()
-			claimBase := links.ClaimBaseURL
-			if claimBase == "" {
-				claimBase = publicPartyBase + "/e/" + filepath.Base(s.Events.Dir()) + "/claim"
-			}
-			resp["claimUrl"] = claimBase + "#g=" + claimToken
-		}
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": p.ID})
 	case "/api/upload":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -689,6 +678,31 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		if !dj && !s.featureOn("uploads") {
 			writeFeatureDisabled(w)
+			return true
+		}
+		// Current guest clients send the original File as the request body. This
+		// avoids browser-side transcoding or multipart buffering and lets large
+		// videos stream directly to disk. Keep multipart for older clients and
+		// the DJ console.
+		if encodedName := strings.TrimSpace(r.Header.Get("X-PP-Name")); encodedName != "" {
+			name, err := url.QueryUnescape(encodedName)
+			if err != nil || strings.TrimSpace(name) == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid file name"})
+				return true
+			}
+			if !dj && uploadLooksLikeVideo(name, r.Header.Get("Content-Type")) && !s.featureOn("videoUploads") {
+				writeFeatureDisabled(w)
+				return true
+			}
+			m, err := s.Events.SaveMedia(name, r.Body)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+				return true
+			}
+			if p, ok := s.Events.MediaPath(m.ID); ok {
+				s.Events.EnqueueThumb(m.ID, p, m.Type)
+			}
+			writeJSON(w, http.StatusOK, m)
 			return true
 		}
 		mr, err := r.MultipartReader()
@@ -715,6 +729,21 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			s.Events.EnqueueThumb(m.ID, p, m.Type)
 		}
 		writeJSON(w, http.StatusOK, m)
+	case "/api/guest-profile":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return true
+		}
+		var body struct{ CID, Name, Emoji string }
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if err := s.Events.SetGuestProfile(body.CID, body.Name, body.Emoji); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/event-cover":
 		if !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -915,10 +944,9 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 }
 
 type eventLinks struct {
-	Slug         string
-	OnlineURL    string
-	ClaimBaseURL string
-	Published    bool
+	Slug      string
+	OnlineURL string
+	Published bool
 }
 
 func (s *srv) eventOnlineLinks() eventLinks {
@@ -932,7 +960,7 @@ func (s *srv) eventOnlineLinks() eventLinks {
 		return eventLinks{}
 	}
 	published := metaSlug != "" || s.Events.LastPublishedSig() != ""
-	links := eventLinks{Slug: slug, ClaimBaseURL: publicPartyBase + "/e/" + slug + "/claim", Published: published}
+	links := eventLinks{Slug: slug, Published: published}
 	if published {
 		links.OnlineURL = publicPartyBase + "/e/" + slug
 	}

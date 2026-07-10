@@ -112,14 +112,37 @@
   .me{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
   .mechip{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .mechip input{background:transparent;border:none;outline:none;color:var(--label);font:inherit;width:150px}
+  .mechip select{border:none;background:transparent;font:inherit;font-size:18px;outline:none;width:38px;padding:0}
   .mehint{color:var(--label-tertiary);font-size:11px}
-  .composer{background:var(--card);border:1px solid var(--separator);border-radius:18px;padding:14px;margin:0 0 18px;box-shadow:var(--shadow)}
-  .composer textarea{width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:16px;min-height:44px;line-height:1.45}
-  .composer textarea::placeholder{color:var(--label-tertiary)}
-  .crow{display:flex;align-items:center;gap:10px;margin-top:6px}
-  .attach{display:inline-flex;align-items:center;gap:6px;color:var(--label-secondary);font-size:13px;font-weight:600;cursor:pointer;background:var(--fill);border:none;border-radius:999px;padding:8px 14px}
-  .attachn{color:var(--label-secondary);font-size:12px}
-  .postbtn{margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:8px 20px;font-size:14px;font-weight:700;cursor:pointer}
+  .subscribe{margin:0 0 18px;padding:15px 0;border-top:1px solid var(--separator);border-bottom:1px solid var(--separator)}
+  .subscribe-copy b{display:block;font-size:16px;line-height:1.2}
+  .subscribe-copy span{display:block;color:var(--label-secondary);font-size:13px;line-height:1.35;margin-top:3px}
+  .subscribe-row{display:flex;align-items:center;gap:8px;margin-top:11px}
+  .subscribe-row input{min-width:0;flex:1;height:44px;border:1px solid var(--separator);border-radius:8px;background:rgba(255,255,255,.55);color:var(--label);font:inherit;font-size:15px;padding:0 12px;outline:none}
+  .subscribe-row input:focus{border-color:rgba(0,122,255,.55);box-shadow:0 0 0 3px rgba(0,122,255,.12)}
+  .subscribe-row button{height:44px;border:none;border-radius:8px;background:#007aff;color:#fff;font:inherit;font-size:14px;font-weight:800;padding:0 17px;cursor:pointer}
+  .subscribe-row button:disabled{opacity:.55}
+  .subscribe-status{min-height:16px;margin-top:6px;color:var(--label-secondary);font-size:12px}
+  .composer{position:fixed;left:10px;right:10px;bottom:calc(82px + env(safe-area-inset-bottom));z-index:19;max-width:440px;margin:0 auto;background:rgba(255,255,255,.9);border:1px solid var(--separator);border-radius:16px;padding:9px;box-shadow:0 14px 45px rgba(55,25,25,.22);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
+  .composer[hidden]{display:none!important}
+  .composerline{display:flex;align-items:center;gap:7px}
+  .composerline input[type=text]{min-width:0;flex:1;height:42px;background:transparent;border:none;outline:none;color:var(--label);font:inherit;font-size:16px;padding:0 5px}
+  .composerline input[type=text]::placeholder{color:var(--label-tertiary)}
+  .composericon{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;border:none;border-radius:50%;background:var(--fill);color:var(--label);cursor:pointer;padding:0}
+  .composericon svg,.trayicon svg{width:20px;height:20px;display:block}
+  .pendingpreviews{display:flex;gap:7px;overflow-x:auto;padding:7px 1px 1px;scrollbar-width:none}
+  .pendingpreviews[hidden]{display:none}
+  .pendingpreviews::-webkit-scrollbar{display:none}
+  .pendingfile{position:relative;width:62px;height:62px;flex:0 0 62px;border-radius:8px;overflow:hidden;background:var(--fill);border:1px solid var(--separator);display:grid;place-items:center;color:var(--label-secondary)}
+  .pendingfile img{width:100%;height:100%;display:block;object-fit:cover}
+  .pendingfile.video{background:#1d1d1f;color:#fff;text-align:center}
+  .videocover{width:100%;height:100%;display:grid;grid-template-rows:1fr auto;place-items:center;padding:8px 5px 5px}
+  .videocover span{font-size:21px;align-self:end}
+  .videocover small{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:800}
+  .pendingremove{position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.68);color:#fff;display:grid;place-items:center;font:700 13px/1 var(--sans);cursor:pointer;padding:0}
+  .attachn{min-height:0;color:var(--label-secondary);font-size:12px;padding:5px 4px 0}
+  .attachn:empty{display:none}
+  .postbtn{height:40px;flex:0 0 auto;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 15px;font-size:14px;font-weight:800;cursor:pointer}
   .postbtn:disabled{opacity:.45}
   .post{background:var(--card);border:1px solid var(--separator);border-radius:18px;padding:14px 16px;margin:0 0 12px;box-shadow:var(--shadow)}
   .phead{display:flex;align-items:baseline;gap:8px;font-size:13px}
@@ -182,7 +205,6 @@
   .onlinecard a{color:var(--accent);font-weight:700;text-decoration:none;word-break:break-all}
   .onlinecard a:hover{text-decoration:underline}
   .onlinecopy{margin-bottom:4px}
-  .keepsake{display:inline-block;font-size:12px}
   .djlinks{background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:13px 14px;margin:0 0 12px;box-shadow:var(--shadow)}
   .djlinks[hidden]{display:none}
   .djlinks h3{margin:0 0 9px;font-size:14px;letter-spacing:0;color:var(--label)}
@@ -193,17 +215,6 @@
   .djlinkchip b{font-size:14px;line-height:1;flex:0 0 auto}
   .djlinkchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djlinkchip.tip{background:#fff0f4;color:var(--accent)}
-  /* keepsake claim card */
-  .claimov{position:fixed;inset:0;background:rgba(245,245,247,.82);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:22;padding:28px;text-align:center}
-  .claimov.show{display:flex}
-  .claimcard{background:var(--card);border:1px solid var(--separator);border-radius:22px;padding:24px 22px;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,.14)}
-  .claimcard h3{margin:0 0 8px;font-size:18px}
-  .claimcard p{color:var(--label-secondary);font-size:13px;line-height:1.5;margin:0 0 16px}
-  .claimbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-  .claimbtns button{border:none;border-radius:999px;padding:11px 20px;font-size:14px;font-weight:700;cursor:pointer}
-  .claimshare{background:var(--accent);color:#fff}
-  .claimcopy{background:var(--fill);color:var(--label)}
-  .claimlater{background:none;color:var(--label-tertiary);font-size:13px}
   @media (prefers-reduced-motion:reduce){body.playing .btn,body.playing .artwork,.eq i{animation:none}}
   .share{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.08)}
   .share:active{transform:scale(.95)}
@@ -222,6 +233,7 @@
   .qrov{position:fixed;inset:0;background:rgba(245,245,247,.88);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:20;padding:24px}
   .qrov.show{display:flex}
   .qrbox{background:#fff;padding:16px;border-radius:20px;line-height:0;box-shadow:var(--shadow)}
+  .qrbox canvas,.qrbox img{display:block;width:232px;height:232px;max-width:70vw;max-height:70vw}
   .qrcap{color:var(--label);font-size:16px;font-weight:700}
   .qrurl{color:var(--label-secondary);font-size:13px;word-break:break-all;max-width:88%}
   .qrclose{background:var(--accent);color:#fff;border:none;border-radius:999px;padding:12px 30px;font-size:16px;font-weight:600;cursor:pointer}
@@ -327,7 +339,7 @@
   .downhint{display:none}
   .listenbar{
     position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:18;
-    display:grid;grid-template-columns:minmax(0,1fr) 44px 44px;gap:8px;align-items:center;
+    display:grid;grid-template-columns:minmax(0,1fr) repeat(3,44px);gap:8px;align-items:center;
     max-width:440px;margin:0 auto;padding:8px;border-radius:25px;background:rgba(255,246,241,.72);
     -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:0 12px 44px rgba(78,36,31,.2);
   }
@@ -350,7 +362,7 @@
   .feedhead{font-size:22px;margin:20px 0 3px;color:var(--party-ink)}
   .feedsub{font-size:13px;color:var(--party-muted);margin:0 0 14px}
   .saveall{color:var(--party-ink);font-weight:850}
-  .album,.onlinecard,.djlinks,.composer,.post{
+  .album,.onlinecard,.djlinks,.post{
     background:var(--party-card);border:1px solid var(--party-line);box-shadow:0 10px 30px rgba(82,38,33,.1);
   }
   .sectionrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
@@ -368,9 +380,8 @@
   }
   .me{margin:0 0 12px}
   .mechip{background:rgba(255,255,255,.44);box-shadow:none;border-color:var(--party-line)}
-  .composer{border-radius:20px;margin-bottom:14px}
-  .composer textarea{font-size:16px}
-  .attach{background:rgba(255,255,255,.42)}
+  .subscribe{border-color:var(--party-line)}
+  .composer{background:rgba(255,246,241,.92);border-color:var(--party-line)}
   .post{border-radius:20px}
   .phead{align-items:center;font-size:14px}
   .phead > span:first-child{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.5);flex:0 0 auto}
@@ -381,7 +392,7 @@
   .cbox input{background:rgba(255,255,255,.42)}
   .welov{background:linear-gradient(180deg,var(--party-bg),var(--party-bg-2));text-align:left}
   .welcard{max-width:460px}
-  .claimov,.qrov{background:rgba(249,195,170,.76)}
+  .qrov{background:rgba(249,195,170,.76)}
   @media (min-width:720px){
     .hero,.feed{max-width:600px}
     .hero .artwork{aspect-ratio:16/10}
@@ -464,8 +475,28 @@
         <small id="btnhint">Low-latency party audio</small>
       </span>
     </button>
-    <button class="trayicon" id="trayComment" type="button" aria-label="Comment" title="Comment">💬</button>
-    <button class="trayicon" id="trayShare" type="button" aria-label="Share" title="Share">↗</button>
+    <button class="trayicon" id="trayComment" type="button" aria-label="Leave a comment" title="Comment">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
+    </button>
+    <button class="trayicon" id="trayPhoto" type="button" aria-label="Add photos or videos" title="Add photos or videos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+    </button>
+    <button class="trayicon" id="trayShare" type="button" aria-label="Show party QR code" title="Show QR code">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
+    </button>
+  </div>
+
+  <div class="composer" id="composer" hidden>
+    <div class="composerline">
+      <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
+      <button class="composericon" id="attachBtn" type="button" aria-label="Attach photos or videos" title="Attach photos or videos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+      </button>
+      <button class="postbtn" id="postBtn" type="button">Post</button>
+    </div>
+    <div class="pendingpreviews" id="pendingPreviews" hidden></div>
+    <div class="attachn" id="attachN"></div>
+    <input type="file" id="cfiles" accept="image/*,video/*" multiple hidden>
   </div>
 
   <!-- The party wall: pseudonymous posts + photos/videos from everyone here. -->
@@ -483,7 +514,6 @@
     </section>
     <div class="onlinecard" id="onlineCard" hidden>
       <div class="onlinecopy">This party lives on here → <a id="onlineLink" target="_blank" rel="noopener"></a></div>
-      <a class="keepsake" id="keepsakeLink" target="_blank" rel="noopener" hidden>Your keepsake link</a>
     </div>
     <section class="djlinks" id="djLinks" hidden>
       <h3>DJ links</h3>
@@ -492,17 +522,18 @@
     </section>
     <div class="me">
       <span class="mechip" id="meChip" title="Tap to change your party name"></span>
-      <span class="mechip" id="contactChip" style="font-weight:400;font-size:12px" title="Only the DJ can see this — used to send you the party page later"></span>
     </div>
-    <div class="composer" id="composer">
-      <textarea id="ctext" rows="2" maxlength="2000" placeholder="Write a post or add a photo…"></textarea>
-      <div class="crow">
-        <button class="attach" id="attachBtn" type="button">📷 Add photo/video</button>
-        <span class="attachn" id="attachN"></span>
-        <button class="postbtn" id="postBtn" type="button">Post</button>
+    <form class="subscribe" id="subscribeForm">
+      <div class="subscribe-copy">
+        <b>Stay in the know</b>
+        <span id="subscribeCopy">Receive email updates from the host.</span>
       </div>
-      <input type="file" id="cfiles" accept="image/*,video/*,audio/*" multiple hidden>
-    </div>
+      <div class="subscribe-row">
+        <input id="subscribeEmail" type="email" placeholder="you@example.com" autocapitalize="off" autocomplete="email" required>
+        <button id="subscribeBtn" type="submit">Subscribe</button>
+      </div>
+      <div class="subscribe-status" id="subscribeStatus"></div>
+    </form>
     <div id="feedList"><div class="feedempty">Nothing here yet — start the wall 🎉</div></div>
   </section>
 
@@ -518,24 +549,8 @@
         <button class="welshuffle" id="welShuffle" type="button" title="Pick a random name" aria-label="Shuffle name"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
-      <div class="wellabel gap">Share your email with <span id="welHost2">the DJ</span> for future communication <span class="welopt">(optional — only they see it)</span></div>
-      <input id="welEmail" type="email" placeholder="you@example.com" autocapitalize="off" autocomplete="email">
       <div class="welspace"></div>
       <button class="welgo" id="welGo" type="button">Let's party 🎉</button>
-    </div>
-  </div>
-
-  <div class="claimov" id="claimOv">
-    <div class="claimcard">
-      <h3 id="claimWho">You're on the wall 🎉</h3>
-      <p>Save your <b>keepsake link</b> — when the party page goes online, it's how you prove these posts are yours (rename them, download the originals, or take them down). This is the only time it's shown.</p>
-      <div class="claimbtns">
-        <button class="claimshare" id="claimShare">Share / AirDrop to myself</button>
-        <button class="claimcopy" id="claimCopy">Copy link</button>
-      </div>
-      <div class="claimbtns" style="margin-top:8px">
-        <button class="claimlater" id="claimClose">I'll risk it</button>
-      </div>
     </div>
   </div>
 
@@ -546,11 +561,10 @@
     <button class="qrclose" id="qrClose">Done</button>
   </div>
 
-  <!-- Vendor scripts load LAZILY, not eagerly (perf): hls.js (404KB) only on the
-       hls.js player path — Apple devices use native HLS and never touch it, and
-       we're iPhone-first — and qrcode (20KB) only when a guest taps Share. That
-       keeps ~424KB of download+parse off the join -> first-audio path. See
-       loadHls()/loadQR() below. -->
+  <!-- hls.js (404KB) stays lazy: Apple devices use native HLS and never touch
+       it. The tiny QR renderer loads eagerly because Share must work on the
+       first tap even when iOS throttles dynamically inserted scripts. -->
+  <script src="/vendor/qrcode.min.js"></script>
   <audio id="player" playsinline preload="auto"></audio>
   <script>
     const player = document.getElementById('player');
@@ -631,11 +645,9 @@
     const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
 
-    // ── Lazy vendor loading (perf) ──────────────────────────────────────
-    // Keep unused KB off the join -> first-audio path. hls.js (404KB) is only
-    // used on the hls.js path; the Apple/iOS majority uses native HLS and never
-    // touches it. qrcode (20KB) is only needed if a guest taps Share. Each
-    // loader is idempotent and resolves false on error so callers never hang.
+    // ── Vendor loading ──────────────────────────────────────────────────
+    // hls.js (404KB) stays off the Apple join path. The small QR renderer is
+    // eager, with loadQR retained as a retry if its first request was lost.
     function loadScript(src){
       return new Promise((resolve) => {
         const s = document.createElement('script');
@@ -647,7 +659,13 @@
     }
     let hlsReady = null, qrReady = null;
     function loadHls(){ return hlsReady || (hlsReady = loadScript('/vendor/hls.min.js')); }
-    function loadQR(){ return qrReady || (qrReady = loadScript('/vendor/qrcode.min.js')); }
+    function loadQR(){
+      if (window.QRCode) return Promise.resolve(true);
+      return qrReady || (qrReady = loadScript('/vendor/qrcode.min.js').then((ok) => {
+        if (!ok || !window.QRCode) qrReady = null; // a later tap may retry after a Wi-Fi blip
+        return !!window.QRCode;
+      }));
+    }
     // Warm hls.js NOW on the hls path so it's parsed and ready by attach time
     // (attach still waits on it defensively). Apple never fetches it.
     if (platform === 'hls') loadHls();
@@ -660,6 +678,11 @@
       cid = localStorage.getItem('pp.cid');
       if (!cid) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem('pp.cid', cid); }
     } catch (e) { cid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+    let guestName = '', guestEmoji = '', guestHostName = 'the DJ';
+    function setGuestIdentity(name, emoji){
+      guestName = String(name || '').trim().slice(0, 40);
+      guestEmoji = String(emoji || '').trim().slice(0, 8);
+    }
 
     // Stable per-tab id (shared with the single-active-tab coordinator below).
     const tabId = 'tab-' + Math.random().toString(36).slice(2, 10);
@@ -914,17 +937,19 @@
       return s.slice(0, 2).toUpperCase();
     }
     function paintGuests(roster, total){
-      const list = Array.isArray(roster) ? roster : [];
-      const n = Math.max(Number(total) || 0, list.length);
+      const guests = Array.isArray(roster) ? roster : [];
+      const list = [{ name: guestHostName, emoji: '🎧', host: true }].concat(guests);
+      const n = Math.max(Number(total) || 0, guests.length) + 1;
       if (!guestLine || !guestAvatars || !guestCountBtn) return;
-      guestLine.hidden = n === 0;
-      guestCountBtn.textContent = n ? (n + ' listening') : 'Guest list';
+      guestLine.hidden = false;
+      guestCountBtn.textContent = n + (n === 1 ? ' guest' : ' guests');
       guestAvatars.textContent = '';
       const shown = list.slice(0, 5);
       shown.forEach((r, i) => {
         const a = document.createElement('span');
-        a.className = 'avatar';
-        a.textContent = initials(r && r.name, 'G' + (i + 1));
+        a.className = 'avatar' + (r && r.host ? ' host' : '');
+        a.textContent = (r && r.emoji) || initials(r && r.name, 'G' + (i + 1));
+        a.title = (r && r.name) || (r && r.host ? 'Host' : 'Guest ' + (i + 1));
         guestAvatars.appendChild(a);
       });
       if (n > shown.length) {
@@ -1529,11 +1554,11 @@
         const wasLive = live;
         live = s.broadcast && s.broadcast.state === 'live';
         if (live !== wasLive) logEvent(live ? 'dj-live' : 'dj-stop', { target: rnd(latencyTarget) });
-        // "others" = everyone but you (you're in the count once you're playing).
+        const eventHost = s.event && String(s.event.host || '').trim();
+        if (eventHost) guestHostName = eventHost;
         const totalListeners = Number(s.listeners || 0);
         paintGuests(s.roster || [], totalListeners);
-        const others = Math.max(0, totalListeners - (started ? 1 : 0));
-        countEl.textContent = others ? (others + ' other' + (others > 1 ? 's' : '') + ' listening') : '';
+        countEl.textContent = '';
         if (!live && (started || attached)) {
           // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an
           // endless reconnect loop against a dead stream. `attached` matters
@@ -1605,6 +1630,8 @@
         + '&del=' + (usingLL() ? 'llhls' : 'hls')
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION);
+      if (guestName) url += '&name=' + encodeURIComponent(guestName);
+      if (guestEmoji) url += '&emoji=' + encodeURIComponent(guestEmoji);
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
       const ownOffset = localMediaOffset();
       if (ownOffset != null && streamStartedAt) url += '&off=' + Math.round(ownOffset * 1000) + '&sid=' + streamStartedAt;
@@ -1639,6 +1666,7 @@
     // Share: show a QR of THIS page so a guest can pass the party to a friend.
     const shareBtn = document.getElementById('shareBtn'),
           qrOverlay = document.getElementById('qrOverlay'),
+          qrShare = document.getElementById('qrShare'),
           qrUrl = document.getElementById('qrUrl'),
           qrClose = document.getElementById('qrClose');
     let qrDrawn = false;
@@ -1646,10 +1674,16 @@
       qrUrl.textContent = location.href;
       qrOverlay.classList.add('show');           // open instantly; QR paints when its script lands
       if (!qrDrawn) {
-        await loadQR();                            // 20KB, fetched only on demand
-        if (window.QRCode) {
-          new QRCode(document.getElementById('qrShare'), { text: location.href, width: 232, height: 232, correctLevel: QRCode.CorrectLevel.M });
-          qrDrawn = true;
+        qrShare.textContent = '';
+        const ok = await loadQR();
+        if (!ok) { qrShare.textContent = 'QR unavailable'; return; }
+        try {
+          new QRCode(qrShare, { text: location.href, width: 232, height: 232, correctLevel: QRCode.CorrectLevel.M });
+          qrDrawn = !!qrShare.querySelector('canvas,img');
+          if (!qrDrawn) qrShare.textContent = 'QR unavailable';
+        } catch (e) {
+          qrShare.textContent = 'QR unavailable';
+          reportErr('qr-failed', e && e.message);
         }
       }
     });
@@ -1664,7 +1698,7 @@
       const $id = (i) => document.getElementById(i);
       const feedSec = $id('feedSec'), feedList = $id('feedList'), downhint = $id('downhint');
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink'), keepsakeLink = $id('keepsakeLink');
+      const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink');
       const onlineCopy = onlineCard.querySelector('.onlinecopy');
       const djLinks = $id('djLinks'), followLinks = $id('followLinks'), tipLinks = $id('tipLinks');
       const albumSec = $id('albumSec'), albumStrip = $id('albumStrip'), albumCount = $id('albumCount'), albumAdd = $id('albumAdd');
@@ -1687,32 +1721,13 @@
       let featureSig = JSON.stringify(currentFeatures);
       let currentLinks = [];
       let currentOnlineUrl = '';
-      let savedClaimUrl = '';
-      try { savedClaimUrl = localStorage.getItem('pp.claimUrl') || ''; } catch (e) {}
-      function claimHash(url){
-        const i = String(url || '').indexOf('#');
-        return i >= 0 ? String(url).slice(i) : '';
-      }
       function paintOnlineLinks(){
         onlineCopy.hidden = !currentOnlineUrl;
         if (currentOnlineUrl) {
           onlineLink.href = currentOnlineUrl;
           onlineLink.textContent = currentOnlineUrl;
         }
-        keepsakeLink.hidden = !savedClaimUrl;
-        if (savedClaimUrl) keepsakeLink.href = savedClaimUrl;
-        onlineCard.hidden = !currentOnlineUrl && !savedClaimUrl;
-      }
-      function saveClaimUrl(url){
-        if (!url) return;
-        savedClaimUrl = url;
-        try { localStorage.setItem('pp.claimUrl', url); } catch (e) {}
-        paintOnlineLinks();
-      }
-      function upgradeClaimBase(base){
-        if (!base || !savedClaimUrl) return;
-        const h = claimHash(savedClaimUrl);
-        if (h && savedClaimUrl.indexOf(base + h) !== 0) saveClaimUrl(base + h);
+        onlineCard.hidden = !currentOnlineUrl;
       }
       paintOnlineLinks();
       function setFeatures(features){
@@ -1895,23 +1910,47 @@
       // indexing nothing and leaving the guest emoji-less.
       let myName = localStorage.getItem('pp.guestName') || (ADJ[h % ADJ.length] + ' ' + NOUN[(h >>> 4) % NOUN.length]);
       let myEmoji = localStorage.getItem('pp.guestEmoji') || EMO[(h >>> 8) % EMO.length];
+      setGuestIdentity(myName, myEmoji);
 
       const meChip = $id('meChip');
       function paintChip(){ meChip.innerHTML = esc(myEmoji) + ' <b>' + esc(myName) + '</b>'; }
+      function persistGuestProfile(){
+        setGuestIdentity(myName, myEmoji);
+        try { localStorage.setItem('pp.guestName', myName); localStorage.setItem('pp.guestEmoji', myEmoji); } catch (e) {}
+        return fetch('/api/guest-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cid, name: myName, emoji: myEmoji }) }).catch(() => {});
+      }
       paintChip();
       meChip.addEventListener('click', () => {
         if (meChip.querySelector('input')) return;
-        meChip.innerHTML = esc(myEmoji) + ' ';
+        meChip.textContent = '';
+        const emoji = document.createElement('select');
+        emoji.setAttribute('aria-label', 'Party emoji');
+        for (const value of EMO) {
+          const option = document.createElement('option');
+          option.value = value; option.textContent = value; option.selected = value === myEmoji;
+          emoji.appendChild(option);
+        }
         const inp = document.createElement('input');
         inp.value = myName; inp.maxLength = 40;
-        meChip.appendChild(inp); inp.focus(); inp.select();
+        meChip.append(emoji, inp); inp.focus(); inp.select();
+        let saved = false;
         const save = () => {
+          if (saved) return;
+          saved = true;
           myName = inp.value.trim() || myName;
-          localStorage.setItem('pp.guestName', myName);
+          myEmoji = emoji.value || myEmoji;
+          persistGuestProfile();
           paintChip();
         };
-        inp.addEventListener('blur', save);
-        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+        const leave = () => setTimeout(() => {
+          if (!meChip.contains(document.activeElement)) {
+            meChip.removeEventListener('focusout', leave);
+            save();
+          }
+        }, 0);
+        meChip.addEventListener('focusout', leave);
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
       });
 
       // ── Welcome gate ──
@@ -1941,7 +1980,6 @@
         $id('welHost').textContent = (data.host || 'the DJ') + ' is hosting';
         $id('welTitle').textContent = data.title || 'the party';
         $id('welStarts').textContent = data.starts || '';
-        $id('welHost2').textContent = data.host || 'the DJ';
         $id('welName').value = myName;
         $id('welEmoji').textContent = myEmoji;
         welOv.classList.add('show');
@@ -1971,16 +2009,8 @@
         try { localStorage.setItem('pp.welcomed', '1'); } catch (e) {}
         myName = $id('welName').value.trim() || myName;
         myEmoji = $id('welEmoji').textContent;
-        try { localStorage.setItem('pp.guestName', myName); localStorage.setItem('pp.guestEmoji', myEmoji); } catch (e) {}
+        persistGuestProfile();
         paintChip();
-        const email = $id('welEmail').value.trim();
-        if (email) {
-          myContact = email;
-          try { localStorage.setItem('pp.guestContact', email); } catch (e) {}
-          fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cid, contact: email }) }).catch(() => {});
-          paintContact();
-        }
         welOv.classList.remove('show');
         userPaused = false;
         mediaSession(); // register lock-screen controls inside the gesture
@@ -2011,33 +2041,54 @@
         }, 3500);
       });
 
-      // Optional contact — the claim-link fallback ("only the DJ sees this").
-      const contactChip = $id('contactChip');
-      let myContact = localStorage.getItem('pp.guestContact') || '';
-      const paintContact = () => contactChip.innerHTML = myContact ? '✉️ ' + esc(myContact) : '✉️ get the party page later';
-      paintContact();
-      contactChip.addEventListener('click', () => {
-        if (contactChip.querySelector('input')) return;
-        contactChip.innerHTML = '✉️ ';
-        const inp = document.createElement('input');
-        inp.value = myContact; inp.maxLength = 120; inp.placeholder = 'email or phone';
-        inp.type = 'email'; inp.autocapitalize = 'off';
-        contactChip.appendChild(inp); inp.focus();
-        const save = () => {
-          myContact = inp.value.trim();
-          localStorage.setItem('pp.guestContact', myContact);
-          fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cid, contact: myContact }) }).catch(() => {});
-          paintContact();
-        };
-        inp.addEventListener('blur', save);
-        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+      // Explicit private email subscription. It stores the address with this
+      // event on the Mac; no guest account or internet connection is required.
+      const subscribeForm = $id('subscribeForm'), subscribeEmail = $id('subscribeEmail'), subscribeBtn = $id('subscribeBtn'), subscribeStatus = $id('subscribeStatus'), subscribeCopy = $id('subscribeCopy');
+      let myContact = localStorage.getItem('pp.guestEmail') || localStorage.getItem('pp.guestContact') || '';
+      let subscriptionEvent = '';
+      subscribeEmail.value = myContact;
+      function loadSubscription(eventDir){
+        subscriptionEvent = eventDir || '';
+        let saved = '';
+        try { if (subscriptionEvent) saved = localStorage.getItem('pp.guestSubscription.' + subscriptionEvent) || ''; } catch (e) {}
+        if (saved) {
+          subscribeEmail.value = saved; myContact = saved;
+          subscribeBtn.textContent = 'Subscribed'; subscribeStatus.textContent = 'You’re subscribed.';
+        } else {
+          subscribeEmail.value = myContact;
+          subscribeBtn.textContent = 'Subscribe'; subscribeStatus.textContent = '';
+        }
+      }
+      subscribeEmail.addEventListener('input', () => { subscribeBtn.textContent = 'Subscribe'; subscribeStatus.textContent = ''; });
+      subscribeForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = subscribeEmail.value.trim();
+        if (!email || !subscribeEmail.checkValidity()) { subscribeEmail.reportValidity(); return; }
+        subscribeBtn.disabled = true; subscribeBtn.textContent = 'Subscribing…'; subscribeStatus.textContent = '';
+        try {
+          const r = await fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cid, contact: email }) });
+          const res = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(res.error || 'Could not subscribe');
+          myContact = email;
+          try {
+            localStorage.setItem('pp.guestEmail', myContact);
+            if (subscriptionEvent) localStorage.setItem('pp.guestSubscription.' + subscriptionEvent, myContact);
+          } catch (err) {}
+          subscribeBtn.textContent = 'Subscribed'; subscribeStatus.textContent = 'You’re subscribed.';
+        } catch (err) {
+          subscribeBtn.textContent = 'Subscribe'; subscribeStatus.textContent = err.message || 'Could not subscribe';
+        } finally {
+          subscribeBtn.disabled = false;
+        }
       });
 
-      // Composer
-      const composer = $id('composer'), ctext = $id('ctext'), cfiles = $id('cfiles'), attachBtn = $id('attachBtn'), attachN = $id('attachN'), postBtn = $id('postBtn');
-      const trayComment = $id('trayComment'), trayShare = $id('trayShare');
+      // Compact composer: absent until the guest asks to comment or chooses
+      // media from the tray. Files remain untouched File objects until upload.
+      const composer = $id('composer'), ctext = $id('ctext'), cfiles = $id('cfiles'), attachBtn = $id('attachBtn'), attachN = $id('attachN'), postBtn = $id('postBtn'), pendingPreviews = $id('pendingPreviews');
+      const trayComment = $id('trayComment'), trayPhoto = $id('trayPhoto'), trayShare = $id('trayShare');
       let pendingFiles = [];
+      let previewURLs = [];
       const albumItems = new Map();
       function albumMediaHTML(item){
         const src = '/media/' + encodeURIComponent(item.id);
@@ -2078,12 +2129,21 @@
       }
       if (albumAdd) albumAdd.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
       if (trayShare) trayShare.addEventListener('click', () => shareBtn.click());
+      function openComposer(focusText){
+        if (!featureOn('wallMode') || (!featureOn('comments') && !featureOn('uploads'))) return;
+        composer.hidden = false;
+        if (focusText && featureOn('comments')) setTimeout(() => ctext.focus(), 30);
+      }
+      function closeComposer(force){
+        if (!force && (ctext.value.trim() || pendingFiles.length)) return;
+        composer.hidden = true;
+        ctext.blur();
+      }
       if (trayComment) trayComment.addEventListener('click', () => {
-        feedSec.hidden = false;
-        const target = (featureOn('wallMode') && !composer.hidden) ? composer : feedSec;
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        if (featureOn('comments') && !ctext.hidden) setTimeout(() => ctext.focus(), 280);
+        if (!composer.hidden && !ctext.value.trim() && !pendingFiles.length) { closeComposer(true); return; }
+        openComposer(true);
       });
+      if (trayPhoto) trayPhoto.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
       function isVideoFile(file){
         return !!file && ((file.type && file.type.indexOf('video/') === 0) || /\.(mp4|mov|m4v|webm)$/i.test(file.name || ''));
       }
@@ -2100,19 +2160,18 @@
           feedSec.hidden = !wallOn;
           downhint.hidden = !wallOn;
         }
-        composer.hidden = !(commentsOn || uploadsOn);
+        if (!commentsOn && !uploadsOn) closeComposer(true);
         ctext.hidden = !commentsOn;
         ctext.disabled = !commentsOn;
         attachBtn.hidden = !uploadsOn;
         attachBtn.disabled = !uploadsOn;
         cfiles.disabled = !uploadsOn;
-        cfiles.accept = featureOn('videoUploads') ? 'image/*,video/*,audio/*' : 'image/*,audio/*';
-        attachBtn.textContent = featureOn('videoUploads') ? '📷 Add photo/video' : '📷 Add photo';
+        cfiles.accept = featureOn('videoUploads') ? 'image/*,video/*' : 'image/*';
         postBtn.hidden = !(commentsOn || uploadsOn);
         if (!uploadsOn) {
           cfiles.value = '';
           pendingFiles = [];
-          attachN.textContent = '';
+          renderPendingFiles();
         }
       }
       function fileAllowed(file){
@@ -2121,17 +2180,63 @@
       function setPendingFiles(files, append){
         const incoming = [...(files || [])].filter(fileAllowed);
         pendingFiles = append ? pendingFiles.concat(incoming) : incoming;
+        renderPendingFiles();
+      }
+      function clearPreviewURLs(){
+        for (const url of previewURLs) URL.revokeObjectURL(url);
+        previewURLs = [];
+      }
+      function renderPendingFiles(){
+        clearPreviewURLs();
+        pendingPreviews.textContent = '';
+        pendingPreviews.hidden = !pendingFiles.length;
+        pendingFiles.forEach((file, index) => {
+          const tile = document.createElement('div');
+          tile.className = 'pendingfile' + (isVideoFile(file) ? ' video' : '');
+          if (isVideoFile(file)) {
+            const cover = document.createElement('div');
+            cover.className = 'videocover';
+            cover.innerHTML = '<span>▶</span><small>' + esc(file.name || 'Video') + '</small>';
+            tile.appendChild(cover);
+          } else {
+            const img = document.createElement('img');
+            const url = URL.createObjectURL(file);
+            previewURLs.push(url);
+            img.src = url; img.alt = file.name || 'Selected photo';
+            tile.appendChild(img);
+          }
+          const remove = document.createElement('button');
+          remove.type = 'button'; remove.className = 'pendingremove';
+          remove.setAttribute('aria-label', 'Remove ' + (file.name || 'file'));
+          remove.textContent = '×';
+          remove.addEventListener('click', () => {
+            pendingFiles.splice(index, 1);
+            renderPendingFiles();
+            closeComposer(false);
+          });
+          tile.appendChild(remove);
+          pendingPreviews.appendChild(tile);
+        });
         attachN.textContent = pendingFiles.length ? pendingFiles.length + ' selected' : '';
       }
       attachBtn.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
       cfiles.addEventListener('change', () => {
-        if (!featureOn('uploads')) { cfiles.value = ''; pendingFiles = []; attachN.textContent = ''; return; }
-        setPendingFiles(cfiles.files, false);
+        if (!featureOn('uploads')) { cfiles.value = ''; pendingFiles = []; renderPendingFiles(); return; }
+        setPendingFiles(cfiles.files, pendingFiles.length > 0);
+        cfiles.value = '';
+        if (pendingFiles.length) openComposer(false);
       });
       async function uploadOne(file){
-        const fd = new FormData();
-        fd.append('file', file);
-        const r = await fetch('/api/upload', { method: 'POST', body: fd });
+        // Send the original File body. There is no canvas/video decode,
+        // recompression, transcoding, or app-level size cap on this path.
+        const r = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-PP-Name': encodeURIComponent(file.name || (isVideoFile(file) ? 'video.mov' : 'photo.jpg'))
+          },
+          body: file
+        });
         const m = await r.json();
         if (!r.ok) throw new Error(m.error || 'upload failed');
         return m;
@@ -2143,7 +2248,6 @@
         });
         const res = await r.json();
         if (!r.ok) throw new Error(res.error || 'post failed');
-        if (res.claimUrl) showClaim(res.claimUrl);
       }
       async function submitPost(){
         if (!featureOn('wallMode')) return;
@@ -2165,7 +2269,8 @@
           if (featureOn('comments')) ctext.value = '';
           cfiles.value = '';
           pendingFiles = [];
-          attachN.textContent = '';
+          renderPendingFiles();
+          closeComposer(true);
         } catch (e) {
           attachN.textContent = e.message || 'failed — try again';
         } finally {
@@ -2173,25 +2278,9 @@
         }
       }
       postBtn.addEventListener('click', submitPost);
-
-      // Keepsake claim link — shown exactly once (see feed.go). Also kept in
-      // localStorage as a soft backup for re-display later.
-      function showClaim(url){
-        saveClaimUrl(url);
-        $id('claimWho').textContent = myEmoji + ' You’re ' + myName;
-        const ov = $id('claimOv');
-        ov.classList.add('show');
-        $id('claimCopy').onclick = () => {
-          if (navigator.clipboard) navigator.clipboard.writeText(url);
-          $id('claimCopy').textContent = 'Copied ✓';
-          setTimeout(() => $id('claimCopy').textContent = 'Copy link', 1400);
-        };
-        $id('claimShare').onclick = () => {
-          if (navigator.share) navigator.share({ title: 'My party keepsake link', url }).catch(() => {});
-          else { $id('claimCopy').onclick(); }
-        };
-        $id('claimClose').onclick = () => ov.classList.remove('show');
-      }
+      ctext.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitPost(); }
+      });
 
       // Feed rendering: newest first; media served from /media/<id>. Nodes
       // are keyed by post id and REPLACED when a post gains activity (a new
@@ -2363,16 +2452,23 @@
             // The DJ switched events: reset the cursor so the other event's
             // (older-timestamped) posts actually arrive.
             curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); expanded.clear(); albumItems.clear(); feedList.innerHTML = '';
+            persistGuestProfile();
+            loadSubscription(data.dir);
           }
           if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
-          if (data.host) $id('hostedLine').textContent = data.host + ' is hosting';
+          if (data.host) {
+            $id('hostedLine').textContent = data.host + ' is hosting';
+            guestHostName = data.host;
+            subscribeCopy.textContent = 'Receive email updates from ' + data.host + '.';
+          } else {
+            subscribeCopy.textContent = 'Receive email updates from the host.';
+          }
           const st = $id('startsLine');
           st.hidden = !data.starts; if (data.starts) st.textContent = data.starts;
           currentOnlineUrl = data.onlineUrl || '';
-          upgradeClaimBase(data.claimBaseUrl || '');
           paintOnlineLinks();
           maybeWelcome(data);
           const sa = $id('saveAll');

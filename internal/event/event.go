@@ -3,14 +3,11 @@
 // recordings, all stored in a normal, user-visible folder the DJ can open in
 // Finder and drag from (~/Music/partyparty/<date>). The Mac IS the event's
 // server while the party runs; publishing the page online later just means
-// syncing this folder — so everything a future publish needs (author claim
-// tokens, optional contact info) is captured now, privately.
+// syncing this folder. Optional guest contact information remains private.
 package event
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -48,9 +45,8 @@ type Comment struct {
 	DJ     bool   `json:"dj,omitempty"`
 }
 
-// Post is one feed entry. CID is the author's private client id — it never
-// leaves the server in feed responses (it's the future "claim my posts"
-// proof), only the pseudonym does. NoPublish marks posts the DJ excluded
+// Post is one feed entry. CID is the author's private client id; only the
+// pseudonym leaves the server in feed responses. NoPublish marks posts the DJ excluded
 // from the future ONLINE page (they stay visible at the party — exclusion
 // is curation for later, removal is Delete).
 type Post struct {
@@ -110,15 +106,14 @@ type line struct {
 }
 
 // Guest is the private per-guest record (guests.json, DJ-only). It captures
-// everything the future published page needs to let this person CLAIM their
-// posts: the pseudonym they used, a claim-token HASH (the raw token exists
-// only in the guest's own hands, as a capability URL), and optional contact.
+// the party identity chosen on the phone and an optional email subscription.
+// TokenHash is retained only so events created by older versions still load.
 type Guest struct {
 	Pseudonym string `json:"pseudonym"`
 	Emoji     string `json:"emoji"`
 	Contact   string `json:"contact,omitempty"`
-	TokenHash string `json:"tokenHash"` // sha256(raw claim token), hex
-	Created   int64  `json:"createdAt"` // unix millis
+	TokenHash string `json:"tokenHash,omitempty"` // legacy keepsake claim hash
+	Created   int64  `json:"createdAt"`           // unix millis
 }
 
 // Meta is the event's public identity (meta.json) — what the welcome card
@@ -1139,9 +1134,9 @@ func (s *Store) SetMediaThumb(mediaID string) error {
 	return nil
 }
 
-// AddPost validates, journals, and returns the stored post (plus a one-time
-// raw claim token when this is the guest's first post). Media entries are
-// re-verified against files actually present in this event's media dir.
+// AddPost validates, journals, and returns the stored post. The second return
+// value is kept empty for source compatibility with older claim-link callers.
+// Media entries are re-verified against files present in this event's media dir.
 func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool) (*Post, string, error) {
 	text = strings.TrimSpace(text)
 	if len(text) > 2000 {
@@ -1149,9 +1144,6 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	}
 	if text == "" && len(media) == 0 {
 		return nil, "", errors.New("empty post")
-	}
-	if len(media) > 12 {
-		media = media[:12]
 	}
 	verified := make([]Media, 0, len(media))
 	for _, m := range media {
@@ -1195,30 +1187,17 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	}
 	s.posts = append(s.posts, p)
 	s.byID[p.ID] = p
-	// First post from this cid: mint the guest record + claim token. The RAW
-	// token is returned exactly once (the client turns it into a keepsake
-	// claim link); only its hash persists here.
-	claimToken := ""
 	if !dj && cid != "" {
 		g, ok := s.guests[cid]
 		if !ok {
 			g = &Guest{Created: p.TS}
 			s.guests[cid] = g
 		}
-		// Fill IN, never replace: a guest who left their email before their
-		// first post (SetContact creates the record) must not lose it here.
-		if g.TokenHash == "" {
-			raw := make([]byte, 16)
-			_, _ = rand.Read(raw)
-			claimToken = base64.RawURLEncoding.EncodeToString(raw)
-			sum := sha256.Sum256([]byte(claimToken))
-			g.TokenHash = hex.EncodeToString(sum[:])
-		}
 		g.Pseudonym, g.Emoji = p.Author, p.Emoji // follow renames
 		_ = s.saveGuestsLocked()
 	}
 	s.changed()
-	return p, claimToken, nil
+	return p, "", nil
 }
 
 // AddComment appends a reply under a post.
@@ -1556,8 +1535,28 @@ func (s *Store) DeleteEventData(removeRecordings bool) (RetentionCleanupResult, 
 	return res, nil
 }
 
-// SetContact stores a guest's optional private contact (email/phone) — the
-// claim-link fallback for guests who saved nothing; never exposed in the feed.
+// SetGuestProfile stores the name and emoji selected on the guest's phone.
+func (s *Store) SetGuestProfile(cid, name, emoji string) error {
+	cid = clip(strings.TrimSpace(cid), 64)
+	name = clip(strings.TrimSpace(name), 40)
+	emoji = clip(strings.TrimSpace(emoji), 8)
+	if cid == "" {
+		return errors.New("missing cid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g, ok := s.guests[cid]
+	if !ok {
+		g = &Guest{Created: time.Now().UnixMilli()}
+		s.guests[cid] = g
+	}
+	g.Pseudonym = name
+	g.Emoji = emoji
+	return s.saveGuestsLocked()
+}
+
+// SetContact stores a guest's optional private email subscription; it is
+// never exposed in the public feed.
 func (s *Store) SetContact(cid, contact string) error {
 	contact = clip(strings.TrimSpace(contact), 120)
 	if cid == "" {

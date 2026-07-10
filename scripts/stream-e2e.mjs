@@ -516,7 +516,7 @@ paths:
         sendJSON(res, { ok: true });
         return;
       }
-      if (u.pathname === '/api/client-events' || u.pathname === '/api/guest-contact') {
+      if (u.pathname === '/api/client-events' || u.pathname === '/api/guest-contact' || u.pathname === '/api/guest-profile') {
         req.resume();
         sendJSON(res, { ok: true });
         return;
@@ -627,7 +627,10 @@ function streamMatcher(stack) {
 }
 
 async function createGuestSession(stack, browser, opts = {}) {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport: opts.viewport || { width: 390, height: 844 },
+  });
   if (opts.disableStartDate) {
     await context.addInitScript(() => {
       try {
@@ -669,6 +672,71 @@ async function createGuestSession(stack, browser, opts = {}) {
   return { context, page, consoleLines, requestFailures, pageErrors, requests, matchesStream };
 }
 
+async function assertGuestActions(page) {
+  if (!(await page.locator('#composer').isHidden())) fail('guest composer is visible before Comment or Photo is tapped');
+
+  await page.locator('#trayShare').click();
+  await page.waitForFunction(() => {
+    const root = document.getElementById('qrShare');
+    return root && (root.querySelector('canvas') || root.querySelector('img'));
+  }, { timeout: 5000 });
+  const qr = await page.evaluate(() => {
+    const root = document.getElementById('qrShare');
+    const canvas = root && root.querySelector('canvas');
+    if (canvas) {
+      const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      let dark = 0, light = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const sum = data[i] + data[i + 1] + data[i + 2];
+        if (sum < 200) dark++;
+        if (sum > 700) light++;
+      }
+      return { kind: 'canvas', width: canvas.width, height: canvas.height, dark, light };
+    }
+    const img = root && root.querySelector('img');
+    return img ? { kind: 'img', width: img.naturalWidth, height: img.naturalHeight, src: img.src.slice(0, 16) } : null;
+  });
+  if (!qr || qr.width < 200 || qr.height < 200 || (qr.kind === 'canvas' && (!qr.dark || !qr.light))) {
+    fail(`guest share QR is blank: ${JSON.stringify(qr)}`);
+  }
+  await page.locator('#qrClose').click();
+
+  await page.locator('#trayComment').click();
+  if (!(await page.locator('#composer').isVisible())) fail('Comment did not open the compact composer');
+  await page.locator('#ctext').fill('party comment');
+  await page.locator('#cfiles').setInputFiles([
+    { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlOcAAAAASUVORK5CYII=', 'base64') },
+    { name: 'clip.mov', mimeType: 'video/quicktime', buffer: Buffer.from('original-video-bytes') },
+  ]);
+  await page.waitForFunction(() => document.querySelectorAll('#pendingPreviews .pendingfile').length === 2);
+  const previews = await page.evaluate(() => ({
+    total: document.querySelectorAll('#pendingPreviews .pendingfile').length,
+    photos: document.querySelectorAll('#pendingPreviews .pendingfile img').length,
+    videos: document.querySelectorAll('#pendingPreviews .pendingfile.video .videocover').length,
+    claims: document.querySelectorAll('#claimOv,[id*="keepsake"]').length,
+  }));
+  if (previews.total !== 2 || previews.photos !== 1 || previews.videos !== 1 || previews.claims !== 0) {
+    fail(`guest composer preview/claim state is wrong: ${JSON.stringify(previews)}`);
+  }
+  const layout = await page.evaluate(() => {
+    const composer = document.getElementById('composer').getBoundingClientRect();
+    const tray = document.getElementById('listenBar').getBoundingClientRect();
+    return {
+      viewport: innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      composer: { left: composer.left, right: composer.right, bottom: composer.bottom },
+      tray: { left: tray.left, right: tray.right, top: tray.top },
+    };
+  });
+  if (layout.scrollWidth > layout.viewport + 1 || layout.composer.left < 0 || layout.composer.right > layout.viewport + 1 || layout.composer.bottom > layout.tray.top + 1) {
+    fail(`guest mobile controls overflow or overlap: ${JSON.stringify(layout)}`);
+  }
+  if (process.env.PP_E2E_SCREENSHOT) {
+    await page.screenshot({ path: process.env.PP_E2E_SCREENSHOT, fullPage: false });
+  }
+  log(`PASS browser guest actions: QR=${qr.width}x${qr.height} composer=on-demand previews=2 keepsake=absent`);
+}
+
 async function driveGuest(stack, label, browser, session = null, opts = {}) {
   let ownSession = false;
   if (!session) {
@@ -698,6 +766,8 @@ async function driveGuest(stack, label, browser, session = null, opts = {}) {
     // native media element is buffered and advancing. Chromium remains the
     // decoded-audio/RMS proof; WebKit proves the native Safari code path.
     const audio = ENGINE === 'webkit' ? { skipped: true } : await assertAudioRMS(page);
+
+    if (ownSession && opts.checkActions !== false) await assertGuestActions(page);
 
     const audioResult = audio.skipped ? 'native-media=advancing' : `rms=${audio.rmsMean.toFixed(5)} max=${audio.rmsMax.toFixed(5)}`;
     log(`PASS browser ${label}: platform=${clientPlatform} manifest=${manifestUrl} readyState=${media.readyState} bufferedEnd=${media.bufferedEnd.toFixed(2)}s delta=${progress.delta.toFixed(2)}s ${audioResult}`);

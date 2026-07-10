@@ -461,6 +461,15 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
 		health.Suggestion = suggest(health.Status, bc)
 		mediaOffset := s.Listeners.MediaOffset(bc.Since)
+		roster := s.Listeners.Roster()
+		var rosterBody any = roster
+		if !s.isDJ(r) {
+			public := make([]map[string]string, 0, len(roster))
+			for _, listener := range roster {
+				public = append(public, map[string]string{"name": listener.Name, "emoji": listener.Emoji})
+			}
+			rosterBody = public
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name":            s.Config.Name,
 			"appVersion":      s.version(),
@@ -481,7 +490,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"captive":         s.Config.Captive,
 			"latency":         s.Listeners.LatencySpread(),
 			"roomMediaOffset": mediaOffset,
-			"roster":          s.Listeners.Roster(),
+			"roster":          rosterBody,
 			"event":           s.eventState(),
 			"mirror":          s.eventMirrorState(),
 			"config":          s.payloadConfig(),
@@ -801,6 +810,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
 		s.Listeners.Debug(key, q.Get("del"), rate, buf)
 		s.Listeners.Meta(key, clientIP(r), s.friendlyName(clientIP(r), r.UserAgent()))
+		s.Listeners.Identity(key, clipStr(strings.TrimSpace(q.Get("name")), 40), clipStr(strings.TrimSpace(q.Get("emoji")), 16))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/delivery":
 		if r.Method != http.MethodPost {
@@ -992,6 +1002,14 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 func (s *srv) addStreamFeedPost(text string) {
 	if s.Events == nil {
 		return
+	}
+	posts, _, _ := s.Events.Feed(0)
+	for _, post := range posts {
+		if post.DJ && post.CID == "dj" && post.Text == text {
+			if err := s.Events.Delete(post.ID); err != nil && s.Diag != nil {
+				s.Diag.Printf("old stream feed post delete failed: %v", err)
+			}
+		}
 	}
 	meta := s.Events.Meta()
 	author := strings.TrimSpace(meta.Host)

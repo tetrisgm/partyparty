@@ -138,6 +138,16 @@ func multipartUpload(t *testing.T, name, contentType string) (*bytes.Buffer, str
 	return body, mw.FormDataContentType()
 }
 
+func rawUpload(s *Srv, remoteAddr, name, contentType string, data []byte) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/upload", bytes.NewReader(data))
+	req.RemoteAddr = remoteAddr
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("X-PP-Name", url.QueryEscape(name))
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	return w
+}
+
 func waitIdle(t *testing.T, bc *broadcast.Broadcaster) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -381,6 +391,68 @@ func TestGuestUploadsAreNotRateLimited(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("%s upload status = %d, body %q", name, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestRawGuestUploadPreservesOriginalBytes(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	want := bytes.Repeat([]byte{0x00, 0x1f, 0x80, 0xff, 0x42}, (2<<20)/5)
+	w := rawUpload(s, "192.168.1.44:3333", "dance floor + original.mov", "video/quicktime", want)
+	if w.Code != http.StatusOK {
+		t.Fatalf("raw upload status = %d, body %q", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	id, _ := body["id"].(string)
+	if id == "" || body["name"] != "dance floor + original.mov" || body["size"] != float64(len(want)) {
+		t.Fatalf("raw upload response = %#v", body)
+	}
+	path, ok := ev.MediaPath(id)
+	if !ok {
+		t.Fatalf("uploaded media %q missing", id)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("stored upload changed: got %d bytes, want %d byte-for-byte", len(got), len(want))
+	}
+}
+
+func TestGuestProfilePersistsWithoutKeepsakeClaim(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	profile, _ := json.Marshal(map[string]string{"cid": "phone-1", "name": "Neon Fox", "emoji": "🪩"})
+	w := doBody(s, http.MethodPost, "/api/guest-profile", "192.168.1.44:3333", "application/json", bytes.NewBuffer(profile))
+	if w.Code != http.StatusOK {
+		t.Fatalf("guest profile status = %d, body %q", w.Code, w.Body.String())
+	}
+	post, _ := json.Marshal(map[string]string{"cid": "phone-1", "author": "Neon Fox", "emoji": "🪩", "text": "hello"})
+	w = doBody(s, http.MethodPost, "/api/post", "192.168.1.44:3333", "application/json", bytes.NewBuffer(post))
+	if w.Code != http.StatusOK {
+		t.Fatalf("guest post status = %d, body %q", w.Code, w.Body.String())
+	}
+	if _, exists := decodeJSON(t, w)["claimUrl"]; exists {
+		t.Fatalf("post response still issued a keepsake claim: %q", w.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(ev.Dir(), "guests.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var guests map[string]event.Guest
+	if err := json.Unmarshal(data, &guests); err != nil {
+		t.Fatal(err)
+	}
+	g := guests["phone-1"]
+	if g.Pseudonym != "Neon Fox" || g.Emoji != "🪩" || g.TokenHash != "" {
+		t.Fatalf("guest profile = %#v", g)
 	}
 }
 
@@ -1168,6 +1240,17 @@ func TestStartStopCreatesDJFeedPosts(t *testing.T) {
 		t.Fatalf("stop status = %d, body %q", w.Code, w.Body.String())
 	}
 	waitIdle(t, env.bc)
+	// Repeating the lifecycle must replace the previous matching system post,
+	// not fill the activity feed with duplicate starts and stops.
+	w = do(env.srv, http.MethodPost, "/api/start?device=test", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("second start status = %d, body %q", w.Code, w.Body.String())
+	}
+	w = do(env.srv, http.MethodPost, "/api/stop", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("second stop status = %d, body %q", w.Code, w.Body.String())
+	}
+	waitIdle(t, env.bc)
 
 	w = do(env.srv, http.MethodGet, "/api/feed?guest=1", "192.168.1.44:3333")
 	if w.Code != http.StatusOK {
@@ -1180,15 +1263,15 @@ func TestStartStopCreatesDJFeedPosts(t *testing.T) {
 	if len(posts) != 2 {
 		t.Fatalf("posts len = %d, want 2: %#v", len(posts), posts)
 	}
-	got := map[string]bool{}
+	got := map[string]int{}
 	for _, raw := range posts {
 		p := raw.(map[string]any)
 		if p["author"] != "Ramine" || p["emoji"] != "🎧" || p["dj"] != true || p["state"] != event.StateApproved {
 			t.Fatalf("stream post = %#v", p)
 		}
-		got[p["text"].(string)] = true
+		got[p["text"].(string)]++
 	}
-	if !got["Started the stream."] || !got["Stopped the stream."] {
+	if got["Started the stream."] != 1 || got["Stopped the stream."] != 1 {
 		t.Fatalf("stream posts = %#v", got)
 	}
 }
@@ -1370,12 +1453,12 @@ func TestCaptiveProbes(t *testing.T) {
 func TestHeartbeatAndRoster(t *testing.T) {
 	env := newTestEnv(t, nil)
 	// Loopback RemoteAddr keeps friendlyName from spawning a reverse-DNS lookup.
-	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&lat=250&off=12345&sid=99&plat=hls&del=llhls&rate=1&buf=3.5&v=test" /* v required since 0.26: no-v heartbeats are legacy zombie tabs */, "127.0.0.1:5000")
+	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&name=Neon%20Fox&emoji=%F0%9F%AA%A9&lat=250&off=12345&sid=99&plat=hls&del=llhls&rate=1&buf=3.5&v=test" /* v required since 0.26: no-v heartbeats are legacy zombie tabs */, "127.0.0.1:5000")
 	if w.Code != http.StatusOK {
 		t.Fatalf("heartbeat = %d", w.Code)
 	}
 
-	body := decodeJSON(t, do(env.srv, "GET", "/api/status", ""))
+	body := decodeJSON(t, do(env.srv, "GET", "/api/status", djAddr))
 	if body["listeners"] != 1.0 {
 		t.Errorf("listeners = %v, want 1", body["listeners"])
 	}
@@ -1392,6 +1475,19 @@ func TestHeartbeatAndRoster(t *testing.T) {
 	}
 	if entry["platform"] != "hls" || entry["delivery"] != "llhls" {
 		t.Errorf("roster entry platform/delivery = %v/%v", entry["platform"], entry["delivery"])
+	}
+	if entry["name"] != "Neon Fox" || entry["emoji"] != "🪩" || entry["device"] == "" {
+		t.Errorf("roster entry identity/device = %v/%v/%v", entry["name"], entry["emoji"], entry["device"])
+	}
+	guestBody := decodeJSON(t, do(env.srv, "GET", "/api/status", "192.168.1.99:6000"))
+	guestEntry := guestBody["roster"].([]any)[0].(map[string]any)
+	if guestEntry["name"] != "Neon Fox" || guestEntry["emoji"] != "🪩" {
+		t.Errorf("public roster identity = %#v", guestEntry)
+	}
+	for _, private := range []string{"device", "ip", "platform", "delivery", "latencyMs"} {
+		if _, exposed := guestEntry[private]; exposed {
+			t.Errorf("public roster exposed %s: %#v", private, guestEntry)
+		}
 	}
 	lat, ok := body["latency"].(map[string]any)
 	if !ok || lat["count"] != 1.0 {

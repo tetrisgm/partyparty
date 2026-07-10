@@ -26,9 +26,12 @@ type client struct {
 	rate     float64
 	bufS     float64
 
-	// Identity for the DJ's "see details" view.
-	ip   string
-	name string // friendly device label derived from the User-Agent
+	// Party identity is guest-chosen. Device/IP stay separate and are exposed
+	// only to the DJ's details view.
+	ip     string
+	device string // friendly device label derived from the User-Agent
+	name   string
+	emoji  string
 }
 
 // SyncOffset records a PROGRAM-DATE-TIME-derived mapping from the broadcast
@@ -114,8 +117,8 @@ func (l *Listeners) Debug(key, delivery string, rate, bufS float64) {
 	}
 }
 
-// Meta records identity (IP + friendly device name) for the details view.
-func (l *Listeners) Meta(key, ip, name string) {
+// Meta records network/device information for the DJ-only details view.
+func (l *Listeners) Meta(key, ip, device string) {
 	if key == "" {
 		return
 	}
@@ -125,9 +128,22 @@ func (l *Listeners) Meta(key, ip, name string) {
 		if ip != "" {
 			c.ip = ip
 		}
-		if name != "" {
-			c.name = name
+		if device != "" {
+			c.device = device
 		}
+	}
+}
+
+// Identity records the guest-selected display name and emoji.
+func (l *Listeners) Identity(key, name, emoji string) {
+	if key == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if c := l.clients[key]; c != nil {
+		c.name = name
+		c.emoji = emoji
 	}
 }
 
@@ -263,6 +279,8 @@ type Listener struct {
 	Platform   string  `json:"platform"` // "native" | "hls"
 	Delivery   string  `json:"delivery,omitempty"`
 	Name       string  `json:"name,omitempty"`
+	Emoji      string  `json:"emoji,omitempty"`
+	Device     string  `json:"device,omitempty"`
 	IP         string  `json:"ip,omitempty"`
 	LatencyMs  float64 `json:"latencyMs"`
 	HasLatency bool    `json:"hasLatency"`
@@ -290,6 +308,8 @@ func (l *Listeners) Roster() []Listener {
 			Platform:   c.platform,
 			Delivery:   c.delivery,
 			Name:       c.name,
+			Emoji:      c.emoji,
+			Device:     c.device,
 			IP:         c.ip,
 			LatencyMs:  c.lat,
 			HasLatency: c.hasLat,

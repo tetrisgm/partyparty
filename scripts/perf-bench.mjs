@@ -5,8 +5,9 @@
 // The skill's one idea: perceived speed is intent -> visible feedback. For a
 // guest that means join -> first audio, and the biggest thing in the way is
 // bytes we make every phone download+parse on the critical path. This bench
-// measures exactly that: how many VENDOR script bytes the listener page pulls
-// on initial load, split by the player path the device actually takes.
+// measures how many VENDOR script bytes the listener page pulls on initial
+// load, split by the player path the device actually takes. The small QR
+// renderer is intentionally eager: a reliable first-tap QR costs about 20KB.
 //
 //   - "apple"  : iPhone/iPad/Safari -> native <audio> HLS (useNative=true).
 //                Chromium has no native HLS, so we override canPlayType + UA to
@@ -108,9 +109,9 @@ async function measure(playwright, base, kind) {
   const onLoad = vendor.reduce((a, v) => a + v.bytes, 0);
   const onLoadList = vendor.map((v) => `${v.url} ${(v.bytes / 1024).toFixed(0)}KB`).join(', ') || '(none)';
 
-  // Now exercise the deferred "Show QR" affordance and see what it pulls. Use a
-  // programmatic click: on-load overlays (engagement gate) sit above the fixed
-  // Share button and would intercept a real pointer click in headless.
+  // Exercise Show QR and confirm whether it causes any additional vendor load.
+  // QR is eager for reliability, so this should normally be zero. Use a
+  // programmatic click because the engagement gate sits above the fixed button.
   const before = vendor.length;
   await page.evaluate(() => { const b = document.getElementById('shareBtn'); if (b) b.click(); }).catch(() => {});
   await page.waitForTimeout(600);

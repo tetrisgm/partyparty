@@ -140,6 +140,7 @@
   .listener.det{align-items:flex-start}
   .listener .lstat{width:18px;text-align:center}
   .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+  .listener .lemoji{width:22px;text-align:center;font-size:18px;line-height:1;flex:0 0 auto}
   .dot-g{background:var(--success)} .dot-y{background:var(--warn)} .dot-r{background:var(--danger)} .dot-x{background:var(--label-tertiary)}
   .listener .lname{flex:1;color:var(--label)}
   .listener.host .lname{font-weight:750}
@@ -1697,7 +1698,7 @@
         (r.rate && Math.abs(r.rate-1)>0.001 ? r.rate.toFixed(2)+'x' : ''),
         (r.stalled ? 'STALLED' : ''), (r.paused ? 'paused' : '')
       ].filter(Boolean).join(' · ');
-      L.push('  ' + (i+1) + '. ' + (r.name || 'Guest') + '  [' + (r.ip||'?') + ']  ' + bits);
+      L.push('  ' + (i+1) + '. ' + (r.name || 'Guest') + '  [' + (r.device || 'device') + ' · ' + (r.ip||'?') + ']  ' + bits);
     });
     const txt = L.join('\n');
     if (navigator.clipboard) navigator.clipboard.writeText(txt);
@@ -2284,7 +2285,7 @@
       const details = detailsOn && document.body.classList.contains('event-manage-open');
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
       const hostName = eventMeta.host || accountEventHost() || 'the DJ';
-      const hostRow = '<div class="listener host"><span class="ldot dot-g"></span><span class="lname">' + esc(hostName) + '<span class="hostpill">DJ</span></span></div>';
+      const hostRow = '<div class="listener host"><span class="ldot dot-g"></span><span class="lemoji">🎧</span><span class="lname">' + esc(hostName) + '<span class="hostpill">DJ</span></span></div>';
       const guestRows = roster.map((r, i) => {
         // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
         // red stalled · gray paused.
@@ -2293,10 +2294,12 @@
           : (!r.hasLatency || (r.bufS && r.bufS < 2)) ? 'dot-y'
           : 'dot-g';
         const dot = '<span class="ldot ' + cls + '"></span>';
+        const name = esc(r.name || ('Guest ' + (i + 1)));
+        const emoji = esc(r.emoji || '•');
         if (!details) {
-          return '<div class="listener">' + dot + '<span class="lname">Guest ' + (i + 1) + '</span></div>';
+          return '<div class="listener">' + dot + '<span class="lemoji">' + emoji + '</span><span class="lname">' + name + '</span></div>';
         }
-        const dev = esc(r.name || 'device');
+        const dev = esc(r.device || 'device');
         const lat = r.hasLatency ? (r.latencyMs / 1000).toFixed(1) + ' s delay' : 'measuring…';
         const bits = [
           (r.delivery === 'llhls' ? 'low-latency' : 'compatible'),
@@ -2304,8 +2307,8 @@
           (r.rate && Math.abs(r.rate - 1) > 0.001 ? r.rate.toFixed(2) + '×' : ''),
           (r.stalled ? 'stalled' : ''), (r.paused ? 'paused' : '')
         ].filter(Boolean).join(' · ');
-        return '<div class="listener det">' + dot +
-          '<div class="lbody"><span class="lname">Guest ' + (i + 1) + '  <span class="lip">' + dev + ' · ' + esc(r.ip) + '</span></span>' +
+        return '<div class="listener det">' + dot + '<span class="lemoji">' + emoji + '</span>' +
+          '<div class="lbody"><span class="lname">' + name + '  <span class="lip">' + dev + ' · ' + esc(r.ip) + '</span></span>' +
           '<div class="ldetail">' + lat + ' · ' + bits + '</div></div></div>';
       }).join('');
       $('roster').innerHTML = hostRow + guestRows;
