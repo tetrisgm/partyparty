@@ -556,7 +556,7 @@ func TestEventRetentionCleanupDeleteConfirmAndDJOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ev.SetPostState(post.ID, event.StatePending); err != nil {
+	if err := ev.SetPostState(post.ID, event.StateHidden); err != nil {
 		t.Fatal(err)
 	}
 
@@ -573,7 +573,7 @@ func TestEventRetentionCleanupDeleteConfirmAndDJOnly(t *testing.T) {
 		t.Fatalf("event-cleanup confirmed status = %d, body %q", w.Code, w.Body.String())
 	}
 	if _, ok := ev.MediaPath(media.ID); ok {
-		t.Fatal("cleanup did not remove pending media")
+		t.Fatal("cleanup did not remove hidden media")
 	}
 
 	media, err = ev.SaveMedia("photo.jpg", strings.NewReader("photo"))
@@ -995,13 +995,16 @@ func TestRequestsGateLimitPrivateAndDJList(t *testing.T) {
 	}
 }
 
-func TestModerationFeedAndRoutes(t *testing.T) {
+func TestGuestPostsAreImmediatelyVisibleAndDeleteRoutesWork(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := ev.SetModerationMode(event.ModerationPreApprove); err != nil {
 		t.Fatal(err)
+	}
+	if got := ev.Meta().ModerationMode; got != event.ModerationPostModerate {
+		t.Fatalf("legacy pre-approve mode = %q, want post_moderate", got)
 	}
 	s := New(Deps{Events: ev})
 	postJSON := func(target, remote string, body any) *httptest.ResponseRecorder {
@@ -1024,7 +1027,7 @@ func TestModerationFeedAndRoutes(t *testing.T) {
 		return posts
 	}
 
-	w := postJSON("/api/post", "192.168.1.44:3333", map[string]any{"cid": "c1", "author": "Guest", "emoji": "🎉", "text": "needs review"})
+	w := postJSON("/api/post", "192.168.1.44:3333", map[string]any{"cid": "c1", "author": "Guest", "emoji": "🎉", "text": "visible now"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("post status = %d, body %q", w.Code, w.Body.String())
 	}
@@ -1032,32 +1035,24 @@ func TestModerationFeedAndRoutes(t *testing.T) {
 	if postID == "" {
 		t.Fatal("post id missing")
 	}
-	if got := len(postsFrom("/api/feed?cid=c2", "192.168.1.45:3333")); got != 0 {
-		t.Fatalf("other guest posts = %d, want 0", got)
-	}
-	own := postsFrom("/api/feed?cid=c1", "192.168.1.44:3333")
-	if len(own) != 1 || own[0].(map[string]any)["state"] != event.StatePending {
-		t.Fatalf("own pending feed = %#v", own)
-	}
-	dj := postsFrom("/api/feed", "127.0.0.1:1234")
-	if len(dj) != 1 || dj[0].(map[string]any)["state"] != event.StatePending {
-		t.Fatalf("DJ pending feed = %#v", dj)
-	}
-	guestOnLoopback := postsFrom("/api/feed?guest=1", "127.0.0.1:1234")
-	if len(guestOnLoopback) != 0 {
-		t.Fatalf("guest-forced loopback feed = %#v, want approved-only", guestOnLoopback)
-	}
-
-	w = do(s, http.MethodPost, "/api/mod?id="+postID+"&state=approved", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("mod status = %d, body %q", w.Code, w.Body.String())
-	}
 	other := postsFrom("/api/feed?cid=c2", "192.168.1.45:3333")
 	if len(other) != 1 || other[0].(map[string]any)["state"] != event.StateApproved {
-		t.Fatalf("approved guest feed = %#v", other)
+		t.Fatalf("other guest immediate feed = %#v", other)
+	}
+	own := postsFrom("/api/feed?cid=c1", "192.168.1.44:3333")
+	if len(own) != 1 || own[0].(map[string]any)["state"] != event.StateApproved {
+		t.Fatalf("own immediate feed = %#v", own)
+	}
+	dj := postsFrom("/api/feed", "127.0.0.1:1234")
+	if len(dj) != 1 || dj[0].(map[string]any)["state"] != event.StateApproved {
+		t.Fatalf("DJ feed = %#v", dj)
+	}
+	guestOnLoopback := postsFrom("/api/feed?guest=1", "127.0.0.1:1234")
+	if len(guestOnLoopback) != 1 {
+		t.Fatalf("guest-forced loopback feed = %#v, want visible post", guestOnLoopback)
 	}
 
-	w = postJSON("/api/comment", "192.168.1.45:3333", map[string]any{"post": postID, "cid": "c2", "author": "Other", "emoji": "✨", "text": "pending reply"})
+	w = postJSON("/api/comment", "192.168.1.45:3333", map[string]any{"post": postID, "cid": "c2", "author": "Other", "emoji": "✨", "text": "visible reply"})
 	if w.Code != http.StatusOK {
 		t.Fatalf("comment status = %d, body %q", w.Code, w.Body.String())
 	}
@@ -1067,12 +1062,12 @@ func TestModerationFeedAndRoutes(t *testing.T) {
 	}
 	other = postsFrom("/api/feed?cid=c2", "192.168.1.45:3333")
 	comments, _ := other[0].(map[string]any)["comments"].([]any)
-	if len(comments) != 1 || comments[0].(map[string]any)["state"] != event.StatePending {
-		t.Fatalf("own pending comment feed = %#v", other)
+	if len(comments) != 1 || comments[0].(map[string]any)["state"] != event.StateApproved {
+		t.Fatalf("immediate comment feed = %#v", other)
 	}
 	own = postsFrom("/api/feed?cid=c1", "192.168.1.44:3333")
-	if comments, _ := own[0].(map[string]any)["comments"].([]any); len(comments) != 0 {
-		t.Fatalf("other guest saw pending comment: %#v", own)
+	if comments, _ := own[0].(map[string]any)["comments"].([]any); len(comments) != 1 {
+		t.Fatalf("other guest did not see comment: %#v", own)
 	}
 	w = postJSON("/api/comment-delete", "127.0.0.1:1234", map[string]any{"postID": postID, "commentID": commentID})
 	if w.Code != http.StatusOK {

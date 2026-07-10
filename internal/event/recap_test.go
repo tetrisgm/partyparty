@@ -95,8 +95,8 @@ func TestGenerateRecapApprovedOnlyCopiesAssetsAndPreservesJournal(t *testing.T) 
 	if data.Event.Title != "Recap Night" || data.Event.Host != "DJ Test" {
 		t.Fatalf("event = %#v, want Recap Night/DJ Test", data.Event)
 	}
-	if data.Stats.Posts != 1 || data.Stats.Comments != 1 || data.Stats.Media != 1 || data.Stats.Requests != 1 || data.Stats.Tracks != 2 {
-		t.Fatalf("stats = %#v, want approved-only counts", data.Stats)
+	if data.Stats.Posts != 2 || data.Stats.Comments != 1 || data.Stats.Media != 1 || data.Stats.Requests != 1 || data.Stats.Tracks != 2 {
+		t.Fatalf("stats = %#v, want visible-content counts", data.Stats)
 	}
 	if len(data.Requests.Details) != 0 || data.Requests.DetailsEnabled {
 		t.Fatalf("request details = %#v, want summarized only", data.Requests)
@@ -128,7 +128,10 @@ func TestGenerateRecapApprovedOnlyCopiesAssetsAndPreservesJournal(t *testing.T) 
 	if !strings.Contains(string(html), "Recap Night") || !strings.Contains(string(html), "approved shoutout") {
 		t.Fatalf("index.html missing approved recap content:\n%s", string(html))
 	}
-	for _, hiddenText := range []string{"pending post", "hidden post", "hidden comment", "private note"} {
+	if !strings.Contains(string(html), "pending post") {
+		t.Fatalf("index.html omitted legacy pending post, which should now be visible:\n%s", string(html))
+	}
+	for _, hiddenText := range []string{"hidden post", "hidden comment", "private note"} {
 		if strings.Contains(string(html), hiddenText) {
 			t.Fatalf("index.html contains excluded text %q", hiddenText)
 		}

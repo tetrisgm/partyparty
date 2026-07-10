@@ -337,6 +337,18 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveWeb(w, r, "art-512.png", "")
 	case p == "/favicon.ico":
 		w.WriteHeader(http.StatusNoContent)
+	case p == "/event-cover":
+		if s.Events == nil {
+			http.NotFound(w, r)
+			return
+		}
+		cover, ok := s.Events.CoverPath()
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFile(w, r, cover)
 	case strings.HasPrefix(p, "/covers/"):
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)

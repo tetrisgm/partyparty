@@ -667,9 +667,9 @@ async function createGuestSession(stack, browser, opts = {}) {
 }
 
 async function assertGuestActions(page) {
-  if (!(await page.locator('#composer').isHidden())) fail('guest composer is visible before Comment or Photo is tapped');
+  if (!(await page.locator('#composer').isVisible())) fail('guest identity/comment composer is not visible');
 
-  await page.locator('#trayShare').click();
+  await page.locator('#shareBtn').click();
   await page.waitForFunction(() => {
     const root = document.getElementById('qrShare');
     return root && (root.querySelector('canvas') || root.querySelector('img'));
@@ -695,8 +695,6 @@ async function assertGuestActions(page) {
   }
   await page.locator('#qrClose').click();
 
-  await page.locator('#trayComment').click();
-  if (!(await page.locator('#composer').isVisible())) fail('Comment did not open the compact composer');
   await page.locator('#ctext').fill('party comment');
   await page.locator('#cfiles').setInputFiles([
     { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlOcAAAAASUVORK5CYII=', 'base64') },
@@ -718,17 +716,17 @@ async function assertGuestActions(page) {
     return {
       viewport: innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
-      composer: { left: composer.left, right: composer.right, bottom: composer.bottom },
-      tray: { left: tray.left, right: tray.right, top: tray.top },
+      composer: { left: composer.left, right: composer.right, top: composer.top, bottom: composer.bottom },
+      tray: { left: tray.left, right: tray.right, top: tray.top, bottom: tray.bottom },
     };
   });
-  if (layout.scrollWidth > layout.viewport + 1 || layout.composer.left < 0 || layout.composer.right > layout.viewport + 1 || layout.composer.bottom > layout.tray.top + 1) {
+  if (layout.scrollWidth > layout.viewport + 1 || layout.composer.left < layout.tray.left - 1 || layout.composer.right > layout.tray.right + 1 || layout.composer.top < layout.tray.top - 1 || layout.composer.bottom > layout.tray.bottom + 1) {
     fail(`guest mobile controls overflow or overlap: ${JSON.stringify(layout)}`);
   }
   if (process.env.PP_E2E_SCREENSHOT) {
     await page.screenshot({ path: process.env.PP_E2E_SCREENSHOT, fullPage: false });
   }
-  log(`PASS browser guest actions: QR=${qr.width}x${qr.height} composer=on-demand previews=2 keepsake=absent`);
+  log(`PASS browser guest actions: QR=${qr.width}x${qr.height} composer=visible previews=2 keepsake=absent`);
 }
 
 async function driveGuest(stack, label, browser, session = null, opts = {}) {

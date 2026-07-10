@@ -17,7 +17,7 @@
     --accent:#ff2d55; --success:#34c759;
     --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
   }
-  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;letter-spacing:0!important}
   [hidden]{display:none!important}
   html,body{height:100%;margin:0}
   body{
@@ -277,10 +277,7 @@
     width:min(100%,460px);min-height:auto;margin:0 auto;padding:calc(54px + env(safe-area-inset-top)) 20px 20px;
     align-items:stretch;text-align:left;
   }
-  .hero::before{
-    content:'Local party';align-self:center;margin-bottom:10px;padding:5px 10px;border-radius:999px;
-    background:rgba(255,255,255,.34);color:rgba(22,19,21,.72);font-size:11px;font-weight:800;
-  }
+  .hero::before{content:none}
   .hero .artwork{
     order:2;width:100%;height:auto;aspect-ratio:1/1.18;margin:18px 0 18px;border-radius:20px;
     position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -398,22 +395,103 @@
     .hero .artwork{aspect-ratio:16/10}
     .albumstrip{grid-template-columns:repeat(5,1fr)}
   }
+
+  /* Event page: one cover, one title, one timeline. */
+  body{background:#f5f5f7;color:#1d1d1f}
+  body::before{display:none}
+  .diagnostics{
+    position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:8;
+    display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;
+    background:rgba(20,20,22,.72);color:#fff;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+    font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
+  }
+  .diagnostics .delaybadge{position:static;min-width:0;padding:0;border:0;border-radius:0;background:none;color:inherit;box-shadow:none;backdrop-filter:none;pointer-events:none}
+  .diagnostics .delaybadge.syncing{color:#ffd60a;background:none}
+  .diagnostics .delaybadge.warn{color:#ff9f0a;background:none}
+  .pageversion{padding-left:6px;border-left:1px solid rgba(255,255,255,.28)}
+  .toptools{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;z-index:8;display:flex;gap:7px}
+  .toptools .share{position:static;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:rgba(20,20,22,.72);color:#fff;box-shadow:none;backdrop-filter:blur(18px)}
+  .toptools .share svg{width:18px;height:18px}
+  .hero{width:min(100%,720px);max-width:720px!important;margin:0 auto;padding:0 20px 26px;align-items:stretch;text-align:left}
+  .hero::before{display:none}
+  .hero .artwork{
+    order:1;width:calc(100% + 40px);max-width:900px;height:auto;aspect-ratio:16/9;margin:0 0 20px -20px;transform:none;
+    border-radius:0;background:#d9d9de;box-shadow:none;display:block;overflow:hidden;
+  }
+  .hero .artwork::after{display:none}
+  .hero .artwork img{width:100%;height:100%;display:block;object-fit:cover;object-position:center}
+  .hosted{display:none!important}
+  h1{order:2;margin:0 0 12px;font-size:44px;line-height:1.02;letter-spacing:0;text-align:left}
+  .starts{order:3;margin:0 0 14px;padding:0;font-size:16px}
+  .guestline{order:4;margin:3px 0 14px}
+  .count{display:none}
+  .eq{order:6;display:none}
+  body.playing .eq{display:flex}
+  .pill{order:7}
+  .reactions,.trackid,.trackrequest{order:8}
+  .foot{order:9;margin:18px 0 0;padding:0}
+  .statline,.downhint,#onlineCard{display:none!important}
+  .listenbar{
+    left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:700px;
+    display:grid;grid-template-columns:1fr;gap:7px;padding:8px;border-radius:20px;
+    background:rgba(255,255,255,.88);border:1px solid rgba(0,0,0,.08);box-shadow:0 14px 48px rgba(0,0,0,.18);
+  }
+  .listenbar .btn{height:48px;margin:0;border-radius:14px;justify-content:flex-start}
+  .listenbar .composer{position:static;width:100%;min-width:0;max-width:none;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none}
+  .composerline{min-width:0;gap:6px}
+  .composerline .mechip{max-width:128px;min-width:0;height:40px;padding:0 10px;gap:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;box-shadow:none}
+  .composerline .mechip b{overflow:hidden;text-overflow:ellipsis}
+  .composerline .mechip input{width:86px;min-width:50px}
+  .composerline input[type=text]{height:40px;padding:0 10px;border:1px solid var(--separator);border-radius:12px;background:#f5f5f7;font-size:14px}
+  .composericon{background:#f0f0f3}
+  .postbtn{height:40px;border-radius:10px;padding:0 12px}
+  .feed{max-width:720px;margin:0 auto;padding:8px 20px calc(170px + env(safe-area-inset-bottom))}
+  .feedhead{font-size:26px;margin-top:14px}
+  .feedsub{margin-bottom:16px}
+  .album,.djlinks,.post{background:#fff;border-color:rgba(0,0,0,.08);box-shadow:0 2px 12px rgba(0,0,0,.05)}
+  .post{border-radius:14px}
+  .pverb{color:var(--label-secondary);font-size:12px;font-weight:500}
+  .postactions{position:relative;display:flex;align-items:center;gap:12px;margin-top:10px;padding-top:8px;border-top:1px solid var(--separator)}
+  .postaction{border:0;background:none;color:var(--label-secondary);font:700 12px/1 var(--sans);padding:5px 0;cursor:pointer}
+  .postaction:hover{color:var(--label)}
+  .postreactions{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-right:auto}
+  .reactioncount{display:inline-flex;align-items:center;gap:3px;padding:4px 7px;border-radius:999px;background:var(--fill);font-size:12px}
+  .postemoji{position:absolute;left:0;bottom:34px;display:flex;gap:3px;padding:6px;border-radius:12px;background:#fff;border:1px solid var(--separator);box-shadow:0 10px 30px rgba(0,0,0,.16);z-index:2}
+  .postemoji[hidden]{display:none}
+  .postemoji button{width:34px;height:34px;border:0;border-radius:8px;background:transparent;font-size:20px;cursor:pointer}
+  .postemoji button:hover{background:var(--fill)}
+  .cbox[hidden]{display:none!important}
+  @media (max-width:520px){
+    .diagnostics{top:calc(8px + env(safe-area-inset-top));left:8px}
+    .toptools{top:calc(8px + env(safe-area-inset-top));right:8px}
+    .hero{padding-left:16px;padding-right:16px}
+    .hero .artwork{width:calc(100% + 32px);margin-left:-16px}
+    .feed{padding-left:14px;padding-right:14px}
+    .composerline .mechip{max-width:96px;padding:0 8px;font-size:12px}
+    .postbtn{font-size:12px;padding:0 10px}
+    h1{font-size:34px}
+  }
 </style>
 </head>
 <body>
-  <div class="delaybadge" id="delayBadge" aria-label="Playback delay">delay -- ms</div>
-  <button class="share" id="shareBtn" aria-label="Show QR code to share">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
-    Share
-  </button>
+  <div class="diagnostics" aria-label="Stream diagnostics">
+    <span class="delaybadge" id="delayBadge" aria-label="Playback delay">-- ms</span>
+    <span class="pageversion">v__PP_VERSION__</span>
+  </div>
+  <div class="toptools">
+    <button class="share" id="shareBtn" type="button" aria-label="Show QR code" title="Show QR code">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
+    </button>
+    <button class="share" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+    </button>
+  </div>
 
   <div class="hero">
-    <div class="artwork" aria-hidden="true">
-      <span class="covereyebrow">Live audio</span>
-      <span class="coveremoji">🪩</span>
-      <span class="covertitle" id="coverTitle">partyparty</span>
+    <div class="artwork">
+      <img id="coverImage" src="/covers/hero.jpg" alt="Event cover">
     </div>
-    <div class="hosted" id="hostedLine"></div>
+    <div class="hosted" id="hostedLine" hidden></div>
     <h1 id="title">partyparty</h1>
     <div class="starts" id="startsLine" hidden></div>
 
@@ -463,7 +541,7 @@
     </form>
 
     <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
-    <div class="statline" id="statline">v__PP_VERSION__</div>
+    <div class="statline" id="statline" hidden></div>
     <div class="downhint" id="downhint" hidden>the party wall<span class="chev">⌄</span></div>
   </div>
 
@@ -475,38 +553,29 @@
         <small id="btnhint">Low-latency party audio</small>
       </span>
     </button>
-    <button class="trayicon" id="trayComment" type="button" aria-label="Leave a comment" title="Comment">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
-    </button>
-    <button class="trayicon" id="trayPhoto" type="button" aria-label="Add photos or videos" title="Add photos or videos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-    </button>
-    <button class="trayicon" id="trayShare" type="button" aria-label="Show party QR code" title="Show QR code">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
-    </button>
-  </div>
-
-  <div class="composer" id="composer" hidden>
-    <div class="composerline">
-      <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
-      <button class="composericon" id="attachBtn" type="button" aria-label="Attach photos or videos" title="Attach photos or videos">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-      </button>
-      <button class="postbtn" id="postBtn" type="button">Post</button>
+    <div class="composer" id="composer" hidden>
+      <div class="composerline">
+        <span class="mechip" id="meChip" title="Edit your party name and emoji"></span>
+        <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
+        <button class="composericon" id="attachBtn" type="button" aria-label="Add photos or videos" title="Add photos or videos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        </button>
+        <button class="postbtn" id="postBtn" type="button">Post</button>
+      </div>
+      <div class="pendingpreviews" id="pendingPreviews" hidden></div>
+      <div class="attachn" id="attachN"></div>
+      <input type="file" id="cfiles" accept="image/*,video/*" multiple hidden>
     </div>
-    <div class="pendingpreviews" id="pendingPreviews" hidden></div>
-    <div class="attachn" id="attachN"></div>
-    <input type="file" id="cfiles" accept="image/*,video/*" multiple hidden>
   </div>
 
   <!-- The party wall: pseudonymous posts + photos/videos from everyone here. -->
   <section class="feed" id="feedSec" hidden>
-    <div class="feedhead" id="feedTitle">Activity</div>
+    <div class="feedhead" id="feedTitle">Party feed</div>
     <div class="feedsub">photos, videos and shout-outs from everyone at this party</div>
     <a class="saveall" id="saveAll" href="/api/media.zip" hidden>⬇️ Take all the media home</a>
     <section class="album" id="albumSec" hidden>
       <div class="sectionrow">
-        <h2>Photo Album</h2>
+        <h2>Photos &amp; videos</h2>
         <span id="albumCount">0 media</span>
       </div>
       <div class="albumstrip" id="albumStrip"><div class="albumempty">No photos yet.</div></div>
@@ -520,9 +589,6 @@
       <div class="linkgroup" id="followLinks" data-label="Follow"></div>
       <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
     </section>
-    <div class="me">
-      <span class="mechip" id="meChip" title="Tap to change your party name"></span>
-    </div>
     <form class="subscribe" id="subscribeForm">
       <div class="subscribe-copy">
         <b>Stay in the know</b>
@@ -539,7 +605,7 @@
 
   <div class="welov" id="welOv">
     <div class="welcard">
-      <div class="welhost" id="welHost">the DJ is hosting</div>
+      <div class="welhost" id="welHost" hidden></div>
       <h2 class="weltitle" id="welTitle">the party</h2>
       <div class="welstarts" id="welStarts"></div>
       <div class="wellabel">What's your party name?</div>
@@ -573,7 +639,7 @@
     const btnlabel = document.getElementById('btnlabel');
     const pilltext = document.getElementById('pilltext');
     const titleEl = document.getElementById('title');
-    const coverTitleEl = document.getElementById('coverTitle');
+    const coverImageEl = document.getElementById('coverImage');
     const countEl = document.getElementById('count');
     const btnHint = document.getElementById('btnhint');
     const guestLine = document.getElementById('guestLine');
@@ -873,8 +939,20 @@
     function setEventTitle(t){
       const title = t || 'partyparty';
       titleEl.textContent = title;
-      if (coverTitleEl) coverTitleEl.textContent = title;
     }
+    let currentCoverSrc = '';
+    function setEventCover(src){
+      src = String(src || '/covers/hero.jpg');
+      if (!coverImageEl || src === currentCoverSrc) return;
+      currentCoverSrc = src;
+      coverImageEl.src = src;
+    }
+    if (coverImageEl) coverImageEl.addEventListener('error', () => {
+      if (currentCoverSrc !== '/covers/hero.jpg') {
+        currentCoverSrc = '/covers/hero.jpg';
+        coverImageEl.src = currentCoverSrc;
+      }
+    });
     function initials(name, fallback){
       const s = String(name || '').trim();
       if (!s) return fallback;
@@ -1574,7 +1652,7 @@
     function showDebug(lat){
       if (!diagEl){
         diagEl = document.createElement('div');
-        diagEl.style.cssText = 'position:fixed;top:8px;left:8px;right:8px;background:#000a;color:#0f9;font:12px/1.5 ui-monospace,monospace;padding:8px 10px;border-radius:8px;text-align:left;z-index:9;white-space:pre';
+        diagEl.style.cssText = 'position:fixed;top:8px;left:8px;right:8px;background:#000a;color:#0f9;font:12px/1.5 ui-monospace,monospace;padding:8px 10px;border-radius:8px;text-align:left;z-index:9;white-space:pre;pointer-events:none';
         document.body.appendChild(diagEl);
       }
       diagEl.textContent =
@@ -1625,28 +1703,23 @@
       if (debug) showDebug(lat);
     }, 2000); // 2s: the DJ console's numbers should feel live
 
-    // Always-on info line under the footer: latency · buffer · version.
-    const statline = document.getElementById('statline');
+    // Always-on test badge: the effective payload version sits beside delay.
     function updateDelayBadge(){
       const lat = started ? measureLatency() : null;
       const error = lat == null ? null : lat - roomTarget();
       delayBadge.classList.toggle('syncing', joinMuted || (started && lat == null));
       delayBadge.classList.toggle('warn', error != null && Math.abs(error) >= SYNC_WARN_AT);
-      delayBadge.textContent = joinMuted && lat == null ? 'syncing...' : (lat != null ? 'delay ' + Math.round(lat * 1000) + ' ms' : 'delay -- ms');
+      delayBadge.textContent = joinMuted && lat == null ? 'syncing...' : (lat != null ? Math.round(lat * 1000) + ' ms' : '-- ms');
       delayBadge.title = lat == null
         ? 'Waiting for a synchronized playback clock'
         : 'Room target ' + Math.round(roomTarget() * 1000) + ' ms; sync error ' + (error >= 0 ? '+' : '') + Math.round(error * 1000) + ' ms; ' + syncReference();
     }
     updateDelayBadge();
     setInterval(updateDelayBadge, 500);
-    setInterval(() => {
-      const lat = started ? measureLatency() : null;
-      const latTxt = lat != null ? lat.toFixed(1) + 's latency' : (started ? '…' : 'not playing');
-      statline.textContent = latTxt + ' · ' + bufferedAhead().toFixed(0) + 's buffer · v' + PAGE_VERSION;
-    }, 1000);
 
     // Share: show a QR of THIS page so a guest can pass the party to a friend.
     const shareBtn = document.getElementById('shareBtn'),
+          nativeShareBtn = document.getElementById('nativeShareBtn'),
           qrOverlay = document.getElementById('qrOverlay'),
           qrShare = document.getElementById('qrShare'),
           qrUrl = document.getElementById('qrUrl'),
@@ -1671,6 +1744,20 @@
     });
     qrClose.addEventListener('click', () => qrOverlay.classList.remove('show'));
     qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) qrOverlay.classList.remove('show'); });
+    if (nativeShareBtn) nativeShareBtn.addEventListener('click', async () => {
+      const shareData = { title: titleEl.textContent || 'partyparty', url: location.href };
+      try {
+        if (navigator.share) {
+          await navigator.share(shareData);
+          return;
+        }
+        await navigator.clipboard.writeText(location.href);
+        nativeShareBtn.title = 'Link copied';
+        setTimeout(() => { nativeShareBtn.title = 'Share event link'; }, 1400);
+      } catch (e) {
+        if (e && e.name !== 'AbortError') shareBtn.click();
+      }
+    });
 
     // ───────────────────────── The party wall ─────────────────────────
     // Pseudonymous feed: fun stable name (seeded from cid, editable), text +
@@ -2067,10 +2154,9 @@
         }
       });
 
-      // Compact composer: absent until the guest asks to comment or chooses
-      // media from the tray. Files remain untouched File objects until upload.
+      // The bottom composer stays available beside the guest identity. Files
+      // remain untouched File objects until upload.
       const composer = $id('composer'), ctext = $id('ctext'), cfiles = $id('cfiles'), attachBtn = $id('attachBtn'), attachN = $id('attachN'), postBtn = $id('postBtn'), pendingPreviews = $id('pendingPreviews');
-      const trayComment = $id('trayComment'), trayPhoto = $id('trayPhoto'), trayShare = $id('trayShare');
       let pendingFiles = [];
       let previewURLs = [];
       const albumItems = new Map();
@@ -2083,11 +2169,18 @@
         }
         return '<a class="albumtile" href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(thumb) + '" loading="lazy" alt=""></a>';
       }
-      function renderAlbum(totalMedia){
+      function renderAlbum(totalMedia, photoTotal, videoTotal){
         if (!albumSec || !albumStrip || !albumCount) return;
         const total = Math.max(Number(totalMedia) || 0, albumItems.size);
         albumSec.hidden = !featureOn('wallMode');
-        albumCount.textContent = total + ' media';
+        const localPhotos = [...albumItems.values()].filter(item => item.type === 'image').length;
+        const localVideos = [...albumItems.values()].filter(item => item.type === 'video').length;
+        const photos = Math.max(Number(photoTotal) || 0, localPhotos);
+        const videos = Math.max(Number(videoTotal) || 0, localVideos);
+        const parts = [];
+        if (photos) parts.push(photos + (photos === 1 ? ' photo' : ' photos'));
+        if (videos) parts.push(videos + (videos === 1 ? ' video' : ' videos'));
+        albumCount.textContent = parts.join(' · ') || (total ? total + ' files' : '0 photos');
         const items = [...albumItems.values()].sort((a, b) => b.ts - a.ts).slice(0, 12);
         albumStrip.innerHTML = items.length
           ? items.map(albumMediaHTML).join('')
@@ -2112,7 +2205,6 @@
         }
       }
       if (albumAdd) albumAdd.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
-      if (trayShare) trayShare.addEventListener('click', () => shareBtn.click());
       function openComposer(focusText){
         if (!featureOn('wallMode') || (!featureOn('comments') && !featureOn('uploads'))) return;
         composer.hidden = false;
@@ -2120,14 +2212,8 @@
       }
       function closeComposer(force){
         if (!force && (ctext.value.trim() || pendingFiles.length)) return;
-        composer.hidden = true;
         ctext.blur();
       }
-      if (trayComment) trayComment.addEventListener('click', () => {
-        if (!composer.hidden && !ctext.value.trim() && !pendingFiles.length) { closeComposer(true); return; }
-        openComposer(true);
-      });
-      if (trayPhoto) trayPhoto.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
       function isVideoFile(file){
         return !!file && ((file.type && file.type.indexOf('video/') === 0) || /\.(mp4|mov|m4v|webm)$/i.test(file.name || ''));
       }
@@ -2144,6 +2230,7 @@
           feedSec.hidden = !wallOn;
           downhint.hidden = !wallOn;
         }
+        composer.hidden = !(commentsOn || uploadsOn);
         if (!commentsOn && !uploadsOn) closeComposer(true);
         ctext.hidden = !commentsOn;
         ctext.disabled = !commentsOn;
@@ -2276,7 +2363,7 @@
         const d = new Date(ts);
         return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
       };
-      const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
+      const postReactionChoices = ['❤️', '🔥', '😂', '🎉', '🪩'];
       function renderComments(p){
         const all = p.comments || [];
         if (!all.length) return '';
@@ -2287,8 +2374,7 @@
         }
         for (const c of show) {
           html += '<div class="cmt"><b>' + esc(c.emoji) + ' ' + esc(c.author || 'someone') + '</b>' +
-            (c.dj ? '<span class="cdj">DJ</span>' : '') + ' ' + esc(c.text) +
-            (stateOf(c) === 'pending' ? '<span class="pendingnote">waiting for the DJ to approve</span>' : '') + '</div>';
+            (c.dj ? '<span class="cdj">DJ</span>' : '') + ' ' + esc(c.text) + '</div>';
         }
         html += '</div>';
         return html;
@@ -2297,6 +2383,23 @@
         const v = document.createElement('video');
         v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
         return v;
+      }
+      function postVerb(p){
+        const items = p.media || [];
+        const photos = items.filter(m => m.type === 'image').length;
+        const videos = items.filter(m => m.type === 'video').length;
+        const bits = [];
+        if (photos) bits.push(photos === 1 ? 'a photo' : photos + ' photos');
+        if (videos) bits.push(videos === 1 ? 'a video' : videos + ' videos');
+        if (!bits.length) return 'posted';
+        return (p.text ? 'posted with ' : 'shared ') + bits.join(' and ');
+      }
+      function renderPostReactions(p){
+        const reactions = p.reactions || {};
+        return postReactionChoices.map(reaction => {
+          const count = Number(reactions[reaction] || 0);
+          return count > 0 ? '<span class="reactioncount">' + reaction + ' ' + count + '</span>' : '';
+        }).join('');
       }
       function renderPost(p){
         const media = (p.media || []).map(m => {
@@ -2311,19 +2414,24 @@
         }).join('');
         // Short text-only shout-outs land BIG — a "TUNE 🔥" is a shout, not a footnote.
         const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
-        const pending = stateOf(p) === 'pending';
         const el = document.createElement('div');
-        el.className = 'post' + (pending ? ' pending' : ''); el.dataset.id = p.id; el.dataset.ts = p.ts;
+        el.className = 'post'; el.dataset.id = p.id; el.dataset.ts = p.ts;
         el.innerHTML = '<div class="phead">' +
           '<span>' + esc(p.emoji) + '</span><span class="pname">' + esc(p.author || 'someone') + '</span>' +
           (p.dj ? '<span class="pdj">DJ</span>' : '') +
+          '<span class="pverb">' + esc(postVerb(p)) + '</span>' +
           '<span class="ptime">' + fmtTime(p.ts) + '</span></div>' +
           (p.text ? '<div class="ptext' + big + '">' + esc(p.text) + '</div>' : '') +
           (media ? '<div class="pmedia">' + media + '</div>' : '') +
-          (pending ? '<div class="pendingnote">waiting for the DJ to approve</div>' : '') +
           renderComments(p) +
           (featureOn('wallMode') && featureOn('comments')
-            ? '<div class="cbox"><input maxlength="1000" placeholder="Add a comment…" data-cpost="' + esc(p.id) + '"><button data-csend="' + esc(p.id) + '">Post</button></div>'
+            ? '<div class="postactions"><div class="postreactions">' + renderPostReactions(p) + '</div>' +
+              '<button class="postaction" data-reactpick="' + esc(p.id) + '">☺ React</button>' +
+              '<button class="postaction" data-reply="' + esc(p.id) + '">Reply</button>' +
+              '<div class="postemoji" data-emoji-for="' + esc(p.id) + '" hidden>' + postReactionChoices.map(reaction =>
+                '<button type="button" data-postreact="' + reaction + '" data-react-post="' + esc(p.id) + '" aria-label="React ' + reaction + '">' + reaction + '</button>'
+              ).join('') + '</div></div>' +
+              '<div class="cbox" hidden><input maxlength="1000" placeholder="Write a reply…" data-cpost="' + esc(p.id) + '"><button data-csend="' + esc(p.id) + '">Post</button></div>'
             : '');
         return el;
       }
@@ -2383,15 +2491,42 @@
         }
       }, true);
       feedList.addEventListener('click', async (e) => {
-        const more = e.target && e.target.dataset && e.target.dataset.more;
+        const target = e.target && e.target.closest ? e.target.closest('button,[data-more]') : e.target;
+        const data = target && target.dataset || {};
+        const more = data.more;
         if (more) { expanded.add(more); newestAct = 0; nodes.clear(); feedList.innerHTML = ''; pollFeed(true); return; }
-        const send = e.target && e.target.dataset && e.target.dataset.csend;
+        if (data.reply) {
+          const post = target.closest('.post');
+          const box = post && post.querySelector('.cbox');
+          if (box) {
+            box.hidden = !box.hidden;
+            if (!box.hidden) setTimeout(() => box.querySelector('input').focus(), 20);
+          }
+          return;
+        }
+        if (data.reactpick) {
+          const post = target.closest('.post');
+          const picker = post && post.querySelector('.postemoji');
+          if (picker) picker.hidden = !picker.hidden;
+          return;
+        }
+        if (data.postreact && data.reactPost) {
+          target.disabled = true;
+          try {
+            const r = await fetch('/api/post-reaction', { method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ cid, post:data.reactPost, reaction:data.postreact }) });
+            if (r.ok) await pollFeed(true);
+          } catch (err) {}
+          target.disabled = false;
+          return;
+        }
+        const send = data.csend;
         if (send) {
           if (!featureOn('wallMode') || !featureOn('comments')) return;
           const inp = feedList.querySelector('input[data-cpost="' + send + '"]');
           const text = inp && inp.value.trim();
           if (!text) return;
-          e.target.disabled = true;
+          target.disabled = true;
           try {
             const r = await fetch('/api/comment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ post: send, cid, author: myName, emoji: myEmoji, text }) });
@@ -2399,7 +2534,7 @@
             if (r.ok) { inp.value = ''; await pollFeed(true); }
             else if (res.error) { inp.value = ''; inp.placeholder = res.error; }
           } catch (err) {}
-          e.target.disabled = false;
+          target.disabled = false;
         }
       });
       feedList.addEventListener('keydown', (e) => {
@@ -2443,6 +2578,7 @@
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
+          setEventCover(data.cover || '/covers/hero.jpg');
           if (data.host) {
             $id('hostedLine').textContent = data.host + ' is hosting';
             guestHostName = data.host;
@@ -2477,7 +2613,7 @@
               placePost(p);
             }
           }
-          renderAlbum(data.media || 0);
+          renderAlbum(data.media || 0, data.photos || 0, data.videos || 0);
           return true;
         } catch (e) { return false; }
       }

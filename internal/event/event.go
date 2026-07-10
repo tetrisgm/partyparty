@@ -54,16 +54,17 @@ type Post struct {
 	TS  int64  `json:"ts"`  // unix millis (creation)
 	Act int64  `json:"act"` // last activity (creation/comment) — the feed cursor,
 	// so a comment on an old post still reaches every client
-	CID       string    `json:"-"`
-	Author    string    `json:"author"`
-	Emoji     string    `json:"emoji"`
-	Text      string    `json:"text"`
-	Media     []Media   `json:"media,omitempty"`
-	DJ        bool      `json:"dj,omitempty"`
-	State     string    `json:"state,omitempty"`
-	Comments  []Comment `json:"comments,omitempty"`
-	NoPublish bool      `json:"noPublish,omitempty"`
-	Deleted   bool      `json:"-"`
+	CID       string         `json:"-"`
+	Author    string         `json:"author"`
+	Emoji     string         `json:"emoji"`
+	Text      string         `json:"text"`
+	Media     []Media        `json:"media,omitempty"`
+	DJ        bool           `json:"dj,omitempty"`
+	State     string         `json:"state,omitempty"`
+	Comments  []Comment      `json:"comments,omitempty"`
+	Reactions map[string]int `json:"reactions,omitempty"`
+	NoPublish bool           `json:"noPublish,omitempty"`
+	Deleted   bool           `json:"-"`
 }
 
 // Request is one private guest song request for the DJ. CID stays server-side;
@@ -93,6 +94,7 @@ type line struct {
 	Op        string        `json:"op"` // "post" | "delete" | "comment" | "request" | "request-state" | ...
 	ID        string        `json:"id,omitempty"`
 	CommentID string        `json:"commentId,omitempty"`
+	Reaction  string        `json:"reaction,omitempty"`
 	CID       string        `json:"cid,omitempty"`
 	Post      *Post         `json:"post,omitempty"`
 	Comment   *Comment      `json:"comment,omitempty"`
@@ -123,6 +125,10 @@ type Meta struct {
 	Title          string          `json:"title"`
 	Host           string          `json:"host"`
 	Starts         string          `json:"starts,omitempty"`
+	Date           string          `json:"date,omitempty"`
+	Time           string          `json:"time,omitempty"`
+	Place          string          `json:"place,omitempty"`
+	Cover          string          `json:"cover,omitempty"`
 	Features       map[string]bool `json:"features,omitempty"`
 	ModerationMode string          `json:"moderationMode,omitempty"`
 	RetentionMode  string          `json:"retentionMode,omitempty"`
@@ -184,7 +190,7 @@ func isLegacyAutoTitle(title, dirName string) bool {
 
 func normalizeState(state string) string {
 	switch state {
-	case StatePending, StateHidden:
+	case StateHidden:
 		return state
 	default:
 		return StateApproved
@@ -195,10 +201,7 @@ func validState(state string) bool {
 	return state == StateApproved || state == StatePending || state == StateHidden
 }
 
-func normalizeModerationMode(mode string) string {
-	if mode == ModerationPreApprove {
-		return ModerationPreApprove
-	}
+func normalizeModerationMode(_ string) string {
 	return ModerationPostModerate
 }
 
@@ -248,11 +251,42 @@ func ValidRequestVibe(vibe string) bool {
 	}
 }
 
-func initialState(mode string) string {
-	if normalizeModerationMode(mode) == ModerationPreApprove {
-		return StatePending
-	}
+func initialState(_ string) string {
 	return StateApproved
+}
+
+var postReactionTypes = map[string]bool{
+	"❤️": true,
+	"🔥":  true,
+	"😂":  true,
+	"🎉":  true,
+	"🪩":  true,
+}
+
+const MaxCoverBytes int64 = 15 << 20
+
+func validPostReaction(reaction string) bool {
+	return postReactionTypes[reaction]
+}
+
+func normalizeCoverRef(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" || ref == "/event-cover" {
+		return ref
+	}
+	if !strings.HasPrefix(ref, "/covers/") {
+		return ""
+	}
+	name := strings.TrimPrefix(ref, "/covers/")
+	if name == "" || name != filepath.Base(name) {
+		return ""
+	}
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
+		return "/covers/" + name
+	default:
+		return ""
+	}
 }
 
 var featureDefaults = map[string]bool{
@@ -506,6 +540,16 @@ func (s *Store) use(dir string) error {
 						p.Act = l.TS
 					}
 				}
+			case l.Op == "post-reaction" && validPostReaction(l.Reaction):
+				if p, ok := byID[l.ID]; ok {
+					if p.Reactions == nil {
+						p.Reactions = map[string]int{}
+					}
+					p.Reactions[l.Reaction]++
+					if p.Act < l.TS {
+						p.Act = l.TS
+					}
+				}
 			case l.Op == "mod" && validState(l.State):
 				if p, ok := byID[l.ID]; ok {
 					if l.CommentID == "" {
@@ -592,6 +636,7 @@ func (s *Store) use(dir string) error {
 	meta.RetentionMode = normalizeRetentionMode(meta.RetentionMode)
 	meta.Status = normalizeStatus(meta.Status)
 	meta.Links, _ = normalizeLinks(meta.Links)
+	meta.Cover = normalizeCoverRef(meta.Cover)
 	if legacyAutoTitle {
 		meta.Title = "partyparty"
 		if data, err := json.MarshalIndent(meta, "", " "); err == nil {
@@ -616,6 +661,7 @@ func (s *Store) Meta() Meta {
 	m.RetentionMode = normalizeRetentionMode(s.meta.RetentionMode)
 	m.Status = normalizeStatus(s.meta.Status)
 	m.Links = append([]Link(nil), s.meta.Links...)
+	m.Cover = normalizeCoverRef(s.meta.Cover)
 	return m
 }
 
@@ -641,6 +687,126 @@ func (s *Store) SetMeta(title, host, starts string) error {
 	}
 	s.changed() // title/host edits reach parked long-polls too
 	return nil
+}
+
+// SetSchedule stores structured event fields while Starts remains the compact,
+// human-readable line used by older clients and published replay pages.
+func (s *Store) SetSchedule(date, clock, place, starts string) error {
+	date = strings.TrimSpace(date)
+	clock = strings.TrimSpace(clock)
+	place = clip(strings.TrimSpace(place), 120)
+	starts = clip(strings.TrimSpace(starts), 160)
+	if date != "" {
+		if _, err := time.Parse("2006-01-02", date); err != nil {
+			return errors.New("date must use YYYY-MM-DD")
+		}
+	}
+	if clock != "" {
+		if _, err := time.Parse("15:04", clock); err != nil {
+			return errors.New("time must use HH:MM")
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.Date = date
+	s.meta.Time = clock
+	s.meta.Place = place
+	s.meta.Starts = starts
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// SetCover stores either a bundled /covers asset or the event-local cover.
+func (s *Store) SetCover(ref string) error {
+	normalized := normalizeCoverRef(ref)
+	if strings.TrimSpace(ref) != "" && normalized == "" {
+		return errors.New("unknown cover")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.Cover = normalized
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// SaveCover preserves an uploaded image in the event folder so the same cover
+// is available to LAN guests without internet access.
+func (s *Store) SaveCover(origName string, r io.Reader) (string, error) {
+	ext := strings.ToLower(filepath.Ext(filepath.Base(origName)))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
+	default:
+		return "", errors.New("cover must be a JPG, PNG, WebP, or GIF")
+	}
+	s.mu.Lock()
+	dir := s.dir
+	s.mu.Unlock()
+	tmp, err := os.CreateTemp(dir, ".cover-upload-*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	n, err := io.Copy(tmp, io.LimitReader(r, MaxCoverBytes+1))
+	if err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if n > MaxCoverBytes {
+		tmp.Close()
+		return "", errors.New("cover image is too large")
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	dst := filepath.Join(dir, "cover"+ext)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dir != dir {
+		return "", errors.New("event changed while saving cover")
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "cover.") {
+			_ = os.Remove(filepath.Join(dir, entry.Name()))
+		}
+	}
+	if err := os.Rename(tmpPath, dst); err != nil {
+		return "", err
+	}
+	s.meta.Cover = "/event-cover"
+	if err := s.saveMetaLocked(); err != nil {
+		return "", err
+	}
+	s.changed()
+	return dst, nil
+}
+
+// CoverPath returns the event-local cover selected by Meta.Cover.
+func (s *Store) CoverPath() (string, bool) {
+	s.mu.Lock()
+	if s.meta.Cover != "/event-cover" {
+		s.mu.Unlock()
+		return "", false
+	}
+	dir := s.dir
+	s.mu.Unlock()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "cover.") {
+			return filepath.Join(dir, entry.Name()), true
+		}
+	}
+	return "", false
 }
 
 func (s *Store) saveMetaLocked() error {
@@ -710,14 +876,15 @@ func (s *Store) SetLinks(links []Link) error {
 	return nil
 }
 
-// SetModerationMode switches between immediate approval and pre-approval.
+// SetModerationMode preserves compatibility with older clients while keeping
+// every event in post-moderation mode. DJs can still delete unwanted content.
 func (s *Store) SetModerationMode(mode string) error {
 	if !validModerationMode(mode) {
 		return errors.New("unknown moderation mode")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.meta.ModerationMode = mode
+	s.meta.ModerationMode = normalizeModerationMode(mode)
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
@@ -1242,6 +1409,35 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 	return c, nil
 }
 
+// AddPostReaction records a lightweight emoji response without manufacturing a
+// comment. Reactions are aggregate party signals; guest identities stay local.
+func (s *Store) AddPostReaction(postID, reaction string) error {
+	reaction = strings.TrimSpace(reaction)
+	if !validPostReaction(reaction) {
+		return errors.New("unknown reaction")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[postID]
+	if !ok || p.Deleted {
+		return errors.New("no such post")
+	}
+	now := time.Now().UnixMilli()
+	if now <= p.Act {
+		now = p.Act + 1
+	}
+	if err := s.appendLine(line{Op: "post-reaction", ID: postID, Reaction: reaction, TS: now}); err != nil {
+		return err
+	}
+	if p.Reactions == nil {
+		p.Reactions = map[string]int{}
+	}
+	p.Reactions[reaction]++
+	p.Act = now
+	s.changed()
+	return nil
+}
+
 // SetPublish flags whether a post joins the future ONLINE page (DJ curation;
 // party visibility is unaffected).
 func (s *Store) SetPublish(postID string, on bool) error {
@@ -1413,8 +1609,8 @@ func removeFileIfExists(path string) (bool, error) {
 	return true, nil
 }
 
-// CleanupPendingHidden discards only pending/hidden posts and comments for the
-// current event. Approved posts, approved comments, and recordings survive.
+// CleanupPendingHidden discards hidden legacy posts and comments for the
+// current event. Pending legacy content is normalized to approved and survives.
 func (s *Store) CleanupPendingHidden() (RetentionCleanupResult, error) {
 	var res RetentionCleanupResult
 	var mediaFiles, thumbFiles []string
@@ -1829,11 +2025,10 @@ func (s *Store) Feed(sinceTS int64) (posts []Post, ids []string, mediaCount int)
 	return posts, ids, mediaCount
 }
 
-// FeedFor returns the caller-visible feed. DJs see every non-deleted item;
-// guests see approved posts/comments plus their own pending posts/comments.
-// Cursor advances across every non-deleted activity, including items filtered
-// out for this caller, so invisible moderation updates do not cause clients to
-// re-request the same window forever.
+// FeedFor returns the caller-visible feed. All new content is approved
+// immediately; hidden legacy content remains visible only to DJs. Cursor
+// advances across every non-deleted activity, including filtered items, so
+// clients do not re-request the same window forever.
 func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids []string, mediaCount int, cursor int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1851,6 +2046,12 @@ func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids [
 		cp := *p
 		cp.State = normalizeState(cp.State)
 		cp.Comments = visibleComments(p.Comments, cid, dj)
+		if len(p.Reactions) > 0 {
+			cp.Reactions = make(map[string]int, len(p.Reactions))
+			for reaction, count := range p.Reactions {
+				cp.Reactions[reaction] = count
+			}
+		}
 		ids = append(ids, cp.ID)
 		mediaCount += len(cp.Media)
 		if cp.Act > sinceTS {
@@ -1859,6 +2060,28 @@ func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids [
 	}
 	sort.Slice(posts, func(i, j int) bool { return posts[i].TS < posts[j].TS })
 	return posts, ids, mediaCount, cursor
+}
+
+// MediaTypeCounts returns visible media totals for feed headings.
+func (s *Store) MediaTypeCounts(cid string, dj bool) (photos, videos, audio int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.posts {
+		if p.Deleted || !postVisibleTo(p, cid, dj) {
+			continue
+		}
+		for _, media := range p.Media {
+			switch media.Type {
+			case "image":
+				photos++
+			case "video":
+				videos++
+			case "audio":
+				audio++
+			}
+		}
+	}
+	return photos, videos, audio
 }
 
 func postVisibleTo(p *Post, cid string, dj bool) bool {

@@ -72,12 +72,12 @@ func TestModerationStateOpsReplay(t *testing.T) {
 	if posts[0].State != StateHidden {
 		t.Fatalf("post state = %q, want hidden", posts[0].State)
 	}
-	if len(posts[0].Comments) != 1 || posts[0].Comments[0].State != StatePending {
-		t.Fatalf("comments = %#v, want one pending comment", posts[0].Comments)
+	if len(posts[0].Comments) != 1 || posts[0].Comments[0].State != StateApproved {
+		t.Fatalf("comments = %#v, want legacy pending normalized to approved", posts[0].Comments)
 	}
 }
 
-func TestPreApproveInitialState(t *testing.T) {
+func TestLegacyPreApproveIsIgnored(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -95,19 +95,22 @@ func TestPreApproveInitialState(t *testing.T) {
 	if err := st.SetModerationMode(ModerationPreApprove); err != nil {
 		t.Fatal(err)
 	}
+	if got := st.Meta().ModerationMode; got != ModerationPostModerate {
+		t.Fatalf("legacy moderation mode = %q, want post_moderate", got)
+	}
 	p, _, err = st.AddPost("cid-2", "Guest", ":)", "needs review", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.State != StatePending {
-		t.Fatalf("pre-approve post state = %q, want pending", p.State)
+	if p.State != StateApproved {
+		t.Fatalf("guest post state = %q, want approved", p.State)
 	}
 	c, err := st.AddComment(p.ID, "cid-3", "Other", ":D", "needs review too", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.State != StatePending {
-		t.Fatalf("pre-approve comment state = %q, want pending", c.State)
+	if c.State != StateApproved {
+		t.Fatalf("guest comment state = %q, want approved", c.State)
 	}
 	djPost, _, err := st.AddPost("dj", "Ramine", "🎧", "host update", nil, true)
 	if err != nil {

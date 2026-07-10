@@ -19,7 +19,7 @@
     --shadow:0 18px 50px rgba(0,0,0,.24), 0 1px 0 rgba(255,255,255,.04) inset;
     --r-sm:10px; --r-md:14px; --r-pill:980px;
   }
-  *{box-sizing:border-box}
+  *{box-sizing:border-box;letter-spacing:0!important}
   body{margin:0;padding-bottom:40px;overflow-x:hidden;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
   body.account-locked{padding-bottom:0;overflow:hidden}
@@ -194,6 +194,14 @@
   .wpost:last-child{border-bottom:none}
   .wtext{margin-top:4px;color:var(--label);white-space:pre-wrap;word-break:break-word}
   .wtext.big{font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .wverb{color:var(--label-secondary);font-size:11px;font-weight:500}
+  .wpostactions{display:flex;align-items:center;gap:10px;margin-top:9px}
+  .wreplybtn{height:28px;padding:0;background:none;color:var(--link);font-size:12px;font-weight:700}
+  .wreplybtn:hover{text-decoration:underline}
+  .wreply[hidden]{display:none}
+  .wreply{display:flex;gap:8px;margin-top:7px}
+  .wreply input{flex:1;background:var(--fill);border:none;border-radius:999px;padding:6px 12px;font:inherit;font-size:12px;color:var(--label);outline:none}
+  .wreply button{background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
   .wcmt{font-size:12px;line-height:1.5;margin:3px 0 0 2px;color:var(--label)}
   .wcmt b{font-weight:700}
   .wthumb{position:relative;display:inline-block}
@@ -452,6 +460,32 @@
   .sourceguide-body h3:first-child{margin-top:2px}
   .sourceguide-body p{font-size:13px;line-height:1.5;color:var(--label-secondary);margin:0}
   .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:5px}
+  .action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border-radius:999px;padding:0 15px}
+  .action-folder svg{width:16px;height:16px;display:block}
+  .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
+  .fieldedit:hover{background:var(--fill-hover);color:var(--label)}
+  .fieldedit svg{width:14px;height:14px;display:block}
+  .ename .fieldedit{vertical-align:8px}
+  .eventform-field select{height:36px}
+  .eventedit [data-edit-group]{display:none}
+  .eventedit[data-field="title"] [data-edit-group="title"],
+  .eventedit[data-field="host"] [data-edit-group="host"],
+  .eventedit[data-field="schedule"] [data-edit-group="schedule"]{display:grid}
+  #guestSetupStrip,#wifiQrPanel,#hotspotFallback,#shareHint,#hotspotReady,#hotspotNoInternet,#pubSet,#onlineSet,#devnameWrap{display:none!important}
+  .guest-qr-grid{grid-template-columns:1fr;place-items:center}
+  .party-qr-panel{width:min(100%,480px);display:grid;justify-items:center}
+  .party-qr-panel .url{font-size:15px;text-align:center;margin:4px 0 0}
+  #qr{margin:6px 0 12px}
+  .party-grid{grid-template-columns:minmax(0,1fr) 360px}
+  .guesthead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .guesthead h2{margin:0!important}
+  .detailsbtn{height:28px;padding:0;background:none;color:var(--link);font-size:12px;font-weight:700}
+  .detailsbtn:hover{text-decoration:underline}
+  .guest-sidebar #detailsToggle{display:inline-block!important;align-self:flex-start}
+  .guest-sidebar .metrics{display:flex!important}
+  .event-admin-tools{display:block}
+  .confirm-cancel{background:none;color:var(--label-secondary);height:24px;padding:0 5px;font-size:11px}
+  .confirm-delete{color:var(--danger)!important;font-weight:800!important}
     /* accessibility + capability fallbacks (kept from the dark theme) */
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
@@ -501,6 +535,10 @@
     <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
     <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <span class="badge" id="badge" style="display:none"></span>
+    <button class="ghost action-folder" id="actionOpenFolderBtn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/></svg>
+      Open event folder
+    </button>
     <button class="golive go" id="liveBtn" type="button">Go Live</button>
   </div>
 </div>
@@ -546,47 +584,43 @@
     </div>
     <header class="card eventhead herocard" id="eventHead">
     <div class="titlerow">
-      <h1 class="ename"><span id="titleEdit">partyparty</span></h1>
+      <h1 class="ename"><span id="titleEdit">partyparty</span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
       <div class="event-actions">
-        <button class="ghost event-action" id="openFolderBtn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/></svg>
-          View folder
-        </button>
-        <button class="ghost event-action" id="eventEditBtn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          Edit event
-        </button>
         <button class="go event-action" id="eventShareBtn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
-          Share Link
+          Share stream link
         </button>
       </div>
     </div>
-    <div class="ehost">hosted by <b id="hostEdit">the DJ</b></div>
+    <div class="ehost">hosted by <b id="hostEdit">the DJ</b><button class="fieldedit" type="button" data-event-field="host" aria-label="Edit host" title="Edit host"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></div>
     <div class="eventmeta">
-      <span>🗓 <b id="startsEdit" style="opacity:.6">add date &amp; place</b></span>
+      <span>🗓 <b id="startsEdit" style="opacity:.6">add date &amp; place</b><button class="fieldedit" type="button" data-event-field="schedule" aria-label="Edit date, time, and place" title="Edit date, time, and place"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></span>
       <span id="devnameWrap" hidden>▶ <b id="devname"></b></span>
       <span id="emetaCountsWrap" hidden><b id="emetaCounts"></b></span>
     </div>
     <div class="hostlinks" id="heroLinks" hidden></div>
     <div class="eventedit" id="eventEditPanel" aria-label="Edit event details">
-      <h2>Edit event</h2>
+      <h2 id="eventEditHeading">Edit event</h2>
       <div class="eventform-grid">
-        <label class="eventform-field">
+        <label class="eventform-field wide" data-edit-group="title">
           <span>Event name</span>
           <input id="eventTitleInput" type="text" maxlength="80" autocomplete="off" spellcheck="false">
         </label>
-        <label class="eventform-field">
+        <label class="eventform-field wide" data-edit-group="host">
           <span>Host / creator</span>
           <input id="eventHostInput" type="text" maxlength="40" autocomplete="off" spellcheck="false">
         </label>
-        <label class="eventform-field wide">
-          <span>Date and place</span>
-          <input id="eventStartsInput" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Saturday 9pm, rooftop">
+        <label class="eventform-field" data-edit-group="schedule">
+          <span>Date</span>
+          <input id="eventDateInput" type="date">
         </label>
-        <label class="eventform-field wide">
-          <span>Online page</span>
-          <input id="eventSlugInput" type="text" maxlength="48" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Auto">
+        <label class="eventform-field" data-edit-group="schedule">
+          <span>Time</span>
+          <select id="eventTimeInput"></select>
+        </label>
+        <label class="eventform-field wide" data-edit-group="schedule">
+          <span>Place</span>
+          <input id="eventPlaceInput" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Venue or address">
         </label>
       </div>
       <div class="eventform-actions">
@@ -635,7 +669,7 @@
        back anytime from Share in the action bar. -->
   <div class="card sharecard" id="shareCard">
     <button class="cardx" id="shareCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
-    <h2>Guest setup</h2>
+    <h2>Share event link</h2>
     <div class="guest-setup" id="guestSetupStrip" hidden>
       <div class="guest-setup-top">
         <div class="guest-setup-copy">
@@ -658,11 +692,10 @@
     </div>
     <div class="guest-qr-grid" id="guestQrGrid">
       <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
-        <div class="guest-qr-label">Party QR</div>
-        <div class="url" id="url">—</div>
         <div class="offline-status" id="hotspotReady" style="display:none"></div>
         <div class="hint" id="hotspotNoInternet" style="display:none">Guests need to be on the same Wi-Fi as this Mac before scanning.</div>
         <div id="qr"></div>
+        <div class="url" id="url">—</div>
         <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
       </div>
       <div class="guest-qr-panel" id="wifiQrPanel" hidden>
@@ -743,7 +776,7 @@
         <div>
           <label for="retentionMode">Data retention</label>
           <select id="retentionMode">
-            <option value="keep_approved">Keep approved</option>
+            <option value="keep_approved">Keep everything</option>
             <option value="archive_all">Archive all</option>
             <option value="tonight_only">Tonight only</option>
           </select>
@@ -778,12 +811,8 @@
       <div class="reactiongrid" id="djReactionGrid"></div>
       <div class="spikeline" id="djReactionSpike"></div>
     </div>
-    <div class="modqueue" id="modQueue" hidden>
-      <h3>Pending moderation</h3>
-      <div id="modList"></div>
-    </div>
+    <div id="modQueue" hidden><div id="modList"></div></div>
     <div class="row" style="margin-top:12px">
-      <button class="ghost" id="openMediaBtn" style="flex:1">View contents folder</button>
       <button class="ghost" id="eventsBtn" style="flex:1">Your events</button>
     </div>
     <div id="eventsPanel" hidden style="margin-top:12px;border-top:1px solid var(--separator);padding-top:12px">
@@ -798,9 +827,17 @@
             <span>Host / creator</span>
             <input id="createEventHost" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Your DJ name">
           </label>
+          <label class="eventform-field">
+            <span>Date</span>
+            <input id="createEventDate" type="date">
+          </label>
+          <label class="eventform-field">
+            <span>Time</span>
+            <select id="createEventTime"></select>
+          </label>
           <label class="eventform-field wide">
-            <span>Date and place</span>
-            <input id="createEventStarts" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Saturday 9pm, rooftop">
+            <span>Place</span>
+            <input id="createEventPlace" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Venue or address">
           </label>
           <label class="eventform-field wide">
             <span>Online page</span>
@@ -852,7 +889,7 @@
         <h2 id="eventTitle">Party feed</h2>
         <span class="muted" id="eventCounts"></span>
       </div>
-      <div class="feed-settings" id="moderationToggles" aria-label="Party feed settings"></div>
+      <div id="moderationToggles" hidden></div>
       <div class="composer" id="djComposer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
         <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post, or drop photos/videos here..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
@@ -869,14 +906,13 @@
 
   <aside id="ptab-people" class="guest-sidebar">
     <div class="card">
-      <h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2>
+      <div class="guesthead"><h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
       <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it — a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are — under about half a second and the room moves together.">
         <span>Delay from DJ <b id="djDelay">—</b></span>
         <span class="metricsep">·</span>
         <span>Sync <b id="syncSpread">—</b></span>
       </div>
       <div class="kv adv"><span>Room target (everyone aligns to this)</span><span id="roomTarget">—</span></div>
-      <span class="advcheck" id="detailsToggle" style="display:inline-block;margin:8px 0 2px">Show details</span>
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
@@ -1708,7 +1744,7 @@
   // "Show details" / "Hide details" — a link-looking toggle, not a checkbox.
   let detailsOn = localStorage.getItem('pp.rosterDetails') === '1';
   { const dt = $('detailsToggle');
-    const paint = () => dt.textContent = detailsOn ? 'Hide details' : 'Show details';
+    const paint = () => dt.textContent = detailsOn ? 'Hide details' : 'View details';
     paint();
     dt.onclick = () => { detailsOn = !detailsOn; localStorage.setItem('pp.rosterDetails', detailsOn ? '1' : '0'); paint(); refresh(); };
   }
@@ -2257,9 +2293,9 @@
         renderQR('');
       }
       refreshNetworkSituation({ linkReady: linkReady, guestUrl: guestUrl, guestCount: roster.length });
-      $('emetaCounts').textContent = roster.length ? roster.length + ' listening' : '';
-      $('emetaCountsWrap').hidden = !roster.length;
       const peopleCount = roster.length + 1;
+      $('emetaCounts').textContent = peopleCount + (peopleCount === 1 ? ' guest' : ' guests');
+      $('emetaCountsWrap').hidden = false;
       if ($('pcount')) $('pcount').textContent = peopleCount;
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
@@ -2282,7 +2318,7 @@
       } else {
         $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('copySync').style.display = 'none';
       }
-      const details = detailsOn && document.body.classList.contains('event-manage-open');
+      const details = detailsOn;
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
       const hostName = eventMeta.host || accountEventHost() || 'the DJ';
       const hostRow = '<div class="listener host"><span class="ldot dot-g"></span><span class="lemoji">🎧</span><span class="lname">' + esc(hostName) + '<span class="hostpill">DJ</span></span></div>';
@@ -2356,8 +2392,8 @@
   // ── Event identity: display first, edit only when requested ──
   const PH = { startsEdit: 'add date & place' };
   const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
-  const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', slug: '' };
-  let eventEditOpen = false;
+  const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', slug: '' };
+  let eventEditField = '';
   let hostAutofillSaved = '';
   function isPlaceholderHost(host){
     const h = String(host || '').trim().toLowerCase();
@@ -2385,53 +2421,98 @@
   }
   function inputValue(id){ const el = $(id); return el ? el.value.trim() : ''; }
   function setInputValue(id, value){ const el = $(id); if (el && document.activeElement !== el) el.value = value || ''; }
-  function fillEventEditForm(){
+  function todayISO(){
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+  function timeLabel(value){
+    const parts = String(value || '').split(':');
+    const date = new Date(2000, 0, 1, Number(parts[0]) || 0, Number(parts[1]) || 0);
+    return date.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+  }
+  function populateTimeSelect(id){
+    const select = $(id);
+    if (!select || select.options.length) return;
+    for (let minutes = 0; minutes < 24 * 60; minutes += 15) {
+      const hour = Math.floor(minutes / 60).toString().padStart(2, '0');
+      const minute = (minutes % 60).toString().padStart(2, '0');
+      const value = hour + ':' + minute;
+      const option = document.createElement('option');
+      option.value = value; option.textContent = timeLabel(value);
+      select.appendChild(option);
+    }
+  }
+  populateTimeSelect('eventTimeInput');
+  populateTimeSelect('createEventTime');
+  function scheduleLine(date, clock, place){
+    const parts = [];
+    if (date) {
+      const parsed = new Date(date + 'T12:00:00');
+      parts.push(Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' }));
+    }
+    if (clock) parts.push(timeLabel(clock));
+    if (place) parts.push(place);
+    return parts.join(' · ');
+  }
+  function fillEventEditForm(field){
     setInputValue('eventTitleInput', eventMeta.title);
     setInputValue('eventHostInput', eventMeta.host);
-    setInputValue('eventStartsInput', eventMeta.starts);
-    setInputValue('eventSlugInput', eventMeta.slug);
+    setInputValue('eventDateInput', eventMeta.date || todayISO());
+    setInputValue('eventTimeInput', eventMeta.time || '20:00');
+    setInputValue('eventPlaceInput', eventMeta.place);
+    const labels = { title:'event name', host:'host', schedule:'date, time, and place' };
+    $('eventEditHeading').textContent = 'Edit ' + (labels[field] || 'event');
     setFormStatus('eventEditStatus', '', '');
   }
-  function renderEventEditButton(open){
-    const btn = $('eventEditBtn');
-    if (!btn) return;
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' + (open ? 'Done' : 'Edit event');
-  }
-  function setEventEditOpen(open){
-    eventEditOpen = !!open;
+  function setEventEditOpen(field){
+    eventEditField = field || '';
     const panel = $('eventEditPanel');
-    if (panel) panel.classList.toggle('show', eventEditOpen);
-    document.body.classList.toggle('event-manage-open', eventEditOpen);
+    if (panel) {
+      panel.dataset.field = eventEditField;
+      panel.classList.toggle('show', !!eventEditField);
+    }
+    document.body.classList.toggle('event-manage-open', !!eventEditField);
     const head = $('eventHead');
-    if (head) head.classList.toggle('editing', eventEditOpen);
-    renderEventEditButton(eventEditOpen);
-    if (eventEditOpen) fillEventEditForm();
+    if (head) head.classList.toggle('editing', !!eventEditField);
+    if (eventEditField) {
+      fillEventEditForm(eventEditField);
+      const focusID = { title:'eventTitleInput', host:'eventHostInput', schedule:'eventDateInput' }[eventEditField];
+      setTimeout(() => { const el = $(focusID); if (el) el.focus(); }, 30);
+    }
     refresh();
   }
-  if ($('eventEditBtn')) $('eventEditBtn').onclick = () => setEventEditOpen(!eventEditOpen);
-  if ($('eventEditCancelBtn')) $('eventEditCancelBtn').onclick = () => setEventEditOpen(false);
+  document.querySelectorAll('[data-event-field]').forEach(btn => {
+    btn.addEventListener('click', () => setEventEditOpen(eventEditField === btn.dataset.eventField ? '' : btn.dataset.eventField));
+  });
+  if ($('eventEditCancelBtn')) $('eventEditCancelBtn').onclick = () => setEventEditOpen('');
   async function saveEventDetails(){
-    const title = inputValue('eventTitleInput');
-    const host = inputValue('eventHostInput');
-    const starts = inputValue('eventStartsInput');
-    const rawSlug = inputValue('eventSlugInput');
-    const slug = normSlug(rawSlug);
-    if (!title) { setFormStatus('eventEditStatus', 'Add an event name.', 'error'); $('eventTitleInput').focus(); return; }
-    if (!host) { setFormStatus('eventEditStatus', 'Add a host name.', 'error'); $('eventHostInput').focus(); return; }
-    if (rawSlug && rawSlug !== slug) $('eventSlugInput').value = slug;
+    if (!eventEditField) return;
+    const body = {};
+    if (eventEditField === 'title') {
+      body.title = inputValue('eventTitleInput');
+      if (!body.title) { setFormStatus('eventEditStatus', 'Add an event name.', 'error'); $('eventTitleInput').focus(); return; }
+    } else if (eventEditField === 'host') {
+      body.host = inputValue('eventHostInput');
+      if (!body.host) { setFormStatus('eventEditStatus', 'Add a host name.', 'error'); $('eventHostInput').focus(); return; }
+    } else {
+      body.date = inputValue('eventDateInput');
+      body.time = inputValue('eventTimeInput') || '20:00';
+      body.place = inputValue('eventPlaceInput');
+      if (!body.date) { setFormStatus('eventEditStatus', 'Pick a date.', 'error'); $('eventDateInput').focus(); return; }
+      body.starts = scheduleLine(body.date, body.time, body.place);
+    }
     const btn = $('eventEditSaveBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     setFormStatus('eventEditStatus', 'Saving…', '');
     try {
-      const body = { title, host, starts: starts || '-', slug };
       const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) throw new Error(d.error || 'save failed');
-      eventMeta.title = title; eventMeta.host = host; eventMeta.starts = starts; eventMeta.slug = slug;
-      syncHeader(title, host, starts, slug);
-      syncPublish(slug);
+      Object.assign(eventMeta, body);
+      syncHeader(eventMeta.title, eventMeta.host, eventMeta.starts, eventMeta.slug, eventMeta.date, eventMeta.time, eventMeta.place, eventMeta.cover);
       setFormStatus('eventEditStatus', 'Saved.', 'ok');
-      setTimeout(() => setEventEditOpen(false), 250);
+      setTimeout(() => setEventEditOpen(''), 250);
     } catch (e) {
       setFormStatus('eventEditStatus', 'Couldn’t save: ' + (e.message || e), 'error');
     } finally {
@@ -2439,11 +2520,11 @@
     }
   }
   if ($('eventEditSaveBtn')) $('eventEditSaveBtn').onclick = saveEventDetails;
-  ['eventTitleInput', 'eventHostInput', 'eventStartsInput', 'eventSlugInput'].forEach(id => {
+  ['eventTitleInput', 'eventHostInput', 'eventDateInput', 'eventTimeInput', 'eventPlaceInput'].forEach(id => {
     const el = $(id);
     if (el) el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveEventDetails(); }
-      if (e.key === 'Escape') { e.preventDefault(); setEventEditOpen(false); }
+      if (e.key === 'Escape') { e.preventDefault(); setEventEditOpen(''); }
     });
   });
 
@@ -2467,6 +2548,7 @@
   ];
   let coverPreviewURL = '';
   let currentCover = { kind: '', index: 0, src: '', uploaded: false, file: null };
+  let coverMetaSeen = false;
   function setCoverStatus(msg, kind){
     if (!pubCoverResult) return;
     pubCoverResult.textContent = msg || '';
@@ -2491,6 +2573,12 @@
     localStorage.setItem('pp.coverIndex', String(index));
     localStorage.setItem(coverStorageKey(), String(index));
   }
+  async function persistCoverRef(ref){
+    const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ cover:ref }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || 'cover save failed');
+    eventMeta.cover = d.cover || ref;
+  }
   function setCoverImage(src){
     if (!eventCover || !eventCoverImg || !src) return;
     if (coverPreviewURL && coverPreviewURL !== src) {
@@ -2509,7 +2597,29 @@
     rememberCoverIndex(next);
     currentCover = { kind: 'curated', index: next, src, uploaded: false, file: null };
     if (opts.status) setCoverStatus('', '');
-    if (opts.upload) return uploadCurrentCover('');
+    const persist = opts.persist === false ? Promise.resolve() : persistCoverRef(src);
+    if (opts.upload) return persist.then(() => uploadCurrentCover(''));
+    return persist;
+  }
+  function syncEventCover(ref){
+    ref = String(ref || '');
+    if (!ref) {
+      if (!coverMetaSeen && currentCover.src) {
+        coverMetaSeen = true;
+        persistCoverRef(currentCover.src).catch((e) => setCoverStatus('Couldn’t save cover: ' + (e.message || e), 'error'));
+      }
+      return;
+    }
+    coverMetaSeen = true;
+    if (ref === '/event-cover') {
+      setCoverImage(ref + '?event=' + encodeURIComponent(eventMeta.slug || 'current'));
+      currentCover = { kind:'local', index:-1, src:ref, uploaded:onlinePagePublished, file:null };
+      return;
+    }
+    const index = COVER_PILE.indexOf(ref);
+    if (index >= 0 && (currentCover.kind !== 'curated' || currentCover.index !== index)) {
+      selectCuratedCover(index, { persist:false });
+    }
   }
   function coverFilename(src){
     const name = String(src || '').split('/').pop() || 'cover.jpg';
@@ -2541,6 +2651,14 @@
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.error) throw new Error(d.error || 'upload failed');
     currentCover.uploaded = true;
+  }
+  async function saveLocalCoverBlob(blob, filename){
+    const fd = new FormData();
+    fd.append('file', blob, filename || 'cover.jpg');
+    const r = await fetch('/api/event-cover-local', { method:'POST', body:fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || 'local cover save failed');
+    eventMeta.cover = d.cover || '/event-cover';
   }
   async function uploadCurrentCover(successMessage){
     if (!currentCover || !currentCover.src) return true;
@@ -2578,9 +2696,10 @@
     }
     showCoverPreview(file);
     setCoverBusy(true);
-    setCoverStatus('Uploading cover…', '');
+    setCoverStatus('Saving cover…', '');
     try {
-      await uploadCoverBlob(file, file.name);
+      await saveLocalCoverBlob(file, file.name);
+      if (onlinePagePublished) await uploadCoverBlob(file, file.name);
       setCoverStatus('', '');
       if (pubCoverFile) pubCoverFile.value = '';
     } catch (e) {
@@ -2613,7 +2732,7 @@
   pubSlug.addEventListener('input', () => { pubSlugTouched = true; });
   pubSlug.addEventListener('blur', savePubSlug);
   pubSlug.addEventListener('keydown', (e) => { if (e.key === 'Enter') pubSlug.blur(); });
-  selectCuratedCover(savedCoverIndex());
+  selectCuratedCover(savedCoverIndex(), { persist:false });
   if (pubCoverBtn) pubCoverBtn.addEventListener('click', pickCover);
   if (pubCoverChangeBtn) pubCoverChangeBtn.addEventListener('click', shuffleCoverImage);
   if (pubCoverFile) pubCoverFile.addEventListener('change', () => uploadCoverFile(pubCoverFile.files && pubCoverFile.files[0]));
@@ -2704,20 +2823,25 @@
       pubBtn.disabled = false; pubBtn.textContent = label;
     }
   });
-  function syncHeader(title, host, starts, slug){
+  function syncHeader(title, host, starts, slug, date, clock, place, cover){
     const fallbackHost = accountEventHost() || 'the DJ';
     const shouldAutofillHost = isPlaceholderHost(host);
     eventMeta.title = title || 'partyparty';
     eventMeta.host = shouldAutofillHost ? fallbackHost : host;
     eventMeta.starts = starts || '';
     if (typeof slug === 'string') eventMeta.slug = slug;
+    if (typeof date === 'string') eventMeta.date = date;
+    if (typeof clock === 'string') eventMeta.time = clock;
+    if (typeof place === 'string') eventMeta.place = place;
+    if (typeof cover === 'string') eventMeta.cover = cover;
     $('titleEdit').textContent = eventMeta.title;
     $('hostEdit').textContent = eventMeta.host;
     $('startsEdit').textContent = eventMeta.starts || PH.startsEdit;
     $('startsEdit').style.opacity = eventMeta.starts ? 1 : .6;
-    if (eventEditOpen) {
+    syncEventCover(eventMeta.cover);
+    if (eventEditField) {
       const active = document.activeElement;
-      if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm();
+      if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm(eventEditField);
     }
     const pt = $('pubTitle');
     if (pt && document.activeElement !== pt) pt.value = eventMeta.title || '';
@@ -2732,6 +2856,7 @@
     const nodes = new Map();
     const allPosts = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
+    const replying = new Set();
     let newestAct = 0, on = false, curDir = '', currentModerationMode = 'post_moderate', currentRetentionMode = 'keep_approved', currentEventStatus = 'active', currentEventFeatures = {};
     const featureDefs = [
       ['uploads', 'Uploads', true], ['videoUploads', 'Video', true], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
@@ -2948,32 +3073,12 @@
       }
     }
     function renderModerationMode(mode){
-      currentModerationMode = mode === 'pre_approve' ? 'pre_approve' : 'post_moderate';
+      currentModerationMode = 'post_moderate';
       const bar = $('moderationToggles');
-      if (!bar.dataset.ready) {
-        bar.innerHTML = '<label class="featuretoggle" title="When enabled, guest posts and comments wait for approval before guests see them."><input type="checkbox" id="preApproveToggle"><span>Require approval</span></label>';
-        $('preApproveToggle').addEventListener('change', async (e) => {
-          const mode = e.target.checked ? 'pre_approve' : 'post_moderate';
-          e.target.disabled = true;
-          try {
-            const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ moderationMode: mode }) });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || d.error) throw new Error(d.error || 'moderation update failed');
-            renderModerationMode(d.moderationMode || mode);
-          } catch (err) {
-            e.target.checked = currentModerationMode === 'pre_approve';
-            e.target.title = err.message || 'moderation update failed';
-          } finally {
-            e.target.disabled = false;
-          }
-        });
-        bar.dataset.ready = '1';
-      }
-      const input = $('preApproveToggle');
-      if (input) input.checked = currentModerationMode === 'pre_approve';
+      if (bar) bar.textContent = '';
     }
     const retentionText = {
-      keep_approved: 'Approved uploads and comments survive. After the event, pending and hidden items can be discarded only after DJ confirmation.',
+      keep_approved: 'Posts, uploads, and recordings stay in this event folder until you delete them.',
       archive_all: 'Everything stays in this event folder. Ending the event blocks new guest posts but does not delete anything.',
       tonight_only: 'Temporary event. At the end, export or publish a recap first; deleting event data is a separate confirmed action.'
     };
@@ -3002,7 +3107,7 @@
         const stats = d.summary || {};
         const path = d.path || '';
         const bits = [
-          (stats.posts || 0) + ' approved posts',
+          (stats.posts || 0) + ((stats.posts || 0) === 1 ? ' post' : ' posts'),
           (stats.media || 0) + ' media',
           (stats.comments || 0) + ' comments',
           (stats.tracks || 0) + ' tracks'
@@ -3064,24 +3169,7 @@
         return;
       }
       if (currentRetentionMode === 'keep_approved') {
-        $('endFlowText').textContent = 'Approved content and recordings are kept. Pending and hidden posts/comments can be discarded after confirmation.';
-        actions.innerHTML = '<button class="ghost" id="eventCleanupBtn" type="button">Discard pending/hidden</button>';
-        $('eventCleanupBtn').onclick = async () => {
-          if (!window.confirm('Discard pending and hidden posts/comments for this event? Approved content and recordings will stay.')) return;
-          const btn = $('eventCleanupBtn');
-          btn.disabled = true; btn.textContent = 'Discarding…';
-          try {
-            const r = await fetch('/api/event-cleanup', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ confirmed:true }) });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || d.error) throw new Error(d.error || 'cleanup failed');
-            btn.textContent = 'Discarded';
-            newestAct = 0; on = false; list.innerHTML = ''; nodes.clear(); allPosts.clear(); await poll();
-          } catch (e) {
-            btn.textContent = e.message || 'cleanup failed';
-          } finally {
-            setTimeout(() => { btn.disabled = false; btn.textContent = 'Discard pending/hidden'; }, 1800);
-          }
-        };
+        $('endFlowText').textContent = 'Posts, uploads, and recordings remain in the event folder.';
         return;
       }
       $('endFlowText').textContent = 'This event is set to delete tonight. Export or publish a recap before deleting. Deletion removes guest posts and media from this event folder; recordings stay unless separately selected.';
@@ -3095,7 +3183,7 @@
           const r = await fetch('/api/event-delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ confirm: token }) });
           const d = await r.json().catch(() => ({}));
           if (!r.ok || d.error) throw new Error(d.error || 'delete failed');
-          newestAct = 0; on = false; list.innerHTML = ''; nodes.clear(); allPosts.clear(); authors.clear(); renderModQueue(); await poll();
+          newestAct = 0; on = false; list.innerHTML = ''; nodes.clear(); allPosts.clear(); authors.clear(); replying.clear(); renderModQueue(); await poll();
           btn.textContent = 'Event data deleted';
         } catch (e) {
           btn.textContent = e.message || 'delete failed';
@@ -3153,38 +3241,14 @@
     });
     const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
     function stateBadge(state){
-      state = state === 'pending' || state === 'hidden' ? state : 'approved';
-      if (currentModerationMode !== 'pre_approve' && state === 'approved') return '';
-      return '<span class="statebadge ' + state + '">' + state + '</span>';
+      return '';
     }
     function modButtons(postID, commentID, state){
-      state = state === 'pending' || state === 'hidden' ? state : 'approved';
-      if (currentModerationMode !== 'pre_approve' && state === 'approved') return '';
-      const cid = commentID ? ' data-comment="' + escT(commentID) + '"' : '';
-      let html = '';
-      if (state !== 'approved') html += '<button class="modbtn" data-mod="' + escT(postID) + '"' + cid + ' data-state="approved">approve</button>';
-      if (state !== 'hidden') html += '<button class="modbtn hide" data-mod="' + escT(postID) + '"' + cid + ' data-state="hidden">hide</button>';
-      if (state !== 'pending') html += '<button class="modbtn" data-mod="' + escT(postID) + '"' + cid + ' data-state="pending">mark pending</button>';
-      return html;
+      return '';
     }
     function renderModQueue(){
-      const items = [];
-      for (const p of allPosts.values()) {
-        if (stateOf(p) === 'pending') {
-          items.push({ post:p.id, author:(p.emoji || '') + ' ' + (p.author || 'someone'), text:p.text || (p.media && p.media.length ? p.media.length + ' media' : 'post') });
-        }
-        for (const c of (p.comments || [])) {
-          if (stateOf(c) === 'pending') {
-            items.push({ post:p.id, comment:c.id, author:(c.emoji || '') + ' ' + (c.author || 'someone'), text:c.text || 'comment' });
-          }
-        }
-      }
-      $('modQueue').hidden = currentModerationMode !== 'pre_approve' && items.length === 0;
-      $('modList').innerHTML = items.length ? items.map(item =>
-        '<div class="moditem"><span class="statebadge pending">pending</span><b>' + escT(item.author) + '</b><span class="txt">' + escT(item.text) + '</span>' +
-        '<button class="modbtn" data-mod="' + escT(item.post) + '"' + (item.comment ? ' data-comment="' + escT(item.comment) + '"' : '') + ' data-state="approved">approve</button>' +
-        '<button class="modbtn hide" data-mod="' + escT(item.post) + '"' + (item.comment ? ' data-comment="' + escT(item.comment) + '"' : '') + ' data-state="hidden">hide</button></div>'
-      ).join('') : '<div class="muted" style="font-size:12px">No pending posts or comments.</div>';
+      $('modQueue').hidden = true;
+      $('modList').textContent = '';
     }
     const requestVibeLabels = {
       harder: 'harder', softer: 'softer', faster: 'faster', slower: 'slower', more_like_this: 'more like this'
@@ -3240,6 +3304,17 @@
       v.style.width = '180px'; v.style.borderRadius = '8px';
       return v;
     }
+    function postVerb(p){
+      const files = Array.isArray(p.media) ? p.media : [];
+      const photos = files.filter(m => m && m.type === 'image').length;
+      const videos = files.filter(m => m && m.type === 'video').length;
+      if (photos && videos) return 'shared photos and videos';
+      if (photos === 1) return 'shared a photo';
+      if (photos > 1) return 'shared ' + photos + ' photos';
+      if (videos === 1) return 'shared a video';
+      if (videos > 1) return 'shared ' + videos + ' videos';
+      return 'posted';
+    }
     function render(p){
       const t = new Date(p.ts);
       const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
@@ -3257,7 +3332,7 @@
         '<div class="wcmt"><span style="display:flex;gap:6px;align-items:baseline"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' +
         stateBadge(stateOf(c)) + '<span style="margin-left:auto;display:flex;gap:4px;align-items:center">' +
         modButtons(p.id, c.id, stateOf(c)) +
-        '<button class="modbtn remove" data-cdel="' + escT(p.id) + '" data-comment="' + escT(c.id) + '">remove</button></span></span>' +
+        '<button class="modbtn remove" data-cdel="' + escT(p.id) + '" data-comment="' + escT(c.id) + '">Remove</button></span></span>' +
         '<span>' + escT(c.text) + '</span></div>').join('');
       const cmts = cmtRows ? '<div class="wcmts">' + cmtRows + '</div>' : '';
       const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
@@ -3267,17 +3342,18 @@
       el.innerHTML = '<div style="display:flex;gap:7px;align-items:baseline">' +
         '<span>' + escT(p.emoji) + '</span><b>' + escT(p.author || 'someone') + '</b>' +
         (p.dj ? '<span style="background:var(--accent);color:#fff;border-radius:5px;font-size:9px;font-weight:800;padding:1px 5px">DJ</span>' : '') +
-        '<span class="muted" style="font-size:11px">' + time + '</span>' +
+        '<span class="wverb">' + postVerb(p) + '</span><span class="muted" style="font-size:11px">' + time + '</span>' +
         stateBadge(stateOf(p)) +
         '<span style="margin-left:auto;display:flex;gap:6px;align-items:center">' +
         modButtons(p.id, '', stateOf(p)) +
-        '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Online page only: whether this post joins the replay page later. In-party visibility uses the moderation state controls.">' + (p.noPublish ? 'online: skip' : 'online: publish') + '</button>' +
-        '<button class="pdel" data-del="' + escT(p.id) + '">remove</button></span></div>' +
+        '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Choose whether this post joins the online replay page later.">' + (p.noPublish ? 'online: skip' : 'online: publish') + '</button>' +
+        '<button class="pdel" data-del="' + escT(p.id) + '">Remove</button></span></div>' +
         (p.text ? '<div class="wtext' + big + '">' + escT(p.text) + '</div>' : '') +
         (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '') +
         cmts +
-        '<div style="display:flex;gap:8px;margin-top:6px"><input maxlength="1000" placeholder="Comment as the DJ…" data-cpost="' + escT(p.id) + '" style="flex:1;background:var(--fill);border:none;border-radius:999px;padding:6px 12px;font:inherit;font-size:12px;color:var(--label);outline:none">' +
-        '<button data-csend="' + escT(p.id) + '" style="background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer">Post</button></div>';
+        '<div class="wpostactions"><button class="wreplybtn" data-reply="' + escT(p.id) + '" type="button">Reply</button></div>' +
+        '<div class="wreply"' + (replying.has(p.id) ? '' : ' hidden') + '><input maxlength="1000" placeholder="Write a reply…" data-cpost="' + escT(p.id) + '">' +
+        '<button data-csend="' + escT(p.id) + '" type="button">Post</button></div>';
       return el;
     }
     function place(p){
@@ -3325,8 +3401,39 @@
         img.src = osrc;
       }
     }, true);
+    function askDelete(button){
+      if (!button || button.dataset.confirm === '1') return true;
+      button.dataset.confirm = '1';
+      button.textContent = 'Delete';
+      button.classList.add('confirm-delete');
+      const cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.className = 'confirm-cancel'; cancel.dataset.cancelDelete = '1'; cancel.textContent = 'Cancel';
+      button.insertAdjacentElement('afterend', cancel);
+      return false;
+    }
+    function cancelDelete(button){
+      const wrap = button && button.parentElement;
+      const confirm = wrap && wrap.querySelector('[data-confirm="1"]');
+      if (confirm) {
+        confirm.dataset.confirm = '';
+        confirm.textContent = 'Remove';
+        confirm.classList.remove('confirm-delete');
+      }
+      if (button) button.remove();
+    }
     async function handleWallClick(e){
       const d = e.target && e.target.dataset || {};
+      if (d.cancelDelete) { cancelDelete(e.target); return; }
+      if (d.reply) {
+        replying.add(d.reply);
+        const form = e.target.closest('.wpost') && e.target.closest('.wpost').querySelector('.wreply');
+        if (form) {
+          form.hidden = false;
+          const input = form.querySelector('input[data-cpost]');
+          if (input) input.focus();
+        }
+        return;
+      }
       if (d.mod) {
         e.target.disabled = true;
         try {
@@ -3340,16 +3447,16 @@
         return;
       }
       if (d.cdel) {
-        if (e.target.textContent !== 'sure?') { e.target.textContent = 'sure?'; setTimeout(() => { e.target.textContent = 'remove'; }, 2500); return; }
+        if (!askDelete(e.target)) return;
         await fetch('/api/comment-delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ postID:d.cdel, commentID:d.comment || '' }) });
         await poll();
         return;
       }
       if (d.del) {
-        if (e.target.textContent !== 'sure?') { e.target.textContent = 'sure?'; setTimeout(() => { e.target.textContent = 'remove'; }, 2500); return; }
+        if (!askDelete(e.target)) return;
         await fetch('/api/post-delete?id=' + encodeURIComponent(d.del), { method:'POST' });
         const el = nodes.get(d.del);
-        if (el) { el.remove(); nodes.delete(d.del); allPosts.delete(d.del); renderModQueue(); }
+        if (el) { el.remove(); nodes.delete(d.del); allPosts.delete(d.del); replying.delete(d.del); renderModQueue(); }
         return;
       }
       if (d.pub) {
@@ -3367,7 +3474,7 @@
         e.target.disabled = true;
         try {
           const r = await fetch('/api/comment', { method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ post: d.csend, cid:'dj', author:'DJ', emoji:'🎧', text }) });
+            body: JSON.stringify({ post: d.csend, cid:'dj', author:eventMeta.host || 'the DJ', emoji:'🎧', text }) });
           if (r.ok) { inp.value = ''; await poll(); }
         } catch (err) {}
         e.target.disabled = false;
@@ -3433,12 +3540,18 @@
         if (data.dir && data.dir !== curDir) {
           // Event switched: reset the cursor or an older event's posts (act <
           // our high-water mark) would never arrive.
-          curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); allPosts.clear(); authors.clear(); list.innerHTML = '';
+          curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); allPosts.clear(); authors.clear(); replying.clear(); list.innerHTML = '';
         }
         if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
-        $('eventCounts').textContent = (data.total || 0) + (data.total === 1 ? ' post · ' : ' posts · ') + (data.media || 0) + ' media';
+        const countParts = [
+          (data.total || 0) + (data.total === 1 ? ' post' : ' posts'),
+          (data.photos || 0) + (data.photos === 1 ? ' photo' : ' photos'),
+          (data.videos || 0) + (data.videos === 1 ? ' video' : ' videos')
+        ];
+        if (data.audio) countParts.push(data.audio + (data.audio === 1 ? ' audio file' : ' audio files'));
+        $('eventCounts').textContent = countParts.join(' · ');
         if ($('feedCount')) $('feedCount').textContent = data.total || '';
-        syncHeader(data.title, data.host, data.starts, data.slug);
+        syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         syncPublish(data.slug);
         currentEventFeatures = data.features || {};
         renderFeatureToggles(data.features || {});
@@ -3453,7 +3566,7 @@
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {
-            if (!alive.has(id)) { node.remove(); nodes.delete(id); allPosts.delete(id); }
+            if (!alive.has(id)) { node.remove(); nodes.delete(id); allPosts.delete(id); replying.delete(id); }
           }
         }
         for (const p of (data.posts || [])) {
@@ -3553,25 +3666,17 @@
           media.push(m);
         }
         const r = await fetch('/api/post', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ cid:'dj', author:'DJ', emoji:'🎧', text, media }) });
+          body: JSON.stringify({ cid:'dj', author:eventMeta.host || 'the DJ', emoji:'🎧', text, media }) });
         if (!r.ok) throw new Error((await r.json()).error || 'post failed');
         $('djPostText').value = ''; $('djFiles').value = ''; djPendingFiles = []; $('djAttachN').textContent = '';
         poll();
       } catch (e) { $('djAttachN').textContent = e.message; }
       finally { $('djPostBtn').disabled = false; $('djPostBtn').textContent = 'Post'; }
     };
-    function todayEventDate(){
-      try {
-        return new Date().toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
-      } catch (e) {
-        return new Date().toISOString().slice(0, 10);
-      }
-    }
     function openCurrentEventFolder(){
       return fetch('/api/open-media', { method:'POST' });
     }
-    if ($('openMediaBtn')) $('openMediaBtn').onclick = openCurrentEventFolder;
-    if ($('openFolderBtn')) $('openFolderBtn').onclick = openCurrentEventFolder;
+    if ($('actionOpenFolderBtn')) $('actionOpenFolderBtn').onclick = openCurrentEventFolder;
     function setCreateEventOpen(open){
       const panel = $('createEventPanel'), btn = $('freshBtn');
       if (!panel || !btn) return;
@@ -3582,7 +3687,9 @@
         $('createEventTitle').value = '';
         const accountHost = accountName(currentAccountState || {});
         $('createEventHost').value = (eventMeta.host && eventMeta.host !== 'the DJ') ? eventMeta.host : accountHost;
-        $('createEventStarts').value = todayEventDate();
+        $('createEventDate').value = todayISO();
+        $('createEventTime').value = '20:00';
+        $('createEventPlace').value = '';
         $('createEventSlug').value = '';
         setTimeout(() => $('createEventTitle').focus(), 80);
       }
@@ -3592,12 +3699,15 @@
     async function createEvent(){
       const title = inputValue('createEventTitle');
       const host = inputValue('createEventHost');
-      const starts = inputValue('createEventStarts');
+      const date = inputValue('createEventDate');
+      const clock = inputValue('createEventTime') || '20:00';
+      const place = inputValue('createEventPlace');
+      const starts = scheduleLine(date, clock, place);
       const rawSlug = inputValue('createEventSlug');
       const slug = normSlug(rawSlug);
       if (!title) { setFormStatus('createEventStatus', 'Add an event name.', 'error'); $('createEventTitle').focus(); return; }
       if (!host) { setFormStatus('createEventStatus', 'Add a host name.', 'error'); $('createEventHost').focus(); return; }
-      if (!starts) { setFormStatus('createEventStatus', 'Add the date and place.', 'error'); $('createEventStarts').focus(); return; }
+      if (!date) { setFormStatus('createEventStatus', 'Pick a date.', 'error'); $('createEventDate').focus(); return; }
       if (rawSlug && rawSlug !== slug) $('createEventSlug').value = slug;
       const btn = $('createEventSaveBtn');
       btn.disabled = true; btn.textContent = 'Creating…';
@@ -3607,7 +3717,7 @@
         let d = await r.json().catch(() => ({}));
         if (!r.ok || d.error) throw new Error(d.error || 'new event failed');
         r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ title, host, starts, slug }) });
+          body: JSON.stringify({ title, host, starts, slug, date, time:clock, place }) });
         d = await r.json().catch(() => ({}));
         if (!r.ok || d.error) throw new Error(d.error || 'event setup failed');
         setFormStatus('createEventStatus', 'Created.', 'ok');
@@ -3619,7 +3729,7 @@
       }
     }
     $('createEventSaveBtn').onclick = createEvent;
-    ['createEventTitle', 'createEventHost', 'createEventStarts', 'createEventSlug'].forEach(id => {
+    ['createEventTitle', 'createEventHost', 'createEventDate', 'createEventTime', 'createEventPlace', 'createEventSlug'].forEach(id => {
       const el = $(id);
       if (el) el.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); createEvent(); }

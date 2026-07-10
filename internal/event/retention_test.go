@@ -17,7 +17,7 @@ func TestRetentionDefaultKeepApproved(t *testing.T) {
 	}
 }
 
-func TestCleanupPendingHiddenKeepsApprovedAndRemovesDiscardedMedia(t *testing.T) {
+func TestCleanupTreatsLegacyPendingAsApprovedAndRemovesHiddenMedia(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -68,24 +68,24 @@ func TestCleanupPendingHiddenKeepsApprovedAndRemovesDiscardedMedia(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.PostsRemoved != 2 || res.CommentsRemoved != 1 || res.MediaRemoved != 2 || res.ThumbsRemoved != 1 {
+	if res.PostsRemoved != 1 || res.CommentsRemoved != 1 || res.MediaRemoved != 1 || res.ThumbsRemoved != 0 {
 		t.Fatalf("cleanup result = %#v", res)
 	}
 	if _, ok := st.MediaPath(approvedMedia.ID); !ok {
 		t.Fatal("approved media was removed")
 	}
-	if _, ok := st.MediaPath(pendingMedia.ID); ok {
-		t.Fatal("pending media survived cleanup")
+	if _, ok := st.MediaPath(pendingMedia.ID); !ok {
+		t.Fatal("legacy pending media was removed")
 	}
 	if _, ok := st.MediaPath(hiddenMedia.ID); ok {
 		t.Fatal("hidden media survived cleanup")
 	}
-	if _, err := os.Stat(pendingThumb); !os.IsNotExist(err) {
-		t.Fatalf("pending thumb stat err = %v, want not exist", err)
+	if _, err := os.Stat(pendingThumb); err != nil {
+		t.Fatalf("legacy pending thumb was removed: %v", err)
 	}
 	posts, ids, mediaCount := st.Feed(0)
-	if len(ids) != 1 || len(posts) != 1 || posts[0].ID != approved.ID || mediaCount != 1 {
-		t.Fatalf("feed after cleanup posts=%v ids=%v media=%d, want approved only", posts, ids, mediaCount)
+	if len(ids) != 2 || len(posts) != 2 || mediaCount != 2 {
+		t.Fatalf("feed after cleanup posts=%v ids=%v media=%d, want approved and legacy pending", posts, ids, mediaCount)
 	}
 	if len(posts[0].Comments) != 0 {
 		t.Fatalf("hidden comment survived cleanup: %#v", posts[0].Comments)
