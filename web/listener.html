@@ -787,7 +787,7 @@
     // playSummary: rolling per-session tallies for the pagehide "final state".
     let sumStalls = 0, sumStallMs = 0, sumMaxStallMs = 0, stallStartedAt = 0;
     let sumRecovers = 0, sumPlayMs = 0, sumPlayStart = 0, sumMaxLatency = 0;
-    let alignSeeks = 0, audibleSeeks = 0;
+    let alignSeeks = 0, generationAlignSeeks = 0, audibleSeeks = 0;
     function playSummary(){
       const playing = sumPlayStart ? sumPlayMs + (Date.now() - sumPlayStart) : sumPlayMs;
       const stallMs = sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0);
@@ -956,8 +956,8 @@
       if (now - lastReattach < 2500) return;
       lastReattach = now;
       setStatus('reconnecting…');
-      if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAlignedAudible(reason || 'reattach');
       attach();
+      if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAlignedAudible(reason || 'reattach');
       if (started && !userPaused && !yielded) player.play().catch(()=>{});
     }
 
@@ -969,6 +969,7 @@
       if (!chosenStream()) return;
       const src = chosenStream();
       alignGeneration++;
+      generationAlignSeeks = 0;
       if (useNative) {
         player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
       } else if (!window.Hls) {
@@ -1065,11 +1066,16 @@
     const NATIVE_ALIGN_SETTLE_MS = 4000;
     const AUDIO_GATE_MS = 500;
     let needsAlign = false, alignGeneration = 0;
+    let alignedGeneration = -1;
     let alignPromise = null;
     let joinMuted = false, joinReason = '', joinStartedAt = 0;
     const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     function beginAlignedAudible(reason){
+      // Native AVPlayer can emit pause/playing while a seek rebuilds its live
+      // buffer. Those events are part of this attachment's startup transaction,
+      // not new interruptions. Never let them start another alignment cycle.
+      if (joinMuted || alignPromise || alignedGeneration === alignGeneration) return false;
       joinMuted = true;
       joinReason = reason || 'join';
       if (!joinStartedAt) joinStartedAt = Date.now();
@@ -1080,6 +1086,7 @@
       btnlabel.textContent = 'Syncing…';
       if (btnHint) btnHint.textContent = 'Lining up with everyone';
       setStatus('syncing with the room…');
+      return true;
     }
     function settleAfterSeek(){
       return new Promise(resolve => {
@@ -1110,6 +1117,7 @@
       if (lat == null || player.readyState < 2) return null;
       const delta = lat - target;              // >0 = too far behind → jump forward
       if (Math.abs(delta) <= START_ALIGN_TOLERANCE) return false;
+      if (generationAlignSeeks >= 2) return false;
       let wanted = mediaNow() + delta;
       try {
         const sk = player.seekable;
@@ -1123,7 +1131,7 @@
           wanted = Math.min(Math.max(wanted, low), high);
           player.currentTime = wanted;
           anchorMediaClock(wanted);
-          alignSeeks++;
+          alignSeeks++; generationAlignSeeks++;
         } else {
           return null;
         }
@@ -1144,6 +1152,7 @@
       if (generation !== alignGeneration || !started || player.paused || userPaused || yielded || !live) return;
       const reason = joinReason || 'join';
       const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
+      alignedGeneration = generation;
       joinMuted = false; joinReason = ''; joinStartedAt = 0;
       player.muted = false;
       if (!sumPlayStart) sumPlayStart = Date.now();

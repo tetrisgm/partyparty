@@ -1049,7 +1049,22 @@ function assertContinuous(before, after, label, minProgress = 3) {
   log(`PASS browser continuity ${label}: progress=${progress.toFixed(3)}s, no waits, no seeks`);
 }
 
+async function assertAlignmentTransactionClosed(page, label) {
+  const before = await syncState(page);
+  const accepted = await page.evaluate(() => beginAlignedAudible('synthetic-native-reentry'));
+  await sleep(250);
+  const after = await syncState(page);
+  if (accepted !== false || after.muted || after.paused || after.alignSeeks !== before.alignSeeks) {
+    fail(`${label} reopened a completed startup transaction: accepted=${accepted} before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
+  }
+  log(`PASS browser startup transaction ${label}: re-entry refused, seeks=${after.alignSeeks}`);
+}
+
 async function assertInjectedDriftIsolation(first, second) {
+  await Promise.all([
+    assertAlignmentTransactionClosed(first, 'healthy peer'),
+    assertAlignmentTransactionClosed(second, 'delayed peer'),
+  ]);
   await startContinuityProbe(first);
   await startContinuityProbe(second);
   const injected = await injectDrift(second, 0.65);
