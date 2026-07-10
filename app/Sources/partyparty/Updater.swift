@@ -5,23 +5,15 @@ import Sparkle
 /// Wraps Sparkle's updater (EdDSA-verified). Feed URL + public EdDSA key come
 /// from Info.plist (SUFeedURL / SUPublicEDKey), set by the release pipeline.
 ///
-/// Update model: scheduled checks download silently and Sparkle installs the
-/// latest on relaunch. We LET SPARKLE MANAGE the update — we do NOT take control
-/// via willInstallUpdateOnQuit. Returning YES there (the old code) stalls
-/// Sparkle's update session and stops ALL future checks until the app quits, so
-/// on this never-quit app a newer build wasn't picked up until relaunch — and
-/// "install now" would install a stale build, then prompt again (the double
-/// update). By not taking control, checks keep running and Sparkle always stages
-/// the latest, so one install lands you fully current.
-///
-/// The only thing we control is WHEN Sparkle's install prompt appears: never
-/// during a live set. The gentle-reminders hook defers it while broadcasting;
-/// Sparkle re-offers once the DJ is idle (its own timer plus our foreground /
-/// push checkNow()).
+/// Update model: scheduled checks download the signed update silently. Once it
+/// is prepared, install and relaunch immediately while idle; if a set is live,
+/// retain Sparkle's one-shot install handler and invoke it as soon as the set
+/// ends. This app normally runs forever, so "install on quit" is not enough.
 final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
     private var controller: SPUStandardUpdaterController!
     private let isBusy: () -> Bool
     private var deferredWhileBusy = false // an update was withheld during a set; re-surface it once idle
+    private var pendingAutomaticInstall: (() -> Void)?
 
     init(isBusy: @escaping () -> Bool) {
         self.isBusy = isBusy
@@ -30,15 +22,10 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
             startingUpdater: true,
             updaterDelegate: self,
             userDriverDelegate: self) // we drive gentle-reminder timing (defer mid-set)
-        // Checks forced ON so every install keeps looking for updates.
+        // Product policy is always-current: every Mac checks and downloads
+        // signed updates automatically, regardless of a stale Sparkle default.
         controller.updater.automaticallyChecksForUpdates = true
-        // Auto-install (automaticallyDownloadsUpdates) is DELIBERATELY not forced
-        // here. It follows the Info.plist default (SUAutomaticallyUpdate = true)
-        // and, once the user toggles "install automatically in the future" in
-        // Sparkle's dialog, THAT choice persists in user defaults. Forcing it off
-        // on every launch silently reset the user's choice — the owner's bug
-        // report. The gentle-reminder hook below still holds the update prompt
-        // until a live set ends, so respecting the choice doesn't interrupt a set.
+        controller.updater.automaticallyDownloadsUpdates = true
     }
 
     func checkForUpdates() {
@@ -63,9 +50,39 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     /// once a scheduled update is pending (it early-returns while one is in
     /// progress), so the deferred update would otherwise never re-appear.
     func broadcastDidEnd() {
+        if pendingAutomaticInstall != nil {
+            installPreparedUpdate()
+            return
+        }
         guard deferredWhileBusy else { return }
         deferredWhileBusy = false
         controller.checkForUpdates(nil)
+    }
+
+    // MARK: Automatic installation (SPUUpdaterDelegate)
+
+    /// Sparkle has verified, downloaded, and prepared an automatic update. Take
+    /// responsibility only because we always invoke the handler: now while idle,
+    /// or on the live -> idle edge. Returning true without retaining/invoking the
+    /// handler would stall Sparkle's update session indefinitely.
+    func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
+                 immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
+        pendingAutomaticInstall = immediateInstallHandler
+        if isBusy() {
+            NSLog("partyparty: update %@ prepared; deferring install until the set ends", item.displayVersionString)
+        } else {
+            installPreparedUpdate()
+        }
+        return true
+    }
+
+    private func installPreparedUpdate() {
+        guard let install = pendingAutomaticInstall else { return }
+        pendingAutomaticInstall = nil
+        DispatchQueue.main.async {
+            NSLog("partyparty: installing prepared update and relaunching")
+            install()
+        }
     }
 
     // MARK: Gentle scheduled-update reminders (SPUStandardUserDriverDelegate)

@@ -36,8 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // forever (the LetsMove pattern).
         if moveToApplicationsIfNeeded() { return } // relaunching from the new home
 
-        // Background auto-update; the "install now?" prompt is suppressed
-        // while a broadcast is live (it just installs on quit instead).
+        // Background auto-update installs and relaunches while idle. A prepared
+        // update waits until the current broadcast ends, never interrupting it.
         updater = Updater(isBusy: { [weak self] in
             let st = self?.poller?.status.state
             return st == "live" || st == "starting"
@@ -73,8 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updater?.checkNow()
     }
 
-    // An update found mid-set is deferred by the updater; the moment the DJ stops
-    // broadcasting, tell it to surface the held update (live -> not-live edge).
+    // An update prepared mid-set is deferred by the updater; the moment the DJ
+    // stops broadcasting, install it on this live -> not-live edge.
     private var wasBroadcasting = false
     private func trackBroadcastEnd(_ s: ServerStatus) {
         let live = (s.state == "live" || s.state == "starting")
