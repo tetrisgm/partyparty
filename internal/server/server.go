@@ -63,14 +63,6 @@ type srv struct {
 	liveProxy http.Handler
 	limits    *limiter
 
-	// Adaptive room-latency target: the room finds its own floor instead of a
-	// hardcoded pessimistic delay. Raised when listeners stall, decayed slowly
-	// when clean. Guarded by adaptMu.
-	adaptMu    sync.Mutex
-	adaptDelta float64 // seconds above the base target, [0, 3]
-	lastAdj    time.Time
-	lastRaise  time.Time
-
 	// Async activation result (cert broker / BYO) — set after launch so the
 	// server can start serving instantly while certs are obtained in the
 	// background. Guarded by actMu.
@@ -460,7 +452,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		bc := s.Broadcaster.Status()
 		health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
 		health.Suggestion = suggest(health.Status, bc)
-		mediaOffset := s.Listeners.MediaOffset(bc.Since)
 		roster := s.Listeners.Roster()
 		var rosterBody any = roster
 		if !s.isDJ(r) {
@@ -471,31 +462,30 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			rosterBody = public
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"name":            s.Config.Name,
-			"appVersion":      s.version(),
-			"broadcast":       bc,
-			"listeners":       health.Listeners,
-			"listenersTotal":  s.Listeners.TotalUnique(),
-			"health":          health,
-			"urls":            s.urls(),
-			"llhlsUrl":        s.llhlsURL(),
-			"delivery":        bc.Delivery,
-			"llhlsAvailable":  s.MTX != nil,
-			"llhlsRealCert":   s.realCert(),
-			"activation":      s.activationState(),
-			"reachability":    s.reachability(),
-			"hotspot":         s.hotspotState(),
-			"latencyTarget":   s.latencyTarget(bc, health.Status),
-			"log":             lastN(s.Broadcaster.Log(), 60),
-			"captive":         s.Config.Captive,
-			"latency":         s.Listeners.LatencySpread(),
-			"roomMediaOffset": mediaOffset,
-			"roster":          rosterBody,
-			"event":           s.eventState(),
-			"mirror":          s.eventMirrorState(),
-			"config":          s.payloadConfig(),
-			"appUpdate":       s.Payload != nil && s.Payload.AppUpdateAvailable(),
-			"streamHealth":    s.streamHealthText(),
+			"name":           s.Config.Name,
+			"appVersion":     s.version(),
+			"broadcast":      bc,
+			"listeners":      health.Listeners,
+			"listenersTotal": s.Listeners.TotalUnique(),
+			"health":         health,
+			"urls":           s.urls(),
+			"llhlsUrl":       s.llhlsURL(),
+			"delivery":       bc.Delivery,
+			"llhlsAvailable": s.MTX != nil,
+			"llhlsRealCert":  s.realCert(),
+			"activation":     s.activationState(),
+			"reachability":   s.reachability(),
+			"hotspot":        s.hotspotState(),
+			"latencyTarget":  s.latencyTarget(bc, health.Status),
+			"log":            lastN(s.Broadcaster.Log(), 60),
+			"captive":        s.Config.Captive,
+			"latency":        s.Listeners.LatencySpread(),
+			"roster":         rosterBody,
+			"event":          s.eventState(),
+			"mirror":         s.eventMirrorState(),
+			"config":         s.payloadConfig(),
+			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
+			"streamHealth":   s.streamHealthText(),
 		})
 	case "/api/update/check":
 		if r.Method != http.MethodPost {
@@ -783,13 +773,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				lat, hasLat = f, true
 			}
 		}
-		mediaOff, hasMediaOff := 0.0, false
-		mediaOffSince, _ := strconv.ParseInt(q.Get("sid"), 10, 64)
-		if v := q.Get("off"); v != "" {
-			if f, err := strconv.ParseFloat(v, 64); err == nil && f >= -60000 && f <= 60000 && mediaOffSince > 0 {
-				mediaOff, hasMediaOff = f, true
-			}
-		}
 		if q.Get("v") == "" {
 			// Legacy zombie tab: every page since 0.13 sends its version, but
 			// pages older than the self-refresh mechanism heartbeat FOREVER
@@ -804,7 +787,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
-		s.Listeners.SyncOffset(key, mediaOff, hasMediaOff, mediaOffSince)
 		s.markGuestReach(q.Get("stalled") == "1")
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
@@ -1266,8 +1248,7 @@ func (s *srv) liveDomain() string {
 	return s.actDomain
 }
 
-// currentTarget computes the shared room target using the same adaptive state
-// exposed by /api/status.
+// currentTarget computes the fixed room target exposed by /api/status.
 func (s *srv) currentTarget() float64 {
 	bc := s.Broadcaster.Status()
 	health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
@@ -1282,56 +1263,24 @@ func (s *srv) activationState() map[string]any {
 	return map[string]any{"ready": s.realCert(), "reason": reason}
 }
 
-// latencyTarget is the wall-clock delay behind the DJ that the room aligns to —
-// the sync contract. Native Safari aligns to it with PROGRAM-DATE-TIME seeks;
-// hls.js receives the same value as liveSyncDuration. Plain HLS remains a
-// development-only escape hatch with a deeper target.
-//
-// The server adapts within [base, base+3] on sustained stalls. --latency-target
-// pins it.
-func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
+// latencyTarget is the fixed wall-clock delay used for startup alignment.
+// Moving this value while a room is live made healthy players seek whenever a
+// struggling peer changed room health. Recovery is now strictly per-device.
+func (s *srv) latencyTarget(bc broadcast.Status, _ string) float64 {
 	if s.Config.LatencyTarget > 0 {
 		return s.Config.LatencyTarget
 	}
-	var base float64
 	if bc.Delivery == "llhls" {
-		// ONE room profile: every device aligns at a fixed ~7s behind the DJ — a
-		// deep, deliberate cushion so phones can buffer muted, seek to the shared
-		// room position, and start together instead of racing their native live edge.
-		// IN SYNC (aligned start) and stay there, instead of racing to be
-		// close-to-live and drifting apart. Adaptive delta can still raise it to
-		// 10s on strained Wi-Fi.
-		base = 7.0
-	} else {
-		seg := bc.SegDur
-		if seg <= 0 {
-			seg = 1
-		}
-		// Field-calibrated, then deliberately generous: tightness-of-room beats
-		// closeness-to-DJ (product decree). A deep park position = fat buffer on
-		// every phone = fewer stalls = fewer drift events = a tighter room all
-		// night. The DJ-to-ear delay is the price and it's explicitly accepted.
-		base = 3*seg + 7 // low(1s)=10, balanced(2s)=13, stable(3s)=16
+		// The stable field baseline held two iPhones roughly 140ms apart at this
+		// target, with several seconds of buffered media and no recurring seeks.
+		return 5.0
 	}
-	s.adaptMu.Lock()
-	defer s.adaptMu.Unlock()
-	now := time.Now()
-	if now.Sub(s.lastAdj) > 90*time.Second {
-		switch healthStatus {
-		case "strain", "congested":
-			if s.adaptDelta < 3 {
-				s.adaptDelta += 0.5
-				s.lastRaise = now
-			}
-			s.lastAdj = now
-		case "good":
-			if s.adaptDelta > 0 && now.Sub(s.lastRaise) > 5*time.Minute {
-				s.adaptDelta -= 0.25
-				s.lastAdj = now
-			}
-		}
+	seg := bc.SegDur
+	if seg <= 0 {
+		seg = 1
 	}
-	return base + s.adaptDelta
+	// Plain HLS remains a development-only escape hatch with a deeper target.
+	return 3*seg + 7
 }
 
 func lastN(s []string, n int) []string {

@@ -326,7 +326,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     '--seg-duration', '2s',
     '--part-duration', '1000ms',
     '--seg-count', '16',
-    '--latency-target', '7',
+    '--latency-target', '5',
     '--name', 'partyparty e2e',
   ], {
     cwd: ROOT,
@@ -469,7 +469,6 @@ paths:
   await sleep(1500);
 
   let mockStartedAt = Date.now();
-  let mockMediaOffset = null;
   let pub = startMockPublisher(workDir, ffmpeg, rtspPort);
 
   const web = http.createServer(async (req, res) => {
@@ -496,8 +495,7 @@ paths:
           delivery: 'llhls',
           llhlsAvailable: true,
           llhlsRealCert: true,
-          latencyTarget: 7,
-          roomMediaOffset: Number.isFinite(mockMediaOffset) ? { count: 1, medMs: mockMediaOffset } : { count: 0, medMs: 0 },
+          latencyTarget: 5,
           health: {},
           urls: { primary: `http://127.0.0.1:${webPort}/`, ip: '127.0.0.1', port: webPort, interfaces: [] },
         });
@@ -510,9 +508,6 @@ paths:
         return;
       }
       if (u.pathname === '/api/heartbeat') {
-        const off = Number(u.searchParams.get('off'));
-        const sid = Number(u.searchParams.get('sid'));
-        if (Number.isFinite(off) && sid === mockStartedAt) mockMediaOffset = off;
         sendJSON(res, { ok: true });
         return;
       }
@@ -561,7 +556,6 @@ paths:
       await pub.stop('SIGKILL');
       await sleep(1000);
       mockStartedAt = Date.now();
-      mockMediaOffset = null;
       pub = startMockPublisher(workDir, ffmpeg, rtspPort);
       await waitFor(async () => {
         const r = await getInsecure(streamUrl, 3000);
@@ -923,13 +917,10 @@ async function syncState(page) {
     const p = document.getElementById('player');
     let latency = null;
     try { latency = typeof measureLatency === 'function' ? measureLatency() : null; } catch {}
-    let ref = 'none', epoch = null, pdt = null, projectedTime = null, mediaOffset = null, startDateValid = false;
-    let seekableStart = null, seekableEnd = null, streamElapsed = null;
+    let ref = 'none', pdt = null, startDateValid = false;
+    let seekableStart = null, seekableEnd = null;
     try { ref = typeof syncReference === 'function' ? syncReference() : 'none'; } catch {}
-    try { epoch = typeof measureEpochLatency === 'function' ? measureEpochLatency() : null; } catch {}
     try { pdt = typeof measureProgramLatency === 'function' ? measureProgramLatency() : null; } catch {}
-    try { projectedTime = typeof mediaNow === 'function' ? mediaNow() : null; } catch {}
-    try { mediaOffset = typeof effectiveMediaOffset === 'function' ? effectiveMediaOffset() : null; } catch {}
     try {
       const d = typeof p?.getStartDate === 'function' ? p.getStartDate() : null;
       startDateValid = !!(d && Number.isFinite(d.getTime()));
@@ -940,24 +931,14 @@ async function syncState(page) {
         seekableEnd = p.seekable.end(p.seekable.length - 1);
       }
     } catch {}
-    try {
-      if (typeof serverNow === 'function' && typeof streamStartedAt === 'number' && streamStartedAt) {
-        streamElapsed = (serverNow() - streamStartedAt) / 1000;
-      }
-    } catch {}
     return {
       latency,
-      epoch,
       pdt,
       ref,
       target: typeof roomTarget === 'function' ? roomTarget() : null,
       streamStartedAt: typeof streamStartedAt === 'number' ? streamStartedAt : 0,
       currentTime: p?.currentTime || 0,
-      projectedTime,
-      mediaOffset,
       clockOffset: typeof clockOffset === 'number' ? clockOffset : null,
-      mediaClockTime: typeof mediaClockTime === 'number' ? mediaClockTime : null,
-      mediaClockAge: typeof mediaClockAt === 'number' && mediaClockAt ? performance.now() - mediaClockAt : null,
       paused: p?.paused ?? true,
       muted: p?.muted ?? true,
       readyState: p?.readyState || 0,
@@ -965,7 +946,9 @@ async function syncState(page) {
       startDateValid,
       seekableStart,
       seekableEnd,
-      streamElapsed,
+      alignSeeks: typeof alignSeeks === 'number' ? alignSeeks : null,
+      audibleSeeks: typeof audibleSeeks === 'number' ? audibleSeeks : null,
+      stalls: typeof sumStalls === 'number' ? sumStalls : null,
     };
   });
 }
@@ -986,9 +969,9 @@ async function assertRoomSync(first, second, label = 'steady') {
   try {
     await waitFor(async () => {
       const states = await Promise.all([syncState(first), syncState(second)]);
-      return states.every((s) => !s.paused && !s.muted && s.readyState >= 3 && Number.isFinite(s.latency) && s.ref.startsWith('epoch'))
-        && Math.abs(states[0].latency - states[1].latency) <= 0.18 && states;
-    }, { timeoutMs: 20000, label: `both guests converged on the epoch (${label})` });
+      return states.every((s) => !s.paused && !s.muted && s.readyState >= 3 && Number.isFinite(s.latency) && s.ref === 'pdt')
+        && Math.abs(states[0].latency - states[1].latency) <= 1.0 && states;
+    }, { timeoutMs: 20000, label: `both guests within the room tolerance (${label})` });
   } catch (err) {
     const states = await Promise.all([syncState(first), syncState(second)]);
     fail(`${err.message}; states=${JSON.stringify(states)}`);
@@ -1000,8 +983,8 @@ async function assertRoomSync(first, second, label = 'steady') {
     if (Number.isFinite(a.latency) && Number.isFinite(b.latency)) {
       samples.push({
         a: a.latency, b: b.latency, spread: Math.abs(a.latency - b.latency),
-        rawA: a.currentTime, rawB: b.currentTime, projectedA: a.projectedTime, projectedB: b.projectedTime,
-        offsetA: a.mediaOffset, offsetB: b.mediaOffset, rateA: a.rate, rateB: b.rate, refA: a.ref, refB: b.ref,
+        rawA: a.currentTime, rawB: b.currentTime, rateA: a.rate, rateB: b.rate,
+        refA: a.ref, refB: b.ref, alignA: a.alignSeeks, alignB: b.alignSeeks,
       });
     }
     await sleep(500);
@@ -1013,26 +996,72 @@ async function assertRoomSync(first, second, label = 'steady') {
   if (samples.some((s) => Math.abs(s.rateA - 1) > 0.001 || Math.abs(s.rateB - 1) > 0.001)) {
     fail(`room sync changed playback rate: ${JSON.stringify(samples)}`);
   }
-  if (samples.some((s) => !s.refA.startsWith('epoch') || !s.refB.startsWith('epoch'))) {
-    fail(`room sync did not use the shared epoch: ${JSON.stringify(samples)}`);
+  if (samples.some((s) => s.refA !== 'pdt' || s.refB !== 'pdt')) {
+    fail(`room sync did not use each player's PROGRAM-DATE-TIME: ${JSON.stringify(samples)}`);
   }
-  // Native WebKit coalesces sub-200ms HLS seeks. The product invariant is that
-  // a room stays well below the ~550ms audible field gap while every player
-  // remains at rate 1.0; 180/250ms keeps that bound strict without treating
-  // AVPlayer's seek tolerance as application drift.
-  if (median > 0.18 || p90 > 0.25) {
+  if (samples.some((s) => s.alignA > 1 || s.alignB > 1)) {
+    fail(`startup alignment made more than one seek: ${JSON.stringify(samples)}`);
+  }
+  // The product boundary is sub-second device-to-device timing. A tighter
+  // controller caused audible seek loops on real iPhones, so this test protects
+  // the accepted range while continuity tests below protect uninterrupted play.
+  if (median > 1.0 || p90 > 1.0) {
     fail(`two-client sync spread too wide: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
-  log(`PASS browser room-sync ${label}: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, epoch, playbackRate=1.0)`);
+  log(`PASS browser room-sync ${label}: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, local PDT, <=1 startup seek)`);
   return { median, p90, samples };
 }
 
-async function assertInjectedDriftRecovery(first, second) {
+async function startContinuityProbe(page) {
+  return await page.evaluate(() => {
+    const p = document.getElementById('player');
+    if (!window.__ppContinuity) {
+      window.__ppContinuity = { waits: 0, seeks: 0 };
+      p.addEventListener('waiting', () => window.__ppContinuity.waits++);
+      p.addEventListener('seeking', () => window.__ppContinuity.seeks++);
+    }
+    return { ...window.__ppContinuity, currentTime: p.currentTime };
+  });
+}
+
+async function continuityState(page) {
+  return await page.evaluate(() => {
+    const p = document.getElementById('player');
+    return {
+      ...(window.__ppContinuity || { waits: 0, seeks: 0 }),
+      currentTime: p.currentTime,
+      paused: p.paused,
+      muted: p.muted,
+      readyState: p.readyState,
+    };
+  });
+}
+
+function assertContinuous(before, after, label, minProgress = 3) {
+  const progress = after.currentTime - before.currentTime;
+  if (after.waits !== before.waits || after.seeks !== before.seeks || after.paused || after.muted || after.readyState < 3 || progress < minProgress) {
+    fail(`${label} interrupted: progress=${progress.toFixed(3)} before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
+  }
+  log(`PASS browser continuity ${label}: progress=${progress.toFixed(3)}s, no waits, no seeks`);
+}
+
+async function assertInjectedDriftIsolation(first, second) {
+  await startContinuityProbe(first);
+  await startContinuityProbe(second);
   const injected = await injectDrift(second, 0.65);
   if (!injected || Math.abs(injected.after - injected.before) < 0.5) {
     fail(`could not inject the 650ms field drift: ${JSON.stringify(injected)}`);
   }
   log(`>> injected field drift: ${(injected.after - injected.before).toFixed(3)}s`);
+  await waitFor(async () => !(await second.evaluate(() => document.getElementById('player').seeking)), {
+    timeoutMs: 5000,
+    label: 'injected seek to settle',
+  });
+  const [beforeFirst, beforeSecond] = await Promise.all([startContinuityProbe(first), startContinuityProbe(second)]);
+  await sleep(8000);
+  const [afterFirst, afterSecond] = await Promise.all([continuityState(first), continuityState(second)]);
+  assertContinuous(beforeFirst, afterFirst, 'healthy peer after another device drifts', 6);
+  assertContinuous(beforeSecond, afterSecond, 'drifted device remains playing', 6);
   await assertRoomSync(first, second, 'after-650ms-drift');
 }
 
@@ -1084,10 +1113,16 @@ async function main() {
       const r = await driveGuest(stack, 'happy', browser, null, { keepOpen: true });
       session = r.session;
       await sleep(2000);
-      const peer = await driveGuest(stack, 'delayed-peer', browser, null, { keepOpen: true, disableStartDate: true });
+      const beforeJoin = await startContinuityProbe(session.page);
+      const peer = await driveGuest(stack, 'delayed-peer', browser, null, { keepOpen: true, checkActions: false });
+      assertContinuous(beforeJoin, await continuityState(session.page), 'healthy peer while another device joins');
       await assertRoomSync(session.page, peer.session.page, 'delayed-join');
-      await assertInjectedDriftRecovery(session.page, peer.session.page);
+      await assertInjectedDriftIsolation(session.page, peer.session.page);
       await peer.session.context.close().catch(() => {});
+      const beforeUnknownClock = await startContinuityProbe(session.page);
+      const unknownClock = await driveGuest(stack, 'peer-without-program-clock', browser, null, { keepOpen: true, disableStartDate: true, checkActions: false });
+      assertContinuous(beforeUnknownClock, await continuityState(session.page), 'healthy peer while an unsynchronized device joins');
+      await unknownClock.session.context.close().catch(() => {});
       const manifestSince = Date.now();
       await stack.restartPublisher();
       await driveGuest(stack, 'resilience', browser, session, { keepOpen: true, manifestSince });
@@ -1095,15 +1130,21 @@ async function main() {
     } else if (SCENARIO === 'sync') {
       const first = await driveGuest(stack, 'sync-first', browser, null, { keepOpen: true });
       await sleep(2000);
-      const second = await driveGuest(stack, 'sync-delayed-no-start-date', browser, null, { keepOpen: true, disableStartDate: true });
-      const secondState = await syncState(second.session.page);
-      if (ENGINE === 'webkit' && secondState.startDateValid) {
-        fail(`WebKit field fallback setup failed: getStartDate remained valid (${JSON.stringify(secondState)})`);
-      }
-      await assertRoomSync(first.session.page, second.session.page, 'delayed-join-no-start-date');
-      await assertInjectedDriftRecovery(first.session.page, second.session.page);
-      await first.session.context.close().catch(() => {});
+      const beforeJoin = await startContinuityProbe(first.session.page);
+      const second = await driveGuest(stack, 'sync-delayed', browser, null, { keepOpen: true, checkActions: false });
+      assertContinuous(beforeJoin, await continuityState(first.session.page), 'healthy peer while another device joins');
+      await assertRoomSync(first.session.page, second.session.page, 'delayed-join');
+      await assertInjectedDriftIsolation(first.session.page, second.session.page);
       await second.session.context.close().catch(() => {});
+      const beforeUnknownClock = await startContinuityProbe(first.session.page);
+      const unknownClock = await driveGuest(stack, 'sync-peer-without-program-clock', browser, null, { keepOpen: true, disableStartDate: true, checkActions: false });
+      const unknownState = await syncState(unknownClock.session.page);
+      if (ENGINE === 'webkit' && unknownState.startDateValid) {
+        fail(`WebKit no-PDT setup failed: getStartDate remained valid (${JSON.stringify(unknownState)})`);
+      }
+      assertContinuous(beforeUnknownClock, await continuityState(first.session.page), 'healthy peer while an unsynchronized device joins');
+      await unknownClock.session.context.close().catch(() => {});
+      await first.session.context.close().catch(() => {});
     } else if (SCENARIO === 'resilience') {
       const r = await driveGuest(stack, 'pre-resilience', browser, null, { keepOpen: true });
       session = r.session;

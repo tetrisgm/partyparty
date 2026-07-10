@@ -14,9 +14,6 @@ type client struct {
 	lastStall time.Time
 	lat       float64 // last reported latency behind live, ms
 	hasLat    bool
-	mediaOff  float64 // media timeline offset from broadcast elapsed time, ms
-	hasOff    bool
-	offSince  int64
 	paused    bool
 	platform  string // "native" (iOS Safari) or "hls" (Android/desktop)
 
@@ -32,24 +29,6 @@ type client struct {
 	device string // friendly device label derived from the User-Agent
 	name   string
 	emoji  string
-}
-
-// SyncOffset records a PROGRAM-DATE-TIME-derived mapping from the broadcast
-// process clock to the HLS media timeline. The room median lets a native player
-// without getStartDate() use calibration from peers that do expose it.
-func (l *Listeners) SyncOffset(key string, offsetMs float64, hasOffset bool, streamSince int64) {
-	if key == "" {
-		return
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if c := l.clients[key]; c != nil {
-		c.hasOff = hasOffset
-		if hasOffset {
-			c.mediaOff = offsetMs
-			c.offSince = streamSince
-		}
-	}
 }
 
 type Listeners struct {
@@ -242,36 +221,6 @@ func (l *Listeners) LatencySpread() LatencyStat {
 		med = (v[len(v)/2-1] + v[len(v)/2]) / 2
 	}
 	return LatencyStat{Count: len(v), MinMs: v[0], MedMs: med, MaxMs: v[len(v)-1], SpreadMs: v[len(v)-1] - v[0]}
-}
-
-type MediaOffsetStat struct {
-	Count int     `json:"count"`
-	MedMs float64 `json:"medMs"`
-}
-
-// MediaOffset returns the median active peer calibration. A median prevents a
-// single stale client from pulling a populated room away from its shared media
-// timeline.
-func (l *Listeners) MediaOffset(streamSince int64) MediaOffsetStat {
-	now := time.Now()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	var v []float64
-	for _, c := range l.clients {
-		if now.Sub(c.lastSeen) > l.window || !c.hasOff || streamSince == 0 || c.offSince != streamSince {
-			continue
-		}
-		v = append(v, c.mediaOff)
-	}
-	if len(v) == 0 {
-		return MediaOffsetStat{}
-	}
-	sort.Float64s(v)
-	med := v[len(v)/2]
-	if len(v)%2 == 0 {
-		med = (v[len(v)/2-1] + v[len(v)/2]) / 2
-	}
-	return MediaOffsetStat{Count: len(v), MedMs: med}
 }
 
 // Listener is one active listener for the DJ's roster.

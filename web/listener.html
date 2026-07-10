@@ -605,12 +605,10 @@
     // is not offered (no insecure/slow fallback). STREAM stays only as a
     // dev/localhost escape hatch.
     let LLSTREAM = null;
-    // The room's sync contract: the wall-clock delay behind the DJ that EVERY
-    // phone converges to (server-provided). Players park wherever their
-    // heuristics like — iOS versions differ by seconds — so alignment to this
-    // shared number is what makes the room drop together.
-    const ROOM_TARGET_FALLBACK = 7;
-    let latencyTarget = 0, streamStartedAt = 0, sharedMediaOffset = null;
+    // The room target is a fixed startup position, never a live control loop.
+    // Once audio opens, continuity wins: one slow device cannot move another.
+    const ROOM_TARGET_FALLBACK = 5;
+    let latencyTarget = 0, streamStartedAt = 0;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let mediaClockTime = 0, mediaClockAt = 0;
     function anchorMediaClock(value){
@@ -697,7 +695,7 @@
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
     // out of the temporal dead zone so that path can never throw.
-    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, offline: 1, 'dj-stop': 1, nav: 1 };
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, stall: 1, rebuffer: 1, 'audible-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
     let evSeq = 0, evStart = Date.now();
     const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
@@ -787,10 +785,13 @@
     document.addEventListener('visibilitychange', () => logEvent('vis', { v: document.visibilityState }));
 
     // playSummary: rolling per-session tallies for the pagehide "final state".
-    let sumStalls = 0, sumRecovers = 0, sumPlayMs = 0, sumPlayStart = 0, sumMaxLatency = 0;
+    let sumStalls = 0, sumStallMs = 0, sumMaxStallMs = 0, stallStartedAt = 0;
+    let sumRecovers = 0, sumPlayMs = 0, sumPlayStart = 0, sumMaxLatency = 0;
+    let alignSeeks = 0, audibleSeeks = 0;
     function playSummary(){
       const playing = sumPlayStart ? sumPlayMs + (Date.now() - sumPlayStart) : sumPlayMs;
-      return { stalls: sumStalls, recovers: sumRecovers, playMs: playing, maxLat: Math.round(sumMaxLatency * 10) / 10, ev: evSeq };
+      const stallMs = sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0);
+      return { stalls: sumStalls, stallMs, maxStallMs: sumMaxStallMs, recovers: sumRecovers, alignSeeks, audibleSeeks, playMs: playing, maxLat: Math.round(sumMaxLatency * 10) / 10, ev: evSeq };
     }
 
     // NTP-style clock sync to the Mac (the master clock) so every phone computes
@@ -822,7 +823,7 @@
     async function syncClock(){
       if (clockSyncing) return clockSyncing;
       clockSyncing = (async () => {
-        const samples = (await Promise.all(Array.from({ length: 8 }, () => clockSample()))).filter(Boolean);
+        const samples = (await Promise.all(Array.from({ length: 4 }, () => clockSample()))).filter(Boolean);
         samples.sort((a, b) => a.rtt - b.rtt);
         const best = samples[0];
         // A poor sample can move two phones in opposite directions. Accept only
@@ -858,65 +859,10 @@
       } catch (e) {}
       return null;
     }
-    // Calibrate the Mac's process epoch to the HLS media timeline. Clients with
-    // PROGRAM-DATE-TIME report this value to the Mac; its room median lets older
-    // native Safari clients align even when getStartDate() is unavailable.
-    function localMediaOffset(){
-      if (!streamStartedAt) return null;
-      try {
-        if (typeof player.getStartDate === 'function') {
-          const sd = player.getStartDate();
-          const base = sd && sd.getTime ? sd.getTime() : NaN;
-          if (Number.isFinite(base)) {
-            const off = (streamStartedAt - base) / 1000;
-            if (off > -60 && off < 60) return off;
-          }
-        }
-      } catch (e) {}
-      try {
-        if (hls && hls.playingDate && Number.isFinite(mediaNow())) {
-          const off = mediaNow() + (streamStartedAt - hls.playingDate.getTime()) / 1000;
-          if (off > -60 && off < 60) return off;
-        }
-      } catch (e) {}
-      return null;
-    }
-    function edgeMediaOffset(){
-      const elapsed = streamElapsed();
-      if (elapsed == null) return null;
-      try {
-        const sk = player.seekable;
-        if (!sk || !sk.length) return null;
-        const off = sk.end(sk.length - 1) - elapsed;
-        return off > -60 && off < 60 ? off : null;
-      } catch (e) { return null; }
-    }
-    function effectiveMediaOffset(){
-      if (Number.isFinite(sharedMediaOffset)) return sharedMediaOffset;
-      const local = localMediaOffset();
-      if (local != null) return local;
-      // Give a calibrated peer time to heartbeat before using the native
-      // seekable edge as the last-resort mapping for a no-PDT room.
-      if (joinMuted && Date.now() - joinStartedAt < 3500) return null;
-      return edgeMediaOffset();
-    }
-    function measureEpochLatency(){
-      const elapsed = streamElapsed(), off = effectiveMediaOffset();
-      const position = mediaNow();
-      if (elapsed == null || off == null || !Number.isFinite(position)) return null;
-      const lat = elapsed + off - position;
-      return lat > -5 && lat < 60 ? lat : null;
-    }
     function measureLatency(){
-      const epoch = measureEpochLatency();
-      return epoch != null ? epoch : measureProgramLatency();
+      return measureProgramLatency();
     }
     function syncReference(){
-      if (measureEpochLatency() != null) {
-        if (Number.isFinite(sharedMediaOffset)) return 'epoch-shared';
-        if (localMediaOffset() != null) return 'epoch-pdt';
-        return 'edge';
-      }
       return measureProgramLatency() != null ? 'pdt' : 'none';
     }
 
@@ -973,13 +919,18 @@
     // "muted, staying warm". iOS keeps foreground muted playback going; if it
     // gets suspended while muted+locked, resume (foreground) restarts it.
     function pauseGuest(){ userPaused = true; joinMuted = false; joinStartedAt = 0; needsAlign = false; player.muted = true; setPlayingUI(false); setStatus('paused'); logEvent('mute'); }
-    // Aligned RESUME: muted "pause" keeps playing, and field logs show it
-    // drifting ~1s+ behind the room — unmuting must snap back to the target
-    // (one-shot, same sanctioned move as the aligned start).
+    // A muted pause keeps the native stream warm. If media kept advancing,
+    // resume is an immediate unmute with no seek and no chance of a click.
     function resumeGuest(){
       userPaused = false; yielded = false; claimAudio();
-      beginAlignedAudible('resume');
-      if (player.paused) player.play().catch(()=>{}); else alignOnce();
+      if (!player.paused && player.readyState >= 2 && !stale()) {
+        joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false;
+        player.muted = false;
+        if (!sumPlayStart) sumPlayStart = Date.now();
+        setPlayingUI(true); setStatus('live'); logEvent('unmute', { warm: true, lat: rnd3(measureLatency()) });
+        return;
+      }
+      recoverPlayback('resume');
     }
 
     // Fast, bounded retries: after a Wi-Fi blip we want audio back in ~1-2s,
@@ -999,13 +950,13 @@
     // capture-devicechange) WITHOUT tight-looping. A persistently-404 stream (DJ
     // stopped) must never spin attach() — gate on `live` and a cooldown.
     let lastReattach = 0;
-    function reattach(){
+    function reattach(reason){
       if (!live) return;
       const now = Date.now();
       if (now - lastReattach < 2500) return;
       lastReattach = now;
       setStatus('reconnecting…');
-      if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAlignedAudible('reattach');
+      if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAlignedAudible(reason || 'reattach');
       attach();
       if (started && !userPaused && !yielded) player.play().catch(()=>{});
     }
@@ -1018,9 +969,6 @@
       if (!chosenStream()) return;
       const src = chosenStream();
       alignGeneration++;
-      // Native Safari and hls.js both use the same room controller. hls.js's
-      // live-edge heuristic is only an initial loading hint, not the sync truth.
-      needsAlign = usingLL();
       if (useNative) {
         player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
       } else if (!window.Hls) {
@@ -1043,9 +991,11 @@
           // it's the reconciliation point. (Legal alone — the old crash was
           // liveMaxLatencyDuration WITHOUT this.)
           liveSyncDuration: target,
-          liveMaxLatencyDuration: target + 2,
-          // One room controller owns phase. Per-device speed-up makes Android
-          // independently chase its edge and can undo cross-platform alignment.
+          // A badly stalled non-Apple player may recover itself, but a healthy
+          // player is never dragged around by another device's condition.
+          liveMaxLatencyDuration: target + 5,
+          // Do not speed up healthy playback. A device that falls far outside
+          // the live window may reattach itself without touching room state.
           maxLiveSyncPlaybackRate: 1.0,
           liveSyncOnStallIncrease: 0,
           liveDurationInfinity: true,
@@ -1103,18 +1053,15 @@
       catch (e) { setStatus('player error — reload the page'); return false; }
     }
 
-    // One exact room position for every browser. Native Safari remains untouched
-    // while hidden/locked; while visible, exact seeks are safer than playback-rate
-    // changes (which can click/warble and let each device make a different choice).
-    const SYNC_DEAD_ZONE = 0.05;
-    const SYNC_CORRECT_AT = 0.18;
-    const SYNC_HARD_LIMIT = 0.30;
-    const SYNC_COOLDOWN_MS = 2500;
-    const SYNC_MIN_NATIVE_NUDGE = 0.22;
-    const START_ALIGN_TIMEOUT_MS = 10000;
+    // Synchronization is a startup gate, not a playback controller. Safari's
+    // native HLS seek granularity is too coarse for tiny repeated corrections:
+    // field logs showed those seeks turning continuous audio into interruptions.
+    const START_ALIGN_TOLERANCE = 0.75;
+    const SYNC_WARN_AT = 1.0;
+    const START_ALIGN_WAIT_MS = 2500;
     const AUDIO_GATE_MS = 500;
     let needsAlign = false, alignGeneration = 0;
-    let syncErrors = [], lastSyncCorrection = 0, alignPromise = null;
+    let alignPromise = null;
     let joinMuted = false, joinReason = '', joinStartedAt = 0;
     const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -1143,46 +1090,43 @@
         setTimeout(finish, 800);
       });
     }
+    async function waitForStartupBuffer(generation){
+      const deadline = Date.now() + 2500;
+      while (Date.now() < deadline && generation === alignGeneration && started && !player.paused && !userPaused && !yielded) {
+        if (player.readyState >= 3 && bufferedAhead() >= 1) return true;
+        await wait(100);
+      }
+      return player.readyState >= 3;
+    }
     function alignSeek(target, reason){
+      // This assignment is allowed only while the startup gate is muted.
+      // After openAudioGate(), no application code changes currentTime.
+      if (!joinMuted || !player.muted) return null;
       const lat = measureLatency();
       if (lat == null || player.readyState < 2) return null;
       const delta = lat - target;              // >0 = too far behind → jump forward
-      if (Math.abs(delta) <= SYNC_DEAD_ZONE) return false;
-      let correction = delta;
-      // AVPlayer may coalesce a small currentTime assignment as already close
-      // enough, leaving two native-HLS phones on opposite sides of its seek
-      // tolerance. For steady-state corrections only, cross that window once;
-      // the dead band then prevents a compensating seek in the other direction.
-      if (useNative && /-drift$/.test(reason || '') && Math.abs(correction) < SYNC_MIN_NATIVE_NUDGE) {
-        correction = Math.sign(correction) * SYNC_MIN_NATIVE_NUDGE;
-      }
-      let wanted = mediaNow() + correction;
+      if (Math.abs(delta) <= START_ALIGN_TOLERANCE) return false;
+      let wanted = mediaNow() + delta;
       try {
         const sk = player.seekable;
         if (sk && sk.length) {
-          const low = sk.start(0) + 0.15;
-          const high = sk.end(sk.length - 1) - 0.15;
+          const low = sk.start(0) + 0.05;
+          const high = sk.end(sk.length - 1) - 0.10;
           if (high <= low) return null;
-          // A brand-new stream may not have seven seconds of history yet. Park
-          // at the oldest point and keep waiting muted instead of pretending a
-          // clamped seek reached the room target.
-          if (wanted < low - SYNC_DEAD_ZONE) {
-            if (player.currentTime - low > SYNC_DEAD_ZONE) {
-              wanted = low;
-            } else {
-              return null;
-            }
-          }
+          // If the fixed target does not exist yet (a just-started stream), let
+          // AVPlayer use its natural startup position instead of chasing a clamp.
+          if (wanted < low - START_ALIGN_TOLERANCE || wanted > high + START_ALIGN_TOLERANCE) return null;
           wanted = Math.min(Math.max(wanted, low), high);
           player.currentTime = wanted;
           anchorMediaClock(wanted);
+          alignSeeks++;
         } else {
           return null;
         }
       } catch (e) { return null; }
       logEvent('align', {
         why: reason || 'sync', ref: syncReference(), lat: rnd3(lat), target: rnd3(target), delta: rnd3(delta),
-        correction: rnd3(correction), pos: rnd3(mediaNow()), want: rnd3(wanted), epoch: rnd3(measureEpochLatency()), pdt: rnd3(measureProgramLatency()),
+        correction: rnd3(delta), pos: rnd3(mediaNow()), want: rnd3(wanted), pdt: rnd3(measureProgramLatency()),
       });
       return true;
     }
@@ -1195,11 +1139,12 @@
       if (gateWait) await wait(gateWait);
       if (generation !== alignGeneration || !started || player.paused || userPaused || yielded || !live) return;
       const reason = joinReason || 'join';
+      const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
       joinMuted = false; joinReason = ''; joinStartedAt = 0;
       player.muted = false;
       if (!sumPlayStart) sumPlayStart = Date.now();
       claimAudio(); setPlayingUI(true); setStatus('live');
-      logEvent('audio-open', { why: reason, aligned: !!aligned, ref: syncReference(), lat: rnd3(measureLatency()), gate: gateWait });
+      logEvent('audio-open', { why: reason, aligned: !!aligned, ref: syncReference(), lat: rnd3(measureLatency()), gate: gateWait, joinMs });
     }
     async function alignOnce(){
       if (alignPromise) return alignPromise;
@@ -1208,54 +1153,29 @@
       const generation = alignGeneration;
       alignPromise = (async () => {
         await syncClock();
-        const deadline = Date.now() + START_ALIGN_TIMEOUT_MS;
-        let aligned = false, pass = 0;
-        // Re-measure after every seek. Stay muted until the shared target exists
-        // in the live window and the decoder has settled there.
+        // Let hls.js finish its own initial live-position handoff before the
+        // single muted correction. Seeking during that handoff gets overwritten.
+        if (!useNative) await wait(800);
+        const deadline = Date.now() + START_ALIGN_WAIT_MS;
+        let result = null;
+        // Wait briefly for PROGRAM-DATE-TIME and seekable data, then make at
+        // most one correction while muted. Never loop on AVPlayer's tolerance.
         while (Date.now() < deadline && generation === alignGeneration && started && !player.paused && !userPaused && !yielded) {
-          const result = alignSeek(roomTarget(), 'startup-' + (++pass));
-          if (result === false) { aligned = true; break; }
-          if (result === true) {
-            lastSyncCorrection = Date.now();
-            await settleAfterSeek();
-            await wait(200);
-          } else {
-            await wait(150);
-          }
+          result = alignSeek(roomTarget(), 'startup');
+          if (result !== null) break;
+          await wait(100);
         }
-        if (!aligned) logEvent('align-timeout', { ref: syncReference(), lat: rnd3(measureLatency()), target: rnd3(roomTarget()) });
-        if (joinMuted) await openAudioGate(generation, aligned);
+        if (result === true) await settleAfterSeek();
+        await waitForStartupBuffer(generation);
+        if (result === null) logEvent('align-skip', { ref: syncReference(), lat: rnd3(measureLatency()), target: rnd3(roomTarget()) });
+        if (joinMuted) await openAudioGate(generation, result !== null);
       })();
       try {
         await alignPromise;
       } finally {
         alignPromise = null;
-        if ((needsAlign || joinMuted) && live && started && !player.paused && !userPaused && !yielded) setTimeout(alignOnce, 0);
       }
     }
-
-    function maintainRoomSync(){
-      if (!started || player.paused || userPaused || yielded || joinMuted || alignPromise) return;
-      if (document.visibilityState !== 'visible') return;
-      const target = roomTarget();
-      const lat = measureLatency();
-      if (lat == null || player.readyState < 3) return;
-      const error = lat - target;
-      if (Math.abs(error) <= SYNC_DEAD_ZONE) { syncErrors = []; return; }
-      syncErrors.push(error);
-      if (syncErrors.length > 2) syncErrors.shift();
-      const sameSide = syncErrors.length === 2 && syncErrors.every(v => Math.sign(v) === Math.sign(error) && Math.abs(v) >= SYNC_CORRECT_AT);
-      if (Math.abs(error) < SYNC_HARD_LIMIT && !sameSide) return;
-      if (Date.now() - lastSyncCorrection < SYNC_COOLDOWN_MS) return;
-      lastSyncCorrection = Date.now(); syncErrors = [];
-      alignSeek(target, Math.abs(error) >= SYNC_HARD_LIMIT ? 'hard-drift' : 'sustained-drift');
-    }
-    // Heartbeats stay deliberately sparse, but phase control cannot wait two
-    // seconds per observation: native WebKit can drift 30-40ms each second
-    // while still reporting playbackRate=1. Two 500ms observations catch a
-    // genuine 180ms divergence quickly without reacting to one noisy sample
-    // or ping-ponging across AVPlayer's native seek tolerance.
-    setInterval(maintainRoomSync, 500);
 
     // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a
     // guest never taps into silence and thinks it's broken; then "Tap to listen".
@@ -1381,6 +1301,13 @@
       anchorMediaClock();
       const wasStarted = started;
       started = true; errRetries = 0; resumeWanted = false; resumeTries = 0; lastProgress = Date.now();
+      if (stallStartedAt) {
+        const stallMs = Date.now() - stallStartedAt;
+        sumStallMs += stallMs;
+        sumMaxStallMs = Math.max(sumMaxStallMs, stallMs);
+        stallStartedAt = 0;
+        logEvent('rebuffer', { ms: stallMs, buf: rnd(bufferedAhead()), lat: rnd3(measureLatency()), audible: !player.muted });
+      }
       if (!sumPlayStart && !player.muted) sumPlayStart = Date.now(); // audible play-time clock
       logEvent('playing', { first: !wasStarted, lat: rnd(measureLatency()), buf: rnd(bufferedAhead()), muted: player.muted, ll: usingLL() });
       if (needsAlign || joinMuted) { setStatus('syncing with the room…'); alignOnce(); }
@@ -1388,7 +1315,11 @@
     });
     player.addEventListener('waiting', () => {
       stalledSinceBeat = true;
-      if (started) { setStatus('buffering…'); sumStalls++; logEvent('stall', { buf: rnd(bufferedAhead()), rs: player.readyState, lat: rnd(measureLatency()) }); }
+      if (started && !stallStartedAt) {
+        stallStartedAt = Date.now(); sumStalls++;
+        setStatus('buffering…');
+        logEvent('stall', { buf: rnd(bufferedAhead()), rs: player.readyState, lat: rnd3(measureLatency()), audible: !player.muted, progressAge: lastProgress ? Date.now() - lastProgress : 0 });
+      }
       if (sumPlayStart) { sumPlayMs += Date.now() - sumPlayStart; sumPlayStart = 0; } // pause the play-time clock
       // A stall is a natural gap: if an app update has been waiting for a
       // "safe moment" to refresh this page, this is it — otherwise a page
@@ -1413,7 +1344,16 @@
     // recoverPlayback re-attaches for a clean rejoin. Field: Seth's Chrome tab
     // froze reading a voice text, came back STALLED (paused:false) and couldn't
     // recover — a pause-only check missed it; progress-staleness catches it.
-    let lastProgress = 0, lastTime = -1;
+    let lastProgress = 0, lastTime = NaN, recoveringUntil = 0;
+    function sampleProgress(){
+      const current = player.currentTime;
+      if (!Number.isFinite(current)) return;
+      if (!Number.isFinite(lastTime) || Math.abs(current - lastTime) >= 0.05) {
+        lastTime = current;
+        lastProgress = Date.now();
+        recoveringUntil = 0;
+      }
+    }
     player.addEventListener('timeupdate', () => {
       // WebKit dispatches timeupdate coarsely and not at the exact media-clock
       // instant represented by currentTime. Re-anchoring on every callback
@@ -1421,19 +1361,31 @@
       // milliseconds apart. playing/seeked are the precise anchors; only
       // accept timeupdate as a new anchor for a real discontinuity.
       if (!mediaClockAt || Math.abs(mediaNow() - player.currentTime) > 0.75) anchorMediaClock();
-      if (player.currentTime !== lastTime) { lastTime = player.currentTime; lastProgress = Date.now(); }
+      sampleProgress();
     });
-    player.addEventListener('seeked', () => anchorMediaClock());
-    function stale(){ return started && lastProgress && Date.now() - lastProgress > 8000; }
+    setInterval(sampleProgress, 1000);
+    player.addEventListener('seeking', () => {
+      const audible = started && !player.muted && !userPaused && !yielded;
+      if (audible) audibleSeeks++;
+      logEvent(audible ? 'audible-seek' : 'seek', { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), appAligns: alignSeeks });
+    });
+    player.addEventListener('seeked', () => { anchorMediaClock(); sampleProgress(); });
+    function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
     function recoverPlayback(reason){
-      if (document.visibilityState === 'visible' && !userPaused && !yielded) beginAlignedAudible(reason || 'recover');
-      if (player.error || player.readyState === 0 || stale()) {
+      if (!live || userPaused || yielded) return;
+      const broken = !!player.error || player.readyState === 0 || stale();
+      if (!broken && !player.paused) return;
+      if (Date.now() < recoveringUntil) { player.play().catch(() => {}); return; }
+      if (broken) {
         sumRecovers++;
-        logEvent('reconnect', { err: player.error && player.error.code, rs: player.readyState, staleMs: lastProgress ? Date.now() - lastProgress : 0 });
-        attachSafe(); // fresh join at the live edge (aligned), not a nudge into dead air
+        recoveringUntil = Date.now() + 12000;
+        logEvent('reconnect', { why: reason || 'recover', err: player.error && player.error.code, rs: player.readyState, staleMs: lastProgress ? Date.now() - lastProgress : 0 });
+        reattach(reason || 'recover'); // this device gets a fresh session; no room state changes
+      } else {
+        beginAlignedAudible(reason || 'recover');
+        recoveringUntil = Date.now() + 4000;
+        player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
       }
-      player.play().catch(() => {});
-      if (!player.paused) alignOnce();
     }
     player.addEventListener('pause',   () => {
       if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
@@ -1447,8 +1399,7 @@
         // Try to resume (phone call/Siri ending). iOS blocks gesture-less
         // resume after an AirPods/route change, so if it's rejected show a
         // clear one-tap "Resume" instead of pretending it'll come back alone.
-        if (document.visibilityState === 'visible') beginAlignedAudible('interruption');
-        player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
+        recoverPlayback('interruption');
         return;
       }
       setPlayingUI(false); if (started) setStatus('paused');
@@ -1468,7 +1419,16 @@
       }
       setStatus('reconnecting…');
       const delay = Math.min(500 * Math.pow(2, errRetries++), 5000);
-      setTimeout(() => { if (live) { attachSafe(); player.play().catch(()=>{}); } }, delay);
+      setTimeout(() => {
+        if (!live) return;
+        if (started && !userPaused && !yielded) {
+          recoveringUntil = 0;
+          reattach('media-error');
+        } else {
+          attachSafe();
+          player.play().catch(()=>{});
+        }
+      }, delay);
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
@@ -1478,11 +1438,7 @@
       // parked in the background for days must not keep running old code).
       // Foregrounding a yielded tab reclaims — you're clearly using THIS one.
       if (yielded) { yielded = false; claimAudio(); userPaused = false; recoverPlayback('tab-reclaim'); }
-      else if (started && !userPaused) recoverPlayback();
-      // After recovery settles, re-attach a stream that drifted far behind while
-      // the tab was throttled in the background (a stall would have reconnected;
-      // a silent drift wouldn't — this catches that).
-      setTimeout(maintainRoomSync, 1000);
+      else if (started && !userPaused && (player.paused || stale())) recoverPlayback('foreground');
       poll();
     });
     // AirPods / audio-route change: iOS pauses on removal and does NOT
@@ -1520,6 +1476,7 @@
       try { player.removeAttribute('src'); player.load(); } catch (e) {}
       alignGeneration++;
       started = false; attached = false; ready = false; errRetries = 0; joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false;
+      recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
       setPlayingUI(false); setStatus('');
       updateIdleButton(); // shows "Waiting for DJ"
     }
@@ -1535,25 +1492,18 @@
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
+        const streamChanged = !!streamStartedAt && !!nextStartedAt && nextStartedAt !== streamStartedAt;
         if (nextStartedAt !== streamStartedAt) {
           streamStartedAt = nextStartedAt;
-          sharedMediaOffset = null;
-          syncErrors = [];
-          if (started && streamStartedAt) needsAlign = true;
-        }
-        const roomOff = s.roomMediaOffset;
-        const nextSharedOffset = roomOff && Number(roomOff.count) > 0 && Number.isFinite(Number(roomOff.medMs))
-          ? Number(roomOff.medMs) / 1000 : null;
-        if (nextSharedOffset !== sharedMediaOffset) {
-          const changed = Number.isFinite(sharedMediaOffset) && Number.isFinite(nextSharedOffset)
-            ? Math.abs(nextSharedOffset - sharedMediaOffset) > SYNC_DEAD_ZONE : true;
-          sharedMediaOffset = nextSharedOffset;
-          if (changed && started) needsAlign = true;
         }
         if (!document.body.dataset.eventTitle) setEventTitle(s.name || 'partyparty'); // feed owns the title once the event loads
         const wasLive = live;
         live = s.broadcast && s.broadcast.state === 'live';
         if (live !== wasLive) logEvent(live ? 'dj-live' : 'dj-stop', { target: rnd(latencyTarget) });
+        if (streamChanged && started && live && !userPaused && !yielded) {
+          recoveringUntil = 0;
+          reattach('stream-restart');
+        }
         const eventHost = s.event && String(s.event.host || '').trim();
         if (eventHost) guestHostName = eventHost;
         const totalListeners = Number(s.listeners || 0);
@@ -1588,12 +1538,11 @@
       } catch (e) { if (!started) setStatus('offline'); }
     }
     poll(); setInterval(poll, 3000);
-    syncClock(); setInterval(syncClock, 15000);
+    syncClock(); setInterval(syncClock, 30000);
 
     // Heartbeat so the DJ console can count listeners, sense strain, and measure
     // inter-device latency spread (any delivery mode).
-    let diagEl = null, stallCount = 0;
-    player.addEventListener('waiting', () => { stallCount++; });
+    let diagEl = null;
     function showDebug(lat){
       if (!diagEl){
         diagEl = document.createElement('div');
@@ -1605,14 +1554,15 @@
         'state    : ' + (player.paused ? 'paused' : 'playing') + '  rs=' + player.readyState + '\n' +
         'latency  : ' + (lat != null ? lat.toFixed(3) + ' s' : 'n/a') + '  ref=' + syncReference() + '\n' +
         'target   : ' + roomTarget().toFixed(1) + ' s  err=' + (lat != null ? ((lat - roomTarget()) >= 0 ? '+' : '') + (lat - roomTarget()).toFixed(3) + 's' : '?') + '\n' +
-        'timeline : epoch=' + (measureEpochLatency() != null ? measureEpochLatency().toFixed(3) : 'n/a') + '  pdt=' + (measureProgramLatency() != null ? measureProgramLatency().toFixed(3) : 'n/a') + '\n' +
+        'timeline : pdt=' + (measureProgramLatency() != null ? measureProgramLatency().toFixed(3) : 'n/a') + '\n' +
         'buffer   : ' + bufferedAhead().toFixed(1) + ' s ahead  ·  ' + (usingLL() ? 'LL' : 'plain') + '  ·  v' + PAGE_VERSION + '\n' +
         'clock    : ' + (clockSynced ? (clockOffset >= 0 ? '+' : '') + Math.round(clockOffset) + ' ms' : 'syncing…') + '\n' +
-        'stalls   : ' + stallCount;
+        'stalls   : ' + sumStalls + '  total=' + Math.round(sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0)) + 'ms' + '\n' +
+        'seeks    : startup=' + alignSeeks + '  audible=' + audibleSeeks;
     }
 
-    // Buffer depth is diagnostic only. Playback remains native and rate=1.0;
-    // maintainRoomSync performs the bounded corrections defined above.
+    // Buffer depth is diagnostic only. Playback remains native and rate=1.0
+    // after the one optional muted startup correction.
     function bufferedAhead(){
       try {
         const t = player.currentTime, b = player.buffered;
@@ -1633,12 +1583,16 @@
       if (guestName) url += '&name=' + encodeURIComponent(guestName);
       if (guestEmoji) url += '&emoji=' + encodeURIComponent(guestEmoji);
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
-      const ownOffset = localMediaOffset();
-      if (ownOffset != null && streamStartedAt) url += '&off=' + Math.round(ownOffset * 1000) + '&sid=' + streamStartedAt;
       fetch(url, { cache: 'no-store' }).catch(() => {});
       // Periodic health into the recorder (~every 12s): the steady-state
       // timeline between transitions — latency drift, buffer depth, rate.
-      if (++hbTick % 6 === 0) logEvent('health', { lat: rnd3(lat), ref: syncReference(), epoch: rnd3(measureEpochLatency()), pdt: rnd3(measureProgramLatency()), buf: rnd(bufferedAhead()), rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: usingLL() });
+      if (++hbTick % 6 === 0) logEvent('health', {
+        lat: rnd3(lat), ref: syncReference(), pdt: rnd3(measureProgramLatency()), buf: rnd(bufferedAhead()),
+        rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: usingLL(),
+        stalls: sumStalls, stallMs: sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0),
+        maxStallMs: sumMaxStallMs, progressAge: lastProgress ? Date.now() - lastProgress : 0,
+        alignSeeks, audibleSeeks,
+      });
       stalledSinceBeat = false;
       if (debug) showDebug(lat);
     }, 2000); // 2s: the DJ console's numbers should feel live
@@ -1649,7 +1603,7 @@
       const lat = started ? measureLatency() : null;
       const error = lat == null ? null : lat - roomTarget();
       delayBadge.classList.toggle('syncing', joinMuted || (started && lat == null));
-      delayBadge.classList.toggle('warn', error != null && Math.abs(error) >= SYNC_CORRECT_AT);
+      delayBadge.classList.toggle('warn', error != null && Math.abs(error) >= SYNC_WARN_AT);
       delayBadge.textContent = joinMuted && lat == null ? 'syncing...' : (lat != null ? 'delay ' + Math.round(lat * 1000) + ' ms' : 'delay -- ms');
       delayBadge.title = lat == null
         ? 'Waiting for a synchronized playback clock'
@@ -1986,8 +1940,8 @@
       }
       // Any FIRST touch on the welcome card (name field, emoji, shuffle…) is
       // a usable iOS gesture: start buffering muted RIGHT THEN, so by the
-      // time they hit "Let's party" the stream is buffered AND aligned — the
-      // button just unmutes. (Capture phase; runs before the tapped control.)
+      // time they hit "Let's party" the stream is ready for its one startup
+      // alignment pass. (Capture phase; runs before the tapped control.)
       let primed = false;
       welOv.addEventListener('click', () => {
         if (primed || !welOv.classList.contains('show')) return;
@@ -2015,9 +1969,11 @@
         userPaused = false;
         mediaSession(); // register lock-screen controls inside the gesture
         if (started) {
-          // The first welcome-card touch already started muted, aligned
-          // playback (see the prime listener) — this just opens the faders.
-          resumeGuest();
+          // The first welcome-card touch only prebuffered the stream. Make the
+          // single optional startup correction now, while it is still muted.
+          claimAudio();
+          beginAlignedAudible('welcome');
+          alignOnce();
         } else if (live) {
           // The button itself may be the guest's first touch. The capture-phase
           // primer has started the player, but `playing` can still be pending;

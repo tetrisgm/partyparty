@@ -173,7 +173,7 @@ func TestSuggest(t *testing.T) {
 	}
 }
 
-// ---- latencyTarget: base math + adaptive raise/decay ----
+// ---- latencyTarget: fixed room contract ----
 
 func bareSrv(cfg config.Config) *srv { return &srv{Deps: Deps{Config: cfg}} }
 
@@ -192,8 +192,8 @@ func TestLatencyTargetBase(t *testing.T) {
 		bc   broadcast.Status
 		want float64
 	}{
-		{broadcast.Status{Delivery: "llhls"}, 7.0},            // fixed LL room profile
-		{broadcast.Status{Delivery: "llhls", SegDur: 3}, 7.0}, // segdur irrelevant for llhls
+		{broadcast.Status{Delivery: "llhls"}, 5.0},            // fixed LL room profile
+		{broadcast.Status{Delivery: "llhls", SegDur: 3}, 5.0}, // segdur irrelevant for llhls
 		{broadcast.Status{Delivery: "hls", SegDur: 1}, 10},    // 3*1+7
 		{broadcast.Status{Delivery: "hls", SegDur: 2}, 13},    // 3*2+7
 		{broadcast.Status{Delivery: "hls", SegDur: 3}, 16},    // 3*3+7
@@ -207,63 +207,13 @@ func TestLatencyTargetBase(t *testing.T) {
 	}
 }
 
-func TestLatencyTargetRaiseOnStrain(t *testing.T) {
+func TestLatencyTargetDoesNotMoveWithRoomHealth(t *testing.T) {
 	s := bareSrv(config.Config{})
 	bc := broadcast.Status{Delivery: "llhls"}
-
-	// Fresh srv: lastAdj is zero → adjustment window open → first strain raises.
-	if got := s.latencyTarget(bc, "strain"); got != 7.5 {
-		t.Fatalf("first strain target = %v, want 7.5", got)
-	}
-	// Immediately again: the 90s cooldown holds the delta.
-	if got := s.latencyTarget(bc, "strain"); got != 7.5 {
-		t.Fatalf("second strain (within cooldown) = %v, want 7.5", got)
-	}
-	// Force the window open repeatedly: delta climbs by 0.5 and caps at +3.
-	for i := 0; i < 10; i++ {
-		s.adaptMu.Lock()
-		s.lastAdj = time.Now().Add(-2 * time.Minute)
-		s.adaptMu.Unlock()
-		s.latencyTarget(bc, "congested")
-	}
-	if got := s.latencyTarget(bc, "strain"); got != 10.0 {
-		t.Fatalf("delta should cap at +3 (target 10.0), got %v", got)
-	}
-}
-
-func TestLatencyTargetDecayWhenClean(t *testing.T) {
-	bc := broadcast.Status{Delivery: "hls", SegDur: 1} // base 10
-
-	s := bareSrv(config.Config{})
-	s.adaptMu.Lock()
-	s.adaptDelta = 1.0
-	s.lastAdj = time.Now().Add(-2 * time.Minute)
-	s.lastRaise = time.Now().Add(-6 * time.Minute) // quiet long enough to decay
-	s.adaptMu.Unlock()
-	if got := s.latencyTarget(bc, "good"); got != 10.75 {
-		t.Errorf("decayed target = %v, want 10.75", got)
-	}
-
-	// A recent raise blocks decay even when currently clean.
-	s = bareSrv(config.Config{})
-	s.adaptMu.Lock()
-	s.adaptDelta = 1.0
-	s.lastAdj = time.Now().Add(-2 * time.Minute)
-	s.lastRaise = time.Now().Add(-1 * time.Minute)
-	s.adaptMu.Unlock()
-	if got := s.latencyTarget(bc, "good"); got != 11.0 {
-		t.Errorf("recent-raise target = %v, want 11.0 (no decay)", got)
-	}
-
-	// Idle health never adjusts.
-	s = bareSrv(config.Config{})
-	s.adaptMu.Lock()
-	s.adaptDelta = 1.5
-	s.lastAdj = time.Now().Add(-2 * time.Minute)
-	s.lastRaise = time.Now().Add(-10 * time.Minute)
-	s.adaptMu.Unlock()
-	if got := s.latencyTarget(bc, "idle"); got != 11.5 {
-		t.Errorf("idle target = %v, want 11.5 (unchanged)", got)
+	for _, health := range []string{"idle", "good", "strain", "congested"} {
+		if got := s.latencyTarget(bc, health); got != 5.0 {
+			t.Errorf("health %q moved target to %v, want fixed 5.0", health, got)
+		}
 	}
 }
 
