@@ -648,7 +648,7 @@
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
     // out of the temporal dead zone so that path can never throw.
-    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, offline: 1, 'dj-stop': 1 };
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
     let evSeq = 0, evStart = Date.now();
     const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
@@ -710,6 +710,27 @@
         });
       } catch (e) {}
     })();
+    // Navigation timing distinguishes a DNS/TLS wait from a slow response or
+    // slow page parse. It is deliberately reported after load and contains no
+    // URL, referrer, or other browsing data.
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        try {
+          const n = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+          if (!n) return;
+          logEvent('nav', {
+            dns: rnd(n.domainLookupEnd - n.domainLookupStart),
+            tcp: rnd(n.connectEnd - n.connectStart),
+            tls: n.secureConnectionStart > 0 ? rnd(n.connectEnd - n.secureConnectionStart) : 0,
+            ttfb: rnd(n.responseStart - n.requestStart),
+            body: rnd(n.responseEnd - n.responseStart),
+            dom: rnd(n.domInteractive - n.startTime),
+            load: rnd(n.loadEventEnd - n.startTime),
+            bytes: Number(n.transferSize || 0),
+          });
+        } catch (e) {}
+      }, 0);
+    }, { once: true });
     // Connectivity edges.
     window.addEventListener('online',  () => logEvent('online'));
     window.addEventListener('offline', () => logEvent('offline'));
@@ -724,21 +745,39 @@
 
     // NTP-style clock sync to the Mac (the master clock) so per-device latency is
     // comparable across phones. Keep the minimum-RTT sample.
-    let clockOffset = 0, clockSynced = false;
+    let clockOffset = 0, clockSynced = false, clockBestRTT = 0, clockSyncing = null;
     const serverNow = () => Date.now() + clockOffset;
     async function syncClock(){
-      let best = Infinity, off = clockOffset;
-      for (let i = 0; i < 8; i++){
-        const t0 = Date.now();
-        let t;
-        try { t = (await (await fetch('/api/time', { cache: 'no-store' })).json()).t; }
-        catch (e) { return; }
-        const t1 = Date.now(), rtt = t1 - t0;
-        if (rtt < best){ best = rtt; off = t - (t0 + rtt / 2); }
-      }
-      // Reject an all-congested sync: a best sample worse than 250ms RTT would
-      // inject phantom inter-device spread. Keep the prior offset (or stay unsynced).
-      if (best < 250){ clockOffset = off; clockSynced = true; }
+      if (clockSyncing) return clockSyncing;
+      clockSyncing = (async () => {
+        let best = Infinity, off = clockOffset, good = 0;
+        for (let i = 0; i < 6; i++){
+          const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+          const timeout = ac ? setTimeout(() => { try { ac.abort(); } catch (e) {} }, 1500) : 0;
+          const t0 = Date.now();
+          try {
+            const response = await fetch('/api/time', { cache: 'no-store', signal: ac ? ac.signal : undefined });
+            if (!response.ok) continue;
+            const t = (await response.json()).t;
+            const t1 = Date.now(), rtt = t1 - t0;
+            if (Number.isFinite(t) && rtt < best){ best = rtt; off = t - (t0 + rtt / 2); }
+            good++;
+          } catch (e) {
+            // Keep the good samples from this round. One dropped request on a
+            // busy phone must not discard the whole startup clock sync.
+          } finally {
+            if (timeout) clearTimeout(timeout);
+          }
+        }
+        // A poor sample can move two phones in opposite directions. Accept only
+        // a bounded LAN RTT, but retry soon instead of leaving the player
+        // permanently unaligned after one slow request.
+        if (good && best < 300){
+          clockOffset = off; clockBestRTT = best; clockSynced = true;
+          logEvent('clock', { rtt: rnd(best), off: rnd(off), samples: good });
+        }
+      })();
+      try { await clockSyncing; } finally { clockSyncing = null; }
     }
 
     // Seconds behind the DJ, or null if unknown. ONE reference frame for every
@@ -829,12 +868,9 @@
     const RETRY = { maxNumRetry: 1e9, retryDelayMs: 500, maxRetryDelayMs: 2000 };
     const LOAD_POLICY = { default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: RETRY, errorRetry: RETRY } };
 
-    // The stream THIS device plays: the probed LL-HLS upgrade, else plain.
-    // NATIVES INCLUDED: with playback fully passive, an LL device parks at
-    // Apple's PART-HOLD-BACK by itself — every iPhone at the SAME hold-back =
-    // self-syncing AND self-healing (the player re-chases hold-back after a
-    // stall). The old tug-of-war existed only because a controller dragged
-    // them off it; that controller is gone.
+    // The stream THIS device plays. Native HLS remains mandatory on Apple
+    // devices for background and lock-screen playback; the page only performs
+    // bounded seeks while visible and never replaces AVPlayer with MSE there.
     const chosenStream = () => LLSTREAM || STREAM;   // LL always; STREAM = dev fallback only
     const usingLL = () => !!LLSTREAM;
 
@@ -860,9 +896,11 @@
       // playback (native AND hls.js), leaving every guest stuck on "Preparing".
       if (!chosenStream()) return;
       const src = chosenStream();
+      alignGeneration++;
+      needsAlign = false;
       if (useNative) {
         player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
-        needsAlign = usingLL();                    // one aligned-start seek when playback begins
+        needsAlign = usingLL();                    // bounded startup alignment when playback begins
       } else if (!window.Hls) {
         // hls.js path, but the lazily-loaded script isn't in yet: wait for it,
         // then re-attach. NEVER fall through to player.src=src on this path — a
@@ -877,10 +915,8 @@
         const cfg = {
           lowLatencyMode: usingLL(),
           // Hold at the server's ROOM TARGET using hls.js's own gentle,
-          // pitch-preserved rate sync. Native iOS reaches the same distance on
-          // its own (LL: PART-HOLD-BACK; plain: injected EXT-X-START), so this
-          // is what stops hls.js (PC/Android/Chrome-iOS) from parking ~1s
-          // CLOSER to live than the iPhones — the "Ethernet PC is early" bug.
+          // pitch-preserved rate sync. Native iOS is aligned separately from
+          // PROGRAM-DATE-TIME, so PC/Android and iPhone use the same clock frame.
           // liveSyncDuration deliberately overrides hls.js's tighter LL default;
           // it's the reconciliation point. (Legal alone — the old crash was
           // liveMaxLatencyDuration WITHOUT this.)
@@ -941,67 +977,72 @@
       catch (e) { setStatus('player error — reload the page'); return false; }
     }
 
-    // ALIGNED START — one seek to the room target as playback begins, then
-    // hands-off. Native players park wherever AVPlayer likes (hold-back when
-    // fresh, seconds behind after a stale playlist/lock stall) — that's the
-    // "11s, refresh, 6s, refresh, 2s" roulette. The room target is
-    // authoritative: measure via program-date-time, jump straight there once.
-    // This is start ALIGNMENT (the EXT-X-START idea done client-side), not
-    // playback control — no rate nudges, no ongoing seeks, ever.
-    let needsAlign = false;
-    function alignSeek(target){
+    // Room sync uses PROGRAM-DATE-TIME against the Mac's clock. Rate changes are
+    // intentionally forbidden: AVPlayer clicks/warbles when playbackRate is
+    // adjusted. A small number of exact seeks during startup, plus a bounded
+    // foreground correction after sustained drift, keeps phones together while
+    // leaving native HLS entirely alone under lock/background playback.
+    const SYNC_DEAD_ZONE = 0.18;
+    const SYNC_CORRECT_AT = 0.45;
+    const SYNC_HARD_LIMIT = 0.75;
+    const SYNC_COOLDOWN_MS = 12000;
+    let needsAlign = false, alignGeneration = 0;
+    let syncErrors = [], lastSyncCorrection = 0;
+    function alignSeek(target, reason){
       const lat = measureLatency();
       if (lat == null || player.readyState < 2) return null;
       const delta = lat - target;              // >0 = too far behind → jump forward
-      if (Math.abs(delta) < 0.4) return false; // close enough — leave it alone
+      if (Math.abs(delta) <= SYNC_DEAD_ZONE) return false;
       try {
         const sk = player.seekable;
         if (sk && sk.length) {
-          player.currentTime = Math.min(
-            Math.max(player.currentTime + delta, sk.start(0) + 0.5),
-            sk.end(sk.length - 1) - 0.5);
+          const low = sk.start(0) + 0.15;
+          const high = sk.end(sk.length - 1) - 0.15;
+          if (high <= low) return null;
+          player.currentTime = Math.min(Math.max(player.currentTime + delta, low), high);
+        } else {
+          return null;
         }
-      } catch (e) {}
-      logEvent('align', { lat: rnd(lat), target: rnd(target), delta: rnd(delta) });
+      } catch (e) { return null; }
+      logEvent('align', { why: reason || 'sync', lat: rnd(lat), target: rnd(target), delta: rnd(delta) });
       return true;
     }
     async function alignOnce(){
       if (!needsAlign) return;
       needsAlign = false;
+      const generation = alignGeneration;
       const target = latencyTarget || 5;
-      for (let i = 0; i < 15 && started && !player.paused; i++) { // ≤3s for a PDT fix
-        const r = alignSeek(target);
-        if (r !== null) break;
-        await new Promise(r2 => setTimeout(r2, 200));
+      await syncClock();
+      // Re-measure after each seek. The old one-shot correction could itself
+      // rebuffer for ~1s and leave the phone one full second behind the room.
+      for (let pass = 0; pass < 3 && generation === alignGeneration && started && !player.paused; pass++) {
+        let result = null;
+        for (let i = 0; i < 20 && generation === alignGeneration && started && !player.paused; i++) {
+          result = alignSeek(latencyTarget || target, 'startup-' + (pass + 1));
+          if (result !== null) break;
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        if (result === false || result === null) return;
+        lastSyncCorrection = Date.now();
+        await new Promise(resolve => setTimeout(resolve, 900));
       }
-      // SECOND PASS (field data: the align-seek's own rebuffer stall costs
-      // ~0.7-1.2s, so every device parked ~6s instead of 5). One confirmation
-      // ~10s in — still the startup window, and the user explicitly OK'd
-      // gentle over-time correction. After this: hands off (rejoin only).
-      setTimeout(() => {
-        if (started && !player.paused) alignSeek(latencyTarget || 5);
-      }, 10000);
     }
 
-    // A tab throttled in the background can drift far behind live WITHOUT ever
-    // stalling — the playhead falls back while buffer piles up, so the stall
-    // recovery never fires and the guest ends up seconds behind the room (field:
-    // a guest returned from a tab-switch parked 22s back). Snap it to the room
-    // ONCE on return — a re-attach, not an ongoing nudge — and only for a
-    // clearly-abnormal drift, so a locked-and-in-sync listener (which stays near
-    // target) and normal jitter are left completely alone.
-    let lastRealign = 0;
-    function realignIfDrifted(){
+    function maintainRoomSync(){
       if (!started || player.paused || userPaused || yielded) return;
-      if (document.visibilityState !== 'visible') return; // don't seek a throttled/hidden tab — re-attach on return instead
-      if (Date.now() - lastRealign < 6000) return;         // cooldown: a discrete re-attach, never a rapid seek loop
+      if (document.visibilityState !== 'visible') return;
       const target = latencyTarget || 5;
       const lat = measureLatency();
-      if (lat != null && lat > target + 4) {
-        lastRealign = Date.now();
-        logEvent('drift-realign', { lat: rnd(lat), target: rnd(target) });
-        alignSeek(target);
-      }
+      if (lat == null || player.readyState < 3) return;
+      const error = lat - target;
+      if (Math.abs(error) <= SYNC_DEAD_ZONE) { syncErrors = []; return; }
+      syncErrors.push(error);
+      if (syncErrors.length > 3) syncErrors.shift();
+      const sameSide = syncErrors.length === 3 && syncErrors.every(v => Math.sign(v) === Math.sign(error) && Math.abs(v) >= SYNC_CORRECT_AT);
+      if (Math.abs(error) < SYNC_HARD_LIMIT && !sameSide) return;
+      if (Date.now() - lastSyncCorrection < SYNC_COOLDOWN_MS) return;
+      lastSyncCorrection = Date.now(); syncErrors = [];
+      alignSeek(target, Math.abs(error) >= SYNC_HARD_LIMIT ? 'hard-drift' : 'sustained-drift');
     }
 
     // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a
@@ -1046,15 +1087,10 @@
     async function play(){
       if (!chosenStream()) { try { await poll(); } catch (e) {} }
       if (!attached && !attachSafe()) return;   // native / not-yet-prebuffered
-      // If not pre-buffered yet (native, or a fast tapper), give it a brief
-      // moment to build a cushion so it doesn't stall on the first seconds.
-      if (bufferedAhead() < PREBUF && player.readyState < 3) {
-        setStatus('getting ready…');
-        const t0 = Date.now();
-        while (Date.now() - t0 < 4000 && bufferedAhead() < PREBUF && player.readyState < 3) {
-          await new Promise(r => setTimeout(r, 150));
-        }
-      }
+      // Call play immediately inside the tap gesture. Waiting for a prebuffer
+      // here can expire Safari/Chrome's transient user activation and turn a
+      // one-tap join into a confusing second-tap requirement.
+      if (bufferedAhead() < PREBUF && player.readyState < 3) setStatus('getting ready…');
       try { await player.play(); }
       catch (e) {
         if (live) reportErr('play-failed', (e && e.name || '') + ' ' + (e && e.message || ''));
@@ -1220,7 +1256,7 @@
       // After recovery settles, re-attach a stream that drifted far behind while
       // the tab was throttled in the background (a stall would have reconnected;
       // a silent drift wouldn't — this catches that).
-      setTimeout(realignIfDrifted, 1000);
+      setTimeout(maintainRoomSync, 1000);
       poll();
     });
     // AirPods / audio-route change: iOS pauses on removal and does NOT
@@ -1256,6 +1292,7 @@
       resumeWanted = started && !userPaused && !yielded; // a yielded tab must not auto-resume into audio
       try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
       try { player.removeAttribute('src'); player.load(); } catch (e) {}
+      alignGeneration++;
       started = false; attached = false; ready = false; errRetries = 0;
       setPlayingUI(false); setStatus('');
       updateIdleButton(); // shows "Waiting for DJ"
@@ -1309,7 +1346,7 @@
       } catch (e) { if (!started) setStatus('offline'); }
     }
     poll(); setInterval(poll, 3000);
-    syncClock(); setInterval(syncClock, 30000);
+    syncClock(); setInterval(syncClock, 15000);
 
     // Heartbeat so the DJ console can count listeners, sense strain, and measure
     // inter-device latency spread (any delivery mode).
@@ -1331,34 +1368,8 @@
         'stalls   : ' + stallCount;
     }
 
-    // Room sync — ONE loop for every platform (iPhone native, Android/desktop
-    // hls.js), all in the same wall-clock frame: converge on the server's
-    // shared target using the clock-synced latency above. Players park wherever
-    // their heuristics like (iOS versions differ by seconds; Ethernet loads
-    // faster than Wi-Fi) — alignment to the shared number is what makes the
-    // room drop together. Field-verified that these timers keep firing on a
-    // locked iPhone.
-    //
-    // Tiered control: dead zone, then pitch-preserved rate nudges, then a seek
-    // — one small skip beats 30 seconds of audible echo against the phone
-    // next to you.
-    //
-    // Outlier policy: a device that keeps starving at the room target (bad
-    // Wi-Fi spot, weak hardware) backs ITSELF off (+2s for 10 min, still
-    // catching up best-effort) instead of dragging the whole room away from
-    // the DJ. The console shows it as behind.
-    // NO ACTIVE PLAYBACK CONTROL. v2/v3 tried rate nudges + corrective seeks;
-    // on real iOS hardware every playbackRate change is an audio-pipeline
-    // event (clicks), and AVPlayer fights external control — the room sounded
-    // cut-up and warbly. Architecture now: "aligned start, passive playback" —
-    // the playlist's EXT-X-START parks every joining device at the room
-    // target; playback then runs untouched at 1.0x forever. Devices stay in
-    // sync because they STARTED in sync.
-    //
-    // The one recovery is REJOIN: a device that stalled badly and sits far
-    // from the room for a sustained time re-attaches once (a single clean gap,
-    // parking it back at the room target) instead of being dragged around.
-    let latSamples = [], lastRejoinAt = 0;
+    // Buffer depth is diagnostic only. Playback remains native and rate=1.0;
+    // maintainRoomSync performs the bounded corrections defined above.
     function bufferedAhead(){
       try {
         const t = player.currentTime, b = player.buffered;
@@ -1366,34 +1377,10 @@
       } catch (e) {}
       return 0;
     }
-    function maybeRejoin(){
-      if (!started || player.paused || !latencyTarget) return;
-      const lat = measureLatency();
-      if (lat == null || player.readyState < 3) return; // only judge a healthy player
-      latSamples.push(lat);
-      if (latSamples.length > 14) latSamples.shift();
-      const now = Date.now();
-      if (latSamples.length < 14 || now - lastRejoinAt < 120000) return; // ~28s of agreement at the 2s tick
-      // How far off counts as adrift. LL natives (locked iPhones/iPads) leak
-      // latency: every lock-screen stall resumes where it stopped and AVPlayer
-      // never chases back down, so they end up 1–3s behind the room (field:
-      // spread 2.0–2.7s vs a 2.25s target). A re-attach re-parks them at the
-      // playlist's hold-back — that IS the passive fix, not a rate nudge.
-      // Plain cohort (dev-only now) keeps the wider historical band.
-      const band = usingLL() ? 1.5 : 3.5;
-      // all of the last ~30s of samples far off, same side → genuinely adrift
-      const off = latSamples.every(v => v - latencyTarget > band) || latSamples.every(v => v - latencyTarget < -band);
-      if (!off) return;
-      lastRejoinAt = now; latSamples = [];
-      attachSafe();                       // re-parks at hold-back / EXT-X-START (room target)
-      player.play().catch(()=>{});
-    }
-
     let hbTick = 0;
     setInterval(() => {
       if (!started) return;
-      maybeRejoin(); // the ONLY recovery — fires under lock too (this tick keeps running there, field-verified)
-      realignIfDrifted(); // re-attach a badly-drifted stream whenever it happens (visible + gated + cooldown), not only on foreground
+      maintainRoomSync();
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
@@ -1737,9 +1724,12 @@
         if (primed || !welOv.classList.contains('show')) return;
         primed = true;
         userPaused = false;
-        try { player.muted = true; player.load(); } catch (e) {}
+        player.muted = true;
         if (live) {
           if (!attached) attachSafe();
+          // load() is useful for native HLS after assigning src, but resets the
+          // MediaSource that hls.js may already have prebuffered.
+          if (useNative) { try { player.load(); } catch (e) {} }
           player.play().catch(() => {}); // silent, aligned; 'playing' handler keeps UI idle while muted
         }
       }, true);

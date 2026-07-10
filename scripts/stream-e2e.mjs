@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // Browser guest stream E2E:
-// - prefers the real dev partyparty-server with device=test, LL-HLS, and a
-//   throwaway cert on throwaway ports;
-// - falls back to a mock web/API server plus the same MediaMTX/ffmpeg tone tee
-//   used by scripts/stream-selftest.sh;
+// - runs the real dev partyparty-server with device=test, LL-HLS, and a
+//   throwaway cert on throwaway ports (use --mock only when explicitly testing
+//   the browser harness itself);
 // - drives the real listener.html in headless Chromium and proves media fetch,
 //   buffering, playback progress, and non-zero WebAudio RMS.
 
@@ -23,6 +22,8 @@ const KEEP_WORK = process.argv.includes('--keep-work') || process.env.PP_E2E_KEE
 const FORCE_MOCK = process.argv.includes('--mock') || process.env.PP_E2E_FORCE_MOCK === '1';
 const SCENARIO_ARG = process.argv.find((a) => a.startsWith('--scenario='));
 const SCENARIO = SCENARIO_ARG ? SCENARIO_ARG.split('=')[1] : 'all';
+const ENGINE_ARG = process.argv.find((a) => a.startsWith('--engine='));
+const ENGINE = ENGINE_ARG ? ENGINE_ARG.split('=')[1] : 'chromium';
 
 const cleanupFns = [];
 let failures = [];
@@ -292,8 +293,12 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
   const appRoot = path.join(workDir, 'PartypartyE2E.app', 'Contents');
   const macosDir = path.join(appRoot, 'MacOS');
   const helpersDir = path.join(appRoot, 'Helpers');
+  const testHome = path.join(workDir, 'home');
+  const testTmp = path.join(workDir, 'tmp');
   await fs.mkdir(macosDir, { recursive: true });
   await fs.mkdir(helpersDir, { recursive: true });
+  await fs.mkdir(testHome, { recursive: true });
+  await fs.mkdir(testTmp, { recursive: true });
   await linkOrCopy(ffmpeg, path.join(helpersDir, 'ffmpeg'));
   await linkOrCopy(mediamtx, path.join(helpersDir, 'mediamtx'));
   const { cert, key } = await generateCert(workDir);
@@ -316,9 +321,11 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     '--rtsp-port', String(rtspPort),
     '--hls-port', String(hlsPort),
     '--stream-path', 'party',
-    '--seg-duration', '1s',
-    '--part-duration', '200ms',
-    '--seg-count', '7',
+    // Match the shipped room profile exactly. A browser test with easier LL-HLS
+    // timing is not evidence that the phones receive a healthy stream.
+    '--seg-duration', '2s',
+    '--part-duration', '1000ms',
+    '--seg-count', '16',
     '--latency-target', '5',
     '--name', 'partyparty e2e',
   ], {
@@ -326,6 +333,8 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     logPath: path.join(workDir, 'server.log'),
     env: {
       ...process.env,
+      HOME: testHome,
+      TMPDIR: testTmp,
       PP_DEV_NO_LOGIN: '1',
       PARTYPARTY_TELEMETRY: '0',
     },
@@ -439,9 +448,9 @@ hlsServerCert: ${cert}
 hlsServerKey: ${key}
 hlsVariant: lowLatency
 hlsAlwaysRemux: yes
-hlsSegmentCount: 7
-hlsSegmentDuration: 1s
-hlsPartDuration: 200ms
+hlsSegmentCount: 16
+hlsSegmentDuration: 2s
+hlsPartDuration: 1000ms
 hlsAllowOrigins: ['*']
 authInternalUsers:
 - user: any
@@ -581,19 +590,21 @@ async function ensurePlaywright() {
   }
 }
 
-async function ensureChromium(playwright) {
-  const exe = playwright.chromium.executablePath();
+async function ensureEngine(playwright, engine) {
+  const browserType = playwright[engine];
+  if (!browserType) fail(`unknown browser engine ${engine}; use chromium or webkit`);
+  const exe = browserType.executablePath();
   if (existsSync(exe)) return;
-  log('>> installing Playwright Chromium');
-  await run('npx', ['playwright', 'install', 'chromium'], { cwd: ROOT, timeoutMs: 240000 });
+  log(`>> installing Playwright ${engine}`);
+  await run('npx', ['playwright', 'install', engine], { cwd: ROOT, timeoutMs: 240000 });
 }
 
 function streamMatcher(stack) {
-  const wantPort = String(stack.hlsPort);
+  const expected = new URL(stack.streamUrl);
   return (raw) => {
     try {
       const u = new URL(raw);
-      return u.hostname === '127.0.0.1' && u.port === wantPort && u.pathname.endsWith('.m3u8');
+      return u.protocol === expected.protocol && u.hostname === expected.hostname && u.port === expected.port && u.pathname.endsWith('.m3u8');
     } catch {
       return false;
     }
@@ -654,9 +665,17 @@ async function driveGuest(stack, label, browser, session = null, opts = {}) {
     }, { timeoutMs: 15000, label: 'LL-HLS manifest fetch' });
     const media = await waitForMediaReady(page, 15000);
     const progress = await assertPlaybackProgress(page);
-    const audio = await assertAudioRMS(page);
+    const clientPlatform = await page.evaluate(() => typeof platform === 'string' ? platform : 'unknown');
+    if (ENGINE === 'webkit' && clientPlatform !== 'native') {
+      fail(`WebKit did not select the native HLS path (got ${clientPlatform})`);
+    }
+    // Playwright WebKit's headless output is silent to WebAudio even while its
+    // native media element is buffered and advancing. Chromium remains the
+    // decoded-audio/RMS proof; WebKit proves the native Safari code path.
+    const audio = ENGINE === 'webkit' ? { skipped: true } : await assertAudioRMS(page);
 
-    log(`PASS browser ${label}: manifest=${manifestUrl} readyState=${media.readyState} bufferedEnd=${media.bufferedEnd.toFixed(2)}s delta=${progress.delta.toFixed(2)}s rms=${audio.rmsMean.toFixed(5)} max=${audio.rmsMax.toFixed(5)}`);
+    const audioResult = audio.skipped ? 'native-media=advancing' : `rms=${audio.rmsMean.toFixed(5)} max=${audio.rmsMax.toFixed(5)}`;
+    log(`PASS browser ${label}: platform=${clientPlatform} manifest=${manifestUrl} readyState=${media.readyState} bufferedEnd=${media.bufferedEnd.toFixed(2)}s delta=${progress.delta.toFixed(2)}s ${audioResult}`);
     if (ownSession && !opts.keepOpen) await context.close();
     return { session, manifestUrl, media, progress, audio };
   } catch (err) {
@@ -804,9 +823,53 @@ async function assertAudioRMS(page) {
   return result;
 }
 
+async function syncState(page) {
+  return await page.evaluate(() => {
+    const p = document.getElementById('player');
+    let latency = null;
+    try { latency = typeof measureLatency === 'function' ? measureLatency() : null; } catch {}
+    return {
+      latency,
+      currentTime: p?.currentTime || 0,
+      paused: p?.paused ?? true,
+      readyState: p?.readyState || 0,
+      rate: p?.playbackRate || 0,
+    };
+  });
+}
+
+async function assertRoomSync(first, second) {
+  await waitFor(async () => {
+    const states = await Promise.all([syncState(first), syncState(second)]);
+    return states.every((s) => !s.paused && s.readyState >= 3 && Number.isFinite(s.latency)) && states;
+  }, { timeoutMs: 20000, label: 'both guests reporting wall-clock latency' });
+
+  const samples = [];
+  for (let i = 0; i < 12; i++) {
+    const [a, b] = await Promise.all([syncState(first), syncState(second)]);
+    if (Number.isFinite(a.latency) && Number.isFinite(b.latency)) {
+      samples.push({ a: a.latency, b: b.latency, spread: Math.abs(a.latency - b.latency), rateA: a.rate, rateB: b.rate });
+    }
+    await sleep(500);
+  }
+  if (samples.length < 8) fail(`room sync produced only ${samples.length} valid latency samples`);
+  const sorted = samples.map((s) => s.spread).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const p90 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))];
+  if (samples.some((s) => Math.abs(s.rateA - 1) > 0.001 || Math.abs(s.rateB - 1) > 0.001)) {
+    fail(`room sync changed playback rate: ${JSON.stringify(samples)}`);
+  }
+  if (median > 0.35 || p90 > 0.60) {
+    fail(`two-client sync spread too wide: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
+  }
+  log(`PASS browser room-sync: delayed join median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, playbackRate=1.0)`);
+  return { median, p90, samples };
+}
+
 async function main() {
   const ffmpeg = helperPath('ffmpeg');
   const mediamtx = helperPath('mediamtx');
+  log(`>> browser=${ENGINE} scenario=${SCENARIO}`);
   log(`>> ffmpeg=${ffmpeg}`);
   log(`>> mediamtx=${mediamtx}`);
   await run(ffmpeg, ['-version'], { timeoutMs: 10000 }).catch((err) => fail(`ffmpeg not runnable: ${err.message}`));
@@ -817,32 +880,27 @@ async function main() {
   else cleanupFns.push(() => fs.rm(rootWork, { recursive: true, force: true }));
 
   const playwright = await ensurePlaywright();
-  await ensureChromium(playwright);
+  await ensureEngine(playwright, ENGINE);
 
   let stack;
-  try {
-    stack = await startRealStack(rootWork, ffmpeg, mediamtx);
-    log(`>> browser E2E stack=real page=${stack.pageUrl} stream=${stack.streamUrl}`);
-  } catch (err) {
-    log(`WARN: real server E2E setup failed, falling back to mock server: ${err.message}`);
-    if (err.stderr) log(err.stderr.slice(-2000));
+  if (FORCE_MOCK) {
     stack = await startMockStack(rootWork, ffmpeg, mediamtx);
     log(`>> browser E2E stack=mock page=${stack.pageUrl} stream=${stack.streamUrl}`);
+  } else {
+    stack = await startRealStack(rootWork, ffmpeg, mediamtx);
+    log(`>> browser E2E stack=real page=${stack.pageUrl} stream=${stack.streamUrl}`);
   }
 
   let browser;
+  const browserType = playwright[ENGINE];
+  const launchOptions = { headless: true };
+  if (ENGINE === 'chromium') launchOptions.args = ['--autoplay-policy=no-user-gesture-required'];
   try {
-    browser = await playwright.chromium.launch({
-      headless: true,
-      args: ['--autoplay-policy=no-user-gesture-required'],
-    });
+    browser = await browserType.launch(launchOptions);
   } catch (err) {
     if (String(err.message || '').includes('Executable doesn')) {
-      await run('npx', ['playwright', 'install', 'chromium'], { cwd: ROOT, timeoutMs: 240000 });
-      browser = await playwright.chromium.launch({
-        headless: true,
-        args: ['--autoplay-policy=no-user-gesture-required'],
-      });
+      await run('npx', ['playwright', 'install', ENGINE], { cwd: ROOT, timeoutMs: 240000 });
+      browser = await browserType.launch(launchOptions);
     } else {
       throw err;
     }
@@ -855,10 +913,21 @@ async function main() {
     } else if (SCENARIO === 'all') {
       const r = await driveGuest(stack, 'happy', browser, null, { keepOpen: true });
       session = r.session;
+      await sleep(2000);
+      const peer = await driveGuest(stack, 'delayed-peer', browser, null, { keepOpen: true });
+      await assertRoomSync(session.page, peer.session.page);
+      await peer.session.context.close().catch(() => {});
       const manifestSince = Date.now();
       await stack.restartPublisher();
       await driveGuest(stack, 'resilience', browser, session, { keepOpen: true, manifestSince });
       await session.context.close().catch(() => {});
+    } else if (SCENARIO === 'sync') {
+      const first = await driveGuest(stack, 'sync-first', browser, null, { keepOpen: true });
+      await sleep(2000);
+      const second = await driveGuest(stack, 'sync-delayed', browser, null, { keepOpen: true });
+      await assertRoomSync(first.session.page, second.session.page);
+      await first.session.context.close().catch(() => {});
+      await second.session.context.close().catch(() => {});
     } else if (SCENARIO === 'resilience') {
       const r = await driveGuest(stack, 'pre-resilience', browser, null, { keepOpen: true });
       session = r.session;
@@ -867,7 +936,7 @@ async function main() {
       await driveGuest(stack, 'resilience', browser, session, { keepOpen: true, manifestSince });
       await session.context.close().catch(() => {});
     } else {
-      fail(`unknown scenario ${SCENARIO}; use happy, resilience, or all`);
+      fail(`unknown scenario ${SCENARIO}; use happy, sync, resilience, or all`);
     }
   } catch (err) {
     failures.push(err.message || String(err));
@@ -882,7 +951,9 @@ async function main() {
     process.exit(1);
   }
 
-  log('RESULT: PASS - browser guest fetched, buffered, played, and measured non-zero audio RMS.');
+  log(ENGINE === 'webkit'
+    ? 'RESULT: PASS - WebKit guest used native HLS and fetched, buffered, and advanced playback.'
+    : 'RESULT: PASS - browser guest fetched, buffered, played, and measured non-zero audio RMS.');
   await cleanup();
 }
 

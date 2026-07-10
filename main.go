@@ -494,14 +494,10 @@ func main() {
 		if deliveryFlag == "hls" || mtx == nil || applyActivation == nil {
 			return
 		}
-		// Auto-engage: THE LL ROOM IS THE PRODUCT (the cert broker exists
-		// precisely for this). It is safe under the passive architecture: LL
-		// devices park at Apple's PART-HOLD-BACK by themselves — every iPhone
-		// at the SAME hold-back = self-syncing ~1.5s, and self-healing (the
-		// player re-chases hold-back after a stall). No client control anywhere.
-		// Guests whose DNS blocks the domain fail the probe and land on the teed
-		// plain stream as visible outliers — they never get a dead stream and
-		// never drag the room. Engage when idle; never restart a live set.
+		// Auto-engage after a real certificate is available. Native HLS remains
+		// the iPhone path so background and lock-screen playback stay under
+		// AVPlayer; the guest page performs bounded wall-clock alignment while it
+		// is visible. Engage when idle and never restart a live set.
 		for {
 			st := bc.Status()
 			if st.State == "idle" || st.State == "error" {
@@ -643,8 +639,35 @@ func main() {
 	// cfg.Delivery=="hls" gate would have (wrongly) disabled all online
 	// issuance/renewal.
 	if deliveryFlag != "hls" && cfg.CertFile == "" && mtx != nil && applyActivation != nil {
+		networkChanged := make(chan struct{}, 1)
+		go func() {
+			lastIP := netinfo.PrimaryLanIP()
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				currentIP := netinfo.PrimaryLanIP()
+				parsed := net.ParseIP(currentIP)
+				if currentIP == "" || currentIP == lastIP || parsed == nil || parsed.IsLoopback() {
+					continue
+				}
+				lastIP = currentIP
+				select {
+				case networkChanged <- struct{}{}:
+				default:
+				}
+			}
+		}()
 		go func() {
 			retryIn := 15 * time.Second // fast first retries (LE 503s often clear in seconds), then back off
+			waitForRefresh := func(delay time.Duration) {
+				timer := time.NewTimer(delay)
+				defer timer.Stop()
+				select {
+				case <-networkChanged:
+					log.Printf("activate: LAN address changed to %s — refreshing the secure guest link now", netinfo.PrimaryLanIP())
+				case <-timer.C:
+				}
+			}
 			for {
 				var res activate.Result
 				liveHost := cfg.LiveHost
@@ -664,7 +687,7 @@ func main() {
 				if res.OK {
 					if applyActivationResult(res, "online refresh") {
 						retryIn = 15 * time.Second
-						time.Sleep(30 * time.Minute)
+						waitForRefresh(30 * time.Minute)
 						continue
 					}
 					if res.Reason == "" {
@@ -677,7 +700,7 @@ func main() {
 				} else {
 					log.Printf("activate: online refresh not ready — %s (retrying in %s)", res.Reason, retryIn)
 				}
-				time.Sleep(retryIn)
+				waitForRefresh(retryIn)
 				if retryIn *= 2; retryIn > 4*time.Minute {
 					retryIn = 4 * time.Minute
 				}
@@ -698,7 +721,7 @@ func main() {
 		if host == "" {
 			host = ip
 		}
-		fmt.Printf("  Low-latency: LL-HLS via MediaMTX at https://%s:%d/%s/index.m3u8\n", host, cfg.HLSPort, cfg.StreamPath)
+		fmt.Printf("  Low-latency: LL-HLS at https://%s:%d/live/%s/index.m3u8\n", host, cfg.TLSPort, cfg.StreamPath)
 	}
 	if cfg.Captive {
 		fmt.Println("  Captive-portal mode ON (needs DNS hijacked to this Mac).")

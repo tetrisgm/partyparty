@@ -3,13 +3,18 @@ package server
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -1278,6 +1283,71 @@ func TestWebPagesAndRouting(t *testing.T) {
 	}
 }
 
+func TestGuestPageUsesGzipWhenSupported(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.Web = fstest.MapFS{
+		"listener.html": {Data: bytes.Repeat([]byte("listener __PP_VERSION__ "), 1000)},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "br, gzip")
+	w := httptest.NewRecorder()
+	env.srv.ServeHTTP(w, req)
+	if got := w.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("content-encoding = %q, want gzip", got)
+	}
+	zr, err := gzip.NewReader(w.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = zr.Close()
+	if !bytes.Contains(body, []byte("test-1.2.3")) || bytes.Contains(body, []byte("__PP_VERSION__")) {
+		t.Fatal("compressed guest page did not contain the stamped version")
+	}
+}
+
+func TestLiveProxyUsesSameOriginPath(t *testing.T) {
+	var gotPath, gotQuery string
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotQuery = r.URL.Path, r.URL.RawQuery
+		if r.URL.Query().Get("cookieCheck") == "" {
+			w.Header().Set("Location", "/party/index.m3u8?cookieCheck=1")
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:10\n"))
+	}))
+	defer upstream.Close()
+	u, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, portText, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := newTestEnv(t, func(c *config.Config) { c.HLSPort = port })
+	w := do(env.srv, http.MethodGet, "/live/party/index.m3u8", "192.168.1.25:5000")
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/live/party/index.m3u8?cookieCheck=1" {
+		t.Fatalf("proxied redirect = %d location %q", w.Code, w.Header().Get("Location"))
+	}
+	w = do(env.srv, http.MethodGet, "/live/party/index.m3u8?cookieCheck=1&_HLS_msn=12&_HLS_part=3", "192.168.1.25:5000")
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Body.String(), "#EXTM3U") {
+		t.Fatalf("proxied playlist = %d %q", w.Code, w.Body.String())
+	}
+	if gotPath != "/party/index.m3u8" || gotQuery != "cookieCheck=1&_HLS_msn=12&_HLS_part=3" {
+		t.Fatalf("upstream request = %s?%s", gotPath, gotQuery)
+	}
+}
+
 func TestCaptiveProbes(t *testing.T) {
 	env := newTestEnv(t, nil) // captive OFF: answer "online", never hijack
 	if w := do(env.srv, "GET", "/generate_204", ""); w.Code != http.StatusNoContent {
@@ -1356,7 +1426,7 @@ func TestActivationFlow(t *testing.T) {
 	if urls["primary"] != "https://party.example.net:8443/" {
 		t.Errorf("primary url = %v", urls["primary"])
 	}
-	if body["llhlsUrl"] != "https://party.example.net:8888/party/index.m3u8" {
+	if body["llhlsUrl"] != "https://party.example.net:8443/live/party/index.m3u8" {
 		t.Errorf("llhlsUrl = %v", body["llhlsUrl"])
 	}
 

@@ -100,7 +100,7 @@ rtspAddress: 127.0.0.1:%d
 rtspTransports: [tcp]
 moq: no
 hls: yes
-hlsAddress: :%d
+hlsAddress: 127.0.0.1:%d
 hlsEncryption: yes
 hlsServerCert: %s
 hlsServerKey: %s

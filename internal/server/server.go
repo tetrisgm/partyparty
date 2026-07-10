@@ -1,12 +1,15 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"os/exec"
 	"sort"
@@ -56,8 +59,9 @@ type Deps struct {
 
 type srv struct {
 	Deps
-	vendor http.Handler
-	limits *limiter
+	vendor    http.Handler
+	liveProxy http.Handler
+	limits    *limiter
 
 	// Adaptive room-latency target: the room finds its own floor instead of a
 	// hardcoded pessimistic delay. Raised when listeners stall, decayed slowly
@@ -125,7 +129,46 @@ func New(d Deps) *Srv {
 	if d.Payload != nil {
 		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
 	}
-	return &Srv{srv{Deps: d, vendor: http.FileServer(http.FS(webFS)), limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1)}}
+	return &Srv{srv{
+		Deps: d, vendor: http.FileServer(http.FS(webFS)), liveProxy: newLiveProxy(d.Config.HLSPort),
+		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
+	}}
+}
+
+// newLiveProxy keeps the guest page and LL-HLS on one public HTTPS origin.
+// MediaMTX remains loopback-only from the Go server's point of view; guests no
+// longer need a second TLS connection to a second externally reachable port.
+func newLiveProxy(hlsPort int) http.Handler {
+	upstream := fmt.Sprintf("127.0.0.1:%d", hlsPort)
+	return &httputil.ReverseProxy{
+		Director: func(r *http.Request) {
+			r.URL.Scheme = "https"
+			r.URL.Host = upstream
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/live")
+			r.Host = upstream
+		},
+		Transport: &http.Transport{
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, // loopback MediaMTX uses the same hot-swapped cert
+			MaxIdleConns:        64,
+			MaxIdleConnsPerHost: 64,
+			IdleConnTimeout:     90 * time.Second,
+			DisableCompression:  true,
+		},
+		FlushInterval: -1,
+		ModifyResponse: func(resp *http.Response) error {
+			// MediaMTX's cookie capability probe redirects to an origin-absolute
+			// path. Preserve the public /live prefix or Safari follows the redirect
+			// outside the proxy and gets the app's 404 page.
+			if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, "/live/") {
+				resp.Header.Set("Location", "/live"+location)
+			}
+			return nil
+		},
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+			w.Header().Set("Cache-Control", "no-store")
+			http.Error(w, "live stream temporarily unavailable", http.StatusBadGateway)
+		},
+	}
 }
 
 // webFS is the live content source: the OTA payload store if present (which
@@ -293,13 +336,13 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	switch {
 	case p == "/":
-		s.serveWeb(w, "listener.html", "no-cache")
+		s.serveWeb(w, r, "listener.html", "no-cache")
 	case p == "/dj" || p == "/dj/":
-		s.serveWeb(w, "dj.html", "no-cache")
+		s.serveWeb(w, r, "dj.html", "no-cache")
 	case p == "/wall" || p == "/wall/":
-		s.serveWeb(w, "wall.html", "no-cache")
+		s.serveWeb(w, r, "wall.html", "no-cache")
 	case p == "/art-512.png":
-		s.serveWeb(w, "art-512.png", "")
+		s.serveWeb(w, r, "art-512.png", "")
 	case p == "/favicon.ico":
 		w.WriteHeader(http.StatusNoContent)
 	case strings.HasPrefix(p, "/covers/"):
@@ -308,6 +351,8 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(p, "/vendor/"):
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
+	case strings.HasPrefix(p, "/live/"):
+		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
 		s.handleMedia(w, r)
 	case strings.HasPrefix(p, "/api/"):
@@ -379,7 +424,7 @@ func (s *srv) hotspotState() hotspotStatus {
 	}
 }
 
-func (s *srv) serveWeb(w http.ResponseWriter, name, cache string) {
+func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache string) {
 	data, err := fs.ReadFile(s.webFS(), name)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -394,6 +439,16 @@ func (s *srv) serveWeb(w http.ResponseWriter, name, cache string) {
 	w.Header().Set("Content-Type", mimeFor(name))
 	if cache != "" {
 		w.Header().Set("Cache-Control", cache)
+	}
+	if strings.HasSuffix(name, ".html") && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
+		zw, zerr := gzip.NewWriterLevel(w, gzip.BestSpeed)
+		if zerr == nil {
+			_, _ = zw.Write(data)
+			_ = zw.Close()
+			return
+		}
 	}
 	_, _ = w.Write(data)
 }
@@ -944,7 +999,7 @@ func (s *srv) llhlsURL() string {
 	if host == "" {
 		return ""
 	}
-	return fmt.Sprintf("https://%s:%d/%s/index.m3u8", host, s.Config.HLSPort, s.Config.StreamPath)
+	return fmt.Sprintf("https://%s:%d/live/%s/index.m3u8", host, s.Config.TLSPort, s.Config.StreamPath)
 }
 
 // captiveProbe answers the OS connectivity-check URLs. Only reached when this
@@ -1179,8 +1234,8 @@ func (s *srv) liveDomain() string {
 	return s.actDomain
 }
 
-// currentTarget computes the room target for playlist injection (hot path:
-// every playlist fetch), reusing the same adaptive state as /api/status.
+// currentTarget computes the shared room target using the same adaptive state
+// exposed by /api/status.
 func (s *srv) currentTarget() float64 {
 	bc := s.Broadcaster.Status()
 	health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
@@ -1196,14 +1251,9 @@ func (s *srv) activationState() map[string]any {
 }
 
 // latencyTarget is the wall-clock delay behind the DJ that the room aligns to —
-// the sync contract. It DIFFERS by delivery because native and hls.js park at
-// different natural points, and the target is what reconciles them:
-//   - LL-HLS: native iOS parks at PART-HOLD-BACK (2.5×part) by itself; the
-//     target ≈ that + ~1s player overhead, and hls.js is told (liveSyncDuration)
-//     to hold the SAME distance instead of running ~1s closer to live (the
-//     "Ethernet PC is early" bug). So all platforms land together at ~2.3s.
-//   - Plain HLS: everyone parks at the injected EXT-X-START; deep + generous
-//     (tightness ≫ closeness, product decree).
+// the sync contract. Native Safari aligns to it with PROGRAM-DATE-TIME seeks;
+// hls.js receives the same value as liveSyncDuration. Plain HLS remains a
+// development-only escape hatch with a deeper target.
 //
 // The server adapts within [base, base+3] on sustained stalls. --latency-target
 // pins it.
