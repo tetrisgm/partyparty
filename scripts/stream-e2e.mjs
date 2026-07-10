@@ -965,7 +965,7 @@ async function injectDrift(page, seconds) {
   }, seconds);
 }
 
-async function assertRoomSync(first, second, label = 'steady') {
+async function assertRoomSync(first, second, label = 'steady', { allowInjectedSeek = false } = {}) {
   try {
     await waitFor(async () => {
       const states = await Promise.all([syncState(first), syncState(second)]);
@@ -985,6 +985,7 @@ async function assertRoomSync(first, second, label = 'steady') {
         a: a.latency, b: b.latency, spread: Math.abs(a.latency - b.latency),
         rawA: a.currentTime, rawB: b.currentTime, rateA: a.rate, rateB: b.rate,
         refA: a.ref, refB: b.ref, alignA: a.alignSeeks, alignB: b.alignSeeks,
+        audibleA: a.audibleSeeks, audibleB: b.audibleSeeks,
       });
     }
     await sleep(500);
@@ -999,8 +1000,11 @@ async function assertRoomSync(first, second, label = 'steady') {
   if (samples.some((s) => s.refA !== 'pdt' || s.refB !== 'pdt')) {
     fail(`room sync did not use each player's PROGRAM-DATE-TIME: ${JSON.stringify(samples)}`);
   }
-  if (samples.some((s) => s.alignA > 1 || s.alignB > 1)) {
-    fail(`startup alignment made more than one seek: ${JSON.stringify(samples)}`);
+  if (samples.some((s) => s.alignA > 2 || s.alignB > 2)) {
+    fail(`startup alignment made more than two muted seeks: ${JSON.stringify(samples)}`);
+  }
+  if (!allowInjectedSeek && samples.some((s) => s.audibleA > 0 || s.audibleB > 0)) {
+    fail(`startup alignment changed position after audio opened: ${JSON.stringify(samples)}`);
   }
   // The product boundary is sub-second device-to-device timing. A tighter
   // controller caused audible seek loops on real iPhones, so this test protects
@@ -1008,7 +1012,7 @@ async function assertRoomSync(first, second, label = 'steady') {
   if (median > 1.0 || p90 > 1.0) {
     fail(`two-client sync spread too wide: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
-  log(`PASS browser room-sync ${label}: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, local PDT, <=1 startup seek)`);
+  log(`PASS browser room-sync ${label}: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, local PDT, <=2 muted startup seeks)`);
   return { median, p90, samples };
 }
 
@@ -1062,7 +1066,7 @@ async function assertInjectedDriftIsolation(first, second) {
   const [afterFirst, afterSecond] = await Promise.all([continuityState(first), continuityState(second)]);
   assertContinuous(beforeFirst, afterFirst, 'healthy peer after another device drifts', 6);
   assertContinuous(beforeSecond, afterSecond, 'drifted device remains playing', 6);
-  await assertRoomSync(first, second, 'after-650ms-drift');
+  await assertRoomSync(first, second, 'after-650ms-drift', { allowInjectedSeek: true });
 }
 
 async function main() {

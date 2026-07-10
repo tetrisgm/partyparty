@@ -1054,11 +1054,15 @@
     }
 
     // Synchronization is a startup gate, not a playback controller. Safari's
-    // native HLS seek granularity is too coarse for tiny repeated corrections:
-    // field logs showed those seeks turning continuous audio into interruptions.
-    const START_ALIGN_TOLERANCE = 0.75;
+    // native HLS seek granularity is too coarse for audible corrections. Keep
+    // native playback muted through one settling/confirmation pass instead:
+    // field data shows AVPlayer can report the requested position immediately,
+    // then park on a different HLS boundary a few seconds later (and that the
+    // boundary differs between Safari 26 and 27).
+    const START_ALIGN_TOLERANCE = 0.35;
     const SYNC_WARN_AT = 1.0;
     const START_ALIGN_WAIT_MS = 2500;
+    const NATIVE_ALIGN_SETTLE_MS = 4000;
     const AUDIO_GATE_MS = 500;
     let needsAlign = false, alignGeneration = 0;
     let alignPromise = null;
@@ -1165,7 +1169,22 @@
           if (result !== null) break;
           await wait(100);
         }
-        if (result === true) await settleAfterSeek();
+        if (result === true) {
+          await settleAfterSeek();
+          if (useNative) {
+            // `seeked` only acknowledges the requested position. AVPlayer may
+            // still rebuild its live buffer and settle one or more HLS parts
+            // away. Keep that invisible, then make one final measured move.
+            await wait(NATIVE_ALIGN_SETTLE_MS);
+            if (generation !== alignGeneration || !started || player.paused || userPaused || yielded) return;
+            const confirm = alignSeek(roomTarget(), 'startup-confirm');
+            if (confirm === true) await settleAfterSeek();
+            logEvent('align-settled', {
+              corrected: confirm === true, ref: syncReference(), lat: rnd3(measureLatency()),
+              target: rnd3(roomTarget()), seeks: alignSeeks,
+            });
+          }
+        }
         await waitForStartupBuffer(generation);
         if (result === null) logEvent('align-skip', { ref: syncReference(), lat: rnd3(measureLatency()), target: rnd3(roomTarget()) });
         if (joinMuted) await openAudioGate(generation, result !== null);
