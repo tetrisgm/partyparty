@@ -382,49 +382,21 @@
   .party-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:stretch;margin-top:18px}
   .party-feed-col{min-width:0}
   .guest-sidebar{position:sticky;top:72px;display:grid;gap:16px;min-width:0;align-self:stretch}
-  .guest-sidebar .card{margin-top:0;height:100%;min-height:280px;display:flex;flex-direction:column}
+  .guest-sidebar .card{margin-top:0;height:100%;min-height:228px;display:flex;flex-direction:column}
   #roster{flex:1}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
-  .featurebar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
-  .featuretoggle{position:relative;display:inline-flex;align-items:center;gap:7px;background:var(--fill);border:1px solid var(--separator);border-radius:999px;padding:6px 10px 6px 7px;font-size:12px;font-weight:600;color:var(--label-secondary);cursor:pointer;user-select:none}
-  .featuretoggle input{position:absolute;opacity:0;pointer-events:none}
-  .featuretoggle span{display:inline-flex;align-items:center;gap:7px}
-  .featuretoggle span::before{content:'';width:28px;height:16px;border-radius:999px;background:rgba(120,120,128,.28);box-shadow:inset 0 0 0 1px rgba(0,0,0,.05);transition:background .15s}
-  .featuretoggle span::after{content:'';position:absolute;left:9px;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.22);transition:transform .15s}
-  .featuretoggle input:checked + span{color:var(--label)}
-  .featuretoggle input:checked + span::before{background:var(--success)}
-  .featuretoggle input:checked + span::after{transform:translateX(12px)}
-  .featuretoggle input:disabled + span{opacity:.55}
-  .feed-settings{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
-  .feed-settings:empty{display:none}
   .linkeditor{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
-  .linkeditor.off{opacity:.68}
   .linkeditor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
   .linkeditor-head b{font-size:13px}
-  .linkeditor-head .muted{margin-left:auto;font-size:11px}
   .linkrows{display:grid;gap:8px}
-  .linkrow{display:grid;grid-template-columns:145px 1fr 145px 28px;gap:8px;align-items:center}
+  .linkrow{display:grid;grid-template-columns:145px minmax(0,1fr) 28px;gap:8px;align-items:center}
   .linkrow input{min-width:0;height:34px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 10px;color:var(--label);font:inherit;font-size:13px;outline:none}
   .linkrow input:focus{border-color:var(--accent)}
   .linkrow .bad{border-color:rgba(255,59,48,.65)}
   .linkdel{width:28px;height:28px;padding:0;border-radius:999px;background:var(--fill);color:var(--label-secondary)}
   .linkactions{display:flex;align-items:center;gap:8px;margin-top:10px}
   .linkstatus{font-size:12px;color:var(--label-secondary);min-height:16px}
-  .retentionbox{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
-  .retentiongrid{display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:start}
-  .retentiondesc{font-size:12px;color:var(--label-secondary);line-height:1.45}
-  .endflow{border:1px solid rgba(255,149,0,.28);background:rgba(255,149,0,.07);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
-  .endflow.ended{border-color:rgba(255,59,48,.25);background:rgba(255,59,48,.06)}
-  .endactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-  .recapbox{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
-  .recapbox[hidden]{display:none}
-  .recapbox b{display:block;margin-bottom:4px}
-  .recapactions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-  .recapresult{font-size:12px;color:var(--label-secondary);line-height:1.45;margin-top:8px;word-break:break-word}
-  .recapresult a{color:var(--accent);font-weight:700;text-decoration:none}
-  .recapresult a:hover{text-decoration:underline}
-  .dangerbtn{background:var(--danger);color:#fff}
   .event-admin-tools{display:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:16px;padding:14px;margin:18px 0 0}
   body.event-manage-open .event-admin-tools{display:block}
   body:not(.event-manage-open) .guest-sidebar .metrics,
@@ -460,7 +432,8 @@
   .sourceguide-body h3:first-child{margin-top:2px}
   .sourceguide-body p{font-size:13px;line-height:1.5;color:var(--label-secondary);margin:0}
   .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:5px}
-  .action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border-radius:999px;padding:0 15px}
+  button.action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border-radius:999px;padding:0 15px;background:var(--accent);color:#fff}
+  button.action-folder:hover{background:#ff477f;color:#fff}
   .action-folder svg{width:16px;height:16px;display:block}
   .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
   .fieldedit:hover{background:var(--fill-hover);color:var(--label)}
@@ -588,7 +561,7 @@
       <div class="event-actions">
         <button class="go event-action" id="eventShareBtn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
-          Share stream link
+          Share Wi-Fi link
         </button>
       </div>
     </div>
@@ -596,7 +569,6 @@
     <div class="eventmeta">
       <span>🗓 <b id="startsEdit" style="opacity:.6">add date &amp; place</b><button class="fieldedit" type="button" data-event-field="schedule" aria-label="Edit date, time, and place" title="Edit date, time, and place"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></span>
       <span id="devnameWrap" hidden>▶ <b id="devname"></b></span>
-      <span id="emetaCountsWrap" hidden><b id="emetaCounts"></b></span>
     </div>
     <div class="hostlinks" id="heroLinks" hidden></div>
     <div class="eventedit" id="eventEditPanel" aria-label="Edit event details">
@@ -767,39 +739,8 @@
   </div>
 
   <div class="card event-admin-tools" id="eventManagePanel">
-    <div class="featurebar">
-      <a class="abbtn" href="/wall" target="_blank" rel="noopener" style="height:32px;text-decoration:none">Open wall (TV)</a>
-    </div>
-    <div class="featurebar" id="featureToggles" aria-label="Guest feature toggles"></div>
-    <div class="retentionbox">
-      <div class="retentiongrid">
-        <div>
-          <label for="retentionMode">Data retention</label>
-          <select id="retentionMode">
-            <option value="keep_approved">Keep everything</option>
-            <option value="archive_all">Archive all</option>
-            <option value="tonight_only">Tonight only</option>
-          </select>
-        </div>
-        <div class="retentiondesc" id="retentionDesc"></div>
-      </div>
-    </div>
-    <div class="endflow" id="endFlow">
-      <b id="endFlowTitle">End event</b>
-      <div class="retentiondesc" id="endFlowText"></div>
-      <div class="endactions" id="endFlowActions"></div>
-    </div>
-    <div class="recapbox" id="recapBox" hidden>
-      <b>After the event</b>
-      <div class="retentiondesc">Generate a local, self-contained recap before cleanup or deletion.</div>
-      <div class="recapactions">
-        <button class="go" id="generateRecapBtn" type="button">Generate recap</button>
-        <a class="abbtn" id="downloadRecapZip" href="/api/recap.zip" style="height:32px;text-decoration:none;display:none">Download recap (.zip)</a>
-      </div>
-      <div class="recapresult" id="recapResult"></div>
-    </div>
     <div class="linkeditor" id="linkEditor">
-      <div class="linkeditor-head"><b>DJ links</b><span class="muted" id="linkEditorState"></span></div>
+      <div class="linkeditor-head"><b>DJ links</b></div>
       <div class="linkrows" id="linkRows"></div>
       <div class="linkactions">
         <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
@@ -852,7 +793,6 @@
       </div>
       <div id="eventsList" style="margin-top:8px"></div>
     </div>
-    <div class="hint">Everything guests post and your set recordings land in one event folder. Your events lists every party page; a new event starts a fresh one and the old folders stay untouched.</div>
   </div>
 
   <div class="party-grid">
@@ -889,7 +829,6 @@
         <h2 id="eventTitle">Party feed</h2>
         <span class="muted" id="eventCounts"></span>
       </div>
-      <div id="moderationToggles" hidden></div>
       <div class="composer" id="djComposer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
         <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post, or drop photos/videos here..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
         <div style="display:flex;gap:8px;margin-top:6px">
@@ -2294,8 +2233,6 @@
       }
       refreshNetworkSituation({ linkReady: linkReady, guestUrl: guestUrl, guestCount: roster.length });
       const peopleCount = roster.length + 1;
-      $('emetaCounts').textContent = peopleCount + (peopleCount === 1 ? ' guest' : ' guests');
-      $('emetaCountsWrap').hidden = false;
       if ($('pcount')) $('pcount').textContent = peopleCount;
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
@@ -2544,7 +2481,27 @@
     '/covers/dancefloor.webp',
     '/covers/rooftop.webp',
     '/covers/warehouse.webp',
-    '/covers/soundcheck.webp'
+    '/covers/soundcheck.webp',
+    '/covers/basement-house.webp',
+    '/covers/desert-dusk.webp',
+    '/covers/roller-disco.webp',
+    '/covers/beach-dusk.webp',
+    '/covers/cabin-party.webp',
+    '/covers/arcade-afterhours.webp',
+    '/covers/garden-day.webp',
+    '/covers/vinyl-loft.webp',
+    '/covers/poolside-night.webp',
+    '/covers/ballroom-dance.webp',
+    '/covers/block-party.webp',
+    '/covers/laser-warehouse.webp',
+    '/covers/rooftop-sunrise.webp',
+    '/covers/festival-tent.webp',
+    '/covers/record-store.webp',
+    '/covers/boat-deck.webp',
+    '/covers/tunnel-party.webp',
+    '/covers/kitchen-dance.webp',
+    '/covers/community-hall.webp',
+    '/covers/tiny-club.webp'
   ];
   let coverPreviewURL = '';
   let currentCover = { kind: '', index: 0, src: '', uploaded: false, file: null };
@@ -2857,50 +2814,80 @@
     const allPosts = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
     const replying = new Set();
-    let newestAct = 0, on = false, curDir = '', currentModerationMode = 'post_moderate', currentRetentionMode = 'keep_approved', currentEventStatus = 'active', currentEventFeatures = {};
-    const featureDefs = [
-      ['uploads', 'Uploads', true], ['videoUploads', 'Video', true], ['comments', 'Comments', true], ['reactions', 'Reactions', false],
-      ['requests', 'Requests', false], ['tippingLinks', 'Tips', false], ['wallMode', 'Wall', true]
-    ];
+    let newestAct = 0, on = false, curDir = '';
     const linkTypes = [
       ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['mixcloud', 'Mixcloud'],
-      ['resident_advisor', 'Resident Advisor'], ['venmo', 'Venmo'], ['cashapp', 'Cash App'], ['paypal', 'PayPal'],
-      ['website', 'Website'], ['newsletter', 'Newsletter'], ['other', 'Other']
+      ['resident_advisor', 'Resident Advisor'], ['venmo', 'Venmo'], ['cashapp', 'Cash App'], ['paypal', 'PayPal']
     ];
     const linkTypeLabels = new Map(linkTypes);
     const defaultLinkTypes = ['instagram', 'soundcloud', 'venmo'];
-    const tipTypes = new Set(['venmo', 'cashapp', 'paypal']);
     const reactionDefs = [
       ['fire', '🔥 fire'], ['heart', '❤️ heart'], ['louder', '🔊 louder'], ['quieter', '🔉 quieter'],
       ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
     ];
     let linkSig = '';
-    function linkFeatureOn(features){
-      return !!(features && Object.prototype.hasOwnProperty.call(features, 'tippingLinks') ? features.tippingLinks !== false : false);
-    }
     function validHTTPURL(v){
       try {
         const u = new URL((v || '').trim());
         return u.protocol === 'http:' || u.protocol === 'https:';
       } catch (e) { return false; }
     }
-    function isTipLink(link){
-      return tipTypes.has(link && link.type);
+    function cleanUsername(raw){
+      const username = String(raw || '').trim().replace(/^[@$]+/, '');
+      return /^[a-z0-9][a-z0-9._-]{0,79}$/i.test(username) ? username : '';
+    }
+    function usernameURL(type, raw){
+      const username = cleanUsername(raw);
+      if (!username) return '';
+      const encoded = encodeURIComponent(username);
+      switch (type) {
+        case 'instagram': return 'https://www.instagram.com/' + encoded + '/';
+        case 'soundcloud': return 'https://soundcloud.com/' + encoded;
+        case 'bandcamp': return 'https://' + username.toLowerCase() + '.bandcamp.com/';
+        case 'mixcloud': return 'https://www.mixcloud.com/' + encoded + '/';
+        case 'resident_advisor': return 'https://ra.co/dj/' + encoded;
+        case 'venmo': return 'https://venmo.com/u/' + encoded;
+        case 'cashapp': return 'https://cash.app/$' + encoded;
+        case 'paypal': return 'https://paypal.me/' + encoded;
+        default: return '';
+      }
+    }
+    function usernameFromLink(link){
+      if (!link || !link.url) return '';
+      try {
+        const u = new URL(link.url);
+        const parts = u.pathname.split('/').filter(Boolean).map(part => {
+          try { return decodeURIComponent(part); } catch (e) { return part; }
+        });
+        if (link.type === 'bandcamp' && u.hostname.toLowerCase().endsWith('.bandcamp.com')) {
+          return cleanUsername(u.hostname.slice(0, -'.bandcamp.com'.length));
+        }
+        if (link.type === 'resident_advisor') {
+          const i = parts.indexOf('dj');
+          return cleanUsername(i >= 0 ? parts[i + 1] : parts[parts.length - 1]);
+        }
+        if (link.type === 'venmo') {
+          const i = parts.indexOf('u');
+          return cleanUsername(i >= 0 ? parts[i + 1] : parts[parts.length - 1]);
+        }
+        return cleanUsername(parts[parts.length - 1]);
+      } catch (e) {
+        return cleanUsername(link.url);
+      }
     }
     function linkLabel(link){
-      return ((link && link.label) || '').trim() || linkTypeLabels.get(link && link.type) || 'Link';
+      return linkTypeLabels.get(link && link.type) || 'Link';
     }
-    function renderHeroLinks(links, features){
+    function renderHeroLinks(links){
       const wrap = $('heroLinks');
       if (!wrap) return;
-      const tipsOn = linkFeatureOn(features || {});
       const clean = (Array.isArray(links) ? links : [])
-        .filter(link => link && validHTTPURL(link.url) && (!isTipLink(link) || tipsOn));
+        .filter(link => link && linkTypeLabels.has(link.type) && validHTTPURL(link.url));
       wrap.hidden = clean.length === 0;
       wrap.textContent = '';
       for (const link of clean) {
         const a = document.createElement('a');
-        a.className = 'll' + (isTipLink(link) ? ' tip' : '');
+        a.className = 'll';
         a.href = link.url.trim();
         a.target = '_blank';
         a.rel = 'noopener';
@@ -2914,10 +2901,11 @@
       const rest = [];
       for (const link of list) {
         const type = link && link.type;
+        if (!linkTypeLabels.has(type)) continue;
         if (defaultLinkTypes.includes(type) && !picked.has(type)) picked.set(type, link);
         else rest.push(link);
       }
-      return defaultLinkTypes.map(type => picked.get(type) || { type, url:'', label:'' }).concat(rest);
+      return defaultLinkTypes.map(type => picked.get(type) || { type, url:'' }).concat(rest);
     }
     function linkRow(link){
       const row = document.createElement('div');
@@ -2929,22 +2917,17 @@
         opt.value = value; opt.textContent = label;
         sel.appendChild(opt);
       }
-      sel.value = link && link.type || 'other';
-      const url = document.createElement('input');
-      url.dataset.field = 'url'; url.type = 'url'; url.inputMode = 'url'; url.placeholder = 'https://...';
-      url.autocapitalize = 'off'; url.spellcheck = false; url.maxLength = 2048; url.value = link && link.url || '';
-      const label = document.createElement('input');
-      label.dataset.field = 'label'; label.placeholder = 'Label'; label.maxLength = 40; label.value = link && link.label || '';
+      sel.value = linkTypeLabels.has(link && link.type) ? link.type : 'instagram';
+      const username = document.createElement('input');
+      username.dataset.field = 'username'; username.type = 'text'; username.inputMode = 'text'; username.placeholder = '@username';
+      username.autocapitalize = 'off'; username.autocomplete = 'off'; username.spellcheck = false; username.maxLength = 80; username.value = usernameFromLink(link);
       const del = document.createElement('button');
       del.type = 'button'; del.className = 'linkdel'; del.title = 'Remove link'; del.setAttribute('aria-label', 'Remove link'); del.textContent = '×';
-      row.appendChild(sel); row.appendChild(url); row.appendChild(label); row.appendChild(del);
+      row.appendChild(sel); row.appendChild(username); row.appendChild(del);
       return row;
     }
-    function renderLinkEditor(links, features){
-      const editor = $('linkEditor');
+    function renderLinkEditor(links){
       const rows = $('linkRows');
-      editor.classList.toggle('off', !linkFeatureOn(features || {}));
-      $('linkEditorState').textContent = linkFeatureOn(features || {}) ? 'Tips visible' : 'Tip links hidden until Tips is on';
       const clean = editorRows(links);
       const sig = JSON.stringify(clean);
       if (document.activeElement && rows.contains(document.activeElement) && sig === linkSig) return;
@@ -2958,19 +2941,19 @@
       let bad = false;
       for (const row of $('linkRows').querySelectorAll('.linkrow')) {
         const type = row.querySelector('[data-field="type"]').value;
-        const url = row.querySelector('[data-field="url"]');
-        const label = row.querySelector('[data-field="label"]').value.trim();
-        const raw = url.value.trim();
-        url.classList.remove('bad');
+        const input = row.querySelector('[data-field="username"]');
+        const raw = input.value.trim();
+        input.classList.remove('bad');
         if (!raw) continue;
-        if (!validHTTPURL(raw)) {
-          url.classList.add('bad');
+        const url = usernameURL(type, raw);
+        if (!url) {
+          input.classList.add('bad');
           bad = true;
           continue;
         }
-        links.push({ type, url: raw, label });
+        links.push({ type, url });
       }
-      if (bad) throw new Error('Use full http or https links.');
+      if (bad) throw new Error('Use a username without spaces or slashes.');
       return links;
     }
     function reactionFeatureOn(features){
@@ -3040,185 +3023,18 @@
         list.appendChild(item);
       }
     }
-    function renderFeatureToggles(features){
-      const bar = $('featureToggles');
-      if (!bar.dataset.ready) {
-        bar.innerHTML = featureDefs.map(([key, label]) =>
-          '<label class="featuretoggle"><input type="checkbox" data-feature="' + escT(key) + '"><span>' + escT(label) + '</span></label>'
-        ).join('');
-        bar.addEventListener('change', async (e) => {
-          const input = e.target;
-          const name = input && input.dataset && input.dataset.feature;
-          if (!name) return;
-          const on = input.checked;
-          input.disabled = true;
-          try {
-            const r = await fetch('/api/event-features?name=' + encodeURIComponent(name) + '&on=' + (on ? '1' : '0'), { method:'POST' });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || d.error) throw new Error(d.error || 'feature update failed');
-            renderFeatureToggles(d.features || {});
-          } catch (err) {
-            input.checked = !on;
-            input.title = err.message || 'feature update failed';
-          } finally {
-            input.disabled = false;
-          }
-        });
-        bar.dataset.ready = '1';
-      }
-      const f = features || {};
-      for (const [key, label, def] of featureDefs) {
-        const input = bar.querySelector('input[data-feature="' + key + '"]');
-        if (input) input.checked = Object.prototype.hasOwnProperty.call(f, key) ? f[key] !== false : def;
-      }
-    }
-    function renderModerationMode(mode){
-      currentModerationMode = 'post_moderate';
-      const bar = $('moderationToggles');
-      if (bar) bar.textContent = '';
-    }
-    const retentionText = {
-      keep_approved: 'Posts, uploads, and recordings stay in this event folder until you delete them.',
-      archive_all: 'Everything stays in this event folder. Ending the event blocks new guest posts but does not delete anything.',
-      tonight_only: 'Temporary event. At the end, export or publish a recap first; deleting event data is a separate confirmed action.'
-    };
-    function renderRetentionMode(mode){
-      currentRetentionMode = (mode === 'tonight_only' || mode === 'archive_all') ? mode : 'keep_approved';
-      const sel = $('retentionMode');
-      if (sel && sel.value !== currentRetentionMode) sel.value = currentRetentionMode;
-      $('retentionDesc').textContent = retentionText[currentRetentionMode] || retentionText.keep_approved;
-    }
-    function recapHref(path){
-      if (!path) return '';
-      if (path[0] === '/') return 'file://' + encodeURI(path);
-      return encodeURI(path);
-    }
-    async function generateRecap(){
-      const btn = $('generateRecapBtn');
-      const result = $('recapResult');
-      const zip = $('downloadRecapZip');
-      btn.disabled = true;
-      btn.textContent = 'Generating...';
-      result.textContent = '';
-      try {
-        const r = await fetch('/api/recap/generate', { method:'POST' });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || d.error) throw new Error(d.error || 'recap failed');
-        const stats = d.summary || {};
-        const path = d.path || '';
-        const bits = [
-          (stats.posts || 0) + ((stats.posts || 0) === 1 ? ' post' : ' posts'),
-          (stats.media || 0) + ' media',
-          (stats.comments || 0) + ' comments',
-          (stats.tracks || 0) + ' tracks'
-        ].join(' · ');
-        const href = recapHref(path);
-        result.innerHTML = 'Recap generated: ' + escT(bits) + (path ? '<br><a href="' + escT(href) + '" target="_blank" rel="noopener">Open recap/index.html locally</a><br><span>' + escT(path) + '</span>' : '');
-        zip.style.display = 'inline-flex';
-      } catch (e) {
-        result.textContent = e.message || 'Could not generate recap.';
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Generate recap';
-      }
-    }
-    function renderRecapBox(status){
-      const box = $('recapBox');
-      if (!box.dataset.ready) {
-        $('generateRecapBtn').onclick = generateRecap;
-        box.dataset.ready = '1';
-      }
-      box.hidden = status !== 'ended';
-    }
-    function renderEndFlow(status, mode){
-      currentEventStatus = status === 'ended' ? 'ended' : 'active';
-      renderRetentionMode(mode || currentRetentionMode);
-      renderRecapBox(currentEventStatus);
-      const box = $('endFlow');
-      const actions = $('endFlowActions');
-      box.classList.toggle('ended', currentEventStatus === 'ended');
-      actions.innerHTML = '';
-      if (currentEventStatus !== 'ended') {
-        $('endFlowTitle').textContent = 'End event';
-        $('endFlowText').textContent = 'Ending blocks new guest posts, comments, uploads, requests, and reactions. It does not delete anything.';
-        actions.innerHTML = '<button class="ghost" id="eventEndBtn" type="button">End Event</button>';
-        $('eventEndBtn').onclick = async () => {
-          const btn = $('eventEndBtn');
-          if (btn.textContent !== 'Confirm end event') {
-            btn.textContent = 'Confirm end event';
-            setTimeout(() => { if (btn.textContent === 'Confirm end event') btn.textContent = 'End Event'; }, 3500);
-            return;
-          }
-          btn.disabled = true;
-          try {
-            const r = await fetch('/api/event-end', { method:'POST' });
-            const d = await r.json().catch(() => ({}));
-            if (!r.ok || d.error) throw new Error(d.error || 'end failed');
-            renderEndFlow(d.status || 'ended', d.retentionMode || currentRetentionMode);
-          } catch (e) {
-            $('endFlowText').textContent = e.message || 'Could not end event.';
-          } finally {
-            btn.disabled = false;
-          }
-        };
-        return;
-      }
-      $('endFlowTitle').textContent = 'Event ended';
-      if (currentRetentionMode === 'archive_all') {
-        $('endFlowText').textContent = 'Archive all is selected. No event data will be deleted.';
-        return;
-      }
-      if (currentRetentionMode === 'keep_approved') {
-        $('endFlowText').textContent = 'Posts, uploads, and recordings remain in the event folder.';
-        return;
-      }
-      $('endFlowText').textContent = 'This event is set to delete tonight. Export or publish a recap before deleting. Deletion removes guest posts and media from this event folder; recordings stay unless separately selected.';
-      actions.innerHTML = '<button class="dangerbtn" id="eventDeleteBtn" type="button">Delete event data</button>';
-      $('eventDeleteBtn').onclick = async () => {
-        const token = window.prompt('Type DELETE EVENT DATA to delete guest posts and media for this event. This cannot be undone.');
-        if (token !== 'DELETE EVENT DATA') return;
-        const btn = $('eventDeleteBtn');
-        btn.disabled = true; btn.textContent = 'Deleting…';
-        try {
-          const r = await fetch('/api/event-delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ confirm: token }) });
-          const d = await r.json().catch(() => ({}));
-          if (!r.ok || d.error) throw new Error(d.error || 'delete failed');
-          newestAct = 0; on = false; list.innerHTML = ''; nodes.clear(); allPosts.clear(); authors.clear(); replying.clear(); renderModQueue(); await poll();
-          btn.textContent = 'Event data deleted';
-        } catch (e) {
-          btn.textContent = e.message || 'delete failed';
-        } finally {
-          setTimeout(() => { btn.disabled = false; btn.textContent = 'Delete event data'; }, 2200);
-        }
-      };
-    }
-    $('retentionMode').addEventListener('change', async (e) => {
-      const mode = e.target.value;
-      e.target.disabled = true;
-      try {
-        const r = await fetch('/api/event-retention', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ retentionMode: mode }) });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || d.error) throw new Error(d.error || 'retention update failed');
-        renderEndFlow(currentEventStatus, d.retentionMode || mode);
-      } catch (err) {
-        renderRetentionMode(currentRetentionMode);
-        e.target.title = err.message || 'retention update failed';
-      } finally {
-        e.target.disabled = false;
-      }
-    });
     $('addLinkBtn').addEventListener('click', () => {
-      $('linkRows').appendChild(linkRow({ type:'website', url:'', label:'' }));
+      $('linkRows').appendChild(linkRow({ type:'instagram', url:'' }));
       const rows = $('linkRows').querySelectorAll('.linkrow');
       const last = rows[rows.length - 1];
-      if (last) last.querySelector('[data-field="url"]').focus();
+      if (last) last.querySelector('[data-field="username"]').focus();
     });
     $('linkRows').addEventListener('click', (e) => {
       const btn = e.target && e.target.closest && e.target.closest('.linkdel');
       if (!btn) return;
       const row = btn.closest('.linkrow');
       if (row) row.remove();
-      if (!$('linkRows').children.length) renderLinkEditor([], currentEventFeatures);
+      if (!$('linkRows').children.length) renderLinkEditor([]);
     });
     $('saveLinksBtn').addEventListener('click', async () => {
       const status = $('linkStatus');
@@ -3230,8 +3046,8 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok || d.error) throw new Error(d.error || 'link save failed');
         linkSig = '';
-        renderLinkEditor(d.links || [], currentEventFeatures);
-        renderHeroLinks(d.links || [], currentEventFeatures);
+        renderLinkEditor(d.links || []);
+        renderHeroLinks(d.links || []);
         status.textContent = 'Saved';
       } catch (err) {
         status.textContent = err.message || 'link save failed';
@@ -3553,14 +3369,10 @@
         if ($('feedCount')) $('feedCount').textContent = data.total || '';
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         syncPublish(data.slug);
-        currentEventFeatures = data.features || {};
-        renderFeatureToggles(data.features || {});
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderTrackPanel(data.features || {}, data.nowPlaying || null, data.recentTracks || [], data.trackAsks || 0);
-        renderModerationMode(data.moderationMode || 'post_moderate');
-        renderEndFlow(data.status || 'active', data.retentionMode || 'keep_approved');
-        renderLinkEditor(data.links || [], data.features || {});
-        renderHeroLinks(data.links || [], data.features || {});
+        renderLinkEditor(data.links || []);
+        renderHeroLinks(data.links || []);
         renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts

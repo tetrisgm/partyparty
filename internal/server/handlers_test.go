@@ -484,127 +484,6 @@ func TestEventFeaturesDJBypass(t *testing.T) {
 	}
 }
 
-func TestEventEndMarksEndedAndBlocksGuestWrites(t *testing.T) {
-	ev, err := event.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := New(Deps{Events: ev})
-	guest := "192.168.1.44:3333"
-	postJSON := func(target, remote string, body any) *httptest.ResponseRecorder {
-		t.Helper()
-		data, err := json.Marshal(body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return doBody(s, http.MethodPost, target, remote, "application/json", bytes.NewBuffer(data))
-	}
-	w := do(s, http.MethodPost, "/api/event-end", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest event-end status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodPost, "/api/event-end", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("DJ event-end status = %d, body %q", w.Code, w.Body.String())
-	}
-	if ev.Meta().Status != event.StatusEnded || !ev.Ended() {
-		t.Fatalf("event not ended: %#v", ev.Meta())
-	}
-	w = postJSON("/api/post", guest, map[string]any{"cid": "c1", "author": "Guest", "emoji": "🎉", "text": "too late"})
-	if w.Code != http.StatusConflict {
-		t.Fatalf("guest post after end status = %d, body %q; want 409", w.Code, w.Body.String())
-	}
-	w = postJSON("/api/requests", guest, map[string]any{"cid": "c1", "text": "track"})
-	if w.Code != http.StatusConflict {
-		t.Fatalf("guest request after end status = %d, body %q; want 409", w.Code, w.Body.String())
-	}
-	body, ct := multipartUpload(t, "photo.jpg", "image/jpeg")
-	w = doBody(s, http.MethodPost, "/api/upload", guest, ct, body)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("guest upload after end status = %d, body %q; want 409", w.Code, w.Body.String())
-	}
-	w = postJSON("/api/post", "127.0.0.1:1234", map[string]any{"cid": "dj", "author": "DJ", "emoji": "🎧", "text": "DJ can still post"})
-	if w.Code != http.StatusOK {
-		t.Fatalf("DJ post after end status = %d, body %q", w.Code, w.Body.String())
-	}
-}
-
-func TestEventRetentionCleanupDeleteConfirmAndDJOnly(t *testing.T) {
-	ev, err := event.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := New(Deps{Events: ev})
-	guest := "192.168.1.44:3333"
-
-	if got := ev.Meta().RetentionMode; got != event.RetentionKeepApproved {
-		t.Fatalf("default retention = %q, want keep_approved", got)
-	}
-	w := do(s, http.MethodPost, "/api/event-retention?mode=tonight_only", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest event-retention status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodPost, "/api/event-retention?mode=tonight_only", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("DJ event-retention status = %d, body %q", w.Code, w.Body.String())
-	}
-	if got := ev.Meta().RetentionMode; got != event.RetentionTonightOnly {
-		t.Fatalf("retention mode = %q, want tonight_only", got)
-	}
-
-	media, err := ev.SaveMedia("photo.jpg", strings.NewReader("photo"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	post, _, err := ev.AddPost("cid", "Guest", "🎉", "", []event.Media{media}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ev.SetPostState(post.ID, event.StateHidden); err != nil {
-		t.Fatal(err)
-	}
-
-	w = do(s, http.MethodPost, "/api/event-cleanup?confirm=1", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest event-cleanup status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodPost, "/api/event-cleanup", "127.0.0.1:1234")
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("event-cleanup without confirm status = %d, body %q; want 400", w.Code, w.Body.String())
-	}
-	w = do(s, http.MethodPost, "/api/event-cleanup?confirm=1", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("event-cleanup confirmed status = %d, body %q", w.Code, w.Body.String())
-	}
-	if _, ok := ev.MediaPath(media.ID); ok {
-		t.Fatal("cleanup did not remove hidden media")
-	}
-
-	media, err = ev.SaveMedia("photo.jpg", strings.NewReader("photo"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := ev.AddPost("cid", "Guest", "🎉", "", []event.Media{media}, false); err != nil {
-		t.Fatal(err)
-	}
-	w = do(s, http.MethodPost, "/api/event-delete?confirm=1", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest event-delete status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodPost, "/api/event-delete", "127.0.0.1:1234")
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("event-delete without confirm status = %d, body %q; want 400", w.Code, w.Body.String())
-	}
-	w = do(s, http.MethodPost, "/api/event-delete?confirm="+strings.ReplaceAll(event.DeleteEventConfirm, " ", "%20"), "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("event-delete confirmed status = %d, body %q", w.Code, w.Body.String())
-	}
-	_, ids, mediaCount := ev.Feed(0)
-	if len(ids) != 0 || mediaCount != 0 {
-		t.Fatalf("feed after event-delete ids=%v media=%d, want empty", ids, mediaCount)
-	}
-}
-
 func TestRecapGenerateAndZipRoutes(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
@@ -659,6 +538,24 @@ func TestRecapGenerateAndZipRoutes(t *testing.T) {
 	}
 }
 
+func TestRemovedEventLifecycleRoutesReturnNotFound(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev})
+	for _, path := range []string{
+		"/api/event-retention",
+		"/api/event-end",
+		"/api/event-cleanup",
+		"/api/event-delete",
+	} {
+		if w := do(s, http.MethodPost, path, "127.0.0.1:1234"); w.Code != http.StatusNotFound {
+			t.Errorf("POST %s status = %d, body %q; want 404", path, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
@@ -688,7 +585,7 @@ func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	}
 }
 
-func TestEventLinksEndpointAndFeatureGatedExposure(t *testing.T) {
+func TestEventLinksEndpointValidationAndExposure(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -712,7 +609,7 @@ func TestEventLinksEndpointAndFeatureGatedExposure(t *testing.T) {
 		t.Fatalf("DJ event-links status = %d, body %q", w.Code, w.Body.String())
 	}
 	if strings.Contains(w.Body.String(), "<main>") {
-		t.Fatalf("event-links response did not JSON-escape label: %q", w.Body.String())
+		t.Fatalf("event-links response kept a custom label: %q", w.Body.String())
 	}
 	body := decodeJSON(t, w)
 	links, ok := body["links"].([]any)
@@ -720,7 +617,7 @@ func TestEventLinksEndpointAndFeatureGatedExposure(t *testing.T) {
 		t.Fatalf("endpoint links = %#v, want 2", body["links"])
 	}
 	first := links[0].(map[string]any)
-	if first["type"] != "instagram" || first["url"] != "https://instagram.com/dj" || first["label"] != "DJ <main>" {
+	if first["type"] != "instagram" || first["url"] != "https://instagram.com/dj" || first["label"] != "Instagram" {
 		t.Fatalf("first endpoint link = %#v", first)
 	}
 	second := links[1].(map[string]any)
@@ -729,26 +626,13 @@ func TestEventLinksEndpointAndFeatureGatedExposure(t *testing.T) {
 	}
 
 	feed := decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
-	if got, ok := feed["links"].([]any); !ok || len(got) != 1 {
-		t.Fatalf("feed links with tips off = %#v, want normal link only", feed["links"])
+	if got, ok := feed["links"].([]any); !ok || len(got) != 2 {
+		t.Fatalf("feed links = %#v, want 2", feed["links"])
 	}
 	status := decodeJSON(t, do(s, http.MethodGet, "/api/status", "127.0.0.1:1234"))
 	eventState := status["event"].(map[string]any)
-	if got, ok := eventState["links"].([]any); !ok || len(got) != 1 {
-		t.Fatalf("status event links with tips off = %#v, want normal link only", eventState["links"])
-	}
-
-	if err := ev.SetFeature("tippingLinks", true); err != nil {
-		t.Fatal(err)
-	}
-	feed = decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
-	if got, ok := feed["links"].([]any); !ok || len(got) != 2 {
-		t.Fatalf("feed links with tips on = %#v, want 2", feed["links"])
-	}
-	status = decodeJSON(t, do(s, http.MethodGet, "/api/status", "127.0.0.1:1234"))
-	eventState = status["event"].(map[string]any)
 	if got, ok := eventState["links"].([]any); !ok || len(got) != 2 {
-		t.Fatalf("status event links with tips on = %#v, want 2", eventState["links"])
+		t.Fatalf("status event links = %#v, want 2", eventState["links"])
 	}
 }
 

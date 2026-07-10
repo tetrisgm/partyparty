@@ -1940,7 +1940,7 @@
       const trackBox = $id('trackBox'), trackCurrent = $id('trackCurrent'), trackAsk = $id('trackAsk'), trackStatus = $id('trackStatus'), trackRecent = $id('trackRecent');
       const featureDefaults = {
         uploads: true, videoUploads: true, comments: true, reactions: false,
-        requests: false, trackId: false, tippingLinks: false, wallMode: true
+        requests: false, trackId: false, wallMode: true
       };
       const reactionDefs = [
         ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'], ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
@@ -2002,7 +2002,7 @@
         const icon = document.createElement('b');
         icon.textContent = linkIcons[typ] || linkIcons.other;
         const label = document.createElement('span');
-        label.textContent = (link.label || '').trim() || linkLabels[typ] || 'Link';
+        label.textContent = linkLabels[typ] || 'Link';
         a.appendChild(icon); a.appendChild(label);
         parent.appendChild(a);
         return 1;
@@ -2012,10 +2012,9 @@
         followLinks.textContent = '';
         tipLinks.textContent = '';
         let followN = 0, tipN = 0;
-        const tipsOn = featureOn('tippingLinks');
         for (const link of currentLinks) {
           if (tipTypes.has(link && link.type)) {
-            if (tipsOn) tipN += addLinkChip(tipLinks, link);
+            tipN += addLinkChip(tipLinks, link);
           } else {
             followN += addLinkChip(followLinks, link);
           }

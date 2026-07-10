@@ -94,7 +94,7 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	if len(meta.Links) != 2 {
 		t.Fatalf("persisted links = %#v, want 2", meta.Links)
 	}
-	if meta.Links[0].Label != "DJ <main>" || meta.Links[0].URL != "https://instagram.com/dj" || meta.Links[0].Type != "instagram" {
+	if meta.Links[0].Label != "Instagram" || meta.Links[0].URL != "https://instagram.com/dj" || meta.Links[0].Type != "instagram" {
 		t.Fatalf("first persisted link = %#v", meta.Links[0])
 	}
 	if meta.Links[1].Label != "Venmo" || meta.Links[1].URL != "http://venmo.com/u/dj" {
@@ -105,7 +105,7 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := reloaded.Meta().Links; len(got) != 2 || got[0].Label != "DJ <main>" {
+	if got := reloaded.Meta().Links; len(got) != 2 || got[0].Label != "Instagram" {
 		t.Fatalf("reloaded links = %#v", got)
 	}
 }

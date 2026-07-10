@@ -35,11 +35,9 @@ type RecapData struct {
 }
 
 type RecapEvent struct {
-	Title   string `json:"title"`
-	Host    string `json:"host"`
-	Starts  string `json:"starts,omitempty"`
-	Status  string `json:"status"`
-	EndedAt int64  `json:"endedAt,omitempty"`
+	Title  string `json:"title"`
+	Host   string `json:"host"`
+	Starts string `json:"starts,omitempty"`
 }
 
 type RecapPost struct {
@@ -140,16 +138,13 @@ func (s *Store) recapSnapshot(opts RecapOptions) (recapSnapshot, error) {
 
 	meta := s.meta
 	meta.Features = normalizeFeatures(meta.Features)
-	meta.Status = normalizeStatus(meta.Status)
 	links := append([]Link(nil), meta.Links...)
 	data := RecapData{
 		GeneratedAt: now,
 		Event: RecapEvent{
-			Title:   meta.Title,
-			Host:    meta.Host,
-			Starts:  meta.Starts,
-			Status:  meta.Status,
-			EndedAt: meta.EndedAt,
+			Title:  meta.Title,
+			Host:   meta.Host,
+			Starts: meta.Starts,
 		},
 		Links:     links,
 		Posts:     []RecapPost{},
