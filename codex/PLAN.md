@@ -8,7 +8,7 @@ Written 2026-07-07, after shipping OAuth sign-in + the DJ activation gate (v15.4
 
 ## How this autonomous loop works
 - Tasks live in `codex/tasks/*.md`, each self-contained (why, do, verify, guardrails).
-- `scripts/codex-loop.sh` runs each task in its **own git worktree + branch** (`codex/<task>`), up to 3 in parallel. Each task is expected to build/test itself and commit to its branch; the loop then **pushes the branch for the owner to review**. It never touches `main` and never deploys.
+- `scripts/codex-loop.sh` may use isolated worktrees and branches for parallel implementation, but branch review is not release approval. Once integrated product work is complete and verified, follow the root `AGENTS.md`: run the single owner-facing ship command and verify the public and installed product are current without waiting for another user action.
 - Add work by dropping a new `codex/tasks/NN-name.md` and re-running the loop. Finished tasks move to `codex/tasks/done/`; logs land in `codex/logs/`.
 - **Read `AGENTS.md` (repo root) first** — sacred guardrails + the exact verify commands.
 

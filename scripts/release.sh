@@ -9,7 +9,7 @@
 # `pp-notary` notarytool profile, and the Sparkle key in your login keychain.
 # (The CI equivalent is .github/workflows/release.yml, triggered by a git tag.)
 #
-# Lower-level implementation detail. Owners should run:
+# Lower-level implementation detail. Always invoke through:
 #   scripts/ship.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."

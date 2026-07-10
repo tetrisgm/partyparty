@@ -15,7 +15,7 @@
 # (never in the repo), and the bundle bytes are pinned by a SHA-256 the signed
 # manifest carries. The Mac verifies both before serving and refuses downgrades.
 #
-# Lower-level implementation detail. Owners should run:
+# Lower-level implementation detail. Always invoke through:
 #   scripts/ship.sh --payload-only
 set -euo pipefail
 cd "$(dirname "$0")/.."

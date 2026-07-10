@@ -27,7 +27,12 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
 6. **Email transport is MXroute SMTP — NEVER a paid email API.** No Resend, SendGrid, Postmark, Mailgun, etc. The owner has a lifetime MXroute account and pays for nothing else. Magic-link email sends via SMTP (`sendViaMXroute` over `cloudflare:sockets`; `AUTH_EMAIL_SERVER` / `MXROUTE_SMTP_*` secrets). Reference: `~/dev/stack/runbooks/email-smtp-dns.md`.
 
 ## Rules
-- Work on **your branch only**. Commit to the branch; do NOT push to `main`, do NOT run `scripts/release.sh`, do NOT bump `CODE_MAJOR`, do NOT `wrangler deploy`. Releases + deploys are owner-only.
+- Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.
+- **Ship verified product changes by default.** The user does not need to approve each release. Use `scripts/ship.sh` as the only owner-facing release entry point after a requested change is complete: it selects and records the version, runs checks, builds/signs/notarizes, uploads immutable artifacts first, updates the Worker/public download page, and flips the appcast/manifest/version marker last.
+- Use `scripts/ship.sh --payload-only` only for compatible `web/` payload changes. Changes to Go, Swift, native helpers, runtime APIs, or release infrastructure require a full `scripts/ship.sh` release.
+- After shipping, verify the public website/download, appcast or OTA manifest, signatures, and version marker. Ensure the app installed on this Mac updates to that same version/build and relaunch it; if Sparkle does not apply the update, install the newly signed artifact locally and verify it directly.
+- Skip publishing only when the user explicitly asks not to ship, verification fails, or signing/hosting credentials or an external service block the release. Never describe work as complete while knowingly leaving the public or installed product on an older version; report any blocker explicitly.
+- `scripts/release.sh`, `scripts/publish-payload.sh`, direct `CODE_MAJOR` edits, and direct `wrangler deploy` are lower-level implementation details. Do not run them as separate manual ceremony; let `scripts/ship.sh` coordinate the release.
 - NEVER commit secrets (`*.pem`, `*.key`, `*.p8`, `*.seed`, API keys). Secrets live in `~/Library/Application Support/partyparty` and as Cloudflare Worker secrets.
 - Match the surrounding code style; keep changes tight and well-tested.
 - Commit messages end with: `Co-Authored-By: Codex <noreply@openai.com>`

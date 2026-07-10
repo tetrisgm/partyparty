@@ -6,31 +6,38 @@ appcast → publish to **party.ramine.net** (Cloudflare R2 + Worker). Installed 
 then auto-update via Sparkle. See [DISTRIBUTION.md](DISTRIBUTION.md) for the hosting
 layout.
 
-There are two ways to cut a release; they do the same thing.
+Completed, verified product work is shipped by default. A separate owner approval,
+branch merge, tag, or manual version edit is not required.
 
-## A. From your Mac — `make release` (no CI secrets needed)
+## Normal path — one command
 
 Uses your local Developer ID cert, the `pp-notary` notarytool profile, the Sparkle
 key in your login keychain, and your `wrangler login`. This is the reliable path.
 
 ```
-# 1. bump the version in app/Info.plist:
-#      CFBundleShortVersionString (e.g. 0.1.1) and CFBundleVersion (e.g. 2)
-# 2. cut it:
-make release
+scripts/ship.sh                 # native/server release; chooses the next version
+scripts/ship.sh --payload-only  # compatible web-only OTA payload
+scripts/ship.sh --dry-run       # verify and describe the release without publishing
 ```
 
-That builds, notarizes, signs `appcast.xml`, uploads the versioned zip + a
-`partyparty.zip` "latest" alias + the appcast to R2, then deploys the Worker.
+The command refuses dirty tracked files, runs the relevant Go/Worker/Swift checks,
+records the version, builds and notarizes the app, signs `appcast.xml`, uploads
+versioned artifacts and stable download aliases, deploys the Worker/public site,
+and flips the update feed/version marker last. Afterward, verify and update the
+copy installed on this Mac so the public feed and running app report the same build.
 First run prompts once for keychain access to the Sparkle key — click **Always Allow**.
 
-## B. From a git tag — GitHub Actions (needs the secrets below)
+Agents should run this flow automatically after completed product changes unless
+the user explicitly requests no release or publishing is genuinely blocked.
+
+## CI fallback — GitHub Actions
 
 ```
 git tag v0.1.1 && git push origin v0.1.1
 ```
-[.github/workflows/release.yml](../.github/workflows/release.yml) runs the same
-steps on a macOS runner and publishes to R2. Requires all the repo secrets below.
+[.github/workflows/release.yml](../.github/workflows/release.yml) can publish from
+a tag on a macOS runner. It is an optional recovery/CI path, not the normal release
+ceremony, and requires all the repo secrets below.
 
 ### Repo secrets
 
@@ -46,8 +53,8 @@ steps on a macOS runner and publishes to R2. Requires all the repo secrets below
 | `AC_API_ISSUER_ID` | the key's Issuer ID | ⬜ **you add** |
 
 Add them at Settings → Secrets and variables → Actions, or with `gh secret set NAME`.
-`CLOUDFLARE_ACCOUNT_ID` is baked into the workflow (not secret). CI path B is
-optional — **path A already works today with zero repo secrets.**
+`CLOUDFLARE_ACCOUNT_ID` is baked into the workflow (not secret). The CI path is
+optional — **`scripts/ship.sh` already works today with zero repo secrets.**
 
 #### Creating each secret
 
@@ -70,8 +77,10 @@ optional — **path A already works today with zero repo secrets.**
   `AC_API_KEY_ID`; Issuer ID → `AC_API_ISSUER_ID`.
 
 ## Notes
-- Bump `CFBundleShortVersionString` + `CFBundleVersion` before releasing — Sparkle
-  compares `CFBundleVersion` to decide whether an update is available.
+- Do not bump plist or version files manually. `scripts/ship.sh` and its lower-level
+  release scripts keep the product version, `CFBundleShortVersionString`, and
+  monotonic `CFBundleVersion` aligned. Sparkle compares the build number when
+  deciding whether an update is available.
 - The appcast lists only the newest build; that's all Sparkle needs to offer an
   update. Older versioned zips stay on R2 (immutable) so their links keep working.
 - If notarization fails, `xcrun notarytool log <id> --keychain-profile pp-notary`
