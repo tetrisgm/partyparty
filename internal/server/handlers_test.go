@@ -195,6 +195,10 @@ func TestStatusEndpoint(t *testing.T) {
 	if body["latencyTarget"] != 10.0 { // plain HLS, 1s segments: 3*1+7
 		t.Errorf("latencyTarget = %v, want 10", body["latencyTarget"])
 	}
+	streamSync, ok := body["streamSync"].(map[string]any)
+	if !ok || streamSync["ready"] != false || streamSync["generation"] != 0.0 {
+		t.Errorf("streamSync = %#v, want idle/not-ready generation 0", body["streamSync"])
+	}
 	urls, ok := body["urls"].(map[string]any)
 	if !ok {
 		t.Fatalf("urls is not an object: %T", body["urls"])

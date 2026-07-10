@@ -1,11 +1,19 @@
 # Room-synchronized startup: critique and corrected design
 
-Status: design review, 2026-07-09. Grounded in the shipped v47.59 code
+Status: implemented and browser-verified, 2026-07-10. Grounded in the shipped v47.59 code
 (`web/listener.html`, `internal/server/server.go`, `internal/mediamtx/mediamtx.go`),
 the fader91 field log (1 Mac, 2 iPhones, 2 iPads), a live probe of the bundled
 MediaMTX v1.19.2's actual playlists, WebKit source, and RFC 8216 / LL-HLS spec.
 This replaces the "room playout epoch" proposal — most of its *discipline* is
 adopted; several of its *mechanisms* are rejected with evidence.
+
+Implementation corrected two claims in the original review. The bad path was
+an **early-generation attach after `broadcast.state=live` but before real media
+filled MediaMTX's synthetic GAP window**, not an attachment while the broadcast
+was still idle. Also, native WebKit's exposed program-origin measurement is
+effectively whole-second granularity in the tested implementation. That error
+is common-mode across listeners and cancels pairwise, but requires a 550ms
+absolute verification window rather than the originally proposed 350ms.
 
 ---
 
@@ -44,8 +52,9 @@ adopted; several of its *mechanisms* are rejected with evidence.
   the *natural start position* granularity, hold-back distance, and edge-
   mapping precision — never committed seek accuracy. Do not shrink parts
   hoping for finer seeks.
-- **The diagnosis missed the dominant root cause: pre-live attach.** All three
-  broken joins came from tabs opened ~30s before Go Live. They attached and
+- **The diagnosis missed the dominant root cause: early-generation attach.** All three
+  broken joins came from tabs opened ~30s before Go Live. Once status changed
+  to live they attached and
   prebuffered against a playlist that was empty/GAP-filled (MediaMTX backfills
   a new muxer's window with `EXT-X-GAP gap.mp4` entries — verified by live
   probe), so AVPlayer parked at a stale origin, the muted element did NOT
@@ -76,7 +85,7 @@ honest badge, or a visible broken-state UI. No third state.
 exemption is a *video* policy; iOS Safari refuses un-gestured `<audio>`
 playback, Low Power Mode blocks autoplay entirely, and an element not blessed
 by an in-gesture `play()` may be refused the later programmatic unmute.
-Worse, pre-live attach is the proven freeze factory (§1). Keep the shipped
+Worse, an early-generation GAP-only attach is the proven freeze factory (§1). Keep the shipped
 gesture order: tap → muted `play()` inside the handler → align → auto-unmute.
 The blessing is per-element and permanent, so recovery MUST reuse the same
 element (a replacement element starts unblessed).
@@ -107,7 +116,7 @@ means `lat` is *relative to the PDT anchor*, not true glass-to-glass.
 corrections. Muted seeks are invisible to the room. A one-seek dogma forbids
 the cheap correct move (one more muted, verified seek) and forces the
 expensive one (player recreation — which on iOS risks losing the audio
-blessing). Right constraint: a time budget (~10s from tap) and a loop-guard
+blessing). Right constraint: a time budget (12s from tap) and a loop-guard
 (≤4 muted seeks), each gated on a fresh progression-verified measurement.
 
 **REGRESSION RISK — "require seeking+seeked before unmute":** waiting after
@@ -182,7 +191,7 @@ silent.
 
 ### 3.2 Client startup (native path; hls.js analogous)
 
-State machine, all states time-boxed against `BUDGET = 10s` from tap:
+State machine, all states time-boxed against `BUDGET = 12s` from tap:
 
 ```
 IDLE            "Waiting for DJ" — no attach. NEVER attach before
@@ -200,7 +209,9 @@ TAP             (user gesture) → el.muted = true; el.play() INSIDE the
 CALIBRATING     ensure fresh clock (6–8 sequential samples, min-RTT,
                 accept RTT < 100ms; reuse if <30s old). Runs concurrent
                 with buffering.
-SETTLING        wait until: playing, readyState ≥ 3, bufferedAhead ≥ 2.5s,
+SETTLING        wait until: playing, readyState ≥ 3, bufferedAhead ≥ 2.5s
+                on hls.js or ≥ 0.75s on native WebKit (native LL-HLS commonly
+                exposes only the current part ahead even with ample history),
                 AND progression proven (raw currentTime advanced ≥ 0.8×
                 wall over ≥ 600ms). Latch getStartDate() when valid
                 (poll; it is constant per attachment). Progress watchdog:
@@ -209,7 +220,7 @@ SETTLING        wait until: playing, readyState ≥ 3, bufferedAhead ≥ 2.5s,
 ALIGNING        err = lat_now − D, where lat_now = (serverNow −
                 (startDateMs + rawCurrentTime·1000))/1000, sample valid
                 only if progressAge < 500ms.
-                |err| ≤ 0.35s → VERIFYING.
+                |err| ≤ 0.55s → VERIFYING.
                 Else ONE muted zero-tolerance seek:
                   target = currentTime + err   (moving-target form —
                   recompute err at assignment time, never reuse a stale
@@ -218,7 +229,7 @@ ALIGNING        err = lat_now − D, where lat_now = (serverNow −
                 Await seeking → seeked (1.5s timeout) → back to SETTLING's
                 progression proof → re-measure. Loop-guard: ≤ 4 seeks.
 VERIFYING       3 consecutive valid samples spanning ≥ 600ms:
-                |err| ≤ 0.35s, progression 0.9–1.1×, buffer ≥ 2.5s.
+                |err| ≤ 0.55s, progression 0.8–1.2×, path-appropriate buffer.
                 (The Safari 27 post-seek hold elapses HERE, muted —
                 this is what obsoletes NATIVE_UNMUTE_LEAD.)
 LIVE            el.muted = false (element already blessed). Watch for the
@@ -241,7 +252,7 @@ BROKEN          not progressing at all at budget end → visible error UI
 
 Deletions this enables: `NATIVE_UNMUTE_LEAD` (0.8), `STARTUP_MIN_MS` (7s fixed
 hold — readiness is verified, not timed; typical tap-to-audio drops from ~8.8s
-to ~2–4s), the `anchorMediaClock(wanted)` optimistic anchor (anchor only on
+to ~3–7s on verified paths), the `anchorMediaClock(wanted)` optimistic anchor (anchor only on
 `seeked`/`playing` with progression), and the 2-seek hard cap (→ budget + 4).
 
 Post-unmute (unchanged decree): no app seeks, no rate control ever
@@ -257,14 +268,14 @@ v1.19.2), always re-entering via `index.m3u8` on the SAME element.
 | Clock calibration (per device) | ±15–50ms | sequential min-RTT, RTT<100ms gate |
 | PDT anchor skew | ~0 pairwise | common-mode across listeners, cancels |
 | Seek landing | ±23ms | zero-tolerance currentTime, 1 AAC frame |
-| Verification tolerance | ±350ms | the knob; ±150ms is reachable on quiet LANs |
-| getStartDate quantization | ±10–50ms | latched once, constant |
-| **Media-clock pair total** | **≲400ms; typ. 100–300ms** | |
+| Verification tolerance | ±550ms absolute | absorbs native origin quantization; pairwise is usually tighter |
+| getStartDate quantization | ±500ms absolute | common-mode; latched once, cancels pairwise |
+| **Media-clock pair total** | **≤1s; observed 18–141ms in browser E2E** | |
 | Output path (speaker) | +15–40ms | uncorrectable |
 | Output path (Bluetooth) | +150–300ms | uncorrectable, invisible to JS |
 
 Speaker-to-speaker pairs: 250ms is achievable. Mixed BT pairs: ≤500ms is the
-honest promise. Tightening `tol` below 0.35 buys nothing until the physical
+honest promise. Tightening `tol` below 0.55 buys nothing until the physical
 test says the media clock is the limiting term.
 
 ---
@@ -313,15 +324,15 @@ test says the media clock is the limiting term.
     neutralizes the Safari 27 hold — flag-gated until a Safari 27 device test
     passes; (b) EXT-X-START behavior in LL-HLS mode on device; (c) the freeze
     watchdog's re-attach actually unfreezes a parked AVPlayer (vs needing a
-    cache-busted URL) — covered by the pre-live-attach fix but verify; (d) BT
+    cache-busted URL) — covered by the early-generation attach fix but verify; (d) BT
     output latency spread at a real party (measure, don't model).
 
 ---
 
 ## 5. Test plan
 
-**Bench (automatable, extend `scripts/stream-e2e.mjs`):**
-- Repro A — pre-live freeze: attach a listener 30s before publishing starts;
+**Bench (automated in `scripts/stream-e2e.mjs`):**
+- Repro A — early-generation freeze: open a listener before publishing starts;
   assert the client re-attaches at go-live and reaches verified-aligned.
 - Repro B — uncommitted seek: fault-inject a seek that never fires `seeked`
   (mock/pause); assert no unmute until progression-verified, then DEGRADED
@@ -346,7 +357,7 @@ test says the media clock is the limiting term.
   (device change); Safari 26 vs 27; Low Power Mode.
 
 **Field telemetry acceptance (blackbox already exists):**
-- p95 verified |err| at unmute ≤ 350ms; DEGRADED joins <5%; BROKEN <1%;
+- p95 verified pairwise spread ≤ 500ms; DEGRADED joins <5%; BROKEN <1%;
   zero watchdog silent-join events; `ua-seek` (seeks not issued by app code)
   and startDate-flap counts logged per join — the two Safari behaviors the
   current telemetry cannot distinguish from app action.

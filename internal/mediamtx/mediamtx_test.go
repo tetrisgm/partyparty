@@ -4,8 +4,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -333,6 +335,108 @@ func TestWriteConfig(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("config missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestParseHLSMediaPlaylistIgnoresInitialGaps(t *testing.T) {
+	body := `#EXTM3U
+#EXT-X-VERSION:10
+#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=2.50700,CAN-SKIP-UNTIL=12.00000
+#EXT-X-PART-INF:PART-TARGET=1.00300
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-GAP
+#EXTINF:2.00000,synthetic gap
+gap.mp4
+#EXT-X-GAP
+#EXTINF:2.00000,
+gap.mp4
+#EXT-X-PROGRAM-DATE-TIME:2026-07-10T00:00:00.000Z
+#EXTINF:2.00000,
+real_seg0.mp4
+#EXT-X-PROGRAM-DATE-TIME:2026-07-10T00:00:02.000Z
+#EXT-X-PART:DURATION=1.00300,URI="real_part0.mp4",INDEPENDENT=YES
+#EXT-X-PART:DURATION=0.50150,URI="real_part1.mp4"
+#EXT-X-PRELOAD-HINT:TYPE=PART,URI="real_part2.mp4"
+`
+	state := parseHLSMediaPlaylist(body)
+	if state.GapHistory != 4 {
+		t.Fatalf("gap history = %v, want 4", state.GapHistory)
+	}
+	if math.Abs(state.RealHistory-3.5045) > 0.000001 {
+		t.Fatalf("real history = %v, want 3.5045", state.RealHistory)
+	}
+	if state.PartHoldBack != 2.507 || state.PartTarget != 1.003 {
+		t.Fatalf("hold-back/part-target = %v/%v", state.PartHoldBack, state.PartTarget)
+	}
+}
+
+func TestParseHLSMediaPlaylistUsesContiguousEdgeHistory(t *testing.T) {
+	body := `#EXTM3U
+#EXT-X-MEDIA-SEQUENCE:9
+#EXTINF:2.0,
+old-real.mp4
+#EXT-X-GAP
+#EXTINF:2.0,
+gap.mp4
+#EXTINF:2.0,
+new-real.mp4
+`
+	state := parseHLSMediaPlaylist(body)
+	if state.RealHistory != 2 || state.GapHistory != 2 {
+		t.Fatalf("real/gap history = %v/%v, want 2/2", state.RealHistory, state.GapHistory)
+	}
+}
+
+func TestPlaylistVariantURI(t *testing.T) {
+	master := "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=320000\nabc_stream.m3u8?token=x\n"
+	if got := playlistVariantURI(master); got != "abc_stream.m3u8?token=x" {
+		t.Fatalf("variant URI = %q", got)
+	}
+	media := "#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:2,\na.mp4\n"
+	if got := playlistVariantURI(media); got != "" {
+		t.Fatalf("media playlist variant = %q, want empty", got)
+	}
+}
+
+func TestInspectHLSFollowsVariantAndReportsReadiness(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/party/index.m3u8", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=320000\nroom_audio.m3u8\n")
+	})
+	mux.HandleFunc("/party/room_audio.m3u8", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `#EXTM3U
+#EXT-X-SERVER-CONTROL:PART-HOLD-BACK=2.5
+#EXT-X-PART-INF:PART-TARGET=1.0
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-GAP
+#EXTINF:2.0,
+gap.mp4
+#EXTINF:2.0,
+real0.mp4
+#EXT-X-PART:DURATION=1.0,URI="real1.mp4"
+`)
+	})
+	ts := httptest.NewUnstartedServer(mux)
+	ts.StartTLS()
+	defer ts.Close()
+	_, portText, err := net.SplitHostPort(ts.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	state := InspectHLS(port, "party")
+	if !state.Publishing || state.Generation != "room_audio.m3u8" {
+		t.Fatalf("publishing/generation = %v/%q", state.Publishing, state.Generation)
+	}
+	if state.RealHistory != 3 || state.GapHistory != 2 {
+		t.Fatalf("real/gap history = %v/%v, want 3/2", state.RealHistory, state.GapHistory)
+	}
+	if state.PartHoldBack != 2.5 || state.PartTarget != 1 {
+		t.Fatalf("hold-back/part-target = %v/%v", state.PartHoldBack, state.PartTarget)
 	}
 }
 

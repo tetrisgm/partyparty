@@ -116,6 +116,16 @@ type srv struct {
 	// the DJ honestly instead of showing a false "Live". Guarded by healthMu.
 	healthMu         sync.Mutex
 	streamHealthNote string
+
+	// streamSync caches one lightweight playlist inspection per live generation.
+	// It prevents native HLS clients from attaching while MediaMTX's required
+	// initial GAP segments are the only history at the room target.
+	streamSyncMu         sync.Mutex
+	streamSyncGeneration int64
+	streamSyncReadiness  mediamtx.HLSReadiness
+	streamSyncCheckedAt  time.Time
+	streamSyncChecking   bool
+	streamSyncReady      bool
 }
 
 func New(d Deps) *Srv {
@@ -466,6 +476,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		bc := s.Broadcaster.Status()
 		health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
 		health.Suggestion = suggest(health.Status, bc)
+		latencyTarget := s.latencyTarget(bc, health.Status)
 		roster := s.Listeners.Roster()
 		var rosterBody any = roster
 		if !s.isDJ(r) {
@@ -490,7 +501,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"activation":     s.activationState(),
 			"reachability":   s.reachability(),
 			"hotspot":        s.hotspotState(),
-			"latencyTarget":  s.latencyTarget(bc, health.Status),
+			"latencyTarget":  latencyTarget,
+			"streamSync":     s.streamSyncState(bc, latencyTarget),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
@@ -1267,6 +1279,80 @@ func (s *srv) currentTarget() float64 {
 	bc := s.Broadcaster.Status()
 	health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
 	return s.latencyTarget(bc, health.Status)
+}
+
+func (s *srv) streamSyncState(bc broadcast.Status, target float64) map[string]any {
+	generation := bc.Since
+	if bc.State != "live" || bc.Delivery != "llhls" || s.MTX == nil {
+		s.streamSyncMu.Lock()
+		if generation != s.streamSyncGeneration || bc.State != "live" {
+			s.streamSyncGeneration = generation
+			s.streamSyncReadiness = mediamtx.HLSReadiness{}
+			s.streamSyncCheckedAt = time.Time{}
+			s.streamSyncChecking = false
+			s.streamSyncReady = false
+		}
+		s.streamSyncMu.Unlock()
+		return map[string]any{
+			"generation": generation,
+			"ready":      false,
+			"checking":   false,
+		}
+	}
+
+	now := time.Now()
+	s.streamSyncMu.Lock()
+	if generation != s.streamSyncGeneration {
+		s.streamSyncGeneration = generation
+		s.streamSyncReadiness = mediamtx.HLSReadiness{}
+		s.streamSyncCheckedAt = time.Time{}
+		s.streamSyncChecking = false
+		s.streamSyncReady = false
+	}
+	if !s.streamSyncReady && !s.streamSyncChecking && now.Sub(s.streamSyncCheckedAt) >= time.Second {
+		s.streamSyncChecking = true
+		s.streamSyncCheckedAt = now
+		go s.refreshStreamSync(generation, target)
+	}
+	state := s.streamSyncReadiness
+	ready := s.streamSyncReady
+	checking := s.streamSyncChecking
+	s.streamSyncMu.Unlock()
+
+	return map[string]any{
+		"generation":   generation,
+		"ready":        ready,
+		"checking":     checking,
+		"publishing":   state.Publishing,
+		"playlist":     state.Generation,
+		"realHistory":  state.RealHistory,
+		"gapHistory":   state.GapHistory,
+		"partHoldBack": state.PartHoldBack,
+		"partTarget":   state.PartTarget,
+	}
+}
+
+func (s *srv) refreshStreamSync(generation int64, target float64) {
+	state := mediamtx.InspectHLS(s.Config.HLSPort, s.Config.StreamPath)
+	ready := state.Publishing && state.RealHistory+0.05 >= target
+
+	s.streamSyncMu.Lock()
+	if generation != s.streamSyncGeneration {
+		s.streamSyncMu.Unlock()
+		return
+	}
+	wasReady := s.streamSyncReady
+	s.streamSyncReadiness = state
+	s.streamSyncChecking = false
+	if ready {
+		s.streamSyncReady = true
+	}
+	s.streamSyncMu.Unlock()
+
+	if ready && !wasReady && s.Diag != nil {
+		s.Diag.Printf("stream sync ready: generation=%d real=%.3fs gaps=%.3fs holdback=%.3fs target=%.3fs playlist=%s",
+			generation, state.RealHistory, state.GapHistory, state.PartHoldBack, target, state.Generation)
+	}
 }
 
 // activationState reports the secure-link status for the console.

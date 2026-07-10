@@ -15,8 +15,10 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -305,6 +307,172 @@ func PathPublishing(hlsPort int, path string) (publishing bool, httpCode int, bo
 		prefix = prefix[:80]
 	}
 	return strings.HasPrefix(body, "#EXTM3U"), resp.StatusCode, prefix
+}
+
+// HLSReadiness describes the real media currently available in an LL-HLS
+// playlist. MediaMTX deliberately prefixes a new LL-HLS stream with seven GAP
+// segments for iOS compatibility; those gaps are seekable timeline but not
+// playable audio and must not be mistaken for startup history.
+type HLSReadiness struct {
+	Publishing   bool
+	Generation   string
+	RealHistory  float64
+	GapHistory   float64
+	PartHoldBack float64
+	PartTarget   float64
+}
+
+// InspectHLS follows MediaMTX's multivariant playlist to its media playlist and
+// reports the contiguous non-GAP history at the live edge. It is intended for
+// a cached readiness probe, not for every guest request.
+func InspectHLS(hlsPort int, streamPath string) HLSReadiness {
+	client := &http.Client{
+		Timeout:   2 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+	}
+	masterURL, _ := url.Parse(fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", hlsPort, streamPath))
+	body, finalURL, ok := fetchPlaylist(client, masterURL)
+	if !ok {
+		return HLSReadiness{}
+	}
+
+	mediaURL := finalURL
+	if variant := playlistVariantURI(body); variant != "" {
+		rel, err := url.Parse(variant)
+		if err != nil {
+			return HLSReadiness{}
+		}
+		mediaURL = finalURL.ResolveReference(rel)
+		body, mediaURL, ok = fetchPlaylist(client, mediaURL)
+		if !ok {
+			return HLSReadiness{}
+		}
+	}
+
+	state := parseHLSMediaPlaylist(body)
+	state.Publishing = true
+	state.Generation = lastPathComponent(mediaURL.Path)
+	return state
+}
+
+func fetchPlaylist(client *http.Client, playlistURL *url.URL) (string, *url.URL, bool) {
+	resp, err := client.Get(playlistURL.String())
+	if err != nil {
+		return "", playlistURL, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", resp.Request.URL, false
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil || !strings.HasPrefix(strings.TrimSpace(string(data)), "#EXTM3U") {
+		return "", resp.Request.URL, false
+	}
+	return string(data), resp.Request.URL, true
+}
+
+func playlistVariantURI(body string) string {
+	// A media playlist already has its own timeline. Otherwise the first bare
+	// URI following EXT-X-STREAM-INF is the variant to inspect.
+	if strings.Contains(body, "#EXT-X-MEDIA-SEQUENCE:") {
+		return ""
+	}
+	wantURI := false
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
+			wantURI = true
+			continue
+		}
+		if wantURI && line != "" && !strings.HasPrefix(line, "#") {
+			return line
+		}
+	}
+	return ""
+}
+
+type hlsTimelineUnit struct {
+	duration float64
+	gap      bool
+}
+
+func parseHLSMediaPlaylist(body string) HLSReadiness {
+	var state HLSReadiness
+	var units []hlsTimelineUnit
+	pendingDuration := -1.0
+	pendingGap := false
+
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimSpace(raw)
+		switch {
+		case strings.HasPrefix(line, "#EXT-X-SERVER-CONTROL:"):
+			state.PartHoldBack = playlistAttributeFloat(line, "PART-HOLD-BACK")
+		case strings.HasPrefix(line, "#EXT-X-PART-INF:"):
+			state.PartTarget = playlistAttributeFloat(line, "PART-TARGET")
+		case line == "#EXT-X-GAP":
+			pendingGap = true
+		case strings.HasPrefix(line, "#EXTINF:"):
+			value := strings.TrimPrefix(line, "#EXTINF:")
+			if comma := strings.IndexByte(value, ','); comma >= 0 {
+				value = value[:comma]
+			}
+			pendingDuration, _ = strconv.ParseFloat(value, 64)
+		case strings.HasPrefix(line, "#EXT-X-PART:"):
+			duration := playlistAttributeFloat(line, "DURATION")
+			if duration > 0 {
+				units = append(units, hlsTimelineUnit{
+					duration: duration,
+					gap:      strings.EqualFold(playlistAttribute(line, "GAP"), "YES"),
+				})
+			}
+		case line != "" && !strings.HasPrefix(line, "#") && pendingDuration >= 0:
+			units = append(units, hlsTimelineUnit{duration: pendingDuration, gap: pendingGap})
+			pendingDuration = -1
+			pendingGap = false
+		}
+	}
+
+	for _, unit := range units {
+		if unit.gap {
+			state.GapHistory += unit.duration
+		}
+	}
+	for i := len(units) - 1; i >= 0; i-- {
+		if units[i].gap {
+			break
+		}
+		state.RealHistory += units[i].duration
+	}
+	return state
+}
+
+func playlistAttributeFloat(line, key string) float64 {
+	value := playlistAttribute(line, key)
+	n, _ := strconv.ParseFloat(value, 64)
+	return n
+}
+
+func playlistAttribute(line, key string) string {
+	colon := strings.IndexByte(line, ':')
+	if colon < 0 {
+		return ""
+	}
+	prefix := key + "="
+	for _, field := range strings.Split(line[colon+1:], ",") {
+		field = strings.TrimSpace(field)
+		if strings.HasPrefix(field, prefix) {
+			return strings.Trim(strings.TrimPrefix(field, prefix), `"`)
+		}
+	}
+	return ""
+}
+
+func lastPathComponent(value string) string {
+	value = strings.TrimSuffix(value, "/")
+	if slash := strings.LastIndexByte(value, '/'); slash >= 0 {
+		return value[slash+1:]
+	}
+	return value
 }
 
 // Stop signals MediaMTX to exit and returns immediately (shutdown path).
