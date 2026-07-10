@@ -192,8 +192,8 @@ func TestLatencyTargetBase(t *testing.T) {
 		bc   broadcast.Status
 		want float64
 	}{
-		{broadcast.Status{Delivery: "llhls"}, 5.0},            // fixed LL room profile
-		{broadcast.Status{Delivery: "llhls", SegDur: 3}, 5.0}, // segdur irrelevant for llhls
+		{broadcast.Status{Delivery: "llhls"}, 7.0},            // fixed LL room deadline
+		{broadcast.Status{Delivery: "llhls", SegDur: 3}, 7.0}, // segdur irrelevant for llhls
 		{broadcast.Status{Delivery: "hls", SegDur: 1}, 10},    // 3*1+7
 		{broadcast.Status{Delivery: "hls", SegDur: 2}, 13},    // 3*2+7
 		{broadcast.Status{Delivery: "hls", SegDur: 3}, 16},    // 3*3+7
@@ -211,8 +211,8 @@ func TestLatencyTargetDoesNotMoveWithRoomHealth(t *testing.T) {
 	s := bareSrv(config.Config{})
 	bc := broadcast.Status{Delivery: "llhls"}
 	for _, health := range []string{"idle", "good", "strain", "congested"} {
-		if got := s.latencyTarget(bc, health); got != 5.0 {
-			t.Errorf("health %q moved target to %v, want fixed 5.0", health, got)
+		if got := s.latencyTarget(bc, health); got != 7.0 {
+			t.Errorf("health %q moved target to %v, want fixed 7.0", health, got)
 		}
 	}
 }

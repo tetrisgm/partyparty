@@ -31,6 +31,8 @@ import (
 	"partyparty/internal/stats"
 )
 
+const defaultLLHLSLatencyTarget = 7.0
+
 type Deps struct {
 	Config      config.Config
 	Broadcaster *broadcast.Broadcaster
@@ -1283,9 +1285,13 @@ func (s *srv) latencyTarget(bc broadcast.Status, _ string) float64 {
 		return s.Config.LatencyTarget
 	}
 	if bc.Delivery == "llhls" {
-		// The stable field baseline held two iPhones roughly 140ms apart at this
-		// target, with several seconds of buffered media and no recurring seeks.
-		return 5.0
+		// This is the room's authoritative playout deadline, not an observed peer
+		// average. The playlist advertises a ~2.5s hold-back and an uncorrected
+		// Safari 26 field client parked steadily at ~5.2s. A 7s deadline spends
+		// extra glass-to-glass latency so normal Safari cohorts all take the same
+		// deliberate startup path, while leaving enough of the 10s join budget for
+		// native settling when someone joins immediately after Go Live.
+		return defaultLLHLSLatencyTarget
 	}
 	seg := bc.SegDur
 	if seg <= 0 {

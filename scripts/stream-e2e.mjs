@@ -326,7 +326,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     '--seg-duration', '2s',
     '--part-duration', '1000ms',
     '--seg-count', '16',
-    '--latency-target', '5',
+    '--latency-target', '7',
     '--name', 'partyparty e2e',
   ], {
     cwd: ROOT,
@@ -495,7 +495,7 @@ paths:
           delivery: 'llhls',
           llhlsAvailable: true,
           llhlsRealCert: true,
-          latencyTarget: 5,
+          latencyTarget: 7,
           health: {},
           urls: { primary: `http://127.0.0.1:${webPort}/`, ip: '127.0.0.1', port: webPort, interfaces: [] },
         });
@@ -731,6 +731,7 @@ async function assertGuestActions(page) {
 
 async function driveGuest(stack, label, browser, session = null, opts = {}) {
   let ownSession = false;
+  let joinStartedAt = 0;
   if (!session) {
     session = await createGuestSession(stack, browser, opts);
     ownSession = true;
@@ -741,7 +742,7 @@ async function driveGuest(stack, label, browser, session = null, opts = {}) {
     if (ownSession) {
       await page.goto(stack.pageUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForSelector('#player', { state: 'attached', timeout: 10000 });
-      await startGuestPlayback(page);
+      joinStartedAt = await startGuestPlayback(page);
     }
 
     const manifestUrl = await waitFor(() => {
@@ -749,6 +750,8 @@ async function driveGuest(stack, label, browser, session = null, opts = {}) {
       return hit && hit.url;
     }, { timeoutMs: 15000, label: 'LL-HLS manifest fetch' });
     const media = await waitForMediaReady(page, 25000);
+    const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
+    if (joinMs > 11000) fail(`muted startup exceeded the 10s product budget: ${joinMs}ms`);
     const progress = await assertPlaybackProgress(page);
     const clientPlatform = await page.evaluate(() => typeof platform === 'string' ? platform : 'unknown');
     if (ENGINE === 'webkit' && clientPlatform !== 'native') {
@@ -762,7 +765,7 @@ async function driveGuest(stack, label, browser, session = null, opts = {}) {
     if (ownSession && opts.checkActions !== false) await assertGuestActions(page);
 
     const audioResult = audio.skipped ? 'native-media=advancing' : `rms=${audio.rmsMean.toFixed(5)} max=${audio.rmsMax.toFixed(5)}`;
-    log(`PASS browser ${label}: platform=${clientPlatform} manifest=${manifestUrl} readyState=${media.readyState} bufferedEnd=${media.bufferedEnd.toFixed(2)}s delta=${progress.delta.toFixed(2)}s ${audioResult}`);
+    log(`PASS browser ${label}: platform=${clientPlatform} join=${joinMs}ms manifest=${manifestUrl} readyState=${media.readyState} bufferedEnd=${media.bufferedEnd.toFixed(2)}s delta=${progress.delta.toFixed(2)}s ${audioResult}`);
     if (ownSession && !opts.keepOpen) await context.close();
     return { session, manifestUrl, media, progress, audio };
   } catch (err) {
@@ -801,8 +804,9 @@ async function startGuestPlayback(page) {
   const welcome = page.locator('#welGo');
   try {
     await welcome.waitFor({ state: 'visible', timeout: 3000 });
+    const startedAt = Date.now();
     await welcome.click({ timeout: 5000 });
-    return;
+    return startedAt;
   } catch {}
 
   await page.waitForFunction(() => {
@@ -810,7 +814,9 @@ async function startGuestPlayback(page) {
     const label = document.getElementById('btnlabel')?.textContent || '';
     return btn && !btn.classList.contains('preparing') && /tap to listen|resume/i.test(label);
   }, { timeout: 15000 });
+  const startedAt = Date.now();
   await page.locator('#btn').click({ timeout: 5000 });
+  return startedAt;
 }
 
 async function waitForMediaReady(page, timeoutMs) {
@@ -981,6 +987,9 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
     if (Number.isFinite(a.latency) && Number.isFinite(b.latency)) {
       samples.push({
         a: a.latency, b: b.latency, spread: Math.abs(a.latency - b.latency),
+        targetA: a.target, targetB: b.target,
+        errorA: Number.isFinite(a.target) ? a.latency - a.target : null,
+        errorB: Number.isFinite(b.target) ? b.latency - b.target : null,
         rawA: a.currentTime, rawB: b.currentTime, rateA: a.rate, rateB: b.rate,
         refA: a.ref, refB: b.ref, alignA: a.alignSeeks, alignB: b.alignSeeks,
         audibleA: a.audibleSeeks, audibleB: b.audibleSeeks,
@@ -992,11 +1001,21 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   const sorted = samples.map((s) => s.spread).sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)];
   const p90 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))];
+  const aLatencies = samples.map((s) => s.a).sort((a, b) => a - b);
+  const bLatencies = samples.map((s) => s.b).sort((a, b) => a - b);
+  const aMedian = aLatencies[Math.floor(aLatencies.length / 2)];
+  const bMedian = bLatencies[Math.floor(bLatencies.length / 2)];
+  const targetErrors = samples.flatMap((s) => [s.errorA, s.errorB]).filter(Number.isFinite).map(Math.abs).sort((a, b) => a - b);
+  const targetMedian = targetErrors[Math.floor(targetErrors.length / 2)];
+  const targetP90 = targetErrors[Math.min(targetErrors.length - 1, Math.floor(targetErrors.length * 0.9))];
   if (samples.some((s) => Math.abs(s.rateA - 1) > 0.001 || Math.abs(s.rateB - 1) > 0.001)) {
     fail(`room sync changed playback rate: ${JSON.stringify(samples)}`);
   }
   if (samples.some((s) => s.refA !== 'pdt' || s.refB !== 'pdt')) {
     fail(`room sync did not use each player's PROGRAM-DATE-TIME: ${JSON.stringify(samples)}`);
+  }
+  if (targetErrors.length !== samples.length * 2 || samples.some((s) => Math.abs(s.targetA - 7) > 0.001 || Math.abs(s.targetB - 7) > 0.001)) {
+    fail(`room sync did not use the authoritative 7s deadline: ${JSON.stringify(samples)}`);
   }
   if (samples.some((s) => s.alignA > 2 || s.alignB > 2)) {
     fail(`startup alignment made more than two muted seeks: ${JSON.stringify(samples)}`);
@@ -1010,8 +1029,15 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   if (median > 1.0 || p90 > 1.0) {
     fail(`two-client sync spread too wide: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
-  log(`PASS browser room-sync ${label}: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, local PDT, <=2 muted startup seeks)`);
-  return { median, p90, samples };
+  // Headless WebKit does not reproduce the 0.6-1.0s AVPlayer hold observed on
+  // real iOS after a muted seek, so the field-derived launch lead appears here
+  // as an early offset. The product contract remains sub-second to the common
+  // deadline, while the separate spread check catches peer disagreement.
+  if (targetMedian > 1.0 || targetP90 > 1.0) {
+    fail(`listeners missed the authoritative deadline: median error=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
+  }
+  log(`PASS browser room-sync ${label}: peers=${aMedian.toFixed(3)}s/${bMedian.toFixed(3)}s; spread median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s; deadline error median=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s (${samples.length} samples, local PDT, <=2 muted startup seeks)`);
+  return { median, p90, aMedian, bMedian, targetMedian, targetP90, samples };
 }
 
 async function startContinuityProbe(page) {

@@ -46,8 +46,8 @@ type Config struct {
 	StartOffset float64
 
 	// LatencyTarget pins every listener to the same wall-clock delay behind the
-	// DJ (seconds). 0 = auto (plain HLS varies by segment size; LL-HLS: 7). The room
-	// dropping together matters more than absolute closeness to the DJ.
+	// DJ (seconds). 0 = auto (plain HLS varies by segment size; LL-HLS: 7).
+	// The room dropping together matters more than absolute closeness to the DJ.
 	LatencyTarget float64
 }
 
@@ -77,7 +77,7 @@ func Parse() Config {
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")
-	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "1000ms"), "LL-HLS part duration (ONE room profile now: room target ~7s, so parts trade closeness for stability)")
+	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "1000ms"), "LL-HLS part duration (one room profile: 7s target, so parts trade closeness for stability)")
 	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "2s"), "LL-HLS segment duration")
 	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 16), "LL-HLS segments kept in the playlist (16x2s = 32s window: a guest parked at the 7s room target never falls off the back, and aligned starts have history to seek into)")
 	flag.Float64Var(&c.StartOffset, "start-offset", 0, "EXPERIMENTAL: seconds before live to ask players to start (injects #EXT-X-START:TIME-OFFSET=-N into the plain-HLS playlist; 0 = off)")

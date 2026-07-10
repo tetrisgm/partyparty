@@ -671,9 +671,11 @@
     // is not offered (no insecure/slow fallback). STREAM stays only as a
     // dev/localhost escape hatch.
     let LLSTREAM = null;
-    // The room target is a fixed startup position, never a live control loop.
+    // The room target is an authoritative playout deadline, never a live peer
+    // average or control loop. Every listener can add or remove delay once,
+    // while muted, without a faulty device changing anyone else's playback.
     // Once audio opens, continuity wins: one slow device cannot move another.
-    const ROOM_TARGET_FALLBACK = 5;
+    const ROOM_TARGET_FALLBACK = 7.0;
     let latencyTarget = 0, streamStartedAt = 0;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let mediaClockTime = 0, mediaClockAt = 0;
@@ -1140,15 +1142,28 @@
     // boundary differs between Safari 26 and 27).
     const START_ALIGN_TOLERANCE = 0.35;
     const SYNC_WARN_AT = 1.0;
-    const START_ALIGN_WAIT_MS = 2500;
+    const STARTUP_BUDGET_MS = 10000;
+    const STARTUP_MIN_MS = 7000;
+    const STARTUP_BUFFER_MIN = 2.5;
     const NATIVE_ALIGN_SETTLE_MS = 4000;
-    const AUDIO_GATE_MS = 500;
+    // Field telemetry from native Safari shows that AVPlayer can hold its
+    // program clock for roughly 0.6-1.0s while a muted startup seek becomes
+    // audible. Aim the final muted seek slightly ahead so steady playback,
+    // not the transient currentTime assignment, lands on the room target.
+    const NATIVE_UNMUTE_LEAD = 0.8;
     let needsAlign = false, alignGeneration = 0;
     let alignedGeneration = -1;
     let alignPromise = null;
     let joinMuted = false, joinReason = '', joinStartedAt = 0;
     const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const startupTimeLeft = () => Math.max(0, STARTUP_BUDGET_MS - (joinStartedAt ? Date.now() - joinStartedAt : 0));
+    async function waitForMinimumSetup(generation){
+      while (joinStartedAt && Date.now() - joinStartedAt < STARTUP_MIN_MS
+          && generation === alignGeneration && started && !player.paused && !userPaused && !yielded) {
+        await wait(Math.min(100, STARTUP_MIN_MS - (Date.now() - joinStartedAt)));
+      }
+    }
     function beginAlignedAudible(reason){
       // Native AVPlayer can emit pause/playing while a seek rebuilds its live
       // buffer. Those events are part of this attachment's startup transaction,
@@ -1166,7 +1181,7 @@
       setStatus('syncing with the room…');
       return true;
     }
-    function settleAfterSeek(){
+    function settleAfterSeek(maxWaitMs = 800){
       return new Promise(resolve => {
         let done = false;
         const finish = () => {
@@ -1176,25 +1191,25 @@
           resolve();
         };
         player.addEventListener('seeked', finish, { once: true });
-        setTimeout(finish, 800);
+        setTimeout(finish, Math.max(0, Math.min(800, maxWaitMs)));
       });
     }
-    async function waitForStartupBuffer(generation){
-      const deadline = Date.now() + 2500;
+    async function waitForStartupBuffer(generation, maxWaitMs = 2500){
+      const deadline = Date.now() + Math.max(0, Math.min(maxWaitMs, startupTimeLeft()));
       while (Date.now() < deadline && generation === alignGeneration && started && !player.paused && !userPaused && !yielded) {
-        if (player.readyState >= 3 && bufferedAhead() >= 1) return true;
+        if (player.readyState >= 3 && bufferedAhead() >= STARTUP_BUFFER_MIN) return true;
         await wait(100);
       }
-      return player.readyState >= 3;
+      return player.readyState >= 3 && bufferedAhead() >= STARTUP_BUFFER_MIN;
     }
-    function alignSeek(target, reason){
+    function alignSeek(target, reason, force){
       // This assignment is allowed only while the startup gate is muted.
       // After openAudioGate(), no application code changes currentTime.
       if (!joinMuted || !player.muted) return null;
       const lat = measureLatency();
       if (lat == null || player.readyState < 2) return null;
       const delta = lat - target;              // >0 = too far behind → jump forward
-      if (Math.abs(delta) <= START_ALIGN_TOLERANCE) return false;
+      if (!force && Math.abs(delta) <= START_ALIGN_TOLERANCE) return false;
       if (generationAlignSeeks >= 2) return false;
       let wanted = mediaNow() + delta;
       try {
@@ -1220,13 +1235,23 @@
       });
       return true;
     }
+    async function alignSeekBeforeAudio(target, reason, seekingWaitMs = 150){
+      // Media elements dispatch `seeking` asynchronously. Keep the gate closed
+      // until that transition begins so neither diagnostics nor the listener
+      // can observe an audible seek.
+      let started;
+      const seeking = new Promise(resolve => { started = resolve; });
+      const onSeeking = () => started();
+      player.addEventListener('seeking', onSeeking, { once: true });
+      // Every corrected startup gets an explicit final assignment. Without it,
+      // a player already near the launch position can skip platform settling
+      // compensation or have hls.js's initial handoff overwrite the target.
+      const result = alignSeek(target, reason, true);
+      if (result === true) await Promise.race([seeking, wait(seekingWaitMs)]);
+      player.removeEventListener('seeking', onSeeking);
+      return result;
+    }
     async function openAudioGate(generation, aligned){
-      let gateWait = 0;
-      if (clockSynced) {
-        const phase = ((serverNow() % AUDIO_GATE_MS) + AUDIO_GATE_MS) % AUDIO_GATE_MS;
-        gateWait = phase < 15 ? 0 : AUDIO_GATE_MS - phase;
-      }
-      if (gateWait) await wait(gateWait);
       if (generation !== alignGeneration || !started || player.paused || userPaused || yielded || !live) return;
       const reason = joinReason || 'join';
       const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
@@ -1235,7 +1260,10 @@
       player.muted = false;
       if (!sumPlayStart) sumPlayStart = Date.now();
       claimAudio(); setPlayingUI(true); setStatus('live');
-      logEvent('audio-open', { why: reason, aligned: !!aligned, ref: syncReference(), lat: rnd3(measureLatency()), gate: gateWait, joinMs });
+      logEvent('audio-open', {
+        why: reason, aligned: !!aligned, ref: syncReference(), lat: rnd3(measureLatency()), joinMs,
+        lead: useNative && generationAlignSeeks > 0 ? NATIVE_UNMUTE_LEAD : 0,
+      });
     }
     async function alignOnce(){
       if (alignPromise) return alignPromise;
@@ -1247,33 +1275,66 @@
         // Let hls.js finish its own initial live-position handoff before the
         // single muted correction. Seeking during that handoff gets overwritten.
         if (!useNative) await wait(800);
-        const deadline = Date.now() + START_ALIGN_WAIT_MS;
+        const deadline = Date.now() + startupTimeLeft();
         let result = null;
-        // Wait briefly for PROGRAM-DATE-TIME and seekable data, then make at
-        // most one correction while muted. Never loop on AVPlayer's tolerance.
+        // A just-started broadcast does not yet have 7 seconds of seekable
+        // history. Keep the setup gate muted until the fixed deadline exists,
+        // bounded by the ten-second join budget, then make one correction.
         while (Date.now() < deadline && generation === alignGeneration && started && !player.paused && !userPaused && !yielded) {
           result = alignSeek(roomTarget(), 'startup');
           if (result !== null) break;
           await wait(100);
         }
-        if (result === true) {
-          await settleAfterSeek();
-          if (useNative) {
-            // `seeked` only acknowledges the requested position. AVPlayer may
-            // still rebuild its live buffer and settle one or more HLS parts
-            // away. Keep that invisible, then make one final measured move.
-            await wait(NATIVE_ALIGN_SETTLE_MS);
-            if (generation !== alignGeneration || !started || player.paused || userPaused || yielded) return;
-            const confirm = alignSeek(roomTarget(), 'startup-confirm');
-            if (confirm === true) await settleAfterSeek();
-            logEvent('align-settled', {
-              corrected: confirm === true, ref: syncReference(), lat: rnd3(measureLatency()),
-              target: rnd3(roomTarget()), seeks: alignSeeks,
-            });
-          }
+        if (result === true) await settleAfterSeek(startupTimeLeft());
+        // The common 7s deadline only helps if the corresponding media exists.
+        // Keep every join muted long enough for a just-created LL-HLS session
+        // to accumulate that history before the final platform-specific seek.
+        await waitForMinimumSetup(generation);
+        if (generation !== alignGeneration || !started || player.paused || userPaused || yielded) return;
+        if (useNative && result === true) {
+          // `seeked` only acknowledges the requested position. AVPlayer may
+          // still rebuild its live buffer and settle one or more HLS parts
+          // away. Keep that invisible, make sure the corrected position has
+          // data, then make one final measured move immediately before
+          // unmuting. Waiting after this last assignment is what produced the
+          // repeatable Safari 27 +1.3-1.6s cohort offset in field telemetry.
+          // Preserve enough of the ten-second budget for buffer validation
+          // and the final compensated seek. A stream that only just grew
+          // enough history gets a shorter settling pass, never a longer join.
+          const settleMs = Math.min(NATIVE_ALIGN_SETTLE_MS, Math.max(0, startupTimeLeft() - 1200));
+          if (settleMs) await wait(settleMs);
+          if (generation !== alignGeneration || !started || player.paused || userPaused || yielded) return;
+          await waitForStartupBuffer(generation, Math.min(1000, startupTimeLeft()));
+          if (generation !== alignGeneration || !started || player.paused || userPaused || yielded) return;
+          const launchTarget = Math.max(1.5, roomTarget() - NATIVE_UNMUTE_LEAD);
+          const confirm = await alignSeekBeforeAudio(launchTarget, 'startup-final');
+          logEvent('align-settled', {
+            corrected: confirm === true, ref: syncReference(), lat: rnd3(measureLatency()),
+            target: rnd3(roomTarget()), launchTarget: rnd3(launchTarget), lead: NATIVE_UNMUTE_LEAD, seeks: alignSeeks,
+          });
+        } else if (!useNative && result !== null) {
+          // hls.js can finish its own startup handoff after the first media
+          // `playing` event, especially while a new stream is still replacing
+          // initial GAP segments. Let that happen invisibly, verify headroom,
+          // then make the authoritative assignment immediately before audio.
+          await waitForStartupBuffer(generation, Math.min(1000, startupTimeLeft()));
+          if (generation !== alignGeneration || !started || player.paused || userPaused || yielded) return;
+          // Chromium can dispatch `seeking` more than 150ms after assignment.
+          // Wait longer for that transition and keep muted through `seeked`;
+          // unlike native AVPlayer, hls.js has no post-seek hold to compensate.
+          const confirm = await alignSeekBeforeAudio(roomTarget(), 'startup-final', Math.min(1000, startupTimeLeft()));
+          if (confirm === true) await settleAfterSeek(startupTimeLeft());
+          logEvent('align-settled', {
+            corrected: confirm === true, ref: syncReference(), lat: rnd3(measureLatency()),
+            target: rnd3(roomTarget()), launchTarget: rnd3(roomTarget()), lead: 0, seeks: alignSeeks,
+          });
+        } else {
+          await waitForStartupBuffer(generation, startupTimeLeft());
         }
-        await waitForStartupBuffer(generation);
-        if (result === null) logEvent('align-skip', { ref: syncReference(), lat: rnd3(measureLatency()), target: rnd3(roomTarget()) });
+        if (result === null) logEvent('align-skip', {
+          why: 'startup-budget', ref: syncReference(), lat: rnd3(measureLatency()), target: rnd3(roomTarget()),
+          joinMs: joinStartedAt ? Date.now() - joinStartedAt : 0,
+        });
         if (joinMuted) await openAudioGate(generation, result !== null);
       })();
       try {

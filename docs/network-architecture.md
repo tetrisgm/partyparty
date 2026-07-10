@@ -92,8 +92,8 @@ it *through the DHCP resolver guests will use*, then HTTPS-GET the stream) and s
    cert. *Optional "no extra gear" bonus mode — best-effort; rests on the unproven Tahoe AP path.*
 3. **Internet-having hotspot** (iPhone Personal Hotspot) + self-test passes → app-managed **dynamic
    public DNS**. *Opportunistic; fails on MiFis/travel routers that ship rebind protection on.*
-4. **Anything else** → **plain HTTP HLS (~3s)**, Mac's IP in the QR. *Universal safety net — no cert,
-   no DNS, works on any network offline, still plays locked. Guests always get audio; latency adapts.*
+4. **Anything else** → do not advertise a guest stream. Surface the DNS/TLS
+   failure to the DJ; HTTPS LL-HLS is the only supported guest transport.
 
 ---
 
@@ -104,7 +104,7 @@ it *through the DHCP resolver guests will use*, then HTTPS-GET the stream) and s
 2. **Router auto-config (generic OpenWrt `uci`/SSH)** + the manual one-line path for non-OpenWrt
    routers + LL-HLS serving + **end-to-end on real hardware** (open SSID → resolve → valid HTTPS →
    audio on a real iPhone; load-test dozens of clients). Validate against ≥1 reference OpenWrt device.
-3. **Self-test + auto-fallback ladder**, including the plain-HTTP safety net (the any-hardware guarantee).
+3. **Self-test + clear secure-link diagnostics** without a plain-HTTP guest fallback.
 4. **Optional:** Mac-as-AP bonus mode (run the Tahoe Internet-Sharing experiment; ship only if reliable).
 
 ## To verify on hardware (don't assume)
@@ -113,8 +113,8 @@ it *through the DHCP resolver guests will use*, then HTTPS-GET the stream) and s
 - Real iPhone end-to-end on the open SSID; client-count + LL-HLS throughput ceiling.
 - Mac↔router over Wi-Fi (no Ethernet adapter) quality vs. the 2.5GbE path.
 - iOS captive/Private-Relay behavior resolving a `.app` name on the offline LAN.
-- A "compatibility self-check" the app can run against an unknown router (can it SSH/uci? else fall to
-  manual/plain-HTTP) so support degrades gracefully across arbitrary gear.
+- A compatibility self-check the app can run against an unknown router, with a
+  clear manual secure-DNS setup when automatic configuration is unavailable.
 
 ---
 
@@ -146,14 +146,16 @@ is *not* guaranteable in a browser and must not be promised.
 
 | Path | Glass-to-glass | Basis |
 |---|---|---|
-| hls.js (Android/desktop, LAN) | **~0.8–1.2 s** | near the LL-HLS structural floor |
-| **iPhone Safari native** (the majority) | **~2–3 s realistic** (best ~1.4 s, non-deterministic spikes) | `PART-HOLD-BACK` is the only lever; native parks ~1:1 at it. iOS 26 did **not** change this (no LL-HLS changes in WWDC 2025 / Safari 26 notes). The old "3–5 s / spikes to 10 s" was config-driven (#2317, 6 s segments) and **no longer applies** to our 200 ms-part / ~500 ms-hold-back config. |
+| LL-HLS playlist | **~2.508 s advertised hold-back** | measured from the generated 1.003s-part playlist |
+| hls.js (Android/desktop, LAN) | **7 s shipped target** | deliberately delayed to the common room clock |
+| **iPhone Safari native** (the majority) | **~5.23 s uncorrected field baseline; 7 s target** | iOS 26 held 5.232–5.239s with zero seeks; each release remains hardware-verified on iOS 26/27 |
 
-Latency budget: capture→ffmpeg→RTSP→MediaMTX sums to **<150 ms** (≈30–50 ms recoverable — a rounding
-error). The dominant terms are **part assembly (~200 ms) + part-hold-back (~500 ms, hardcoded 2.5× in
-gohlslib, not tunable)**, and on iPhone the **native player's own buffer (seconds)**. *VERIFY:* settled
-iPhone live-edge at part=200 ms / hold-back≈500 ms; sweep hold-back (400/500/750 ms) to confirm ~1:1
-tracking.
+Latency budget: the shipped MediaMTX/gohlslib playlist advertises 2.5075s of protocol hold-back
+(2.5× its measured 1.003s part target). Native Safari then contributes roughly another 2.7s of
+player buffering in the clean iOS 26 field sample. The fixed 7s room deadline deliberately adds about
+1.8s over that observed native floor; Chrome carries about 4.5s over protocol hold-back because it must
+meet Safari on one easy-to-reach position.
+The separate ten-second muted setup budget is not added to steady playback latency.
 
 ## Codec / encoder / transport — nothing meaningful to gain (verdict)
 
@@ -170,52 +172,44 @@ tracking.
   background restriction; the MediaPlayback assertion keeps page JS alive) — but there are zero field
   reports, so it stays **unverified/device-gated** (see the audit's rank-11 spike) and iPhone stays on
   the native path until a 30-60min locked soak passes.
-- **Real changes worth doing:** (a) **Fix the no-op latency control** — the DJ's low/balanced/stable mode
-  only feeds the plain-HTTP fallback `hls_time`; it never reaches LL-HLS (`main.go` hardcodes
-  `SegDur:"1s", PartDur:"200ms", SegCount:7`). Wire it to MediaMTX. (b) **Default bitrate 256k → 128–160k**
-  (transparent for music, ~half the airtime; robustness, not latency). (c) Add free ffmpeg hygiene flags
-  (`-fflags +nobuffer -flags +low_delay -probesize 32 -analyzeduration 0`) to the f32le/mac branch only —
-  ~0 perceptible but harmless.
+- **Current shipped transport:** `PartDur:1s`, `SegDur:2s`, `SegCount:16`, AAC-LC at 320k. Change these
+  only with real iPhone stability and inter-listener measurements; reducing the advertised hold-back
+  does not prove Safari will reduce its own buffer.
 - **Native Swift LL-HLS rewrite: not worth it for latency** (~30–120 ms saved, ~0 on iPhone; high
   effort/risk). ffmpeg-emits-LL-HLS is *verified impossible* (no EXT-X-PART support). Keep MediaMTX.
 
 ## Inter-listener sync — the mechanism that actually fits the constraints
 
-The naïve approach (per-device JS measures each playhead and nudges it) is **dead on arrival on iPhone**:
-iOS gives no live-playhead write, live HLS is non-seekable, `playbackRate` smears music, and — fatally —
-**iOS freezes all JavaScript when the phone locks/backgrounds**, which is exactly the required state. So
-per-device active correction cannot run when it's needed.
+The Mac is the only authority. Its `/api/time` endpoint supplies an NTP-style wall-clock offset and the
+playlist's `EXT-X-PROGRAM-DATE-TIME` maps each media position onto that clock. The room advertises one
+fixed **7-second playout deadline**. It is not computed from connected peers, so a slow, fast, or broken
+device cannot move anyone else.
 
-**The mechanism that works is passive and lock-safe:** every device keys off the **same server-advertised
-`PART-HOLD-BACK`**, and the native player **parks ~1:1 at it** — so all devices sit at the *same distance
-from live* with **no per-device JS at all**. That survives lock by construction. Inter-device spread then
-= (parking variance across devices) + (drift). Drift is tiny ongoing (~0.3 s/hour, clock crystals); the
-real enemy is **rebuffer events** (Wi-Fi blips), each of which shifts a device's offset and may not snap
-back.
+Joining is a bounded, muted transaction and is the only time synchronization may change playback:
 
-So the strategy — and it *uses* the cheap glass-to-glass budget:
-1. **One uniform target latency T for everyone**, set via the server hold-back (the only lock-safe lever).
-2. **Spend latency on a generous, stable buffer** to (a) make every device park at the same padded live
-   edge and (b) make rebuffers rare — killing the drift that spreads devices. ("iPhone: optimize for
-   stability over minimum latency" directly serves sync.)
-3. **Pick T with an outlier-robust solver** (so one terrible phone doesn't drag the whole room up):
-   measure per-device latency where available (`hls.latency` on hls.js; `getStartDate()+currentTime` on
-   iOS, telemetry-only and `Invalid Date`-guarded), trim slow outliers with **median + MAD** (not
-   mean/std — outliers poison those), set **T = max(survivors) + ~250 ms margin** (≈P90 fallback), clamp
-   T ≤ ~5 s, with **hysteresis** and **asymmetry** (raise T promptly = smooth added buffer; lower T slowly
-   = an audible forward skip). Auto-**engage when the spread is bad enough to justify the latency cost**,
-   not always-on.
+1. Allow up to **10 seconds** for the authoritative timeline and 2.5 seconds of buffered headroom.
+2. Compute `error = measured program delay - 7s`.
+3. Seek once while muted in either direction: a 5.2-second listener seeks backward to add delay; an
+   8-second listener seeks forward to remove delay.
+4. Native Safari gets one settling pass and a final field-calibrated launch seek immediately before
+   unmute. This absorbs the Safari 27 post-seek hold seen in device telemetry.
+5. Open audio at rate 1.0. After that point there is no peer average, playback-rate convergence, periodic
+   seek, or room-wide reaction to another listener's health.
 
-Realistic outcome: **sub-second inter-device is plausibly reachable lock-safe** when the config is kept
-stable; ~200 ms is the aspirational upside, **iPhone-bound and *VERIFY*-gated**. Whole-room reaction sync
-within a fraction of a beat is a massive improvement over today's 1–5 s spread.
+If a phone is genuinely interrupted long enough to lose its live position, that phone reattaches and
+performs a new muted startup transaction. Healthy listeners continue untouched. If PROGRAM-DATE-TIME is
+unavailable, the join budget expires into native playback and telemetry records the missing clock rather
+than inventing a peer-derived target.
+
+Realistic outcome: **sub-second inter-device timing with uninterrupted playback**. A tighter continuous
+controller is deliberately rejected because audible corrections are worse than a bounded startup offset.
 
 Per-platform reality:
 
 | | Align precisely? | Holds while locked? | Inter-device spread |
 |---|---|---|---|
-| hls.js (Android/desktop) | yes (JS control, foregrounded) | coasts; JS throttled when backgrounded | ~200–500 ms |
-| iPhone native | no per-device write — relies on uniform hold-back parking | yes (no JS needed) | parking-variance + rebuffer drift; *VERIFY* — likely sub-second if stable, worse with rebuffers |
+| hls.js (Android/desktop) | one muted PDT startup correction | coasts at rate 1; JS may throttle | sub-second target |
+| iPhone native | one or two muted startup seeks | native audio continues while locked | sub-second target |
 
 A mixed locked crowd is **bounded by iPhone.** Side-by-side phones playing *out loud* will still
 comb-filter (<25 ms unreachable) — tell users that case is physically out of reach.
@@ -229,71 +223,41 @@ number** ("Set PA delay = NNN ms").
 
 iPhone-first. **Not a literal single code path** (Chrome has no native HLS → needs hls.js; iPhone native
 `<audio>` is the lock-safe path; hls.js-over-Managed-MSE surviving lock is *unproven* → iPhone stays
-native). But the **strategy is identical**: read the server `PART-HOLD-BACK`, no rate convergence, no
-per-device loop. Configure hls.js to *behave like the native player* — neuter Android, don't smarten it:
-
-> **CORRECTED 2026-07-01 (pipeline audit):** the block previously recommended here —
-> `liveMaxLatencyDuration: 6` **without** `liveSyncDuration` — is an **illegal hls.js config**:
-> the vendored 1.5.17 constructor **throws** (`"liveMaxLatencyDuration" must be greater than
-> "liveSyncDuration"`), which killed ALL Android/desktop playback (the exception surfaced as a
-> silent unhandled rejection — the listen button did nothing). Also verified: any user-set
-> `liveSyncDuration`/`liveSyncDurationCount` **overrides the playlist PART-HOLD-BACK** (user
-> config wins in hls.js), so that pair is only legal/harmless in **plain-HLS** mode.
+native). The strategy is identical: use the Mac/PDT clock, align once while muted, then prioritize
+continuity.
 
 The shipped config (`web/listener.html`) is:
 
 ```js
 const cfg = {
-  lowLatencyMode: ll,                 // LL-HLS: parks at the server PART-HOLD-BACK (== native)
-  maxLiveSyncPlaybackRate: 1.05,      // gentle pitch-preserved catch-up: kills the post-stall ratchet
+  lowLatencyMode: true,
+  liveSyncDuration: 7,
+  liveMaxLatencyDuration: 12,
+  maxLiveSyncPlaybackRate: 1.0,
+  liveSyncOnStallIncrease: 0,
   liveDurationInfinity: true,
   backBufferLength: 30,
   manifestLoadPolicy / playlistLoadPolicy / fragLoadPolicy:
-    { retryDelayMs: 500, maxRetryDelayMs: 2000, maxNumRetry: 1e9 },  // fast bounded retries
+    { retryDelayMs: 500, maxRetryDelayMs: 2000, maxNumRetry: 1e9 },
 };
-if (!ll) {          // plain HLS ONLY (no PART-HOLD-BACK exists, so the override is harmless)
-  cfg.liveSyncDuration = 3;           // park 3 target-durations back — native parity
-  cfg.liveMaxLatencyDuration = 6;     // legal ONLY together with liveSyncDuration
-}
-// LL-HLS backstop is MANUAL (in the heartbeat interval):
-//   if (hls.latency > 6 && hls.liveSyncPosition != null) player.currentTime = hls.liveSyncPosition;
 ```
 
 Fatal-error recovery must be per-type: `MEDIA_ERROR → hls.recoverMediaError()` (plus
 `swapAudioCodec()` on repeat) — `startLoad()` cannot rebuild a broken MediaSource and left
 Androids permanently silent after a decode error. Keep gesture-start, Media Session,
 `visibilitychange` resume (gated on a `userPaused` flag so a deliberate pause is never
-overridden), vendored hls.min.js, and the no-PWA posture.
+overridden), vendored hls.min.js, and the no-PWA posture. A stale or failed player may reattach itself;
+that recovery never changes room state or an already healthy listener.
 
-**On `maxLiveSyncPlaybackRate: 1.05` (supersedes the earlier "OFF" advice):** Chrome's
-`preservesPitch` defaults to true, so 5% catch-up is inaudible time-stretch, and it converges a
-post-stall Android back to the SAME hold-back target iPhones park at — better inter-listener
-spread with fewer audible backstop skips, not worse. This is a deliberate, narrow deviation
-from the "behave exactly like native" doctrine.
+## iOS 26 / 27 and macOS 26 baseline
 
-**Correction folded in:** an earlier pass claimed "deleting the latency ceiling has no penalty" — *wrong*.
-hls.js #6350 documents `targetLatency` drifting 1.4 s → 4.4 s over ~1 hour after stalls with no
-auto-recovery (and rate-sync is *not* the fix). Over a 1–4 hour party on flaky Wi-Fi, stalls are
-guaranteed, so the neutered hls.js needs the coarse `liveMaxLatencyDuration: 6` backstop (one rare
-skip-to-live, exactly like native recovering) or Android ends up *worse* than native after stalls.
-
-**Honest tradeoff:** this deliberately degrades Android (loses tight-to-live + auto-catch-up) in exchange
-for whole-room uniformity. Parity is only as tight as the *worst* platform's stability: if iPhone 200 ms
-parts stall (below), 350 ms parts raise the hold-back floor and Android is dragged up to match — never
-the reverse.
-
-## iOS 26 / macOS 26 baseline
-
-- **Collapses the verification matrix to one OS.** iOS 26 did **not** lower the iPhone latency floor.
-- **iPhone stability risk at 200 ms parts:** field reports (WINK) saw iPhone-only stalls over 20–60 min at
-  200 ms parts; recommended **350 ms parts for iPhone**. Audio-only is lighter (should help) but *VERIFY*.
-  If 200 ms stalls, 350 ms parts → higher hold-back floor → higher T for everyone.
-- **Locked playback very likely holds — but UNVERIFIED; this gates the entire product.** The iOS 26 audio
-  regressions are **PWA-scoped and Web-Audio-scoped** (the two paths we deliberately avoid); plain
-  Safari-tab `<audio>` is unaffected in the release notes. Load-bearing practices already correct in
-  `web/listener.html`. **One tightening:** call `mediaSession()` *synchronously within the click gesture*
-  (before `await player.play()`), so the session registers even if the first `play()` rejects. **Never
-  ship a PWA manifest / `apple-mobile-web-app-capable`** — that's exactly the surface iOS 26 broke.
+- The shipped 1s-part/2s-segment profile has been materially more stable than
+  the earlier sub-500ms experiments. Keep it until device soaks justify a change.
+- Native Safari `<audio>` and Media Session remain load-bearing for locked and
+  background playback; do not replace them with Web Audio or a PWA path.
+- iOS 26 and 27 can choose different native startup positions. The fixed PDT
+  deadline and muted bidirectional correction absorb that difference without
+  changing audible playback.
 - **macOS: pin to 26.1+.** Free capture-quality win (Tahoe dropped the system-wide capture low-pass
   filter; fixed pro-interface/sample-rate bugs as of 26.1; 26.0 had two capture regressions). No latency
   change. Keep ScreenCaptureKit (Core Audio Process Taps = a future permission-UX refactor, 0 latency).
@@ -312,38 +276,21 @@ one), measured latency, health, join time.
 
 ## Must-verify-on-hardware (single OS, priority order)
 
-1. **Locked-screen survival (THE GATE):** tap-to-start → lock 30+ min → multi-hour soak with DJ live, on
-   a real iOS 26 iPhone. Currently pure inference; gates the product.
+1. **Locked-screen survival:** tap-to-start → lock 30+ min → multi-hour soak with DJ live on current
+   iOS 26 and 27 devices.
 2. **The pocket test:** lock phone, attenuate Wi-Fi behind a body 3–10 s, confirm native HLS recovers
    near-live with zero interaction (validates the whole HLS-over-progressive choice).
-3. **Settled iPhone live-edge latency** at 200 ms/500 ms (lands in 1.4–3 s, not silently 3 s+); hold-back
-   sweep confirms ~1:1.
-4. **iPhone 200 ms-part stability** over 30–60 min; fall to 350 ms if it stalls.
-5. **Inter-device spread** across 2–3 iPhones side by side (the 10/10 metric) — how tight does uniform
-   hold-back parking actually get, and how much do rebuffers spread it.
+3. **Settled iPhone latency around the 7s deadline** and the raw startup error before correction.
+4. **Inter-device spread** across iOS 26, iOS 27, and Android Chrome, including delayed joins.
+5. **Continuity after Wi-Fi impairment:** a struggling device must never move a healthy listener.
 6. **`EXT-X-PROGRAM-DATE-TIME` present in the LL-HLS *part* playlist** (`curl ... | grep PROGRAM-DATE-TIME`)
    — the wall-clock anchor for any latency telemetry.
 7. **`getStartDate()` validity** on the iOS native element (else show no per-listener number on iOS).
 8. **Negative control:** confirm a plain tab, never a PWA.
 
-## Prioritized build list (smallest-first)
+## Current synchronization contract
 
-1. Auto-open the DJ console on launch (`main.go`, ~2 lines). Rename "Start broadcast" → "Go Live".
-2. Default bitrate 256k → 128–160k (`config.go`, `dj.html`).
-3. **Force plain `hls` unless `Domain && CertFile && KeyFile`; remove the Mode dropdown from the UI**
-   (extend `main.go`; delete `dj.html` Mode select). Kills the out-of-box trap where the llhls default +
-   self-signed-on-IP cert = a stream iOS guests cannot play. Keep `/api/delivery` + `--delivery`.
-4. Collapse the DJ panel to one screen (source line + Go Live + big QR; everything else behind "Advanced").
-5. Apply the parity hls.js config + the `mediaSession()`-in-gesture tightening (`web/listener.html`).
-6. Precise Screen-Recording flow (read the helper's `exit(3)`; first-run explainer; "Open Settings &
-   Retry"). Silence detection + [Play test tone]. Empty-LAN/0-listener blocking banner.
-7. Wire the latency mode to LL-HLS (`main.go`/`mediamtx`); add ffmpeg low-delay flags (mac branch).
-8. `GET /api/time` + client NTP estimator (min-RTT) + per-listener latency telemetry on the heartbeat →
-   DJ spread readout.
-9. **"Synced" mode:** the outlier-robust solver picks T; apply via uniform server hold-back (lock-safe);
-   auto-engage when spread warrants; DJ sees spread + cost. Gate to llhls (the `-f hls` fallback emits no
-   PDT). Then PA inverse-delay (`adelay`) with the pre-delay-monitor rule.
-10. Activate control plane (pure-Go ACME DNS-01, on-device key, fullchain cache) + guest-perspective
-    self-test + auto-fallback ladder + one honest badge carrying *measured* latency. Largest; gated on
-    hardware confirming iPhone LL-HLS is worth the cert vs plain ~3 s HLS.
-11. Event Hub (`internal/hub`) — strictly after the two priorities land.
+The shipped path is HTTPS LL-HLS, a fixed 7s Mac/PDT deadline, a bounded
+ten-second muted join transaction, and no audible control loop. Future latency
+work must preserve locked playback, sub-second inter-listener spread, and the
+rule that one unhealthy device cannot change another listener's playback.
