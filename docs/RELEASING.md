@@ -25,6 +25,8 @@ records the version, builds and notarizes the app, signs `appcast.xml`, uploads
 versioned artifacts and stable download aliases, deploys the Worker/public site,
 and flips the update feed/version marker last. Afterward, verify and update the
 copy installed on this Mac so the public feed and running app report the same build.
+Commit generated release metadata and fast-forward the canonical remote source so
+the repository is not left behind the binaries that were published.
 First run prompts once for keychain access to the Sparkle key — click **Always Allow**.
 
 Agents should run this flow automatically after completed product changes unless
