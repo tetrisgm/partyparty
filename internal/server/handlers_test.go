@@ -1370,7 +1370,7 @@ func TestCaptiveProbes(t *testing.T) {
 func TestHeartbeatAndRoster(t *testing.T) {
 	env := newTestEnv(t, nil)
 	// Loopback RemoteAddr keeps friendlyName from spawning a reverse-DNS lookup.
-	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&lat=250&plat=hls&del=llhls&rate=1&buf=3.5&v=test" /* v required since 0.26: no-v heartbeats are legacy zombie tabs */, "127.0.0.1:5000")
+	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&lat=250&off=12345&sid=99&plat=hls&del=llhls&rate=1&buf=3.5&v=test" /* v required since 0.26: no-v heartbeats are legacy zombie tabs */, "127.0.0.1:5000")
 	if w.Code != http.StatusOK {
 		t.Fatalf("heartbeat = %d", w.Code)
 	}
@@ -1448,5 +1448,10 @@ func TestTimeEndpoint(t *testing.T) {
 	}
 	if drift := time.Since(time.UnixMilli(int64(ts))); drift < 0 || drift > 10*time.Second {
 		t.Errorf("clock drift = %v", drift)
+	}
+	received, receivedOK := body["received"].(float64)
+	sent, sentOK := body["sent"].(float64)
+	if !receivedOK || !sentOK || received <= 0 || sent < received || ts != sent {
+		t.Errorf("NTP timestamps = received:%v sent:%v t:%v", body["received"], body["sent"], body["t"])
 	}
 }

@@ -192,8 +192,8 @@ func TestLatencyTargetBase(t *testing.T) {
 		bc   broadcast.Status
 		want float64
 	}{
-		{broadcast.Status{Delivery: "llhls"}, 5.0},            // fixed LL room profile
-		{broadcast.Status{Delivery: "llhls", SegDur: 3}, 5.0}, // segdur irrelevant for llhls
+		{broadcast.Status{Delivery: "llhls"}, 7.0},            // fixed LL room profile
+		{broadcast.Status{Delivery: "llhls", SegDur: 3}, 7.0}, // segdur irrelevant for llhls
 		{broadcast.Status{Delivery: "hls", SegDur: 1}, 10},    // 3*1+7
 		{broadcast.Status{Delivery: "hls", SegDur: 2}, 13},    // 3*2+7
 		{broadcast.Status{Delivery: "hls", SegDur: 3}, 16},    // 3*3+7
@@ -212,12 +212,12 @@ func TestLatencyTargetRaiseOnStrain(t *testing.T) {
 	bc := broadcast.Status{Delivery: "llhls"}
 
 	// Fresh srv: lastAdj is zero → adjustment window open → first strain raises.
-	if got := s.latencyTarget(bc, "strain"); got != 5.5 {
-		t.Fatalf("first strain target = %v, want 5.5", got)
+	if got := s.latencyTarget(bc, "strain"); got != 7.5 {
+		t.Fatalf("first strain target = %v, want 7.5", got)
 	}
 	// Immediately again: the 90s cooldown holds the delta.
-	if got := s.latencyTarget(bc, "strain"); got != 5.5 {
-		t.Fatalf("second strain (within cooldown) = %v, want 5.5", got)
+	if got := s.latencyTarget(bc, "strain"); got != 7.5 {
+		t.Fatalf("second strain (within cooldown) = %v, want 7.5", got)
 	}
 	// Force the window open repeatedly: delta climbs by 0.5 and caps at +3.
 	for i := 0; i < 10; i++ {
@@ -226,8 +226,8 @@ func TestLatencyTargetRaiseOnStrain(t *testing.T) {
 		s.adaptMu.Unlock()
 		s.latencyTarget(bc, "congested")
 	}
-	if got := s.latencyTarget(bc, "strain"); got != 8.0 {
-		t.Fatalf("delta should cap at +3 (target 8.0), got %v", got)
+	if got := s.latencyTarget(bc, "strain"); got != 10.0 {
+		t.Fatalf("delta should cap at +3 (target 10.0), got %v", got)
 	}
 }
 

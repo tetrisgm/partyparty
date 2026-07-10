@@ -460,31 +460,33 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		bc := s.Broadcaster.Status()
 		health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
 		health.Suggestion = suggest(health.Status, bc)
+		mediaOffset := s.Listeners.MediaOffset(bc.Since)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"name":           s.Config.Name,
-			"appVersion":     s.version(),
-			"broadcast":      bc,
-			"listeners":      health.Listeners,
-			"listenersTotal": s.Listeners.TotalUnique(),
-			"health":         health,
-			"urls":           s.urls(),
-			"llhlsUrl":       s.llhlsURL(),
-			"delivery":       bc.Delivery,
-			"llhlsAvailable": s.MTX != nil,
-			"llhlsRealCert":  s.realCert(),
-			"activation":     s.activationState(),
-			"reachability":   s.reachability(),
-			"hotspot":        s.hotspotState(),
-			"latencyTarget":  s.latencyTarget(bc, health.Status),
-			"log":            lastN(s.Broadcaster.Log(), 60),
-			"captive":        s.Config.Captive,
-			"latency":        s.Listeners.LatencySpread(),
-			"roster":         s.Listeners.Roster(),
-			"event":          s.eventState(),
-			"mirror":         s.eventMirrorState(),
-			"config":         s.payloadConfig(),
-			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
-			"streamHealth":   s.streamHealthText(),
+			"name":            s.Config.Name,
+			"appVersion":      s.version(),
+			"broadcast":       bc,
+			"listeners":       health.Listeners,
+			"listenersTotal":  s.Listeners.TotalUnique(),
+			"health":          health,
+			"urls":            s.urls(),
+			"llhlsUrl":        s.llhlsURL(),
+			"delivery":        bc.Delivery,
+			"llhlsAvailable":  s.MTX != nil,
+			"llhlsRealCert":   s.realCert(),
+			"activation":      s.activationState(),
+			"reachability":    s.reachability(),
+			"hotspot":         s.hotspotState(),
+			"latencyTarget":   s.latencyTarget(bc, health.Status),
+			"log":             lastN(s.Broadcaster.Log(), 60),
+			"captive":         s.Config.Captive,
+			"latency":         s.Listeners.LatencySpread(),
+			"roomMediaOffset": mediaOffset,
+			"roster":          s.Listeners.Roster(),
+			"event":           s.eventState(),
+			"mirror":          s.eventMirrorState(),
+			"config":          s.payloadConfig(),
+			"appUpdate":       s.Payload != nil && s.Payload.AppUpdateAvailable(),
+			"streamHealth":    s.streamHealthText(),
 		})
 	case "/api/update/check":
 		if r.Method != http.MethodPost {
@@ -517,8 +519,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
 		})
 	case "/api/time":
-		// Master clock for the listeners' NTP-style offset estimate.
-		writeJSON(w, http.StatusOK, map[string]any{"t": time.Now().UnixMilli()})
+		// Master clock for the listeners' NTP-style offset estimate. Expose the
+		// server receive/transmit pair so clients can use the full four-timestamp
+		// calculation instead of assuming all response time was symmetric.
+		received := time.Now().UnixMilli()
+		sent := time.Now().UnixMilli()
+		writeJSON(w, http.StatusOK, map[string]any{"t": sent, "received": received, "sent": sent})
 	case "/api/network-situation":
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
@@ -768,6 +774,13 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				lat, hasLat = f, true
 			}
 		}
+		mediaOff, hasMediaOff := 0.0, false
+		mediaOffSince, _ := strconv.ParseInt(q.Get("sid"), 10, 64)
+		if v := q.Get("off"); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil && f >= -60000 && f <= 60000 && mediaOffSince > 0 {
+				mediaOff, hasMediaOff = f, true
+			}
+		}
 		if q.Get("v") == "" {
 			// Legacy zombie tab: every page since 0.13 sends its version, but
 			// pages older than the self-refresh mechanism heartbeat FOREVER
@@ -782,6 +795,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
+		s.Listeners.SyncOffset(key, mediaOff, hasMediaOff, mediaOffSince)
 		s.markGuestReach(q.Get("stalled") == "1")
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
@@ -1263,12 +1277,13 @@ func (s *srv) latencyTarget(bc broadcast.Status, healthStatus string) float64 {
 	}
 	var base float64
 	if bc.Delivery == "llhls" {
-		// ONE room profile (user decree 2026-07-02): every device aligns at a
-		// fixed ~5s behind the DJ — a deep, deliberate cushion so phones start
+		// ONE room profile: every device aligns at a fixed ~7s behind the DJ — a
+		// deep, deliberate cushion so phones can buffer muted, seek to the shared
+		// room position, and start together instead of racing their native live edge.
 		// IN SYNC (aligned start) and stay there, instead of racing to be
-		// close-to-live and drifting apart. Adaptive delta can still raise it
-		// toward ~8s on strained Wi-Fi; 10s is the decreed ceiling.
-		base = 5.0
+		// close-to-live and drifting apart. Adaptive delta can still raise it to
+		// 10s on strained Wi-Fi.
+		base = 7.0
 	} else {
 		seg := bc.SegDur
 		if seg <= 0 {

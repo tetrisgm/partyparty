@@ -53,7 +53,7 @@ function startServer() {
       if (p === '/api/status') {
         res.end(JSON.stringify({
           live: false, version: 'bench-1', title: 'Bench', listening: 0,
-          llhlsRealCert: true, latencyTargetMs: 5000,
+          llhlsRealCert: true, latencyTargetMs: 7000,
         }));
         return;
       }

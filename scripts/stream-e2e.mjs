@@ -326,7 +326,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     '--seg-duration', '2s',
     '--part-duration', '1000ms',
     '--seg-count', '16',
-    '--latency-target', '5',
+    '--latency-target', '7',
     '--name', 'partyparty e2e',
   ], {
     cwd: ROOT,
@@ -468,6 +468,8 @@ paths:
   });
   await sleep(1500);
 
+  let mockStartedAt = Date.now();
+  let mockMediaOffset = null;
   let pub = startMockPublisher(workDir, ffmpeg, rtspPort);
 
   const web = http.createServer(async (req, res) => {
@@ -479,6 +481,7 @@ paths:
           appVersion: 'e2e',
           broadcast: {
             state: 'live',
+            since: mockStartedAt,
             device: 'test',
             deviceName: 'Test tone (440 Hz)',
             bitrate: '320k',
@@ -493,17 +496,27 @@ paths:
           delivery: 'llhls',
           llhlsAvailable: true,
           llhlsRealCert: true,
-          latencyTarget: 5,
+          latencyTarget: 7,
+          roomMediaOffset: Number.isFinite(mockMediaOffset) ? { count: 1, medMs: mockMediaOffset } : { count: 0, medMs: 0 },
           health: {},
           urls: { primary: `http://127.0.0.1:${webPort}/`, ip: '127.0.0.1', port: webPort, interfaces: [] },
         });
         return;
       }
       if (u.pathname === '/api/time') {
-        sendJSON(res, { t: Date.now() });
+        const received = Date.now();
+        const sent = Date.now();
+        sendJSON(res, { t: sent, received, sent });
         return;
       }
-      if (u.pathname === '/api/heartbeat' || u.pathname === '/api/client-events' || u.pathname === '/api/guest-contact') {
+      if (u.pathname === '/api/heartbeat') {
+        const off = Number(u.searchParams.get('off'));
+        const sid = Number(u.searchParams.get('sid'));
+        if (Number.isFinite(off) && sid === mockStartedAt) mockMediaOffset = off;
+        sendJSON(res, { ok: true });
+        return;
+      }
+      if (u.pathname === '/api/client-events' || u.pathname === '/api/guest-contact') {
         req.resume();
         sendJSON(res, { ok: true });
         return;
@@ -547,6 +560,8 @@ paths:
       log('>> resilience: killing mock ffmpeg publisher and restarting it');
       await pub.stop('SIGKILL');
       await sleep(1000);
+      mockStartedAt = Date.now();
+      mockMediaOffset = null;
       pub = startMockPublisher(workDir, ffmpeg, rtspPort);
       await waitFor(async () => {
         const r = await getInsecure(streamUrl, 3000);
@@ -611,8 +626,18 @@ function streamMatcher(stack) {
   };
 }
 
-async function createGuestSession(stack, browser) {
+async function createGuestSession(stack, browser, opts = {}) {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  if (opts.disableStartDate) {
+    await context.addInitScript(() => {
+      try {
+        Object.defineProperty(HTMLMediaElement.prototype, 'getStartDate', {
+          configurable: true,
+          value: () => new Date(NaN),
+        });
+      } catch {}
+    });
+  }
   const page = await context.newPage();
   const consoleLines = [];
   const requestFailures = [];
@@ -647,7 +672,7 @@ async function createGuestSession(stack, browser) {
 async function driveGuest(stack, label, browser, session = null, opts = {}) {
   let ownSession = false;
   if (!session) {
-    session = await createGuestSession(stack, browser);
+    session = await createGuestSession(stack, browser, opts);
     ownSession = true;
   }
   const { context, page, consoleLines, requestFailures, pageErrors, requests, matchesStream } = session;
@@ -663,7 +688,7 @@ async function driveGuest(stack, label, browser, session = null, opts = {}) {
       const hit = requests.find((r) => r.t >= manifestSince && matchesStream(r.url));
       return hit && hit.url;
     }, { timeoutMs: 15000, label: 'LL-HLS manifest fetch' });
-    const media = await waitForMediaReady(page, 15000);
+    const media = await waitForMediaReady(page, 25000);
     const progress = await assertPlaybackProgress(page);
     const clientPlatform = await page.evaluate(() => typeof platform === 'string' ? platform : 'unknown');
     if (ENGINE === 'webkit' && clientPlatform !== 'native') {
@@ -734,7 +759,7 @@ async function waitForMediaReady(page, timeoutMs) {
     try {
       if (p.buffered.length) bufferedEnd = p.buffered.end(0);
     } catch {}
-    if (!p.paused && p.readyState >= 3 && bufferedEnd > 3) {
+    if (!p.paused && !p.muted && p.readyState >= 3 && bufferedEnd > 3) {
       return { readyState: p.readyState, bufferedEnd, currentTime: p.currentTime, muted: p.muted };
     }
     return false;
@@ -828,27 +853,86 @@ async function syncState(page) {
     const p = document.getElementById('player');
     let latency = null;
     try { latency = typeof measureLatency === 'function' ? measureLatency() : null; } catch {}
+    let ref = 'none', epoch = null, pdt = null, projectedTime = null, mediaOffset = null, startDateValid = false;
+    let seekableStart = null, seekableEnd = null, streamElapsed = null;
+    try { ref = typeof syncReference === 'function' ? syncReference() : 'none'; } catch {}
+    try { epoch = typeof measureEpochLatency === 'function' ? measureEpochLatency() : null; } catch {}
+    try { pdt = typeof measureProgramLatency === 'function' ? measureProgramLatency() : null; } catch {}
+    try { projectedTime = typeof mediaNow === 'function' ? mediaNow() : null; } catch {}
+    try { mediaOffset = typeof effectiveMediaOffset === 'function' ? effectiveMediaOffset() : null; } catch {}
+    try {
+      const d = typeof p?.getStartDate === 'function' ? p.getStartDate() : null;
+      startDateValid = !!(d && Number.isFinite(d.getTime()));
+    } catch {}
+    try {
+      if (p?.seekable?.length) {
+        seekableStart = p.seekable.start(0);
+        seekableEnd = p.seekable.end(p.seekable.length - 1);
+      }
+    } catch {}
+    try {
+      if (typeof serverNow === 'function' && typeof streamStartedAt === 'number' && streamStartedAt) {
+        streamElapsed = (serverNow() - streamStartedAt) / 1000;
+      }
+    } catch {}
     return {
       latency,
+      epoch,
+      pdt,
+      ref,
+      target: typeof roomTarget === 'function' ? roomTarget() : null,
+      streamStartedAt: typeof streamStartedAt === 'number' ? streamStartedAt : 0,
       currentTime: p?.currentTime || 0,
+      projectedTime,
+      mediaOffset,
+      clockOffset: typeof clockOffset === 'number' ? clockOffset : null,
+      mediaClockTime: typeof mediaClockTime === 'number' ? mediaClockTime : null,
+      mediaClockAge: typeof mediaClockAt === 'number' && mediaClockAt ? performance.now() - mediaClockAt : null,
       paused: p?.paused ?? true,
+      muted: p?.muted ?? true,
       readyState: p?.readyState || 0,
       rate: p?.playbackRate || 0,
+      startDateValid,
+      seekableStart,
+      seekableEnd,
+      streamElapsed,
     };
   });
 }
 
-async function assertRoomSync(first, second) {
-  await waitFor(async () => {
+async function injectDrift(page, seconds) {
+  return await page.evaluate((delta) => {
+    const p = document.getElementById('player');
+    if (!p || !p.seekable.length) return null;
+    const low = p.seekable.start(0) + 0.2;
+    const high = p.seekable.end(p.seekable.length - 1) - 0.2;
+    const before = p.currentTime;
+    p.currentTime = Math.max(low, Math.min(high, before + delta));
+    return { before, after: p.currentTime, requested: delta };
+  }, seconds);
+}
+
+async function assertRoomSync(first, second, label = 'steady') {
+  try {
+    await waitFor(async () => {
+      const states = await Promise.all([syncState(first), syncState(second)]);
+      return states.every((s) => !s.paused && !s.muted && s.readyState >= 3 && Number.isFinite(s.latency) && s.ref.startsWith('epoch'))
+        && Math.abs(states[0].latency - states[1].latency) <= 0.18 && states;
+    }, { timeoutMs: 20000, label: `both guests converged on the epoch (${label})` });
+  } catch (err) {
     const states = await Promise.all([syncState(first), syncState(second)]);
-    return states.every((s) => !s.paused && s.readyState >= 3 && Number.isFinite(s.latency)) && states;
-  }, { timeoutMs: 20000, label: 'both guests reporting wall-clock latency' });
+    fail(`${err.message}; states=${JSON.stringify(states)}`);
+  }
 
   const samples = [];
   for (let i = 0; i < 12; i++) {
     const [a, b] = await Promise.all([syncState(first), syncState(second)]);
     if (Number.isFinite(a.latency) && Number.isFinite(b.latency)) {
-      samples.push({ a: a.latency, b: b.latency, spread: Math.abs(a.latency - b.latency), rateA: a.rate, rateB: b.rate });
+      samples.push({
+        a: a.latency, b: b.latency, spread: Math.abs(a.latency - b.latency),
+        rawA: a.currentTime, rawB: b.currentTime, projectedA: a.projectedTime, projectedB: b.projectedTime,
+        offsetA: a.mediaOffset, offsetB: b.mediaOffset, rateA: a.rate, rateB: b.rate, refA: a.ref, refB: b.ref,
+      });
     }
     await sleep(500);
   }
@@ -859,11 +943,27 @@ async function assertRoomSync(first, second) {
   if (samples.some((s) => Math.abs(s.rateA - 1) > 0.001 || Math.abs(s.rateB - 1) > 0.001)) {
     fail(`room sync changed playback rate: ${JSON.stringify(samples)}`);
   }
-  if (median > 0.35 || p90 > 0.60) {
+  if (samples.some((s) => !s.refA.startsWith('epoch') || !s.refB.startsWith('epoch'))) {
+    fail(`room sync did not use the shared epoch: ${JSON.stringify(samples)}`);
+  }
+  // Native WebKit coalesces sub-200ms HLS seeks. The product invariant is that
+  // a room stays well below the ~550ms audible field gap while every player
+  // remains at rate 1.0; 180/250ms keeps that bound strict without treating
+  // AVPlayer's seek tolerance as application drift.
+  if (median > 0.18 || p90 > 0.25) {
     fail(`two-client sync spread too wide: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
-  log(`PASS browser room-sync: delayed join median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, playbackRate=1.0)`);
+  log(`PASS browser room-sync ${label}: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s (${samples.length} samples, epoch, playbackRate=1.0)`);
   return { median, p90, samples };
+}
+
+async function assertInjectedDriftRecovery(first, second) {
+  const injected = await injectDrift(second, 0.65);
+  if (!injected || Math.abs(injected.after - injected.before) < 0.5) {
+    fail(`could not inject the 650ms field drift: ${JSON.stringify(injected)}`);
+  }
+  log(`>> injected field drift: ${(injected.after - injected.before).toFixed(3)}s`);
+  await assertRoomSync(first, second, 'after-650ms-drift');
 }
 
 async function main() {
@@ -914,8 +1014,9 @@ async function main() {
       const r = await driveGuest(stack, 'happy', browser, null, { keepOpen: true });
       session = r.session;
       await sleep(2000);
-      const peer = await driveGuest(stack, 'delayed-peer', browser, null, { keepOpen: true });
-      await assertRoomSync(session.page, peer.session.page);
+      const peer = await driveGuest(stack, 'delayed-peer', browser, null, { keepOpen: true, disableStartDate: true });
+      await assertRoomSync(session.page, peer.session.page, 'delayed-join');
+      await assertInjectedDriftRecovery(session.page, peer.session.page);
       await peer.session.context.close().catch(() => {});
       const manifestSince = Date.now();
       await stack.restartPublisher();
@@ -924,8 +1025,13 @@ async function main() {
     } else if (SCENARIO === 'sync') {
       const first = await driveGuest(stack, 'sync-first', browser, null, { keepOpen: true });
       await sleep(2000);
-      const second = await driveGuest(stack, 'sync-delayed', browser, null, { keepOpen: true });
-      await assertRoomSync(first.session.page, second.session.page);
+      const second = await driveGuest(stack, 'sync-delayed-no-start-date', browser, null, { keepOpen: true, disableStartDate: true });
+      const secondState = await syncState(second.session.page);
+      if (ENGINE === 'webkit' && secondState.startDateValid) {
+        fail(`WebKit field fallback setup failed: getStartDate remained valid (${JSON.stringify(secondState)})`);
+      }
+      await assertRoomSync(first.session.page, second.session.page, 'delayed-join-no-start-date');
+      await assertInjectedDriftRecovery(first.session.page, second.session.page);
       await first.session.context.close().catch(() => {});
       await second.session.context.close().catch(() => {});
     } else if (SCENARIO === 'resilience') {
