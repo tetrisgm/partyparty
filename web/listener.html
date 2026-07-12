@@ -699,6 +699,26 @@
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
     const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
+    // Sync-experiment switches — guest-link params, default = the shipped approach.
+    // Each device's mode is tagged in telemetry so different sync approaches can be
+    // compared on the REAL phones in ONE party (instead of shipping one at a time):
+    //   ?seek=1  native does the muted startup seek (default: no-seek)
+    //   ?d=5     override the room target latency in seconds
+    //   ?pin=0   use the un-pinned stream (no EXT-X-START), to isolate the pin's effect
+    const EXP = (() => {
+      const q = new URLSearchParams(location.search);
+      const dv = parseFloat(q.get('d'));
+      return {
+        seek: q.get('seek') === '1',
+        d: isFinite(dv) && dv > 0 ? dv : null,
+        pin: q.get('pin') !== '0',
+        on: q.has('seek') || q.has('d') || q.has('pin'),
+      };
+    })();
+    // Compact mode tag stamped on the comparison telemetry so EVERY device's
+    // sync config (seek / pin / target) is filterable side-by-side in one party's
+    // field logs — that's how the phone A/B is read without shipping per-approach.
+    const expMode = () => ({ mSeek: EXP.seek ? 1 : 0, mPin: EXP.pin ? 1 : 0, mD: rnd3(roomTarget()) });
 
     // ── Vendor loading ──────────────────────────────────────────────────
     // hls.js (404KB) stays off the Apple join path. The small QR renderer is
@@ -1172,7 +1192,7 @@
     let alignedGeneration = -1;
     let alignPromise = null;
     let joinMuted = false, joinReason = '', joinStartedAt = 0, joinWatchdog = 0, syncFailed = false;
-    const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
+    const roomTarget = () => EXP.d || latencyTarget || ROOM_TARGET_FALLBACK;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const startupTimeLeft = () => Math.max(0, STARTUP_BUDGET_MS - (joinStartedAt ? Date.now() - joinStartedAt : 0));
     const canAlign = (generation) => generation === alignGeneration && joinMuted && started && !player.paused && !userPaused && !yielded && live && streamReady;
@@ -1339,7 +1359,7 @@
         error: verification ? rnd3(verification.error) : null,
         maxError: verification ? rnd3(verification.maxError) : null,
         rate: verification ? rnd3(verification.rate) : null,
-        seeks: generationAlignSeeks,
+        seeks: generationAlignSeeks, ...expMode(),
       });
     }
     function failAudioGate(generation, message){
@@ -1398,7 +1418,7 @@
         // the physical mic test — and if it exceeds the budget, server-side
         // EXT-X-START pinning (not a client seek) is the tightening layer. A player
         // that ever progressed ALWAYS opens audible; muted-forever is impossible.
-        if (useNative) {
+        if (useNative && !EXP.seek) {
           let progress = null;
           while (startupTimeLeft() > 0 && canAlign(generation)) {
             progress = await waitForProgress(generation, Math.min(2000, startupTimeLeft()));
@@ -1779,6 +1799,9 @@
         considerReload(s.appVersion);
         if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
+        // ?pin=0: swap to the un-pinned upstream so this device's start is NOT
+        // hinted by EXT-X-START — isolates the pin's effect in a field A/B.
+        if (LLSTREAM && !EXP.pin) LLSTREAM = LLSTREAM.replace('/live/', '/live-plain/');
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
@@ -1896,7 +1919,7 @@
         rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: usingLL(),
         stalls: sumStalls, stallMs: sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0),
         maxStallMs: sumMaxStallMs, progressAge: lastProgress ? Date.now() - lastProgress : 0,
-        alignSeeks, audibleSeeks,
+        alignSeeks, audibleSeeks, ...expMode(),
       });
       stalledSinceBeat = false;
       if (debug) showDebug(lat);

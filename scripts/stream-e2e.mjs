@@ -387,6 +387,17 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     log(`PASS EXT-X-START pin present: TIME-OFFSET=-${off.toFixed(3)}s == room target`);
   }
 
+  // The ?pin=0 sync-experiment path: /live-plain serves the SAME upstream but
+  // must NOT inject the pin, so a field A/B can isolate the pin's effect.
+  {
+    const plain = await getInsecure(`https://127.0.0.1:${tlsPort}/live-plain/party/index.m3u8`);
+    if (plain.status !== 200 || !/#EXT-X-STREAM-INF/.test(plain.body || '')) {
+      fail(`/live-plain multivariant not served (status ${plain.status}):\n${(plain.body || '').slice(0, 300)}`);
+    }
+    if (/#EXT-X-START/.test(plain.body || '')) fail('/live-plain must NOT carry the EXT-X-START pin (?pin=0 experiment)');
+    log('PASS /live-plain serves the un-pinned multivariant (no EXT-X-START)');
+  }
+
   return {
     mode: 'real',
     workDir,

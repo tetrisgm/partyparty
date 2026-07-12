@@ -63,9 +63,10 @@ type Deps struct {
 
 type srv struct {
 	Deps
-	vendor    http.Handler
-	liveProxy http.Handler
-	limits    *limiter
+	vendor         http.Handler
+	liveProxy      http.Handler
+	livePlainProxy http.Handler // same upstream, no EXT-X-START pin (for the ?pin=0 sync experiment)
+	limits         *limiter
 
 	// Async activation result (cert broker / BYO) — set after launch so the
 	// server can start serving instantly while certs are obtained in the
@@ -135,29 +136,32 @@ func New(d Deps) *Srv {
 	if d.Payload != nil {
 		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
 	}
+	// The EXT-X-START offset must equal what /api/status reports as the room
+	// target, so the pinned start and the client's telemetry agree.
+	roomTarget := func() float64 {
+		if d.Config.LatencyTarget > 0 {
+			return d.Config.LatencyTarget
+		}
+		return defaultLLHLSLatencyTarget
+	}
 	return &Srv{srv{
-		Deps: d, vendor: http.FileServer(http.FS(webFS)), liveProxy: newLiveProxy(d.Config.HLSPort, func() float64 {
-			// The EXT-X-START offset must equal what /api/status reports as the
-			// room target, so the pinned start and the client's telemetry agree.
-			if d.Config.LatencyTarget > 0 {
-				return d.Config.LatencyTarget
-			}
-			return defaultLLHLSLatencyTarget
-		}),
-		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
+		Deps: d, vendor: http.FileServer(http.FS(webFS)),
+		liveProxy:      newLiveProxy(d.Config.HLSPort, roomTarget, "/live", true),
+		livePlainProxy: newLiveProxy(d.Config.HLSPort, roomTarget, "/live-plain", false),
+		limits:         newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
 	}}
 }
 
 // newLiveProxy keeps the guest page and LL-HLS on one public HTTPS origin.
 // MediaMTX remains loopback-only from the Go server's point of view; guests no
 // longer need a second TLS connection to a second externally reachable port.
-func newLiveProxy(hlsPort int, roomTarget func() float64) http.Handler {
+func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string, inject bool) http.Handler {
 	upstream := fmt.Sprintf("127.0.0.1:%d", hlsPort)
 	return &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
 			r.URL.Scheme = "https"
 			r.URL.Host = upstream
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/live")
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
 			r.Host = upstream
 		},
 		Transport: &http.Transport{
@@ -172,8 +176,8 @@ func newLiveProxy(hlsPort int, roomTarget func() float64) http.Handler {
 			// MediaMTX's cookie capability probe redirects to an origin-absolute
 			// path. Preserve the public /live prefix or Safari follows the redirect
 			// outside the proxy and gets the app's 404 page.
-			if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, "/live/") {
-				resp.Header.Set("Location", "/live"+location)
+			if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, prefix+"/") {
+				resp.Header.Set("Location", prefix+location)
 			}
 			// Pin the room's start position in the MULTIVARIANT playlist (index.m3u8,
 			// fetched once per join) so every device begins the SAME distance behind
@@ -182,7 +186,7 @@ func newLiveProxy(hlsPort int, roomTarget func() float64) http.Handler {
 			// seek hang, and a player that ignores it just falls back to the natural
 			// hold-back position (still no gross outlier). Media playlists pass
 			// through untouched. Per RFC 8216 EXT-X-START belongs in the multivariant.
-			if resp.Request != nil && resp.StatusCode == http.StatusOK &&
+			if inject && resp.Request != nil && resp.StatusCode == http.StatusOK &&
 				strings.HasSuffix(resp.Request.URL.Path, "/index.m3u8") {
 				if d := roomTarget(); d > 0.5 {
 					body, err := io.ReadAll(resp.Body)
@@ -407,6 +411,8 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(p, "/vendor/"):
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
+	case strings.HasPrefix(p, "/live-plain/"):
+		s.livePlainProxy.ServeHTTP(w, r) // ?pin=0 experiment: same stream, no EXT-X-START pin
 	case strings.HasPrefix(p, "/live/"):
 		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
