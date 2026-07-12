@@ -699,26 +699,45 @@
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
     const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
-    // Sync-experiment switches — guest-link params, default = the shipped approach.
-    // Each device's mode is tagged in telemetry so different sync approaches can be
-    // compared on the REAL phones in ONE party (instead of shipping one at a time):
-    //   ?seek=1  native does the muted startup seek (default: no-seek)
+    // Sync approach = which startup scheme the room is using (seek / pin / target).
+    // PRIMARY control is the DJ's console radio button, pushed to every guest via
+    // /api/status as `approach` (see poll()); the whole room re-aligns when the DJ
+    // flips it, so approaches can be A/B'd on the real phones in one party.
+    // Per-device URL params stay as an OVERRIDE/escape hatch (they win over the
+    // room approach, per key):
+    //   ?seek=1  this device does the muted startup seek (default follows the room)
     //   ?d=5     override the room target latency in seconds
-    //   ?pin=0   use the un-pinned stream (no EXT-X-START), to isolate the pin's effect
+    //   ?pin=0   this device uses the un-pinned stream (no EXT-X-START). Note ?pin
+    //            is ONE-WAY: the pin is a property of the single shared /live
+    //            playlist, so a device can only OPT OUT (?pin=0); it can't force
+    //            the pin ON when the room approach is un-pinned — ?pin=1 just
+    //            follows the room.
     const EXP = (() => {
       const q = new URLSearchParams(location.search);
       const dv = parseFloat(q.get('d'));
       return {
-        seek: q.get('seek') === '1',
+        seekSet: q.has('seek'), seek: q.get('seek') === '1',
         d: isFinite(dv) && dv > 0 ? dv : null,
-        pin: q.get('pin') !== '0',
+        pinSet: q.has('pin'), pin: q.get('pin') !== '0',
         on: q.has('seek') || q.has('d') || q.has('pin'),
       };
     })();
-    // Compact mode tag stamped on the comparison telemetry so EVERY device's
-    // sync config (seek / pin / target) is filterable side-by-side in one party's
-    // field logs — that's how the phone A/B is read without shipping per-approach.
-    const expMode = () => ({ mSeek: EXP.seek ? 1 : 0, mPin: EXP.pin ? 1 : 0, mD: rnd3(roomTarget()) });
+    // The room's current approach, pushed by the server each poll: {mode,seek,pin,target}.
+    // null until the first /api/status; a device that never hears one falls back to
+    // the shipped defaults (no seek, pinned).
+    let approach = null;
+    // Effective dials: a per-device URL override wins for the key it sets, else the
+    // room approach, else the shipped default. (Target flows through latencyTarget →
+    // roomTarget(), so ?d already overrides it there.)
+    const effSeek = () => EXP.seekSet ? EXP.seek : !!(approach && approach.seek);
+    // ?pin=0 is the only per-device pin override (force this device un-pinned); a
+    // per-device force-pin is impossible on the shared /live playlist, so ?pin=1
+    // (or bare ?pin) transparently follows the room approach.
+    const effPin = () => (EXP.pinSet && !EXP.pin) ? false : (approach ? !!approach.pin : true);
+    // Compact tag stamped on the comparison telemetry so EVERY device's EFFECTIVE
+    // sync config (approach id + seek / pin / target) is filterable side-by-side in
+    // one party's field logs — that's how the DJ reads which approach behaved best.
+    const expMode = () => ({ mSeek: effSeek() ? 1 : 0, mPin: effPin() ? 1 : 0, mD: rnd3(roomTarget()), mMode: approach ? approach.mode : null });
 
     // ── Vendor loading ──────────────────────────────────────────────────
     // hls.js (404KB) stays off the Apple join path. The small QR renderer is
@@ -1418,7 +1437,7 @@
         // the physical mic test — and if it exceeds the budget, server-side
         // EXT-X-START pinning (not a client seek) is the tightening layer. A player
         // that ever progressed ALWAYS opens audible; muted-forever is impossible.
-        if (useNative && !EXP.seek) {
+        if (useNative && !effSeek()) {
           let progress = null;
           while (startupTimeLeft() > 0 && canAlign(generation)) {
             progress = await waitForProgress(generation, Math.min(2000, startupTimeLeft()));
@@ -1797,13 +1816,26 @@
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         lastPollOK = Date.now();
         considerReload(s.appVersion);
+        // The DJ's global sync approach (console radio). Apply it FIRST — before the
+        // stream URL is computed below — so effPin() reflects the room's approach on
+        // the very FIRST poll (a fresh guest joining a room already set to, say,
+        // "nopin" must hit /live-plain immediately, not the pinned /live for a cycle).
+        // approachChanged is captured against the OLD value here; if the DJ FLIPS it
+        // mid-play, the teardown below drops + auto-rejoins the whole room on the new
+        // approach (a pin flip needs that re-attach — rewriting LLSTREAM alone won't
+        // move an already-attached player).
+        const nextApproach = s.sync && typeof s.sync === 'object' ? s.sync : null;
+        const approachChanged = !!(approach && nextApproach && nextApproach.mode !== approach.mode);
+        approach = nextApproach;
         if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
-        // ?pin=0: swap to the un-pinned upstream so this device's start is NOT
-        // hinted by EXT-X-START — isolates the pin's effect in a field A/B.
-        if (LLSTREAM && !EXP.pin) LLSTREAM = LLSTREAM.replace('/live/', '/live-plain/');
+        // pin off (room approach or ?pin=0): swap to the un-pinned upstream so this
+        // device's start is NOT hinted by EXT-X-START — isolates the pin's effect.
+        if (LLSTREAM && !effPin()) LLSTREAM = LLSTREAM.replace('/live/', '/live-plain/');
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
+        // Logged after latencyTarget so the mode-change telemetry carries the fresh target.
+        if (approachChanged) logEvent('approach-change', { mode: approach.mode, ...expMode() });
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;
@@ -1825,10 +1857,12 @@
             gaps: syncState && rnd3(syncState.gapHistory), target: rnd3(latencyTarget),
           });
         }
-        if (streamChanged && (started || attached)) {
+        if ((streamChanged || approachChanged) && (started || attached)) {
           // A publisher rebuild creates a different PDT timeline and may leave
-          // AVPlayer holding a now-invalid MediaMTX session. Tear down the
-          // transport but keep this same, user-blessed audio element.
+          // AVPlayer holding a now-invalid MediaMTX session; a DJ approach flip
+          // changes the seek/pin/target this device must re-align to. Either way,
+          // tear down the transport (keeping this same user-blessed audio element)
+          // and let the next poll's !started branch auto-rejoin on the new terms.
           stopPlayback();
         }
         const eventHost = s.event && String(s.event.host || '').trim();

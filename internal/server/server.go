@@ -129,6 +129,13 @@ type srv struct {
 	streamSyncCheckedAt  time.Time
 	streamSyncChecking   bool
 	streamSyncReady      bool
+
+	// syncMode: the DJ-selected global sync approach (a preset id from
+	// syncModeOrder) the whole room aligns to. Guests read it from /api/status
+	// and re-align when it changes; the DJ flips it to A/B approaches live.
+	// "" = the default preset. Guarded by syncMu. See syncmode.go.
+	syncMu   sync.Mutex
+	syncMode string
 }
 
 func New(d Deps) *Srv {
@@ -136,26 +143,26 @@ func New(d Deps) *Srv {
 	if d.Payload != nil {
 		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
 	}
-	// The EXT-X-START offset must equal what /api/status reports as the room
-	// target, so the pinned start and the client's telemetry agree.
-	roomTarget := func() float64 {
-		if d.Config.LatencyTarget > 0 {
-			return d.Config.LatencyTarget
-		}
-		return defaultLLHLSLatencyTarget
-	}
-	return &Srv{srv{
+	s := &Srv{srv{
 		Deps: d, vendor: http.FileServer(http.FS(webFS)),
-		liveProxy:      newLiveProxy(d.Config.HLSPort, roomTarget, "/live", true),
-		livePlainProxy: newLiveProxy(d.Config.HLSPort, roomTarget, "/live-plain", false),
-		limits:         newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
+		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
 	}}
+	// Both proxies share one upstream. /live injects the EXT-X-START room-start
+	// pin only when the current sync approach asks for it (s.syncPinEnabled);
+	// /live-plain never pins (the per-device ?pin=0 escape hatch). Target and pin
+	// are read at REQUEST time (method values bound to s), so the DJ flipping the
+	// approach takes effect on the next playlist fetch with no rebuild. The pin
+	// offset must equal what /api/status reports as the room target — both read
+	// s.syncTarget, so they cannot drift.
+	s.liveProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live", s.syncPinEnabled)
+	s.livePlainProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live-plain", func() bool { return false })
+	return s
 }
 
 // newLiveProxy keeps the guest page and LL-HLS on one public HTTPS origin.
 // MediaMTX remains loopback-only from the Go server's point of view; guests no
 // longer need a second TLS connection to a second externally reachable port.
-func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string, inject bool) http.Handler {
+func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string, pinEnabled func() bool) http.Handler {
 	upstream := fmt.Sprintf("127.0.0.1:%d", hlsPort)
 	return &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
@@ -186,7 +193,7 @@ func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string, inject 
 			// seek hang, and a player that ignores it just falls back to the natural
 			// hold-back position (still no gross outlier). Media playlists pass
 			// through untouched. Per RFC 8216 EXT-X-START belongs in the multivariant.
-			if inject && resp.Request != nil && resp.StatusCode == http.StatusOK &&
+			if pinEnabled() && resp.Request != nil && resp.StatusCode == http.StatusOK &&
 				strings.HasSuffix(resp.Request.URL.Path, "/index.m3u8") {
 				if d := roomTarget(); d > 0.5 {
 					body, err := io.ReadAll(resp.Body)
@@ -525,12 +532,16 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		latencyTarget := s.latencyTarget(bc, health.Status)
 		roster := s.Listeners.Roster()
 		var rosterBody any = roster
+		// The sync-approach radio MENU (labels/hints) is DJ-only — it never bloats
+		// the guest join-path poll. Guests still get the compact "sync" object below.
+		syncMenu := syncModeList()
 		if !s.isDJ(r) {
 			public := make([]map[string]string, 0, len(roster))
 			for _, listener := range roster {
 				public = append(public, map[string]string{"name": listener.Name, "emoji": listener.Emoji})
 			}
 			rosterBody = public
+			syncMenu = nil
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name":           s.Config.Name,
@@ -548,6 +559,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"reachability":   s.reachability(),
 			"hotspot":        s.hotspotState(),
 			"latencyTarget":  latencyTarget,
+			"sync":           s.syncModeState(),
+			"syncModes":      syncMenu, // nil (→ null) for guests; the DJ radio menu otherwise
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
@@ -904,6 +917,24 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				s.MTX.StopWait()
 			}
 		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case "/api/sync-mode":
+		// Set the room's global sync approach (see syncmode.go). DJ-only tuning
+		// knob — not go-live — so it needs requireDJ but not the activation gate.
+		// Guests pick up the change on their next /api/status poll and re-align.
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		if !s.requireDJ(w, r) {
+			return
+		}
+		mode := r.URL.Query().Get("mode")
+		if _, ok := syncModes[mode]; !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown sync mode"})
+			return
+		}
+		s.setSyncMode(mode)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/open-settings":
 		if r.Method != http.MethodPost {
@@ -1413,17 +1444,17 @@ func (s *srv) activationState() map[string]any {
 // Moving this value while a room is live made healthy players seek whenever a
 // struggling peer changed room health. Recovery is now strictly per-device.
 func (s *srv) latencyTarget(bc broadcast.Status, _ string) float64 {
+	if bc.Delivery == "llhls" {
+		// The room's global sync approach owns the LL-HLS target so /api/status,
+		// the EXT-X-START pin, and the client's align math all read ONE value and
+		// can't disagree. syncTarget() resolves the current preset's target (or
+		// inherits Config.LatencyTarget / the LL-HLS default). The historical
+		// authoritative-deadline reasoning now lives in the "balanced"/"deep"
+		// presets in syncmode.go.
+		return s.syncTarget()
+	}
 	if s.Config.LatencyTarget > 0 {
 		return s.Config.LatencyTarget
-	}
-	if bc.Delivery == "llhls" {
-		// This is the room's authoritative playout deadline, not an observed peer
-		// average. The playlist advertises a ~2.5s hold-back and an uncorrected
-		// Safari 26 field client parked steadily at ~5.2s. A 7s deadline spends
-		// extra glass-to-glass latency so normal Safari cohorts all take the same
-		// deliberate startup path, while leaving enough of the 10s join budget for
-		// native settling when someone joins immediately after Go Live.
-		return defaultLLHLSLatencyTarget
 	}
 	seg := bc.SegDur
 	if seg <= 0 {
