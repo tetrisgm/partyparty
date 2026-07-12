@@ -37,8 +37,8 @@ const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 // Fallback only — /api/version reads the live content/app-version R2 marker at
 // runtime (release.sh keeps it current). Keep this ~current so the fallback path
 // is never badly stale.
-const APP_VERSION = "49.60";
-const APP_VERSION_DATE = "2026-07-10";
+const APP_VERSION = "51.61";
+const APP_VERSION_DATE = "2026-07-11";
 const SESSION_COOKIE = "pp_session";
 const POST_MEDIA_MIME = {
   image: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"],
