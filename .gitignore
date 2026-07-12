@@ -30,3 +30,6 @@ auto.key
 # Codex loop logs (local)
 codex/logs/
 node_modules/
+
+# generated sync-test audio
+scripts/synctest/*.wav
