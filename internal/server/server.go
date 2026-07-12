@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -134,7 +136,14 @@ func New(d Deps) *Srv {
 		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
 	}
 	return &Srv{srv{
-		Deps: d, vendor: http.FileServer(http.FS(webFS)), liveProxy: newLiveProxy(d.Config.HLSPort),
+		Deps: d, vendor: http.FileServer(http.FS(webFS)), liveProxy: newLiveProxy(d.Config.HLSPort, func() float64 {
+			// The EXT-X-START offset must equal what /api/status reports as the
+			// room target, so the pinned start and the client's telemetry agree.
+			if d.Config.LatencyTarget > 0 {
+				return d.Config.LatencyTarget
+			}
+			return defaultLLHLSLatencyTarget
+		}),
 		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
 	}}
 }
@@ -142,7 +151,7 @@ func New(d Deps) *Srv {
 // newLiveProxy keeps the guest page and LL-HLS on one public HTTPS origin.
 // MediaMTX remains loopback-only from the Go server's point of view; guests no
 // longer need a second TLS connection to a second externally reachable port.
-func newLiveProxy(hlsPort int) http.Handler {
+func newLiveProxy(hlsPort int, roomTarget func() float64) http.Handler {
 	upstream := fmt.Sprintf("127.0.0.1:%d", hlsPort)
 	return &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
@@ -165,6 +174,37 @@ func newLiveProxy(hlsPort int) http.Handler {
 			// outside the proxy and gets the app's 404 page.
 			if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, "/live/") {
 				resp.Header.Set("Location", "/live"+location)
+			}
+			// Pin the room's start position in the MULTIVARIANT playlist (index.m3u8,
+			// fetched once per join) so every device begins the SAME distance behind
+			// the live edge. This is a server-side start HINT, not a client seek —
+			// it tightens the room toward zero spread with NO risk of the Safari-27
+			// seek hang, and a player that ignores it just falls back to the natural
+			// hold-back position (still no gross outlier). Media playlists pass
+			// through untouched. Per RFC 8216 EXT-X-START belongs in the multivariant.
+			if resp.Request != nil && resp.StatusCode == http.StatusOK &&
+				strings.HasSuffix(resp.Request.URL.Path, "/index.m3u8") {
+				if d := roomTarget(); d > 0.5 {
+					body, err := io.ReadAll(resp.Body)
+					_ = resp.Body.Close()
+					if err != nil {
+						return err
+					}
+					pl := string(body)
+					if strings.Contains(pl, "#EXT-X-STREAM-INF") && !strings.Contains(pl, "EXT-X-START") {
+						tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.3f,PRECISE=YES\n", d)
+						if i := strings.IndexByte(pl, '\n'); i >= 0 && strings.HasPrefix(pl, "#EXTM3U") {
+							pl = pl[:i+1] + tag + pl[i+1:]
+						} else {
+							pl = "#EXTM3U\n" + tag + pl
+						}
+						body = []byte(pl)
+					}
+					resp.Body = io.NopCloser(bytes.NewReader(body))
+					resp.ContentLength = int64(len(body))
+					resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+					resp.Header.Del("Content-Encoding")
+				}
 			}
 			return nil
 		},

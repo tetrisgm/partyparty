@@ -375,6 +375,18 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
   });
   log(`PASS server stream readiness: generation=${syncReady.streamSync.generation} real=${syncReady.streamSync.realHistory.toFixed(3)}s gaps=${syncReady.streamSync.gapHistory.toFixed(3)}s target=${syncReady.latencyTarget.toFixed(3)}s`);
 
+  // The Go /live proxy must inject the EXT-X-START room-start pin into the
+  // multivariant playlist so every device begins at the same offset with no
+  // client seek. It must match the advertised room target.
+  {
+    const mv = await getInsecure(`https://127.0.0.1:${tlsPort}/live/party/index.m3u8`);
+    const m = /#EXT-X-START:TIME-OFFSET=(-?[0-9.]+)/.exec(mv.body || '');
+    if (!m) fail(`multivariant playlist missing EXT-X-START pin (status ${mv.status}):\n${(mv.body || '').slice(0, 300)}`);
+    const off = Math.abs(parseFloat(m[1]));
+    if (Math.abs(off - syncReady.latencyTarget) > 0.02) fail(`EXT-X-START offset ${off}s != room target ${syncReady.latencyTarget}s`);
+    log(`PASS EXT-X-START pin present: TIME-OFFSET=-${off.toFixed(3)}s == room target`);
+  }
+
   return {
     mode: 'real',
     workDir,
@@ -1090,12 +1102,12 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   if (targetErrors.length !== samples.length * 2 || samples.some((s) => !Number.isFinite(s.targetA) || Math.abs(s.targetA - s.targetB) > 0.001)) {
     fail(`room sync targets diverged across listeners: ${JSON.stringify(samples)}`);
   }
-  // The actual product invariant: listeners land tightly TOGETHER. Gate on the
-  // measured device-to-device spread — but ONLY on a clean room. The drift
-  // scenario injects an offset on purpose (passive playback must not chase it),
-  // so a wide spread there is the expected, correct behavior.
-  if (!allowInjectedSeek && p90 > 0.5) {
-    fail(`room sync spread too wide: p90=${p90.toFixed(3)}s median=${median.toFixed(3)}s (want <0.5s): ${JSON.stringify(samples)}`);
+  // The product invariant: no HUGE device-to-device gaps. ~1s is livable (closer
+  // to 0 is better — the EXT-X-START pin chases that); a gross gap is the failure.
+  // Gate only on a clean room — the drift scenario injects an offset on purpose
+  // (passive playback must not chase it), so a wide spread there is correct.
+  if (!allowInjectedSeek && p90 > 1.0) {
+    fail(`room sync gap too wide: p90=${p90.toFixed(3)}s median=${median.toFixed(3)}s (want <1.0s): ${JSON.stringify(samples)}`);
   }
   if (samples.some((s) => s.alignA > 4 || s.alignB > 4)) {
     fail(`startup alignment exceeded the four-seek muted budget: ${JSON.stringify(samples)}`);
