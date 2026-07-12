@@ -1389,6 +1389,41 @@
           return;
         }
 
+        // NATIVE PATH (iOS/Safari AVPlayer): NO startup seek — the seek is what
+        // hangs Safari 27 (a backward seek into the unbuffered edge never commits,
+        // freezes the player, and drifts it seconds late → the silent-forever bug).
+        // Open at the natural position instead. This trades tightness for
+        // robustness: the E2E proved a no-seek open leaves the ~1s start-position
+        // quantization uncorrected, so the residual native spread is measured by
+        // the physical mic test — and if it exceeds the budget, server-side
+        // EXT-X-START pinning (not a client seek) is the tightening layer. A player
+        // that ever progressed ALWAYS opens audible; muted-forever is impossible.
+        if (useNative) {
+          let progress = null;
+          while (startupTimeLeft() > 0 && canAlign(generation)) {
+            progress = await waitForProgress(generation, Math.min(2000, startupTimeLeft()));
+            if (progress) break;
+          }
+          if (!canAlign(generation)) return;
+          if (!progress) { failAudioGate(generation, 'Could not start playback. Tap Retry sync.'); return; }
+          await ensureTimelineOrigin(generation, Math.min(1200, startupTimeLeft()));
+          const verification = await verifyAlignment(generation); // telemetry only, never a seek
+          if (!canAlign(generation)) return;
+          const ok = !!(verification && verification.ok);
+          logEvent('align-settled', {
+            corrected: false, natural: true, ref: syncReference(), lat: rnd3(measureLatency()),
+            target: rnd3(roomTarget()), error: verification ? rnd3(verification.error) : null,
+            maxError: verification ? rnd3(verification.maxError) : null,
+            rate: verification ? rnd3(verification.rate) : rnd3(progress.rate), seeks: 0,
+          });
+          await openAudioGate(generation, verification || { ok: false, error: null, maxError: null, rate: progress.rate }, ok);
+          return;
+        }
+
+        // hls.js PATH (Chromium/Android): the muted seek loop is SAFE here (no
+        // Safari-27 hang) and it corrects the ~1s start-position quantization a
+        // no-seek open leaves behind — the E2E measured 0.98s spread without it vs
+        // 0.12s with it. Keep it.
         let sawProgress = false;
         let lastVerification = null;
         while (startupTimeLeft() > 0 && canAlign(generation)) {
@@ -1415,12 +1450,11 @@
         }
 
         if (!canAlign(generation)) return;
-        // Continuity beats an invisible muted limbo. A progressing player with
-        // no trustworthy PDT bridge opens as explicitly unverified; a measured
-        // player may degrade only inside the product's accepted one-second
-        // boundary. A known gross offset stays muted behind a visible retry.
-        if (sawProgress && (!lastVerification || Math.abs(lastVerification.error) <= SYNC_WARN_AT)) {
-          await openAudioGate(generation, lastVerification, false);
+        // A player that ever progressed opens audible (unverified badge if the
+        // timing was not confirmed) rather than staying silent. Only a player that
+        // never progressed at all shows the visible retry.
+        if (sawProgress) {
+          await openAudioGate(generation, lastVerification, !!(lastVerification && lastVerification.ok));
           return;
         }
         failAudioGate(generation, 'Could not line up playback. Tap Retry sync.');

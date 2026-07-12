@@ -1,4 +1,5 @@
 {
   "flags": { "autoPublish": true },
-  "tunables": { "publishAutoMinSec": 180 }
+  "tunables": { "publishAutoMinSec": 180 },
+  "server": { "latencyTargetSec": 3 }
 }
