@@ -35,14 +35,37 @@ assert.equal(summary.streamReady[0].targetSec, 7);
 assert.deepEqual(summary.warnings, []);
 
 const bad = sample
-  .replace('target=7.000s', 'target=5.000s')
+  .replace('target=7.000s', 'target=0.200s')
   + '03:01:20.000 | ev[iPad | 192.168.1.12 cid-c.tab-c v48.59 guest] sync-watchdog +15000ms #9 lat=16.4 ref=pdt seeks=4\n'
   + '03:01:20.500 | ev[iPad | 192.168.1.12 cid-c.tab-c v48.59 guest] sync-failed +15500ms #10 why=join lat=16.4 seeks=4\n';
 summary = analyzeText(bad, 'bad.log');
 assert.equal(summary.counts['sync-watchdog'], 1);
 assert.equal(summary.counts['sync-failed'], 1);
-assert.ok(summary.warnings.some((w) => w.message.includes('expected 7.000s')));
+assert.ok(summary.warnings.some((w) => w.message.includes('outside the sane')));
 assert.ok(summary.warnings.some((w) => w.message.includes('sync-watchdog')));
 assert.ok(summary.warnings.some((w) => w.message.includes('sync-failed')));
+
+// Sync-approach A/B (v53.61+): balanced (both phones open, tight spread) vs seek
+// (phone A opens, phone C polls health but never opens audio → silent under seek).
+const ab = `
+03:02:00.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v53.61 guest] audio-open +5000ms #1 why=join aligned=true degraded=false ref=pdt lat=3.00 joinMs=5000 rate=1 seeks=0 mMode=balanced mSeek=0 mPin=1 mD=3
+03:02:00.050 | ev[iPhone B | 192.168.1.11 cid-b.tab-b v53.61 guest] audio-open +5050ms #2 why=join aligned=true degraded=false ref=pdt lat=3.05 joinMs=5100 rate=1 seeks=0 mMode=balanced mSeek=0 mPin=1 mD=3
+03:02:30.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v53.61 guest] audio-open +5000ms #3 why=dj-restart aligned=true degraded=false ref=pdt lat=3.10 joinMs=5200 rate=1 seeks=1 mMode=seek mSeek=1 mPin=1 mD=3
+03:02:33.000 | ev[iPhone C | 192.168.1.12 cid-c.tab-c v53.61 guest] health +15000ms #4 lat=16.2 buf=0 ref=pdt mMode=seek mSeek=1 mPin=1 mD=3
+`;
+const abs = analyzeText(ab, 'ab.log');
+assert.equal(abs.approaches.length, 2);
+const bal = abs.approaches.find((a) => a.mode === 'balanced');
+const seek = abs.approaches.find((a) => a.mode === 'seek');
+assert.equal(bal.devicesOpened, 2);
+assert.equal(bal.silent, 0);
+assert.equal(bal.spreadMs, 50);
+assert.equal(bal.pin, 1);
+assert.equal(bal.seek, 0);
+assert.equal(seek.devicesSeen, 2);
+assert.equal(seek.devicesOpened, 1);
+assert.equal(seek.silent, 1);
+assert.equal(abs.recommendation, 'balanced');
+assert.ok(abs.warnings.some((w) => w.message.includes("approach 'seek'") && w.message.includes('silent')));
 
 console.log('PASS session log analyzer');

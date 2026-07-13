@@ -9,6 +9,7 @@ const STREAM_READY_RE = /stream sync ready: generation=(\d+) real=([0-9.]+)s gap
 const KNOWN_KEYS = [
   'aligned', 'audible', 'before', 'buf', 'committed', 'corrected', 'correction',
   'degraded', 'error', 'first', 'gen', 'joinMs', 'lat', 'll', 'maxError',
+  'mD', 'mMode', 'mPin', 'mSeek', // sync-approach tags (v53.61+): effective target/mode/pin/seek
   'muted', 'pos', 'progressAge', 'rate', 'real', 'ref', 'rs', 'samples', 'seek',
   'seeking', 'seeks', 'staleMs', 'target', 'used', 'want', 'why',
 ];
@@ -95,10 +96,25 @@ function summarizeCohorts(opens, windowMs = 30000) {
   });
 }
 
+// Per sync-approach (v53.61+) rollup: the DJ flips the "Sync approach" radio and
+// every guest re-aligns, stamping the effective mode on its audio-open + health
+// telemetry (mMode/mSeek/mPin/mD). Grouping by mMode turns one party's log into a
+// head-to-head: per approach, how many devices reached audio vs stayed silent
+// (the #1 priority), the startup spread, and the latency band.
+function approachBucket(map, mode) {
+  let a = map.get(mode);
+  if (!a) {
+    a = { mode, seek: null, pin: null, target: null, opens: [], openClients: new Set(), seenClients: new Set() };
+    map.set(mode, a);
+  }
+  return a;
+}
+
 export function analyzeText(text, source = '<stdin>') {
   const counts = {};
   const clients = new Map();
   const opens = [];
+  const approaches = new Map(); // mMode -> approachBucket
   const streamReady = [];
   const lines = text.split(/\r?\n/);
 
@@ -135,6 +151,15 @@ export function analyzeText(text, source = '<stdin>') {
     if (kind === 'health' && num(fields.lat) !== null) {
       client.latestHealth = { lat: fields.lat, buf: fields.buf, ref: fields.ref, timeMs };
     }
+    // Any event tagged with a sync approach (health fires continuously, so a phone
+    // that is alive-but-silent under an approach is still "seen" under it).
+    if (fields.mMode != null) {
+      const a = approachBucket(approaches, String(fields.mMode));
+      a.seenClients.add(who);
+      if (num(fields.mSeek) !== null) a.seek = num(fields.mSeek);
+      if (num(fields.mPin) !== null) a.pin = num(fields.mPin);
+      if (num(fields.mD) !== null) a.target = num(fields.mD);
+    }
 
     if (kind === 'audio-open') {
       const open = {
@@ -148,15 +173,51 @@ export function analyzeText(text, source = '<stdin>') {
         maxError: num(fields.maxError),
         rate: num(fields.rate),
         seeks: num(fields.seeks),
+        mode: fields.mMode != null ? String(fields.mMode) : null,
         ref: fields.ref || '',
         why: fields.why || '',
       };
       opens.push(open);
       client.opens.push(open);
+      if (open.mode != null) {
+        const a = approachBucket(approaches, open.mode);
+        a.opens.push(open);
+        a.openClients.add(who);
+      }
     }
   }
 
   const cohorts = summarizeCohorts(opens);
+
+  // Rank approaches for the A/B verdict: fewest silent devices first (the #1
+  // priority), then tightest startup spread, then lowest latency.
+  const approachesOut = [...approaches.values()].map((a) => {
+    const lats = a.opens.map((o) => o.lat).filter((v) => num(v) !== null);
+    const min = lats.length ? Math.min(...lats) : null;
+    const max = lats.length ? Math.max(...lats) : null;
+    const seen = a.seenClients.size;
+    const opened = a.openClients.size;
+    return {
+      mode: a.mode,
+      seek: a.seek,
+      pin: a.pin,
+      target: a.target,
+      devicesSeen: seen,
+      devicesOpened: opened,
+      silent: Math.max(0, seen - opened),
+      opens: a.opens.length,
+      degraded: a.opens.filter((o) => o.degraded || !o.aligned).length,
+      minLatencySec: min,
+      maxLatencySec: max,
+      spreadMs: (min !== null && max !== null) ? Math.round((max - min) * 1000) : null,
+      maxSeeks: Math.max(0, ...a.opens.map((o) => o.seeks || 0)),
+    };
+  }).sort((a, b) =>
+    (a.silent - b.silent) ||
+    ((a.spreadMs ?? Infinity) - (b.spreadMs ?? Infinity)) ||
+    ((a.maxLatencySec ?? Infinity) - (b.maxLatencySec ?? Infinity)));
+  const recommendation = approachesOut.find((a) => a.devicesOpened > 0)?.mode ?? null;
+
   const clientsOut = [...clients.values()].map((c) => ({
     ...c,
     alignedOpens: c.opens.filter((o) => o.aligned).length,
@@ -172,8 +233,15 @@ export function analyzeText(text, source = '<stdin>') {
   const warnings = [];
 
   for (const s of streamReady) {
-    if (Math.abs(s.targetSec - 7) > 0.05) {
-      warnings.push({ level: 'warn', message: `stream target is ${s.targetSec.toFixed(3)}s, expected 7.000s until physical evidence says otherwise` });
+    // The room target is now approach-driven (presets: tight 2s / balanced ~3s /
+    // deep 6s), so only flag values outside the sane LL-HLS band as suspect.
+    if (s.targetSec < 1 || s.targetSec > 10) {
+      warnings.push({ level: 'warn', message: `stream target is ${s.targetSec.toFixed(3)}s, outside the sane 1–10s range` });
+    }
+  }
+  for (const a of approachesOut) {
+    if (a.silent > 0) {
+      warnings.push({ level: 'fail', message: `approach '${a.mode}': ${a.silent} device(s) polled but never opened audio (silent under this approach)` });
     }
   }
   if (opens.length === 0) {
@@ -219,6 +287,8 @@ export function analyzeText(text, source = '<stdin>') {
     },
     streamReady,
     cohorts,
+    approaches: approachesOut,
+    recommendation,
     clients: clientsOut,
     warnings,
   };
@@ -261,6 +331,17 @@ function printReport(summary) {
     console.log('\nStartup cohorts:');
     for (const cohort of summary.cohorts) {
       console.log(`  #${cohort.index}: n=${cohort.count} spread=${cohort.spreadMs}ms lat=${fmtSec(cohort.minLatencySec)}..${fmtSec(cohort.maxLatencySec)}`);
+    }
+  }
+  if (summary.approaches && summary.approaches.length) {
+    console.log('\nSync approaches (A/B — best behaved first):');
+    for (const a of summary.approaches) {
+      const dials = `seek=${a.seek ?? '?'} pin=${a.pin ?? '?'} target=${a.target ?? '?'}s`;
+      const silent = a.silent > 0 ? `  ⚠ SILENT=${a.silent}` : '';
+      console.log(`  ${a.mode.padEnd(9)} ${dials.padEnd(28)} opened=${a.devicesOpened}/${a.devicesSeen} spread=${a.spreadMs == null ? 'n/a' : `${a.spreadMs}ms`} lat=${fmtSec(a.minLatencySec)}..${fmtSec(a.maxLatencySec)} degraded=${a.degraded} maxSeeks=${a.maxSeeks}${silent}`);
+    }
+    if (summary.recommendation) {
+      console.log(`  → best behaved this session: ${summary.recommendation} (fewest silent, then tightest spread, then lowest latency)`);
     }
   }
   if (summary.clients.length) {
