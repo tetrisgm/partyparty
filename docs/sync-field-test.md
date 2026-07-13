@@ -5,6 +5,25 @@ behaves on the **real phones**. The v53.61 "Sync approach" radio (DJ Settings)
 lets you A/B all of them in one party. This is the protocol that makes that one
 party yield clean, comparable data.
 
+## The baseline this must beat (measured, v47.60)
+
+Pulled from the real ~9-iPhone party on fader91 (`session-20260711-181007`, run on
+**v47.60 — before any of the sync fixes**). This is the documented "before":
+
+- **5+ device-tabs never opened audio at all** (`opens=0`). One phone at
+  `10.10.1.240` opened **5 tabs and got audio on none of them** — the "never
+  synced, kept reloading" device (the iOS-27 story).
+- **10 `sync-failed` events** — listeners reaching the broken retry state.
+- **27 stalls · 25 rebuffers · 10 reconnects.**
+- **Latency fanned 7.4 s → 14.9 s** device-to-device (~7.5 s spread), everyone
+  parked on the old 7 s target and several drifting far past it.
+
+A v53.61 party is "confirmed better" when the analyzer shows, on the non-`seek`
+approaches: **silent = 0**, **sync-failed = 0**, and the per-cohort spread inside
+~1 s. The `seek` approach is the deliberate probe for whether the iOS-27 hang
+returns at 3 s. As of 2026-07-12 there is **no post-fix party data yet** — this
+number is the target, not a result.
+
 ## What we're trying to learn (in priority order)
 
 1. **Does any approach leave a phone silent?** (the iOS-27 "never synced" bug).
