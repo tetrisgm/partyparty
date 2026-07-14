@@ -263,6 +263,24 @@ func (b *Broadcaster) tryAutoRestart() bool {
 	return true
 }
 
+// LastSource reports the source the pipeline is (or was) running with, so a
+// stream-profile switch can cleanly Stop, rebuild the engine, and Start again
+// with the exact same capture source and options.
+func (b *Broadcaster) LastSource() (device, name string, opts Options, live bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lastDevice, b.lastName, b.lastOpts, b.state == "live" || b.state == "starting"
+}
+
+// StartRebuild is Start with REBUILD recording semantics: the recording
+// continues into a new segment file off the original base (set-2.aac) instead
+// of reopening — and truncating — the file the set has been recording into
+// since Go Live. The stream-profile switch MUST use this for its publisher
+// restart; plain Start would wipe the set recorded so far.
+func (b *Broadcaster) StartRebuild(device, deviceName string, opts Options) {
+	b.startInternal(device, deviceName, opts, true)
+}
+
 // segmentedRecordPath inserts "-<n+1>" before the extension so each rebuild's
 // recording lands in its own file ("set.aac" -> "set-2.aac"), never truncating
 // the prior one. A mid-set device yank then costs at most a brief audio gap, not

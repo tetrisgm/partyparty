@@ -19,6 +19,22 @@ type syncPreset struct {
 	Seek   bool
 	Pin    bool
 	Target float64 // seconds behind the DJ; 0 = inherit the configured default
+
+	// Stream geometry (LL-HLS shape). Zero values inherit the configured
+	// defaults, so most presets share the running engine. A preset whose
+	// effective geometry differs from the current one cannot be applied
+	// in-memory: /api/sync-mode performs a controlled engine rebuild
+	// (publisher stop -> mediamtx.yml rewrite -> MediaMTX restart -> publisher
+	// restart) with rollback — the room restarts briefly, exactly like the
+	// field-proven capture-devicechange rebuilds.
+	PartDur  string // e.g. "500ms"; "" = inherit Config.PartDur
+	SegDur   string // e.g. "1s"; "" = inherit Config.SegDur
+	SegCount int    // playlist window in segments; 0 = inherit Config.SegCount
+
+	// Reroll: native no-seek clients may take ONE additional muted draw when
+	// the first natural start verifies >1s off target (re-attach, never a
+	// seek). Pushed to guests via the sync status payload.
+	Reroll bool
 }
 
 const defaultSyncMode = "balanced"
@@ -30,6 +46,7 @@ const defaultSyncMode = "balanced"
 // than hardcoding a number that would silently drift from it.
 var syncModeOrder = []syncPreset{
 	{ID: "balanced", Label: "Balanced", Hint: "Natural start + start-position pin. Today's shipped default.", Seek: false, Pin: true, Target: 0},
+	{ID: "precise", Label: "Precise", Hint: "Finer stream shape (1s segments, 500ms parts) + one silent start re-roll for the tightest starts. Switching briefly restarts the stream.", Seek: false, Pin: true, Target: 0, PartDur: "500ms", SegDur: "1s", SegCount: 32, Reroll: true},
 	{ID: "seek", Label: "Seek to align", Hint: "Muted startup seek (the pre-fix behavior). Tests whether the iOS-27 silent hang returns.", Seek: true, Pin: true, Target: 0},
 	{ID: "nopin", Label: "No pin", Hint: "Natural start, no EXT-X-START pin. Isolates whether the pin actually helps native.", Seek: false, Pin: false, Target: 0},
 	{ID: "deep", Label: "Deep buffer", Hint: "More cushion (6s behind the DJ) against gross gaps, at the cost of latency.", Seek: false, Pin: true, Target: 6},
@@ -95,6 +112,45 @@ func (s *srv) syncPinEnabled() bool {
 	return s.currentSyncPreset().Pin
 }
 
+// presetGeometry resolves a preset's effective LL-HLS shape, inheriting the
+// configured defaults for unset fields. Two presets with equal effective
+// geometry share the running engine; unequal geometry demands a rebuild.
+func (s *srv) presetGeometry(p syncPreset) (partDur, segDur string, segCount int) {
+	partDur, segDur, segCount = p.PartDur, p.SegDur, p.SegCount
+	if partDur == "" {
+		partDur = s.Config.PartDur
+	}
+	if segDur == "" {
+		segDur = s.Config.SegDur
+	}
+	if segCount == 0 {
+		segCount = s.Config.SegCount
+	}
+	return partDur, segDur, segCount
+}
+
+func (s *srv) beginSyncSwitch() bool {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	if s.syncSwitching {
+		return false
+	}
+	s.syncSwitching = true
+	return true
+}
+
+func (s *srv) endSyncSwitch() {
+	s.syncMu.Lock()
+	s.syncSwitching = false
+	s.syncMu.Unlock()
+}
+
+func (s *srv) isSyncSwitching() bool {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	return s.syncSwitching
+}
+
 // syncModeState is the compact payload every guest reads each poll to apply the
 // room's current approach and to detect a change (→ re-align). It resolves the
 // preset ONCE so mode/seek/pin/target are always a single consistent snapshot,
@@ -102,10 +158,12 @@ func (s *srv) syncPinEnabled() bool {
 func (s *srv) syncModeState() map[string]any {
 	p := s.currentSyncPreset()
 	return map[string]any{
-		"mode":   p.ID,
-		"seek":   p.Seek,
-		"pin":    p.Pin,
-		"target": s.presetTarget(p),
+		"mode":      p.ID,
+		"seek":      p.Seek,
+		"pin":       p.Pin,
+		"target":    s.presetTarget(p),
+		"reroll":    p.Reroll,
+		"switching": s.isSyncSwitching(),
 	}
 }
 

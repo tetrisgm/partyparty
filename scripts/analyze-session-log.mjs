@@ -11,6 +11,7 @@ const KNOWN_KEYS = [
   'degraded', 'error', 'first', 'gen', 'joinMs', 'lat', 'll', 'maxError',
   'mD', 'mMode', 'mPin', 'mSeek', // sync-approach tags (v53.61+): effective target/mode/pin/seek
   'quant', // v53.63+: open landed within expected native quantization (not genuinely degraded)
+  'reroll', // v55+: Precise took a second muted draw before this open
   'muted', 'pos', 'progressAge', 'rate', 'real', 'ref', 'rs', 'samples', 'seek',
   'seeking', 'seeks', 'staleMs', 'target', 'used', 'want', 'why',
 ];

@@ -719,7 +719,8 @@
         seekSet: q.has('seek'), seek: q.get('seek') === '1',
         d: isFinite(dv) && dv > 0 ? dv : null,
         pinSet: q.has('pin'), pin: q.get('pin') !== '0',
-        on: q.has('seek') || q.has('d') || q.has('pin'),
+        rerollSet: q.has('reroll'), reroll: q.get('reroll') === '1',
+        on: q.has('seek') || q.has('d') || q.has('pin') || q.has('reroll'),
       };
     })();
     // The room's current approach, pushed by the server each poll: {mode,seek,pin,target}.
@@ -730,6 +731,11 @@
     // room approach, else the shipped default. (Target flows through latencyTarget →
     // roomTarget(), so ?d already overrides it there.)
     const effSeek = () => EXP.seekSet ? EXP.seek : !!(approach && approach.seek);
+    // Re-roll (Precise): native no-seek clients may take ONE extra muted draw
+    // when the first natural start verifies >1s off target — a re-attach of the
+    // same user-blessed element, never a seek, never a second retry.
+    const effReroll = () => EXP.rerollSet ? EXP.reroll : !!(approach && approach.reroll);
+    let rerollUsed = false; // once per muted join transaction
     // ?pin=0 is the only per-device pin override (force this device un-pinned); a
     // per-device force-pin is impossible on the shared /live playlist, so ?pin=1
     // (or bare ?pin) transparently follows the room approach.
@@ -1230,6 +1236,7 @@
       if (joinMuted || alignPromise || alignedGeneration === alignGeneration) return false;
       joinMuted = true;
       syncFailed = false;
+      rerollUsed = false; // fresh transaction — every close path re-arms the one re-roll
       joinReason = reason || 'join';
       if (!joinStartedAt) joinStartedAt = Date.now();
       needsAlign = true;
@@ -1239,6 +1246,15 @@
       btnlabel.textContent = 'Syncing…';
       if (btnHint) btnHint.textContent = 'Lining up with everyone';
       setStatus('syncing with the room…');
+      armJoinWatchdog();
+      return true;
+    }
+    // The watchdog is generation-keyed, so anything that bumps the generation
+    // MID-transaction (the Precise re-roll's re-attach) MUST re-arm it for the
+    // new generation — otherwise a re-attached element that never reaches
+    // 'playing' leaves the guest muted at "Syncing…" forever with no visible
+    // failure (the fail-silent class this product must never regress into).
+    function armJoinWatchdog(){
       clearTimeout(joinWatchdog);
       const watchedGeneration = alignGeneration;
       joinWatchdog = setTimeout(() => {
@@ -1249,7 +1265,6 @@
         });
         failAudioGate(watchedGeneration, 'Playback timing could not be verified.');
       }, JOIN_WATCHDOG_MS);
-      return true;
     }
     function waitForMediaEvent(name, maxWaitMs){
       return new Promise(resolve => {
@@ -1395,8 +1410,9 @@
         error: verification ? rnd3(verification.error) : null,
         maxError: verification ? rnd3(verification.maxError) : null,
         rate: verification ? rnd3(verification.rate) : null,
-        seeks: generationAlignSeeks, ...expMode(),
+        seeks: generationAlignSeeks, reroll: rerollUsed, ...expMode(),
       });
+      rerollUsed = false; // transaction closed — next join gets a fresh re-roll
     }
     function failAudioGate(generation, message){
       if (generation !== alignGeneration || !joinMuted) return;
@@ -1404,6 +1420,7 @@
       const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
       clearTimeout(joinWatchdog); joinWatchdog = 0;
       joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false;
+      rerollUsed = false; // transaction closed
       syncFailed = true; player.muted = true;
       setPlayingUI(false);
       ico.textContent = '↻';
@@ -1466,11 +1483,34 @@
           const verification = await verifyAlignment(generation); // telemetry only, never a seek
           if (!canAlign(generation)) return;
           const ok = !!(verification && verification.ok);
+          // Precise re-roll: the natural start is a draw quantized by part
+          // boundaries. If the FIRST draw verifies badly off target and there's
+          // budget left, re-attach the SAME user-blessed element once (still
+          // muted, no seek) and take a second draw — the 'playing' handler
+          // re-enters alignOnce on the fresh generation, where rerollUsed makes
+          // whatever comes back open unconditionally. Never loops, never leaves
+          // the player muted over imperfect timing.
+          const verr = verification && verification.error != null ? Math.abs(verification.error) : null;
+          if (!ok && !rerollUsed && effReroll() && verr != null && verr > 1.0 && startupTimeLeft() >= 4000) {
+            rerollUsed = true;
+            logEvent('start-reroll', {
+              error: rnd3(verification.error), lat: rnd3(measureLatency()),
+              target: rnd3(roomTarget()), gen: streamGeneration, ...expMode(),
+            });
+            if (attachSafe()) {
+              // attach() bumped the generation — re-arm the generation-keyed
+              // join watchdog or a never-playing re-attach fails SILENT.
+              armJoinWatchdog();
+              player.play().catch(() => {});
+              return;
+            }
+            // re-attach refused (cooldown/stream state) — fall through and open
+          }
           logEvent('align-settled', {
             corrected: false, natural: true, ref: syncReference(), lat: rnd3(measureLatency()),
             target: rnd3(roomTarget()), error: verification ? rnd3(verification.error) : null,
             maxError: verification ? rnd3(verification.maxError) : null,
-            rate: verification ? rnd3(verification.rate) : rnd3(progress.rate), seeks: 0,
+            rate: verification ? rnd3(verification.rate) : rnd3(progress.rate), seeks: 0, reroll: rerollUsed,
           });
           await openAudioGate(generation, verification || { ok: false, error: null, maxError: null, rate: progress.rate }, ok);
           return;
@@ -1926,6 +1966,7 @@
       recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
       resetAudibleWatchdogs();
       untrackedReattaches = 0; // full teardown = fresh session — re-arm the cap
+      rerollUsed = false;
       setPlayingUI(false); setStatus('');
       updateIdleButton(); // shows "Waiting for DJ"
     }

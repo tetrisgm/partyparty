@@ -59,6 +59,13 @@ type Deps struct {
 	// Version is the app build version — shown in UIs and broadcast to clients
 	// so stale player pages refresh themselves after an update.
 	Version string
+
+	// ReshapeStream rewrites mediamtx.yml with the given LL-HLS geometry and
+	// restarts the engine (StopWait -> WriteConfig -> EnsureReady when the
+	// delivery is llhls). Wired by main.go; nil when MediaMTX is unavailable,
+	// in which case geometry-changing sync presets are rejected. The caller
+	// (the /api/sync-mode switch) owns publisher stop/start and rollback.
+	ReshapeStream func(partDur, segDur string, segCount int) error
 }
 
 type srv struct {
@@ -133,9 +140,12 @@ type srv struct {
 	// syncMode: the DJ-selected global sync approach (a preset id from
 	// syncModeOrder) the whole room aligns to. Guests read it from /api/status
 	// and re-align when it changes; the DJ flips it to A/B approaches live.
-	// "" = the default preset. Guarded by syncMu. See syncmode.go.
-	syncMu   sync.Mutex
-	syncMode string
+	// "" = the default preset. syncSwitching serializes geometry-changing
+	// switches (engine rebuilds) and is reported to the console. Guarded by
+	// syncMu. See syncmode.go.
+	syncMu        sync.Mutex
+	syncMode      string
+	syncSwitching bool
 }
 
 func New(d Deps) *Srv {
@@ -935,6 +945,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		// Set the room's global sync approach (see syncmode.go). DJ-only tuning
 		// knob — not go-live — so it needs requireDJ but not the activation gate.
 		// Guests pick up the change on their next /api/status poll and re-align.
+		// Presets whose LL-HLS geometry differs from the current one (e.g.
+		// Precise's 1s/500ms/32) take the controlled-rebuild path: stop the
+		// publisher, reshape MediaMTX, restart the publisher — with rollback to
+		// the previous geometry (and mode) if the reshaped engine won't come up.
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
 			return
@@ -943,12 +957,58 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		mode := r.URL.Query().Get("mode")
-		if _, ok := syncModes[mode]; !ok {
+		next, ok := syncModes[mode]
+		if !ok {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown sync mode"})
 			return
 		}
+		// One switch at a time — BOTH paths. An "instant" flip racing a 2-8s
+		// geometry rebuild would silently overwrite the winner's mode (and leave
+		// the console picker wedged on a mode the server never kept), so the flag
+		// covers the whole handler and current state is read only after holding it.
+		if !s.beginSyncSwitch() {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "a stream profile switch is already in progress"})
+			return
+		}
+		defer s.endSyncSwitch()
+		cur := s.currentSyncPreset()
+		curPart, curSeg, curCount := s.presetGeometry(cur)
+		newPart, newSeg, newCount := s.presetGeometry(next)
+		if curPart == newPart && curSeg == newSeg && curCount == newCount {
+			s.setSyncMode(mode) // same engine shape — instant, no restart
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+			return
+		}
+		if s.ReshapeStream == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "stream reshaping unavailable (no low-latency engine)"})
+			return
+		}
+		device, deviceName, opts, wasLive := s.Broadcaster.LastSource()
+		if wasLive {
+			s.Broadcaster.Stop()
+		}
+		// Restarts below MUST be StartRebuild (recording-segment semantics): a
+		// plain Start replays the original RecordPath and truncates the set file
+		// the DJ has been recording since Go Live.
+		if err := s.ReshapeStream(newPart, newSeg, newCount); err != nil {
+			// Roll back: restore the previous geometry (best effort) and keep the
+			// previous mode so /api/status never advertises a shape that isn't
+			// actually serving.
+			if rbErr := s.ReshapeStream(curPart, curSeg, curCount); rbErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "stream reshape failed (" + err.Error() + ") AND rollback failed (" + rbErr.Error() + ") — stop and Go Live again"})
+				return
+			}
+			if wasLive {
+				s.Broadcaster.StartRebuild(device, deviceName, opts)
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "stream reshape failed; kept “" + cur.ID + "”: " + err.Error()})
+			return
+		}
 		s.setSyncMode(mode)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		if wasLive {
+			s.Broadcaster.StartRebuild(device, deviceName, opts)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "restarted": wasLive})
 	case "/api/open-settings":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})

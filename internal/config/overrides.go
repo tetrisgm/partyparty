@@ -71,7 +71,10 @@ func ParseOverrides(raw []byte) Overrides {
 	if s.SegDur != nil && validDurRange(*s.SegDur, 1*time.Second, 6*time.Second) {
 		o.SegDur = s.SegDur
 	}
-	if s.SegCount != nil && *s.SegCount >= 3 && *s.SegCount <= 30 {
+	// Upper bound 32 = the Precise profile's window (32 x 1s segments keeps the
+	// same 32s recovery history the 16 x 2s default provides — a smaller count
+	// with short segments would silently halve it).
+	if s.SegCount != nil && *s.SegCount >= 3 && *s.SegCount <= 32 {
 		o.SegCount = s.SegCount
 	}
 	if s.LatencyTargetSec != nil && *s.LatencyTargetSec >= 0 && *s.LatencyTargetSec <= 15 {

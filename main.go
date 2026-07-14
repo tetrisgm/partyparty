@@ -289,6 +289,7 @@ func main() {
 
 	var mtx *mediamtx.Server
 	var applyActivation func(certFile, keyFile string) error
+	var reshapeStream func(partDur, segDur string, segCount int) error
 	if mtxBinPath != "" {
 		certPath, keyPath := cfg.CertFile, cfg.KeyFile
 		if certPath == "" || keyPath == "" {
@@ -303,11 +304,29 @@ func main() {
 			}
 		}
 		cfgPath := filepath.Join(runDir, "mediamtx.yml")
-		writeMTXConfig := func(partDur, segDur string, segCount int) error {
-			return mediamtx.WriteConfig(cfgPath, mediamtx.ConfigOpts{
+		// Geometry is runtime-mutable (the Precise sync preset reshapes the
+		// stream), so track what is CURRENTLY written: the activation cert-swap
+		// rewrite must preserve the live geometry, not silently reset it to the
+		// boot defaults mid-party. geoMu guards the current-geometry trio AND
+		// certPath/keyPath, and every read-modify-write of the yml happens inside
+		// ONE critical section — a cert renewal interleaving with a reshape must
+		// never clobber the yml back to a stale shape.
+		var geoMu sync.Mutex
+		curPart, curSeg, curCount := cfg.PartDur, cfg.SegDur, cfg.SegCount
+		writeLocked := func(partDur, segDur string, segCount int) error { // caller holds geoMu
+			if err := mediamtx.WriteConfig(cfgPath, mediamtx.ConfigOpts{
 				RTSPPort: cfg.RTSPPort, HLSPort: cfg.HLSPort, Path: cfg.StreamPath,
 				CertPath: certPath, KeyPath: keyPath, SegDur: segDur, PartDur: partDur, SegCount: segCount,
-			})
+			}); err != nil {
+				return err
+			}
+			curPart, curSeg, curCount = partDur, segDur, segCount
+			return nil
+		}
+		writeMTXConfig := func(partDur, segDur string, segCount int) error {
+			geoMu.Lock()
+			defer geoMu.Unlock()
+			return writeLocked(partDur, segDur, segCount)
 		}
 		if err := writeMTXConfig(cfg.PartDur, cfg.SegDur, cfg.SegCount); err != nil {
 			log.Fatalf("mediamtx config failed: %v", err)
@@ -327,8 +346,25 @@ func main() {
 		// Called by async activation: swap in the real cert and rewrite the
 		// MediaMTX config (MediaMTX isn't running yet in plain-HLS mode).
 		applyActivation = func(certFile, keyFile string) error {
+			// One atomic section: swap the cert AND rewrite with the geometry
+			// that is currently serving, so this can never race a reshape.
+			geoMu.Lock()
+			defer geoMu.Unlock()
 			certPath, keyPath = certFile, keyFile
-			return writeMTXConfig(cfg.PartDur, cfg.SegDur, cfg.SegCount)
+			return writeLocked(curPart, curSeg, curCount)
+		}
+		// Controlled reshape for the Precise sync preset: rewrite the config,
+		// then bounce the engine when LL-HLS is actually serving. The caller
+		// (server /api/sync-mode) owns publisher stop/start and rollback.
+		reshapeStream = func(partDur, segDur string, segCount int) error {
+			if err := writeMTXConfig(partDur, segDur, segCount); err != nil {
+				return err
+			}
+			if bc.Delivery() != "llhls" {
+				return nil // engine idle; the new shape applies when LL-HLS next starts
+			}
+			mtx.StopWait()
+			return ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort)
 		}
 		if cfg.Delivery == "llhls" {
 			if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
@@ -415,16 +451,17 @@ func main() {
 	}
 
 	handler := server.New(server.Deps{
-		Config:      cfg,
-		Broadcaster: bc,
-		Listeners:   ls,
-		RunDir:      runDir,
-		Web:         web,
-		Payload:     payload,
-		MTX:         mtx,
-		Events:      events,
-		Diag:        diagLog,
-		Version:     appVersion,
+		Config:        cfg,
+		Broadcaster:   bc,
+		Listeners:     ls,
+		RunDir:        runDir,
+		Web:           web,
+		Payload:       payload,
+		MTX:           mtx,
+		Events:        events,
+		Diag:          diagLog,
+		Version:       appVersion,
+		ReshapeStream: reshapeStream,
 	})
 	handler.StartSyncDrain(context.Background())
 	handler.StartReachabilityWatchdog(context.Background())
