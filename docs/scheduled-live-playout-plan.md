@@ -279,6 +279,61 @@ If finer geometry fails, retain native HLS and the current 2s/1s profile. The
 bounded muted re-roll can still be judged independently. Lock-screen playback is
 not an optimization variable.
 
+## Verification results (2026-07-13, Claude)
+
+Independent checks of this plan's load-bearing claims:
+
+**RFC 8216 three-target-duration rule — CORRECT, with one sharpening.** The
+verbatim rule: "If the Playlist does not contain the EXT-X-ENDLIST tag, the
+TIME-OFFSET SHOULD NOT be within three target durations of the end of the
+Playlist file." At TARGETDURATION=1 a -3s pin lands EXACTLY at the boundary —
+marginally compliant under the tag-side "within" (inclusive reading), while the
+client-side rule (§6.3.3, "less than three target durations") permits it.
+More useful: RFC 8216bis (draft-22, current) changed the client live-edge rule
+to defer to HOLD-BACK/PART-HOLD-BACK for LL-HLS clients. What governs AVPlayer's
+willingness to start at the pin is therefore the pin-to-PART-HOLD-BACK margin,
+and that is where Precise geometry wins decisively (measured below).
+
+**Apple part-target guidance — the caution inverts on a LAN.** Apple's rules
+verbatim: 14.2a part target MUST be ≥ P95 RTT; 14.2b SHOULD be ≥ 3× P95 RTT;
+14.2c RECOMMENDED is one second; 14.3 PART-HOLD-BACK MUST be ≥ 3× part target.
+On this product's LAN (measured phone RTT 2-15ms at the packed party), 500ms
+parts clear the MUST by ~33x and the SHOULD by ~11x; Apple's own canonical
+LL-HLS example uses 333ms parts. The 1s recommendation exists for CDN/internet
+scale. The doubled request cadence (~4 req/s per client) is the real cost and
+lands on a local Go binary. Rule 14.3 predicts the benefit: halving the part
+target halves the minimum hold-back. So on LAN the spec math cuts in FAVOR of
+500ms parts; what still needs the physical test is AVPlayer behavior, not spec
+compliance.
+
+**Geometry pre-validated against the real engine (bundled MediaMTX v1.19.2,
+bundled ffmpeg AAC test tone, loopback).** With `1s / 500ms / segCount 32` the
+engine accepted the config unmodified and produced:
+
+```text
+#EXT-X-TARGETDURATION:1
+#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=1.28000,CAN-SKIP-UNTIL=6.00000
+#EXT-X-PART-INF:PART-TARGET=0.51200
+32 full segments retained (32s window), parts INDEPENDENT=YES, PDT present, 0 GAP after startup
+```
+
+Key numbers: **PART-HOLD-BACK drops 2.507s → 1.280s**, so the -3s pin's margin
+behind the minimum hold-back grows **0.5s → 1.7s** — the strongest quantitative
+reason to expect AVPlayer to honor the pin more precisely. The readiness parser's
+math applied to the captured playlist yields realHistory 34.09s / gap 0 /
+streamReady at a 3s target — readiness logic survives 1s units. (Note in
+passing: MediaMTX's PART-HOLD-BACK factor is 2.5× part target, below Apple's
+3× authoring rule at ANY geometry — pre-existing, field-tolerated by AVPlayer,
+not a Precise regression.)
+
+**Phase 1 needs zero code.** Geometry env vars already exist
+(`PARTYPARTY_SEG_DUR`, `PARTYPARTY_PART_DUR`, `PARTYPARTY_SEG_COUNT` —
+config.go flags), so the test Mac can run Precise geometry locally by launching
+the app binary from a terminal with those set, while every other install stays
+on Balanced geometry. The OTA `segCount ≤ 30` cap only binds the Phase 3
+integrated profile (the env/flag path is uncapped); Phase 3 should raise it to
+32 with tests as planned.
+
 ## References
 
 - [RFC 8216 `EXT-X-START`](https://datatracker.ietf.org/doc/html/rfc8216#section-4.3.5.2):
