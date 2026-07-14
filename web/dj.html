@@ -268,6 +268,7 @@
   .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:999px;height:42px;font-weight:700;background-color:var(--bg-elevated);color:transparent}
   .source-row select option{color:var(--label);background:var(--bg-elevated)}
   .device-display{position:absolute;left:16px;right:16px;z-index:1;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
+  .sync-picker{min-width:150px;max-width:200px;flex:0 1 200px}
   .source-hint{display:none}
   .abbtn{display:inline-flex;align-items:center;gap:7px;background:var(--fill);color:var(--label);border-radius:999px;height:34px;padding:0 16px}
   .abbtn:hover{background:var(--fill-hover)}
@@ -465,7 +466,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
-  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
+  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.sync-picker{order:4}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.ehost{align-items:flex-start;gap:8px 10px}.schedule-inline{white-space:normal}.titlerow{flex-direction:column}}
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
@@ -505,6 +506,15 @@
       <div class="source-row">
         <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
         <select id="device" aria-labelledby="sourceStepLabel" title="🖥️ Mac output captures everything playing (macOS asks once — click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live — if a phone hears the beep, the network path works."></select>
+      </div>
+    </div>
+    <div class="source-picker sync-picker">
+      <div class="source-step">
+        <label id="syncStepLabel" for="syncModeSel">Sync mode</label>
+      </div>
+      <div class="source-row">
+        <span class="device-display" id="syncModeDisplay">Sync: —</span>
+        <select id="syncModeSel" aria-labelledby="syncStepLabel" title="How the room stays in sync — applies to EVERY phone at once. Flip between modes during a party to compare them; guests re-align within a few seconds."></select>
       </div>
     </div>
     <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
@@ -931,13 +941,6 @@
       <button class="ghost" id="permBtnAlways" style="margin-top:14px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
       <div class="hint" id="permBtnHint" style="margin:5px 0 0">Turn on partyparty in the list.</div>
       <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session — hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
-    </section>
-
-    <section class="settings-section">
-      <div class="settings-title"><h3>Sync approach</h3></div>
-      <div class="hint" style="margin:0 0 6px">How the room stays in sync. Pick one — it applies to <b>every</b> phone at once. Flip between them during a party to see which behaves best; guests re-align within a few seconds of a switch.</div>
-      <div id="syncApproachOpts"><div class="hint">Waiting for the server…</div></div>
-      <div id="syncApproachStatus" class="hint" style="margin:8px 0 0"></div>
     </section>
 
     <div class="settings-section">
@@ -2112,54 +2115,54 @@
     }
   }
 
-  // ── Sync approach (room-wide sync scheme). Radios are built from the server's
-  // DJ-only menu (s.syncModes) so the console and internal/server/syncmode.go can
-  // never drift; the server validates the id and every guest re-aligns on it. ──
-  let syncApproachRendered = false, syncModePending = false, syncModeWanted = null;
+  // ── Sync mode picker (action bar, beside the audio source): the room-wide
+  // sync scheme, always visible so the DJ can SEE they're on Balanced (or not)
+  // at a glance and flip modes mid-party. Options come from the server's
+  // DJ-only menu (s.syncModes) so this select and internal/server/syncmode.go
+  // can never drift; the server validates the id and every guest re-aligns. ──
+  let syncModesRendered = false, syncModePending = false, syncModeWanted = null;
+  const syncModeLabels = {};
   function renderSyncApproach(s){
-    const box = $('syncApproachOpts');
-    if (!box) return;
-    if (!syncApproachRendered && Array.isArray(s.syncModes) && s.syncModes.length) {
-      box.textContent = '';
+    const sel = $('syncModeSel');
+    if (!sel) return;
+    if (!syncModesRendered && Array.isArray(s.syncModes) && s.syncModes.length) {
+      sel.textContent = '';
       for (const m of s.syncModes) {
-        const row = document.createElement('label');
-        row.className = 'inapp-check';
-        row.style.cssText = 'align-items:flex-start;margin-top:10px';
-        const input = document.createElement('input');
-        input.type = 'radio'; input.name = 'syncApproach'; input.value = m.id;
-        input.id = 'syncMode_' + m.id; input.style.marginTop = '2px';
-        input.onchange = () => postSyncMode(m.id, m.label);
-        const txt = document.createElement('span');
-        const strong = document.createElement('b'); strong.textContent = m.label; txt.appendChild(strong);
-        if (m.hint) { const h = document.createElement('div'); h.className = 'hint'; h.style.cssText = 'margin:2px 0 0'; h.textContent = m.hint; txt.appendChild(h); }
-        row.appendChild(input); row.appendChild(txt);
-        box.appendChild(row);
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label + (m.hint ? ' — ' + m.hint : '');
+        syncModeLabels[m.id] = m.label;
+        sel.appendChild(opt);
       }
-      syncApproachRendered = true;
+      sel.onchange = () => postSyncMode(sel.value, syncModeLabels[sel.value]);
+      syncModesRendered = true;
     }
-    // Reflect the server's current selection each poll — but never yank the radio
-    // out from under the DJ. Suppress reflection while their POST is in flight AND
-    // until the server confirms the mode they just picked, so a slow /api/status
-    // response that was already in flight when they clicked can't revert the radio.
+    // Reflect the server's current mode each poll — but never yank the picker
+    // out from under the DJ. Suppress reflection while their POST is in flight
+    // AND until the server confirms the mode they just picked, so a slow
+    // /api/status response already in flight at click time can't revert it.
     const cur = s.sync && s.sync.mode;
     if (cur && syncModeWanted && cur === syncModeWanted) syncModeWanted = null; // server caught up
-    if (cur && !syncModePending && !syncModeWanted) {
-      const el = document.getElementById('syncMode_' + cur);
-      if (el && !el.checked) el.checked = true;
+    if (cur && syncModesRendered && !syncModePending && !syncModeWanted) {
+      if (sel.value !== cur) sel.value = cur;
+      const disp = $('syncModeDisplay');
+      if (disp) disp.textContent = 'Sync: ' + (syncModeLabels[cur] || cur);
     }
   }
   async function postSyncMode(mode, label){
     const name = label || mode;
+    const disp = $('syncModeDisplay');
     syncModePending = true; syncModeWanted = mode;
-    setFormStatus('syncApproachStatus', 'Switching the room to “' + name + '”…', '');
+    if (disp) disp.textContent = 'Switching…';
     try {
       const r = await fetch('/api/sync-mode?mode=' + encodeURIComponent(mode), { method:'POST' });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) throw new Error(d.error || 'switch failed');
-      setFormStatus('syncApproachStatus', 'Room set to “' + name + '”. Phones re-align within a few seconds.', 'ok');
+      if (disp) disp.textContent = 'Sync: ' + name;
+      djLog('sync-mode', { mode });
     } catch (e) {
-      syncModeWanted = null; // let the radio snap back to the true server state
-      setFormStatus('syncApproachStatus', 'Couldn’t switch: ' + (e.message || e), 'error');
+      syncModeWanted = null; // next poll snaps the picker back to the true server state
+      if (disp) disp.textContent = 'Switch failed';
     } finally {
       syncModePending = false;
     }
