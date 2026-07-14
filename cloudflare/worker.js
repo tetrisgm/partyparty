@@ -756,11 +756,15 @@ async function getProfileUpcomingEvents(env, profileId) {
 
 async function getProfileRecentEvents(env, profileId) {
   if (!env?.DB || !profileId) return [];
+  // Also pull each event's latest READY set (id + duration) so the profile can
+  // play the recording INLINE — not just link out to the /e/<slug> page.
   const rows = await env.DB.prepare(
-    `SELECT *
-     FROM events
-     WHERE dj_profile_id=? AND visibility=? AND status=?
-     ORDER BY COALESCE(last_activity_ms, published_ms, scheduled_at_ms, updated_ms, created_ms, 0) DESC, slug ASC
+    `SELECT e.*,
+       (SELECT s.id          FROM event_sets s WHERE s.slug=e.slug AND s.state='ready' ORDER BY s.published_ms DESC LIMIT 1) AS set_id,
+       (SELECT s.duration_ms FROM event_sets s WHERE s.slug=e.slug AND s.state='ready' ORDER BY s.published_ms DESC LIMIT 1) AS set_duration_ms
+     FROM events e
+     WHERE e.dj_profile_id=? AND e.visibility=? AND e.status=?
+     ORDER BY COALESCE(e.last_activity_ms, e.published_ms, e.scheduled_at_ms, e.updated_ms, e.created_ms, 0) DESC, e.slug ASC
      LIMIT ?`
   ).bind(profileId, "public", "replay", 12).all();
   return rows?.results || [];
@@ -810,6 +814,32 @@ function profileEventSection(title, sub, rows, empty) {
   return `<section>
     <div class="sectionhead"><div><h2>${esc(title)}</h2>${sub ? `<p>${esc(sub)}</p>` : ""}</div></div>
     ${rows.length ? `<div class="eventgrid">${rows.map(eventCard).join("")}</div>` : `<div class="card"><p class="emptyline">${esc(empty)}</p></div>`}
+  </section>`;
+}
+
+// Recent replays, playable INLINE on the profile (native <audio> per set, fed by
+// the same /event/<slug>/<setId>.m4a R2 endpoint the event page uses). Events
+// without a ready set yet fall back to the plain card link. Inline styles keep
+// this self-contained — no change to the shared stylesheet.
+function profileReplaySection(rows) {
+  const items = (rows || []).map((row) => {
+    const slug = String(row.slug || "");
+    const setId = row.set_id ? String(row.set_id) : "";
+    if (!setId) return eventCard(row);
+    const dur = row.set_duration_ms
+      ? `<span class="meta" style="white-space:nowrap;margin:0">${esc(fmtDur(row.set_duration_ms))}</span>` : "";
+    return `<div class="card" style="display:grid;gap:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+        <div><h3 style="margin:0">${esc(row.title || "A partyparty set")}</h3><p class="meta" style="margin:2px 0 0">${esc(fmtWhen(row.scheduled_at_ms))}</p></div>
+        ${dur}
+      </div>
+      <audio controls preload="none" src="/event/${esc(slug)}/${esc(setId)}.m4a" style="width:100%"></audio>
+      <a class="btn lt sm" href="/e/${esc(slug)}" style="justify-self:start">Open event page</a>
+    </div>`;
+  }).join("");
+  return `<section>
+    <div class="sectionhead"><div><h2>Recent</h2><p>Play a finished set right here.</p></div></div>
+    ${(rows || []).length ? `<div style="display:grid;gap:14px">${items}</div>` : `<div class="card"><p class="emptyline">No public replays yet.</p></div>`}
   </section>`;
 }
 
@@ -865,7 +895,7 @@ function renderProfile({ profile, upcoming, recent, posts, isOwner, viewerSigned
       </div>
     </div>
     ${profileEventSection("Upcoming", "Public parties coming up next.", upcoming, "No upcoming public events yet.")}
-    ${profileEventSection("Recent", "Replay pages from finished sets.", recent, "No public replays yet.")}
+    ${profileReplaySection(recent)}
     ${postsCard}
   </div>
   <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>
@@ -3937,9 +3967,13 @@ async function broker(request, env, pathname) {
     ).bind(id).first();
     const ownerUserId = linked?.user_id || null;
     const djProfileId = linked?.profile_id || null;
+    // Auto-published sets go PUBLIC by default so a finished set appears on the
+    // DJ's /@handle profile automatically (the whole point: play a set -> it's
+    // on your page). Only on INSERT — a re-publish never overrides a visibility
+    // the DJ later set by hand (visibility is absent from the DO UPDATE SET).
     await env.DB.prepare(
-      `INSERT INTO events (slug, install_id, title, host, starts, where_txt, tagline, about, status, owner_user_id, dj_profile_id, created_ms, updated_ms, last_activity_ms)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'replay',?9,?10,?11,?11,?11)
+      `INSERT INTO events (slug, install_id, title, host, starts, where_txt, tagline, about, status, visibility, owner_user_id, dj_profile_id, created_ms, updated_ms, last_activity_ms)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'replay','public',?9,?10,?11,?11,?11)
        ON CONFLICT(slug) DO UPDATE SET title=?3, host=?4, starts=?5, where_txt=?6, tagline=?7, about=?8, status='replay',
          owner_user_id=COALESCE(?9, owner_user_id), dj_profile_id=COALESCE(?10, dj_profile_id), updated_ms=?11, last_activity_ms=?11
        WHERE events.install_id=?2`
