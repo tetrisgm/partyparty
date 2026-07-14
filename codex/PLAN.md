@@ -7,10 +7,12 @@ design and the packed-party field evidence. The implementation and physical
 qualification plan is in
 [`docs/scheduled-live-playout-plan.md`](../docs/scheduled-live-playout-plan.md).
 
-The decisive first step is a three-engine physical lab: native HLS control,
-Managed Media Source, and Web Audio scheduled rendering. Do not replace native
-HLS or modify `internal/broadcast/` until a candidate beats the production path
-while locked and backgrounded on physical iOS 26 and 27 devices.
+Native HLS is permanently the iPhone player: lock-screen and background playback
+are non-negotiable. The next experiment is a native-HLS Precise profile using
+1s segments, 500ms parts, the existing room pin, and at most one muted natural-
+start re-roll. Keep the room target fixed during the A/B and do not modify
+`internal/broadcast/` until the geometry-only physical test passes on iOS 26 and
+27.
 
 ## Historical roadmap context
 

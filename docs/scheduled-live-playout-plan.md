@@ -1,305 +1,289 @@
-# Scheduled live playout: comparison and shipping plan
+# Native HLS scheduled playout: comparison and shipping plan
 
-Status: architecture proposal, 2026-07-13. This evaluates the proposed
-"continuously authored audio timeline" against Party Party's shipped LL-HLS
-system and the `fader91` packed-party evidence. It is a plan for a measured
-replacement, not authorization to remove the production path.
+Status: revised architecture proposal, 2026-07-13. This incorporates the
+`fader91` packed-party evidence and the permanent product requirement that an
+iPhone keeps playing while locked or while Safari is backgrounded.
 
-## Decision
+## Non-negotiable invariant
 
-Build a **foreground scheduled-playout laboratory**, but do not replace native
-HLS yet.
+Native HLS playback through the iPhone `<audio>` element remains the production
+player. Lock-screen and background playback are never traded for synchronization
+precision.
 
-The proposal is directionally right: arrival time should not decide playback
-time. However, Party Party already implements most of that idea through LL-HLS:
-the Mac emits immutable ordered media parts, `EXT-X-PROGRAM-DATE-TIME` maps them
-to the Mac clock, `/api/time` estimates client clock offset, and
-`EXT-X-START` asks every player to begin at one room position. The missing
-capability is receiver-controlled, sample-accurate rendering at an external
-deadline.
+The following are therefore out of scope as listener replacements:
 
-That missing capability is easy in a foreground `AudioContext` and is not yet a
-proven browser primitive for a locked iPhone. Party Party's majority path must
-keep playing with the screen locked, Safari backgrounded, and page JavaScript
-throttled or suspended. A Web Audio or JavaScript-fed media pipeline cannot
-become the default until it survives those conditions on physical iOS 26 and 27
-devices for a full party-length soak.
+- Web Audio and AudioWorklet;
+- JavaScript-fed Media Source or Managed Media Source;
+- a PWA execution model;
+- a required native guest app;
+- any transport whose continued playback depends on foreground page JavaScript.
 
-The safe strategy is therefore:
+The scheduled-playout idea must be expressed through the pipeline that already
+survives a locked phone: AAC-LC, LL-HLS, and AVPlayer.
 
-1. Keep native LL-HLS as the production control.
-2. Reuse its existing AAC/fMP4 output to test scheduled rendering without first
-   changing capture or encoding.
-3. Compare native HLS, Managed Media Source, and Web Audio on the same media and
-   clock.
-4. Promote a new path only after it beats HLS on synchronization **and** matches
-   its lock/background/recovery behavior.
+## Reframe
+
+For a live source, "play media stamped P at wall time T" is equivalent to "hold
+one constant room delay D," where `T = P + D`.
+
+Party Party already contains the main pieces:
+
+| Scheduled-playout concept | Native HLS mechanism | Current status |
+|---|---|---|
+| Identical immutable chunks | One MediaMTX AAC/fMP4 part stream | Shipped |
+| Authoritative media timestamp | `EXT-X-PROGRAM-DATE-TIME` | Shipped |
+| Shared room clock | Mac `/api/time` calibration | Shipped |
+| Future presentation point | Fixed room target behind the Mac | Shipped |
+| Preferred start position | `EXT-X-START:TIME-OFFSET=-D,PRECISE=YES` | Shipped, imperfectly honored |
+| Stable playout after start | AVPlayer at rate 1.0 | Field-proven |
+| Gross-drift recovery | Per-phone reattach watchdog | Shipped, awaiting packed-party validation |
+
+This is already a continuously authored scheduled timeline. The next work is
+not a new player or media plane. It is making native AVPlayer's initial draw
+from that timeline narrower and rejecting a bad draw while playback is still
+muted.
 
 ## What the packed party established
 
-The Seth Mac session (`fader91`, v53.61, 8 phones, 85 minutes) materially changes
-the starting point for this decision:
+The Seth Mac session (`fader91`, v53.61, 8 phones, 85 minutes) is the control:
 
-- 26 of 26 opens became audible; the old silent-phone failure did not recur.
-- Startup used no native seeks and most opens landed in about 3.0-4.5 seconds.
-- The simultaneous-join cohort spread was about 0.69 seconds.
+- 26 of 26 opens became audible.
+- Most opens landed in about 3.0-4.5 seconds.
+- A simultaneous cohort spread about 0.69 seconds.
+- No native startup seeks.
 - Publisher restarts recovered automatically.
-- One externally scrubbed phone remained about 34 seconds late while otherwise
-  looking healthy. The shipped post-party watchdog now reattaches a client that
-  remains more than 8 seconds beyond the room target; it does not seek or alter
-  a healthy listener.
+- One externally scrubbed phone remained about 34 seconds late until the end;
+  the subsequently shipped drift watchdog now reattaches that class of client.
 
-This means scheduled playout is no longer a rescue from a generally broken
-system. It is a candidate for tightening the remaining sub-second spread and
-making drift behavior more deterministic. It must beat a robust baseline.
+The production system is robust. "Precise" must tighten the startup distribution
+without reintroducing silent phones, startup seeks, or lock/background failures.
 
-## Current system versus the proposal
+## The two remaining startup levers
 
-| Concern | Shipped LL-HLS | Proposed scheduled chunks | Actual difference |
-|---|---|---|---|
-| Immutable media | AAC in ordered fMP4 parts/segments | Opus/AAC packet groups | Already present |
-| Stream identity | `streamSync.generation` and playlist URIs | Explicit epoch ID | Already present, different envelope |
-| Media clock | HLS media time plus program date/time | Presentation timestamp per chunk | Already present at part granularity |
-| Shared host clock | Six-sample `/api/time` calibration | NTP-like ping exchange | Already present |
-| Future buffer | HLS holdback plus room target | Explicit rolling commit horizon | Same principle |
-| Join boundary | `EXT-X-START`, then bounded startup verification | Sequence plus future start time | More explicit in proposal |
-| Playback owner | Native AVPlayer/hls.js chooses rendering | Client scheduler chooses exact deadline | Genuinely new |
-| Drift handling | Native rate 1.0; gross-late client reattaches | PLL/rate trim or boundary resync | Genuinely new, but audible rate control is risky |
-| Late media | Native HLS recovery policy | Explicit skip/conceal/resync policy | Genuinely new |
-| Lock/background | Proven native `<audio>` path | Unproven JS-fed path | Blocking product constraint |
-| Guest install | Scan and listen in browser | Browser if viable; native app otherwise | Must remain browser-first |
+### 1. Shape the playlist geometry
 
-The proposal should therefore be described as a **custom playout engine**, not a
-new chunking scheme. HLS is already the scheduled media plane; the experiment is
-whether taking rendering control away from AVPlayer produces a better complete
-product on iOS.
+Current geometry:
 
-## Feasibility constraints
-
-### 1. Web Audio is the precise path, but the risky background path
-
-`AudioBufferSourceNode.start(when)` can schedule against the audio rendering
-clock, and an `AudioWorklet` ring buffer can provide sample-accurate network
-playout. This is the cleanest implementation of the proposal in a foreground
-tab.
-
-It also makes JavaScript and `AudioContext` lifecycle load-bearing. WebKit has
-repeatedly fixed and regressed background/interruption behavior, including
-contexts reporting `running` while their clock no longer advances. A laboratory
-must treat lock, Control Center, phone calls, camera use, tab switches, and
-Safari backgrounding as primary tests, not cleanup work.
-
-### 2. Managed Media Source may preserve native playback, but weakens control
-
-Managed Media Source can feed fMP4 bytes into an `<audio>` element while keeping
-decode and output in the media stack. It is the most promising browser bridge
-between custom delivery and lock-safe playback.
-
-It does not itself expose "render this sample at Mac time T." JavaScript still
-has to append data and establish the initial media position, and the media
-element's hardware clock owns steady playback. If append callbacks stop while
-locked, a two- or three-second rolling buffer empties almost immediately. This
-path must be tested rather than assumed.
-
-### 3. WebSocket is optional, not architectural
-
-The protocol does not require one. Immutable parts should remain ordinary HTTPS
-objects so retries, caching, and missing-part requests stay simple. A small
-long-poll, SSE, or WebSocket control channel may announce epochs and newest
-committed parts, but playback correctness must come from timestamps and object
-identity, not message arrival order.
-
-### 4. Smaller parts are not the first experiment
-
-The current 1-second part / 2-second segment profile has stronger physical iOS
-evidence than earlier sub-500ms profiles. The first prototype must consume the
-existing fMP4 parts and isolate the player architecture. Only after that works
-should an owner-supervised audio-core experiment compare 500, 250, and 100ms
-units. Changing encoder geometry and playback architecture together would make
-the result uninterpretable.
-
-### 5. A native guest app is the escape hatch, not the initial answer
-
-A native iOS client can combine background audio entitlement, local scheduling,
-codec control, and a monotonic clock. It can probably realize the proposal most
-fully. Requiring an app would damage Party Party's scan-and-listen advantage, so
-it is acceptable only as an optional high-precision mode unless browser
-platform limits make the product trade worthwhile.
-
-## Proposed protocol for the laboratory
-
-Use one room timeline and keep the current Mac clock authority:
-
-```json
-{
-  "epoch": 184,
-  "sequence": 9321,
-  "mediaTime": 412.250,
-  "programTimeMs": 1783992010250,
-  "presentationTimeMs": 1783992013250,
-  "durationMs": 1000,
-  "codec": "mp4a.40.2",
-  "sampleRate": 48000,
-  "channels": 2,
-  "url": "/live/party/part9321.mp4",
-  "sha256": "..."
-}
+```text
+segment target: 2 seconds
+part target:    1 second
+room pin:      -3 seconds in the current Balanced profile
 ```
 
-Rules:
+Candidate Precise geometry:
 
-- `epoch` is the existing stream generation. A change invalidates all queued
-  media from the old epoch.
-- `programTimeMs` is the part's current HLS program date/time.
-- `presentationTimeMs = programTimeMs + frozenRoomTargetMs`.
-- A published unit is immutable.
-- A receiver begins only at an announced future sequence after clock calibration
-  and minimum-buffer admission.
-- A late unit is never played late. The client records `skip`, `conceal`, or
-  `reattach` according to the experiment policy.
-- The room target is frozen for the run. Do not lower latency while comparing
-  player architectures.
+```text
+segment target: 1 second
+part target:    500 milliseconds
+room pin:      -3 seconds
+```
 
-For the first lab, derive this manifest from the existing LL-HLS playlist in a
-new package outside `internal/broadcast/`. Do not add a second encoder.
+RFC 8216 says a live `EXT-X-START` offset should not be within three target
+durations of the playlist end. With two-second segments, a three-second pin is
+inside that discouraged zone. With one-second segments, the same pin reaches
+the three-target-duration boundary.
 
-## Delivery plan
+`PRECISE=YES` asks the client not to render samples before the requested offset.
+It remains a preferred start instruction, not a hard real-time guarantee.
 
-### Phase 0: freeze the baseline and scoring
+The expected benefit is a finer natural-start distribution. It is not correct
+to claim that AVPlayer can only seek on chunk boundaries; native media seeks can
+be finer than that. The relevant behavior here is the no-seek natural startup
+position chosen by AVPlayer from the live playlist.
 
-Add one analyzer report that produces the same scorecard for every transport:
+Halving part duration, rather than segment duration alone, is what principally
+raises LL-HLS playlist and media-object request cadence. Apple recommends a
+one-second part target and requires the part target to cover expected RTT, so
+500ms is an experiment that must earn its place on physical venue Wi-Fi.
 
-- audible opens / attempted opens;
-- tap-to-audio and simultaneous-join spread;
-- measured media-clock spread and optional microphone acoustic spread;
-- late/missing units, rebuffer time, reattach count, and recovery duration;
-- lock/background duration and discontinuities;
-- bytes per listener, Mac CPU, and browser memory where exposed;
-- epoch-change recovery after publisher restart.
+### 2. Re-roll a bad natural start while still muted
 
-Archive the v53.61 Seth report as the control. Include the current drift-watchdog
-release as a second control before judging the new path.
+The native no-seek path currently verifies its achieved latency but opens audio
+even when the result is outside the strict alignment tolerance. That rule was
+correct for eliminating silent-forever joins.
 
-### Phase 1: static scheduled-playout lab
+Precise may make one bounded second draw:
 
-Build a hidden DJ-only `/labs/scheduled-playout` page and listener route using a
-known local audio asset, not live capture.
+1. Attach only after the stream generation is ready.
+2. Start the existing user-blessed `<audio>` element muted.
+3. Prove playback is advancing and latch program time.
+4. Measure achieved latency against the frozen room target.
+5. If error is at most one second, open audio.
+6. If error exceeds one second and at least four seconds remain in the startup
+   budget, reattach the **same** element once and repeat.
+7. After the second progressing draw, open audio regardless of measured error.
+8. If no draw progresses, retain the existing visible Retry Sync state.
 
-Implement two experimental adapters behind explicit query flags:
+Safety properties:
 
-- `engine=webaudio`: decode ahead, feed an `AudioWorklet` ring buffer, and render
-  against the calibrated presentation clock;
-- `engine=mms`: append the same timestamped fMP4 units to an audio-only Managed
-  Media Source and use the media element for output.
+- no native seek;
+- no playback-rate change;
+- no replacement audio element and no loss of the user's audio blessing;
+- never more than one automatic re-roll;
+- never remain muted merely because timing is imperfect;
+- no audible correction after the gate opens.
 
-Keep `engine=hls` as the control. Log clock samples, intended and achieved start,
-render underruns, context/media state transitions, and visibility changes with
-the same client/session IDs as production telemetry.
+The re-roll must have its own telemetry (`start-reroll`, first error, second
+error, elapsed budget, generation) so the field test can prove whether it
+actually improves the tail rather than simply adding join time.
 
-Exit gate: on built-in speakers, at least 8 physical phones must produce 100%
-audible starts and a simultaneous-start p95 below 250ms in the foreground. A
-desktop-only result does not advance the project.
+## Important implementation constraint
 
-### Phase 2: lock and interruption qualification
+The existing sync picker changes only target, pin, and startup-seek policy. It
+does **not** change MediaMTX segment or part geometry. Those values are written
+to `mediamtx.yml` when the app starts.
 
-Run each surviving adapter on physical iOS 26.4 and iOS 27:
+Therefore Precise cannot honestly be implemented as one more in-memory preset
+that instantly changes geometry. The implementation needs two layers:
 
-1. Lock for 60 minutes.
-2. Put Safari in the background for 30 minutes.
-3. Use camera/photo picker and return.
-4. Open Control Center and scrub/pause/resume.
-5. Attenuate Wi-Fi behind a body for 3, 10, and 20 seconds.
-6. Trigger a publisher-equivalent epoch change.
-7. Test built-in speaker and Bluetooth separately.
+1. A stream profile (`balanced` or `precise`) that owns part duration, segment
+   duration, segment count, target, pin, and native re-roll policy as one
+   coherent configuration.
+2. A controlled profile transition that stops the current publisher, rewrites
+   MediaMTX configuration, restarts MediaMTX, starts a new stream generation,
+   and lets every phone reattach through the existing generation-change path.
 
-Exit gate: no silent-forever client, no manual recovery, no more than one second
-of unexplained inter-listener spread after recovery, and continuity comparable
-to native HLS. Any adapter that depends on foreground JavaScript is classified
-as a foreground feature, not a production replacement.
+The UI must say that changing stream profile briefly restarts the room. A failed
+Precise start must automatically restore the previous known-good MediaMTX
+configuration and leave Balanced available.
 
-### Phase 3: live media with the existing encoder
+This transition changes Go/runtime behavior and requires a full native release.
+It must not be delivered as payload-only.
 
-Only after Phase 2 passes, expose the current AAC/fMP4 LL-HLS parts through the
-timeline manifest. Keep native HLS available per client and add a DJ-only room
-A/B control. A transport selection is frozen per client epoch; never switch an
-audible client silently between engines.
+## Proposed Precise profile
 
-Test joins before go-live, simultaneous joins, mid-set joins, output-device
-changes, DJ restart, and the 34-second external-scrub case. The new path must
-recover one bad phone without touching any healthy listener.
+Initial values, frozen for the first A/B:
 
-Exit gate: two controlled multi-phone sessions and one packed-party session with
-all of the following:
+| Setting | Balanced control | Precise candidate |
+|---|---:|---:|
+| Segment duration | 2s | 1s |
+| Part duration | 1s | 500ms |
+| Playlist window | 32s | 32s (32 segments) |
+| Room target | Same frozen target | Same frozen target |
+| `EXT-X-START` | On | On |
+| Native startup seek | Off | Off |
+| Muted natural-start re-roll | Off | Once if error >1s |
+| Audible correction | Never | Never |
+
+Keep the same room target in both profiles for the first comparison. Lowering
+latency and changing geometry simultaneously would make the result
+uninterpretable.
+
+The 32-second window is held constant in wall-clock duration. Using 16 one-second
+segments would silently halve recovery history and confound the test. The
+current OTA allowlist caps `segCount` at 30, so the integrated profile must
+either raise that validated bound to 32 with tests or use a documented 30-second
+window; it must not silently accept a shorter window.
+
+## Implementation sequence
+
+### Phase 1: geometry-only startup test
+
+Use the existing startup-time OTA server overrides to run 1s/500ms geometry on
+the test Mac, with the production listener unchanged.
+
+Verify before adding re-roll logic:
+
+- actual `TARGETDURATION`, `PART-TARGET`, `PART-HOLD-BACK`, real history, and GAP
+  history from a live generated playlist;
+- readiness still waits for enough real, non-GAP history;
+- the three-second `EXT-X-START` is present on the multivariant playlist;
+- 8 simultaneous physical iPhone joins, including iOS 26.4 and iOS 27;
+- 60-minute lock test and 30-minute Safari-background test;
+- publisher restart and Wi-Fi attenuation recovery;
+- playlist/part request cadence and compressed bytes from the part-cadence
+  telemetry already shipped.
+
+Exit gate: 100% audible opens, no startup seeks, no lock/background regression,
+and a startup spread materially tighter than the 0.69-second control.
+
+### Phase 2: bounded muted re-roll
+
+Add one native re-roll behind an explicit experiment flag. Test it first against
+the production 2s/1s geometry, then against 1s/500ms. This separates the value of
+the stream shape from the value of taking a second draw.
+
+Exit gate: the re-roll must improve p95 startup error without increasing silent
+opens, manual retries, or tap-to-audio beyond the bounded startup budget.
+
+### Phase 3: integrated Precise profile
+
+Add the coherent stream profile and controlled MediaMTX rebuild. The profile
+switch must:
+
+- be DJ-only;
+- reject concurrent transitions;
+- report transitioning/success/failure in `/api/status`;
+- produce a fresh generation;
+- preserve the same audio capture permission and source selection;
+- roll back to the previous config if MediaMTX readiness fails;
+- never fall back to plain HTTP HLS.
+
+Automated verification must cover configuration writing, profile validation,
+restart serialization, rollback, status contracts, pin injection, readiness,
+and listener reattachment telemetry.
+
+### Phase 4: physical A/B
+
+Run this order with built-in speakers:
+
+```text
+Balanced -> Precise geometry -> Precise + re-roll -> Balanced
+```
+
+For every dwell, capture:
+
+- attempted and audible opens;
+- tap-to-audio median/p95;
+- simultaneous cohort media-clock spread;
+- microphone-measured acoustic spread;
+- startup error before and after any re-roll;
+- lock/background continuity;
+- stalls, rebuffers, reconnects, drift reattachments, and publisher recovery;
+- per-client playlist/part cadence;
+- Mac CPU and LAN traffic at 8 physical and 32 simulated listeners.
+
+Acceptance for promotion:
 
 - 100% eventual audible opens;
-- no gross late outlier lasting more than the recovery bound;
-- p95 acoustic spread no worse than 500ms and materially better than HLS;
-- no regression in lock/background continuity;
-- no meaningful Mac CPU or LAN-airtime regression at 32 simulated listeners;
-- guest join remains local, HTTPS-only, account-free, and internet-free.
+- no silent-forever or repeated re-roll loop;
+- p95 acoustic spread at most 500ms and materially better than Balanced;
+- no gross late client lasting beyond the watchdog recovery bound;
+- no lock-screen, background, Control Center, camera-return, or pocket-test
+  regression;
+- no venue-Wi-Fi starvation attributable to doubled part cadence;
+- one unhealthy phone never changes healthy listeners.
 
-### Phase 4: tune chunk size and loss policy
+### Phase 5: canary and default
 
-If the live experiment wins, then run the supervised audio-core matrix:
+Ship Precise as an opt-in profile first. Keep Balanced as the immediate rollback.
+Promote Precise only after two packed parties on both iOS generations pass the
+acceptance criteria.
 
-| Variable | Initial candidates |
-|---|---|
-| Unit duration | 1000ms control, 500ms, 250ms |
-| Commit horizon | production target, then 2s, then 1s |
-| Late policy | skip; short conceal then boundary reattach |
-| Drift policy | no rate change; bounded rate trim; future-boundary restart |
-
-Change one variable per run. Do not use audible seeks. A playback-rate controller
-must first pass an acoustic artifact test on sustained tones, percussion, and
-mixed music; otherwise use future-boundary reattachment.
-
-### Phase 5: canary, default, retirement
-
-Ship the winner as a canary while preserving native HLS as automatic fallback.
-Record engine and fallback reason in every heartbeat. Promote it to default only
-after two packed parties on both iOS generations meet the Phase 3 gates.
-
-Retire old startup alignment code only after the new default has one full release
-of fallback coverage and telemetry shows no platform cohort depending on HLS.
-Removal of the existing broadcast path remains owner-supervised because it
-touches the audio core and lock-safe product behavior.
-
-## Explicit non-goals for the first implementation
-
-- No prerecorded-song or source-aware distribution mode.
-- No cloud media relay.
-- No peer-to-peer or multicast protocol.
-- No new codec or second encoder.
-- No room-wide adaptation based on the slowest phone.
-- No requirement for guests to install an app or sign in.
-- No claim of sample-level acoustic phase lock; Bluetooth/output pipelines remain
-  outside browser timing observability.
+Do not delete Balanced, the drift watchdog, or the native no-seek fallback in the
+first default release. The fallback remains for one full release and until field
+telemetry shows no platform cohort needs it.
 
 ## Kill criteria
 
-Stop pursuing a browser replacement and keep LL-HLS if either experimental
-adapter:
+Do not promote 1s/500ms if it:
 
-- cannot survive a 60-minute locked iPhone test without page interaction;
-- needs a buffer so deep that it offers no synchronization advantage over HLS;
-- produces more silent starts or manual recoveries than the packed-party control;
-- requires source-specific behavior for ordinary system-audio capture;
-- cannot recover independently after packet loss or epoch change.
+- increases silent starts or manual retries;
+- loses playback while locked or backgrounded;
+- causes playlist/part starvation on packed venue Wi-Fi;
+- fails to materially improve acoustic spread;
+- needs audible seeks or rate changes to hold the result;
+- requires less recovery history than the room currently has.
 
-If Web Audio wins foreground precision but fails lock, retain it only as an
-explicit foreground "speaker array" experiment. If MMS survives lock but cannot
-tighten the start, its useful pieces may still improve observability without
-replacing native HLS.
+If finer geometry fails, retain native HLS and the current 2s/1s profile. The
+bounded muted re-roll can still be judged independently. Lock-screen playback is
+not an optimization variable.
 
 ## References
 
-- [Web Audio API 1.1](https://www.w3.org/TR/webaudio-1.1/): scheduled buffer
-  starts and `AudioWorklet` guidance for sample-accurate network/disk playback.
-- [WebKit bug 237878](https://bugs.webkit.org/show_bug.cgi?id=237878): iOS
-  background `AudioContext` suspension history.
-- [WebKit bug 276016](https://bugs.webkit.org/show_bug.cgi?id=276016): a later
-  iOS regression where Web Audio stopped after focus/background transitions.
-- [Safari 17.1 Managed Media Source](https://webkit.org/blog/14735/webkit-features-in-safari-17-1/):
-  iPhone availability and the API's JavaScript-managed buffering model.
-- [HTML media element timing](https://html.spec.whatwg.org/multipage/media.html):
-  media timeline and playback-position semantics.
+- [RFC 8216 `EXT-X-START`](https://datatracker.ietf.org/doc/html/rfc8216#section-4.3.5.2):
+  preferred start point, `PRECISE`, and the three-target-duration guidance.
+- [Apple HLS authoring specification](https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices/):
+  LL-HLS part-target RTT guidance and recommended one-second part target.
+- [Apple LL-HLS documentation](https://developer.apple.com/documentation/http-live-streaming/enabling-low-latency-http-live-streaming-hls):
+  partial segments, blocking reloads, and playlist request behavior.
