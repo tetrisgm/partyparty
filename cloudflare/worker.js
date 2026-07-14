@@ -562,7 +562,7 @@ const SVGDEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden
 <g id="web"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 12h17M12 3.2c2.2 2.4 3.3 5.3 3.3 8.8s-1.1 6.4-3.3 8.8M12 3.2C9.8 5.6 8.7 8.5 8.7 12s1.1 6.4 3.3 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
 </defs></svg>`;
 
-const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><div class="navlinks"><a class="btn lt sm" href="/live">Live</a><a class="btn lt sm" href="/partyparty.pkg">Get the app</a><a class="btn lt sm" id="nav-auth" href="/login">Sign in</a></div></nav>`;
+const NAV = `<nav><a class="brand" href="/">🕺 partyparty</a><div class="navlinks"><a class="btn lt sm" href="/live">Home</a><a class="btn lt sm" href="/partyparty.pkg">Get the app</a><a class="btn lt sm" id="nav-auth" href="/login">Sign in</a></div></nav>`;
 
 const NAV_AUTH_JS = `<script>
 (function(){var a=document.getElementById('nav-auth');if(!a||!window.fetch)return;fetch('/api/me',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.user){a.textContent='Account';a.href='/account'}else{a.textContent='Sign in';a.href='/login'}}).catch(function(){})})();

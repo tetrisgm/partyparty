@@ -179,6 +179,12 @@
 
 <script>
   document.getElementById('yr').textContent = new Date().getFullYear();
+  // Signed-in visitors get "Account" instead of "Sign in".
+  const navAuth = document.getElementById('nav-auth');
+  fetch('/api/me', { credentials:'same-origin', cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j && j.user && navAuth) { navAuth.textContent = 'Account'; navAuth.href = '/account'; } })
+    .catch(() => {});
   fetch('/api/version', { cache:'no-store' })
     .then(r => r.json())
     .then(v => {
