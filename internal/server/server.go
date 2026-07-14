@@ -416,8 +416,9 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/vendor/"):
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		s.vendor.ServeHTTP(w, r)
+		// Through serveWeb (not the FileServer) so text assets gzip — hls.js is
+		// 404KB plain, ~130KB gzipped, fetched by every non-Apple guest.
+		s.serveWeb(w, r, strings.TrimPrefix(p, "/"), "public, max-age=3600")
 	case strings.HasPrefix(p, "/live-plain/"):
 		s.livePlainProxy.ServeHTTP(w, r) // ?pin=0 experiment: same stream, no EXT-X-START pin
 	case strings.HasPrefix(p, "/live/"):
@@ -509,7 +510,7 @@ func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache strin
 	if cache != "" {
 		w.Header().Set("Cache-Control", cache)
 	}
-	if strings.HasSuffix(name, ".html") && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+	if compressibleAsset(name) && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
 		zw, zerr := gzip.NewWriterLevel(w, gzip.BestSpeed)
@@ -520,6 +521,18 @@ func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache strin
 		}
 	}
 	_, _ = w.Write(data)
+}
+
+// compressibleAsset: text assets worth gzipping on the fly. The big win is
+// vendor/hls.js (~404KB -> ~130KB) for every Android/desktop-Chrome guest on
+// congested venue Wi-Fi; images and media are already compressed.
+func compressibleAsset(name string) bool {
+	for _, ext := range []string{".html", ".js", ".css", ".svg", ".json", ".txt", ".map"} {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
@@ -543,7 +556,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			rosterBody = public
 			syncMenu = nil
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		writeJSONGzip(w, r, http.StatusOK, map[string]any{
 			"name":           s.Config.Name,
 			"appVersion":     s.version(),
 			"broadcast":      bc,
@@ -1276,6 +1289,32 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeJSONGzip is writeJSON for hot polled payloads (/api/status: every guest,
+// every 3s, roster+sync state — a few KB that gzip to a fraction on venue
+// Wi-Fi). Small bodies skip compression; anything under one MTU gains nothing.
+func writeJSONGzip(w http.ResponseWriter, r *http.Request, status int, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "encode failed"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if len(b) > 1400 && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		var buf bytes.Buffer
+		if zw, zerr := gzip.NewWriterLevel(&buf, gzip.BestSpeed); zerr == nil {
+			if _, werr := zw.Write(b); werr == nil && zw.Close() == nil {
+				w.Header().Set("Content-Encoding", "gzip")
+				w.Header().Add("Vary", "Accept-Encoding")
+				w.WriteHeader(status)
+				_, _ = w.Write(buf.Bytes())
+				return
+			}
+		}
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(b)
 }
 
 func kbps(bitrate string) int {

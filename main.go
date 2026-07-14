@@ -849,6 +849,66 @@ func main() {
 					lastLive = live
 				}
 			}()
+			// Part-cadence heartbeat: while live, sample the LL-HLS media
+			// playlist's tip once a second and log when NEW MEDIA stops being
+			// emitted. The 2026-07-13 party showed 2-3 phones on different IPs
+			// stalling within ~1s of each other with nothing in the server log
+			// to attribute it — a production hiccup (capture/encoder/MediaMTX)
+			// starves every guest at the same instant, while venue-Wi-Fi trouble
+			// hits phones one at a time. These lines make the next field log
+			// tell those apart.
+			go func() {
+				var lastTip string
+				var lastAdvance, windowStart time.Time
+				var windowMaxGap time.Duration
+				advances := 0
+				ongoingLogged := false
+				for {
+					time.Sleep(1 * time.Second)
+					if bc.Status().State != "live" || bc.Delivery() != "llhls" {
+						lastTip = ""
+						lastAdvance, windowStart = time.Time{}, time.Time{}
+						windowMaxGap, advances, ongoingLogged = 0, 0, false
+						continue
+					}
+					tip, ok := mediamtx.PlaylistTip(cfg.HLSPort, cfg.StreamPath)
+					if !ok {
+						continue // transient fetch error; the go-live health check owns dead-engine verdicts
+					}
+					now := time.Now()
+					if windowStart.IsZero() {
+						windowStart = now
+					}
+					if tip != lastTip {
+						if lastTip != "" && !lastAdvance.IsZero() {
+							gap := now.Sub(lastAdvance)
+							advances++
+							if gap > windowMaxGap {
+								windowMaxGap = gap
+							}
+							// At 1s parts a healthy tip advances ~every second;
+							// 2.5s+ of silence is a real production gap guests
+							// felt together.
+							if gap >= 2500*time.Millisecond {
+								diagLog.Printf("part-cadence: production gap %dms (guests starve together when this spikes)", gap.Milliseconds())
+							}
+						}
+						lastTip = tip
+						lastAdvance = now
+						ongoingLogged = false
+					} else if !lastAdvance.IsZero() && !ongoingLogged && now.Sub(lastAdvance) >= 5*time.Second {
+						diagLog.Printf("part-cadence: no new media for %dms and counting", now.Sub(lastAdvance).Milliseconds())
+						ongoingLogged = true
+					}
+					if now.Sub(windowStart) >= 60*time.Second {
+						if advances > 0 {
+							diagLog.Printf("part-cadence: window=60s advances=%d maxGapMs=%d", advances, windowMaxGap.Milliseconds())
+						}
+						windowStart = now
+						windowMaxGap, advances = 0, 0
+					}
+				}
+			}()
 		}
 		go uploadLogLoop(diagLog, bc)
 	}
