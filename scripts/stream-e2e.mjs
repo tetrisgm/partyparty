@@ -325,7 +325,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     // timing is not evidence that the phones receive a healthy stream.
     '--seg-duration', '1s',
     '--part-duration', '500ms',
-    '--seg-count', '32',
+    '--seg-count', '12',
     '--latency-target', '3',
     '--name', 'partyparty e2e',
   ], {
@@ -473,7 +473,7 @@ hlsServerCert: ${cert}
 hlsServerKey: ${key}
 hlsVariant: lowLatency
 hlsAlwaysRemux: yes
-hlsSegmentCount: 32
+hlsSegmentCount: 12
 hlsSegmentDuration: 1s
 hlsPartDuration: 500ms
 hlsAllowOrigins: ['*']

@@ -279,6 +279,28 @@ If finer geometry fails, retain native HLS and the current 2s/1s profile. The
 bounded muted re-roll can still be judged independently. Lock-screen playback is
 not an optimization variable.
 
+## Window decision (2026-07-14, owner)
+
+Precise was promoted to the only design and shipped as the boot default
+(v56.64); the multi-preset experiment system is retired. On top of that, the
+playlist window was DELIBERATELY reduced 32s → **12s** (owner decision, not a
+silent acceptance — updating this plan per its own rule):
+
+- The window is the room's **failure budget**: nothing older than 12s exists to
+  play, so the worst possible device desync — scrubs, stalls, drift — is 12s by
+  construction. The 2026-07-13 party's 34s-late guest becomes physically
+  impossible.
+- 12s deletes only dead capability: the drift watchdog already re-attaches any
+  audible guest sustained past target+8s = 11s, so no guest was ever permitted
+  to keep playing from the 12–32s region anyway.
+- Every reachable recovery path is preserved: joins need ~4–5s (3s pin +
+  margin), short absences (≈9s past target) still resume seamlessly, and a
+  guest who falls off the back breaks cleanly into the error/staleness
+  re-attach — snapping back to the room instead of playing the past.
+- The kill criterion "requires less recovery history than the room currently
+  has" is superseded by this decision for the 12s value; the OTA `segCount`
+  override (3–32) remains the field lever in both directions.
+
 ## Verification results (2026-07-13, Claude)
 
 Independent checks of this plan's load-bearing claims:
