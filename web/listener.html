@@ -791,7 +791,7 @@
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
     // out of the temporal dead zone so that path can never throw.
-    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, 'sync-failed': 1, 'sync-watchdog': 1, reconnect: 1, stall: 1, rebuffer: 1, 'audible-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, 'sync-failed': 1, 'sync-watchdog': 1, reconnect: 1, 'drift-reconnect': 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'audible-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
     let evSeq = 0, evStart = Date.now();
     const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
@@ -1088,6 +1088,8 @@
       const now = Date.now();
       if (now - lastReattach < 2500) return;
       lastReattach = now;
+      lateDriftBeats = 0;
+      untrackedBeats = 0;
       setStatus('reconnecting…');
       if (!attachSafe()) return;
       if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAlignedAudible(reason || 'reattach');
@@ -1201,6 +1203,9 @@
     // one second apart, typically under 500ms.
     const START_ALIGN_TOLERANCE = 0.55;
     const SYNC_WARN_AT = 1.0;
+    const LATE_DRIFT_REATTACH_SEC = 8.0;
+    const LATE_DRIFT_CONFIRMATIONS = 3;
+    const UNTRACKED_REATTACH_CONFIRMATIONS = 10;
     const STARTUP_BUDGET_MS = 12000;
     const JOIN_WATCHDOG_MS = 15000;
     const STARTUP_BUFFER_MIN = 2.5;
@@ -1698,6 +1703,14 @@
     });
     player.addEventListener('seeked', sampleProgress);
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
+    let lateDriftBeats = 0, untrackedBeats = 0;
+    function audibleActive(){
+      return started && !player.muted && !userPaused && !yielded && !joinMuted && live && streamReady;
+    }
+    function resetAudibleWatchdogs(){
+      lateDriftBeats = 0;
+      untrackedBeats = 0;
+    }
     function recoverPlayback(reason){
       if (!live || !streamReady || userPaused || yielded) return;
       const broken = !!player.error || player.readyState === 0 || stale();
@@ -1712,6 +1725,53 @@
         beginAlignedAudible(reason || 'recover');
         recoveringUntil = Date.now() + 4000;
         player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
+      }
+    }
+    function watchAudibleHealth(lat, stalled){
+      if (!audibleActive()) { resetAudibleWatchdogs(); return; }
+      if (stale()) {
+        resetAudibleWatchdogs();
+        recoveringUntil = 0;
+        recoverPlayback('stale-heartbeat');
+        return;
+      }
+
+      const target = roomTarget();
+      const lateBy = (lat != null && Number.isFinite(lat) && target > 0) ? lat - target : null;
+      if (!stalled && lateBy != null && lateBy > LATE_DRIFT_REATTACH_SEC) {
+        lateDriftBeats++;
+        untrackedBeats = 0;
+        if (lateDriftBeats >= LATE_DRIFT_CONFIRMATIONS) {
+          const beats = lateDriftBeats;
+          const buf = bufferedAhead();
+          resetAudibleWatchdogs();
+          recoveringUntil = 0;
+          sumRecovers++;
+          logEvent('drift-reconnect', {
+            lat: rnd3(lat), target: rnd3(target), late: rnd3(lateBy), beats,
+            buf: rnd(buf), rs: player.readyState, ref: syncReference(), ...expMode(),
+          });
+          reattach('late-drift');
+        }
+        return;
+      }
+      lateDriftBeats = 0;
+
+      if (!stalled && lat == null && player.readyState >= 3 && bufferedAhead() > 1) {
+        untrackedBeats++;
+        if (untrackedBeats >= UNTRACKED_REATTACH_CONFIRMATIONS) {
+          const beats = untrackedBeats;
+          resetAudibleWatchdogs();
+          recoveringUntil = 0;
+          sumRecovers++;
+          logEvent('untracked-reconnect', {
+            beats, buf: rnd(bufferedAhead()), rs: player.readyState,
+            progressAge: lastProgress ? Date.now() - lastProgress : 0, ref: syncReference(), ...expMode(),
+          });
+          reattach('untracked-latency');
+        }
+      } else {
+        untrackedBeats = 0;
       }
     }
     player.addEventListener('pause',   () => {
@@ -1806,6 +1866,7 @@
       started = false; attached = false; ready = false; errRetries = 0; joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false; syncFailed = false;
       timelineOriginMs = null; alignedGeneration = -1; generationAlignSeeks = 0;
       recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
+      resetAudibleWatchdogs();
       setPlayingUI(false); setStatus('');
       updateIdleButton(); // shows "Waiting for DJ"
     }
@@ -1938,6 +1999,7 @@
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
       const lat = measureLatency();
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
+      watchAudibleHealth(lat, stalled);
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&del=' + (usingLL() ? 'llhls' : 'hls')
         + '&buf=' + bufferedAhead().toFixed(1)
