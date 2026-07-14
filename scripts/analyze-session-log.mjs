@@ -10,6 +10,8 @@ const KNOWN_KEYS = [
   'aligned', 'audible', 'before', 'buf', 'committed', 'corrected', 'correction',
   'degraded', 'error', 'first', 'gen', 'joinMs', 'lat', 'll', 'maxError',
   'mD', 'mMode', 'mPin', 'mSeek', // sync-approach tags (v53.61+): effective target/mode/pin/seek
+  'quant', // v53.63+: open landed within expected native quantization (not genuinely degraded)
+  'reroll', // v55+: Precise took a second muted draw before this open
   'muted', 'pos', 'progressAge', 'rate', 'real', 'ref', 'rs', 'samples', 'seek',
   'seeking', 'seeks', 'staleMs', 'target', 'used', 'want', 'why',
 ];
@@ -112,6 +114,7 @@ function approachBucket(map, mode) {
 
 export function analyzeText(text, source = '<stdin>') {
   const counts = {};
+  const seen = new Set(); // (client, seq) dedupe of re-uploaded batches
   const clients = new Map();
   const opens = [];
   const approaches = new Map(); // mMode -> approachBucket
@@ -136,6 +139,13 @@ export function analyzeText(text, source = '<stdin>') {
     const [, hh, mm, ss, ms, who, kind, rawFields = ''] = ev;
     const timeMs = timeToMs(hh, mm, ss, ms);
     const fields = parseFields(rawFields);
+    // The uploader can re-send a batch (network retry), duplicating events in
+    // the DJ log. Dedupe on (client, per-client sequence) when a seq exists.
+    if (fields.n != null) {
+      const dupKey = who + '#' + fields.n;
+      if (seen.has(dupKey)) continue;
+      seen.add(dupKey);
+    }
     inc(counts, kind);
 
     if (!clients.has(who)) clients.set(who, emptyClient(who));
@@ -206,7 +216,7 @@ export function analyzeText(text, source = '<stdin>') {
       devicesOpened: opened,
       silent: Math.max(0, seen - opened),
       opens: a.opens.length,
-      degraded: a.opens.filter((o) => o.degraded || !o.aligned).length,
+      degraded: a.opens.filter((o) => o.degraded).length,
       minLatencySec: min,
       maxLatencySec: max,
       spreadMs: (min !== null && max !== null) ? Math.round((max - min) * 1000) : null,
@@ -221,11 +231,11 @@ export function analyzeText(text, source = '<stdin>') {
   const clientsOut = [...clients.values()].map((c) => ({
     ...c,
     alignedOpens: c.opens.filter((o) => o.aligned).length,
-    degradedOpens: c.opens.filter((o) => o.degraded || !o.aligned).length,
+    degradedOpens: c.opens.filter((o) => o.degraded).length,
     maxSeeks: Math.max(0, ...c.opens.map((o) => o.seeks || 0), c.alignRequests),
   })).sort((a, b) => a.name.localeCompare(b.name));
 
-  const degraded = opens.filter((o) => o.degraded || !o.aligned).length;
+  const degraded = opens.filter((o) => o.degraded).length;
   const joinMs = opens.map((o) => o.joinMs).filter((v) => num(v) !== null);
   const maxJoinMs = joinMs.length ? Math.max(...joinMs) : null;
   const maxOpenSeeks = Math.max(0, ...opens.map((o) => o.seeks || 0));
@@ -255,6 +265,9 @@ export function analyzeText(text, source = '<stdin>') {
   }
   if ((counts['audible-seek'] || 0) > 0) {
     warnings.push({ level: 'fail', message: `${counts['audible-seek']} audible seek event(s); post-unmute app-directed seeks must stay zero` });
+  }
+  if ((counts['external-seek'] || 0) > 0) {
+    warnings.push({ level: 'warn', message: `${counts['external-seek']} external seek(s) (lock-screen/OS scrub, not app code); each can park a guest behind — drift-reconnect should recover them` });
   }
   if (maxJoinMs !== null && maxJoinMs > 15000) {
     warnings.push({ level: 'fail', message: `slowest audio-open took ${Math.round(maxJoinMs)}ms; watchdog budget is 15000ms` });
@@ -320,7 +333,8 @@ function printReport(summary) {
   console.log(`Events: ${summary.eventCount} across ${summary.clientCount} client(s)`);
   const c = summary.counts;
   console.log(`Startup: audio-open=${summary.startup.audioOpens} aligned=${summary.startup.alignedOpens} degraded=${summary.startup.degradedOpens} maxJoin=${summary.startup.maxJoinMs == null ? 'n/a' : `${Math.round(summary.startup.maxJoinMs)}ms`} maxSeeks=${summary.startup.maxOpenSeeks}`);
-  console.log(`Problems: sync-failed=${c['sync-failed'] || 0} watchdog=${c['sync-watchdog'] || 0} stall=${c.stall || 0} rebuffer=${c.rebuffer || 0} reconnect=${c.reconnect || 0} audible-seek=${c['audible-seek'] || 0}`);
+  console.log(`Problems: sync-failed=${c['sync-failed'] || 0} watchdog=${c['sync-watchdog'] || 0} stall=${c.stall || 0} rebuffer=${c.rebuffer || 0} reconnect=${c.reconnect || 0} audible-seek=${c['audible-seek'] || 0} external-seek=${c['external-seek'] || 0}`);
+  console.log(`Recoveries: drift-reconnect=${c['drift-reconnect'] || 0} untracked-reconnect=${c['untracked-reconnect'] || 0}`);
   if (summary.streamReady.length) {
     console.log('\nStream sync readiness:');
     for (const s of summary.streamReady) {

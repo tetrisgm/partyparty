@@ -71,7 +71,10 @@ func ParseOverrides(raw []byte) Overrides {
 	if s.SegDur != nil && validDurRange(*s.SegDur, 1*time.Second, 6*time.Second) {
 		o.SegDur = s.SegDur
 	}
-	if s.SegCount != nil && *s.SegCount >= 3 && *s.SegCount <= 30 {
+	// 3..32 is the validated safe range for MediaMTX. The shipped DEFAULT is 12
+	// (the failure-budget window — see config.go seg-count); larger values are
+	// allowed for field experiments but re-widen the worst possible desync.
+	if s.SegCount != nil && *s.SegCount >= 3 && *s.SegCount <= 32 {
 		o.SegCount = s.SegCount
 	}
 	if s.LatencyTargetSec != nil && *s.LatencyTargetSec >= 0 && *s.LatencyTargetSec <= 15 {

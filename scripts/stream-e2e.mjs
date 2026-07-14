@@ -323,9 +323,9 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     '--stream-path', 'party',
     // Match the shipped room profile exactly. A browser test with easier LL-HLS
     // timing is not evidence that the phones receive a healthy stream.
-    '--seg-duration', '2s',
-    '--part-duration', '1000ms',
-    '--seg-count', '16',
+    '--seg-duration', '1s',
+    '--part-duration', '500ms',
+    '--seg-count', '12',
     '--latency-target', '3',
     '--name', 'partyparty e2e',
   ], {
@@ -385,17 +385,6 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     const off = Math.abs(parseFloat(m[1]));
     if (Math.abs(off - syncReady.latencyTarget) > 0.02) fail(`EXT-X-START offset ${off}s != room target ${syncReady.latencyTarget}s`);
     log(`PASS EXT-X-START pin present: TIME-OFFSET=-${off.toFixed(3)}s == room target`);
-  }
-
-  // The ?pin=0 sync-experiment path: /live-plain serves the SAME upstream but
-  // must NOT inject the pin, so a field A/B can isolate the pin's effect.
-  {
-    const plain = await getInsecure(`https://127.0.0.1:${tlsPort}/live-plain/party/index.m3u8`);
-    if (plain.status !== 200 || !/#EXT-X-STREAM-INF/.test(plain.body || '')) {
-      fail(`/live-plain multivariant not served (status ${plain.status}):\n${(plain.body || '').slice(0, 300)}`);
-    }
-    if (/#EXT-X-START/.test(plain.body || '')) fail('/live-plain must NOT carry the EXT-X-START pin (?pin=0 experiment)');
-    log('PASS /live-plain serves the un-pinned multivariant (no EXT-X-START)');
   }
 
   return {
@@ -484,9 +473,9 @@ hlsServerCert: ${cert}
 hlsServerKey: ${key}
 hlsVariant: lowLatency
 hlsAlwaysRemux: yes
-hlsSegmentCount: 16
-hlsSegmentDuration: 2s
-hlsPartDuration: 1000ms
+hlsSegmentCount: 12
+hlsSegmentDuration: 1s
+hlsPartDuration: 500ms
 hlsAllowOrigins: ['*']
 authInternalUsers:
 - user: any

@@ -68,4 +68,20 @@ assert.equal(seek.silent, 1);
 assert.equal(abs.recommendation, 'balanced');
 assert.ok(abs.warnings.some((w) => w.message.includes("approach 'seek'") && w.message.includes('silent')));
 
+// Re-uploaded batches duplicate events in the DJ log; the analyzer must dedupe
+// on (client, seq) so counts reflect unique events (2026-07-13 party: 40 raw
+// stalls vs 36 unique).
+const dupLine = '03:03:00.000 | ev[iPhone D | 192.168.1.13 cid-d.tab-d v53.63 guest] stall +9000ms #5 buf=0 lat=5.0\n';
+const dup = analyzeText(ab + dupLine + dupLine + dupLine, 'dup.log');
+assert.equal(dup.counts.stall, 1);
+
+// v53.63 two-tier open flags: quant(ized) opens are NOT degraded; only an
+// explicit degraded=true (beyond quantization) counts.
+const tiered = analyzeText(
+  '03:04:00.000 | ev[iPhone E | 192.168.1.14 cid-e.tab-e v53.63 guest] audio-open +5000ms #1 why=join aligned=false quant=true degraded=false ref=pdt lat=4.1 joinMs=5000 error=1.1 rate=1 seeks=0 mMode=balanced mSeek=0 mPin=1 mD=3\n'
+  + '03:04:01.000 | ev[iPhone F | 192.168.1.15 cid-f.tab-f v53.63 guest] audio-open +5000ms #1 why=join aligned=false quant=false degraded=true ref=pdt lat=9.4 joinMs=5000 error=6.4 rate=1 seeks=0 mMode=balanced mSeek=0 mPin=1 mD=3\n',
+  'tiered.log');
+assert.equal(tiered.startup.audioOpens, 2);
+assert.equal(tiered.startup.degradedOpens, 1);
+
 console.log('PASS session log analyzer');

@@ -63,10 +63,9 @@ type Deps struct {
 
 type srv struct {
 	Deps
-	vendor         http.Handler
-	liveProxy      http.Handler
-	livePlainProxy http.Handler // same upstream, no EXT-X-START pin (for the ?pin=0 sync experiment)
-	limits         *limiter
+	vendor    http.Handler
+	liveProxy http.Handler
+	limits    *limiter
 
 	// Async activation result (cert broker / BYO) — set after launch so the
 	// server can start serving instantly while certs are obtained in the
@@ -129,13 +128,6 @@ type srv struct {
 	streamSyncCheckedAt  time.Time
 	streamSyncChecking   bool
 	streamSyncReady      bool
-
-	// syncMode: the DJ-selected global sync approach (a preset id from
-	// syncModeOrder) the whole room aligns to. Guests read it from /api/status
-	// and re-align when it changes; the DJ flips it to A/B approaches live.
-	// "" = the default preset. Guarded by syncMu. See syncmode.go.
-	syncMu   sync.Mutex
-	syncMode string
 }
 
 func New(d Deps) *Srv {
@@ -147,22 +139,17 @@ func New(d Deps) *Srv {
 		Deps: d, vendor: http.FileServer(http.FS(webFS)),
 		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
 	}}
-	// Both proxies share one upstream. /live injects the EXT-X-START room-start
-	// pin only when the current sync approach asks for it (s.syncPinEnabled);
-	// /live-plain never pins (the per-device ?pin=0 escape hatch). Target and pin
-	// are read at REQUEST time (method values bound to s), so the DJ flipping the
-	// approach takes effect on the next playlist fetch with no rebuild. The pin
-	// offset must equal what /api/status reports as the room target — both read
-	// s.syncTarget, so they cannot drift.
-	s.liveProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live", s.syncPinEnabled)
-	s.livePlainProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live-plain", func() bool { return false })
+	// The /live proxy injects the EXT-X-START room-start pin; the offset is
+	// read at REQUEST time from s.syncTarget so it always equals what
+	// /api/status reports as the room target.
+	s.liveProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live")
 	return s
 }
 
 // newLiveProxy keeps the guest page and LL-HLS on one public HTTPS origin.
 // MediaMTX remains loopback-only from the Go server's point of view; guests no
 // longer need a second TLS connection to a second externally reachable port.
-func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string, pinEnabled func() bool) http.Handler {
+func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string) http.Handler {
 	upstream := fmt.Sprintf("127.0.0.1:%d", hlsPort)
 	return &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
@@ -193,7 +180,7 @@ func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string, pinEnab
 			// seek hang, and a player that ignores it just falls back to the natural
 			// hold-back position (still no gross outlier). Media playlists pass
 			// through untouched. Per RFC 8216 EXT-X-START belongs in the multivariant.
-			if pinEnabled() && resp.Request != nil && resp.StatusCode == http.StatusOK &&
+			if resp.Request != nil && resp.StatusCode == http.StatusOK &&
 				strings.HasSuffix(resp.Request.URL.Path, "/index.m3u8") {
 				if d := roomTarget(); d > 0.5 {
 					body, err := io.ReadAll(resp.Body)
@@ -416,10 +403,9 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/vendor/"):
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-		s.vendor.ServeHTTP(w, r)
-	case strings.HasPrefix(p, "/live-plain/"):
-		s.livePlainProxy.ServeHTTP(w, r) // ?pin=0 experiment: same stream, no EXT-X-START pin
+		// Through serveWeb (not the FileServer) so text assets gzip — hls.js is
+		// 404KB plain, ~130KB gzipped, fetched by every non-Apple guest.
+		s.serveWeb(w, r, strings.TrimPrefix(p, "/"), "public, max-age=3600")
 	case strings.HasPrefix(p, "/live/"):
 		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
@@ -509,7 +495,7 @@ func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache strin
 	if cache != "" {
 		w.Header().Set("Cache-Control", cache)
 	}
-	if strings.HasSuffix(name, ".html") && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+	if compressibleAsset(name) && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
 		zw, zerr := gzip.NewWriterLevel(w, gzip.BestSpeed)
@@ -522,6 +508,18 @@ func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache strin
 	_, _ = w.Write(data)
 }
 
+// compressibleAsset: text assets worth gzipping on the fly. The big win is
+// vendor/hls.js (~404KB -> ~130KB) for every Android/desktop-Chrome guest on
+// congested venue Wi-Fi; images and media are already compressed.
+func compressibleAsset(name string) bool {
+	for _, ext := range []string{".html", ".js", ".css", ".svg", ".json", ".txt", ".map"} {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.URL.Path {
@@ -532,18 +530,14 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		latencyTarget := s.latencyTarget(bc, health.Status)
 		roster := s.Listeners.Roster()
 		var rosterBody any = roster
-		// The sync-approach radio MENU (labels/hints) is DJ-only — it never bloats
-		// the guest join-path poll. Guests still get the compact "sync" object below.
-		syncMenu := syncModeList()
 		if !s.isDJ(r) {
 			public := make([]map[string]string, 0, len(roster))
 			for _, listener := range roster {
 				public = append(public, map[string]string{"name": listener.Name, "emoji": listener.Emoji})
 			}
 			rosterBody = public
-			syncMenu = nil
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		writeJSONGzip(w, r, http.StatusOK, map[string]any{
 			"name":           s.Config.Name,
 			"appVersion":     s.version(),
 			"broadcast":      bc,
@@ -560,7 +554,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"hotspot":        s.hotspotState(),
 			"latencyTarget":  latencyTarget,
 			"sync":           s.syncModeState(),
-			"syncModes":      syncMenu, // nil (→ null) for guests; the DJ radio menu otherwise
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
@@ -918,24 +911,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	case "/api/sync-mode":
-		// Set the room's global sync approach (see syncmode.go). DJ-only tuning
-		// knob — not go-live — so it needs requireDJ but not the activation gate.
-		// Guests pick up the change on their next /api/status poll and re-align.
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		mode := r.URL.Query().Get("mode")
-		if _, ok := syncModes[mode]; !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown sync mode"})
-			return
-		}
-		s.setSyncMode(mode)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/open-settings":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -1276,6 +1251,32 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeJSONGzip is writeJSON for hot polled payloads (/api/status: every guest,
+// every 3s, roster+sync state — a few KB that gzip to a fraction on venue
+// Wi-Fi). Small bodies skip compression; anything under one MTU gains nothing.
+func writeJSONGzip(w http.ResponseWriter, r *http.Request, status int, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "encode failed"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if len(b) > 1400 && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		var buf bytes.Buffer
+		if zw, zerr := gzip.NewWriterLevel(&buf, gzip.BestSpeed); zerr == nil {
+			if _, werr := zw.Write(b); werr == nil && zw.Close() == nil {
+				w.Header().Set("Content-Encoding", "gzip")
+				w.Header().Add("Vary", "Accept-Encoding")
+				w.WriteHeader(status)
+				_, _ = w.Write(buf.Bytes())
+				return
+			}
+		}
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(b)
 }
 
 func kbps(bitrate string) int {

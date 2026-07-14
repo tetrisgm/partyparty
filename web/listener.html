@@ -699,45 +699,12 @@
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
     const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
-    // Sync approach = which startup scheme the room is using (seek / pin / target).
-    // PRIMARY control is the DJ's console radio button, pushed to every guest via
-    // /api/status as `approach` (see poll()); the whole room re-aligns when the DJ
-    // flips it, so approaches can be A/B'd on the real phones in one party.
-    // Per-device URL params stay as an OVERRIDE/escape hatch (they win over the
-    // room approach, per key):
-    //   ?seek=1  this device does the muted startup seek (default follows the room)
-    //   ?d=5     override the room target latency in seconds
-    //   ?pin=0   this device uses the un-pinned stream (no EXT-X-START). Note ?pin
-    //            is ONE-WAY: the pin is a property of the single shared /live
-    //            playlist, so a device can only OPT OUT (?pin=0); it can't force
-    //            the pin ON when the room approach is un-pinned — ?pin=1 just
-    //            follows the room.
-    const EXP = (() => {
-      const q = new URLSearchParams(location.search);
-      const dv = parseFloat(q.get('d'));
-      return {
-        seekSet: q.has('seek'), seek: q.get('seek') === '1',
-        d: isFinite(dv) && dv > 0 ? dv : null,
-        pinSet: q.has('pin'), pin: q.get('pin') !== '0',
-        on: q.has('seek') || q.has('d') || q.has('pin'),
-      };
-    })();
-    // The room's current approach, pushed by the server each poll: {mode,seek,pin,target}.
-    // null until the first /api/status; a device that never hears one falls back to
-    // the shipped defaults (no seek, pinned).
-    let approach = null;
-    // Effective dials: a per-device URL override wins for the key it sets, else the
-    // room approach, else the shipped default. (Target flows through latencyTarget →
-    // roomTarget(), so ?d already overrides it there.)
-    const effSeek = () => EXP.seekSet ? EXP.seek : !!(approach && approach.seek);
-    // ?pin=0 is the only per-device pin override (force this device un-pinned); a
-    // per-device force-pin is impossible on the shared /live playlist, so ?pin=1
-    // (or bare ?pin) transparently follows the room approach.
-    const effPin = () => (EXP.pinSet && !EXP.pin) ? false : (approach ? !!approach.pin : true);
-    // Compact tag stamped on the comparison telemetry so EVERY device's EFFECTIVE
-    // sync config (approach id + seek / pin / target) is filterable side-by-side in
-    // one party's field logs — that's how the DJ reads which approach behaved best.
-    const expMode = () => ({ mSeek: effSeek() ? 1 : 0, mPin: effPin() ? 1 : 0, mD: rnd3(roomTarget()), mMode: approach ? approach.mode : null });
+    // One production sync design ("Precise", 2026-07): native no-seek starts
+    // against the server's EXT-X-START pin on the fine stream shape, ONE silent
+    // muted re-roll when the first draw verifies >1s off target, hls.js keeps
+    // its muted seek loop, recovery is always a re-attach. The experiment-era
+    // presets and per-device URL dials are gone.
+    let rerollUsed = false; // once per muted join transaction
 
     // ── Vendor loading ──────────────────────────────────────────────────
     // hls.js (404KB) stays off the Apple join path. The small QR renderer is
@@ -791,7 +758,7 @@
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
     // out of the temporal dead zone so that path can never throw.
-    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, 'sync-failed': 1, 'sync-watchdog': 1, reconnect: 1, 'drift-reconnect': 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'audible-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, 'sync-failed': 1, 'sync-watchdog': 1, reconnect: 1, 'drift-reconnect': 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'audible-seek': 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
     let evSeq = 0, evStart = Date.now();
     const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
@@ -799,7 +766,9 @@
     function logEvent(kind, fields){
       try {
         const e = { t: Date.now() - evStart, n: ++evSeq, k: kind };
-        if (fields) for (const key in fields) { const v = fields[key]; if (v !== undefined && v !== null) e[key] = v; }
+        // t/n/k are reserved (n is the per-event sequence the analyzer dedupes
+        // on) — a caller field must never clobber them.
+        if (fields) for (const key in fields) { if (key === 't' || key === 'n' || key === 'k') continue; const v = fields[key]; if (v !== undefined && v !== null) e[key] = v; }
         evBuf.push(e);
         if (evBuf.length > 300) evBuf.splice(0, evBuf.length - 300); // never grow unbounded if uploads hang
         if (evBuf.length >= 24 || IMPORTANT[kind]) flushEvents();
@@ -884,6 +853,7 @@
     let sumStalls = 0, sumStallMs = 0, sumMaxStallMs = 0, stallStartedAt = 0;
     let sumRecovers = 0, sumPlayMs = 0, sumPlayStart = 0, sumMaxLatency = 0;
     let alignSeeks = 0, generationAlignSeeks = 0, audibleSeeks = 0;
+    let lastAppSeekAt = 0; // stamped when OUR code issues a seek, to tell app seeks from lock-screen scrubs
     function playSummary(){
       const playing = sumPlayStart ? sumPlayMs + (Date.now() - sumPlayStart) : sumPlayMs;
       const stallMs = sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0);
@@ -1216,7 +1186,7 @@
     let alignedGeneration = -1;
     let alignPromise = null;
     let joinMuted = false, joinReason = '', joinStartedAt = 0, joinWatchdog = 0, syncFailed = false;
-    const roomTarget = () => EXP.d || latencyTarget || ROOM_TARGET_FALLBACK;
+    const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const startupTimeLeft = () => Math.max(0, STARTUP_BUDGET_MS - (joinStartedAt ? Date.now() - joinStartedAt : 0));
     const canAlign = (generation) => generation === alignGeneration && joinMuted && started && !player.paused && !userPaused && !yielded && live && streamReady;
@@ -1227,6 +1197,7 @@
       if (joinMuted || alignPromise || alignedGeneration === alignGeneration) return false;
       joinMuted = true;
       syncFailed = false;
+      rerollUsed = false; // fresh transaction — every close path re-arms the one re-roll
       joinReason = reason || 'join';
       if (!joinStartedAt) joinStartedAt = Date.now();
       needsAlign = true;
@@ -1236,6 +1207,15 @@
       btnlabel.textContent = 'Syncing…';
       if (btnHint) btnHint.textContent = 'Lining up with everyone';
       setStatus('syncing with the room…');
+      armJoinWatchdog();
+      return true;
+    }
+    // The watchdog is generation-keyed, so anything that bumps the generation
+    // MID-transaction (the Precise re-roll's re-attach) MUST re-arm it for the
+    // new generation — otherwise a re-attached element that never reaches
+    // 'playing' leaves the guest muted at "Syncing…" forever with no visible
+    // failure (the fail-silent class this product must never regress into).
+    function armJoinWatchdog(){
       clearTimeout(joinWatchdog);
       const watchedGeneration = alignGeneration;
       joinWatchdog = setTimeout(() => {
@@ -1246,7 +1226,6 @@
         });
         failAudioGate(watchedGeneration, 'Playback timing could not be verified.');
       }, JOIN_WATCHDOG_MS);
-      return true;
     }
     function waitForMediaEvent(name, maxWaitMs){
       return new Promise(resolve => {
@@ -1348,6 +1327,7 @@
           wanted = Math.min(Math.max(wanted, low), high);
           const before = player.currentTime;
           const seeked = waitForMediaEvent('seeked', Math.min(1800, startupTimeLeft()));
+          lastAppSeekAt = Date.now();
           player.currentTime = wanted;
           alignSeeks++; generationAlignSeeks++;
           logEvent('align-request', {
@@ -1378,13 +1358,22 @@
       player.muted = false;
       if (!sumPlayStart) sumPlayStart = Date.now();
       claimAudio(); setPlayingUI(true); setStatus(aligned ? 'live' : 'timing unverified');
+      // Two-tier open quality: `aligned` keeps the strict 0.55s bar; `degraded`
+      // now means GENUINELY bad (beyond the ~1s start-position quantization the
+      // native no-seek path leaves by design, plus slack). The 2026-07-13 party
+      // flagged 22/26 opens "degraded" when 20 of them were the designed
+      // quantization — that made the flag useless for judging the pin.
+      const openErr = verification && verification.error != null ? Math.abs(verification.error) : null;
+      const quantized = !aligned && openErr != null && openErr <= 1.6;
       logEvent('audio-open', {
-        why: reason, aligned: !!aligned, degraded: !aligned, ref: syncReference(), lat: rnd3(measureLatency()), joinMs,
+        why: reason, aligned: !!aligned, quant: quantized, degraded: !aligned && !quantized,
+        ref: syncReference(), lat: rnd3(measureLatency()), joinMs,
         error: verification ? rnd3(verification.error) : null,
         maxError: verification ? rnd3(verification.maxError) : null,
         rate: verification ? rnd3(verification.rate) : null,
-        seeks: generationAlignSeeks, ...expMode(),
+        seeks: generationAlignSeeks, reroll: rerollUsed,
       });
+      rerollUsed = false; // transaction closed — next join gets a fresh re-roll
     }
     function failAudioGate(generation, message){
       if (generation !== alignGeneration || !joinMuted) return;
@@ -1392,6 +1381,7 @@
       const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
       clearTimeout(joinWatchdog); joinWatchdog = 0;
       joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false;
+      rerollUsed = false; // transaction closed
       syncFailed = true; player.muted = true;
       setPlayingUI(false);
       ico.textContent = '↻';
@@ -1442,7 +1432,7 @@
         // the physical mic test — and if it exceeds the budget, server-side
         // EXT-X-START pinning (not a client seek) is the tightening layer. A player
         // that ever progressed ALWAYS opens audible; muted-forever is impossible.
-        if (useNative && !effSeek()) {
+        if (useNative) {
           let progress = null;
           while (startupTimeLeft() > 0 && canAlign(generation)) {
             progress = await waitForProgress(generation, Math.min(2000, startupTimeLeft()));
@@ -1454,11 +1444,34 @@
           const verification = await verifyAlignment(generation); // telemetry only, never a seek
           if (!canAlign(generation)) return;
           const ok = !!(verification && verification.ok);
+          // Precise re-roll: the natural start is a draw quantized by part
+          // boundaries. If the FIRST draw verifies badly off target and there's
+          // budget left, re-attach the SAME user-blessed element once (still
+          // muted, no seek) and take a second draw — the 'playing' handler
+          // re-enters alignOnce on the fresh generation, where rerollUsed makes
+          // whatever comes back open unconditionally. Never loops, never leaves
+          // the player muted over imperfect timing.
+          const verr = verification && verification.error != null ? Math.abs(verification.error) : null;
+          if (!ok && !rerollUsed && verr != null && verr > 1.0 && startupTimeLeft() >= 4000) {
+            rerollUsed = true;
+            logEvent('start-reroll', {
+              error: rnd3(verification.error), lat: rnd3(measureLatency()),
+              target: rnd3(roomTarget()), gen: streamGeneration,
+            });
+            if (attachSafe()) {
+              // attach() bumped the generation — re-arm the generation-keyed
+              // join watchdog or a never-playing re-attach fails SILENT.
+              armJoinWatchdog();
+              player.play().catch(() => {});
+              return;
+            }
+            // re-attach refused (cooldown/stream state) — fall through and open
+          }
           logEvent('align-settled', {
             corrected: false, natural: true, ref: syncReference(), lat: rnd3(measureLatency()),
             target: rnd3(roomTarget()), error: verification ? rnd3(verification.error) : null,
             maxError: verification ? rnd3(verification.maxError) : null,
-            rate: verification ? rnd3(verification.rate) : rnd3(progress.rate), seeks: 0,
+            rate: verification ? rnd3(verification.rate) : rnd3(progress.rate), seeks: 0, reroll: rerollUsed,
           });
           await openAudioGate(generation, verification || { ok: false, error: null, maxError: null, rate: progress.rate }, ok);
           return;
@@ -1699,17 +1712,49 @@
     player.addEventListener('seeking', () => {
       const audible = started && !player.muted && !userPaused && !yielded;
       if (audible) audibleSeeks++;
-      logEvent(audible ? 'audible-seek' : 'seek', { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), appAligns: alignSeeks });
+      // 'audible-seek' = OUR code seeked an unmuted player (a passive-playback
+      // decree violation, must stay zero). A seek we didn't issue — lock-screen
+      // scrub, Control Center, Safari itself — is 'external-seek': not our
+      // fault, but it can park a guest far behind (the 2026-07-13 party's 34s
+      // drifter started exactly this way), so it stays IMPORTANT for the logs.
+      const appSeek = Date.now() - lastAppSeekAt < 2000;
+      logEvent(audible ? (appSeek ? 'audible-seek' : 'external-seek') : 'seek',
+        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), appAligns: alignSeeks });
     });
     player.addEventListener('seeked', sampleProgress);
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
     let lateDriftBeats = 0, untrackedBeats = 0;
+    let originCandidate = null, originRepeats = 0, untrackedReattaches = 0;
     function audibleActive(){
       return started && !player.muted && !userPaused && !yielded && !joinMuted && live && streamReady;
     }
     function resetAudibleWatchdogs(){
       lateDriftBeats = 0;
       untrackedBeats = 0;
+      originCandidate = null;
+      originRepeats = 0;
+    }
+    // An AUDIBLE re-attach skips the muted align gate (a hidden tab — e.g. a
+    // locked phone — never runs beginAlignedAudible), so attach() leaves
+    // timelineOriginMs null and every native latency read returns null. Without
+    // this restore, the untracked watchdog would re-attach such a player every
+    // ~20s forever (each one an audio dropout). Re-derive the origin passively
+    // from the heartbeat — same 3-stable-samples rule as ensureTimelineOrigin,
+    // no seek, no gate — so measurability comes back and the drift watchdog can
+    // do its job instead.
+    function tryRestoreTimelineOrigin(){
+      if (!useNative || timelineOriginMs != null) return false;
+      const value = currentTimelineOrigin();
+      if (value == null) return false;
+      if (value === originCandidate) originRepeats++;
+      else { originCandidate = value; originRepeats = 1; }
+      if (originRepeats >= 3) {
+        timelineOriginMs = originCandidate;
+        logEvent('timeline', { origin: originCandidate, samples: originRepeats, why: 'restore' });
+        originCandidate = null; originRepeats = 0;
+        return true;
+      }
+      return false;
     }
     function recoverPlayback(reason){
       if (!live || !streamReady || userPaused || yielded) return;
@@ -1738,6 +1783,7 @@
 
       const target = roomTarget();
       const lateBy = (lat != null && Number.isFinite(lat) && target > 0) ? lat - target : null;
+      if (lat != null) untrackedReattaches = 0; // tracking works again — re-arm the cap
       if (!stalled && lateBy != null && lateBy > LATE_DRIFT_REATTACH_SEC) {
         lateDriftBeats++;
         untrackedBeats = 0;
@@ -1749,7 +1795,7 @@
           sumRecovers++;
           logEvent('drift-reconnect', {
             lat: rnd3(lat), target: rnd3(target), late: rnd3(lateBy), beats,
-            buf: rnd(buf), rs: player.readyState, ref: syncReference(), ...expMode(),
+            buf: rnd(buf), rs: player.readyState, ref: syncReference(),
           });
           reattach('late-drift');
         }
@@ -1758,15 +1804,28 @@
       lateDriftBeats = 0;
 
       if (!stalled && lat == null && player.readyState >= 3 && bufferedAhead() > 1) {
+        // Cheap path first: if we can make latency measurable again WITHOUT a
+        // re-attach, do that — the player keeps playing, and from the next beat
+        // the drift watchdog sees a real number.
+        if (tryRestoreTimelineOrigin()) { untrackedBeats = 0; return; }
         untrackedBeats++;
         if (untrackedBeats >= UNTRACKED_REATTACH_CONFIRMATIONS) {
           const beats = untrackedBeats;
           resetAudibleWatchdogs();
+          // A re-attach that lands unmeasurable again would re-fire forever —
+          // each one is an audio dropout for a listener who may be perfectly
+          // near the live edge (e.g. clock never synced, so latency can never
+          // be measured). Two attempts, then playing-untracked beats silence.
+          if (untrackedReattaches >= 2) return;
+          untrackedReattaches++;
           recoveringUntil = 0;
           sumRecovers++;
           logEvent('untracked-reconnect', {
-            beats, buf: rnd(bufferedAhead()), rs: player.readyState,
-            progressAge: lastProgress ? Date.now() - lastProgress : 0, ref: syncReference(), ...expMode(),
+            // 'attempt', NOT 'n' — logEvent reserves n for the per-event sequence
+            // and caller fields would clobber it (breaking the analyzer's
+            // (client,seq) dedupe, which would then drop this very event).
+            beats, attempt: untrackedReattaches, buf: rnd(bufferedAhead()), rs: player.readyState,
+            progressAge: lastProgress ? Date.now() - lastProgress : 0, ref: syncReference(),
           });
           reattach('untracked-latency');
         }
@@ -1867,6 +1926,8 @@
       timelineOriginMs = null; alignedGeneration = -1; generationAlignSeeks = 0;
       recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
       resetAudibleWatchdogs();
+      untrackedReattaches = 0; // full teardown = fresh session — re-arm the cap
+      rerollUsed = false;
       setPlayingUI(false); setStatus('');
       updateIdleButton(); // shows "Waiting for DJ"
     }
@@ -1877,26 +1938,10 @@
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         lastPollOK = Date.now();
         considerReload(s.appVersion);
-        // The DJ's global sync approach (console radio). Apply it FIRST — before the
-        // stream URL is computed below — so effPin() reflects the room's approach on
-        // the very FIRST poll (a fresh guest joining a room already set to, say,
-        // "nopin" must hit /live-plain immediately, not the pinned /live for a cycle).
-        // approachChanged is captured against the OLD value here; if the DJ FLIPS it
-        // mid-play, the teardown below drops + auto-rejoins the whole room on the new
-        // approach (a pin flip needs that re-attach — rewriting LLSTREAM alone won't
-        // move an already-attached player).
-        const nextApproach = s.sync && typeof s.sync === 'object' ? s.sync : null;
-        const approachChanged = !!(approach && nextApproach && nextApproach.mode !== approach.mode);
-        approach = nextApproach;
         if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
-        // pin off (room approach or ?pin=0): swap to the un-pinned upstream so this
-        // device's start is NOT hinted by EXT-X-START — isolates the pin's effect.
-        if (LLSTREAM && !effPin()) LLSTREAM = LLSTREAM.replace('/live/', '/live-plain/');
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
-        // Logged after latencyTarget so the mode-change telemetry carries the fresh target.
-        if (approachChanged) logEvent('approach-change', { mode: approach.mode, ...expMode() });
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;
@@ -1918,12 +1963,10 @@
             gaps: syncState && rnd3(syncState.gapHistory), target: rnd3(latencyTarget),
           });
         }
-        if ((streamChanged || approachChanged) && (started || attached)) {
+        if (streamChanged && (started || attached)) {
           // A publisher rebuild creates a different PDT timeline and may leave
-          // AVPlayer holding a now-invalid MediaMTX session; a DJ approach flip
-          // changes the seek/pin/target this device must re-align to. Either way,
-          // tear down the transport (keeping this same user-blessed audio element)
-          // and let the next poll's !started branch auto-rejoin on the new terms.
+          // AVPlayer holding a now-invalid MediaMTX session. Tear down the
+          // transport but keep this same, user-blessed audio element.
           stopPlayback();
         }
         const eventHost = s.event && String(s.event.host || '').trim();
@@ -2015,7 +2058,7 @@
         rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: usingLL(),
         stalls: sumStalls, stallMs: sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0),
         maxStallMs: sumMaxStallMs, progressAge: lastProgress ? Date.now() - lastProgress : 0,
-        alignSeeks, audibleSeeks, ...expMode(),
+        alignSeeks, audibleSeeks,
       });
       stalledSinceBeat = false;
       if (debug) showDebug(lat);

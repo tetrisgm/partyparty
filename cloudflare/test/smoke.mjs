@@ -3037,12 +3037,13 @@ const tests = [
   }],
   ["static landing exposes account access", async () => {
     const html = await readFile(new URL("../../site/index.html", import.meta.url), "utf8");
+    // Invariants, not marketing copy (the landing was redesigned 2026-07):
+    // account access is reachable, the no-guest-account promise is stated, and
+    // the page personalizes/vesions itself from the live APIs.
     assert.match(html, /id="nav-auth" href="\/login">Sign in/);
-    assert.match(html, /Sign in once to link your Mac/);
-    assert.match(html, /No guest account needed/);
+    assert.match(html, /[Nn]o accounts?\b/);
     assert.match(html, /fetch\('\/api\/me'/);
     assert.match(html, /fetch\('\/api\/version'/);
-    assert.match(html, /No fake crowd numbers/);
   }],
   ["/live renders public events and featured DJs", async () => {
     const resp = await fetchPath("/live", {}, {

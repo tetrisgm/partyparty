@@ -3,6 +3,7 @@
 package mediamtx
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -262,18 +263,23 @@ func WaitHTTPSReady(addr string, timeout time.Duration) error {
 		if remaining > 300*time.Millisecond {
 			remaining = 300 * time.Millisecond
 		}
-		client := &http.Client{
-			Timeout: remaining,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
+		// Shared probeClient (same leak class as the playlist probes: a per-call
+		// Transport strands its idle conn); the per-attempt bound rides a request
+		// context since it is tighter than the client's own 2s timeout.
+		ctx, cancel := context.WithTimeout(context.Background(), remaining)
+		req, rerr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if rerr != nil {
+			cancel()
+			return rerr
 		}
-		resp, err := client.Get(url)
+		resp, err := probeClient.Do(req)
 		if err == nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
+			cancel()
 			return nil
 		}
+		cancel()
 		time.Sleep(150 * time.Millisecond)
 	}
 	return fmt.Errorf("mediamtx HLS endpoint not accepting HTTPS at %s after %s", addr, timeout)
@@ -290,11 +296,7 @@ func WaitHTTPSReady(addr string, timeout time.Duration) error {
 // InsecureSkipVerify transport as WaitHTTPSReady.
 func PathPublishing(hlsPort int, path string) (publishing bool, httpCode int, bodyPrefix string) {
 	url := fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", hlsPort, path)
-	client := &http.Client{
-		Timeout:   2 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-	}
-	resp, err := client.Get(url)
+	resp, err := probeClient.Get(url)
 	if err != nil {
 		return false, 0, "http error: " + err.Error()
 	}
@@ -326,33 +328,94 @@ type HLSReadiness struct {
 // reports the contiguous non-GAP history at the live edge. It is intended for
 // a cached readiness probe, not for every guest request.
 func InspectHLS(hlsPort int, streamPath string) HLSReadiness {
-	client := &http.Client{
-		Timeout:   2 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-	}
-	masterURL, _ := url.Parse(fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", hlsPort, streamPath))
-	body, finalURL, ok := fetchPlaylist(client, masterURL)
+	body, mediaURL, ok := fetchMediaPlaylist(hlsPort, streamPath)
 	if !ok {
 		return HLSReadiness{}
 	}
-
-	mediaURL := finalURL
-	if variant := playlistVariantURI(body); variant != "" {
-		rel, err := url.Parse(variant)
-		if err != nil {
-			return HLSReadiness{}
-		}
-		mediaURL = finalURL.ResolveReference(rel)
-		body, mediaURL, ok = fetchPlaylist(client, mediaURL)
-		if !ok {
-			return HLSReadiness{}
-		}
-	}
-
 	state := parseHLSMediaPlaylist(body)
 	state.Publishing = true
 	state.Generation = lastPathComponent(mediaURL.Path)
 	return state
+}
+
+// probeClient is shared by every loopback playlist probe. A per-call client
+// leaks: an abandoned zero-value Transport never expires its idle keep-alive
+// TLS connection (IdleConnTimeout=0) and MediaMTX sets no server-side idle
+// timeout either — at the part-cadence heartbeat's 1/s sampling that compounds
+// into thousands of stuck connections and goroutines over one live set, in
+// BOTH processes. Sharing also reuses the connection, so steady sampling costs
+// no TLS handshake at all.
+var probeClient = &http.Client{
+	Timeout: 2 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, // loopback MediaMTX serves the hot-swapped cert
+		MaxIdleConns:        4,
+		MaxIdleConnsPerHost: 4,
+		IdleConnTimeout:     90 * time.Second,
+	},
+}
+
+// fetchMediaPlaylist follows the multivariant playlist to the media playlist
+// and returns its body. Shared by InspectHLS and PlaylistTip.
+func fetchMediaPlaylist(hlsPort int, streamPath string) (string, *url.URL, bool) {
+	client := probeClient
+	masterURL, _ := url.Parse(fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", hlsPort, streamPath))
+	body, finalURL, ok := fetchPlaylist(client, masterURL)
+	if !ok {
+		return "", finalURL, false
+	}
+	mediaURL := finalURL
+	if variant := playlistVariantURI(body); variant != "" {
+		rel, err := url.Parse(variant)
+		if err != nil {
+			return "", mediaURL, false
+		}
+		mediaURL = finalURL.ResolveReference(rel)
+		body, mediaURL, ok = fetchPlaylist(client, mediaURL)
+		if !ok {
+			return "", mediaURL, false
+		}
+	}
+	return body, mediaURL, true
+}
+
+// PlaylistTip returns an opaque token identifying the LIVE EDGE of the media
+// playlist. While the engine is healthy the token changes about once per
+// PART-TARGET; a token that stops changing means MediaMTX stopped emitting new
+// media — a PRODUCTION gap that every connected guest feels at the same moment
+// (unlike per-phone Wi-Fi trouble, which hits one guest at a time). The
+// part-cadence heartbeat samples this to attribute correlated guest stalls.
+func PlaylistTip(hlsPort int, streamPath string) (string, bool) {
+	body, _, ok := fetchMediaPlaylist(hlsPort, streamPath)
+	if !ok {
+		return "", false
+	}
+	return playlistTipToken(body), true
+}
+
+// playlistTipToken derives the tip identity from a media playlist body: the
+// media sequence plus the newest part URI (falling back to the newest segment
+// URI on non-LL playlists). Any new emission changes the token.
+func playlistTipToken(body string) string {
+	var seq, lastPart, lastSeg string
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimSpace(raw)
+		switch {
+		case strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"):
+			seq = strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:")
+		case strings.HasPrefix(line, "#EXT-X-PART:"):
+			if uri := playlistAttribute(line, "URI"); uri != "" {
+				lastPart = uri
+			}
+		case line != "" && !strings.HasPrefix(line, "#"):
+			lastSeg = line
+		}
+	}
+	tip := lastPart
+	if tip == "" {
+		tip = lastSeg
+	}
+	return seq + "|" + tip
 }
 
 func fetchPlaylist(client *http.Client, playlistURL *url.URL) (string, *url.URL, bool) {
