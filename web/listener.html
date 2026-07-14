@@ -699,51 +699,12 @@
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
     const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
-    // Sync approach = which startup scheme the room is using (seek / pin / target).
-    // PRIMARY control is the DJ's console radio button, pushed to every guest via
-    // /api/status as `approach` (see poll()); the whole room re-aligns when the DJ
-    // flips it, so approaches can be A/B'd on the real phones in one party.
-    // Per-device URL params stay as an OVERRIDE/escape hatch (they win over the
-    // room approach, per key):
-    //   ?seek=1  this device does the muted startup seek (default follows the room)
-    //   ?d=5     override the room target latency in seconds
-    //   ?pin=0   this device uses the un-pinned stream (no EXT-X-START). Note ?pin
-    //            is ONE-WAY: the pin is a property of the single shared /live
-    //            playlist, so a device can only OPT OUT (?pin=0); it can't force
-    //            the pin ON when the room approach is un-pinned — ?pin=1 just
-    //            follows the room.
-    const EXP = (() => {
-      const q = new URLSearchParams(location.search);
-      const dv = parseFloat(q.get('d'));
-      return {
-        seekSet: q.has('seek'), seek: q.get('seek') === '1',
-        d: isFinite(dv) && dv > 0 ? dv : null,
-        pinSet: q.has('pin'), pin: q.get('pin') !== '0',
-        rerollSet: q.has('reroll'), reroll: q.get('reroll') === '1',
-        on: q.has('seek') || q.has('d') || q.has('pin') || q.has('reroll'),
-      };
-    })();
-    // The room's current approach, pushed by the server each poll: {mode,seek,pin,target}.
-    // null until the first /api/status; a device that never hears one falls back to
-    // the shipped defaults (no seek, pinned).
-    let approach = null;
-    // Effective dials: a per-device URL override wins for the key it sets, else the
-    // room approach, else the shipped default. (Target flows through latencyTarget →
-    // roomTarget(), so ?d already overrides it there.)
-    const effSeek = () => EXP.seekSet ? EXP.seek : !!(approach && approach.seek);
-    // Re-roll (Precise): native no-seek clients may take ONE extra muted draw
-    // when the first natural start verifies >1s off target — a re-attach of the
-    // same user-blessed element, never a seek, never a second retry.
-    const effReroll = () => EXP.rerollSet ? EXP.reroll : !!(approach && approach.reroll);
+    // One production sync design ("Precise", 2026-07): native no-seek starts
+    // against the server's EXT-X-START pin on the fine stream shape, ONE silent
+    // muted re-roll when the first draw verifies >1s off target, hls.js keeps
+    // its muted seek loop, recovery is always a re-attach. The experiment-era
+    // presets and per-device URL dials are gone.
     let rerollUsed = false; // once per muted join transaction
-    // ?pin=0 is the only per-device pin override (force this device un-pinned); a
-    // per-device force-pin is impossible on the shared /live playlist, so ?pin=1
-    // (or bare ?pin) transparently follows the room approach.
-    const effPin = () => (EXP.pinSet && !EXP.pin) ? false : (approach ? !!approach.pin : true);
-    // Compact tag stamped on the comparison telemetry so EVERY device's EFFECTIVE
-    // sync config (approach id + seek / pin / target) is filterable side-by-side in
-    // one party's field logs — that's how the DJ reads which approach behaved best.
-    const expMode = () => ({ mSeek: effSeek() ? 1 : 0, mPin: effPin() ? 1 : 0, mD: rnd3(roomTarget()), mMode: approach ? approach.mode : null });
 
     // ── Vendor loading ──────────────────────────────────────────────────
     // hls.js (404KB) stays off the Apple join path. The small QR renderer is
@@ -1225,7 +1186,7 @@
     let alignedGeneration = -1;
     let alignPromise = null;
     let joinMuted = false, joinReason = '', joinStartedAt = 0, joinWatchdog = 0, syncFailed = false;
-    const roomTarget = () => EXP.d || latencyTarget || ROOM_TARGET_FALLBACK;
+    const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const startupTimeLeft = () => Math.max(0, STARTUP_BUDGET_MS - (joinStartedAt ? Date.now() - joinStartedAt : 0));
     const canAlign = (generation) => generation === alignGeneration && joinMuted && started && !player.paused && !userPaused && !yielded && live && streamReady;
@@ -1410,7 +1371,7 @@
         error: verification ? rnd3(verification.error) : null,
         maxError: verification ? rnd3(verification.maxError) : null,
         rate: verification ? rnd3(verification.rate) : null,
-        seeks: generationAlignSeeks, reroll: rerollUsed, ...expMode(),
+        seeks: generationAlignSeeks, reroll: rerollUsed,
       });
       rerollUsed = false; // transaction closed — next join gets a fresh re-roll
     }
@@ -1471,7 +1432,7 @@
         // the physical mic test — and if it exceeds the budget, server-side
         // EXT-X-START pinning (not a client seek) is the tightening layer. A player
         // that ever progressed ALWAYS opens audible; muted-forever is impossible.
-        if (useNative && !effSeek()) {
+        if (useNative) {
           let progress = null;
           while (startupTimeLeft() > 0 && canAlign(generation)) {
             progress = await waitForProgress(generation, Math.min(2000, startupTimeLeft()));
@@ -1491,11 +1452,11 @@
           // whatever comes back open unconditionally. Never loops, never leaves
           // the player muted over imperfect timing.
           const verr = verification && verification.error != null ? Math.abs(verification.error) : null;
-          if (!ok && !rerollUsed && effReroll() && verr != null && verr > 1.0 && startupTimeLeft() >= 4000) {
+          if (!ok && !rerollUsed && verr != null && verr > 1.0 && startupTimeLeft() >= 4000) {
             rerollUsed = true;
             logEvent('start-reroll', {
               error: rnd3(verification.error), lat: rnd3(measureLatency()),
-              target: rnd3(roomTarget()), gen: streamGeneration, ...expMode(),
+              target: rnd3(roomTarget()), gen: streamGeneration,
             });
             if (attachSafe()) {
               // attach() bumped the generation — re-arm the generation-keyed
@@ -1834,7 +1795,7 @@
           sumRecovers++;
           logEvent('drift-reconnect', {
             lat: rnd3(lat), target: rnd3(target), late: rnd3(lateBy), beats,
-            buf: rnd(buf), rs: player.readyState, ref: syncReference(), ...expMode(),
+            buf: rnd(buf), rs: player.readyState, ref: syncReference(),
           });
           reattach('late-drift');
         }
@@ -1864,7 +1825,7 @@
             // and caller fields would clobber it (breaking the analyzer's
             // (client,seq) dedupe, which would then drop this very event).
             beats, attempt: untrackedReattaches, buf: rnd(bufferedAhead()), rs: player.readyState,
-            progressAge: lastProgress ? Date.now() - lastProgress : 0, ref: syncReference(), ...expMode(),
+            progressAge: lastProgress ? Date.now() - lastProgress : 0, ref: syncReference(),
           });
           reattach('untracked-latency');
         }
@@ -1977,26 +1938,10 @@
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         lastPollOK = Date.now();
         considerReload(s.appVersion);
-        // The DJ's global sync approach (console radio). Apply it FIRST — before the
-        // stream URL is computed below — so effPin() reflects the room's approach on
-        // the very FIRST poll (a fresh guest joining a room already set to, say,
-        // "nopin" must hit /live-plain immediately, not the pinned /live for a cycle).
-        // approachChanged is captured against the OLD value here; if the DJ FLIPS it
-        // mid-play, the teardown below drops + auto-rejoins the whole room on the new
-        // approach (a pin flip needs that re-attach — rewriting LLSTREAM alone won't
-        // move an already-attached player).
-        const nextApproach = s.sync && typeof s.sync === 'object' ? s.sync : null;
-        const approachChanged = !!(approach && nextApproach && nextApproach.mode !== approach.mode);
-        approach = nextApproach;
         if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
-        // pin off (room approach or ?pin=0): swap to the un-pinned upstream so this
-        // device's start is NOT hinted by EXT-X-START — isolates the pin's effect.
-        if (LLSTREAM && !effPin()) LLSTREAM = LLSTREAM.replace('/live/', '/live-plain/');
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
-        // Logged after latencyTarget so the mode-change telemetry carries the fresh target.
-        if (approachChanged) logEvent('approach-change', { mode: approach.mode, ...expMode() });
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;
@@ -2018,12 +1963,10 @@
             gaps: syncState && rnd3(syncState.gapHistory), target: rnd3(latencyTarget),
           });
         }
-        if ((streamChanged || approachChanged) && (started || attached)) {
+        if (streamChanged && (started || attached)) {
           // A publisher rebuild creates a different PDT timeline and may leave
-          // AVPlayer holding a now-invalid MediaMTX session; a DJ approach flip
-          // changes the seek/pin/target this device must re-align to. Either way,
-          // tear down the transport (keeping this same user-blessed audio element)
-          // and let the next poll's !started branch auto-rejoin on the new terms.
+          // AVPlayer holding a now-invalid MediaMTX session. Tear down the
+          // transport but keep this same, user-blessed audio element.
           stopPlayback();
         }
         const eventHost = s.event && String(s.event.host || '').trim();
@@ -2115,7 +2058,7 @@
         rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: usingLL(),
         stalls: sumStalls, stallMs: sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0),
         maxStallMs: sumMaxStallMs, progressAge: lastProgress ? Date.now() - lastProgress : 0,
-        alignSeeks, audibleSeeks, ...expMode(),
+        alignSeeks, audibleSeeks,
       });
       stalledSinceBeat = false;
       if (debug) showDebug(lat);

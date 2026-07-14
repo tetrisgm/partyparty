@@ -71,8 +71,7 @@ func TestStatusGzipsLargeResponsesOnly(t *testing.T) {
 
 	// The status body must be valid JSON either way. Small payloads may skip
 	// compression (under one MTU there is nothing to win) — assert correctness,
-	// not compression, then force the accepted+gzipped path via a DJ request
-	// (DJ status carries the syncModes menu and is bigger).
+	// not compression.
 	w := doGz(env.srv, "/api/status", true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
