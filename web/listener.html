@@ -186,7 +186,6 @@
   .welopt{color:var(--label-tertiary)}
   .welname{display:flex;gap:8px;align-items:center}
   .welemoji{font-size:22px;background:var(--card);border:1px solid var(--separator);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-  .welshuffle{background:none;border:none;cursor:pointer;flex:0 0 auto;padding:0 4px;color:var(--accent);display:flex;align-items:center} /* shuffle arrows, unboxed — only inputs get boxes */
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input{flex:1}
   .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
@@ -555,7 +554,7 @@
     </button>
     <div class="composer" id="composer" hidden>
       <div class="composerline">
-        <span class="mechip" id="meChip" title="Edit your party name and emoji"></span>
+        <span class="mechip" id="meChip" title="Edit your name and emoji"></span>
         <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
         <button class="composericon" id="attachBtn" type="button" aria-label="Add photos or videos" title="Add photos or videos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
@@ -608,11 +607,10 @@
       <div class="welhost" id="welHost" hidden></div>
       <h2 class="weltitle" id="welTitle">the party</h2>
       <div class="welstarts" id="welStarts"></div>
-      <div class="wellabel">What's your party name?</div>
+      <div class="wellabel">What's your name?</div>
       <div class="welname">
-        <button class="welemoji" id="welEmoji" type="button" title="Pick your emoji">🪩</button>
-        <input id="welName" maxlength="40" autocomplete="off">
-        <button class="welshuffle" id="welShuffle" type="button" title="Pick a random name" aria-label="Shuffle name"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button>
+        <button class="welemoji" id="welEmoji" type="button" title="Tap to change your emoji">🪩</button>
+        <input id="welName" maxlength="40" autocomplete="off" placeholder="Your name" enterkeyhint="done">
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
       <div class="welspace"></div>
@@ -2330,14 +2328,14 @@
         }
       });
 
-      // Party name: deterministic from cid so it's stable before any edit.
+      // Guests type their own name (no auto-generated handles). We pick an emoji
+      // FOR them — deterministic from cid so it's stable and varies person to
+      // person — which they can change by tapping it.
       const EMO = ['🪩','🕺','💃','🎧','🎶','✨','🔥','🦩','🍾','🎉','🌈','⚡️','🫧','🎊','🛼','🐆','🍒','🌙','👾','🦋','🐬','🍄','💎','🚀'];
-      const ADJ = ['Neon','Disco','Velvet','Cosmic','Midnight','Glitter','Electric','Funky','Lunar','Turbo','Mellow','Wavy','Retro','Hyper','Groovy','Solar'];
-      const NOUN = ['Flamingo','Fox','Panther','Comet','Otter','Sphinx','Cactus','Koala','Nebula','Mongoose','Tiger','Dolphin','Peacock','Yeti','Gecko','Falcon'];
       let h = 0; for (const ch of cid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
       // >>> not >>: h can exceed 2^31 and a signed shift would go NEGATIVE,
       // indexing nothing and leaving the guest emoji-less.
-      let myName = localStorage.getItem('pp.guestName') || (ADJ[h % ADJ.length] + ' ' + NOUN[(h >>> 4) % NOUN.length]);
+      let myName = localStorage.getItem('pp.guestName') || '';
       let myEmoji = localStorage.getItem('pp.guestEmoji') || EMO[(h >>> 8) % EMO.length];
       setGuestIdentity(myName, myEmoji);
 
@@ -2399,10 +2397,6 @@
           grid.appendChild(b);
         }
         $id('welEmoji').addEventListener('click', () => { grid.hidden = !grid.hidden; });
-        $id('welShuffle').addEventListener('click', () => {
-          $id('welName').value = ADJ[Math.floor(Math.random() * ADJ.length)] + ' ' + NOUN[Math.floor(Math.random() * NOUN.length)];
-          $id('welEmoji').textContent = EMO[Math.floor(Math.random() * EMO.length)];
-        });
       }
       function maybeWelcome(data){
         if (welcomed || welOv.classList.contains('show')) return;
@@ -2436,7 +2430,7 @@
         welcomed = true;
         logEvent('lets-party', { live: live, streamReady: streamReady, ready: ready });
         try { localStorage.setItem('pp.welcomed', '1'); } catch (e) {}
-        myName = $id('welName').value.trim() || myName;
+        myName = $id('welName').value.trim() || myName || 'Guest';
         myEmoji = $id('welEmoji').textContent;
         persistGuestProfile();
         paintChip();
