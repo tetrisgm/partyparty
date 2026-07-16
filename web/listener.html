@@ -192,7 +192,9 @@
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input{flex:1}
   .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
-  .welemail{margin-top:10px}
+  .welemail{margin-top:0}
+  .weloptional{color:var(--label-tertiary);font-weight:400}
+  .welnote{color:var(--label-tertiary);font-size:12px;line-height:1.35;margin-top:7px;text-align:left}
   .welemojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:10px}
   .welemojis[hidden]{display:none}
   .welemojis button{font-size:21px;background:transparent;border:none;border-radius:10px;padding:8px 0;cursor:pointer}
@@ -380,6 +382,8 @@
   .sectionrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
   .sectionrow h2{font-size:19px;line-height:1.1;margin:0;letter-spacing:-.02em}
   .sectionrow span{color:var(--party-muted);font-size:12px;font-weight:750;white-space:nowrap}
+  .albumplus{width:34px;height:34px;flex:0 0 auto;border:none;border-radius:50%;background:var(--accent);color:#fff;font-size:23px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0 0 2px}
+  .albumplus[hidden]{display:none!important}
   .album{border-radius:20px;padding:14px;margin:0 0 14px}
   .albumstrip{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
   .albumtile{position:relative;display:block;aspect-ratio:1;border-radius:9px;overflow:hidden;background:rgba(255,255,255,.35)}
@@ -530,17 +534,6 @@
       <button class="reactbtn" type="button" data-react="more" aria-label="More like this" title="More like this">✨</button>
       <div class="reactambient" id="reactionAmbient"></div>
     </div>
-    <section class="trackid" id="trackBox" hidden>
-      <div class="tracktop">
-        <div class="trackcopy">
-          <div class="tracklabel">Now playing</div>
-          <div class="trackcurrent" id="trackCurrent">The DJ hasn't shared this one yet.</div>
-        </div>
-        <button class="trackask" id="trackAsk" type="button">What's this?</button>
-      </div>
-      <div class="trackstatus" id="trackStatus"></div>
-      <ul class="trackrecent" id="trackRecent"></ul>
-    </section>
     <form class="trackrequest" id="requestBox" hidden>
       <div class="reqtitle">Request a track</div>
       <div class="reqrow">
@@ -589,15 +582,13 @@
   <!-- The party wall: pseudonymous posts + photos/videos from everyone here. -->
   <section class="feed" id="feedSec" hidden>
     <div class="feedhead" id="feedTitle">Party feed</div>
-    <div class="feedsub">photos, videos and shout-outs from everyone at this party</div>
     <a class="saveall" id="saveAll" href="/api/media.zip" hidden>⬇️ Take all the media home</a>
     <section class="album" id="albumSec" hidden>
       <div class="sectionrow">
         <h2>Photos &amp; videos</h2>
-        <span id="albumCount">0 media</span>
+        <button class="albumplus" id="albumAdd" type="button" aria-label="Add photos or videos" title="Add photos or videos">+</button>
       </div>
       <div class="albumstrip" id="albumStrip"><div class="albumempty">No photos yet.</div></div>
-      <button class="albumadd" id="albumAdd" type="button">📷 Add photos</button>
     </section>
     <div class="onlinecard" id="onlineCard" hidden>
       <div class="onlinecopy">This party lives on here → <a id="onlineLink" target="_blank" rel="noopener"></a></div>
@@ -607,17 +598,6 @@
       <div class="linkgroup" id="followLinks" data-label="Follow"></div>
       <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
     </section>
-    <form class="subscribe" id="subscribeForm">
-      <div class="subscribe-copy">
-        <b>Stay in the know</b>
-        <span id="subscribeCopy">Receive email updates from the host.</span>
-      </div>
-      <div class="subscribe-row">
-        <input id="subscribeEmail" type="email" placeholder="you@example.com" autocapitalize="off" autocomplete="email" required>
-        <button id="subscribeBtn" type="submit">Subscribe</button>
-      </div>
-      <div class="subscribe-status" id="subscribeStatus"></div>
-    </form>
     <div id="feedList"><div class="feedempty">Nothing here yet — start the wall 🎉</div></div>
   </section>
 
@@ -632,7 +612,9 @@
         <input id="welName" maxlength="40" autocomplete="off" placeholder="Your name" enterkeyhint="done">
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
-      <input id="welEmail" class="welemail" type="email" inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="email" placeholder="Email for party updates (optional)" enterkeyhint="done">
+      <div class="wellabel">Email <span class="weloptional">(optional)</span></div>
+      <input id="welEmail" class="welemail" type="email" inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="email" placeholder="you@example.com" enterkeyhint="done">
+      <div class="welnote" id="welEmailNote">You’ll get email updates from the party host.</div>
       <div class="welspace"></div>
       <button class="welgo" id="welGo" type="button">Let's party 🎉</button>
     </div>
@@ -1035,8 +1017,17 @@
       document.body.classList.toggle('playing', on);
       ico.textContent = on ? '❚❚' : '►';
       btnlabel.textContent = on ? 'Playing' : (started ? 'Resume' : (live ? 'Tap to listen' : 'Waiting for DJ'));
-      if (btnHint) btnHint.textContent = on ? 'Audio stays on with screen locked' : (live ? 'Low-latency party audio' : 'The DJ has not started yet');
+      applyBtnHint();
       try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = on ? 'playing' : 'paused'; } catch (e) {}
+    }
+    // The listen button's small line doubles as "now playing": when the DJ has
+    // shared a track it shows there (under "Tap to listen"), else the default hint.
+    function applyBtnHint(){
+      if (!btnHint) return;
+      const on = document.body.classList.contains('playing');
+      const np = (currentTrack && currentTrack.title && featureOn('trackId')) ? trackText(currentTrack) : '';
+      btnHint.textContent = on ? (np || 'Audio stays on with screen locked')
+                               : (live ? (np || 'Low-latency party audio') : 'The DJ has not started yet');
     }
 
     // Pause = MUTE, not stop: the stream keeps playing at the live/room position
@@ -2162,9 +2153,8 @@
       const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink');
       const onlineCopy = onlineCard.querySelector('.onlinecopy');
       const djLinks = $id('djLinks'), followLinks = $id('followLinks'), tipLinks = $id('tipLinks');
-      const albumSec = $id('albumSec'), albumStrip = $id('albumStrip'), albumCount = $id('albumCount'), albumAdd = $id('albumAdd');
+      const albumSec = $id('albumSec'), albumStrip = $id('albumStrip'), albumAdd = $id('albumAdd');
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
-      const trackBox = $id('trackBox'), trackCurrent = $id('trackCurrent'), trackAsk = $id('trackAsk'), trackStatus = $id('trackStatus'), trackRecent = $id('trackRecent');
       const featureDefaults = {
         uploads: true, videoUploads: true, comments: true, reactions: false,
         requests: false, trackId: false, wallMode: true
@@ -2177,7 +2167,6 @@
       let reactionCounts = {};
       let currentTrack = null;
       let nextReactionAt = 0;
-      let nextTrackAskAt = 0;
       let currentFeatures = Object.assign({}, featureDefaults);
       let featureSig = JSON.stringify(currentFeatures);
       let currentLinks = [];
@@ -2268,24 +2257,9 @@
         if (!track || !track.title) return '';
         return track.artist ? track.title + ' — ' + track.artist : track.title;
       }
-      function renderTrackID(nowPlaying, recentTracks){
-        currentTrack = nowPlaying && nowPlaying.title ? nowPlaying : null;
-        trackBox.hidden = !featureOn('trackId');
-        if (!featureOn('trackId')) {
-          trackStatus.textContent = '';
-          trackRecent.textContent = '';
-          return;
-        }
-        trackCurrent.textContent = currentTrack ? trackText(currentTrack) : "The DJ hasn't shared this one yet.";
-        trackRecent.textContent = '';
-        const recent = Array.isArray(recentTracks) ? recentTracks.slice(0, 5) : [];
-        for (const tr of recent) {
-          const text = trackText(tr);
-          if (!text) continue;
-          const li = document.createElement('li');
-          li.textContent = text;
-          trackRecent.appendChild(li);
-        }
+      function renderTrackID(nowPlaying){
+        currentTrack = (featureOn('trackId') && nowPlaying && nowPlaying.title) ? nowPlaying : null;
+        applyBtnHint(); // the current track shows in the listen bar, under "Tap to listen"
       }
       reactionBar.addEventListener('click', async (e) => {
         const btn = e.target && e.target.closest && e.target.closest('button[data-react]');
@@ -2305,27 +2279,6 @@
           if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { reactions: false }));
           if (r.status === 429) nextReactionAt = Date.now() + 1200;
         } catch (err) {}
-      });
-      trackAsk.addEventListener('click', async () => {
-        if (!featureOn('trackId')) return;
-        const now = Date.now();
-        if (now < nextTrackAskAt) return;
-        nextTrackAskAt = now + 3000;
-        trackAsk.disabled = true;
-        trackStatus.textContent = currentTrack ? 'Now playing: ' + trackText(currentTrack) : "The DJ hasn't shared this one yet.";
-        try {
-          const r = await fetch('/api/track-id-request', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cid }) });
-          if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { trackId: false }));
-          if (r.status === 429) {
-            nextTrackAskAt = Date.now() + 3500;
-            trackStatus.textContent = 'asked already — check back in a moment';
-          }
-        } catch (err) {
-          trackStatus.textContent = currentTrack ? 'Now playing: ' + trackText(currentTrack) : "The DJ hasn't shared this one yet.";
-        } finally {
-          setTimeout(() => { trackAsk.disabled = false; }, Math.max(0, nextTrackAskAt - Date.now()));
-        }
       });
       requestVibes.addEventListener('click', (e) => {
         const btn = e.target && e.target.closest && e.target.closest('button[data-vibe]');
@@ -2475,7 +2428,6 @@
         const joinEmail = ($id('welEmail').value || '').trim();
         if (joinEmail && /.+@.+\..+/.test(joinEmail)) {
           try { localStorage.setItem('pp.guestEmail', joinEmail); } catch (e) {}
-          const se = $id('subscribeEmail'); if (se) se.value = joinEmail;
           fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cid, contact: joinEmail }) }).catch(() => {});
         }
@@ -2514,48 +2466,6 @@
         }, 3500);
       });
 
-      // Explicit private email subscription. It stores the address with this
-      // event on the Mac; no guest account or internet connection is required.
-      const subscribeForm = $id('subscribeForm'), subscribeEmail = $id('subscribeEmail'), subscribeBtn = $id('subscribeBtn'), subscribeStatus = $id('subscribeStatus'), subscribeCopy = $id('subscribeCopy');
-      let myContact = localStorage.getItem('pp.guestEmail') || localStorage.getItem('pp.guestContact') || '';
-      let subscriptionEvent = '';
-      subscribeEmail.value = myContact;
-      function loadSubscription(eventDir){
-        subscriptionEvent = eventDir || '';
-        let saved = '';
-        try { if (subscriptionEvent) saved = localStorage.getItem('pp.guestSubscription.' + subscriptionEvent) || ''; } catch (e) {}
-        if (saved) {
-          subscribeEmail.value = saved; myContact = saved;
-          subscribeBtn.textContent = 'Subscribed'; subscribeStatus.textContent = 'You’re subscribed.';
-        } else {
-          subscribeEmail.value = myContact;
-          subscribeBtn.textContent = 'Subscribe'; subscribeStatus.textContent = '';
-        }
-      }
-      subscribeEmail.addEventListener('input', () => { subscribeBtn.textContent = 'Subscribe'; subscribeStatus.textContent = ''; });
-      subscribeForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = subscribeEmail.value.trim();
-        if (!email || !subscribeEmail.checkValidity()) { subscribeEmail.reportValidity(); return; }
-        subscribeBtn.disabled = true; subscribeBtn.textContent = 'Subscribing…'; subscribeStatus.textContent = '';
-        try {
-          const r = await fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cid, contact: email }) });
-          const res = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(res.error || 'Could not subscribe');
-          myContact = email;
-          try {
-            localStorage.setItem('pp.guestEmail', myContact);
-            if (subscriptionEvent) localStorage.setItem('pp.guestSubscription.' + subscriptionEvent, myContact);
-          } catch (err) {}
-          subscribeBtn.textContent = 'Subscribed'; subscribeStatus.textContent = 'You’re subscribed.';
-        } catch (err) {
-          subscribeBtn.textContent = 'Subscribe'; subscribeStatus.textContent = err.message || 'Could not subscribe';
-        } finally {
-          subscribeBtn.disabled = false;
-        }
-      });
-
       // The bottom composer stays available beside the guest identity. Files
       // remain untouched File objects until upload.
       const composer = $id('composer'), ctext = $id('ctext'), cfiles = $id('cfiles'), attachBtn = $id('attachBtn'), attachN = $id('attachN'), postBtn = $id('postBtn'), pendingPreviews = $id('pendingPreviews');
@@ -2572,17 +2482,8 @@
         return '<a class="albumtile" href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(thumb) + '" loading="lazy" alt=""></a>';
       }
       function renderAlbum(totalMedia, photoTotal, videoTotal){
-        if (!albumSec || !albumStrip || !albumCount) return;
-        const total = Math.max(Number(totalMedia) || 0, albumItems.size);
+        if (!albumSec || !albumStrip) return;
         albumSec.hidden = !featureOn('wallMode');
-        const localPhotos = [...albumItems.values()].filter(item => item.type === 'image').length;
-        const localVideos = [...albumItems.values()].filter(item => item.type === 'video').length;
-        const photos = Math.max(Number(photoTotal) || 0, localPhotos);
-        const videos = Math.max(Number(videoTotal) || 0, localVideos);
-        const parts = [];
-        if (photos) parts.push(photos + (photos === 1 ? ' photo' : ' photos'));
-        if (videos) parts.push(videos + (videos === 1 ? ' video' : ' videos'));
-        albumCount.textContent = parts.join(' · ') || (total ? total + ' files' : '0 photos');
         const items = [...albumItems.values()].sort((a, b) => b.ts - a.ts).slice(0, 12);
         albumStrip.innerHTML = items.length
           ? items.map(albumMediaHTML).join('')
@@ -2974,20 +2875,20 @@
             // (older-timestamped) posts actually arrive.
             curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); expanded.clear(); albumItems.clear(); feedList.innerHTML = '';
             persistGuestProfile();
-            loadSubscription(data.dir);
           }
           if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
           setEventCover(data.cover || '/covers/hero.jpg');
+          const welNote = $id('welEmailNote');
           if (data.host) {
             const hl = $id('hostedLine'); hl.textContent = 'hosted by ' + data.host; hl.hidden = false;
             guestHostName = data.host;
-            subscribeCopy.textContent = 'Receive email updates from ' + data.host + '.';
+            if (welNote) welNote.textContent = 'You’ll get email updates from ' + data.host + '.';
           } else {
             $id('hostedLine').hidden = true;
-            subscribeCopy.textContent = 'Receive email updates from the host.';
+            if (welNote) welNote.textContent = 'You’ll get email updates from the party host.';
           }
           const st = $id('startsLine');
           st.hidden = !data.starts; if (data.starts) st.textContent = data.starts;
