@@ -715,6 +715,12 @@ func TestTrackIDGateLimitFeedAndAskCount(t *testing.T) {
 	now := time.Now()
 	s.limits.now = func() time.Time { return now }
 
+	// trackId now defaults on; this test exercises the off->hidden / on->shown
+	// gate explicitly, so start it from off regardless of the default.
+	if err := ev.SetFeature("trackId", false); err != nil {
+		t.Fatal(err)
+	}
+
 	postTrackAsk := func(cid string) *httptest.ResponseRecorder {
 		t.Helper()
 		data, err := json.Marshal(map[string]string{"cid": cid})
