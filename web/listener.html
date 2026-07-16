@@ -215,9 +215,9 @@
   .djlinkchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djlinkchip.tip{background:#fff0f4;color:var(--accent)}
   @media (prefers-reduced-motion:reduce){body.playing .btn,body.playing .artwork,.eq i{animation:none}}
-  .share{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-  .share:active{transform:scale(.95)}
-  .share svg{width:15px;height:15px}
+  .toptool{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .toptool:active{transform:scale(.95)}
+  .toptool svg{width:15px;height:15px}
   .delaybadge{
     position:fixed;top:calc(12px + env(safe-area-inset-top));left:12px;z-index:6;
     min-width:92px;padding:7px 9px;border:1px solid var(--separator);border-radius:7px;
@@ -265,13 +265,13 @@
       radial-gradient(circle at 30% 42%,rgba(255,255,255,.28) 0 1px,transparent 2px);
     background-size:auto,92px 92px,74px 74px;
   }
-  .share{
+  .toptool{
     top:calc(10px + env(safe-area-inset-top));right:12px;width:42px;height:42px;
     padding:0;border:none;border-radius:50%;justify-content:center;
     background:rgba(255,255,255,.46);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
     box-shadow:0 4px 18px rgba(75,35,30,.13);font-size:0;
   }
-  .share svg{width:18px;height:18px}
+  .toptool svg{width:18px;height:18px}
   .hero{
     width:min(100%,460px);min-height:auto;margin:0 auto;padding:calc(54px + env(safe-area-inset-top)) 20px 20px;
     align-items:stretch;text-align:left;
@@ -409,8 +409,8 @@
   .diagnostics .delaybadge.warn{color:#ff9f0a;background:none}
   .pageversion{padding-left:6px;border-left:1px solid rgba(255,255,255,.28)}
   .toptools{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;z-index:8;display:flex;gap:7px}
-  .toptools .share{position:static;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:rgba(20,20,22,.72);color:#fff;box-shadow:none;backdrop-filter:blur(18px)}
-  .toptools .share svg{width:18px;height:18px}
+  .toptools .toptool{position:static;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:rgba(20,20,22,.72);color:#fff;box-shadow:none;backdrop-filter:blur(18px)}
+  .toptools .toptool svg{width:18px;height:18px}
   .hero{width:min(100%,720px);max-width:720px!important;margin:0 auto;padding:0 20px 26px;align-items:stretch;text-align:left}
   .hero::before{display:none}
   .hero .artwork{
@@ -478,10 +478,10 @@
     <span class="pageversion">v__PP_VERSION__</span>
   </div>
   <div class="toptools">
-    <button class="share" id="shareBtn" type="button" aria-label="Show QR code" title="Show QR code">
+    <button class="toptool" id="qrBtn" type="button" aria-label="Show QR code" title="Show QR code">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
     </button>
-    <button class="share" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
+    <button class="toptool" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
     </button>
   </div>
@@ -1653,7 +1653,7 @@
     // button). Harmless in other states (recoverPlayback only acts when
     // genuinely stuck). A muted-pause has readyState high, so it's excluded.
     document.querySelector('.hero').addEventListener('click', (e) => {
-      if (e.target.closest('#btn') || e.target.closest('.share')) return; // their own handlers
+      if (e.target.closest('#btn') || e.target.closest('.toptool')) return; // their own handlers
       if (started && !userPaused && !player.muted && !yielded && (player.paused || player.readyState < 3)) recoverPlayback();
     });
 
@@ -2090,14 +2090,14 @@
     setInterval(updateDelayBadge, 500);
 
     // Share: show a QR of THIS page so a guest can pass the party to a friend.
-    const shareBtn = document.getElementById('shareBtn'),
+    const qrBtn = document.getElementById('qrBtn'),
           nativeShareBtn = document.getElementById('nativeShareBtn'),
           qrOverlay = document.getElementById('qrOverlay'),
           qrShare = document.getElementById('qrShare'),
           qrUrl = document.getElementById('qrUrl'),
           qrClose = document.getElementById('qrClose');
     let qrDrawn = false;
-    shareBtn.addEventListener('click', async () => {
+    qrBtn.addEventListener('click', async () => {
       qrUrl.textContent = location.href;
       qrOverlay.classList.add('show');           // open instantly; QR paints when its script lands
       if (!qrDrawn) {
@@ -2127,7 +2127,7 @@
         nativeShareBtn.title = 'Link copied';
         setTimeout(() => { nativeShareBtn.title = 'Share event link'; }, 1400);
       } catch (e) {
-        if (e && e.name !== 'AbortError') shareBtn.click();
+        if (e && e.name !== 'AbortError') qrBtn.click();
       }
     });
 
