@@ -19,7 +19,7 @@
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;letter-spacing:0!important}
   [hidden]{display:none!important}
-  html,body{height:100%;margin:0}
+  html,body{min-height:100%;margin:0}
   body{
     font-family:var(--sans);
     background:var(--bg);
@@ -416,7 +416,8 @@
   }
 
   /* Event page: one cover, one title, one timeline. */
-  body{background:#f5f5f7;color:#1d1d1f}
+  html,body{background:#f5f5f7}
+  body{color:#1d1d1f}
   body::before{display:none}
   .diagnostics{
     position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:8;
