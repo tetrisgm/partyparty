@@ -54,9 +54,14 @@
 
   // Bind the Worker to the apex-of-record for the app. custom_domain:true makes
   // wrangler provision the DNS record + edge cert in the ramine.net zone.
+  // Per-handle permanent links are added here per known DJ (each a proxied Worker
+  // custom domain — free auto TLS). Automatic provisioning for every new signup
+  // would need a Workers-Routes-edit API token at runtime; until then this list
+  // is the source of truth. Handle must match dj_profiles.handle exactly.
   "routes": [
     { "pattern": "party.ramine.net", "custom_domain": true },
-    { "pattern": "ramine.party.ramine.net", "custom_domain": true }
+    { "pattern": "ramine.party.ramine.net", "custom_domain": true },
+    { "pattern": "seth.party.ramine.net", "custom_domain": true }
   ],
 
   // 1-minute GC sweep of the live_installs presence registry (expire dead rows +
