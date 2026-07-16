@@ -3760,18 +3760,13 @@ async function handleRouter(request, env, handle) {
   const now = nowMs();
   const claimant = await liveClaimant(env, handle, now);
   if (claimant) {
-    const guestHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
-    if (guestHash && claimant.public_ip_hash && guestHash === claimant.public_ip_hash && claimant.host) {
-      // LOCAL: same egress IP as the live Mac -> hand off to its grey slug host,
-      // where the tight LAN LL-HLS listener lives (Mac LE cert, offline-capable).
-      return new Response(null, {
-        status: 302,
-        headers: { location: `${guestOrigin(claimant.host, claimant.guest_port)}/`, "cache-control": "no-store" },
-      });
-    }
-    // REMOTE: play the cloud mirror a few seconds behind the room.
-    const html = renderRemoteListener({
+    // Don't decide LOCAL vs REMOTE from the cloud IP — it's unreliable (Private
+    // Relay / CGNAT pools / v4-v6). The page probes the Mac's LAN host itself and
+    // redirects to the tight LAN listener when reachable, else the cloud mirror.
+    const lanUrl = claimant.host ? `${guestOrigin(claimant.host, claimant.guest_port)}/` : "";
+    const html = renderLiveJoin({
       handle,
+      lanUrl,
       eventSlug: claimant.event_slug || "",
       djName: claimant.dj_name || "",
       eventTitle: claimant.event_title || "",
@@ -3860,16 +3855,24 @@ async function discover(request, env) {
     return jsonResp(429, { error: "slow down", parties: [] }, { ...noStore, "retry-after": "2" });
   }
   const now = nowMs();
+  // Return live parties for the CLIENT to probe (it fetches each joinUrl to test
+  // LAN reachability — the cloud IP-match is only a hint, unreliable behind
+  // Private Relay / CGNAT). IP-matched parties sort first so the likely-local one
+  // is probed first; the rest let a guest whose phone shows a different public IP
+  // than the DJ's Mac (the common iPhone case) still find the party by reaching
+  // its LAN host. Capped; at scale swap the tail for an IP/geo pre-filter.
   const rows = (await env.DB.prepare(
-    `SELECT host, guest_port, dj_name, event_title, now_playing, event_slug, handle
-     FROM live_installs WHERE public_ip_hash=? AND expires_ms>? ORDER BY live_started_ms DESC LIMIT 3`
-  ).bind(ipHash, now).all())?.results || [];
+    `SELECT host, guest_port, dj_name, event_title, now_playing, event_slug, handle, public_ip_hash
+     FROM live_installs WHERE expires_ms>?
+     ORDER BY (public_ip_hash=?) DESC, live_started_ms DESC LIMIT 8`
+  ).bind(now, ipHash).all())?.results || [];
   const parties = rows.map((r) => ({
     host: r.host || "",
     handle: r.handle || "",
-    // Ready-to-use join target: the guest is on the live Mac's Wi-Fi (IP match),
-    // so link straight to its LAN listener on the right port — no cloud hop.
+    // The Mac's LAN listener on its real port — the client probes this to confirm
+    // it's actually on the party's network before offering to join.
     joinUrl: r.host ? `${guestOrigin(r.host, r.guest_port)}/` : "",
+    ipHint: r.public_ip_hash === ipHash, // cloud IP agrees (fast path); still probed
     djName: r.dj_name || "",
     eventTitle: r.event_title || "",
     nowPlaying: r.now_playing || "",
@@ -3892,26 +3895,30 @@ async function discoverRateLimited(ipHash) {
   }
 }
 
-// renderRemoteListener: the minimal REMOTE guest page. Plain <audio> native HLS
-// off the cloud mirror (locked-phone / background-safe, identical to the LAN
-// path's element), a tap-to-play button, and an honest "a few seconds behind"
-// note. DJ-authored text is HTML-escaped here. Same-origin relative mirror URL.
-function renderRemoteListener({ handle, eventSlug, djName, eventTitle, nowPlaying }) {
+// renderLiveJoin: the guest page for a live handle. It does NOT trust a cloud
+// IP-match to decide LOCAL vs REMOTE (iCloud Private Relay, carrier NAT pools,
+// and IPv4/IPv6 splits routinely give a phone a different public IP than the
+// DJ's Mac on the SAME Wi-Fi). Instead the browser PROBES the DJ's grey LAN host
+// directly: that name resolves to the Mac's private LAN IP, reachable only from
+// the same network, and only the Mac holds a valid cert for it — so a no-cors
+// fetch that resolves is authenticated proof of being on the party's LAN.
+//   reachable  -> redirect to the tight LAN listener (locked-phone LL-HLS)
+//   unreachable-> the cloud mirror (a few seconds behind), or a "join on Wi-Fi"
+//                 note when the DJ isn't mirroring. A manual "tap to join" link
+//                 to the LAN host is always offered as a probe-false-negative
+//                 escape hatch. DJ-authored text is HTML-escaped.
+function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlaying }) {
   const who = djName || "@" + handle;
   const mirror = eventSlug ? `/event/${encodeURIComponent(eventSlug)}/live/live.m3u8` : "";
   const nowLine = nowPlaying ? `<p class="np">Now playing: ${esc(nowPlaying)}</p>` : "";
-  const player = mirror
+  const lanTap = lanUrl
+    ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl)}">On ${esc(who)}'s Wi-Fi? Tap to join the live room &rarr;</a></p>`
+    : "";
+  const remoteInner = mirror
     ? `<audio id="pp-audio" preload="none" playsinline src="${esc(mirror)}"></audio>
        <button id="pp-play" type="button">Tap to listen</button>
-       <p class="hint">Listening from away — a few seconds behind the room.</p>
-       <script>
-         (function(){
-           var a=document.getElementById('pp-audio'),b=document.getElementById('pp-play');
-           function go(){ a.play().then(function(){ b.textContent='Playing'; b.disabled=true; }).catch(function(){ b.textContent='Tap to listen'; }); }
-           b.addEventListener('click', go);
-         })();
-       </script>`
-    : `<p class="hint">This party is live nearby, but no remote stream is available yet. Join on the same Wi-Fi to listen.</p>`;
+       <p class="hint">Listening from away — a few seconds behind the room.</p>`
+    : `<p class="hint">This party is live, but there's no remote stream yet. Join on ${esc(who)}'s Wi-Fi to listen.</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
@@ -3927,14 +3934,52 @@ function renderRemoteListener({ handle, eventSlug, djName, eventTitle, nowPlayin
   button { font:inherit; font-weight:600; background:#ff2d87; color:#fff; border:0; border-radius:999px; padding:14px 28px; margin-top:6px; cursor:pointer; }
   button[disabled] { background:#3a3a52; cursor:default; }
   .hint { color:#9a9ac0; font-size:14px; max-width:22em; margin:6px 0 0; }
+  .tap { margin:10px 0 0; } .tap a { color:#ff77b0; font-weight:600; text-decoration:none; }
+  .spin { width:26px; height:26px; border-radius:50%; border:3px solid #2a2a40; border-top-color:#ff2d87; animation:sp 0.9s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  @media(prefers-reduced-motion:reduce){ .spin{ animation:none; } }
+  [hidden] { display:none !important; }
 </style></head>
 <body><div class="wrap">
   <span class="live">Live now</span>
   <h1>${esc(eventTitle || who)}</h1>
   <p class="dj">with ${esc(who)}</p>
   ${nowLine}
-  ${player}
-</div></body></html>`;
+  <div id="pp-connecting">
+    <div class="spin" aria-hidden="true" style="margin:8px auto 0"></div>
+    <p class="hint">Looking for the party on this Wi-Fi&hellip;</p>
+  </div>
+  <div id="pp-remote" hidden>${remoteInner}</div>
+  ${lanTap}
+  <noscript><p class="hint">Enable JavaScript, or use the link above if you're at the party.</p></noscript>
+</div>
+<script>
+(function(){
+  var LAN=${JSON.stringify(lanUrl || "")};
+  var connecting=document.getElementById('pp-connecting');
+  var remote=document.getElementById('pp-remote');
+  function showRemote(){
+    if(connecting) connecting.hidden=true;
+    if(remote) remote.hidden=false;
+    var a=document.getElementById('pp-audio'), b=document.getElementById('pp-play');
+    if(a&&b){ b.addEventListener('click',function(){ a.play().then(function(){ b.textContent='Playing'; b.disabled=true; }).catch(function(){ b.textContent='Tap to listen'; }); }); }
+  }
+  if(!LAN){ showRemote(); return; }
+  // Authenticated LAN reachability probe: resolves iff we can reach the DJ's Mac
+  // on this network with its valid cert. no-cors so we need no CORS from the Mac.
+  function probe(url,ms){
+    return new Promise(function(resolve){
+      var done=false, ctrl=new AbortController();
+      var t=setTimeout(function(){ if(!done){done=true; try{ctrl.abort();}catch(e){} resolve(false);} }, ms);
+      fetch(url,{mode:'no-cors',cache:'no-store',signal:ctrl.signal})
+        .then(function(){ if(!done){done=true; clearTimeout(t); resolve(true);} })
+        .catch(function(){ if(!done){done=true; clearTimeout(t); resolve(false);} });
+    });
+  }
+  probe(LAN,3000).then(function(local){ if(local){ location.replace(LAN); } else { showRemote(); } });
+})();
+</script>
+</body></html>`;
 }
 
 // renderIdleParty: the IDLE page for a handle with no live party. Links the DJ's

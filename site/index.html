@@ -210,24 +210,40 @@
     .then(r => r.ok ? r.json() : null)
     .then(j => { if (j && j.user && navAuth) { navAuth.textContent = 'Account'; navAuth.href = '/account'; } })
     .catch(() => {});
-  // Auto-discovery (PairDrop-style): is a party live on this exact Wi-Fi? The
-  // Worker matches our egress IP to a live install — no QR scan needed. If one's
-  // found, slide in a Join banner that jumps straight to it.
+  // Auto-discovery (no QR): the Worker lists live parties; we PROBE each one's
+  // LAN host from here to find which is on THIS Wi-Fi. We can't trust a cloud
+  // IP-match — iPhones behind iCloud Private Relay / carrier NAT show a different
+  // public IP than the DJ's Mac on the same network. But the DJ's LAN host only
+  // answers (with its valid cert) from the party's own Wi-Fi, so a reachable
+  // probe is authenticated proof. First reachable party wins.
+  function ppProbe(url, ms){
+    return new Promise(function(resolve){
+      var done=false, ctrl=new AbortController();
+      var t=setTimeout(function(){ if(!done){done=true; try{ctrl.abort();}catch(e){} resolve(false);} }, ms);
+      fetch(url,{mode:'no-cors',cache:'no-store',signal:ctrl.signal})
+        .then(function(){ if(!done){done=true; clearTimeout(t); resolve(true);} })
+        .catch(function(){ if(!done){done=true; clearTimeout(t); resolve(false);} });
+    });
+  }
+  function ppShowParty(p){
+    const join = p.joinUrl || (p.handle ? 'https://' + p.handle + '.party.ramine.net/' : '');
+    if (!join) return;
+    document.getElementById('discLink').href = join;
+    document.getElementById('discDj').textContent = p.djName || p.eventTitle || 'A DJ';
+    if (p.nowPlaying) document.getElementById('discNp').textContent = ' — ' + p.nowPlaying;
+    const band = document.getElementById('discBand');
+    band.hidden = false;
+    requestAnimationFrame(() => band.classList.add('on'));
+  }
   fetch('/api/discover', { cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
     .then(j => {
-      const p = j && j.parties && j.parties[0];
-      if (!p) return;
-      // joinUrl is the Mac's LAN listener on its real port; fall back to the
-      // handle's permanent link (the Worker router forwards it correctly).
-      const join = p.joinUrl || (p.handle ? 'https://' + p.handle + '.party.ramine.net/' : '');
-      if (!join) return;
-      document.getElementById('discLink').href = join;
-      document.getElementById('discDj').textContent = p.djName || p.eventTitle || 'A DJ';
-      if (p.nowPlaying) document.getElementById('discNp').textContent = ' — ' + p.nowPlaying;
-      const band = document.getElementById('discBand');
-      band.hidden = false;
-      requestAnimationFrame(() => band.classList.add('on'));
+      const parties = (j && j.parties) || [];
+      let shown = false;
+      parties.forEach(p => {
+        if (!p.joinUrl) return;
+        ppProbe(p.joinUrl, 3000).then(ok => { if (ok && !shown) { shown = true; ppShowParty(p); } });
+      });
     })
     .catch(() => {});
   fetch('/api/version', { cache:'no-store' })

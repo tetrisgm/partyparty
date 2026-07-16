@@ -342,12 +342,18 @@ class FakeD1Statement {
         .map((r) => ({ ...r }));
       return { results };
     }
-    if (sql.includes("FROM live_installs WHERE public_ip_hash=?")) {
-      const [ipHash, now] = this.args;
+    if (sql.includes("FROM live_installs WHERE expires_ms>?")) {
+      // /api/discover: all live parties, IP-matched first, capped — the client probes.
+      const [now, ipHash] = this.args;
       const results = [...this.db.liveInstalls.values()]
-        .filter((r) => r.public_ip_hash === ipHash && Number(r.expires_ms) > Number(now))
-        .sort((a, b) => Number(b.live_started_ms) - Number(a.live_started_ms))
-        .slice(0, 3)
+        .filter((r) => Number(r.expires_ms) > Number(now))
+        .sort((a, b) => {
+          const am = a.public_ip_hash === ipHash ? 1 : 0;
+          const bm = b.public_ip_hash === ipHash ? 1 : 0;
+          if (am !== bm) return bm - am;
+          return Number(b.live_started_ms) - Number(a.live_started_ms);
+        })
+        .slice(0, 8)
         .map((r) => ({ ...r }));
       return { results };
     }
@@ -5110,7 +5116,7 @@ const tests = [
     );
   }],
 
-  ["/api/discover returns live parties on the caller's egress IP only, hiding non-matching + expired rows", async () => {
+  ["/api/discover returns all live parties to probe (IP-matched first), excluding expired rows", async () => {
     const callerHash = await sha256Hex("ip:203.0.113.20");
     const future = Date.now() + 60000;
     const db = new FakeD1({
@@ -5138,16 +5144,29 @@ const tests = [
     const json = await resp.json();
     assert.equal(resp.status, 200);
     assert.equal(resp.headers.get("cache-control"), "no-store");
-    assert.equal(json.parties.length, 1);
+    // Both live parties returned (the client probes to find which is on this LAN);
+    // the expired row is excluded. IP-matched party sorts first.
+    assert.equal(json.parties.length, 2);
     assert.deepEqual(json.parties[0], {
       host: "disco12.party.example.test",
       handle: "wave",
       // No guest_port on this seed row -> the join URL falls back to :8443.
       joinUrl: "https://disco12.party.example.test:8443/",
+      ipHint: true, // cloud IP agrees; still probed client-side
       djName: "DJ Wave",
       eventTitle: "Rooftop",
       nowPlaying: "Track A",
     });
+    assert.deepEqual(json.parties[1], {
+      host: "groove34.party.example.test",
+      handle: "beat",
+      joinUrl: "https://groove34.party.example.test:8443/",
+      ipHint: false, // different cloud IP, but still offered for probing
+      djName: "DJ Beat",
+      eventTitle: "Basement",
+      nowPlaying: "",
+    });
+    assert.ok(!json.parties.some((p) => p.host.startsWith("vinyl99")), "expired row excluded");
   }],
 
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
@@ -5224,7 +5243,7 @@ const tests = [
     assert.match(html, /Track Z/);
   }],
 
-  ["wildcard router: 302s a same-Wi-Fi (public-IP match) guest to the Mac's grey slug host", async () => {
+  ["wildcard router: live handle serves the LAN-probe join page carrying the Mac's :port URL", async () => {
     const db = new FakeD1({
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
@@ -5234,12 +5253,19 @@ const tests = [
         live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
       }],
     });
+    // No server-side IP 302 (unreliable behind Private Relay/CGNAT): the page ships
+    // the LAN URL + a client probe that redirects there when the Mac is reachable.
     const resp = await worker.fetch(new Request("https://wave.party.example.test/", {
       headers: { "cf-connecting-ip": "198.51.100.7" },
     }), makeEnv({ DB: db }));
-    assert.equal(resp.status, 302);
-    // The Mac serves guests on its high HTTPS port, not 443 — the 302 must carry it.
-    assert.equal(resp.headers.get("location"), "https://disco12.party.example.test:8443/");
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get("content-type"), "text/html; charset=utf-8");
+    const html = await resp.text();
+    // The Mac serves guests on its high HTTPS port, not 443 — the probe/redirect carries it.
+    assert.match(html, /https:\/\/disco12\.party\.example\.test:8443\//);
+    assert.match(html, /no-cors/);            // the reachability probe
+    assert.match(html, /location\.replace/);  // redirect to the LAN listener when reachable
+    assert.match(html, /DJ Wave/);
   }],
 
   ["wildcard router: IDLE page when no party is live, and reserved labels are not handles", async () => {
