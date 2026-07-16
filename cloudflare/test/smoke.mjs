@@ -513,7 +513,7 @@ class FakeD1Statement {
     const sql = this.sql.replace(/\s+/g, " ");
     if (sql.includes("INSERT INTO live_installs")) {
       const [
-        installId, handle, profileId, publicIpHash, host, lanIp, eventSlug,
+        installId, handle, profileId, publicIpHash, host, lanIp, guestPort, eventSlug,
         djName, eventTitle, listeners, nowPlaying, nowStamp, expiresMs,
       ] = this.args;
       const old = this.db.liveInstalls.get(installId);
@@ -524,6 +524,7 @@ class FakeD1Statement {
         public_ip_hash: publicIpHash,
         host,
         lan_ip: lanIp,
+        guest_port: guestPort ?? null,
         event_slug: eventSlug,
         dj_name: djName,
         event_title: eventTitle,
@@ -5141,6 +5142,8 @@ const tests = [
     assert.deepEqual(json.parties[0], {
       host: "disco12.party.example.test",
       handle: "wave",
+      // No guest_port on this seed row -> the join URL falls back to :8443.
+      joinUrl: "https://disco12.party.example.test:8443/",
       djName: "DJ Wave",
       eventTitle: "Rooftop",
       nowPlaying: "Track A",
@@ -5226,6 +5229,7 @@ const tests = [
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
         public_ip_hash: await sha256Hex("ip:198.51.100.7"), host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        guest_port: 8443,
         event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 4, now_playing: "",
         live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
       }],
@@ -5234,7 +5238,8 @@ const tests = [
       headers: { "cf-connecting-ip": "198.51.100.7" },
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "https://disco12.party.example.test/");
+    // The Mac serves guests on its high HTTPS port, not 443 — the 302 must carry it.
+    assert.equal(resp.headers.get("location"), "https://disco12.party.example.test:8443/");
   }],
 
   ["wildcard router: IDLE page when no party is live, and reserved labels are not handles", async () => {

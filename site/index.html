@@ -218,9 +218,11 @@
     .then(j => {
       const p = j && j.parties && j.parties[0];
       if (!p) return;
-      const host = p.host || (p.handle ? p.handle + '.party.ramine.net' : '');
-      if (!host) return;
-      document.getElementById('discLink').href = 'https://' + host;
+      // joinUrl is the Mac's LAN listener on its real port; fall back to the
+      // handle's permanent link (the Worker router forwards it correctly).
+      const join = p.joinUrl || (p.handle ? 'https://' + p.handle + '.party.ramine.net/' : '');
+      if (!join) return;
+      document.getElementById('discLink').href = join;
       document.getElementById('discDj').textContent = p.djName || p.eventTitle || 'A DJ';
       if (p.nowPlaying) document.getElementById('discNp').textContent = ' — ' + p.nowPlaying;
       const band = document.getElementById('discBand');

@@ -3695,7 +3695,7 @@ async function deleteGreyA(env, name) {
 async function liveClaimant(env, handle, now) {
   if (!env?.DB || !handle) return null;
   const rows = (await env.DB.prepare(
-    `SELECT install_id, handle, profile_id, public_ip_hash, host, lan_ip, event_slug,
+    `SELECT install_id, handle, profile_id, public_ip_hash, host, lan_ip, guest_port, event_slug,
             dj_name, event_title, listeners, now_playing, live_started_ms, last_seen_ms, expires_ms
      FROM live_installs WHERE handle=? AND expires_ms>? ORDER BY live_started_ms DESC`
   ).bind(handle, now).all())?.results || [];
@@ -3740,6 +3740,15 @@ function handleRouterLabel(env, hostname) {
   return handle;
 }
 
+// guestOrigin builds the reachable origin for a Mac's HTTPS guest listener. The
+// Mac serves on a high port (default 8443 — binding 443 needs root), so a bare
+// https://host (port 443) hits nothing. Fall back to 8443 for installs that
+// predate the guest_port column; omit the port only for a genuine 443.
+function guestOrigin(host, port) {
+  const p = Number(port) || 8443;
+  return p === 443 ? `https://${host}` : `https://${host}:${p}`;
+}
+
 // handleRouter serves the proxied permanent link <handle>.party.ramine.net. A
 // proxied request reaching the Worker for this host is inherently REMOTE or IDLE
 // for the LAN — LOCAL guests resolve the grey slug host direct-to-Mac — EXCEPT a
@@ -3757,7 +3766,7 @@ async function handleRouter(request, env, handle) {
       // where the tight LAN LL-HLS listener lives (Mac LE cert, offline-capable).
       return new Response(null, {
         status: 302,
-        headers: { location: `https://${claimant.host}/`, "cache-control": "no-store" },
+        headers: { location: `${guestOrigin(claimant.host, claimant.guest_port)}/`, "cache-control": "no-store" },
       });
     }
     // REMOTE: play the cloud mirror a few seconds behind the room.
@@ -3852,12 +3861,15 @@ async function discover(request, env) {
   }
   const now = nowMs();
   const rows = (await env.DB.prepare(
-    `SELECT host, dj_name, event_title, now_playing, event_slug, handle
+    `SELECT host, guest_port, dj_name, event_title, now_playing, event_slug, handle
      FROM live_installs WHERE public_ip_hash=? AND expires_ms>? ORDER BY live_started_ms DESC LIMIT 3`
   ).bind(ipHash, now).all())?.results || [];
   const parties = rows.map((r) => ({
     host: r.host || "",
     handle: r.handle || "",
+    // Ready-to-use join target: the guest is on the live Mac's Wi-Fi (IP match),
+    // so link straight to its LAN listener on the right port — no cloud hop.
+    joinUrl: r.host ? `${guestOrigin(r.host, r.guest_port)}/` : "",
     djName: r.dj_name || "",
     eventTitle: r.event_title || "",
     nowPlaying: r.now_playing || "",
@@ -4876,6 +4888,9 @@ async function broker(request, env, pathname) {
     const publicIpHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
     const lanIp = String(body.lan_ip || "");
     if (lanIp && !/^\d{1,3}(\.\d{1,3}){3}$/.test(lanIp)) return jsonResp(400, { error: "bad lan_ip" });
+    // Guest HTTPS port (default 8443). Sanitize to a valid TCP port; 0 => stored
+    // null and the reader falls back to 8443.
+    const guestPort = Math.min(65535, Math.max(0, Math.floor(Number(body.guest_port) || 0))) || null;
 
     // The grey LAN slug host the Mac serves — resolved server-side, never the
     // proxied handle name (the handle is a proxied Worker record, never a grey A).
@@ -4893,14 +4908,14 @@ async function broker(request, env, pathname) {
     const expiresMs = now + LIVE_PRESENCE_TTL_MS;
     await env.DB.prepare(
       `INSERT INTO live_installs
-         (install_id, handle, profile_id, public_ip_hash, host, lan_ip, event_slug,
+         (install_id, handle, profile_id, public_ip_hash, host, lan_ip, guest_port, event_slug,
           dj_name, event_title, listeners, now_playing, live_started_ms, last_seen_ms, expires_ms)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12,?13)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13,?14)
        ON CONFLICT(install_id) DO UPDATE SET
-         handle=?2, profile_id=?3, public_ip_hash=?4, host=?5, lan_ip=?6, event_slug=?7,
-         dj_name=?8, event_title=?9, listeners=?10, now_playing=?11, last_seen_ms=?12, expires_ms=?13`
+         handle=?2, profile_id=?3, public_ip_hash=?4, host=?5, lan_ip=?6, guest_port=?7, event_slug=?8,
+         dj_name=?9, event_title=?10, listeners=?11, now_playing=?12, last_seen_ms=?13, expires_ms=?14`
     ).bind(
-      id, handle, linked.profile_id, publicIpHash, host, lanIp, eventSlug,
+      id, handle, linked.profile_id, publicIpHash, host, lanIp, guestPort, eventSlug,
       clip(profile?.display_name, 120), clip(body.title, 200),
       Math.max(0, Number(body.listeners) || 0), clip(body.now_playing, 200),
       now, expiresMs

@@ -129,7 +129,7 @@ func brokerBase() string {
 // telemetryLoop but NOT gated on PARTYPARTY_TELEMETRY — discovery must not hinge
 // on a debug toggle. Best-effort throughout: every call is logged, none blocks
 // the broadcast, and the endpoints may 404 until the Worker side ships.
-func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger) {
+func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger, guestPort int) {
 	if appVersion == "dev" {
 		return // dev/`go run` must not advertise the install's cloud namespace
 	}
@@ -165,6 +165,7 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 			body, _ := json.Marshal(map[string]any{
 				"id": id, "secret": secret,
 				"lan_ip":      netinfo.PrimaryLanIP(),
+				"guest_port":  guestPort, // the :port guests need to reach this Mac's HTTPS listener
 				"title":       title,
 				"now_playing": nowPlaying,
 			})
@@ -921,7 +922,7 @@ func main() {
 	// ("A party is on this Wi-Fi — Join <DJ>"). A sibling to telemetryLoop but
 	// deliberately NOT gated on PARTYPARTY_TELEMETRY — discovery must never depend
 	// on a debug toggle. Best-effort + logged; a graceful stop/quit posts offline.
-	go liveCheckinLoop(bc, events, diagLog)
+	go liveCheckinLoop(bc, events, diagLog, cfg.TLSPort)
 
 	// Cloud mirror uploader: when the leg is on, ship each go-live's scratch HLS
 	// to the broker for remote guests. One upload session per go-live, torn down
