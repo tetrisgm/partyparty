@@ -539,7 +539,7 @@
       <div class="reqstatus" id="requestStatus"></div>
     </form>
 
-    <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked. If it won't start, turn off Silent mode.</div>
+    <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked, even on Silent.</div>
     <div class="statline" id="statline" hidden></div>
     <div class="downhint" id="downhint" hidden>the party wall<span class="chev">⌄</span></div>
   </div>
@@ -632,6 +632,18 @@
   <audio id="player" playsinline preload="auto"></audio>
   <script>
     const player = document.getElementById('player');
+    // iOS plays an <audio> element through the ringer / Silent switch by default,
+    // so a phone on Silent Mode shows "Playing" but is DEAD SILENT — the exact
+    // field failure on a locked, pocketed iOS-27 phone (2026-07-16, confirmed).
+    // Declaring the 'playback' audio-session category makes media play through the
+    // MEDIA volume and IGNORE the Silent switch — which is precisely what a party
+    // wants. Web Audio Session API, Safari 16.4+; a no-op (caught) elsewhere. Set
+    // it now AND inside the first user gesture (iOS is most reliable when the
+    // category is (re)asserted within the activating gesture).
+    function claimPlaybackSession(){
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    }
+    claimPlaybackSession();
     const btn = document.getElementById('btn');
     const ico = document.getElementById('ico');
     const btnlabel = document.getElementById('btnlabel');
@@ -1619,6 +1631,7 @@
     });
 
     btn.addEventListener('click', () => {
+      claimPlaybackSession(); // in-gesture: audio must ignore the Silent switch
       // A yielded tab (another tab took the audio) reclaims on tap.
       if (yielded) { yielded = false; claimAudio(); userPaused = false; recoverPlayback('tab-reclaim'); return; }
       if (syncFailed) { retrySync('retry'); return; }
@@ -2427,6 +2440,7 @@
       }, true);
 
       $id('welGo').addEventListener('click', () => {
+        claimPlaybackSession(); // in-gesture: make audio ignore the Silent switch
         welcomed = true;
         logEvent('lets-party', { live: live, streamReady: streamReady, ready: ready });
         try { localStorage.setItem('pp.welcomed', '1'); } catch (e) {}
