@@ -36,6 +36,23 @@
   .nav-a:hover{color:var(--ink)}
   .nav-dl{font-size:14px;font-weight:600;color:var(--accent)}
 
+  /* Auto-discovery: a live party on this exact Wi-Fi (matched egress IP), PairDrop-style. */
+  .disc-band{background:var(--accent);color:var(--accent-ink);overflow:hidden;position:sticky;top:48px;z-index:49}
+  .disc-band[hidden]{display:none}
+  .disc{display:flex;align-items:center;gap:15px;max-width:1040px;margin:0 auto;padding:13px 22px;color:var(--accent-ink)}
+  .disc:hover .disc-go{background:rgba(255,255,255,.30)}
+  .disc-live{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+  .disc-dot{width:9px;height:9px;border-radius:50%;background:#fff;animation:discPulse 1.7s infinite}
+  @keyframes discPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.6)}70%{box-shadow:0 0 0 8px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+  .disc-txt{flex:1;font-size:15px;line-height:1.3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .disc-txt b{font-weight:700}
+  .disc-np{opacity:.82}
+  .disc-go{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.55);padding:9px 18px;border-radius:999px;font-weight:600;font-size:15px;white-space:nowrap;transition:background .15s}
+  .disc-band.on{animation:discIn .45s ease}
+  @keyframes discIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+  @media(prefers-reduced-motion:reduce){.disc-band.on{animation:none}.disc-dot{animation:none}}
+  @media(max-width:600px){.disc-live span:last-child{display:none}.disc{gap:11px;padding:11px 16px}.disc-txt{font-size:14px}.disc-go{padding:8px 15px;font-size:14px}}
+
   .hero{padding:104px 0 84px;text-align:center}
   h1{font-size:clamp(46px,7.4vw,84px);line-height:1.04;font-weight:700;letter-spacing:-.022em;text-wrap:balance}
   .lede{font-size:clamp(18px,2.4vw,23px);color:var(--ink-2);max-width:44ch;margin:22px auto 0;text-wrap:balance}
@@ -111,6 +128,14 @@
   </div>
 </nav>
 
+<div class="disc-band" id="discBand" hidden>
+  <a class="disc" id="discLink" href="#">
+    <span class="disc-live"><span class="disc-dot"></span><span>Live now</span></span>
+    <span class="disc-txt"><b id="discDj">A DJ</b> is playing on this Wi-Fi<span class="disc-np" id="discNp"></span></span>
+    <span class="disc-go">Join &rarr;</span>
+  </a>
+</div>
+
 <header class="hero wrap">
   <h1>The party,<br>on every phone.</h1>
   <p class="lede">partyparty turns your Mac into the venue. Guests scan a QR and the music plays on their phones — perfectly together. No app. No accounts. No internet required.</p>
@@ -184,6 +209,24 @@
   fetch('/api/me', { credentials:'same-origin', cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
     .then(j => { if (j && j.user && navAuth) { navAuth.textContent = 'Account'; navAuth.href = '/account'; } })
+    .catch(() => {});
+  // Auto-discovery (PairDrop-style): is a party live on this exact Wi-Fi? The
+  // Worker matches our egress IP to a live install — no QR scan needed. If one's
+  // found, slide in a Join banner that jumps straight to it.
+  fetch('/api/discover', { cache:'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => {
+      const p = j && j.parties && j.parties[0];
+      if (!p) return;
+      const host = p.host || (p.handle ? p.handle + '.party.ramine.net' : '');
+      if (!host) return;
+      document.getElementById('discLink').href = 'https://' + host;
+      document.getElementById('discDj').textContent = p.djName || p.eventTitle || 'A DJ';
+      if (p.nowPlaying) document.getElementById('discNp').textContent = ' — ' + p.nowPlaying;
+      const band = document.getElementById('discBand');
+      band.hidden = false;
+      requestAnimationFrame(() => band.classList.add('on'));
+    })
     .catch(() => {});
   fetch('/api/version', { cache:'no-store' })
     .then(r => r.json())
