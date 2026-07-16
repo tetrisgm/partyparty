@@ -192,6 +192,36 @@ export function normalizeHandle(s) {
   return /^[a-z0-9_.]{1,30}$/.test(out) ? out : "";
 }
 
+// Handles that would shadow a top-level route or the product's own words. A
+// handle can never equal one of these — checked at mint, at /welcome, in
+// /settings, and by /api/handle-available.
+export const RESERVED_HANDLES = new Set([
+  "account", "login", "logout", "welcome", "settings", "signup", "signin",
+  "api", "e", "live", "discover", "broker", "www", "admin", "root", "mail",
+  "about", "help", "support", "terms", "privacy", "profile", "profiles",
+  "edit", "new", "event", "events", "me", "home", "app", "assets", "static",
+  "favicon", "robots", "sitemap", "auth", "partyparty", "party",
+]);
+export function handleReserved(h) {
+  const n = normalizeHandle(h);
+  return !n || RESERVED_HANDLES.has(n);
+}
+
+// Single source of truth for "is this handle free to claim": valid, not
+// reserved, not an existing profile handle, and not a retired alias.
+export async function handleAvailable(env, h) {
+  const n = normalizeHandle(h);
+  if (!n || RESERVED_HANDLES.has(n)) return false;
+  if (!env?.DB) return false;
+  const inProfiles = await env.DB.prepare("SELECT 1 FROM dj_profiles WHERE handle=? LIMIT 1").bind(n).first();
+  if (inProfiles) return false;
+  try {
+    const inAliases = await env.DB.prepare("SELECT 1 FROM handle_aliases WHERE handle=? LIMIT 1").bind(n).first();
+    if (inAliases) return false;
+  } catch (_) { /* aliases table may predate migration 0007; treat as no alias */ }
+  return true;
+}
+
 export async function readJson(request, maxBytes = 16384) {
   const cap = Math.max(0, Number(maxBytes) || 0);
   const len = Number(request?.headers?.get("content-length") || "0");
@@ -1204,9 +1234,13 @@ async function ensureUserDjProfile(env, user, now = nowMs()) {
 
   const base = defaultHandle(user);
   const displayName = defaultDisplayName(user);
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 10; i += 1) {
     const handle = handleCandidate(base, i ? i + 1 : 0);
+    if (handleReserved(handle)) continue; // never auto-mint a route-shadowing handle
     try {
+      // handle_confirmed_ms stays NULL: an auto-derived default the DJ confirms
+      // (or changes) once at /welcome. Published so the profile exists; the
+      // /welcome soft-gate is presentation, not a hard block.
       await env.DB.prepare(
         `INSERT INTO dj_profiles (id, user_id, handle, display_name, bio, location, published, created_ms, updated_ms, last_activity_ms)
          VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`
@@ -4376,6 +4410,13 @@ export default {
       } catch (_) {
         return jsonResp(200, { user: null });
       }
+    }
+
+    if (pathname === "/api/handle-available") {
+      const norm = normalizeHandle(new URL(request.url).searchParams.get("h") || "");
+      if (!norm) return jsonResp(200, { available: false, reason: "invalid", handle: "" });
+      if (RESERVED_HANDLES.has(norm)) return jsonResp(200, { available: false, reason: "reserved", handle: norm });
+      return jsonResp(200, { available: await handleAvailable(env, norm), handle: norm });
     }
 
     if (pathname === "/api/version") {
