@@ -2499,6 +2499,71 @@ async function ensureBrokerSlug(env, id, rec) {
   return slug;
 }
 
+// handleSlugBase: the DNS label a DJ's Mac should carry, derived from their
+// handle — seth -> "seth-live" (a second Mac gets seth-live2, ...). Handles
+// can never contain hyphens (normalizeHandle allows [a-z0-9_.]) so a
+// handle-derived label can NEVER collide with any present or future handle's
+// proxied custom domain. Dots/underscores (valid in handles, not hostnames)
+// map to hyphens.
+function handleSlugBase(handle) {
+  const h = normalizeHandle(handle);
+  if (!h) return "";
+  const dns = h.replace(/[._]+/g, "-").replace(/^-+|-+$/g, "");
+  return dns ? `${dns}-live` : "";
+}
+
+// ensureHandleSlug: called ONLY from /api/broker/a — the one endpoint where the
+// Mac is present to ADOPT a rename (its refresh loop takes the returned host,
+// notices the cached cert no longer matches, re-runs ACME, and re-advertises;
+// zero client changes). Renames a linked install's machine hostname from the
+// random word slug (fader91) to the handle-derived one (seth-live). Hard rules:
+// - only when the profile's handle is CONFIRMED (auto-minted defaults like
+//   "seth.finkin" must not churn hostnames before the DJ picks a name);
+// - NEVER while the install is live — guests would be routed to a host the Mac
+//   has no cert for yet; the rename waits for the next idle refresh;
+// - the old reverse index stays reserved so a stale printed QR can never point
+//   at a stranger's Mac; the old grey A record is deleted (link goes dead, not
+//   wrong). Falls back to ensureBrokerSlug whenever renaming doesn't apply.
+async function ensureHandleSlug(env, id, rec, now) {
+  const current = await ensureBrokerSlug(env, id, rec);
+  if (!env.DB) return current;
+  const linked = await env.DB.prepare(
+    "SELECT profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+  ).bind(id).first();
+  if (!linked?.profile_id) return current;
+  const profile = await env.DB.prepare(
+    "SELECT handle, handle_confirmed_ms FROM dj_profiles WHERE id=? LIMIT 1"
+  ).bind(linked.profile_id).first();
+  if (!profile?.handle || profile.handle_confirmed_ms == null) return current;
+  const base = handleSlugBase(profile.handle);
+  if (!base) return current;
+  if (new RegExp(`^${base}\\d*$`).test(current)) return current; // already this handle's
+  const live = await env.DB.prepare(
+    "SELECT 1 FROM live_installs WHERE install_id=? AND expires_ms>? LIMIT 1"
+  ).bind(id, now).first();
+  if (live) return current; // mid-party: keep the name the Mac can actually serve
+  const slugOwner = async (s) => {
+    const o = await env.DL.get(`broker/slug/${s}`);
+    return o ? await o.text() : "";
+  };
+  let slug = base;
+  for (let n = 2; n <= 9; n++) {
+    const owner = await slugOwner(slug);
+    if (!owner || owner === id) break;
+    slug = base + String(n); // another of this DJ's Macs holds the base
+  }
+  const owner = await slugOwner(slug);
+  if (owner && owner !== id) return current; // 9 Macs deep — keep the word slug
+  const oldSlug = rec.slug;
+  rec.slug = slug;
+  await env.DL.put(`broker/slug/${slug}`, id);
+  await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+  if (oldSlug && oldSlug !== slug) {
+    try { await deleteGreyA(env, `${oldSlug}.${env.BROKER_BASE}`); } catch (e) { /* best-effort */ }
+  }
+  return slug;
+}
+
 async function requireLinkedInstallForDNS(env, id) {
   if (env.BROKER_ALLOW_UNLINKED_DNS === "1") return null;
   if (!env.DB) return jsonResp(503, { error: "account link required" });
@@ -3916,7 +3981,7 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
   const mirror = eventSlug ? `/event/${encodeURIComponent(eventSlug)}/live/live.m3u8` : "";
   const nowLine = nowPlaying ? `<p class="np">Now playing: ${esc(nowPlaying)}</p>` : "";
   const lanTap = lanUrl
-    ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl)}">On ${esc(who)}'s Wi-Fi? Tap to join the live room &rarr;</a></p>`
+    ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl)}">At the party? Tap to join the live room &rarr;</a></p>`
     : "";
   // Late-probe upgrade: shown when the LAN becomes reachable AFTER the guest
   // already started the mirror — offer the switch instead of yanking playback.
@@ -3927,7 +3992,7 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
     ? `<audio id="pp-audio" preload="none" playsinline src="${esc(mirror)}"></audio>
        <button id="pp-play" type="button">Tap to listen</button>
        <p class="hint">Listening from away — a few seconds behind the room.</p>`
-    : `<p class="hint">This party is live, but there's no remote stream yet. Join on ${esc(who)}'s Wi-Fi to listen.</p>`;
+    : `<p class="hint">This party is live, but there's no remote stream yet. Join the party's Wi-Fi to listen.</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
@@ -4922,7 +4987,10 @@ async function broker(request, env, pathname) {
   if (pathname === "/api/broker/a") {
     const linkedErr = await requireLinkedInstallForDNS(env, id);
     if (linkedErr) return linkedErr;
-    label = await ensureBrokerSlug(env, id, rec);
+    // May RENAME the slug to the handle-derived name (seth -> seth-live): this
+    // is the Mac's own refresh call, so it adopts the returned host + new cert
+    // in the same cycle. Never renames while live.
+    label = await ensureHandleSlug(env, id, rec, nowMs());
     const ip = String(body.ip || "");
     if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return jsonResp(400, { error: "bad ip" });
     // ONE slugged record per install, upserted to the current venue IP

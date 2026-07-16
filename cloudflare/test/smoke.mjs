@@ -2713,6 +2713,64 @@ const tests = [
       assert.equal(txtPost.body.content, "challenge-token");
     });
   }],
+  ["broker /a renames a linked install to the handle-derived slug (seth-live) — but never while live", async () => {
+    const mkDb = (over = {}) => new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-hs", profile_id: "profile-hs", revoked_ms: null }],
+      profiles: [{ id: "profile-hs", user_id: "user-hs", handle: "seth", display_name: "Seth", published: 1, handle_confirmed_ms: 5, ...over.profile }],
+      ...over.db,
+    });
+    const postA = (env) => worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
+    }), env);
+
+    // Confirmed handle + idle -> rename disco12 -> seth-live; A record for the new name.
+    await withCloudflareDNSMock(async (calls) => {
+      const env = makeEnv({ DB: mkDb() });
+      const json = await (await postA(env)).json();
+      assert.equal(json.host, "seth-live.party.example.test");
+      const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
+      assert.equal(aPost.body.name, "seth-live.party.example.test");
+      // Reverse index claimed + rec updated: a second call is a stable no-op.
+      const again = await (await postA(env)).json();
+      assert.equal(again.host, "seth-live.party.example.test");
+      assert.equal(await (await env.DL.get("broker/slug/seth-live")).text(), "abc123abc123");
+    });
+
+    // Unconfirmed (auto-minted) handle -> no rename; hostname must not churn.
+    await withCloudflareDNSMock(async () => {
+      const env = makeEnv({ DB: mkDb({ profile: { handle_confirmed_ms: null } }) });
+      assert.equal((await (await postA(env)).json()).host, "disco12.party.example.test");
+    });
+
+    // Currently LIVE -> keep the name the Mac can actually serve a cert for.
+    await withCloudflareDNSMock(async () => {
+      const env = makeEnv({ DB: mkDb({ db: { liveInstalls: [{
+        install_id: "abc123abc123", handle: "seth", profile_id: "profile-hs", public_ip_hash: "h",
+        host: "disco12.party.example.test", lan_ip: "192.168.2.1", event_slug: "", dj_name: "Seth",
+        event_title: "", listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1,
+        expires_ms: Date.now() + 60000,
+      }] } }) });
+      assert.equal((await (await postA(env)).json()).host, "disco12.party.example.test");
+    });
+
+    // Base taken by ANOTHER install (the DJ's second Mac) -> seth-live2.
+    await withCloudflareDNSMock(async () => {
+      const env = makeEnv({
+        DB: mkDb(),
+        r2Objects: { "broker/slug/seth-live": new FakeR2Object("someoneelse47", {}) },
+      });
+      assert.equal((await (await postA(env)).json()).host, "seth-live2.party.example.test");
+    });
+
+    // Dotted/underscored handles map to DNS-safe labels (dj.max -> dj-max-live).
+    await withCloudflareDNSMock(async () => {
+      const env = makeEnv({ DB: mkDb({ profile: { handle: "dj.max_1" } }) });
+      assert.equal((await (await postA(env)).json()).host, "dj-max-1-live.party.example.test");
+    });
+  }],
+
   ["broker DNS writes upgrade legacy installs to a slug instead of IP-encoded hostnames", async () => {
     const db = new FakeD1({
       deviceInstalls: [{
