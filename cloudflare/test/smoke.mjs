@@ -42,6 +42,7 @@ class FakeD1 {
     installBrowserTokens = [],
     follows = [],
     eventAliases = [],
+    handleAliases = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -82,6 +83,7 @@ class FakeD1 {
     this.installBrowserTokens = new Map(installBrowserTokens.map((row) => [row.id, { ...row }]));
     this.follows = follows.map((row) => ({ ...row }));
     this.eventAliases = new Map(eventAliases.map((row) => [row.old_slug, { ...row }]));
+    this.handleAliases = new Map(handleAliases.map((row) => [row.handle, { ...row }]));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
@@ -290,6 +292,10 @@ class FakeD1Statement {
       const row = this.db.profiles.find((profile) =>
         profile.handle === handle && (!sql.includes("published=1") || profile.published === 1)
       );
+      return row ? { ...row } : null;
+    }
+    if (sql.includes("FROM handle_aliases WHERE handle=?")) {
+      const row = this.db.handleAliases.get(this.args[0]);
       return row ? { ...row } : null;
     }
     if (sql.includes("FROM follows WHERE follower_user_id=? AND dj_profile_id=?")) {
@@ -743,6 +749,38 @@ class FakeD1Statement {
         updated_ms: updatedMs,
         last_activity_ms: lastActivityMs,
       });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("INSERT INTO handle_aliases")) {
+      const [handle, profileId, userId, createdMs] = this.args;
+      if (this.db.handleAliases.has(handle)) return { success: true, meta: { changes: 0 } };
+      this.db.handleAliases.set(handle, { handle, profile_id: profileId, user_id: userId, created_ms: createdMs });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE dj_profiles SET handle=?, handle_changed_ms=?")) {
+      const [handle, changedMs, confirmMs, updatedMs, id] = this.args;
+      const row = this.db.profiles.find((profile) => profile.id === id);
+      if (!row) return { success: true, meta: { changes: 0 } };
+      row.handle = handle;
+      row.handle_changed_ms = changedMs;
+      if (row.handle_confirmed_ms == null) row.handle_confirmed_ms = confirmMs;
+      row.updated_ms = updatedMs;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE dj_profiles SET handle_confirmed_ms=COALESCE")) {
+      const [confirmMs, updatedMs, id] = this.args;
+      const row = this.db.profiles.find((profile) => profile.id === id);
+      if (!row) return { success: true, meta: { changes: 0 } };
+      if (row.handle_confirmed_ms == null) row.handle_confirmed_ms = confirmMs;
+      row.updated_ms = updatedMs;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("UPDATE dj_profiles SET display_name=?, updated_ms=? WHERE id=? AND user_id=?")) {
+      const [displayName, updatedMs, id, userId] = this.args;
+      const row = this.db.profiles.find((profile) => profile.id === id && profile.user_id === userId);
+      if (!row) return { success: true, meta: { changes: 0 } };
+      row.display_name = displayName;
+      row.updated_ms = updatedMs;
       return { success: true, meta: { changes: 1 } };
     }
     if (sql.includes("UPDATE dj_profiles") && sql.includes("website_url=?")) {
@@ -1310,7 +1348,32 @@ async function signInCookie(db, email, opts = {}) {
   const token = new URL(devLink).searchParams.get("token");
   const verify = await postVerify(db, token, opts);
   assert.equal(verify.status, 302);
+  // Sign-in now mints a dj_profile (the /welcome soft-gate). Existing tests build
+  // their own profile state and expect a bare session, so drop the auto-minted
+  // profile here; the mint + /welcome behavior is covered by dedicated tests
+  // (see "username backbone" below) that drive the raw flow.
+  const emailNorm = String(email || "").trim().toLowerCase();
+  const user = [...db.authUsers.values()].find((row) => row.email_norm === emailNorm);
+  if (user) db.profiles = db.profiles.filter((p) => p.user_id !== user.id);
   return (verify.headers.get("set-cookie") || "").split(";")[0];
+}
+
+// The raw sign-in flow (no profile stripping), so tests can observe the mint +
+// /welcome soft-gate behavior on the verify redirect itself.
+async function rawSignIn(db, email, opts = {}) {
+  const devLink = await requestDevLink(db, email, opts);
+  const token = new URL(devLink).searchParams.get("token");
+  const verify = await postVerify(db, token, opts);
+  return {
+    status: verify.status,
+    location: verify.headers.get("location") || "",
+    cookie: (verify.headers.get("set-cookie") || "").split(";")[0],
+  };
+}
+
+function userByEmail(db, email) {
+  const emailNorm = String(email || "").trim().toLowerCase();
+  return [...db.authUsers.values()].find((row) => row.email_norm === emailNorm);
 }
 
 async function seedInstallLinkToken(db, { id, code, userId, profileId, createdMs = Date.now(), expiresMs = Date.now() + 60_000, usedMs = null, installId = null }) {
@@ -1606,7 +1669,9 @@ const tests = [
     const allowedJson = await allowed.json();
     assert.equal(allowed.status, 200);
     assert.match(allowedJson.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
-    assert.equal(allowedJson.redirect, "/account");
+    // Sign-in mints a dj_profile and, until its handle is confirmed, routes
+    // through the /welcome soft-gate (carrying the original redirect).
+    assert.equal(allowedJson.redirect, "/welcome?redirect=%2Faccount");
     assert.match(allowed.headers.get("set-cookie") || "", /pp_session=[a-f0-9]{64}/);
     assert.equal("queued" in allowedJson, false);
   }],
@@ -1703,7 +1768,9 @@ const tests = [
     const verify = await postVerify(db, token, { ip: "203.0.113.21" });
     const cookie = verify.headers.get("set-cookie") || "";
     assert.equal(verify.status, 302);
-    assert.equal(verify.headers.get("location"), "/after-login?ok=1");
+    // First sign-in mints a dj_profile and routes through the /welcome soft-gate,
+    // carrying the original post-login destination.
+    assert.equal(verify.headers.get("location"), "/welcome?redirect=%2Fafter-login%3Fok%3D1");
     assert.match(cookie, /pp_session=[a-f0-9]{64}/);
     assert.equal(db.authUsers.size, 1);
     assert.equal(db.authSessions.size, 1);
@@ -1833,7 +1900,8 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.equal(json.ok, true);
     assert.match(json.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=/);
-    assert.equal(json.redirect, "/account");
+    // First sign-in mints a dj_profile and lands on the /welcome soft-gate.
+    assert.equal(json.redirect, "/welcome?redirect=%2Faccount");
     assert.match(resp.headers.get("set-cookie") || "", /pp_session=[a-f0-9]{64}/);
   }],
   ["auth request-link does not reveal account existence", async () => {
@@ -4408,7 +4476,8 @@ const tests = [
     const db = new FakeD1({});
     const resp = await withGoogleTokenMock(fakeIdToken(googleClaims()), () => googleCallbackReq(db, { redirect: "/account" }));
     assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/account");
+    // First sign-in mints a dj_profile and lands on the /welcome soft-gate.
+    assert.equal(resp.headers.get("location"), "/welcome?redirect=%2Faccount");
     const sessionCookie = (resp.headers.get("set-cookie") || "").split(";")[0];
     assert.ok(sessionCookie.length > 0, "sets a session cookie");
     // The session must actually authenticate.
@@ -4511,7 +4580,8 @@ const tests = [
     const db = new FakeD1({});
     const resp = await withAppleTokenMock(fakeIdToken(appleClaims(env)), () => appleCallbackReq(db, env, {}));
     assert.equal(resp.status, 302);
-    assert.equal(resp.headers.get("location"), "/account");
+    // First sign-in mints a dj_profile and lands on the /welcome soft-gate.
+    assert.equal(resp.headers.get("location"), "/welcome?redirect=%2Faccount");
     const sessionCookie = (resp.headers.get("set-cookie") || "").split(";")[0];
     assert.ok(sessionCookie.length > 0, "sets a session cookie");
     const me = await worker.fetch(new Request("https://party.ramine.net/api/me", { headers: { cookie: sessionCookie } }), makeEnv({ DB: db }));
@@ -4602,6 +4672,201 @@ const tests = [
     assert.ok((await on.text()).includes("Continue with Apple"), "button present when configured");
     const off = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}) }));
     assert.ok(!(await off.text()).includes("Continue with Apple"), "button hidden when unconfigured");
+  }],
+
+  // ---- Phase 1: username identity backbone ----
+  ["sign-in mints a dj_profile and lands on the /welcome soft-gate while unconfirmed", async () => {
+    const db = new FakeD1();
+    const r = await rawSignIn(db, "welcome-new@example.com", { ip: "203.0.113.60" });
+    assert.equal(r.status, 302);
+    assert.match(r.location, /^\/welcome\?redirect=/);
+    const user = userByEmail(db, "welcome-new@example.com");
+    const profile = db.profiles.find((p) => p.user_id === user.id);
+    assert.ok(profile, "profile minted at sign-in");
+    assert.ok(profile.handle_confirmed_ms == null, "minted handle is unconfirmed (NULL)");
+    assert.equal(profile.handle, "welcome.new");
+
+    const page = await worker.fetch(new Request("https://party.ramine.net/welcome", { headers: { cookie: r.cookie } }), makeEnv({ DB: db }));
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(html, /Your username/);
+    assert.match(html, /welcome\.new\.party\.ramine\.net/);
+    assert.match(html, /\/api\/handle\/confirm/);
+  }],
+  ["/welcome redirects anonymous visitors to /login carrying the destination", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/welcome?redirect=/account"), makeEnv({ DB: new FakeD1() }));
+    assert.equal(resp.status, 302);
+    assert.match(resp.headers.get("location") || "", /^\/login\?redirect=/);
+  }],
+  ["/api/handle/confirm keeps the handle, stamps confirmed, and stops the /welcome gate", async () => {
+    const db = new FakeD1();
+    const first = await rawSignIn(db, "confirm-keep@example.com", { ip: "203.0.113.61", redirect: "/account" });
+    assert.equal(first.location, "/welcome?redirect=%2Faccount");
+    const user = userByEmail(db, "confirm-keep@example.com");
+    const profile = db.profiles.find((p) => p.user_id === user.id);
+    const handle = profile.handle;
+
+    const confirm = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: first.cookie },
+      body: JSON.stringify({ handle, redirect: "/account" }),
+    }), makeEnv({ DB: db }));
+    const cj = await confirm.json();
+    assert.equal(confirm.status, 200);
+    assert.deepEqual(cj, { ok: true, handle, redirect: "/account" });
+    assert.ok(profile.handle_confirmed_ms != null, "handle now confirmed");
+
+    // A subsequent sign-in no longer routes through /welcome.
+    const second = await rawSignIn(db, "confirm-keep@example.com", { ip: "203.0.113.61", redirect: "/account" });
+    assert.equal(second.status, 302);
+    assert.equal(second.location, "/account");
+  }],
+  ["/api/handle/confirm with a new handle renames and retires the minted default", async () => {
+    const db = new FakeD1();
+    const first = await rawSignIn(db, "confirm-change@example.com", { ip: "203.0.113.63" });
+    const user = userByEmail(db, "confirm-change@example.com");
+    const minted = db.profiles.find((p) => p.user_id === user.id).handle;
+    assert.equal(minted, "confirm.change");
+
+    const confirm = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: first.cookie },
+      body: JSON.stringify({ handle: "djfresh" }),
+    }), makeEnv({ DB: db }));
+    const cj = await confirm.json();
+    assert.equal(confirm.status, 200);
+    assert.equal(cj.handle, "djfresh");
+    const prof = db.profiles.find((p) => p.user_id === user.id);
+    assert.equal(prof.handle, "djfresh");
+    assert.ok(prof.handle_confirmed_ms != null, "confirmed on rename");
+    assert.ok(db.handleAliases.get(minted), "minted default retired into aliases");
+
+    const redirect = await worker.fetch(new Request(`https://party.ramine.net/@${minted}`), makeEnv({ DB: db }));
+    assert.equal(redirect.status, 301);
+    assert.equal(redirect.headers.get("location"), "/@djfresh");
+  }],
+  ["/api/settings renames the username, retires the old handle, 301s /@old -> /@new, and cools down", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "rename-me@example.com", { ip: "203.0.113.62" });
+    const user = userByEmail(db, "rename-me@example.com");
+    const now = Date.now();
+    db.profiles.push({
+      id: "p-rename", user_id: user.id, handle: "oldname", display_name: "Old Name",
+      published: 1, handle_confirmed_ms: now - 5000, handle_changed_ms: null,
+    });
+
+    const rename = await worker.fetch(new Request("https://party.ramine.net/api/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "newname", display_name: "New Name" }),
+    }), makeEnv({ DB: db }));
+    const rj = await rename.json();
+    assert.equal(rename.status, 200);
+    assert.equal(rj.ok, true);
+    assert.equal(rj.handle, "newname");
+    assert.equal(rj.display_name, "New Name");
+
+    const prof = db.profiles.find((p) => p.id === "p-rename");
+    assert.equal(prof.handle, "newname");
+    assert.equal(prof.display_name, "New Name");
+    assert.ok(prof.handle_changed_ms != null, "change stamped");
+    const alias = db.handleAliases.get("oldname");
+    assert.ok(alias, "old handle retired into aliases");
+    assert.equal(alias.profile_id, "p-rename");
+
+    const redirect = await worker.fetch(new Request("https://party.ramine.net/@oldname"), makeEnv({ DB: db }));
+    assert.equal(redirect.status, 301);
+    assert.equal(redirect.headers.get("location"), "/@newname");
+
+    const newProfile = await worker.fetch(new Request("https://party.ramine.net/@newname"), makeEnv({ DB: db }));
+    assert.equal(newProfile.status, 200);
+
+    // A second change inside 30 days is rejected.
+    const again = await worker.fetch(new Request("https://party.ramine.net/api/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "thirdname" }),
+    }), makeEnv({ DB: db }));
+    const aj = await again.json();
+    assert.equal(again.status, 429);
+    assert.match(aj.error, /30 days/);
+    assert.equal(db.profiles.find((p) => p.id === "p-rename").handle, "newname");
+    assert.equal(db.handleAliases.has("thirdname"), false);
+  }],
+  ["/api/handle/confirm rejects reserved and taken usernames", async () => {
+    const db = new FakeD1();
+    const first = await rawSignIn(db, "picky@example.com", { ip: "203.0.113.64" });
+    const user = userByEmail(db, "picky@example.com");
+    db.profiles.push({ id: "p-other", user_id: "other-user", handle: "takenname", display_name: "Other", published: 1 });
+
+    const reserved = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: first.cookie },
+      body: JSON.stringify({ handle: "admin" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(reserved.status, 409);
+    assert.match((await reserved.json()).error, /reserved/);
+
+    const taken = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: first.cookie },
+      body: JSON.stringify({ handle: "takenname" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(taken.status, 409);
+    assert.match((await taken.json()).error, /taken/);
+
+    const prof = db.profiles.find((p) => p.user_id === user.id);
+    assert.equal(prof.handle, "picky");
+    assert.ok(prof.handle_confirmed_ms == null, "still unconfirmed after failed attempts");
+  }],
+  ["/api/settings updates the display name without touching the handle", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "dispname@example.com", { ip: "203.0.113.67" });
+    const user = userByEmail(db, "dispname@example.com");
+    db.profiles.push({ id: "p-disp", user_id: user.id, handle: "disp.dj", display_name: "Old", published: 1, handle_confirmed_ms: Date.now() });
+
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ display_name: "Brand New" }),
+    }), makeEnv({ DB: db }));
+    const j = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.equal(j.handle, "disp.dj");
+    assert.equal(j.display_name, "Brand New");
+    const prof = db.profiles.find((p) => p.id === "p-disp");
+    assert.equal(prof.display_name, "Brand New");
+    assert.equal(prof.handle, "disp.dj");
+    assert.equal(db.handleAliases.size, 0);
+  }],
+  ["/settings renders the identity editor and gates anonymous visitors", async () => {
+    const anon = await worker.fetch(new Request("https://party.ramine.net/settings"), makeEnv({ DB: new FakeD1() }));
+    assert.equal(anon.status, 302);
+    assert.equal(anon.headers.get("location"), "/login?redirect=/settings");
+
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "settings-view@example.com", { ip: "203.0.113.65" });
+    const user = userByEmail(db, "settings-view@example.com");
+    db.profiles.push({ id: "p-set", user_id: user.id, handle: "settings.dj", display_name: "Set DJ", published: 1, handle_confirmed_ms: Date.now() });
+    const page = await worker.fetch(new Request("https://party.ramine.net/settings", { headers: { cookie } }), makeEnv({ DB: db }));
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(html, /Settings/);
+    assert.match(html, /settings\.dj/);
+    assert.match(html, /Edit public profile/);
+    assert.match(html, /\/api\/settings/);
+  }],
+  ["/account nudges unconfirmed usernames and links to settings", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "nudge@example.com", { ip: "203.0.113.66" });
+    const user = userByEmail(db, "nudge@example.com");
+    db.profiles.push({ id: "p-nudge", user_id: user.id, handle: "nudge.dj", display_name: "Nudge", published: 1, handle_confirmed_ms: null });
+    const page = await worker.fetch(new Request("https://party.ramine.net/account", { headers: { cookie } }), makeEnv({ DB: db }));
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(html, /Confirm your username/);
+    assert.match(html, /href="\/welcome"/);
+    assert.match(html, /href="\/settings"/);
   }],
 ];
 

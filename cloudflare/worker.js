@@ -819,6 +819,14 @@ async function profileResponse(env, request, handle) {
   if (!env.DB) return new Response(renderNotFound(), { status: 503, headers: htmlHeaders });
   const profile = await getProfileByHandle(env, h);
   if (!profile) {
+    // A renamed DJ's old /@handle keeps working: 301 to their current handle.
+    const aliasTarget = await getHandleAliasTarget(env, h);
+    if (aliasTarget) {
+      return new Response(null, {
+        status: 301,
+        headers: { location: `/@${aliasTarget}`, "cache-control": "public, max-age=300" },
+      });
+    }
     return new Response(renderNotFound(), {
       status: 404,
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30" },
@@ -1254,6 +1262,92 @@ async function ensureUserDjProfile(env, user, now = nowMs()) {
   throw new Error("could not create DJ profile");
 }
 
+// One username change per 30 days once the account is settled. The very first
+// confirm out of /welcome is exempt (handle_changed_ms is still NULL at that
+// point), so a brand-new DJ can always keep or pick their name.
+const HANDLE_CHANGE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Rename a profile's handle. The current handle is retired into handle_aliases
+// so its /@links 301 forever and the name stays reserved (never re-issued), then
+// dj_profiles is repointed at the new handle and the confirm stamp is set if it
+// was still pending. Rate-limited to one change per 30 days, except the first
+// confirm (handle_changed_ms NULL) which is always free. Returns {ok:true} or
+// {error, status}. The caller owns the profile (checked upstream via the session).
+async function changeHandle(env, profile, user, newHandle, now = nowMs()) {
+  const handle = normalizeHandle(newHandle);
+  if (!handle) return { error: "invalid username", status: 400 };
+  if (RESERVED_HANDLES.has(handle)) return { error: "that username is reserved", status: 409 };
+  const current = normalizeHandle(profile?.handle);
+  if (handle === current) return { ok: true };
+
+  // Cooldown is keyed on the last change; a never-changed profile (including the
+  // first confirm out of /welcome) skips it.
+  if (profile?.handle_confirmed_ms != null && profile?.handle_changed_ms != null &&
+      now - Number(profile.handle_changed_ms) < HANDLE_CHANGE_COOLDOWN_MS) {
+    return { error: "you can only change your username once every 30 days", status: 429 };
+  }
+
+  if (!(await handleAvailable(env, handle))) return { error: "that username is taken", status: 409 };
+
+  // Retire the old handle first so a concurrent claim of it fails the uniqueness
+  // check; ON CONFLICT keeps an already-retired handle stable.
+  if (current) {
+    await env.DB.prepare(
+      `INSERT INTO handle_aliases (handle, profile_id, user_id, created_ms)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(handle) DO NOTHING`
+    ).bind(current, profile.id, user.id, now).run();
+  }
+
+  try {
+    await env.DB.prepare(
+      `UPDATE dj_profiles
+       SET handle=?, handle_changed_ms=?, handle_confirmed_ms=COALESCE(handle_confirmed_ms, ?), updated_ms=?
+       WHERE id=?`
+    ).bind(handle, now, now, now, profile.id).run();
+  } catch (e) {
+    const msg = String(e?.message || e || "");
+    if (/unique|constraint|dj_profiles\.handle/i.test(msg)) return { error: "that username is taken", status: 409 };
+    throw e;
+  }
+  return { ok: true };
+}
+
+// A retired handle (someone renamed away from it) resolves to the profile's
+// current handle so old /@links keep working. Returns the current handle, or ""
+// when there is no alias / it points nowhere useful.
+async function getHandleAliasTarget(env, handle) {
+  const h = normalizeHandle(handle);
+  if (!env?.DB || !h) return "";
+  let alias = null;
+  try {
+    alias = await env.DB.prepare("SELECT profile_id FROM handle_aliases WHERE handle=? LIMIT 1").bind(h).first();
+  } catch (_) { return ""; }
+  if (!alias?.profile_id) return "";
+  const profile = await env.DB.prepare("SELECT handle FROM dj_profiles WHERE id=? AND published=1 LIMIT 1").bind(alias.profile_id).first();
+  const target = normalizeHandle(profile?.handle);
+  return target && target !== h ? target : "";
+}
+
+// The soft-gate landing after any successful sign-in: make sure the account has
+// a dj_profile (its permanent username) and, until that handle is confirmed,
+// route through /welcome. Best-effort — a mint failure never blocks sign-in, the
+// guest just lands on their original destination. `redirectPath` is the caller's
+// post-login target (already run through safeRedirectPath is fine; re-checked here).
+async function signInLanding(env, user, redirectPath) {
+  const dest = safeRedirectPath(redirectPath || "/account") || "/account";
+  if (!env?.DB || !user?.id) return dest;
+  try {
+    const profile = await ensureUserDjProfile(env, user);
+    if (profile && profile.handle_confirmed_ms == null && !/^\/welcome(\?|$)/.test(dest)) {
+      return `/welcome?redirect=${encodeURIComponent(dest)}`;
+    }
+  } catch (_) {
+    // Never block sign-in on profile minting.
+  }
+  return dest;
+}
+
 function cleanProfileUrl(value) {
   const raw = String(value == null ? "" : value).trim();
   if (!raw) return "";
@@ -1316,6 +1410,81 @@ async function profileApi(request, env) {
   const row = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
   const finalHandle = normalizeHandle(row?.handle || handle);
   return jsonResp(200, { ok: true, handle: finalHandle, url: `https://party.ramine.net/@${finalHandle}` });
+}
+
+// Confirm the account username (the /welcome soft-gate action). Keeping the same
+// handle just stamps handle_confirmed_ms (so the gate stops firing); a different
+// handle renames via changeHandle (retiring the old one) and stamps confirmed.
+async function handleConfirmApi(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "profiles db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const body = await readJson(request, 1024);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+
+  const handle = normalizeHandle(body.handle);
+  if (!handle) return jsonResp(400, { error: "invalid username" });
+  if (RESERVED_HANDLES.has(handle)) return jsonResp(409, { error: "that username is reserved" });
+
+  const now = nowMs();
+  const profile = await ensureUserDjProfile(env, user, now);
+  const redirect = safeRedirectPath(body.redirect || "/account") || "/account";
+  const current = normalizeHandle(profile.handle);
+
+  if (handle === current) {
+    await env.DB.prepare(
+      "UPDATE dj_profiles SET handle_confirmed_ms=COALESCE(handle_confirmed_ms, ?), updated_ms=? WHERE id=?"
+    ).bind(now, now, profile.id).run();
+    return jsonResp(200, { ok: true, handle, redirect });
+  }
+
+  const res = await changeHandle(env, profile, user, handle, now);
+  if (res.error) return jsonResp(res.status || 409, { error: res.error });
+  return jsonResp(200, { ok: true, handle, redirect });
+}
+
+// Account-level identity editor (distinct from /profile/edit's public bio/socials
+// surface): change the username (changeHandle) and/or display_name.
+async function settingsApi(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "profiles db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const body = await readJson(request, 2048);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+
+  const now = nowMs();
+  const profile = await ensureUserDjProfile(env, user, now);
+
+  if (Object.prototype.hasOwnProperty.call(body, "handle") && String(body.handle ?? "").trim() !== "") {
+    const handle = normalizeHandle(body.handle);
+    if (!handle) return jsonResp(400, { error: "invalid username" });
+    if (handle !== normalizeHandle(profile.handle)) {
+      const res = await changeHandle(env, profile, user, handle, now);
+      if (res.error) return jsonResp(res.status || 409, { error: res.error });
+    } else {
+      await env.DB.prepare(
+        "UPDATE dj_profiles SET handle_confirmed_ms=COALESCE(handle_confirmed_ms, ?), updated_ms=? WHERE id=?"
+      ).bind(now, now, profile.id).run();
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "display_name")) {
+    const displayName = clip(body.display_name, 80).trim() || defaultDisplayName(user);
+    await env.DB.prepare(
+      "UPDATE dj_profiles SET display_name=?, updated_ms=? WHERE id=? AND user_id=?"
+    ).bind(displayName, now, profile.id, user.id).run();
+  }
+
+  const row = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
+  const finalHandle = normalizeHandle(row?.handle || profile.handle);
+  return jsonResp(200, {
+    ok: true,
+    handle: finalHandle,
+    display_name: row?.display_name || "",
+    url: `https://party.ramine.net/@${finalHandle}`,
+  });
 }
 
 async function profileSocialsApi(request, env) {
@@ -1802,6 +1971,98 @@ async function loginResponse(request, env) {
   }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
+// The username soft-gate. Every account gets a dj_profile at sign-in; until the
+// handle is confirmed, sign-in lands here (carrying ?redirect). Confirmed users
+// may revisit to review, but they are not auto-redirected here.
+async function welcomeResponse(request, env) {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
+  }
+  const dest = safeRedirectPath(new URL(request.url).searchParams.get("redirect") || "/account") || "/account";
+  const user = await getSessionUser(env, request);
+  if (!user) {
+    const self = `/welcome?redirect=${encodeURIComponent(dest)}`;
+    return redirectResp(`/login?redirect=${encodeURIComponent(self)}`);
+  }
+  let profile = null;
+  try { profile = await ensureUserDjProfile(env, user); } catch (_) { /* best effort */ }
+  const handle = normalizeHandle(profile?.handle) || defaultHandle(user);
+  const confirmed = !!(profile && profile.handle_confirmed_ms != null);
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Your username</h1>
+      <p class="sub">This is your permanent party link. Guests scan or visit <b>${esc(handle)}.party.ramine.net</b> to tune in — and it stays the same, forever. Pick it now; you can change it later in settings.</p>
+      <form class="authform" id="welcome-form">
+        <label><span>Username</span><input name="handle" id="welcome-handle" maxlength="30" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(handle)}" placeholder="dj.name"></label>
+        <p class="hint" id="welcome-avail" role="status" aria-live="polite" style="margin:2px 0 0;min-height:18px"></p>
+        <button class="btn" id="welcome-save" type="submit">This is my username</button>
+      </form>
+      <p class="hint" id="welcome-msg" role="status" style="margin:14px 0 0"></p>
+      ${confirmed ? `<p class="hint" style="margin:10px 0 0">Manage this any time in <a href="/settings">settings</a>.</p>` : ""}
+    </div>
+  </div>
+  <script>
+(function(){var f=document.getElementById('welcome-form'),i=document.getElementById('welcome-handle'),a=document.getElementById('welcome-avail'),m=document.getElementById('welcome-msg'),b=document.getElementById('welcome-save'),dest=${JSON.stringify(dest)},current=${JSON.stringify(handle)},t;
+function norm(v){return String(v||'').trim().toLowerCase()}
+function check(){var h=norm(i.value);a.textContent='';a.style.color='';if(!h){b.disabled=true;a.textContent='Pick a username.';return}if(h===current){b.disabled=false;return}b.disabled=true;a.textContent='Checking…';fetch('/api/handle-available?h='+encodeURIComponent(h),{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(norm(i.value)!==h)return;if(j&&j.available){b.disabled=false;a.style.color='var(--ok,#1a7f37)';a.textContent='✓ '+j.handle+' is available'}else{b.disabled=true;a.style.color='var(--bad,#b3261e)';a.textContent=j&&j.reason==='reserved'?'That username is reserved.':j&&j.reason==='invalid'?'Letters, numbers, dots and underscores only.':'That username is taken.'}}).catch(function(){})}
+i.addEventListener('input',function(){clearTimeout(t);t=setTimeout(check,250)});check();
+f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';m.style.color='';b.disabled=true;fetch('/api/handle/confirm',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({handle:norm(i.value),redirect:dest})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){if(!out.ok){b.disabled=false;m.style.color='var(--bad,#b3261e)';m.textContent=out.json&&out.json.error?out.json.error:'Could not save your username.';return}location.href=out.json&&out.json.redirect?out.json.redirect:dest}).catch(function(){b.disabled=false;m.style.color='var(--bad,#b3261e)';m.textContent='Could not save your username.'})})})();
+  </script>
+  <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+  return new Response(shell({
+    title: "Your username · partyparty",
+    desc: "Choose your permanent partyparty username.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/welcome",
+    body,
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+// Account identity editor: username + display name (distinct from /profile/edit,
+// which owns the public bio/photos/socials). Signed-in only.
+async function settingsResponse(request, env) {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
+  }
+  const user = await getSessionUser(env, request);
+  if (!user) return redirectResp("/login?redirect=/settings");
+  let profile = null;
+  try { profile = await ensureUserDjProfile(env, user); } catch (_) { /* best effort */ }
+  const handle = normalizeHandle(profile?.handle) || defaultHandle(user);
+  const displayName = profile?.display_name || defaultDisplayName(user);
+  const body = `<div class="page">
+    <div class="card authcard">
+      <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Settings</h1>
+      <p class="sub">Your account identity. Your username is your permanent party link — guests visit <b>${esc(handle)}.party.ramine.net</b>.</p>
+      <form class="authform" id="settings-form">
+        <label><span>Username</span><input name="handle" id="settings-handle" maxlength="30" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(handle)}" placeholder="dj.name"></label>
+        <p class="hint" id="settings-avail" role="status" aria-live="polite" style="margin:2px 0 0;min-height:18px"></p>
+        <label><span>Display name</span><input name="display_name" id="settings-display" maxlength="80" autocomplete="name" value="${esc(displayName)}"></label>
+        <div class="ecta"><button class="btn" id="settings-save" type="submit">Save</button><a class="btn lt" id="settings-view" href="/@${esc(handle)}">View /@${esc(handle)}</a></div>
+      </form>
+      <p class="hint" id="settings-msg" role="status" style="margin:14px 0 0"></p>
+      <div class="minirow" style="margin-top:16px"><b>Public profile</b><span>Edit your bio, photos and social links.</span><a class="btn lt sm" href="/profile/edit">Edit public profile</a></div>
+      <div class="ecta" style="margin-top:14px"><a class="btn lt sm" href="/account">Account</a><button class="btn lt sm" id="settings-signout" type="button">Sign out</button></div>
+    </div>
+  </div>
+  <script>
+(function(){var f=document.getElementById('settings-form'),i=document.getElementById('settings-handle'),a=document.getElementById('settings-avail'),m=document.getElementById('settings-msg'),b=document.getElementById('settings-save'),v=document.getElementById('settings-view'),current=${JSON.stringify(handle)},t;
+function norm(v){return String(v||'').trim().toLowerCase()}
+function check(){var h=norm(i.value);a.textContent='';a.style.color='';if(!h||h===current){b.disabled=false;return}b.disabled=true;a.textContent='Checking…';fetch('/api/handle-available?h='+encodeURIComponent(h),{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(norm(i.value)!==h)return;if(j&&j.available){b.disabled=false;a.style.color='var(--ok,#1a7f37)';a.textContent='✓ '+j.handle+' is available'}else{b.disabled=true;a.style.color='var(--bad,#b3261e)';a.textContent=j&&j.reason==='reserved'?'That username is reserved.':j&&j.reason==='invalid'?'Letters, numbers, dots and underscores only.':'That username is taken.'}}).catch(function(){})}
+i.addEventListener('input',function(){clearTimeout(t);t=setTimeout(check,250)});
+f.addEventListener('submit',function(ev){ev.preventDefault();m.textContent='';m.style.color='';b.disabled=true;fetch('/api/settings',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({handle:norm(i.value),display_name:document.getElementById('settings-display').value})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(out){b.disabled=false;if(!out.ok){m.style.color='var(--bad,#b3261e)';m.textContent=out.json&&out.json.error?out.json.error:'Could not save.';return}m.style.color='';m.textContent='Saved.';if(out.json&&out.json.handle){current=out.json.handle;i.value=out.json.handle;if(v){v.href='/@'+out.json.handle;v.textContent='View /@'+out.json.handle}}}).catch(function(){b.disabled=false;m.style.color='var(--bad,#b3261e)';m.textContent='Could not save.'})})})();
+(function(){var b=document.getElementById('settings-signout');if(!b)return;b.addEventListener('click',function(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/'})})})();
+  </script>
+  <footer><span>🕺 partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+  return new Response(shell({
+    title: "Settings · partyparty",
+    desc: "Your partyparty account identity.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: "/settings",
+    body,
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
 async function accountResponse(request, env) {
   if (request.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET" } });
@@ -1826,18 +2087,26 @@ async function accountResponse(request, env) {
   const handle = normalizeHandle(profile?.handle);
   const deviceInstalls = installsRes?.results || [];
   const events = eventsRows?.results || [];
+  // A profile whose handle is still the auto-derived default hasn't been through
+  // the /welcome soft-gate; nudge the DJ to lock in their permanent party link.
+  const needsConfirm = !!(profile && profile.handle_confirmed_ms == null);
+  const confirmNudge = needsConfirm ? `<div class="card" style="grid-column:1/-1">
+    <div class="sectionhead" style="margin:0 0 8px"><div><h2>Confirm your username</h2><p>${handle ? `<b>${esc(handle)}.party.ramine.net</b> is your permanent party link — confirm or change it.` : "Pick your permanent party link."}</p></div></div>
+    <div class="ecta"><a class="btn sm" href="/welcome">Confirm username</a></div>
+  </div>` : "";
   const profileCard = profile ? `<div class="card">
     <h2>DJ profile</h2>
     <p class="sub">${esc(profile.display_name || handle || "Your DJ profile")}</p>
     <p class="emptyline">${handle ? `@${esc(handle)}` : "Handle not set yet."}</p>
     <div class="ecta">
       ${handle ? `<a class="btn lt sm" href="/@${esc(handle)}">View profile</a>` : ""}
+      <a class="btn lt sm" href="/settings">Settings</a>
       <a class="btn lt sm" href="/profile/edit">Edit profile</a>
     </div>
   </div>` : `<div class="card">
     <h2>DJ profile</h2>
     <p class="emptyline">You haven't created a DJ profile yet.</p>
-    <div class="ecta"><a class="btn lt sm" href="/profile/edit">Create profile</a></div>
+    <div class="ecta"><a class="btn lt sm" href="/settings">Settings</a><a class="btn lt sm" href="/profile/edit">Create profile</a></div>
   </div>`;
   const eventList = events.length ? `<div>${events.map((ev) => {
     const when = ev.starts || fmtWhen(ev.scheduled_at_ms);
@@ -1873,10 +2142,11 @@ async function accountResponse(request, env) {
           <p>${esc(user.email || "")}</p>
           <p>${esc(user.display_name || "")}</p>
         </div>
-        <button class="btn lt sm" id="sign-out" type="button">Sign out</button>
+        <div class="ecta" style="margin:0"><a class="btn lt sm" href="/settings">Settings</a><button class="btn lt sm" id="sign-out" type="button">Sign out</button></div>
       </div>
     </div>
     <div class="accountgrid" style="margin-top:16px">
+      ${confirmNudge}
       ${profileCard}
       ${devicesCard}
       ${linkMacCard}
@@ -2695,7 +2965,7 @@ async function authRequestLink(request, env) {
       const session = await createAuthSession(env, request, emailNorm, now);
       if (session?.cookie) {
         headers.append("set-cookie", session.cookie);
-        out.redirect = redirectPath || "/account";
+        out.redirect = await signInLanding(env, session.user, redirectPath);
       }
     }
   } else if (!queued) {
@@ -2727,7 +2997,8 @@ async function authVerify(request, env) {
   const session = await createAuthSession(env, request, emailNorm, now);
   if (!session?.cookie) return expiredLinkResponse(400);
 
-  const headers = new Headers({ location: safeRedirectPath(row.redirect_path) });
+  const dest = await signInLanding(env, session.user, safeRedirectPath(row.redirect_path));
+  const headers = new Headers({ location: dest });
   headers.append("set-cookie", session.cookie);
   headers.set("cache-control", "no-store");
   return new Response(null, { status: 302, headers });
@@ -2830,7 +3101,8 @@ async function googleAuthCallback(request, env) {
   if (!emailNorm) return oauthError("verify");
   const session = await createAuthSession(env, request, emailNorm);
   if (!session || !session.cookie) return oauthError("session");
-  const headers = new Headers({ location: st.redirect, "cache-control": "no-store" });
+  const dest = await signInLanding(env, session.user, st.redirect);
+  const headers = new Headers({ location: dest, "cache-control": "no-store" });
   headers.append("set-cookie", session.cookie);
   headers.append("set-cookie", clearOauthStateCookie());
   return new Response(null, { status: 302, headers });
@@ -2928,7 +3200,8 @@ async function appleAuthCallback(request, env) {
   if (!emailNorm) return oauthError("verify");
   const session = await createAuthSession(env, request, emailNorm);
   if (!session || !session.cookie) return oauthError("session");
-  const headers = new Headers({ location: st.redirect, "cache-control": "no-store" });
+  const dest = await signInLanding(env, session.user, st.redirect);
+  const headers = new Headers({ location: dest, "cache-control": "no-store" });
   headers.append("set-cookie", session.cookie);
   headers.append("set-cookie", clearOauthStateCookie());
   return new Response(null, { status: 302, headers });
@@ -4491,6 +4764,28 @@ export default {
       }
     }
 
+    if (pathname === "/welcome") {
+      try {
+        return await welcomeResponse(request, env);
+      } catch (_) {
+        return new Response(renderNotFound(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+
+    if (pathname === "/settings") {
+      try {
+        return await settingsResponse(request, env);
+      } catch (_) {
+        return new Response(renderNotFound(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+    }
+
     if (pathname === "/profile/edit") {
       try {
         return await profileEditResponse(request, env);
@@ -4516,6 +4811,22 @@ export default {
     if (pathname === "/api/profile") {
       try {
         return await profileApi(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    if (pathname === "/api/handle/confirm") {
+      try {
+        return await handleConfirmApi(request, env);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    if (pathname === "/api/settings") {
+      try {
+        return await settingsApi(request, env);
       } catch (e) {
         return jsonResp(500, { error: String((e && e.message) || e) });
       }
