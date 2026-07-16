@@ -21,7 +21,13 @@ while [ "$#" -gt 0 ]; do
 	fi
 	shift
 done
-printf thumb > "$out"
+# Real sips/ffmpeg infer the output format from the filename extension; a bare
+# ".tmp" makes them fail. Mirror that so a regression to a non-.jpg temp path
+# (which silently killed every video thumbnail) fails this test.
+case "$out" in
+	*.jpg) printf thumb > "$out" ;;
+	*) echo "cannot infer output format from $out" >&2; exit 1 ;;
+esac
 `), 0o755); err != nil {
 		t.Fatal(err)
 	}

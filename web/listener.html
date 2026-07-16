@@ -130,6 +130,9 @@
   .composerline input[type=text]::placeholder{color:var(--label-tertiary)}
   .composericon{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;border:none;border-radius:50%;background:var(--fill);color:var(--label);cursor:pointer;padding:0}
   .composericon svg,.trayicon svg{width:20px;height:20px;display:block}
+  .addphotos{height:40px;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:none;border-radius:999px;background:var(--fill);color:var(--label);font:inherit;font-size:13px;font-weight:700;padding:0 14px 0 11px;cursor:pointer;white-space:nowrap}
+  .addphotos svg{width:19px;height:19px;flex:0 0 auto}
+  .addphotos[hidden]{display:none!important}
   .pendingpreviews{display:flex;gap:7px;overflow-x:auto;padding:7px 1px 1px;scrollbar-width:none}
   .pendingpreviews[hidden]{display:none}
   .pendingpreviews::-webkit-scrollbar{display:none}
@@ -189,6 +192,7 @@
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input{flex:1}
   .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
+  .welemail{margin-top:10px}
   .welemojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:10px}
   .welemojis[hidden]{display:none}
   .welemojis button{font-size:21px;background:transparent;border:none;border-radius:10px;padding:8px 0;cursor:pointer}
@@ -272,6 +276,16 @@
     box-shadow:0 4px 18px rgba(75,35,30,.13);font-size:0;
   }
   .toptool svg{width:18px;height:18px}
+  /* Top action bar: identity (emoji + name) at the far left, QR + share at the
+     far right. In normal flow, so it scrolls with the page. */
+  .actionbar{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;max-width:720px;margin:0 auto;padding:calc(9px + env(safe-area-inset-top)) 14px 4px;box-sizing:border-box}
+  .actionbar-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .actionbar .mechip{min-width:0;max-width:54vw}
+  .actionbar .mechip b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mechip[hidden]{display:none!important}
+  .actionbar .diagnostics{position:static;inset:auto;padding:0;background:none;border:0;border-radius:0;z-index:auto;color:var(--party-muted)}
+  .actionbar .pageversion{border-left-color:var(--party-line)}
+  .actionbar .toptool{position:static;inset:auto;flex:0 0 auto}
   .hero{
     width:min(100%,460px);min-height:auto;margin:0 auto;padding:calc(54px + env(safe-area-inset-top)) 20px 20px;
     align-items:stretch;text-align:left;
@@ -419,8 +433,8 @@
   }
   .hero .artwork::after{display:none}
   .hero .artwork img{width:100%;height:100%;display:block;object-fit:cover;object-position:center}
-  .hosted{display:none!important}
-  h1{order:2;margin:0 0 12px;font-size:44px;line-height:1.02;letter-spacing:0;text-align:left}
+  h1{order:2;margin:0 0 6px;font-size:44px;line-height:1.02;letter-spacing:0;text-align:left}
+  .hosted{order:2;margin:0 0 14px;color:var(--label-secondary);font-size:16px;font-weight:600;text-align:left}
   .starts{order:3;margin:0 0 14px;padding:0;font-size:16px}
   .guestline{order:4;margin:3px 0 14px}
   .count{display:none}
@@ -473,25 +487,28 @@
 </style>
 </head>
 <body>
-  <div class="diagnostics" aria-label="Stream diagnostics">
-    <span class="delaybadge" id="delayBadge" aria-label="Playback delay">-- ms</span>
-    <span class="pageversion">v__PP_VERSION__</span>
-  </div>
-  <div class="toptools">
-    <button class="toptool" id="qrBtn" type="button" aria-label="Show QR code" title="Show QR code">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
-    </button>
-    <button class="toptool" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
-    </button>
+  <div class="actionbar" id="actionBar">
+    <span class="mechip" id="meChip" title="Edit your name and emoji" hidden></span>
+    <div class="actionbar-tools">
+      <div class="diagnostics" aria-label="Stream diagnostics">
+        <span class="delaybadge" id="delayBadge" aria-label="Playback delay">-- ms</span>
+        <span class="pageversion">v__PP_VERSION__</span>
+      </div>
+      <button class="toptool" id="qrBtn" type="button" aria-label="Show QR code" title="Show QR code">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
+      </button>
+      <button class="toptool" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+      </button>
+    </div>
   </div>
 
   <div class="hero">
     <div class="artwork">
       <img id="coverImage" src="/covers/hero.jpg" alt="Event cover">
     </div>
-    <div class="hosted" id="hostedLine" hidden></div>
     <h1 id="title">partyparty</h1>
+    <div class="hosted" id="hostedLine" hidden></div>
     <div class="starts" id="startsLine" hidden></div>
 
     <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
@@ -554,10 +571,10 @@
     </button>
     <div class="composer" id="composer" hidden>
       <div class="composerline">
-        <span class="mechip" id="meChip" title="Edit your name and emoji"></span>
         <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
-        <button class="composericon" id="attachBtn" type="button" aria-label="Add photos or videos" title="Add photos or videos">
+        <button class="addphotos" id="attachBtn" type="button" aria-label="Add photos or videos" title="Add photos or videos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          <span>Add photos</span>
         </button>
         <button class="postbtn" id="postBtn" type="button">Post</button>
       </div>
@@ -613,6 +630,7 @@
         <input id="welName" maxlength="40" autocomplete="off" placeholder="Your name" enterkeyhint="done">
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
+      <input id="welEmail" class="welemail" type="email" inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="email" placeholder="Email for party updates (optional)" enterkeyhint="done">
       <div class="welspace"></div>
       <button class="welgo" id="welGo" type="button">Let's party 🎉</button>
     </div>
@@ -2353,7 +2371,7 @@
       setGuestIdentity(myName, myEmoji);
 
       const meChip = $id('meChip');
-      function paintChip(){ meChip.innerHTML = esc(myEmoji) + ' <b>' + esc(myName) + '</b>'; }
+      function paintChip(){ meChip.innerHTML = esc(myEmoji) + ' <b>' + esc(myName) + '</b>'; meChip.hidden = !myName; }
       function persistGuestProfile(){
         setGuestIdentity(myName, myEmoji);
         try { localStorage.setItem('pp.guestName', myName); localStorage.setItem('pp.guestEmoji', myEmoji); } catch (e) {}
@@ -2413,11 +2431,13 @@
       }
       function maybeWelcome(data){
         if (welcomed || welOv.classList.contains('show')) return;
-        $id('welHost').textContent = (data.host || 'the DJ') + ' is hosting';
+        const wh = $id('welHost');
+        if (data.host) { wh.textContent = 'hosted by ' + data.host; wh.hidden = false; } else { wh.hidden = true; }
         $id('welTitle').textContent = data.title || 'the party';
         $id('welStarts').textContent = data.starts || '';
         $id('welName').value = myName;
         $id('welEmoji').textContent = myEmoji;
+        try { $id('welEmail').value = localStorage.getItem('pp.guestEmail') || ''; } catch (e) {}
         welOv.classList.add('show');
       }
       // Any FIRST touch on the welcome card (name field, emoji, shuffle…) is
@@ -2448,6 +2468,15 @@
         myEmoji = $id('welEmoji').textContent;
         persistGuestProfile();
         paintChip();
+        // Optional email from the join form → same private per-event store as the
+        // subscribe box (kept on the Mac, no account, no internet needed).
+        const joinEmail = ($id('welEmail').value || '').trim();
+        if (joinEmail && /.+@.+\..+/.test(joinEmail)) {
+          try { localStorage.setItem('pp.guestEmail', joinEmail); } catch (e) {}
+          const se = $id('subscribeEmail'); if (se) se.value = joinEmail;
+          fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cid, contact: joinEmail }) }).catch(() => {});
+        }
         welOv.classList.remove('show');
         userPaused = false;
         mediaSession(); // register lock-screen controls inside the gesture
@@ -2536,7 +2565,7 @@
         const thumb = item.thumb || src;
         if (item.type === 'video') {
           if (item.thumb) return '<a class="albumtile" href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(item.thumb) + '" loading="lazy" alt=""><span class="vplay">▶</span></a>';
-          return '<a class="albumtile" href="' + src + '" target="_blank" rel="noopener"><video src="' + src + '" preload="metadata" playsinline muted></video><span class="vplay">▶</span></a>';
+          return '<a class="albumtile" href="' + src + '" target="_blank" rel="noopener"><video src="' + src + '#t=0.1" preload="metadata" playsinline muted></video><span class="vplay">▶</span></a>';
         }
         return '<a class="albumtile" href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(thumb) + '" loading="lazy" alt=""></a>';
       }
@@ -2779,7 +2808,7 @@
           if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(thumb) + '" data-fallback-src="' + src + '" loading="lazy" alt=""></a>';
           if (m.type === 'video') {
             if (m.thumb) return '<a class="vthumb" href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(m.thumb) + '" data-fallback-video="' + src + '" loading="lazy" alt=""><span class="vplay">▶</span></a>';
-            return '<video src="' + src + '" controls playsinline preload="metadata"></video>';
+            return '<video src="' + src + '#t=0.1" controls playsinline preload="metadata"></video>';
           }
           return '<audio src="' + src + '" controls preload="none"></audio>';
         }).join('');
@@ -2951,10 +2980,11 @@
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
           setEventCover(data.cover || '/covers/hero.jpg');
           if (data.host) {
-            $id('hostedLine').textContent = data.host + ' is hosting';
+            const hl = $id('hostedLine'); hl.textContent = 'hosted by ' + data.host; hl.hidden = false;
             guestHostName = data.host;
             subscribeCopy.textContent = 'Receive email updates from ' + data.host + '.';
           } else {
+            $id('hostedLine').hidden = true;
             subscribeCopy.textContent = 'Receive email updates from the host.';
           }
           const st = $id('startsLine');
