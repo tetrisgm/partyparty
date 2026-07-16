@@ -11,7 +11,8 @@
   // Landing page (index.html etc.). Served for any path that isn't an R2 file.
   "assets": {
     "directory": "../site",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": true
   },
 
   // Passwordless sign-in email. Requires Email Sending to be onboarded for
@@ -54,7 +55,8 @@
   // Bind the Worker to the apex-of-record for the app. custom_domain:true makes
   // wrangler provision the DNS record + edge cert in the ramine.net zone.
   "routes": [
-    { "pattern": "party.ramine.net", "custom_domain": true }
+    { "pattern": "party.ramine.net", "custom_domain": true },
+    { "pattern": "ramine.party.ramine.net", "custom_domain": true }
   ],
 
   // 1-minute GC sweep of the live_installs presence registry (expire dead rows +
