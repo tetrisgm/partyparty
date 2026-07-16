@@ -28,7 +28,10 @@ type networkSituation struct {
 	Hotspotting bool   `json:"hotspotting"`
 	LanIP       string `json:"lanIP"`
 	PrimaryURL  string `json:"primaryUrl"`
-	GuestCount  int    `json:"guestCount"`
+	// The permanent guest-facing link (<handle>.party.ramine.net) when it can
+	// work — same rules as urls().Public. The console prefers it for the QR.
+	PublicURL  string `json:"publicUrl,omitempty"`
+	GuestCount int    `json:"guestCount"`
 }
 
 func (s *srv) networkSituation() networkSituation {
@@ -51,8 +54,11 @@ func (s *srv) networkSituation() networkSituation {
 	}
 
 	primaryURL := ""
+	publicURL := ""
 	if lanIP != "" {
-		primaryURL = s.urls().Primary
+		u := s.urls()
+		primaryURL = u.Primary
+		publicURL = u.Public
 	}
 	guestCount := 0
 	if s.Listeners != nil {
@@ -67,6 +73,7 @@ func (s *srv) networkSituation() networkSituation {
 		Hotspotting: hotspotting,
 		LanIP:       lanIP,
 		PrimaryURL:  primaryURL,
+		PublicURL:   publicURL,
 		GuestCount:  guestCount,
 	}
 	ns.Situation = deriveNetworkSituation(ns)

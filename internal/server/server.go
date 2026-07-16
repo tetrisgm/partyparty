@@ -441,10 +441,47 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type urls struct {
 	Primary     string          `json:"primary"`
+	Public      string          `json:"public,omitempty"`
 	IP          string          `json:"ip"`
 	Port        int             `json:"port"`
 	HostnameURL string          `json:"hostnameUrl"`
 	Interfaces  []netinfo.Iface `json:"interfaces"`
+}
+
+// publicPartyURL builds the DJ's permanent guest-facing link — the ONE URL that
+// is their profile when idle and their party when live (<handle>.party.ramine.net,
+// the proxied Worker router). This is what the console shows and the QR encodes;
+// the machine hostname (ramine-live...:8443) stays internal plumbing the router
+// hands guests off to. Empty (caller falls back to the direct machine link) when
+// it cannot work: offline/captive parties (the cloud router is unreachable — the
+// QR must encode the LAN host directly), no handle yet, a handle with dots or
+// underscores (can't form the single-label hostname the router serves), or no
+// activated domain to derive the zone from.
+func publicPartyURL(domain, handle string, captive bool) string {
+	if captive || handle == "" || domain == "" {
+		return ""
+	}
+	for _, r := range handle {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return ""
+		}
+	}
+	// zone = the machine domain minus its first label
+	// (ramine-live.party.ramine.net -> party.ramine.net).
+	i := strings.Index(domain, ".")
+	if i <= 0 || i+1 >= len(domain) {
+		return ""
+	}
+	return "https://" + handle + "." + domain[i+1:] + "/"
+}
+
+// accountHandle is the linked profile's handle from the in-memory account-status
+// cache (primed by the console's /api/account/status poll; sourced online or
+// from the on-disk account cache, so it survives offline). "" until known.
+func (s *srv) accountHandle() string {
+	s.accStatusMu.Lock()
+	defer s.accStatusMu.Unlock()
+	return s.accStatus.status.Profile.Handle
 }
 
 type hotspotStatus struct {
@@ -464,6 +501,7 @@ func (s *srv) urls() urls {
 	if d := s.liveDomain(); d != "" && s.realCert() {
 		return urls{
 			Primary:     fmt.Sprintf("https://%s:%d/", d, s.Config.TLSPort),
+			Public:      publicPartyURL(d, s.accountHandle(), s.Config.Captive),
 			IP:          ip,
 			Port:        s.Config.TLSPort,
 			HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),

@@ -2028,7 +2028,9 @@
     if (!strip) return;
     const linkReady = !!opts.linkReady;
     const plan = guestSetupPlan(info);
-    const guestUrl = (info && info.primaryUrl) || opts.guestUrl || '';
+    // Same preference as the main status render: the permanent link is THE
+    // guest-facing URL; the machine link is the offline/no-handle fallback.
+    const guestUrl = (info && (info.publicUrl || info.primaryUrl)) || opts.guestUrl || '';
     const fallbackGuestCount = Number(opts.guestCount || 0);
     const endpointGuestCount = Number(info && info.guestCount);
     const guestCount = Number.isFinite(endpointGuestCount) ? endpointGuestCount : fallbackGuestCount;
@@ -2173,7 +2175,11 @@
       $('permBtnHint').style.display = showPermButton ? 'block' : 'none';
       updateCapturePermissionUI();
       const secure = s.llhlsRealCert === true;
-      const guestUrl = s.urls.primary;
+      // The permanent link (<handle>.party.ramine.net) is THE guest-facing URL —
+      // profile when idle, this party when live; the router lands local guests on
+      // the machine host invisibly. Absent (offline party / no handle yet) the QR
+      // encodes the direct machine link exactly as before.
+      const guestUrl = s.urls.public || s.urls.primary;
       const linkReady = !!guestUrl && (secure || s.delivery === 'hls');
       const roster = s.roster || [];
       const hotspot = s.hotspot || {};
