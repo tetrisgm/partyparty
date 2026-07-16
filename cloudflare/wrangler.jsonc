@@ -57,5 +57,10 @@
     { "pattern": "party.ramine.net", "custom_domain": true }
   ],
 
+  // 1-minute GC sweep of the live_installs presence registry (expire dead rows +
+  // delete grey slug-host A records orphaned by a crashed Mac). The FIRST cron on
+  // this Worker — correctness lives in the read path; this only keeps R2/DNS tidy.
+  "triggers": { "crons": ["* * * * *"] },
+
   "observability": { "enabled": true }
 }

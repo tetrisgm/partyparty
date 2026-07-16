@@ -25,6 +25,15 @@ const POST_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/media\/([A-Za-z0-9_-]{1
 // from R2 under event/<slug>/. File shapes are pinned so a slug can only reach
 // its own set/cover objects.
 const MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/([a-f0-9]{1,32}\.m4a|[a-f0-9]{1,32}\.peaks\.json|cover\.jpg)$/;
+// Cloud HLS live mirror: the ephemeral rolling window served to REMOTE guests
+// from R2 under event/<slug>/live/. `<x>.m3u8` is the media playlist (no-store,
+// always the live edge); `<x>.ts` are MPEG-TS AAC segments (CDN-cacheable).
+const LIVE_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/live\/([A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.(?:m3u8|ts))$/;
+// The x-pp-file a Mac may write into event/<slug>/live/ — segment or playlist only.
+const LIVE_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.(?:ts|m3u8)$/;
+// Live presence TTL: a heartbeat lands every ~30s, so 90s rides out one dropped
+// beat without the party flickering; a crashed Mac is gone within ~1.5 min.
+const LIVE_PRESENCE_TTL_MS = 90_000;
 const SLUG_RE = /^[A-Za-z0-9_.-]{1,48}$/;
 const SETID_RE = /^[a-f0-9]{1,32}$/;
 const POST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -3659,6 +3668,291 @@ async function authInstall(env, id, secret) {
   return rec;
 }
 
+// writeGreyA upserts ONE grey (DNS-only, never proxied) A record for a full host
+// name to a LAN IP — move-in-place if it drifted, create if absent. Same shape as
+// /api/broker/a; used by the live heartbeat to keep the Mac's slug host current.
+async function writeGreyA(env, name, ip) {
+  const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
+  if (existing && existing.length) {
+    if (existing[0].content !== ip) {
+      await cfDNS(env, "PUT", "/" + existing[0].id, { type: "A", name, content: ip, ttl: 60, proxied: false });
+    }
+  } else {
+    await cfDNS(env, "POST", "", { type: "A", name, content: ip, ttl: 60, proxied: false });
+  }
+}
+
+// deleteGreyA removes every A record for a host — called on /offline and by the
+// cron when a live install vanishes, so a dead Mac's slug host stops resolving.
+async function deleteGreyA(env, name) {
+  const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
+  for (const r of existing || []) await cfDNS(env, "DELETE", "/" + r.id);
+}
+
+// liveClaimant returns the ONE live install that represents a handle right now:
+// most-recent go-live wins, but dj_profiles.primary_install_id (if that install
+// is currently live) overrides — the manual which-Mac tiebreak. null when idle.
+async function liveClaimant(env, handle, now) {
+  if (!env?.DB || !handle) return null;
+  const rows = (await env.DB.prepare(
+    `SELECT install_id, handle, profile_id, public_ip_hash, host, lan_ip, event_slug,
+            dj_name, event_title, listeners, now_playing, live_started_ms, last_seen_ms, expires_ms
+     FROM live_installs WHERE handle=? AND expires_ms>? ORDER BY live_started_ms DESC`
+  ).bind(handle, now).all())?.results || [];
+  if (!rows.length) return null;
+  const profile = await env.DB.prepare(
+    "SELECT primary_install_id FROM dj_profiles WHERE handle=? LIMIT 1"
+  ).bind(handle).first();
+  const primaryId = profile?.primary_install_id || null;
+  if (primaryId) {
+    const pinned = rows.find((r) => r.install_id === primaryId);
+    if (pinned) return pinned;
+  }
+  return rows[0];
+}
+
+// latestEventForProfile finds a DJ's most recent event to link from the idle
+// "no party live right now" page. null when the DJ has no event yet.
+async function latestEventForProfile(env, profileId) {
+  if (!env?.DB || !profileId) return null;
+  const row = await env.DB.prepare(
+    `SELECT slug, title FROM events WHERE dj_profile_id=?
+     ORDER BY COALESCE(last_activity_ms, updated_ms, created_ms, 0) DESC LIMIT 1`
+  ).bind(profileId).first();
+  return row?.slug ? { slug: row.slug, title: row.title || "" } : null;
+}
+
+// handleRouterLabel: if hostname is a single-label subdomain <label>.<BROKER_BASE>
+// that is NOT the apex and NOT a reserved word and IS a clean handle, return that
+// handle (the proxied permanent-link router should handle it). Otherwise null —
+// the apex, reserved labels (www/api/...), and multi-label/dotted names fall
+// through to normal path dispatch. Grey slug hosts never reach here (DNS-only).
+function handleRouterLabel(env, hostname) {
+  const base = String(env?.BROKER_BASE || "").toLowerCase();
+  const host = String(hostname || "").toLowerCase();
+  if (!base || host === base) return null;
+  if (!host.endsWith("." + base)) return null;
+  const label = host.slice(0, host.length - base.length - 1);
+  if (!label || label.includes(".")) return null; // single label only
+  if (RESERVED_HANDLES.has(label)) return null;
+  const handle = normalizeHandle(label);
+  if (!handle || handle !== label) return null; // must already be a clean handle
+  return handle;
+}
+
+// handleRouter serves the proxied permanent link <handle>.party.ramine.net. A
+// proxied request reaching the Worker for this host is inherently REMOTE or IDLE
+// for the LAN — LOCAL guests resolve the grey slug host direct-to-Mac — EXCEPT a
+// public-IP match, which we 302 to that grey slug host (where the tight LAN audio
+// is). Never 302 to a raw LAN IP; only ever to the Mac's own slug host name.
+async function handleRouter(request, env, handle) {
+  const isHead = request.method === "HEAD";
+  const htmlHeaders = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" };
+  const now = nowMs();
+  const claimant = await liveClaimant(env, handle, now);
+  if (claimant) {
+    const guestHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+    if (guestHash && claimant.public_ip_hash && guestHash === claimant.public_ip_hash && claimant.host) {
+      // LOCAL: same egress IP as the live Mac -> hand off to its grey slug host,
+      // where the tight LAN LL-HLS listener lives (Mac LE cert, offline-capable).
+      return new Response(null, {
+        status: 302,
+        headers: { location: `https://${claimant.host}/`, "cache-control": "no-store" },
+      });
+    }
+    // REMOTE: play the cloud mirror a few seconds behind the room.
+    const html = renderRemoteListener({
+      handle,
+      eventSlug: claimant.event_slug || "",
+      djName: claimant.dj_name || "",
+      eventTitle: claimant.event_title || "",
+      nowPlaying: claimant.now_playing || "",
+    });
+    return new Response(isHead ? null : html, { headers: htmlHeaders });
+  }
+  // IDLE: no party live for this handle.
+  const profile = await getProfileByHandle(env, handle);
+  const lastEvent = profile ? await latestEventForProfile(env, profile.id) : null;
+  const html = renderIdleParty({ handle, djName: profile?.display_name || "", lastEvent });
+  return new Response(isHead ? null : html, { headers: htmlHeaders });
+}
+
+// liveMirrorUpload ingests the Mac's cloud HLS mirror into R2 event/<slug>/live/.
+// Header-authed + streamed like publishUpload, with the slug's D1 ownership re-
+// checked on every call. The playlist PUT declares the current window; segments
+// it no longer names are evicted inline (best-effort; the cron is the backstop).
+async function liveMirrorUpload(request, env, pathname) {
+  if (request.method !== "PUT") return jsonResp(405, { error: "PUT required" });
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const id = request.headers.get("x-pp-id") || "";
+  const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
+  if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const slug = request.headers.get("x-pp-slug") || "";
+  const file = request.headers.get("x-pp-file") || "";
+  if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
+  if (!LIVE_FILE_RE.test(file)) return jsonResp(400, { error: "bad file" });
+  const isPlaylistRoute = pathname === "/api/broker/live-playlist";
+  if (isPlaylistRoute !== file.endsWith(".m3u8")) return jsonResp(400, { error: "file/route mismatch" });
+  // Ownership: the slug must be an event this install owns (same gate as publishUpload).
+  const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+  if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not your event" });
+
+  const key = `event/${slug}/live/${file}`;
+  if (isPlaylistRoute) {
+    const cap = 65_536;
+    const cl = Number(request.headers.get("content-length") || "0");
+    if (cl > cap) return jsonResp(413, { error: "too large" });
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > cap) return jsonResp(413, { error: "too large" });
+    await env.DL.put(key, text, { httpMetadata: { contentType: "application/vnd.apple.mpegurl" } });
+    // Inline eviction: delete any .ts under this prefix the current window no
+    // longer references (a grace margin is provided by keeping the whole window).
+    try {
+      const referenced = new Set();
+      for (const line of text.split("\n")) {
+        const t = line.trim();
+        if (t && !t.startsWith("#") && t.endsWith(".ts")) referenced.add(t.split("/").pop());
+      }
+      const list = await env.DL.list({ prefix: `event/${slug}/live/`, limit: 1000 });
+      for (const o of (list.objects || [])) {
+        const base = o.key.split("/").pop();
+        if (base && base.endsWith(".ts") && !referenced.has(base)) await env.DL.delete(o.key);
+      }
+    } catch (e) { /* eviction is best-effort GC — the cron backstop covers crashes */ }
+    return jsonResp(200, { ok: true, key });
+  }
+  // Segment: stream straight into R2, then verify the stored size (a lying
+  // content-length is deleted rather than persisted).
+  const cap = 12_000_000;
+  const cl = Number(request.headers.get("content-length") || "0");
+  if (!cl || cl > cap) return jsonResp(413, { error: "bad size" });
+  const put = await env.DL.put(key, request.body, { httpMetadata: { contentType: "audio/mp2t" } });
+  const size = (put && typeof put.size === "number") ? put.size : cl;
+  if (size > cap) {
+    await env.DL.delete(key);
+    return jsonResp(413, { error: "too large" });
+  }
+  return jsonResp(200, { ok: true, key });
+}
+
+// discover is the unauth same-Wi-Fi auto-discovery read: hash the CALLER's edge
+// IP and return the live parties on that egress IP (Go Live == discoverable, no
+// privacy gate). Text fields are returned raw and HTML-escaped at render, never
+// here. Lightly rate-limited per IP to blunt farming (the IP-scoped read is the
+// real protection — a caller only ever sees parties on its own egress IP).
+async function discover(request, env) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+  }
+  const noStore = { "cache-control": "no-store" };
+  if (!env.DB) return jsonResp(200, { parties: [] }, noStore);
+  const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+  if (await discoverRateLimited(ipHash)) {
+    return jsonResp(429, { error: "slow down", parties: [] }, { ...noStore, "retry-after": "2" });
+  }
+  const now = nowMs();
+  const rows = (await env.DB.prepare(
+    `SELECT host, dj_name, event_title, now_playing, event_slug, handle
+     FROM live_installs WHERE public_ip_hash=? AND expires_ms>? ORDER BY live_started_ms DESC LIMIT 3`
+  ).bind(ipHash, now).all())?.results || [];
+  const parties = rows.map((r) => ({
+    host: r.host || "",
+    handle: r.handle || "",
+    djName: r.dj_name || "",
+    eventTitle: r.event_title || "",
+    nowPlaying: r.now_playing || "",
+  }));
+  return jsonResp(200, { parties }, noStore);
+}
+
+// Coarse per-IP throttle for /api/discover via the edge cache (best-effort; any
+// failure just lets the request through). ~1 request / 2s / egress IP.
+async function discoverRateLimited(ipHash) {
+  try {
+    const cache = caches.default;
+    if (!cache) return false;
+    const key = new Request(`https://ratelimit.partyparty.internal/discover/${ipHash}`);
+    if (await cache.match(key)) return true;
+    await cache.put(key, new Response("1", { headers: { "cache-control": "max-age=2" } }));
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+// renderRemoteListener: the minimal REMOTE guest page. Plain <audio> native HLS
+// off the cloud mirror (locked-phone / background-safe, identical to the LAN
+// path's element), a tap-to-play button, and an honest "a few seconds behind"
+// note. DJ-authored text is HTML-escaped here. Same-origin relative mirror URL.
+function renderRemoteListener({ handle, eventSlug, djName, eventTitle, nowPlaying }) {
+  const who = djName || "@" + handle;
+  const mirror = eventSlug ? `/event/${encodeURIComponent(eventSlug)}/live/live.m3u8` : "";
+  const nowLine = nowPlaying ? `<p class="np">Now playing: ${esc(nowPlaying)}</p>` : "";
+  const player = mirror
+    ? `<audio id="pp-audio" preload="none" playsinline src="${esc(mirror)}"></audio>
+       <button id="pp-play" type="button">Tap to listen</button>
+       <p class="hint">Listening from away — a few seconds behind the room.</p>
+       <script>
+         (function(){
+           var a=document.getElementById('pp-audio'),b=document.getElementById('pp-play');
+           function go(){ a.play().then(function(){ b.textContent='Playing'; b.disabled=true; }).catch(function(){ b.textContent='Tap to listen'; }); }
+           b.addEventListener('click', go);
+         })();
+       </script>`
+    : `<p class="hint">This party is live nearby, but no remote stream is available yet. Join on the same Wi-Fi to listen.</p>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>${esc(eventTitle || who + " — live")}</title>
+<style>
+  :root { color-scheme: dark; }
+  html,body { margin:0; height:100%; background:#0b0b12; color:#f4f4fb; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; gap:14px; box-sizing:border-box; }
+  h1 { margin:0; font-size:26px; }
+  .dj { color:#b9b9d6; margin:0; }
+  .live { display:inline-block; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#ff5da2; border:1px solid #ff5da2; border-radius:999px; padding:3px 10px; }
+  .np { color:#cdcded; margin:2px 0 0; }
+  button { font:inherit; font-weight:600; background:#ff2d87; color:#fff; border:0; border-radius:999px; padding:14px 28px; margin-top:6px; cursor:pointer; }
+  button[disabled] { background:#3a3a52; cursor:default; }
+  .hint { color:#9a9ac0; font-size:14px; max-width:22em; margin:6px 0 0; }
+</style></head>
+<body><div class="wrap">
+  <span class="live">Live now</span>
+  <h1>${esc(eventTitle || who)}</h1>
+  <p class="dj">with ${esc(who)}</p>
+  ${nowLine}
+  ${player}
+</div></body></html>`;
+}
+
+// renderIdleParty: the IDLE page for a handle with no live party. Links the DJ's
+// profile and, when known, their most recent event.
+function renderIdleParty({ handle, djName, lastEvent }) {
+  const who = djName || "@" + handle;
+  const last = lastEvent && lastEvent.slug
+    ? `<p><a class="btn" href="/e/${encodeURIComponent(lastEvent.slug)}">${esc(lastEvent.title || "See the last set")}</a></p>`
+    : "";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>${esc(who)} — no party live right now</title>
+<style>
+  :root { color-scheme: dark; }
+  html,body { margin:0; height:100%; background:#0b0b12; color:#f4f4fb; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; gap:12px; box-sizing:border-box; }
+  h1 { margin:0; font-size:24px; }
+  p { margin:4px 0; color:#b9b9d6; }
+  a.btn { display:inline-block; margin-top:8px; font-weight:600; text-decoration:none; background:#2a2a40; color:#fff; border-radius:999px; padding:12px 24px; }
+  a { color:#ff77b0; }
+</style></head>
+<body><div class="wrap">
+  <h1>No party live right now</h1>
+  <p>${esc(who)} isn't broadcasting at the moment.</p>
+  <p><a class="btn" href="/@${encodeURIComponent(handle)}">Visit ${esc(who)}</a></p>
+  ${last}
+</div></body></html>`;
+}
+
 async function brokerAccountStatus(env, id, rec) {
   if (!env.DB) return jsonResp(503, { error: "account db not configured" });
   const providersAvailable = authProvidersAvailable(env);
@@ -4091,6 +4385,8 @@ function brokerJsonCap(pathname) {
   if (pathname === "/api/broker/link-start") return 2_048;
   if (pathname === "/api/broker/account-status") return 2_048;
   if (pathname === "/api/broker/account-unlink") return 2_048;
+  if (pathname === "/api/broker/live") return 2_048;
+  if (pathname === "/api/broker/offline") return 2_048;
   return 16_384;
 }
 
@@ -4117,6 +4413,11 @@ async function broker(request, env, pathname) {
   }
   if (pathname === "/api/broker/publish-post-media-multipart-complete") {
     return await publishPostMediaMultipartComplete(request, env);
+  }
+  // Cloud HLS live mirror ingest: header-authed + streamed, so (like the publish
+  // uploads) they run BEFORE the POST-only guard and the request.json() parse.
+  if (pathname === "/api/broker/live-segment" || pathname === "/api/broker/live-playlist") {
+    return await liveMirrorUpload(request, env, pathname);
   }
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
@@ -4552,6 +4853,89 @@ async function broker(request, env, pathname) {
     return jsonResp(200, { ok: true, host: name });
   }
 
+  // Live presence heartbeat (~30s while broadcasting). Registers/refreshes the
+  // install's live_installs row and keeps its grey slug-host A record current.
+  // The PUBLIC ip is read from cf-connecting-ip ONLY — never a Mac-supplied value.
+  // handle/display_name are resolved server-side (device_installs -> dj_profiles)
+  // so a party can never claim another handle. This is READ-ONLY w.r.t. events —
+  // it never claims a slug, so it can never 409 against the publish-meta claim.
+  if (pathname === "/api/broker/live") {
+    if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+    const linked = await env.DB.prepare(
+      "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+    ).bind(id).first();
+    if (!linked?.user_id || !linked?.profile_id) {
+      return jsonResp(403, { error: "link this Mac to your account to go live", reason: "not_linked" });
+    }
+    const profile = await env.DB.prepare(
+      "SELECT handle, display_name, primary_install_id FROM dj_profiles WHERE id=? LIMIT 1"
+    ).bind(linked.profile_id).first();
+    const handle = normalizeHandle(profile?.handle || "");
+    if (!handle) return jsonResp(409, { error: "profile has no handle" });
+
+    const publicIpHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+    const lanIp = String(body.lan_ip || "");
+    if (lanIp && !/^\d{1,3}(\.\d{1,3}){3}$/.test(lanIp)) return jsonResp(400, { error: "bad lan_ip" });
+
+    // The grey LAN slug host the Mac serves — resolved server-side, never the
+    // proxied handle name (the handle is a proxied Worker record, never a grey A).
+    label = await ensureBrokerSlug(env, id, rec);
+    const host = `${label}.${env.BROKER_BASE}`;
+
+    // The cloud mirror is uploaded under the install's currently-live event slug;
+    // resolve it so the REMOTE listener page points at the right mirror. Read-only.
+    const liveEvent = await env.DB.prepare(
+      "SELECT slug FROM events WHERE install_id=? AND status='live' ORDER BY COALESCE(live_started_ms, updated_ms, 0) DESC LIMIT 1"
+    ).bind(id).first();
+    const eventSlug = liveEvent?.slug || "";
+
+    const now = nowMs();
+    const expiresMs = now + LIVE_PRESENCE_TTL_MS;
+    await env.DB.prepare(
+      `INSERT INTO live_installs
+         (install_id, handle, profile_id, public_ip_hash, host, lan_ip, event_slug,
+          dj_name, event_title, listeners, now_playing, live_started_ms, last_seen_ms, expires_ms)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12,?13)
+       ON CONFLICT(install_id) DO UPDATE SET
+         handle=?2, profile_id=?3, public_ip_hash=?4, host=?5, lan_ip=?6, event_slug=?7,
+         dj_name=?8, event_title=?9, listeners=?10, now_playing=?11, last_seen_ms=?12, expires_ms=?13`
+    ).bind(
+      id, handle, linked.profile_id, publicIpHash, host, lanIp, eventSlug,
+      clip(profile?.display_name, 120), clip(body.title, 200),
+      Math.max(0, Number(body.listeners) || 0), clip(body.now_playing, 200),
+      now, expiresMs
+    ).run();
+
+    // Keep the LAN slug host's grey A current with the Mac's LAN IP. Best-effort:
+    // a DNS hiccup must never drop the party from discovery/routing.
+    if (lanIp) {
+      try { await writeGreyA(env, host, lanIp); } catch (e) { /* best-effort */ }
+    }
+
+    // Which install represents this handle now (most-recent go-live, primary
+    // override) — tells this Mac whether the router points at it.
+    const claimant = await liveClaimant(env, handle, now);
+    return jsonResp(200, { ok: true, host, claimed: !!(claimant && claimant.install_id === id) });
+  }
+
+  // Clean go-offline (Stop / quit): drop this install's presence immediately and
+  // remove its grey slug-host A record, then recompute the handle's claimant.
+  if (pathname === "/api/broker/offline") {
+    if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+    const row = await env.DB.prepare(
+      "SELECT install_id, handle, host FROM live_installs WHERE install_id=? LIMIT 1"
+    ).bind(id).first();
+    await env.DB.prepare("DELETE FROM live_installs WHERE install_id=?").bind(id).run();
+    // Per-install slug hosts are unique, so dropping this one never strands
+    // another live Mac sharing the handle.
+    if (row?.host && env.CF_DNS_TOKEN && env.CF_ZONE_ID) {
+      try { await deleteGreyA(env, row.host); } catch (e) { /* best-effort */ }
+    }
+    const handle = normalizeHandle(row?.handle || "");
+    const claimant = handle ? await liveClaimant(env, handle, nowMs()) : null;
+    return jsonResp(200, { ok: true, claimed: !!(claimant && claimant.install_id === id) });
+  }
+
   // Debug telemetry: the DJ's Mac snapshots its /api/status here while live so
   // playback problems can be analyzed after the fact (per-listener latency,
   // rate, buffer, delivery, sync spread, the app's log ring). Scoped to the
@@ -4607,7 +4991,20 @@ async function broker(request, env, pathname) {
 
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
+
+    // WILDCARD HOSTNAME ROUTER — before any path dispatch. If the Host is the
+    // proxied permanent link <handle>.party.ramine.net (a single clean handle
+    // label, not the apex, not a reserved word), the root path is a per-handle
+    // router: LOCAL (public-IP match) 302s to the Mac's grey slug host, REMOTE
+    // serves the cloud-mirror page, IDLE serves a "no party live" page. Only the
+    // root is intercepted — every other path (the mirror, /e/<slug>, assets…)
+    // falls through to normal dispatch so it still resolves on the handle host.
+    if (env.DB && pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
+      const routerHandle = handleRouterLabel(env, url.hostname);
+      if (routerHandle) return await handleRouter(request, env, routerHandle);
+    }
 
     // Apple Sign in with Apple domain verification. Served from a secret the
     // owner sets (wrangler secret put APPLE_DOMAIN_ASSOC < the downloaded file)
@@ -4690,6 +5087,15 @@ export default {
       if (!norm) return jsonResp(200, { available: false, reason: "invalid", handle: "" });
       if (RESERVED_HANDLES.has(norm)) return jsonResp(200, { available: false, reason: "reserved", handle: norm });
       return jsonResp(200, { available: await handleAvailable(env, norm), handle: norm });
+    }
+
+    // Same-Wi-Fi auto-discovery: unauth, no privacy gate (Go Live == discoverable).
+    if (pathname === "/api/discover") {
+      try {
+        return await discover(request, env);
+      } catch (e) {
+        return jsonResp(200, { parties: [] }, { "cache-control": "no-store" });
+      }
     }
 
     if (pathname === "/api/version") {
@@ -4991,6 +5397,67 @@ export default {
       return new Response(request.method === "HEAD" ? null : obj.body, { headers: h });
     }
 
+    // Cloud HLS live mirror, from R2 under event/<slug>/live/. The media playlist
+    // is served no-store (guests must always fetch the live edge); .ts segments are
+    // content-addressed by the encoder's sequence, so they're CDN-cacheable +
+    // range-aware and origin reads collapse across many remote listeners.
+    const liveMedia = pathname.match(LIVE_MEDIA_RE);
+    if (liveMedia) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const file = liveMedia[2];
+      const key = `event/${liveMedia[1]}/live/${file}`;
+      const isPlaylist = file.endsWith(".m3u8");
+      const ctype = isPlaylist ? "application/vnd.apple.mpegurl" : "audio/mp2t";
+      if (isPlaylist) {
+        const obj = await env.DL.get(key);
+        if (!obj) return new Response("Not found", { status: 404 });
+        const h = new Headers();
+        h.set("content-type", ctype);
+        h.set("cache-control", "no-store");
+        h.set("etag", obj.httpEtag);
+        return new Response(request.method === "HEAD" ? null : obj.body, { headers: h });
+      }
+      const cache = "public, max-age=30";
+      const rangeHdr = request.headers.get("range");
+      if (rangeHdr) {
+        const head = await env.DL.head(key);
+        if (!head) return new Response("Not found", { status: 404 });
+        const size = head.size;
+        const mm = /^bytes=(\d*)-(\d*)$/.exec(rangeHdr);
+        let start = mm && mm[1] !== "" ? parseInt(mm[1], 10) : NaN;
+        let end = mm && mm[2] !== "" ? parseInt(mm[2], 10) : NaN;
+        if (mm) {
+          if (isNaN(start) && !isNaN(end)) { start = Math.max(0, size - end); end = size - 1; } // bytes=-N suffix
+          else if (!isNaN(start) && isNaN(end)) { end = size - 1; }                              // bytes=N-
+        }
+        if (mm && !isNaN(start) && !isNaN(end) && start <= end && start < size) {
+          end = Math.min(end, size - 1);
+          const obj = await env.DL.get(key, { range: { offset: start, length: end - start + 1 } });
+          if (!obj) return new Response("Not found", { status: 404 });
+          const h = new Headers();
+          h.set("content-type", ctype);
+          h.set("accept-ranges", "bytes");
+          h.set("content-range", `bytes ${start}-${end}/${size}`);
+          h.set("content-length", String(end - start + 1));
+          h.set("cache-control", cache);
+          h.set("etag", obj.httpEtag);
+          return new Response(request.method === "HEAD" ? null : obj.body, { status: 206, headers: h });
+        }
+        // malformed/unsatisfiable range → fall through to whole-object 200
+      }
+      const obj = await env.DL.get(key);
+      if (!obj) return new Response("Not found", { status: 404 });
+      const h = new Headers();
+      obj.writeHttpMetadata(h);
+      h.set("content-type", ctype);
+      h.set("accept-ranges", "bytes");
+      h.set("cache-control", cache);
+      h.set("etag", obj.httpEtag);
+      return new Response(request.method === "HEAD" ? null : obj.body, { headers: h });
+    }
+
     // Published set media (audio + waveform) and the event cover, from R2 under
     // event/<slug>/. Audio is served RANGE-AWARE (206) so <audio> can seek; it's
     // content-addressed by set id, so cache hard.
@@ -5160,5 +5627,31 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
+  },
+
+  // 1-minute cron GC. Correctness lives in the read path (every live_installs
+  // read filters expires_ms>now); this is pure housekeeping: drop expired rows
+  // and delete the grey slug-host A record for any install that vanished without
+  // a clean /offline (a crashed Mac). Best-effort — a failed sweep just retries.
+  async scheduled(event, env, ctx) {
+    try {
+      if (!env.DB) return;
+      const now = nowMs();
+      const expired = (await env.DB.prepare(
+        "SELECT install_id, handle, host FROM live_installs WHERE expires_ms<=?"
+      ).bind(now).all())?.results || [];
+      for (const row of expired) {
+        if (!row.host || !env.CF_DNS_TOKEN || !env.CF_ZONE_ID) continue;
+        // Only drop the A record if no live install still serves this exact host
+        // (per-install slug hosts are unique, so this is effectively always true).
+        const stillLive = await env.DB.prepare(
+          "SELECT install_id FROM live_installs WHERE host=? AND expires_ms>? LIMIT 1"
+        ).bind(row.host, now).first();
+        if (!stillLive) {
+          try { await deleteGreyA(env, row.host); } catch (e) { /* best-effort */ }
+        }
+      }
+      await env.DB.prepare("DELETE FROM live_installs WHERE expires_ms<=?").bind(now).run();
+    } catch (e) { /* best-effort GC — next tick retries */ }
   },
 };

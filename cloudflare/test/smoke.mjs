@@ -43,6 +43,7 @@ class FakeD1 {
     follows = [],
     eventAliases = [],
     handleAliases = [],
+    liveInstalls = [],
   } = {}) {
     this.knownSlug = knownSlug;
     this.homeEvents = homeEvents;
@@ -84,6 +85,7 @@ class FakeD1 {
     this.follows = follows.map((row) => ({ ...row }));
     this.eventAliases = new Map(eventAliases.map((row) => [row.old_slug, { ...row }]));
     this.handleAliases = new Map(handleAliases.map((row) => [row.handle, { ...row }]));
+    this.liveInstalls = new Map(liveInstalls.map((row) => [row.install_id, { ...row }]));
     this.profileActivityBumps = [];
     this.rsvps = new Map();
     for (const row of rsvps) {
@@ -111,6 +113,31 @@ class FakeD1Statement {
 
   async first() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("FROM live_installs WHERE install_id=?")) {
+      const row = this.db.liveInstalls.get(this.args[0]);
+      return row ? { ...row } : null;
+    }
+    if (sql.includes("FROM live_installs WHERE host=?")) {
+      const [host, now] = this.args;
+      const row = [...this.db.liveInstalls.values()].find(
+        (r) => r.host === host && Number(r.expires_ms) > Number(now)
+      );
+      return row ? { ...row } : null;
+    }
+    if (sql.includes("FROM events WHERE install_id=? AND status='live'")) {
+      const installId = this.args[0];
+      const rows = [...this.db.events.values()]
+        .filter((e) => e.install_id === installId && e.status === "live")
+        .sort((a, b) => (Number(b.live_started_ms ?? b.updated_ms ?? 0)) - (Number(a.live_started_ms ?? a.updated_ms ?? 0)));
+      return rows[0] ? { slug: rows[0].slug } : null;
+    }
+    if (sql.includes("FROM events WHERE dj_profile_id=?")) {
+      const profileId = this.args[0];
+      const rows = [...this.db.events.values()]
+        .filter((e) => e.dj_profile_id === profileId)
+        .sort((a, b) => eventActivity(b) - eventActivity(a));
+      return rows[0] ? { slug: rows[0].slug, title: rows[0].title || "" } : null;
+    }
     if (sql.includes("COUNT(*) AS n FROM auth_magic_tokens WHERE request_ip_hash=?")) {
       const [ipHash, sinceMs] = this.args;
       let n = 0;
@@ -307,6 +334,30 @@ class FakeD1Statement {
 
   async all() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("FROM live_installs WHERE handle=?")) {
+      const [handle, now] = this.args;
+      const results = [...this.db.liveInstalls.values()]
+        .filter((r) => r.handle === handle && Number(r.expires_ms) > Number(now))
+        .sort((a, b) => Number(b.live_started_ms) - Number(a.live_started_ms))
+        .map((r) => ({ ...r }));
+      return { results };
+    }
+    if (sql.includes("FROM live_installs WHERE public_ip_hash=?")) {
+      const [ipHash, now] = this.args;
+      const results = [...this.db.liveInstalls.values()]
+        .filter((r) => r.public_ip_hash === ipHash && Number(r.expires_ms) > Number(now))
+        .sort((a, b) => Number(b.live_started_ms) - Number(a.live_started_ms))
+        .slice(0, 3)
+        .map((r) => ({ ...r }));
+      return { results };
+    }
+    if (sql.includes("FROM live_installs WHERE expires_ms<=?")) {
+      const cutoff = Number(this.args[0]);
+      const results = [...this.db.liveInstalls.values()]
+        .filter((r) => Number(r.expires_ms) <= cutoff)
+        .map((r) => ({ install_id: r.install_id, handle: r.handle, host: r.host }));
+      return { results };
+    }
     if (sql.includes("FROM events") && sql.includes("WHERE owner_user_id=?")) {
       const userId = this.args[0];
       return {
@@ -460,6 +511,45 @@ class FakeD1Statement {
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("INSERT INTO live_installs")) {
+      const [
+        installId, handle, profileId, publicIpHash, host, lanIp, eventSlug,
+        djName, eventTitle, listeners, nowPlaying, nowStamp, expiresMs,
+      ] = this.args;
+      const old = this.db.liveInstalls.get(installId);
+      this.db.liveInstalls.set(installId, {
+        install_id: installId,
+        handle,
+        profile_id: profileId,
+        public_ip_hash: publicIpHash,
+        host,
+        lan_ip: lanIp,
+        event_slug: eventSlug,
+        dj_name: djName,
+        event_title: eventTitle,
+        listeners: Number(listeners) || 0,
+        now_playing: nowPlaying,
+        live_started_ms: old ? old.live_started_ms : nowStamp, // set once
+        last_seen_ms: nowStamp,
+        expires_ms: expiresMs,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.includes("DELETE FROM live_installs WHERE install_id=?")) {
+      const existed = this.db.liveInstalls.delete(this.args[0]);
+      return { success: true, meta: { changes: existed ? 1 : 0 } };
+    }
+    if (sql.includes("DELETE FROM live_installs WHERE expires_ms<=?")) {
+      const cutoff = Number(this.args[0]);
+      let changes = 0;
+      for (const [k, r] of [...this.db.liveInstalls.entries()]) {
+        if (Number(r.expires_ms) <= cutoff) {
+          this.db.liveInstalls.delete(k);
+          changes += 1;
+        }
+      }
+      return { success: true, meta: { changes } };
+    }
     if (sql.includes("INSERT INTO follows")) {
       const [userId, profileId, createdMs] = this.args;
       if (this.db.follows.some((f) => f.follower_user_id === userId && f.dj_profile_id === profileId)) {
@@ -1164,8 +1254,16 @@ class FakeR2 {
     this.objects.delete(key);
   }
 
-  async list() {
-    return { objects: [] };
+  async list(opts = {}) {
+    const prefix = opts?.prefix || "";
+    const limit = Number(opts?.limit) || 1000;
+    const objects = [];
+    for (const [key, obj] of this.objects) {
+      if (prefix && !key.startsWith(prefix)) continue;
+      objects.push({ key, size: obj.size, uploaded: new Date(0) });
+      if (objects.length >= limit) break;
+    }
+    return { objects, truncated: false };
   }
 }
 
@@ -1203,6 +1301,37 @@ async function withCloudflareDNSMock(fn) {
     const body = text ? JSON.parse(text) : null;
     calls.push({ method: req.method, url: req.url, body });
     return new Response(JSON.stringify({ success: true, result: req.method === "GET" ? [] : { id: "dns-record" } }), {
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    return await fn(calls);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+}
+
+// Like withCloudflareDNSMock but lets a test preload existing A records so the
+// GET-then-DELETE path (offline / cron A-record cleanup) is actually exercised.
+async function withCloudflareDNSRecords(aRecords, fn) {
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    if (!req.url.startsWith("https://api.cloudflare.com/client/v4/")) {
+      return oldFetch(input, init);
+    }
+    const text = req.method === "GET" ? "" : await req.clone().text();
+    const body = text ? JSON.parse(text) : null;
+    calls.push({ method: req.method, url: req.url, body });
+    let result;
+    if (req.method === "GET") {
+      const isA = req.url.includes("type=A");
+      result = isA ? aRecords : [];
+    } else {
+      result = { id: "dns-record" };
+    }
+    return new Response(JSON.stringify({ success: true, result }), {
       headers: { "content-type": "application/json" },
     });
   };
@@ -4867,6 +4996,299 @@ const tests = [
     assert.match(html, /Confirm your username/);
     assert.match(html, /href="\/welcome"/);
     assert.match(html, /href="\/settings"/);
+  }],
+
+  // ---- Phase 2/3: live presence, discovery, cloud mirror, wildcard router ----
+
+  ["/api/broker/live registers presence, resolves the handle server-side, and writes the grey slug-host A record", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-live", profile_id: "profile-live", revoked_ms: null }],
+      profiles: [{ id: "profile-live", user_id: "user-live", handle: "wave", display_name: "DJ Wave", published: 1 }],
+      events: [{ slug: "rooftop-night", install_id: "abc123abc123", dj_profile_id: "profile-live", status: "live", live_started_ms: 5000 }],
+    });
+    await withCloudflareDNSMock(async (calls) => {
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.50", title: "Rooftop", now_playing: "Opening Track" }),
+      }), makeEnv({ DB: db }));
+      const json = await resp.json();
+      assert.equal(resp.status, 200);
+      assert.equal(json.host, "disco12.party.example.test");
+      assert.equal(json.claimed, true);
+
+      const row = db.liveInstalls.get("abc123abc123");
+      assert.equal(row.handle, "wave");
+      assert.equal(row.dj_name, "DJ Wave");
+      assert.equal(row.event_title, "Rooftop");
+      assert.equal(row.now_playing, "Opening Track");
+      assert.equal(row.host, "disco12.party.example.test");
+      assert.equal(row.lan_ip, "192.168.1.50");
+      assert.equal(row.event_slug, "rooftop-night");
+      // Public IP hash comes from cf-connecting-ip ONLY — never a Mac-supplied value.
+      assert.equal(row.public_ip_hash, await sha256Hex("ip:203.0.113.9"));
+      assert.ok(row.expires_ms > Date.now());
+
+      // Grey A record written for the LOCAL slug host -> lan_ip (never the handle).
+      const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
+      assert.equal(aPost.body.name, "disco12.party.example.test");
+      assert.equal(aPost.body.content, "192.168.1.50");
+      assert.equal(aPost.body.proxied, false);
+    });
+  }],
+
+  ["/api/broker/live refuses an install that is not linked to an account", async () => {
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.50" }),
+    }), makeEnv({ DB: new FakeD1() }));
+    assert.equal(resp.status, 403);
+    assert.equal((await resp.json()).reason, "not_linked");
+  }],
+
+  ["/api/broker/live claimant: most-recent go-live wins; primary_install_id overrides", async () => {
+    const past = Date.now() - 100000;
+    const future = Date.now() + 600000;
+    const makeDb = (primaryInstall) => new FakeD1({
+      deviceInstalls: [
+        { install_id: "abc123abc123", user_id: "user-w", profile_id: "profile-w", revoked_ms: null },
+        { install_id: "def456def456", user_id: "user-w", profile_id: "profile-w", revoked_ms: null },
+      ],
+      profiles: [{ id: "profile-w", user_id: "user-w", handle: "wave", display_name: "Wave", published: 1, primary_install_id: primaryInstall }],
+      liveInstalls: [{
+        install_id: "def456def456", handle: "wave", profile_id: "profile-w",
+        public_ip_hash: "other", host: "groove34.party.example.test", lan_ip: "10.0.0.9",
+        event_slug: "", dj_name: "Wave", event_title: "", listeners: 0, now_playing: "",
+        live_started_ms: past, last_seen_ms: past, expires_ms: future,
+      }],
+    });
+    // No primary pin: abc123 goes live NOW (more recent) -> it is the claimant.
+    await withCloudflareDNSMock(async () => {
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.1" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.7" }),
+      }), makeEnv({ DB: makeDb(null) }));
+      assert.equal((await resp.json()).claimed, true);
+    });
+    // primary_install_id pins the OTHER Mac: abc123 goes live but is NOT the claimant.
+    await withCloudflareDNSMock(async () => {
+      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.1" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.7" }),
+      }), makeEnv({ DB: makeDb("def456def456") }));
+      assert.equal((await resp.json()).claimed, false);
+    });
+  }],
+
+  ["/api/broker/offline drops the presence row and deletes the grey slug-host A record", async () => {
+    const db = new FakeD1({
+      liveInstalls: [{
+        install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
+        public_ip_hash: "h", host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        event_slug: "", dj_name: "Wave", event_title: "", listeners: 0, now_playing: "",
+        live_started_ms: 1000, last_seen_ms: 1000, expires_ms: Date.now() + 60000,
+      }],
+    });
+    await withCloudflareDNSRecords(
+      [{ id: "rec-a", type: "A", name: "disco12.party.example.test", content: "192.168.1.5" }],
+      async (calls) => {
+        const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/offline", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+        }), makeEnv({ DB: db }));
+        assert.equal(resp.status, 200);
+        assert.equal(db.liveInstalls.has("abc123abc123"), false);
+        const del = calls.find((c) => c.method === "DELETE");
+        assert.ok(del, "deletes the A record on clean offline");
+        assert.match(del.url, /\/dns_records\/rec-a$/);
+      }
+    );
+  }],
+
+  ["/api/discover returns live parties on the caller's egress IP only, hiding non-matching + expired rows", async () => {
+    const callerHash = await sha256Hex("ip:203.0.113.20");
+    const future = Date.now() + 60000;
+    const db = new FakeD1({
+      liveInstalls: [
+        {
+          install_id: "abc123abc123", handle: "wave", profile_id: "profile-w", public_ip_hash: callerHash,
+          host: "disco12.party.example.test", lan_ip: "192.168.1.5", event_slug: "s1", dj_name: "DJ Wave",
+          event_title: "Rooftop", listeners: 3, now_playing: "Track A", live_started_ms: 2000, last_seen_ms: 2000, expires_ms: future,
+        },
+        {
+          install_id: "def456def456", handle: "beat", profile_id: "profile-b", public_ip_hash: "someone-else",
+          host: "groove34.party.example.test", lan_ip: "10.0.0.2", event_slug: "s2", dj_name: "DJ Beat",
+          event_title: "Basement", listeners: 0, now_playing: "", live_started_ms: 3000, last_seen_ms: 3000, expires_ms: future,
+        },
+        {
+          install_id: "aaa111aaa111", handle: "stale", profile_id: "profile-s", public_ip_hash: callerHash,
+          host: "vinyl99.party.example.test", lan_ip: "192.168.1.9", event_slug: "s3", dj_name: "DJ Stale",
+          event_title: "Old", listeners: 0, now_playing: "", live_started_ms: 1000, last_seen_ms: 1000, expires_ms: Date.now() - 5000,
+        },
+      ],
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/discover", {
+      headers: { "cf-connecting-ip": "203.0.113.20" },
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get("cache-control"), "no-store");
+    assert.equal(json.parties.length, 1);
+    assert.deepEqual(json.parties[0], {
+      host: "disco12.party.example.test",
+      handle: "wave",
+      djName: "DJ Wave",
+      eventTitle: "Rooftop",
+      nowPlaying: "Track A",
+    });
+  }],
+
+  ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
+    const db = new FakeD1();
+    const env = makeEnv({ DB: db }); // reuse ONE env so R2 state persists across calls
+    // A stale segment the new window will no longer reference.
+    await env.DL.put("event/known-set/live/seg-0.ts", "old", { httpMetadata: { contentType: "audio/mp2t" } });
+
+    const segResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": KNOWN_SLUG, "x-pp-file": "seg-1.ts",
+        "content-length": String(new TextEncoder().encode("tsdata").byteLength),
+      },
+      body: "tsdata",
+    }), env);
+    assert.equal(segResp.status, 200);
+    assert.equal((await segResp.json()).key, "event/known-set/live/seg-1.ts");
+
+    const playlist = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:3\n#EXTINF:3.0,\nseg-1.ts\n";
+    const plResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-playlist", {
+      method: "PUT",
+      headers: { "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": KNOWN_SLUG, "x-pp-file": "live.m3u8" },
+      body: playlist,
+    }), env);
+    assert.equal(plResp.status, 200);
+    // Eviction: seg-0 (out of window) removed; seg-1 (referenced) kept.
+    assert.equal(await env.DL.get("event/known-set/live/seg-0.ts"), null);
+    assert.ok(await env.DL.get("event/known-set/live/seg-1.ts"));
+
+    // Serve the segment: audio/mp2t + CDN-cacheable.
+    const segGet = await worker.fetch(new Request("https://party.ramine.net/event/known-set/live/seg-1.ts"), env);
+    assert.equal(segGet.status, 200);
+    assert.equal(segGet.headers.get("content-type"), "audio/mp2t");
+    assert.match(segGet.headers.get("cache-control"), /max-age=30/);
+
+    // Serve the playlist: mpegurl + no-store (always the live edge).
+    const plGet = await worker.fetch(new Request("https://party.ramine.net/event/known-set/live/live.m3u8"), env);
+    assert.equal(plGet.status, 200);
+    assert.equal(plGet.headers.get("content-type"), "application/vnd.apple.mpegurl");
+    assert.equal(plGet.headers.get("cache-control"), "no-store");
+    assert.match(await plGet.text(), /seg-1\.ts/);
+  }],
+
+  ["live mirror ingest rejects a slug the install does not own", async () => {
+    const env = makeEnv({ DB: new FakeD1() });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+      method: "PUT",
+      headers: { "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "not-mine", "x-pp-file": "seg-1.ts" },
+      body: "tsdata",
+    }), env);
+    assert.equal(resp.status, 403);
+    assert.equal((await resp.json()).error, "not your event");
+  }],
+
+  ["wildcard router: serves the cloud-mirror REMOTE page when live and the guest is off-LAN", async () => {
+    const db = new FakeD1({
+      liveInstalls: [{
+        install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
+        public_ip_hash: await sha256Hex("ip:198.51.100.7"), host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 4, now_playing: "Track Z",
+        live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
+      }],
+    });
+    // Guest on a DIFFERENT public IP than the Mac -> REMOTE cloud-mirror page.
+    const resp = await worker.fetch(new Request("https://wave.party.example.test/", {
+      headers: { "cf-connecting-ip": "203.0.113.200" },
+    }), makeEnv({ DB: db }));
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get("content-type"), "text/html; charset=utf-8");
+    assert.match(html, /\/event\/rooftop-night\/live\/live\.m3u8/);
+    assert.match(html, /DJ Wave/);
+    assert.match(html, /Track Z/);
+  }],
+
+  ["wildcard router: 302s a same-Wi-Fi (public-IP match) guest to the Mac's grey slug host", async () => {
+    const db = new FakeD1({
+      liveInstalls: [{
+        install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
+        public_ip_hash: await sha256Hex("ip:198.51.100.7"), host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 4, now_playing: "",
+        live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
+      }],
+    });
+    const resp = await worker.fetch(new Request("https://wave.party.example.test/", {
+      headers: { "cf-connecting-ip": "198.51.100.7" },
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 302);
+    assert.equal(resp.headers.get("location"), "https://disco12.party.example.test/");
+  }],
+
+  ["wildcard router: IDLE page when no party is live, and reserved labels are not handles", async () => {
+    const db = new FakeD1({
+      profiles: [{ id: "profile-w", user_id: "user-w", handle: "wave", display_name: "DJ Wave", published: 1 }],
+      events: [{ slug: "past-set", install_id: "abc123abc123", dj_profile_id: "profile-w", status: "replay", title: "Last Rooftop", last_activity_ms: 5000 }],
+    });
+    const idle = await worker.fetch(new Request("https://wave.party.example.test/", {
+      headers: { "cf-connecting-ip": "203.0.113.5" },
+    }), makeEnv({ DB: db }));
+    const html = await idle.text();
+    assert.equal(idle.status, 200);
+    assert.match(html, /No party live right now/);
+    assert.match(html, /\/@wave/);
+    assert.match(html, /\/e\/past-set/);
+
+    // A reserved label ("www") is NOT a handle -> falls through to the landing asset.
+    const reserved = await worker.fetch(new Request("https://www.party.example.test/", {
+      headers: { "cf-connecting-ip": "203.0.113.5" },
+    }), makeEnv({ DB: db, assetBody: "landing-page" }));
+    const body = await reserved.text();
+    assert.equal(reserved.status, 200);
+    assert.equal(body, "landing-page");
+    assert.doesNotMatch(body, /No party live/);
+  }],
+
+  ["scheduled cron GC expires dead rows and deletes orphaned grey A records", async () => {
+    const db = new FakeD1({
+      liveInstalls: [
+        {
+          install_id: "abc123abc123", handle: "wave", profile_id: "p", public_ip_hash: "h",
+          host: "disco12.party.example.test", lan_ip: "192.168.1.5", event_slug: "", dj_name: "", event_title: "",
+          listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() - 5000,
+        },
+        {
+          install_id: "def456def456", handle: "beat", profile_id: "p2", public_ip_hash: "h2",
+          host: "groove34.party.example.test", lan_ip: "10.0.0.2", event_slug: "", dj_name: "", event_title: "",
+          listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() + 60000,
+        },
+      ],
+    });
+    await withCloudflareDNSRecords(
+      [{ id: "rec-dead", type: "A", name: "disco12.party.example.test", content: "192.168.1.5" }],
+      async (calls) => {
+        await worker.scheduled({}, makeEnv({ DB: db }), { waitUntil() {} });
+        // Expired row swept; the still-live row is untouched.
+        assert.equal(db.liveInstalls.has("abc123abc123"), false);
+        assert.equal(db.liveInstalls.has("def456def456"), true);
+        // The dead Mac's orphaned slug-host A record is deleted.
+        const del = calls.find((c) => c.method === "DELETE");
+        assert.ok(del, "deletes the orphaned A record");
+        assert.match(del.url, /rec-dead$/);
+      }
+    );
   }],
 ];
 
