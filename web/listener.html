@@ -1014,6 +1014,11 @@
         guestAvatars.appendChild(a);
       }
     }
+    // Current-track text for the listen-bar hint. Declared in THIS (outer) scope
+    // because applyBtnHint runs here; renderTrackID (an inner scope) writes it.
+    // (Reaching into the inner-scope currentTrack from here throws a ReferenceError
+    // and silently broke the play button — never do that.)
+    let npHintText = '';
     function setPlayingUI(on){
       document.body.classList.toggle('playing', on);
       ico.textContent = on ? '❚❚' : '►';
@@ -1026,9 +1031,8 @@
     function applyBtnHint(){
       if (!btnHint) return;
       const on = document.body.classList.contains('playing');
-      const np = (currentTrack && currentTrack.title && featureOn('trackId')) ? trackText(currentTrack) : '';
-      btnHint.textContent = on ? (np || 'Audio stays on with screen locked')
-                               : (live ? (np || 'Low-latency party audio') : 'The DJ has not started yet');
+      btnHint.textContent = on ? (npHintText || 'Audio stays on with screen locked')
+                               : (live ? (npHintText || 'Low-latency party audio') : 'The DJ has not started yet');
     }
 
     // Pause = MUTE, not stop: the stream keeps playing at the live/room position
@@ -2260,6 +2264,7 @@
       }
       function renderTrackID(nowPlaying){
         currentTrack = (featureOn('trackId') && nowPlaying && nowPlaying.title) ? nowPlaying : null;
+        npHintText = currentTrack ? trackText(currentTrack) : '';
         applyBtnHint(); // the current track shows in the listen bar, under "Tap to listen"
       }
       reactionBar.addEventListener('click', async (e) => {
