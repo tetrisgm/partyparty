@@ -34,6 +34,13 @@ type Config struct {
 	KeyFile     string
 	LiveHost    string // Plex-style low-latency host (auto cert + A record via Cloudflare); "" = off
 
+	// CloudMirror enables the cloud HLS mirror for remote (off-LAN) guests: a
+	// third, ISOLATED HLS tee leg (stream-copy, onfail=ignore+use_fifo=1) writes
+	// a plain-HLS copy to a scratch dir that internal/livemirror ships to R2 via
+	// the broker. Off by default — a build with it off behaves exactly as today
+	// and the LAN/RTSP leg is never touched.
+	CloudMirror bool
+
 	// LL-HLS tuning (MediaMTX). Defaults tuned for iPhone stability.
 	PartDur  string // EXT-X-PART duration, e.g. "350ms"
 	SegDur   string // HLS segment duration, e.g. "1s"
@@ -77,6 +84,7 @@ func Parse() Config {
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")
+	flag.BoolVar(&c.CloudMirror, "cloud-mirror", env("PARTYPARTY_CLOUD_MIRROR", "") == "1", "mirror the live set to the cloud (R2 via the broker) for remote guests — adds an isolated stream-copy HLS tee leg + uploader; off = LAN-only, exactly as today")
 	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "500ms"), "LL-HLS part duration (Precise room profile: fine parts halve the start-position quantization and drop PART-HOLD-BACK to ~1.3s, growing the EXT-X-START pin's honor margin)")
 	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "1s"), "LL-HLS segment duration (1s puts the -3s room pin at the RFC 8216 three-target-duration boundary instead of inside the discouraged zone)")
 	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 24), "LL-HLS segments kept in the playlist (window seconds at 1s segments). The window must comfortably EXCEED where devices actually sit plus the drift watchdog's reach — the 2026-07-15 party field-disproved the 12s 'failure budget': native starts open DEEP (guests ran 5-10s behind, not near the 3s target), so a 12s window left the deepest phone ~1.6s from the back edge, it fell off the back on every hiccup, and since the drift watchdog fires at target+8s=11s (past a 12s edge) it had no room to recover — the phone went SILENT instead of audible-but-late. 24s clears the 11s watchdog trigger with margin; the watchdog now bounds worst-case drift, so the window is a safety net, not the cap.")

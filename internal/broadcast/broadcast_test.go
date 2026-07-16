@@ -376,6 +376,86 @@ func TestOptionsOverridesAndDefaults(t *testing.T) {
 	waitForState(t, b, "idle", 3*time.Second)
 }
 
+// teeArg returns the single "-f tee" output-spec string buildArgs produced (it
+// is always the final arg, right after "-map 0:a").
+func teeArg(t *testing.T, args []string) string {
+	t.Helper()
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "tee" && args[i-1] == "-f" {
+			return args[len(args)-1]
+		}
+	}
+	t.Fatalf("no -f tee leg in args: %v", args)
+	return ""
+}
+
+const rtspLeg = "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]rtsp://127.0.0.1:8554/party"
+
+// TestBuildArgsMirrorLeg pins the critical-safety contract: the cloud-mirror
+// tee leg is present ONLY when a mirror dir is configured, it never alters the
+// LAN RTSP leg or the record leg, and it carries the exact isolation flags
+// (onfail=ignore + use_fifo=1) that keep a slow/dead cloud upload from ever
+// back-pressuring the live LAN stream.
+func TestBuildArgsMirrorLeg(t *testing.T) {
+	b := New(testCfg("ffmpeg"), t.TempDir(), "", "rtsp://127.0.0.1:8554/party")
+	base := argSnap{bitrate: "320k", channels: 2, hlsTime: 1, delivery: "llhls"}
+
+	// Mirror OFF: exactly the RTSP leg, no HLS leg — byte-for-byte as today.
+	off := teeArg(t, b.buildArgs("test", 48000, 2, base))
+	if off != rtspLeg {
+		t.Fatalf("mirror-off tee = %q, want exactly the RTSP leg %q", off, rtspLeg)
+	}
+	if strings.Contains(off, "f=hls") {
+		t.Fatalf("mirror-off tee must not contain an HLS leg: %q", off)
+	}
+
+	// Mirror OFF + record: RTSP leg then the ADTS record leg, still no HLS leg.
+	rec := base
+	rec.recordPath = "/tmp/set.aac"
+	offRec := teeArg(t, b.buildArgs("test", 48000, 2, rec))
+	if offRec != rtspLeg+"|[f=adts:onfail=ignore]/tmp/set.aac" {
+		t.Fatalf("mirror-off record tee = %q", offRec)
+	}
+
+	// Mirror ON: RTSP leg UNCHANGED, plus the isolated HLS leg → <dir>/live.m3u8.
+	on := base
+	on.mirrorDir = "/scratch/livemirror"
+	got := teeArg(t, b.buildArgs("test", 48000, 2, on))
+	wantHLS := "[f=hls:hls_time=3:hls_list_size=8:hls_flags=delete_segments+omit_endlist:hls_segment_type=mpegts:onfail=ignore:use_fifo=1]/scratch/livemirror/live.m3u8"
+	if got != rtspLeg+"|"+wantHLS {
+		t.Fatalf("mirror-on tee = %q, want RTSP leg + %q", got, wantHLS)
+	}
+	if !strings.HasPrefix(got, rtspLeg+"|") {
+		t.Fatalf("mirror-on tee must keep the RTSP leg first and unchanged: %q", got)
+	}
+
+	// Mirror ON + record: legs stay in order rtsp | adts | hls.
+	both := rec
+	both.mirrorDir = "/scratch/livemirror"
+	gotBoth := teeArg(t, b.buildArgs("test", 48000, 2, both))
+	wantBoth := rtspLeg + "|[f=adts:onfail=ignore]/tmp/set.aac|" + wantHLS
+	if gotBoth != wantBoth {
+		t.Fatalf("mirror-on+record tee = %q, want %q", gotBoth, wantBoth)
+	}
+}
+
+// TestSetMirrorDirFlowsToArgs verifies SetMirrorDir is what the live Start path
+// snapshots into the tee — the on/off toggle the --cloud-mirror flag drives.
+func TestSetMirrorDirFlowsToArgs(t *testing.T) {
+	b, _, _ := newTestBroadcaster(t)
+	if b.MirrorDir() != "" {
+		t.Fatalf("fresh broadcaster mirror dir = %q, want empty", b.MirrorDir())
+	}
+	b.SetMirrorDir("/scratch/live")
+	if b.MirrorDir() != "/scratch/live" {
+		t.Fatalf("mirror dir = %q, want /scratch/live", b.MirrorDir())
+	}
+	snap := argSnap{bitrate: "320k", channels: 2, hlsTime: 1, delivery: "llhls", mirrorDir: b.MirrorDir()}
+	if tee := teeArg(t, b.buildArgs("test", 48000, 2, snap)); !strings.Contains(tee, "/scratch/live/live.m3u8") {
+		t.Fatalf("tee missing the configured mirror playlist: %q", tee)
+	}
+}
+
 func TestCleanRunDir(t *testing.T) {
 	dir := t.TempDir()
 	b := New(testCfg("ffmpeg"), dir, "", "")

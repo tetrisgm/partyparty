@@ -64,6 +64,7 @@ type Broadcaster struct {
 	channels   int     // active channel count (1 mono, 2 stereo)
 	hlsTime    float64 // active segment length in seconds
 	delivery   string  // active delivery mode: llhls | hls
+	mirrorDir  string  // cloud-mirror scratch dir; "" = mirror off (no third tee leg)
 	startedAt  time.Time
 	lastError  string
 	captureUp  bool // this generation's tap actually announced a FORMAT (capture works — so an ffmpeg death is NOT a permission problem)
@@ -127,6 +128,27 @@ func (b *Broadcaster) Delivery() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.delivery
+}
+
+// SetMirrorDir configures (or clears) the cloud-mirror scratch directory. When
+// set, every subsequent Start adds an ISOLATED third HLS tee leg (stream-copy
+// of the already-encoded AAC, onfail=ignore+use_fifo=1) writing live.m3u8 +
+// segments into dir — the source internal/livemirror ships to the cloud. "" (the
+// default) means no mirror leg, so the pipeline is byte-for-byte what it is
+// today. Set once at startup, before any broadcast. The mirror leg's failure is
+// fully non-fatal: onfail=ignore isolates it exactly like the recording leg, so
+// a slow or dead cloud upload can never back-pressure or kill the LAN RTSP leg.
+func (b *Broadcaster) SetMirrorDir(dir string) {
+	b.mu.Lock()
+	b.mirrorDir = dir
+	b.mu.Unlock()
+}
+
+// MirrorDir reports the configured cloud-mirror scratch directory ("" = off).
+func (b *Broadcaster) MirrorDir() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.mirrorDir
 }
 
 // SystemAudioAvailable reports whether the "mac" source can be used.
@@ -354,6 +376,7 @@ type argSnap struct {
 	hlsTime    float64
 	delivery   string
 	recordPath string
+	mirrorDir  string // cloud-mirror scratch dir; "" = no third tee leg
 }
 
 func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) []string {
@@ -398,6 +421,17 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	tee := "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]" + b.ingestURL
 	if snap.recordPath != "" {
 		tee += "|[f=adts:onfail=ignore]" + snap.recordPath
+	}
+	// Optional THIRD leg — the cloud mirror for remote guests. Stream-copies the
+	// SAME already-encoded AAC (no second encode) into a plain-HLS playlist in a
+	// scratch dir that internal/livemirror ships to R2. It carries the identical
+	// isolation the recording leg relies on — onfail=ignore + use_fifo=1 — so a
+	// slow or failing cloud upload draining this FIFO can NEVER back-pressure or
+	// break the LAN RTSP leg above. Only present when a mirror dir is configured;
+	// with the mirror off this whole clause is skipped and the tee is exactly the
+	// RTSP (+ optional record) legs it is today.
+	if snap.mirrorDir != "" {
+		tee += "|[f=hls:hls_time=3:hls_list_size=8:hls_flags=delete_segments+omit_endlist:hls_segment_type=mpegts:onfail=ignore:use_fifo=1]" + filepath.Join(snap.mirrorDir, "live.m3u8")
 	}
 	args = append(args, "-f", "tee", "-map", "0:a", tee)
 	return args
@@ -496,7 +530,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 
 	// Snapshot the mutable encode settings while we still hold the lock —
 	// buildArgs runs later, outside it, and must not race SetDelivery/Start.
-	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery, recordPath: opts.RecordPath}
+	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery, recordPath: opts.RecordPath, mirrorDir: b.mirrorDir}
 
 	var helper *exec.Cmd
 	var pr, pw *os.File
