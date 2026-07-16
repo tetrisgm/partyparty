@@ -196,3 +196,40 @@ Confirmed by dig: `party.ramine.net` is **not** its own zone, so `ramine.net`'s 
 - Include now_playing / track in the banner? → Yes, optional. Pull now_playing from the same status snapshot the Mac already has so the banner can read 'Join <DJ> — <track>'; keep it nullable and HTML-escaped. It measurably raises 'is this really my party' confidence at zero extra plumbing.
 
 **Risks:** CGNAT / shared carrier NAT: strangers behind the same public IP would see each other's party. Accepted per the no-privacy-fuss directive, but label the banner softly ('a party may be on this Wi-Fi') and keep QR/paste as the precise path; a coarse ASN/city second signal can tighten it later if needed.; NAT/protocol mismatch causes silent misses: guest on IPv6 while the Mac heartbeats over IPv4 (or a guest-VLAN that egresses a different public IP than the Mac) yields non-matching hashes and no discovery, even on the same physical Wi-Fi. This fails closed and is covered by the QR/paste fallback, but it means auto-discovery is best-effort, not guaranteed.; XSS via DJ-authored title/now_playing rendered into the guest banner — must be HTML-escaped on output (the codebase already has esc()).; Impersonation if the handle were client-supplied — mitigated by resolving handle/display_name server-side from device_installs→dj_profiles, never from the check-in body.; Presence staleness on a hard crash for up to the 90s TTL; mitigated by the read-time expiry filter and the explicit offline-delete on clean stop.; By design there is NO opt-out: clicking Go Live makes the party discoverable to anyone sharing the egress IP. This is the intended behavior, but it is the one property to keep in mind if the privacy stance ever changes.
+
+## Addendum (2026-07-16, field-driven): discovery/routing is LAN-probe-based, not IP-match-based
+
+The predicted "NAT/protocol mismatch causes silent misses" risk was confirmed at the
+FIRST real party: a guest iPhone on the DJ's Wi-Fi showed Cloudflare a different
+public IP than the DJ's Mac (iCloud Private Relay / carrier NAT / v4-v6 split), so
+neither party.ramine.net nor <handle>.party.ramine.net matched. The QR (direct LAN
+host) worked — which is also the proof of the replacement mechanism.
+
+**Mechanism now:** the join page / landing ships the live party's LAN URL
+(https://<slug>.party.ramine.net:<port>/) and the BROWSER probes it: a no-cors
+HTTPS fetch resolves iff the guest can reach the Mac's private LAN IP presenting a
+valid cert for that exact hostname — authenticated proof of being on the party's
+Wi-Fi. Reachable → tight LAN room; not → cloud mirror + a manual "tap to join"
+link. /api/discover returns live parties globally (IP only reorders as a hint);
+the probe is the gate, not the IP. Adversarially reviewed (3 lenses, no blockers):
+Apple confirms Private Relay never proxies local-network connections, and a
+subresource TLS name-mismatch hard-fails with no interstitial, so same-private-IP
+strangers can't false-positive.
+
+**Staged probe UX:** show the cloud player after 3s (never block on a slow probe),
+keep probing to 12s (Chrome 142+ shows a local-network permission prompt that needs
+time); late LAN success auto-jumps unless audio already started (then an inline
+"switch to the live room" upgrade link).
+
+**Known dead zones (fail closed to the cloud mirror; manual link remains):**
+- Chromium local-network permission denied/ignored → probe false-negative; the
+  manual link (top-level navigation, exempt) still joins. The Go server answers
+  PNA preflights (Access-Control-Allow-Private-Network) for older Chromium.
+- Router DNS-rebind protection (Fritz!Box default, some resolvers) strips public
+  DNS answers pointing at RFC1918 → name won't resolve on that venue LAN at all
+  (also breaks the QR path). DJ remedy: allowlist party.ramine.net in the router.
+- AP/client isolation or guest VLANs block station-to-station traffic → probe
+  fails, but so would the LAN audio; the mirror is the correct outcome.
+- The probe (like the QR) is load-bearing on the Mac's :<port> cert being valid,
+  unexpired, and name-matching — a cert-provisioning gap silently degrades every
+  on-LAN guest to the mirror. Cert health belongs in go-live health checks.

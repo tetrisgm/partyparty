@@ -242,7 +242,10 @@
       let shown = false;
       parties.forEach(p => {
         if (!p.joinUrl) return;
-        ppProbe(p.joinUrl, 3000).then(ok => { if (ok && !shown) { shown = true; ppShowParty(p); } });
+        // 12s window: Chrome's local-network permission prompt and congested
+        // venue Wi-Fi can stall the probe well past a snappy timeout; the banner
+        // simply appears whenever a party proves reachable, so patience is free.
+        ppProbe(p.joinUrl, 12000).then(ok => { if (ok && !shown) { shown = true; ppShowParty(p); } });
       });
     })
     .catch(() => {});

@@ -3839,11 +3839,15 @@ async function liveMirrorUpload(request, env, pathname) {
   return jsonResp(200, { ok: true, key });
 }
 
-// discover is the unauth same-Wi-Fi auto-discovery read: hash the CALLER's edge
-// IP and return the live parties on that egress IP (Go Live == discoverable, no
-// privacy gate). Text fields are returned raw and HTML-escaped at render, never
-// here. Lightly rate-limited per IP to blunt farming (the IP-scoped read is the
-// real protection — a caller only ever sees parties on its own egress IP).
+// discover is the unauth auto-discovery read. It is GLOBAL by design: it returns
+// up to 8 currently-live parties to ANY caller — the caller's egress IP only
+// REORDERS (IP-matched first as a likely-local hint), it never filters. The
+// client then probes each joinUrl; only a party whose LAN host answers with its
+// valid cert (proof of being on that Wi-Fi) is ever surfaced/joined. Cloud
+// IP-matching cannot be the gate: Private Relay/CGNAT give phones a different
+// public IP than the DJ's Mac on the SAME network. Go Live == discoverable (no
+// privacy gate); dj_name/title/now_playing are public-by-broadcast, returned raw
+// and HTML-escaped at render. Lightly rate-limited per IP to blunt farming.
 async function discover(request, env) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
@@ -3914,6 +3918,11 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
   const lanTap = lanUrl
     ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl)}">On ${esc(who)}'s Wi-Fi? Tap to join the live room &rarr;</a></p>`
     : "";
+  // Late-probe upgrade: shown when the LAN becomes reachable AFTER the guest
+  // already started the mirror — offer the switch instead of yanking playback.
+  const lanUpgrade = lanUrl
+    ? `<p class="tap upgrade" id="pp-upgrade" hidden>You're on the party Wi-Fi — <a href="${esc(lanUrl)}">switch to the live room &rarr;</a></p>`
+    : "";
   const remoteInner = mirror
     ? `<audio id="pp-audio" preload="none" playsinline src="${esc(mirror)}"></audio>
        <button id="pp-play" type="button">Tap to listen</button>
@@ -3935,6 +3944,7 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
   button[disabled] { background:#3a3a52; cursor:default; }
   .hint { color:#9a9ac0; font-size:14px; max-width:22em; margin:6px 0 0; }
   .tap { margin:10px 0 0; } .tap a { color:#ff77b0; font-weight:600; text-decoration:none; }
+  .upgrade { background:#1d1d30; border:1px solid #ff2d87; border-radius:12px; padding:10px 16px; }
   .spin { width:26px; height:26px; border-radius:50%; border:3px solid #2a2a40; border-top-color:#ff2d87; animation:sp 0.9s linear infinite; }
   @keyframes sp { to { transform:rotate(360deg); } }
   @media(prefers-reduced-motion:reduce){ .spin{ animation:none; } }
@@ -3950,23 +3960,31 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
     <p class="hint">Looking for the party on this Wi-Fi&hellip;</p>
   </div>
   <div id="pp-remote" hidden>${remoteInner}</div>
+  ${lanUpgrade}
   ${lanTap}
-  <noscript><p class="hint">Enable JavaScript, or use the link above if you're at the party.</p></noscript>
+  <noscript>
+    <style>#pp-connecting{display:none}#pp-remote{display:block !important}</style>
+    ${lanUrl ? `<p class="hint">If you're at the party, use the link above.</p>` : ""}
+  </noscript>
 </div>
 <script>
 (function(){
-  var LAN=${JSON.stringify(lanUrl || "")};
+  var LAN=${JSON.stringify(lanUrl || "").replace(/</g, "\\u003c")};
+  var SOFT_MS=3000, PROBE_MS=12000; // soft: stop blocking the page; probe: allow Chrome's local-network permission prompt
   var connecting=document.getElementById('pp-connecting');
   var remote=document.getElementById('pp-remote');
+  var audioStarted=false, remoteShown=false;
   function showRemote(){
+    if(remoteShown) return; remoteShown=true;
     if(connecting) connecting.hidden=true;
     if(remote) remote.hidden=false;
     var a=document.getElementById('pp-audio'), b=document.getElementById('pp-play');
-    if(a&&b){ b.addEventListener('click',function(){ a.play().then(function(){ b.textContent='Playing'; b.disabled=true; }).catch(function(){ b.textContent='Tap to listen'; }); }); }
+    if(a&&b){ b.addEventListener('click',function(){ audioStarted=true; a.play().then(function(){ b.textContent='Playing'; b.disabled=true; }).catch(function(){ b.textContent='Tap to listen'; }); }); }
   }
   if(!LAN){ showRemote(); return; }
   // Authenticated LAN reachability probe: resolves iff we can reach the DJ's Mac
-  // on this network with its valid cert. no-cors so we need no CORS from the Mac.
+  // on this network with its valid cert (TLS name-match is the anti-spoof gate).
+  // no-cors so the Mac needs no CORS; connection/TLS failure or timeout = false.
   function probe(url,ms){
     return new Promise(function(resolve){
       var done=false, ctrl=new AbortController();
@@ -3976,7 +3994,18 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
         .catch(function(){ if(!done){done=true; clearTimeout(t); resolve(false);} });
     });
   }
-  probe(LAN,3000).then(function(local){ if(local){ location.replace(LAN); } else { showRemote(); } });
+  // Staged: after SOFT_MS show the remote player (nobody stares at a spinner —
+  // Chrome's local-network prompt or congested venue Wi-Fi can stall the probe),
+  // but keep probing to PROBE_MS. Late LAN success: jump if the guest hasn't
+  // engaged yet, otherwise offer the switch without interrupting playback.
+  var soft=setTimeout(showRemote, SOFT_MS);
+  probe(LAN,PROBE_MS).then(function(local){
+    clearTimeout(soft);
+    if(!local){ showRemote(); return; }
+    if(!audioStarted){ location.replace(LAN); return; }
+    var up=document.getElementById('pp-upgrade');
+    if(up) up.hidden=false;
+  });
 })();
 </script>
 </body></html>`;

@@ -375,6 +375,21 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.captiveProbe(w, r) {
 		return
 	}
+	// Private Network Access preflight (Chromium): the cloud join page probes this
+	// LAN host from a public origin to prove the guest is on the party's Wi-Fi.
+	// Chromium may preflight such public→private requests; answering with
+	// Allow-Private-Network keeps the probe (and any future PNA-gated fetch) from
+	// false-negativing an on-LAN guest. Read-only, no credentials — allowing any
+	// origin is safe here.
+	if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+		h := w.Header()
+		h.Set("Access-Control-Allow-Origin", "*")
+		h.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+		h.Set("Access-Control-Allow-Private-Network", "true")
+		h.Set("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	p := r.URL.Path
 	switch {
 	case p == "/":
