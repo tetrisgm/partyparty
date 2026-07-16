@@ -32,6 +32,7 @@ import (
 	"partyparty/internal/diag"
 	"partyparty/internal/dnsd"
 	"partyparty/internal/event"
+	"partyparty/internal/livemirror"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
 	"partyparty/internal/ota"
@@ -109,6 +110,157 @@ func telemetryLoop(port int, bc *broadcast.Broadcaster) {
 			r.Body.Close()
 		}
 	}
+}
+
+// brokerBase resolves the broker URL (PARTYPARTY_BROKER, else the prod default),
+// matching every other broker call in this file.
+func brokerBase() string {
+	if base := os.Getenv("PARTYPARTY_BROKER"); base != "" {
+		return base
+	}
+	return "https://party.ramine.net"
+}
+
+// liveCheckinLoop is the auto-discovery presence heartbeat: while broadcasting,
+// POST /api/broker/live every 30s with {id, secret, lan_ip, title, now_playing}
+// so the broker can match guests on the same public IP to this party. On the
+// live->idle edge it posts /api/broker/offline so a clean stop removes the party
+// instantly (the broker's TTL is only the crash backstop). A sibling to
+// telemetryLoop but NOT gated on PARTYPARTY_TELEMETRY — discovery must not hinge
+// on a debug toggle. Best-effort throughout: every call is logged, none blocks
+// the broadcast, and the endpoints may 404 until the Worker side ships.
+func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger) {
+	if appVersion == "dev" {
+		return // dev/`go run` must not advertise the install's cloud namespace
+	}
+	id, secret := activate.InstallCreds()
+	if id == "" {
+		return // never registered — nothing to authenticate with
+	}
+	base := brokerBase()
+	cl := &http.Client{Timeout: 10 * time.Second}
+	logf := func(format string, args ...any) {
+		if dl != nil {
+			dl.Printf(format, args...)
+		}
+	}
+	wasLive := false
+	var lastBeat time.Time
+	for {
+		// Poll faster than the 30s heartbeat so the live->idle edge (a Stop that
+		// doesn't quit the app) drops presence promptly; the beat itself is still
+		// rate-limited to ~30s below.
+		time.Sleep(5 * time.Second)
+		live := bc.Status().State == "live"
+		switch {
+		case live:
+			if wasLive && time.Since(lastBeat) < 30*time.Second {
+				continue // not due yet
+			}
+			title, nowPlaying := "", ""
+			if events != nil {
+				title = events.Meta().Title
+				nowPlaying = liveNowPlaying(events)
+			}
+			body, _ := json.Marshal(map[string]any{
+				"id": id, "secret": secret,
+				"lan_ip":      netinfo.PrimaryLanIP(),
+				"title":       title,
+				"now_playing": nowPlaying,
+			})
+			if r, err := cl.Post(base+"/api/broker/live", "application/json", bytes.NewReader(body)); err == nil {
+				r.Body.Close()
+			} else {
+				logf("live check-in failed: %v", err)
+			}
+			lastBeat = time.Now()
+			wasLive = true
+		case wasLive:
+			postLiveOffline(base, id, secret, cl, logf)
+			wasLive = false
+			lastBeat = time.Time{}
+		}
+	}
+}
+
+// postLiveOffline tells the broker this Mac is no longer live (removes it from
+// auto-discovery). Best-effort; logf may be nil.
+func postLiveOffline(base, id, secret string, cl *http.Client, logf func(string, ...any)) {
+	body, _ := json.Marshal(map[string]any{"id": id, "secret": secret})
+	if r, err := cl.Post(base+"/api/broker/offline", "application/json", bytes.NewReader(body)); err == nil {
+		r.Body.Close()
+	} else if logf != nil {
+		logf("live offline post failed: %v", err)
+	}
+}
+
+// liveNowPlaying renders the DJ's current track for the discovery banner
+// ("Title — Artist"), or "" when nothing is shared.
+func liveNowPlaying(events *event.Store) string {
+	current, _ := events.TrackSnapshot()
+	if current == nil {
+		return ""
+	}
+	if current.Artist != "" {
+		return current.Title + " — " + current.Artist
+	}
+	return current.Title
+}
+
+// startLiveMirror runs the cloud-mirror uploader across the broadcast lifecycle:
+// one livemirror session per go-live (started on the active edge, torn down when
+// the set settles to idle/error). A device-yank rebuild dips through
+// stopping/idle briefly and is treated as still-active so the upload session —
+// and the scratch dir it watches — survive the rebuild. Off entirely unless the
+// mirror leg is configured and this install is registered.
+func startLiveMirror(scratch string, bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger) {
+	if appVersion == "dev" {
+		return
+	}
+	id, secret := activate.InstallCreds()
+	if id == "" {
+		return // never registered — uploads would only 401
+	}
+	logf := log.Printf
+	if dl != nil {
+		logf = dl.Printf
+	}
+	m := livemirror.New(livemirror.Config{
+		Base:       brokerBase(),
+		Creds:      livemirror.Creds{ID: id, Secret: secret},
+		ScratchDir: scratch,
+		SlugFn: func() string {
+			metaSlug := ""
+			if events != nil {
+				metaSlug = events.Meta().Slug
+			}
+			return publish.SlugForEvent(metaSlug, activate.InstallSlug())
+		},
+		Logf: logf,
+	})
+	go func() {
+		var cancel context.CancelFunc
+		active := false
+		for {
+			time.Sleep(2 * time.Second)
+			st := bc.Status().State
+			isActive := st == "live" || st == "starting" || st == "stopping"
+			switch {
+			case isActive && !active:
+				active = true
+				session := strconv.FormatInt(time.Now().UnixMilli(), 10)
+				var ctx context.Context
+				ctx, cancel = context.WithCancel(context.Background())
+				go m.Run(ctx, session)
+			case !isActive && active:
+				active = false
+				if cancel != nil {
+					cancel()
+					cancel = nil
+				}
+			}
+		}
+	}()
 }
 
 func main() {
@@ -222,6 +374,24 @@ func main() {
 
 	bc := broadcast.New(cfg, runDir, helperPath, ingestURL)
 	ls := stats.New(20 * time.Second)
+
+	// Cloud mirror (remote-guest HLS via R2, opt-in --cloud-mirror): point the
+	// broadcaster's ISOLATED third tee leg at a scratch dir under runDir. The
+	// uploader that ships it starts near the telemetry loop below, once the event
+	// store + diagnostics exist. Off by default — the leg is absent and the
+	// pipeline (LAN RTSP + optional record) is byte-for-byte what it is today.
+	// The scratch dir is a subdir of runDir, so cleanRunDir (which only sweeps
+	// runDir's own *.m3u8/*.ts) never touches it.
+	var mirrorScratch string
+	if cfg.CloudMirror {
+		mirrorScratch = filepath.Join(runDir, "livemirror")
+		if err := os.MkdirAll(mirrorScratch, 0o755); err != nil {
+			log.Printf("cloud mirror disabled: scratch dir %s: %v", mirrorScratch, err)
+			mirrorScratch = ""
+		} else {
+			bc.SetMirrorDir(mirrorScratch)
+		}
+	}
 
 	var localDNS *dnsd.Server
 	var dnsCancel context.CancelFunc
@@ -746,6 +916,20 @@ func main() {
 		go telemetryLoop(cfg.Port, bc)
 	}
 
+	// Live presence check-in for auto-discovery: announce this Mac to the broker
+	// every 30s while broadcasting so guests on the same Wi-Fi can find the party
+	// ("A party is on this Wi-Fi — Join <DJ>"). A sibling to telemetryLoop but
+	// deliberately NOT gated on PARTYPARTY_TELEMETRY — discovery must never depend
+	// on a debug toggle. Best-effort + logged; a graceful stop/quit posts offline.
+	go liveCheckinLoop(bc, events, diagLog)
+
+	// Cloud mirror uploader: when the leg is on, ship each go-live's scratch HLS
+	// to the broker for remote guests. One upload session per go-live, torn down
+	// when the set ends.
+	if mirrorScratch != "" {
+		startLiveMirror(mirrorScratch, bc, events, diagLog)
+	}
+
 	// Room snapshots into the diagnostics log: every 60s while live, who's
 	// listening and how well (latency/buffer/stalls) — the after-party answer
 	// to "the sound was bad", without anyone screenshotting anything.
@@ -920,6 +1104,15 @@ func main() {
 	if diagLog != nil {
 		diagLog.Printf("shutting down (signal)")
 		uploadLogOnce(diagLog) // final flush — best effort, bounded
+	}
+	// Drop live presence on a graceful quit so the party disappears from
+	// auto-discovery immediately instead of waiting out the broker's TTL. The
+	// check-in loop also posts offline on the live->idle edge; both are the same
+	// idempotent call. Bounded + best-effort so it never delays shutdown.
+	if appVersion != "dev" {
+		if id, secret := activate.InstallCreds(); id != "" {
+			postLiveOffline(brokerBase(), id, secret, &http.Client{Timeout: 3 * time.Second}, nil)
+		}
 	}
 	bc.Stop()
 	if mtx != nil {
