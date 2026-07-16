@@ -130,7 +130,7 @@
   .composerline input[type=text]::placeholder{color:var(--label-tertiary)}
   .composericon{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;border:none;border-radius:50%;background:var(--fill);color:var(--label);cursor:pointer;padding:0}
   .composericon svg,.trayicon svg{width:20px;height:20px;display:block}
-  .addphotos{height:40px;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:none;border-radius:999px;background:var(--fill);color:var(--label);font:inherit;font-size:13px;font-weight:700;padding:0 14px 0 11px;cursor:pointer;white-space:nowrap}
+  .addphotos{height:48px;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:none;border-radius:999px;background:var(--fill);color:var(--label);font:inherit;font-size:13px;font-weight:700;padding:0 14px 0 11px;cursor:pointer;white-space:nowrap}
   .addphotos svg{width:19px;height:19px;flex:0 0 auto}
   .addphotos[hidden]{display:none!important}
   .pendingpreviews{display:flex;gap:7px;overflow-x:auto;padding:7px 1px 1px;scrollbar-width:none}
@@ -278,7 +278,9 @@
   .toptool svg{width:18px;height:18px}
   /* Top action bar: identity (emoji + name) at the far left, QR + share at the
      far right. In normal flow, so it scrolls with the page. */
-  .actionbar{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;max-width:720px;margin:0 auto;padding:calc(9px + env(safe-area-inset-top)) 14px 4px;box-sizing:border-box}
+  .actionbar{position:fixed;top:0;left:0;right:0;z-index:12;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;max-width:720px;margin:0 auto;padding:calc(9px + env(safe-area-inset-top)) 14px 6px;box-sizing:border-box;background:rgba(245,245,247,.82);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-bottom:1px solid rgba(0,0,0,.05)}
+  /* the fixed bar is out of flow — push page content below it */
+  body{padding-top:calc(58px + env(safe-area-inset-top))}
   .actionbar-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
   .actionbar .mechip{min-width:0;max-width:54vw}
   .actionbar .mechip b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -446,18 +448,18 @@
   .statline,.downhint,#onlineCard{display:none!important}
   .listenbar{
     left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:700px;
-    display:grid;grid-template-columns:1fr;gap:7px;padding:8px;border-radius:20px;
+    display:grid;grid-template-columns:1fr;gap:9px;padding:10px;border-radius:22px;
     background:rgba(255,255,255,.88);border:1px solid rgba(0,0,0,.08);box-shadow:0 14px 48px rgba(0,0,0,.18);
   }
-  .listenbar .btn{height:48px;margin:0;border-radius:14px;justify-content:flex-start}
+  .listenbar .btn{height:58px;margin:0;border-radius:14px;justify-content:flex-start}
   .listenbar .composer{position:static;width:100%;min-width:0;max-width:none;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none}
   .composerline{min-width:0;gap:6px}
   .composerline .mechip{max-width:128px;min-width:0;height:40px;padding:0 10px;gap:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;box-shadow:none}
   .composerline .mechip b{overflow:hidden;text-overflow:ellipsis}
   .composerline .mechip input{width:86px;min-width:50px}
-  .composerline input[type=text]{height:40px;padding:0 10px;border:1px solid var(--separator);border-radius:12px;background:#f5f5f7;font-size:14px}
+  .composerline input[type=text]{height:48px;padding:0 12px;border:1px solid var(--separator);border-radius:12px;background:#f5f5f7;font-size:16px}
   .composericon{background:#f0f0f3}
-  .postbtn{height:40px;border-radius:10px;padding:0 12px}
+  .postbtn{height:48px;border-radius:10px;padding:0 14px}
   .feed{max-width:720px;margin:0 auto;padding:8px 20px calc(170px + env(safe-area-inset-bottom))}
   .feedhead{font-size:26px;margin-top:14px}
   .feedsub{margin-bottom:16px}
