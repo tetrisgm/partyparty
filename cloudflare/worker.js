@@ -2179,7 +2179,7 @@ async function accountResponse(request, env) {
 
 // eventFromRow projects a D1 events row (+ its latest ready set) into the shape
 // renderEvent expects. A missing set yields an "upcoming" empty state.
-function eventFromRow(row, set, slug, wall = {}) {
+function eventFromRow(row, set, slug, wall = {}, live = null) {
   const when = row.starts || (row.scheduled_at_ms ? fmtWhen(row.scheduled_at_ms) : "");
   const where = row.location_name || row.where_txt || row.location_address || "";
   return {
@@ -2188,11 +2188,15 @@ function eventFromRow(row, set, slug, wall = {}) {
     dj: row.host || "",
     when,
     where,
-    // Drive the pill off whether a ready set exists, not the D1 status column
-    // (which defaults to 'replay') — a set-less event (cover/meta only) reads as
-    // "upcoming", which is what the empty-state card keys on.
-    status: set ? "replay" : "upcoming",
-    listeners: 0,
+    // LIVE (the party is on right now — this page IS the off-Wi-Fi listen
+    // surface) wins; otherwise drive the pill off whether a ready set exists,
+    // not the D1 status column (which defaults to 'replay') — a set-less event
+    // (cover/meta only) reads as "upcoming" for the empty-state card.
+    status: live ? "live" : set ? "replay" : "upcoming",
+    liveMirror: live?.mirror || "",
+    lanUrl: live?.lanUrl || "",
+    nowPlaying: live?.nowPlaying || "",
+    listeners: live?.listeners || 0,
     tagline: row.tagline || "",
     cover: row.cover_key ? `/event/${slug}/cover.jpg` : "",
     about: row.about || "",
@@ -2333,9 +2337,33 @@ function renderEvent(e, opts = {}) {
     ? `<div class="eventcover"><img loading="eager" decoding="async" src="${esc(e.cover)}" alt="${esc(e.title)} cover"></div>`
     : `<div class="eventcover fallback" aria-hidden="true"><span>partyparty</span></div>`;
 
-  // Live (the demo seed) shows the animated now-playing bar; a published event
-  // shows the real replay player.
-  const liveCard = e.status === "live" ? `
+  // Live with a cloud mirror: the REAL off-Wi-Fi listen surface — plain <audio>
+  // native HLS (locked-phone safe, same element as the LAN path) a few seconds
+  // behind the room, plus the "at the party" LAN link. Live without a mirror
+  // (or the demo seed) keeps the animated now-playing bar.
+  const liveCard = e.status === "live" && e.liveMirror ? `
+  <div class="card">
+    <div class="livebar">
+      <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="np"><b>Live now</b><div>${esc(e.nowPlaying || e.tagline || "Streaming from the party")}</div></div>
+      ${e.listeners ? `<div class="cnt"><b>${esc(e.listeners)}</b><span>listening, in sync</span></div>` : ""}
+    </div>
+    <audio id="pp-live-audio" preload="none" playsinline src="${esc(e.liveMirror)}"></audio>
+    <button id="pp-live-play" type="button" class="btn" style="width:100%;margin-top:12px">Tap to listen</button>
+    <div class="cardhint">Listening from away — a few seconds behind the room.${e.lanUrl ? ` <a href="${esc(e.lanUrl)}" style="font-weight:600">At the party? Join the live room &rarr;</a>` : ""}</div>
+    <script>
+    (function(){
+      var a=document.getElementById('pp-live-audio'), b=document.getElementById('pp-live-play');
+      if(!a||!b) return;
+      b.addEventListener('click', function(){
+        a.play().then(function(){ b.textContent='Playing — a few seconds behind'; b.disabled=true; })
+                .catch(function(){ b.textContent='Tap to listen'; });
+      });
+      a.addEventListener('error', function(){ b.textContent='Stream unavailable — try again in a moment'; b.disabled=false; });
+      a.addEventListener('ended', function(){ b.textContent='The set ended'; b.disabled=true; });
+    })();
+    </script>
+  </div>` : e.status === "live" ? `
   <div class="card">
     <div class="livebar">
       <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
@@ -4017,20 +4045,16 @@ async function discoverRateLimited(ipHash) {
 //                 escape hatch. DJ-authored text is HTML-escaped.
 function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlaying }) {
   const who = djName || "@" + handle;
-  const mirror = eventSlug ? `/event/${encodeURIComponent(eventSlug)}/live/live.m3u8` : "";
+  // Off-Wi-Fi guests belong on the EVENT PAGE (title/cover/feed + the delayed
+  // live player), not a dead-end mini page — this page is only the router:
+  // probe the LAN, then send the guest to the right place.
+  const eventPath = eventSlug ? `/e/${encodeURIComponent(eventSlug)}` : "";
   const nowLine = nowPlaying ? `<p class="np">Now playing: ${esc(nowPlaying)}</p>` : "";
   const lanTap = lanUrl
     ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl)}">At the party? Tap to join the live room &rarr;</a></p>`
     : "";
-  // Late-probe upgrade: shown when the LAN becomes reachable AFTER the guest
-  // already started the mirror — offer the switch instead of yanking playback.
-  const lanUpgrade = lanUrl
-    ? `<p class="tap upgrade" id="pp-upgrade" hidden>You're on the party Wi-Fi — <a href="${esc(lanUrl)}">switch to the live room &rarr;</a></p>`
-    : "";
-  const remoteInner = mirror
-    ? `<audio id="pp-audio" preload="none" playsinline src="${esc(mirror)}"></audio>
-       <button id="pp-play" type="button">Tap to listen</button>
-       <p class="hint">Listening from away — a few seconds behind the room.</p>`
+  const remoteInner = eventPath
+    ? `<p class="hint"><a href="${esc(eventPath)}" style="color:#ff77b0;font-weight:600">Open the event page &rarr;</a></p>`
     : `<p class="hint">This party is live, but there's no remote stream yet. Join the party's Wi-Fi to listen.</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -4064,7 +4088,6 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
     <p class="hint">Looking for the party on this Wi-Fi&hellip;</p>
   </div>
   <div id="pp-remote" hidden>${remoteInner}</div>
-  ${lanUpgrade}
   ${lanTap}
   <noscript>
     <style>#pp-connecting{display:none}#pp-remote{display:block !important}</style>
@@ -4074,21 +4097,21 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
 <script>
 (function(){
   var LAN=${JSON.stringify(lanUrl || "").replace(/</g, "\\u003c")};
-  var SOFT_MS=3000, PROBE_MS=12000; // soft: stop blocking the page; probe: allow Chrome's local-network permission prompt
+  var EVENT=${JSON.stringify(eventPath || "").replace(/</g, "\\u003c")};
   var connecting=document.getElementById('pp-connecting');
   var remote=document.getElementById('pp-remote');
-  var audioStarted=false, remoteShown=false;
   function showRemote(){
-    if(remoteShown) return; remoteShown=true;
+    if(EVENT){ location.replace(EVENT); return; } // the event page carries the delayed live player
     if(connecting) connecting.hidden=true;
     if(remote) remote.hidden=false;
-    var a=document.getElementById('pp-audio'), b=document.getElementById('pp-play');
-    if(a&&b){ b.addEventListener('click',function(){ audioStarted=true; a.play().then(function(){ b.textContent='Playing'; b.disabled=true; }).catch(function(){ b.textContent='Tap to listen'; }); }); }
   }
   if(!LAN){ showRemote(); return; }
   // Authenticated LAN reachability probe: resolves iff we can reach the DJ's Mac
   // on this network with its valid cert (TLS name-match is the anti-spoof gate).
   // no-cors so the Mac needs no CORS; connection/TLS failure or timeout = false.
+  // 3.5s: on-LAN resolves well under 1s; Chrome guests whose local-network
+  // permission prompt outlives it still land on the event page, which carries
+  // the same "At the party?" link as a plain navigation (never permission-gated).
   function probe(url,ms){
     return new Promise(function(resolve){
       var done=false, ctrl=new AbortController();
@@ -4098,18 +4121,7 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
         .catch(function(){ if(!done){done=true; clearTimeout(t); resolve(false);} });
     });
   }
-  // Staged: after SOFT_MS show the remote player (nobody stares at a spinner —
-  // Chrome's local-network prompt or congested venue Wi-Fi can stall the probe),
-  // but keep probing to PROBE_MS. Late LAN success: jump if the guest hasn't
-  // engaged yet, otherwise offer the switch without interrupting playback.
-  var soft=setTimeout(showRemote, SOFT_MS);
-  probe(LAN,PROBE_MS).then(function(local){
-    clearTimeout(soft);
-    if(!local){ showRemote(); return; }
-    if(!audioStarted){ location.replace(LAN); return; }
-    var up=document.getElementById('pp-upgrade');
-    if(up) up.hidden=false;
-  });
+  probe(LAN,3500).then(function(local){ if(local){ location.replace(LAN); } else { showRemote(); } });
 })();
 </script>
 </body></html>`;
@@ -5207,8 +5219,14 @@ export default {
     // root is intercepted — every other path (the mirror, /e/<slug>, assets…)
     // falls through to normal dispatch so it still resolves on the handle host.
     if (env.DB && pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
+      // The handle router owns ONLY the root path of <handle>.party.ramine.net.
+      // Every other path falls through to the normal routes so the SAME host can
+      // serve /e/<slug>, the /event/<slug>/live/* mirror files, and the APIs —
+      // this is what lets the remote page's relative audio URL actually stream.
+      // (Intercepting all paths here once returned the JOIN PAGE to the <audio>
+      // element's playlist request — "tap to listen" silently did nothing.)
       const routerHandle = handleRouterLabel(env, url.hostname);
-      if (routerHandle) return await handleRouter(request, env, routerHandle);
+      if (routerHandle && url.pathname === "/") return await handleRouter(request, env, routerHandle);
     }
 
     // Apple Sign in with Apple domain verification. Served from a secret the
@@ -5816,11 +5834,29 @@ export default {
         getPostMedia(env, postIds),
         getPostComments(env, postIds),
       ]);
-      // Owner sees an Edit affordance; that personalized variant is uncached.
+      // LIVE right now? This page is the off-Wi-Fi listen surface: attach the
+      // cloud-mirror player (only if the playlist actually exists in R2 — a DJ
+      // with the mirror off must not get a dead player) plus the LAN join link
+      // and listener count from the presence row.
+      let live = null;
+      if (row.status === "live") {
+        const playlist = env.DL ? await env.DL.head(`event/${slug}/live/live.m3u8`).catch(() => null) : null;
+        const presence = await env.DB.prepare(
+          "SELECT host, guest_port, listeners, now_playing FROM live_installs WHERE install_id=? AND expires_ms>? LIMIT 1"
+        ).bind(row.install_id, nowMs()).first();
+        live = {
+          mirror: playlist ? `/event/${slug}/live/live.m3u8` : "",
+          lanUrl: presence?.host ? `${guestOrigin(presence.host, presence.guest_port)}/` : "",
+          listeners: Number(presence?.listeners) || 0,
+          nowPlaying: presence?.now_playing || "",
+        };
+      }
+      // Owner sees an Edit affordance; that personalized variant is uncached —
+      // and a LIVE page must never be cached (it flips to replay when the set ends).
       const viewer = await getSessionUser(env, request);
       const isOwner = !!(viewer && row.owner_user_id && viewer.id === row.owner_user_id);
-      return new Response(renderEvent(eventFromRow(row, set, slug, { posts, media, comments }), { isOwner }), {
-        headers: isOwner ? { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" } : htmlHeaders,
+      return new Response(renderEvent(eventFromRow(row, set, slug, { posts, media, comments }, live), { isOwner }), {
+        headers: (isOwner || live) ? { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store" } : htmlHeaders,
       });
     }
     const hm = pathname.match(HANDLE_RE);

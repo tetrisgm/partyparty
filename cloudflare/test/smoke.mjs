@@ -5352,7 +5352,7 @@ const tests = [
     assert.equal(db.events.get("fresh-party").status, "replay");
   }],
 
-  ["wildcard router: serves the cloud-mirror REMOTE page when live and the guest is off-LAN", async () => {
+  ["wildcard router: the live join page sends off-LAN guests to the EVENT page", async () => {
     const db = new FakeD1({
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
@@ -5361,16 +5361,73 @@ const tests = [
         live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
       }],
     });
-    // Guest on a DIFFERENT public IP than the Mac -> REMOTE cloud-mirror page.
     const resp = await worker.fetch(new Request("https://wave.party.example.test/", {
       headers: { "cf-connecting-ip": "203.0.113.200" },
     }), makeEnv({ DB: db }));
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.equal(resp.headers.get("content-type"), "text/html; charset=utf-8");
-    assert.match(html, /\/event\/rooftop-night\/live\/live\.m3u8/);
+    // The probe-fail path redirects to the event page (the off-Wi-Fi listen surface).
+    assert.match(html, /\/e\/rooftop-night/);
     assert.match(html, /DJ Wave/);
     assert.match(html, /Track Z/);
+  }],
+
+  ["handle domain: non-root paths fall through — the mirror playlist streams, not the join page", async () => {
+    // The bug this locks out: the router used to swallow EVERY path on
+    // <handle>.party..., so the <audio> element asked for the playlist and got
+    // HTML back — "tap to listen" silently did nothing.
+    const db = new FakeD1({
+      liveInstalls: [{
+        install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
+        public_ip_hash: "h", host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        event_slug: "known-set", dj_name: "DJ Wave", event_title: "", listeners: 0, now_playing: "",
+        live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
+      }],
+    });
+    const env = makeEnv({
+      DB: db,
+      r2Objects: { "event/known-set/live/live.m3u8": new FakeR2Object("#EXTM3U\nlive0.ts\n", { contentType: "application/vnd.apple.mpegurl" }) },
+    });
+    const resp = await worker.fetch(new Request("https://wave.party.example.test/event/known-set/live/live.m3u8", {
+      headers: { "cf-connecting-ip": "203.0.113.200" },
+    }), env);
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get("content-type"), "application/vnd.apple.mpegurl");
+    assert.match(await resp.text(), /#EXTM3U/);
+  }],
+
+  ["event page: a live event with a cloud mirror renders the delayed player + LAN link", async () => {
+    const db = new FakeD1({
+      events: [{
+        slug: "rooftop-night", install_id: "abc123abc123", title: "Rooftop", host: "DJ Wave",
+        status: "live", owner_user_id: "user-w", created_ms: 1, updated_ms: 1,
+      }],
+      liveInstalls: [{
+        install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
+        public_ip_hash: "h", host: "disco12.party.example.test", lan_ip: "192.168.1.5", guest_port: 8443,
+        event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 7, now_playing: "Track Z",
+        live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
+      }],
+    });
+    const env = makeEnv({
+      DB: db,
+      r2Objects: { "event/rooftop-night/live/live.m3u8": new FakeR2Object("#EXTM3U\nlive0.ts\n", { contentType: "application/vnd.apple.mpegurl" }) },
+    });
+    const resp = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), env);
+    const html = await resp.text();
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get("cache-control"), "private, no-store"); // live pages must not cache
+    assert.match(html, /\/event\/rooftop-night\/live\/live\.m3u8/); // the delayed stream
+    assert.match(html, /Tap to listen/);
+    assert.match(html, /a few seconds behind/);
+    assert.match(html, /https:\/\/disco12\.party\.example\.test:8443\//); // "at the party" LAN link
+    assert.match(html, /Track Z/);
+
+    // Same live event WITHOUT a mirror playlist in R2 -> no dead player.
+    const noMirror = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), makeEnv({ DB: db }));
+    const nmHtml = await noMirror.text();
+    assert.doesNotMatch(nmHtml, /pp-live-audio/);
   }],
 
   ["wildcard router: live handle serves the LAN-probe join page carrying the Mac's :port URL", async () => {
