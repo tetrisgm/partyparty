@@ -359,6 +359,13 @@ func readPosts(eventDir string) ([]syncPost, error) {
 		}
 		switch {
 		case l.Op == "post" && l.Post != nil:
+			// Cloud-origin posts (a web guest's comment injected into the room
+			// feed, CID "web:<cloud id>") already live in the cloud — syncing
+			// them back would plant a hidden approved=0 shadow copy per post.
+			// They are not ours to publish; skip them entirely.
+			if strings.HasPrefix(l.CID, "web:") {
+				continue
+			}
 			p := *l.Post
 			p.CID = l.CID
 			if p.Act < p.TS {

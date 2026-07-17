@@ -356,3 +356,25 @@ func doneParts(progress mediaUploadProgress) []int {
 	sort.Ints(out)
 	return out
 }
+
+// Cloud-origin posts (web guests' comments injected into the room feed, CID
+// "web:<cloud id>") must never sync back — they'd plant a hidden approved=0
+// shadow copy in the cloud per post (observed live before this filter).
+func TestReadPostsSkipsCloudOriginWebPosts(t *testing.T) {
+	dir := t.TempDir()
+	postsJSONL := `{"op":"post","cid":"web:web-abc123","post":{"id":"injected","ts":1000,"act":1000,"author":"Cloud Carla","emoji":"c","text":"from the internet","noPublish":true}}` + "\n" +
+		`{"op":"post","cid":"room-cid","post":{"id":"room-post","ts":2000,"act":2000,"author":"Room Rita","emoji":"r","text":"from the room"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "posts.jsonl"), []byte(postsJSONL), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	posts, err := readPosts(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(posts) != 1 {
+		t.Fatalf("readPosts = %d posts, want 1 (web-origin skipped)", len(posts))
+	}
+	if posts[0].cloud.LocalID != "room-post" {
+		t.Fatalf("kept post = %q, want room-post", posts[0].cloud.LocalID)
+	}
+}
