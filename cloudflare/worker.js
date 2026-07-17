@@ -2759,6 +2759,25 @@ async function requireLinkedInstallForPublish(env, id) {
   return null;
 }
 
+// Web-created events belong to the account before they belong to a particular
+// Mac (install_id=''). The first currently-linked Mac from that same account may
+// adopt the row for the install-scoped publish pipeline. The conditional UPDATE
+// is the race/IDOR boundary: assigned events and other accounts never move.
+async function claimUnassignedAccountEvent(env, slug, id) {
+  if (!env.DB) return false;
+  const linked = await env.DB.prepare(
+    "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+  ).bind(id).first();
+  if (!linked?.user_id || !linked?.profile_id) return false;
+  await env.DB.prepare(
+    `UPDATE events SET install_id=?1
+     WHERE slug=?2 AND install_id=''
+       AND (owner_user_id=?3 OR (owner_user_id IS NULL AND dj_profile_id=?4))`
+  ).bind(id, slug, linked.user_id, linked.profile_id).run();
+  const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+  return owner?.install_id === id;
+}
+
 function expiredLinkResponse(status = 400) {
   return new Response(`<!doctype html>
 <html lang="en">
@@ -5136,7 +5155,9 @@ async function broker(request, env, pathname) {
     // First-writer-wins: a slug already owned by ANOTHER install is off-limits
     // (the Mac then retries with its collision-proof auto slug).
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
-    if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (owner && owner.install_id !== id && !(await claimUnassignedAccountEvent(env, slug, id))) {
+      return jsonResp(409, { error: "slug taken" });
+    }
     if (!owner && await slugReservedByAlias(env, slug, "")) return jsonResp(409, { error: "slug reserved" });
     const now = nowMs();
     const linked = await env.DB.prepare(
@@ -5179,7 +5200,9 @@ async function broker(request, env, pathname) {
     if (oldSlug && !SLUG_RE.test(oldSlug)) return jsonResp(400, { error: "bad old_slug" });
 
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
-    if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (owner && owner.install_id !== id && !(await claimUnassignedAccountEvent(env, slug, id))) {
+      return jsonResp(409, { error: "slug taken" });
+    }
     if (!owner && await slugReservedByAlias(env, slug, oldSlug)) return jsonResp(409, { error: "slug reserved" });
     if (oldSlug && oldSlug !== slug && !owner) {
       const oldOwner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(oldSlug).first();

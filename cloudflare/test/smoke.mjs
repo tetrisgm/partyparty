@@ -1077,6 +1077,16 @@ class FakeD1Statement {
       }
       return { success: true, meta: { changes: 0 } };
     }
+    if (sql.includes("UPDATE events SET install_id=?1") && sql.includes("WHERE slug=?2 AND install_id=''")) {
+      const [installId, slug, userId, profileId] = this.args;
+      const row = this.db.events.get(slug);
+      const sameAccount = row && (row.owner_user_id === userId || (row.owner_user_id == null && row.dj_profile_id === profileId));
+      if (row && row.install_id === "" && sameAccount) {
+        row.install_id = installId;
+        return { success: true, meta: { changes: 1 } };
+      }
+      return { success: true, meta: { changes: 0 } };
+    }
     if (sql.includes("UPDATE events SET") && sql.includes("WHERE slug=? AND owner_user_id=?")) {
       const setCols = (this.sql.match(/UPDATE events SET ([\s\S]+?)\s+WHERE slug=\? AND owner_user_id=\?/)?.[1] || "")
         .split(",")
@@ -4198,7 +4208,7 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.deepEqual(json.events, []);
   }],
-    ["broker event-upsert creates fresh upcoming event", async () => {
+  ["broker event-upsert creates fresh upcoming event", async () => {
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
     });
@@ -4270,6 +4280,32 @@ const tests = [
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 409);
     assert.equal(db.events.get("taken-ahead").title, "Taken");
+  }],
+  ["linked Mac claims its account's unassigned web event", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-web-owner", profile_id: "profile-web-owner", revoked_ms: null }],
+      events: [
+        { slug: "web-upsert", install_id: "", owner_user_id: "user-web-owner", dj_profile_id: "profile-web-owner", title: "Web Upsert", status: "upcoming", source: "web" },
+        { slug: "web-publish", install_id: "", owner_user_id: "user-web-owner", dj_profile_id: "profile-web-owner", title: "Web Publish", status: "upcoming", source: "web" },
+      ],
+    });
+    const upsert = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "web-upsert", title: "Synced from Mac" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(upsert.status, 200);
+    assert.equal(db.events.get("web-upsert").install_id, "abc123abc123");
+    assert.equal(db.events.get("web-upsert").title, "Synced from Mac");
+
+    const publish = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "web-publish", title: "Published from Mac" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(publish.status, 200);
+    assert.equal(db.events.get("web-publish").install_id, "abc123abc123");
+    assert.equal(db.events.get("web-publish").status, "replay");
   }],
   ["broker event-upsert updates owned title without clobbering replay status", async () => {
     const db = new FakeD1({
