@@ -1,8 +1,7 @@
 {
   // partyparty.party — one Worker serves the static landing page (../site) and
   // streams the big app download + Sparkle appcast from an R2 bucket (Pages caps
-  // files at 25 MB; the .app zip is ~60-100 MB). The old party.ramine.net routes
-  // remain only as the compatibility shim below. Deploy with: make deploy-site
+  // files at 25 MB; the .app zip is ~60-100 MB). Deploy with: make deploy-site
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "partyparty-site",
   "main": "worker.js",
@@ -16,8 +15,8 @@
     "run_worker_first": true
   },
 
-  // Passwordless sign-in email. Requires Email Sending to be onboarded for
-  // ramine.net in Cloudflare Email Service.
+  // Passwordless sign-in email (last-resort fallback binding; primary path
+  // is MXroute SMTP from noreply@partyparty.party).
   "send_email": [
     { "name": "EMAIL" }
   ],
@@ -44,15 +43,14 @@
     // Passwordless auth sends through MXroute SMTP first. Preferred production
     // secret: AUTH_EMAIL_SERVER="smtps://user:pass@SERVER.mxrouting.net:465".
     // Split-secret fallback: MXROUTE_SMTP_HOST/PORT/USER/PASS.
-    // Optional from override: AUTH_EMAIL_FROM="partyparty <signin@ramine.net>".
+    // Optional from override: AUTH_EMAIL_FROM="partyparty <noreply@partyparty.party>".
     // The EMAIL binding above is only a last-resort fallback.
     "AUTH_DEV_LINKS": "1",
     "AUTH_DEV_DIRECT": "1",
     "AUTH_DEV_EMAILS": "ramine@ramine.net",
     "BROKER_BASE": "partyparty.party",
     // The partyparty.party zone — machine hostnames' grey A records and ACME
-    // TXT challenges are written here. (Old grey records in the ramine.net
-    // zone are orphaned by design; they pointed at LAN IPs and expire from use.)
+    // TXT challenges are written here.
     "CF_ZONE_ID": "f156a8f56d299f1d0451bbb9223c1f08"
   },
 
@@ -65,13 +63,7 @@
     // permanent link (Universal SSL on the partyparty.party zone includes
     // *.partyparty.party) — no per-DJ provisioning, ever.
     { "pattern": "partyparty.party", "custom_domain": true },
-    { "pattern": "*.partyparty.party/*", "zone_name": "partyparty.party" },
-    // Legacy shim: shipped builds have party.ramine.net baked in (broker API +
-    // Sparkle feed). These stay routed here forever; the worker serves /api,
-    // /event and /content on them and 301s everything else to partyparty.party.
-    { "pattern": "party.ramine.net", "custom_domain": true },
-    { "pattern": "ramine.party.ramine.net", "custom_domain": true },
-    { "pattern": "seth.party.ramine.net", "custom_domain": true }
+    { "pattern": "*.partyparty.party/*", "zone_name": "partyparty.party" }
   ],
 
   // 1-minute GC sweep of the live_installs presence registry (expire dead rows +

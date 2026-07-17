@@ -2008,7 +2008,7 @@ const tests = [
     }), makeEnv({
       DB: db,
       env: {
-        AUTH_EMAIL_FROM: "partyparty <signin@ramine.net>",
+        AUTH_EMAIL_FROM: "partyparty <signin@partyparty.party>",
         EMAIL: {
           send: async (message) => {
             sent.push(message);
@@ -2022,7 +2022,7 @@ const tests = [
     assert.deepEqual(json, { ok: true });
     assert.equal(sent.length, 1);
     assert.equal(sent[0].to, "mail@example.com");
-    assert.deepEqual(sent[0].from, { email: "signin@ramine.net", name: "partyparty" });
+    assert.deepEqual(sent[0].from, { email: "signin@partyparty.party", name: "partyparty" });
     assert.match(sent[0].subject, /Sign in/);
     assert.match(sent[0].text, /https:\/\/partyparty\.party\/auth\/verify\?token=[a-f0-9]{64}/);
     assert.match(sent[0].html, /Continue to partyparty/);
@@ -5769,34 +5769,6 @@ const tests = [
     assert.equal(limited.status, 429);
     assert.equal(db.wallPosts.length, 6);
     assert.ok(db.wallPosts.every((row) => row.author_user_id === user.id));
-  }],
-
-  ["legacy domain shim: pages 301 to partyparty.party, the baked-in API keeps serving", async () => {
-    // These requests DELIBERATELY use the retired party.ramine.net hostnames —
-    // they model shipped builds and old links.
-    const env = makeEnv({ DB: new FakeD1() });
-    // Human-facing paths on the old apex redirect, path + query intact.
-    const page = await worker.fetch(new Request("https://party.ramine.net/e/some-night?x=1"), env);
-    assert.equal(page.status, 301);
-    assert.equal(page.headers.get("location"), "https://partyparty.party/e/some-night?x=1");
-    // Old handle subdomains map their label across.
-    const sub = await worker.fetch(new Request("https://seth.party.ramine.net/"), env);
-    assert.equal(sub.status, 301);
-    assert.equal(sub.headers.get("location"), "https://seth.partyparty.party/");
-    // The Sparkle feed redirects (Sparkle follows it onto the new domain).
-    const feed = await worker.fetch(new Request("https://party.ramine.net/appcast.xml"), env);
-    assert.equal(feed.status, 301);
-    // Shipped builds' broker calls must KEEP WORKING here — a 301 would turn
-    // their POSTs into GETs. Any non-redirect status proves the API served.
-    const api = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
-    }), env);
-    assert.notEqual(api.status, 301);
-    assert.notEqual(api.status, 308);
-    // OTA content pulls also keep serving.
-    const ota = await worker.fetch(new Request("https://party.ramine.net/content/manifest.json"), env);
-    assert.notEqual(ota.status, 301);
   }],
 
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {

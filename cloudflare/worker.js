@@ -2884,7 +2884,7 @@ function smtpHeaderValue(s) {
 }
 
 function smtpAddressHeader(addr) {
-  const email = normalizeEmail(addr?.email) || "partyparty@ramine.net";
+  const email = normalizeEmail(addr?.email) || "noreply@partyparty.party";
   const name = smtpHeaderValue(addr?.name || "");
   if (!name) return `<${email}>`;
   const quoted = name.replace(/["\\]/g, "\\$&");
@@ -3056,9 +3056,9 @@ export async function sendViaMXroute(env, toEmail, link) {
 }
 
 function authEmailFrom(env) {
-  const raw = String(env.AUTH_EMAIL_FROM || env.MXROUTE_SMTP_FROM || "partyparty@ramine.net").trim();
+  const raw = String(env.AUTH_EMAIL_FROM || env.MXROUTE_SMTP_FROM || "noreply@partyparty.party").trim();
   const match = /^(?:"?([^"<>]*)"?\s*)?<([^<>]+)>$/.exec(raw);
-  const email = normalizeEmail(match ? match[2] : raw) || "partyparty@ramine.net";
+  const email = normalizeEmail(match ? match[2] : raw) || "noreply@partyparty.party";
   const name = clip((match ? match[1] : env.AUTH_EMAIL_FROM_NAME) || "partyparty", 80).trim() || "partyparty";
   return { email, name };
 }
@@ -5634,24 +5634,6 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
-
-    // LEGACY DOMAIN SHIM — the product moved to partyparty.party. The old
-    // party.ramine.net hostnames stay routed to this worker for two reasons:
-    // (1) shipped app builds have the old broker + Sparkle URLs baked in, so
-    // /api/* and /event/* keep SERVING here (a 301 would turn their POSTs into
-    // GETs and break check-ins/uploads); the update feed itself redirects and
-    // Sparkle follows it onto the new domain. (2) Every human-facing URL —
-    // old QR codes, shared links, handle subdomains — 301s to the same path on
-    // the new domain (handle labels map across: x.party.ramine.net -> x.partyparty.party).
-    const LEGACY_BASE = "party.ramine.net";
-    if (url.hostname === LEGACY_BASE || url.hostname.endsWith("." + LEGACY_BASE)) {
-      const servesHere = pathname.startsWith("/api/") || pathname.startsWith("/event/") || pathname.startsWith("/content/");
-      if (!servesHere) {
-        const label = url.hostname === LEGACY_BASE ? "" : url.hostname.slice(0, url.hostname.length - LEGACY_BASE.length - 1);
-        const target = `https://${label ? label + "." : ""}partyparty.party${pathname}${url.search}`;
-        return new Response(null, { status: 301, headers: { location: target, "cache-control": "public, max-age=3600" } });
-      }
-    }
 
     // WILDCARD HOSTNAME ROUTER — before any path dispatch. If the Host is the
     // proxied permanent link <handle>.partyparty.party (a single clean handle
