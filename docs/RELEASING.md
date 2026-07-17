@@ -68,7 +68,7 @@ optional — **`scripts/ship.sh` already works today with zero repo secrets.**
 - **Cloudflare token** — dash.cloudflare.com → My Profile → API Tokens → Create
   Token → *Custom token* with permissions **Account · Workers Scripts · Edit**,
   **Account · Workers R2 Storage · Edit**, and **Zone · Workers Routes · Edit** (zone
-  ramine.net). Then `gh secret set CLOUDFLARE_API_TOKEN`.
+  partyparty.party). Then `gh secret set CLOUDFLARE_API_TOKEN`.
 - **Developer ID cert** — export **Developer ID Application** (cert + private key)
   from Keychain Access as a `.p12` with a password: `base64 -i DeveloperID.p12 | pbcopy`
   → `MACOS_CERT_PASSWORD` = the export password; `MACOS_DEVELOPER_ID` =
