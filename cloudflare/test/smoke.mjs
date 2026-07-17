@@ -2370,10 +2370,15 @@ const tests = [
     });
     db.events.set("linked-event", {
       slug: "linked-event",
+      install_id: "abc123abc123",
       owner_user_id: "user-account-status",
       title: "Linked Event",
-      status: "upcoming",
+      status: "live",
       scheduled_at_ms: 1893542400000,
+    });
+    db.liveInstalls.set("abc123abc123", {
+      install_id: "abc123abc123", handle: "linked.dj", host: "disco12.party.example.test",
+      event_slug: "linked-event", expires_ms: Date.now() + 60_000,
     });
 
     const linked = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
@@ -2400,6 +2405,8 @@ const tests = [
     assert.equal(unlinkJson.ok, true);
     assert.equal(unlinkJson.revoked, 1);
     assert.equal(typeof db.deviceInstalls.get("abc123abc123").revoked_ms, "number");
+    assert.equal(db.liveInstalls.has("abc123abc123"), false);
+    assert.equal(db.events.get("linked-event").status, "replay");
 
     const after = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
       method: "POST",
@@ -2580,6 +2587,14 @@ const tests = [
       last_seen_ms: Date.now() - 10_000,
       revoked_ms: null,
     });
+    db.events.set("unlink-live", {
+      slug: "unlink-live", install_id: "abc123abc123", owner_user_id: owner.id,
+      dj_profile_id: "profile-unlink-owner", title: "Unlink Live", status: "live",
+    });
+    db.liveInstalls.set("abc123abc123", {
+      install_id: "abc123abc123", handle: "unlink.owner", host: "disco12.party.example.test",
+      event_slug: "unlink-live", expires_ms: Date.now() + 60_000,
+    });
 
     const unlink = await worker.fetch(new Request("https://partyparty.party/api/install-link/unlink", {
       method: "POST",
@@ -2590,6 +2605,8 @@ const tests = [
     assert.equal(unlink.status, 200);
     assert.deepEqual(unlinkJson, { ok: true, revoked: 1 });
     assert.equal(typeof db.deviceInstalls.get("abc123abc123").revoked_ms, "number");
+    assert.equal(db.liveInstalls.has("abc123abc123"), false);
+    assert.equal(db.events.get("unlink-live").status, "replay");
 
     const relinkCode = "33333333333333333333333333333333";
     db.profiles.push({

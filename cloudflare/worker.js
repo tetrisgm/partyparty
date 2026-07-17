@@ -3521,17 +3521,38 @@ async function installLinkUnlink(request, env) {
   const installId = String(body.install_id || body.id || "");
   const now = nowMs();
   let result;
+  let revokedIds = [];
   if (installId) {
     if (!/^[a-f0-9]{12}$/.test(installId)) return jsonResp(400, { error: "bad install_id" });
     result = await env.DB.prepare(
       "UPDATE device_installs SET revoked_ms=? WHERE user_id=? AND install_id=? AND revoked_ms IS NULL"
     ).bind(now, user.id, installId).run();
+    if ((Number(result?.meta?.changes) || 0) > 0) revokedIds = [installId];
   } else {
+    const active = await env.DB.prepare(
+      "SELECT install_id FROM device_installs WHERE user_id=? AND revoked_ms IS NULL"
+    ).bind(user.id).all();
+    revokedIds = (active?.results || []).map((row) => String(row.install_id || "")).filter((id) => /^[a-f0-9]{12}$/.test(id));
     result = await env.DB.prepare(
       "UPDATE device_installs SET revoked_ms=? WHERE user_id=? AND revoked_ms IS NULL"
     ).bind(now, user.id).run();
   }
+  for (const id of revokedIds) await clearRevokedInstallLiveState(env, id, now);
   return jsonResp(200, { ok: true, revoked: Number(result?.meta?.changes) || 0 });
+}
+
+// Revocation takes the Mac off cloud discovery immediately. It deliberately
+// leaves the grey LAN hostname alone: an already-activated Mac and its local
+// guests must keep working offline even when the account link is removed.
+async function clearRevokedInstallLiveState(env, id, now) {
+  try {
+    await env.DB.prepare("DELETE FROM live_installs WHERE install_id=?").bind(id).run();
+  } catch (_) { /* the expiry sweep is the backstop */ }
+  try {
+    await env.DB.prepare(
+      "UPDATE events SET status='replay', updated_ms=?2 WHERE install_id=?1 AND status='live'"
+    ).bind(id, now).run();
+  } catch (_) { /* the expiry sweep is the backstop */ }
 }
 
 async function installBrowserLinkStart(env, id, rec, request) {
@@ -4521,6 +4542,7 @@ async function brokerAccountUnlink(env, id) {
   const result = await env.DB.prepare(
     "UPDATE device_installs SET revoked_ms=?, last_seen_ms=? WHERE install_id=? AND revoked_ms IS NULL"
   ).bind(now, now, id).run();
+  if ((Number(result?.meta?.changes) || 0) > 0) await clearRevokedInstallLiveState(env, id, now);
   return jsonResp(200, { ok: true, revoked: Number(result?.meta?.changes) || 0 });
 }
 
