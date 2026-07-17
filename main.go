@@ -121,14 +121,87 @@ func brokerBase() string {
 	return "https://partyparty.party"
 }
 
+const maxLiveAckBytes = 256 << 10
+
+type liveAck struct {
+	WebListeners int `json:"webListeners"`
+	WebPosts     []struct {
+		ID     string `json:"id"`
+		Author string `json:"author"`
+		Emoji  string `json:"emoji"`
+		Text   string `json:"text"`
+		TS     int64  `json:"ts"`
+	} `json:"webPosts"`
+}
+
+type webPostAdder interface {
+	AddWebPost(webID, author, emoji, text string, ts int64) (bool, error)
+}
+
+func decodeLiveAck(resp *http.Response) (liveAck, error) {
+	var ack liveAck
+	if resp.StatusCode != http.StatusOK {
+		return ack, fmt.Errorf("broker returned %s", resp.Status)
+	}
+	if resp.ContentLength > maxLiveAckBytes {
+		return ack, fmt.Errorf("broker response exceeds %d bytes", maxLiveAckBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxLiveAckBytes+1))
+	if err != nil {
+		return ack, fmt.Errorf("read broker response: %w", err)
+	}
+	if len(data) > maxLiveAckBytes {
+		return ack, fmt.Errorf("broker response exceeds %d bytes", maxLiveAckBytes)
+	}
+	if err := json.Unmarshal(data, &ack); err != nil {
+		return ack, fmt.Errorf("decode broker response: %w", err)
+	}
+	return ack, nil
+}
+
+func ingestLiveAck(ack liveAck, posts webPostAdder, handler *server.Srv, webSince *int64, logf func(string, ...any)) {
+	if handler != nil {
+		handler.SetWebListeners(ack.WebListeners)
+	}
+	if posts == nil {
+		return
+	}
+	for _, wp := range ack.WebPosts {
+		added, err := posts.AddWebPost(wp.ID, wp.Author, wp.Emoji, wp.Text, wp.TS)
+		if err != nil {
+			logf("web post inject failed: %v", err)
+			return // ordered batch: never advance the cursor past an unpersisted post
+		}
+		if added {
+			logf("web post joined the room feed: %s (%s)", wp.ID, wp.Author)
+		}
+		if wp.TS > *webSince {
+			*webSince = wp.TS
+		}
+	}
+}
+
+func recordLiveCheckinFailure(beatFails *int, handler *server.Srv, logf func(string, ...any), err error) {
+	*beatFails++
+	// A venue can be offline for hours. Record the first failure immediately,
+	// then one reminder every five minutes instead of writing the same line on
+	// every 30-second heartbeat forever.
+	if *beatFails == 1 || *beatFails%10 == 0 {
+		logf("live check-in failed (%d consecutive): %v", *beatFails, err)
+	}
+	if *beatFails >= 3 && handler != nil {
+		handler.SetWebListeners(0)
+	}
+}
+
 // liveCheckinLoop is the auto-discovery presence heartbeat: while broadcasting,
 // POST /api/broker/live every 30s with {id, secret, lan_ip, title, now_playing}
 // so the broker can match guests on the same public IP to this party. On the
 // live->idle edge it posts /api/broker/offline so a clean stop removes the party
 // instantly (the broker's TTL is only the crash backstop). A sibling to
 // telemetryLoop but NOT gated on PARTYPARTY_TELEMETRY — discovery must not hinge
-// on a debug toggle. Best-effort throughout: every call is logged, none blocks
-// the broadcast, and the endpoints may 404 until the Worker side ships.
+// on a debug toggle. Best-effort throughout: failures are sampled into the
+// diagnostic log and none of this work blocks the broadcast.
 func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger, guestPort int, handler *server.Srv) {
 	if appVersion == "dev" {
 		return // dev/`go run` must not advertise the install's cloud namespace
@@ -182,47 +255,18 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 				// cloud-mirror listener count for the room's combined tally, and
 				// web guests' wall posts to inject into the ROOM feed (deduped by
 				// cloud id inside AddWebPost, so replays are always safe).
-				var ack struct {
-					WebListeners int `json:"webListeners"`
-					WebPosts     []struct {
-						ID     string `json:"id"`
-						Author string `json:"author"`
-						Emoji  string `json:"emoji"`
-						Text   string `json:"text"`
-						TS     int64  `json:"ts"`
-					} `json:"webPosts"`
-				}
-				if r.StatusCode == http.StatusOK &&
-					json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&ack) == nil {
+				ack, ackErr := decodeLiveAck(r)
+				r.Body.Close()
+				if ackErr == nil {
 					beatFails = 0
-					if handler != nil {
-						handler.SetWebListeners(ack.WebListeners)
-					}
-					if events != nil {
-						for _, wp := range ack.WebPosts {
-							if added, aerr := events.AddWebPost(wp.ID, wp.Author, wp.Emoji, wp.Text, wp.TS); aerr != nil {
-								logf("web post inject failed: %v", aerr)
-							} else if added {
-								logf("web post joined the room feed: %s (%s)", wp.ID, wp.Author)
-							}
-							if wp.TS > webSince {
-								webSince = wp.TS
-							}
-						}
-					}
+					ingestLiveAck(ack, events, handler, &webSince, logf)
 				} else {
 					// A broker outage or captive-portal HTML must not leave a stale
 					// "M online" painted on the console for the rest of the set.
-					if beatFails++; beatFails >= 3 && handler != nil {
-						handler.SetWebListeners(0)
-					}
+					recordLiveCheckinFailure(&beatFails, handler, logf, ackErr)
 				}
-				r.Body.Close()
 			} else {
-				logf("live check-in failed: %v", err)
-				if beatFails++; beatFails >= 3 && handler != nil {
-					handler.SetWebListeners(0)
-				}
+				recordLiveCheckinFailure(&beatFails, handler, logf, err)
 			}
 			lastBeat = time.Now()
 			wasLive = true
@@ -1165,6 +1209,7 @@ func main() {
 	// idempotent call. Bounded + best-effort so it never delays shutdown.
 	if appVersion != "dev" {
 		if id, secret := activate.InstallCreds(); id != "" {
+			handler.SetWebListeners(0)
 			postLiveOffline(brokerBase(), id, secret, &http.Client{Timeout: 3 * time.Second}, nil)
 		}
 	}
