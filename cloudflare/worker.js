@@ -3739,16 +3739,16 @@ async function rsvpIdentity(env, request, slug, mintAnon) {
   if (user?.id) return { userId: String(user.id), anonHash: "", cookieId: "", minted: false };
   const cookies = parseCookies(request);
   let cookieId = cookies.pp_rsvp || "";
-  const cookieAnonHash = /^ip\.([a-f0-9]{64})$/.exec(cookieId)?.[1] || "";
-  if (cookieId && !cookieAnonHash && !/^[a-f0-9]{32}$/.test(cookieId)) cookieId = "";
+  // Older builds minted deterministic ip.<hash> cookies. Those collapse every
+  // browser behind the same NAT into one guest (including their private email),
+  // so rotate them to a per-browser random identity on the next write.
+  if (cookieId && !/^[a-f0-9]{32}$/.test(cookieId)) cookieId = "";
   let minted = false;
-  let ipAnonHash = "";
   if (!cookieId && mintAnon) {
-    ipAnonHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}:${slug}`);
-    cookieId = `ip.${ipAnonHash}`;
+    cookieId = randHex(16);
     minted = true;
   }
-  const anonHash = cookieAnonHash || ipAnonHash || (cookieId ? await sha256Hex(cookieId) : "");
+  const anonHash = cookieId ? await sha256Hex(cookieId) : "";
   return {
     userId: "",
     anonHash,
@@ -3835,12 +3835,14 @@ async function eventJoin(request, env, slug) {
   if (!env.DB) return jsonResp(503, { error: "events db not configured" });
   const event = await getEventBySlug(env, slug);
   if (!event) return jsonResp(404, { error: "event not found" });
+  if (event.status !== "live") return jsonResp(403, { error: "the party isn't live" });
 
   const joinIPHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
   if (await discoverRateLimited(joinIPHash, `join/${slug}`, 2)) {
     return jsonResp(429, { error: "slow down" }, { "retry-after": "2" });
   }
   const body = await readJson(request, 2048);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
   const name = stripControl(clip(body?.name, 40)).trim();
   const emoji = clip(body?.emoji, 8);
   const email = clip(body?.email, 120).trim().toLowerCase();
@@ -3887,14 +3889,10 @@ async function webListeners(env, slug, now) {
 }
 
 // eventPresence: the web listener heartbeat (~45s while the live player is
-// playing). Bumps ONLY updated_ms on the guest's row — never name/emoji/email —
-// creating a nameless row first if the guest skipped the join sheet.
-// Inflation-hardened (review finding): the anon identity is derived
-// SERVER-SIDE from the caller's edge IP — a client-supplied cookie could mint
-// unlimited distinct rows and set the public "listening" count to any number.
-// (For a guest with no prior cookie this is the SAME ip:<ip>:<slug> hash
-// rsvpIdentity mints, so their later join sheet lands on the same row.) Live
-// events only: a years-old keepsake page can't have its count inflated.
+// playing). Bumps ONLY updated_ms on an existing join row — never name/emoji/
+// email and never mints a row. That keeps per-browser guest identities private
+// while a caller inventing cookies cannot inflate the public listener count.
+// Live events only: a years-old keepsake page can't have its count inflated.
 async function eventPresence(request, env, slug) {
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
@@ -3903,21 +3901,14 @@ async function eventPresence(request, env, slug) {
   const event = await getEventBySlug(env, slug);
   if (!event) return jsonResp(404, { error: "event not found" });
   if (event.status !== "live") return jsonResp(200, { ok: true, webListeners: 0 });
-  const user = await getSessionUser(env, request);
+  const identity = await rsvpIdentity(env, request, slug, false);
   const now = nowMs();
-  const key = user?.id
-    ? String(user.id)
-    : await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}:${slug}`);
-  const col = user?.id ? "user_id" : "anon_key_hash";
-  const upd = await env.DB.prepare(
-    `UPDATE event_guests SET updated_ms=?3 WHERE slug=?1 AND ${col}=?2`
-  ).bind(slug, key, now).run();
-  if (!upd?.meta?.changes) {
+  const key = identity.userId || identity.anonHash;
+  if (key) {
+    const col = identity.userId ? "user_id" : "anon_key_hash";
     await env.DB.prepare(
-      `INSERT INTO event_guests (id, slug, user_id, anon_key_hash, name, emoji, email, source, created_ms, updated_ms)
-       VALUES (?, ?, ${user?.id ? "?, NULL" : "NULL, ?"}, '', '', '', 'web-live', ?, ?)
-       ON CONFLICT(slug,${col}) WHERE ${col} NOT NULL DO UPDATE SET updated_ms=excluded.updated_ms`
-    ).bind(randHex(16), slug, key, now, now).run();
+      `UPDATE event_guests SET updated_ms=?3 WHERE slug=?1 AND ${col}=?2`
+    ).bind(slug, key, now).run();
   }
   const listeners = await webListeners(env, slug, now);
   return jsonResp(200, { ok: true, webListeners: listeners });
@@ -3953,27 +3944,33 @@ async function eventWebPost(request, env, slug) {
   // fail-open): one identity gets 6 posts/minute; one event's live wall takes
   // at most 300 web posts per 6h window — a rotating-cookie flood hits the
   // event ceiling instead of the room feed.
-  const idKey = identity.userId ? null : identity.anonHash;
+  const identityCol = identity.userId ? "author_user_id" : "author_cid_hash";
+  const identityKey = identity.userId || identity.anonHash;
   const [mine, total] = await Promise.all([
     env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>? AND author_cid_hash=?"
-    ).bind(slug, now - 60_000, idKey || `user:${identity.userId}`).first(),
+      `SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>? AND ${identityCol}=?`
+    ).bind(slug, now - 60_000, identityKey).first(),
     env.DB.prepare(
       "SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>?"
     ).bind(slug, now - 6 * 3600_000).first(),
   ]);
   if ((Number(mine?.n) || 0) >= 6) return jsonResp(429, { error: "slow down a little" }, { "retry-after": "30" });
   if ((Number(total?.n) || 0) >= 300) return jsonResp(429, { error: "the wall is full for now" });
+  const guest = identity.userId
+    ? await env.DB.prepare("SELECT name, emoji FROM event_guests WHERE slug=? AND user_id=? LIMIT 1").bind(slug, identity.userId).first()
+    : await env.DB.prepare("SELECT name, emoji FROM event_guests WHERE slug=? AND anon_key_hash=? LIMIT 1").bind(slug, identity.anonHash).first();
+  const savedAuthor = stripControl(clip(guest?.name, 40)).trim();
+  const savedEmoji = clip(guest?.emoji, 8);
   const id = "web-" + randHex(12);
   await env.DB.prepare(
     `INSERT INTO posts (
        id, slug, author, emoji, text, media_key, media_type, approved, ts_ms, created_ms,
-       author_cid_hash, source, source_install_id, dj, activity_ms, updated_ms, approved_ms, deleted_ms
+       author_user_id, author_cid_hash, source, source_install_id, dj, activity_ms, updated_ms, approved_ms, deleted_ms
      )
-     VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?, ?, 'web', NULL, 0, ?, ?, ?, NULL)`
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?, ?, ?, 'web', NULL, 0, ?, ?, ?, NULL)`
   ).bind(
-    id, slug, author, emoji, text, now, now,
-    identity.userId ? null : identity.anonHash, now, now, now
+    id, slug, savedAuthor || author, savedAuthor ? savedEmoji : emoji, text, now, now,
+    identity.userId || null, identity.userId ? null : identity.anonHash, now, now, now
   ).run();
   const headers = new Headers({ "content-type": "application/json" });
   if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));

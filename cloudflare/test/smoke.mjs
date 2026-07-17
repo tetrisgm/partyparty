@@ -122,6 +122,22 @@ class FakeD1Statement {
       }
       return { n };
     }
+    if (sql.includes("SELECT COUNT(*) AS n FROM posts") && sql.includes("source='web'")) {
+      const [slug, cutoff, identity] = this.args;
+      const byUser = sql.includes("author_user_id=?");
+      const hasIdentity = byUser || sql.includes("author_cid_hash=?");
+      const n = this.db.wallPosts.filter((row) =>
+        row.slug === slug && row.source === "web" && Number(row.ts_ms) > Number(cutoff) &&
+        (!hasIdentity || (byUser ? row.author_user_id === identity : row.author_cid_hash === identity))
+      ).length;
+      return { n };
+    }
+    if (sql.includes("FROM event_guests WHERE slug=?") && (sql.includes("user_id=?") || sql.includes("anon_key_hash=?"))) {
+      const [slug, identity] = this.args;
+      const key = sql.includes("user_id=?") ? `${slug}:user:${identity}` : `${slug}:anon:${identity}`;
+      const row = this.db.eventGuests.get(key);
+      return row ? { ...row } : null;
+    }
     if (sql.includes("FROM live_installs WHERE install_id=?")) {
       const row = this.db.liveInstalls.get(this.args[0]);
       return row ? { ...row } : null;
@@ -921,10 +937,10 @@ class FakeD1Statement {
     if (sql.includes("INSERT INTO posts") && sql.includes("'web'")) {
       // A web guest's wall post: visible to the same readers as room posts.
       // MUST precede the mac_sync branch — both SQLs name source_install_id.
-      const [id, slug, author, emoji, text, tsMs, createdMs, cidHash, activityMs, updatedMs, approvedMs] = this.args;
+      const [id, slug, author, emoji, text, tsMs, createdMs, userId, cidHash, activityMs, updatedMs, approvedMs] = this.args;
       this.db.wallPosts.push({
         id, slug, author, emoji, text, media_key: null, media_type: null,
-        approved: 1, ts_ms: tsMs, created_ms: createdMs, author_cid_hash: cidHash,
+        approved: 1, ts_ms: tsMs, created_ms: createdMs, author_user_id: userId, author_cid_hash: cidHash,
         source: "web", source_install_id: null, dj: 0,
         activity_ms: activityMs, updated_ms: updatedMs, approved_ms: approvedMs, deleted_ms: null,
       });
@@ -3548,7 +3564,7 @@ const tests = [
       assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
       assert.equal(db.rsvps.size, 1);
     }],
-    ["event RSVP cookie-less POSTs from same IP collapse to one row", async () => {
+    ["event RSVP cookie-less browsers on one IP keep distinct identities", async () => {
       const db = new FakeD1({ rsvpEnabled: 1 });
       const first = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
         method: "POST",
@@ -3563,8 +3579,12 @@ const tests = [
       const json = await second.json();
       assert.equal(first.status, 200);
       assert.equal(second.status, 200);
-      assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
-      assert.equal(db.rsvps.size, 1);
+      assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 1, not: 1 } });
+      assert.equal(db.rsvps.size, 2);
+      assert.notEqual(
+        (first.headers.get("set-cookie") || "").split(";")[0],
+        (second.headers.get("set-cookie") || "").split(";")[0]
+      );
     }],
   ["event RSVP GET returns counts and mine", async () => {
     const db = new FakeD1({ rsvpEnabled: 1 });
@@ -5414,6 +5434,18 @@ const tests = [
     assert.equal(after.length, 1, "same guest upserts one row");
     assert.equal(after[0].name, "Nassim K");
     assert.equal(after[0].email, "nassim@example.com");
+    // A different browser behind the same NAT gets a different guest identity;
+    // it must not overwrite Nassim's name or private email.
+    const neighbor = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+      body: JSON.stringify({ name: "Maya", emoji: "🪩", email: "maya@example.com" }),
+    }), env);
+    assert.equal(neighbor.status, 200);
+    assert.notEqual((neighbor.headers.get("set-cookie") || "").split(";")[0], cookie);
+    const neighbors = [...db.eventGuests.values()];
+    assert.equal(neighbors.length, 2);
+    assert.deepEqual(neighbors.map((row) => row.email).sort(), ["maya@example.com", "nassim@example.com"]);
     // Garbage email -> 400; unknown event -> 404.
     const bad = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "not-an-email" }),
@@ -5423,6 +5455,15 @@ const tests = [
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }),
     }), env);
     assert.equal(gone.status, 404);
+
+    const replay = new FakeD1({
+      events: [{ slug: "old-night", install_id: "abc123abc123", title: "Old", status: "replay" }],
+    });
+    const closed = await worker.fetch(new Request("https://partyparty.party/api/e/old-night/join", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    }), makeEnv({ DB: replay }));
+    assert.equal(closed.status, 403);
+    assert.equal(replay.eventGuests.size, 0);
   }],
 
   ["shared feed: presence heartbeat counts web listeners; web posts land on the wall and ride the check-in", async () => {
@@ -5432,25 +5473,28 @@ const tests = [
       profiles: [{ id: "profile-w", user_id: "user-w", handle: "wave", display_name: "DJ Wave", published: 1, handle_confirmed_ms: 5 }],
     });
     const env = makeEnv({ DB: db });
-    // Heartbeat with no prior join: creates a nameless presence row, counts as 1.
+    // A bare heartbeat cannot mint identities and inflate the count.
     const hb = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/presence", {
       method: "POST", headers: { "cf-connecting-ip": "203.0.113.30" },
     }), env);
     assert.equal(hb.status, 200);
-    assert.equal((await hb.json()).webListeners, 1);
-    // Presence identity is server-derived from the caller's IP (inflation-proof);
-    // a later cookie-less join from the same IP mints the SAME ip:<ip>:<slug>
-    // hash, so it fills the name on the same row without double-counting.
-    const cookie = "";
-    await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
+    assert.equal((await hb.json()).webListeners, 0);
+    assert.equal(db.eventGuests.size, 0);
+    // Join mints a browser identity; only that existing identity can heartbeat.
+    const joined = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30" },
       body: JSON.stringify({ name: "Web Wanda", emoji: "✨" }),
     }), env);
+    const cookie = (joined.headers.get("set-cookie") || "").split(";")[0];
     assert.equal([...db.eventGuests.values()].length, 1);
+    const counted = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/presence", {
+      method: "POST", headers: { "cf-connecting-ip": "203.0.113.30", cookie },
+    }), env);
+    assert.equal((await counted.json()).webListeners, 1);
     // Web guest posts to the shared wall.
     const post = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/post", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30", cookie },
-      body: JSON.stringify({ name: "Web Wanda", emoji: "✨", text: "hi from the internet" }),
+      body: JSON.stringify({ name: "Impostor", emoji: "😈", text: "hi from the internet" }),
     }), env);
     assert.equal(post.status, 200);
     // It renders on the event page wall...
@@ -5458,6 +5502,7 @@ const tests = [
     const html = await page.text();
     assert.match(html, /hi from the internet/);
     assert.match(html, /Web Wanda/);
+    assert.doesNotMatch(html, /Impostor/);
     // ...and rides back to the ROOM on the Mac's live check-in response.
     await withCloudflareDNSMock(async () => {
       db.liveInstalls.set("abc123abc123", {
@@ -5511,6 +5556,30 @@ const tests = [
     const bidiPost = env.DB.wallPosts.find((p) => p.author.startsWith("evil"));
     assert.equal(bidiPost.author, "evilname");
     assert.equal(bidiPost.text, "hi there");
+  }],
+
+  ["shared feed: signed-in posters keep ownership and hit the per-user rate cap", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "signed-live", install_id: "abc123abc123", title: "Signed", status: "live" }],
+    });
+    const cookie = await signInCookie(db, "poster@example.com", { ip: "203.0.113.61" });
+    const user = [...db.authUsers.values()].find((row) => row.email_norm === "poster@example.com");
+    for (let i = 0; i < 6; i += 1) {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/e/signed-live/post", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, "cf-connecting-ip": `203.0.113.${70 + i}` },
+        body: JSON.stringify({ name: "Signed Guest", text: `post ${i}` }),
+      }), makeEnv({ DB: db }));
+      assert.equal(resp.status, 200);
+    }
+    const limited = await worker.fetch(new Request("https://partyparty.party/api/e/signed-live/post", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, "cf-connecting-ip": "203.0.113.90" },
+      body: JSON.stringify({ name: "Signed Guest", text: "post 6" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(limited.status, 429);
+    assert.equal(db.wallPosts.length, 6);
+    assert.ok(db.wallPosts.every((row) => row.author_user_id === user.id));
   }],
 
   ["legacy domain shim: pages 301 to partyparty.party, the baked-in API keeps serving", async () => {
