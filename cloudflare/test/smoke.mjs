@@ -838,7 +838,7 @@ class FakeD1Statement {
       const existing = this.db.profiles.find((profile) => profile.user_id === userId);
       if (existing) {
         if (scopeUserId !== userId) return { success: true, meta: { changes: 0 } };
-        existing.handle = handle;
+        if (sql.includes("handle=excluded.handle")) existing.handle = handle;
         existing.display_name = displayName;
         existing.bio = bio;
         existing.location = location;
@@ -3251,6 +3251,41 @@ const tests = [
     assert.equal(resp.status, 400);
     assert.equal(db.profiles.length, 0);
   }],
+  ["profile API enforces reserved handles, aliases, and rename cooldown", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "profile-rename@example.com", { ip: "203.0.113.36" });
+    const create = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "first.profile" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(create.status, 200);
+
+    const reserved = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "api" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(reserved.status, 409);
+    assert.equal(db.profiles[0].handle, "first.profile");
+
+    const rename = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "second.profile" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(rename.status, 200);
+    assert.equal(db.profiles[0].handle, "second.profile");
+    assert.equal(db.handleAliases.get("first.profile")?.profile_id, db.profiles[0].id);
+
+    const tooSoon = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "third.profile" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(tooSoon.status, 429);
+    assert.equal(db.profiles[0].handle, "second.profile");
+  }],
   ["profile API requires authentication", async () => {
     const resp = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
@@ -4216,6 +4251,24 @@ const tests = [
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 409);
     assert.equal((await resp.json()).error, "slug reserved");
+  }],
+  ["web event auto-slug does not shadow a keepsake alias", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "current-party", owner_user_id: "other", title: "Current Party" }],
+      eventAliases: [{ old_slug: "party-night", slug: "current-party", created_ms: 1 }],
+    });
+    const cookie = await signInCookie(db, "auto-reserve@example.com", { ip: "203.0.113.40" });
+    const user = [...db.authUsers.values()].find((row) => row.email === "auto-reserve@example.com");
+    db.profiles.push({ id: "profile-auto-reserve", user_id: user.id, handle: "auto.reserve", display_name: "Auto Reserve", published: 1 });
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ title: "Party Night" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.notEqual(json.slug, "party-night");
+    assert.equal(db.eventAliases.get("party-night")?.slug, "current-party");
   }],
   ["broker publish-meta stamps replay activity and bumps DJ profile", async () => {
     const db = new FakeD1({

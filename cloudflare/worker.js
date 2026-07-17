@@ -1389,9 +1389,7 @@ async function profileApi(request, env) {
 
   const handle = hasHandle ? normalizeHandle(body.handle) : normalizeHandle(existing?.handle);
   if (!handle) return jsonResp(400, { error: "bad handle" });
-
-  const owner = await env.DB.prepare("SELECT user_id FROM dj_profiles WHERE handle=? LIMIT 1").bind(handle).first();
-  if (owner?.user_id && owner.user_id !== user.id) return jsonResp(409, { error: "handle taken" });
+  if (RESERVED_HANDLES.has(handle)) return jsonResp(409, { error: "that username is reserved" });
 
   const hasDisplay = Object.prototype.hasOwnProperty.call(body, "display_name");
   const hasBio = Object.prototype.hasOwnProperty.call(body, "bio");
@@ -1403,12 +1401,18 @@ async function profileApi(request, env) {
   const location = hasLocation ? clip(body.location, 80) : (existing?.location || "");
   const now = nowMs();
 
+  if (existing && handle !== normalizeHandle(existing.handle)) {
+    const renamed = await changeHandle(env, existing, user, handle, now);
+    if (renamed.error) return jsonResp(renamed.status || 409, { error: renamed.error });
+  } else if (!existing && !(await handleAvailable(env, handle))) {
+    return jsonResp(409, { error: "handle taken" });
+  }
+
   try {
     await env.DB.prepare(
       `INSERT INTO dj_profiles (id, user_id, handle, display_name, bio, location, published, created_ms, updated_ms, last_activity_ms)
        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
-         handle=excluded.handle,
          display_name=excluded.display_name,
          bio=excluded.bio,
          location=excluded.location,
@@ -1611,7 +1615,7 @@ async function resolveWebEventSlug(env, body, title) {
     const suffix = i === 0 ? "" : `-${randHex(2)}`;
     const slug = (base.slice(0, 48 - suffix.length).replace(/-+$/g, "") || "event") + suffix;
     const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(slug).first();
-    if (!existing) return { slug };
+    if (!existing && !(await slugReservedByAlias(env, slug, ""))) return { slug };
   }
   return { error: "slug taken", status: 409 };
 }
