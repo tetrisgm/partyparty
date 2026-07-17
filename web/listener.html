@@ -2329,8 +2329,12 @@
       let h = 0; for (const ch of cid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
       // >>> not >>: h can exceed 2^31 and a signed shift would go NEGATIVE,
       // indexing nothing and leaving the guest emoji-less.
-      let myName = localStorage.getItem('pp.guestName') || '';
-      let myEmoji = localStorage.getItem('pp.guestEmoji') || EMO[(h >>> 8) % EMO.length];
+      let myName = '';
+      let myEmoji = EMO[(h >>> 8) % EMO.length];
+      try {
+        myName = localStorage.getItem('pp.guestName') || '';
+        myEmoji = localStorage.getItem('pp.guestEmoji') || myEmoji;
+      } catch (e) {}
       setGuestIdentity(myName, myEmoji);
 
       const meChip = $id('meChip');
