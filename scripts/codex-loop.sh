@@ -35,7 +35,10 @@ run_one() {
     echo "[$name] FAILED to create worktree"; return 1
   fi
 
-  codex exec -s "$SANDBOX" -C "$wt" "$(cat "$tf")" >"$LOGS_DIR/$name.log" 2>&1 \
+  # CODEX_FLAGS: optional model/effort/tier overrides, e.g.
+  #   CODEX_FLAGS='-m gpt-5.6-sol -c model_reasoning_effort=high -c service_tier=priority'
+  # shellcheck disable=SC2086
+  codex exec ${CODEX_FLAGS:-} -s "$SANDBOX" -C "$wt" "$(cat "$tf")" >"$LOGS_DIR/$name.log" 2>&1 \
     || echo "[$name] codex exited non-zero (see codex/logs/$name.log)"
 
   if [ -n "$(git -C "$wt" log "$BASE"..HEAD --oneline 2>/dev/null)" ]; then

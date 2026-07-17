@@ -3,7 +3,7 @@
 partyparty is a macOS menu-bar app that turns a DJ's Mac into a **self-contained
 LAN party server**: guests scan a QR, join over Wi-Fi, and hear a low-latency
 HLS stream + post photos/videos/comments — all working with **ZERO internet**.
-A Cloudflare Worker (`party.ramine.net`) is the *optional* cloud: sign-in, DJ
+A Cloudflare Worker (`partyparty.party`; `party.ramine.net` is a legacy 301/API-compat shim — do not add new references to it) is the cloud side: sign-in, DJ
 event replay pages, OTA updates.
 
 ## Layout
