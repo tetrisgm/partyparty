@@ -92,6 +92,7 @@ class FakeD1 {
       const key = row.user_id ? `${row.slug}:user:${row.user_id}` : `${row.slug}:anon:${row.anon_key_hash}`;
       this.rsvps.set(key, { ...row });
     }
+    this.eventGuests = new Map();
   }
 
   prepare(sql) {
@@ -1121,6 +1122,28 @@ class FakeD1Statement {
         if (sql.includes("live_ended_ms=COALESCE") && next.live_ended_ms == null) next.live_ended_ms = maybeStamp;
         this.db.events.set(slug, next);
       }
+    }
+    if (sql.includes("INSERT INTO event_guests")) {
+      // Web-live guest join: same upsert shape as rsvps, plus email with a
+      // keep-old-when-blank rule (a later nameless/emailless re-join must not
+      // erase a captured address).
+      const isUser = sql.includes("ON CONFLICT(slug,user_id)");
+      const [id, slug, key, name, emoji, email, createdMs, updatedMs] = this.args;
+      const mapKey = isUser ? `${slug}:user:${key}` : `${slug}:anon:${key}`;
+      const old = this.db.eventGuests.get(mapKey);
+      this.db.eventGuests.set(mapKey, {
+        id: old?.id || id,
+        slug,
+        user_id: isUser ? key : null,
+        anon_key_hash: isUser ? null : key,
+        name,
+        emoji,
+        email: email === "" ? (old?.email || "") : email,
+        source: "web-live",
+        created_ms: old?.created_ms || createdMs,
+        updated_ms: updatedMs,
+      });
+      return { success: true, meta: { changes: 1 } };
     }
     if (sql.includes("INSERT INTO event_rsvps")) {
       const isUser = sql.includes("ON CONFLICT(slug,user_id)");
@@ -5250,6 +5273,47 @@ const tests = [
     assert.ok(!json.parties.some((p) => p.host.startsWith("vinyl99")), "expired row excluded");
   }],
 
+  ["event join: web guests get the LAN-style identity ask (name/emoji/optional email)", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "rooftop-night", install_id: "abc123abc123", title: "Rooftop", host: "DJ Wave", status: "live", created_ms: 1, updated_ms: 1 }],
+    });
+    const env = makeEnv({ DB: db });
+    // First join (anon, no cookie): stores identity + email, mints the shared rsvp cookie.
+    const first = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+      body: JSON.stringify({ name: "Nassim", emoji: "🎧", email: "Nassim@Example.com" }),
+    }), env);
+    assert.equal(first.status, 200);
+    const cookie = (first.headers.get("set-cookie") || "").split(";")[0];
+    assert.match(cookie, /^pp_rsvp=/);
+    const rows = [...db.eventGuests.values()];
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].name, "Nassim");
+    assert.equal(rows[0].emoji, "🎧");
+    assert.equal(rows[0].email, "nassim@example.com"); // lowercased
+    // Re-join with the SAME cookie and no email: name updates, email is KEPT.
+    const second = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", cookie },
+      body: JSON.stringify({ name: "Nassim K", emoji: "🔥", email: "" }),
+    }), env);
+    assert.equal(second.status, 200);
+    const after = [...db.eventGuests.values()];
+    assert.equal(after.length, 1, "same guest upserts one row");
+    assert.equal(after[0].name, "Nassim K");
+    assert.equal(after[0].email, "nassim@example.com");
+    // Garbage email -> 400; unknown event -> 404.
+    const bad = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "not-an-email" }),
+    }), env);
+    assert.equal(bad.status, 400);
+    const gone = await worker.fetch(new Request("https://party.ramine.net/api/e/nope-nope/join", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }),
+    }), env);
+    assert.equal(gone.status, 404);
+  }],
+
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
     const db = new FakeD1();
     const env = makeEnv({ DB: db }); // reuse ONE env so R2 state persists across calls
@@ -5423,6 +5487,11 @@ const tests = [
     assert.match(html, /a few seconds behind/);
     assert.match(html, /https:\/\/disco12\.party\.example\.test:8443\//); // "at the party" LAN link
     assert.match(html, /Track Z/);
+    // The LAN-style identity ask ships with the live player.
+    assert.match(html, /pp-join-name/);
+    assert.match(html, /Email \(optional\)/);
+    assert.match(html, /\/api\/e\/rooftop-night\/join/);
+    assert.match(html, /Just listen/); // playback is never gated
 
     // Same live event WITHOUT a mirror playlist in R2 -> no dead player.
     const noMirror = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), makeEnv({ DB: db }));

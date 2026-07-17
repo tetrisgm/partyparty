@@ -19,6 +19,7 @@ const ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
 const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
 const WEB_EVENT_API_RE = /^\/api\/events\/([A-Za-z0-9_.-]{1,48})$/;
 const RSVP_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/rsvp$/;
+const JOIN_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/join$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
 const POST_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/media\/([A-Za-z0-9_-]{1,64})$/;
 // Published set media (audio + waveform) and event cover, served range-aware
@@ -2350,15 +2351,58 @@ function renderEvent(e, opts = {}) {
     </div>
     <audio id="pp-live-audio" preload="none" playsinline src="${esc(e.liveMirror)}"></audio>
     <button id="pp-live-play" type="button" class="btn" style="width:100%;margin-top:12px">Tap to listen</button>
+    <!-- The same join ask as the LAN listener: name / emoji / optional email.
+         Shown once at the first tap; a remembered guest skips straight to the
+         music. Never gates playback ("Just listen" always works). -->
+    <div id="pp-join" hidden style="margin-top:12px;display:grid;gap:10px">
+      <div class="rsvpfields" style="grid-template-columns:64px minmax(0,1fr)">
+        <button type="button" id="pp-join-emoji" class="btn lt sm" aria-label="Pick your emoji" style="font-size:20px;padding:8px 0">🕺</button>
+        <input id="pp-join-name" maxlength="40" autocomplete="name" placeholder="Your name">
+      </div>
+      <div class="rsvpfields" style="grid-template-columns:1fr">
+        <input id="pp-join-email" maxlength="120" type="email" inputmode="email" autocomplete="email" placeholder="Email (optional)">
+      </div>
+      <p class="cardhint" style="margin:0">The party host can send you updates — email is optional.</p>
+      <button type="button" id="pp-join-go" class="btn" style="width:100%">Join &amp; listen</button>
+      <button type="button" id="pp-join-skip" class="btn ghost sm" style="width:100%">Just listen</button>
+      <p id="pp-join-err" class="cardhint" style="margin:0;color:#b3261e" hidden></p>
+    </div>
     <div class="cardhint">Listening from away — a few seconds behind the room.${e.lanUrl ? ` <a href="${esc(e.lanUrl)}" style="font-weight:600">At the party? Join the live room &rarr;</a>` : ""}</div>
     <script>
     (function(){
       var a=document.getElementById('pp-live-audio'), b=document.getElementById('pp-live-play');
       if(!a||!b) return;
+      var joinApi='/api/e/${encodeURIComponent(String(e.slug))}/join';
+      var panel=document.getElementById('pp-join'), nameI=document.getElementById('pp-join-name'),
+          emojiB=document.getElementById('pp-join-emoji'), emailI=document.getElementById('pp-join-email'),
+          go=document.getElementById('pp-join-go'), skip=document.getElementById('pp-join-skip'),
+          err=document.getElementById('pp-join-err');
+      var EMOJI=['🕺','💃','🎧','🔥','✨','🪩','🎉','😎','🫶','🌊'];
+      var ei=0;
+      if(emojiB) emojiB.addEventListener('click',function(){ ei=(ei+1)%EMOJI.length; emojiB.textContent=EMOJI[ei]; });
+      function saved(){ try{ return JSON.parse(localStorage.getItem('pp.guest')||'null'); }catch(_){ return null; } }
+      function remember(g){ try{ localStorage.setItem('pp.guest', JSON.stringify(g)); }catch(_){} }
+      function postJoin(g){ // fire-and-forget: joining never blocks the music
+        try{ fetch(joinApi,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(g||{})}).catch(function(){}); }catch(_){}
+      }
+      function play(){
+        a.play().then(function(){ b.textContent='Playing — a few seconds behind'; b.disabled=true; if(panel) panel.hidden=true; })
+                .catch(function(){ b.textContent='Tap to listen'; b.disabled=false; });
+      }
       b.addEventListener('click', function(){
-        a.play().then(function(){ b.textContent='Playing — a few seconds behind'; b.disabled=true; })
-                .catch(function(){ b.textContent='Tap to listen'; });
+        var g=saved();
+        if(g && g.name){ postJoin(g); play(); return; }
+        if(panel && panel.hidden){ panel.hidden=false; if(nameI) nameI.focus(); return; }
+        play();
       });
+      if(go) go.addEventListener('click', function(){
+        err.hidden=true;
+        var g={ name:(nameI&&nameI.value||'').trim(), emoji:(emojiB&&emojiB.textContent||'').trim(), email:(emailI&&emailI.value||'').trim() };
+        if(!g.name){ err.textContent='Add your name (or tap Just listen).'; err.hidden=false; return; }
+        if(g.email && !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(g.email)){ err.textContent="That email doesn't look right."; err.hidden=false; return; }
+        remember(g); postJoin(g); play();
+      });
+      if(skip) skip.addEventListener('click', function(){ postJoin({}); play(); });
       a.addEventListener('error', function(){ b.textContent='Stream unavailable — try again in a moment'; b.disabled=false; });
       a.addEventListener('ended', function(){ b.textContent='The set ended'; b.disabled=true; });
     })();
@@ -3699,6 +3743,54 @@ async function eventRsvp(request, env, slug) {
   const headers = new Headers({ "content-type": "application/json" });
   if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
   return new Response(JSON.stringify({ ok: true, response, counts }), { status: 200, headers });
+}
+
+// eventJoin: a web guest joining a live party from the event page — the same
+// identity ask as the LAN listener (name / emoji / optional email, "email
+// updates from the party host"). Upserted per guest per event on the SAME
+// identity the RSVP flow uses (session user or the pp_rsvp anon cookie), so a
+// guest is one person across both. Email is stored for the host only — it is
+// never rendered anywhere public. Never gates playback: the client treats this
+// as fire-and-forget.
+async function eventJoin(request, env, slug) {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
+  }
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const event = await getEventBySlug(env, slug);
+  if (!event) return jsonResp(404, { error: "event not found" });
+
+  const body = await readJson(request, 2048);
+  const name = clip(body?.name, 40);
+  const emoji = clip(body?.emoji, 8);
+  const email = clip(body?.email, 120).trim().toLowerCase();
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return jsonResp(400, { error: "that email doesn't look right" });
+  }
+  const identity = await rsvpIdentity(env, request, slug, true);
+  const now = nowMs();
+  if (identity.userId) {
+    await env.DB.prepare(
+      `INSERT INTO event_guests (id, slug, user_id, anon_key_hash, name, emoji, email, source, created_ms, updated_ms)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, 'web-live', ?, ?)
+       ON CONFLICT(slug,user_id) WHERE user_id NOT NULL DO UPDATE SET
+         name=excluded.name, emoji=excluded.emoji,
+         email=CASE WHEN excluded.email='' THEN event_guests.email ELSE excluded.email END,
+         updated_ms=excluded.updated_ms`
+    ).bind(randHex(16), slug, identity.userId, name, emoji, email, now, now).run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO event_guests (id, slug, user_id, anon_key_hash, name, emoji, email, source, created_ms, updated_ms)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, 'web-live', ?, ?)
+       ON CONFLICT(slug,anon_key_hash) WHERE anon_key_hash NOT NULL DO UPDATE SET
+         name=excluded.name, emoji=excluded.emoji,
+         email=CASE WHEN excluded.email='' THEN event_guests.email ELSE excluded.email END,
+         updated_ms=excluded.updated_ms`
+    ).bind(randHex(16), slug, identity.anonHash, name, emoji, email, now, now).run();
+  }
+  const headers = new Headers({ "content-type": "application/json" });
+  if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
+  return new Response(JSON.stringify({ ok: true, name, emoji }), { status: 200, headers });
 }
 
 // contentState returns the latest published versions, cached briefly so the
@@ -5506,6 +5598,15 @@ export default {
     if (rsvp) {
       try {
         return await eventRsvp(request, env, rsvp[1]);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    const join = pathname.match(JOIN_RE);
+    if (join) {
+      try {
+        return await eventJoin(request, env, join[1]);
       } catch (e) {
         return jsonResp(500, { error: String((e && e.message) || e) });
       }
