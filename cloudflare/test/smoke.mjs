@@ -2958,6 +2958,18 @@ const tests = [
       assert.equal(`${updated.slug}.party.example.test`, json.host);
     });
   }],
+  ["dns-admin rejects record-id path traversal before calling Cloudflare", async () => {
+    await withCloudflareDNSMock(async (calls) => {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/dns-admin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ admin: "admin-test", op: "delete", recordId: "../../../../user/tokens/verify" }),
+      }), makeEnv({ env: { ADMIN_KEY: "admin-test" } }));
+      assert.equal(resp.status, 400);
+      assert.equal((await resp.json()).error, "bad recordId");
+      assert.equal(calls.length, 0);
+    });
+  }],
   ["web event create API requires authentication", async () => {
     const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
       method: "POST",

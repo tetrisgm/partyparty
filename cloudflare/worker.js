@@ -4977,8 +4977,8 @@ async function broker(request, env, pathname) {
       }
       if (op === "delete") {
         const rid = String(body.recordId || "");
-        if (!rid) return jsonResp(400, { error: "recordId required" });
-        await cfDNS(env, "DELETE", "/" + rid);
+        if (!/^[0-9a-f]{32}$/i.test(rid)) return jsonResp(400, { error: "bad recordId" });
+        await cfDNS(env, "DELETE", "/" + encodeURIComponent(rid));
         return jsonResp(200, { ok: true });
       }
       return jsonResp(400, { error: "bad op" });
