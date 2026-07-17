@@ -1123,16 +1123,30 @@ func (s *Store) SaveMedia(origName string, r io.Reader) (Media, error) {
 	}
 	id := newID() + ext
 	s.mu.Lock()
-	dst := filepath.Join(s.dir, "media", id)
+	mediaDir := filepath.Join(s.dir, "media")
+	dst := filepath.Join(mediaDir, id)
 	s.mu.Unlock()
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	f, err := os.CreateTemp(mediaDir, ".upload-*"+ext)
 	if err != nil {
 		return Media{}, err
 	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
 	n, err := io.Copy(f, r)
-	f.Close()
 	if err != nil {
-		os.Remove(dst)
+		f.Close()
+		return Media{}, err
+	}
+	if err := f.Chmod(0o644); err != nil {
+		f.Close()
+		return Media{}, err
+	}
+	if err := f.Close(); err != nil {
+		return Media{}, err
+	}
+	// Link publishes the completed inode atomically without overwriting the
+	// astronomically unlikely case of a colliding generated media ID.
+	if err := os.Link(tmp, dst); err != nil {
 		return Media{}, err
 	}
 	name := filepath.Base(origName)
