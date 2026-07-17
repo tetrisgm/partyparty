@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"partyparty/internal/publish"
 	postsync "partyparty/internal/sync"
 )
+
+var errPostSyncRunning = errors.New("post sync already in progress")
 
 const (
 	syncDrainFirstDelay      = 15 * time.Second
@@ -131,10 +134,10 @@ func (s *srv) runSyncDrainOnce(ctx context.Context, _ string) (postsync.Backlog,
 		s.diagf("sync: %d posts / %d media pending (offline)", backlog.PostsPending, backlog.MediaPending)
 		return backlog, false
 	}
-	if !s.beginSyncDrainRun() {
+	if !s.beginPostSyncRun() {
 		return backlog, false
 	}
-	defer s.endSyncDrainRun()
+	defer s.endPostSyncRun()
 
 	cctx, cancel := context.WithTimeout(ctx, syncDrainAttemptTimeout)
 	defer cancel()
@@ -205,7 +208,7 @@ func (s *srv) syncDrainTarget() (dir string, creds publish.Creds, slug, base str
 	return s.Events.Dir(), creds, slug, strings.TrimRight(base, "/"), true
 }
 
-func (s *srv) beginSyncDrainRun() bool {
+func (s *srv) beginPostSyncRun() bool {
 	s.syncDrainMu.Lock()
 	defer s.syncDrainMu.Unlock()
 	if s.syncDrainRunning {
@@ -215,7 +218,7 @@ func (s *srv) beginSyncDrainRun() bool {
 	return true
 }
 
-func (s *srv) endSyncDrainRun() {
+func (s *srv) endPostSyncRun() {
 	s.syncDrainMu.Lock()
 	s.syncDrainRunning = false
 	s.syncDrainMu.Unlock()

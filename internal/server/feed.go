@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -932,6 +933,16 @@ func (s *srv) publishCurrentSet(ctx context.Context) (*publish.Result, error) {
 }
 
 func (s *srv) syncCurrentPosts(ctx context.Context, slug string) (postsync.Result, error) {
+	if !s.beginPostSyncRun() {
+		return postsync.Result{}, errPostSyncRunning
+	}
+	defer func() {
+		s.endPostSyncRun()
+		// A drain that collided with this manual/after-publish run may have
+		// observed stale backlog and returned. Re-check once the state writer is
+		// released; the kick is buffered and never blocks the caller.
+		s.triggerSyncDrain()
+	}()
 	id, secret := activate.InstallCreds()
 	installSlug := activate.InstallSlug()
 	if slug == "" {
@@ -955,6 +966,9 @@ func (s *srv) syncCurrentPostsAsync(slug string) {
 	}
 	go func() {
 		res, err := s.syncCurrentPosts(context.Background(), slug)
+		if errors.Is(err, errPostSyncRunning) {
+			return // the active writer or its follow-up drain owns this work
+		}
 		if s.Diag == nil {
 			return
 		}

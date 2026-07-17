@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"partyparty/internal/broadcast"
@@ -9,6 +10,18 @@ import (
 	"partyparty/internal/publish"
 	postsync "partyparty/internal/sync"
 )
+
+func TestManualPostSyncSharesDrainSingleFlight(t *testing.T) {
+	s := New(Deps{})
+	if !s.beginPostSyncRun() {
+		t.Fatal("failed to reserve initial post-sync writer")
+	}
+	defer s.endPostSyncRun()
+
+	if _, err := s.syncCurrentPosts(context.Background(), "party-slug"); !errors.Is(err, errPostSyncRunning) {
+		t.Fatalf("concurrent sync error = %v, want %v", err, errPostSyncRunning)
+	}
+}
 
 func TestSyncDrainGating(t *testing.T) {
 	cases := []struct {
