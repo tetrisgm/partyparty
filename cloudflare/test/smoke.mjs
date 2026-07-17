@@ -286,6 +286,20 @@ class FakeD1Statement {
       const row = this.db.eventAliases.get(oldSlug);
       return row ? { ...row } : null;
     }
+    if (sql.includes("FROM events e WHERE e.slug=?1")) {
+      const slug = this.args[0];
+      const row = this.db.events.get(slug);
+      if (!row) return null;
+      return {
+        status: row.status,
+        cover_key: row.cover_key ?? null,
+        has_sets: this.db.eventSets.some((set) => set.slug === slug) ? 1 : 0,
+        has_posts: [...this.db.importedPosts.values()].some((post) => post.slug === slug) ? 1 : 0,
+        has_rsvps: [...this.db.rsvps.values()].some((rsvp) => rsvp.slug === slug) ? 1 : 0,
+        has_claims: 0,
+        has_guests: [...this.db.eventGuests.values()].some((guest) => guest.slug === slug) ? 1 : 0,
+      };
+    }
     if (sql.includes("FROM events WHERE slug=?")) {
       const slug = this.args[0];
       const row = this.db.events.get(slug);
@@ -3153,6 +3167,26 @@ const tests = [
     const unknown = await worker.fetch(new Request("https://partyparty.party/e/unknown-web"), makeEnv({ DB: db }));
     assert.equal(unknown.status, 404);
   }],
+  ["web event update API refuses to rename an event with guest activity", async () => {
+    const db = new FakeD1();
+    const ownerCookie = await signInCookie(db, "web-active@example.com", { ip: "203.0.113.42" });
+    const owner = [...db.authUsers.values()].find((row) => row.email === "web-active@example.com");
+    db.profiles.push({ id: "profile-web-active", user_id: owner.id, handle: "web.active", display_name: "Web Active", published: 1 });
+    db.events.set("active-web", {
+      slug: "active-web", install_id: "", owner_user_id: owner.id, dj_profile_id: "profile-web-active",
+      title: "Active Web", status: "upcoming", source: "web", visibility: "public", rsvp_enabled: 1,
+    });
+    db.importedPosts.set("active-post", { id: "active-post", slug: "active-web", approved: 1, text: "Already here" });
+    const update = await worker.fetch(new Request("https://partyparty.party/api/events/active-web", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: ownerCookie },
+      body: JSON.stringify({ slug: "active-web-new" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(update.status, 409);
+    assert.equal((await update.json()).error, "event with activity cannot be renamed");
+    assert.equal(db.events.has("active-web"), true);
+    assert.equal(db.events.has("active-web-new"), false);
+  }],
   ["profile API creates signed-in user's fresh profile and public route renders it", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "fresh@example.com", { ip: "203.0.113.30" });
@@ -4259,6 +4293,22 @@ const tests = [
     assert.equal(db.events.has("ahead-old"), false);
     assert.equal(db.events.get("ahead-new").title, "Ahead New");
     assert.equal(db.eventAliases.get("ahead-old").slug, "ahead-new");
+  }],
+  ["broker event-upsert refuses to rename an event with published content", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
+      events: [{ slug: "published-old", install_id: "abc123abc123", title: "Published", status: "replay" }],
+      eventSets: [{ id: "published-set", slug: "published-old", state: "ready", audio_key: "event/published-old/published-set.m4a" }],
+    });
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", old_slug: "published-old", slug: "published-new", title: "Published" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 409);
+    assert.equal((await resp.json()).error, "event with activity cannot be renamed");
+    assert.equal(db.events.has("published-old"), true);
+    assert.equal(db.events.has("published-new"), false);
   }],
   ["broker event rename is REJECTED when the slug is reserved by another's keepsake", async () => {
     // Owner A renamed party -> rave (alias party->rave; rave is live). Owner B

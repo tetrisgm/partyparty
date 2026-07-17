@@ -345,6 +345,25 @@ async function recordEventAlias(env, oldSlug, slug, now, target = {}) {
   return true;
 }
 
+// Slug changes are safe only before an event has acquired durable activity.
+// D1 child tables reference events.slug without ON UPDATE CASCADE, and R2 media
+// keys are rooted under the slug, so moving a populated event would either fail
+// its foreign-key update or strand its published objects at the old paths.
+async function eventRenameBlocked(env, slug) {
+  const row = await env.DB.prepare(
+    `SELECT e.status, e.cover_key,
+            EXISTS(SELECT 1 FROM event_sets s WHERE s.slug=e.slug) AS has_sets,
+            EXISTS(SELECT 1 FROM posts p WHERE p.slug=e.slug) AS has_posts,
+            EXISTS(SELECT 1 FROM event_rsvps r WHERE r.slug=e.slug) AS has_rsvps,
+            EXISTS(SELECT 1 FROM event_guest_claims c WHERE c.slug=e.slug) AS has_claims,
+            EXISTS(SELECT 1 FROM event_guests g WHERE g.slug=e.slug) AS has_guests
+     FROM events e WHERE e.slug=?1 LIMIT 1`
+  ).bind(slug).first();
+  if (!row) return false;
+  return row.status !== "upcoming" || !!row.cover_key || !!row.has_sets || !!row.has_posts ||
+    !!row.has_rsvps || !!row.has_claims || !!row.has_guests;
+}
+
 export async function getProfileByHandle(env, handle) {
   const h = normalizeHandle(handle);
   if (!env?.DB || !h) return null;
@@ -1688,6 +1707,7 @@ async function updateEventApi(request, env, slug) {
       const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(nextSlug).first();
       if (existing) return jsonResp(409, { error: "slug taken" });
       if (await slugReservedByAlias(env, nextSlug, slug)) return jsonResp(409, { error: "slug reserved" });
+      if (await eventRenameBlocked(env, slug)) return jsonResp(409, { error: "event with activity cannot be renamed" });
     }
   }
   const cols = [];
@@ -5143,6 +5163,7 @@ async function broker(request, env, pathname) {
       const oldOwner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(oldSlug).first();
       if (oldOwner) {
         if (oldOwner.install_id !== id) return jsonResp(403, { error: "not owner" });
+        if (await eventRenameBlocked(env, oldSlug)) return jsonResp(409, { error: "event with activity cannot be renamed" });
         await env.DB.prepare("UPDATE events SET slug=? WHERE slug=? AND install_id=?").bind(slug, oldSlug, id).run();
       }
     }
