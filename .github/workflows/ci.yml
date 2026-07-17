@@ -1,13 +1,11 @@
 name: CI
 
-# Fast build-check on every push/PR. The full signed+notarized release pipeline
-# (Developer ID sign → notarize → staple → Sparkle appcast → GitHub Release) is a
-# separate workflow added once the .app bundle + menu-bar shell land.
+# MANUAL ONLY. Disabled the push/PR auto-triggers deliberately: releases are
+# built + verified locally by scripts/ship.sh (go build + go test + smoke run
+# before every push), so per-push macOS-runner CI only burned Actions minutes
+# and spammed failure emails. Run on demand from the Actions tab if ever needed.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:

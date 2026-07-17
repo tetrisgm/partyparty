@@ -6,8 +6,9 @@ name: Release
 # The `make release` script does the same thing locally. Required secrets are
 # listed in docs/RELEASING.md.
 on:
-  push:
-    tags: ["v*"]
+  # MANUAL ONLY. Releases ship locally via scripts/ship.sh (sign → notarize →
+  # staple → appcast → deploy). The tag auto-trigger is disabled so pushes never
+  # spin up a macOS runner or spam CI email.
   workflow_dispatch:
 
 permissions:
