@@ -28,12 +28,31 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
 
 ## Rules
 - Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.
-- **Ship verified product changes by default.** Agents are authorized to bump release versions and publish without per-release approval; the user does not need to approve each release. Use `scripts/ship.sh` as the only owner-facing release entry point after a requested change is complete: it selects and records the version, runs checks, builds/signs/notarizes, uploads immutable artifacts first, updates the Worker/public download page, and flips the appcast/manifest/version marker last.
-- Use `scripts/ship.sh --payload-only` only for compatible `web/` payload changes. Changes to Go, Swift, native helpers, runtime APIs, or release infrastructure require a full `scripts/ship.sh` release.
-- After shipping, verify the public website/download, appcast or OTA manifest, signatures, and version marker. Ensure the app installed on this Mac updates to that same version/build and relaunch it; if Sparkle does not apply the update, install the newly signed artifact locally and verify it directly.
-- Commit the generated release metadata and fast-forward/push the shipped source to the canonical remote `main` branch when it is safe to do so. Never leave GitHub behind the public app, and never force-push over unrelated history.
-- Skip publishing only when the user explicitly asks not to ship, verification fails, or signing/hosting credentials or an external service block the release. Never describe work as complete while knowingly leaving the public or installed product on an older version; report any blocker explicitly.
-- `scripts/release.sh`, `scripts/publish-payload.sh`, direct `CODE_MAJOR` edits, and direct `wrangler deploy` are lower-level implementation details. Do not run them as separate manual ceremony; let `scripts/ship.sh` coordinate the release.
+- **The latest coherent `main` is ALWAYS shipped, automatically.** A local
+  launchd daemon (`net.ramine.partyparty.autoship` → `scripts/auto-ship.sh`)
+  watches `main` and, whenever there is new product work, runs the full
+  `scripts/ship.sh` in the background (verify → build/sign/notarize → upload
+  immutable artifacts → deploy Worker/landing → flip the appcast/version marker
+  last → commit `Record partyparty X release` → push). Your job as an agent ends
+  at **commit verified work to `main`** — the daemon ships it. Never deciding to
+  ship, never asking whether to ship, and never skipping a release are all
+  errors. Set it up on a fresh machine with `scripts/install-auto-ship.sh`.
+- **Do NOT run `scripts/ship.sh` in the foreground and block on it**, and do not
+  babysit long post-ship validation (notarization, Sparkle propagation, forced
+  reinstalls). Those are exactly the long waits the daemon absorbs. If you need a
+  release right now, just commit — or kick the daemon with `scripts/auto-ship.sh`
+  (it backgrounds itself). Never sit and wait on a notarize/upload step.
+- The daemon refuses to ship a dirty tree, a non-`main` HEAD, a state that fails
+  `ship.sh`'s built-in verification, or one with no new work — so "always ship"
+  never means "ship broken." A real credential/hosting blocker is the only thing
+  that legitimately stops a ship; surface it, don't silently skip.
+- Payload-only OTA (`scripts/ship.sh --payload-only`, compatible `web/` changes
+  only) vs a full native ship (Go/Swift/native/runtime/release-infra changes) is
+  chosen by `ship.sh`; `scripts/release.sh`, `publish-payload.sh`, direct
+  `CODE_MAJOR` edits, and direct `wrangler deploy` are internals — never run as
+  separate ceremony.
+- GitHub Actions is intentionally disabled (manual-only) — releases happen on
+  this Mac via the daemon, not in CI. Do not re-enable auto-triggered workflows.
 - NEVER commit secrets (`*.pem`, `*.key`, `*.p8`, `*.seed`, API keys). Secrets live in `~/Library/Application Support/partyparty` and as Cloudflare Worker secrets.
 - Match the surrounding code style; keep changes tight and well-tested.
 - Commit messages end with: `Co-Authored-By: Codex <noreply@openai.com>`
