@@ -11,6 +11,7 @@ globalThis.caches ??= {
 
 const KNOWN_SLUG = "known-set";
 const SET_ID = "abcdef123456";
+const LINKED_INSTALL = { install_id: "abc123abc123", user_id: "user-a", profile_id: "profile-a", revoked_ms: null };
 
 const eventActivity = (row) =>
   Number(row.last_activity_ms ?? row.published_ms ?? row.scheduled_at_ms ?? row.updated_ms ?? row.created_ms ?? 0) || 0;
@@ -553,6 +554,12 @@ class FakeD1Statement {
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("UPDATE live_installs SET event_slug=? WHERE install_id=?")) {
+      const [eventSlug, installId] = this.args;
+      const row = this.db.liveInstalls.get(installId);
+      if (row) row.event_slug = eventSlug;
+      return { success: true, meta: { changes: row ? 1 : 0 } };
+    }
     if (sql.includes("INSERT INTO live_installs")) {
       const [
         installId, handle, profileId, publicIpHash, host, lanIp, guestPort, eventSlug,
@@ -2609,6 +2616,12 @@ const tests = [
         dj_profile_id: "profile-revoked",
         scheduled_at_ms: now + 60_000,
         updated_ms: now,
+      }, {
+        slug: "revoked-existing",
+        install_id: "abc123abc123",
+        title: "Revoked Existing",
+        status: "upcoming",
+        updated_ms: now,
       }],
     });
 
@@ -2629,6 +2642,28 @@ const tests = [
     }), makeEnv({ DB: db }));
     assert.equal(eventUpsert.status, 403);
     assert.equal(db.events.has("revoked-upsert"), false);
+
+    // Retaining the broker secret must not let a revoked Mac mutate an event it
+    // already owns through a route downstream of event creation.
+    const eventStatus = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-existing", status: "live" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(eventStatus.status, 403);
+    assert.equal(db.events.get("revoked-existing").status, "upcoming");
+
+    const mirrorEnv = makeEnv({ DB: db });
+    const liveSegment = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "revoked-existing",
+        "x-pp-file": "live0.ts", "content-length": "6",
+      },
+      body: "tsdata",
+    }), mirrorEnv);
+    assert.equal(liveSegment.status, 403);
+    assert.equal(await mirrorEnv.DL.get("event/revoked-existing/live/live0.ts"), null);
 
     const windowResp = await worker.fetch(new Request("https://partyparty.party/api/broker/events-window", {
       method: "POST",
@@ -3978,7 +4013,7 @@ const tests = [
     assert.equal(resp.status, 403);
   }],
   ["broker publish-cover delete clears object and event cover", async () => {
-    const env = makeEnv();
+    const env = makeEnv({ DB: new FakeD1({ deviceInstalls: [LINKED_INSTALL] }) });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-cover", {
       method: "DELETE",
       headers: {
@@ -4328,6 +4363,7 @@ const tests = [
   }],
     ["broker publish-posts imports curated posts and is idempotent", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-posts", install_id: "abc123abc123", title: "Owned Posts", status: "replay" }],
     });
     const body = {
@@ -4382,6 +4418,7 @@ const tests = [
     }],
     ["broker publish-posts rejects aggregate post cap before writing", async () => {
       const db = new FakeD1({
+        deviceInstalls: [LINKED_INSTALL],
         events: [{ slug: "owned-posts-cap", install_id: "abc123abc123", title: "Owned Posts", status: "replay" }],
       });
       const posts = Array.from({ length: 201 }, (_, i) => ({
@@ -4406,6 +4443,7 @@ const tests = [
     }],
   ["broker publish-posts rejects slug owned by another install", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "other-posts", install_id: "def456def456", title: "Other", status: "replay" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
@@ -4423,6 +4461,7 @@ const tests = [
   }],
   ["broker publish-posts tombstones deleted posts", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "deleted-posts", install_id: "abc123abc123", title: "Deleted Posts", status: "replay" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
@@ -4465,6 +4504,7 @@ const tests = [
   }],
   ["broker publish-post-media rejects slug owned by another install", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "other-media", install_id: "def456def456", title: "Other", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "other-media", approved: 1, deleted_ms: null }],
     });
@@ -4488,6 +4528,7 @@ const tests = [
   }],
     ["broker publish-post-media rejects missing post", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
     });
     const env = makeEnv({ DB: db });
@@ -4510,6 +4551,7 @@ const tests = [
     }],
     ["broker publish-post-media rejects unsafe mime for media type", async () => {
       const db = new FakeD1({
+        deviceInstalls: [LINKED_INSTALL],
         events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
         wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
       });
@@ -4534,6 +4576,7 @@ const tests = [
     }],
     ["broker publish-post-media writes R2 key and upserts post_media", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4572,6 +4615,7 @@ const tests = [
   }],
   ["broker publish-post-media second PUT updates existing media row", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4621,6 +4665,7 @@ const tests = [
   }],
   ["broker publish-post-media multipart requires ordered complete parts", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4666,6 +4711,7 @@ const tests = [
   }],
   ["broker publish-post-media multipart completes two parts and is idempotent", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4733,6 +4779,7 @@ const tests = [
   }],
     ["broker event-status rejects non-owner install", async () => {
       const db = new FakeD1({
+        deviceInstalls: [LINKED_INSTALL],
         events: [{ slug: "owned-by-b", install_id: "def456def456", title: "Owned B", status: "upcoming" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
@@ -4764,6 +4811,7 @@ const tests = [
   }],
     ["broker event-status owner sets live and stamps start", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-live", install_id: "abc123abc123", title: "Owned Live", status: "upcoming", dj_profile_id: "profile-live" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
@@ -4784,6 +4832,7 @@ const tests = [
   }],
   ["broker event-status rejects invalid status", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-invalid-status", install_id: "abc123abc123", title: "Owned", status: "upcoming" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
@@ -5611,7 +5660,7 @@ const tests = [
   }],
 
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
-    const db = new FakeD1();
+    const db = new FakeD1({ deviceInstalls: [LINKED_INSTALL] });
     const env = makeEnv({ DB: db }); // reuse ONE env so R2 state persists across calls
     // A stale segment the new window will no longer reference.
     await env.DL.put("event/known-set/live/seg-0.ts", "old", { httpMetadata: { contentType: "audio/mp2t" } });
@@ -5655,6 +5704,7 @@ const tests = [
   ["live mirror ingest rejects a slug the install does not own", async () => {
     // Slug owned by ANOTHER install -> hard 403 (the real ownership protection).
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "not-mine", install_id: "def456def456", status: "live" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
@@ -5702,6 +5752,7 @@ const tests = [
     assert.equal(minted.install_id, "abc123abc123");
     assert.equal(minted.status, "live");
     assert.equal(minted.title, "Rooftop");
+    assert.equal(db.liveInstalls.get("abc123abc123").event_slug, "fresh-party");
     // Clean offline demotes the phantom 'live' event to replay.
     const off = await worker.fetch(new Request("https://partyparty.party/api/broker/offline", {
       method: "POST",

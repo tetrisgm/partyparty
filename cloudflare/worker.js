@@ -4160,6 +4160,8 @@ async function liveMirrorUpload(request, env, pathname) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
   const slug = request.headers.get("x-pp-slug") || "";
   const file = request.headers.get("x-pp-file") || "";
   if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
@@ -4208,6 +4210,12 @@ async function liveMirrorUpload(request, env, pathname) {
       ).bind("live", now, now, now, slug, id).run();
     }
   }
+
+  // The live check-in can arrive before the mirror has minted the event. Once
+  // the row exists, associate it immediately so the handle router sends remote
+  // guests to the event page instead of waiting for the next heartbeat.
+  await env.DB.prepare("UPDATE live_installs SET event_slug=? WHERE install_id=?")
+    .bind(slug, id).run();
 
   const key = `event/${slug}/live/${file}`;
   if (isPlaylistRoute) {
@@ -4515,6 +4523,8 @@ async function publishUpload(request, env, pathname) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
   const slug = request.headers.get("x-pp-slug") || "";
   const setId = request.headers.get("x-pp-set") || "";
   if (!SLUG_RE.test(slug) || !SETID_RE.test(setId)) return jsonResp(400, { error: "bad slug/set" });
@@ -4557,6 +4567,8 @@ async function publishCover(request, env) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
   const slug = request.headers.get("x-pp-slug") || "";
   if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
   if (request.method === "DELETE") {
@@ -4604,6 +4616,8 @@ async function readPostMediaHeaders(request, env) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
 
   const slug = request.headers.get("x-pp-slug") || "";
   const postId = request.headers.get("x-pp-post") || "";
@@ -5058,11 +5072,11 @@ async function broker(request, env, pathname) {
   // to a pretty slug before touching Cloudflare.
   let label = rec.slug || id;
 
-  // Going live online: claiming/creating a cloud event requires a linked account.
-  // Downstream media/post/audio uploads all require an event that this install owns,
-  // so gating the two create routes gates the whole publish chain. The LOCAL offline
-  // party never reaches the broker, so this can't block a party at a no-internet venue.
-  if (pathname === "/api/broker/publish-meta" || pathname === "/api/broker/event-upsert") {
+  // Every JSON route that mutates cloud event state requires a current account
+  // link. A revoked install may still retain its broker secret and own old event
+  // rows, so ownership alone is not an activation boundary. Header-authenticated
+  // binary routes enforce the same gate in their helpers above.
+  if (["/api/broker/publish-meta", "/api/broker/event-upsert", "/api/broker/publish-posts", "/api/broker/event-status"].includes(pathname)) {
     const gate = await requireLinkedInstallForPublish(env, id);
     if (gate) return gate;
   }
