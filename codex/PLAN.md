@@ -21,7 +21,7 @@ and the DJ activation gate (v15.47). Its completed task list is retained as
 history; it is not the current execution queue.
 
 ## Shipped (context)
-- **Sign-in**: Google + Apple + email on `party.ramine.net` — hand-rolled OAuth in the Worker, keyed by verified email, no schema migration. LIVE.
+- **Sign-in**: Google + Apple + email on `partyparty.party` — hand-rolled OAuth in the Worker, keyed by verified email, no schema migration. LIVE.
 - **DJ activation gate (v15.47)**: the Mac app requires a linked account before the console / Go Live run. Guests still join offline. LIVE + auto-updating to friends.
 
 ## How this autonomous loop works

@@ -1,11 +1,11 @@
-# Distribution — party.ramine.net
+# Distribution — partyparty.party
 
 The **source** stays private (`github.com/tetrisgm/partyparty`). The **public
-download + landing page** live on Cloudflare, under `party.ramine.net`, served by
+download + landing page** live on Cloudflare, under `partyparty.party`, served by
 a single Worker:
 
 ```
-                          party.ramine.net  (Cloudflare Worker: "partyparty-site")
+                          partyparty.party  (Cloudflare Worker: "partyparty-site")
                           ├── /                -> static assets  (site/index.html)   the landing page
                           ├── /partyparty.zip  -> R2 "partyparty-dl"                  the notarized .app, zipped (~60 MB)
                           └── /appcast.xml     -> R2 "partyparty-dl"                  Sparkle auto-update feed (see TODO)
@@ -30,8 +30,9 @@ npx wrangler login            # opens a browser; approve. (Or export CLOUDFLARE_
 ```
 
 `wrangler login` stores creds in your user config, so subsequent `make deploy-site`
-runs are non-interactive. The first deploy provisions the `party.ramine.net` DNS
-record + edge cert automatically (ramine.net is already in this Cloudflare account).
+runs are non-interactive. The first deploy provisions the `partyparty.party` DNS
+record + edge cert automatically (the `partyparty.party` zone is already in this
+Cloudflare account).
 
 ## Publish / update the download
 
@@ -43,8 +44,8 @@ make deploy-site   # zip it, push to R2, deploy the Worker + landing page
 `deploy-site` warns (doesn't block) if the build isn't notarized — an
 un-notarized download trips Gatekeeper on the guest's Mac.
 
-Verify: open <https://party.ramine.net> and click Download; the file should be
-`partyparty.zip`. `curl -I https://party.ramine.net/partyparty.zip` should be 200.
+Verify: open <https://partyparty.party> and click Download; the file should be
+`partyparty.zip`. `curl -I https://partyparty.party/partyparty.zip` should be 200.
 
 ## Releasing
 

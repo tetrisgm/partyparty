@@ -2,7 +2,7 @@
 
 partyparty has two separate auth concepts:
 
-- Web account sign-in on `party.ramine.net`, implemented in the Cloudflare Worker.
+- Web account sign-in on `partyparty.party`, implemented in the Cloudflare Worker.
 - Local DJ app activation, implemented by the Mac server and unlocked by linking this install to a signed-in web account.
 
 Guests are not part of either auth system. Guest join, listening, wall, heartbeat, and local posting remain LAN-only and unauthenticated.
