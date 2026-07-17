@@ -4075,8 +4075,9 @@ async function readContentState(env) {
   return { payloadVersion, minRuntime, appVersion };
 }
 
-async function cfDNS(env, method, suffix, body) {
-  const url = `https://api.cloudflare.com/client/v4/zones/${env.CF_ZONE_ID}/dns_records${suffix}`;
+async function cfDNS(env, method, suffix, body, zoneId) {
+  const zone = zoneId || env.CF_ZONE_ID;
+  const url = `https://api.cloudflare.com/client/v4/zones/${zone}/dns_records${suffix}`;
   const resp = await fetch(url, {
     method,
     headers: { authorization: `Bearer ${env.CF_DNS_TOKEN}`, "content-type": "application/json" },
@@ -5031,22 +5032,27 @@ async function broker(request, env, pathname) {
   if (pathname === "/api/broker/dns-admin") {
     if (!isAdmin) return jsonResp(403, { error: "admin only" });
     const op = String(body.op || "list");
+    // Optional zone override (any zone the CF_DNS_TOKEN can reach) — used for
+    // one-off maintenance like sweeping a retired zone. Defaults to CF_ZONE_ID.
+    const zone = body.zone != null && /^[0-9a-f]{32}$/i.test(String(body.zone)) ? String(body.zone) : undefined;
+    if (body.zone != null && !zone) return jsonResp(400, { error: "bad zone" });
     try {
       if (op === "list") {
-        const recs = await cfDNS(env, "GET", `?per_page=100`);
+        const search = body.search ? `&search=${encodeURIComponent(String(body.search).slice(0, 120))}` : "";
+        const recs = await cfDNS(env, "GET", `?per_page=100${search}`, undefined, zone);
         return jsonResp(200, { ok: true, records: (recs || []).map((r) => ({ id: r.id, type: r.type, name: r.name, content: r.content, proxied: r.proxied })) });
       }
       if (op === "create") {
         const rec = { type: String(body.type || "A"), name: String(body.name || ""), content: String(body.content || ""), ttl: 1, proxied: body.proxied !== false };
         if (!rec.name || !rec.content) return jsonResp(400, { error: "name and content required" });
         if (body.priority != null) rec.priority = Number(body.priority) || 0; // MX
-        const made = await cfDNS(env, "POST", "", rec);
+        const made = await cfDNS(env, "POST", "", rec, zone);
         return jsonResp(200, { ok: true, id: made?.id || "" });
       }
       if (op === "delete") {
         const rid = String(body.recordId || "");
         if (!/^[0-9a-f]{32}$/i.test(rid)) return jsonResp(400, { error: "bad recordId" });
-        await cfDNS(env, "DELETE", "/" + encodeURIComponent(rid));
+        await cfDNS(env, "DELETE", "/" + encodeURIComponent(rid), undefined, zone);
         return jsonResp(200, { ok: true });
       }
       return jsonResp(400, { error: "bad op" });
