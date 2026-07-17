@@ -245,14 +245,21 @@ func (m *Mirror) put(ctx context.Context, endpoint, slug, session, file, ctype s
 // cleanup removes the scratch playlist + segments at session end so a stale
 // window can never be re-read at the start of the next go-live. Best-effort.
 func (m *Mirror) cleanup() {
-	entries, err := os.ReadDir(m.cfg.ScratchDir)
+	CleanScratch(m.cfg.ScratchDir)
+}
+
+// CleanScratch removes only live-mirror playlist and segment artifacts. Startup
+// calls it before the broadcaster can write, preventing a prior process's last
+// HLS window from being uploaded as the beginning of the next set.
+func CleanScratch(dir string) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
 		n := e.Name()
 		if n == playlistName || strings.HasSuffix(n, ".ts") {
-			_ = os.Remove(filepath.Join(m.cfg.ScratchDir, n))
+			_ = os.Remove(filepath.Join(dir, n))
 		}
 	}
 }

@@ -502,6 +502,7 @@ func main() {
 			log.Printf("cloud mirror disabled: scratch dir %s: %v", mirrorScratch, err)
 			mirrorScratch = ""
 		} else {
+			livemirror.CleanScratch(mirrorScratch)
 			bc.SetMirrorDir(mirrorScratch)
 		}
 	}

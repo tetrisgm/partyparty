@@ -316,3 +316,26 @@ func TestRunCleansScratchOnStop(t *testing.T) {
 		t.Fatalf("segment should be removed on session end, stat err = %v", err)
 	}
 }
+
+func TestCleanScratchRemovesOnlyMirrorArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		playlistName: "playlist",
+		"live0.ts":   "segment",
+		"keep.txt":   "unrelated",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	CleanScratch(dir)
+	for _, removed := range []string{playlistName, "live0.ts"} {
+		if _, err := os.Stat(filepath.Join(dir, removed)); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists after cleanup: %v", removed, err)
+		}
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "keep.txt")); err != nil || string(got) != "unrelated" {
+		t.Fatalf("unrelated file after cleanup = %q, %v", got, err)
+	}
+}
