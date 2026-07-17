@@ -17,9 +17,12 @@ func TestSyncDrainGating(t *testing.T) {
 		idle       bool
 		wantRun    bool
 		wantOnline bool
+		deferLarge bool
+		remaining  postsync.Backlog
+		wantEmpty  bool
 	}{
 		{
-			name:    "does not run while live",
+			name:    "does not run during a broadcast transition",
 			backlog: postsync.Backlog{MediaPending: 1},
 			idle:    false,
 		},
@@ -27,11 +30,21 @@ func TestSyncDrainGating(t *testing.T) {
 			name:    "runs when idle with backlog",
 			backlog: postsync.Backlog{PostsPending: 1, MediaPending: 2},
 			idle:    true,
-			wantRun: true, wantOnline: true,
+			wantRun: true, wantOnline: true, wantEmpty: true,
+		},
+		{
+			name:       "live drain defers large media without a hot retry loop",
+			backlog:    postsync.Backlog{MediaPending: 1},
+			remaining:  postsync.Backlog{MediaPending: 1},
+			idle:       true,
+			wantRun:    true,
+			wantOnline: true,
+			deferLarge: true,
+			wantEmpty:  true,
 		},
 		{
 			name: "no-op when queue empty",
-			idle: true,
+			idle: true, wantEmpty: true,
 		},
 	}
 
@@ -46,9 +59,9 @@ func TestSyncDrainGating(t *testing.T) {
 			}
 			s := &srv{Deps: Deps{Events: ev}}
 
-			oldCreds, oldBacklog, oldSync, oldOnline, oldIdle := syncDrainCreds, syncDrainBacklog, syncDrainSync, syncDrainOnline, syncDrainIdle
+			oldCreds, oldBacklog, oldSync, oldOnline, oldOptions, oldIdle := syncDrainCreds, syncDrainBacklog, syncDrainSync, syncDrainOnline, syncDrainOptions, syncDrainIdle
 			t.Cleanup(func() {
-				syncDrainCreds, syncDrainBacklog, syncDrainSync, syncDrainOnline, syncDrainIdle = oldCreds, oldBacklog, oldSync, oldOnline, oldIdle
+				syncDrainCreds, syncDrainBacklog, syncDrainSync, syncDrainOnline, syncDrainOptions, syncDrainIdle = oldCreds, oldBacklog, oldSync, oldOnline, oldOptions, oldIdle
 			})
 
 			backlogCalls := 0
@@ -63,7 +76,7 @@ func TestSyncDrainGating(t *testing.T) {
 					t.Fatalf("slug = %q, want party-slug", slug)
 				}
 				if syncCalls > 0 {
-					return postsync.Backlog{}, nil
+					return tc.remaining, nil
 				}
 				return tc.backlog, nil
 			}
@@ -74,12 +87,21 @@ func TestSyncDrainGating(t *testing.T) {
 			syncDrainIdle = func(*broadcast.Broadcaster) bool {
 				return tc.idle
 			}
-			syncDrainSync = func(context.Context, string, publish.Creds, string, string, postsync.Options) (postsync.Result, error) {
+			syncDrainOptions = func(*broadcast.Broadcaster) postsync.Options {
+				return postsync.Options{DeferLargeMedia: tc.deferLarge}
+			}
+			syncDrainSync = func(_ context.Context, _ string, _ publish.Creds, _, _ string, opts postsync.Options) (postsync.Result, error) {
 				syncCalls++
+				if opts.DeferLargeMedia != tc.deferLarge {
+					t.Fatalf("DeferLargeMedia = %v, want %v", opts.DeferLargeMedia, tc.deferLarge)
+				}
+				if tc.deferLarge {
+					return postsync.Result{MediaDeferred: tc.backlog.MediaPending}, nil
+				}
 				return postsync.Result{PostsPushed: tc.backlog.PostsPending, MediaPushed: tc.backlog.MediaPending}, nil
 			}
 
-			_, ran := s.runSyncDrainOnce(context.Background(), "test")
+			gotBacklog, ran := s.runSyncDrainOnce(context.Background(), "test")
 			if ran != tc.wantRun {
 				t.Fatalf("ran = %v, want %v", ran, tc.wantRun)
 			}
@@ -91,6 +113,9 @@ func TestSyncDrainGating(t *testing.T) {
 			}
 			if backlogCalls == 0 {
 				t.Fatal("backlog was not checked")
+			}
+			if gotBacklog.Empty() != tc.wantEmpty {
+				t.Fatalf("returned backlog = %+v, want empty=%v", gotBacklog, tc.wantEmpty)
 			}
 		})
 	}
