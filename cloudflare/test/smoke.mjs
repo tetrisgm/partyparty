@@ -1026,6 +1026,19 @@ class FakeD1Statement {
       }
       return { success: true };
     }
+    if (sql.includes("INSERT INTO events") && sql.includes("ON CONFLICT(slug) DO NOTHING")) {
+      // liveMirrorUpload minting the live event for a fresh party.
+      const [slug, installId, title, host, status, visibility, ownerUserId, djProfileId, liveStartedMs, createdMs, updatedMs, lastActivityMs] = this.args;
+      if (!this.db.events.get(slug)) {
+        this.db.events.set(slug, {
+          slug, install_id: installId, title, host, status, visibility,
+          owner_user_id: ownerUserId, dj_profile_id: djProfileId,
+          live_started_ms: liveStartedMs, created_ms: createdMs,
+          updated_ms: updatedMs, last_activity_ms: lastActivityMs,
+        });
+      }
+      return { success: true };
+    }
     if (sql.includes("INSERT INTO events") && sql.includes("?1") && sql.includes("last_activity_ms")) {
       const [slug, installId, title, host, starts, whereTxt, tagline, about, ownerUserId, djProfileId, now] = this.args;
       const old = this.db.events.get(slug);
@@ -1085,6 +1098,16 @@ class FakeD1Statement {
         for (let i = 0; i < setCols.length; i++) next[setCols[i]] = updateVals[i];
         this.db.events.set(row.slug, next);
       }
+    }
+    if (sql.includes("UPDATE events SET status='replay'") && sql.includes("WHERE install_id=?")) {
+      // Go-offline / cron GC: demote every mirror-minted 'live' event of an install.
+      const [installId, updatedMs] = this.args;
+      for (const [slug, row] of this.db.events) {
+        if (row.install_id === installId && row.status === "live") {
+          this.db.events.set(slug, { ...row, status: "replay", updated_ms: updatedMs });
+        }
+      }
+      return { success: true, meta: { changes: 1 } };
     }
     if (sql.includes("UPDATE events") && sql.includes("SET status=?")) {
       const [status, updatedMs, lastActivityMs, maybeStamp, maybeSlug, maybeInstallId] = this.args;
@@ -5270,14 +5293,63 @@ const tests = [
   }],
 
   ["live mirror ingest rejects a slug the install does not own", async () => {
-    const env = makeEnv({ DB: new FakeD1() });
+    // Slug owned by ANOTHER install -> hard 403 (the real ownership protection).
+    const db = new FakeD1({
+      events: [{ slug: "not-mine", install_id: "def456def456", status: "live" }],
+    });
     const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
       method: "PUT",
       headers: { "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "not-mine", "x-pp-file": "seg-1.ts" },
       body: "tsdata",
-    }), env);
+    }), makeEnv({ DB: db }));
     assert.equal(resp.status, 403);
     assert.equal((await resp.json()).error, "not your event");
+
+    // UNLINKED install + no event row -> also 403 (mirror can't mint for it).
+    const anon = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+      method: "PUT",
+      headers: { "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "fresh-party", "x-pp-file": "seg-1.ts" },
+      body: "tsdata",
+    }), makeEnv({ DB: new FakeD1() }));
+    assert.equal(anon.status, 403);
+  }],
+
+  ["live mirror mints the live event for a fresh party (the field 403 bug)", async () => {
+    // Nothing creates the events row at go-live (publish runs at set END), so the
+    // mirror must mint it itself — otherwise every segment of a fresh party 403s
+    // (observed live: 2.8k failed uploads across one set, no remote stream).
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-m", profile_id: "profile-m", revoked_ms: null }],
+      liveInstalls: [{
+        install_id: "abc123abc123", handle: "seth", profile_id: "profile-m", public_ip_hash: "h",
+        host: "seth-live.party.example.test", lan_ip: "10.0.0.5", event_slug: "", dj_name: "Seth",
+        event_title: "Rooftop", listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1,
+        expires_ms: Date.now() + 60000,
+      }],
+    });
+    const env = makeEnv({ DB: db });
+    const seg = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "fresh-party", "x-pp-file": "live0.ts",
+        "content-length": String(new TextEncoder().encode("tsdata").byteLength),
+      },
+      body: "tsdata",
+    }), env);
+    assert.equal(seg.status, 200);
+    const minted = db.events.get("fresh-party");
+    assert.ok(minted, "event row minted by the mirror");
+    assert.equal(minted.install_id, "abc123abc123");
+    assert.equal(minted.status, "live");
+    assert.equal(minted.title, "Rooftop");
+    // Clean offline demotes the phantom 'live' event to replay.
+    const off = await worker.fetch(new Request("https://party.ramine.net/api/broker/offline", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), env);
+    assert.equal(off.status, 200);
+    assert.equal(db.events.get("fresh-party").status, "replay");
   }],
 
   ["wildcard router: serves the cloud-mirror REMOTE page when live and the guest is off-LAN", async () => {

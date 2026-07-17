@@ -3862,9 +3862,48 @@ async function liveMirrorUpload(request, env, pathname) {
   if (!LIVE_FILE_RE.test(file)) return jsonResp(400, { error: "bad file" });
   const isPlaylistRoute = pathname === "/api/broker/live-playlist";
   if (isPlaylistRoute !== file.endsWith(".m3u8")) return jsonResp(400, { error: "file/route mismatch" });
-  // Ownership: the slug must be an event this install owns (same gate as publishUpload).
-  const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
-  if (!owner || owner.install_id !== id) return jsonResp(403, { error: "not your event" });
+  // Ownership: the slug must be an event this install owns (same gate as
+  // publishUpload) — EXCEPT that the live mirror must be able to mint the event
+  // itself. Nothing else creates the row at go-live (publish-meta only runs at
+  // set END), so without this the whole mirror 403s for a fresh party — observed
+  // in the field: 2.8k failed segment uploads across one set. A linked install
+  // claims its own slug here (first-writer-wins vs other installs unchanged) and
+  // stamps status='live' so the live check-in can hand the mirror URL to remote
+  // guests. Auto-publish flips it to 'replay' at set end; /offline + the cron
+  // demote it if the set never publishes.
+  const owner = await env.DB.prepare("SELECT install_id, status FROM events WHERE slug=?").bind(slug).first();
+  if (owner && owner.install_id !== id) return jsonResp(403, { error: "not your event" });
+  if (!owner || owner.status !== "live") {
+    const linked = await env.DB.prepare(
+      "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+    ).bind(id).first();
+    if (!owner && !linked?.user_id) return jsonResp(403, { error: "not your event" });
+    const now = nowMs();
+    if (!owner) {
+      const liveRow = await env.DB.prepare(
+        "SELECT event_title, dj_name FROM live_installs WHERE install_id=? LIMIT 1"
+      ).bind(id).first();
+      await env.DB.prepare(
+        `INSERT INTO events (slug, install_id, title, host, status, visibility, owner_user_id, dj_profile_id,
+                             live_started_ms, created_ms, updated_ms, last_activity_ms)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+         ON CONFLICT(slug) DO NOTHING`
+      ).bind(
+        slug, id, clip(liveRow?.event_title, 200) || "", clip(liveRow?.dj_name, 80) || "",
+        "live", "public", linked?.user_id || null, linked?.profile_id || null,
+        now, now, now, now
+      ).run();
+      // Lost a create race with another install claiming the slug? Re-check.
+      const after = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+      if (!after || after.install_id !== id) return jsonResp(403, { error: "not your event" });
+    } else {
+      await env.DB.prepare(
+        `UPDATE events
+         SET status=?, updated_ms=?, last_activity_ms=?, live_started_ms=COALESCE(live_started_ms, ?)
+         WHERE slug=? AND install_id=?`
+      ).bind("live", now, now, now, slug, id).run();
+    }
+  }
 
   const key = `event/${slug}/live/${file}`;
   if (isPlaylistRoute) {
@@ -5083,6 +5122,15 @@ async function broker(request, env, pathname) {
       "SELECT install_id, handle, host FROM live_installs WHERE install_id=? LIMIT 1"
     ).bind(id).first();
     await env.DB.prepare("DELETE FROM live_installs WHERE install_id=?").bind(id).run();
+    // The set is over: demote this install's mirror-minted 'live' events so /e/
+    // pages and the check-in's live-event lookup don't see a phantom live party.
+    // Auto-publish normally does this (status='replay' + the actual set); this
+    // covers short/unpublished sets. Best-effort.
+    try {
+      await env.DB.prepare(
+        "UPDATE events SET status='replay', updated_ms=?2 WHERE install_id=?1 AND status='live'"
+      ).bind(id, nowMs()).run();
+    } catch (e) { /* best-effort */ }
     // Per-install slug hosts are unique, so dropping this one never strands
     // another live Mac sharing the handle.
     if (row?.host && env.CF_DNS_TOKEN && env.CF_ZONE_ID) {
@@ -5798,6 +5846,13 @@ export default {
         "SELECT install_id, handle, host FROM live_installs WHERE expires_ms<=?"
       ).bind(now).all())?.results || [];
       for (const row of expired) {
+        // Crashed Mac (no clean /offline): demote its mirror-minted 'live'
+        // events so nothing keeps advertising a phantom live party.
+        try {
+          await env.DB.prepare(
+            "UPDATE events SET status='replay', updated_ms=?2 WHERE install_id=?1 AND status='live'"
+          ).bind(row.install_id, now).run();
+        } catch (e) { /* best-effort */ }
         if (!row.host || !env.CF_DNS_TOKEN || !env.CF_ZONE_ID) continue;
         // Only drop the A record if no live install still serves this exact host
         // (per-install slug hosts are unique, so this is effectively always true).
