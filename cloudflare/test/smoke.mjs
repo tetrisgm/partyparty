@@ -2427,6 +2427,30 @@ const tests = [
     assert.equal(after.status, 200);
     assert.equal(afterJson.linked, false);
   }],
+  ["broker registration throttles repeated unauthenticated R2 writes", async () => {
+    const oldCache = globalThis.caches.default;
+    const entries = new Map();
+    globalThis.caches.default = {
+      match: async (request) => entries.get(request.url)?.clone() || null,
+      put: async (request, response) => { entries.set(request.url, response.clone()); },
+    };
+    try {
+      const env = makeEnv();
+      const register = () => worker.fetch(new Request("https://partyparty.party/api/broker/register", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.77" },
+        body: "{}",
+      }), env);
+      const first = await register();
+      const second = await register();
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 429);
+      assert.equal((await second.json()).error, "slow down");
+      assert.equal([...env.DL.objects.keys()].filter((key) => /^broker\/[a-f0-9]{12}\.json$/.test(key)).length, 3);
+    } finally {
+      globalThis.caches.default = oldCache;
+    }
+  }],
   ["link-mac redirects through sign-in then links install to the account", async () => {
     const rawToken = "4444444444444444444444444444444444444444444444444444444444444444";
     const db = new FakeD1();

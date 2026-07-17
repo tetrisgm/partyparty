@@ -4984,6 +4984,13 @@ async function broker(request, env, pathname) {
   if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
 
   if (pathname === "/api/broker/register") {
+    // Registration is necessarily unauthenticated, but each success allocates
+    // an install record plus a slug reservation in R2. Bound cheap retry/flood
+    // amplification per edge location; Cloudflare supplies this IP header.
+    const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+    if (await discoverRateLimited(ipHash, "register", 10)) {
+      return jsonResp(429, { error: "slow down" }, { "retry-after": "10" });
+    }
     const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     const secret = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");
     // Pretty, memorable hostname label (disco42, groove7…) — the guest link is
