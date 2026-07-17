@@ -19,6 +19,9 @@ BUCKET="partyparty-dl"
 WR="$ROOT/cloudflare/node_modules/.bin/wrangler"
 SPK="$ROOT/app/.build/artifacts/sparkle/Sparkle/bin"
 
+# shellcheck source=scripts/notary-lib.sh
+. "$ROOT/scripts/notary-lib.sh"
+
 # Version scheme: <code-major>.<payload-increment>. The FIRST number is the code
 # (native/container) version — CODE_MAJOR, which you bump BEFORE every native
 # release (each native release IS a code update, so the first number moves). The
@@ -39,12 +42,11 @@ echo ">> version v$VERSION (build $BUILD)"
 "$WR" whoami >/dev/null 2>&1 || { echo "Not logged in — run: (cd cloudflare && npx wrangler login)"; exit 1; }
 [ -x "$SPK/generate_appcast" ] || { echo "Sparkle tools missing — run: swift build --package-path app"; exit 1; }
 
-echo ">> [1/6] build + notarize v$VERSION"
-make notarize
+echo ">> [1/8] build + sign v$VERSION"
+make app
 
-echo ">> [2/6] package dist/partyparty-$VERSION.zip + installer pkg"
+echo ">> [2/8] package installer pkg from the signed app"
 rm -rf dist && mkdir -p dist
-ditto -c -k --keepParent "$APP" "dist/partyparty-$VERSION.zip"
 
 # THE ONE download: a signed+notarized HOME-DOMAIN .pkg. It installs to
 # ~/Applications for this user only, so macOS asks for NO admin password
@@ -86,11 +88,52 @@ productbuild --distribution dist/distribution.xml --resources "$ROOT/app/install
   --sign "Developer ID Installer: Ramine Darabiha (52WM463HR2)" \
   "dist/partyparty-$VERSION.pkg"
 rm -rf "$PKGSTAGE" dist/pp-component.pkg dist/distribution.xml
-xcrun notarytool submit "dist/partyparty-$VERSION.pkg" --keychain-profile pp-notary --wait
+
+echo ">> [3/8] notarize app + installer pkg in parallel"
+NOTARY_TMP="$(mktemp -d "${TMPDIR:-/tmp}/partyparty-release-notary.XXXXXX")"
+cleanup_notary_tmp() {
+  rm -rf "$NOTARY_TMP"
+}
+trap cleanup_notary_tmp EXIT
+
+ditto -c -k --keepParent "$APP" "$NOTARY_TMP/partyparty-app.zip"
+notary_submit_with_retry \
+  "$NOTARY_TMP/partyparty-app.zip" app "$NOTARY_TMP/app.id" \
+  > "$NOTARY_TMP/app.log" 2>&1 &
+APP_NOTARY_PID=$!
+notary_submit_with_retry \
+  "dist/partyparty-$VERSION.pkg" pkg "$NOTARY_TMP/pkg.id" \
+  > "$NOTARY_TMP/pkg.log" 2>&1 &
+PKG_NOTARY_PID=$!
+
+APP_NOTARY_RC=0
+PKG_NOTARY_RC=0
+# Do not let errexit skip the second wait: both child statuses must be reaped
+# and either failure must stop the release before stapling or publishing.
+wait "$APP_NOTARY_PID" || APP_NOTARY_RC=$?
+wait "$PKG_NOTARY_PID" || PKG_NOTARY_RC=$?
+
+echo ">> app notarization output"
+cat "$NOTARY_TMP/app.log"
+echo ">> pkg notarization output"
+cat "$NOTARY_TMP/pkg.log"
+
+if [ "$APP_NOTARY_RC" -ne 0 ] || [ "$PKG_NOTARY_RC" -ne 0 ]; then
+  echo ">> notarization failed (app=$APP_NOTARY_RC, pkg=$PKG_NOTARY_RC)" >&2
+  exit 1
+fi
+
+echo ">> stapling + validating the app and installer pkg"
+xcrun stapler staple "$APP"
+xcrun stapler validate "$APP"
 xcrun stapler staple "dist/partyparty-$VERSION.pkg"
+xcrun stapler validate "dist/partyparty-$VERSION.pkg"
+spctl -a -vvv -t exec "$APP" 2>&1 | head -3 || true
 spctl -a -vv -t install "dist/partyparty-$VERSION.pkg" || true
 
-echo ">> [3/7] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
+echo ">> [4/8] package the stapled app + sign the Sparkle appcast"
+ditto -c -k --keepParent "$APP" "dist/partyparty-$VERSION.zip"
+
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
 # click "Always Allow"). Enclosure URLs point at partyparty.party.
 if [ -n "${SPARKLE_ED_KEY_FILE:-}" ]; then
@@ -99,7 +142,7 @@ else
   "$SPK/generate_appcast" --download-url-prefix "https://partyparty.party/" dist
 fi
 
-echo ">> [4/7] verify app bundle + appcast metadata"
+echo ">> [5/8] verify app bundle + appcast metadata"
 "$ROOT/scripts/verify-release-artifacts.py" \
   --version "$VERSION" \
   --build "$BUILD" \
@@ -109,7 +152,7 @@ echo ">> [4/7] verify app bundle + appcast metadata"
   --base-url "https://partyparty.party" \
   --require-newer-than-installed
 
-echo ">> [5/7] upload release artifacts to R2"
+echo ">> [6/8] upload release artifacts to R2"
 cp "dist/partyparty-$VERSION.zip" dist/partyparty.zip   # stable 'latest' aliases
 cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty-$VERSION.zip" --file "dist/partyparty-$VERSION.zip" --content-type application/zip --remote
@@ -117,10 +160,10 @@ cp "dist/partyparty-$VERSION.pkg" dist/partyparty.pkg
 "$WR" r2 object put "$BUCKET/partyparty.zip"          --file "dist/partyparty.zip"          --content-type application/zip --remote
 "$WR" r2 object put "$BUCKET/partyparty.pkg"          --file "dist/partyparty.pkg"          --content-type application/octet-stream --remote
 
-echo ">> [6/7] deploy Worker + landing page"
+echo ">> [7/8] deploy Worker + landing page"
 ( cd cloudflare && "$WR" deploy )
 
-echo ">> [7/7] flip appcast + app-update marker"
+echo ">> [8/8] flip appcast + app-update marker"
 # Sparkle's appcast is an update feed, so it flips only after the versioned
 # artifacts, stable public downloads, and Worker route are already live.
 "$WR" r2 object put "$BUCKET/appcast.xml"             --file "dist/appcast.xml"             --content-type application/xml --remote
