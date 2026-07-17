@@ -986,6 +986,18 @@ func TestPostOnlyEndpoints(t *testing.T) {
 	}
 }
 
+func TestStopImmediatelyClearsWebListeners(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.SetWebListeners(7)
+	w := do(env.srv, http.MethodPost, "/api/stop", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("stop status = %d, body %q", w.Code, w.Body.String())
+	}
+	if got := env.srv.webListeners.Load(); got != 0 {
+		t.Fatalf("webListeners after stop = %d, want 0", got)
+	}
+}
+
 func TestShutdownRejectedFromLAN(t *testing.T) {
 	env := newTestEnv(t, nil)
 	// NOTE: the loopback success path calls os.Exit and is untestable in-process

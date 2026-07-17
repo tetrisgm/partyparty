@@ -1090,6 +1090,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				wasStreaming = true
 			}
 		}
+		s.webListeners.Store(0)
 		s.Broadcaster.Stop()
 		if wasStreaming {
 			s.addStreamFeedPost("Stopped the stream.")

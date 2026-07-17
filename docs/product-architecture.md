@@ -58,7 +58,7 @@ Post { id, author (guest handle | Apple ID | anonymous), kind (photo|video|text)
 
 - **Local ↔ hosted, offline-first.** An Event exists **locally on the Mac with no
   account** (an offline popup needs nothing). When the DJ signs in + is online, the
-  Event **syncs to the hosted page** (`party.ramine.net/@dj` / `/e/<id>`) so the crowd
+  Event **syncs to the hosted page** (`partyparty.party/@dj` / `/e/<id>`) so the crowd
   can reach it, post to the wall, and catch the replay. Same object, two homes.
 - **The app is the writer, the web is the reader + collector.** The app sets
   title/when/where, flips `status`, produces `stream.*` + `stats`, and moderates the
@@ -87,7 +87,7 @@ Post { id, author (guest handle | Apple ID | anonymous), kind (photo|video|text)
 ## Build order (when we start the platform)
 1. Event object + local store in the app (offline-first) — formalize what the console
    already holds.
-2. Hosted event page renderer on `party.ramine.net` (`/@dj`, `/e/<id>`) — the core web
+2. Hosted event page renderer on `partyparty.party` (`/@dj`, `/e/<id>`) — the core web
    half, standalone-useful (profile + check-in + wall + follow) even before streaming
    is wired to it.
 3. Sign in with Apple (optional) → claim handle, sync local Event → hosted.

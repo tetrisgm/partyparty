@@ -2,7 +2,7 @@
 
 `make app` builds a local, ad-hoc-signed `partyparty.app` for testing. A **release**
 is the full chain: build → Developer-ID sign → notarize → staple → sign the Sparkle
-appcast → publish to **party.ramine.net** (Cloudflare R2 + Worker). Installed apps
+appcast → publish to **partyparty.party** (Cloudflare R2 + Worker). Installed apps
 then auto-update via Sparkle. See [DISTRIBUTION.md](DISTRIBUTION.md) for the hosting
 layout.
 

@@ -1,5 +1,10 @@
 # partyparty — online-first web service plan (v2)
 
+> Historical pre-cutover design record. References to `party.ramine.net` below
+> intentionally preserve the DNS evidence and migration plan as written; the
+> shipped product and all current operational documentation use
+> `partyparty.party`.
+>
 > Approved direction 2026-07-16. Doctrine: **assume online**, cloud-assisted
 > discovery + identity + feed + replay; the LAN/HLS path is the offline fallback.
 > Live audio NEVER leaves the LAN/HLS `<audio>` path for in-room guests; a cloud

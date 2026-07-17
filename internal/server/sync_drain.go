@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"partyparty/internal/publish"
 	postsync "partyparty/internal/sync"
 )
+
+var errPostSyncRunning = errors.New("post sync already in progress")
 
 const (
 	syncDrainFirstDelay      = 15 * time.Second
@@ -29,6 +32,9 @@ var (
 	syncDrainBacklog = postsync.PendingBacklog
 	syncDrainSync    = postsync.SyncPostsWithOptions
 	syncDrainOnline  = defaultSyncDrainOnline
+	syncDrainOptions = func(b *broadcast.Broadcaster) postsync.Options {
+		return postsync.Options{DeferLargeMedia: b != nil && b.Status().State == "live"}
+	}
 	// The drain runs while the broadcast is CALM: idle (the after-event mirror)
 	// or steadily live (LIVE feed sharing — room posts reach the web event page
 	// mid-party; posts are tiny and photos ride fine next to the ~320kbps
@@ -128,10 +134,10 @@ func (s *srv) runSyncDrainOnce(ctx context.Context, _ string) (postsync.Backlog,
 		s.diagf("sync: %d posts / %d media pending (offline)", backlog.PostsPending, backlog.MediaPending)
 		return backlog, false
 	}
-	if !s.beginSyncDrainRun() {
+	if !s.beginPostSyncRun() {
 		return backlog, false
 	}
-	defer s.endSyncDrainRun()
+	defer s.endPostSyncRun()
 
 	cctx, cancel := context.WithTimeout(ctx, syncDrainAttemptTimeout)
 	defer cancel()
@@ -152,7 +158,8 @@ func (s *srv) runSyncDrainOnce(ctx context.Context, _ string) (postsync.Backlog,
 			}
 		}
 	}()
-	res, err := syncDrainSync(cctx, dir, creds, slug, base, postsync.Options{})
+	opts := syncDrainOptions(s.Broadcaster)
+	res, err := syncDrainSync(cctx, dir, creds, slug, base, opts)
 	cancel()
 	<-stopWatch
 	if err != nil {
@@ -163,11 +170,18 @@ func (s *srv) runSyncDrainOnce(ctx context.Context, _ string) (postsync.Backlog,
 		s.diagf("sync: %d posts / %d media pending (offline: %s)", backlog.PostsPending, backlog.MediaPending, res.LastError)
 		return backlog, true
 	}
-	s.diagf("sync: drained %d posts / %d media to cloud (skipped %d posts / %d media, missing %d)", res.PostsPushed, res.MediaPushed, res.PostsSkipped, res.MediaSkipped, res.MediaMissing)
+	if res.PostsPushed > 0 || res.MediaPushed > 0 {
+		s.diagf("sync: drained %d posts / %d media to cloud (skipped %d posts / %d media, missing %d)", res.PostsPushed, res.MediaPushed, res.PostsSkipped, res.MediaSkipped, res.MediaMissing)
+	}
 	if remaining, rerr := syncDrainBacklog(dir, creds, slug); rerr == nil {
 		backlog = remaining
 		if remaining.Empty() {
 			s.diagf("sync: mirror complete for %s", slug)
+		} else if opts.DeferLargeMedia && res.MediaDeferred > 0 && remaining.PostsPending == 0 && remaining.MediaPending == res.MediaDeferred {
+			// Nothing actionable remains until the broadcast ends. Report an empty
+			// scheduling backlog so the loop sleeps at its five-minute floor; a new
+			// guest post still kicks it immediately, and the idle edge kicks it again.
+			backlog = postsync.Backlog{}
 		} else {
 			s.diagf("sync: %d posts / %d media pending", remaining.PostsPending, remaining.MediaPending)
 		}
@@ -194,7 +208,7 @@ func (s *srv) syncDrainTarget() (dir string, creds publish.Creds, slug, base str
 	return s.Events.Dir(), creds, slug, strings.TrimRight(base, "/"), true
 }
 
-func (s *srv) beginSyncDrainRun() bool {
+func (s *srv) beginPostSyncRun() bool {
 	s.syncDrainMu.Lock()
 	defer s.syncDrainMu.Unlock()
 	if s.syncDrainRunning {
@@ -204,7 +218,7 @@ func (s *srv) beginSyncDrainRun() bool {
 	return true
 }
 
-func (s *srv) endSyncDrainRun() {
+func (s *srv) endPostSyncRun() {
 	s.syncDrainMu.Lock()
 	s.syncDrainRunning = false
 	s.syncDrainMu.Unlock()
