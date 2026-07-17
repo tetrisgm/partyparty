@@ -1312,9 +1312,13 @@ func (s *Store) AddWebPost(webID, author, emoji, text string, ts int64) (bool, e
 	cid := "web:" + webID
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var latestAct int64
 	for _, p := range s.posts {
 		if p.CID == cid {
 			return false, nil // already in the room
+		}
+		if p.Act > latestAct {
+			latestAct = p.Act
 		}
 	}
 	p := &Post{
@@ -1322,13 +1326,19 @@ func (s *Store) AddWebPost(webID, author, emoji, text string, ts int64) (bool, e
 		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text,
 		NoPublish: true, Web: true,
 	}
-	// Keep the cloud's timestamp when sane so the shared wall orders the same
-	// on both sides; fall back to arrival time for garbage.
+	// Keep the cloud's creation timestamp when sane so the shared wall orders the
+	// same on both sides. Activity must be the arrival time, though: feed clients
+	// use Act as a strictly increasing cursor, and an older cloud TS would wake a
+	// long-poll only to be filtered back out forever.
 	now := time.Now().UnixMilli()
 	if ts > 0 && ts <= now {
-		p.TS, p.Act = ts, ts
+		p.TS = ts
 	} else {
-		p.TS, p.Act = now, now
+		p.TS = now
+	}
+	p.Act = now
+	if p.Act <= latestAct {
+		p.Act = latestAct + 1
 	}
 	p.State = initialState(s.meta.ModerationMode)
 	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {

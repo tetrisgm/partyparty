@@ -1,6 +1,9 @@
 package event
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // Web posts (off-LAN guests on the cloud event page) join the room feed once
 // per cloud id — the check-in replays the same posts every 30s beat, so the
@@ -60,5 +63,32 @@ func TestAddWebPostDedupesAndNeverRepublishes(t *testing.T) {
 	}
 	if !rposts[0].NoPublish {
 		t.Fatal("NoPublish must survive the journal round-trip")
+	}
+}
+
+func TestAddWebPostUsesArrivalForFeedCursor(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, _, err := st.AddPost("lan-guest", "Local", "", "newer LAN post", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloudTS := time.Now().Add(-time.Hour).UnixMilli()
+	added, err := st.AddWebPost("cloud-post", "Remote", "", "older cloud post", cloudTS)
+	if err != nil || !added {
+		t.Fatalf("AddWebPost = (%v, %v), want (true, nil)", added, err)
+	}
+
+	posts, _, _ := st.Feed(local.Act)
+	if len(posts) != 1 || posts[0].CID != "web:cloud-post" {
+		t.Fatalf("feed after cursor %d = %#v, want newly arrived web post", local.Act, posts)
+	}
+	if posts[0].TS != cloudTS {
+		t.Fatalf("web post TS = %d, want cloud creation time %d", posts[0].TS, cloudTS)
+	}
+	if posts[0].Act <= local.Act {
+		t.Fatalf("web post Act = %d, must advance past feed cursor %d", posts[0].Act, local.Act)
 	}
 }
