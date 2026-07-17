@@ -2,7 +2,7 @@
 -- which public IP (hashed), and where its LAN listener + cloud mirror live. This
 -- is the source of truth for three surfaces:
 --   * GET /api/discover        — same-Wi-Fi auto-discovery (match on public_ip_hash)
---   * <handle>.party.ramine.net — the proxied host router (LOCAL 302 / REMOTE / IDLE)
+--   * <handle>.partyparty.party — the proxied host router (LOCAL 302 / REMOTE / IDLE)
 --   * the 1-minute cron GC      — expire dead rows + drop orphaned grey A records
 --
 -- Correctness lives in the read path (every read filters expires_ms>now); the row
@@ -14,8 +14,8 @@
 -- device_installs -> dj_profiles so a party can never impersonate another handle.
 --
 -- Two hostnames, never conflated:
---   * handle  — the PROXIED permanent guest link <handle>.party.ramine.net (Worker)
---   * host    — the grey local slug host <slug>.party.ramine.net (grey A -> lan_ip,
+--   * handle  — the PROXIED permanent guest link <handle>.partyparty.party (Worker)
+--   * host    — the grey local slug host <slug>.partyparty.party (grey A -> lan_ip,
 --               served by the Mac's own LE cert; the tight LAN LL-HLS lives there)
 -- The grey A record the broker writes is for `host` (the slug), NEVER the handle.
 CREATE TABLE IF NOT EXISTS live_installs (
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS live_installs (
   handle          TEXT NOT NULL DEFAULT '',    -- proxied router name (dj handle)
   profile_id      TEXT,                         -- dj_profiles.id this install is linked to
   public_ip_hash  TEXT NOT NULL DEFAULT '',    -- sha256("ip:"+cf-connecting-ip), edge-derived
-  host            TEXT NOT NULL DEFAULT '',    -- grey LAN slug host, e.g. disco12.party.ramine.net
+  host            TEXT NOT NULL DEFAULT '',    -- grey LAN slug host, e.g. disco12.partyparty.party
   lan_ip          TEXT NOT NULL DEFAULT '',    -- the Mac's current LAN IP (grey A target)
   event_slug      TEXT NOT NULL DEFAULT '',    -- event slug the cloud mirror is uploaded under
   dj_name         TEXT NOT NULL DEFAULT '',    -- display_name, denormalized for /api/discover

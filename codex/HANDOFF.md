@@ -23,7 +23,7 @@ After a successful ship:
 
 1. Verify the public appcast advertises short version `48.59`, Sparkle build
    `105`, an EdDSA signature, and a reachable versioned ZIP.
-2. Verify `https://party.ramine.net`, the stable download, and `/api/version`
+2. Verify `https://partyparty.party`, the stable download, and `/api/version`
    report the same release.
 3. Update `~/Applications/partyparty.app` through Sparkle. If Sparkle does not
    apply it, install the newly notarized `dist/partyparty-48.59.pkg` locally.

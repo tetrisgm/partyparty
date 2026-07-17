@@ -1,9 +1,9 @@
 import AppKit
 import Foundation
 
-private let stateURL = URL(string: "https://party.ramine.net/content/state.json")!
-private let payloadURL = URL(string: "https://party.ramine.net/partyparty.zip")!
-private let manualDownloadURL = URL(string: "https://party.ramine.net/")!
+private let stateURL = URL(string: "https://partyparty.party/content/state.json")!
+private let payloadURL = URL(string: "https://partyparty.party/partyparty.zip")!
+private let manualDownloadURL = URL(string: "https://partyparty.party/")!
 
 private struct ReleaseState: Decodable {
     let appVersion: String?

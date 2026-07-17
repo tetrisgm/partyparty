@@ -220,7 +220,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     }
 }
 
-/// Hosts the cloud sign-in / Mac-link flow at party.ramine.net IN-APP, replacing
+/// Hosts the cloud sign-in / Mac-link flow at partyparty.party IN-APP, replacing
 /// the old bounce out to Safari. The Go server mints the same one-time,
 /// install-scoped link token it always did (possession-proven — the secret never
 /// enters this web view); the DJ signs in here and confirms the link, and when
@@ -271,7 +271,7 @@ final class SignInWindowController: NSWindowController, NSWindowDelegate, WKNavi
         win.delegate = self
 
         let cfg = WKWebViewConfiguration()
-        cfg.websiteDataStore = .default() // persist the party.ramine.net session across launches
+        cfg.websiteDataStore = .default() // persist the partyparty.party session across launches
         let ucc = WKUserContentController()
         ucc.add(WeakScriptHandler(self), name: "pp")
         ucc.addUserScript(WKUserScript(source: Self.watchScript,
