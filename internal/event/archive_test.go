@@ -64,7 +64,7 @@ func TestExportArchiveWritesFlatMarkdownMediaAndRecording(t *testing.T) {
 		"# Rooftop Ritual",
 		"Host: Ramine",
 		"Date / place: Sat, Jul 12",
-		"https://party.ramine.net/e/rooftop-ritual",
+		"https://partyparty.party/e/rooftop-ritual",
 		"this rooftop is unreal",
 		"Ramine [DJ]",
 		"Intimidated - Kaytranada",

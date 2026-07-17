@@ -27,7 +27,7 @@ import (
 // pseudonymous (fun name + emoji chosen client-side); their private cid stays
 // server-side so the Mac can associate identity and optional subscriptions.
 
-const publicPartyBase = "https://party.ramine.net"
+const publicPartyBase = "https://partyparty.party"
 
 // isDJ: the console is the app's own WKWebView on localhost — loopback is the
 // DJ, everyone else on the LAN is a guest. Same trust model as /api/shutdown.
@@ -689,7 +689,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			id, secret := activate.InstallCreds()
 			base := os.Getenv("PARTYPARTY_BROKER")
 			if base == "" {
-				base = "https://party.ramine.net"
+				base = "https://partyparty.party"
 			}
 			cctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 			defer cancel()
@@ -743,7 +743,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		id, secret := activate.InstallCreds()
 		base := os.Getenv("PARTYPARTY_BROKER")
 		if base == "" {
-			base = "https://party.ramine.net"
+			base = "https://partyparty.party"
 		}
 		cctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 		defer cancel()
@@ -922,7 +922,7 @@ func (s *srv) publishCurrentSet(ctx context.Context) (*publish.Result, error) {
 	id, secret := activate.InstallCreds()
 	base := os.Getenv("PARTYPARTY_BROKER")
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	cctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 	defer cancel()
@@ -939,7 +939,7 @@ func (s *srv) syncCurrentPosts(ctx context.Context, slug string) (postsync.Resul
 	}
 	base := os.Getenv("PARTYPARTY_BROKER")
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	cctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 	defer cancel()

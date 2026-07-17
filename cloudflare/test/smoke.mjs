@@ -1454,7 +1454,7 @@ async function withCloudflareDNSRecords(aRecords, fn) {
 }
 
 async function fetchPath(path, init = {}, envOpts = {}) {
-  return worker.fetch(new Request(`https://party.ramine.net${path}`, init), makeEnv(envOpts));
+  return worker.fetch(new Request(`https://partyparty.party${path}`, init), makeEnv(envOpts));
 }
 
 const AUTH_DEV_SECRET = "smoke-dev-secret";
@@ -1462,7 +1462,7 @@ const AUTH_DEV_SECRET = "smoke-dev-secret";
 function smtpSuccessReplies() {
   return [
     "220 mxroute ESMTP ready\r\n",
-    "250-mxroute greets party.ramine.net\r\n250 AUTH LOGIN PLAIN\r\n",
+    "250-mxroute greets partyparty.party\r\n250 AUTH LOGIN PLAIN\r\n",
     "334 VXNlcm5hbWU6\r\n",
     "334 UGFzc3dvcmQ6\r\n",
     "235 2.7.0 Authentication successful\r\n",
@@ -1535,7 +1535,7 @@ function fakeStartTlsSmtpConnect() {
     },
   });
   const secure = socketFor([
-    "250 mxroute greets party.ramine.net\r\n",
+    "250 mxroute greets partyparty.party\r\n",
     ...smtpSuccessReplies().slice(2),
   ]);
   const plain = socketFor([
@@ -1556,7 +1556,7 @@ function fakeStartTlsSmtpConnect() {
 }
 
 async function requestDevLink(db, email, opts = {}) {
-  const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+  const resp = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -1567,12 +1567,12 @@ async function requestDevLink(db, email, opts = {}) {
   }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } }));
   assert.equal(resp.status, 200);
   const json = await resp.json();
-  assert.match(json.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
+  assert.match(json.devLink, /^https:\/\/partyparty\.party\/auth\/verify\?token=[a-f0-9]{64}$/);
   return json.devLink;
 }
 
 async function postVerify(db, token, opts = {}) {
-  return await worker.fetch(new Request("https://party.ramine.net/auth/verify", {
+  return await worker.fetch(new Request("https://partyparty.party/auth/verify", {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
@@ -1681,7 +1681,7 @@ function googleCallbackReq(db, { code = "auth-code", state = "s".repeat(32), coo
   const cState = cookieState === null ? state : cookieState;
   const cookie = `${OAUTH_STATE_COOKIE_NAME}=g|${cState}|${encodeURIComponent(redirect)}`;
   return worker.fetch(new Request(
-    `https://party.ramine.net/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+    `https://partyparty.party/auth/google/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
     { headers: { cookie, "cf-connecting-ip": "203.0.113.30", "user-agent": "smoke-oauth" } },
   ), makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
 }
@@ -1722,7 +1722,7 @@ function appleCallbackReq(db, env, { code = "auth-code", state = "a".repeat(32),
   const cookie = `${OAUTH_STATE_COOKIE_NAME}=a|${cState}|${encodeURIComponent(redirect)}`;
   const body = new URLSearchParams({ state });
   if (code !== null) body.set("code", code);
-  return worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {
+  return worker.fetch(new Request("https://partyparty.party/auth/apple/callback", {
     method: "POST",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded", "cf-connecting-ip": "203.0.113.31", "user-agent": "smoke-oauth" },
     body: body.toString(),
@@ -1738,7 +1738,7 @@ function assertOAuthFailure(resp, db, error) {
 
 const tests = [
   ["parseCookies decodes cookie header", async () => {
-    const req = new Request("https://party.ramine.net/", {
+    const req = new Request("https://partyparty.party/", {
       headers: { cookie: "sid=abc123; theme=dark%20mode; empty=; broken=%E0%A4%A" },
     });
     assert.deepEqual(parseCookies(req), {
@@ -1759,17 +1759,17 @@ const tests = [
     assert.equal(normalizeHandle("aaaaaaaaaa.bbbbbbbbbb.cccccccccc.dddddddddd"), "aaaaaaaaaa.bbbbbbbbbb.cccccccc");
   }],
   ["readJson parses valid small bodies only", async () => {
-    const good = new Request("https://party.ramine.net/api", {
+    const good = new Request("https://partyparty.party/api", {
       method: "POST",
       body: JSON.stringify({ ok: true }),
       headers: { "content-type": "application/json" },
     });
     assert.deepEqual(await readJson(good), { ok: true });
 
-    const bad = new Request("https://party.ramine.net/api", { method: "POST", body: "{" });
+    const bad = new Request("https://partyparty.party/api", { method: "POST", body: "{" });
     assert.equal(await readJson(bad), null);
 
-    const tooLarge = new Request("https://party.ramine.net/api", {
+    const tooLarge = new Request("https://partyparty.party/api", {
       method: "POST",
       body: JSON.stringify({ ok: true }),
       headers: { "content-length": "999" },
@@ -1781,9 +1781,9 @@ const tests = [
     const ok = await sendViaMXroute({
       AUTH_EMAIL_SERVER: "smtps://signin%40mail.example.test:p%40ssword@mail.mxrouting.test:465",
       AUTH_EMAIL_FROM: "partyparty <signin@mail.example.test>",
-      BROKER_BASE: "party.ramine.net",
+      BROKER_BASE: "partyparty.party",
       __TEST_SMTP_CONNECT: smtp.connect,
-    }, "User@Example.COM", "https://party.ramine.net/auth/verify?token=abc123");
+    }, "User@Example.COM", "https://partyparty.party/auth/verify?token=abc123");
 
     assert.equal(ok, true);
     assert.deepEqual(smtp.calls, [{
@@ -1791,7 +1791,7 @@ const tests = [
       options: { secureTransport: "on" },
     }]);
     assert.deepEqual(smtp.writes.slice(0, 7), [
-      "EHLO party.ramine.net\r\n",
+      "EHLO partyparty.party\r\n",
       "AUTH LOGIN\r\n",
       `${Buffer.from("signin@mail.example.test", "utf8").toString("base64")}\r\n`,
       `${Buffer.from("p@ssword", "utf8").toString("base64")}\r\n`,
@@ -1813,9 +1813,9 @@ const tests = [
     const ok = await sendViaMXroute({
       AUTH_EMAIL_SERVER: "smtp://signin%40mail.example.test:p%40ssword@mail.mxrouting.test:587",
       AUTH_EMAIL_FROM: "partyparty <signin@mail.example.test>",
-      BROKER_BASE: "party.ramine.net",
+      BROKER_BASE: "partyparty.party",
       __TEST_SMTP_CONNECT: smtp.connect,
-    }, "starttls@example.com", "https://party.ramine.net/auth/verify?token=starttls");
+    }, "starttls@example.com", "https://partyparty.party/auth/verify?token=starttls");
 
     assert.equal(ok, true);
     assert.deepEqual(smtp.calls, [{
@@ -1824,16 +1824,16 @@ const tests = [
     }]);
     assert.equal(smtp.upgraded, true);
     assert.deepEqual(smtp.writes.slice(0, 4), [
-      "EHLO party.ramine.net\r\n",
+      "EHLO partyparty.party\r\n",
       "STARTTLS\r\n",
-      "EHLO party.ramine.net\r\n",
+      "EHLO partyparty.party\r\n",
       "AUTH LOGIN\r\n",
     ]);
     assert.equal(smtp.writes[7], "RCPT TO:<starttls@example.com>\r\n");
   }],
   ["auth request-link gates devLink behind dev secret", async () => {
     const db = new FakeD1();
-    const noHeader = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const noHeader = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.20" },
       body: JSON.stringify({ email: " Person@Example.COM ", redirect: "/dashboard" }),
@@ -1844,7 +1844,7 @@ const tests = [
     assert.equal("devLink" in noHeaderJson, false);
     assert.equal(noHeaderJson.queued, false);
 
-    const withHeader = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const withHeader = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1856,10 +1856,10 @@ const tests = [
     const withHeaderJson = await withHeader.json();
     assert.equal(withHeader.status, 200);
     assert.equal(withHeaderJson.ok, true);
-    assert.match(withHeaderJson.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
+    assert.match(withHeaderJson.devLink, /^https:\/\/partyparty\.party\/auth\/verify\?token=[a-f0-9]{64}$/);
     assert.equal("queued" in withHeaderJson, false);
 
-    const failClosed = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const failClosed = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1883,7 +1883,7 @@ const tests = [
   }],
   ["auth request-link limits dev secret to configured emails", async () => {
     const db = new FakeD1();
-    const denied = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const denied = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1897,7 +1897,7 @@ const tests = [
     assert.equal("devLink" in deniedJson, false);
     assert.equal(deniedJson.queued, false);
 
-    const allowed = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const allowed = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1908,7 +1908,7 @@ const tests = [
     }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_DIRECT: "1", AUTH_DEV_SECRET, AUTH_DEV_EMAILS: "ramine@ramine.net" } }));
     const allowedJson = await allowed.json();
     assert.equal(allowed.status, 200);
-    assert.match(allowedJson.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}$/);
+    assert.match(allowedJson.devLink, /^https:\/\/partyparty\.party\/auth\/verify\?token=[a-f0-9]{64}$/);
     // Sign-in mints a dj_profile and, until its handle is confirmed, routes
     // through the /welcome soft-gate (carrying the original redirect).
     assert.equal(allowedJson.redirect, "/welcome?redirect=%2Faccount");
@@ -1919,7 +1919,7 @@ const tests = [
     const db = new FakeD1();
     const smtp = fakeSmtpConnect();
     const fallback = [];
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1946,12 +1946,12 @@ const tests = [
     assert.equal(smtp.calls.length, 1);
     assert.equal(fallback.length, 0);
     assert.equal(smtp.writes[5], "RCPT TO:<mxroute@example.com>\r\n");
-    assert.match(smtp.writes[7], /https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}/);
+    assert.match(smtp.writes[7], /https:\/\/partyparty\.party\/auth\/verify\?token=[a-f0-9]{64}/);
   }],
   ["auth request-link sends through EMAIL binding when configured", async () => {
     const db = new FakeD1();
     const sent = [];
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1977,7 +1977,7 @@ const tests = [
     assert.equal(sent[0].to, "mail@example.com");
     assert.deepEqual(sent[0].from, { email: "signin@ramine.net", name: "partyparty" });
     assert.match(sent[0].subject, /Sign in/);
-    assert.match(sent[0].text, /https:\/\/party\.ramine\.net\/auth\/verify\?token=[a-f0-9]{64}/);
+    assert.match(sent[0].text, /https:\/\/partyparty\.party\/auth\/verify\?token=[a-f0-9]{64}/);
     assert.match(sent[0].html, /Continue to partyparty/);
   }],
   ["auth verify confirms on GET and consumes on POST", async () => {
@@ -2002,7 +2002,7 @@ const tests = [
     assert.equal(row.used_ms, null);
     assert.equal(db.authSessions.size, 0);
 
-    const anon = await worker.fetch(new Request("https://party.ramine.net/api/me"), makeEnv({ DB: db }));
+    const anon = await worker.fetch(new Request("https://partyparty.party/api/me"), makeEnv({ DB: db }));
     assert.deepEqual(await anon.json(), { user: null });
 
     const verify = await postVerify(db, token, { ip: "203.0.113.21" });
@@ -2036,7 +2036,7 @@ const tests = [
       request_ip_hash: await sha256Hex("ip:203.0.113.22"),
       user_agent_hash: await sha256Hex("smoke"),
     });
-    const resp = await worker.fetch(new Request(`https://party.ramine.net/auth/verify?token=${rawToken}`), makeEnv({ DB: db }));
+    const resp = await worker.fetch(new Request(`https://partyparty.party/auth/verify?token=${rawToken}`), makeEnv({ DB: db }));
     assert.equal(resp.status, 400);
     assert.equal(db.authUsers.size, 0);
     assert.equal(db.authSessions.size, 0);
@@ -2048,10 +2048,10 @@ const tests = [
     const verify = await postVerify(db, token, { ip: "203.0.113.24" });
     const cookie = (verify.headers.get("set-cookie") || "").split(";")[0];
 
-    const anon = await worker.fetch(new Request("https://party.ramine.net/api/me"), makeEnv({ DB: db }));
+    const anon = await worker.fetch(new Request("https://partyparty.party/api/me"), makeEnv({ DB: db }));
     assert.deepEqual(await anon.json(), { user: null });
 
-    const me = await worker.fetch(new Request("https://party.ramine.net/api/me", {
+    const me = await worker.fetch(new Request("https://partyparty.party/api/me", {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     const meJson = await me.json();
@@ -2059,14 +2059,14 @@ const tests = [
     assert.deepEqual(Object.keys(meJson.user).sort(), ["display_name", "email", "id"]);
     assert.equal(meJson.user.email, "me@example.com");
 
-    const logout = await worker.fetch(new Request("https://party.ramine.net/api/auth/logout", {
+    const logout = await worker.fetch(new Request("https://partyparty.party/api/auth/logout", {
       method: "POST",
       headers: { cookie },
     }), makeEnv({ DB: db }));
     assert.equal(logout.status, 200);
     assert.match(logout.headers.get("set-cookie") || "", /pp_session=; Max-Age=0/);
 
-    const after = await worker.fetch(new Request("https://party.ramine.net/api/me", {
+    const after = await worker.fetch(new Request("https://partyparty.party/api/me", {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     assert.deepEqual(await after.json(), { user: null });
@@ -2098,14 +2098,14 @@ const tests = [
     const env = makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } });
     let resp;
     for (let i = 0; i < 5; i += 1) {
-      resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+      resp = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.24" },
         body: JSON.stringify({ email: `rate-${i}@example.com` }),
       }), env);
       assert.equal(resp.status, 200);
     }
-    resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    resp = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.24" },
       body: JSON.stringify({ email: "rate-final@example.com" }),
@@ -2127,7 +2127,7 @@ const tests = [
       user_agent_hash: "",
     }));
     const db = new FakeD1({ authMagicTokens });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -2139,7 +2139,7 @@ const tests = [
     const json = await resp.json();
     assert.equal(resp.status, 200);
     assert.equal(json.ok, true);
-    assert.match(json.devLink, /^https:\/\/party\.ramine\.net\/auth\/verify\?token=/);
+    assert.match(json.devLink, /^https:\/\/partyparty\.party\/auth\/verify\?token=/);
     // First sign-in mints a dj_profile and lands on the /welcome soft-gate.
     assert.equal(json.redirect, "/welcome?redirect=%2Faccount");
     assert.match(resp.headers.get("set-cookie") || "", /pp_session=[a-f0-9]{64}/);
@@ -2158,12 +2158,12 @@ const tests = [
         disabled_ms: null,
       }],
     });
-    const known = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const known = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.26", "x-auth-dev-secret": AUTH_DEV_SECRET },
       body: JSON.stringify({ email: "known@example.com" }),
     }), makeEnv({ DB: db, env: { AUTH_DEV_LINKS: "1", AUTH_DEV_SECRET } }));
-    const unknown = await worker.fetch(new Request("https://party.ramine.net/api/auth/request-link", {
+    const unknown = await worker.fetch(new Request("https://partyparty.party/api/auth/request-link", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.27", "x-auth-dev-secret": AUTH_DEV_SECRET },
       body: JSON.stringify({ email: "unknown@example.com" }),
@@ -2174,7 +2174,7 @@ const tests = [
     assert.deepEqual(Object.keys(await unknown.json()).sort(), ["devLink", "ok"]);
   }],
   ["account redirects anonymous users to login", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/account"), makeEnv({ DB: new FakeD1() }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/account"), makeEnv({ DB: new FakeD1() }));
     assert.equal(resp.status, 302);
     assert.equal(resp.headers.get("location"), "/login?redirect=/account");
   }],
@@ -2198,7 +2198,7 @@ const tests = [
       scheduled_at_ms: 1893542400000,
     });
 
-    const resp = await worker.fetch(new Request("https://party.ramine.net/account", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/account", {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     const html = await resp.text();
@@ -2215,14 +2215,14 @@ const tests = [
     assert.match(html, /install-link-create/);
   }],
   ["install-link create gates auth and profile, then returns a one-time code", async () => {
-    const anon = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+    const anon = await worker.fetch(new Request("https://partyparty.party/api/install-link/create", {
       method: "POST",
     }), makeEnv({ DB: new FakeD1() }));
     assert.equal(anon.status, 401);
 
     const db = new FakeD1();
     const cookie = await signInCookie(db, "link-create@example.com", { ip: "203.0.113.29" });
-    const noProfile = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+    const noProfile = await worker.fetch(new Request("https://partyparty.party/api/install-link/create", {
       method: "POST",
       headers: { cookie },
     }), makeEnv({ DB: db }));
@@ -2236,7 +2236,7 @@ const tests = [
       display_name: "Link Create",
       published: 1,
     });
-    const created = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+    const created = await worker.fetch(new Request("https://partyparty.party/api/install-link/create", {
       method: "POST",
       headers: { cookie },
     }), makeEnv({ DB: db }));
@@ -2255,14 +2255,14 @@ const tests = [
   }],
   ["broker link-start returns a browser sign-in URL for a valid install", async () => {
     const db = new FakeD1();
-    const bad = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-start", {
+    const bad = await worker.fetch(new Request("https://partyparty.party/api/broker/link-start", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "wrong" }),
     }), makeEnv({ DB: db }));
     assert.equal(bad.status, 403);
 
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-start", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/link-start", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -2283,7 +2283,7 @@ const tests = [
   }],
   ["broker account-status reports unlinked and linked install state", async () => {
     const db = new FakeD1();
-    const unlinked = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+    const unlinked = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -2296,7 +2296,7 @@ const tests = [
     assert.equal(unlinkedJson.install.slug, "disco12");
     assert.equal(unlinkedJson.license.ok, false);
 
-    const providersOn = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+    const providersOn = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -2339,7 +2339,7 @@ const tests = [
       scheduled_at_ms: 1893542400000,
     });
 
-    const linked = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+    const linked = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -2353,7 +2353,7 @@ const tests = [
     assert.equal(linkedJson.license.ok, true);
     assert.equal(linkedJson.events[0].slug, "linked-event");
 
-    const unlinkResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-unlink", {
+    const unlinkResp = await worker.fetch(new Request("https://partyparty.party/api/broker/account-unlink", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -2364,7 +2364,7 @@ const tests = [
     assert.equal(unlinkJson.revoked, 1);
     assert.equal(typeof db.deviceInstalls.get("abc123abc123").revoked_ms, "number");
 
-    const after = await worker.fetch(new Request("https://party.ramine.net/api/broker/account-status", {
+    const after = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -2378,7 +2378,7 @@ const tests = [
     const db = new FakeD1();
     await seedInstallBrowserToken(db, { id: "browser-token-ok", token: rawToken });
 
-    const anon = await worker.fetch(new Request(`https://party.ramine.net/link-mac?token=${rawToken}`), makeEnv({ DB: db }));
+    const anon = await worker.fetch(new Request(`https://partyparty.party/link-mac?token=${rawToken}`), makeEnv({ DB: db }));
     assert.equal(anon.status, 302);
     assert.equal(anon.headers.get("location"), `/login?redirect=${encodeURIComponent(`/link-mac?token=${rawToken}`)}`);
     assert.equal(db.installBrowserTokens.get("browser-token-ok").used_ms, null);
@@ -2386,7 +2386,7 @@ const tests = [
     const cookie = await signInCookie(db, "browser-link@example.com", { ip: "203.0.113.31" });
     const user = [...db.authUsers.values()].find((row) => row.email_norm === "browser-link@example.com");
     // Authenticated GET only CONFIRMS now — no bind, token still unused.
-    const confirm = await worker.fetch(new Request(`https://party.ramine.net/link-mac?token=${rawToken}`, {
+    const confirm = await worker.fetch(new Request(`https://partyparty.party/link-mac?token=${rawToken}`, {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     const confirmHtml = await confirm.text();
@@ -2397,9 +2397,9 @@ const tests = [
     assert.equal(db.deviceInstalls.has("abc123abc123"), false);
 
     // The same-site POST performs the bind.
-    const linked = await worker.fetch(new Request(`https://party.ramine.net/link-mac`, {
+    const linked = await worker.fetch(new Request(`https://partyparty.party/link-mac`, {
       method: "POST",
-      headers: { cookie, origin: "https://party.ramine.net", "content-type": "application/x-www-form-urlencoded" },
+      headers: { cookie, origin: "https://partyparty.party", "content-type": "application/x-www-form-urlencoded" },
       body: `token=${rawToken}`,
     }), makeEnv({ DB: db }));
     const html = await linked.text();
@@ -2420,14 +2420,14 @@ const tests = [
     await seedInstallBrowserToken(db, { id: "browser-token-csrf", token: rawToken });
     const cookie = await signInCookie(db, "csrf-victim@example.com", { ip: "203.0.113.32" });
 
-    const get = await worker.fetch(new Request(`https://party.ramine.net/link-mac?token=${rawToken}`, {
+    const get = await worker.fetch(new Request(`https://partyparty.party/link-mac?token=${rawToken}`, {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     assert.equal(get.status, 200);
     assert.equal(db.installBrowserTokens.get("browser-token-csrf").used_ms, null);
     assert.equal(db.deviceInstalls.has("abc123abc123"), false);
 
-    const evil = await worker.fetch(new Request(`https://party.ramine.net/link-mac`, {
+    const evil = await worker.fetch(new Request(`https://partyparty.party/link-mac`, {
       method: "POST",
       headers: { cookie, origin: "https://evil.example", "content-type": "application/x-www-form-urlencoded" },
       body: `token=${rawToken}`,
@@ -2457,7 +2457,7 @@ const tests = [
         used_ms: null,
       }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "wrong", code: rawCode }),
@@ -2500,7 +2500,7 @@ const tests = [
     await seedInstallLinkToken(db, { id: "token-other-user", code: otherCode, userId: "user-new", profileId: "profile-new" });
     await seedInstallLinkToken(db, { id: "token-same-user", code: sameCode, userId: "user-old", profileId: "profile-old-next" });
 
-    const takeover = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const takeover = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: otherCode }),
@@ -2510,7 +2510,7 @@ const tests = [
     assert.equal(db.deviceInstalls.get("abc123abc123").user_id, "user-old");
     assert.equal(db.deviceInstalls.get("abc123abc123").profile_id, "profile-old");
 
-    const same = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const same = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: sameCode }),
@@ -2544,7 +2544,7 @@ const tests = [
       revoked_ms: null,
     });
 
-    const unlink = await worker.fetch(new Request("https://party.ramine.net/api/install-link/unlink", {
+    const unlink = await worker.fetch(new Request("https://partyparty.party/api/install-link/unlink", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ install_id: "abc123abc123" }),
@@ -2562,7 +2562,7 @@ const tests = [
       published: 1,
     });
     await seedInstallLinkToken(db, { id: "token-relink-new", code: relinkCode, userId: "user-relink-new", profileId: "profile-relink-new" });
-    const relink = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const relink = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: relinkCode }),
@@ -2598,7 +2598,7 @@ const tests = [
 
     // A revoked install is no longer linked → cloud publish is refused outright
     // (going live online requires a live account link).
-    const publishMeta = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+    const publishMeta = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-publish", title: "Revoked Publish" }),
@@ -2606,7 +2606,7 @@ const tests = [
     assert.equal(publishMeta.status, 403);
     assert.equal(db.events.has("revoked-publish"), false);
 
-    const eventUpsert = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const eventUpsert = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-upsert", title: "Revoked Upsert" }),
@@ -2614,7 +2614,7 @@ const tests = [
     assert.equal(eventUpsert.status, 403);
     assert.equal(db.events.has("revoked-upsert"), false);
 
-    const windowResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/events-window", {
+    const windowResp = await worker.fetch(new Request("https://partyparty.party/api/broker/events-window", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", since_ms: now - 86_400_000, until_ms: now + 86_400_000 }),
@@ -2626,14 +2626,14 @@ const tests = [
   ["cloud publish requires a linked account: unlinked install is refused, linked one passes", async () => {
     // Unlinked (registered in R2, but no device_installs link) → publish refused.
     const unlinked = new FakeD1();
-    const metaU = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+    const metaU = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "needs-link", title: "Nope" }),
     }), makeEnv({ DB: unlinked }));
     assert.equal(metaU.status, 403);
     assert.equal(JSON.parse(await metaU.text()).reason, "not_linked");
     assert.equal(unlinked.events.has("needs-link"), false);
-    const upsertU = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const upsertU = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "needs-link2", title: "Nope" }),
     }), makeEnv({ DB: unlinked }));
@@ -2644,7 +2644,7 @@ const tests = [
     const linked = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-lp", profile_id: "profile-lp" }],
     });
-    const metaL = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+    const metaL = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "linked-pub", title: "Yes" }),
     }), makeEnv({ DB: linked }));
@@ -2653,7 +2653,7 @@ const tests = [
 
     // Escape hatch: BROKER_ALLOW_UNLINKED_PUBLISH=1 lets an unlinked install publish.
     const hatch = new FakeD1();
-    const metaH = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+    const metaH = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "hatch-pub", title: "Hatch" }),
     }), makeEnv({ DB: hatch, env: { BROKER_ALLOW_UNLINKED_PUBLISH: "1" } }));
@@ -2663,14 +2663,14 @@ const tests = [
     const env = makeEnv({ DB: new FakeD1() });
     for (let i = 0; i < 10; i += 1) {
       const guess = String(i).padStart(32, "0");
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: guess }),
       }), env);
       assert.equal(resp.status, 400);
     }
-    const throttled = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const throttled = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }),
@@ -2688,13 +2688,13 @@ const tests = [
       display_name: "Link OK",
       published: 1,
     });
-    const create = await worker.fetch(new Request("https://party.ramine.net/api/install-link/create", {
+    const create = await worker.fetch(new Request("https://partyparty.party/api/install-link/create", {
       method: "POST",
       headers: { cookie },
     }), makeEnv({ DB: db }));
     const code = (await create.json()).code;
 
-    const link = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const link = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code }),
@@ -2711,7 +2711,7 @@ const tests = [
     assert.equal(install.profile_id, "profile-link-ok");
     assert.equal(typeof install.linked_ms, "number");
 
-    const reused = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const reused = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code }),
@@ -2729,7 +2729,7 @@ const tests = [
       expires_ms: Date.now() - 1,
       used_ms: null,
     });
-    const expired = await worker.fetch(new Request("https://party.ramine.net/api/broker/link-install", {
+    const expired = await worker.fetch(new Request("https://partyparty.party/api/broker/link-install", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", code: expiredCode }),
@@ -2737,7 +2737,7 @@ const tests = [
     assert.equal(expired.status, 400);
     assert.equal(db.installLinkTokens.get("expired-install-link").used_ms, null);
 
-    const publishMeta = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+    const publishMeta = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -2752,7 +2752,7 @@ const tests = [
     assert.equal(publishRow.owner_user_id, user.id);
     assert.equal(publishRow.dj_profile_id, "profile-link-ok");
 
-    const eventUpsert = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const eventUpsert = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -2769,7 +2769,7 @@ const tests = [
   }],
   ["broker DNS writes require a linked account install", async () => {
     await withCloudflareDNSMock(async (calls) => {
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
@@ -2791,7 +2791,7 @@ const tests = [
       }],
     });
     await withCloudflareDNSMock(async (calls) => {
-      const aResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+      const aResp = await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
@@ -2804,7 +2804,7 @@ const tests = [
       assert.equal(aPost.body.content, "192.168.2.1");
       assert.equal(aPost.body.proxied, false);
 
-      const txtResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/txt", {
+      const txtResp = await worker.fetch(new Request("https://partyparty.party/api/broker/txt", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", value: "challenge-token" }),
@@ -2823,7 +2823,7 @@ const tests = [
       profiles: [{ id: "profile-hs", user_id: "user-hs", handle: "seth", display_name: "Seth", published: 1, handle_confirmed_ms: 5, ...over.profile }],
       ...over.db,
     });
-    const postA = (env) => worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+    const postA = (env) => worker.fetch(new Request("https://partyparty.party/api/broker/a", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
@@ -2892,7 +2892,7 @@ const tests = [
       },
     });
     await withCloudflareDNSMock(async (calls) => {
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/a", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
@@ -2908,7 +2908,7 @@ const tests = [
     });
   }],
   ["web event create API requires authentication", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "Anon Event" }),
@@ -2918,7 +2918,7 @@ const tests = [
   ["web event create API requires a DJ profile", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "no-profile-event@example.com", { ip: "203.0.113.36" });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ title: "No Profile Event" }),
@@ -2927,7 +2927,7 @@ const tests = [
     assert.equal(resp.status, 400);
     assert.deepEqual(json, { error: "create a DJ profile first", redirect: "/profile/edit" });
 
-    const page = await worker.fetch(new Request("https://party.ramine.net/events/new", {
+    const page = await worker.fetch(new Request("https://partyparty.party/events/new", {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     const html = await page.text();
@@ -2946,7 +2946,7 @@ const tests = [
       display_name: "Web Create",
       published: 1,
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
@@ -2959,7 +2959,7 @@ const tests = [
     const json = await resp.json();
     const row = db.events.get("web-party");
     assert.equal(resp.status, 200);
-    assert.deepEqual(json, { ok: true, slug: "web-party", url: "https://party.ramine.net/e/web-party" });
+    assert.deepEqual(json, { ok: true, slug: "web-party", url: "https://partyparty.party/e/web-party" });
     assert.equal(row.install_id, "");
     assert.equal(row.owner_user_id, user.id);
     assert.equal(row.dj_profile_id, "profile-web-create");
@@ -2984,7 +2984,7 @@ const tests = [
       display_name: "Duplicate Web",
       published: 1,
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ slug: "taken-web", title: "New Title" }),
@@ -3016,7 +3016,7 @@ const tests = [
       visibility: "public",
       rsvp_enabled: 1,
     });
-    const update = await worker.fetch(new Request("https://party.ramine.net/api/events/owned-web", {
+    const update = await worker.fetch(new Request("https://partyparty.party/api/events/owned-web", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: ownerCookie },
       body: JSON.stringify({ title: "Owner Updated", location_name: "New Room", rsvp_enabled: 0 }),
@@ -3041,7 +3041,7 @@ const tests = [
       display_name: "Web Other",
       published: 1,
     });
-    const denied = await worker.fetch(new Request("https://party.ramine.net/api/events/owned-web", {
+    const denied = await worker.fetch(new Request("https://partyparty.party/api/events/owned-web", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: otherCookie },
       body: JSON.stringify({ title: "Stolen" }),
@@ -3071,7 +3071,7 @@ const tests = [
       visibility: "public",
       rsvp_enabled: 1,
     });
-    const update = await worker.fetch(new Request("https://party.ramine.net/api/events/old-web", {
+    const update = await worker.fetch(new Request("https://partyparty.party/api/events/old-web", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: ownerCookie },
       body: JSON.stringify({ slug: "new-web", title: "Renamed Web" }),
@@ -3083,30 +3083,30 @@ const tests = [
     assert.equal(db.events.get("new-web").title, "Renamed Web");
     assert.equal(db.eventAliases.get("old-web").slug, "new-web");
 
-    const oldPage = await worker.fetch(new Request("https://party.ramine.net/e/old-web"), makeEnv({ DB: db }));
+    const oldPage = await worker.fetch(new Request("https://partyparty.party/e/old-web"), makeEnv({ DB: db }));
     assert.equal(oldPage.status, 301);
     assert.equal(oldPage.headers.get("location"), "/e/new-web");
 
-    const unknown = await worker.fetch(new Request("https://party.ramine.net/e/unknown-web"), makeEnv({ DB: db }));
+    const unknown = await worker.fetch(new Request("https://partyparty.party/e/unknown-web"), makeEnv({ DB: db }));
     assert.equal(unknown.status, 404);
   }],
   ["profile API creates signed-in user's fresh profile and public route renders it", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "fresh@example.com", { ip: "203.0.113.30" });
     const user = [...db.authUsers.values()][0];
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ handle: " Fresh DJ ", display_name: "Fresh Name" }),
     }), makeEnv({ DB: db }));
     const json = await resp.json();
     assert.equal(resp.status, 200);
-    assert.deepEqual(json, { ok: true, handle: "fresh.dj", url: "https://party.ramine.net/@fresh.dj" });
+    assert.deepEqual(json, { ok: true, handle: "fresh.dj", url: "https://partyparty.party/@fresh.dj" });
     assert.equal(db.profiles.length, 1);
     assert.equal(db.profiles[0].user_id, user.id);
     assert.equal(db.profiles[0].handle, "fresh.dj");
 
-    const page = await worker.fetch(new Request("https://party.ramine.net/@fresh.dj"), makeEnv({ DB: db }));
+    const page = await worker.fetch(new Request("https://partyparty.party/@fresh.dj"), makeEnv({ DB: db }));
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /Fresh Name/);
@@ -3116,7 +3116,7 @@ const tests = [
     assert.equal(page.headers.get("cache-control"), "public, max-age=60");
 
     // The owner (signed-in) sees Create event + Edit profile, uncached.
-    const ownerPage = await worker.fetch(new Request("https://party.ramine.net/@fresh.dj", { headers: { cookie } }), makeEnv({ DB: db }));
+    const ownerPage = await worker.fetch(new Request("https://partyparty.party/@fresh.dj", { headers: { cookie } }), makeEnv({ DB: db }));
     const ownerHtml = await ownerPage.text();
     assert.equal(ownerPage.status, 200);
     assert.match(ownerHtml, /href="\/events\/new">＋ Create event/);
@@ -3130,40 +3130,40 @@ const tests = [
     const cookie = await signInCookie(db, "fan@example.com", { ip: "203.0.113.40" });
 
     // Signed-out profile → "Sign in to follow", no follow button.
-    const anonHtml = await (await worker.fetch(new Request("https://party.ramine.net/@star.dj"), makeEnv({ DB: db }))).text();
+    const anonHtml = await (await worker.fetch(new Request("https://partyparty.party/@star.dj"), makeEnv({ DB: db }))).text();
     assert.match(anonHtml, /Sign in to follow/);
     assert.doesNotMatch(anonHtml, /id="followbtn"/);
 
     // Signed-in non-owner → Follow button (not yet following), uncached.
-    const before = await worker.fetch(new Request("https://party.ramine.net/@star.dj", { headers: { cookie } }), makeEnv({ DB: db }));
+    const before = await worker.fetch(new Request("https://partyparty.party/@star.dj", { headers: { cookie } }), makeEnv({ DB: db }));
     assert.match(await before.text(), /id="followbtn"[^>]*data-following="0"/);
     assert.equal(before.headers.get("cache-control"), "private, no-store");
 
     // Follow (POST) is idempotent.
-    const follow = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+    const follow = await worker.fetch(new Request("https://partyparty.party/api/follow", {
       method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "star.dj" }),
     }), makeEnv({ DB: db }));
     assert.equal(follow.status, 200);
     assert.deepEqual(await follow.json(), { ok: true, following: true });
-    await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+    await worker.fetch(new Request("https://partyparty.party/api/follow", {
       method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "star.dj" }),
     }), makeEnv({ DB: db }));
     assert.equal(db.follows.length, 1);
 
     // Profile now shows "Following".
-    assert.match(await (await worker.fetch(new Request("https://party.ramine.net/@star.dj", { headers: { cookie } }), makeEnv({ DB: db }))).text(), /id="followbtn"[^>]*data-following="1"/);
+    assert.match(await (await worker.fetch(new Request("https://partyparty.party/@star.dj", { headers: { cookie } }), makeEnv({ DB: db }))).text(), /id="followbtn"[^>]*data-following="1"/);
 
     // Signed-in home shows the personalized section, uncached; anon home doesn't.
     // (The events aggregator lives at /live since decision C; / is the marketing page.)
-    const home = await worker.fetch(new Request("https://party.ramine.net/live", { headers: { cookie } }), makeEnv({ DB: db }));
+    const home = await worker.fetch(new Request("https://partyparty.party/live", { headers: { cookie } }), makeEnv({ DB: db }));
     assert.match(await home.text(), /DJs you follow/);
     assert.equal(home.headers.get("cache-control"), "private, no-store");
-    const anonHome = await worker.fetch(new Request("https://party.ramine.net/live"), makeEnv({ DB: db }));
+    const anonHome = await worker.fetch(new Request("https://partyparty.party/live"), makeEnv({ DB: db }));
     assert.doesNotMatch(await anonHome.text(), /DJs you follow/);
     assert.equal(anonHome.headers.get("cache-control"), "public, max-age=60");
 
     // Unfollow (DELETE).
-    const unfollow = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+    const unfollow = await worker.fetch(new Request("https://partyparty.party/api/follow", {
       method: "DELETE", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "star.dj" }),
     }), makeEnv({ DB: db }));
     assert.deepEqual(await unfollow.json(), { ok: true, following: false });
@@ -3171,7 +3171,7 @@ const tests = [
   }],
   ["follow rejects anonymous callers and self-follow", async () => {
     const db = new FakeD1();
-    const anon = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+    const anon = await worker.fetch(new Request("https://partyparty.party/api/follow", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ handle: "someone" }),
     }), makeEnv({ DB: db }));
     assert.equal(anon.status, 401);
@@ -3179,7 +3179,7 @@ const tests = [
     const cookie = await signInCookie(db, "self@example.com", { ip: "203.0.113.41" });
     const user = [...db.authUsers.values()].find((u) => u.email_norm === "self@example.com");
     db.profiles.push({ id: "profile-self", user_id: user.id, handle: "self.dj", display_name: "Self DJ", published: 1 });
-    const self = await worker.fetch(new Request("https://party.ramine.net/api/follow", {
+    const self = await worker.fetch(new Request("https://partyparty.party/api/follow", {
       method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ handle: "self.dj" }),
     }), makeEnv({ DB: db }));
     assert.equal(self.status, 400);
@@ -3195,12 +3195,12 @@ const tests = [
     });
 
     // Anonymous → redirect to login.
-    const anon = await worker.fetch(new Request("https://party.ramine.net/e/rooftop/edit"), makeEnv({ DB: db }));
+    const anon = await worker.fetch(new Request("https://partyparty.party/e/rooftop/edit"), makeEnv({ DB: db }));
     assert.equal(anon.status, 302);
     assert.match(anon.headers.get("location"), /\/login\?redirect=/);
 
     // Owner → pre-filled edit form that submits to the update API, uncached.
-    const owner = await worker.fetch(new Request("https://party.ramine.net/e/rooftop/edit", { headers: { cookie } }), makeEnv({ DB: db }));
+    const owner = await worker.fetch(new Request("https://partyparty.party/e/rooftop/edit", { headers: { cookie } }), makeEnv({ DB: db }));
     const ownerHtml = await owner.text();
     assert.equal(owner.status, 200);
     assert.match(ownerHtml, /Edit event/);
@@ -3210,21 +3210,21 @@ const tests = [
 
     // A different signed-in user → 403.
     const otherCookie = await signInCookie(db, "stranger@example.com", { ip: "203.0.113.51" });
-    const other = await worker.fetch(new Request("https://party.ramine.net/e/rooftop/edit", { headers: { cookie: otherCookie } }), makeEnv({ DB: db }));
+    const other = await worker.fetch(new Request("https://partyparty.party/e/rooftop/edit", { headers: { cookie: otherCookie } }), makeEnv({ DB: db }));
     assert.equal(other.status, 403);
     assert.match(await other.text(), /Not your event/);
 
     // Event page: owner sees an Edit link (uncached); anonymous does not.
-    const ownerView = await worker.fetch(new Request("https://party.ramine.net/e/rooftop", { headers: { cookie } }), makeEnv({ DB: db }));
+    const ownerView = await worker.fetch(new Request("https://partyparty.party/e/rooftop", { headers: { cookie } }), makeEnv({ DB: db }));
     assert.match(await ownerView.text(), /href="\/e\/rooftop\/edit"/);
     assert.equal(ownerView.headers.get("cache-control"), "private, no-store");
-    const anonView = await worker.fetch(new Request("https://party.ramine.net/e/rooftop"), makeEnv({ DB: db }));
+    const anonView = await worker.fetch(new Request("https://partyparty.party/e/rooftop"), makeEnv({ DB: db }));
     assert.doesNotMatch(await anonView.text(), /href="\/e\/rooftop\/edit"/);
   }],
   ["profile API rejects a different user claiming an existing normalized handle", async () => {
     const db = new FakeD1();
     const cookieA = await signInCookie(db, "claim-a@example.com", { ip: "203.0.113.31" });
-    const first = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const first = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: cookieA },
       body: JSON.stringify({ handle: "Taken Handle" }),
@@ -3232,7 +3232,7 @@ const tests = [
     assert.equal(first.status, 200);
 
     const cookieB = await signInCookie(db, "claim-b@example.com", { ip: "203.0.113.32" });
-    const second = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const second = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: cookieB },
       body: JSON.stringify({ handle: "taken.handle" }),
@@ -3243,7 +3243,7 @@ const tests = [
   ["profile API rejects invalid handles", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "bad-handle@example.com", { ip: "203.0.113.33" });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ handle: "!!!" }),
@@ -3252,7 +3252,7 @@ const tests = [
     assert.equal(db.profiles.length, 0);
   }],
   ["profile API requires authentication", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ handle: "anon.dj" }),
@@ -3262,14 +3262,14 @@ const tests = [
   ["profile API persists owner display name and bio edits", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "edit-owner@example.com", { ip: "203.0.113.34" });
-    const create = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const create = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ handle: "edit.owner" }),
     }), makeEnv({ DB: db }));
     assert.equal(create.status, 200);
 
-    const edit = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const edit = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ display_name: "Owner Edited", bio: "Updated private owner copy.", location: "Oakland" }),
@@ -3283,14 +3283,14 @@ const tests = [
   ["profile socials reject javascript URLs and accept https URLs", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "socials@example.com", { ip: "203.0.113.35" });
-    const create = await worker.fetch(new Request("https://party.ramine.net/api/profile", {
+    const create = await worker.fetch(new Request("https://partyparty.party/api/profile", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ handle: "social.dj" }),
     }), makeEnv({ DB: db }));
     assert.equal(create.status, 200);
 
-    const bad = await worker.fetch(new Request("https://party.ramine.net/api/profile/socials", {
+    const bad = await worker.fetch(new Request("https://partyparty.party/api/profile/socials", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ website_url: "javascript:alert(1)" }),
@@ -3298,7 +3298,7 @@ const tests = [
     assert.equal(bad.status, 400);
     assert.equal(db.profiles[0].website_url, "");
 
-    const good = await worker.fetch(new Request("https://party.ramine.net/api/profile/socials", {
+    const good = await worker.fetch(new Request("https://partyparty.party/api/profile/socials", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ website_url: "https://example.test/dj", instagram_url: "" }),
@@ -3309,12 +3309,12 @@ const tests = [
     assert.equal(db.profiles[0].website_url, "https://example.test/dj");
   }],
   ["profile edit redirects anonymous users to login", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/profile/edit"), makeEnv({ DB: new FakeD1() }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/profile/edit"), makeEnv({ DB: new FakeD1() }));
     assert.equal(resp.status, 302);
     assert.equal(resp.headers.get("location"), "/login?redirect=/profile/edit");
   }],
   ["login renders fallback when no consumer auth providers are configured", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/login"), makeEnv({ DB: new FakeD1() }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/login"), makeEnv({ DB: new FakeD1() }));
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.doesNotMatch(html, /type="email"/);
@@ -3326,11 +3326,11 @@ const tests = [
     assert.doesNotMatch(html, /Admin passcode/);
 
     // ...but it's available behind /login?admin=1 for support/dev.
-    const adminResp = await worker.fetch(new Request("https://party.ramine.net/login?admin=1"), makeEnv({ DB: new FakeD1() }));
+    const adminResp = await worker.fetch(new Request("https://partyparty.party/login?admin=1"), makeEnv({ DB: new FakeD1() }));
     assert.match(await adminResp.text(), /Admin passcode/);
   }],
   ["login renders email form when MXroute email is configured", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/login"), makeEnv({
+    const resp = await worker.fetch(new Request("https://partyparty.party/login"), makeEnv({
       DB: new FakeD1(),
       env: {
         AUTH_EMAIL_SERVER: "smtps://signin%40mail.example.test:p%40ssword@mail.mxrouting.test:465",
@@ -3346,12 +3346,12 @@ const tests = [
   ["login redirects signed-in users to account", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "login-redirect@example.com", { ip: "203.0.113.29" });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/login", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/login", {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 302);
     assert.equal(resp.headers.get("location"), "/account");
-    const next = await worker.fetch(new Request("https://party.ramine.net/login?redirect=/link-mac%3Ftoken%3Daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+    const next = await worker.fetch(new Request("https://partyparty.party/login?redirect=/link-mac%3Ftoken%3Daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     assert.equal(next.status, 302);
@@ -3483,7 +3483,7 @@ const tests = [
   }],
   ["event RSVP POST mints anonymous cookie and counts coming", async () => {
     const db = new FakeD1({ rsvpEnabled: 1 });
-    const resp = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+    const resp = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ response: "coming", name: "Ava", emoji: "\u2728", note: "See you there" }),
@@ -3496,13 +3496,13 @@ const tests = [
   }],
     ["event RSVP POST with same cookie updates same anonymous row", async () => {
     const db = new FakeD1({ rsvpEnabled: 1 });
-    const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+    const first = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ response: "coming" }),
     }), makeEnv({ DB: db }));
     const cookie = (first.headers.get("set-cookie") || "").split(";")[0];
-    const second = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+    const second = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ response: "not", name: "Ava" }),
@@ -3515,12 +3515,12 @@ const tests = [
     }],
     ["event RSVP cookie-less POSTs from same IP collapse to one row", async () => {
       const db = new FakeD1({ rsvpEnabled: 1 });
-      const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+      const first = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.10" },
         body: JSON.stringify({ response: "coming" }),
       }), makeEnv({ DB: db }));
-      const second = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+      const second = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.10" },
         body: JSON.stringify({ response: "not" }),
@@ -3533,13 +3533,13 @@ const tests = [
     }],
   ["event RSVP GET returns counts and mine", async () => {
     const db = new FakeD1({ rsvpEnabled: 1 });
-    const first = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+    const first = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ response: "coming" }),
     }), makeEnv({ DB: db }));
     const cookie = (first.headers.get("set-cookie") || "").split(";")[0];
-    const resp = await worker.fetch(new Request(`https://party.ramine.net/api/e/${KNOWN_SLUG}/rsvp`, {
+    const resp = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
       headers: { cookie },
     }), makeEnv({ DB: db }));
     const json = await resp.json();
@@ -3924,7 +3924,7 @@ const tests = [
   }],
   ["broker publish-cover delete clears object and event cover", async () => {
     const env = makeEnv();
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-cover", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-cover", {
       method: "DELETE",
       headers: {
         "x-pp-id": "abc123abc123",
@@ -3987,7 +3987,7 @@ const tests = [
         { slug: "window-upcoming", user_id: "u3", response: "not" },
       ],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/events-window", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/events-window", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", since_ms: now - 86_400_000, until_ms: now + 86_400_000 }),
@@ -3997,7 +3997,7 @@ const tests = [
     assert.equal(json.ok, true);
     assert.equal(typeof json.serverMs, "number");
     assert.deepEqual(json.events.map((event) => event.slug), ["window-upcoming", "window-replay"]);
-    assert.equal(json.events[0].url, "https://party.ramine.net/e/window-upcoming");
+    assert.equal(json.events[0].url, "https://partyparty.party/e/window-upcoming");
     assert.equal(json.events[0].status, "upcoming");
     assert.equal(json.events[0].visibility, "public");
     assert.equal(json.events[0].scheduled_at_ms, now + 60_000);
@@ -4006,7 +4006,7 @@ const tests = [
     assert.equal(json.events[0].location_name, "Rooftop");
     assert.equal(json.events[0].hasReplay, false);
     assert.deepEqual(json.events[0].rsvp, { coming: 2, not: 1 });
-    assert.equal(json.events[1].url, "https://party.ramine.net/e/window-replay");
+    assert.equal(json.events[1].url, "https://partyparty.party/e/window-replay");
     assert.equal(json.events[1].status, "replay");
     assert.equal(json.events[1].hasReplay, true);
     assert.deepEqual(json.events[1].rsvp, { coming: 0, not: 0 });
@@ -4035,7 +4035,7 @@ const tests = [
         updated_ms: now,
       }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/events-window", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/events-window", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", since_ms: now - 86_400_000, until_ms: now + 86_400_000 }),
@@ -4048,7 +4048,7 @@ const tests = [
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -4065,7 +4065,7 @@ const tests = [
     const json = await resp.json();
     const row = db.events.get("ahead-new");
     assert.equal(resp.status, 200);
-    assert.deepEqual(json, { ok: true, slug: "ahead-new", url: "https://party.ramine.net/e/ahead-new", status: "upcoming" });
+    assert.deepEqual(json, { ok: true, slug: "ahead-new", url: "https://partyparty.party/e/ahead-new", status: "upcoming" });
     assert.equal(row.status, "upcoming");
     assert.equal(row.source, "install");
     assert.equal(row.title, "Ahead New");
@@ -4081,7 +4081,7 @@ const tests = [
       const db = new FakeD1({
         deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
       });
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -4109,7 +4109,7 @@ const tests = [
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
       events: [{ slug: "taken-ahead", install_id: "def456def456", title: "Taken", status: "upcoming" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "taken-ahead", title: "Nope" }),
@@ -4122,7 +4122,7 @@ const tests = [
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
       events: [{ slug: "owned-replay", install_id: "abc123abc123", title: "Old Title", status: "replay" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-replay", title: "New Title" }),
@@ -4139,7 +4139,7 @@ const tests = [
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
       events: [{ slug: "ahead-old", install_id: "abc123abc123", title: "Ahead Old", status: "upcoming" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -4172,7 +4172,7 @@ const tests = [
       ],
       eventAliases: [{ old_slug: "party", slug: "rave", created_ms: 1 }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "def456def456", secret: "secret-b", old_slug: "b-old", slug: "party", title: "B Event" }),
@@ -4191,7 +4191,7 @@ const tests = [
       events: [{ slug: "rave", install_id: "abc123abc123", title: "A Rave", status: "upcoming" }],
       eventAliases: [{ old_slug: "party", slug: "rave", created_ms: 1 }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-upsert", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", old_slug: "rave", slug: "party", title: "A Rave" }),
@@ -4209,7 +4209,7 @@ const tests = [
     const cookie = await signInCookie(db, "reserve-web@example.com", { ip: "203.0.113.39" });
     const user = [...db.authUsers.values()].find((row) => row.email === "reserve-web@example.com");
     db.profiles.push({ id: "profile-reserve-web", user_id: user.id, handle: "reserve.web", display_name: "Reserve Web", published: 1 });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/events", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ title: "New", slug: "party" }),
@@ -4229,7 +4229,7 @@ const tests = [
         last_activity_ms: 1,
       }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-meta", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -4281,7 +4281,7 @@ const tests = [
         comments: [],
       }],
     };
-    const first = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+    const first = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -4298,7 +4298,7 @@ const tests = [
     assert.equal(hidden.approved, 0);
     assert.equal(visible.activity_ms, 1500);
 
-    const second = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+    const second = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -4318,7 +4318,7 @@ const tests = [
         text: "Nope",
         comments: [],
       }));
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -4335,7 +4335,7 @@ const tests = [
     const db = new FakeD1({
       events: [{ slug: "other-posts", install_id: "def456def456", title: "Other", status: "replay" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -4352,7 +4352,7 @@ const tests = [
     const db = new FakeD1({
       events: [{ slug: "deleted-posts", install_id: "abc123abc123", title: "Deleted Posts", status: "replay" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-posts", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -4396,7 +4396,7 @@ const tests = [
       wallPosts: [{ id: "post-one", slug: "other-media", approved: 1, deleted_ms: null }],
     });
     const env = makeEnv({ DB: db });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media", {
       method: "PUT",
       headers: {
         "x-pp-id": "abc123abc123",
@@ -4418,7 +4418,7 @@ const tests = [
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
     });
     const env = makeEnv({ DB: db });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media", {
       method: "PUT",
       headers: {
         "x-pp-id": "abc123abc123",
@@ -4441,7 +4441,7 @@ const tests = [
         wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
       });
       const env = makeEnv({ DB: db });
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media", {
         method: "PUT",
         headers: {
           "x-pp-id": "abc123abc123",
@@ -4465,7 +4465,7 @@ const tests = [
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
     const env = makeEnv({ DB: db });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media", {
       method: "PUT",
       headers: {
         "x-pp-id": "abc123abc123",
@@ -4503,7 +4503,7 @@ const tests = [
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
     const env = makeEnv({ DB: db });
-    const upload = (body, name, sort) => worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media", {
+    const upload = (body, name, sort) => worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media", {
       method: "PUT",
       headers: {
         "x-pp-id": "abc123abc123",
@@ -4564,25 +4564,25 @@ const tests = [
       "x-pp-sort": "4",
       "x-pp-size": "10",
     };
-    const init = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-init", {
+    const init = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-init", {
       method: "POST",
       headers,
     }), env);
     assert.equal(init.status, 200);
     const { uploadId } = await init.json();
-    const p1 = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-part", {
+    const p1 = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-part", {
       method: "PUT",
       headers: { ...headers, "x-pp-upload-id": uploadId, "x-pp-part-number": "1", "content-length": "5" },
       body: "hello",
     }), env);
-    const p2 = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-part", {
+    const p2 = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-part", {
       method: "PUT",
       headers: { ...headers, "x-pp-upload-id": uploadId, "x-pp-part-number": "2", "content-length": "5" },
       body: "world",
     }), env);
     const j1 = await p1.json();
     const j2 = await p2.json();
-    const bad = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-complete", {
+    const bad = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-complete", {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ uploadId, parts: [j2, j1], size: 10 }),
@@ -4609,7 +4609,7 @@ const tests = [
       "x-pp-sort": "4",
       "x-pp-size": "10",
     };
-    const init = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-init", {
+    const init = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-init", {
       method: "POST",
       headers,
     }), env);
@@ -4617,7 +4617,7 @@ const tests = [
     const { uploadId, mediaId } = await init.json();
     assert.equal(mediaId, "media-video");
     const uploadPart = async (partNumber, body) => {
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-part", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-part", {
         method: "PUT",
         headers: { ...headers, "x-pp-upload-id": uploadId, "x-pp-part-number": String(partNumber), "content-length": contentLength(body) },
         body,
@@ -4629,7 +4629,7 @@ const tests = [
     const retryP1 = await uploadPart(1, "hello");
     const p2 = await uploadPart(2, "world");
     assert.equal(retryP1.etag, firstP1.etag);
-    const complete = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-complete", {
+    const complete = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-complete", {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ uploadId, parts: [retryP1, p2], size: 10 }),
@@ -4648,7 +4648,7 @@ const tests = [
     assert.equal(row.size_bytes, 10);
     assert.equal(row.sort_order, 4);
 
-    const again = await worker.fetch(new Request("https://party.ramine.net/api/broker/publish-post-media-multipart-complete", {
+    const again = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-post-media-multipart-complete", {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ uploadId, parts: [retryP1, p2], size: 10 }),
@@ -4662,7 +4662,7 @@ const tests = [
       const db = new FakeD1({
         events: [{ slug: "owned-by-b", install_id: "def456def456", title: "Owned B", status: "upcoming" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-by-b", status: "live" }),
@@ -4675,7 +4675,7 @@ const tests = [
     const db = new FakeD1({
       events: [{ slug: "owned-large-status", install_id: "abc123abc123", title: "Owned", status: "upcoming" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -4693,7 +4693,7 @@ const tests = [
     const db = new FakeD1({
       events: [{ slug: "owned-live", install_id: "abc123abc123", title: "Owned Live", status: "upcoming", dj_profile_id: "profile-live" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-live", status: "live" }),
@@ -4713,7 +4713,7 @@ const tests = [
     const db = new FakeD1({
       events: [{ slug: "owned-invalid-status", install_id: "abc123abc123", title: "Owned", status: "upcoming" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/event-status", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "owned-invalid-status", status: "paused" }),
@@ -4750,14 +4750,14 @@ const tests = [
   }],
   ["google sign-in start redirects to Google and sets a state cookie", async () => {
     const db = new FakeD1({});
-    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/google?redirect=/account", {}),
+    const resp = await worker.fetch(new Request("https://partyparty.party/auth/google?redirect=/account", {}),
       makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
     assert.equal(resp.status, 302);
     const loc = resp.headers.get("location") || "";
     assert.ok(loc.startsWith("https://accounts.google.com/o/oauth2/v2/auth"), "redirects to Google");
     const locUrl = new URL(loc);
     assert.equal(locUrl.searchParams.get("client_id"), GOOGLE_TEST_ENV.AUTH_GOOGLE_ID);
-    assert.equal(locUrl.searchParams.get("redirect_uri"), "https://party.ramine.net/auth/google/callback");
+    assert.equal(locUrl.searchParams.get("redirect_uri"), "https://partyparty.party/auth/google/callback");
     assert.equal(locUrl.searchParams.get("response_type"), "code");
     const state = locUrl.searchParams.get("state");
     assert.ok(state && state.length >= 16, "carries a state nonce");
@@ -4766,7 +4766,7 @@ const tests = [
     assert.ok(sc.includes(state), "state cookie carries the same nonce");
   }],
   ["google sign-in is unavailable when unconfigured", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/google", {}), makeEnv({ DB: new FakeD1({}) }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/auth/google", {}), makeEnv({ DB: new FakeD1({}) }));
     assert.equal(resp.status, 302);
     assert.equal(resp.headers.get("location"), "/login");
   }],
@@ -4779,7 +4779,7 @@ const tests = [
     const sessionCookie = (resp.headers.get("set-cookie") || "").split(";")[0];
     assert.ok(sessionCookie.length > 0, "sets a session cookie");
     // The session must actually authenticate.
-    const me = await worker.fetch(new Request("https://party.ramine.net/api/me", { headers: { cookie: sessionCookie } }),
+    const me = await worker.fetch(new Request("https://partyparty.party/api/me", { headers: { cookie: sessionCookie } }),
       makeEnv({ DB: db }));
     const meJson = await me.json();
     assert.equal(meJson.user && meJson.user.email, "dj@example.com");
@@ -4801,7 +4801,7 @@ const tests = [
       return oldFetch(input, init);
     };
     try {
-      const resp = await worker.fetch(new Request(`https://party.ramine.net/auth/google/callback?state=${state}`, {
+      const resp = await worker.fetch(new Request(`https://partyparty.party/auth/google/callback?state=${state}`, {
         headers: { cookie: `${OAUTH_STATE_COOKIE_NAME}=g|${state}|/account` },
       }), makeEnv({ DB: db, env: GOOGLE_TEST_ENV }));
       assertOAuthFailure(resp, db, "state");
@@ -4847,16 +4847,16 @@ const tests = [
     assertOAuthFailure(resp, db, "verify");
   }],
   ["login page shows Continue with Google only when configured", async () => {
-    const on = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}), env: GOOGLE_TEST_ENV }));
+    const on = await worker.fetch(new Request("https://partyparty.party/login", {}), makeEnv({ DB: new FakeD1({}), env: GOOGLE_TEST_ENV }));
     const onBody = await on.text();
     assert.ok(onBody.includes("Continue with Google"), "button present when configured");
     assert.ok(onBody.includes("/auth/google?redirect="), "button links to /auth/google");
-    const off = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}) }));
+    const off = await worker.fetch(new Request("https://partyparty.party/login", {}), makeEnv({ DB: new FakeD1({}) }));
     assert.ok(!(await off.text()).includes("Continue with Google"), "button hidden when unconfigured");
   }],
   ["apple sign-in start redirects to Apple with form_post and a None-SameSite cookie", async () => {
     const env = await makeAppleEnv();
-    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple?redirect=/account", {}), makeEnv({ DB: new FakeD1({}), env }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/auth/apple?redirect=/account", {}), makeEnv({ DB: new FakeD1({}), env }));
     assert.equal(resp.status, 302);
     const loc = resp.headers.get("location") || "";
     assert.ok(loc.startsWith("https://appleid.apple.com/auth/authorize"), "redirects to Apple");
@@ -4869,7 +4869,7 @@ const tests = [
     assert.ok(/SameSite=None/i.test(sc), "state cookie is SameSite=None so it survives the cross-site form_post");
   }],
   ["apple sign-in is unavailable when unconfigured", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple", {}), makeEnv({ DB: new FakeD1({}) }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/auth/apple", {}), makeEnv({ DB: new FakeD1({}) }));
     assert.equal(resp.status, 302);
     assert.equal(resp.headers.get("location"), "/login");
   }],
@@ -4882,7 +4882,7 @@ const tests = [
     assert.equal(resp.headers.get("location"), "/welcome?redirect=%2Faccount");
     const sessionCookie = (resp.headers.get("set-cookie") || "").split(";")[0];
     assert.ok(sessionCookie.length > 0, "sets a session cookie");
-    const me = await worker.fetch(new Request("https://party.ramine.net/api/me", { headers: { cookie: sessionCookie } }), makeEnv({ DB: db }));
+    const me = await worker.fetch(new Request("https://partyparty.party/api/me", { headers: { cookie: sessionCookie } }), makeEnv({ DB: db }));
     const meJson = await me.json();
     assert.equal(meJson.user && meJson.user.email, "dj@icloud.com");
   }],
@@ -4905,7 +4905,7 @@ const tests = [
       return oldFetch(input, init);
     };
     try {
-      const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/auth/apple/callback", {
         method: "POST",
         headers: { cookie: `${OAUTH_STATE_COOKIE_NAME}=a|${state}|/account`, "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ code: "auth-code" }).toString(),
@@ -4961,14 +4961,14 @@ const tests = [
   ["apple callback rejects a GET (form_post is POST only)", async () => {
     const env = await makeAppleEnv();
     const db = new FakeD1({});
-    const resp = await worker.fetch(new Request("https://party.ramine.net/auth/apple/callback", {}), makeEnv({ DB: db, env }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/auth/apple/callback", {}), makeEnv({ DB: db, env }));
     assertOAuthFailure(resp, db, "method");
   }],
   ["login page shows Continue with Apple only when configured", async () => {
     const env = await makeAppleEnv();
-    const on = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}), env }));
+    const on = await worker.fetch(new Request("https://partyparty.party/login", {}), makeEnv({ DB: new FakeD1({}), env }));
     assert.ok((await on.text()).includes("Continue with Apple"), "button present when configured");
-    const off = await worker.fetch(new Request("https://party.ramine.net/login", {}), makeEnv({ DB: new FakeD1({}) }));
+    const off = await worker.fetch(new Request("https://partyparty.party/login", {}), makeEnv({ DB: new FakeD1({}) }));
     assert.ok(!(await off.text()).includes("Continue with Apple"), "button hidden when unconfigured");
   }],
 
@@ -4984,15 +4984,15 @@ const tests = [
     assert.ok(profile.handle_confirmed_ms == null, "minted handle is unconfirmed (NULL)");
     assert.equal(profile.handle, "welcome.new");
 
-    const page = await worker.fetch(new Request("https://party.ramine.net/welcome", { headers: { cookie: r.cookie } }), makeEnv({ DB: db }));
+    const page = await worker.fetch(new Request("https://partyparty.party/welcome", { headers: { cookie: r.cookie } }), makeEnv({ DB: db }));
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /Your username/);
-    assert.match(html, /welcome\.new\.party\.ramine\.net/);
+    assert.match(html, /welcome\.new\.partyparty\.party/);
     assert.match(html, /\/api\/handle\/confirm/);
   }],
   ["/welcome redirects anonymous visitors to /login carrying the destination", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/welcome?redirect=/account"), makeEnv({ DB: new FakeD1() }));
+    const resp = await worker.fetch(new Request("https://partyparty.party/welcome?redirect=/account"), makeEnv({ DB: new FakeD1() }));
     assert.equal(resp.status, 302);
     assert.match(resp.headers.get("location") || "", /^\/login\?redirect=/);
   }],
@@ -5004,7 +5004,7 @@ const tests = [
     const profile = db.profiles.find((p) => p.user_id === user.id);
     const handle = profile.handle;
 
-    const confirm = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+    const confirm = await worker.fetch(new Request("https://partyparty.party/api/handle/confirm", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: first.cookie },
       body: JSON.stringify({ handle, redirect: "/account" }),
@@ -5026,7 +5026,7 @@ const tests = [
     const minted = db.profiles.find((p) => p.user_id === user.id).handle;
     assert.equal(minted, "confirm.change");
 
-    const confirm = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+    const confirm = await worker.fetch(new Request("https://partyparty.party/api/handle/confirm", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: first.cookie },
       body: JSON.stringify({ handle: "djfresh" }),
@@ -5039,7 +5039,7 @@ const tests = [
     assert.ok(prof.handle_confirmed_ms != null, "confirmed on rename");
     assert.ok(db.handleAliases.get(minted), "minted default retired into aliases");
 
-    const redirect = await worker.fetch(new Request(`https://party.ramine.net/@${minted}`), makeEnv({ DB: db }));
+    const redirect = await worker.fetch(new Request(`https://partyparty.party/@${minted}`), makeEnv({ DB: db }));
     assert.equal(redirect.status, 301);
     assert.equal(redirect.headers.get("location"), "/@djfresh");
   }],
@@ -5053,7 +5053,7 @@ const tests = [
       published: 1, handle_confirmed_ms: now - 5000, handle_changed_ms: null,
     });
 
-    const rename = await worker.fetch(new Request("https://party.ramine.net/api/settings", {
+    const rename = await worker.fetch(new Request("https://partyparty.party/api/settings", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ handle: "newname", display_name: "New Name" }),
@@ -5072,15 +5072,15 @@ const tests = [
     assert.ok(alias, "old handle retired into aliases");
     assert.equal(alias.profile_id, "p-rename");
 
-    const redirect = await worker.fetch(new Request("https://party.ramine.net/@oldname"), makeEnv({ DB: db }));
+    const redirect = await worker.fetch(new Request("https://partyparty.party/@oldname"), makeEnv({ DB: db }));
     assert.equal(redirect.status, 301);
     assert.equal(redirect.headers.get("location"), "/@newname");
 
-    const newProfile = await worker.fetch(new Request("https://party.ramine.net/@newname"), makeEnv({ DB: db }));
+    const newProfile = await worker.fetch(new Request("https://partyparty.party/@newname"), makeEnv({ DB: db }));
     assert.equal(newProfile.status, 200);
 
     // A second change inside 30 days is rejected.
-    const again = await worker.fetch(new Request("https://party.ramine.net/api/settings", {
+    const again = await worker.fetch(new Request("https://partyparty.party/api/settings", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ handle: "thirdname" }),
@@ -5097,7 +5097,7 @@ const tests = [
     const user = userByEmail(db, "picky@example.com");
     db.profiles.push({ id: "p-other", user_id: "other-user", handle: "takenname", display_name: "Other", published: 1 });
 
-    const reserved = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+    const reserved = await worker.fetch(new Request("https://partyparty.party/api/handle/confirm", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: first.cookie },
       body: JSON.stringify({ handle: "admin" }),
@@ -5105,7 +5105,7 @@ const tests = [
     assert.equal(reserved.status, 409);
     assert.match((await reserved.json()).error, /reserved/);
 
-    const taken = await worker.fetch(new Request("https://party.ramine.net/api/handle/confirm", {
+    const taken = await worker.fetch(new Request("https://partyparty.party/api/handle/confirm", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: first.cookie },
       body: JSON.stringify({ handle: "takenname" }),
@@ -5123,7 +5123,7 @@ const tests = [
     const user = userByEmail(db, "dispname@example.com");
     db.profiles.push({ id: "p-disp", user_id: user.id, handle: "disp.dj", display_name: "Old", published: 1, handle_confirmed_ms: Date.now() });
 
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/settings", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/settings", {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ display_name: "Brand New" }),
@@ -5138,7 +5138,7 @@ const tests = [
     assert.equal(db.handleAliases.size, 0);
   }],
   ["/settings renders the identity editor and gates anonymous visitors", async () => {
-    const anon = await worker.fetch(new Request("https://party.ramine.net/settings"), makeEnv({ DB: new FakeD1() }));
+    const anon = await worker.fetch(new Request("https://partyparty.party/settings"), makeEnv({ DB: new FakeD1() }));
     assert.equal(anon.status, 302);
     assert.equal(anon.headers.get("location"), "/login?redirect=/settings");
 
@@ -5146,7 +5146,7 @@ const tests = [
     const cookie = await signInCookie(db, "settings-view@example.com", { ip: "203.0.113.65" });
     const user = userByEmail(db, "settings-view@example.com");
     db.profiles.push({ id: "p-set", user_id: user.id, handle: "settings.dj", display_name: "Set DJ", published: 1, handle_confirmed_ms: Date.now() });
-    const page = await worker.fetch(new Request("https://party.ramine.net/settings", { headers: { cookie } }), makeEnv({ DB: db }));
+    const page = await worker.fetch(new Request("https://partyparty.party/settings", { headers: { cookie } }), makeEnv({ DB: db }));
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /Settings/);
@@ -5159,7 +5159,7 @@ const tests = [
     const cookie = await signInCookie(db, "nudge@example.com", { ip: "203.0.113.66" });
     const user = userByEmail(db, "nudge@example.com");
     db.profiles.push({ id: "p-nudge", user_id: user.id, handle: "nudge.dj", display_name: "Nudge", published: 1, handle_confirmed_ms: null });
-    const page = await worker.fetch(new Request("https://party.ramine.net/account", { headers: { cookie } }), makeEnv({ DB: db }));
+    const page = await worker.fetch(new Request("https://partyparty.party/account", { headers: { cookie } }), makeEnv({ DB: db }));
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /Confirm your username/);
@@ -5176,7 +5176,7 @@ const tests = [
       events: [{ slug: "rooftop-night", install_id: "abc123abc123", dj_profile_id: "profile-live", status: "live", live_started_ms: 5000 }],
     });
     await withCloudflareDNSMock(async (calls) => {
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live", {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.50", title: "Rooftop", now_playing: "Opening Track" }),
@@ -5207,7 +5207,7 @@ const tests = [
   }],
 
   ["/api/broker/live refuses an install that is not linked to an account", async () => {
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.50" }),
@@ -5234,7 +5234,7 @@ const tests = [
     });
     // No primary pin: abc123 goes live NOW (more recent) -> it is the claimant.
     await withCloudflareDNSMock(async () => {
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live", {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.1" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.7" }),
@@ -5243,7 +5243,7 @@ const tests = [
     });
     // primary_install_id pins the OTHER Mac: abc123 goes live but is NOT the claimant.
     await withCloudflareDNSMock(async () => {
-      const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live", {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.1" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.7" }),
@@ -5264,7 +5264,7 @@ const tests = [
     await withCloudflareDNSRecords(
       [{ id: "rec-a", type: "A", name: "disco12.party.example.test", content: "192.168.1.5" }],
       async (calls) => {
-        const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/offline", {
+        const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/offline", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -5300,7 +5300,7 @@ const tests = [
         },
       ],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/discover", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/discover", {
       headers: { "cf-connecting-ip": "203.0.113.20" },
     }), makeEnv({ DB: db }));
     const json = await resp.json();
@@ -5337,7 +5337,7 @@ const tests = [
     });
     const env = makeEnv({ DB: db });
     // First join (anon, no cookie): stores identity + email, mints the shared rsvp cookie.
-    const first = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+    const first = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
       body: JSON.stringify({ name: "Nassim", emoji: "🎧", email: "Nassim@Example.com" }),
@@ -5351,7 +5351,7 @@ const tests = [
     assert.equal(rows[0].emoji, "🎧");
     assert.equal(rows[0].email, "nassim@example.com"); // lowercased
     // Re-join with the SAME cookie and no email: name updates, email is KEPT.
-    const second = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+    const second = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST",
       headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", cookie },
       body: JSON.stringify({ name: "Nassim K", emoji: "🔥", email: "" }),
@@ -5362,11 +5362,11 @@ const tests = [
     assert.equal(after[0].name, "Nassim K");
     assert.equal(after[0].email, "nassim@example.com");
     // Garbage email -> 400; unknown event -> 404.
-    const bad = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+    const bad = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "not-an-email" }),
     }), env);
     assert.equal(bad.status, 400);
-    const gone = await worker.fetch(new Request("https://party.ramine.net/api/e/nope-nope/join", {
+    const gone = await worker.fetch(new Request("https://partyparty.party/api/e/nope-nope/join", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }),
     }), env);
     assert.equal(gone.status, 404);
@@ -5380,7 +5380,7 @@ const tests = [
     });
     const env = makeEnv({ DB: db });
     // Heartbeat with no prior join: creates a nameless presence row, counts as 1.
-    const hb = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/presence", {
+    const hb = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/presence", {
       method: "POST", headers: { "cf-connecting-ip": "203.0.113.30" },
     }), env);
     assert.equal(hb.status, 200);
@@ -5389,19 +5389,19 @@ const tests = [
     // a later cookie-less join from the same IP mints the SAME ip:<ip>:<slug>
     // hash, so it fills the name on the same row without double-counting.
     const cookie = "";
-    await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+    await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30" },
       body: JSON.stringify({ name: "Web Wanda", emoji: "✨" }),
     }), env);
     assert.equal([...db.eventGuests.values()].length, 1);
     // Web guest posts to the shared wall.
-    const post = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/post", {
+    const post = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/post", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30", cookie },
       body: JSON.stringify({ name: "Web Wanda", emoji: "✨", text: "hi from the internet" }),
     }), env);
     assert.equal(post.status, 200);
     // It renders on the event page wall...
-    const page = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), env);
+    const page = await worker.fetch(new Request("https://partyparty.party/e/rooftop-night"), env);
     const html = await page.text();
     assert.match(html, /hi from the internet/);
     assert.match(html, /Web Wanda/);
@@ -5413,7 +5413,7 @@ const tests = [
         event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 2,
         now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() + 60000,
       });
-      const beat = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+      const beat = await worker.fetch(new Request("https://partyparty.party/api/broker/live", {
         method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.7" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.4", guest_port: 8443 }),
       }), env);
@@ -5425,7 +5425,7 @@ const tests = [
       assert.equal(j.webPosts[0].text, "hi from the internet");
     });
     // Empty text -> 400. Composer + refresh glue ship on the live page.
-    const empty = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/post", {
+    const empty = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/post", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.99" },
       body: JSON.stringify({ text: "   " }),
     }), env);
@@ -5438,19 +5438,19 @@ const tests = [
       events: [{ slug: "old-night", install_id: "abc123abc123", title: "Old", host: "DJ", status: "replay", created_ms: 1, updated_ms: 1 }],
     });
     const replayEnv = makeEnv({ DB: replayDb });
-    const deadPost = await worker.fetch(new Request("https://party.ramine.net/api/e/old-night/post", {
+    const deadPost = await worker.fetch(new Request("https://partyparty.party/api/e/old-night/post", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.50" },
       body: JSON.stringify({ text: "necro comment" }),
     }), replayEnv);
     assert.equal(deadPost.status, 403);
-    const deadPresence = await worker.fetch(new Request("https://party.ramine.net/api/e/old-night/presence", {
+    const deadPresence = await worker.fetch(new Request("https://partyparty.party/api/e/old-night/presence", {
       method: "POST", headers: { "cf-connecting-ip": "203.0.113.50" },
     }), replayEnv);
     assert.equal((await deadPresence.json()).webListeners, 0);
     assert.equal([...replayDb.eventGuests.values()].length, 0);
 
     // Bidi/control injection is stripped from guest-authored text (review).
-    const bidi = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/post", {
+    const bidi = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/post", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.51" },
       body: JSON.stringify({ name: "evil‮name", text: "hi‮ there " }),
     }), env);
@@ -5460,13 +5460,41 @@ const tests = [
     assert.equal(bidiPost.text, "hi there");
   }],
 
+  ["legacy domain shim: pages 301 to partyparty.party, the baked-in API keeps serving", async () => {
+    // These requests DELIBERATELY use the retired party.ramine.net hostnames —
+    // they model shipped builds and old links.
+    const env = makeEnv({ DB: new FakeD1() });
+    // Human-facing paths on the old apex redirect, path + query intact.
+    const page = await worker.fetch(new Request("https://party.ramine.net/e/some-night?x=1"), env);
+    assert.equal(page.status, 301);
+    assert.equal(page.headers.get("location"), "https://partyparty.party/e/some-night?x=1");
+    // Old handle subdomains map their label across.
+    const sub = await worker.fetch(new Request("https://seth.party.ramine.net/"), env);
+    assert.equal(sub.status, 301);
+    assert.equal(sub.headers.get("location"), "https://seth.partyparty.party/");
+    // The Sparkle feed redirects (Sparkle follows it onto the new domain).
+    const feed = await worker.fetch(new Request("https://party.ramine.net/appcast.xml"), env);
+    assert.equal(feed.status, 301);
+    // Shipped builds' broker calls must KEEP WORKING here — a 301 would turn
+    // their POSTs into GETs. Any non-redirect status proves the API served.
+    const api = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
+    }), env);
+    assert.notEqual(api.status, 301);
+    assert.notEqual(api.status, 308);
+    // OTA content pulls also keep serving.
+    const ota = await worker.fetch(new Request("https://party.ramine.net/content/manifest.json"), env);
+    assert.notEqual(ota.status, 301);
+  }],
+
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
     const db = new FakeD1();
     const env = makeEnv({ DB: db }); // reuse ONE env so R2 state persists across calls
     // A stale segment the new window will no longer reference.
     await env.DL.put("event/known-set/live/seg-0.ts", "old", { httpMetadata: { contentType: "audio/mp2t" } });
 
-    const segResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+    const segResp = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
       method: "PUT",
       headers: {
         "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": KNOWN_SLUG, "x-pp-file": "seg-1.ts",
@@ -5478,7 +5506,7 @@ const tests = [
     assert.equal((await segResp.json()).key, "event/known-set/live/seg-1.ts");
 
     const playlist = "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:3\n#EXTINF:3.0,\nseg-1.ts\n";
-    const plResp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-playlist", {
+    const plResp = await worker.fetch(new Request("https://partyparty.party/api/broker/live-playlist", {
       method: "PUT",
       headers: { "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": KNOWN_SLUG, "x-pp-file": "live.m3u8" },
       body: playlist,
@@ -5489,13 +5517,13 @@ const tests = [
     assert.ok(await env.DL.get("event/known-set/live/seg-1.ts"));
 
     // Serve the segment: audio/mp2t + CDN-cacheable.
-    const segGet = await worker.fetch(new Request("https://party.ramine.net/event/known-set/live/seg-1.ts"), env);
+    const segGet = await worker.fetch(new Request("https://partyparty.party/event/known-set/live/seg-1.ts"), env);
     assert.equal(segGet.status, 200);
     assert.equal(segGet.headers.get("content-type"), "audio/mp2t");
     assert.match(segGet.headers.get("cache-control"), /max-age=30/);
 
     // Serve the playlist: mpegurl + no-store (always the live edge).
-    const plGet = await worker.fetch(new Request("https://party.ramine.net/event/known-set/live/live.m3u8"), env);
+    const plGet = await worker.fetch(new Request("https://partyparty.party/event/known-set/live/live.m3u8"), env);
     assert.equal(plGet.status, 200);
     assert.equal(plGet.headers.get("content-type"), "application/vnd.apple.mpegurl");
     assert.equal(plGet.headers.get("cache-control"), "no-store");
@@ -5507,7 +5535,7 @@ const tests = [
     const db = new FakeD1({
       events: [{ slug: "not-mine", install_id: "def456def456", status: "live" }],
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
       method: "PUT",
       headers: { "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "not-mine", "x-pp-file": "seg-1.ts" },
       body: "tsdata",
@@ -5516,7 +5544,7 @@ const tests = [
     assert.equal((await resp.json()).error, "not your event");
 
     // UNLINKED install + no event row -> also 403 (mirror can't mint for it).
-    const anon = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+    const anon = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
       method: "PUT",
       headers: { "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "fresh-party", "x-pp-file": "seg-1.ts" },
       body: "tsdata",
@@ -5538,7 +5566,7 @@ const tests = [
       }],
     });
     const env = makeEnv({ DB: db });
-    const seg = await worker.fetch(new Request("https://party.ramine.net/api/broker/live-segment", {
+    const seg = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
       method: "PUT",
       headers: {
         "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "fresh-party", "x-pp-file": "live0.ts",
@@ -5553,7 +5581,7 @@ const tests = [
     assert.equal(minted.status, "live");
     assert.equal(minted.title, "Rooftop");
     // Clean offline demotes the phantom 'live' event to replay.
-    const off = await worker.fetch(new Request("https://party.ramine.net/api/broker/offline", {
+    const off = await worker.fetch(new Request("https://partyparty.party/api/broker/offline", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
@@ -5624,7 +5652,7 @@ const tests = [
       DB: db,
       r2Objects: { "event/rooftop-night/live/live.m3u8": new FakeR2Object("#EXTM3U\nlive0.ts\n", { contentType: "application/vnd.apple.mpegurl" }) },
     });
-    const resp = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), env);
+    const resp = await worker.fetch(new Request("https://partyparty.party/e/rooftop-night"), env);
     const html = await resp.text();
     assert.equal(resp.status, 200);
     assert.equal(resp.headers.get("cache-control"), "private, no-store"); // live pages must not cache
@@ -5641,7 +5669,7 @@ const tests = [
 
     // Same live event WITHOUT a mirror playlist in R2 -> no dead player element
     // (the live-page script may still reference the id; only the <audio> matters).
-    const noMirror = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), makeEnv({ DB: db }));
+    const noMirror = await worker.fetch(new Request("https://partyparty.party/e/rooftop-night"), makeEnv({ DB: db }));
     const nmHtml = await noMirror.text();
     assert.doesNotMatch(nmHtml, /<audio id="pp-live-audio"/);
     // The shared wall (composer + refresh) still ships while live.

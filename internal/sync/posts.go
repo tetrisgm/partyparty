@@ -236,7 +236,7 @@ func SyncPostsWithOptions(ctx context.Context, eventDir string, creds publish.Cr
 		return res, errors.New("missing event slug")
 	}
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	base = strings.TrimRight(base, "/")
 

@@ -13,12 +13,12 @@ func TestPublicPartyURL(t *testing.T) {
 		captive bool
 		want    string
 	}{
-		{"simple handle", "ramine-live.party.ramine.net", "ramine", false, "https://ramine.party.ramine.net/"},
-		{"legacy word slug still maps", "wave77.party.ramine.net", "ramine", false, "https://ramine.party.ramine.net/"},
-		{"captive/offline party never advertises the cloud", "ramine-live.party.ramine.net", "ramine", true, ""},
-		{"no handle yet", "ramine-live.party.ramine.net", "", false, ""},
-		{"dotted handle cannot be a hostname", "x-live.party.ramine.net", "seth.finkin", false, ""},
-		{"underscored handle cannot be a hostname", "x-live.party.ramine.net", "dj_max", false, ""},
+		{"simple handle", "ramine-live.partyparty.party", "ramine", false, "https://ramine.partyparty.party/"},
+		{"legacy word slug still maps", "wave77.partyparty.party", "ramine", false, "https://ramine.partyparty.party/"},
+		{"captive/offline party never advertises the cloud", "ramine-live.partyparty.party", "ramine", true, ""},
+		{"no handle yet", "ramine-live.partyparty.party", "", false, ""},
+		{"dotted handle cannot be a hostname", "x-live.partyparty.party", "seth.finkin", false, ""},
+		{"underscored handle cannot be a hostname", "x-live.partyparty.party", "dj_max", false, ""},
 		{"no domain", "", "ramine", false, ""},
 		{"single-label domain has no zone", "localhost", "ramine", false, ""},
 	}

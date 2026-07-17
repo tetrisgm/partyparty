@@ -2,7 +2,7 @@
 // guests. The broadcaster tees a third, isolated plain-HLS leg (stream-copy of
 // the already-encoded AAC — see internal/broadcast) into a scratch dir; this
 // package watches that dir and, for each go-live session, PUTs new segments and
-// the rewritten media playlist to the party.ramine.net broker, which fans them
+// the rewritten media playlist to the partyparty.party broker, which fans them
 // out from R2 (zero egress) to a plain <audio> element.
 //
 // Two invariants make the mirror safe for a live guest to fetch mid-set:
@@ -49,7 +49,7 @@ type Creds struct {
 
 // Config wires a Mirror to its broker, scratch dir, and event identity.
 type Config struct {
-	Base       string        // broker URL, e.g. https://party.ramine.net
+	Base       string        // broker URL, e.g. https://partyparty.party
 	Creds      Creds         // this install's broker identity
 	ScratchDir string        // where the broadcaster's HLS tee writes live.m3u8 + segments
 	SlugFn     func() string // resolves the current event slug lazily (per session)

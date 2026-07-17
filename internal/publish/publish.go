@@ -1,7 +1,7 @@
 // Package publish takes an event's finished set recordings and puts them
 // online: it remuxes the raw ADTS/AAC recording(s) into one seekable faststart
 // .m4a, renders a waveform, and uploads both to the DJ's /e/<slug> page via the
-// party.ramine.net broker — reusing this install's existing broker identity for
+// partyparty.party broker — reusing this install's existing broker identity for
 // auth. The Mac stays the source of truth; publishing is just a sync of what it
 // already recorded. See internal/event (recordings live in the event folder)
 // and internal/activate (install creds).
@@ -100,7 +100,7 @@ func Signature(recordings []string) string {
 
 // Publish remuxes the recordings into one faststart .m4a, renders a waveform,
 // and uploads both to the online event page. ffmpeg is the resolved ffmpeg
-// binary; base is the broker URL (e.g. https://party.ramine.net).
+// binary; base is the broker URL (e.g. https://partyparty.party).
 func Publish(ctx context.Context, ffmpeg string, recordings []string, meta Meta, creds Creds, base string) (*Result, error) {
 	if creds.ID == "" || creds.Secret == "" {
 		return nil, errors.New("this Mac isn't registered yet — go live once first")
@@ -167,7 +167,7 @@ func Publish(ctx context.Context, ffmpeg string, recordings []string, meta Meta,
 	}
 
 	if url == "" {
-		url = "https://party.ramine.net/e/" + slug
+		url = "https://partyparty.party/e/" + slug
 	}
 	warning := ""
 	if used < len(recordings) {

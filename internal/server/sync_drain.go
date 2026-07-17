@@ -189,7 +189,7 @@ func (s *srv) syncDrainTarget() (dir string, creds publish.Creds, slug, base str
 	}
 	base = os.Getenv("PARTYPARTY_BROKER")
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	return s.Events.Dir(), creds, slug, strings.TrimRight(base, "/"), true
 }
@@ -218,7 +218,7 @@ func (s *srv) diagf(format string, args ...any) {
 
 func defaultSyncDrainOnline(ctx context.Context, base string) bool {
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()

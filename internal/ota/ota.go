@@ -129,7 +129,7 @@ type Store struct {
 // Open wires a Store around the embedded content. embeddedVer is the payload
 // version the binary shipped with (the adoption floor — a cloud payload older
 // than this is never adopted). contentBase is the cloud content root (e.g.
-// https://party.ramine.net/content); "" disables all fetching (serves embedded
+// https://partyparty.party/content); "" disables all fetching (serves embedded
 // only). appVersion is this build, sent to the subscribe endpoint so a newer
 // app build can be pushed. A previously-cached, newer payload is adopted
 // immediately so a restart doesn't regress to embedded.

@@ -153,7 +153,7 @@ func Try(host, token string, lanIP string, logf Logf) Result {
 }
 
 // TryBroker is the zero-config activation path (the Plex pattern): the install
-// registers with the party.ramine.net cert broker once and gets a MEMORABLE
+// registers with the partyparty.party cert broker once and gets a MEMORABLE
 // hostname (disco42.pp.ramine.net — no IP-encoded eyesores), issues an exact
 // cert for it locally (the private key never leaves this Mac; the broker only
 // publishes DNS records), and upserts the single A record to the current venue
@@ -647,7 +647,7 @@ func certValid(certFile, host string, minRemaining time.Duration) bool {
 // ---- ACME (Let's Encrypt, DNS-01) ----
 
 // txtPublisher publishes a DNS-01 challenge TXT record. Two implementations:
-// the user's own Cloudflare token (BYO), or the party.ramine.net cert broker
+// the user's own Cloudflare token (BYO), or the partyparty.party cert broker
 // (zero-config — the Plex pattern; the token never leaves the broker).
 type txtPublisher interface {
 	publishTXT(ctx context.Context, name, value string) (cleanup func(), err error)
@@ -888,8 +888,8 @@ func (c *cfAPI) do(ctx context.Context, method, url string, body any, out any) e
 	return nil
 }
 
-// zone finds the zone id for host by walking suffixes (dj.party.ramine.net →
-// party.ramine.net → ramine.net).
+// zone finds the zone id for host by walking suffixes (dj.partyparty.party →
+// partyparty.party → ramine.net).
 func (c *cfAPI) zone(ctx context.Context, host string) (string, error) {
 	if c.zoneID != "" {
 		return c.zoneID, nil

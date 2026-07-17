@@ -1,4 +1,4 @@
-// party.ramine.net
+// partyparty.party
 //
 // Routes:
 //   GET /appcast.xml            -> R2 (Sparkle update feed)
@@ -44,7 +44,7 @@ const POST_MEDIA_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 // OTA content: the signed manifest (pointer, short cache) and immutable,
 // versioned payload bundles. Served from R2 under the content/ prefix.
 const CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
-const SITE_ORIGIN = "https://party.ramine.net";
+const SITE_ORIGIN = "https://partyparty.party";
 const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 // Fallback only — /api/version reads the live content/app-version R2 marker at
 // runtime (release.sh keeps it current). Keep this ~current so the fallback path
@@ -1425,7 +1425,7 @@ async function profileApi(request, env) {
 
   const row = await env.DB.prepare("SELECT * FROM dj_profiles WHERE user_id=? LIMIT 1").bind(user.id).first();
   const finalHandle = normalizeHandle(row?.handle || handle);
-  return jsonResp(200, { ok: true, handle: finalHandle, url: `https://party.ramine.net/@${finalHandle}` });
+  return jsonResp(200, { ok: true, handle: finalHandle, url: `${SITE_ORIGIN}/@${finalHandle}` });
 }
 
 // Confirm the account username (the /welcome soft-gate action). Keeping the same
@@ -1499,7 +1499,7 @@ async function settingsApi(request, env) {
     ok: true,
     handle: finalHandle,
     display_name: row?.display_name || "",
-    url: `https://party.ramine.net/@${finalHandle}`,
+    url: `${SITE_ORIGIN}/@${finalHandle}`,
   });
 }
 
@@ -1655,7 +1655,7 @@ async function createEventApi(request, env) {
     throw e;
   }
   await bumpDjProfileActivity(env, profile.id, now);
-  return jsonResp(200, { ok: true, slug: slugResult.slug, url: `https://party.ramine.net/e/${slugResult.slug}` });
+  return jsonResp(200, { ok: true, slug: slugResult.slug, url: `${SITE_ORIGIN}/e/${slugResult.slug}` });
 }
 
 async function updateEventApi(request, env, slug) {
@@ -2007,7 +2007,7 @@ async function welcomeResponse(request, env) {
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Your username</h1>
-      <p class="sub">This is your permanent party link. Guests scan or visit <b>${esc(handle)}.party.ramine.net</b> to tune in — and it stays the same, forever. Pick it now; you can change it later in settings.</p>
+      <p class="sub">This is your permanent party link. Guests scan or visit <b>${esc(handle)}.partyparty.party</b> to tune in — and it stays the same, forever. Pick it now; you can change it later in settings.</p>
       <form class="authform" id="welcome-form">
         <label><span>Username</span><input name="handle" id="welcome-handle" maxlength="30" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(handle)}" placeholder="dj.name"></label>
         <p class="hint" id="welcome-avail" role="status" aria-live="polite" style="margin:2px 0 0;min-height:18px"></p>
@@ -2049,7 +2049,7 @@ async function settingsResponse(request, env) {
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Settings</h1>
-      <p class="sub">Your account identity. Your username is your permanent party link — guests visit <b>${esc(handle)}.party.ramine.net</b>.</p>
+      <p class="sub">Your account identity. Your username is your permanent party link — guests visit <b>${esc(handle)}.partyparty.party</b>.</p>
       <form class="authform" id="settings-form">
         <label><span>Username</span><input name="handle" id="settings-handle" maxlength="30" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(handle)}" placeholder="dj.name"></label>
         <p class="hint" id="settings-avail" role="status" aria-live="polite" style="margin:2px 0 0;min-height:18px"></p>
@@ -2107,7 +2107,7 @@ async function accountResponse(request, env) {
   // the /welcome soft-gate; nudge the DJ to lock in their permanent party link.
   const needsConfirm = !!(profile && profile.handle_confirmed_ms == null);
   const confirmNudge = needsConfirm ? `<div class="card" style="grid-column:1/-1">
-    <div class="sectionhead" style="margin:0 0 8px"><div><h2>Confirm your username</h2><p>${handle ? `<b>${esc(handle)}.party.ramine.net</b> is your permanent party link — confirm or change it.` : "Pick your permanent party link."}</p></div></div>
+    <div class="sectionhead" style="margin:0 0 8px"><div><h2>Confirm your username</h2><p>${handle ? `<b>${esc(handle)}.partyparty.party</b> is your permanent party link — confirm or change it.` : "Pick your permanent party link."}</p></div></div>
     <div class="ecta"><a class="btn sm" href="/welcome">Confirm username</a></div>
   </div>` : "";
   const profileCard = profile ? `<div class="card">
@@ -2826,8 +2826,8 @@ function mxrouteSmtpConfig(env) {
 }
 
 function smtpSafeHeloHost(env) {
-  const raw = String(env.AUTH_EMAIL_HELO || env.BROKER_BASE || "party.ramine.net").trim().toLowerCase();
-  return /^[a-z0-9][a-z0-9.-]{0,252}[a-z0-9]$/.test(raw) ? raw : "party.ramine.net";
+  const raw = String(env.AUTH_EMAIL_HELO || env.BROKER_BASE || "partyparty.party").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9.-]{0,252}[a-z0-9]$/.test(raw) ? raw : "partyparty.party";
 }
 
 function smtpBase64(s) {
@@ -2858,7 +2858,7 @@ function smtpNormalizeData(s) {
 }
 
 function smtpMessageId(fromEmail) {
-  const domain = String(fromEmail || "").split("@")[1] || "party.ramine.net";
+  const domain = String(fromEmail || "").split("@")[1] || "partyparty.party";
   return `<${randHex(16)}@${domain}>`;
 }
 
@@ -4117,7 +4117,7 @@ function guestOrigin(host, port) {
   return p === 443 ? `https://${host}` : `https://${host}:${p}`;
 }
 
-// handleRouter serves the proxied permanent link <handle>.party.ramine.net. A
+// handleRouter serves the proxied permanent link <handle>.partyparty.party. A
 // proxied request reaching the Worker for this host is inherently REMOTE or IDLE
 // for the LAN — LOCAL guests resolve the grey slug host direct-to-Mac — EXCEPT a
 // public-IP match, which we 302 to that grey slug host (where the tight LAN audio
@@ -5176,7 +5176,7 @@ async function broker(request, env, pathname) {
       await recordEventAlias(env, oldSlug, slug, now, { install_id: id });
     }
     await bumpDjProfileActivity(env, check.dj_profile_id, now);
-    return jsonResp(200, { ok: true, slug, url: `https://party.ramine.net/e/${slug}`, status: check.status || "upcoming" });
+    return jsonResp(200, { ok: true, slug, url: `${SITE_ORIGIN}/e/${slug}`, status: check.status || "upcoming" });
   }
 
   if (pathname === "/api/broker/events-window") {
@@ -5256,7 +5256,7 @@ async function broker(request, env, pathname) {
       location_name: row.location_name || "",
       updated_ms: row.updated_ms ?? null,
       last_activity_ms: row.last_activity_ms ?? null,
-      url: `https://party.ramine.net/e/${row.slug}`,
+      url: `${SITE_ORIGIN}/e/${row.slug}`,
       hasReplay: !!row.has_replay,
       rsvp: {
         coming: Number(row.rsvp_coming) || 0,
@@ -5515,15 +5515,33 @@ export default {
     const url = new URL(request.url);
     const { pathname } = url;
 
+    // LEGACY DOMAIN SHIM — the product moved to partyparty.party. The old
+    // party.ramine.net hostnames stay routed to this worker for two reasons:
+    // (1) shipped app builds have the old broker + Sparkle URLs baked in, so
+    // /api/* and /event/* keep SERVING here (a 301 would turn their POSTs into
+    // GETs and break check-ins/uploads); the update feed itself redirects and
+    // Sparkle follows it onto the new domain. (2) Every human-facing URL —
+    // old QR codes, shared links, handle subdomains — 301s to the same path on
+    // the new domain (handle labels map across: x.party.ramine.net -> x.partyparty.party).
+    const LEGACY_BASE = "party.ramine.net";
+    if (url.hostname === LEGACY_BASE || url.hostname.endsWith("." + LEGACY_BASE)) {
+      const servesHere = pathname.startsWith("/api/") || pathname.startsWith("/event/") || pathname.startsWith("/content/");
+      if (!servesHere) {
+        const label = url.hostname === LEGACY_BASE ? "" : url.hostname.slice(0, url.hostname.length - LEGACY_BASE.length - 1);
+        const target = `https://${label ? label + "." : ""}partyparty.party${pathname}${url.search}`;
+        return new Response(null, { status: 301, headers: { location: target, "cache-control": "public, max-age=3600" } });
+      }
+    }
+
     // WILDCARD HOSTNAME ROUTER — before any path dispatch. If the Host is the
-    // proxied permanent link <handle>.party.ramine.net (a single clean handle
+    // proxied permanent link <handle>.partyparty.party (a single clean handle
     // label, not the apex, not a reserved word), the root path is a per-handle
     // router: LOCAL (public-IP match) 302s to the Mac's grey slug host, REMOTE
     // serves the cloud-mirror page, IDLE serves a "no party live" page. Only the
     // root is intercepted — every other path (the mirror, /e/<slug>, assets…)
     // falls through to normal dispatch so it still resolves on the handle host.
     if (env.DB && pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
-      // The handle router owns ONLY the root path of <handle>.party.ramine.net.
+      // The handle router owns ONLY the root path of <handle>.partyparty.party.
       // Every other path falls through to the normal routes so the SAME host can
       // serve /e/<slug>, the /event/<slug>/live/* mirror files, and the APIs —
       // this is what lets the remote page's relative audio URL actually stream.

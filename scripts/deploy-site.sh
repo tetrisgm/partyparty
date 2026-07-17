@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish party.ramine.net: the landing page (site/index.html) + the current
+# Publish partyparty.party: the landing page (site/index.html) + the current
 # notarized app download, to Cloudflare (one Worker serving static assets +
 # streaming the big .app zip from an R2 bucket).
 #
@@ -61,4 +61,4 @@ echo ">> deploying Worker + landing page"
 ( cd cloudflare && "$WR" deploy )
 
 echo
-echo "Done. https://party.ramine.net  ·  https://party.ramine.net/partyparty.zip"
+echo "Done. https://partyparty.party  ·  https://partyparty.party/partyparty.zip"

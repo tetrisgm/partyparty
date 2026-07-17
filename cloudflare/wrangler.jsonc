@@ -48,17 +48,23 @@
     "AUTH_DEV_LINKS": "1",
     "AUTH_DEV_DIRECT": "1",
     "AUTH_DEV_EMAILS": "ramine@ramine.net",
-    "BROKER_BASE": "party.ramine.net",
+    "BROKER_BASE": "partyparty.party",
     "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"
   },
 
-  // Bind the Worker to the apex-of-record for the app. custom_domain:true makes
-  // wrangler provision the DNS record + edge cert in the ramine.net zone.
-  // Per-handle permanent links are added here per known DJ (each a proxied Worker
-  // custom domain — free auto TLS). Automatic provisioning for every new signup
-  // would need a Workers-Routes-edit API token at runtime; until then this list
-  // is the source of truth. Handle must match dj_profiles.handle exactly.
+  // Bind the Worker to the product domain. custom_domain:true makes wrangler
+  // provision the DNS record + edge cert; the wildcard zone route rides the
+  // zone's Universal SSL (*.partyparty.party), so handle links need no
+  // provisioning at all.
   "routes": [
+    // The product domain. ONE wildcard zone route covers every handle's
+    // permanent link (Universal SSL on the partyparty.party zone includes
+    // *.partyparty.party) — no per-DJ provisioning, ever.
+    { "pattern": "partyparty.party", "custom_domain": true },
+    { "pattern": "*.partyparty.party/*", "zone_name": "partyparty.party" },
+    // Legacy shim: shipped builds have party.ramine.net baked in (broker API +
+    // Sparkle feed). These stay routed here forever; the worker serves /api,
+    // /event and /content on them and 301s everything else to partyparty.party.
     { "pattern": "party.ramine.net", "custom_domain": true },
     { "pattern": "ramine.party.ramine.net", "custom_domain": true },
     { "pattern": "seth.party.ramine.net", "custom_domain": true }

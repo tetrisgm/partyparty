@@ -46,7 +46,7 @@ type netCheckOptions struct {
 func (s *srv) netCheckOptions() netCheckOptions {
 	broker := os.Getenv("PARTYPARTY_BROKER")
 	if broker == "" {
-		broker = "https://party.ramine.net"
+		broker = "https://partyparty.party"
 	}
 	host := s.liveDomain()
 	if host == "" {
@@ -63,7 +63,7 @@ func (s *srv) netCheckOptions() netCheckOptions {
 func runNetChecks(opts netCheckOptions) []netCheck {
 	brokerBase := opts.BrokerBase
 	if brokerBase == "" {
-		brokerBase = "https://party.ramine.net"
+		brokerBase = "https://partyparty.party"
 	}
 	cl := &http.Client{Timeout: 8 * time.Second}
 	var checks []struct {

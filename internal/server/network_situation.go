@@ -28,7 +28,7 @@ type networkSituation struct {
 	Hotspotting bool   `json:"hotspotting"`
 	LanIP       string `json:"lanIP"`
 	PrimaryURL  string `json:"primaryUrl"`
-	// The permanent guest-facing link (<handle>.party.ramine.net) when it can
+	// The permanent guest-facing link (<handle>.partyparty.party) when it can
 	// work — same rules as urls().Public. The console prefers it for the QR.
 	PublicURL  string `json:"publicUrl,omitempty"`
 	GuestCount int    `json:"guestCount"`

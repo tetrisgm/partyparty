@@ -175,7 +175,7 @@ func renderArchiveMarkdown(dir string, meta Meta, posts []Post, tracks []Current
 		fmt.Fprintf(&b, "- Date / place: %s\n", meta.Starts)
 	}
 	if meta.Slug != "" {
-		fmt.Fprintf(&b, "- Event link: https://party.ramine.net/e/%s\n", meta.Slug)
+		fmt.Fprintf(&b, "- Event link: https://partyparty.party/e/%s\n", meta.Slug)
 	}
 	fmt.Fprintf(&b, "- Folder: %s\n", filepath.Base(dir))
 	fmt.Fprintf(&b, "- Exported: %s\n", time.Now().Format(time.RFC3339))

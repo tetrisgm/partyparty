@@ -473,7 +473,7 @@ type urls struct {
 }
 
 // publicPartyURL builds the DJ's permanent guest-facing link — the ONE URL that
-// is their profile when idle and their party when live (<handle>.party.ramine.net,
+// is their profile when idle and their party when live (<handle>.partyparty.party,
 // the proxied Worker router). This is what the console shows and the QR encodes;
 // the machine hostname (ramine-live...:8443) stays internal plumbing the router
 // hands guests off to. Empty (caller falls back to the direct machine link) when
@@ -491,7 +491,7 @@ func publicPartyURL(domain, handle string, captive bool) string {
 		}
 	}
 	// zone = the machine domain minus its first label
-	// (ramine-live.party.ramine.net -> party.ramine.net).
+	// (ramine-live.partyparty.party -> partyparty.party).
 	i := strings.Index(domain, ".")
 	if i <= 0 || i+1 >= len(domain) {
 		return ""
@@ -704,7 +704,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		broker := os.Getenv("PARTYPARTY_BROKER")
 		if broker == "" {
-			broker = "https://party.ramine.net"
+			broker = "https://partyparty.party"
 		}
 		fresh := r.URL.Query().Get("fresh") == "1"
 		status := s.cachedAccountStatus(fresh, func() (activate.AccountState, error) {
@@ -731,7 +731,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		broker := os.Getenv("PARTYPARTY_BROKER")
 		if broker == "" {
-			broker = "https://party.ramine.net"
+			broker = "https://partyparty.party"
 		}
 		if err := activate.SignOutAccount(broker, func(format string, args ...any) {
 			if s.Diag != nil {
@@ -753,7 +753,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		broker := os.Getenv("PARTYPARTY_BROKER")
 		if broker == "" {
-			broker = "https://party.ramine.net"
+			broker = "https://partyparty.party"
 		}
 		_ = exec.Command("open", strings.TrimRight(broker, "/")+"/account").Start()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -767,7 +767,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		broker := os.Getenv("PARTYPARTY_BROKER")
 		if broker == "" {
-			broker = "https://party.ramine.net"
+			broker = "https://partyparty.party"
 		}
 		_ = exec.Command("open", strings.TrimRight(broker, "/")+"/profile/edit").Start()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -781,7 +781,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		broker := os.Getenv("PARTYPARTY_BROKER")
 		if broker == "" {
-			broker = "https://party.ramine.net"
+			broker = "https://partyparty.party"
 		}
 		linkURL, err := activate.StartInstallLink(broker, func(format string, args ...any) {
 			if s.Diag != nil {
@@ -814,7 +814,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		broker := os.Getenv("PARTYPARTY_BROKER")
 		if broker == "" {
-			broker = "https://party.ramine.net"
+			broker = "https://partyparty.party"
 		}
 		handle, err := activate.LinkInstall(broker, body.Code, func(format string, args ...any) {
 			if s.Diag != nil {

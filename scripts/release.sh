@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cut a release from your Mac and publish it to party.ramine.net.
+# Cut a release from your Mac and publish it to partyparty.party.
 #
 # Does everything: build + Developer-ID sign + notarize + staple, package the
 # versioned zip, sign the Sparkle appcast, push versioned downloads + "latest"
@@ -92,11 +92,11 @@ spctl -a -vv -t install "dist/partyparty-$VERSION.pkg" || true
 
 echo ">> [3/7] sign the Sparkle appcast (zip enclosure — Sparkle updates in place)"
 # Key source: SPARKLE_ED_KEY_FILE if set, else the login keychain (prompts once,
-# click "Always Allow"). Enclosure URLs point at party.ramine.net.
+# click "Always Allow"). Enclosure URLs point at partyparty.party.
 if [ -n "${SPARKLE_ED_KEY_FILE:-}" ]; then
-  "$SPK/generate_appcast" --ed-key-file "$SPARKLE_ED_KEY_FILE" --download-url-prefix "https://party.ramine.net/" dist
+  "$SPK/generate_appcast" --ed-key-file "$SPARKLE_ED_KEY_FILE" --download-url-prefix "https://partyparty.party/" dist
 else
-  "$SPK/generate_appcast" --download-url-prefix "https://party.ramine.net/" dist
+  "$SPK/generate_appcast" --download-url-prefix "https://partyparty.party/" dist
 fi
 
 echo ">> [4/7] verify app bundle + appcast metadata"
@@ -106,7 +106,7 @@ echo ">> [4/7] verify app bundle + appcast metadata"
   --app "$APP" \
   --zip "dist/partyparty-$VERSION.zip" \
   --appcast "dist/appcast.xml" \
-  --base-url "https://party.ramine.net" \
+  --base-url "https://partyparty.party" \
   --require-newer-than-installed
 
 echo ">> [5/7] upload release artifacts to R2"
@@ -137,12 +137,12 @@ echo ">> verify public appcast + download metadata"
   --app "$APP" \
   --zip "dist/partyparty-$VERSION.zip" \
   --appcast "dist/appcast.xml" \
-  --base-url "https://party.ramine.net" \
+  --base-url "https://partyparty.party" \
   --require-newer-than-installed \
   --public
 
 echo
 echo "Released v$VERSION"
-echo "  page:     https://party.ramine.net"
-echo "  download: https://party.ramine.net/partyparty.zip"
-echo "  feed:     https://party.ramine.net/appcast.xml"
+echo "  page:     https://partyparty.party"
+echo "  download: https://partyparty.party/partyparty.zip"
+echo "  feed:     https://partyparty.party/appcast.xml"

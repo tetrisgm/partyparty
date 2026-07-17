@@ -87,7 +87,7 @@ func telemetryLoop(port int, bc *broadcast.Broadcaster) {
 	}
 	base := os.Getenv("PARTYPARTY_BROKER")
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	cl := &http.Client{Timeout: 10 * time.Second}
 	for {
@@ -118,7 +118,7 @@ func brokerBase() string {
 	if base := os.Getenv("PARTYPARTY_BROKER"); base != "" {
 		return base
 	}
-	return "https://party.ramine.net"
+	return "https://partyparty.party"
 }
 
 // liveCheckinLoop is the auto-discovery presence heartbeat: while broadcasting,
@@ -347,7 +347,7 @@ func main() {
 		if appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
 			base := os.Getenv("PARTYPARTY_BROKER")
 			if base == "" {
-				base = "https://party.ramine.net"
+				base = "https://partyparty.party"
 			}
 			contentBase = base + "/content"
 		}
@@ -855,7 +855,7 @@ func main() {
 	// Background low-latency activation (the Plex pattern) — the console is
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
-	// at party.ramine.net (per-install slugged domain + DNS-01 cert).
+	// at partyparty.party (per-install slugged domain + DNS-01 cert).
 	// Cached-cert engagement above is local-only and does not wait for this
 	// loop. Online refresh keeps trying to upsert DNS / issue + renew the cert;
 	// failures never tear down an already-engaged cached cert. Runs whenever we
@@ -903,7 +903,7 @@ func main() {
 				} else {
 					broker := os.Getenv("PARTYPARTY_BROKER")
 					if broker == "" {
-						broker = "https://party.ramine.net"
+						broker = "https://partyparty.party"
 					}
 					res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
 				}
@@ -1235,7 +1235,7 @@ func uploadLogOnce(dl *diag.Logger) {
 	_ = zw.Close()
 	base := os.Getenv("PARTYPARTY_BROKER")
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	body, _ := json.Marshal(map[string]any{
 		"id": id, "secret": secret,
@@ -1286,7 +1286,7 @@ func maybeAutoPublish(events *event.Store, ffmpeg string, payload *ota.Store, du
 	m := events.Meta()
 	base := os.Getenv("PARTYPARTY_BROKER")
 	if base == "" {
-		base = "https://party.ramine.net"
+		base = "https://partyparty.party"
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -1394,7 +1394,7 @@ func humanizeActivation(reason string) string {
 		return "link this Mac to your partyparty account before secure low-latency setup can finish"
 	case strings.Contains(r, "acme") || strings.Contains(r, "letsencrypt") || strings.Contains(r, "let's encrypt"):
 		return "the free certificate service (Let's Encrypt) isn't answering right now — retrying automatically, this usually clears in a few minutes"
-	case strings.Contains(r, "register") || strings.Contains(r, "broker") || strings.Contains(r, "party.ramine.net"):
+	case strings.Contains(r, "register") || strings.Contains(r, "broker") || strings.Contains(r, "partyparty.party"):
 		return "can't reach the partyparty setup service — check the internet connection; retrying automatically"
 	case strings.Contains(r, "resolve") || strings.Contains(r, "dns"):
 		return "waiting for the new address to become reachable (DNS) — retrying automatically"

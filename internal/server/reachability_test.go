@@ -25,7 +25,7 @@ func TestReachabilityReliableSignalsDegrade(t *testing.T) {
 			name: "party DNS netcheck failure",
 			apply: func(s *Srv, now time.Time) {
 				s.updateReachability(now, []netCheck{
-					{Name: netCheckPartyDNS, OK: false, Detail: "lookup party.ramine.net: no such host"},
+					{Name: netCheckPartyDNS, OK: false, Detail: "lookup partyparty.party: no such host"},
 					{Name: netCheckLEDNS, OK: true, Detail: "1.1.1.1"},
 				}, true)
 			},

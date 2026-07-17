@@ -23,7 +23,7 @@ ROOT="$(pwd)"
 BUCKET="partyparty-dl"
 WR="$ROOT/cloudflare/node_modules/.bin/wrangler"
 SEED="$HOME/Library/Application Support/partyparty/payload-ed25519.seed"
-BASE="${PARTYPARTY_BASE:-https://party.ramine.net}"
+BASE="${PARTYPARTY_BASE:-https://partyparty.party}"
 
 VERSION="$(tr -dc '0-9' < web/PAYLOAD_VERSION)"
 MINRUNTIME="$(grep -oE 'RuntimeVersion = [0-9]+' internal/ota/ota.go | grep -oE '[0-9]+' | head -1)"

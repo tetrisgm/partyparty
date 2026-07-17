@@ -709,7 +709,7 @@
       <div class="pub-fields" id="pubFields">
         <input id="pubTitle" type="hidden" value="">
         <div class="pub-row">
-          <span class="muted" style="white-space:nowrap">party.ramine.net/e/</span>
+          <span class="muted" style="white-space:nowrap">partyparty.party/e/</span>
           <input id="pubSlug" type="text" placeholder="auto" maxlength="48" spellcheck="false" autocapitalize="off"
             style="flex:1;min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:8px 10px;color:var(--label);font:inherit;font-size:13px">
           <button class="go" id="pubBtn" type="button">Publish now</button>
@@ -968,7 +968,7 @@
 <script>
   const $ = id => document.getElementById(id);
   let qrText = null, lastState = 'idle';
-  const ONLINE_BASE = 'https://party.ramine.net';
+  const ONLINE_BASE = 'https://partyparty.party';
   let lastOnlineSlug = '';
   let onlinePagePublished = false;
   function escT(s){
@@ -2175,7 +2175,7 @@
       $('permBtnHint').style.display = showPermButton ? 'block' : 'none';
       updateCapturePermissionUI();
       const secure = s.llhlsRealCert === true;
-      // The permanent link (<handle>.party.ramine.net) is THE guest-facing URL —
+      // The permanent link (<handle>.partyparty.party) is THE guest-facing URL —
       // profile when idle, this party when live; the router lands local guests on
       // the machine host invisibly. Absent (offline party / no handle yet) the QR
       // encodes the direct machine link exactly as before.

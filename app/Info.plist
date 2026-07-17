@@ -46,7 +46,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://party.ramine.net/appcast.xml</string>
+	<string>https://partyparty.party/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>qFmaq5ijn3m2sbiadmkBVvGIjz8v9+piqE/T+YZ1/u0=</string>
 	<key>SUScheduledCheckInterval</key>

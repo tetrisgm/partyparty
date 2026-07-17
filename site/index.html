@@ -226,7 +226,7 @@
     });
   }
   function ppShowParty(p){
-    const join = p.joinUrl || (p.handle ? 'https://' + p.handle + '.party.ramine.net/' : '');
+    const join = p.joinUrl || (p.handle ? 'https://' + p.handle + '.partyparty.party/' : '');
     if (!join) return;
     document.getElementById('discLink').href = join;
     document.getElementById('discDj').textContent = p.djName || p.eventTitle || 'A DJ';
