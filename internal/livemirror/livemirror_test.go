@@ -109,7 +109,12 @@ func writeScratch(t *testing.T, dir string, segs []string, mediaSeq int) {
 	b.WriteString("#EXT-X-MEDIA-SEQUENCE:" + itoa(mediaSeq) + "\n")
 	for _, s := range segs {
 		b.WriteString("#EXTINF:3.000000,\n" + s + "\n")
-		if err := os.WriteFile(filepath.Join(dir, s), []byte("TS-"+s), 0o644); err != nil {
+		segmentPath := filepath.Join(dir, s)
+		segmentBody := []byte("TS-" + s)
+		if existing, err := os.ReadFile(segmentPath); err == nil && string(existing) == string(segmentBody) {
+			continue // a sliding playlist does not rewrite segments still in its window
+		}
+		if err := os.WriteFile(segmentPath, segmentBody, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -163,7 +168,7 @@ func TestSyncSegmentsBeforePlaylist(t *testing.T) {
 	writeScratch(t, scratch, []string{"live0.ts", "live1.ts", "live2.ts"}, 0)
 
 	m := newTestMirror(t, srv.URL, scratch)
-	m.syncOnce(context.Background(), "sess-1", map[string]bool{})
+	m.syncOnce(context.Background(), "sess-1", map[string]segmentVersion{})
 
 	got := rec.snapshot()
 	want := []string{"seg:live0.ts", "seg:live1.ts", "seg:live2.ts", "playlist:live.m3u8"}
@@ -184,7 +189,7 @@ func TestSyncIncrementalReuploadsPlaylist(t *testing.T) {
 	srv := httptest.NewServer(rec.handler())
 	defer srv.Close()
 	scratch := t.TempDir()
-	uploaded := map[string]bool{}
+	uploaded := map[string]segmentVersion{}
 	m := newTestMirror(t, srv.URL, scratch)
 
 	writeScratch(t, scratch, []string{"live0.ts", "live1.ts"}, 0)
@@ -223,7 +228,7 @@ func TestSyncSkipsPlaylistWhenSegmentUnreadable(t *testing.T) {
 	}
 
 	m := newTestMirror(t, srv.URL, scratch)
-	m.syncOnce(context.Background(), "sess-1", map[string]bool{})
+	m.syncOnce(context.Background(), "sess-1", map[string]segmentVersion{})
 
 	got := rec.snapshot()
 	// live0.ts may upload, but the playlist must NOT (it names the missing live1.ts).
@@ -240,9 +245,46 @@ func TestSyncNoPlaylistIsNoop(t *testing.T) {
 	srv := httptest.NewServer(rec.handler())
 	defer srv.Close()
 	m := newTestMirror(t, srv.URL, t.TempDir())
-	m.syncOnce(context.Background(), "sess-1", map[string]bool{})
+	m.syncOnce(context.Background(), "sess-1", map[string]segmentVersion{})
 	if got := rec.snapshot(); len(got) != 0 {
 		t.Fatalf("expected no uploads without a playlist, got %v", got)
+	}
+}
+
+func TestSyncReuploadsRewrittenSegmentBeforePlaylist(t *testing.T) {
+	rec := newRecorder()
+	srv := httptest.NewServer(rec.handler())
+	defer srv.Close()
+	scratch := t.TempDir()
+	uploaded := map[string]segmentVersion{}
+	m := newTestMirror(t, srv.URL, scratch)
+
+	writeScratch(t, scratch, []string{"live0.ts"}, 0)
+	m.syncOnce(context.Background(), "sess-1", uploaded)
+
+	segment := filepath.Join(scratch, "live0.ts")
+	if err := os.WriteFile(segment, []byte("NEW-GENERATION-AUDIO"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(time.Second)
+	if err := os.Chtimes(segment, future, future); err != nil {
+		t.Fatal(err)
+	}
+	m.syncOnce(context.Background(), "sess-2", uploaded)
+
+	got := rec.snapshot()
+	want := []string{
+		"seg:live0.ts", "playlist:live.m3u8",
+		"seg:live0.ts", "playlist:live.m3u8",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("upload order after filename reuse = %v, want %v", got, want)
+	}
+	rec.mu.Lock()
+	gotBody := string(rec.seen["live0.ts"])
+	rec.mu.Unlock()
+	if gotBody != "NEW-GENERATION-AUDIO" {
+		t.Fatalf("rewritten segment body = %q, want new generation audio", gotBody)
 	}
 }
 

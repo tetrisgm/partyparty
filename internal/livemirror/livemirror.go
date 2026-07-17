@@ -67,6 +67,11 @@ type Mirror struct {
 	client *http.Client
 }
 
+type segmentVersion struct {
+	size    int64
+	modTime int64
+}
+
 // New builds a Mirror from cfg.
 func New(cfg Config) *Mirror {
 	client := cfg.HTTPClient
@@ -98,10 +103,11 @@ func (m *Mirror) Run(ctx context.Context, session string) {
 	}
 	m.logf("livemirror: session %s started (scratch %s)", session, m.cfg.ScratchDir)
 
-	// uploaded remembers segment basenames already shipped this session so we
-	// never re-PUT a segment (or forget one when computing whether the playlist
-	// is safe to push). Bounded by the set length — trivial even for a 4h set.
-	uploaded := map[string]bool{}
+	// uploaded remembers the file version last shipped for each basename. FFmpeg
+	// reuses live0.ts after a capture rebuild, so the version is part of the key:
+	// a rewritten name must be PUT again before its new playlist. Bounded by the
+	// set length — trivial even for a 4h set.
+	uploaded := map[string]segmentVersion{}
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -121,7 +127,7 @@ func (m *Mirror) Run(ctx context.Context, session string) {
 // new segments (in playlist order) and then the playlist. It upholds the two
 // invariants: segments before the playlist, and the playlist only after every
 // referenced segment is up.
-func (m *Mirror) syncOnce(ctx context.Context, session string, uploaded map[string]bool) {
+func (m *Mirror) syncOnce(ctx context.Context, session string, uploaded map[string]segmentVersion) {
 	playlistFile := filepath.Join(m.cfg.ScratchDir, playlistName)
 	data, err := os.ReadFile(playlistFile)
 	if err != nil {
@@ -148,34 +154,66 @@ func (m *Mirror) syncOnce(ctx context.Context, session string, uploaded map[stri
 	//    If one fails, stop here and DON'T touch the playlist — the cloud keeps
 	//    serving its previous, self-consistent window until the next tick retries.
 	for _, name := range segs {
-		if uploaded[name] {
-			continue
-		}
-		body, rerr := os.ReadFile(filepath.Join(m.cfg.ScratchDir, name))
+		file := filepath.Join(m.cfg.ScratchDir, name)
+		version, rerr := statSegment(file)
 		if rerr != nil {
 			// Referenced by the playlist but not readable yet (a delete_segments
 			// prune race, or mid-rotation). Leave it unshipped; without it the
 			// playlist won't be uploaded this tick, preserving invariant (1).
 			return
 		}
+		if prior, ok := uploaded[name]; ok && prior == version {
+			continue
+		}
+		body, version, rerr := readStableSegment(file)
+		if rerr != nil {
+			return
+		}
 		if perr := m.put(ctx, segmentPath, slug, session, name, "audio/mp2t", body); perr != nil {
 			m.logf("livemirror: segment %s upload failed (retrying next tick): %v", name, perr)
 			return
 		}
-		uploaded[name] = true
+		uploaded[name] = version
 	}
 
 	// 2. Every referenced segment is now up — safe to publish the playlist. It is
 	//    uploaded verbatim (relative segment names resolve under the same cloud
 	//    prefix); no-store on the serve side keeps remote guests at the live edge.
 	for _, name := range segs {
-		if !uploaded[name] {
+		if _, ok := uploaded[name]; !ok {
 			return // defensive: a segment slipped out — wait for the next tick
 		}
 	}
 	if perr := m.put(ctx, playlistPath, slug, session, playlistName, "application/vnd.apple.mpegurl", data); perr != nil {
 		m.logf("livemirror: playlist upload failed (retrying next tick): %v", perr)
 	}
+}
+
+func statSegment(file string) (segmentVersion, error) {
+	info, err := os.Stat(file)
+	if err != nil {
+		return segmentVersion{}, err
+	}
+	return segmentVersion{size: info.Size(), modTime: info.ModTime().UnixNano()}, nil
+}
+
+func readStableSegment(file string) ([]byte, segmentVersion, error) {
+	beforeVersion, err := statSegment(file)
+	if err != nil {
+		return nil, segmentVersion{}, err
+	}
+	body, err := os.ReadFile(file)
+	if err != nil {
+		return nil, segmentVersion{}, err
+	}
+	afterVersion, err := statSegment(file)
+	if err != nil {
+		return nil, segmentVersion{}, err
+	}
+	if beforeVersion != afterVersion || int64(len(body)) != afterVersion.size {
+		return nil, segmentVersion{}, errors.New("segment changed while being read")
+	}
+	return body, afterVersion, nil
 }
 
 // put PUTs body to the broker with the same header-auth pattern publish.go uses,
