@@ -5974,7 +5974,10 @@ export default {
       const mediaType = String(row.media_type || "");
       const ctype = allowedPostMime(mediaType, row.mime_type) || allowedPostMime(mediaType, "");
       if (!ctype) return new Response("Not found", { status: 404 });
-      const cache = "public, max-age=31536000, immutable";
+      // The publisher can retry/replace a media ID at this same URL, so this is
+      // mutable content. A year-long immutable response would pin the first
+      // object after an interrupted upload or edit.
+      const cache = "public, max-age=300";
       const isRangeAware = mediaType === "video" || mediaType === "audio";
       const rangeHdr = isRangeAware ? request.headers.get("range") : null;
       if (rangeHdr) {

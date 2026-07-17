@@ -3898,6 +3898,7 @@ const tests = [
       assert.equal(resp.status, 200);
       assert.equal(resp.headers.get("content-type"), "image/png");
       assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
+      assert.equal(resp.headers.get("cache-control"), "public, max-age=300");
       assert.equal(await resp.text(), "fake-png");
     }],
     ["approved post media coerces unsafe stored content-type", async () => {
