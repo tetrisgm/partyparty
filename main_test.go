@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -69,17 +70,49 @@ func TestIngestLiveAckDoesNotAdvancePastJournalFailure(t *testing.T) {
 	posts := &fakeWebPostAdder{failAt: 2}
 	webSince := int64(0)
 	var logs []string
-	ingestLiveAck(ack, posts, nil, &webSince, func(format string, _ ...any) {
+	err := ingestLiveAck(ack, posts, nil, &webSince, func(format string, _ ...any) {
 		logs = append(logs, format)
 	})
+	if err == nil {
+		t.Fatal("ingestLiveAck unexpectedly hid journal failure")
+	}
 	if posts.calls != 2 {
 		t.Fatalf("AddWebPost calls = %d, want stop at failed second post", posts.calls)
 	}
 	if webSince != 10 {
 		t.Fatalf("webSince = %d, want last successfully persisted timestamp 10", webSince)
 	}
-	if len(logs) != 2 || logs[1] != "web post inject failed: %v" {
-		t.Fatalf("logs = %v, want success then journal failure", logs)
+	if len(logs) != 1 || logs[0] != "web post joined the room feed: %s (%s)" {
+		t.Fatalf("logs = %v, want only the successful persisted post", logs)
+	}
+}
+
+func TestRecordWebPostFailureThrottlesRepeatedLogs(t *testing.T) {
+	failures := 0
+	logs := 0
+	for range 20 {
+		recordWebPostFailure(&failures, func(string, ...any) { logs++ }, errors.New("disk full"))
+	}
+	if failures != 20 || logs != 3 {
+		t.Fatalf("failures/logs = %d/%d, want 20 failures but only attempts 1, 10, and 20 logged", failures, logs)
+	}
+}
+
+func TestPostLiveOfflineLogsHTTPFailure(t *testing.T) {
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/broker/offline" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer broker.Close()
+
+	var got string
+	postLiveOffline(broker.URL, "install", "secret", broker.Client(), func(format string, _ ...any) {
+		got = format
+	})
+	if got != "live offline post failed: broker returned %s" {
+		t.Fatalf("offline failure log = %q", got)
 	}
 }
 

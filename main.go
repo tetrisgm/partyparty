@@ -159,18 +159,17 @@ func decodeLiveAck(resp *http.Response) (liveAck, error) {
 	return ack, nil
 }
 
-func ingestLiveAck(ack liveAck, posts webPostAdder, handler *server.Srv, webSince *int64, logf func(string, ...any)) {
+func ingestLiveAck(ack liveAck, posts webPostAdder, handler *server.Srv, webSince *int64, logf func(string, ...any)) error {
 	if handler != nil {
 		handler.SetWebListeners(ack.WebListeners)
 	}
 	if posts == nil {
-		return
+		return nil
 	}
 	for _, wp := range ack.WebPosts {
 		added, err := posts.AddWebPost(wp.ID, wp.Author, wp.Emoji, wp.Text, wp.TS)
 		if err != nil {
-			logf("web post inject failed: %v", err)
-			return // ordered batch: never advance the cursor past an unpersisted post
+			return fmt.Errorf("persist web post %q: %w", wp.ID, err)
 		}
 		if added {
 			logf("web post joined the room feed: %s (%s)", wp.ID, wp.Author)
@@ -179,6 +178,7 @@ func ingestLiveAck(ack liveAck, posts webPostAdder, handler *server.Srv, webSinc
 			*webSince = wp.TS
 		}
 	}
+	return nil
 }
 
 func recordLiveCheckinFailure(beatFails *int, handler *server.Srv, logf func(string, ...any), err error) {
@@ -191,6 +191,13 @@ func recordLiveCheckinFailure(beatFails *int, handler *server.Srv, logf func(str
 	}
 	if *beatFails >= 3 && handler != nil {
 		handler.SetWebListeners(0)
+	}
+}
+
+func recordWebPostFailure(failures *int, logf func(string, ...any), err error) {
+	*failures++
+	if *failures == 1 || *failures%10 == 0 {
+		logf("web post inject failed (%d consecutive): %v", *failures, err)
 	}
 }
 
@@ -221,6 +228,7 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 	var lastBeat time.Time
 	var webSince int64 // max web-post ts ingested (the check-in delivery cursor)
 	beatFails := 0
+	webPostFails := 0
 	for {
 		// Poll faster than the 30s heartbeat so the live->idle edge (a Stop that
 		// doesn't quit the app) drops presence promptly; the beat itself is still
@@ -259,7 +267,11 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 				r.Body.Close()
 				if ackErr == nil {
 					beatFails = 0
-					ingestLiveAck(ack, events, handler, &webSince, logf)
+					if ingestErr := ingestLiveAck(ack, events, handler, &webSince, logf); ingestErr != nil {
+						recordWebPostFailure(&webPostFails, logf, ingestErr)
+					} else {
+						webPostFails = 0
+					}
 				} else {
 					// A broker outage or captive-portal HTML must not leave a stale
 					// "M online" painted on the console for the rest of the set.
@@ -287,6 +299,9 @@ func postLiveOffline(base, id, secret string, cl *http.Client, logf func(string,
 	body, _ := json.Marshal(map[string]any{"id": id, "secret": secret})
 	if r, err := cl.Post(base+"/api/broker/offline", "application/json", bytes.NewReader(body)); err == nil {
 		r.Body.Close()
+		if (r.StatusCode < 200 || r.StatusCode >= 300) && logf != nil {
+			logf("live offline post failed: broker returned %s", r.Status)
+		}
 	} else if logf != nil {
 		logf("live offline post failed: %v", err)
 	}
