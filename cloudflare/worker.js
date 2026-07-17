@@ -345,6 +345,25 @@ async function recordEventAlias(env, oldSlug, slug, now, target = {}) {
   return true;
 }
 
+// Slug changes are safe only before an event has acquired durable activity.
+// D1 child tables reference events.slug without ON UPDATE CASCADE, and R2 media
+// keys are rooted under the slug, so moving a populated event would either fail
+// its foreign-key update or strand its published objects at the old paths.
+async function eventRenameBlocked(env, slug) {
+  const row = await env.DB.prepare(
+    `SELECT e.status, e.cover_key,
+            EXISTS(SELECT 1 FROM event_sets s WHERE s.slug=e.slug) AS has_sets,
+            EXISTS(SELECT 1 FROM posts p WHERE p.slug=e.slug) AS has_posts,
+            EXISTS(SELECT 1 FROM event_rsvps r WHERE r.slug=e.slug) AS has_rsvps,
+            EXISTS(SELECT 1 FROM event_guest_claims c WHERE c.slug=e.slug) AS has_claims,
+            EXISTS(SELECT 1 FROM event_guests g WHERE g.slug=e.slug) AS has_guests
+     FROM events e WHERE e.slug=?1 LIMIT 1`
+  ).bind(slug).first();
+  if (!row) return false;
+  return row.status !== "upcoming" || !!row.cover_key || !!row.has_sets || !!row.has_posts ||
+    !!row.has_rsvps || !!row.has_claims || !!row.has_guests;
+}
+
 export async function getProfileByHandle(env, handle) {
   const h = normalizeHandle(handle);
   if (!env?.DB || !h) return null;
@@ -1389,9 +1408,7 @@ async function profileApi(request, env) {
 
   const handle = hasHandle ? normalizeHandle(body.handle) : normalizeHandle(existing?.handle);
   if (!handle) return jsonResp(400, { error: "bad handle" });
-
-  const owner = await env.DB.prepare("SELECT user_id FROM dj_profiles WHERE handle=? LIMIT 1").bind(handle).first();
-  if (owner?.user_id && owner.user_id !== user.id) return jsonResp(409, { error: "handle taken" });
+  if (RESERVED_HANDLES.has(handle)) return jsonResp(409, { error: "that username is reserved" });
 
   const hasDisplay = Object.prototype.hasOwnProperty.call(body, "display_name");
   const hasBio = Object.prototype.hasOwnProperty.call(body, "bio");
@@ -1403,12 +1420,18 @@ async function profileApi(request, env) {
   const location = hasLocation ? clip(body.location, 80) : (existing?.location || "");
   const now = nowMs();
 
+  if (existing && handle !== normalizeHandle(existing.handle)) {
+    const renamed = await changeHandle(env, existing, user, handle, now);
+    if (renamed.error) return jsonResp(renamed.status || 409, { error: renamed.error });
+  } else if (!existing && !(await handleAvailable(env, handle))) {
+    return jsonResp(409, { error: "handle taken" });
+  }
+
   try {
     await env.DB.prepare(
       `INSERT INTO dj_profiles (id, user_id, handle, display_name, bio, location, published, created_ms, updated_ms, last_activity_ms)
        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
-         handle=excluded.handle,
          display_name=excluded.display_name,
          bio=excluded.bio,
          location=excluded.location,
@@ -1611,7 +1634,7 @@ async function resolveWebEventSlug(env, body, title) {
     const suffix = i === 0 ? "" : `-${randHex(2)}`;
     const slug = (base.slice(0, 48 - suffix.length).replace(/-+$/g, "") || "event") + suffix;
     const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(slug).first();
-    if (!existing) return { slug };
+    if (!existing && !(await slugReservedByAlias(env, slug, ""))) return { slug };
   }
   return { error: "slug taken", status: 409 };
 }
@@ -1684,6 +1707,7 @@ async function updateEventApi(request, env, slug) {
       const existing = await env.DB.prepare("SELECT slug FROM events WHERE slug=?").bind(nextSlug).first();
       if (existing) return jsonResp(409, { error: "slug taken" });
       if (await slugReservedByAlias(env, nextSlug, slug)) return jsonResp(409, { error: "slug reserved" });
+      if (await eventRenameBlocked(env, slug)) return jsonResp(409, { error: "event with activity cannot be renamed" });
     }
   }
   const cols = [];
@@ -2735,6 +2759,25 @@ async function requireLinkedInstallForPublish(env, id) {
   return null;
 }
 
+// Web-created events belong to the account before they belong to a particular
+// Mac (install_id=''). The first currently-linked Mac from that same account may
+// adopt the row for the install-scoped publish pipeline. The conditional UPDATE
+// is the race/IDOR boundary: assigned events and other accounts never move.
+async function claimUnassignedAccountEvent(env, slug, id) {
+  if (!env.DB) return false;
+  const linked = await env.DB.prepare(
+    "SELECT user_id, profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
+  ).bind(id).first();
+  if (!linked?.user_id || !linked?.profile_id) return false;
+  await env.DB.prepare(
+    `UPDATE events SET install_id=?1
+     WHERE slug=?2 AND install_id=''
+       AND (owner_user_id=?3 OR (owner_user_id IS NULL AND dj_profile_id=?4))`
+  ).bind(id, slug, linked.user_id, linked.profile_id).run();
+  const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
+  return owner?.install_id === id;
+}
+
 function expiredLinkResponse(status = 400) {
   return new Response(`<!doctype html>
 <html lang="en">
@@ -3497,17 +3540,38 @@ async function installLinkUnlink(request, env) {
   const installId = String(body.install_id || body.id || "");
   const now = nowMs();
   let result;
+  let revokedIds = [];
   if (installId) {
     if (!/^[a-f0-9]{12}$/.test(installId)) return jsonResp(400, { error: "bad install_id" });
     result = await env.DB.prepare(
       "UPDATE device_installs SET revoked_ms=? WHERE user_id=? AND install_id=? AND revoked_ms IS NULL"
     ).bind(now, user.id, installId).run();
+    if ((Number(result?.meta?.changes) || 0) > 0) revokedIds = [installId];
   } else {
+    const active = await env.DB.prepare(
+      "SELECT install_id FROM device_installs WHERE user_id=? AND revoked_ms IS NULL"
+    ).bind(user.id).all();
+    revokedIds = (active?.results || []).map((row) => String(row.install_id || "")).filter((id) => /^[a-f0-9]{12}$/.test(id));
     result = await env.DB.prepare(
       "UPDATE device_installs SET revoked_ms=? WHERE user_id=? AND revoked_ms IS NULL"
     ).bind(now, user.id).run();
   }
+  for (const id of revokedIds) await clearRevokedInstallLiveState(env, id, now);
   return jsonResp(200, { ok: true, revoked: Number(result?.meta?.changes) || 0 });
+}
+
+// Revocation takes the Mac off cloud discovery immediately. It deliberately
+// leaves the grey LAN hostname alone: an already-activated Mac and its local
+// guests must keep working offline even when the account link is removed.
+async function clearRevokedInstallLiveState(env, id, now) {
+  try {
+    await env.DB.prepare("DELETE FROM live_installs WHERE install_id=?").bind(id).run();
+  } catch (_) { /* the expiry sweep is the backstop */ }
+  try {
+    await env.DB.prepare(
+      "UPDATE events SET status='replay', updated_ms=?2 WHERE install_id=?1 AND status='live'"
+    ).bind(id, now).run();
+  } catch (_) { /* the expiry sweep is the backstop */ }
 }
 
 async function installBrowserLinkStart(env, id, rec, request) {
@@ -3735,16 +3799,16 @@ async function rsvpIdentity(env, request, slug, mintAnon) {
   if (user?.id) return { userId: String(user.id), anonHash: "", cookieId: "", minted: false };
   const cookies = parseCookies(request);
   let cookieId = cookies.pp_rsvp || "";
-  const cookieAnonHash = /^ip\.([a-f0-9]{64})$/.exec(cookieId)?.[1] || "";
-  if (cookieId && !cookieAnonHash && !/^[a-f0-9]{32}$/.test(cookieId)) cookieId = "";
+  // Older builds minted deterministic ip.<hash> cookies. Those collapse every
+  // browser behind the same NAT into one guest (including their private email),
+  // so rotate them to a per-browser random identity on the next write.
+  if (cookieId && !/^[a-f0-9]{32}$/.test(cookieId)) cookieId = "";
   let minted = false;
-  let ipAnonHash = "";
   if (!cookieId && mintAnon) {
-    ipAnonHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}:${slug}`);
-    cookieId = `ip.${ipAnonHash}`;
+    cookieId = randHex(16);
     minted = true;
   }
-  const anonHash = cookieAnonHash || ipAnonHash || (cookieId ? await sha256Hex(cookieId) : "");
+  const anonHash = cookieId ? await sha256Hex(cookieId) : "";
   return {
     userId: "",
     anonHash,
@@ -3831,12 +3895,14 @@ async function eventJoin(request, env, slug) {
   if (!env.DB) return jsonResp(503, { error: "events db not configured" });
   const event = await getEventBySlug(env, slug);
   if (!event) return jsonResp(404, { error: "event not found" });
+  if (event.status !== "live") return jsonResp(403, { error: "the party isn't live" });
 
   const joinIPHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
   if (await discoverRateLimited(joinIPHash, `join/${slug}`, 2)) {
     return jsonResp(429, { error: "slow down" }, { "retry-after": "2" });
   }
   const body = await readJson(request, 2048);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
   const name = stripControl(clip(body?.name, 40)).trim();
   const emoji = clip(body?.emoji, 8);
   const email = clip(body?.email, 120).trim().toLowerCase();
@@ -3883,14 +3949,10 @@ async function webListeners(env, slug, now) {
 }
 
 // eventPresence: the web listener heartbeat (~45s while the live player is
-// playing). Bumps ONLY updated_ms on the guest's row — never name/emoji/email —
-// creating a nameless row first if the guest skipped the join sheet.
-// Inflation-hardened (review finding): the anon identity is derived
-// SERVER-SIDE from the caller's edge IP — a client-supplied cookie could mint
-// unlimited distinct rows and set the public "listening" count to any number.
-// (For a guest with no prior cookie this is the SAME ip:<ip>:<slug> hash
-// rsvpIdentity mints, so their later join sheet lands on the same row.) Live
-// events only: a years-old keepsake page can't have its count inflated.
+// playing). Bumps ONLY updated_ms on an existing join row — never name/emoji/
+// email and never mints a row. That keeps per-browser guest identities private
+// while a caller inventing cookies cannot inflate the public listener count.
+// Live events only: a years-old keepsake page can't have its count inflated.
 async function eventPresence(request, env, slug) {
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
@@ -3899,21 +3961,14 @@ async function eventPresence(request, env, slug) {
   const event = await getEventBySlug(env, slug);
   if (!event) return jsonResp(404, { error: "event not found" });
   if (event.status !== "live") return jsonResp(200, { ok: true, webListeners: 0 });
-  const user = await getSessionUser(env, request);
+  const identity = await rsvpIdentity(env, request, slug, false);
   const now = nowMs();
-  const key = user?.id
-    ? String(user.id)
-    : await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}:${slug}`);
-  const col = user?.id ? "user_id" : "anon_key_hash";
-  const upd = await env.DB.prepare(
-    `UPDATE event_guests SET updated_ms=?3 WHERE slug=?1 AND ${col}=?2`
-  ).bind(slug, key, now).run();
-  if (!upd?.meta?.changes) {
+  const key = identity.userId || identity.anonHash;
+  if (key) {
+    const col = identity.userId ? "user_id" : "anon_key_hash";
     await env.DB.prepare(
-      `INSERT INTO event_guests (id, slug, user_id, anon_key_hash, name, emoji, email, source, created_ms, updated_ms)
-       VALUES (?, ?, ${user?.id ? "?, NULL" : "NULL, ?"}, '', '', '', 'web-live', ?, ?)
-       ON CONFLICT(slug,${col}) WHERE ${col} NOT NULL DO UPDATE SET updated_ms=excluded.updated_ms`
-    ).bind(randHex(16), slug, key, now, now).run();
+      `UPDATE event_guests SET updated_ms=?3 WHERE slug=?1 AND ${col}=?2`
+    ).bind(slug, key, now).run();
   }
   const listeners = await webListeners(env, slug, now);
   return jsonResp(200, { ok: true, webListeners: listeners });
@@ -3949,27 +4004,33 @@ async function eventWebPost(request, env, slug) {
   // fail-open): one identity gets 6 posts/minute; one event's live wall takes
   // at most 300 web posts per 6h window — a rotating-cookie flood hits the
   // event ceiling instead of the room feed.
-  const idKey = identity.userId ? null : identity.anonHash;
+  const identityCol = identity.userId ? "author_user_id" : "author_cid_hash";
+  const identityKey = identity.userId || identity.anonHash;
   const [mine, total] = await Promise.all([
     env.DB.prepare(
-      "SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>? AND author_cid_hash=?"
-    ).bind(slug, now - 60_000, idKey || `user:${identity.userId}`).first(),
+      `SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>? AND ${identityCol}=?`
+    ).bind(slug, now - 60_000, identityKey).first(),
     env.DB.prepare(
       "SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>?"
     ).bind(slug, now - 6 * 3600_000).first(),
   ]);
   if ((Number(mine?.n) || 0) >= 6) return jsonResp(429, { error: "slow down a little" }, { "retry-after": "30" });
   if ((Number(total?.n) || 0) >= 300) return jsonResp(429, { error: "the wall is full for now" });
+  const guest = identity.userId
+    ? await env.DB.prepare("SELECT name, emoji FROM event_guests WHERE slug=? AND user_id=? LIMIT 1").bind(slug, identity.userId).first()
+    : await env.DB.prepare("SELECT name, emoji FROM event_guests WHERE slug=? AND anon_key_hash=? LIMIT 1").bind(slug, identity.anonHash).first();
+  const savedAuthor = stripControl(clip(guest?.name, 40)).trim();
+  const savedEmoji = clip(guest?.emoji, 8);
   const id = "web-" + randHex(12);
   await env.DB.prepare(
     `INSERT INTO posts (
        id, slug, author, emoji, text, media_key, media_type, approved, ts_ms, created_ms,
-       author_cid_hash, source, source_install_id, dj, activity_ms, updated_ms, approved_ms, deleted_ms
+       author_user_id, author_cid_hash, source, source_install_id, dj, activity_ms, updated_ms, approved_ms, deleted_ms
      )
-     VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?, ?, 'web', NULL, 0, ?, ?, ?, NULL)`
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?, ?, ?, 'web', NULL, 0, ?, ?, ?, NULL)`
   ).bind(
-    id, slug, author, emoji, text, now, now,
-    identity.userId ? null : identity.anonHash, now, now, now
+    id, slug, savedAuthor || author, savedAuthor ? savedEmoji : emoji, text, now, now,
+    identity.userId || null, identity.userId ? null : identity.anonHash, now, now, now
   ).run();
   const headers = new Headers({ "content-type": "application/json" });
   if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
@@ -4159,6 +4220,8 @@ async function liveMirrorUpload(request, env, pathname) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
   const slug = request.headers.get("x-pp-slug") || "";
   const file = request.headers.get("x-pp-file") || "";
   if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
@@ -4207,6 +4270,12 @@ async function liveMirrorUpload(request, env, pathname) {
       ).bind("live", now, now, now, slug, id).run();
     }
   }
+
+  // The live check-in can arrive before the mirror has minted the event. Once
+  // the row exists, associate it immediately so the handle router sends remote
+  // guests to the event page instead of waiting for the next heartbeat.
+  await env.DB.prepare("UPDATE live_installs SET event_slug=? WHERE install_id=?")
+    .bind(slug, id).run();
 
   const key = `event/${slug}/live/${file}`;
   if (isPlaylistRoute) {
@@ -4492,6 +4561,7 @@ async function brokerAccountUnlink(env, id) {
   const result = await env.DB.prepare(
     "UPDATE device_installs SET revoked_ms=?, last_seen_ms=? WHERE install_id=? AND revoked_ms IS NULL"
   ).bind(now, now, id).run();
+  if ((Number(result?.meta?.changes) || 0) > 0) await clearRevokedInstallLiveState(env, id, now);
   return jsonResp(200, { ok: true, revoked: Number(result?.meta?.changes) || 0 });
 }
 
@@ -4514,6 +4584,8 @@ async function publishUpload(request, env, pathname) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
   const slug = request.headers.get("x-pp-slug") || "";
   const setId = request.headers.get("x-pp-set") || "";
   if (!SLUG_RE.test(slug) || !SETID_RE.test(setId)) return jsonResp(400, { error: "bad slug/set" });
@@ -4556,6 +4628,8 @@ async function publishCover(request, env) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
   const slug = request.headers.get("x-pp-slug") || "";
   if (!SLUG_RE.test(slug)) return jsonResp(400, { error: "bad slug" });
   if (request.method === "DELETE") {
@@ -4603,6 +4677,8 @@ async function readPostMediaHeaders(request, env) {
   const id = request.headers.get("x-pp-id") || "";
   const rec = await authInstall(env, id, request.headers.get("x-pp-secret") || "");
   if (!rec) return jsonResp(403, { error: "bad credentials" });
+  const gate = await requireLinkedInstallForPublish(env, id);
+  if (gate) return gate;
 
   const slug = request.headers.get("x-pp-slug") || "";
   const postId = request.headers.get("x-pp-post") || "";
@@ -4908,6 +4984,13 @@ async function broker(request, env, pathname) {
   if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
 
   if (pathname === "/api/broker/register") {
+    // Registration is necessarily unauthenticated, but each success allocates
+    // an install record plus a slug reservation in R2. Bound cheap retry/flood
+    // amplification per edge location; Cloudflare supplies this IP header.
+    const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+    if (await discoverRateLimited(ipHash, "register", 10)) {
+      return jsonResp(429, { error: "slow down" }, { "retry-after": "10" });
+    }
     const id = crypto.randomUUID().replaceAll("-", "").slice(0, 12);
     const secret = [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("");
     // Pretty, memorable hostname label (disco42, groove7…) — the guest link is
@@ -4962,8 +5045,8 @@ async function broker(request, env, pathname) {
       }
       if (op === "delete") {
         const rid = String(body.recordId || "");
-        if (!rid) return jsonResp(400, { error: "recordId required" });
-        await cfDNS(env, "DELETE", "/" + rid);
+        if (!/^[0-9a-f]{32}$/i.test(rid)) return jsonResp(400, { error: "bad recordId" });
+        await cfDNS(env, "DELETE", "/" + encodeURIComponent(rid));
         return jsonResp(200, { ok: true });
       }
       return jsonResp(400, { error: "bad op" });
@@ -5057,11 +5140,11 @@ async function broker(request, env, pathname) {
   // to a pretty slug before touching Cloudflare.
   let label = rec.slug || id;
 
-  // Going live online: claiming/creating a cloud event requires a linked account.
-  // Downstream media/post/audio uploads all require an event that this install owns,
-  // so gating the two create routes gates the whole publish chain. The LOCAL offline
-  // party never reaches the broker, so this can't block a party at a no-internet venue.
-  if (pathname === "/api/broker/publish-meta" || pathname === "/api/broker/event-upsert") {
+  // Every JSON route that mutates cloud event state requires a current account
+  // link. A revoked install may still retain its broker secret and own old event
+  // rows, so ownership alone is not an activation boundary. Header-authenticated
+  // binary routes enforce the same gate in their helpers above.
+  if (["/api/broker/publish-meta", "/api/broker/event-upsert", "/api/broker/publish-posts", "/api/broker/event-status"].includes(pathname)) {
     const gate = await requireLinkedInstallForPublish(env, id);
     if (gate) return gate;
   }
@@ -5079,7 +5162,9 @@ async function broker(request, env, pathname) {
     // First-writer-wins: a slug already owned by ANOTHER install is off-limits
     // (the Mac then retries with its collision-proof auto slug).
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
-    if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (owner && owner.install_id !== id && !(await claimUnassignedAccountEvent(env, slug, id))) {
+      return jsonResp(409, { error: "slug taken" });
+    }
     if (!owner && await slugReservedByAlias(env, slug, "")) return jsonResp(409, { error: "slug reserved" });
     const now = nowMs();
     const linked = await env.DB.prepare(
@@ -5122,12 +5207,15 @@ async function broker(request, env, pathname) {
     if (oldSlug && !SLUG_RE.test(oldSlug)) return jsonResp(400, { error: "bad old_slug" });
 
     const owner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(slug).first();
-    if (owner && owner.install_id !== id) return jsonResp(409, { error: "slug taken" });
+    if (owner && owner.install_id !== id && !(await claimUnassignedAccountEvent(env, slug, id))) {
+      return jsonResp(409, { error: "slug taken" });
+    }
     if (!owner && await slugReservedByAlias(env, slug, oldSlug)) return jsonResp(409, { error: "slug reserved" });
     if (oldSlug && oldSlug !== slug && !owner) {
       const oldOwner = await env.DB.prepare("SELECT install_id FROM events WHERE slug=?").bind(oldSlug).first();
       if (oldOwner) {
         if (oldOwner.install_id !== id) return jsonResp(403, { error: "not owner" });
+        if (await eventRenameBlocked(env, oldSlug)) return jsonResp(409, { error: "event with activity cannot be renamed" });
         await env.DB.prepare("UPDATE events SET slug=? WHERE slug=? AND install_id=?").bind(slug, oldSlug, id).run();
       }
     }
@@ -5567,11 +5655,10 @@ export default {
 
     // WILDCARD HOSTNAME ROUTER — before any path dispatch. If the Host is the
     // proxied permanent link <handle>.partyparty.party (a single clean handle
-    // label, not the apex, not a reserved word), the root path is a per-handle
-    // router: LOCAL (public-IP match) 302s to the Mac's grey slug host, REMOTE
-    // serves the cloud-mirror page, IDLE serves a "no party live" page. Only the
-    // root is intercepted — every other path (the mirror, /e/<slug>, assets…)
-    // falls through to normal dispatch so it still resolves on the handle host.
+    // label, not the apex, not a reserved word), its root serves a LAN probe:
+    // reachable guests go to the Mac's grey host; everyone else goes to the
+    // cloud event page, or sees the idle state. Only the root is intercepted —
+    // mirror, event, asset, and API paths always fall through normally.
     if (env.DB && pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
       // The handle router owns ONLY the root path of <handle>.partyparty.party.
       // Every other path falls through to the normal routes so the SAME host can
@@ -5959,7 +6046,10 @@ export default {
       const mediaType = String(row.media_type || "");
       const ctype = allowedPostMime(mediaType, row.mime_type) || allowedPostMime(mediaType, "");
       if (!ctype) return new Response("Not found", { status: 404 });
-      const cache = "public, max-age=31536000, immutable";
+      // The publisher can retry/replace a media ID at this same URL, so this is
+      // mutable content. A year-long immutable response would pin the first
+      // object after an interrupted upload or edit.
+      const cache = "public, max-age=300";
       const isRangeAware = mediaType === "video" || mediaType === "audio";
       const rangeHdr = isRangeAware ? request.headers.get("range") : null;
       if (rangeHdr) {

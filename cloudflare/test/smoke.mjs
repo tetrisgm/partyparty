@@ -11,6 +11,7 @@ globalThis.caches ??= {
 
 const KNOWN_SLUG = "known-set";
 const SET_ID = "abcdef123456";
+const LINKED_INSTALL = { install_id: "abc123abc123", user_id: "user-a", profile_id: "profile-a", revoked_ms: null };
 
 const eventActivity = (row) =>
   Number(row.last_activity_ms ?? row.published_ms ?? row.scheduled_at_ms ?? row.updated_ms ?? row.created_ms ?? 0) || 0;
@@ -121,6 +122,22 @@ class FakeD1Statement {
         if (row.slug === slug && Number(row.updated_ms) > Number(cutoff)) n++;
       }
       return { n };
+    }
+    if (sql.includes("SELECT COUNT(*) AS n FROM posts") && sql.includes("source='web'")) {
+      const [slug, cutoff, identity] = this.args;
+      const byUser = sql.includes("author_user_id=?");
+      const hasIdentity = byUser || sql.includes("author_cid_hash=?");
+      const n = this.db.wallPosts.filter((row) =>
+        row.slug === slug && row.source === "web" && Number(row.ts_ms) > Number(cutoff) &&
+        (!hasIdentity || (byUser ? row.author_user_id === identity : row.author_cid_hash === identity))
+      ).length;
+      return { n };
+    }
+    if (sql.includes("FROM event_guests WHERE slug=?") && (sql.includes("user_id=?") || sql.includes("anon_key_hash=?"))) {
+      const [slug, identity] = this.args;
+      const key = sql.includes("user_id=?") ? `${slug}:user:${identity}` : `${slug}:anon:${identity}`;
+      const row = this.db.eventGuests.get(key);
+      return row ? { ...row } : null;
     }
     if (sql.includes("FROM live_installs WHERE install_id=?")) {
       const row = this.db.liveInstalls.get(this.args[0]);
@@ -268,6 +285,20 @@ class FakeD1Statement {
       const oldSlug = this.args[0];
       const row = this.db.eventAliases.get(oldSlug);
       return row ? { ...row } : null;
+    }
+    if (sql.includes("FROM events e WHERE e.slug=?1")) {
+      const slug = this.args[0];
+      const row = this.db.events.get(slug);
+      if (!row) return null;
+      return {
+        status: row.status,
+        cover_key: row.cover_key ?? null,
+        has_sets: this.db.eventSets.some((set) => set.slug === slug) ? 1 : 0,
+        has_posts: [...this.db.importedPosts.values()].some((post) => post.slug === slug) ? 1 : 0,
+        has_rsvps: [...this.db.rsvps.values()].some((rsvp) => rsvp.slug === slug) ? 1 : 0,
+        has_claims: 0,
+        has_guests: [...this.db.eventGuests.values()].some((guest) => guest.slug === slug) ? 1 : 0,
+      };
     }
     if (sql.includes("FROM events WHERE slug=?")) {
       const slug = this.args[0];
@@ -537,6 +568,12 @@ class FakeD1Statement {
 
   async run() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("UPDATE live_installs SET event_slug=? WHERE install_id=?")) {
+      const [eventSlug, installId] = this.args;
+      const row = this.db.liveInstalls.get(installId);
+      if (row) row.event_slug = eventSlug;
+      return { success: true, meta: { changes: row ? 1 : 0 } };
+    }
     if (sql.includes("INSERT INTO live_installs")) {
       const [
         installId, handle, profileId, publicIpHash, host, lanIp, guestPort, eventSlug,
@@ -838,7 +875,7 @@ class FakeD1Statement {
       const existing = this.db.profiles.find((profile) => profile.user_id === userId);
       if (existing) {
         if (scopeUserId !== userId) return { success: true, meta: { changes: 0 } };
-        existing.handle = handle;
+        if (sql.includes("handle=excluded.handle")) existing.handle = handle;
         existing.display_name = displayName;
         existing.bio = bio;
         existing.location = location;
@@ -921,10 +958,10 @@ class FakeD1Statement {
     if (sql.includes("INSERT INTO posts") && sql.includes("'web'")) {
       // A web guest's wall post: visible to the same readers as room posts.
       // MUST precede the mac_sync branch — both SQLs name source_install_id.
-      const [id, slug, author, emoji, text, tsMs, createdMs, cidHash, activityMs, updatedMs, approvedMs] = this.args;
+      const [id, slug, author, emoji, text, tsMs, createdMs, userId, cidHash, activityMs, updatedMs, approvedMs] = this.args;
       this.db.wallPosts.push({
         id, slug, author, emoji, text, media_key: null, media_type: null,
-        approved: 1, ts_ms: tsMs, created_ms: createdMs, author_cid_hash: cidHash,
+        approved: 1, ts_ms: tsMs, created_ms: createdMs, author_user_id: userId, author_cid_hash: cidHash,
         source: "web", source_install_id: null, dj: 0,
         activity_ms: activityMs, updated_ms: updatedMs, approved_ms: approvedMs, deleted_ms: null,
       });
@@ -1036,6 +1073,16 @@ class FakeD1Statement {
       if (old && old.install_id === installId && !this.db.events.has(nextSlug)) {
         this.db.events.delete(slug);
         this.db.events.set(nextSlug, { ...old, slug: nextSlug });
+        return { success: true, meta: { changes: 1 } };
+      }
+      return { success: true, meta: { changes: 0 } };
+    }
+    if (sql.includes("UPDATE events SET install_id=?1") && sql.includes("WHERE slug=?2 AND install_id=''")) {
+      const [installId, slug, userId, profileId] = this.args;
+      const row = this.db.events.get(slug);
+      const sameAccount = row && (row.owner_user_id === userId || (row.owner_user_id == null && row.dj_profile_id === profileId));
+      if (row && row.install_id === "" && sameAccount) {
+        row.install_id = installId;
         return { success: true, meta: { changes: 1 } };
       }
       return { success: true, meta: { changes: 0 } };
@@ -2333,10 +2380,15 @@ const tests = [
     });
     db.events.set("linked-event", {
       slug: "linked-event",
+      install_id: "abc123abc123",
       owner_user_id: "user-account-status",
       title: "Linked Event",
-      status: "upcoming",
+      status: "live",
       scheduled_at_ms: 1893542400000,
+    });
+    db.liveInstalls.set("abc123abc123", {
+      install_id: "abc123abc123", handle: "linked.dj", host: "disco12.party.example.test",
+      event_slug: "linked-event", expires_ms: Date.now() + 60_000,
     });
 
     const linked = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
@@ -2363,6 +2415,8 @@ const tests = [
     assert.equal(unlinkJson.ok, true);
     assert.equal(unlinkJson.revoked, 1);
     assert.equal(typeof db.deviceInstalls.get("abc123abc123").revoked_ms, "number");
+    assert.equal(db.liveInstalls.has("abc123abc123"), false);
+    assert.equal(db.events.get("linked-event").status, "replay");
 
     const after = await worker.fetch(new Request("https://partyparty.party/api/broker/account-status", {
       method: "POST",
@@ -2372,6 +2426,30 @@ const tests = [
     const afterJson = await after.json();
     assert.equal(after.status, 200);
     assert.equal(afterJson.linked, false);
+  }],
+  ["broker registration throttles repeated unauthenticated R2 writes", async () => {
+    const oldCache = globalThis.caches.default;
+    const entries = new Map();
+    globalThis.caches.default = {
+      match: async (request) => entries.get(request.url)?.clone() || null,
+      put: async (request, response) => { entries.set(request.url, response.clone()); },
+    };
+    try {
+      const env = makeEnv();
+      const register = () => worker.fetch(new Request("https://partyparty.party/api/broker/register", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.77" },
+        body: "{}",
+      }), env);
+      const first = await register();
+      const second = await register();
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 429);
+      assert.equal((await second.json()).error, "slow down");
+      assert.equal([...env.DL.objects.keys()].filter((key) => /^broker\/[a-f0-9]{12}\.json$/.test(key)).length, 3);
+    } finally {
+      globalThis.caches.default = oldCache;
+    }
   }],
   ["link-mac redirects through sign-in then links install to the account", async () => {
     const rawToken = "4444444444444444444444444444444444444444444444444444444444444444";
@@ -2543,6 +2621,14 @@ const tests = [
       last_seen_ms: Date.now() - 10_000,
       revoked_ms: null,
     });
+    db.events.set("unlink-live", {
+      slug: "unlink-live", install_id: "abc123abc123", owner_user_id: owner.id,
+      dj_profile_id: "profile-unlink-owner", title: "Unlink Live", status: "live",
+    });
+    db.liveInstalls.set("abc123abc123", {
+      install_id: "abc123abc123", handle: "unlink.owner", host: "disco12.party.example.test",
+      event_slug: "unlink-live", expires_ms: Date.now() + 60_000,
+    });
 
     const unlink = await worker.fetch(new Request("https://partyparty.party/api/install-link/unlink", {
       method: "POST",
@@ -2553,6 +2639,8 @@ const tests = [
     assert.equal(unlink.status, 200);
     assert.deepEqual(unlinkJson, { ok: true, revoked: 1 });
     assert.equal(typeof db.deviceInstalls.get("abc123abc123").revoked_ms, "number");
+    assert.equal(db.liveInstalls.has("abc123abc123"), false);
+    assert.equal(db.events.get("unlink-live").status, "replay");
 
     const relinkCode = "33333333333333333333333333333333";
     db.profiles.push({
@@ -2593,6 +2681,12 @@ const tests = [
         dj_profile_id: "profile-revoked",
         scheduled_at_ms: now + 60_000,
         updated_ms: now,
+      }, {
+        slug: "revoked-existing",
+        install_id: "abc123abc123",
+        title: "Revoked Existing",
+        status: "upcoming",
+        updated_ms: now,
       }],
     });
 
@@ -2613,6 +2707,28 @@ const tests = [
     }), makeEnv({ DB: db }));
     assert.equal(eventUpsert.status, 403);
     assert.equal(db.events.has("revoked-upsert"), false);
+
+    // Retaining the broker secret must not let a revoked Mac mutate an event it
+    // already owns through a route downstream of event creation.
+    const eventStatus = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "revoked-existing", status: "live" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(eventStatus.status, 403);
+    assert.equal(db.events.get("revoked-existing").status, "upcoming");
+
+    const mirrorEnv = makeEnv({ DB: db });
+    const liveSegment = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
+      method: "PUT",
+      headers: {
+        "x-pp-id": "abc123abc123", "x-pp-secret": "secret-a", "x-pp-slug": "revoked-existing",
+        "x-pp-file": "live0.ts", "content-length": "6",
+      },
+      body: "tsdata",
+    }), mirrorEnv);
+    assert.equal(liveSegment.status, 403);
+    assert.equal(await mirrorEnv.DL.get("event/revoked-existing/live/live0.ts"), null);
 
     const windowResp = await worker.fetch(new Request("https://partyparty.party/api/broker/events-window", {
       method: "POST",
@@ -2907,6 +3023,18 @@ const tests = [
       assert.equal(`${updated.slug}.party.example.test`, json.host);
     });
   }],
+  ["dns-admin rejects record-id path traversal before calling Cloudflare", async () => {
+    await withCloudflareDNSMock(async (calls) => {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/dns-admin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ admin: "admin-test", op: "delete", recordId: "../../../../user/tokens/verify" }),
+      }), makeEnv({ env: { ADMIN_KEY: "admin-test" } }));
+      assert.equal(resp.status, 400);
+      assert.equal((await resp.json()).error, "bad recordId");
+      assert.equal(calls.length, 0);
+    });
+  }],
   ["web event create API requires authentication", async () => {
     const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
       method: "POST",
@@ -3090,6 +3218,26 @@ const tests = [
     const unknown = await worker.fetch(new Request("https://partyparty.party/e/unknown-web"), makeEnv({ DB: db }));
     assert.equal(unknown.status, 404);
   }],
+  ["web event update API refuses to rename an event with guest activity", async () => {
+    const db = new FakeD1();
+    const ownerCookie = await signInCookie(db, "web-active@example.com", { ip: "203.0.113.42" });
+    const owner = [...db.authUsers.values()].find((row) => row.email === "web-active@example.com");
+    db.profiles.push({ id: "profile-web-active", user_id: owner.id, handle: "web.active", display_name: "Web Active", published: 1 });
+    db.events.set("active-web", {
+      slug: "active-web", install_id: "", owner_user_id: owner.id, dj_profile_id: "profile-web-active",
+      title: "Active Web", status: "upcoming", source: "web", visibility: "public", rsvp_enabled: 1,
+    });
+    db.importedPosts.set("active-post", { id: "active-post", slug: "active-web", approved: 1, text: "Already here" });
+    const update = await worker.fetch(new Request("https://partyparty.party/api/events/active-web", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: ownerCookie },
+      body: JSON.stringify({ slug: "active-web-new" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(update.status, 409);
+    assert.equal((await update.json()).error, "event with activity cannot be renamed");
+    assert.equal(db.events.has("active-web"), true);
+    assert.equal(db.events.has("active-web-new"), false);
+  }],
   ["profile API creates signed-in user's fresh profile and public route renders it", async () => {
     const db = new FakeD1();
     const cookie = await signInCookie(db, "fresh@example.com", { ip: "203.0.113.30" });
@@ -3250,6 +3398,41 @@ const tests = [
     }), makeEnv({ DB: db }));
     assert.equal(resp.status, 400);
     assert.equal(db.profiles.length, 0);
+  }],
+  ["profile API enforces reserved handles, aliases, and rename cooldown", async () => {
+    const db = new FakeD1();
+    const cookie = await signInCookie(db, "profile-rename@example.com", { ip: "203.0.113.36" });
+    const create = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "first.profile" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(create.status, 200);
+
+    const reserved = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "api" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(reserved.status, 409);
+    assert.equal(db.profiles[0].handle, "first.profile");
+
+    const rename = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "second.profile" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(rename.status, 200);
+    assert.equal(db.profiles[0].handle, "second.profile");
+    assert.equal(db.handleAliases.get("first.profile")?.profile_id, db.profiles[0].id);
+
+    const tooSoon = await worker.fetch(new Request("https://partyparty.party/api/profile", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ handle: "third.profile" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(tooSoon.status, 429);
+    assert.equal(db.profiles[0].handle, "second.profile");
   }],
   ["profile API requires authentication", async () => {
     const resp = await worker.fetch(new Request("https://partyparty.party/api/profile", {
@@ -3513,7 +3696,7 @@ const tests = [
       assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
       assert.equal(db.rsvps.size, 1);
     }],
-    ["event RSVP cookie-less POSTs from same IP collapse to one row", async () => {
+    ["event RSVP cookie-less browsers on one IP keep distinct identities", async () => {
       const db = new FakeD1({ rsvpEnabled: 1 });
       const first = await worker.fetch(new Request(`https://partyparty.party/api/e/${KNOWN_SLUG}/rsvp`, {
         method: "POST",
@@ -3528,8 +3711,12 @@ const tests = [
       const json = await second.json();
       assert.equal(first.status, 200);
       assert.equal(second.status, 200);
-      assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 0, not: 1 } });
-      assert.equal(db.rsvps.size, 1);
+      assert.deepEqual(json, { ok: true, response: "not", counts: { coming: 1, not: 1 } });
+      assert.equal(db.rsvps.size, 2);
+      assert.notEqual(
+        (first.headers.get("set-cookie") || "").split(";")[0],
+        (second.headers.get("set-cookie") || "").split(";")[0]
+      );
     }],
   ["event RSVP GET returns counts and mine", async () => {
     const db = new FakeD1({ rsvpEnabled: 1 });
@@ -3796,6 +3983,7 @@ const tests = [
       assert.equal(resp.status, 200);
       assert.equal(resp.headers.get("content-type"), "image/png");
       assert.equal(resp.headers.get("x-content-type-options"), "nosniff");
+      assert.equal(resp.headers.get("cache-control"), "public, max-age=300");
       assert.equal(await resp.text(), "fake-png");
     }],
     ["approved post media coerces unsafe stored content-type", async () => {
@@ -3923,7 +4111,7 @@ const tests = [
     assert.equal(resp.status, 403);
   }],
   ["broker publish-cover delete clears object and event cover", async () => {
-    const env = makeEnv();
+    const env = makeEnv({ DB: new FakeD1({ deviceInstalls: [LINKED_INSTALL] }) });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-cover", {
       method: "DELETE",
       headers: {
@@ -4044,7 +4232,7 @@ const tests = [
     assert.equal(resp.status, 200);
     assert.deepEqual(json.events, []);
   }],
-    ["broker event-upsert creates fresh upcoming event", async () => {
+  ["broker event-upsert creates fresh upcoming event", async () => {
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
     });
@@ -4117,6 +4305,32 @@ const tests = [
     assert.equal(resp.status, 409);
     assert.equal(db.events.get("taken-ahead").title, "Taken");
   }],
+  ["linked Mac claims its account's unassigned web event", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-web-owner", profile_id: "profile-web-owner", revoked_ms: null }],
+      events: [
+        { slug: "web-upsert", install_id: "", owner_user_id: "user-web-owner", dj_profile_id: "profile-web-owner", title: "Web Upsert", status: "upcoming", source: "web" },
+        { slug: "web-publish", install_id: "", owner_user_id: "user-web-owner", dj_profile_id: "profile-web-owner", title: "Web Publish", status: "upcoming", source: "web" },
+      ],
+    });
+    const upsert = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "web-upsert", title: "Synced from Mac" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(upsert.status, 200);
+    assert.equal(db.events.get("web-upsert").install_id, "abc123abc123");
+    assert.equal(db.events.get("web-upsert").title, "Synced from Mac");
+
+    const publish = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-meta", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", slug: "web-publish", title: "Published from Mac" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(publish.status, 200);
+    assert.equal(db.events.get("web-publish").install_id, "abc123abc123");
+    assert.equal(db.events.get("web-publish").status, "replay");
+  }],
   ["broker event-upsert updates owned title without clobbering replay status", async () => {
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-1", profile_id: "profile-1" }],
@@ -4156,6 +4370,22 @@ const tests = [
     assert.equal(db.events.has("ahead-old"), false);
     assert.equal(db.events.get("ahead-new").title, "Ahead New");
     assert.equal(db.eventAliases.get("ahead-old").slug, "ahead-new");
+  }],
+  ["broker event-upsert refuses to rename an event with published content", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
+      events: [{ slug: "published-old", install_id: "abc123abc123", title: "Published", status: "replay" }],
+      eventSets: [{ id: "published-set", slug: "published-old", state: "ready", audio_key: "event/published-old/published-set.m4a" }],
+    });
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", old_slug: "published-old", slug: "published-new", title: "Published" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(resp.status, 409);
+    assert.equal((await resp.json()).error, "event with activity cannot be renamed");
+    assert.equal(db.events.has("published-old"), true);
+    assert.equal(db.events.has("published-new"), false);
   }],
   ["broker event rename is REJECTED when the slug is reserved by another's keepsake", async () => {
     // Owner A renamed party -> rave (alias party->rave; rave is live). Owner B
@@ -4217,6 +4447,24 @@ const tests = [
     assert.equal(resp.status, 409);
     assert.equal((await resp.json()).error, "slug reserved");
   }],
+  ["web event auto-slug does not shadow a keepsake alias", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "current-party", owner_user_id: "other", title: "Current Party" }],
+      eventAliases: [{ old_slug: "party-night", slug: "current-party", created_ms: 1 }],
+    });
+    const cookie = await signInCookie(db, "auto-reserve@example.com", { ip: "203.0.113.40" });
+    const user = [...db.authUsers.values()].find((row) => row.email === "auto-reserve@example.com");
+    db.profiles.push({ id: "profile-auto-reserve", user_id: user.id, handle: "auto.reserve", display_name: "Auto Reserve", published: 1 });
+    const resp = await worker.fetch(new Request("https://partyparty.party/api/events", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ title: "Party Night" }),
+    }), makeEnv({ DB: db }));
+    const json = await resp.json();
+    assert.equal(resp.status, 200);
+    assert.notEqual(json.slug, "party-night");
+    assert.equal(db.eventAliases.get("party-night")?.slug, "current-party");
+  }],
   ["broker publish-meta stamps replay activity and bumps DJ profile", async () => {
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-publish", profile_id: "profile-publish" }],
@@ -4255,6 +4503,7 @@ const tests = [
   }],
     ["broker publish-posts imports curated posts and is idempotent", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-posts", install_id: "abc123abc123", title: "Owned Posts", status: "replay" }],
     });
     const body = {
@@ -4309,6 +4558,7 @@ const tests = [
     }],
     ["broker publish-posts rejects aggregate post cap before writing", async () => {
       const db = new FakeD1({
+        deviceInstalls: [LINKED_INSTALL],
         events: [{ slug: "owned-posts-cap", install_id: "abc123abc123", title: "Owned Posts", status: "replay" }],
       });
       const posts = Array.from({ length: 201 }, (_, i) => ({
@@ -4333,6 +4583,7 @@ const tests = [
     }],
   ["broker publish-posts rejects slug owned by another install", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "other-posts", install_id: "def456def456", title: "Other", status: "replay" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
@@ -4350,6 +4601,7 @@ const tests = [
   }],
   ["broker publish-posts tombstones deleted posts", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "deleted-posts", install_id: "abc123abc123", title: "Deleted Posts", status: "replay" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/publish-posts", {
@@ -4392,6 +4644,7 @@ const tests = [
   }],
   ["broker publish-post-media rejects slug owned by another install", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "other-media", install_id: "def456def456", title: "Other", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "other-media", approved: 1, deleted_ms: null }],
     });
@@ -4415,6 +4668,7 @@ const tests = [
   }],
     ["broker publish-post-media rejects missing post", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
     });
     const env = makeEnv({ DB: db });
@@ -4437,6 +4691,7 @@ const tests = [
     }],
     ["broker publish-post-media rejects unsafe mime for media type", async () => {
       const db = new FakeD1({
+        deviceInstalls: [LINKED_INSTALL],
         events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
         wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
       });
@@ -4461,6 +4716,7 @@ const tests = [
     }],
     ["broker publish-post-media writes R2 key and upserts post_media", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4499,6 +4755,7 @@ const tests = [
   }],
   ["broker publish-post-media second PUT updates existing media row", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4548,6 +4805,7 @@ const tests = [
   }],
   ["broker publish-post-media multipart requires ordered complete parts", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4593,6 +4851,7 @@ const tests = [
   }],
   ["broker publish-post-media multipart completes two parts and is idempotent", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-media", install_id: "abc123abc123", title: "Owned", status: "replay" }],
       wallPosts: [{ id: "post-one", slug: "owned-media", approved: 1, deleted_ms: null }],
     });
@@ -4660,6 +4919,7 @@ const tests = [
   }],
     ["broker event-status rejects non-owner install", async () => {
       const db = new FakeD1({
+        deviceInstalls: [LINKED_INSTALL],
         events: [{ slug: "owned-by-b", install_id: "def456def456", title: "Owned B", status: "upcoming" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
@@ -4691,6 +4951,7 @@ const tests = [
   }],
     ["broker event-status owner sets live and stamps start", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-live", install_id: "abc123abc123", title: "Owned Live", status: "upcoming", dj_profile_id: "profile-live" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
@@ -4711,6 +4972,7 @@ const tests = [
   }],
   ["broker event-status rejects invalid status", async () => {
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "owned-invalid-status", install_id: "abc123abc123", title: "Owned", status: "upcoming" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/event-status", {
@@ -5361,6 +5623,18 @@ const tests = [
     assert.equal(after.length, 1, "same guest upserts one row");
     assert.equal(after[0].name, "Nassim K");
     assert.equal(after[0].email, "nassim@example.com");
+    // A different browser behind the same NAT gets a different guest identity;
+    // it must not overwrite Nassim's name or private email.
+    const neighbor = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+      body: JSON.stringify({ name: "Maya", emoji: "🪩", email: "maya@example.com" }),
+    }), env);
+    assert.equal(neighbor.status, 200);
+    assert.notEqual((neighbor.headers.get("set-cookie") || "").split(";")[0], cookie);
+    const neighbors = [...db.eventGuests.values()];
+    assert.equal(neighbors.length, 2);
+    assert.deepEqual(neighbors.map((row) => row.email).sort(), ["maya@example.com", "nassim@example.com"]);
     // Garbage email -> 400; unknown event -> 404.
     const bad = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "not-an-email" }),
@@ -5370,6 +5644,15 @@ const tests = [
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x" }),
     }), env);
     assert.equal(gone.status, 404);
+
+    const replay = new FakeD1({
+      events: [{ slug: "old-night", install_id: "abc123abc123", title: "Old", status: "replay" }],
+    });
+    const closed = await worker.fetch(new Request("https://partyparty.party/api/e/old-night/join", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    }), makeEnv({ DB: replay }));
+    assert.equal(closed.status, 403);
+    assert.equal(replay.eventGuests.size, 0);
   }],
 
   ["shared feed: presence heartbeat counts web listeners; web posts land on the wall and ride the check-in", async () => {
@@ -5379,25 +5662,28 @@ const tests = [
       profiles: [{ id: "profile-w", user_id: "user-w", handle: "wave", display_name: "DJ Wave", published: 1, handle_confirmed_ms: 5 }],
     });
     const env = makeEnv({ DB: db });
-    // Heartbeat with no prior join: creates a nameless presence row, counts as 1.
+    // A bare heartbeat cannot mint identities and inflate the count.
     const hb = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/presence", {
       method: "POST", headers: { "cf-connecting-ip": "203.0.113.30" },
     }), env);
     assert.equal(hb.status, 200);
-    assert.equal((await hb.json()).webListeners, 1);
-    // Presence identity is server-derived from the caller's IP (inflation-proof);
-    // a later cookie-less join from the same IP mints the SAME ip:<ip>:<slug>
-    // hash, so it fills the name on the same row without double-counting.
-    const cookie = "";
-    await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
+    assert.equal((await hb.json()).webListeners, 0);
+    assert.equal(db.eventGuests.size, 0);
+    // Join mints a browser identity; only that existing identity can heartbeat.
+    const joined = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/join", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30" },
       body: JSON.stringify({ name: "Web Wanda", emoji: "✨" }),
     }), env);
+    const cookie = (joined.headers.get("set-cookie") || "").split(";")[0];
     assert.equal([...db.eventGuests.values()].length, 1);
+    const counted = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/presence", {
+      method: "POST", headers: { "cf-connecting-ip": "203.0.113.30", cookie },
+    }), env);
+    assert.equal((await counted.json()).webListeners, 1);
     // Web guest posts to the shared wall.
     const post = await worker.fetch(new Request("https://partyparty.party/api/e/rooftop-night/post", {
       method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30", cookie },
-      body: JSON.stringify({ name: "Web Wanda", emoji: "✨", text: "hi from the internet" }),
+      body: JSON.stringify({ name: "Impostor", emoji: "😈", text: "hi from the internet" }),
     }), env);
     assert.equal(post.status, 200);
     // It renders on the event page wall...
@@ -5405,6 +5691,7 @@ const tests = [
     const html = await page.text();
     assert.match(html, /hi from the internet/);
     assert.match(html, /Web Wanda/);
+    assert.doesNotMatch(html, /Impostor/);
     // ...and rides back to the ROOM on the Mac's live check-in response.
     await withCloudflareDNSMock(async () => {
       db.liveInstalls.set("abc123abc123", {
@@ -5460,6 +5747,30 @@ const tests = [
     assert.equal(bidiPost.text, "hi there");
   }],
 
+  ["shared feed: signed-in posters keep ownership and hit the per-user rate cap", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "signed-live", install_id: "abc123abc123", title: "Signed", status: "live" }],
+    });
+    const cookie = await signInCookie(db, "poster@example.com", { ip: "203.0.113.61" });
+    const user = [...db.authUsers.values()].find((row) => row.email_norm === "poster@example.com");
+    for (let i = 0; i < 6; i += 1) {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/e/signed-live/post", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie, "cf-connecting-ip": `203.0.113.${70 + i}` },
+        body: JSON.stringify({ name: "Signed Guest", text: `post ${i}` }),
+      }), makeEnv({ DB: db }));
+      assert.equal(resp.status, 200);
+    }
+    const limited = await worker.fetch(new Request("https://partyparty.party/api/e/signed-live/post", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, "cf-connecting-ip": "203.0.113.90" },
+      body: JSON.stringify({ name: "Signed Guest", text: "post 6" }),
+    }), makeEnv({ DB: db }));
+    assert.equal(limited.status, 429);
+    assert.equal(db.wallPosts.length, 6);
+    assert.ok(db.wallPosts.every((row) => row.author_user_id === user.id));
+  }],
+
   ["legacy domain shim: pages 301 to partyparty.party, the baked-in API keeps serving", async () => {
     // These requests DELIBERATELY use the retired party.ramine.net hostnames —
     // they model shipped builds and old links.
@@ -5489,7 +5800,7 @@ const tests = [
   }],
 
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
-    const db = new FakeD1();
+    const db = new FakeD1({ deviceInstalls: [LINKED_INSTALL] });
     const env = makeEnv({ DB: db }); // reuse ONE env so R2 state persists across calls
     // A stale segment the new window will no longer reference.
     await env.DL.put("event/known-set/live/seg-0.ts", "old", { httpMetadata: { contentType: "audio/mp2t" } });
@@ -5533,6 +5844,7 @@ const tests = [
   ["live mirror ingest rejects a slug the install does not own", async () => {
     // Slug owned by ANOTHER install -> hard 403 (the real ownership protection).
     const db = new FakeD1({
+      deviceInstalls: [LINKED_INSTALL],
       events: [{ slug: "not-mine", install_id: "def456def456", status: "live" }],
     });
     const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live-segment", {
@@ -5580,6 +5892,7 @@ const tests = [
     assert.equal(minted.install_id, "abc123abc123");
     assert.equal(minted.status, "live");
     assert.equal(minted.title, "Rooftop");
+    assert.equal(db.liveInstalls.get("abc123abc123").event_slug, "fresh-party");
     // Clean offline demotes the phantom 'live' event to replay.
     const off = await worker.fetch(new Request("https://partyparty.party/api/broker/offline", {
       method: "POST",
