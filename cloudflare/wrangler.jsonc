@@ -1,7 +1,8 @@
 {
-  // party.ramine.net — one Worker serves the static landing page (../site) and
+  // partyparty.party — one Worker serves the static landing page (../site) and
   // streams the big app download + Sparkle appcast from an R2 bucket (Pages caps
-  // files at 25 MB; the .app zip is ~60-100 MB). Deploy with: make deploy-site
+  // files at 25 MB; the .app zip is ~60-100 MB). The old party.ramine.net routes
+  // remain only as the compatibility shim below. Deploy with: make deploy-site
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "partyparty-site",
   "main": "worker.js",

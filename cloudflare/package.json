@@ -2,7 +2,7 @@
   "name": "partyparty-site",
   "private": true,
   "version": "0.0.0",
-  "description": "party.ramine.net — landing page (static assets) + app download (R2), served by one Worker.",
+  "description": "partyparty.party — landing page, account/event APIs, broker, and app downloads served by one Worker.",
   "type": "module",
   "scripts": {
     "check": "node --check worker.js",

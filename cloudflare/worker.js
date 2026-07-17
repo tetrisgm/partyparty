@@ -5655,11 +5655,10 @@ export default {
 
     // WILDCARD HOSTNAME ROUTER — before any path dispatch. If the Host is the
     // proxied permanent link <handle>.partyparty.party (a single clean handle
-    // label, not the apex, not a reserved word), the root path is a per-handle
-    // router: LOCAL (public-IP match) 302s to the Mac's grey slug host, REMOTE
-    // serves the cloud-mirror page, IDLE serves a "no party live" page. Only the
-    // root is intercepted — every other path (the mirror, /e/<slug>, assets…)
-    // falls through to normal dispatch so it still resolves on the handle host.
+    // label, not the apex, not a reserved word), its root serves a LAN probe:
+    // reachable guests go to the Mac's grey host; everyone else goes to the
+    // cloud event page, or sees the idle state. Only the root is intercepted —
+    // mirror, event, asset, and API paths always fall through normally.
     if (env.DB && pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
       // The handle router owns ONLY the root path of <handle>.partyparty.party.
       // Every other path falls through to the normal routes so the SAME host can
