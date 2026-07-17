@@ -991,13 +991,15 @@
       if (parts.length > 1) return (parts[0][0] + parts[1][0]).toUpperCase();
       return s.slice(0, 2).toUpperCase();
     }
-    function paintGuests(roster, total){
+    function paintGuests(roster, total, web){
       const guests = Array.isArray(roster) ? roster : [];
       const list = [{ name: guestHostName, emoji: '🎧', host: true }].concat(guests);
       const n = Math.max(Number(total) || 0, guests.length) + 1;
       if (!guestLine || !guestAvatars || !guestCountBtn) return;
       guestLine.hidden = false;
-      guestCountBtn.textContent = n + (n === 1 ? ' guest' : ' guests');
+      // One party: the room count, plus anyone listening on the web event page.
+      const w = Number(web) || 0;
+      guestCountBtn.textContent = n + (n === 1 ? ' guest' : ' guests') + (w > 0 ? ' · ' + w + ' online' : '');
       guestAvatars.textContent = '';
       const shown = list.slice(0, 5);
       shown.forEach((r, i) => {
@@ -1999,7 +2001,7 @@
         const eventHost = s.event && String(s.event.host || '').trim();
         if (eventHost) guestHostName = eventHost;
         const totalListeners = Number(s.listeners || 0);
-        paintGuests(s.roster || [], totalListeners);
+        paintGuests(s.roster || [], totalListeners, Number(s.webListeners || 0));
         countEl.textContent = '';
         if (!live && (started || attached)) {
           // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an

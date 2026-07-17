@@ -20,6 +20,8 @@ const EVENT_RE = /^\/e\/([A-Za-z0-9_.-]{1,48})$/;
 const WEB_EVENT_API_RE = /^\/api\/events\/([A-Za-z0-9_.-]{1,48})$/;
 const RSVP_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/rsvp$/;
 const JOIN_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/join$/;
+const PRESENCE_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/presence$/;
+const WEBPOST_RE = /^\/api\/e\/([A-Za-z0-9_.-]{1,48})\/post$/;
 const HANDLE_RE = /^\/@([A-Za-z0-9_.]{1,30})$/;
 const POST_MEDIA_RE = /^\/event\/([A-Za-z0-9_.-]{1,48})\/media\/([A-Za-z0-9_-]{1,64})$/;
 // Published set media (audio + waveform) and event cover, served range-aware
@@ -2480,14 +2482,25 @@ function renderEvent(e, opts = {}) {
     mediaByPost.get(String(p.id || "")) || [],
     commentsByPost.get(String(p.id || "")) || []
   )).filter(Boolean).join("");
-  const commentSection = timelineItems ? `
+  const isLiveNow = e.status === "live";
+  // While live, the wall is a shared room+web feed: web guests can post into it
+  // (name/emoji come from the join sheet identity) and it refreshes itself.
+  const composer = isLiveNow && e.slug ? `
+    <div id="pp-composer" style="display:grid;gap:10px;margin-bottom:14px">
+      <div class="rsvpfields" style="grid-template-columns:minmax(0,1fr) 96px">
+        <input id="pp-comp-text" maxlength="500" autocomplete="off" placeholder="Say something to the party…">
+        <button type="button" id="pp-comp-send" class="btn sm">Send</button>
+      </div>
+      <p id="pp-comp-err" class="cardhint" style="margin:0;color:#b3261e" hidden></p>
+    </div>` : "";
+  const emptyWallNote = isLiveNow
+    ? `No comments yet — be the first.`
+    : `No comments yet. Guest notes will appear here once the DJ approves them.`;
+  const commentSection = `
   <section class="card commentcard" aria-labelledby="comments-title">
-    <div class="sectionhead"><div><h2 id="comments-title">Comments</h2><p>Notes and replies from the night, in order.</p></div></div>
-    <div class="timeline">${timelineItems}</div>
-  </section>` : `
-  <section class="card commentcard" aria-labelledby="comments-title">
-    <div class="sectionhead"><div><h2 id="comments-title">Comments</h2><p>Notes and replies from the night, in order.</p></div></div>
-    <p class="emptykeepsake">No comments yet. Guest notes will appear here once the DJ approves them.</p>
+    <div class="sectionhead"><div><h2 id="comments-title">Comments</h2><p>${isLiveNow ? "One feed for the room and everyone listening from away." : "Notes and replies from the night, in order."}</p></div></div>
+    ${composer}
+    <div class="timeline" id="pp-wall">${timelineItems || `<p class="emptykeepsake">${emptyWallNote}</p>`}</div>
   </section>`;
 
   const waveScript = e.set ? `<script>
@@ -2496,6 +2509,53 @@ fetch(w.getAttribute('data-peaks')).then(function(r){return r.json()}).then(func
 function paint(){if(!bars.length||!a.duration)return;var k=Math.floor((a.currentTime/a.duration)*bars.length);for(var i=0;i<bars.length;i++)bars[i].className=i<=k?'on':''}
 a.addEventListener('timeupdate',paint);
 w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBoundingClientRect();a.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*a.duration});
+})();
+</script>` : "";
+
+  // Live-page glue: the web-guest composer, the ~45s presence heartbeat while
+  // the mirror is audibly playing, and a gentle wall refresh (re-fetch this
+  // page, swap the wall + gallery + live count in place — the <audio> element
+  // is never touched, so playback runs straight through).
+  const liveScript = isLiveNow && e.slug ? `<script>
+(function(){
+  var SLUG=${JSON.stringify(String(e.slug)).replace(/</g, "\\u003c")};
+  function guest(){ try{ return JSON.parse(localStorage.getItem('pp.guest')||'null')||{}; }catch(_){ return {}; } }
+  var t=document.getElementById('pp-comp-text'), send=document.getElementById('pp-comp-send'), err=document.getElementById('pp-comp-err');
+  function submit(){
+    if(!t||!t.value.trim()) return;
+    var g=guest();
+    if(!g.name){ g.name=(prompt('Your name for the party feed?')||'').trim(); if(!g.name) return; try{ localStorage.setItem('pp.guest', JSON.stringify(g)); }catch(_){} }
+    if(err) err.hidden=true;
+    send.disabled=true;
+    fetch('/api/e/'+encodeURIComponent(SLUG)+'/post',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({name:g.name,emoji:g.emoji||'',text:t.value.trim()})})
+      .then(function(r){ if(!r.ok) throw 0; t.value=''; refresh(); })
+      .catch(function(){ if(err){ err.textContent='Could not send — try again.'; err.hidden=false; } })
+      .finally(function(){ send.disabled=false; });
+  }
+  if(send) send.addEventListener('click', submit);
+  if(t) t.addEventListener('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); submit(); } });
+  function playingAudio(){
+    var a=document.getElementById('pp-live-audio');
+    return a && !a.paused && a.currentTime>0;
+  }
+  setInterval(function(){
+    if(!playingAudio()) return;
+    fetch('/api/e/'+encodeURIComponent(SLUG)+'/presence',{method:'POST',credentials:'same-origin'}).catch(function(){});
+  }, 45000);
+  function refresh(){
+    fetch(location.pathname,{credentials:'same-origin',cache:'no-store'})
+      .then(function(r){ return r.ok ? r.text() : Promise.reject(); })
+      .then(function(html){
+        var doc=new DOMParser().parseFromString(html,'text/html');
+        var wall=doc.getElementById('pp-wall'), mine=document.getElementById('pp-wall');
+        if(wall&&mine&&wall.innerHTML!==mine.innerHTML) mine.innerHTML=wall.innerHTML;
+        var gal=doc.querySelector('.media-card'), myGal=document.querySelector('.media-card');
+        if(gal&&myGal&&gal.innerHTML!==myGal.innerHTML) myGal.innerHTML=gal.innerHTML;
+        var cnt=doc.querySelector('.livebar .cnt'), myCnt=document.querySelector('.livebar .cnt');
+        if(cnt&&myCnt) myCnt.innerHTML=cnt.innerHTML;
+      }).catch(function(){});
+  }
+  setInterval(refresh, 12000);
 })();
 </script>` : "";
 
@@ -2516,7 +2576,7 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
     ${commentSection}
     ${aboutCard}
   </div>
-  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}${rsvpScript(Number(e.rsvp_enabled) === 1)}`;
+  <footer><span>🕺 partyparty</span><span>Silent-disco popups on your Mac · <a href="/" style="color:var(--link)">what is this?</a></span></footer>${waveScript}${rsvpScript(Number(e.rsvp_enabled) === 1)}${liveScript}`;
 
   const descBits = [e.when, e.where].filter(Boolean).join(" · ");
   const ogImage = e.cover && e.cover.indexOf("/event/") === 0 ? e.cover : DEFAULT_OG_IMAGE;
@@ -3791,6 +3851,88 @@ async function eventJoin(request, env, slug) {
   const headers = new Headers({ "content-type": "application/json" });
   if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
   return new Response(JSON.stringify({ ok: true, name, emoji }), { status: 200, headers });
+}
+
+// How long after their last heartbeat a web guest still counts as listening.
+const WEB_PRESENCE_TTL_MS = 90_000;
+
+// webListeners: how many web guests are listening to this event right now —
+// event_guests rows whose presence heartbeat is fresh. The same rows double as
+// the guest book, so "listening now" is just recency on updated_ms.
+async function webListeners(env, slug, now) {
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM event_guests WHERE slug=? AND updated_ms>?"
+  ).bind(slug, now - WEB_PRESENCE_TTL_MS).first();
+  return Number(row?.n) || 0;
+}
+
+// eventPresence: the web listener heartbeat (~45s while the live player is
+// playing). Bumps ONLY updated_ms on the guest's row — never name/emoji/email —
+// creating a nameless row first if the guest skipped the join sheet.
+async function eventPresence(request, env, slug) {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
+  }
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const event = await getEventBySlug(env, slug);
+  if (!event) return jsonResp(404, { error: "event not found" });
+  const identity = await rsvpIdentity(env, request, slug, true);
+  const now = nowMs();
+  const key = identity.userId || identity.anonHash;
+  const col = identity.userId ? "user_id" : "anon_key_hash";
+  const upd = await env.DB.prepare(
+    `UPDATE event_guests SET updated_ms=?3 WHERE slug=?1 AND ${col}=?2`
+  ).bind(slug, key, now).run();
+  if (!upd?.meta?.changes) {
+    await env.DB.prepare(
+      `INSERT INTO event_guests (id, slug, user_id, anon_key_hash, name, emoji, email, source, created_ms, updated_ms)
+       VALUES (?, ?, ${identity.userId ? "?, NULL" : "NULL, ?"}, '', '', '', 'web-live', ?, ?)
+       ON CONFLICT(slug,${col}) WHERE ${col} NOT NULL DO UPDATE SET updated_ms=excluded.updated_ms`
+    ).bind(randHex(16), slug, key, now, now).run();
+  }
+  const listeners = await webListeners(env, slug, now);
+  const headers = new Headers({ "content-type": "application/json" });
+  if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
+  return new Response(JSON.stringify({ ok: true, webListeners: listeners }), { status: 200, headers });
+}
+
+// eventWebPost: a web guest's comment on the live event page — the wall is ONE
+// shared feed, so this writes a real posts row (source='web', approved like the
+// room's unmoderated live feed) that renders on the event page immediately and
+// flows into the ROOM via the Mac's live check-in response. Same per-IP throttle
+// as /api/discover to blunt spam; identity name/emoji come from the join sheet.
+async function eventWebPost(request, env, slug) {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
+  }
+  if (!env.DB) return jsonResp(503, { error: "events db not configured" });
+  const event = await getEventBySlug(env, slug);
+  if (!event) return jsonResp(404, { error: "event not found" });
+  const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+  if (await discoverRateLimited(ipHash)) {
+    return jsonResp(429, { error: "slow down" }, { "retry-after": "2" });
+  }
+  const body = await readJson(request, 2048);
+  const text = clip(body?.text, 500).trim();
+  if (!text) return jsonResp(400, { error: "say something first" });
+  const author = clip(body?.name, 40) || "guest";
+  const emoji = clip(body?.emoji, 8);
+  const identity = await rsvpIdentity(env, request, slug, true);
+  const now = nowMs();
+  const id = "web-" + randHex(12);
+  await env.DB.prepare(
+    `INSERT INTO posts (
+       id, slug, author, emoji, text, media_key, media_type, approved, ts_ms, created_ms,
+       author_cid_hash, source, source_install_id, dj, activity_ms, updated_ms, approved_ms, deleted_ms
+     )
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, 1, ?, ?, ?, 'web', NULL, 0, ?, ?, ?, NULL)`
+  ).bind(
+    id, slug, author, emoji, text, now, now,
+    identity.userId ? null : identity.anonHash, now, now, now
+  ).run();
+  const headers = new Headers({ "content-type": "application/json" });
+  if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
+  return new Response(JSON.stringify({ ok: true, id }), { status: 200, headers });
 }
 
 // contentState returns the latest published versions, cached briefly so the
@@ -5215,7 +5357,28 @@ async function broker(request, env, pathname) {
     // Which install represents this handle now (most-recent go-live, primary
     // override) — tells this Mac whether the router points at it.
     const claimant = await liveClaimant(env, handle, now);
-    return jsonResp(200, { ok: true, host, claimed: !!(claimant && claimant.install_id === id) });
+    // The web side of the party rides back on the heartbeat the Mac already
+    // makes: how many web guests are listening, and their recent wall posts —
+    // the Mac injects those into the ROOM feed so both crowds see one party.
+    let webCount = 0;
+    let webPosts = [];
+    if (eventSlug) {
+      try {
+        webCount = await webListeners(env, eventSlug, now);
+        const rows = (await env.DB.prepare(
+          `SELECT id, author, emoji, text, ts_ms FROM posts
+           WHERE slug=? AND source='web' AND approved=1 AND deleted_ms IS NULL AND ts_ms>?
+           ORDER BY ts_ms ASC LIMIT 50`
+        ).bind(eventSlug, now - 6 * 3600_000).all())?.results || [];
+        webPosts = rows.map((r) => ({
+          id: r.id, author: r.author || "", emoji: r.emoji || "", text: r.text || "", ts: r.ts_ms,
+        }));
+      } catch (e) { /* the heartbeat itself must never fail on feed reads */ }
+    }
+    return jsonResp(200, {
+      ok: true, host, claimed: !!(claimant && claimant.install_id === id),
+      webListeners: webCount, webPosts,
+    });
   }
 
   // Clean go-offline (Stop / quit): drop this install's presence immediately and
@@ -5612,6 +5775,24 @@ export default {
       }
     }
 
+    const presence = pathname.match(PRESENCE_RE);
+    if (presence) {
+      try {
+        return await eventPresence(request, env, presence[1]);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
+    const webPost = pathname.match(WEBPOST_RE);
+    if (webPost) {
+      try {
+        return await eventWebPost(request, env, webPost[1]);
+      } catch (e) {
+        return jsonResp(500, { error: String((e && e.message) || e) });
+      }
+    }
+
     const isFeed = pathname === "/appcast.xml";
     const isZip = ZIP_RE.test(pathname);
     if (isFeed || isZip) {
@@ -5948,7 +6129,9 @@ export default {
         live = {
           mirror: playlist ? `/event/${slug}/live/live.m3u8` : "",
           lanUrl: presence?.host ? `${guestOrigin(presence.host, presence.guest_port)}/` : "",
-          listeners: Number(presence?.listeners) || 0,
+          // One party, one count: the room (from the Mac's heartbeat) plus the
+          // web listeners (fresh presence rows).
+          listeners: (Number(presence?.listeners) || 0) + await webListeners(env, slug, nowMs()),
           nowPlaying: presence?.now_playing || "",
         };
       }

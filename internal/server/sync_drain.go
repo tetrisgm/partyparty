@@ -29,11 +29,17 @@ var (
 	syncDrainBacklog = postsync.PendingBacklog
 	syncDrainSync    = postsync.SyncPostsWithOptions
 	syncDrainOnline  = defaultSyncDrainOnline
-	syncDrainIdle    = func(b *broadcast.Broadcaster) bool {
+	// The drain runs while the broadcast is CALM: idle (the after-event mirror)
+	// or steadily live (LIVE feed sharing — room posts reach the web event page
+	// mid-party; posts are tiny and photos ride fine next to the ~320kbps
+	// mirror). Only the brief starting/stopping transitions block it, so a
+	// drain can never compete with a go-live or teardown.
+	syncDrainIdle = func(b *broadcast.Broadcaster) bool {
 		if b == nil {
 			return true
 		}
-		return b.Status().State == "idle"
+		st := b.Status().State
+		return st == "idle" || st == "live"
 	}
 )
 
@@ -115,7 +121,7 @@ func (s *srv) runSyncDrainOnce(ctx context.Context, _ string) (postsync.Backlog,
 		return backlog, false
 	}
 	if !syncDrainIdle(s.Broadcaster) {
-		s.diagf("sync: %d posts / %d media pending (live)", backlog.PostsPending, backlog.MediaPending)
+		s.diagf("sync: %d posts / %d media pending (broadcast transition)", backlog.PostsPending, backlog.MediaPending)
 		return backlog, false
 	}
 	if !syncDrainOnline(ctx, base) {

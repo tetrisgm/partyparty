@@ -1287,6 +1287,45 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	return p, "", nil
 }
 
+// AddWebPost injects a post written by an OFF-LAN guest on the cloud event
+// page into the room's feed — the wall is one shared party. Keyed by the cloud
+// post id (CID "web:<id>", persisted in the journal) so the live check-in can
+// hand us the same posts every beat without duplicates, and marked NoPublish
+// so the after-set mirror never echoes it back to the cloud it came from.
+// Returns whether the post was newly added.
+func (s *Store) AddWebPost(webID, author, emoji, text string) (bool, error) {
+	text = strings.TrimSpace(text)
+	if webID == "" || text == "" {
+		return false, nil
+	}
+	if len(text) > 2000 {
+		text = text[:2000]
+	}
+	cid := "web:" + webID
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.posts {
+		if p.CID == cid {
+			return false, nil // already in the room
+		}
+	}
+	p := &Post{
+		ID: newID(), CID: cid,
+		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text,
+		NoPublish: true,
+	}
+	now := time.Now().UnixMilli()
+	p.TS, p.Act = now, now
+	p.State = initialState(s.meta.ModerationMode)
+	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
+		return false, err
+	}
+	s.posts = append(s.posts, p)
+	s.byID[p.ID] = p
+	s.changed()
+	return true, nil
+}
+
 // AddComment appends a reply under a post.
 func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*Comment, error) {
 	text = strings.TrimSpace(text)

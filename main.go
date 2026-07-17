@@ -129,7 +129,7 @@ func brokerBase() string {
 // telemetryLoop but NOT gated on PARTYPARTY_TELEMETRY — discovery must not hinge
 // on a debug toggle. Best-effort throughout: every call is logged, none blocks
 // the broadcast, and the endpoints may 404 until the Worker side ships.
-func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger, guestPort int) {
+func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger, guestPort int, handler *server.Srv) {
 	if appVersion == "dev" {
 		return // dev/`go run` must not advertise the install's cloud namespace
 	}
@@ -170,6 +170,33 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 				"now_playing": nowPlaying,
 			})
 			if r, err := cl.Post(base+"/api/broker/live", "application/json", bytes.NewReader(body)); err == nil {
+				// The web side of the party rides back on this heartbeat: the
+				// cloud-mirror listener count for the room's combined tally, and
+				// web guests' wall posts to inject into the ROOM feed (deduped by
+				// cloud id inside AddWebPost, so replays every beat are free).
+				var ack struct {
+					WebListeners int `json:"webListeners"`
+					WebPosts     []struct {
+						ID     string `json:"id"`
+						Author string `json:"author"`
+						Emoji  string `json:"emoji"`
+						Text   string `json:"text"`
+					} `json:"webPosts"`
+				}
+				if jerr := json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&ack); jerr == nil {
+					if handler != nil {
+						handler.SetWebListeners(ack.WebListeners)
+					}
+					if events != nil {
+						for _, wp := range ack.WebPosts {
+							if added, aerr := events.AddWebPost(wp.ID, wp.Author, wp.Emoji, wp.Text); aerr != nil {
+								logf("web post inject failed: %v", aerr)
+							} else if added {
+								logf("web post joined the room feed: %s (%s)", wp.ID, wp.Author)
+							}
+						}
+					}
+				}
 				r.Body.Close()
 			} else {
 				logf("live check-in failed: %v", err)
@@ -177,6 +204,9 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 			lastBeat = time.Now()
 			wasLive = true
 		case wasLive:
+			if handler != nil {
+				handler.SetWebListeners(0)
+			}
 			postLiveOffline(base, id, secret, cl, logf)
 			wasLive = false
 			lastBeat = time.Time{}
@@ -922,7 +952,7 @@ func main() {
 	// ("A party is on this Wi-Fi — Join <DJ>"). A sibling to telemetryLoop but
 	// deliberately NOT gated on PARTYPARTY_TELEMETRY — discovery must never depend
 	// on a debug toggle. Best-effort + logged; a graceful stop/quit posts offline.
-	go liveCheckinLoop(bc, events, diagLog, cfg.TLSPort)
+	go liveCheckinLoop(bc, events, diagLog, cfg.TLSPort, handler)
 
 	// Cloud mirror uploader: when the leg is on, ship each go-live's scratch HLS
 	// to the broker for remote guests. One upload session per go-live, torn down

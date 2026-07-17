@@ -114,6 +114,14 @@ class FakeD1Statement {
 
   async first() {
     const sql = this.sql.replace(/\s+/g, " ");
+    if (sql.includes("SELECT COUNT(*) AS n FROM event_guests")) {
+      const [slug, cutoff] = this.args;
+      let n = 0;
+      for (const row of this.db.eventGuests.values()) {
+        if (row.slug === slug && Number(row.updated_ms) > Number(cutoff)) n++;
+      }
+      return { n };
+    }
     if (sql.includes("FROM live_installs WHERE install_id=?")) {
       const row = this.db.liveInstalls.get(this.args[0]);
       return row ? { ...row } : null;
@@ -456,6 +464,17 @@ class FakeD1Statement {
     }
     if (sql.includes("FROM posts p JOIN events e")) {
       return { results: this.db.profilePosts };
+    }
+    if (sql.includes("FROM posts WHERE slug=?") && sql.includes("source='web'")) {
+      // Check-in feed read: this event's recent web posts, oldest first.
+      const [slug, tsCutoff] = this.args;
+      return {
+        results: this.db.wallPosts
+          .filter((r) => r.slug === slug && r.source === "web" && Number(r.ts_ms) > Number(tsCutoff) && !r.deleted_ms)
+          .sort((a, b) => Number(a.ts_ms) - Number(b.ts_ms))
+          .slice(0, 50)
+          .map((r) => ({ ...r })),
+      };
     }
     if (sql.includes("FROM posts WHERE slug=?")) {
       const slug = this.args[0];
@@ -899,6 +918,18 @@ class FakeD1Statement {
       const row = this.db.profiles.find((profile) => profile.id === profileId);
       if (row) row.last_activity_ms = lastActivityMs;
     }
+    if (sql.includes("INSERT INTO posts") && sql.includes("'web'")) {
+      // A web guest's wall post: visible to the same readers as room posts.
+      // MUST precede the mac_sync branch — both SQLs name source_install_id.
+      const [id, slug, author, emoji, text, tsMs, createdMs, cidHash, activityMs, updatedMs, approvedMs] = this.args;
+      this.db.wallPosts.push({
+        id, slug, author, emoji, text, media_key: null, media_type: null,
+        approved: 1, ts_ms: tsMs, created_ms: createdMs, author_cid_hash: cidHash,
+        source: "web", source_install_id: null, dj: 0,
+        activity_ms: activityMs, updated_ms: updatedMs, approved_ms: approvedMs, deleted_ms: null,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
     if (sql.includes("INSERT INTO posts") && sql.includes("source_install_id")) {
       const [
         id, slug, author, emoji, text, approved, tsMs, createdMs, authorCidHash, sourceInstallId,
@@ -1122,6 +1153,33 @@ class FakeD1Statement {
         if (sql.includes("live_ended_ms=COALESCE") && next.live_ended_ms == null) next.live_ended_ms = maybeStamp;
         this.db.events.set(slug, next);
       }
+    }
+    if (sql.includes("UPDATE event_guests SET updated_ms=")) {
+      // Presence heartbeat: bump ONLY updated_ms on the identity's row.
+      const [slug, key, now] = this.args;
+      const isUser = sql.includes("user_id=");
+      const mapKey = isUser ? `${slug}:user:${key}` : `${slug}:anon:${key}`;
+      const old = this.db.eventGuests.get(mapKey);
+      if (old) {
+        this.db.eventGuests.set(mapKey, { ...old, updated_ms: now });
+        return { success: true, meta: { changes: 1 } };
+      }
+      return { success: true, meta: { changes: 0 } };
+    }
+    if (sql.includes("INSERT INTO event_guests") && sql.includes("'', '', ''")) {
+      // Presence for a guest with no join row yet: nameless placeholder.
+      const isUser = sql.includes("ON CONFLICT(slug,user_id)");
+      const [id, slug, key, createdMs, updatedMs] = this.args;
+      const mapKey = isUser ? `${slug}:user:${key}` : `${slug}:anon:${key}`;
+      const old = this.db.eventGuests.get(mapKey);
+      this.db.eventGuests.set(mapKey, old
+        ? { ...old, updated_ms: updatedMs }
+        : {
+            id, slug, user_id: isUser ? key : null, anon_key_hash: isUser ? null : key,
+            name: "", emoji: "", email: "", source: "web-live",
+            created_ms: createdMs, updated_ms: updatedMs,
+          });
+      return { success: true, meta: { changes: 1 } };
     }
     if (sql.includes("INSERT INTO event_guests")) {
       // Web-live guest join: same upsert shape as rsvps, plus email with a
@@ -5314,6 +5372,66 @@ const tests = [
     assert.equal(gone.status, 404);
   }],
 
+  ["shared feed: presence heartbeat counts web listeners; web posts land on the wall and ride the check-in", async () => {
+    const db = new FakeD1({
+      events: [{ slug: "rooftop-night", install_id: "abc123abc123", title: "Rooftop", host: "DJ Wave", status: "live", created_ms: 1, updated_ms: 1 }],
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-w", profile_id: "profile-w", revoked_ms: null }],
+      profiles: [{ id: "profile-w", user_id: "user-w", handle: "wave", display_name: "DJ Wave", published: 1, handle_confirmed_ms: 5 }],
+    });
+    const env = makeEnv({ DB: db });
+    // Heartbeat with no prior join: creates a nameless presence row, counts as 1.
+    const hb = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/presence", {
+      method: "POST", headers: { "cf-connecting-ip": "203.0.113.30" },
+    }), env);
+    assert.equal(hb.status, 200);
+    assert.equal((await hb.json()).webListeners, 1);
+    const cookie = (hb.headers.get("set-cookie") || "").split(";")[0];
+    // A join later (same cookie) fills the name WITHOUT double-counting.
+    await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
+      method: "POST", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ name: "Web Wanda", emoji: "✨" }),
+    }), env);
+    assert.equal([...db.eventGuests.values()].length, 1);
+    // Web guest posts to the shared wall.
+    const post = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/post", {
+      method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30", cookie },
+      body: JSON.stringify({ name: "Web Wanda", emoji: "✨", text: "hi from the internet" }),
+    }), env);
+    assert.equal(post.status, 200);
+    // It renders on the event page wall...
+    const page = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), env);
+    const html = await page.text();
+    assert.match(html, /hi from the internet/);
+    assert.match(html, /Web Wanda/);
+    // ...and rides back to the ROOM on the Mac's live check-in response.
+    await withCloudflareDNSMock(async () => {
+      db.liveInstalls.set("abc123abc123", {
+        install_id: "abc123abc123", handle: "wave", profile_id: "profile-w", public_ip_hash: "h",
+        host: "wave-live.party.example.test", lan_ip: "192.168.1.4", guest_port: 8443,
+        event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 2,
+        now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() + 60000,
+      });
+      const beat = await worker.fetch(new Request("https://party.ramine.net/api/broker/live", {
+        method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.7" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.4", guest_port: 8443 }),
+      }), env);
+      const j = await beat.json();
+      assert.equal(j.ok, true);
+      assert.equal(j.webListeners, 1);
+      assert.equal(j.webPosts.length, 1);
+      assert.equal(j.webPosts[0].author, "Web Wanda");
+      assert.equal(j.webPosts[0].text, "hi from the internet");
+    });
+    // Empty text -> 400. Composer + refresh glue ship on the live page.
+    const empty = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/post", {
+      method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.99" },
+      body: JSON.stringify({ text: "   " }),
+    }), env);
+    assert.equal(empty.status, 400);
+    assert.match(html, /pp-comp-text/);
+    assert.match(html, /\/presence/);
+  }],
+
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
     const db = new FakeD1();
     const env = makeEnv({ DB: db }); // reuse ONE env so R2 state persists across calls
@@ -5493,10 +5611,14 @@ const tests = [
     assert.match(html, /\/api\/e\/rooftop-night\/join/);
     assert.match(html, /Just listen/); // playback is never gated
 
-    // Same live event WITHOUT a mirror playlist in R2 -> no dead player.
+    // Same live event WITHOUT a mirror playlist in R2 -> no dead player element
+    // (the live-page script may still reference the id; only the <audio> matters).
     const noMirror = await worker.fetch(new Request("https://party.ramine.net/e/rooftop-night"), makeEnv({ DB: db }));
     const nmHtml = await noMirror.text();
-    assert.doesNotMatch(nmHtml, /pp-live-audio/);
+    assert.doesNotMatch(nmHtml, /<audio id="pp-live-audio"/);
+    // The shared wall (composer + refresh) still ships while live.
+    assert.match(nmHtml, /pp-comp-text/);
+    assert.match(nmHtml, /pp-wall/);
   }],
 
   ["wildcard router: live handle serves the LAN-probe join page carrying the Mac's :port URL", async () => {

@@ -87,6 +87,11 @@ type srv struct {
 	accStatusMu sync.Mutex
 	accStatus   accountStatusCache
 
+	// Web guests listening to this party's cloud mirror right now, from the
+	// live check-in response (0 while idle/offline). Written by the check-in
+	// loop, read by /api/status — the room and the web share one count.
+	webListeners atomic.Int64
+
 	// Honest fallback readiness: observable reachability only. The watchdog
 	// updates these fields for /api/status; it never changes delivery or
 	// network mode. Guarded by reachMu.
@@ -302,6 +307,16 @@ func (s *Srv) SetStreamHealth(note string) {
 	s.healthMu.Lock()
 	s.streamHealthNote = note
 	s.healthMu.Unlock()
+}
+
+// SetWebListeners records how many web guests are on the cloud mirror right
+// now (from the live check-in response) so the room's surfaces can show one
+// combined party count.
+func (s *Srv) SetWebListeners(n int) {
+	if n < 0 {
+		n = 0
+	}
+	s.webListeners.Store(int64(n))
 }
 
 func (s *srv) streamHealthText() string {
@@ -596,6 +611,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"broadcast":      bc,
 			"listeners":      health.Listeners,
 			"listenersTotal": s.Listeners.TotalUnique(),
+			"webListeners":   s.webListeners.Load(),
 			"health":         health,
 			"urls":           s.urls(),
 			"llhlsUrl":       s.llhlsURL(),

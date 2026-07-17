@@ -322,6 +322,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
+		s.triggerSyncDrain() // live feed sharing: room comments reach the web page in seconds
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": c.ID})
 	case "/api/post-publish":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
@@ -574,6 +575,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
+		s.triggerSyncDrain() // live feed sharing: room posts/photos reach the web page in seconds
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": p.ID})
 	case "/api/upload":
 		if r.Method != http.MethodPost {

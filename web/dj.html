@@ -2279,7 +2279,8 @@
       const txt = { good:'Good', strain:'Strain', congested:'Congested', idle:'Idle' };
       $('healthPill').className = 'badge ' + (cls[h.status] || '');
       $('healthPill').textContent = txt[h.status] || '—';
-      $('healthDetail').textContent = (h.listeners || 0) + ' listening · ' + (h.struggling || 0) +
+      $('healthDetail').textContent = (h.listeners || 0) + ' listening' +
+        (Number(s.webListeners) > 0 ? ' · ' + s.webListeners + ' online' : '') + ' · ' + (h.struggling || 0) +
         ' struggling · ~' + (h.mbps ? h.mbps.toFixed(1) : '0') + ' Mbps';
       $('healthSuggest').style.display = h.suggestion ? 'block' : 'none';
       $('healthSuggest').textContent = h.suggestion || '';
