@@ -4956,6 +4956,7 @@ async function broker(request, env, pathname) {
       if (op === "create") {
         const rec = { type: String(body.type || "A"), name: String(body.name || ""), content: String(body.content || ""), ttl: 1, proxied: body.proxied !== false };
         if (!rec.name || !rec.content) return jsonResp(400, { error: "name and content required" });
+        if (body.priority != null) rec.priority = Number(body.priority) || 0; // MX
         const made = await cfDNS(env, "POST", "", rec);
         return jsonResp(200, { ok: true, id: made?.id || "" });
       }
