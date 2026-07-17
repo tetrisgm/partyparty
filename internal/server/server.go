@@ -319,6 +319,15 @@ func (s *Srv) SetWebListeners(n int) {
 	s.webListeners.Store(int64(n))
 }
 
+// ActiveListeners is the LAN listener count the check-in reports to the broker
+// so the web event page can show the ROOM's side of the combined party count.
+func (s *Srv) ActiveListeners() int {
+	if s.Listeners == nil {
+		return 0
+	}
+	return s.Listeners.Active()
+}
+
 func (s *srv) streamHealthText() string {
 	s.healthMu.Lock()
 	defer s.healthMu.Unlock()

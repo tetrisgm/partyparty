@@ -83,6 +83,10 @@ const INSTALL_BROWSER_LINK_INSTALL_CAP = 5;
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const clip = (s, n) => String(s == null ? "" : s).slice(0, n);
+// Strip C0/C1 controls and Unicode bidi/direction overrides (U+202A-E,
+// U+2066-69, LRM/RLM) from guest-authored text: a bidi override in a "name"
+// can visually reorder everything rendered after it on the wall.
+const stripControl = (s) => String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
 const randHex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
 const absUrl = (s) => {
   try { return new URL(s || "/", SITE_ORIGIN).href; }
@@ -2542,11 +2546,19 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
     if(!playingAudio()) return;
     fetch('/api/e/'+encodeURIComponent(SLUG)+'/presence',{method:'POST',credentials:'same-origin'}).catch(function(){});
   }, 45000);
+  var refreshTimer=null;
   function refresh(){
+    if(document.hidden) return; // background tabs don't need a fresh wall
     fetch(location.pathname,{credentials:'same-origin',cache:'no-store'})
       .then(function(r){ return r.ok ? r.text() : Promise.reject(); })
       .then(function(html){
         var doc=new DOMParser().parseFromString(html,'text/html');
+        if(!doc.getElementById('pp-composer')){
+          // The set ended (the page renders as a replay now): stop polling so an
+          // abandoned tab doesn't hit the Worker every 12s forever.
+          if(refreshTimer) clearInterval(refreshTimer);
+          return;
+        }
         var wall=doc.getElementById('pp-wall'), mine=document.getElementById('pp-wall');
         if(wall&&mine&&wall.innerHTML!==mine.innerHTML) mine.innerHTML=wall.innerHTML;
         var gal=doc.querySelector('.media-card'), myGal=document.querySelector('.media-card');
@@ -2555,7 +2567,7 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
         if(cnt&&myCnt) myCnt.innerHTML=cnt.innerHTML;
       }).catch(function(){});
   }
-  setInterval(refresh, 12000);
+  refreshTimer=setInterval(refresh, 12000);
 })();
 </script>` : "";
 
@@ -3820,8 +3832,12 @@ async function eventJoin(request, env, slug) {
   const event = await getEventBySlug(env, slug);
   if (!event) return jsonResp(404, { error: "event not found" });
 
+  const joinIPHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+  if (await discoverRateLimited(joinIPHash, `join/${slug}`, 2)) {
+    return jsonResp(429, { error: "slow down" }, { "retry-after": "2" });
+  }
   const body = await readJson(request, 2048);
-  const name = clip(body?.name, 40);
+  const name = stripControl(clip(body?.name, 40)).trim();
   const emoji = clip(body?.emoji, 8);
   const email = clip(body?.email, 120).trim().toLowerCase();
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -3869,6 +3885,12 @@ async function webListeners(env, slug, now) {
 // eventPresence: the web listener heartbeat (~45s while the live player is
 // playing). Bumps ONLY updated_ms on the guest's row — never name/emoji/email —
 // creating a nameless row first if the guest skipped the join sheet.
+// Inflation-hardened (review finding): the anon identity is derived
+// SERVER-SIDE from the caller's edge IP — a client-supplied cookie could mint
+// unlimited distinct rows and set the public "listening" count to any number.
+// (For a guest with no prior cookie this is the SAME ip:<ip>:<slug> hash
+// rsvpIdentity mints, so their later join sheet lands on the same row.) Live
+// events only: a years-old keepsake page can't have its count inflated.
 async function eventPresence(request, env, slug) {
   if (request.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
@@ -3876,24 +3898,25 @@ async function eventPresence(request, env, slug) {
   if (!env.DB) return jsonResp(503, { error: "events db not configured" });
   const event = await getEventBySlug(env, slug);
   if (!event) return jsonResp(404, { error: "event not found" });
-  const identity = await rsvpIdentity(env, request, slug, true);
+  if (event.status !== "live") return jsonResp(200, { ok: true, webListeners: 0 });
+  const user = await getSessionUser(env, request);
   const now = nowMs();
-  const key = identity.userId || identity.anonHash;
-  const col = identity.userId ? "user_id" : "anon_key_hash";
+  const key = user?.id
+    ? String(user.id)
+    : await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}:${slug}`);
+  const col = user?.id ? "user_id" : "anon_key_hash";
   const upd = await env.DB.prepare(
     `UPDATE event_guests SET updated_ms=?3 WHERE slug=?1 AND ${col}=?2`
   ).bind(slug, key, now).run();
   if (!upd?.meta?.changes) {
     await env.DB.prepare(
       `INSERT INTO event_guests (id, slug, user_id, anon_key_hash, name, emoji, email, source, created_ms, updated_ms)
-       VALUES (?, ?, ${identity.userId ? "?, NULL" : "NULL, ?"}, '', '', '', 'web-live', ?, ?)
+       VALUES (?, ?, ${user?.id ? "?, NULL" : "NULL, ?"}, '', '', '', 'web-live', ?, ?)
        ON CONFLICT(slug,${col}) WHERE ${col} NOT NULL DO UPDATE SET updated_ms=excluded.updated_ms`
     ).bind(randHex(16), slug, key, now, now).run();
   }
   const listeners = await webListeners(env, slug, now);
-  const headers = new Headers({ "content-type": "application/json" });
-  if (identity.minted) headers.append("set-cookie", cookieHeader("pp_rsvp", identity.cookieId, { maxAge: 60 * 60 * 24 * 365 }));
-  return new Response(JSON.stringify({ ok: true, webListeners: listeners }), { status: 200, headers });
+  return jsonResp(200, { ok: true, webListeners: listeners });
 }
 
 // eventWebPost: a web guest's comment on the live event page — the wall is ONE
@@ -3908,17 +3931,35 @@ async function eventWebPost(request, env, slug) {
   if (!env.DB) return jsonResp(503, { error: "events db not configured" });
   const event = await getEventBySlug(env, slug);
   if (!event) return jsonResp(404, { error: "event not found" });
+  // Live parties only (review finding): a replay keepsake must not accept new
+  // unmoderated posts forever via curl — this mirrors when the composer renders.
+  if (event.status !== "live") return jsonResp(403, { error: "the party isn't live" });
   const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
-  if (await discoverRateLimited(ipHash)) {
-    return jsonResp(429, { error: "slow down" }, { "retry-after": "2" });
+  if (await discoverRateLimited(ipHash, `post/${slug}`, 1)) {
+    return jsonResp(429, { error: "slow down" }, { "retry-after": "1" });
   }
   const body = await readJson(request, 2048);
-  const text = clip(body?.text, 500).trim();
+  const text = stripControl(clip(body?.text, 500)).trim();
   if (!text) return jsonResp(400, { error: "say something first" });
-  const author = clip(body?.name, 40) || "guest";
+  const author = stripControl(clip(body?.name, 40)).trim() || "guest";
   const emoji = clip(body?.emoji, 8);
   const identity = await rsvpIdentity(env, request, slug, true);
   const now = nowMs();
+  // Authoritative caps in D1 (the edge throttle is best-effort per-colo and
+  // fail-open): one identity gets 6 posts/minute; one event's live wall takes
+  // at most 300 web posts per 6h window — a rotating-cookie flood hits the
+  // event ceiling instead of the room feed.
+  const idKey = identity.userId ? null : identity.anonHash;
+  const [mine, total] = await Promise.all([
+    env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>? AND author_cid_hash=?"
+    ).bind(slug, now - 60_000, idKey || `user:${identity.userId}`).first(),
+    env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM posts WHERE slug=? AND source='web' AND ts_ms>?"
+    ).bind(slug, now - 6 * 3600_000).first(),
+  ]);
+  if ((Number(mine?.n) || 0) >= 6) return jsonResp(429, { error: "slow down a little" }, { "retry-after": "30" });
+  if ((Number(total?.n) || 0) >= 300) return jsonResp(429, { error: "the wall is full for now" });
   const id = "web-" + randHex(12);
   await env.DB.prepare(
     `INSERT INTO posts (
@@ -4250,15 +4291,18 @@ async function discover(request, env) {
   return jsonResp(200, { parties }, noStore);
 }
 
-// Coarse per-IP throttle for /api/discover via the edge cache (best-effort; any
-// failure just lets the request through). ~1 request / 2s / egress IP.
-async function discoverRateLimited(ipHash) {
+// Coarse per-IP throttle via the edge cache (best-effort per-colo; any failure
+// lets the request through — authoritative caps live in D1 where they matter).
+// Buckets are per-endpoint (+slug where passed) so one guest hitting discover
+// and then posting isn't self-throttled, and one event's traffic can't starve
+// another's.
+async function discoverRateLimited(ipHash, bucket = "discover", maxAge = 2) {
   try {
     const cache = caches.default;
     if (!cache) return false;
-    const key = new Request(`https://ratelimit.partyparty.internal/discover/${ipHash}`);
+    const key = new Request(`https://ratelimit.partyparty.internal/${bucket}/${ipHash}`);
     if (await cache.match(key)) return true;
-    await cache.put(key, new Response("1", { headers: { "cache-control": "max-age=2" } }));
+    await cache.put(key, new Response("1", { headers: { "cache-control": `max-age=${maxAge}` } }));
     return false;
   } catch (e) {
     return false;
@@ -5365,11 +5409,16 @@ async function broker(request, env, pathname) {
     if (eventSlug) {
       try {
         webCount = await webListeners(env, eventSlug, now);
+        // Cursor (review finding): without it, >50 web posts in the window
+        // starves delivery — the oldest 50 are re-sent forever and newer posts
+        // never reach the room. The Mac echoes the max ts it has ingested;
+        // its CID dedupe makes an approximate cursor perfectly safe.
+        const webSince = Math.max(now - 6 * 3600_000, Math.floor(Number(body.web_since) || 0));
         const rows = (await env.DB.prepare(
           `SELECT id, author, emoji, text, ts_ms FROM posts
            WHERE slug=? AND source='web' AND approved=1 AND deleted_ms IS NULL AND ts_ms>?
            ORDER BY ts_ms ASC LIMIT 50`
-        ).bind(eventSlug, now - 6 * 3600_000).all())?.results || [];
+        ).bind(eventSlug, webSince).all())?.results || [];
         webPosts = rows.map((r) => ({
           id: r.id, author: r.author || "", emoji: r.emoji || "", text: r.text || "", ts: r.ts_ms,
         }));

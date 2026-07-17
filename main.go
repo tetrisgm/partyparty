@@ -146,6 +146,8 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 	}
 	wasLive := false
 	var lastBeat time.Time
+	var webSince int64 // max web-post ts ingested (the check-in delivery cursor)
+	beatFails := 0
 	for {
 		// Poll faster than the 30s heartbeat so the live->idle edge (a Stop that
 		// doesn't quit the app) drops presence promptly; the beat itself is still
@@ -162,10 +164,16 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 				title = events.Meta().Title
 				nowPlaying = liveNowPlaying(events)
 			}
+			lanListeners := 0
+			if handler != nil {
+				lanListeners = handler.ActiveListeners()
+			}
 			body, _ := json.Marshal(map[string]any{
 				"id": id, "secret": secret,
 				"lan_ip":      netinfo.PrimaryLanIP(),
 				"guest_port":  guestPort, // the :port guests need to reach this Mac's HTTPS listener
+				"listeners":   lanListeners,
+				"web_since":   webSince, // delivery cursor: only web posts newer than what we've ingested
 				"title":       title,
 				"now_playing": nowPlaying,
 			})
@@ -173,7 +181,7 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 				// The web side of the party rides back on this heartbeat: the
 				// cloud-mirror listener count for the room's combined tally, and
 				// web guests' wall posts to inject into the ROOM feed (deduped by
-				// cloud id inside AddWebPost, so replays every beat are free).
+				// cloud id inside AddWebPost, so replays are always safe).
 				var ack struct {
 					WebListeners int `json:"webListeners"`
 					WebPosts     []struct {
@@ -181,25 +189,40 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 						Author string `json:"author"`
 						Emoji  string `json:"emoji"`
 						Text   string `json:"text"`
+						TS     int64  `json:"ts"`
 					} `json:"webPosts"`
 				}
-				if jerr := json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&ack); jerr == nil {
+				if r.StatusCode == http.StatusOK &&
+					json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&ack) == nil {
+					beatFails = 0
 					if handler != nil {
 						handler.SetWebListeners(ack.WebListeners)
 					}
 					if events != nil {
 						for _, wp := range ack.WebPosts {
-							if added, aerr := events.AddWebPost(wp.ID, wp.Author, wp.Emoji, wp.Text); aerr != nil {
+							if added, aerr := events.AddWebPost(wp.ID, wp.Author, wp.Emoji, wp.Text, wp.TS); aerr != nil {
 								logf("web post inject failed: %v", aerr)
 							} else if added {
 								logf("web post joined the room feed: %s (%s)", wp.ID, wp.Author)
 							}
+							if wp.TS > webSince {
+								webSince = wp.TS
+							}
 						}
+					}
+				} else {
+					// A broker outage or captive-portal HTML must not leave a stale
+					// "M online" painted on the console for the rest of the set.
+					if beatFails++; beatFails >= 3 && handler != nil {
+						handler.SetWebListeners(0)
 					}
 				}
 				r.Body.Close()
 			} else {
 				logf("live check-in failed: %v", err)
+				if beatFails++; beatFails >= 3 && handler != nil {
+					handler.SetWebListeners(0)
+				}
 			}
 			lastBeat = time.Now()
 			wasLive = true

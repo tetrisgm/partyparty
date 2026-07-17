@@ -64,7 +64,12 @@ type Post struct {
 	Comments  []Comment      `json:"comments,omitempty"`
 	Reactions map[string]int `json:"reactions,omitempty"`
 	NoPublish bool           `json:"noPublish,omitempty"`
-	Deleted   bool           `json:"-"`
+	// Web marks a post that ORIGINATED on the cloud event page (injected into
+	// the room by the live check-in). Derived from the journal CID prefix on
+	// load; the console uses it to hide the publish toggle (web posts already
+	// live in the cloud — republishing is meaningless).
+	Web     bool `json:"web,omitempty"`
+	Deleted bool `json:"-"`
 }
 
 // Request is one private guest song request for the DJ. CID stays server-side;
@@ -468,6 +473,9 @@ func (s *Store) use(dir string) error {
 			case l.Op == "post" && l.Post != nil:
 				p := *l.Post
 				p.CID = l.CID
+				if strings.HasPrefix(l.CID, "web:") {
+					p.Web = true // journals written before the field get it back
+				}
 				p.State = normalizeState(p.State)
 				for i := range p.Comments {
 					p.Comments[i].State = normalizeState(p.Comments[i].State)
@@ -1293,7 +1301,7 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 // hand us the same posts every beat without duplicates, and marked NoPublish
 // so the after-set mirror never echoes it back to the cloud it came from.
 // Returns whether the post was newly added.
-func (s *Store) AddWebPost(webID, author, emoji, text string) (bool, error) {
+func (s *Store) AddWebPost(webID, author, emoji, text string, ts int64) (bool, error) {
 	text = strings.TrimSpace(text)
 	if webID == "" || text == "" {
 		return false, nil
@@ -1312,10 +1320,16 @@ func (s *Store) AddWebPost(webID, author, emoji, text string) (bool, error) {
 	p := &Post{
 		ID: newID(), CID: cid,
 		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text,
-		NoPublish: true,
+		NoPublish: true, Web: true,
 	}
+	// Keep the cloud's timestamp when sane so the shared wall orders the same
+	// on both sides; fall back to arrival time for garbage.
 	now := time.Now().UnixMilli()
-	p.TS, p.Act = now, now
+	if ts > 0 && ts <= now {
+		p.TS, p.Act = ts, ts
+	} else {
+		p.TS, p.Act = now, now
+	}
 	p.State = initialState(s.meta.ModerationMode)
 	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
 		return false, err

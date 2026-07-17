@@ -13,20 +13,20 @@ func TestAddWebPostDedupesAndNeverRepublishes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	added, err := st.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet")
+	added, err := st.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet", 0)
 	if err != nil || !added {
 		t.Fatalf("first AddWebPost = (%v, %v), want (true, nil)", added, err)
 	}
 	// The same cloud post on the next beat is a no-op.
-	added, err = st.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet")
+	added, err = st.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet", 0)
 	if err != nil || added {
 		t.Fatalf("replayed AddWebPost = (%v, %v), want (false, nil)", added, err)
 	}
 	// Blank input never creates a post.
-	if added, _ = st.AddWebPost("", "x", "", "text"); added {
+	if added, _ = st.AddWebPost("", "x", "", "text", 0); added {
 		t.Fatal("empty webID must not add")
 	}
-	if added, _ = st.AddWebPost("web-def", "x", "", "   "); added {
+	if added, _ = st.AddWebPost("web-def", "x", "", "   ", 0); added {
 		t.Fatal("empty text must not add")
 	}
 
@@ -47,11 +47,11 @@ func TestAddWebPostDedupesAndNeverRepublishes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	added, err = st.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet")
+	added, err = st.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet", 0)
 	if err != nil || added {
 		t.Fatalf("post-reload AddWebPost on original store = (%v, %v), want (false, nil)", added, err)
 	}
-	if added, _ = reloaded.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet"); added {
+	if added, _ = reloaded.AddWebPost("web-abc123", "Web Wanda", "✨", "hi from the internet", 0); added {
 		t.Fatal("reloaded store re-added an already-journaled web post")
 	}
 	rposts, _, _ := reloaded.Feed(0)

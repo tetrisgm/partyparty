@@ -3158,7 +3158,9 @@
         stateBadge(stateOf(p)) +
         '<span style="margin-left:auto;display:flex;gap:6px;align-items:center">' +
         modButtons(p.id, '', stateOf(p)) +
-        '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Choose whether this post joins the online replay page later.">' + (p.noPublish ? 'online: skip' : 'online: publish') + '</button>' +
+        (p.web
+          ? '<span class="pubbtn off" style="cursor:default;text-decoration:none" title="Posted from the web event page — it already lives online.">from the web</span>'
+          : '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Choose whether this post joins the online replay page later.">' + (p.noPublish ? 'online: skip' : 'online: publish') + '</button>') +
         '<button class="pdel" data-del="' + escT(p.id) + '">Remove</button></span></div>' +
         (p.text ? '<div class="wtext' + big + '">' + escT(p.text) + '</div>' : '') +
         (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '') +

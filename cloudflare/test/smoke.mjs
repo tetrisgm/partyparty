@@ -5385,10 +5385,12 @@ const tests = [
     }), env);
     assert.equal(hb.status, 200);
     assert.equal((await hb.json()).webListeners, 1);
-    const cookie = (hb.headers.get("set-cookie") || "").split(";")[0];
-    // A join later (same cookie) fills the name WITHOUT double-counting.
+    // Presence identity is server-derived from the caller's IP (inflation-proof);
+    // a later cookie-less join from the same IP mints the SAME ip:<ip>:<slug>
+    // hash, so it fills the name on the same row without double-counting.
+    const cookie = "";
     await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/join", {
-      method: "POST", headers: { "content-type": "application/json", cookie },
+      method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30" },
       body: JSON.stringify({ name: "Web Wanda", emoji: "✨" }),
     }), env);
     assert.equal([...db.eventGuests.values()].length, 1);
@@ -5430,6 +5432,32 @@ const tests = [
     assert.equal(empty.status, 400);
     assert.match(html, /pp-comp-text/);
     assert.match(html, /\/presence/);
+
+    // Replay keepsakes are CLOSED: no new posts, no count inflation (review).
+    const replayDb = new FakeD1({
+      events: [{ slug: "old-night", install_id: "abc123abc123", title: "Old", host: "DJ", status: "replay", created_ms: 1, updated_ms: 1 }],
+    });
+    const replayEnv = makeEnv({ DB: replayDb });
+    const deadPost = await worker.fetch(new Request("https://party.ramine.net/api/e/old-night/post", {
+      method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.50" },
+      body: JSON.stringify({ text: "necro comment" }),
+    }), replayEnv);
+    assert.equal(deadPost.status, 403);
+    const deadPresence = await worker.fetch(new Request("https://party.ramine.net/api/e/old-night/presence", {
+      method: "POST", headers: { "cf-connecting-ip": "203.0.113.50" },
+    }), replayEnv);
+    assert.equal((await deadPresence.json()).webListeners, 0);
+    assert.equal([...replayDb.eventGuests.values()].length, 0);
+
+    // Bidi/control injection is stripped from guest-authored text (review).
+    const bidi = await worker.fetch(new Request("https://party.ramine.net/api/e/rooftop-night/post", {
+      method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.51" },
+      body: JSON.stringify({ name: "evil‮name", text: "hi‮ there " }),
+    }), env);
+    assert.equal(bidi.status, 200);
+    const bidiPost = env.DB.wallPosts.find((p) => p.author.startsWith("evil"));
+    assert.equal(bidiPost.author, "evilname");
+    assert.equal(bidiPost.text, "hi there");
   }],
 
   ["live mirror ingest + serve: segment audio/mp2t (cacheable), playlist mpegurl (no-store), inline eviction", async () => {
