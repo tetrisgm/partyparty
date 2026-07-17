@@ -15,7 +15,7 @@ Safari cohort has ample history and takes the same synchronization path.
 ## One-time setup
 
 1. **Pick a hostname** on a domain you control that's on Cloudflare, e.g.
-   `dj.ramine.net`. Nothing needs to exist at it.
+   `dj.example.net`. Nothing needs to exist at it.
 
 2. **Create a Cloudflare API token** (you do this — it's a credential):
    dash.cloudflare.com → My Profile → API Tokens → Create Token → *Custom token*
@@ -27,7 +27,7 @@ Safari cohort has ample history and takes the same synchronization path.
    ```sh
    mkdir -p ~/Library/Application\ Support/partyparty
    pbpaste > ~/Library/Application\ Support/partyparty/cf-token   # paste the token first
-   echo -n dj.ramine.net > ~/Library/Application\ Support/partyparty/live-host
+   echo -n dj.example.net > ~/Library/Application\ Support/partyparty/live-host
    ```
 
    (Both also accept env vars / flags for CLI runs: `PARTYPARTY_CF_TOKEN`,
@@ -42,7 +42,7 @@ With both configured, every launch checks the secure path before guest playback:
    Cloudflare API; no inbound connectivity needed). Cached in
    `~/Library/Application Support/partyparty/`. First run takes ~1–2 min;
    after that it's instant for ~60 days.
-2. **A record** — upsert `dj.ramine.net → <the Mac's LAN IP>` (DNS-only, never
+2. **A record** — upsert `dj.example.net → <the Mac's LAN IP>` (DNS-only, never
    proxied). Yes, a private IP in public DNS — that's the Plex trick: guests on
    your Wi-Fi resolve the public name to the local Mac.
 3. **Self-check** — resolve the host through the system resolver (the same path

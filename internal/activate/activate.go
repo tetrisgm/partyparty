@@ -8,7 +8,7 @@
 //     exactly what Plex does).
 //
 // Requirements (both optional — without them partyparty just uses plain HLS):
-//   - PARTYPARTY_LIVE_HOST (or --live-host): e.g. "dj.ramine.net"
+//   - PARTYPARTY_LIVE_HOST (or --live-host): e.g. "dj.example.net"
 //   - PARTYPARTY_CF_TOKEN env, or a token in <app-support>/cf-token, scoped to
 //     Zone → DNS → Edit for that host's zone.
 //
@@ -154,7 +154,7 @@ func Try(host, token string, lanIP string, logf Logf) Result {
 
 // TryBroker is the zero-config activation path (the Plex pattern): the install
 // registers with the partyparty.party cert broker once and gets a MEMORABLE
-// hostname (disco42.pp.ramine.net — no IP-encoded eyesores), issues an exact
+// hostname (disco42.pp.example.net — no IP-encoded eyesores), issues an exact
 // cert for it locally (the private key never leaves this Mac; the broker only
 // publishes DNS records), and upserts the single A record to the current venue
 // IP at every launch. Fails soft like Try.
@@ -889,7 +889,7 @@ func (c *cfAPI) do(ctx context.Context, method, url string, body any, out any) e
 }
 
 // zone finds the zone id for host by walking suffixes (dj.partyparty.party →
-// partyparty.party → ramine.net).
+// partyparty.party → example.net).
 func (c *cfAPI) zone(ctx context.Context, host string) (string, error) {
 	if c.zoneID != "" {
 		return c.zoneID, nil
