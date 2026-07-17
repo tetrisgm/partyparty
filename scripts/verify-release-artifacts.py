@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
-EXPECTED_FEED_URL = "https://party.ramine.net/appcast.xml"
+EXPECTED_FEED_URL = "https://partyparty.party/appcast.xml"
 
 
 def fail(message):
@@ -159,7 +159,7 @@ def main():
     parser.add_argument("--app", required=True)
     parser.add_argument("--zip", required=True)
     parser.add_argument("--appcast", required=True)
-    parser.add_argument("--base-url", default="https://party.ramine.net")
+    parser.add_argument("--base-url", default="https://partyparty.party")
     parser.add_argument("--installed-app", default="auto")
     parser.add_argument("--installed-build", default="")
     parser.add_argument("--require-newer-than-installed", action="store_true")

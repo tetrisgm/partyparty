@@ -57,7 +57,7 @@ notarize: app
 ship:
 	./scripts/ship.sh
 
-# Publish the landing page + current app download to party.ramine.net
+# Publish the landing page + current app download to partyparty.party
 # (Cloudflare Worker + R2). Lower-level helper; prefer `make ship`.
 deploy-site:
 	./scripts/deploy-site.sh
