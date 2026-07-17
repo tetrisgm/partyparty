@@ -4939,6 +4939,37 @@ async function broker(request, env, pathname) {
     }
     return jsonResp(200, { installs });
   }
+
+  // Admin-only zone-record maintenance in THIS worker's zone (env.CF_ZONE_ID)
+  // through the same DNS token the cert broker already holds. Exists for
+  // operations the broker's own flows don't cover: deleting imported junk that
+  // blocks custom-domain provisioning, bootstrapping the wildcard record. Ops:
+  // list / create / delete-by-id.
+  if (pathname === "/api/broker/dns-admin") {
+    if (!isAdmin) return jsonResp(403, { error: "admin only" });
+    const op = String(body.op || "list");
+    try {
+      if (op === "list") {
+        const recs = await cfDNS(env, "GET", `?per_page=100`);
+        return jsonResp(200, { ok: true, records: (recs || []).map((r) => ({ id: r.id, type: r.type, name: r.name, content: r.content, proxied: r.proxied })) });
+      }
+      if (op === "create") {
+        const rec = { type: String(body.type || "A"), name: String(body.name || ""), content: String(body.content || ""), ttl: 1, proxied: body.proxied !== false };
+        if (!rec.name || !rec.content) return jsonResp(400, { error: "name and content required" });
+        const made = await cfDNS(env, "POST", "", rec);
+        return jsonResp(200, { ok: true, id: made?.id || "" });
+      }
+      if (op === "delete") {
+        const rid = String(body.recordId || "");
+        if (!rid) return jsonResp(400, { error: "recordId required" });
+        await cfDNS(env, "DELETE", "/" + rid);
+        return jsonResp(200, { ok: true });
+      }
+      return jsonResp(400, { error: "bad op" });
+    } catch (e) {
+      return jsonResp(502, { error: String((e && e.message) || e) });
+    }
+  }
   const id = String(body.id || "");
   if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
 

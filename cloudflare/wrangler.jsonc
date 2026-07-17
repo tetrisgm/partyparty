@@ -49,7 +49,10 @@
     "AUTH_DEV_DIRECT": "1",
     "AUTH_DEV_EMAILS": "ramine@ramine.net",
     "BROKER_BASE": "partyparty.party",
-    "CF_ZONE_ID": "56cc234f25b32b90b9bc3b872a3d58fc"
+    // The partyparty.party zone — machine hostnames' grey A records and ACME
+    // TXT challenges are written here. (Old grey records in the ramine.net
+    // zone are orphaned by design; they pointed at LAN IPs and expire from use.)
+    "CF_ZONE_ID": "f156a8f56d299f1d0451bbb9223c1f08"
   },
 
   // Bind the Worker to the product domain. custom_domain:true makes wrangler
