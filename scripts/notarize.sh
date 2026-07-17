@@ -14,8 +14,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 APP="build/partyparty.app"
-PROFILE="${PP_NOTARY_PROFILE:-pp-notary}"
 ZIP="build/partyparty-notarize.zip"
+SUBMISSION_ID_FILE="build/partyparty-notarize.id"
+
+# shellcheck source=scripts/notary-lib.sh
+. "scripts/notary-lib.sh"
+
+cleanup() {
+  rm -f "$ZIP" "$SUBMISSION_ID_FILE"
+}
+trap cleanup EXIT
 
 [ -d "$APP" ] || { echo "Build the app first: make app"; exit 1; }
 
@@ -23,12 +31,10 @@ echo ">> zipping the app for submission"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 
-echo ">> submitting to Apple notary service (waits; usually 1-5 min)"
-xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait
+notary_submit_with_retry "$ZIP" "app" "$SUBMISSION_ID_FILE"
 
 echo ">> stapling the ticket to the app"
 xcrun stapler staple "$APP"
 xcrun stapler validate "$APP"
-rm -f "$ZIP"
 echo ">> notarized + stapled: $APP"
 spctl -a -vvv -t exec "$APP" 2>&1 | head -3 || true
