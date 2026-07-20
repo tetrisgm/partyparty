@@ -49,8 +49,8 @@ const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 // Fallback only — /api/version reads the live content/app-version R2 marker at
 // runtime (release.sh keeps it current). Keep this ~current so the fallback path
 // is never badly stale.
-const APP_VERSION = "68.75";
-const APP_VERSION_DATE = "2026-07-17";
+const APP_VERSION = "69.75";
+const APP_VERSION_DATE = "2026-07-20";
 const SESSION_COOKIE = "pp_session";
 const POST_MEDIA_MIME = {
   image: ["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic"],
@@ -4076,7 +4076,7 @@ async function readContentState(env) {
 }
 
 
-// machineHost: a Mac's LAN hostname lives under m.<base>, deliberately OUTSIDE
+// machineHost: a Mac's LAN hostname lives under party.<base>, deliberately OUTSIDE
 // the *.<base> wildcard (a DNS wildcard matches exactly ONE label). So a
 // machine name whose grey record does not exist is NXDOMAIN — and the browser
 // LAN probe fails closed — instead of resolving to Cloudflare's proxy, which
@@ -4084,7 +4084,7 @@ async function readContentState(env) {
 // off-LAN guest can reach the Mac. Certs are unaffected: each Mac holds its own
 // exact-name Let's Encrypt cert via the broker's DNS-01 flow.
 function machineHost(env, label) {
-  return `${label}.m.${env.BROKER_BASE}`;
+  return `${label}.party.${env.BROKER_BASE}`;
 }
 
 async function cfDNS(env, method, suffix, body, zoneId) {
