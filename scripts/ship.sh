@@ -63,7 +63,14 @@ if [ -z "$VERSION" ]; then
   if [ "$MODE" = "payload" ]; then
     VERSION="$CURRENT_CODE.$((CURRENT_PAYLOAD + 1))"
   else
-    VERSION="$((CURRENT_CODE + 1)).$CURRENT_PAYLOAD"
+    # Collision-proof: the next code is max(source, published) + 1. A ship that
+    # published a higher version but failed before committing the source bump (or
+    # had it reset) must not recompute a version that isn't newer than what's
+    # already public — that deadlocks the "newer than installed/published" gate.
+    PUB_CODE="$(curl -s --max-time 8 https://partyparty.party/api/version 2>/dev/null | grep -oE '"version":"[0-9]+' | grep -oE '[0-9]+$' | head -1)"
+    BASE_CODE="$CURRENT_CODE"
+    if [ -n "$PUB_CODE" ] && [ "$PUB_CODE" -gt "$BASE_CODE" ] 2>/dev/null; then BASE_CODE="$PUB_CODE"; fi
+    VERSION="$((BASE_CODE + 1)).$CURRENT_PAYLOAD"
   fi
 fi
 

@@ -52,8 +52,9 @@ sleep "$DEBOUNCE"
 
 # --- ship the latest ----------------------------------------------------------
 log "shipping $(git rev-parse --short HEAD): $(git log -1 --format=%s)"
-if ! scripts/ship.sh $SHIP_ARGS >> "$LOG" 2>&1; then
-  rc=$?
+scripts/ship.sh $SHIP_ARGS >> "$LOG" 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then
   log "ship.sh FAILED (exit $rc) — resetting the version bump; will retry on next trigger"
   git checkout -- CODE_MAJOR web/PAYLOAD_VERSION app/Info.plist cloudflare/worker.js 2>/dev/null || true
   exit "$rc"

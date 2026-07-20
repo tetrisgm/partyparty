@@ -33,7 +33,15 @@ SPK="$ROOT/app/.build/artifacts/sparkle/Sparkle/bin"
 CODE_MAJOR="$(tr -dc '0-9' < CODE_MAJOR)"
 PAYLOAD="$(tr -dc '0-9' < web/PAYLOAD_VERSION)"
 VERSION="$CODE_MAJOR.$PAYLOAD"
-BUILD="$(( $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' app/Info.plist) + 1 ))"
+# CFBundleVersion (Sparkle's monotonic comparison key) = max(source, installed,
+# published) + 1. Deriving from source alone collides when a prior ship pushed a
+# higher build but the source bump was reset/uncommitted, deadlocking the
+# "appcast build must be newer than installed" gate.
+SRC_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' app/Info.plist 2>/dev/null || echo 0)"
+INST_BUILD="$(defaults read "$HOME/Applications/partyparty.app/Contents/Info.plist" CFBundleVersion 2>/dev/null || echo 0)"
+PUB_BUILD="$(curl -s --max-time 8 https://partyparty.party/appcast.xml 2>/dev/null | grep -oE 'sparkle:version>[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)"
+[ -n "$PUB_BUILD" ] || PUB_BUILD=0
+BUILD="$(( $(printf '%s\n' "$SRC_BUILD" "$INST_BUILD" "$PUB_BUILD" 0 | sort -n | tail -1) + 1 ))"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" app/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" app/Info.plist
 echo ">> version v$VERSION (build $BUILD)"
