@@ -726,15 +726,21 @@ func main() {
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
-		// Almost certainly our own orphan: a force-quit app skips child cleanup
-		// and the old server squats on the port. Ask it to exit (loopback-only
-		// endpoint) and retry once.
+		// Almost certainly our own orphan: a force-quit app (or a Sparkle update
+		// relaunch) skips child cleanup and the old server squats on the port,
+		// which white-screens the new console. Ask it to exit (loopback-only
+		// endpoint), then retry the bind with backoff for a few seconds — a
+		// draining server can take longer than a single retry to release. The
+		// Swift launcher also reaps orphans, so this is defense-in-depth.
 		cl := &http.Client{Timeout: 2 * time.Second}
 		if resp, perr := cl.Post(fmt.Sprintf("http://127.0.0.1:%d/api/shutdown", cfg.Port), "", nil); perr == nil {
 			resp.Body.Close()
-			time.Sleep(700 * time.Millisecond)
+		}
+		for i := 0; i < 20; i++ {
+			time.Sleep(300 * time.Millisecond)
 			if ln, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port)); err == nil {
 				log.Printf("recovered port %d from a previous instance", cfg.Port)
+				break
 			}
 		}
 	}

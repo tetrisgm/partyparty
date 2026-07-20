@@ -78,9 +78,21 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         webView.load(URLRequest(url: url))
     }
 
-    // Retry while the Go server is still coming up.
+    // Retry while the Go server is still coming up (also covers a mid-update
+    // window where the server is being reaped/rebound).
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.loadConsole() }
+    }
+
+    // A load that started then failed — retry the same way.
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.loadConsole() }
+    }
+
+    // The WebContent process crashed (rare, but leaves a permanent white view) —
+    // reload instead of sitting blank.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        loadConsole()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
