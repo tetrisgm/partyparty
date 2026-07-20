@@ -14,6 +14,8 @@ func TestPublicPartyURL(t *testing.T) {
 		want    string
 	}{
 		{"simple handle", "ramine-live.partyparty.party", "ramine", false, "https://ramine.partyparty.party/"},
+		{"party. machine namespace (the QR bug)", "seth-live.party.partyparty.party", "seth", false, "https://seth.partyparty.party/"},
+		{"party. namespace, legacy word slug", "fader91.party.partyparty.party", "seth", false, "https://seth.partyparty.party/"},
 		{"legacy word slug still maps", "wave77.partyparty.party", "ramine", false, "https://ramine.partyparty.party/"},
 		{"captive/offline party never advertises the cloud", "ramine-live.partyparty.party", "ramine", true, ""},
 		{"no handle yet", "ramine-live.partyparty.party", "", false, ""},

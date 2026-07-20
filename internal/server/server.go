@@ -88,7 +88,11 @@ type srv struct {
 	accStatus   accountStatusCache
 
 	// Clean-links 443 self-test cache (AdvertisedGuestPort). Guarded by port443Mu.
+	// port443Probe gates the live TLS dial so it runs only in the real app
+	// (main.go calls EnableCleanLinksProbe); unit tests stay deterministic on the
+	// direct TLS port.
 	port443Mu        sync.Mutex
+	port443Probe     bool
 	port443OK        bool
 	port443CheckedAt time.Time
 
@@ -495,13 +499,20 @@ func publicPartyURL(domain, handle string, captive bool) string {
 			return ""
 		}
 	}
-	// zone = the machine domain minus its first label
-	// (ramine-live.partyparty.party -> partyparty.party).
-	i := strings.Index(domain, ".")
-	if i <= 0 || i+1 >= len(domain) {
+	// The machine host is <slug>.party.<zone> in the broker namespace; the public
+	// link is <handle>.<zone>. Derive <zone> by dropping the machine prefix:
+	// <slug>.party. (two labels) in the broker namespace, else one label (a
+	// legacy <slug>.<zone> or a BYO live-host). Getting this wrong once put the
+	// stray "party." into the QR link (seth.party.partyparty.party).
+	var zone string
+	if parts := strings.SplitN(domain, ".", 3); len(parts) == 3 && parts[1] == "party" {
+		zone = parts[2] // seth-live.party.partyparty.party -> partyparty.party
+	} else if i := strings.Index(domain, "."); i > 0 && i+1 < len(domain) {
+		zone = domain[i+1:] // ramine-live.partyparty.party -> partyparty.party
+	} else {
 		return ""
 	}
-	return "https://" + handle + "." + domain[i+1:] + "/"
+	return "https://" + handle + "." + zone + "/"
 }
 
 // accountHandle is the linked profile's handle from the in-memory account-status
@@ -513,6 +524,14 @@ func (s *srv) accountHandle() string {
 	return s.accStatus.status.Profile.Handle
 }
 
+// EnableCleanLinksProbe turns on the live 443 self-test (real app only; off in
+// tests so urls() stays deterministic).
+func (s *Srv) EnableCleanLinksProbe() {
+	s.port443Mu.Lock()
+	s.port443Probe = true
+	s.port443Mu.Unlock()
+}
+
 // AdvertisedGuestPort is 443 when the optional pp-port443 clean-links redirect
 // is verified working (guest URLs then need no port), else the direct TLS
 // listener port. Verified by actually dialing the Mac's own LAN address on 443
@@ -522,6 +541,9 @@ func (s *srv) accountHandle() string {
 func (s *srv) AdvertisedGuestPort() int {
 	s.port443Mu.Lock()
 	defer s.port443Mu.Unlock()
+	if !s.port443Probe {
+		return s.Config.TLSPort
+	}
 	if time.Since(s.port443CheckedAt) < 30*time.Second {
 		if s.port443OK {
 			return 443

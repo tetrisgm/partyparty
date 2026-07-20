@@ -722,6 +722,7 @@ func main() {
 	})
 	handler.StartSyncDrain(context.Background())
 	handler.StartReachabilityWatchdog(context.Background())
+	handler.EnableCleanLinksProbe() // real app self-tests the optional 443 redirect; off in tests
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
