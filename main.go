@@ -201,6 +201,16 @@ func recordWebPostFailure(failures *int, logf func(string, ...any), err error) {
 	}
 }
 
+// advertisedPort re-evaluates per beat: the optional pp-port443 redirect can be
+// approved (or break) mid-party, and the broker must always hand guests a port
+// that actually answers.
+func advertisedPort(handler *server.Srv, fallback int) int {
+	if handler != nil {
+		return handler.AdvertisedGuestPort()
+	}
+	return fallback
+}
+
 // liveCheckinLoop is the auto-discovery presence heartbeat: while broadcasting,
 // POST /api/broker/live every 30s with {id, secret, lan_ip, title, now_playing}
 // so the broker can match guests on the same public IP to this party. On the
@@ -252,7 +262,7 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 			body, _ := json.Marshal(map[string]any{
 				"id": id, "secret": secret,
 				"lan_ip":      netinfo.PrimaryLanIP(),
-				"guest_port":  guestPort, // the :port guests need to reach this Mac's HTTPS listener
+				"guest_port":  advertisedPort(handler, guestPort), // 443 when the clean-links redirect is verified, else the direct TLS port
 				"listeners":   lanListeners,
 				"web_since":   webSince, // delivery cursor: only web posts newer than what we've ingested
 				"title":       title,

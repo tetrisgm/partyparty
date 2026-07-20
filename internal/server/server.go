@@ -87,6 +87,11 @@ type srv struct {
 	accStatusMu sync.Mutex
 	accStatus   accountStatusCache
 
+	// Clean-links 443 self-test cache (AdvertisedGuestPort). Guarded by port443Mu.
+	port443Mu        sync.Mutex
+	port443OK        bool
+	port443CheckedAt time.Time
+
 	// Web guests listening to this party's cloud mirror right now, from the
 	// live check-in response (0 while idle/offline). Written by the check-in
 	// loop, read by /api/status — the room and the web share one count.
@@ -508,6 +513,41 @@ func (s *srv) accountHandle() string {
 	return s.accStatus.status.Profile.Handle
 }
 
+// AdvertisedGuestPort is 443 when the optional pp-port443 clean-links redirect
+// is verified working (guest URLs then need no port), else the direct TLS
+// listener port. Verified by actually dialing the Mac's own LAN address on 443
+// — the helper's lo0 rules make that self-test take the same translated path
+// guests do — and cached briefly so status polls stay cheap. Fails closed to
+// the ported URL: an unapproved/broken redirect can never advertise a dead link.
+func (s *srv) AdvertisedGuestPort() int {
+	s.port443Mu.Lock()
+	defer s.port443Mu.Unlock()
+	if time.Since(s.port443CheckedAt) < 30*time.Second {
+		if s.port443OK {
+			return 443
+		}
+		return s.Config.TLSPort
+	}
+	s.port443CheckedAt = time.Now()
+	s.port443OK = false
+	ip := netinfo.PrimaryLanIP()
+	if ip != "" && ip != "127.0.0.1" && s.realCert() {
+		d := net.Dialer{Timeout: 400 * time.Millisecond}
+		conn, err := tls.DialWithDialer(&d, "tcp", ip+":443", &tls.Config{
+			ServerName:         s.liveDomain(),
+			InsecureSkipVerify: true, // reachability probe of our own listener, not a trust decision
+		})
+		if err == nil {
+			conn.Close()
+			s.port443OK = true
+		}
+	}
+	if s.port443OK {
+		return 443
+	}
+	return s.Config.TLSPort
+}
+
 type hotspotStatus struct {
 	Mode        string `json:"mode"`
 	BridgeUp    bool   `json:"bridgeUp"`
@@ -523,11 +563,16 @@ func (s *srv) urls() urls {
 	// fallback link is ever shown; until activation completes, Primary stays
 	// http and the console renders a "setting up the secure link" state.
 	if d := s.liveDomain(); d != "" && s.realCert() {
+		gp := s.AdvertisedGuestPort()
+		primary := fmt.Sprintf("https://%s:%d/", d, gp)
+		if gp == 443 {
+			primary = fmt.Sprintf("https://%s/", d) // clean-links redirect verified live
+		}
 		return urls{
-			Primary:     fmt.Sprintf("https://%s:%d/", d, s.Config.TLSPort),
+			Primary:     primary,
 			Public:      publicPartyURL(d, s.accountHandle(), s.Config.Captive),
 			IP:          ip,
-			Port:        s.Config.TLSPort,
+			Port:        gp,
 			HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
 			Interfaces:  netinfo.LanInterfaces(),
 		}
