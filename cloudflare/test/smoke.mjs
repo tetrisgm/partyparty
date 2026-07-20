@@ -2387,7 +2387,7 @@ const tests = [
       scheduled_at_ms: 1893542400000,
     });
     db.liveInstalls.set("abc123abc123", {
-      install_id: "abc123abc123", handle: "linked.dj", host: "disco12.party.example.test",
+      install_id: "abc123abc123", handle: "linked.dj", host: "disco12.m.party.example.test",
       event_slug: "linked-event", expires_ms: Date.now() + 60_000,
     });
 
@@ -2626,7 +2626,7 @@ const tests = [
       dj_profile_id: "profile-unlink-owner", title: "Unlink Live", status: "live",
     });
     db.liveInstalls.set("abc123abc123", {
-      install_id: "abc123abc123", handle: "unlink.owner", host: "disco12.party.example.test",
+      install_id: "abc123abc123", handle: "unlink.owner", host: "disco12.m.party.example.test",
       event_slug: "unlink-live", expires_ms: Date.now() + 60_000,
     });
 
@@ -2914,9 +2914,9 @@ const tests = [
       }), makeEnv({ DB: db }));
       const aJson = await aResp.json();
       assert.equal(aResp.status, 200);
-      assert.equal(aJson.host, "disco12.party.example.test");
+      assert.equal(aJson.host, "disco12.m.party.example.test");
       const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
-      assert.equal(aPost.body.name, "disco12.party.example.test");
+      assert.equal(aPost.body.name, "disco12.m.party.example.test");
       assert.equal(aPost.body.content, "192.168.2.1");
       assert.equal(aPost.body.proxied, false);
 
@@ -2927,9 +2927,9 @@ const tests = [
       }), makeEnv({ DB: db }));
       const txtJson = await txtResp.json();
       assert.equal(txtResp.status, 200);
-      assert.equal(txtJson.name, "_acme-challenge.disco12.party.example.test");
+      assert.equal(txtJson.name, "_acme-challenge.disco12.m.party.example.test");
       const txtPost = calls.find((c) => c.method === "POST" && c.body?.type === "TXT");
-      assert.equal(txtPost.body.name, "_acme-challenge.disco12.party.example.test");
+      assert.equal(txtPost.body.name, "_acme-challenge.disco12.m.party.example.test");
       assert.equal(txtPost.body.content, "challenge-token");
     });
   }],
@@ -2949,30 +2949,30 @@ const tests = [
     await withCloudflareDNSMock(async (calls) => {
       const env = makeEnv({ DB: mkDb() });
       const json = await (await postA(env)).json();
-      assert.equal(json.host, "seth-live.party.example.test");
+      assert.equal(json.host, "seth-live.m.party.example.test");
       const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
-      assert.equal(aPost.body.name, "seth-live.party.example.test");
+      assert.equal(aPost.body.name, "seth-live.m.party.example.test");
       // Reverse index claimed + rec updated: a second call is a stable no-op.
       const again = await (await postA(env)).json();
-      assert.equal(again.host, "seth-live.party.example.test");
+      assert.equal(again.host, "seth-live.m.party.example.test");
       assert.equal(await (await env.DL.get("broker/slug/seth-live")).text(), "abc123abc123");
     });
 
     // Unconfirmed (auto-minted) handle -> no rename; hostname must not churn.
     await withCloudflareDNSMock(async () => {
       const env = makeEnv({ DB: mkDb({ profile: { handle_confirmed_ms: null } }) });
-      assert.equal((await (await postA(env)).json()).host, "disco12.party.example.test");
+      assert.equal((await (await postA(env)).json()).host, "disco12.m.party.example.test");
     });
 
     // Currently LIVE -> keep the name the Mac can actually serve a cert for.
     await withCloudflareDNSMock(async () => {
       const env = makeEnv({ DB: mkDb({ db: { liveInstalls: [{
         install_id: "abc123abc123", handle: "seth", profile_id: "profile-hs", public_ip_hash: "h",
-        host: "disco12.party.example.test", lan_ip: "192.168.2.1", event_slug: "", dj_name: "Seth",
+        host: "disco12.m.party.example.test", lan_ip: "192.168.2.1", event_slug: "", dj_name: "Seth",
         event_title: "", listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1,
         expires_ms: Date.now() + 60000,
       }] } }) });
-      assert.equal((await (await postA(env)).json()).host, "disco12.party.example.test");
+      assert.equal((await (await postA(env)).json()).host, "disco12.m.party.example.test");
     });
 
     // Base taken by ANOTHER install (the DJ's second Mac) -> seth-live2.
@@ -2981,13 +2981,13 @@ const tests = [
         DB: mkDb(),
         r2Objects: { "broker/slug/seth-live": new FakeR2Object("someoneelse47", {}) },
       });
-      assert.equal((await (await postA(env)).json()).host, "seth-live2.party.example.test");
+      assert.equal((await (await postA(env)).json()).host, "seth-live2.m.party.example.test");
     });
 
     // Dotted/underscored handles map to DNS-safe labels (dj.max -> dj-max-live).
     await withCloudflareDNSMock(async () => {
       const env = makeEnv({ DB: mkDb({ profile: { handle: "dj.max_1" } }) });
-      assert.equal((await (await postA(env)).json()).host, "dj-max-1-live.party.example.test");
+      assert.equal((await (await postA(env)).json()).host, "dj-max-1-live.m.party.example.test");
     });
   }],
 
@@ -3015,12 +3015,12 @@ const tests = [
       }), env);
       const json = await resp.json();
       assert.equal(resp.status, 200);
-      assert.match(json.host, /^[a-z]+[0-9]{2}\.party\.example\.test$/);
+      assert.match(json.host, /^[a-z]+[0-9]{2}\.m\.party\.example\.test$/);
       assert.equal(json.host.includes("192-168-2-1"), false);
       const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
       assert.equal(aPost.body.name, json.host);
       const updated = await env.DL.get("broker/abc123abc123.json").then((o) => o.json());
-      assert.equal(`${updated.slug}.party.example.test`, json.host);
+      assert.equal(`${updated.slug}.m.party.example.test`, json.host);
     });
   }],
   ["dns-admin rejects record-id path traversal before calling Cloudflare", async () => {
@@ -5445,7 +5445,7 @@ const tests = [
       }), makeEnv({ DB: db }));
       const json = await resp.json();
       assert.equal(resp.status, 200);
-      assert.equal(json.host, "disco12.party.example.test");
+      assert.equal(json.host, "disco12.m.party.example.test");
       assert.equal(json.claimed, true);
 
       const row = db.liveInstalls.get("abc123abc123");
@@ -5453,7 +5453,7 @@ const tests = [
       assert.equal(row.dj_name, "DJ Wave");
       assert.equal(row.event_title, "Rooftop");
       assert.equal(row.now_playing, "Opening Track");
-      assert.equal(row.host, "disco12.party.example.test");
+      assert.equal(row.host, "disco12.m.party.example.test");
       assert.equal(row.lan_ip, "192.168.1.50");
       assert.equal(row.event_slug, "rooftop-night");
       // Public IP hash comes from cf-connecting-ip ONLY — never a Mac-supplied value.
@@ -5462,7 +5462,7 @@ const tests = [
 
       // Grey A record written for the LOCAL slug host -> lan_ip (never the handle).
       const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
-      assert.equal(aPost.body.name, "disco12.party.example.test");
+      assert.equal(aPost.body.name, "disco12.m.party.example.test");
       assert.equal(aPost.body.content, "192.168.1.50");
       assert.equal(aPost.body.proxied, false);
     });
@@ -5518,13 +5518,13 @@ const tests = [
     const db = new FakeD1({
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
-        public_ip_hash: "h", host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        public_ip_hash: "h", host: "disco12.m.party.example.test", lan_ip: "192.168.1.5",
         event_slug: "", dj_name: "Wave", event_title: "", listeners: 0, now_playing: "",
         live_started_ms: 1000, last_seen_ms: 1000, expires_ms: Date.now() + 60000,
       }],
     });
     await withCloudflareDNSRecords(
-      [{ id: "rec-a", type: "A", name: "disco12.party.example.test", content: "192.168.1.5" }],
+      [{ id: "rec-a", type: "A", name: "disco12.m.party.example.test", content: "192.168.1.5" }],
       async (calls) => {
         const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/offline", {
           method: "POST",
@@ -5547,7 +5547,7 @@ const tests = [
       liveInstalls: [
         {
           install_id: "abc123abc123", handle: "wave", profile_id: "profile-w", public_ip_hash: callerHash,
-          host: "disco12.party.example.test", lan_ip: "192.168.1.5", event_slug: "s1", dj_name: "DJ Wave",
+          host: "disco12.m.party.example.test", lan_ip: "192.168.1.5", event_slug: "s1", dj_name: "DJ Wave",
           event_title: "Rooftop", listeners: 3, now_playing: "Track A", live_started_ms: 2000, last_seen_ms: 2000, expires_ms: future,
         },
         {
@@ -5572,10 +5572,10 @@ const tests = [
     // the expired row is excluded. IP-matched party sorts first.
     assert.equal(json.parties.length, 2);
     assert.deepEqual(json.parties[0], {
-      host: "disco12.party.example.test",
+      host: "disco12.m.party.example.test",
       handle: "wave",
       // No guest_port on this seed row -> the join URL falls back to :8443.
-      joinUrl: "https://disco12.party.example.test:8443/",
+      joinUrl: "https://disco12.m.party.example.test:8443/",
       ipHint: true, // cloud IP agrees; still probed client-side
       djName: "DJ Wave",
       eventTitle: "Rooftop",
@@ -5844,7 +5844,7 @@ const tests = [
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-m", profile_id: "profile-m", revoked_ms: null }],
       liveInstalls: [{
         install_id: "abc123abc123", handle: "seth", profile_id: "profile-m", public_ip_hash: "h",
-        host: "seth-live.party.example.test", lan_ip: "10.0.0.5", event_slug: "", dj_name: "Seth",
+        host: "seth-live.m.party.example.test", lan_ip: "10.0.0.5", event_slug: "", dj_name: "Seth",
         event_title: "Rooftop", listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1,
         expires_ms: Date.now() + 60000,
       }],
@@ -5879,7 +5879,7 @@ const tests = [
     const db = new FakeD1({
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
-        public_ip_hash: await sha256Hex("ip:198.51.100.7"), host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        public_ip_hash: await sha256Hex("ip:198.51.100.7"), host: "disco12.m.party.example.test", lan_ip: "192.168.1.5",
         event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 4, now_playing: "Track Z",
         live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
       }],
@@ -5903,7 +5903,7 @@ const tests = [
     const db = new FakeD1({
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
-        public_ip_hash: "h", host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        public_ip_hash: "h", host: "disco12.m.party.example.test", lan_ip: "192.168.1.5",
         event_slug: "known-set", dj_name: "DJ Wave", event_title: "", listeners: 0, now_playing: "",
         live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
       }],
@@ -5928,7 +5928,7 @@ const tests = [
       }],
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
-        public_ip_hash: "h", host: "disco12.party.example.test", lan_ip: "192.168.1.5", guest_port: 8443,
+        public_ip_hash: "h", host: "disco12.m.party.example.test", lan_ip: "192.168.1.5", guest_port: 8443,
         event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 7, now_playing: "Track Z",
         live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
       }],
@@ -5944,7 +5944,7 @@ const tests = [
     assert.match(html, /\/event\/rooftop-night\/live\/live\.m3u8/); // the delayed stream
     assert.match(html, /Tap to listen/);
     assert.match(html, /a few seconds behind/);
-    assert.match(html, /https:\/\/disco12\.party\.example\.test:8443\//); // "at the party" LAN link
+    assert.match(html, /https:\/\/disco12\.m\.party\.example\.test:8443\//); // "at the party" LAN link
     assert.match(html, /Track Z/);
     // The LAN-style identity ask ships with the live player.
     assert.match(html, /pp-join-name/);
@@ -5966,7 +5966,7 @@ const tests = [
     const db = new FakeD1({
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
-        public_ip_hash: await sha256Hex("ip:198.51.100.7"), host: "disco12.party.example.test", lan_ip: "192.168.1.5",
+        public_ip_hash: await sha256Hex("ip:198.51.100.7"), host: "disco12.m.party.example.test", lan_ip: "192.168.1.5",
         guest_port: 8443,
         event_slug: "rooftop-night", dj_name: "DJ Wave", event_title: "Rooftop", listeners: 4, now_playing: "",
         live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
@@ -5981,7 +5981,7 @@ const tests = [
     assert.equal(resp.headers.get("content-type"), "text/html; charset=utf-8");
     const html = await resp.text();
     // The Mac serves guests on its high HTTPS port, not 443 — the probe/redirect carries it.
-    assert.match(html, /https:\/\/disco12\.party\.example\.test:8443\//);
+    assert.match(html, /https:\/\/disco12\.m\.party\.example\.test:8443\//);
     assert.match(html, /no-cors/);            // the reachability probe
     assert.match(html, /location\.replace/);  // redirect to the LAN listener when reachable
     assert.match(html, /DJ Wave/);
@@ -6016,7 +6016,7 @@ const tests = [
       liveInstalls: [
         {
           install_id: "abc123abc123", handle: "wave", profile_id: "p", public_ip_hash: "h",
-          host: "disco12.party.example.test", lan_ip: "192.168.1.5", event_slug: "", dj_name: "", event_title: "",
+          host: "disco12.m.party.example.test", lan_ip: "192.168.1.5", event_slug: "", dj_name: "", event_title: "",
           listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() - 5000,
         },
         {
@@ -6027,7 +6027,7 @@ const tests = [
       ],
     });
     await withCloudflareDNSRecords(
-      [{ id: "rec-dead", type: "A", name: "disco12.party.example.test", content: "192.168.1.5" }],
+      [{ id: "rec-dead", type: "A", name: "disco12.m.party.example.test", content: "192.168.1.5" }],
       async (calls) => {
         await worker.scheduled({}, makeEnv({ DB: db }), { waitUntil() {} });
         // Expired row swept; the still-live row is untouched.

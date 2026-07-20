@@ -213,7 +213,7 @@ export function normalizeHandle(s) {
 // /settings, and by /api/handle-available.
 export const RESERVED_HANDLES = new Set([
   "account", "login", "logout", "welcome", "settings", "signup", "signin",
-  "api", "e", "live", "discover", "broker", "www", "admin", "root", "mail",
+  "api", "e", "live", "discover", "broker", "www", "admin", "root", "mail", "m",
   "about", "help", "support", "terms", "privacy", "profile", "profiles",
   "edit", "new", "event", "events", "me", "home", "app", "assets", "static",
   "favicon", "robots", "sitemap", "auth", "partyparty", "party",
@@ -2727,7 +2727,7 @@ async function ensureHandleSlug(env, id, rec, now) {
   await env.DL.put(`broker/slug/${slug}`, id);
   await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
   if (oldSlug && oldSlug !== slug) {
-    try { await deleteGreyA(env, `${oldSlug}.${env.BROKER_BASE}`); } catch (e) { /* best-effort */ }
+    try { await deleteGreyA(env, machineHost(env, oldSlug)); } catch (e) { /* best-effort */ }
   }
   return slug;
 }
@@ -4075,6 +4075,18 @@ async function readContentState(env) {
   return { payloadVersion, minRuntime, appVersion };
 }
 
+
+// machineHost: a Mac's LAN hostname lives under m.<base>, deliberately OUTSIDE
+// the *.<base> wildcard (a DNS wildcard matches exactly ONE label). So a
+// machine name whose grey record does not exist is NXDOMAIN — and the browser
+// LAN probe fails closed — instead of resolving to Cloudflare's proxy, which
+// answers with a valid wildcard cert and would false-positively "prove" that an
+// off-LAN guest can reach the Mac. Certs are unaffected: each Mac holds its own
+// exact-name Let's Encrypt cert via the broker's DNS-01 flow.
+function machineHost(env, label) {
+  return `${label}.m.${env.BROKER_BASE}`;
+}
+
 async function cfDNS(env, method, suffix, body, zoneId) {
   const zone = zoneId || env.CF_ZONE_ID;
   const url = `https://api.cloudflare.com/client/v4/zones/${zone}/dns_records${suffix}`;
@@ -4525,7 +4537,7 @@ async function brokerAccountStatus(env, id, rec) {
       ok: true,
       providersAvailable,
       linked: false,
-      install: { id, slug: rec.slug || "", host: `${rec.slug || id}.${env.BROKER_BASE}` },
+      install: { id, slug: rec.slug || "", host: machineHost(env, rec.slug || id) },
       license: { ok: false, reason: "sign in required" },
     });
   }
@@ -4550,7 +4562,7 @@ async function brokerAccountStatus(env, id, rec) {
       handle: normalizeHandle(linked.handle),
       displayName: linked.profile_display_name || "",
     },
-    install: { id, slug: rec.slug || "", host: `${rec.slug || id}.${env.BROKER_BASE}` },
+    install: { id, slug: rec.slug || "", host: machineHost(env, rec.slug || id) },
     license: { ok: true, source: "account" },
     events: events?.results || [],
   });
@@ -5432,7 +5444,7 @@ async function broker(request, env, pathname) {
     label = await ensureBrokerSlug(env, id, rec);
     const value = String(body.value || "");
     if (!value || value.length > 255) return jsonResp(400, { error: "bad value" });
-    const name = `_acme-challenge.${label}.${env.BROKER_BASE}`;
+    const name = `_acme-challenge.${machineHost(env, label)}`;
     const old = await cfDNS(env, "GET", `?type=TXT&name=${name}`);
     for (const r of old || []) await cfDNS(env, "DELETE", "/" + r.id);
     await cfDNS(env, "POST", "", { type: "TXT", name, content: value, ttl: 60 });
@@ -5450,7 +5462,7 @@ async function broker(request, env, pathname) {
     if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return jsonResp(400, { error: "bad ip" });
     // ONE slugged record per install, upserted to the current venue IP
     // (DNS-only, never proxied). The cert binds to this domain, not the IP.
-    const name = `${label}.${env.BROKER_BASE}`;
+    const name = machineHost(env, label);
     const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
     if (existing && existing.length) {
       if (existing[0].content !== ip) {
@@ -5492,7 +5504,7 @@ async function broker(request, env, pathname) {
     // The grey LAN slug host the Mac serves — resolved server-side, never the
     // proxied handle name (the handle is a proxied Worker record, never a grey A).
     label = await ensureBrokerSlug(env, id, rec);
-    const host = `${label}.${env.BROKER_BASE}`;
+    const host = machineHost(env, label);
 
     // The cloud mirror is uploaded under the install's currently-live event slug;
     // resolve it so the REMOTE listener page points at the right mirror. Read-only.
