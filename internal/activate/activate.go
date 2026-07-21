@@ -143,8 +143,15 @@ func Try(host, token string, lanIP string, logf Logf) Result {
 	}
 
 	// 3. Self-check through the system resolver (≈ what guests' phones use via
-	// the router). Catches rebind-protecting routers and stale caches.
+	// the router). Catches rebind-protecting routers and stale caches. A venue
+	// resolver that hides the objectively-correct record must NOT block
+	// activation — the cert and record are right; same-Wi-Fi guests fall to the
+	// cloud stream via the LAN probe, everyone else is unaffected.
 	if err := verifyResolves(ctx, host, lanIP); err != nil {
+		if errors.Is(err, ErrLocalResolverOnly) {
+			logf("activate: %s — activating anyway; same-Wi-Fi guests will use the cloud stream", err)
+			return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
+		}
 		return Result{Host: host, CertFile: certFile, KeyFile: keyFile,
 			Reason: "resolution check: " + err.Error() + " (router DNS-rebind protection? falling back to plain HLS)"}
 	}
@@ -201,6 +208,10 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	}
 
 	if err := verifyResolves(ctx, host, lanIP); err != nil {
+		if errors.Is(err, ErrLocalResolverOnly) {
+			logf("activate: %s — activating anyway; same-Wi-Fi guests will use the cloud stream", err)
+			return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
+		}
 		return Result{Host: host, CertFile: certFile, KeyFile: keyFile,
 			Reason: "resolution check: " + err.Error() + " (router DNS-rebind protection?)"}
 	}
@@ -802,6 +813,47 @@ func waitTXT(ctx context.Context, name, want string) error {
 	return errors.New("challenge TXT did not propagate in time")
 }
 
+// ErrLocalResolverOnly: the DNS record is objectively correct (authoritative
+// answer matches the LAN IP over DoH) but THIS network's resolver hides it —
+// router DNS-rebind protection stripping private-IP answers. The venue is
+// lying, not the record. Activation must treat this as success: the cert and
+// record are right, off-Wi-Fi guests are unaffected, and same-Wi-Fi guests
+// fail the LAN probe and ride the cloud stream by design. Blocking Go Live on
+// a resolver we don't control stranded a real DJ at a coworking space.
+var ErrLocalResolverOnly = errors.New("local resolver hides the record (DNS-rebind protection); authoritative DNS is correct")
+
+// dohResolves asks authoritative-backed DoH (1.1.1.1) whether host → lanIP,
+// bypassing the venue's resolver entirely. Used only to disambiguate a local
+// mismatch; any error reads as "unconfirmed", never as proof of correctness.
+func dohResolves(ctx context.Context, host, lanIP string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://1.1.1.1/dns-query?type=A&name="+url.QueryEscape(host), nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Accept", "application/dns-json")
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Answer []struct {
+			Type int    `json:"type"`
+			Data string `json:"data"`
+		} `json:"Answer"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&out) != nil {
+		return false
+	}
+	for _, a := range out.Answer {
+		if a.Type == 1 && a.Data == lanIP { // type 1 = A
+			return true
+		}
+	}
+	return false
+}
+
 // verifyResolves checks the host resolves to the LAN IP over the network's
 // configured DNS — the path guests' phones take. It uses a Go-native resolver
 // (PreferGo), which queries the configured nameserver directly and BYPASSES the
@@ -809,6 +861,11 @@ func waitTXT(ctx context.Context, name, want string) error {
 // the OS's cached NXDOMAIN (negative TTL) on the DJ's Mac only, a false positive
 // that never affects guests. Querying the real resolver still catches genuine
 // router DNS-rebind protection. Patient (~48s) for propagation.
+//
+// A definitive local mismatch is cross-checked against authoritative DNS over
+// DoH: if the record is actually correct, this returns ErrLocalResolverOnly
+// immediately (a rebind-protecting router never changes its mind — retrying is
+// pointless) so callers can activate anyway and note the degraded venue.
 func verifyResolves(ctx context.Context, host, lanIP string) error {
 	res := &net.Resolver{PreferGo: true}
 	var lastErr error
@@ -821,6 +878,9 @@ func verifyResolves(ctx context.Context, host, lanIP string) error {
 				}
 			}
 			lastErr = fmt.Errorf("%s resolves to %v, not %s", host, addrs, lanIP)
+			if dohResolves(ctx, host, lanIP) {
+				return ErrLocalResolverOnly
+			}
 		} else {
 			lastErr = err
 		}
