@@ -1628,11 +1628,16 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   function captureSettingsLabel(){
     return capturePermission.kind === 'microphone' ? 'Open Microphone settings' : 'Open System Audio Recording settings';
   }
+  // Server-durable proof that Mac-audio capture has worked on this install
+  // (/api/status audioProven). The localStorage flag alone was origin-scoped
+  // and got wiped by origin changes / data-store resets, re-scaring DJs whose
+  // permission was already granted.
+  let serverAudioProven = false;
   function effectiveCapturePermissionState(){
     if (!capturePermissionApplies()) return 'granted';
     if (capturePermission.kind === 'systemAudio' &&
         capturePermission.state === 'undetermined' &&
-        localStorage.getItem('pp.audioOK') === '1') return 'granted';
+        (serverAudioProven || localStorage.getItem('pp.audioOK') === '1')) return 'granted';
     return capturePermission.state || 'undetermined';
   }
   function updateCapturePermissionUI(){
@@ -2276,8 +2281,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       renderHonestFallback(s.reachability);
       // Once Mac-audio capture has actually gone live, the permission is
       // provably granted — the "permission not working?" escape hatch would
-      // just be noise. It comes back if an error note ever shows.
-      if (st === 'live' && s.broadcast.device === 'mac') localStorage.setItem('pp.audioOK', '1');
+      // just be noise. It comes back if an error note ever shows. The server
+      // remembers durably (audioProven survives origin changes and web-state
+      // resets); localStorage stays as a same-session fast path.
+      if (s.audioProven) serverAudioProven = true;
+      if (st === 'live' && s.broadcast.device === 'mac') {
+        serverAudioProven = true;
+        try { localStorage.setItem('pp.audioOK', '1'); } catch (e) {}
+      }
       const effectivePermission = effectiveCapturePermissionState();
       const showPermButton = capturePermissionApplies() && (note || effectivePermission !== 'granted');
       $('permBtnAlways').style.display = showPermButton ? 'block' : 'none';

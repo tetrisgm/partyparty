@@ -14,6 +14,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -142,6 +143,16 @@ type srv struct {
 	streamSyncCheckedAt  time.Time
 	streamSyncChecking   bool
 	streamSyncReady      bool
+
+	// audioProven: Mac-audio capture has gone live at least once on this
+	// install, so the system-audio permission is provably granted. macOS has no
+	// status API for Core Audio tap permission, so this observed proof is the
+	// ONLY reliable signal. Persisted server-side (Application Support) because
+	// the console's earlier localStorage flag was origin-scoped and got wiped by
+	// origin changes and data-store resets — which re-scared DJs with a
+	// "permission not confirmed" banner on Macs that were already granted.
+	audioProven     atomic.Bool
+	audioProvenSave sync.Once
 }
 
 func New(d Deps) *Srv {
@@ -157,7 +168,38 @@ func New(d Deps) *Srv {
 	// read at REQUEST time from s.syncTarget so it always equals what
 	// /api/status reports as the room target.
 	s.liveProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live")
+	if _, err := os.Stat(audioProvenPath()); err == nil {
+		s.audioProven.Store(true)
+	}
 	return s
+}
+
+// audioProvenPath is the durable "Mac audio capture has worked here" marker —
+// ~/Library/Application Support/partyparty/audio-proven. Empty string disables
+// persistence (in-memory only) when the config dir is unavailable.
+func audioProvenPath() string {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(base, "partyparty", "audio-proven")
+}
+
+// markAudioProven records the observed proof, once, without blocking /api/status.
+func (s *srv) markAudioProven() {
+	if s.audioProven.Swap(true) {
+		return
+	}
+	s.audioProvenSave.Do(func() {
+		go func() {
+			p := audioProvenPath()
+			if p == "" {
+				return
+			}
+			_ = os.MkdirAll(filepath.Dir(p), 0o755)
+			_ = os.WriteFile(p, []byte("1\n"), 0o644)
+		}()
+	})
 }
 
 // newLiveProxy keeps the guest page and LL-HLS on one public HTTPS origin.
@@ -669,6 +711,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/status":
 		bc := s.Broadcaster.Status()
+		if bc.State == "live" && bc.Device == "mac" {
+			s.markAudioProven()
+		}
 		health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
 		health.Suggestion = suggest(health.Status, bc)
 		latencyTarget := s.latencyTarget(bc, health.Status)
@@ -694,6 +739,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
+			"audioProven":    s.audioProven.Load(),
 			"activation":     s.activationState(),
 			"reachability":   s.reachability(),
 			"hotspot":        s.hotspotState(),
