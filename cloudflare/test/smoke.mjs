@@ -5987,6 +5987,34 @@ const tests = [
     assert.match(html, /DJ Wave/);
   }],
 
+  ["wildcard router: ?pp-state JSON lets the join page discover the minted event page (startup-window fix)", async () => {
+    // A guest who scans during the ~30-60s after Go Live renders the join page
+    // BEFORE the first mirror upload mints the live event — the page polls
+    // ?pp-state and jumps when eventPath appears (or reloads when live ends).
+    const mk = (event_slug) => new FakeD1({
+      liveInstalls: [{
+        install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
+        public_ip_hash: "x", host: "disco12.party.party.example.test", lan_ip: "192.168.1.5",
+        guest_port: 8443, event_slug, dj_name: "DJ Wave", event_title: "Rooftop",
+        listeners: 0, now_playing: "",
+        live_started_ms: 2000, last_seen_ms: 2000, expires_ms: Date.now() + 60000,
+      }],
+    });
+    // live, event not minted yet
+    let resp = await worker.fetch(new Request("https://wave.party.example.test/?pp-state"), makeEnv({ DB: mk("") }));
+    assert.equal(resp.status, 200);
+    assert.deepEqual(await resp.json(), { live: true, eventPath: "" });
+    // live, event minted
+    resp = await worker.fetch(new Request("https://wave.party.example.test/?pp-state"), makeEnv({ DB: mk("rooftop-night") }));
+    assert.deepEqual(await resp.json(), { live: true, eventPath: "/e/rooftop-night" });
+    // idle
+    resp = await worker.fetch(new Request("https://wave.party.example.test/?pp-state"), makeEnv({ DB: new FakeD1({}) }));
+    assert.deepEqual(await resp.json(), { live: false, eventPath: "" });
+    // and the join page itself carries the poller
+    resp = await worker.fetch(new Request("https://wave.party.example.test/"), makeEnv({ DB: mk("") }));
+    assert.match(await resp.text(), /pp-state/);
+  }],
+
   ["wildcard router: IDLE page when no party is live, and reserved labels are not handles", async () => {
     const db = new FakeD1({
       profiles: [{ id: "profile-w", user_id: "user-w", handle: "wave", display_name: "DJ Wave", published: 1 }],

@@ -4201,6 +4201,17 @@ async function handleRouter(request, env, handle) {
   const htmlHeaders = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" };
   const now = nowMs();
   const claimant = await liveClaimant(env, handle, now);
+  // ?pp-state: tiny JSON the live-join page polls. The live event page is
+  // minted by the Mac's FIRST mirror upload, so a guest who scans during the
+  // ~30-60s window after Go Live renders "no remote stream yet" — this lets
+  // that page discover the event page appearing (or the party ending) instead
+  // of dead-ending until a manual reload.
+  if (new URL(request.url).searchParams.has("pp-state")) {
+    return new Response(JSON.stringify({
+      live: !!claimant,
+      eventPath: claimant?.event_slug ? "/e/" + encodeURIComponent(claimant.event_slug) : "",
+    }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  }
   if (claimant) {
     // Don't decide LOCAL vs REMOTE from the cloud IP — it's unreliable (Private
     // Relay / CGNAT pools / v4-v6). The page probes the Mac's LAN host itself and
@@ -4464,6 +4475,20 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
     if(EVENT){ location.replace(EVENT); return; } // the event page carries the delayed live player
     if(connecting) connecting.hidden=true;
     if(remote) remote.hidden=false;
+    pollState(0); // the live event page is minted by the Mac's first mirror
+                  // upload — keep checking so this page never dead-ends
+  }
+  // Poll ?pp-state until the event page exists (jump to it), the party ends
+  // (reload → idle page), or ~4 minutes pass. Only runs on the no-event branch.
+  function pollState(n){
+    if(n>60) return;
+    setTimeout(function(){
+      fetch('/?pp-state',{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){
+        if(s && s.eventPath){ location.replace(s.eventPath); return; }
+        if(s && !s.live){ location.reload(); return; }
+        pollState(n+1);
+      }).catch(function(){ pollState(n+2); });
+    }, 4000);
   }
   if(!LAN){ showRemote(); return; }
   // Authenticated LAN reachability probe: resolves iff we can reach the DJ's Mac
