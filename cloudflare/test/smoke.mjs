@@ -6043,7 +6043,7 @@ const tests = [
     assert.doesNotMatch(body, /No party live/);
   }],
 
-  ["scheduled cron GC expires dead rows and deletes orphaned grey A records", async () => {
+  ["scheduled cron GC expires dead rows, KEEPS grey A records, and ensures the guard wildcard", async () => {
     const db = new FakeD1({
       liveInstalls: [
         {
@@ -6059,16 +6059,27 @@ const tests = [
       ],
     });
     await withCloudflareDNSRecords(
-      [{ id: "rec-dead", type: "A", name: "disco12.party.party.example.test", content: "192.168.1.5" }],
+      [], // the GET below must see "no guard yet" (the harness is name-blind)
       async (calls) => {
-        await worker.scheduled({}, makeEnv({ DB: db }), { waitUntil() {} });
-        // Expired row swept; the still-live row is untouched.
+        // Off the top of the hour: rows sweep, but NO DNS calls at all — the
+        // machine host's grey A must survive expiry (deleting it opened an
+        // absent-name window where the proxied zone wildcard synthesized
+        // live-looking edge-IP answers that resolvers cached — the venue
+        // poisoning bug), and the guard ensure only runs hourly.
+        await worker.scheduled({ scheduledTime: Date.UTC(2026, 0, 1, 12, 30) }, makeEnv({ DB: db }), { waitUntil() {} });
         assert.equal(db.liveInstalls.has("abc123abc123"), false);
         assert.equal(db.liveInstalls.has("def456def456"), true);
-        // The dead Mac's orphaned slug-host A record is deleted.
-        const del = calls.find((c) => c.method === "DELETE");
-        assert.ok(del, "deletes the orphaned A record");
-        assert.match(del.url, /rec-dead$/);
+        assert.equal(calls.find((c) => c.method === "DELETE"), undefined, "grey A records are never GC-deleted");
+        // Top of the hour: the machine-namespace guard wildcard is ensured
+        // (grey, dead TEST-NET IP) so absent machine names can never fall
+        // through to the proxied zone wildcard.
+        await worker.scheduled({ scheduledTime: Date.UTC(2026, 0, 1, 13, 0) }, makeEnv({ DB: db }), { waitUntil() {} });
+        const post = calls.find((c) => c.method === "POST");
+        assert.ok(post, "creates the guard wildcard when missing");
+        assert.equal(post.body.name, "*.party.party.example.test");
+        assert.equal(post.body.content, "192.0.2.1");
+        assert.equal(post.body.proxied, false);
+        assert.equal(calls.find((c) => c.method === "DELETE"), undefined);
       }
     );
   }],

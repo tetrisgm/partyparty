@@ -6405,17 +6405,30 @@ export default {
             "UPDATE events SET status='replay', updated_ms=?2 WHERE install_id=?1 AND status='live'"
           ).bind(row.install_id, now).run();
         } catch (e) { /* best-effort */ }
-        if (!row.host || !env.CF_DNS_TOKEN || !env.CF_ZONE_ID) continue;
-        // Only drop the A record if no live install still serves this exact host
-        // (per-install slug hosts are unique, so this is effectively always true).
-        const stillLive = await env.DB.prepare(
-          "SELECT install_id FROM live_installs WHERE host=? AND expires_ms>? LIMIT 1"
-        ).bind(row.host, now).first();
-        if (!stillLive) {
-          try { await deleteGreyA(env, row.host); } catch (e) { /* best-effort */ }
-        }
+        // Deliberately KEEP the machine host's grey A record. Deleting it on
+        // expiry created an absent-name window between parties, and the
+        // proxied zone wildcard (*.<base>) synthesizes LIVE-LOOKING edge-IP
+        // answers for absent multi-label names — resolvers that queried in the
+        // window cached that poison and guests then couldn't reach the LAN
+        // room at the venue (field-diagnosed). One grey A per install is free;
+        // the app upserts the fresh LAN IP at every launch.
       }
       await env.DB.prepare("DELETE FROM live_installs WHERE expires_ms<=?").bind(now).run();
+
+      // Hourly: ensure the machine-namespace guard wildcard exists. A grey
+      // *.party.<base> → 192.0.2.1 (TEST-NET, dead) makes DNS's closest-
+      // encloser rule stop the proxied zone wildcard from ever answering for
+      // absent machine names — the poisoning above becomes impossible even if
+      // a record is somehow missing. Self-healing: a zone rebuild that loses
+      // the guard gets it back within the hour.
+      if (env.CF_DNS_TOKEN && env.CF_ZONE_ID && env.BROKER_BASE &&
+          new Date(event.scheduledTime || nowMs()).getUTCMinutes() === 0) {
+        const guard = `*.party.${env.BROKER_BASE}`;
+        const existing = await cfDNS(env, "GET", `?type=A&name=${encodeURIComponent(guard)}`);
+        if (!existing || !existing.length) {
+          await cfDNS(env, "POST", "", { type: "A", name: guard, content: "192.0.2.1", ttl: 60, proxied: false });
+        }
+      }
     } catch (e) { /* best-effort GC — next tick retries */ }
   },
 };
