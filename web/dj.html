@@ -964,6 +964,97 @@
 </div>
 </div>
 
+<script>
+/* ── Early error boundary ──────────────────────────────────────────────────
+   MUST be the first script. The console body ships gated (class="account-locked")
+   and ~430 lines of top-level init run below before this page's own error
+   listeners get registered — so historically ANY throw during init (an older
+   WebKit, a stale saved value) halted the script silently and left the body
+   blank: a white screen with no beacon and no error report. This ES5-only guard
+   registers first, so it (1) reports the exact failure to the broker over the
+   same /api/client-events channel the "open" beacon uses, and (2) surfaces a
+   visible Reset & Reload instead of a permanent blank. Never let the console
+   white-screen in silence again. */
+(function () {
+  var reported = false, shown = false;
+  function report(msg) {
+    if (reported) return; reported = true;
+    try {
+      var body = JSON.stringify({
+        cid: 'dj-console', tab: 'dj', v: (window.PP_V || '?'), plat: 'mac', page: 'dj',
+        events: [{ t: 0, n: 1, k: 'error',
+          msg: ('init: ' + msg + ' ua=' + (navigator.userAgent || '').slice(0, 90)).slice(0, 400) }]
+      });
+      if (navigator.sendBeacon) { navigator.sendBeacon('/api/client-events', body); return; }
+      var x = new XMLHttpRequest();
+      x.open('POST', '/api/client-events', true);
+      x.setRequestHeader('Content-Type', 'application/json');
+      x.send(body);
+    } catch (e) {}
+  }
+  function showFallback() {
+    if (shown) return; shown = true;
+    try {
+      var d = document.createElement('div');
+      d.id = '__ppBootFallback';
+      d.setAttribute('style', 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;' +
+        'display:flex;align-items:center;justify-content:center;background:#f5f5f7;' +
+        'font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#1d1d1f');
+      d.innerHTML = '<div style="max-width:340px;text-align:center;padding:28px 24px">' +
+        '<div style="font-size:40px;line-height:1;margin-bottom:14px">🎧</div>' +
+        '<div style="font-size:17px;font-weight:600;margin-bottom:6px">Let’s refresh the console</div>' +
+        '<div style="font-size:13px;line-height:1.45;color:#6e6e73;margin-bottom:20px">Something got stuck ' +
+        'while loading. Resetting clears saved settings on this Mac and reloads — your account and party ' +
+        'stay intact.</div>' +
+        '<button id="__ppBootReset" type="button" style="font:inherit;font-size:14px;font-weight:590;' +
+        'background:#0071e3;color:#fff;border:0;border-radius:980px;padding:10px 22px;cursor:pointer">' +
+        'Reset &amp; Reload</button>' +
+        '<div style="margin-top:12px"><a href="#" id="__ppBootRetry" ' +
+        'style="font-size:13px;color:#0071e3;text-decoration:none">Just reload</a></div></div>';
+      (document.body || document.documentElement).appendChild(d);
+      document.getElementById('__ppBootReset').onclick = function () {
+        // On a native build that advertises it, hand off to the app so it can
+        // clear the whole WKWebView data store (localStorage + caches) and
+        // reload. Older builds lack that handler, so fall back to clearing our
+        // own saved keys and reloading — enough to shake off a poisoned value.
+        if (window.ppNativeReset) {
+          try { window.webkit.messageHandlers.pp.postMessage({ action: 'resetConsole' }); return; } catch (e) {}
+        }
+        try {
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('pp.') === 0) localStorage.removeItem(k);
+          }
+        } catch (e) {}
+        location.reload();
+      };
+      document.getElementById('__ppBootRetry').onclick = function (ev) { ev.preventDefault(); location.reload(); };
+    } catch (e) {}
+  }
+  window.__ppBooted = false;
+  window.addEventListener('error', function (e) {
+    // Ignore resource-load errors (img/script/link 404s bubble here too); only a
+    // synchronous JS exception blanks the page. And once init has completed
+    // (__ppBooted), the page's own handler owns runtime errors — don't nuke a
+    // working console with the fallback.
+    if (e && e.target && e.target !== window && e.target.tagName) return;
+    if (window.__ppBooted) return;
+    report(((e && e.message) || 'error') + ' @' +
+      String((e && e.filename) || '').split('/').pop() + ':' + ((e && e.lineno) || 0));
+    showFallback();
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    if (window.__ppBooted) return;
+    report('promise: ' + (e && e.reason && (e.reason.message || e.reason)));
+  }, true);
+  // Backstop for a non-throwing hang: if init never signals booted, surface the
+  // recovery UI anyway so the console is never a permanent blank.
+  setTimeout(function () {
+    if (!window.__ppBooted) { report('boot-timeout (no throw; init did not complete)'); showFallback(); }
+  }, 6000);
+})();
+</script>
+
 <script src="/vendor/qrcode.min.js"></script>
 <script>
   const $ = id => document.getElementById(id);
@@ -1396,6 +1487,9 @@
   window.addEventListener('error', (e) => djLog('error', { msg: ((e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0)).slice(0, 300) }));
   window.addEventListener('unhandledrejection', (e) => djLog('error', { msg: ('promise: ' + (e.reason && (e.reason.message || e.reason))).slice(0, 300) }));
   try { djLog('open', { ua: navigator.userAgent.slice(0, 160), scr: screen.width + 'x' + screen.height }); } catch (e) {}
+  // Init got past the dangerous top-level work — tell the early boundary the
+  // console is alive so it never mistakes a working page for a boot failure.
+  window.__ppBooted = true;
 
   // Page tabs: the wall / participants (the old Broadcast|Settings tabs are
   // gone — admin actions live in the action bar, settings behind the gear).

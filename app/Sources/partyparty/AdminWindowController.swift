@@ -60,7 +60,10 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         // directly cycles controller→webView→config→ucc→controller and the
         // window could never deallocate. The weak proxy breaks the cycle.
         ucc.add(WeakScriptHandler(self), name: "pp")
-        ucc.addUserScript(WKUserScript(source: "window.ppNative = true;",
+        // ppNativeReset advertises that this build handles the "resetConsole"
+        // bridge action (full WKWebView data-store clear), so the console's boot
+        // fallback hands off deep recovery to the app instead of a JS-only clear.
+        ucc.addUserScript(WKUserScript(source: "window.ppNative = true; window.ppNativeReset = true;",
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         cfg.userContentController = ucc
 
@@ -76,6 +79,25 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     private func loadConsole() {
         guard let url = URL(string: "http://localhost:\(port)/dj") else { return }
         webView.load(URLRequest(url: url))
+    }
+
+    /// Clear the console's persisted web state (localStorage + caches) and reload.
+    /// The page's boot fallback calls this when init failed — most often a stale
+    /// saved value poisoning startup — so a clean-slate reload is the reliable
+    /// recovery. Scoped to the loopback origin so the partyparty.party sign-in
+    /// session in the same default store is preserved; account/party live
+    /// server-side, so nothing real is lost.
+    private func resetConsole() {
+        let store = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        store.fetchDataRecords(ofTypes: types) { records in
+            let targets = records.filter {
+                $0.displayName.contains("localhost") || $0.displayName.contains("127.0.0.1")
+            }
+            store.removeData(ofTypes: types, for: targets) { [weak self] in
+                DispatchQueue.main.async { self?.loadConsole() }
+            }
+        }
     }
 
     // Retry while the Go server is still coming up (also covers a mid-update
@@ -120,6 +142,8 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             openSignIn(body["url"] as? String)
         case "captureSourceChanged":
             setCaptureSource(body["device"] as? String)
+        case "resetConsole":
+            resetConsole()
         case "ready":
             pushLoginState()
             if let device = body["device"] as? String {
