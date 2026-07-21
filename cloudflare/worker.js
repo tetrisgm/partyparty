@@ -2226,6 +2226,7 @@ function eventFromRow(row, set, slug, wall = {}, live = null) {
     status: live ? "live" : set ? "replay" : "upcoming",
     liveMirror: live?.mirror || "",
     lanUrl: live?.lanUrl || "",
+    lanIpUrl: live?.lanIpUrl || "",
     nowPlaying: live?.nowPlaying || "",
     listeners: live?.listeners || 0,
     tagline: row.tagline || "",
@@ -2397,7 +2398,7 @@ function renderEvent(e, opts = {}) {
       <button type="button" id="pp-join-skip" class="btn ghost sm" style="width:100%">Just listen</button>
       <p id="pp-join-err" class="cardhint" style="margin:0;color:#b3261e" hidden></p>
     </div>
-    <div class="cardhint">Listening from away — a few seconds behind the room.${e.lanUrl ? ` <a href="${esc(e.lanUrl)}" style="font-weight:600">At the party? Join the live room &rarr;</a>` : ""}</div>
+    <div class="cardhint">Listening from away — a few seconds behind the room.${(e.lanUrl || e.lanIpUrl) ? ` <a id="pp-evt-lan" href="${esc(e.lanUrl || e.lanIpUrl)}" style="font-weight:600">At the party? Join the live room &rarr;</a>` : ""}</div>
     <script>
     (function(){
       var a=document.getElementById('pp-live-audio'), b=document.getElementById('pp-live-play');
@@ -2547,6 +2548,21 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
   const liveScript = isLiveNow && e.slug ? `<script>
 (function(){
   var SLUG=${JSON.stringify(String(e.slug)).replace(/</g, "\\u003c")};
+  // Same probe/retarget as the handle router page: if the Mac's hostname is
+  // unreachable on this network (DNS-hostile venue router), point the
+  // "At the party?" link at the raw LAN IP — no DNS, user-tap navigation only.
+  var LANURL=${JSON.stringify(String(e.lanUrl || "")).replace(/</g, "\\u003c")};
+  var LANIP=${JSON.stringify(String(e.lanIpUrl || "")).replace(/</g, "\\u003c")};
+  if(LANURL && LANIP){
+    (function(){
+      var done=false, ctrl=new AbortController();
+      var t=setTimeout(function(){ if(!done){done=true; try{ctrl.abort();}catch(_){} miss();} }, 3500);
+      function miss(){ var a=document.getElementById('pp-evt-lan'); if(a) a.href=LANIP; }
+      fetch(LANURL,{mode:'no-cors',cache:'no-store',signal:ctrl.signal})
+        .then(function(){ if(!done){done=true; clearTimeout(t);} })
+        .catch(function(){ if(!done){done=true; clearTimeout(t); miss();} });
+    })();
+  }
   function guest(){ try{ return JSON.parse(localStorage.getItem('pp.guest')||'null')||{}; }catch(_){ return {}; } }
   var t=document.getElementById('pp-comp-text'), send=document.getElementById('pp-comp-send'), err=document.getElementById('pp-comp-err');
   function submit(){
@@ -6356,11 +6372,15 @@ export default {
       if (row.status === "live") {
         const playlist = env.DL ? await env.DL.head(`event/${slug}/live/live.m3u8`).catch(() => null) : null;
         const presence = await env.DB.prepare(
-          "SELECT host, guest_port, listeners, now_playing FROM live_installs WHERE install_id=? AND expires_ms>? LIMIT 1"
+          "SELECT host, lan_ip, guest_port, listeners, now_playing FROM live_installs WHERE install_id=? AND expires_ms>? LIMIT 1"
         ).bind(row.install_id, nowMs()).first();
         live = {
           mirror: playlist ? `/event/${slug}/live/live.m3u8` : "",
           lanUrl: presence?.host ? `${guestOrigin(presence.host, presence.guest_port)}/` : "",
+          // Raw-IP fallback for DNS-hostile venues, same as the router page:
+          // when the hostname probe fails, the "At the party?" link retargets
+          // here (no DNS involved; :8000 is the product's web port).
+          lanIpUrl: /^\d+\.\d+\.\d+\.\d+$/.test(presence?.lan_ip || "") ? `http://${presence.lan_ip}:8000/` : "",
           // One party, one count: the room (from the Mac's heartbeat) plus the
           // web listeners (fresh presence rows).
           listeners: (Number(presence?.listeners) || 0) + await webListeners(env, slug, nowMs()),

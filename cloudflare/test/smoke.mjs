@@ -5945,6 +5945,10 @@ const tests = [
     assert.match(html, /Tap to listen/);
     assert.match(html, /a few seconds behind/);
     assert.match(html, /https:\/\/disco12\.party\.party\.example\.test:8443\//); // "at the party" LAN link
+    // Raw-IP fallback for DNS-hostile venues: the glue probes the hostname and
+    // retargets the pp-evt-lan link at the LAN IP when unreachable.
+    assert.match(html, /pp-evt-lan/);
+    assert.match(html, /http:\/\/192\.168\.1\.5:8000\//);
     assert.match(html, /Track Z/);
     // The LAN-style identity ask ships with the live player.
     assert.match(html, /pp-join-name/);
