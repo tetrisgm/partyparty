@@ -49,7 +49,7 @@ const DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 // Fallback only — /api/version reads the live content/app-version R2 marker at
 // runtime (release.sh keeps it current). Keep this ~current so the fallback path
 // is never badly stale.
-const APP_VERSION = "79.78";
+const APP_VERSION = "80.78";
 const APP_VERSION_DATE = "2026-07-20";
 const SESSION_COOKIE = "pp_session";
 const POST_MEDIA_MIME = {
@@ -4217,9 +4217,18 @@ async function handleRouter(request, env, handle) {
     // Relay / CGNAT pools / v4-v6). The page probes the Mac's LAN host itself and
     // redirects to the tight LAN listener when reachable, else the cloud mirror.
     const lanUrl = claimant.host ? `${guestOrigin(claimant.host, claimant.guest_port)}/` : "";
+    // Raw-IP escape hatch for rebind-protected venues (coworking/office
+    // routers that hide private-IP DNS answers): the slug hostname is
+    // unresolvable for guests there, so BOTH the probe and the "tap to join"
+    // link dead-end. The raw LAN IP needs no DNS at all — same URL the
+    // console's own LAN QR advertises (:8000 is the product's web port). Used
+    // only as the tap link's fallback after the hostname probe fails; never a
+    // server-side redirect.
+    const lanIpUrl = /^\d+\.\d+\.\d+\.\d+$/.test(claimant.lan_ip || "") ? `http://${claimant.lan_ip}:8000/` : "";
     const html = renderLiveJoin({
       handle,
       lanUrl,
+      lanIpUrl,
       eventSlug: claimant.event_slug || "",
       djName: claimant.dj_name || "",
       eventTitle: claimant.event_title || "",
@@ -4414,15 +4423,15 @@ async function discoverRateLimited(ipHash, bucket = "discover", maxAge = 2) {
 //                 note when the DJ isn't mirroring. A manual "tap to join" link
 //                 to the LAN host is always offered as a probe-false-negative
 //                 escape hatch. DJ-authored text is HTML-escaped.
-function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlaying }) {
+function renderLiveJoin({ handle, lanUrl, lanIpUrl, eventSlug, djName, eventTitle, nowPlaying }) {
   const who = djName || "@" + handle;
   // Off-Wi-Fi guests belong on the EVENT PAGE (title/cover/feed + the delayed
   // live player), not a dead-end mini page — this page is only the router:
   // probe the LAN, then send the guest to the right place.
   const eventPath = eventSlug ? `/e/${encodeURIComponent(eventSlug)}` : "";
   const nowLine = nowPlaying ? `<p class="np">Now playing: ${esc(nowPlaying)}</p>` : "";
-  const lanTap = lanUrl
-    ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl)}">At the party? Tap to join the live room &rarr;</a></p>`
+  const lanTap = (lanUrl || lanIpUrl)
+    ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl || lanIpUrl)}">At the party? Tap to join the live room &rarr;</a></p>`
     : "";
   const remoteInner = eventPath
     ? `<p class="hint"><a href="${esc(eventPath)}" style="color:#ff77b0;font-weight:600">Open the event page &rarr;</a></p>`
@@ -4468,6 +4477,7 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
 <script>
 (function(){
   var LAN=${JSON.stringify(lanUrl || "").replace(/</g, "\\u003c")};
+  var LANIP=${JSON.stringify(lanIpUrl || "").replace(/</g, "\\u003c")};
   var EVENT=${JSON.stringify(eventPath || "").replace(/</g, "\\u003c")};
   var connecting=document.getElementById('pp-connecting');
   var remote=document.getElementById('pp-remote');
@@ -4506,7 +4516,15 @@ function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlay
         .catch(function(){ if(!done){done=true; clearTimeout(t); resolve(false);} });
     });
   }
-  probe(LAN,3500).then(function(local){ if(local){ location.replace(LAN); } else { showRemote(); } });
+  probe(LAN,3500).then(function(local){
+    if(local){ location.replace(LAN); return; }
+    // Hostname unreachable — on rebind-protected venue routers (private-IP DNS
+    // answers hidden) the slug host NEVER resolves for guests, so retarget the
+    // "At the party?" tap at the raw LAN IP: no DNS involved, same URL the
+    // console's own LAN QR shows. A user-gesture navigation, never automatic.
+    if(LANIP){ var a=document.getElementById('pp-lan'); if(a) a.href=LANIP; }
+    showRemote();
+  });
 })();
 </script>
 </body></html>`;

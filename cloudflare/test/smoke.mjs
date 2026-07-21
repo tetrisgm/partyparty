@@ -6010,9 +6010,13 @@ const tests = [
     // idle
     resp = await worker.fetch(new Request("https://wave.party.example.test/?pp-state"), makeEnv({ DB: new FakeD1({}) }));
     assert.deepEqual(await resp.json(), { live: false, eventPath: "" });
-    // and the join page itself carries the poller
+    // and the join page itself carries the poller + the raw-IP tap fallback
+    // (rebind-protected venue routers hide the slug host from guests — the
+    // page retargets the "At the party?" link at the DNS-free LAN IP)
     resp = await worker.fetch(new Request("https://wave.party.example.test/"), makeEnv({ DB: mk("") }));
-    assert.match(await resp.text(), /pp-state/);
+    const joinHtml = await resp.text();
+    assert.match(joinHtml, /pp-state/);
+    assert.match(joinHtml, /http:\/\/192\.168\.1\.5:8000\//);
   }],
 
   ["wildcard router: IDLE page when no party is live, and reserved labels are not handles", async () => {
