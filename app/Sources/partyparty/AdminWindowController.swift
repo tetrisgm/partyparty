@@ -84,7 +84,12 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
     private func loadConsole() {
-        guard let url = URL(string: "http://localhost:\(port)/dj") else { return }
+        // Numeric loopback, NOT "localhost": on some Macs `localhost` resolves to
+        // an address the WebView can't reach (a broken /etc/hosts or a dead IPv6
+        // ::1), which loads as a blank page and — because the diagnostics below
+        // also posted to localhost — reported nothing. 127.0.0.1 needs no DNS and
+        // always hits the server's IPv4 listener. THIS is the field white-screen.
+        guard let url = URL(string: "http://127.0.0.1:\(port)/dj") else { return }
         webView.load(URLRequest(url: url))
     }
 
@@ -127,7 +132,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             "events": [ev],
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let url = URL(string: "http://localhost:\(port)/api/client-events") else { return }
+              let url = URL(string: "http://127.0.0.1:\(port)/api/client-events") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
