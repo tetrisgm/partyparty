@@ -724,7 +724,14 @@ func main() {
 	handler.StartReachabilityWatchdog(context.Background())
 	handler.EnableCleanLinksProbe() // real app self-tests the optional 443 redirect; off in tests
 
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	// tcp4, NOT tcp: on some Macs `net.Listen("tcp", ...)` binds an IPv6-only
+	// socket, and if that machine's IPv6 loopback (::1) is also broken, NOTHING
+	// local can reach the server — the console loads http://127.0.0.1:<port> and
+	// gets nothing, a permanent white screen, even though the process is healthy
+	// and its outbound work succeeds. Forcing tcp4 binds 0.0.0.0 (all IPv4
+	// interfaces), so 127.0.0.1 (console) and the LAN IP (guests) both resolve
+	// with no dependence on IPv6. THIS is the field white screen's root cause.
+	ln, err := net.Listen("tcp4", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
 		// Almost certainly our own orphan: a force-quit app (or a Sparkle update
 		// relaunch) skips child cleanup and the old server squats on the port,
@@ -738,7 +745,7 @@ func main() {
 		}
 		for i := 0; i < 20; i++ {
 			time.Sleep(300 * time.Millisecond)
-			if ln, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port)); err == nil {
+			if ln, err = net.Listen("tcp4", fmt.Sprintf(":%d", cfg.Port)); err == nil {
 				log.Printf("recovered port %d from a previous instance", cfg.Port)
 				break
 			}
@@ -751,6 +758,23 @@ func main() {
 		}
 		log.Fatal(err)
 	}
+
+	// Record exactly what we bound, and self-test that the console's loopback
+	// address is actually reachable from our own process — so a "white screen"
+	// that is really an unreachable listener is named in the log instead of
+	// guessed at. Logged over the diag channel, which is independent of this
+	// HTTP listener.
+	log.Printf("http listener bound: %s (%s)", ln.Addr().String(), ln.Addr().Network())
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		addr := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
+		if c, e := net.DialTimeout("tcp", addr, 2*time.Second); e != nil {
+			log.Printf("selftest: console loopback %s NOT reachable from self: %v", addr, e)
+		} else {
+			c.Close()
+			log.Printf("selftest: console loopback %s reachable", addr)
+		}
+	}()
 
 	handler.StartDiscovery() // Bonjour: resolve guest IPs → friendly device names
 
@@ -865,7 +889,7 @@ func main() {
 			applyActivationResult(res, "cached certificate")
 		}
 	}
-	if rawLn, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
+	if rawLn, err := net.Listen("tcp4", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
 		tlsSrv := &http.Server{
 			Handler: handler,
 			TLSConfig: &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
