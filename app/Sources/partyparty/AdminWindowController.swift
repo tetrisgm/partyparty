@@ -34,6 +34,8 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     private var capturePermissionKind: CapturePermissionKind = .systemAudio
     // Held strongly while the in-app cloud sign-in window is open.
     private var signInWC: SignInWindowController?
+    // Consecutive blank-console recovery attempts (reset to 0 on a healthy boot).
+    private var bootAttempts = 0
 
     init(port: Int, offlinePartyRequest: @escaping () -> Void = {}) {
         self.port = port
@@ -64,6 +66,11 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         // bridge action (full WKWebView data-store clear), so the console's boot
         // fallback hands off deep recovery to the app instead of a JS-only clear.
         ucc.addUserScript(WKUserScript(source: "window.ppNative = true; window.ppNativeReset = true;",
+                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // Instrumentation: capture the raw JS console + uncaught errors natively,
+        // before any page script runs, so a broken console is diagnosable even
+        // when the page's own error handling never executes.
+        ucc.addUserScript(WKUserScript(source: Self.consoleCaptureJS,
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         cfg.userContentController = ucc
 
@@ -100,26 +107,145 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         }
     }
 
+    // MARK: - Instrumentation
+
+    private var appVersionString: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
+    }
+
+    /// Forward a WebView diagnostic into the session log (which uploads to the
+    /// broker) via the local /api/client-events sink — the same black-box
+    /// recorder the web client uses. Navigation failures, WebContent crashes,
+    /// captured JS console errors, and boot-state probes all land there, so a
+    /// blank or stuck console is finally diagnosable remotely instead of guessed
+    /// at. kind "error" flags an urgent cloud upload server-side.
+    private func diag(_ kind: String, _ fields: [String: Any] = [:]) {
+        var ev = fields
+        ev["k"] = kind
+        let payload: [String: Any] = [
+            "cid": "webview", "tab": "dj", "v": appVersionString, "plat": "mac", "page": "dj",
+            "events": [ev],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let url = URL(string: "http://localhost:\(port)/api/client-events") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = data
+        URLSession.shared.dataTask(with: req).resume()
+    }
+
+    /// Injected at documentStart (before any page script): mirror console.error/
+    /// warn and uncaught errors/rejections over the pp bridge so we capture the
+    /// raw JS console even when the page's own error handling never runs.
+    private static let consoleCaptureJS = """
+    (function () {
+      function send(level, msg) {
+        try { window.webkit.messageHandlers.pp.postMessage({ action: 'jslog', level: level, msg: String(msg).slice(0, 500) }); } catch (e) {}
+      }
+      ['error', 'warn'].forEach(function (m) {
+        var orig = console[m];
+        console[m] = function () { try { send(m, Array.prototype.join.call(arguments, ' ')); } catch (e) {} return orig.apply(console, arguments); };
+      });
+      window.addEventListener('error', function (e) {
+        if (e && e.target && e.target !== window && e.target.tagName) return;
+        window.__ppLastError = ((e && e.message) || 'error') + ' @' + String((e && e.filename) || '').split('/').pop() + ':' + ((e && e.lineno) || 0);
+        send('error', 'onerror: ' + window.__ppLastError);
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        send('error', 'unhandledrejection: ' + ((e && e.reason && (e.reason.message || e.reason)) || '?'));
+      }, true);
+    })();
+    """
+
+    // MARK: - Navigation lifecycle (instrumented)
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        diag("nav-start", ["url": webView.url?.absoluteString ?? "?"])
+    }
+
     // Retry while the Go server is still coming up (also covers a mid-update
     // window where the server is being reaped/rebound).
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let ns = error as NSError
+        diag("error", ["msg": "provisional nav failed: \(ns.domain) \(ns.code) — \(ns.localizedDescription)"])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.loadConsole() }
     }
 
     // A load that started then failed — retry the same way.
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        let ns = error as NSError
+        diag("error", ["msg": "nav failed: \(ns.domain) \(ns.code) — \(ns.localizedDescription)"])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.loadConsole() }
     }
 
     // The WebContent process crashed (rare, but leaves a permanent white view) —
     // reload instead of sitting blank.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        diag("error", ["msg": "WebContent process terminated (crash) — reloading"])
         loadConsole()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pushLoginState()
         pushCapturePermission()
+        scheduleBootWatchdog()
+    }
+
+    // MARK: - Boot watchdog (self-heal + report a console that never comes alive)
+
+    private func scheduleBootWatchdog() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in self?.probeBoot() }
+    }
+
+    /// A few seconds after a load finishes, ask the page for its real state. This
+    /// is the authoritative answer to "is the console actually alive?": did JS
+    /// run (booted), does the DOM have content, is the recovery panel showing,
+    /// what was the last error. The snapshot is logged either way; a page that
+    /// loaded but rendered nothing triggers escalating self-heal.
+    private func probeBoot() {
+        let js = """
+        (function () { try { var b = document.body; return JSON.stringify({
+          rs: document.readyState, booted: !!window.__ppBooted,
+          kids: b ? b.childElementCount : -1, len: b ? (b.innerText || '').length : -1,
+          fb: !!document.getElementById('__ppBootFallback'), url: location.href,
+          err: window.__ppLastError || null }); } catch (e) { return '{"probeErr":"' + e + '"}'; } })()
+        """
+        webView.evaluateJavaScript(js) { [weak self] result, error in
+            guard let self else { return }
+            if let error = error {
+                self.diag("error", ["msg": "boot-probe failed: \((error as NSError).localizedDescription)"])
+                return
+            }
+            let state = (result as? String) ?? "nil"
+            let booted = state.contains("\"booted\":true")
+            let fallback = state.contains("\"fb\":true")
+            let blank = state.contains("\"kids\":0") || state.contains("\"len\":0")
+            self.diag(booted ? "boot" : "error", ["state": state])
+            if booted || fallback {
+                self.bootAttempts = 0        // healthy, or already showing the recovery UI
+            } else if blank {
+                self.recoverBlank()
+            }
+        }
+    }
+
+    // Escalating self-heal for a console that rendered nothing: reload once, then
+    // a full data-store reset, then give up loudly so the log names the failure.
+    private func recoverBlank() {
+        bootAttempts += 1
+        switch bootAttempts {
+        case 1:
+            diag("error", ["msg": "console blank after load — reloading (1/2)"])
+            loadConsole()
+            scheduleBootWatchdog()
+        case 2:
+            diag("error", ["msg": "console still blank — clearing WebView data store + reloading (2/2)"])
+            resetConsole()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.scheduleBootWatchdog() }
+        default:
+            diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts — WebView is not rendering /dj"])
+        }
     }
 
     // Re-check capture permissions when the user returns from System Settings.
@@ -144,6 +270,9 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             setCaptureSource(body["device"] as? String)
         case "resetConsole":
             resetConsole()
+        case "jslog":
+            let level = body["level"] as? String ?? "log"
+            diag(level == "error" ? "error" : "console", ["lvl": level, "msg": body["msg"] as? String ?? ""])
         case "ready":
             pushLoginState()
             if let device = body["device"] as? String {

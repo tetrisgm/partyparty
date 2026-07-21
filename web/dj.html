@@ -965,6 +965,21 @@
 </div>
 
 <script>
+/* Liveness ping — the ABSOLUTE first thing, deliberately tiny and ES3, in its
+   own script so nothing can stop it: it fires synchronously the instant the
+   WebView begins executing the page. If this "pagehit" reaches the broker but
+   the console still looks blank, the page IS running and the fault is later JS
+   or rendering. If it NEVER arrives from an install that is clearly loading the
+   window, the WebView isn't executing the page at all — a native/WebView-level
+   failure that no page-side fix can reach. It is the single signal that tells us
+   which side of the fence the bug is on. */
+try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.stringify(
+  { cid: 'dj-console', tab: 'dj', v: '?', plat: 'mac', page: 'dj',
+    events: [{ t: 0, n: 0, k: 'pagehit', rs: document.readyState,
+               ua: (navigator.userAgent || '').slice(0, 90) }] })); } catch (e) {}
+</script>
+
+<script>
 /* ── Early error boundary ──────────────────────────────────────────────────
    MUST be the first script. The console body ships gated (class="account-locked")
    and ~430 lines of top-level init run below before this page's own error
