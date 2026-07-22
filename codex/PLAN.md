@@ -2,6 +2,13 @@
 
 ## Current architecture investigation
 
+The LAN HTTPS reliability review is complete. The field brief is in
+[`docs/lan-https-reliability.md`](../docs/lan-https-reliability.md), and the
+prescriptive implementation contract is in
+[`docs/lan-https-reliability-execution-plan.md`](../docs/lan-https-reliability-execution-plan.md).
+The implementation must follow that chosen architecture rather than reopening
+the guard-wildcard, raw-IP, or plain-HTTP alternatives.
+
 The scheduled-live-playout proposal has been compared with the shipped LL-HLS
 design and the packed-party field evidence. The implementation and physical
 qualification plan is in
