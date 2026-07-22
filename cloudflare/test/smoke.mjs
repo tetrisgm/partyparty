@@ -1500,6 +1500,72 @@ async function withCloudflareDNSRecords(aRecords, fn) {
   }
 }
 
+// Stateful Cloudflare DNS mock: GET reflects prior POST/PUT/DELETE, so the
+// upsert + verify-re-read contract is exercised end to end. `fail` injects a
+// Cloudflare error to test reason codes: {method, nth?} fails the nth call of a
+// method (or every call when nth is absent); `writeNoOp` accepts writes but does
+// not apply them (drives record_mismatch on the verifying re-read).
+async function withStatefulCloudflareDNS(initial, fn, fail = null, writeNoOp = false) {
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+  const counts = {};
+  let seq = 0;
+  const records = (initial || []).map((r, i) => ({
+    id: r.id || `seed-${i}`, type: r.type || "A", name: r.name,
+    content: r.content, ttl: r.ttl ?? 60, proxied: r.proxied ?? false,
+  }));
+  const shouldFail = (method) => {
+    if (!fail || fail.method !== method) return false;
+    counts[method] = (counts[method] || 0) + 1;
+    return fail.nth ? counts[method] === fail.nth : true;
+  };
+  globalThis.fetch = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    if (!req.url.startsWith("https://api.cloudflare.com/client/v4/")) return oldFetch(input, init);
+    const method = req.method;
+    const text = method === "GET" ? "" : await req.clone().text();
+    const body = text ? JSON.parse(text) : null;
+    calls.push({ method, url: req.url, body });
+    if (shouldFail(method)) {
+      return new Response(JSON.stringify({ success: false, errors: [{ message: "mock cloudflare failure" }] }),
+        { headers: { "content-type": "application/json" } });
+    }
+    let result = null;
+    if (method === "GET") {
+      const u = new URL(req.url);
+      const type = u.searchParams.get("type");
+      const name = decodeURIComponent(u.searchParams.get("name") || "");
+      result = records.filter((r) => (!type || r.type === type) && (!name || r.name === name));
+    } else if (method === "POST") {
+      const rec = { id: `new-${++seq}`, type: body.type, name: body.name, content: body.content, ttl: body.ttl ?? 60, proxied: !!body.proxied };
+      if (!writeNoOp) records.push(rec);
+      result = rec;
+    } else if (method === "PUT") {
+      const id = decodeURIComponent(req.url.split("/dns_records/")[1] || "");
+      const rec = records.find((r) => r.id === id);
+      if (rec && !writeNoOp) Object.assign(rec, { type: body.type, name: body.name, content: body.content, ttl: body.ttl ?? 60, proxied: !!body.proxied });
+      result = rec || { id };
+    } else if (method === "DELETE") {
+      const id = decodeURIComponent(req.url.split("/dns_records/")[1] || "");
+      const idx = records.findIndex((r) => r.id === id);
+      if (idx >= 0) records.splice(idx, 1);
+      result = { id };
+    }
+    return new Response(JSON.stringify({ success: true, result }), { headers: { "content-type": "application/json" } });
+  };
+  try { return await fn(calls, records); } finally { globalThis.fetch = oldFetch; }
+}
+
+// A linked-install DB + broker record for the DNS contract tests.
+function linkedDnsEnv(extra = {}) {
+  return makeEnv({
+    DB: new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-dns", profile_id: "profile-dns", revoked_ms: null }],
+    }),
+    ...extra,
+  });
+}
+
 async function fetchPath(path, init = {}, envOpts = {}) {
   return worker.fetch(new Request(`https://partyparty.party${path}`, init), makeEnv(envOpts));
 }
@@ -2896,99 +2962,111 @@ const tests = [
       assert.equal(calls.length, 0);
     });
   }],
-  ["broker DNS writes use the linked install slug domain", async () => {
-    const db = new FakeD1({
-      deviceInstalls: [{
-        install_id: "abc123abc123",
-        install_slug: "disco12",
-        user_id: "user-dns",
-        profile_id: "profile-dns",
-        revoked_ms: null,
-      }],
-    });
-    await withCloudflareDNSMock(async (calls) => {
-      const aResp = await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+  ["/api/broker/a publishes ONE verified DNS-only A record with a strict receipt", async () => {
+    await withStatefulCloudflareDNS([], async (calls, records) => {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
+        method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
-      }), makeEnv({ DB: db }));
-      const aJson = await aResp.json();
-      assert.equal(aResp.status, 200);
-      assert.equal(aJson.host, "disco12.party.party.example.test");
-      const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
-      assert.equal(aPost.body.name, "disco12.party.party.example.test");
-      assert.equal(aPost.body.content, "192.168.2.1");
-      assert.equal(aPost.body.proxied, false);
-
+      }), linkedDnsEnv());
+      const json = await resp.json();
+      assert.equal(resp.status, 200);
+      assert.equal(json.ok, true);
+      assert.equal(json.verified, true);
+      assert.equal(json.host, "disco12.party.party.example.test");
+      assert.equal(json.ip, "192.168.2.1");
+      assert.equal(json.proxied, false);
+      const a = records.filter((r) => r.type === "A" && r.name === "disco12.party.party.example.test");
+      assert.equal(a.length, 1);
+      assert.equal(a[0].content, "192.168.2.1");
+      assert.equal(a[0].proxied, false);
+      assert.equal(JSON.stringify(json).includes("token-test"), false); // no token leak
+    });
+    // The ACME challenge TXT still writes under the same immutable machine host.
+    await withStatefulCloudflareDNS([], async () => {
       const txtResp = await worker.fetch(new Request("https://partyparty.party/api/broker/txt", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+        method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", value: "challenge-token" }),
-      }), makeEnv({ DB: db }));
-      const txtJson = await txtResp.json();
+      }), linkedDnsEnv());
       assert.equal(txtResp.status, 200);
-      assert.equal(txtJson.name, "_acme-challenge.disco12.party.party.example.test");
-      const txtPost = calls.find((c) => c.method === "POST" && c.body?.type === "TXT");
-      assert.equal(txtPost.body.name, "_acme-challenge.disco12.party.party.example.test");
-      assert.equal(txtPost.body.content, "challenge-token");
+      assert.equal((await txtResp.json()).name, "_acme-challenge.disco12.party.party.example.test");
     });
   }],
-  ["broker /a renames a linked install to the handle-derived slug (seth-live) — but never while live", async () => {
-    const mkDb = (over = {}) => new FakeD1({
-      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-hs", profile_id: "profile-hs", revoked_ms: null }],
-      profiles: [{ id: "profile-hs", user_id: "user-hs", handle: "seth", display_name: "Seth", published: 1, handle_confirmed_ms: 5, ...over.profile }],
-      ...over.db,
+  ["/api/broker/a keeps the machine slug stable — never a handle-derived rename", async () => {
+    // A confirmed public handle must NOT rename the machine host. Handle changes
+    // affect only the public route, never the machine A record or certificate.
+    const env = makeEnv({
+      DB: new FakeD1({
+        deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-hs", profile_id: "profile-hs", revoked_ms: null }],
+        profiles: [{ id: "profile-hs", user_id: "user-hs", handle: "seth", display_name: "Seth", published: 1, handle_confirmed_ms: 5 }],
+      }),
     });
-    const postA = (env) => worker.fetch(new Request("https://partyparty.party/api/broker/a", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
-    }), env);
-
-    // Confirmed handle + idle -> rename disco12 -> seth-live; A record for the new name.
-    await withCloudflareDNSMock(async (calls) => {
-      const env = makeEnv({ DB: mkDb() });
-      const json = await (await postA(env)).json();
-      assert.equal(json.host, "seth-live.party.party.example.test");
-      const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
-      assert.equal(aPost.body.name, "seth-live.party.party.example.test");
-      // Reverse index claimed + rec updated: a second call is a stable no-op.
-      const again = await (await postA(env)).json();
-      assert.equal(again.host, "seth-live.party.party.example.test");
-      assert.equal(await (await env.DL.get("broker/slug/seth-live")).text(), "abc123abc123");
+    await withStatefulCloudflareDNS([], async (calls, records) => {
+      const json = await (await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
+      }), env)).json();
+      assert.equal(json.host, "disco12.party.party.example.test"); // NOT seth-live
+      assert.equal(records.filter((r) => String(r.name).startsWith("seth-live")).length, 0);
     });
-
-    // Unconfirmed (auto-minted) handle -> no rename; hostname must not churn.
-    await withCloudflareDNSMock(async () => {
-      const env = makeEnv({ DB: mkDb({ profile: { handle_confirmed_ms: null } }) });
-      assert.equal((await (await postA(env)).json()).host, "disco12.party.party.example.test");
+  }],
+  ["/api/broker/a repairs wrong IP, proxied state, TTL, and deletes duplicate A records", async () => {
+    const host = "disco12.party.party.example.test";
+    const seed = [
+      { id: "wrong", type: "A", name: host, content: "10.0.0.9", ttl: 3600, proxied: true },
+      { id: "dupe", type: "A", name: host, content: "10.0.0.8", ttl: 60, proxied: false },
+    ];
+    await withStatefulCloudflareDNS(seed, async (calls, records) => {
+      const json = await (await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip: "192.168.2.1" }),
+      }), linkedDnsEnv())).json();
+      assert.equal(json.ok, true);
+      const a = records.filter((r) => r.type === "A" && r.name === host);
+      assert.equal(a.length, 1);                 // duplicates gone
+      assert.equal(a[0].content, "192.168.2.1"); // repaired IP
+      assert.equal(a[0].proxied, false);         // forced DNS-only
+      assert.equal(a[0].ttl, 60);
     });
-
-    // Currently LIVE -> keep the name the Mac can actually serve a cert for.
-    await withCloudflareDNSMock(async () => {
-      const env = makeEnv({ DB: mkDb({ db: { liveInstalls: [{
-        install_id: "abc123abc123", handle: "seth", profile_id: "profile-hs", public_ip_hash: "h",
-        host: "disco12.party.party.example.test", lan_ip: "192.168.2.1", event_slug: "", dj_name: "Seth",
-        event_title: "", listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1,
-        expires_ms: Date.now() + 60000,
-      }] } }) });
-      assert.equal((await (await postA(env)).json()).host, "disco12.party.party.example.test");
+  }],
+  ["/api/broker/a is strict: read/write/dedupe/verify/ip failures return reason codes, never false success", async () => {
+    const host = "disco12.party.party.example.test";
+    const postIp = (ip = "192.168.2.1") => worker.fetch(new Request("https://partyparty.party/api/broker/a", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", ip }),
+    }), linkedDnsEnv());
+    // malformed IP -> 400 invalid_lan_ip, zero Cloudflare calls.
+    await withStatefulCloudflareDNS([], async (calls) => {
+      const resp = await postIp("999.1.1.1");
+      assert.equal(resp.status, 400);
+      assert.equal((await resp.json()).reason, "invalid_lan_ip");
+      assert.equal(calls.length, 0);
     });
-
-    // Base taken by ANOTHER install (the DJ's second Mac) -> seth-live2.
-    await withCloudflareDNSMock(async () => {
-      const env = makeEnv({
-        DB: mkDb(),
-        r2Objects: { "broker/slug/seth-live": new FakeR2Object("someoneelse47", {}) },
-      });
-      assert.equal((await (await postA(env)).json()).host, "seth-live2.party.party.example.test");
-    });
-
-    // Dotted/underscored handles map to DNS-safe labels (dj.max -> dj-max-live).
-    await withCloudflareDNSMock(async () => {
-      const env = makeEnv({ DB: mkDb({ profile: { handle: "dj.max_1" } }) });
-      assert.equal((await (await postA(env)).json()).host, "dj-max-1-live.party.party.example.test");
-    });
+    // read failure -> 502 cloudflare_read_failed.
+    await withStatefulCloudflareDNS([], async () => {
+      assert.equal((await postIp()).status, 502);
+    }, { method: "GET", nth: 1 });
+    await withStatefulCloudflareDNS([], async () => {
+      assert.equal((await (await postIp()).json()).reason, "cloudflare_read_failed");
+    }, { method: "GET", nth: 1 });
+    // write (POST) failure -> 502 cloudflare_write_failed.
+    await withStatefulCloudflareDNS([], async () => {
+      assert.equal((await (await postIp()).json()).reason, "cloudflare_write_failed");
+    }, { method: "POST" });
+    // duplicate DELETE failure -> 502 duplicate_cleanup_failed.
+    await withStatefulCloudflareDNS(
+      [{ id: "a1", type: "A", name: host, content: "192.168.2.1", proxied: false },
+       { id: "a2", type: "A", name: host, content: "10.0.0.2", proxied: false }],
+      async () => {
+        assert.equal((await (await postIp()).json()).reason, "duplicate_cleanup_failed");
+      }, { method: "DELETE" });
+    // verify re-read (2nd GET) failure -> 502 cloudflare_verify_failed.
+    await withStatefulCloudflareDNS([], async () => {
+      assert.equal((await (await postIp()).json()).reason, "cloudflare_verify_failed");
+    }, { method: "GET", nth: 2 });
+    // a write that does not persist -> 502 record_mismatch on the verifying re-read.
+    await withStatefulCloudflareDNS([], async () => {
+      assert.equal((await (await postIp()).json()).reason, "record_mismatch");
+    }, null, true);
   }],
 
   ["broker DNS writes upgrade legacy installs to a slug instead of IP-encoded hostnames", async () => {
@@ -3007,7 +3085,7 @@ const tests = [
         "broker/abc123abc123.json": new FakeR2Object(JSON.stringify({ secret: "secret-a", created: 1 }), { contentType: "application/json" }),
       },
     });
-    await withCloudflareDNSMock(async (calls) => {
+    await withStatefulCloudflareDNS([], async (calls) => {
       const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -5431,13 +5509,13 @@ const tests = [
 
   // ---- Phase 2/3: live presence, discovery, cloud mirror, wildcard router ----
 
-  ["/api/broker/live registers presence, resolves the handle server-side, and writes the grey slug-host A record", async () => {
+  ["/api/broker/live registers presence, resolves the handle server-side, and publishes a verified machine A record", async () => {
     const db = new FakeD1({
       deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-live", profile_id: "profile-live", revoked_ms: null }],
       profiles: [{ id: "profile-live", user_id: "user-live", handle: "wave", display_name: "DJ Wave", published: 1 }],
       events: [{ slug: "rooftop-night", install_id: "abc123abc123", dj_profile_id: "profile-live", status: "live", live_started_ms: 5000 }],
     });
-    await withCloudflareDNSMock(async (calls) => {
+    await withStatefulCloudflareDNS([], async (calls, records) => {
       const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live", {
         method: "POST",
         headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
@@ -5447,6 +5525,7 @@ const tests = [
       assert.equal(resp.status, 200);
       assert.equal(json.host, "disco12.party.party.example.test");
       assert.equal(json.claimed, true);
+      assert.equal(json.dns.ok, true); // nested DNS receipt: publication verified
 
       const row = db.liveInstalls.get("abc123abc123");
       assert.equal(row.handle, "wave");
@@ -5460,12 +5539,30 @@ const tests = [
       assert.equal(row.public_ip_hash, await sha256Hex("ip:203.0.113.9"));
       assert.ok(row.expires_ms > Date.now());
 
-      // Grey A record written for the LOCAL slug host -> lan_ip (never the handle).
-      const aPost = calls.find((c) => c.method === "POST" && c.body?.type === "A");
-      assert.equal(aPost.body.name, "disco12.party.party.example.test");
-      assert.equal(aPost.body.content, "192.168.1.50");
-      assert.equal(aPost.body.proxied, false);
+      // Exactly one DNS-only A record for the LOCAL machine host -> lan_ip.
+      const a = records.filter((r) => r.type === "A" && r.name === "disco12.party.party.example.test");
+      assert.equal(a.length, 1);
+      assert.equal(a[0].content, "192.168.1.50");
+      assert.equal(a[0].proxied, false);
     });
+  }],
+  ["/api/broker/live returns presence success PLUS an explicit DNS failure (not swallowed)", async () => {
+    const db = new FakeD1({
+      deviceInstalls: [{ install_id: "abc123abc123", user_id: "user-live", profile_id: "profile-live", revoked_ms: null }],
+      profiles: [{ id: "profile-live", user_id: "user-live", handle: "wave", display_name: "DJ Wave", published: 1 }],
+    });
+    await withStatefulCloudflareDNS([], async () => {
+      const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/live", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
+        body: JSON.stringify({ id: "abc123abc123", secret: "secret-a", lan_ip: "192.168.1.50" }),
+      }), makeEnv({ DB: db }));
+      const json = await resp.json();
+      assert.equal(resp.status, 200);          // cloud presence still succeeds
+      assert.equal(json.ok, true);
+      assert.equal(json.dns.ok, false);        // but DNS failure is surfaced
+      assert.equal(json.dns.reason, "cloudflare_write_failed");
+    }, { method: "POST" });
   }],
 
   ["/api/broker/live refuses an install that is not linked to an account", async () => {
@@ -5514,7 +5611,7 @@ const tests = [
     });
   }],
 
-  ["/api/broker/offline drops the presence row and deletes the grey slug-host A record", async () => {
+  ["/api/broker/offline drops the presence row but KEEPS the persistent machine A record", async () => {
     const db = new FakeD1({
       liveInstalls: [{
         install_id: "abc123abc123", handle: "wave", profile_id: "profile-w",
@@ -5523,19 +5620,19 @@ const tests = [
         live_started_ms: 1000, last_seen_ms: 1000, expires_ms: Date.now() + 60000,
       }],
     });
-    await withCloudflareDNSRecords(
+    await withStatefulCloudflareDNS(
       [{ id: "rec-a", type: "A", name: "disco12.party.party.example.test", content: "192.168.1.5" }],
-      async (calls) => {
+      async (calls, records) => {
         const resp = await worker.fetch(new Request("https://partyparty.party/api/broker/offline", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ id: "abc123abc123", secret: "secret-a" }),
         }), makeEnv({ DB: db }));
         assert.equal(resp.status, 200);
-        assert.equal(db.liveInstalls.has("abc123abc123"), false);
-        const del = calls.find((c) => c.method === "DELETE");
-        assert.ok(del, "deletes the A record on clean offline");
-        assert.match(del.url, /\/dns_records\/rec-a$/);
+        assert.equal(db.liveInstalls.has("abc123abc123"), false); // presence dropped
+        // The machine A record is persistent install state — no DNS DELETE issued.
+        assert.equal(calls.some((c) => c.method === "DELETE"), false);
+        assert.equal(records.filter((r) => r.name === "disco12.party.party.example.test").length, 1);
       }
     );
   }],
@@ -5944,11 +6041,10 @@ const tests = [
     assert.match(html, /\/event\/rooftop-night\/live\/live\.m3u8/); // the delayed stream
     assert.match(html, /Tap to listen/);
     assert.match(html, /a few seconds behind/);
-    assert.match(html, /https:\/\/disco12\.party\.party\.example\.test:8443\//); // "at the party" LAN link
-    // Raw-IP fallback for DNS-hostile venues: the glue probes the hostname and
-    // retargets the pp-evt-lan link at the LAN IP when unreachable.
-    assert.match(html, /pp-evt-lan/);
-    assert.match(html, /http:\/\/192\.168\.1\.5:8000\//);
+    assert.match(html, /https:\/\/disco12\.party\.party\.example\.test:8443\//); // HTTPS "at the party" LAN link
+    // The machine origin is HTTPS-only — no raw http://<ip>:8000/ fallback anywhere.
+    assert.doesNotMatch(html, /http:\/\/192\.168\.1\.5:8000\//);
+    assert.equal(html.includes("pp-evt-lan") ? /http:\/\/\d/.test(html) : false, false);
     assert.match(html, /Track Z/);
     // The LAN-style identity ask ships with the live player.
     assert.match(html, /pp-join-name/);
@@ -6014,13 +6110,12 @@ const tests = [
     // idle
     resp = await worker.fetch(new Request("https://wave.party.example.test/?pp-state"), makeEnv({ DB: new FakeD1({}) }));
     assert.deepEqual(await resp.json(), { live: false, eventPath: "" });
-    // and the join page itself carries the poller + the raw-IP tap fallback
-    // (rebind-protected venue routers hide the slug host from guests — the
-    // page retargets the "At the party?" link at the DNS-free LAN IP)
+    // and the join page itself carries the poller and the HTTPS machine origin,
+    // with NO raw http://<ip>:8000/ fallback (the machine origin is HTTPS-only).
     resp = await worker.fetch(new Request("https://wave.party.example.test/"), makeEnv({ DB: mk("") }));
     const joinHtml = await resp.text();
     assert.match(joinHtml, /pp-state/);
-    assert.match(joinHtml, /http:\/\/192\.168\.1\.5:8000\//);
+    assert.doesNotMatch(joinHtml, /http:\/\/192\.168\.1\.5:8000\//);
   }],
 
   ["wildcard router: IDLE page when no party is live, and reserved labels are not handles", async () => {
@@ -6047,45 +6142,50 @@ const tests = [
     assert.doesNotMatch(body, /No party live/);
   }],
 
-  ["scheduled cron GC expires dead rows, KEEPS grey A records, and ensures the guard wildcard", async () => {
-    const db = new FakeD1({
+  ["scheduled cron: sweeps dead rows, keeps machine A records, migrates guard -> namespace anchor", async () => {
+    const mkDb = () => new FakeD1({
       liveInstalls: [
-        {
-          install_id: "abc123abc123", handle: "wave", profile_id: "p", public_ip_hash: "h",
+        { install_id: "abc123abc123", handle: "wave", profile_id: "p", public_ip_hash: "h",
           host: "disco12.party.party.example.test", lan_ip: "192.168.1.5", event_slug: "", dj_name: "", event_title: "",
-          listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() - 5000,
-        },
-        {
-          install_id: "def456def456", handle: "beat", profile_id: "p2", public_ip_hash: "h2",
+          listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() - 5000 },
+        { install_id: "def456def456", handle: "beat", profile_id: "p2", public_ip_hash: "h2",
           host: "groove34.party.example.test", lan_ip: "10.0.0.2", event_slug: "", dj_name: "", event_title: "",
-          listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() + 60000,
-        },
+          listeners: 0, now_playing: "", live_started_ms: 1, last_seen_ms: 1, expires_ms: Date.now() + 60000 },
       ],
     });
-    await withCloudflareDNSRecords(
-      [], // the GET below must see "no guard yet" (the harness is name-blind)
-      async (calls) => {
-        // Off the top of the hour: rows sweep, but NO DNS calls at all — the
-        // machine host's grey A must survive expiry (deleting it opened an
-        // absent-name window where the proxied zone wildcard synthesized
-        // live-looking edge-IP answers that resolvers cached — the venue
-        // poisoning bug), and the guard ensure only runs hourly.
+    const anchorName = "party.party.example.test";
+    const guardName = "*.party.party.example.test";
+    const machHost = "disco12.party.party.example.test";
+
+    // Anchor absent + guard present: sweep dead rows (KEEPING machine A records),
+    // create + verify the anchor TXT, THEN delete the guard.
+    await withStatefulCloudflareDNS(
+      [{ id: "guard", type: "A", name: guardName, content: "192.0.2.1", proxied: false },
+       { id: "mach", type: "A", name: machHost, content: "192.168.1.5", proxied: false }],
+      async (calls, records) => {
+        const db = mkDb();
         await worker.scheduled({ scheduledTime: Date.UTC(2026, 0, 1, 12, 30) }, makeEnv({ DB: db }), { waitUntil() {} });
-        assert.equal(db.liveInstalls.has("abc123abc123"), false);
-        assert.equal(db.liveInstalls.has("def456def456"), true);
-        assert.equal(calls.find((c) => c.method === "DELETE"), undefined, "grey A records are never GC-deleted");
-        // Top of the hour: the machine-namespace guard wildcard is ensured
-        // (grey, dead TEST-NET IP) so absent machine names can never fall
-        // through to the proxied zone wildcard.
-        await worker.scheduled({ scheduledTime: Date.UTC(2026, 0, 1, 13, 0) }, makeEnv({ DB: db }), { waitUntil() {} });
-        const post = calls.find((c) => c.method === "POST");
-        assert.ok(post, "creates the guard wildcard when missing");
-        assert.equal(post.body.name, "*.party.party.example.test");
-        assert.equal(post.body.content, "192.0.2.1");
-        assert.equal(post.body.proxied, false);
-        assert.equal(calls.find((c) => c.method === "DELETE"), undefined);
-      }
-    );
+        assert.equal(db.liveInstalls.has("abc123abc123"), false); // expired swept
+        assert.equal(db.liveInstalls.has("def456def456"), true);  // live kept
+        assert.equal(records.some((r) => r.name === machHost && r.type === "A"), true); // machine A survives
+        assert.equal(records.some((r) => r.name === guardName && r.type === "A"), false); // guard deleted
+        assert.equal(records.some((r) => r.name === anchorName && r.type === "TXT"
+          && r.content === "partyparty-machine-namespace-v1"), true); // anchor exists
+        // Repeated run is idempotent: no second anchor TXT, guard never recreated.
+        await worker.scheduled({ scheduledTime: Date.UTC(2026, 0, 1, 12, 31) }, makeEnv({ DB: mkDb() }), { waitUntil() {} });
+        assert.equal(records.filter((r) => r.name === anchorName && r.type === "TXT").length, 1);
+        assert.equal(records.some((r) => r.name === guardName), false);
+      });
+
+    // Anchor creation failure MUST leave the guard intact — never delete the
+    // guard without a proven anchor.
+    await withStatefulCloudflareDNS(
+      [{ id: "guard", type: "A", name: guardName, content: "192.0.2.1", proxied: false }],
+      async (calls, records) => {
+        await worker.scheduled({ scheduledTime: Date.UTC(2026, 0, 1, 12, 30) }, makeEnv({ DB: mkDb() }), { waitUntil() {} });
+        assert.equal(records.some((r) => r.name === guardName), true); // guard NOT deleted
+        assert.equal(records.some((r) => r.name === anchorName && r.type === "TXT"), false);
+      }, { method: "POST" }); // the anchor TXT create fails
   }],
 ];
 

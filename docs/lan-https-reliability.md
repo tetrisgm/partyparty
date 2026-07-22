@@ -1,5 +1,21 @@
 # LAN HTTPS low-latency reliability — architecture review request
 
+> **RESOLVED.** The architecture review is complete and the fix is implemented.
+> The chosen design and the prescriptive contract are in
+> [`lan-https-reliability-execution-plan.md`](lan-https-reliability-execution-plan.md).
+> Delivered so far: persistent per-install machine A records (never deleted on
+> offline/quit), a strict *verified* Cloudflare receipt on `/api/broker/a` and
+> `/api/broker/live`, the `party.partyparty.party` namespace-anchor TXT replacing
+> the `192.0.2.1` guard wildcard (absent machine names now return NXDOMAIN), stable
+> machine hostnames (no handle-derived renames), removal of the false DoH
+> "DNS-rebind protection" classifier and every raw-`http://<ip>:8000/` fallback,
+> and a structured activation result (cert vs DNS vs resolver evidence). Still to
+> come as a follow-on unit: the full `/api/status` `lan` object with listener/
+> guest-path TLS self-checks and the console `lan.state` UI (execution-plan §5–7).
+> The observations below are retained as the original field evidence.
+
+
+
 **Status:** open problem. Please review the current architecture, critique it, and
 recommend the most robust approach. This document is the brief; the goal is your
 architectural verdict + a concrete build plan, not a code dump.

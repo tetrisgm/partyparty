@@ -2226,7 +2226,6 @@ function eventFromRow(row, set, slug, wall = {}, live = null) {
     status: live ? "live" : set ? "replay" : "upcoming",
     liveMirror: live?.mirror || "",
     lanUrl: live?.lanUrl || "",
-    lanIpUrl: live?.lanIpUrl || "",
     nowPlaying: live?.nowPlaying || "",
     listeners: live?.listeners || 0,
     tagline: row.tagline || "",
@@ -2398,7 +2397,7 @@ function renderEvent(e, opts = {}) {
       <button type="button" id="pp-join-skip" class="btn ghost sm" style="width:100%">Just listen</button>
       <p id="pp-join-err" class="cardhint" style="margin:0;color:#b3261e" hidden></p>
     </div>
-    <div class="cardhint">Listening from away — a few seconds behind the room.${(e.lanUrl || e.lanIpUrl) ? ` <a id="pp-evt-lan" href="${esc(e.lanUrl || e.lanIpUrl)}" style="font-weight:600">At the party? Join the live room &rarr;</a>` : ""}</div>
+    <div class="cardhint">Listening from away — a few seconds behind the room.${e.lanUrl ? ` <a id="pp-evt-lan" href="${esc(e.lanUrl)}" style="font-weight:600">At the party? Join the live room &rarr;</a>` : ""}</div>
     <script>
     (function(){
       var a=document.getElementById('pp-live-audio'), b=document.getElementById('pp-live-play');
@@ -2548,21 +2547,6 @@ w.addEventListener('click',function(e){if(!a.duration)return;var r=w.getBounding
   const liveScript = isLiveNow && e.slug ? `<script>
 (function(){
   var SLUG=${JSON.stringify(String(e.slug)).replace(/</g, "\\u003c")};
-  // Same probe/retarget as the handle router page: if the Mac's hostname is
-  // unreachable on this network (DNS-hostile venue router), point the
-  // "At the party?" link at the raw LAN IP — no DNS, user-tap navigation only.
-  var LANURL=${JSON.stringify(String(e.lanUrl || "")).replace(/</g, "\\u003c")};
-  var LANIP=${JSON.stringify(String(e.lanIpUrl || "")).replace(/</g, "\\u003c")};
-  if(LANURL && LANIP){
-    (function(){
-      var done=false, ctrl=new AbortController();
-      var t=setTimeout(function(){ if(!done){done=true; try{ctrl.abort();}catch(_){} miss();} }, 3500);
-      function miss(){ var a=document.getElementById('pp-evt-lan'); if(a) a.href=LANIP; }
-      fetch(LANURL,{mode:'no-cors',cache:'no-store',signal:ctrl.signal})
-        .then(function(){ if(!done){done=true; clearTimeout(t);} })
-        .catch(function(){ if(!done){done=true; clearTimeout(t); miss();} });
-    })();
-  }
   function guest(){ try{ return JSON.parse(localStorage.getItem('pp.guest')||'null')||{}; }catch(_){ return {}; } }
   var t=document.getElementById('pp-comp-text'), send=document.getElementById('pp-comp-send'), err=document.getElementById('pp-comp-err');
   function submit(){
@@ -2683,70 +2667,12 @@ async function ensureBrokerSlug(env, id, rec) {
   return slug;
 }
 
-// handleSlugBase: the DNS label a DJ's Mac should carry, derived from their
-// handle — seth -> "seth-live" (a second Mac gets seth-live2, ...). Handles
-// can never contain hyphens (normalizeHandle allows [a-z0-9_.]) so a
-// handle-derived label can NEVER collide with any present or future handle's
-// proxied custom domain. Dots/underscores (valid in handles, not hostnames)
-// map to hyphens.
-function handleSlugBase(handle) {
-  const h = normalizeHandle(handle);
-  if (!h) return "";
-  const dns = h.replace(/[._]+/g, "-").replace(/^-+|-+$/g, "");
-  return dns ? `${dns}-live` : "";
-}
-
-// ensureHandleSlug: called ONLY from /api/broker/a — the one endpoint where the
-// Mac is present to ADOPT a rename (its refresh loop takes the returned host,
-// notices the cached cert no longer matches, re-runs ACME, and re-advertises;
-// zero client changes). Renames a linked install's machine hostname from the
-// random word slug (fader91) to the handle-derived one (seth-live). Hard rules:
-// - only when the profile's handle is CONFIRMED (auto-minted defaults like
-//   "seth.finkin" must not churn hostnames before the DJ picks a name);
-// - NEVER while the install is live — guests would be routed to a host the Mac
-//   has no cert for yet; the rename waits for the next idle refresh;
-// - the old reverse index stays reserved so a stale printed QR can never point
-//   at a stranger's Mac; the old grey A record is deleted (link goes dead, not
-//   wrong). Falls back to ensureBrokerSlug whenever renaming doesn't apply.
-async function ensureHandleSlug(env, id, rec, now) {
-  const current = await ensureBrokerSlug(env, id, rec);
-  if (!env.DB) return current;
-  const linked = await env.DB.prepare(
-    "SELECT profile_id FROM device_installs WHERE install_id=? AND revoked_ms IS NULL LIMIT 1"
-  ).bind(id).first();
-  if (!linked?.profile_id) return current;
-  const profile = await env.DB.prepare(
-    "SELECT handle, handle_confirmed_ms FROM dj_profiles WHERE id=? LIMIT 1"
-  ).bind(linked.profile_id).first();
-  if (!profile?.handle || profile.handle_confirmed_ms == null) return current;
-  const base = handleSlugBase(profile.handle);
-  if (!base) return current;
-  if (new RegExp(`^${base}\\d*$`).test(current)) return current; // already this handle's
-  const live = await env.DB.prepare(
-    "SELECT 1 FROM live_installs WHERE install_id=? AND expires_ms>? LIMIT 1"
-  ).bind(id, now).first();
-  if (live) return current; // mid-party: keep the name the Mac can actually serve
-  const slugOwner = async (s) => {
-    const o = await env.DL.get(`broker/slug/${s}`);
-    return o ? await o.text() : "";
-  };
-  let slug = base;
-  for (let n = 2; n <= 9; n++) {
-    const owner = await slugOwner(slug);
-    if (!owner || owner === id) break;
-    slug = base + String(n); // another of this DJ's Macs holds the base
-  }
-  const owner = await slugOwner(slug);
-  if (owner && owner !== id) return current; // 9 Macs deep — keep the word slug
-  const oldSlug = rec.slug;
-  rec.slug = slug;
-  await env.DL.put(`broker/slug/${slug}`, id);
-  await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
-  if (oldSlug && oldSlug !== slug) {
-    try { await deleteGreyA(env, machineHost(env, oldSlug)); } catch (e) { /* best-effort */ }
-  }
-  return slug;
-}
+// A machine's DNS label is STABLE for the life of the install. It is assigned
+// once by ensureBrokerSlug and never derived from — or renamed to — the DJ's
+// public handle. A handle change affects only the public Worker route and
+// profile URL; it must never delete the machine A record, mint a new hostname,
+// force certificate reissuance, expose an absent-name window, or change an
+// active room URL. (The old handle-derived rename lived here and is gone.)
 
 async function requireLinkedInstallForDNS(env, id) {
   if (env.BROKER_ALLOW_UNLINKED_DNS === "1") return null;
@@ -4126,25 +4052,125 @@ async function authInstall(env, id, secret) {
   return rec;
 }
 
-// writeGreyA upserts ONE grey (DNS-only, never proxied) A record for a full host
-// name to a LAN IP — move-in-place if it drifted, create if absent. Same shape as
-// /api/broker/a; used by the live heartbeat to keep the Mac's slug host current.
-async function writeGreyA(env, name, ip) {
-  const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
-  if (existing && existing.length) {
-    if (existing[0].content !== ip) {
-      await cfDNS(env, "PUT", "/" + existing[0].id, { type: "A", name, content: ip, ttl: 60, proxied: false });
-    }
-  } else {
-    await cfDNS(env, "POST", "", { type: "A", name, content: ip, ttl: 60, proxied: false });
-  }
+// isValidIPv4: strict dotted-quad, each octet 0-255 with no leading zeros. The
+// old permissive `\d{1,3}` regex accepted 999.999.999.999 and would publish a
+// garbage A record that fails closed for every guest.
+function isValidIPv4(ip) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(ip || ""));
+  if (!m) return false;
+  return m.slice(1, 5).every((o) => {
+    const n = Number(o);
+    return n >= 0 && n <= 255 && String(n) === o;
+  });
 }
 
-// deleteGreyA removes every A record for a host — called on /offline and by the
-// cron when a live install vanishes, so a dead Mac's slug host stops resolving.
-async function deleteGreyA(env, name) {
-  const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
-  for (const r of existing || []) await cfDNS(env, "DELETE", "/" + r.id);
+// upsertMachineA publishes the ONE authoritative DNS-only A record for a Mac's
+// machine host and then PROVES it by re-reading Cloudflare. The hostname is
+// derived only from the authenticated install record — never client-supplied.
+// It returns a structured receipt; `ok` is true only when exactly one A record
+// remains, carrying the expected IP with proxied=false. On any failure the
+// receipt carries a stable reason code so callers/tests branch on codes, not
+// prose:
+//   invalid_lan_ip | cloudflare_read_failed | cloudflare_write_failed |
+//   duplicate_cleanup_failed | cloudflare_verify_failed | record_mismatch
+async function upsertMachineA(env, rec, expectedIPv4) {
+  const host = machineHost(env, rec.slug);
+  if (!isValidIPv4(expectedIPv4)) return { ok: false, host, reason: "invalid_lan_ip" };
+
+  let existing;
+  try {
+    existing = (await cfDNS(env, "GET", `?type=A&name=${encodeURIComponent(host)}`)) || [];
+  } catch (e) {
+    return { ok: false, host, reason: "cloudflare_read_failed" };
+  }
+
+  // Keep one record — prefer one already correct — repair it, delete the rest.
+  let keep = existing.find((r) => r.content === expectedIPv4 && r.proxied === false) || existing[0] || null;
+  try {
+    if (!keep) {
+      keep = await cfDNS(env, "POST", "", { type: "A", name: host, content: expectedIPv4, ttl: 60, proxied: false });
+    } else if (keep.content !== expectedIPv4 || keep.ttl !== 60 || keep.proxied !== false) {
+      keep = await cfDNS(env, "PUT", "/" + keep.id, { type: "A", name: host, content: expectedIPv4, ttl: 60, proxied: false });
+    }
+  } catch (e) {
+    return { ok: false, host, reason: "cloudflare_write_failed" };
+  }
+
+  // Duplicate A answers randomly route guests to a stale address — never valid.
+  try {
+    for (const r of existing) if (r.id !== keep.id) await cfDNS(env, "DELETE", "/" + r.id);
+  } catch (e) {
+    return { ok: false, host, reason: "duplicate_cleanup_failed" };
+  }
+
+  // Prove it: re-read and require exactly one DNS-only A with the expected IP.
+  let after;
+  try {
+    after = (await cfDNS(env, "GET", `?type=A&name=${encodeURIComponent(host)}`)) || [];
+  } catch (e) {
+    return { ok: false, host, reason: "cloudflare_verify_failed" };
+  }
+  if (after.length !== 1 || after[0].content !== expectedIPv4 || after[0].proxied !== false) {
+    return { ok: false, host, reason: "record_mismatch" };
+  }
+  return { ok: true, host, ip: expectedIPv4, recordId: after[0].id, proxied: false, verified: true };
+}
+
+const NAMESPACE_ANCHOR_CONTENT = "partyparty-machine-namespace-v1";
+
+// ensureNamespaceAnchor makes `party.<base>` an EXACT DNS node (a TXT record), so
+// it becomes the closest encloser for the machine namespace. An absent name like
+// `missing.party.<base>` would need a `*.party.<base>` wildcard to answer; that
+// wildcard does not exist, so the result is NXDOMAIN — DNS never walks up to the
+// proxied product wildcard `*.<base>` and can never synthesize a live-looking
+// edge address for an absent machine. This REPLACES the old 192.0.2.1 guard
+// wildcard. The migration order is mandatory and self-healing: create/verify the
+// anchor, and ONLY once it is confirmed in this same run delete every guard A
+// record. The guard is never recreated. Idempotent and cheap once complete.
+async function ensureNamespaceAnchor(env) {
+  if (!(env.CF_DNS_TOKEN && env.CF_ZONE_ID && env.BROKER_BASE)) {
+    return { ok: false, reason: "not_configured" };
+  }
+  const anchorName = `party.${env.BROKER_BASE}`;
+  const guardName = `*.party.${env.BROKER_BASE}`;
+  const hasAnchor = (recs) =>
+    (recs || []).some((r) => String(r.content || "").replace(/^"|"$/g, "") === NAMESPACE_ANCHOR_CONTENT);
+
+  // 1. Ensure the exact anchor TXT exists.
+  let txt;
+  try {
+    txt = await cfDNS(env, "GET", `?type=TXT&name=${encodeURIComponent(anchorName)}`);
+  } catch (e) {
+    return { ok: false, reason: "anchor_read_failed" };
+  }
+  if (!hasAnchor(txt)) {
+    try {
+      await cfDNS(env, "POST", "", { type: "TXT", name: anchorName, content: NAMESPACE_ANCHOR_CONTENT, ttl: 300 });
+    } catch (e) {
+      return { ok: false, reason: "anchor_create_failed" };
+    }
+  }
+  // 2. Prove the anchor by re-read. Never touch the guard unless it is confirmed.
+  let confirm;
+  try {
+    confirm = await cfDNS(env, "GET", `?type=TXT&name=${encodeURIComponent(anchorName)}`);
+  } catch (e) {
+    return { ok: false, reason: "anchor_verify_failed" };
+  }
+  if (!hasAnchor(confirm)) return { ok: false, reason: "anchor_unverified" };
+
+  // 3. Anchor confirmed -> delete every guard A record. Never recreate it.
+  let guards;
+  try {
+    guards = await cfDNS(env, "GET", `?type=A&name=${encodeURIComponent(guardName)}`);
+  } catch (e) {
+    return { ok: true, anchor: true, guardCleanup: "read_failed" };
+  }
+  let deleted = 0;
+  for (const r of guards || []) {
+    try { await cfDNS(env, "DELETE", "/" + r.id); deleted++; } catch (e) { /* retry next tick */ }
+  }
+  return { ok: true, anchor: true, deletedGuards: deleted };
 }
 
 // liveClaimant returns the ONE live install that represents a handle right now:
@@ -4232,19 +4258,13 @@ async function handleRouter(request, env, handle) {
     // Don't decide LOCAL vs REMOTE from the cloud IP — it's unreliable (Private
     // Relay / CGNAT pools / v4-v6). The page probes the Mac's LAN host itself and
     // redirects to the tight LAN listener when reachable, else the cloud mirror.
+    // The machine origin is HTTPS-only (LL-HLS needs the cert). No raw-IP
+    // fallback: an http://<lan-ip>:8000/ page can load but cannot play the
+    // hostname-backed llhlsUrl, so it is not an audio route.
     const lanUrl = claimant.host ? `${guestOrigin(claimant.host, claimant.guest_port)}/` : "";
-    // Raw-IP escape hatch for rebind-protected venues (coworking/office
-    // routers that hide private-IP DNS answers): the slug hostname is
-    // unresolvable for guests there, so BOTH the probe and the "tap to join"
-    // link dead-end. The raw LAN IP needs no DNS at all — same URL the
-    // console's own LAN QR advertises (:8000 is the product's web port). Used
-    // only as the tap link's fallback after the hostname probe fails; never a
-    // server-side redirect.
-    const lanIpUrl = /^\d+\.\d+\.\d+\.\d+$/.test(claimant.lan_ip || "") ? `http://${claimant.lan_ip}:8000/` : "";
     const html = renderLiveJoin({
       handle,
       lanUrl,
-      lanIpUrl,
       eventSlug: claimant.event_slug || "",
       djName: claimant.dj_name || "",
       eventTitle: claimant.event_title || "",
@@ -4439,15 +4459,15 @@ async function discoverRateLimited(ipHash, bucket = "discover", maxAge = 2) {
 //                 note when the DJ isn't mirroring. A manual "tap to join" link
 //                 to the LAN host is always offered as a probe-false-negative
 //                 escape hatch. DJ-authored text is HTML-escaped.
-function renderLiveJoin({ handle, lanUrl, lanIpUrl, eventSlug, djName, eventTitle, nowPlaying }) {
+function renderLiveJoin({ handle, lanUrl, eventSlug, djName, eventTitle, nowPlaying }) {
   const who = djName || "@" + handle;
   // Off-Wi-Fi guests belong on the EVENT PAGE (title/cover/feed + the delayed
   // live player), not a dead-end mini page — this page is only the router:
   // probe the LAN, then send the guest to the right place.
   const eventPath = eventSlug ? `/e/${encodeURIComponent(eventSlug)}` : "";
   const nowLine = nowPlaying ? `<p class="np">Now playing: ${esc(nowPlaying)}</p>` : "";
-  const lanTap = (lanUrl || lanIpUrl)
-    ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl || lanIpUrl)}">At the party? Tap to join the live room &rarr;</a></p>`
+  const lanTap = lanUrl
+    ? `<p class="tap"><a id="pp-lan" href="${esc(lanUrl)}">At the party? Tap to join the live room &rarr;</a></p>`
     : "";
   const remoteInner = eventPath
     ? `<p class="hint"><a href="${esc(eventPath)}" style="color:#ff77b0;font-weight:600">Open the event page &rarr;</a></p>`
@@ -4493,7 +4513,6 @@ function renderLiveJoin({ handle, lanUrl, lanIpUrl, eventSlug, djName, eventTitl
 <script>
 (function(){
   var LAN=${JSON.stringify(lanUrl || "").replace(/</g, "\\u003c")};
-  var LANIP=${JSON.stringify(lanIpUrl || "").replace(/</g, "\\u003c")};
   var EVENT=${JSON.stringify(eventPath || "").replace(/</g, "\\u003c")};
   var connecting=document.getElementById('pp-connecting');
   var remote=document.getElementById('pp-remote');
@@ -4534,11 +4553,9 @@ function renderLiveJoin({ handle, lanUrl, lanIpUrl, eventSlug, djName, eventTitl
   }
   probe(LAN,3500).then(function(local){
     if(local){ location.replace(LAN); return; }
-    // Hostname unreachable — on rebind-protected venue routers (private-IP DNS
-    // answers hidden) the slug host NEVER resolves for guests, so retarget the
-    // "At the party?" tap at the raw LAN IP: no DNS involved, same URL the
-    // console's own LAN QR shows. A user-gesture navigation, never automatic.
-    if(LANIP){ var a=document.getElementById('pp-lan'); if(a) a.href=LANIP; }
+    // Hostname unreachable on this network — send the guest to the cloud
+    // event/mirror. The manual "At the party?" link stays pointed at the SAME
+    // HTTPS machine origin for a browser local-network-permission false negative.
     showRemote();
   });
 })();
@@ -5513,24 +5530,17 @@ async function broker(request, env, pathname) {
   if (pathname === "/api/broker/a") {
     const linkedErr = await requireLinkedInstallForDNS(env, id);
     if (linkedErr) return linkedErr;
-    // May RENAME the slug to the handle-derived name (seth -> seth-live): this
-    // is the Mac's own refresh call, so it adopts the returned host + new cert
-    // in the same cycle. Never renames while live.
-    label = await ensureHandleSlug(env, id, rec, nowMs());
-    const ip = String(body.ip || "");
-    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return jsonResp(400, { error: "bad ip" });
-    // ONE slugged record per install, upserted to the current venue IP
-    // (DNS-only, never proxied). The cert binds to this domain, not the IP.
-    const name = machineHost(env, label);
-    const existing = await cfDNS(env, "GET", `?type=A&name=${name}`);
-    if (existing && existing.length) {
-      if (existing[0].content !== ip) {
-        await cfDNS(env, "PUT", "/" + existing[0].id, { type: "A", name, content: ip, ttl: 60, proxied: false });
-      }
-    } else {
-      await cfDNS(env, "POST", "", { type: "A", name, content: ip, ttl: 60, proxied: false });
+    // The machine label is immutable install state (never handle-derived). One
+    // DNS-only A record, published to the current LAN IP and PROVEN by a re-read.
+    // Strict: a Cloudflare read/write/dedupe/verify failure returns non-2xx with
+    // a stable reason code — never a false success on an unverified record.
+    await ensureBrokerSlug(env, id, rec);
+    const receipt = await upsertMachineA(env, rec, String(body.ip || ""));
+    if (!receipt.ok) {
+      return jsonResp(receipt.reason === "invalid_lan_ip" ? 400 : 502,
+        { ok: false, host: receipt.host, reason: receipt.reason });
     }
-    return jsonResp(200, { ok: true, host: name });
+    return jsonResp(200, receipt);
   }
 
   // Live presence heartbeat (~30s while broadcasting). Registers/refreshes the
@@ -5589,10 +5599,14 @@ async function broker(request, env, pathname) {
       now, expiresMs
     ).run();
 
-    // Keep the LAN slug host's grey A current with the Mac's LAN IP. Best-effort:
-    // a DNS hiccup must never drop the party from discovery/routing.
+    // Repair the machine A record from the heartbeat (self-healing path). Cloud
+    // presence still succeeds if DNS fails, but the failure is NOT swallowed: the
+    // nested receipt travels back so the Mac knows LAN DNS is not current and can
+    // degrade its own LAN-readiness state. Cloud presence success != LAN DNS.
+    let dns = { ok: false, reason: "no_lan_ip" };
     if (lanIp) {
-      try { await writeGreyA(env, host, lanIp); } catch (e) { /* best-effort */ }
+      const receipt = await upsertMachineA(env, rec, lanIp);
+      dns = receipt.ok ? { ok: true } : { ok: false, reason: receipt.reason };
     }
 
     // Which install represents this handle now (most-recent go-live, primary
@@ -5623,6 +5637,7 @@ async function broker(request, env, pathname) {
     }
     return jsonResp(200, {
       ok: true, host, claimed: !!(claimant && claimant.install_id === id),
+      dns,
       webListeners: webCount, webPosts,
     });
   }
@@ -5644,11 +5659,10 @@ async function broker(request, env, pathname) {
         "UPDATE events SET status='replay', updated_ms=?2 WHERE install_id=?1 AND status='live'"
       ).bind(id, nowMs()).run();
     } catch (e) { /* best-effort */ }
-    // Per-install slug hosts are unique, so dropping this one never strands
-    // another live Mac sharing the handle.
-    if (row?.host && env.CF_DNS_TOKEN && env.CF_ZONE_ID) {
-      try { await deleteGreyA(env, row.host); } catch (e) { /* best-effort */ }
-    }
+    // The machine A record is persistent INSTALL state, not presence state — it
+    // is deliberately KEPT when a set ends. Deleting it opened an absent-name
+    // window; a stale private IP while idle is harmless because the cloud router
+    // probes TLS before redirecting and only this Mac holds the certificate.
     const handle = normalizeHandle(row?.handle || "");
     const claimant = handle ? await liveClaimant(env, handle, nowMs()) : null;
     return jsonResp(200, { ok: true, claimed: !!(claimant && claimant.install_id === id) });
@@ -6377,10 +6391,6 @@ export default {
         live = {
           mirror: playlist ? `/event/${slug}/live/live.m3u8` : "",
           lanUrl: presence?.host ? `${guestOrigin(presence.host, presence.guest_port)}/` : "",
-          // Raw-IP fallback for DNS-hostile venues, same as the router page:
-          // when the hostname probe fails, the "At the party?" link retargets
-          // here (no DNS involved; :8000 is the product's web port).
-          lanIpUrl: /^\d+\.\d+\.\d+\.\d+$/.test(presence?.lan_ip || "") ? `http://${presence.lan_ip}:8000/` : "",
           // One party, one count: the room (from the Mac's heartbeat) plus the
           // web listeners (fresh presence rows).
           listeners: (Number(presence?.listeners) || 0) + await webListeners(env, slug, nowMs()),
@@ -6435,20 +6445,12 @@ export default {
       }
       await env.DB.prepare("DELETE FROM live_installs WHERE expires_ms<=?").bind(now).run();
 
-      // Hourly: ensure the machine-namespace guard wildcard exists. A grey
-      // *.party.<base> → 192.0.2.1 (TEST-NET, dead) makes DNS's closest-
-      // encloser rule stop the proxied zone wildcard from ever answering for
-      // absent machine names — the poisoning above becomes impossible even if
-      // a record is somehow missing. Self-healing: a zone rebuild that loses
-      // the guard gets it back within the hour.
-      if (env.CF_DNS_TOKEN && env.CF_ZONE_ID && env.BROKER_BASE &&
-          new Date(event.scheduledTime || nowMs()).getUTCMinutes() === 0) {
-        const guard = `*.party.${env.BROKER_BASE}`;
-        const existing = await cfDNS(env, "GET", `?type=A&name=${encodeURIComponent(guard)}`);
-        if (!existing || !existing.length) {
-          await cfDNS(env, "POST", "", { type: "A", name: guard, content: "192.0.2.1", ttl: 60, proxied: false });
-        }
-      }
+      // Machine-namespace anchor: make `party.<base>` an exact TXT node so absent
+      // machine names return NXDOMAIN (closest-encloser), replacing the retired
+      // 192.0.2.1 guard wildcard. Idempotent and self-healing — safe to run every
+      // tick; the guard is deleted only after the anchor is confirmed and is never
+      // recreated.
+      try { await ensureNamespaceAnchor(env); } catch (e) { /* retries next tick */ }
     } catch (e) { /* best-effort GC — next tick retries */ }
   },
 };

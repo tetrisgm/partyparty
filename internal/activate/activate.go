@@ -45,14 +45,34 @@ const (
 	renewWindow    = 30 * 24 * time.Hour
 )
 
-// Result reports what activation achieved.
+// Result reports what activation achieved. The fields separate independent
+// facts that the old single OK conflated: a usable certificate, a VERIFIED DNS
+// publication, and local resolver agreement. LAN readiness is computed later
+// from all of this evidence plus TLS reachability — never inferred from OK alone.
 type Result struct {
-	OK       bool
+	OK       bool // the whole chain succeeded (cert usable + DNS verified + resolver matches)
 	Host     string
 	CertFile string
 	KeyFile  string
-	Reason   string // why activation is off/failed (for the log)
+
+	CertReady       bool   // a usable certificate/key exists for Host
+	ExpectedIP      string // the current LAN IP this activation published
+	DNSPublished    bool   // the broker returned a VERIFIED Cloudflare A-record receipt
+	ResolverMatches bool   // the local resolver returned ExpectedIP for Host
+	ReasonCode      string // stable machine code (see reason codes below); "" on success
+
+	Reason string // human-readable detail (for the log); text may change, code does not
 }
+
+// Stable activation reason codes. Branch on these, never on Reason prose.
+const (
+	ReasonNoHost           = "no_host"
+	ReasonNoToken          = "no_token"
+	ReasonNoLanIP          = "no_lan_ip"
+	ReasonCert             = "cert_failed"
+	ReasonDNSPublish       = "dns_publish_failed"
+	ReasonResolverMismatch = "resolver_mismatch"
+)
 
 type AccountState struct {
 	OK        bool           `json:"ok"`
@@ -132,31 +152,34 @@ func Try(host, token string, lanIP string, logf Logf) Result {
 	if !certUsable(certFile, host) {
 		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01)…", host)
 		if err := issueCert(ctx, cf, host, certFile, keyFile, dir, logf); err != nil {
-			return Result{Host: host, Reason: "certificate: " + err.Error()}
+			return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "certificate: " + err.Error()}
 		}
 		logf("activate: certificate issued for %s", host)
 	}
+	// OK means only that the certificate is usable — the DJ can Go Live and the
+	// HTTPS listener runs, even where this Wi-Fi blocks LAN routing. DNS and
+	// resolver agreement are SEPARATE evidence for LAN readiness; a failure there
+	// sets a reason code but never strands Go Live behind the cloud fallback.
+	res := Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile, CertReady: true, ExpectedIP: lanIP}
 
-	// 2. Public A record → this Mac's LAN IP.
+	// 2. Public A record → this Mac's current LAN IP.
 	if err := cf.upsertA(ctx, host, lanIP); err != nil {
-		return Result{Host: host, Reason: "DNS update: " + err.Error()}
+		res.ReasonCode = ReasonDNSPublish
+		res.Reason = "DNS update: " + err.Error()
+		return res
 	}
+	res.DNSPublished = true
 
-	// 3. Self-check through the system resolver (≈ what guests' phones use via
-	// the router). Catches rebind-protecting routers and stale caches. A venue
-	// resolver that hides the objectively-correct record must NOT block
-	// activation — the cert and record are right; same-Wi-Fi guests fall to the
-	// cloud stream via the LAN probe, everyone else is unaffected.
-	if err := verifyResolves(ctx, host, lanIP); err != nil {
-		if errors.Is(err, ErrLocalResolverOnly) {
-			logf("activate: %s — activating anyway; same-Wi-Fi guests will use the cloud stream", err)
-			return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
-		}
-		return Result{Host: host, CertFile: certFile, KeyFile: keyFile,
-			Reason: "resolution check: " + err.Error() + " (router DNS-rebind protection? falling back to plain HLS)"}
+	// 3. Observe the network's own resolver (the guest path). A mismatch is
+	// reported honestly as resolver_mismatch — NEVER a rebind-protection claim
+	// from a single lookup, and never "activating anyway".
+	obs := observeResolver(ctx, host, lanIP)
+	res.ResolverMatches = obs.Matches
+	if !obs.Matches {
+		res.ReasonCode = ReasonResolverMismatch
+		res.Reason = obs.describe()
 	}
-
-	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
+	return res
 }
 
 // TryBroker is the zero-config activation path (the Plex pattern): the install
@@ -184,13 +207,17 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 		return Result{Reason: "broker: " + err.Error()}
 	}
 
-	// The BROKER is the source of truth for the hostname (its /a response) —
-	// if the base domain changes server-side (e.g. a purchased product domain),
-	// every install follows on its next launch, no re-registration.
-	var aResp struct{ Host string }
-	if err := b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp); err != nil {
-		return Result{Reason: "DNS update: " + err.Error()}
+	// The BROKER is the source of truth for the hostname AND returns a strict,
+	// VERIFIED Cloudflare receipt. Cloud reachability of the broker is not the
+	// same as a proven LAN A record — `verified` is the only truth that counts.
+	var aResp struct {
+		OK       bool   `json:"ok"`
+		Host     string `json:"host"`
+		IP       string `json:"ip"`
+		Verified bool   `json:"verified"`
+		Reason   string `json:"reason"`
 	}
+	postErr := b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp)
 	host := aResp.Host
 	if host == "" {
 		host = b.slug + "." + b.base
@@ -198,24 +225,39 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	if err := b.rememberHost(dir, host); err != nil {
 		logf("activate: could not persist broker host %s: %v", host, err)
 	}
+	dnsPublished := postErr == nil && aResp.OK && aResp.Verified
 
 	if !certUsable(certFile, host) {
 		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", host)
 		if err := issueCert(ctx, b, host, certFile, keyFile, dir, logf); err != nil {
-			return Result{Host: host, Reason: "certificate: " + err.Error()}
+			return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "certificate: " + err.Error()}
 		}
 		logf("activate: certificate issued for %s", host)
 	}
+	// OK means only that the certificate is usable (Go Live works everywhere).
+	// DNS publication and resolver agreement are separate LAN-readiness evidence.
+	res := Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile, CertReady: true, ExpectedIP: lanIP, DNSPublished: dnsPublished}
 
-	if err := verifyResolves(ctx, host, lanIP); err != nil {
-		if errors.Is(err, ErrLocalResolverOnly) {
-			logf("activate: %s — activating anyway; same-Wi-Fi guests will use the cloud stream", err)
-			return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
+	if !dnsPublished {
+		res.ReasonCode = ReasonDNSPublish
+		switch {
+		case postErr != nil:
+			res.Reason = "DNS publish: " + postErr.Error()
+		case aResp.Reason != "":
+			res.Reason = "DNS publish unverified: " + aResp.Reason
+		default:
+			res.Reason = "DNS publish unverified"
 		}
-		return Result{Host: host, CertFile: certFile, KeyFile: keyFile,
-			Reason: "resolution check: " + err.Error() + " (router DNS-rebind protection?)"}
+		return res
 	}
-	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}
+
+	obs := observeResolver(ctx, host, lanIP)
+	res.ResolverMatches = obs.Matches
+	if !obs.Matches {
+		res.ReasonCode = ReasonResolverMismatch
+		res.Reason = obs.describe()
+	}
+	return res
 }
 
 // LinkInstall binds this local install id/secret to a signed-in web account via
@@ -813,90 +855,67 @@ func waitTXT(ctx context.Context, name, want string) error {
 	return errors.New("challenge TXT did not propagate in time")
 }
 
-// ErrLocalResolverOnly: the DNS record is objectively correct (authoritative
-// answer matches the LAN IP over DoH) but THIS network's resolver hides it —
-// router DNS-rebind protection stripping private-IP answers. The venue is
-// lying, not the record. Activation must treat this as success: the cert and
-// record are right, off-Wi-Fi guests are unaffected, and same-Wi-Fi guests
-// fail the LAN probe and ride the cloud stream by design. Blocking Go Live on
-// a resolver we don't control stranded a real DJ at a coworking space.
-var ErrLocalResolverOnly = errors.New("local resolver hides the record (DNS-rebind protection); authoritative DNS is correct")
-
-// dohResolves asks authoritative-backed DoH (1.1.1.1) whether host → lanIP,
-// bypassing the venue's resolver entirely. Used only to disambiguate a local
-// mismatch; any error reads as "unconfirmed", never as proof of correctness.
-func dohResolves(ctx context.Context, host, lanIP string) bool {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"https://1.1.1.1/dns-query?type=A&name="+url.QueryEscape(host), nil)
-	if err != nil {
-		return false
-	}
-	req.Header.Set("Accept", "application/dns-json")
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	var out struct {
-		Answer []struct {
-			Type int    `json:"type"`
-			Data string `json:"data"`
-		} `json:"Answer"`
-	}
-	if json.NewDecoder(resp.Body).Decode(&out) != nil {
-		return false
-	}
-	for _, a := range out.Answer {
-		if a.Type == 1 && a.Data == lanIP { // type 1 = A
-			return true
-		}
-	}
-	return false
+// ResolverObservation is the structured result of asking the network's own DNS
+// resolver (the path guests' phones take) to resolve the machine host. It only
+// records what was returned; it never judges WHY a mismatch happened. A single
+// recursive-resolver mismatch is NOT proof of router rebind protection —
+// different recursive caches legitimately disagree during a TTL — so this type
+// carries no rebind classification and there is no DoH cross-check.
+type ResolverObservation struct {
+	Host       string
+	ExpectedIP string
+	Addrs      []string // everything the local resolver returned
+	Matches    bool     // ExpectedIP was among Addrs
+	Err        error
+	At         time.Time
 }
 
-// verifyResolves checks the host resolves to the LAN IP over the network's
-// configured DNS — the path guests' phones take. It uses a Go-native resolver
-// (PreferGo), which queries the configured nameserver directly and BYPASSES the
-// macOS mDNSResponder cache: a freshly-created record is otherwise shadowed by
-// the OS's cached NXDOMAIN (negative TTL) on the DJ's Mac only, a false positive
-// that never affects guests. Querying the real resolver still catches genuine
-// router DNS-rebind protection. Patient (~48s) for propagation.
-//
-// A definitive local mismatch is cross-checked against authoritative DNS over
-// DoH: if the record is actually correct, this returns ErrLocalResolverOnly
-// immediately (a rebind-protecting router never changes its mind — retrying is
-// pointless) so callers can activate anyway and note the degraded venue.
-func verifyResolves(ctx context.Context, host, lanIP string) error {
+func (o ResolverObservation) describe() string {
+	if o.Err != nil {
+		return fmt.Sprintf("this Wi-Fi's resolver could not look up %s: %v", o.Host, o.Err)
+	}
+	return fmt.Sprintf("this Wi-Fi is not returning the Mac's LAN address for %s (got %v, want %s)",
+		o.Host, o.Addrs, o.ExpectedIP)
+}
+
+// observeResolver queries the network's configured resolver (PreferGo bypasses
+// the macOS mDNSResponder negative cache on the DJ's own Mac only). It retries
+// briefly for propagation, then returns structured evidence — no rebind
+// classification, no authoritative cross-check.
+func observeResolver(ctx context.Context, host, lanIP string) ResolverObservation {
 	res := &net.Resolver{PreferGo: true}
-	var lastErr error
+	var last ResolverObservation
 	for i := 0; i < 12; i++ {
 		addrs, err := res.LookupHost(ctx, host)
+		last = ResolverObservation{Host: host, ExpectedIP: lanIP, Addrs: addrs, Err: err, At: time.Now()}
 		if err == nil {
 			for _, a := range addrs {
 				if a == lanIP {
-					return nil
+					last.Matches = true
+					return last
 				}
 			}
-			lastErr = fmt.Errorf("%s resolves to %v, not %s", host, addrs, lanIP)
-			if dohResolves(ctx, host, lanIP) {
-				return ErrLocalResolverOnly
-			}
-		} else {
-			lastErr = err
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return last
 		case <-time.After(5 * time.Second):
 		}
 	}
-	return lastErr
+	return last
 }
 
-// VerifyResolves checks whether host resolves to lanIP using the same
-// guest-path resolver check as activation.
+// VerifyResolves reports nil when the network's resolver returns lanIP for host,
+// using the same guest-path observation as activation.
 func VerifyResolves(ctx context.Context, host, lanIP string) error {
-	return verifyResolves(ctx, host, lanIP)
+	obs := observeResolver(ctx, host, lanIP)
+	if obs.Matches {
+		return nil
+	}
+	if obs.Err != nil {
+		return obs.Err
+	}
+	return fmt.Errorf("%s resolves to %v, not %s", host, obs.Addrs, lanIP)
 }
 
 // ---- Cloudflare DNS API (token-scoped: Zone → DNS → Edit) ----

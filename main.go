@@ -1009,21 +1009,30 @@ func main() {
 					res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
 				}
 				handler.SetActivationResult(res)
-				if res.OK {
-					if applyActivationResult(res, "online refresh") {
-						retryIn = 15 * time.Second
-						waitForRefresh(30 * time.Minute)
-						continue
-					}
+				// OK now means the certificate is usable — apply it ONCE so the
+				// HTTPS listener + Go Live work everywhere, even where this Wi-Fi
+				// blocks LAN routing. Re-running Try/TryBroker each cycle also
+				// re-publishes the current LAN IP (the self-healing DNS refresh).
+				engaged := isActivationEngaged()
+				if res.OK && !engaged {
+					engaged = applyActivationResult(res, "online refresh")
+				}
+				// Long refresh only when the WHOLE LAN chain is proven for this
+				// network; otherwise keep repairing DNS/resolver on the short
+				// backoff instead of sleeping until the next scheduled refresh.
+				if engaged && res.DNSPublished && res.ResolverMatches && res.ReasonCode == "" {
+					retryIn = 15 * time.Second
+					waitForRefresh(30 * time.Minute)
+					continue
+				}
+				if !engaged {
 					if res.Reason == "" {
 						res.Reason = "local activation apply failed"
 					}
-				}
-				if !isActivationEngaged() {
 					handler.SetActivationPending(humanizeActivation(res.Reason))
 					log.Printf("activate: secure link not ready — %s (retrying in %s)", res.Reason, retryIn)
 				} else {
-					log.Printf("activate: online refresh not ready — %s (retrying in %s)", res.Reason, retryIn)
+					log.Printf("activate: LAN not fully ready on this network — %s (retrying in %s)", res.Reason, retryIn)
 				}
 				waitForRefresh(retryIn)
 				if retryIn *= 2; retryIn > 4*time.Minute {

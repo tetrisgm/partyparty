@@ -2319,7 +2319,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         $('hotspotNoInternet').style.display = offlineMode ? 'block' : 'none';
         $('hotspotFallback').style.display = offlineMode && !bridgeUp ? 'block' : 'none';
         $('shareHint').textContent = !secure
-          ? 'Compatible mode is live over local Wi-Fi. The secure low-latency link will take over after the certificate is ready.'
+          ? 'Setting up the secure low-latency link for this Wi-Fi. Until it is ready, guests who scan hear the party on the cloud stream (a few seconds behind).'
           : offlineMode
           ? 'Guests join the same Wi-Fi as this Mac, then scan this code. It opens in Safari/Chrome so it keeps playing in the background.'
           : 'Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.';
