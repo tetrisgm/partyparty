@@ -528,6 +528,11 @@ nav{max-width:940px;margin:0 auto;padding:16px 20px;display:flex;align-items:cen
 .commentcard .comments{background:var(--bg);border-left:0;border-radius:12px;margin:12px 0 0;padding:10px 12px}
 .commentcard .comment{font-size:13px}
 .emptykeepsake{display:grid;gap:8px;color:var(--ink2);font-size:14px;line-height:1.45;margin:0}
+.modebadge{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:8px 13px;border-radius:999px;margin-bottom:13px;border:1px solid var(--line);background:rgba(120,120,128,.10)}
+.modebadge .dot{font-size:14px;line-height:1}
+.modebadge b{font-weight:700}
+.modebadge .lat{color:var(--ink2);font-weight:500}
+.modebadge a{margin-left:auto;color:var(--accent);font-weight:600;text-decoration:none;white-space:nowrap}
 .livebar{display:flex;align-items:center;gap:14px}
 .livebar .eq{display:flex;gap:3px;align-items:flex-end;height:26px}
 .livebar .eq i{width:4px;background:var(--accent);border-radius:2px;animation:bar 1s ease-in-out infinite}
@@ -2374,6 +2379,7 @@ function renderEvent(e, opts = {}) {
   // (or the demo seed) keeps the animated now-playing bar.
   const liveCard = e.status === "live" && e.liveMirror ? `
   <div class="card">
+    <div class="modebadge web"><span class="dot">🌐</span><b>Web</b><span class="lat" id="pp-mode-lat">a few seconds behind</span>${e.lanUrl ? `<a href="${esc(e.lanUrl)}" id="pp-mode-lan">On the Wi‑Fi? Switch &rarr;</a>` : ""}</div>
     <div class="livebar">
       <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
       <div class="np"><b>Live now</b><div>${esc(e.nowPlaying || e.tagline || "Streaming from the party")}</div></div>

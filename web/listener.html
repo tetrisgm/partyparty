@@ -224,6 +224,12 @@
   .toptool{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.08)}
   .toptool:active{transform:scale(.95)}
   .toptool svg{width:15px;height:15px}
+  .modechip{
+    display:inline-flex;align-items:center;gap:4px;font:800 11px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:999px;
+    background:#ff2d87;color:#fff;white-space:nowrap;vertical-align:middle;
+  }
+  .modechip::before{content:"📶";font-size:10px}
   .delaybadge{
     position:fixed;top:calc(12px + env(safe-area-inset-top));left:12px;z-index:6;
     min-width:92px;padding:7px 9px;border:1px solid var(--separator);border-radius:7px;
@@ -498,6 +504,7 @@
     <span class="mechip" id="meChip" title="Edit your name and emoji" hidden></span>
     <div class="actionbar-tools">
       <div class="diagnostics" aria-label="Stream diagnostics">
+        <span class="modechip wifi" id="modeChip" title="You're on the party Wi‑Fi — low-latency local audio">Wi‑Fi</span>
         <span class="delaybadge" id="delayBadge" aria-label="Playback delay">-- ms</span>
         <span class="pageversion">v__PP_VERSION__</span>
       </div>
