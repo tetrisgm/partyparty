@@ -500,6 +500,18 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
 		s.handleMedia(w, r)
+	case p == "/api/lan-health":
+		// Minimal, guest-safe reachability probe (§5-7 building block). The Mac
+		// dials this over its OWN machine hostname + guest port with normal TLS
+		// validation to prove the listener, certificate, and hostname all line up
+		// on the current network. No DJ-only data; never gated on auth.
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":   true,
+			"host": s.liveDomain(),
+			"ip":   netinfo.PrimaryLanIP(),
+			"cert": s.realCert(),
+		})
 	case strings.HasPrefix(p, "/api/"):
 		if s.handleFeedAPI(w, r) {
 			return

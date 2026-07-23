@@ -160,6 +160,27 @@ func waitIdle(t *testing.T, bc *broadcast.Broadcaster) {
 	t.Fatalf("broadcaster never returned to idle (state %q)", bc.Status().State)
 }
 
+func TestLanHealthEndpoint(t *testing.T) {
+	env := newTestEnv(t, nil)
+	w := do(env.srv, "GET", "/api/lan-health", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("lan-health = %d", w.Code)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", cc)
+	}
+	body := decodeJSON(t, w)
+	if body["ok"] != true {
+		t.Errorf("ok = %v, want true", body["ok"])
+	}
+	// Guest-safe: it must not leak any DJ-only fields.
+	for _, k := range []string{"roster", "accountStatus", "adminKey", "secret", "activation"} {
+		if _, present := body[k]; present {
+			t.Errorf("lan-health leaked DJ-only field %q", k)
+		}
+	}
+}
+
 func TestStatusEndpoint(t *testing.T) {
 	env := newTestEnv(t, nil)
 	w := do(env.srv, "GET", "/api/status", "")
