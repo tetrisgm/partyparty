@@ -2379,7 +2379,7 @@ function renderEvent(e, opts = {}) {
   // (or the demo seed) keeps the animated now-playing bar.
   const liveCard = e.status === "live" && e.liveMirror ? `
   <div class="card">
-    <div class="modebadge web"><span class="dot">🌐</span><b>Web</b><span class="lat" id="pp-mode-lat">a few seconds behind</span>${e.lanUrl ? `<a href="${esc(e.lanUrl)}" id="pp-mode-lan">On the Wi‑Fi? Switch &rarr;</a>` : ""}</div>
+    <div class="modebadge web"><span class="dot">🌐</span><b>Web</b><span class="lat" id="pp-mode-lat">a few seconds behind</span>${e.lanUrl ? `<a href="#" id="pp-mode-lan" data-lan="${esc(e.lanUrl)}">On the Wi‑Fi? Switch &rarr;</a>` : ""}</div>
     <div class="livebar">
       <div class="eq"><i></i><i></i><i></i><i></i><i></i></div>
       <div class="np"><b>Live now</b><div>${esc(e.nowPlaying || e.tagline || "Streaming from the party")}</div></div>
@@ -2439,6 +2439,22 @@ function renderEvent(e, opts = {}) {
         remember(g); postJoin(g); play();
       });
       if(skip) skip.addEventListener('click', function(){ postJoin({}); play(); });
+      // "Switch to Wi-Fi": PROBE the Mac's HTTPS listener first; only navigate if
+      // it actually answers on this network. A naive link to the LAN URL killed a
+      // working cloud stream by navigating to an unreachable host (field bug) — so
+      // if the probe fails we stay put and keep playing.
+      var lanBtn=document.getElementById('pp-mode-lan');
+      if(lanBtn) lanBtn.addEventListener('click', function(ev){
+        ev.preventDefault();
+        var url=lanBtn.getAttribute('data-lan'); if(!url) return;
+        var old=lanBtn.textContent, done=false, ctrl=new AbortController();
+        lanBtn.textContent='Checking Wi‑Fi…';
+        function miss(){ lanBtn.textContent='LAN room not reachable on this Wi‑Fi'; setTimeout(function(){ lanBtn.textContent=old; }, 2600); }
+        var t=setTimeout(function(){ if(!done){done=true; try{ctrl.abort();}catch(e){} miss();} }, 3500);
+        fetch(url,{mode:'no-cors',cache:'no-store',signal:ctrl.signal})
+          .then(function(){ if(!done){done=true; clearTimeout(t); location.href=url; } })
+          .catch(function(){ if(!done){done=true; clearTimeout(t); miss(); } });
+      });
       a.addEventListener('error', function(){ b.textContent='Stream unavailable — try again in a moment'; b.disabled=false; });
       a.addEventListener('ended', function(){ b.textContent='The set ended'; b.disabled=true; });
     })();
