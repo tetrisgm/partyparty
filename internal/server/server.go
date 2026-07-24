@@ -552,10 +552,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleAPI(w, r)
 	default:
-		if s.Config.Captive {
-			http.Redirect(w, r, s.urls().Primary, http.StatusFound)
-			return
-		}
 		http.Error(w, "not found", http.StatusNotFound)
 	}
 }
@@ -578,8 +574,8 @@ type urls struct {
 // QR must encode the LAN host directly), no handle yet, a handle with dots or
 // underscores (can't form the single-label hostname the router serves), or no
 // activated domain to derive the zone from.
-func publicPartyURL(domain, handle string, captive bool) string {
-	if captive || handle == "" || domain == "" {
+func publicPartyURL(domain, handle string) string {
+	if handle == "" || domain == "" {
 		return ""
 	}
 	for _, r := range handle {
@@ -624,13 +620,6 @@ func (s *srv) AdvertisedGuestPort() int {
 	return s.Config.TLSPort
 }
 
-type hotspotStatus struct {
-	Mode        string `json:"mode"`
-	BridgeUp    bool   `json:"bridgeUp"`
-	BridgeIP    string `json:"bridgeIP"`
-	BridgeIface string `json:"bridgeIface,omitempty"`
-}
-
 func (s *srv) urls() urls {
 	ip := netinfo.PrimaryLanIP()
 	// The Plex model: the ONLY advertised link is https:// on the activated
@@ -642,7 +631,7 @@ func (s *srv) urls() urls {
 		port := s.AdvertisedGuestPort()
 		return urls{
 			Primary:     fmt.Sprintf("https://%s:%d/", d, port),
-			Public:      publicPartyURL(d, s.accountHandle(), s.Config.Captive),
+			Public:      publicPartyURL(d, s.accountHandle()),
 			IP:          ip,
 			Port:        port,
 			HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
@@ -655,21 +644,6 @@ func (s *srv) urls() urls {
 		Port:        s.Config.Port,
 		HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
 		Interfaces:  netinfo.LanInterfaces(),
-	}
-}
-
-func (s *srv) hotspotState() hotspotStatus {
-	mode := "online"
-	if s.Config.Captive {
-		mode = "offline"
-	}
-	b := netinfo.SharedBridge()
-	bridgeUp := b.Address != "" && strings.HasPrefix(b.Address, "192.168.")
-	return hotspotStatus{
-		Mode:        mode,
-		BridgeUp:    bridgeUp,
-		BridgeIP:    b.Address,
-		BridgeIface: b.Iface,
 	}
 }
 
@@ -751,13 +725,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"audioProven":    s.audioProven.Load(),
 			"activation":     s.activationState(),
 			"reachability":   s.reachability(),
-			"hotspot":        s.hotspotState(),
 			"latencyTarget":  latencyTarget,
 			"sync":           s.syncModeState(),
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
 			"roomSync":       s.roomSyncStatePayload(),
 			"log":            lastN(s.Broadcaster.Log(), 60),
-			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),
 			"roster":         rosterBody,
 			"event":          s.eventState(),
@@ -1307,35 +1279,17 @@ func (s *srv) captiveProbe(w http.ResponseWriter, r *http.Request) bool {
 	if !isApple && !isAndroid && !isWindows {
 		return false
 	}
-	if !s.Config.Captive {
-		switch {
-		case isAndroid:
-			w.WriteHeader(http.StatusNoContent)
-		case isWindows:
-			w.Header().Set("Content-Type", "text/plain")
-			_, _ = w.Write([]byte("Microsoft NCSI"))
-		default:
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte("<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"))
-		}
-		return true
+	switch {
+	case isAndroid:
+		w.WriteHeader(http.StatusNoContent)
+	case isWindows:
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("Microsoft NCSI"))
+	default:
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"))
 	}
-	s.captiveLanding(w)
 	return true
-}
-
-func (s *srv) captiveLanding(w http.ResponseWriter) {
-	u := s.urls()
-	html := `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">` +
-		`<title>` + s.Config.Name + `</title>` +
-		`<body style="font-family:-apple-system,system-ui,sans-serif;background:#0b0b12;color:#fff;text-align:center;padding:48px 20px;margin:0">` +
-		`<h1 style="font-weight:600">` + s.Config.Name + `</h1>` +
-		`<p style="color:#9aa0b4">Tap to open the live audio player in your browser.</p>` +
-		`<p><a href="` + u.Primary + `" style="display:inline-block;background:#7C3AED;color:#fff;text-decoration:none;padding:16px 28px;border-radius:12px;font-size:18px">Open the player</a></p>` +
-		`<p style="color:#6b7088;font-size:14px">If nothing happens, open your browser and go to<br><b>` + u.Primary + `</b></p></body>`
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(html))
 }
 
 // friendlyName prefers the device's real network name ("Ramine's iPhone",

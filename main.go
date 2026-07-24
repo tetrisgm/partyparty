@@ -30,7 +30,6 @@ import (
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/diag"
-	"partyparty/internal/dnsd"
 	"partyparty/internal/event"
 	"partyparty/internal/livemirror"
 	"partyparty/internal/mediamtx"
@@ -485,7 +484,6 @@ func main() {
 	}
 
 	ip := netinfo.PrimaryLanIP()
-	sharedIP := netinfo.SharedLanIP()
 	// 127.0.0.1, NOT "localhost": MediaMTX binds its RTSP ingest to 127.0.0.1
 	// (IPv4 loopback) only. On Macs where "localhost" resolves to ::1 (IPv6)
 	// first, ffmpeg's RTSP publish hits [::1]:RTSP → Connection refused → the
@@ -513,59 +511,6 @@ func main() {
 		} else {
 			livemirror.CleanScratch(mirrorScratch)
 			bc.SetMirrorDir(mirrorScratch)
-		}
-	}
-
-	var localDNS *dnsd.Server
-	var dnsCancel context.CancelFunc
-	var refreshLocalDNS func(host string)
-	var captiveDNSHost string
-	if cfg.Captive {
-		host := activationHost()
-		hosts := captiveDNSHosts(host)
-		captiveDNSHost = strings.Join(hosts, ", ")
-		localDNS = dnsd.New(dnsd.Config{
-			Addr:     dnsd.LocalAddr,
-			Hosts:    hosts,
-			TargetIP: sharedIP,
-			TTL:      5 * time.Second,
-			CatchAll: true,
-			Logf: func(format string, args ...any) {
-				if diagLog != nil {
-					diagLog.Printf(format, args...)
-					return
-				}
-				log.Printf(format, args...)
-			},
-		})
-		if err := localDNS.Start(); err != nil {
-			log.Printf("dns: captive DNS failed on %s: %v", dnsd.LocalAddr, err)
-			localDNS = nil
-		} else {
-			log.Printf("dns: captive DNS answering %s plus catch-all -> %s on %s", captiveDNSHost, sharedIP, dnsd.LocalAddr)
-			refreshLocalDNS = func(host string) {
-				if host == "" {
-					host = activationHost()
-				}
-				if localDNS == nil {
-					return
-				}
-				localDNS.Update(captiveDNSHosts(host), netinfo.SharedLanIP())
-			}
-			var dnsCtx context.Context
-			dnsCtx, dnsCancel = context.WithCancel(context.Background())
-			go func() {
-				t := time.NewTicker(5 * time.Second)
-				defer t.Stop()
-				for {
-					select {
-					case <-t.C:
-						refreshLocalDNS("")
-					case <-dnsCtx.Done():
-						return
-					}
-				}
-			}()
 		}
 	}
 
@@ -647,11 +592,8 @@ func main() {
 			diagLog.Printf("partyparty v%s starting (%s)", appVersion, diagLog.Session())
 			diagLog.Printf("system: macOS %s · %s · %s", cmdOut("sw_vers", "-productVersion"), cmdOut("sysctl", "-n", "hw.model"), runtime.GOARCH)
 			diagLog.Printf("install: id=%s slug=%s", id, activate.InstallSlug())
-			diagLog.Printf("network: lan=%s shared=%s interfaces=%+v", ip, sharedIP, netinfo.LanInterfaces())
+			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
 			diagLog.Printf("config: delivery=%s bitrate=%s part=%s seg=%s", cfg.Delivery, cfg.Bitrate, cfg.PartDur, cfg.SegDur)
-			if localDNS != nil && captiveDNSHost != "" {
-				diagLog.Printf("dns: captive DNS answering %s plus catch-all -> %s on %s", captiveDNSHost, sharedIP, dnsd.LocalAddr)
-			}
 			if payload != nil {
 				// The store's own "serving cached payload" line is emitted during
 				// Open() above, before this logger exists — so record the active
@@ -662,24 +604,6 @@ func main() {
 		} else {
 			log.Printf("diagnostics log unavailable: %v", err)
 		}
-	}
-	if cfg.Captive {
-		go func() {
-			time.Sleep(8 * time.Second)
-			if ip := netinfo.SharedBridgeIP(); ip != "" {
-				if diagLog != nil {
-					diagLog.Printf("hotspot: Internet Sharing bridge up at %s", ip)
-					return
-				}
-				log.Printf("hotspot: Internet Sharing bridge up at %s", ip)
-				return
-			}
-			if diagLog != nil {
-				diagLog.Printf("hotspot: no bridge detected — sharing may not have started (guide user to enable it)")
-				return
-			}
-			log.Printf("hotspot: no bridge detected — sharing may not have started (guide user to enable it)")
-		}()
 	}
 
 	// The event's social layer lives in a normal, Finder-visible folder — the
@@ -857,9 +781,6 @@ func main() {
 		if err := loadCert(res.CertFile, res.KeyFile); err != nil {
 			log.Printf("activate: cert load for the guest page failed after %s: %v", source, err)
 			return false
-		}
-		if refreshLocalDNS != nil {
-			refreshLocalDNS(res.Host)
 		}
 		handler.SetActivation(res.Host)
 		markActivationEngaged()
@@ -1045,9 +966,6 @@ func main() {
 			host = ip
 		}
 		fmt.Printf("  Low-latency: LL-HLS at https://%s:%d/live/%s/index.m3u8\n", host, cfg.TLSPort, cfg.StreamPath)
-	}
-	if cfg.Captive {
-		fmt.Println("  Captive-portal mode ON (needs DNS hijacked to this Mac).")
 	}
 	fmt.Println()
 
@@ -1272,12 +1190,6 @@ func main() {
 	if mtx != nil {
 		mtx.Stop()
 	}
-	if dnsCancel != nil {
-		dnsCancel()
-	}
-	if localDNS != nil {
-		_ = localDNS.Close()
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
@@ -1462,25 +1374,6 @@ func autoPublishMinDur(cfgJSON []byte) time.Duration {
 		return time.Duration(*c.Tunables.PublishAutoMinSec) * time.Second
 	}
 	return 3 * time.Minute
-}
-
-func captiveDNSHosts(host string) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(h string) {
-		h = strings.TrimSpace(strings.TrimSuffix(h, "."))
-		if h == "" || seen[h] {
-			return
-		}
-		seen[h] = true
-		out = append(out, h)
-	}
-	add(host)
-	add("party")
-	add("party.lan")
-	add("partyparty")
-	add("partyparty.lan")
-	return out
 }
 
 // humanizeActivation turns raw activation errors into console-worthy English.

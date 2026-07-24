@@ -16,7 +16,6 @@ const (
 	networkSituationEthernetCanHost = "ethernet_can_host"
 	networkSituationWifiNoInternet  = "wifi_no_internet"
 	networkSituationNoNetwork       = "no_network"
-	networkSituationHotspotActive   = "hotspot_active"
 )
 
 type networkSituation struct {
@@ -25,7 +24,6 @@ type networkSituation struct {
 	OnEthernet  bool   `json:"onEthernet"`
 	HasInternet bool   `json:"hasInternet"`
 	Resolves    bool   `json:"resolves"`
-	Hotspotting bool   `json:"hotspotting"`
 	LanIP       string `json:"lanIP"`
 	PrimaryURL  string `json:"primaryUrl"`
 	// The permanent guest-facing link (<handle>.partyparty.party) when it can
@@ -45,7 +43,6 @@ func (s *srv) networkSituation() networkSituation {
 
 	onWifi, onEthernet := detectDefaultNetwork(ctx)
 	hasInternet := internetReachable(ctx)
-	hotspotting := bridge100Up()
 	resolves := false
 	if host := s.guestDNSHost(); host != "" && lanIP != "" {
 		resCtx, resCancel := context.WithTimeout(context.Background(), 1100*time.Millisecond)
@@ -70,7 +67,6 @@ func (s *srv) networkSituation() networkSituation {
 		OnEthernet:  onEthernet,
 		HasInternet: hasInternet,
 		Resolves:    resolves,
-		Hotspotting: hotspotting,
 		LanIP:       lanIP,
 		PrimaryURL:  primaryURL,
 		PublicURL:   publicURL,
@@ -84,8 +80,6 @@ func deriveNetworkSituation(ns networkSituation) string {
 	switch {
 	case ns.LanIP == "":
 		return networkSituationNoNetwork
-	case ns.Hotspotting:
-		return networkSituationHotspotActive
 	case ns.OnWifi && ns.HasInternet && ns.Resolves:
 		return networkSituationSharedWifiReady
 	case ns.OnEthernet && ns.HasInternet:
@@ -200,12 +194,4 @@ func internetReachable(ctx context.Context) bool {
 	}
 	_ = conn.Close()
 	return true
-}
-
-func bridge100Up() bool {
-	ifc, err := net.InterfaceByName("bridge100")
-	if err != nil {
-		return false
-	}
-	return ifc.Flags&net.FlagUp != 0
 }

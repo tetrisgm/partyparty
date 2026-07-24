@@ -158,13 +158,6 @@
   .warn.danger-note{background:rgba(255,59,48,.10);border-color:rgba(255,59,48,.42);color:#a01109;font-weight:600}
   .offline-status{background:rgba(52,199,89,.11);border:1px solid rgba(52,199,89,.32);color:#1d883d;font-size:12px;font-weight:600;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
   .offline-fallback button{margin-top:10px;width:100%}
-  .honest-fallback{position:relative;display:flex;align-items:center;gap:14px;margin-top:0;margin-bottom:14px;padding:13px 44px 13px 14px}
-  .honest-fallback-main{flex:1;min-width:0}
-  .honest-fallback-title{font-size:14px;font-weight:700;color:var(--label);margin-bottom:3px}
-  .honest-fallback-reason{font-size:12px;color:#8a5200;line-height:1.45}
-  .honest-fallback .cardx{top:9px;right:9px}
-  .fallback-switch{height:auto;min-height:42px;padding:8px 13px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;flex:0 0 auto}
-  .fallback-switch small{font-size:10px;font-weight:600;line-height:1.25;opacity:.86}
   #helpNote{border-top:1px solid var(--separator);margin-top:14px;padding-top:12px}
   #helpNote h3{font-size:13px;font-weight:700;color:var(--label);margin:14px 0 4px}
   #helpNote h3:first-child{margin-top:0}
@@ -465,7 +458,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
-  @media (max-width:640px){.honest-fallback{align-items:stretch;flex-direction:column}.fallback-switch{width:100%}.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
+  @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.ehost{align-items:flex-start;gap:8px 10px}.schedule-inline{white-space:normal}.titlerow{flex-direction:column}}
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
@@ -523,18 +516,6 @@
     <div id="bcnoteText"></div>
     <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open System Audio Recording settings</button>
     <div class="hint" id="capturePermHint" style="margin:6px 0 0">Turn on partyparty in the list.</div>
-  </div>
-
-  <div id="honestFallback" class="warn honest-fallback" style="display:none">
-    <button class="cardx" id="honestFallbackClose" type="button" aria-label="Dismiss" title="Dismiss">✕</button>
-    <div class="honest-fallback-main">
-      <div class="honest-fallback-title">Switch to your own Wi-Fi?</div>
-      <div class="honest-fallback-reason" id="honestFallbackReason"></div>
-    </div>
-    <button class="go fallback-switch" id="offlineSwitchBtn" type="button">
-      <span>Switch to my own Wi-Fi</span>
-      <small>(guests near you · no internet for them · ~10 phones)</small>
-    </button>
   </div>
 
   <div class="eventtop">
@@ -1746,7 +1727,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   if (savedQ) $('quality').value = savedQ;
   $('mono').checked = localStorage.getItem('pp.mono') === '1';
   let lastLt = null, lastStatus = null, startError = '';
-  let lastReachState = 'ok', reachPromptDismissed = false, offlineSwitchRequested = false;
+  let lastReachState = 'ok', reachPromptDismissed = false;
   function copySync(){
     const s = lastStatus; if (!s) return;
     const lt = s.latency || {};
@@ -1888,31 +1869,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   $('screenPermBtn').onclick = openCapturePermissionSettings;
   $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
-  $('honestFallbackClose').onclick = () => {
-    reachPromptDismissed = true;
-    $('honestFallback').style.display = 'none';
-  };
   $('guestSetupNudgeClose').onclick = () => {
     guestSetupNudgeDismissed = true;
     $('guestSetupNudge').hidden = true;
   };
-  $('offlineSwitchBtn').onclick = () => {
-    offlineSwitchRequested = true;
-    $('offlineSwitchBtn').disabled = true;
-    $('offlineSwitchBtn').querySelector('span').textContent = 'Switching…';
-    try {
-      const pp = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pp;
-      if (!pp) throw new Error('native bridge unavailable');
-      pp.postMessage({ action:'enableOfflineParty' });
-      djLog('offline-switch-request');
-    } catch (e) {
-      startError = 'Use Host Offline Party from the app menu to switch to your own Wi-Fi.';
-      offlineSwitchRequested = false;
-      $('offlineSwitchBtn').disabled = false;
-      $('offlineSwitchBtn').querySelector('span').textContent = 'Switch to my own Wi-Fi';
-    }
-  };
-
   function renderQR(text){
     if (text === qrText) return;
     qrText = text;
@@ -1943,30 +1903,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     s.oninput = markManual; p.oninput = markManual;
     if (s.value) { $('wifiJoin').open = true; renderWifiQr(); }
   })();
-
-  function renderHonestFallback(reach){
-    const state = reach && reach.state ? reach.state : 'ok';
-    if (state !== lastReachState) {
-      if (state !== 'prompt') {
-        reachPromptDismissed = false;
-        offlineSwitchRequested = false;
-      } else if (lastReachState !== 'prompt') {
-        reachPromptDismissed = false;
-        offlineSwitchRequested = false;
-      }
-      lastReachState = state;
-    }
-    const box = $('honestFallback');
-    if (state !== 'prompt' || reachPromptDismissed) {
-      box.style.display = 'none';
-      return;
-    }
-    $('honestFallbackReason').textContent = reach.reason || 'Guests near you cannot reach the online link from this network.';
-    const btn = $('offlineSwitchBtn');
-    btn.disabled = offlineSwitchRequested;
-    btn.querySelector('span').textContent = offlineSwitchRequested ? 'Switching…' : 'Switch to my own Wi-Fi';
-    box.style.display = 'flex';
-  }
 
   const IPHONE_HOTSPOT_GUIDANCE = 'No Wi-Fi here? On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.';
   const GUEST_SETUP_NUDGE_MS = 60000;
@@ -2016,15 +1952,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         wifiMode: 'iphone_hotspot',
         hotspotTitle: 'iPhone Personal Hotspot',
         hotspotSteps: IPHONE_HOTSPOT_GUIDANCE
-      },
-      hotspot_active: {
-        headline: "Hotspot's on — guests join the same Wi-Fi, then scan.",
-        writeup: 'They connect to the same hotspot as this Mac first, then the party QR opens it.',
-        action: 'two_step',
-        showPartyQr: true,
-        showWifiQr: true,
-        showHotspotCard: false,
-        wifiMode: 'hotspot'
       }
     };
     return plans[situation] ? Object.assign({ situation: situation }, plans[situation]) : null;
@@ -2262,9 +2189,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     switch (l.state) {
       case 'confirmed':          text = 'Guest connected to the LAN room — everyone here streams straight off this Mac.'; break;
       case 'ready':              text = 'LAN room ready on this Wi-Fi.'; break;
-      case 'offline_ready':      text = 'Offline party ready — guests join straight off this Mac.'; break;
       case 'checking':           tone = 'hint'; text = 'Checking whether guests on this Wi-Fi can reach this Mac…'; break;
-      case 'offline_unverified': tone = 'warn'; text = 'Offline party — the route from guests to this Mac is unproven. Have someone scan the code to confirm.'; break;
       case 'cloud_fallback': {
         tone = 'warn';
         const why = lanFallbackReason(l);
@@ -2338,7 +2263,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('bcnoteText').textContent = note || '';
       $('screenPermBtn').style.display = 'block';
       $('capturePermHint').style.display = 'block';
-      renderHonestFallback(s.reachability);
       // Once Mac-audio capture has actually gone live, the permission is
       // provably granted — the "permission not working?" escape hatch would
       // just be noise. It comes back if an error note ever shows. The server

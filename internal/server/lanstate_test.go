@@ -25,18 +25,6 @@ func TestReduceLanState(t *testing.T) {
 		{"resolver mismatch -> cloud_fallback", with(func(i *lanInputs) { i.ResolverMatches = false }), lanCloudFallback},
 		{"direct TLS fails -> cloud_fallback", with(func(i *lanInputs) { i.ListenerTLS = false }), lanCloudFallback},
 		{"guest-path TLS fails -> cloud_fallback", with(func(i *lanInputs) { i.GuestPathTLS = false }), lanCloudFallback},
-		{"offline, local DNS+TLS pass -> offline_ready", with(func(i *lanInputs) {
-			i.OfflineMode = true
-			i.DNSPublished = false // offline never publishes to Cloudflare; must not matter
-		}), lanOfflineReady},
-		{"offline, resolver unproven -> offline_unverified", with(func(i *lanInputs) {
-			i.OfflineMode = true
-			i.ResolverMatches = false
-		}), lanOfflineUnverified},
-		{"offline, listener TLS fails -> offline_unverified", with(func(i *lanInputs) {
-			i.OfflineMode = true
-			i.ListenerTLS = false
-		}), lanOfflineUnverified},
 	}
 	for _, c := range cases {
 		if got := reduceLanState(c.in).State; got != c.want {

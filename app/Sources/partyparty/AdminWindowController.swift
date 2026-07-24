@@ -29,7 +29,6 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     }
 
     private let port: Int
-    private let offlinePartyRequest: () -> Void
     private var webView: WKWebView!
     private var capturePermissionKind: CapturePermissionKind = .systemAudio
     // Held strongly while the in-app cloud sign-in window is open.
@@ -37,9 +36,8 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     // Consecutive blank-console recovery attempts (reset to 0 on a healthy boot).
     private var bootAttempts = 0
 
-    init(port: Int, offlinePartyRequest: @escaping () -> Void = {}) {
+    init(port: Int) {
         self.port = port
-        self.offlinePartyRequest = offlinePartyRequest
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1140, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -250,6 +248,9 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.scheduleBootWatchdog() }
         default:
             diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts — WebView is not rendering /dj"])
+            // A dead 127.0.0.1 (an old version's lo0 damage) is the usual cause a
+            // reload can't fix — surface the one-time repair instead of a blank window.
+            NetworkRepair.promptIfDamaged()
         }
     }
 
@@ -267,8 +268,6 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         case "setLoginItem":
             setLoginItem(body["on"] as? Bool ?? false)
             pushLoginState()
-        case "enableOfflineParty":
-            offlinePartyRequest()
         case "openSignIn":
             openSignIn(body["url"] as? String)
         case "captureSourceChanged":

@@ -227,19 +227,6 @@ func TestStatusEndpoint(t *testing.T) {
 	if p, _ := urls["primary"].(string); !strings.HasPrefix(p, "http://") {
 		t.Errorf("primary url = %q, want http:// before activation", p)
 	}
-	hotspot, ok := body["hotspot"].(map[string]any)
-	if !ok {
-		t.Fatalf("hotspot is not an object: %T", body["hotspot"])
-	}
-	if hotspot["mode"] != "online" {
-		t.Errorf("hotspot.mode = %v, want online", hotspot["mode"])
-	}
-	if _, ok := hotspot["bridgeUp"].(bool); !ok {
-		t.Errorf("hotspot.bridgeUp missing/not bool: %v", hotspot["bridgeUp"])
-	}
-	if _, ok := hotspot["bridgeIP"].(string); !ok {
-		t.Errorf("hotspot.bridgeIP missing/not string: %v", hotspot["bridgeIP"])
-	}
 	act, ok := body["activation"].(map[string]any)
 	if !ok || act["ready"] != false {
 		t.Errorf("activation = %v, want ready:false", body["activation"])
@@ -1268,24 +1255,12 @@ func TestWebPagesAndRouting(t *testing.T) {
 		t.Errorf("cover cache-control = %q", cc)
 	}
 	if w := do(env.srv, "GET", "/no-such-page", ""); w.Code != http.StatusNotFound {
-		t.Errorf("unknown path (captive off) = %d, want 404", w.Code)
+		t.Errorf("unknown path = %d, want 404", w.Code)
 	}
 	if w := do(env.srv, "GET", "/api/no-such", ""); w.Code != http.StatusNotFound {
 		t.Errorf("unknown api = %d, want 404", w.Code)
 	}
 
-	captive := newTestEnv(t, func(c *config.Config) { c.Captive = true })
-	body := decodeJSON(t, do(captive.srv, "GET", "/api/status", ""))
-	if hotspot, _ := body["hotspot"].(map[string]any); hotspot["mode"] != "offline" {
-		t.Errorf("captive hotspot.mode = %v, want offline", hotspot["mode"])
-	}
-	w = do(captive.srv, "GET", "/no-such-page", "")
-	if w.Code != http.StatusFound {
-		t.Fatalf("unknown path (captive on) = %d, want 302", w.Code)
-	}
-	if loc := w.Header().Get("Location"); !strings.HasPrefix(loc, "http://") {
-		t.Errorf("redirect location = %q", loc)
-	}
 }
 
 func TestGuestPageUsesGzipWhenSupported(t *testing.T) {
@@ -1353,8 +1328,8 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 	}
 }
 
-func TestCaptiveProbes(t *testing.T) {
-	env := newTestEnv(t, nil) // captive OFF: answer "online", never hijack
+func TestConnectivityProbes(t *testing.T) {
+	env := newTestEnv(t, nil) // answer OS connectivity probes "online", never hijack
 	if w := do(env.srv, "GET", "/generate_204", ""); w.Code != http.StatusNoContent {
 		t.Errorf("android probe = %d, want 204", w.Code)
 	}
@@ -1363,12 +1338,6 @@ func TestCaptiveProbes(t *testing.T) {
 	}
 	if w := do(env.srv, "GET", "/ncsi.txt", ""); w.Body.String() != "Microsoft NCSI" {
 		t.Errorf("windows probe body = %q", w.Body.String())
-	}
-
-	captive := newTestEnv(t, func(c *config.Config) { c.Captive = true })
-	w := do(captive.srv, "GET", "/generate_204", "")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Open the player") {
-		t.Errorf("captive landing = %d %q", w.Code, w.Body.String())
 	}
 }
 

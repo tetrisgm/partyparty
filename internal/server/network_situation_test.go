@@ -15,17 +15,6 @@ func TestDeriveNetworkSituation(t *testing.T) {
 			want: networkSituationNoNetwork,
 		},
 		{
-			name: "hotspot active wins",
-			in: networkSituation{
-				LanIP:       base.LanIP,
-				OnWifi:      true,
-				HasInternet: true,
-				Resolves:    true,
-				Hotspotting: true,
-			},
-			want: networkSituationHotspotActive,
-		},
-		{
 			name: "wifi internet resolves",
 			in: networkSituation{
 				LanIP:       base.LanIP,

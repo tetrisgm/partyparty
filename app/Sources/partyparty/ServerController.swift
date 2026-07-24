@@ -5,14 +5,12 @@ import Foundation
 final class ServerController {
     let port: Int
     private var process: Process?
-    private var captiveMode: Bool
     private var stopping = false
     private var restartCount = 0
     private var lastStart = Date.distantPast
 
-    init(port: Int = 8000, captiveMode: Bool = false) {
+    init(port: Int = 8000) {
         self.port = port
-        self.captiveMode = captiveMode
     }
 
     /// Locate the Go server binary. In the .app it ships at
@@ -45,11 +43,7 @@ final class ServerController {
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = ["--no-open", "--port", String(port)]
         var env = ProcessInfo.processInfo.environment
-        if captiveMode {
-            env["PARTYPARTY_CAPTIVE"] = "1"
-        } else {
-            env.removeValue(forKey: "PARTYPARTY_CAPTIVE")
-        }
+        env.removeValue(forKey: "PARTYPARTY_CAPTIVE") // legacy: partyparty never creates networks now
         p.environment = env
         p.terminationHandler = { [weak self] proc in
             DispatchQueue.main.async { self?.childExited(proc) }
@@ -105,9 +99,8 @@ final class ServerController {
         return rc == 0
     }
 
-    func restart(captiveMode: Bool) {
+    func restart() {
         stop()
-        self.captiveMode = captiveMode
         restartCount = 0
         start()
     }

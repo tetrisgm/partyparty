@@ -8,13 +8,11 @@ import (
 // LAN readiness states (execution-plan §6). These are the honest, mutually
 // exclusive answers to "can a guest on THIS Wi-Fi reach the low-latency room?"
 const (
-	lanUnavailable       = "unavailable"        // no usable cert or no LAN host/address
-	lanChecking          = "checking"           // cert may be loaded, current-network checks not yet complete
-	lanReady             = "ready"              // cert + DNS + resolver + both TLS checks pass for this network
-	lanConfirmed         = "confirmed"          // ready, plus a real guest recently reached the machine host
-	lanCloudFallback     = "cloud_fallback"     // online, but a publication/resolver/TLS check failed
-	lanOfflineReady      = "offline_ready"      // explicit controlled-offline: cached cert + local DNS + TLS pass
-	lanOfflineUnverified = "offline_unverified" // cached cert exists, local DNS route to guests unproven
+	lanUnavailable   = "unavailable"    // no usable cert or no LAN host/address
+	lanChecking      = "checking"       // cert may be loaded, current-network checks not yet complete
+	lanReady         = "ready"          // cert + DNS + resolver + both TLS checks pass for this network
+	lanConfirmed     = "confirmed"      // ready, plus a real guest recently reached the machine host
+	lanCloudFallback = "cloud_fallback" // online, but a publication/resolver/TLS check failed
 )
 
 // lanInputs is the current-network evidence the reducer consumes. Every field is
@@ -28,7 +26,6 @@ type lanInputs struct {
 	ListenerTLS     bool   // directListenerTLS passed (listener+cert+port+hostname)
 	GuestPathTLS    bool   // guestPathTLS passed (system-resolver path reaches the listener)
 	GuestConfirmed  bool   // a real guest connection was seen recently
-	OfflineMode     bool   // explicit controlled-offline network (captive/bridge)
 	ChecksComplete  bool   // the current-network checks have run at least once
 	CloudFallback   bool   // the public handle route has a usable cloud/event destination
 	ReasonCode      string // stable code from activation/DNS when a check failed
@@ -77,15 +74,6 @@ func reduceLanState(in lanInputs) lanState {
 	// 1. No cert or host -> unavailable.
 	if !in.CertReady || in.Host == "" {
 		st.State = lanUnavailable
-		return st
-	}
-	// 2. Explicit controlled-offline mode: only local DNS + listener TLS decide.
-	if in.OfflineMode {
-		if in.ResolverMatches && in.ListenerTLS {
-			st.State = lanOfflineReady
-		} else {
-			st.State = lanOfflineUnverified
-		}
 		return st
 	}
 	// 3. Online checks incomplete -> checking (unknown is not success).

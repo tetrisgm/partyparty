@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"partyparty/internal/activate"
-	"partyparty/internal/dnsd"
 )
 
 // /api/netcheck (DJ-only): one button in the console runs the exact network
@@ -40,7 +39,6 @@ type netCheckOptions struct {
 	BrokerBase string
 	GuestHost  string
 	GuestURL   string
-	Captive    bool
 }
 
 func (s *srv) netCheckOptions() netCheckOptions {
@@ -56,7 +54,6 @@ func (s *srv) netCheckOptions() netCheckOptions {
 		BrokerBase: broker,
 		GuestHost:  host,
 		GuestURL:   s.urls().Primary,
-		Captive:    s.Config.Captive,
 	}
 }
 
@@ -79,12 +76,6 @@ func runNetChecks(opts netCheckOptions) []netCheck {
 			name string
 			run  func() (string, error)
 		}{netCheckPartyDNS, func() (string, error) { return lookup(guestHost) }})
-	}
-	if opts.Captive && guestHost != "" {
-		checks = append(checks, struct {
-			name string
-			run  func() (string, error)
-		}{"Resolve guest link through offline DNS", func() (string, error) { return lookupWithServer(guestHost, dnsd.LocalAddr) }})
 	}
 	if opts.GuestURL != "" {
 		checks = append(checks, struct {

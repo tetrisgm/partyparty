@@ -27,7 +27,6 @@ fi
 echo ">> Go server (-tags bundle)"
 APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/app/Info.plist" 2>/dev/null || echo dev)"
 "$GO" build -tags bundle -ldflags "-X main.appVersion=$APP_VERSION" -o "$ROOT/build/partyparty-server" "$ROOT"
-"$GO" build -o "$ROOT/build/pp-port80" "$ROOT/cmd/pp-port80"
 
 echo ">> Swift menu-bar app (release)"
 swift build -c release --package-path "$ROOT/app"
@@ -38,18 +37,20 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "$APP/Contents/Frameworks" "$APP/Contents/Library/LaunchDaemons"
 cp "$BIN/partyparty"               "$APP/Contents/MacOS/partyparty"
 cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
-cp "$ROOT/build/pp-port80"         "$APP/Contents/Helpers/pp-port80"
 cp "$ROOT/assets/ffmpeg"           "$APP/Contents/Helpers/ffmpeg"
 cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
 cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
-cp "$ROOT/app/net.ramine.partyparty.port80.plist" "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port80.plist"
-# The pp-port443 helper is GONE (guests use the direct :8443 link). Only this
-# plist stub stays so PortRedirectController.removeLegacyCleanLinks() can resolve
-# and UNREGISTER the old daemon on any install that still has it registered —
-# self-cleaning regardless of which versions a Mac skips. No pp-port443 binary is
-# bundled; a final release can drop this plist + the stub once installs cycle.
+# BOTH privileged helpers are GONE. pp-port443 (clean links) went first; pp-port80
+# followed after it was found to permanently break loopback — it created a macOS
+# network service on lo0 for Internet Sharing, which survived app uninstall and
+# left Macs unable to reach 127.0.0.1 (white-screen console). partyparty no longer
+# creates networks; it uses the Wi-Fi that is already there. Only these plist stubs
+# stay so LegacyHelperCleanup can resolve and UNREGISTER any daemon still
+# registered on an install that skipped versions. No helper binaries are bundled;
+# a later release can drop the stubs once every install has cycled through.
+cp "$ROOT/app/net.ramine.partyparty.port80.plist"  "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port80.plist"
 cp "$ROOT/app/net.ramine.partyparty.port443.plist" "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port443.plist"
 
 # Sparkle framework (auto-update) — embed + make it discoverable via rpath.
@@ -88,7 +89,7 @@ if [ -d "$SPK" ]; then
 fi
 # ppcapture creates the Core Audio tap, so IT needs the audio-input
 # entitlement (hardened runtime denies audio otherwise). The rest don't.
-for b in mediamtx ffmpeg partyparty-server pp-port80; do
+for b in mediamtx ffmpeg partyparty-server; do
   codesign_one "$APP/Contents/Helpers/$b"
 done
 codesign_one "$APP/Contents/Helpers/ppcapture" "$ENT"
