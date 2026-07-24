@@ -50,6 +50,46 @@ sleep "$DEBOUNCE"
 [ "$(git rev-parse main)" = "$before" ] || { log "main still moving, deferring"; exit 0; }
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { log "tree became dirty, deferring"; exit 0; }
 
+# --- worker/config-only fast path: deploy the Worker, skip the native ship ----
+# A commit whose ONLY changes since the last release are under cloudflare/ (the
+# Worker code + its deploy config) needs just `wrangler deploy` — never a native
+# rebuild, notarization, Sparkle feed flip, or version bump, because the built
+# Mac app and the OTA payload are byte-identical. Doctrine: a tooling-only commit
+# must not buy an identical rebuild. Conservative: divert ONLY when EVERY changed
+# file since the last release is under cloudflare/; native, web-payload, script,
+# or mixed changes fall through to the full ship below, unchanged. Keyed to the
+# stable HEAD sha via a gitignored receipt so the periodic backstop never
+# re-deploys the same commit.
+last_rel="$(git log --grep='^Record partyparty .* release$' -1 --format=%H 2>/dev/null || true)"
+if [ -n "$last_rel" ]; then
+  changed="$(git diff --name-only "$last_rel" HEAD 2>/dev/null || true)"
+  noncf="$(printf '%s\n' "$changed" | grep -vE '^cloudflare/' || true)"
+  if [ -n "$changed" ] && [ -z "$noncf" ]; then
+    if printf '%s' "$SHIP_ARGS" | grep -q -- '--dry-run'; then
+      log "worker-only change (dry-run) — would deploy Worker + skip native ship; nothing published"
+      exit 0
+    fi
+    head_sha="$(git rev-parse HEAD)"
+    receipt="$ROOT/build/.last-worker-deploy"
+    if [ "$(cat "$receipt" 2>/dev/null || true)" = "$head_sha" ]; then
+      exit 0  # this commit's Worker deploy is already done — idempotent no-op
+    fi
+    WR="$ROOT/cloudflare/node_modules/.bin/wrangler"
+    if [ -x "$WR" ]; then
+      log "worker-only change since $(git rev-parse --short "$last_rel") — deploy Worker, skip native ship ($(git rev-parse --short HEAD))"
+      if ( cd "$ROOT/cloudflare" && node test/smoke.mjs ) >> "$LOG" 2>&1 \
+         && ( cd "$ROOT/cloudflare" && "$WR" deploy ) >> "$LOG" 2>&1; then
+        printf '%s' "$head_sha" > "$receipt"
+        log "worker deploy OK for $(git rev-parse --short HEAD) — no native ship"
+        exit 0
+      fi
+      log "worker-only deploy FAILED — will retry on the next trigger"
+      exit 1
+    fi
+    log "wrangler missing at $WR; falling through to the full ship"
+  fi
+fi
+
 # --- ship the latest ----------------------------------------------------------
 log "shipping $(git rev-parse --short HEAD): $(git log -1 --format=%s)"
 scripts/ship.sh $SHIP_ARGS >> "$LOG" 2>&1
