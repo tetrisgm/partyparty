@@ -93,22 +93,11 @@ type srv struct {
 	// loop, read by /api/status — the room and the web share one count.
 	webListeners atomic.Int64
 
-	// Honest fallback readiness: observable reachability only. The watchdog
-	// updates these fields for /api/status; it never changes delivery or
-	// network mode. Guarded by reachMu.
-	reachMu             sync.Mutex
-	reachState          string
-	reachReason         string
-	reachDegradedAt     time.Time
-	reachDegradedCycles int
-	guestSeenUntil      time.Time
-	guestStalledUntil   time.Time
-
-	// LAN readiness (§5-7): cached lanState recomputed off the reachability tick.
-	// /api/status only ever COPIES this — it never runs the TLS probes inline, so
-	// the status poll stays fast. Guarded by lanMu.
-	lanMu     sync.Mutex
-	lanCached lanState
+	// Real-guest ground truth: the last time a guest connection was observed
+	// (guest heartbeats + client events). Feeds the LAN room's "confirmed" state.
+	// Guarded by reachMu.
+	reachMu        sync.Mutex
+	guestSeenUntil time.Time
 
 	// Room-sync toggles (per-DJ, persisted to stateDir/room-settings.json). Both
 	// OFF by default: guests ride the live edge (lowest latency) and no drift
@@ -326,7 +315,6 @@ func (s *Srv) SetActivation(domain string) {
 	s.actLast.Host = domain
 	s.actLastSet = true
 	s.actMu.Unlock()
-	s.updateReachability(time.Now(), nil, false)
 }
 
 // SetActivationPending records why the secure link isn't ready yet — shown in
@@ -459,9 +447,6 @@ func (s *srv) devNoLogin() bool {
 }
 
 func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if s.captiveProbe(w, r) {
-		return
-	}
 	// Private Network Access preflight (Chromium): the cloud join page probes this
 	// LAN host from a public origin to prove the guest is on the party's Wi-Fi.
 	// Chromium may preflight such public→private requests; answering with
@@ -512,18 +497,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
 		s.handleMedia(w, r)
-	case p == "/api/lan-health":
-		// Minimal, guest-safe reachability probe (§5-7 building block). The Mac
-		// dials this over its OWN machine hostname + guest port with normal TLS
-		// validation to prove the listener, certificate, and hostname all line up
-		// on the current network. No DJ-only data; never gated on auth.
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":   true,
-			"host": s.liveDomain(),
-			"ip":   netinfo.PrimaryLanIP(),
-			"cert": s.realCert(),
-		})
 	case p == "/api/room-settings":
 		// DJ room-sync toggles. POST {roomSyncDelay?, driftCorrection?} sets them
 		// (each field optional — omitted keeps its current value); any method
@@ -717,14 +690,13 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"webListeners":   s.webListeners.Load(),
 			"health":         health,
 			"urls":           s.urls(),
-			"lan":            s.lanStateSnapshot(), // §5-7: honest LAN readiness (cached; never probes here)
+			"lan":            s.lanStateSnapshot(), // honest LAN readiness from observed LAN vs cloud listeners
 			"llhlsUrl":       s.llhlsURL(),
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
 			"audioProven":    s.audioProven.Load(),
 			"activation":     s.activationState(),
-			"reachability":   s.reachability(),
 			"latencyTarget":  latencyTarget,
 			"sync":           s.syncModeState(),
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
@@ -934,7 +906,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return
 		}
-		s.markGuestReach(clientEventLooksStalled(body.Kind) || clientEventLooksStalled(body.Msg))
+		s.markGuestReach()
 		nAny, _ := s.clientLogN.LoadOrStore(body.CID, new(int32))
 		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest — no log floods
 			if s.Diag != nil {
@@ -973,7 +945,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if body.Page == "guest" || body.Page == "" { // enrich guest attribution with the device name
 			who = s.friendlyName(clientIP(r), r.UserAgent()) + " | " + who
 		}
-		guestStalled := false
 		key := "ev:" + body.CID
 		if _, seen := s.clientLogN.Load(key); !seen && atomic.AddInt32(&s.clientCIDs, 1) > 20000 {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -995,9 +966,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			kind, _ := ev["k"].(string)
-			if clientEventLooksStalled(kind) {
-				guestStalled = true
-			}
 			delete(ev, "k")
 			if s.Diag != nil {
 				s.Diag.Printf("ev[%s] %s %s", who, clipStr(kind, 20), compactFields(ev))
@@ -1007,7 +975,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				urgent = true
 			}
 		}
-		s.markGuestReach(guestStalled)
+		s.markGuestReach()
 		if urgent && s.Diag != nil {
 			s.Diag.MarkUrgent() // ship the log to the cloud within seconds, not on the 30s tick
 		}
@@ -1038,7 +1006,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
-		s.markGuestReach(q.Get("stalled") == "1")
+		s.markGuestReach()
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
 		s.Listeners.Debug(key, q.Get("del"), rate, buf)
@@ -1266,30 +1234,6 @@ func (s *srv) llhlsURL() string {
 		return ""
 	}
 	return fmt.Sprintf("https://%s:%d/live/%s/index.m3u8", host, s.Config.TLSPort, s.Config.StreamPath)
-}
-
-// captiveProbe answers the OS connectivity-check URLs. Only reached when this
-// Mac is the DNS for those hostnames (i.e. DNS hijack). When captive mode is
-// off, answer "online" so a guest's normal connectivity is never broken.
-func (s *srv) captiveProbe(w http.ResponseWriter, r *http.Request) bool {
-	p := r.URL.Path
-	isApple := p == "/hotspot-detect.html" || strings.HasPrefix(p, "/library/test/success.html")
-	isAndroid := p == "/generate_204" || p == "/gen_204"
-	isWindows := p == "/ncsi.txt" || strings.HasPrefix(p, "/connecttest.txt")
-	if !isApple && !isAndroid && !isWindows {
-		return false
-	}
-	switch {
-	case isAndroid:
-		w.WriteHeader(http.StatusNoContent)
-	case isWindows:
-		w.Header().Set("Content-Type", "text/plain")
-		_, _ = w.Write([]byte("Microsoft NCSI"))
-	default:
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte("<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"))
-	}
-	return true
 }
 
 // friendlyName prefers the device's real network name ("Ramine's iPhone",

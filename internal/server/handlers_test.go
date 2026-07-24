@@ -160,27 +160,6 @@ func waitIdle(t *testing.T, bc *broadcast.Broadcaster) {
 	t.Fatalf("broadcaster never returned to idle (state %q)", bc.Status().State)
 }
 
-func TestLanHealthEndpoint(t *testing.T) {
-	env := newTestEnv(t, nil)
-	w := do(env.srv, "GET", "/api/lan-health", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("lan-health = %d", w.Code)
-	}
-	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
-		t.Errorf("Cache-Control = %q, want no-store", cc)
-	}
-	body := decodeJSON(t, w)
-	if body["ok"] != true {
-		t.Errorf("ok = %v, want true", body["ok"])
-	}
-	// Guest-safe: it must not leak any DJ-only fields.
-	for _, k := range []string{"roster", "accountStatus", "adminKey", "secret", "activation"} {
-		if _, present := body[k]; present {
-			t.Errorf("lan-health leaked DJ-only field %q", k)
-		}
-	}
-}
-
 func TestStatusEndpoint(t *testing.T) {
 	env := newTestEnv(t, nil)
 	w := do(env.srv, "GET", "/api/status", "")
@@ -236,13 +215,6 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 	if _, ok := body["roster"]; !ok {
 		t.Error("roster missing")
-	}
-	reach, ok := body["reachability"].(map[string]any)
-	if !ok {
-		t.Fatalf("reachability missing/not an object: %T", body["reachability"])
-	}
-	if reach["state"] != "ok" || reach["reason"] != "" || reach["guestSeen"] != false {
-		t.Errorf("reachability = %v, want ok with no reason/guest", reach)
 	}
 }
 
@@ -1325,19 +1297,6 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 	}
 	if gotPath != "/party/index.m3u8" || gotQuery != "cookieCheck=1&_HLS_msn=12&_HLS_part=3" {
 		t.Fatalf("upstream request = %s?%s", gotPath, gotQuery)
-	}
-}
-
-func TestConnectivityProbes(t *testing.T) {
-	env := newTestEnv(t, nil) // answer OS connectivity probes "online", never hijack
-	if w := do(env.srv, "GET", "/generate_204", ""); w.Code != http.StatusNoContent {
-		t.Errorf("android probe = %d, want 204", w.Code)
-	}
-	if w := do(env.srv, "GET", "/hotspot-detect.html", ""); !strings.Contains(w.Body.String(), "Success") {
-		t.Errorf("apple probe body = %s", w.Body.String())
-	}
-	if w := do(env.srv, "GET", "/ncsi.txt", ""); w.Body.String() != "Microsoft NCSI" {
-		t.Errorf("windows probe body = %q", w.Body.String())
 	}
 }
 

@@ -1,153 +1,107 @@
 package server
 
 import (
-	"context"
 	"time"
 )
 
-// LAN readiness states (execution-plan §6). These are the honest, mutually
-// exclusive answers to "can a guest on THIS Wi-Fi reach the low-latency room?"
+// LAN readiness states. The honest question is "are guests reaching the
+// low-latency LAN room on this Mac, the cloud stream, or nothing yet?" These are
+// answered from OBSERVED reality — real listener counts — not from predictive
+// self-probes. A probe running on the Mac can always reach the Mac, so it can't
+// see the guest-side failures (AP/client isolation, venue firewall) that
+// actually send guests to the cloud; a real guest connection is the only proof.
 const (
-	lanUnavailable   = "unavailable"    // no usable cert or no LAN host/address
-	lanChecking      = "checking"       // cert may be loaded, current-network checks not yet complete
-	lanReady         = "ready"          // cert + DNS + resolver + both TLS checks pass for this network
-	lanConfirmed     = "confirmed"      // ready, plus a real guest recently reached the machine host
-	lanCloudFallback = "cloud_fallback" // online, but a publication/resolver/TLS check failed
+	lanUnavailable   = "unavailable"    // no usable cert/host yet — the setup card owns this window
+	lanReady         = "ready"          // secure link up, listener serving, no guest has joined yet
+	lanConfirmed     = "confirmed"      // real guests are on the LAN room right now (or were, within the TTL)
+	lanCloudFallback = "cloud_fallback" // guests are here, but on the cloud stream — not the LAN room
 )
 
-// lanInputs is the current-network evidence the reducer consumes. Every field is
-// a fact observed independently — none is inferred from another.
+// lanInputs is the observed evidence the reducer consumes.
 type lanInputs struct {
-	CertReady       bool   // a usable certificate/key exists for Host
-	Host            string // the machine hostname (empty => no LAN identity)
-	ExpectedIP      string // the current LAN IP that should be published
-	DNSPublished    bool   // the broker returned a VERIFIED Cloudflare A receipt
-	ResolverMatches bool   // this network's resolver returns ExpectedIP for Host
-	ListenerTLS     bool   // directListenerTLS passed (listener+cert+port+hostname)
-	GuestPathTLS    bool   // guestPathTLS passed (system-resolver path reaches the listener)
-	GuestConfirmed  bool   // a real guest connection was seen recently
-	ChecksComplete  bool   // the current-network checks have run at least once
-	CloudFallback   bool   // the public handle route has a usable cloud/event destination
-	ReasonCode      string // stable code from activation/DNS when a check failed
-	Reason          string // human-readable detail (log/console)
+	CertReady      bool   // a usable certificate/key exists for Host
+	Host           string // the machine hostname (empty => no LAN identity yet)
+	ExpectedIP     string // the current LAN IP guests would use
+	ChecksComplete bool   // activation has run at least once
+	LanListeners   int    // guests connected to the LAN room right now (this Mac)
+	CloudListeners int    // guests connected to the cloud mirror right now (the Worker)
+	GuestConfirmed bool   // a real guest reached the LAN room within the recent-guest TTL
 }
 
-// lanState is the authoritative /api/status `lan` object (execution-plan §6).
+// lanState is the /api/status `lan` object the DJ console reads.
 type lanState struct {
-	State             string `json:"state"`
-	Host              string `json:"host,omitempty"`
-	ExpectedIP        string `json:"expectedIp,omitempty"`
-	GuestPort         int    `json:"guestPort,omitempty"`
-	CertReady         bool   `json:"certReady"`
-	DNSPublished      bool   `json:"dnsPublished"`
-	ResolverMatches   bool   `json:"resolverMatches"`
-	ListenerTLSReady  bool   `json:"listenerTlsReady"`
-	GuestPathTLSReady bool   `json:"guestPathTlsReady"`
-	GuestConfirmed    bool   `json:"guestConfirmed"`
-	CloudFallback     bool   `json:"cloudFallback"`
-	ReasonCode        string `json:"reasonCode,omitempty"`
-	Reason            string `json:"reason,omitempty"`
-	CheckedAtMs       int64  `json:"checkedAtMs,omitempty"`
+	State          string `json:"state"`
+	Host           string `json:"host,omitempty"`
+	ExpectedIP     string `json:"expectedIp,omitempty"`
+	GuestPort      int    `json:"guestPort,omitempty"`
+	CertReady      bool   `json:"certReady"`
+	GuestConfirmed bool   `json:"guestConfirmed"`
+	LanListeners   int    `json:"lanListeners"`
+	CloudListeners int    `json:"cloudListeners"`
+	CheckedAtMs    int64  `json:"checkedAtMs,omitempty"`
 }
 
-// reduceLanState maps evidence to exactly one state with deterministic
-// precedence (execution-plan §6). Unknown is never success: an uninitialized or
-// mid-flight state renders as `checking`, and any failed required online check
-// renders as `cloud_fallback` — never `ready`. cloudFallback=true only reports
-// that the public route has a cloud destination; it does not mean the LAN failed
-// and may be true in the `ready`/`confirmed` states.
+// reduceLanState maps observed evidence to exactly one state, most-informative
+// first. Ground truth (a real LAN connection) always beats a guess.
 func reduceLanState(in lanInputs) lanState {
 	st := lanState{
-		Host:              in.Host,
-		ExpectedIP:        in.ExpectedIP,
-		CertReady:         in.CertReady,
-		DNSPublished:      in.DNSPublished,
-		ResolverMatches:   in.ResolverMatches,
-		ListenerTLSReady:  in.ListenerTLS,
-		GuestPathTLSReady: in.GuestPathTLS,
-		GuestConfirmed:    in.GuestConfirmed,
-		CloudFallback:     in.CloudFallback,
-		ReasonCode:        in.ReasonCode,
-		Reason:            in.Reason,
+		Host:           in.Host,
+		ExpectedIP:     in.ExpectedIP,
+		CertReady:      in.CertReady,
+		GuestConfirmed: in.GuestConfirmed,
+		LanListeners:   in.LanListeners,
+		CloudListeners: in.CloudListeners,
 	}
-
-	// 1. No cert or host -> unavailable.
-	if !in.CertReady || in.Host == "" {
+	switch {
+	case !in.CertReady || in.Host == "":
+		// The secure link isn't up yet; the console's setup card covers this.
 		st.State = lanUnavailable
-		return st
-	}
-	// 3. Online checks incomplete -> checking (unknown is not success).
-	if !in.ChecksComplete {
-		st.State = lanChecking
-		return st
-	}
-	// 4. Any required online check failed -> cloud_fallback.
-	if !in.DNSPublished || !in.ResolverMatches || !in.ListenerTLS || !in.GuestPathTLS {
-		st.State = lanCloudFallback
-		return st
-	}
-	// 5/6. All checks passed: confirmed if a real guest reached us, else ready.
-	if in.GuestConfirmed {
+	case in.LanListeners > 0 || in.GuestConfirmed:
+		// Observed: guests are on the LAN room. This is proof, not prediction.
 		st.State = lanConfirmed
-	} else {
+	case in.CloudListeners > 0:
+		// Observed: guests found the party but landed on the cloud stream.
+		st.State = lanCloudFallback
+	default:
+		// Cert up, listener serving, nobody has tried yet — honest "ready".
 		st.State = lanReady
 	}
 	return st
 }
 
 // guestSeenRecently reports whether a real guest connection was observed within
-// the reachability TTL — the "confirmed" proof signal (a guest connection beats
-// any predictive self-check).
+// the recent-guest TTL — so `confirmed` persists briefly across the gap between
+// a guest's last heartbeat and the next status poll.
 func (s *srv) guestSeenRecently() bool {
 	s.reachMu.Lock()
 	defer s.reachMu.Unlock()
 	return time.Now().Before(s.guestSeenUntil)
 }
 
-// refreshLanState recomputes the cached LAN readiness from current evidence: the
-// cached activation result, the two INDEPENDENT TLS self-probes, and the
-// recent-guest signal. It runs off the reachability watchdog (background) and is
-// bounded so a slow probe can't wedge the tick. /api/status only ever copies the
-// cached result — it must never call this inline.
-func (s *srv) refreshLanState() {
+// lanStateSnapshot computes the LAN state inline from observed reality — cached
+// activation (cert/host), live LAN listener count, cloud listener count, and the
+// recent-guest signal. All cheap in-memory reads (no network probes), so
+// /api/status calls it directly.
+func (s *srv) lanStateSnapshot() lanState {
 	s.actMu.Lock()
 	res := s.actLast
 	ran := s.actLastSet
 	s.actMu.Unlock()
 
-	port := s.Config.TLSPort
-	in := lanInputs{
-		CertReady:       res.CertReady,
-		Host:            res.Host,
-		ExpectedIP:      res.ExpectedIP,
-		DNSPublished:    res.DNSPublished,
-		ResolverMatches: res.ResolverMatches,
-		GuestConfirmed:  s.guestSeenRecently(),
-		ChecksComplete:  ran,
-		CloudFallback:   true, // the public handle route always has a cloud/event destination
-		ReasonCode:      res.ReasonCode,
-		Reason:          res.Reason,
+	lan := 0
+	if s.Listeners != nil {
+		lan = s.Listeners.Active()
 	}
-	// The two independent TLS self-checks are only meaningful once a cert exists.
-	if res.CertReady && res.Host != "" && port > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-		in.ListenerTLS = directListenerTLS(ctx, res.ExpectedIP, port, res.Host).OK
-		in.GuestPathTLS = guestPathTLS(ctx, res.Host, port).OK
-		cancel()
-	}
-	st := reduceLanState(in)
-	st.GuestPort = port
+	st := reduceLanState(lanInputs{
+		CertReady:      res.CertReady,
+		Host:           res.Host,
+		ExpectedIP:     res.ExpectedIP,
+		ChecksComplete: ran,
+		LanListeners:   lan,
+		CloudListeners: int(s.webListeners.Load()),
+		GuestConfirmed: s.guestSeenRecently(),
+	})
+	st.GuestPort = s.Config.TLSPort
 	st.CheckedAtMs = time.Now().UnixMilli()
-
-	s.lanMu.Lock()
-	s.lanCached = st
-	s.lanMu.Unlock()
-}
-
-// lanStateSnapshot returns the last computed LAN state (a cheap copy for
-// /api/status; never runs probes).
-func (s *srv) lanStateSnapshot() lanState {
-	s.lanMu.Lock()
-	defer s.lanMu.Unlock()
-	return s.lanCached
+	return st
 }

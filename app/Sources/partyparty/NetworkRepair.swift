@@ -16,9 +16,13 @@ import Foundation
 enum NetworkRepair {
     static let serviceName = "partyparty-adhoc"
 
-    /// The one-time repair command. Removing a network service needs root.
+    /// The one-time repair. `-removenetworkservice` FAILS here ("cannot remove …
+    /// because there aren't any other network services on Loopback") because the
+    /// leftover is the only service on the lo0 port — so instead DISABLE it
+    /// (durable: it stops clobbering loopback on boot) and re-add 127.0.0.1
+    /// (immediate: the console can load again without a reboot).
     static var fixCommand: String {
-        "sudo networksetup -removenetworkservice \"\(serviceName)\""
+        "sudo networksetup -setnetworkserviceenabled \"\(serviceName)\" off\nsudo ifconfig lo0 alias 127.0.0.1 up"
     }
 
     /// True if the leftover `partyparty-adhoc` network service still exists.
@@ -48,11 +52,12 @@ enum NetworkRepair {
         alert.informativeText = """
         An earlier version of partyparty added a macOS network service to share \
         the party over Wi-Fi. It's no longer used and can interfere with this \
-        Mac's local networking (including a blank partyparty window). It stays \
-        behind even after uninstalling, and removing it needs your admin password, \
-        so partyparty can't do it for you.
+        Mac's local networking (it's what makes the partyparty window show up \
+        blank). It stays behind even after uninstalling, and fixing it needs your \
+        admin password, so partyparty can't do it for you.
 
-        Paste this one command into Terminal, then restart your Mac:
+        Paste these two lines into Terminal (it takes effect immediately — no \
+        restart needed):
 
         \(fixCommand)
         """

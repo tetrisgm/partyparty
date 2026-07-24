@@ -644,7 +644,6 @@ func main() {
 		Version:     appVersion,
 	})
 	handler.StartSyncDrain(context.Background())
-	handler.StartReachabilityWatchdog(context.Background())
 
 	// tcp4, NOT tcp: on some Macs `net.Listen("tcp", ...)` binds an IPv6-only
 	// socket, and if that machine's IPv6 loopback (::1) is also broken, NOTHING
