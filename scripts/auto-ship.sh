@@ -60,6 +60,7 @@ sleep "$DEBOUNCE"
 # or mixed changes fall through to the full ship below, unchanged. Keyed to the
 # stable HEAD sha via a gitignored receipt so the periodic backstop never
 # re-deploys the same commit.
+auto_mode=""
 last_rel="$(git log --grep='^Record partyparty .* release$' -1 --format=%H 2>/dev/null || true)"
 if [ -n "$last_rel" ]; then
   changed="$(git diff --name-only "$last_rel" HEAD 2>/dev/null || true)"
@@ -88,11 +89,22 @@ if [ -n "$last_rel" ]; then
     fi
     log "wrangler missing at $WR; falling through to the full ship"
   fi
+
+  # Web-only (optionally plus Worker files): prefer the OTA payload lane. The
+  # signed payload carries web/ to installed Macs within ~15 min with NO native
+  # rebuild, notarization, Sparkle flip, or app-update prompt, and
+  # publish-payload.sh redeploys the Worker too. Safe by construction: content
+  # that needs a newer native API also bumps ota.RuntimeVersion — a .go change,
+  # which lands outside web/+cloudflare/ and therefore still takes a full ship.
+  nonpayload="$(printf '%s\n' "$changed" | grep -vE '^(web|cloudflare)/' || true)"
+  if [ -n "$changed" ] && [ -z "$nonpayload" ]; then
+    auto_mode="--payload-only"
+  fi
 fi
 
 # --- ship the latest ----------------------------------------------------------
-log "shipping $(git rev-parse --short HEAD): $(git log -1 --format=%s)"
-scripts/ship.sh $SHIP_ARGS >> "$LOG" 2>&1
+log "shipping $(git rev-parse --short HEAD)${auto_mode:+ ($auto_mode)}: $(git log -1 --format=%s)"
+scripts/ship.sh $SHIP_ARGS $auto_mode >> "$LOG" 2>&1
 rc=$?
 if [ "$rc" -ne 0 ]; then
   log "ship.sh FAILED (exit $rc) — resetting the version bump; will retry on next trigger"
