@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         })
         server.start()
         portRedirects.syncForCurrentMode(captive: offlinePartyEnabled)
-        portRedirects.enableCleanLinks()
+        portRedirects.removeLegacyCleanLinks()
         registerLoginItemByDefault()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
