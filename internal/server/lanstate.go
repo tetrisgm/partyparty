@@ -1,5 +1,10 @@
 package server
 
+import (
+	"context"
+	"time"
+)
+
 // LAN readiness states (execution-plan §6). These are the honest, mutually
 // exclusive answers to "can a guest on THIS Wi-Fi reach the low-latency room?"
 const (
@@ -100,4 +105,61 @@ func reduceLanState(in lanInputs) lanState {
 		st.State = lanReady
 	}
 	return st
+}
+
+// guestSeenRecently reports whether a real guest connection was observed within
+// the reachability TTL — the "confirmed" proof signal (a guest connection beats
+// any predictive self-check).
+func (s *srv) guestSeenRecently() bool {
+	s.reachMu.Lock()
+	defer s.reachMu.Unlock()
+	return time.Now().Before(s.guestSeenUntil)
+}
+
+// refreshLanState recomputes the cached LAN readiness from current evidence: the
+// cached activation result, the two INDEPENDENT TLS self-probes, and the
+// recent-guest signal. It runs off the reachability watchdog (background) and is
+// bounded so a slow probe can't wedge the tick. /api/status only ever copies the
+// cached result — it must never call this inline.
+func (s *srv) refreshLanState() {
+	s.actMu.Lock()
+	res := s.actLast
+	ran := s.actLastSet
+	s.actMu.Unlock()
+
+	port := s.Config.TLSPort
+	in := lanInputs{
+		CertReady:       res.CertReady,
+		Host:            res.Host,
+		ExpectedIP:      res.ExpectedIP,
+		DNSPublished:    res.DNSPublished,
+		ResolverMatches: res.ResolverMatches,
+		GuestConfirmed:  s.guestSeenRecently(),
+		ChecksComplete:  ran,
+		CloudFallback:   true, // the public handle route always has a cloud/event destination
+		ReasonCode:      res.ReasonCode,
+		Reason:          res.Reason,
+	}
+	// The two independent TLS self-checks are only meaningful once a cert exists.
+	if res.CertReady && res.Host != "" && port > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		in.ListenerTLS = directListenerTLS(ctx, res.ExpectedIP, port, res.Host).OK
+		in.GuestPathTLS = guestPathTLS(ctx, res.Host, port).OK
+		cancel()
+	}
+	st := reduceLanState(in)
+	st.GuestPort = port
+	st.CheckedAtMs = time.Now().UnixMilli()
+
+	s.lanMu.Lock()
+	s.lanCached = st
+	s.lanMu.Unlock()
+}
+
+// lanStateSnapshot returns the last computed LAN state (a cheap copy for
+// /api/status; never runs probes).
+func (s *srv) lanStateSnapshot() lanState {
+	s.lanMu.Lock()
+	defer s.lanMu.Unlock()
+	return s.lanCached
 }

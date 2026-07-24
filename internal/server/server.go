@@ -113,6 +113,12 @@ type srv struct {
 	guestSeenUntil      time.Time
 	guestStalledUntil   time.Time
 
+	// LAN readiness (§5-7): cached lanState recomputed off the reachability tick.
+	// /api/status only ever COPIES this — it never runs the TLS probes inline, so
+	// the status poll stays fast. Guarded by lanMu.
+	lanMu     sync.Mutex
+	lanCached lanState
+
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	bonjour    sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
@@ -753,6 +759,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"webListeners":   s.webListeners.Load(),
 			"health":         health,
 			"urls":           s.urls(),
+			"lan":            s.lanStateSnapshot(), // §5-7: honest LAN readiness (cached; never probes here)
 			"llhlsUrl":       s.llhlsURL(),
 			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,

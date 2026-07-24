@@ -53,3 +53,20 @@ func TestReduceLanState(t *testing.T) {
 		t.Errorf("no cert = %q, want unavailable", s.State)
 	}
 }
+
+// /api/status must expose the cached lan object. With no activation in the test
+// env there is no cert, so refreshLanState reduces to `unavailable` and runs no
+// network probes.
+func TestStatusIncludesLanObject(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.refreshLanState()
+	w := do(env.srv, "GET", "/api/status", "")
+	body := decodeJSON(t, w)
+	lan, ok := body["lan"].(map[string]any)
+	if !ok {
+		t.Fatalf("/api/status has no lan object: %v", body["lan"])
+	}
+	if lan["state"] != lanUnavailable {
+		t.Errorf("lan.state = %v, want %q", lan["state"], lanUnavailable)
+	}
+}

@@ -53,6 +53,7 @@ func (s *srv) runReachabilityWatchdog(ctx context.Context) {
 			return
 		case <-timer.C:
 			s.updateReachability(time.Now(), runNetChecks(s.netCheckOptions()), true)
+			s.refreshLanState() // recompute the cached LAN readiness (bounded; background)
 			if s.reachability().State == reachabilityOK {
 				stableOK++
 			} else {
