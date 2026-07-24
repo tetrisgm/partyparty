@@ -5112,6 +5112,29 @@ async function broker(request, env, pathname) {
     return jsonResp(200, { id, secret, base: env.BROKER_BASE, slug });
   }
 
+  // Shared machine wildcard cert (*.party.<base>). Linked installs fetch the
+  // current cert+key here and serve it for their <slug>.party.<base> LAN host
+  // instead of each Mac running its own per-name ACME. The cert covers ONLY the
+  // machine namespace — the extra `.party` label, deliberately OUTSIDE the
+  // product wildcard — and the LAN pages it protects are local-only, so this
+  // shared key guards nothing of value. Gated on a linked account (same bar as
+  // publishing). Minted out-of-band (admin ACME for *.party.<base>) and uploaded
+  // to R2 at wildcard/current.json = {"cert","key","notAfter"}.
+  if (pathname === "/api/broker/wildcard-cert") {
+    const id = String(body.id || "");
+    if (!(await authInstall(env, id, body.secret || ""))) {
+      return jsonResp(403, { error: "bad install auth" });
+    }
+    const linkErr = await requireLinkedInstallForPublish(env, id);
+    if (linkErr) return linkErr;
+    const obj = await env.DL.get("wildcard/current.json");
+    if (!obj) return jsonResp(404, { error: "wildcard cert not provisioned" });
+    return new Response(await obj.text(), {
+      status: 200,
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  }
+
   // Authenticated endpoints — writes are confined to <id>.<base>.
   // Support/admin retrieval: ADMIN_KEY (a Worker secret) may stand in for an
   // install's own secret on the read-only dump/list/get endpoints, so field

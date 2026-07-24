@@ -228,11 +228,30 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	dnsPublished := postErr == nil && aResp.OK && aResp.Verified
 
 	if !certUsable(certFile, host) {
-		logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", host)
-		if err := issueCert(ctx, b, host, certFile, keyFile, dir, logf); err != nil {
-			return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "certificate: " + err.Error()}
+		// Prefer the shared machine wildcard (*.party.<base>): one cert covers
+		// every <slug>.party.<base> host, so no per-Mac ACME and no Let's Encrypt
+		// rate limit. It is fetched over the authed broker endpoint and validated
+		// with certUsable EXACTLY like a self-issued cert before it is trusted.
+		// Any failure — endpoint absent, not provisioned, not linked, unusable —
+		// falls through to per-Mac issuance, so this can never strand Go Live.
+		// (Removing wildcard/current.json from R2 is therefore an instant,
+		// fleet-wide kill switch back to per-Mac certs.)
+		gotCert := false
+		if err := fetchWildcard(ctx, b, certFile, keyFile); err != nil {
+			logf("activate: shared wildcard cert unavailable (%v) — using per-Mac ACME", err)
+		} else if !certUsable(certFile, host) {
+			logf("activate: shared wildcard cert not usable for %s — using per-Mac ACME", host)
+		} else {
+			gotCert = true
+			logf("activate: using shared wildcard cert for %s", host)
 		}
-		logf("activate: certificate issued for %s", host)
+		if !gotCert {
+			logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", host)
+			if err := issueCert(ctx, b, host, certFile, keyFile, dir, logf); err != nil {
+				return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "certificate: " + err.Error()}
+			}
+			logf("activate: certificate issued for %s", host)
+		}
 	}
 	// OK means only that the certificate is usable (Go Live works everywhere).
 	// DNS publication and resolver agreement are separate LAN-readiness evidence.
@@ -712,6 +731,27 @@ func (c *cfAPI) publishTXT(ctx context.Context, name, value string) (func(), err
 		return nil, err
 	}
 	return func() { _ = c.deleteRecord(context.Background(), recID) }, nil
+}
+
+// fetchWildcard pulls the shared *.party.<base> machine cert+key from the broker
+// (authed with this install's id/secret) and writes them to certFile/keyFile.
+// The caller validates the result with certUsable before trusting it, so a
+// missing/expired/wrong response is simply ignored in favor of per-Mac ACME.
+func fetchWildcard(ctx context.Context, b *brokerClient, certFile, keyFile string) error {
+	var out struct {
+		Cert string `json:"cert"`
+		Key  string `json:"key"`
+	}
+	if err := b.post(ctx, "/api/broker/wildcard-cert", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
+		return err
+	}
+	if out.Cert == "" || out.Key == "" {
+		return errors.New("empty wildcard cert response")
+	}
+	if err := os.WriteFile(keyFile, []byte(out.Key), 0o600); err != nil {
+		return err
+	}
+	return os.WriteFile(certFile, []byte(out.Cert), 0o600)
 }
 
 func issueCert(ctx context.Context, pub txtPublisher, domain, certFile, keyFile, dir string, logf Logf) error {
