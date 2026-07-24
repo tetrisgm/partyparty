@@ -2888,7 +2888,7 @@ const tests = [
     assert.deepEqual(linkJson, { ok: true, handle: "link.ok" });
     assert.equal(token.install_id, "abc123abc123");
     assert.equal(typeof token.used_ms, "number");
-    assert.equal(install.install_slug, "disco12");
+    assert.equal(install.install_slug, "link.ok"); // slug is now the @username, not the random word
     assert.equal(install.user_id, user.id);
     assert.equal(install.profile_id, "profile-link-ok");
     assert.equal(typeof install.linked_ms, "number");
@@ -5328,7 +5328,7 @@ const tests = [
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /Your username/);
-    assert.match(html, /welcome\.new\.partyparty\.party/);
+    assert.match(html, /partyparty\.party\/@welcome\.new/);
     assert.match(html, /\/api\/handle\/confirm/);
   }],
   ["/welcome redirects anonymous visitors to /login carrying the destination", async () => {
