@@ -177,11 +177,32 @@ func TestSuggest(t *testing.T) {
 
 func bareSrv(cfg config.Config) *srv { return &srv{Deps: Deps{Config: cfg}} }
 
+// setRoomSyncForTest sets the in-memory room-sync toggles deterministically,
+// consuming the lazy-load Once so no on-disk room-settings.json can override
+// them. Room sync is OFF by default (guests ride the live edge); tests that
+// exercise the park/pin turn it on explicitly. Accepts either the bare srv or
+// the exported Srv wrapper used by newTestEnv.
+func setRoomSyncForTest(s *srv, delay, drift bool) {
+	s.roomSyncOnce.Do(func() {})
+	s.roomSyncMu.Lock()
+	s.roomSyncDelay, s.driftCorrection = delay, drift
+	s.roomSyncMu.Unlock()
+}
+
+func setEnvRoomSync(s *Srv, delay, drift bool) { setRoomSyncForTest(&s.srv, delay, drift) }
+
 func TestLatencyTargetPinned(t *testing.T) {
 	s := bareSrv(config.Config{LatencyTarget: 4.2})
+	// Room-sync OFF (default): LL-HLS rides the live edge — no park.
+	if got := s.latencyTarget(broadcast.Status{Delivery: "llhls"}, "good"); got != 0 {
+		t.Errorf("edge llhls target = %v, want 0 (room sync off)", got)
+	}
+	// Room-sync ON: the configured park is pinned regardless of room health.
+	setRoomSyncForTest(s, true, false)
 	if got := s.latencyTarget(broadcast.Status{Delivery: "llhls"}, "good"); got != 4.2 {
 		t.Errorf("pinned llhls target = %v, want 4.2", got)
 	}
+	// Plain HLS keeps the configured target in either mode (no live-edge path).
 	if got := s.latencyTarget(broadcast.Status{Delivery: "hls", SegDur: 2}, "congested"); got != 4.2 {
 		t.Errorf("pinned hls target = %v, want 4.2", got)
 	}
@@ -201,18 +222,32 @@ func TestLatencyTargetBase(t *testing.T) {
 	}
 	for _, c := range cases {
 		s := bareSrv(config.Config{})
+		setRoomSyncForTest(s, true, false) // room sync ON: LL-HLS resolves the default park
 		if got := s.latencyTarget(c.bc, "good"); got != c.want {
 			t.Errorf("latencyTarget(%s seg=%v) = %v, want %v", c.bc.Delivery, c.bc.SegDur, got, c.want)
 		}
 	}
+	// Room-sync OFF (default): the LL-HLS target collapses to the live edge.
+	if got := bareSrv(config.Config{}).latencyTarget(broadcast.Status{Delivery: "llhls"}, "good"); got != 0 {
+		t.Errorf("off llhls target = %v, want 0 (live edge)", got)
+	}
 }
 
 func TestLatencyTargetDoesNotMoveWithRoomHealth(t *testing.T) {
-	s := bareSrv(config.Config{})
 	bc := broadcast.Status{Delivery: "llhls"}
+	// Room-sync ON: fixed park, unaffected by room health.
+	s := bareSrv(config.Config{})
+	setRoomSyncForTest(s, true, false)
 	for _, health := range []string{"idle", "good", "strain", "congested"} {
 		if got := s.latencyTarget(bc, health); got != 7.0 {
-			t.Errorf("health %q moved target to %v, want fixed 7.0", health, got)
+			t.Errorf("health %q moved park to %v, want fixed 7.0", health, got)
+		}
+	}
+	// Room-sync OFF (default): live edge, also unaffected by room health.
+	off := bareSrv(config.Config{})
+	for _, health := range []string{"idle", "good", "strain", "congested"} {
+		if got := off.latencyTarget(bc, health); got != 0 {
+			t.Errorf("health %q moved edge to %v, want fixed 0", health, got)
 		}
 	}
 }

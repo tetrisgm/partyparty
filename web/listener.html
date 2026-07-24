@@ -697,6 +697,9 @@
     // Once audio opens, continuity wins: one slow device cannot move another.
     const ROOM_TARGET_FALLBACK = 7.0;
     let latencyTarget = 0, streamStartedAt = 0, streamGeneration = 0, streamReady = false;
+    // Room-sync toggles from /api/status (DJ-controlled, both default OFF): park =
+    // the EXT-X-START delay, drift = the late-drift re-pull. OFF => ride the edge.
+    let roomSyncDelay = false, driftCorrection = false;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
@@ -1221,7 +1224,7 @@
     let alignedGeneration = -1;
     let alignPromise = null;
     let joinMuted = false, joinReason = '', joinStartedAt = 0, joinWatchdog = 0, syncFailed = false;
-    const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
+    const roomTarget = () => roomSyncDelay ? (latencyTarget || ROOM_TARGET_FALLBACK) : 0;
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const startupTimeLeft = () => Math.max(0, STARTUP_BUDGET_MS - (joinStartedAt ? Date.now() - joinStartedAt : 0));
     const canAlign = (generation) => generation === alignGeneration && joinMuted && started && !player.paused && !userPaused && !yielded && live && streamReady;
@@ -1230,6 +1233,26 @@
       // buffer. Those events are part of this attachment's startup transaction,
       // not new interruptions. Never let them start another alignment cycle.
       if (joinMuted || alignPromise || alignedGeneration === alignGeneration) return false;
+      // Room sync delay OFF: no park to align to — play straight from the live
+      // edge. Skip the mute -> seek -> verify transaction (it only applies with a
+      // target behind live). Normal stall/error recovery still covers this play,
+      // and a 15s check surfaces a stuck player so we never fail silent.
+      if (!roomSyncDelay) {
+        alignedGeneration = alignGeneration;
+        needsAlign = false;
+        joinMuted = false;
+        if (!joinStartedAt) joinStartedAt = Date.now();
+        if (player.muted) player.muted = false;
+        setPlayingUI(true);
+        play().catch(() => {});
+        const edgeGen = alignGeneration;
+        setTimeout(() => {
+          if (edgeGen === alignGeneration && started && live && player.paused && !userPaused && !yielded) {
+            setStatus('Could not start playback. Tap Retry.');
+          }
+        }, JOIN_WATCHDOG_MS);
+        return true;
+      }
       joinMuted = true;
       syncFailed = false;
       rerollUsed = false; // fresh transaction — every close path re-arms the one re-roll
@@ -1818,9 +1841,9 @@
       }
 
       const target = roomTarget();
-      const lateBy = (lat != null && Number.isFinite(lat) && target > 0) ? lat - target : null;
+      const lateBy = (lat != null && Number.isFinite(lat)) ? lat - Math.max(target, 0) : null;
       if (lat != null) untrackedReattaches = 0; // tracking works again — re-arm the cap
-      if (!stalled && lateBy != null && lateBy > LATE_DRIFT_REATTACH_SEC) {
+      if (driftCorrection && !stalled && lateBy != null && lateBy > LATE_DRIFT_REATTACH_SEC) {
         lateDriftBeats++;
         untrackedBeats = 0;
         if (lateDriftBeats >= LATE_DRIFT_CONFIRMATIONS) {
@@ -1978,6 +2001,7 @@
         LLSTREAM = s.llhlsUrl || null;
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
+        if (s.roomSync && typeof s.roomSync === 'object') { roomSyncDelay = !!s.roomSync.delay; driftCorrection = !!s.roomSync.drift; }
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;

@@ -110,6 +110,15 @@ type srv struct {
 	lanMu     sync.Mutex
 	lanCached lanState
 
+	// Room-sync toggles (per-DJ, persisted to stateDir/room-settings.json). Both
+	// OFF by default: guests ride the live edge (lowest latency) and no drift
+	// re-pull runs. ON restores the 3s unison park (EXT-X-START) / drift watchdog.
+	// Guarded by roomSyncMu; lazily loaded once via roomSyncOnce.
+	roomSyncOnce    sync.Once
+	roomSyncMu      sync.Mutex
+	roomSyncDelay   bool
+	driftCorrection bool
+
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	bonjour    sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
@@ -515,6 +524,28 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"ip":   netinfo.PrimaryLanIP(),
 			"cert": s.realCert(),
 		})
+	case p == "/api/room-settings":
+		// DJ room-sync toggles. POST {roomSyncDelay?, driftCorrection?} sets them
+		// (each field optional — omitted keeps its current value); any method
+		// returns the current state. Default OFF: guests ride the live edge.
+		if r.Method == http.MethodPost {
+			var body struct {
+				RoomSyncDelay   *bool `json:"roomSyncDelay"`
+				DriftCorrection *bool `json:"driftCorrection"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			delay, drift := s.roomSyncState()
+			if body.RoomSyncDelay != nil {
+				delay = *body.RoomSyncDelay
+			}
+			if body.DriftCorrection != nil {
+				drift = *body.DriftCorrection
+			}
+			s.setRoomSync(delay, drift)
+		}
+		delay, drift := s.roomSyncState()
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]any{"roomSyncDelay": delay, "driftCorrection": drift})
 	case strings.HasPrefix(p, "/api/"):
 		if s.handleFeedAPI(w, r) {
 			return
@@ -724,6 +755,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"latencyTarget":  latencyTarget,
 			"sync":           s.syncModeState(),
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
+			"roomSync":       s.roomSyncStatePayload(),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"captive":        s.Config.Captive,
 			"latency":        s.Listeners.LatencySpread(),

@@ -952,6 +952,14 @@
       <label style="margin:0 0 12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
         <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
       </label>
+      <h3 style="font-size:13px;margin:12px 0 6px">Room sync</h3>
+      <p style="font-size:12px;color:var(--label-secondary);margin:0 0 8px">Off (default) = lowest latency — each phone rides the live edge. Turn on when phones are near each other or on speakers and you want them playing in unison.</p>
+      <label style="margin:0 0 8px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
+        <input type="checkbox" id="roomSyncDelay" style="width:auto;accent-color:var(--accent)"> Room sync delay (play in unison, a few seconds behind)
+      </label>
+      <label style="margin:0 0 12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
+        <input type="checkbox" id="driftCorrection" style="width:auto;accent-color:var(--accent)"> Drift correction (re-pull a phone that falls far behind)
+      </label>
       <h3 style="font-size:13px;margin:12px 0 6px">FFmpeg log</h3>
       <pre id="log">—</pre>
       <h3 style="font-size:13px;margin:12px 0 6px">Network health</h3>
@@ -1865,6 +1873,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   };
   $('captureSoftLater').onclick = hideCaptureSoftAsk;
   (function(){ const a = $('autoPublish'); if (!a) return; a.checked = localStorage.getItem('pp.autoPublish') === '1'; a.onchange = () => { try { localStorage.setItem('pp.autoPublish', a.checked ? '1' : '0'); } catch (e) {} }; })();
+  // Room-sync toggles: server-authoritative (persisted in room-settings.json), both OFF by default.
+  (function(){
+    const d = $('roomSyncDelay'), c = $('driftCorrection');
+    if (!d || !c) return;
+    fetch('/api/room-settings').then(r => r.json()).then(j => { d.checked = !!j.roomSyncDelay; c.checked = !!j.driftCorrection; }).catch(() => {});
+    const post = () => { fetch('/api/room-settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ roomSyncDelay: d.checked, driftCorrection: c.checked }) }).catch(() => {}); };
+    d.onchange = post; c.onchange = post;
+  })();
   $('device').onchange = syncCaptureSourceSelection;
   $('device').addEventListener('pointerdown', refreshDevicesForPicker);
   $('device').addEventListener('focus', refreshDevicesForPicker);

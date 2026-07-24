@@ -26,6 +26,7 @@ func syncObj(t *testing.T, m map[string]any) map[string]any {
 // production design, constant values, target from config.
 func TestSyncStatusShape(t *testing.T) {
 	env := newTestEnv(t, func(c *config.Config) { c.LatencyTarget = 3 })
+	setEnvRoomSync(env.srv, true, false) // room sync ON so the configured park surfaces
 
 	for _, addr := range []string{djAddr, guestAddr} {
 		m := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", addr))
@@ -39,6 +40,14 @@ func TestSyncStatusShape(t *testing.T) {
 		if _, present := m["syncModes"]; present {
 			t.Errorf("%s status still carries the retired syncModes menu", addr)
 		}
+	}
+
+	// Room sync OFF (default): the target collapses to the live edge.
+	off := newTestEnv(t, func(c *config.Config) { c.LatencyTarget = 3 })
+	setEnvRoomSync(off.srv, false, false)
+	m := decodeJSON(t, do(off.srv, http.MethodGet, "/api/status", guestAddr))
+	if tgt, _ := syncObj(t, m)["target"].(float64); tgt != 0 {
+		t.Errorf("off sync.target = %v, want 0 (live edge)", tgt)
 	}
 }
 
@@ -66,6 +75,7 @@ func TestPinInjection(t *testing.T) {
 	port := up.Listener.Addr().(*net.TCPAddr).Port
 
 	env := newTestEnv(t, func(c *config.Config) { c.HLSPort = port; c.LatencyTarget = 3 })
+	setEnvRoomSync(env.srv, true, false) // room sync ON so the pin is injected
 
 	b := do(env.srv, http.MethodGet, "/live/party/index.m3u8", djAddr).Body.String()
 	if !strings.Contains(b, "#EXT-X-START:TIME-OFFSET=-3.000") {
@@ -77,5 +87,16 @@ func TestPinInjection(t *testing.T) {
 	// The experiment-era un-pinned route is retired.
 	if w := do(env.srv, http.MethodGet, "/live-plain/party/index.m3u8", djAddr); w.Code != http.StatusNotFound {
 		t.Fatalf("retired /live-plain = %d, want 404", w.Code)
+	}
+
+	// Room sync OFF (default): the playlist still proxies, but no pin — live edge.
+	offEnv := newTestEnv(t, func(c *config.Config) { c.HLSPort = port; c.LatencyTarget = 3 })
+	setEnvRoomSync(offEnv.srv, false, false)
+	ob := do(offEnv.srv, http.MethodGet, "/live/party/index.m3u8", djAddr).Body.String()
+	if strings.Contains(ob, "#EXT-X-START") {
+		t.Fatalf("/live injected a pin while room sync is off:\n%s", ob)
+	}
+	if !strings.Contains(ob, "#EXT-X-STREAM-INF") {
+		t.Fatalf("/live didn't proxy the playlist with room sync off:\n%s", ob)
 	}
 }
