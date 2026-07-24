@@ -25,9 +25,10 @@ command -v certbot >/dev/null || { echo "certbot not installed"; exit 1; }
 
 umask 077
 mkdir -p "$CFG"/{le,work,logs}
+TOKEN="$(grep -E '^CLOUDFLARE_API_TOKEN=' "$CF_ENV" | cut -d= -f2- | tr -d '\r"')"
+export CLOUDFLARE_API_TOKEN="$TOKEN"   # wrangler R2 auths off this (headless — no OAuth login)
 INI="$CFG/cf.ini"
-printf 'dns_cloudflare_api_token = %s\n' \
-  "$(grep -E '^CLOUDFLARE_API_TOKEN=' "$CF_ENV" | cut -d= -f2- | tr -d '\r"')" > "$INI"
+printf 'dns_cloudflare_api_token = %s\n' "$TOKEN" > "$INI"
 chmod 600 "$INI"
 
 echo ">> certbot certonly ($DOMAIN) — issues, or renews only if near expiry"

@@ -412,6 +412,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 		"-ac", strconv.Itoa(snap.channels),
 		"-ar", strconv.Itoa(c.SampleRate),
 		"-c:a", c.Codec, "-b:a", snap.bitrate,
+		"-flush_packets", "1", // low-latency: emit each packet immediately instead of buffering
 	)
 	// HTTPS-only: guests are LL-HLS only (the client no longer offers a plain
 	// fallback), so we push a single RTSP stream MediaMTX repackages into LL-HLS

@@ -2036,7 +2036,7 @@ async function welcomeResponse(request, env) {
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Your username</h1>
-      <p class="sub">This is your permanent party link. Guests scan or visit <b>${esc(handle)}.partyparty.party</b> to tune in — and it stays the same, forever. Pick it now; you can change it later in settings.</p>
+      <p class="sub">This is your permanent party link. Guests scan or visit <b>partyparty.party/@${esc(handle)}</b> to tune in — and it stays the same, forever. Pick it now; you can change it later in settings.</p>
       <form class="authform" id="welcome-form">
         <label><span>Username</span><input name="handle" id="welcome-handle" maxlength="30" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(handle)}" placeholder="dj.name"></label>
         <p class="hint" id="welcome-avail" role="status" aria-live="polite" style="margin:2px 0 0;min-height:18px"></p>
@@ -2078,7 +2078,7 @@ async function settingsResponse(request, env) {
   const body = `<div class="page">
     <div class="card authcard">
       <h1 style="font-size:30px;letter-spacing:-.03em;margin:0 0 6px">Settings</h1>
-      <p class="sub">Your account identity. Your username is your permanent party link — guests visit <b>${esc(handle)}.partyparty.party</b>.</p>
+      <p class="sub">Your account identity. Your username is your permanent party link — guests visit <b>partyparty.party/@${esc(handle)}</b>.</p>
       <form class="authform" id="settings-form">
         <label><span>Username</span><input name="handle" id="settings-handle" maxlength="30" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required value="${esc(handle)}" placeholder="dj.name"></label>
         <p class="hint" id="settings-avail" role="status" aria-live="polite" style="margin:2px 0 0;min-height:18px"></p>
@@ -2136,7 +2136,7 @@ async function accountResponse(request, env) {
   // the /welcome soft-gate; nudge the DJ to lock in their permanent party link.
   const needsConfirm = !!(profile && profile.handle_confirmed_ms == null);
   const confirmNudge = needsConfirm ? `<div class="card" style="grid-column:1/-1">
-    <div class="sectionhead" style="margin:0 0 8px"><div><h2>Confirm your username</h2><p>${handle ? `<b>${esc(handle)}.partyparty.party</b> is your permanent party link — confirm or change it.` : "Pick your permanent party link."}</p></div></div>
+    <div class="sectionhead" style="margin:0 0 8px"><div><h2>Confirm your username</h2><p>${handle ? `<b>partyparty.party/@${esc(handle)}</b> is your permanent party link — confirm or change it.` : "Pick your permanent party link."}</p></div></div>
     <div class="ecta"><a class="btn sm" href="/welcome">Confirm username</a></div>
   </div>` : "";
   const profileCard = profile ? `<div class="card">
@@ -5249,6 +5249,22 @@ async function broker(request, env, pathname) {
     if ((Number(mark?.meta?.changes) || 0) < 1) {
       await recordInstallLinkFailure(env, id, now);
       return jsonResp(400, { error: "invalid code" });
+    }
+
+    // Machine slug = the DJ's @username, so the guest host is
+    // <username>.party.<base> (matching their profile URL). The wildcard cert
+    // covers any name, so there is no per-name cert work. Only claim it when the
+    // handle is free (or already this install's); otherwise keep the random slug.
+    const uname = normalizeHandle(profile.handle || "");
+    if (uname && !handleReserved(uname) && rec.slug !== uname) {
+      const owner = await env.DL.get(`broker/slug/${uname}`).then((o) => (o ? o.text() : ""));
+      if (!owner || owner === id) {
+        const oldSlug = rec.slug;
+        rec.slug = uname;
+        await env.DL.put(`broker/slug/${uname}`, id);
+        await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+        if (oldSlug && oldSlug !== uname) await env.DL.delete(`broker/slug/${oldSlug}`).catch(() => {});
+      }
     }
 
     await env.DB.prepare(

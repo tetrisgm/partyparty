@@ -2,9 +2,10 @@ package server
 
 import "testing"
 
-// The permanent link is only advertised when it can actually work: online party,
-// a plain single-label handle, and an activated machine domain to derive the
-// zone from. Everything else falls back to the direct machine link.
+// The permanent link is the canonical /@handle path on the product apex — only
+// advertised when it can actually work: an online party, a handle (dots and
+// underscores are fine now that it's a path, not a hostname), and an activated
+// machine domain to derive the zone from. Everything else returns "".
 func TestPublicPartyURL(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -13,14 +14,14 @@ func TestPublicPartyURL(t *testing.T) {
 		captive bool
 		want    string
 	}{
-		{"simple handle", "ramine-live.partyparty.party", "ramine", false, "https://ramine.partyparty.party/"},
-		{"party. machine namespace (the QR bug)", "seth-live.party.partyparty.party", "seth", false, "https://seth.partyparty.party/"},
-		{"party. namespace, legacy word slug", "fader91.party.partyparty.party", "seth", false, "https://seth.partyparty.party/"},
-		{"legacy word slug still maps", "wave77.partyparty.party", "ramine", false, "https://ramine.partyparty.party/"},
+		{"simple handle", "ramine-live.partyparty.party", "ramine", false, "https://partyparty.party/@ramine"},
+		{"party. machine namespace", "seth-live.party.partyparty.party", "seth", false, "https://partyparty.party/@seth"},
+		{"party. namespace, legacy word slug", "fader91.party.partyparty.party", "seth", false, "https://partyparty.party/@seth"},
+		{"legacy word slug still maps", "wave77.partyparty.party", "ramine", false, "https://partyparty.party/@ramine"},
+		{"dotted handle works as a /@ path", "x-live.partyparty.party", "seth.finkin", false, "https://partyparty.party/@seth.finkin"},
+		{"underscored handle works as a /@ path", "x-live.partyparty.party", "dj_max", false, "https://partyparty.party/@dj_max"},
 		{"captive/offline party never advertises the cloud", "ramine-live.partyparty.party", "ramine", true, ""},
 		{"no handle yet", "ramine-live.partyparty.party", "", false, ""},
-		{"dotted handle cannot be a hostname", "x-live.partyparty.party", "seth.finkin", false, ""},
-		{"underscored handle cannot be a hostname", "x-live.partyparty.party", "dj_max", false, ""},
 		{"no domain", "", "ramine", false, ""},
 		{"single-label domain has no zone", "localhost", "ramine", false, ""},
 	}

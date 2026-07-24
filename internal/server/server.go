@@ -552,7 +552,7 @@ func publicPartyURL(domain, handle string, captive bool) string {
 		return ""
 	}
 	for _, r := range handle {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.' && r != '_' {
 			return ""
 		}
 	}
@@ -569,7 +569,7 @@ func publicPartyURL(domain, handle string, captive bool) string {
 	} else {
 		return ""
 	}
-	return "https://" + handle + "." + zone + "/"
+	return "https://" + zone + "/@" + handle
 }
 
 // accountHandle is the linked profile's handle from the in-memory account-status
