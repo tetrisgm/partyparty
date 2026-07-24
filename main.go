@@ -992,20 +992,11 @@ func main() {
 				}
 			}
 			for {
-				var res activate.Result
-				liveHost := cfg.LiveHost
-				if liveHost == "" {
-					liveHost = cfg.Domain
+				broker := os.Getenv("PARTYPARTY_BROKER")
+				if broker == "" {
+					broker = "https://partyparty.party"
 				}
-				if token := activate.TokenFromEnvOrFile(); liveHost != "" && token != "" {
-					res = activate.Try(liveHost, token, netinfo.PrimaryLanIP(), log.Printf)
-				} else {
-					broker := os.Getenv("PARTYPARTY_BROKER")
-					if broker == "" {
-						broker = "https://partyparty.party"
-					}
-					res = activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
-				}
+				res := activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
 				handler.SetActivationResult(res)
 				// OK now means the certificate is usable — apply it ONCE so the
 				// HTTPS listener + Go Live work everywhere, even where this Wi-Fi
