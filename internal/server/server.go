@@ -88,15 +88,6 @@ type srv struct {
 	accStatusMu sync.Mutex
 	accStatus   accountStatusCache
 
-	// Clean-links 443 self-test cache (AdvertisedGuestPort). Guarded by port443Mu.
-	// port443Probe gates the live TLS dial so it runs only in the real app
-	// (main.go calls EnableCleanLinksProbe); unit tests stay deterministic on the
-	// direct TLS port.
-	port443Mu        sync.Mutex
-	port443Probe     bool
-	port443OK        bool
-	port443CheckedAt time.Time
-
 	// Web guests listening to this party's cloud mirror right now, from the
 	// live check-in response (0 while idle/offline). Written by the check-in
 	// loop, read by /api/status — the room and the web share one count.
@@ -590,49 +581,15 @@ func (s *srv) accountHandle() string {
 	return s.accStatus.status.Profile.Handle
 }
 
-// EnableCleanLinksProbe turns on the live 443 self-test (real app only; off in
-// tests so urls() stays deterministic).
-func (s *Srv) EnableCleanLinksProbe() {
-	s.port443Mu.Lock()
-	s.port443Probe = true
-	s.port443Mu.Unlock()
-}
-
-// AdvertisedGuestPort is 443 when the optional pp-port443 clean-links redirect
-// is verified working (guest URLs then need no port), else the direct TLS
-// listener port. Verified by actually dialing the Mac's own LAN address on 443
-// — the helper's lo0 rules make that self-test take the same translated path
-// guests do — and cached briefly so status polls stay cheap. Fails closed to
-// the ported URL: an unapproved/broken redirect can never advertise a dead link.
+// AdvertisedGuestPort is the port guests use to reach this Mac: always the
+// direct TLS listener. An earlier build could advertise a bare :443 (hiding the
+// port behind the privileged pp-port443 redirect) whenever a TLS handshake
+// succeeded there — but the handshake never proved the redirect actually
+// forwarded, so a half-broken helper (e.g. one that lost its approval in a macOS
+// reset) handed guests a dead port-less link in the QR while
+// https://<host>:<tlsPort>/ still worked. Reliability beats a cosmetic port, so
+// the guest link is always the proven direct path.
 func (s *srv) AdvertisedGuestPort() int {
-	s.port443Mu.Lock()
-	defer s.port443Mu.Unlock()
-	if !s.port443Probe {
-		return s.Config.TLSPort
-	}
-	if time.Since(s.port443CheckedAt) < 30*time.Second {
-		if s.port443OK {
-			return 443
-		}
-		return s.Config.TLSPort
-	}
-	s.port443CheckedAt = time.Now()
-	s.port443OK = false
-	ip := netinfo.PrimaryLanIP()
-	if ip != "" && ip != "127.0.0.1" && s.realCert() {
-		d := net.Dialer{Timeout: 400 * time.Millisecond}
-		conn, err := tls.DialWithDialer(&d, "tcp", ip+":443", &tls.Config{
-			ServerName:         s.liveDomain(),
-			InsecureSkipVerify: true, // reachability probe of our own listener, not a trust decision
-		})
-		if err == nil {
-			conn.Close()
-			s.port443OK = true
-		}
-	}
-	if s.port443OK {
-		return 443
-	}
 	return s.Config.TLSPort
 }
 
@@ -651,16 +608,12 @@ func (s *srv) urls() urls {
 	// fallback link is ever shown; until activation completes, Primary stays
 	// http and the console renders a "setting up the secure link" state.
 	if d := s.liveDomain(); d != "" && s.realCert() {
-		gp := s.AdvertisedGuestPort()
-		primary := fmt.Sprintf("https://%s:%d/", d, gp)
-		if gp == 443 {
-			primary = fmt.Sprintf("https://%s/", d) // clean-links redirect verified live
-		}
+		port := s.AdvertisedGuestPort()
 		return urls{
-			Primary:     primary,
+			Primary:     fmt.Sprintf("https://%s:%d/", d, port),
 			Public:      publicPartyURL(d, s.accountHandle(), s.Config.Captive),
 			IP:          ip,
-			Port:        gp,
+			Port:        port,
 			HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
 			Interfaces:  netinfo.LanInterfaces(),
 		}

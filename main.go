@@ -201,9 +201,8 @@ func recordWebPostFailure(failures *int, logf func(string, ...any), err error) {
 	}
 }
 
-// advertisedPort re-evaluates per beat: the optional pp-port443 redirect can be
-// approved (or break) mid-party, and the broker must always hand guests a port
-// that actually answers.
+// advertisedPort is the port the broker should hand guests: the Mac's direct TLS
+// listener (nil-safe wrapper for the pre-handler fallback).
 func advertisedPort(handler *server.Srv, fallback int) int {
 	if handler != nil {
 		return handler.AdvertisedGuestPort()
@@ -262,7 +261,7 @@ func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Lo
 			body, _ := json.Marshal(map[string]any{
 				"id": id, "secret": secret,
 				"lan_ip":      netinfo.PrimaryLanIP(),
-				"guest_port":  advertisedPort(handler, guestPort), // 443 when the clean-links redirect is verified, else the direct TLS port
+				"guest_port":  advertisedPort(handler, guestPort), // the Mac's direct TLS port
 				"listeners":   lanListeners,
 				"web_since":   webSince, // delivery cursor: only web posts newer than what we've ingested
 				"title":       title,
@@ -722,7 +721,6 @@ func main() {
 	})
 	handler.StartSyncDrain(context.Background())
 	handler.StartReachabilityWatchdog(context.Background())
-	handler.EnableCleanLinksProbe() // real app self-tests the optional 443 redirect; off in tests
 
 	// tcp4, NOT tcp: on some Macs `net.Listen("tcp", ...)` binds an IPv6-only
 	// socket, and if that machine's IPv6 loopback (::1) is also broken, NOTHING
