@@ -1,6 +1,10 @@
 package server
 
-import "testing"
+import (
+	"testing"
+
+	"partyparty/internal/activate"
+)
 
 func TestReduceLanState(t *testing.T) {
 	base := lanInputs{
@@ -18,7 +22,6 @@ func TestReduceLanState(t *testing.T) {
 		{"no host -> unavailable", with(func(i *lanInputs) { i.Host = "" }), lanUnavailable},
 		{"cert up, nobody joined -> ready", base, lanReady},
 		{"LAN listeners -> confirmed", with(func(i *lanInputs) { i.LanListeners = 2 }), lanConfirmed},
-		{"recent guest -> confirmed", with(func(i *lanInputs) { i.GuestConfirmed = true }), lanConfirmed},
 		{"only cloud listeners -> cloud_fallback", with(func(i *lanInputs) { i.CloudListeners = 3 }), lanCloudFallback},
 		{"LAN presence beats cloud -> confirmed", with(func(i *lanInputs) { i.LanListeners = 1; i.CloudListeners = 5 }), lanConfirmed},
 	}
@@ -45,5 +48,21 @@ func TestStatusIncludesLanObject(t *testing.T) {
 	}
 	if lan["state"] != lanUnavailable {
 		t.Errorf("lan.state = %v, want %q", lan["state"], lanUnavailable)
+	}
+}
+
+// Regression: `confirmed` must come from a REAL guest listener, never the
+// console's own telemetry. With a cert but no guest it stays `ready`; only a
+// genuine guest heartbeat (which the console never sends) flips it to confirmed.
+func TestConfirmedRequiresRealGuestListener(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.SetActivationResult(activate.Result{CertReady: true, Host: "seth-live.party.partyparty.party"})
+
+	if st := env.srv.lanStateSnapshot(); st.State != lanReady {
+		t.Fatalf("cert up, no guest: lan = %q, want ready (NOT confirmed)", st.State)
+	}
+	env.srv.Listeners.Heartbeat("guest-1", false, false, 0, false, "hls")
+	if st := env.srv.lanStateSnapshot(); st.State != lanConfirmed || st.LanListeners != 1 {
+		t.Fatalf("after a real guest heartbeat: lan = %+v, want confirmed with 1 listener", st)
 	}
 }

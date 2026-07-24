@@ -93,12 +93,6 @@ type srv struct {
 	// loop, read by /api/status — the room and the web share one count.
 	webListeners atomic.Int64
 
-	// Real-guest ground truth: the last time a guest connection was observed
-	// (guest heartbeats + client events). Feeds the LAN room's "confirmed" state.
-	// Guarded by reachMu.
-	reachMu        sync.Mutex
-	guestSeenUntil time.Time
-
 	// Room-sync toggles (per-DJ, persisted to stateDir/room-settings.json). Both
 	// OFF by default: guests ride the live edge (lowest latency) and no drift
 	// re-pull runs. ON restores the 3s unison park (EXT-X-START) / drift watchdog.
@@ -302,6 +296,15 @@ type Srv struct{ srv }
 // SetActivation records a completed low-latency activation (real cert +
 // resolvable domain). Guest/stream URLs and the console's LL-HLS gate flip
 // live on the next status poll.
+// SetActivationResult caches the latest online activation attempt (cert / host /
+// LAN IP) for lanStateSnapshot to read. It never switches network mode.
+func (s *Srv) SetActivationResult(res activate.Result) {
+	s.actMu.Lock()
+	s.actLast = res
+	s.actLastSet = true
+	s.actMu.Unlock()
+}
+
 func (s *Srv) SetActivation(domain string) {
 	s.actMu.Lock()
 	s.actDomain = domain
@@ -906,7 +909,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return
 		}
-		s.markGuestReach()
 		nAny, _ := s.clientLogN.LoadOrStore(body.CID, new(int32))
 		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest — no log floods
 			if s.Diag != nil {
@@ -975,7 +977,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				urgent = true
 			}
 		}
-		s.markGuestReach()
 		if urgent && s.Diag != nil {
 			s.Diag.MarkUrgent() // ship the log to the cloud within seconds, not on the 30s tick
 		}
@@ -1006,7 +1007,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
-		s.markGuestReach()
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
 		s.Listeners.Debug(key, q.Get("del"), rate, buf)

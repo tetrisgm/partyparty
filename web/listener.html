@@ -2100,6 +2100,12 @@
     setInterval(() => {
       if (!started) return;
       const stalled = stalledSinceBeat || (!player.paused && player.readyState < 3);
+      // Live-edge path (room sync off, the default) bypasses the align transaction
+      // that normally latches the native timeline origin, and the shallow live-edge
+      // buffer keeps the health watchdog's restore (gated on buf>1) from ever
+      // running — so on iOS the origin stays null and latency reads "-- s" forever.
+      // Re-derive it here passively (getStartDate only, no seek, no buffer floor).
+      if (timelineOriginMs == null) tryRestoreTimelineOrigin();
       const lat = measureLatency();
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
       watchAudibleHealth(lat, stalled);

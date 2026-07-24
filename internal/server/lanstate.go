@@ -25,7 +25,6 @@ type lanInputs struct {
 	ChecksComplete bool   // activation has run at least once
 	LanListeners   int    // guests connected to the LAN room right now (this Mac)
 	CloudListeners int    // guests connected to the cloud mirror right now (the Worker)
-	GuestConfirmed bool   // a real guest reached the LAN room within the recent-guest TTL
 }
 
 // lanState is the /api/status `lan` object the DJ console reads.
@@ -35,7 +34,6 @@ type lanState struct {
 	ExpectedIP     string `json:"expectedIp,omitempty"`
 	GuestPort      int    `json:"guestPort,omitempty"`
 	CertReady      bool   `json:"certReady"`
-	GuestConfirmed bool   `json:"guestConfirmed"`
 	LanListeners   int    `json:"lanListeners"`
 	CloudListeners int    `json:"cloudListeners"`
 	CheckedAtMs    int64  `json:"checkedAtMs,omitempty"`
@@ -48,7 +46,6 @@ func reduceLanState(in lanInputs) lanState {
 		Host:           in.Host,
 		ExpectedIP:     in.ExpectedIP,
 		CertReady:      in.CertReady,
-		GuestConfirmed: in.GuestConfirmed,
 		LanListeners:   in.LanListeners,
 		CloudListeners: in.CloudListeners,
 	}
@@ -56,8 +53,10 @@ func reduceLanState(in lanInputs) lanState {
 	case !in.CertReady || in.Host == "":
 		// The secure link isn't up yet; the console's setup card covers this.
 		st.State = lanUnavailable
-	case in.LanListeners > 0 || in.GuestConfirmed:
-		// Observed: guests are on the LAN room. This is proof, not prediction.
+	case in.LanListeners > 0:
+		// Observed: guests are on the LAN room right now. Proof, not prediction —
+		// this count is fed only by guest heartbeats (/api/heartbeat), never the
+		// console's own traffic.
 		st.State = lanConfirmed
 	case in.CloudListeners > 0:
 		// Observed: guests found the party but landed on the cloud stream.
@@ -69,19 +68,9 @@ func reduceLanState(in lanInputs) lanState {
 	return st
 }
 
-// guestSeenRecently reports whether a real guest connection was observed within
-// the recent-guest TTL — so `confirmed` persists briefly across the gap between
-// a guest's last heartbeat and the next status poll.
-func (s *srv) guestSeenRecently() bool {
-	s.reachMu.Lock()
-	defer s.reachMu.Unlock()
-	return time.Now().Before(s.guestSeenUntil)
-}
-
 // lanStateSnapshot computes the LAN state inline from observed reality — cached
-// activation (cert/host), live LAN listener count, cloud listener count, and the
-// recent-guest signal. All cheap in-memory reads (no network probes), so
-// /api/status calls it directly.
+// activation (cert/host), live LAN listener count, and cloud listener count. All
+// cheap in-memory reads (no network probes), so /api/status calls it directly.
 func (s *srv) lanStateSnapshot() lanState {
 	s.actMu.Lock()
 	res := s.actLast
@@ -99,7 +88,6 @@ func (s *srv) lanStateSnapshot() lanState {
 		ChecksComplete: ran,
 		LanListeners:   lan,
 		CloudListeners: int(s.webListeners.Load()),
-		GuestConfirmed: s.guestSeenRecently(),
 	})
 	st.GuestPort = s.Config.TLSPort
 	st.CheckedAtMs = time.Now().UnixMilli()
