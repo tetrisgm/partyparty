@@ -1525,17 +1525,16 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
   }
 
-  // First-run activation sequence: staged lines, typed character by
-  // character — something honest to watch while the certificate arrives.
+  // First-run: sign in to link this Mac, then the guest link is ready instantly
+  // (a shared cert — there is no per-Mac certificate wait anymore). These lines
+  // fill the moment while the DJ signs in and the machine host is published.
   const PENDING_LINES = [
-    'Setting partyparty up for the first time…',
-    'Connecting to the cloud…',
-    'Securing your guest link…',
-    'This can take a couple of minutes — it only happens once.',
+    'Setting up partyparty…',
+    'Sign in to link this Mac to your account.',
+    'Your @username becomes your permanent party link — print the QR once, it stays yours.',
   ];
-  // Lines APPEND (a growing activity log, not a replaced caption); ~5s
-  // between lines because activation genuinely takes a while, and the
-  // spinner sits below the last line so the card always reads as "working".
+  // Lines APPEND (a growing activity log, not a replaced caption); the spinner
+  // sits below the last line so the card always reads as "working".
   let typeTimer = null, typing = false;
   function startPendingType(){
     if (typing) return;
