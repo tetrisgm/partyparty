@@ -45,9 +45,11 @@
     // Split-secret fallback: MXROUTE_SMTP_HOST/PORT/USER/PASS.
     // Optional from override: AUTH_EMAIL_FROM="partyparty <noreply@partyparty.party>".
     // The EMAIL binding above is only a last-resort fallback.
-    "AUTH_DEV_LINKS": "1",
-    "AUTH_DEV_DIRECT": "1",
-    "AUTH_DEV_EMAILS": "ramine@ramine.net",
+    // NOTE: the dev-login bypass (AUTH_DEV_LINKS/AUTH_DEV_DIRECT/AUTH_DEV_EMAILS
+    // + the AUTH_DEV_SECRET secret) is intentionally NOT set in production —
+    // production sign-in is Apple/Google/email only. authDevMode() short-circuits
+    // to false without these, so the code stays inert here. To use it locally,
+    // set them in a .dev.vars file (never in this committed prod config).
     "BROKER_BASE": "partyparty.party",
     // The partyparty.party zone — machine hostnames' grey A records and ACME
     // TXT challenges are written here.
