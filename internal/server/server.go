@@ -311,7 +311,13 @@ func (s *Srv) SetActivation(domain string) {
 	s.actMu.Lock()
 	s.actDomain = domain
 	s.actReason = ""
-	s.actLast = activate.Result{OK: true, Host: domain}
+	// Stamp engaged-OK + host but PRESERVE the structured evidence the immediately
+	// preceding SetActivationResult recorded (CertReady / ExpectedIP / DNSPublished
+	// / ResolverMatches / ReasonCode). Overwriting the whole struct here used to
+	// zero that evidence, which would make the LAN-readiness reducer wrongly read
+	// "unavailable" right after a successful activation.
+	s.actLast.OK = true
+	s.actLast.Host = domain
 	s.actLastSet = true
 	s.actMu.Unlock()
 	s.updateReachability(time.Now(), nil, false)
