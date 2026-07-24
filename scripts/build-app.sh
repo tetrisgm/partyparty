@@ -28,7 +28,6 @@ echo ">> Go server (-tags bundle)"
 APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/app/Info.plist" 2>/dev/null || echo dev)"
 "$GO" build -tags bundle -ldflags "-X main.appVersion=$APP_VERSION" -o "$ROOT/build/partyparty-server" "$ROOT"
 "$GO" build -o "$ROOT/build/pp-port80" "$ROOT/cmd/pp-port80"
-"$GO" build -o "$ROOT/build/pp-port443" "$ROOT/cmd/pp-port443"
 
 echo ">> Swift menu-bar app (release)"
 swift build -c release --package-path "$ROOT/app"
@@ -40,13 +39,17 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$BIN/partyparty"               "$APP/Contents/MacOS/partyparty"
 cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
 cp "$ROOT/build/pp-port80"         "$APP/Contents/Helpers/pp-port80"
-cp "$ROOT/build/pp-port443"        "$APP/Contents/Helpers/pp-port443"
 cp "$ROOT/assets/ffmpeg"           "$APP/Contents/Helpers/ffmpeg"
 cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
 cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT/app/net.ramine.partyparty.port80.plist" "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port80.plist"
+# The pp-port443 helper is GONE (guests use the direct :8443 link). Only this
+# plist stub stays so PortRedirectController.removeLegacyCleanLinks() can resolve
+# and UNREGISTER the old daemon on any install that still has it registered —
+# self-cleaning regardless of which versions a Mac skips. No pp-port443 binary is
+# bundled; a final release can drop this plist + the stub once installs cycle.
 cp "$ROOT/app/net.ramine.partyparty.port443.plist" "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port443.plist"
 
 # Sparkle framework (auto-update) — embed + make it discoverable via rpath.
@@ -85,7 +88,7 @@ if [ -d "$SPK" ]; then
 fi
 # ppcapture creates the Core Audio tap, so IT needs the audio-input
 # entitlement (hardened runtime denies audio otherwise). The rest don't.
-for b in mediamtx ffmpeg partyparty-server pp-port80 pp-port443; do
+for b in mediamtx ffmpeg partyparty-server pp-port80; do
   codesign_one "$APP/Contents/Helpers/$b"
 done
 codesign_one "$APP/Contents/Helpers/ppcapture" "$ENT"

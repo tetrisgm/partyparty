@@ -12,9 +12,10 @@ final class PortRedirectController {
     /// redirect can no longer advertise a dead port-less link in the QR. This
     /// deregisters the old privileged daemon on any install that still has it, so
     /// no orphaned root LaunchDaemon lingers; it is a harmless no-op when the
-    /// daemon was never registered. The port443 plist stays in the bundle for
-    /// this release so unregister() can resolve the service — a follow-up release
-    /// deletes the plist, the pp-port443 helper, and this method.
+    /// daemon was never registered. The pp-port443 helper binary is gone — only a
+    /// plist stub remains so unregister() can resolve the service, which keeps this
+    /// self-cleaning no matter which versions a Mac skips. A final release can drop
+    /// the plist and this method once every install has cycled through it.
     func removeLegacyCleanLinks() {
         let cleanLinks = SMAppService.daemon(plistName: "net.ramine.partyparty.port443.plist")
         guard cleanLinks.status == .enabled || cleanLinks.status == .requiresApproval else { return }
