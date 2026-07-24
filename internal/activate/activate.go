@@ -228,30 +228,21 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	dnsPublished := postErr == nil && aResp.OK && aResp.Verified
 
 	if !certUsable(certFile, host) {
-		// Prefer the shared machine wildcard (*.party.<base>): one cert covers
-		// every <slug>.party.<base> host, so no per-Mac ACME and no Let's Encrypt
-		// rate limit. It is fetched over the authed broker endpoint and validated
-		// with certUsable EXACTLY like a self-issued cert before it is trusted.
-		// Any failure — endpoint absent, not provisioned, not linked, unusable —
-		// falls through to per-Mac issuance, so this can never strand Go Live.
-		// (Removing wildcard/current.json from R2 is therefore an instant,
-		// fleet-wide kill switch back to per-Mac certs.)
-		gotCert := false
+		// The shared machine wildcard (*.party.<base>) is the ONLY cert path for
+		// broker installs: one cert covers every <slug>.party.<base> host, so
+		// there is no per-Mac ACME and no Let's Encrypt rate limit. It is fetched
+		// over the authed broker endpoint and validated with certUsable — exactly
+		// like a self-issued cert — before it is trusted. No fallback by design: a
+		// transient fetch failure leaves the cert not-yet-ready and the refresh
+		// loop retries; the renew window gives a buffer before any real expiry, and
+		// once fetched the cert is cached locally so later parties run offline.
 		if err := fetchWildcard(ctx, b, certFile, keyFile); err != nil {
-			logf("activate: shared wildcard cert unavailable (%v) — using per-Mac ACME", err)
-		} else if !certUsable(certFile, host) {
-			logf("activate: shared wildcard cert not usable for %s — using per-Mac ACME", host)
-		} else {
-			gotCert = true
-			logf("activate: using shared wildcard cert for %s", host)
+			return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "wildcard cert: " + err.Error()}
 		}
-		if !gotCert {
-			logf("activate: obtaining certificate for %s (Let's Encrypt, DNS-01 via broker)…", host)
-			if err := issueCert(ctx, b, host, certFile, keyFile, dir, logf); err != nil {
-				return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "certificate: " + err.Error()}
-			}
-			logf("activate: certificate issued for %s", host)
+		if !certUsable(certFile, host) {
+			return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "wildcard cert not usable for " + host}
 		}
+		logf("activate: using shared wildcard cert for %s", host)
 	}
 	// OK means only that the certificate is usable (Go Live works everywhere).
 	// DNS publication and resolver agreement are separate LAN-readiness evidence.
