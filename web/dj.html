@@ -580,6 +580,7 @@
           <div id="qr" role="img" aria-label="Party Wi-Fi link QR code"></div>
           <div class="visually-hidden" id="url">—</div>
           <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+          <div id="lanState" hidden></div>
         </div>
       </div>
     </div>
@@ -2238,6 +2239,47 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
   }
 
+  // Honest LAN readiness (execution-plan §6/§7). Says whether guests on THIS
+  // Wi-Fi actually reach the low-latency room on this Mac, or are being sent to
+  // the cloud stream — and which check failed. Display only: it NEVER gates Go
+  // Live and never touches the QR. Older runtimes don't send `lan`, so an absent
+  // or unknown state renders nothing rather than guessing.
+  const LAN_FALLBACK_REASONS = [
+    ['dnsPublished',      'the guest address could not be published'],
+    ['resolverMatches',   "this Wi-Fi is not returning this Mac's local address"],
+    ['listenerTlsReady',  'the secure listener on this Mac is not reachable (port 8443 blocked?)'],
+    ['guestPathTlsReady', 'this Wi-Fi is blocking the guest path to this Mac'],
+  ];
+  function lanFallbackReason(l){
+    for (const pair of LAN_FALLBACK_REASONS) { if (!l[pair[0]]) return pair[1]; }
+    return String(l.reason || '').trim();
+  }
+  function renderLanState(l){
+    const el = $('lanState');
+    if (!el) return;
+    if (!l || typeof l !== 'object' || !l.state) { el.hidden = true; return; }
+    let tone = 'offline-status', text = '';
+    switch (l.state) {
+      case 'confirmed':          text = 'Guest connected to the LAN room — everyone here streams straight off this Mac.'; break;
+      case 'ready':              text = 'LAN room ready on this Wi-Fi.'; break;
+      case 'offline_ready':      text = 'Offline party ready — guests join straight off this Mac.'; break;
+      case 'checking':           tone = 'hint'; text = 'Checking whether guests on this Wi-Fi can reach this Mac…'; break;
+      case 'offline_unverified': tone = 'warn'; text = 'Offline party — the route from guests to this Mac is unproven. Have someone scan the code to confirm.'; break;
+      case 'cloud_fallback': {
+        tone = 'warn';
+        const why = lanFallbackReason(l);
+        text = 'Guests can open the party, but this Wi-Fi is sending them to the cloud stream'
+             + (why ? ' — ' + why + '.' : '.')
+             + ' The party still works; it just uses the internet instead of this Wi-Fi.';
+        break;
+      }
+      default: el.hidden = true; return; // 'unavailable'/unknown — the setup card already covers it
+    }
+    el.textContent = text;
+    el.className = tone;
+    el.hidden = false;
+  }
+
   async function refresh(){
     try {
       const s = await (await fetch('/api/status', { cache:'no-store' })).json();
@@ -2266,6 +2308,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         $('devname').textContent = s.broadcast.lastError || '';
         $('devnameWrap').hidden = !s.broadcast.lastError;
       }
+      renderLanState(s.lan);
       const live = (st === 'live' || st === 'starting');
       const lb = $('liveBtn');
       // LL-HLS needs a trusted cert; plain HLS is the offline fallback and can
