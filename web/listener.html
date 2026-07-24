@@ -505,7 +505,7 @@
     <div class="actionbar-tools">
       <div class="diagnostics" aria-label="Stream diagnostics">
         <span class="modechip wifi" id="modeChip" title="You're on the party Wi‑Fi — low-latency local audio">Wi‑Fi</span>
-        <span class="delaybadge" id="delayBadge" aria-label="Playback delay">-- ms</span>
+        <span class="delaybadge" id="delayBadge" aria-label="Playback delay">-- s</span>
         <span class="pageversion">v__PP_VERSION__</span>
       </div>
       <button class="toptool" id="qrBtn" type="button" aria-label="Show QR code" title="Show QR code">
@@ -2106,10 +2106,10 @@
       const error = lat == null ? null : lat - roomTarget();
       delayBadge.classList.toggle('syncing', joinMuted || (started && lat == null));
       delayBadge.classList.toggle('warn', error != null && Math.abs(error) >= SYNC_WARN_AT);
-      delayBadge.textContent = joinMuted && lat == null ? 'syncing...' : (lat != null ? Math.round(lat * 1000) + ' ms' : '-- ms');
+      delayBadge.textContent = joinMuted && lat == null ? 'syncing...' : (lat != null ? lat.toFixed(2) + ' s' : '-- s');
       delayBadge.title = lat == null
         ? 'Waiting for a synchronized playback clock'
-        : 'Room target ' + Math.round(roomTarget() * 1000) + ' ms; sync error ' + (error >= 0 ? '+' : '') + Math.round(error * 1000) + ' ms; ' + syncReference();
+        : 'Room target ' + roomTarget().toFixed(2) + ' s; sync error ' + (error >= 0 ? '+' : '') + error.toFixed(2) + ' s; ' + syncReference();
     }
     updateDelayBadge();
     setInterval(updateDelayBadge, 500);

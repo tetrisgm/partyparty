@@ -2142,9 +2142,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (!strip) return;
     const linkReady = !!opts.linkReady;
     const plan = guestSetupPlan(info);
-    // Same preference as the main status render: the permanent link is THE
-    // guest-facing URL; the machine link is the offline/no-handle fallback.
-    const guestUrl = (info && (info.publicUrl || info.primaryUrl)) || opts.guestUrl || '';
+    // Same preference as the main status render: the QR carries the direct HTTPS
+    // machine link whenever it is available (reliable low-latency Wi-Fi join); the
+    // public cloud URL is the fallback for early setup / off-Wi-Fi guests.
+    const directHttps = !!(info && typeof info.primaryUrl === 'string' && info.primaryUrl.indexOf('https://') === 0);
+    const guestUrl = (directHttps ? info.primaryUrl : (info && (info.publicUrl || info.primaryUrl))) || opts.guestUrl || '';
     const fallbackGuestCount = Number(opts.guestCount || 0);
     const endpointGuestCount = Number(info && info.guestCount);
     const guestCount = Number.isFinite(endpointGuestCount) ? endpointGuestCount : fallbackGuestCount;
@@ -2295,11 +2297,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('permBtnHint').style.display = showPermButton ? 'block' : 'none';
       updateCapturePermissionUI();
       const secure = s.llhlsRealCert === true;
-      // The permanent link (<handle>.partyparty.party) is THE guest-facing URL —
-      // profile when idle, this party when live; the router lands local guests on
-      // the machine host invisibly. Absent (offline party / no handle yet) the QR
-      // encodes the direct machine link exactly as before.
-      const guestUrl = s.urls.public || s.urls.primary;
+      // The QR carries the link that RELIABLY connects on the party Wi-Fi: the
+      // direct HTTPS machine link (https://<handle>.party.partyparty.party:8443/),
+      // served straight off this Mac for the lowest latency. Prefer it whenever it
+      // is a real HTTPS link (cert loaded). Only before the secure link is up — or
+      // with no handle at all — fall back to the public cloud URL, so early
+      // scanners still hear the cloud stream while the Wi-Fi link finishes setting
+      // up. The public/cloud URL stays the link to hand to guests NOT on the Wi-Fi.
+      const directHttps = typeof s.urls.primary === 'string' && s.urls.primary.indexOf('https://') === 0;
+      const guestUrl = directHttps ? s.urls.primary : (s.urls.public || s.urls.primary);
       const linkReady = !!guestUrl && (secure || s.delivery === 'hls');
       const roster = s.roster || [];
       const hotspot = s.hotspot || {};
