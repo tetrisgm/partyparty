@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>95.81</string>
+	<string>96.81</string>
 	<key>CFBundleVersion</key>
-	<string>151</string>
+	<string>152</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>NSAppTransportSecurity</key>
