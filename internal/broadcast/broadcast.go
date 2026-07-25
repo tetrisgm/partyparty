@@ -420,13 +420,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	// use_fifo + onfail=ignore: a dying MediaMTX must never stall or kill the
 	// recording, and a full disk must never kill the live broadcast.
 	tee := "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]" + b.ingestURL
-	// The recording (adts) and cloud-mirror (mpegts) legs are AAC-container-bound
-	// — a non-AAC codec (libopus) would fail ffmpeg at MUXER INIT (before
-	// onfail=ignore can catch it) and take down the live leg. So when testing a
-	// low-delay codec, run the LIVE RTSP leg alone (MediaMTX carries Opus into
-	// LL-HLS); recording + mirror stay AAC-only until a codec proves out.
-	aacContainer := c.Codec == "aac" || c.Codec == "aac_at"
-	if aacContainer && snap.recordPath != "" {
+	if snap.recordPath != "" {
 		tee += "|[f=adts:onfail=ignore]" + snap.recordPath
 	}
 	// Optional THIRD leg — the cloud mirror for remote guests. Stream-copies the
@@ -437,7 +431,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	// break the LAN RTSP leg above. Only present when a mirror dir is configured;
 	// with the mirror off this whole clause is skipped and the tee is exactly the
 	// RTSP (+ optional record) legs it is today.
-	if aacContainer && snap.mirrorDir != "" {
+	if snap.mirrorDir != "" {
 		tee += "|[f=hls:hls_time=3:hls_list_size=8:hls_flags=delete_segments+omit_endlist:hls_segment_type=mpegts:onfail=ignore:use_fifo=1]" + filepath.Join(snap.mirrorDir, "live.m3u8")
 	}
 	args = append(args, "-f", "tee", "-map", "0:a", tee)
