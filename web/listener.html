@@ -738,10 +738,10 @@
     const forceHlsOnApple = aggressive && mmsAvailable && !iosShellBrowser;
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser) && !forceHlsOnApple;
     const platform = useNative ? 'native' : 'hls';
-    // Aggressive mode starts near the live edge instead of the reliability-era
-    // 2.5s cushion — the LAN is stable, so hls.js's own lowLatency + rate catch-up
-    // owns the edge and we don't pre-park seconds of buffer.
-    if (aggressive) PREBUF = 0.5;
+    // Aggressive mode starts with a modest cushion (not the reliability-era 2.5s,
+    // not the raw edge). 0.5s starved into stalls on real Wi-Fi; 1.2s is the
+    // stable low-latency startup.
+    if (aggressive) PREBUF = 1.2;
     const debug = new URLSearchParams(location.search).get('debug') === '1';
     // One production sync design ("Precise", 2026-07): native no-seek starts
     // against the server's EXT-X-START pin on the fine stream shape, ONE silent
@@ -1159,11 +1159,16 @@
           // the edge instead of drifting. Small back buffer — we sit at the front.
           preferManagedMediaSource: true,
           lowLatencyMode: usingLL(),
-          maxLiveSyncPlaybackRate: 1.5,
+          // Sit ~1.5s behind live — that gap IS the jitter buffer. Riding the raw
+          // edge (part-hold-back) starved the buffer to 0 on normal Wi-Fi and
+          // stalled/oscillated 1.3s<->10s. 1.5s is the stable low-latency point.
+          liveSyncDuration: 1.5,
+          liveMaxLatencyDuration: 6,
+          maxLiveSyncPlaybackRate: 1.1,  // gentle pitch-preserved catch-up — no overshoot/oscillation
           liveSyncOnStallIncrease: 0,
           liveDurationInfinity: true,
           backBufferLength: 6,
-          maxBufferLength: 4,   // don't buffer far ahead — a deep forward buffer lets the playhead drift back from live
+          maxBufferLength: 8,
           maxBufferHole: 0.1,
           testBandwidth: false, // single bitrate — skip the startup ABR probe that delays the first fragment
           startFragPrefetch: true,
@@ -1256,7 +1261,7 @@
     const STARTUP_BUDGET_MS = 12000;
     const JOIN_WATCHDOG_MS = 15000;
     const STARTUP_BUFFER_MIN = 2.5;
-    const startupBufferMin = () => useNative ? 0.75 : (aggressive ? 0.5 : STARTUP_BUFFER_MIN);
+    const startupBufferMin = () => useNative ? 0.75 : (aggressive ? 1.2 : STARTUP_BUFFER_MIN);
     const PROGRESS_WINDOW_MS = 700;
     const MAX_ALIGN_SEEKS = 4;
     let needsAlign = false, alignGeneration = 0;
