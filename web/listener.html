@@ -733,9 +733,15 @@
       : (window.__ppMode === 'proven' ? 'proven' : 'aggressive'); // DEFAULT aggressive; ?mode=proven or config forces the lock-safe fallback
     const aggressive = playbackMode === 'aggressive';
     const mmsAvailable = ('ManagedMediaSource' in window) || ('MediaSource' in window);
-    // Aggressive + MSE/MMS present -> hls.js on Apple too. Shell browsers (CriOS/
-    // FxiOS/EdgiOS) stay native even in aggressive mode (their MSE was field-flaky).
-    const forceHlsOnApple = aggressive && mmsAvailable && !iosShellBrowser;
+    // Apple now DEFAULTS to the native <audio> path: it plays smoothly at low
+    // latency and is lock-safe, whereas hls.js/ManagedMediaSource SEEK-STORMS at a
+    // tight live edge on Safari (~1 audible skip/sec — the field "choppy"; smooth
+    // only when the buffer is bloated to ~4s). So MMS on Apple is strictly OPT-IN
+    // via ?mode=aggressive or window.__ppMode==='aggressive'. (Non-Apple always
+    // uses hls.js regardless — this gate only decides Apple's engine.)
+    const wantAggressiveMMS = urlMode === 'aggressive'
+      || (urlMode !== 'proven' && window.__ppMode === 'aggressive');
+    const forceHlsOnApple = wantAggressiveMMS && mmsAvailable && !iosShellBrowser;
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser) && !forceHlsOnApple;
     const platform = useNative ? 'native' : 'hls';
     // Aggressive mode starts with a modest cushion (not the reliability-era 2.5s,
@@ -1905,8 +1911,8 @@
     // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
     // fails to commit falls back to reattach() so the player is never left wedged.
     const NATIVE_GOVERNOR = true;   // kill switch (OTA-flippable) for this P0 seek path
-    const GOV_TARGET_LAT = 3.0;     // hold ~3s behind live — a deep cushion (matches the aggressive path); reliability over a low number
-    const GOV_TRIGGER = 1.0;        // arm when lat exceeds target by this (lat > ~4s) — only correct a device that's drifted well past the cushion
+    const GOV_TARGET_LAT = 1.5;     // hold ~1.5s behind live — native AVPlayer plays SMOOTHLY here (no MMS seek-storm), so keep it low; the governor only pulls back a device that has drifted toward the 3s HOLD-BACK fallback
+    const GOV_TRIGGER = 1.0;        // arm when lat exceeds target by this (native lat > ~2.5s)
     const GOV_CONFIRMATIONS = 2;    // sustained beats (~4s) before acting — well below the 8s reattach
     const GOV_FWD_TOL = 0.75;       // minimum forward jump; a smaller correction isn't worth a skip
     const GOV_EDGE_MARGIN = 0.9;    // land at least this far off the live edge (inside the 24s window)
