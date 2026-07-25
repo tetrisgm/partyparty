@@ -68,13 +68,22 @@ func ParseOverrides(raw []byte) Overrides {
 	if s.PartDur != nil && validDurRange(*s.PartDur, 200*time.Millisecond, 2000*time.Millisecond) {
 		o.PartDur = s.PartDur
 	}
-	if s.SegDur != nil && validDurRange(*s.SegDur, 1*time.Second, 6*time.Second) {
+	// Floor is 500ms (not 1s): LL-HLS derives HOLD-BACK = 3 × segment, and on the
+	// live-edge default (no EXT-X-START pin) HOLD-BACK is the depth iOS AVPlayer
+	// falls back to when it drops part-level tracking — so 1s segments park guests
+	// ~3s behind live over time (field-observed, needs a manual refresh). 500ms
+	// halves that to ~1.5s. The old 1s floor existed to place the -3s room pin on
+	// the RFC 8216 three-target-duration boundary, which only matters when the
+	// park is on; the live-edge default has no pin.
+	if s.SegDur != nil && validDurRange(*s.SegDur, 500*time.Millisecond, 6*time.Second) {
 		o.SegDur = s.SegDur
 	}
-	// 3..32 is the validated safe range for MediaMTX. The shipped DEFAULT is 12
-	// (the failure-budget window — see config.go seg-count); larger values are
-	// allowed for field experiments but re-widen the worst possible desync.
-	if s.SegCount != nil && *s.SegCount >= 3 && *s.SegCount <= 32 {
+	// The real safety bound is the WINDOW (segCount × segDur), not the raw count:
+	// too small a window let deep-starting guests fall off the back edge and go
+	// silent (2026-07-15 field). The 24s default window is 24×1s OR 48×0.5s — so
+	// the ceiling is 48, high enough to keep a 24s window at 500ms segments while
+	// still bounding worst-case desync.
+	if s.SegCount != nil && *s.SegCount >= 3 && *s.SegCount <= 48 {
 		o.SegCount = s.SegCount
 	}
 	if s.LatencyTargetSec != nil && *s.LatencyTargetSec >= 0 && *s.LatencyTargetSec <= 15 {
