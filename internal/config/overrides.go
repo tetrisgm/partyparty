@@ -65,7 +65,12 @@ func ParseOverrides(raw []byte) Overrides {
 	if s.HLSListLen != nil && *s.HLSListLen >= 6 && *s.HLSListLen <= 60 {
 		o.HLSList = s.HLSListLen
 	}
-	if s.PartDur != nil && validDurRange(*s.PartDur, 200*time.Millisecond, 2000*time.Millisecond) {
+	// partDur is THE latency lever: player rest ≈ encoder + part + PART-HOLD-BACK
+	// (~3×part) + iOS's own output buffer (~300ms fixed). Floor is 80ms so the
+	// field can push toward the LL-HLS/iOS practical limit (~0.8s) over the air;
+	// below ~100ms returns diminish (PART-HOLD-BACK < the fixed iOS buffer) and
+	// request rate climbs, so smaller is validated-allowed but tune by measurement.
+	if s.PartDur != nil && validDurRange(*s.PartDur, 80*time.Millisecond, 2000*time.Millisecond) {
 		o.PartDur = s.PartDur
 	}
 	// Floor is 500ms (not 1s): LL-HLS derives HOLD-BACK = 3 × segment, and on the
@@ -75,7 +80,7 @@ func ParseOverrides(raw []byte) Overrides {
 	// halves that to ~1.5s. The old 1s floor existed to place the -3s room pin on
 	// the RFC 8216 three-target-duration boundary, which only matters when the
 	// park is on; the live-edge default has no pin.
-	if s.SegDur != nil && validDurRange(*s.SegDur, 500*time.Millisecond, 6*time.Second) {
+	if s.SegDur != nil && validDurRange(*s.SegDur, 200*time.Millisecond, 6*time.Second) {
 		o.SegDur = s.SegDur
 	}
 	// The real safety bound is the WINDOW (segCount × segDur), not the raw count:
