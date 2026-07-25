@@ -700,6 +700,7 @@
     // Room-sync toggles from /api/status (DJ-controlled, both default OFF): park =
     // the EXT-X-START delay, drift = the late-drift re-pull. OFF => ride the edge.
     let roomSyncDelay = false, driftCorrection = false;
+    let stableMode = true; // STABLE SETTINGS (default ON): generous buffers + governor. From /api/status s.roomSync.stable.
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
@@ -1172,7 +1173,7 @@
           // tight floor that still cut off; 3s trades ~1.7s of latency for no
           // cutoffs (the owner's explicit call). Dial back only once the field is
           // provably stall-free.
-          liveSyncDuration: 3.0,
+          liveSyncDuration: stableMode ? 3.0 : 1.5, // STABLE OFF rides tighter (MMS/non-Apple path)
           // With a 3s cushion the catch-up stays gentle — it rarely needs to reel
           // in, and a soft 1.15x is inaudible on music. Hard-snap only if we fall
           // >9s behind (essentially never at a 3s target); a snap is an audible
@@ -1911,8 +1912,9 @@
     // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
     // fails to commit falls back to reattach() so the player is never left wedged.
     const NATIVE_GOVERNOR = true;   // kill switch (OTA-flippable) for this P0 seek path
-    const GOV_TARGET_LAT = 1.5;     // hold ~1.5s behind live — native AVPlayer plays SMOOTHLY here (no MMS seek-storm), so keep it low; the governor only pulls back a device that has drifted toward the 3s HOLD-BACK fallback
-    const GOV_TRIGGER = 1.0;        // arm when lat exceeds target by this (native lat > ~2.5s)
+    const GOV_TARGET_LAT = 1.5;       // STABLE ON: hold ~1.5s behind live — native AVPlayer plays SMOOTHLY here (no MMS seek-storm); the governor only pulls back a device that has drifted toward the 3s HOLD-BACK fallback
+    const GOV_TARGET_LAT_TIGHT = 1.0; // STABLE OFF: ride tighter (less margin, lowest latency)
+    const GOV_TRIGGER = 1.0;          // arm when lat exceeds target by this
     const GOV_CONFIRMATIONS = 2;    // sustained beats (~4s) before acting — well below the 8s reattach
     const GOV_FWD_TOL = 0.75;       // minimum forward jump; a smaller correction isn't worth a skip
     const GOV_EDGE_MARGIN = 0.9;    // land at least this far off the live edge (inside the 24s window)
@@ -1936,7 +1938,8 @@
       if (document.visibilityState !== 'visible') { govBeats = 0; return; } // never seek hidden/locked
       if (stalled || player.readyState < 3) { govBeats = 0; return; }
       if (lat == null || !Number.isFinite(lat)) { govBeats = 0; return; }  // never seek on an unmeasured lat
-      const lateBy = lat - GOV_TARGET_LAT;
+      const targetLat = stableMode ? GOV_TARGET_LAT : GOV_TARGET_LAT_TIGHT;
+      const lateBy = lat - targetLat;
       if (lateBy <= GOV_TRIGGER) { govBeats = 0; return; }        // hysteresis reset — not (yet) late enough
       if (++govBeats < GOV_CONFIRMATIONS) return;                 // require SUSTAINED lateness, not a blip
       const sk = player.seekable;
@@ -1948,7 +1951,7 @@
       // target can never land past the buffered edge (a gap) or at the raw edge.
       const high = Math.min(sk.end(sk.length - 1) - GOV_EDGE_MARGIN, bufEnd - GOV_BUF_SAFETY);
       if (high <= low) { govBeats = 0; return; }
-      const wanted = Math.min(Math.max(player.currentTime + (lat - GOV_TARGET_LAT), low), high);
+      const wanted = Math.min(Math.max(player.currentTime + (lat - targetLat), low), high);
       if (wanted <= player.currentTime + GOV_FWD_TOL) { govBeats = 0; return; } // FORWARD-ONLY (the whole safety story)
       if (!inBufferedStrict(player.buffered, wanted)) { govBeats = 0; return; } // never seek into a gap
       const now = Date.now();
@@ -2147,7 +2150,7 @@
         LLSTREAM = s.llhlsUrl || null;
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
-        if (s.roomSync && typeof s.roomSync === 'object') { roomSyncDelay = !!s.roomSync.delay; driftCorrection = !!s.roomSync.drift; }
+        if (s.roomSync && typeof s.roomSync === 'object') { roomSyncDelay = !!s.roomSync.delay; driftCorrection = !!s.roomSync.drift; stableMode = s.roomSync.stable !== false; }
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;

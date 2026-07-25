@@ -57,6 +57,12 @@ func (s *srv) roomSyncFile() (string, error) {
 
 func (s *srv) ensureRoomSyncLoaded() {
 	s.roomSyncOnce.Do(func() {
+		// STABLE SETTINGS defaults ON (generous buffers + governor on the guest
+		// side). roomSyncDelay/driftCorrection default OFF. Set the defaults first
+		// so a persisted file that predates "stable" still resolves stable=ON.
+		s.roomSyncMu.Lock()
+		s.stable = true
+		s.roomSyncMu.Unlock()
 		path, err := s.roomSyncFile()
 		if err != nil {
 			return
@@ -66,12 +72,16 @@ func (s *srv) ensureRoomSyncLoaded() {
 			return
 		}
 		var p struct {
-			RoomSyncDelay   bool `json:"roomSyncDelay"`
-			DriftCorrection bool `json:"driftCorrection"`
+			RoomSyncDelay   bool  `json:"roomSyncDelay"`
+			DriftCorrection bool  `json:"driftCorrection"`
+			Stable          *bool `json:"stable"` // pointer: absent in an old file keeps the ON default
 		}
 		if json.Unmarshal(data, &p) == nil {
 			s.roomSyncMu.Lock()
 			s.roomSyncDelay, s.driftCorrection = p.RoomSyncDelay, p.DriftCorrection
+			if p.Stable != nil {
+				s.stable = *p.Stable
+			}
 			s.roomSyncMu.Unlock()
 		}
 	})
@@ -91,18 +101,44 @@ func (s *srv) roomSyncState() (delay, drift bool) {
 	return s.roomSyncDelay, s.driftCorrection
 }
 
+// stableEnabled reports the STABLE SETTINGS toggle (default ON): generous guest
+// buffers + governor. OFF trades margin for the tightest latency.
+func (s *srv) stableEnabled() bool {
+	s.ensureRoomSyncLoaded()
+	s.roomSyncMu.Lock()
+	defer s.roomSyncMu.Unlock()
+	return s.stable
+}
+
+// persistRoomSync writes all three toggles (called under no lock).
+func (s *srv) persistRoomSync() {
+	s.roomSyncMu.Lock()
+	delay, drift, stable := s.roomSyncDelay, s.driftCorrection, s.stable
+	s.roomSyncMu.Unlock()
+	if path, err := s.roomSyncFile(); err == nil {
+		data, _ := json.Marshal(map[string]any{"roomSyncDelay": delay, "driftCorrection": drift, "stable": stable})
+		_ = os.WriteFile(path, data, 0o600)
+	}
+}
+
 func (s *srv) setRoomSync(delay, drift bool) {
+	s.ensureRoomSyncLoaded()
 	s.roomSyncMu.Lock()
 	s.roomSyncDelay, s.driftCorrection = delay, drift
 	s.roomSyncMu.Unlock()
-	if path, err := s.roomSyncFile(); err == nil {
-		data, _ := json.Marshal(map[string]bool{"roomSyncDelay": delay, "driftCorrection": drift})
-		_ = os.WriteFile(path, data, 0o600)
-	}
+	s.persistRoomSync()
+}
+
+func (s *srv) setStable(stable bool) {
+	s.ensureRoomSyncLoaded()
+	s.roomSyncMu.Lock()
+	s.stable = stable
+	s.roomSyncMu.Unlock()
+	s.persistRoomSync()
 }
 
 // roomSyncStatePayload is the /api/status view the listener + DJ console read.
 func (s *srv) roomSyncStatePayload() map[string]any {
 	delay, drift := s.roomSyncState()
-	return map[string]any{"delay": delay, "drift": drift}
+	return map[string]any{"delay": delay, "drift": drift, "stable": s.stableEnabled()}
 }

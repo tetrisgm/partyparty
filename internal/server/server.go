@@ -101,6 +101,7 @@ type srv struct {
 	roomSyncMu      sync.Mutex
 	roomSyncDelay   bool
 	driftCorrection bool
+	stable          bool // STABLE SETTINGS toggle (default ON); see ensureRoomSyncLoaded
 
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	bonjour    sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
@@ -508,6 +509,7 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			var body struct {
 				RoomSyncDelay   *bool `json:"roomSyncDelay"`
 				DriftCorrection *bool `json:"driftCorrection"`
+				Stable          *bool `json:"stable"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			delay, drift := s.roomSyncState()
@@ -517,11 +519,16 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if body.DriftCorrection != nil {
 				drift = *body.DriftCorrection
 			}
-			s.setRoomSync(delay, drift)
+			if body.RoomSyncDelay != nil || body.DriftCorrection != nil {
+				s.setRoomSync(delay, drift)
+			}
+			if body.Stable != nil {
+				s.setStable(*body.Stable)
+			}
 		}
 		delay, drift := s.roomSyncState()
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, map[string]any{"roomSyncDelay": delay, "driftCorrection": drift})
+		writeJSON(w, http.StatusOK, map[string]any{"roomSyncDelay": delay, "driftCorrection": drift, "stable": s.stableEnabled()})
 	case strings.HasPrefix(p, "/api/"):
 		if s.handleFeedAPI(w, r) {
 			return

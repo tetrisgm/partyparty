@@ -904,8 +904,8 @@
         <option value="256k">Very high — 256 kbps</option>
         <option value="320k" selected>Max — 320 kbps</option>
       </select>
-      <label class="inapp-check" style="margin-top:14px"><input type="checkbox" id="autoPublish"> Auto-publish the replay when I end a set</label>
-      <div class="hint" style="margin:5px 0 0">Off by default. When on, ending a set uploads its recording to a shareable page automatically (needs you signed in + online).</div>
+      <label class="inapp-check" style="margin-top:14px"><input type="checkbox" id="stableSettings" checked> Stable settings</label>
+      <div class="hint" style="margin:5px 0 0">On (recommended): extra buffer so audio stays smooth and never chops, even on busy Wi‑Fi. Turn off to chase the lowest latency, with less margin for network hiccups.</div>
       <div id="inapp" style="display:none;margin-top:14px">
         <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
         <div class="hint" style="margin:5px 0 0">partyparty opens at login so your party’s ready — turn this off in Settings.</div>
@@ -931,17 +931,6 @@
       <label class="advcheck"><input type="checkbox" id="advToggle"> Show advanced settings</label>
     </div>
     <div class="adv">
-      <label style="margin:0 0 12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
-        <input type="checkbox" id="mono" style="width:auto;accent-color:var(--accent)"> Mono (about half the bandwidth)
-      </label>
-      <h3 style="font-size:13px;margin:12px 0 6px">Room sync</h3>
-      <p style="font-size:12px;color:var(--label-secondary);margin:0 0 8px">Off (default) = lowest latency — each phone rides the live edge. Turn on when phones are near each other or on speakers and you want them playing in unison.</p>
-      <label style="margin:0 0 8px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
-        <input type="checkbox" id="roomSyncDelay" style="width:auto;accent-color:var(--accent)"> Room sync delay (play in unison, a few seconds behind)
-      </label>
-      <label style="margin:0 0 12px;display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer">
-        <input type="checkbox" id="driftCorrection" style="width:auto;accent-color:var(--accent)"> Drift correction (re-pull a phone that falls far behind)
-      </label>
       <h3 style="font-size:13px;margin:12px 0 6px">FFmpeg log</h3>
       <pre id="log">—</pre>
       <h3 style="font-size:13px;margin:12px 0 6px">Network health</h3>
@@ -1720,12 +1709,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   if (!localStorage.getItem('pp.explicit')) {
     localStorage.removeItem('pp.bitrate');
     localStorage.removeItem('pp.latency');
-    localStorage.removeItem('pp.mono');
   }
   const markExplicit = () => localStorage.setItem('pp.explicit', '1');
   const savedQ = localStorage.getItem('pp.bitrate');
   if (savedQ) $('quality').value = savedQ;
-  $('mono').checked = localStorage.getItem('pp.mono') === '1';
   let lastLt = null, lastStatus = null, startError = '';
   function copySync(){
     const s = lastStatus; if (!s) return;
@@ -1775,7 +1762,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
 
   $('quality').onchange = () => { markExplicit(); localStorage.setItem('pp.bitrate', $('quality').value); };
-  $('mono').onchange = () => { markExplicit(); localStorage.setItem('pp.mono', $('mono').checked ? '1' : '0'); };
   // Advanced view: reveal the FFmpeg log + network cards (hidden by default).
   const advOn = localStorage.getItem('pp.adv') === '1';
   $('advToggle').checked = advOn;
@@ -1817,12 +1803,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const device = sel.value;
     const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
     const bitrate = $('quality').value;
-    const mono = $('mono').checked ? '1' : '0';
     localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
     let ok = false;
     try {
       const r = await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name) +
-        '&bitrate=' + encodeURIComponent(bitrate) + '&mono=' + mono, { method:'POST' });
+        '&bitrate=' + encodeURIComponent(bitrate) + '&mono=0', { method:'POST' });
       if (!r.ok) {
         // Never fail silently — this exact hole is how "Maximum stability
         // bricked everything" felt like a mystery instead of an error message.
@@ -1841,8 +1826,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // one toggle: green Go Live when idle, red Stop when live/starting
   $('liveBtn').onclick = () => {
     if (lastState === 'live' || lastState === 'starting') {
-      const pub = (localStorage.getItem('pp.autoPublish') === '1') ? '?publish=1' : '';
-      fetch('/api/stop' + pub, { method:'POST' }).then(refresh);
+      fetch('/api/stop', { method:'POST' }).then(refresh);
     } else {
       startBroadcast();
     }
@@ -1853,14 +1837,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     startBroadcast({ allowUndetermined: true });
   };
   $('captureSoftLater').onclick = hideCaptureSoftAsk;
-  (function(){ const a = $('autoPublish'); if (!a) return; a.checked = localStorage.getItem('pp.autoPublish') === '1'; a.onchange = () => { try { localStorage.setItem('pp.autoPublish', a.checked ? '1' : '0'); } catch (e) {} }; })();
-  // Room-sync toggles: server-authoritative (persisted in room-settings.json), both OFF by default.
+  // STABLE SETTINGS: server-authoritative (persisted in room-settings.json), ON
+  // by default. ON = generous guest buffers + governor (smooth, never chops);
+  // OFF = tighter, lowest latency with less margin. The guest pages read it from
+  // /api/status and pick their playback profile.
   (function(){
-    const d = $('roomSyncDelay'), c = $('driftCorrection');
-    if (!d || !c) return;
-    fetch('/api/room-settings').then(r => r.json()).then(j => { d.checked = !!j.roomSyncDelay; c.checked = !!j.driftCorrection; }).catch(() => {});
-    const post = () => { fetch('/api/room-settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ roomSyncDelay: d.checked, driftCorrection: c.checked }) }).catch(() => {}); };
-    d.onchange = post; c.onchange = post;
+    const s = $('stableSettings');
+    if (!s) return;
+    fetch('/api/room-settings').then(r => r.json()).then(j => { s.checked = j.stable !== false; }).catch(() => {});
+    s.onchange = () => { fetch('/api/room-settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ stable: s.checked }) }).catch(() => {}); };
   })();
   $('device').onchange = syncCaptureSourceSelection;
   $('device').addEventListener('pointerdown', refreshDevicesForPicker);
@@ -2823,13 +2808,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (posts) bits.push(posts + (posts === 1 ? ' post' : ' posts'));
     if (media) bits.push(media + (media === 1 ? ' photo/clip' : ' photos & clips'));
     const haul = bits.length ? ' — your guests dropped ' + bits.join(' and ') : '';
-    if (localStorage.getItem('pp.autoPublish') === '1') {
-      msg.textContent = '🎉 Set wrapped' + haul + '. Publishing your party page automatically — the link appears below.';
-      btn.hidden = true;
-    } else {
-      msg.textContent = '🎉 Set wrapped' + haul + '. Publish tonight’s party page so everyone can relive it.';
-      btn.hidden = false;
-    }
+    msg.textContent = '🎉 Set wrapped' + haul + '. Publish tonight’s party page so everyone can relive it.';
+    btn.hidden = false;
     wrap.hidden = false;
     try { wrap.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
   }
