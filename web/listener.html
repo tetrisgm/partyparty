@@ -1822,8 +1822,12 @@
     player.addEventListener('seeking', () => {
       const audible = started && !player.muted && !userPaused && !yielded;
       if (audible) audibleSeeks++;
-      // 'audible-seek' = OUR code seeked an unmuted player (a passive-playback
-      // decree violation, must stay zero). A seek we didn't issue — lock-screen
+      // 'audible-seek' = OUR code seeked an unmuted player. Historically a
+      // passive-playback violation (should stay near zero) — now ALSO the
+      // sanctioned native forward-seek governor (nativeGovernorTick), which
+      // self-classifies here via lastAppSeekAt; a burst of them means the
+      // governor is actively holding a drifty device, not a bug. A seek we didn't
+      // issue — lock-screen
       // scrub, Control Center, Safari itself — is 'external-seek': not our
       // fault, but it can park a guest far behind (the 2026-07-13 party's 34s
       // drifter started exactly this way), so it stays IMPORTANT for the logs.
@@ -1882,6 +1886,86 @@
         player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
       }
     }
+    // --- Native forward-seek-to-live governor ---------------------------------
+    // The locked-safe native path (AVPlayer <audio>) has no in-play latency
+    // correction: it parks at hold-back and every rebuffer is added permanently,
+    // so latency only GROWS — the field 4.5->5.6s ratchet that never recovers
+    // until a manual refresh. hls.js erases drift with a seamless pitch-preserved
+    // rate nudge; AVPlayer can't change rate, so the only lever is a seek. This
+    // pulls a drifted device back toward GOV_TARGET_LAT with a single FORWARD
+    // seek to live — NEVER backward: a backward seek into the unbuffered edge is
+    // the Safari-27 silent-forever hang, and on a locked phone the guest can't
+    // tap to recover. Safety (adversarially verified): (a) forward-only — the
+    // seek fires only when the CLAMPED target exceeds currentTime + GOV_FWD_TOL,
+    // tested synchronously with the assignment, so backward is unreachable;
+    // (b) `high` is clamped to the DOWNLOADED edge and the target must be strictly
+    // inside player.buffered, so a seek-into-a-gap is unreachable; (c) inert while
+    // the tab is hidden/locked — the 2s heartbeat is frozen there, so no seek is
+    // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
+    // fails to commit falls back to reattach() so the player is never left wedged.
+    const NATIVE_GOVERNOR = true;   // kill switch (OTA-flippable) for this P0 seek path
+    const GOV_TARGET_LAT = 1.2;     // hold ~1.2s behind live (above the ~+/-0.5s native lat noise)
+    const GOV_TRIGGER = 0.9;        // arm when lat exceeds target by this (lat > ~2.1s)
+    const GOV_CONFIRMATIONS = 2;    // sustained beats (~4s) before acting — well below the 8s reattach
+    const GOV_FWD_TOL = 0.75;       // minimum forward jump; a smaller correction isn't worth a skip
+    const GOV_EDGE_MARGIN = 0.9;    // land at least this far off the live edge (inside the 24s window)
+    const GOV_BUF_SAFETY = 0.3;     // land at least this far inside the buffered end, never at it
+    const GOV_COOLDOWN_MS = 5000;   // minimum gap between governor seeks
+    const GOV_CAP_PER_MIN = 6;      // beyond this, escalate to one reattach and back off (persistent lateness)
+    let govBeats = 0, govCoolingUntil = 0, govSeekTimes = [];
+    function inBufferedStrict(buffered, t){
+      try { for (let i = 0; i < buffered.length; i++) if (buffered.start(i) <= t && t <= buffered.end(i)) return true; } catch (e) {}
+      return false;
+    }
+    function bufferedEndHere(){ // end of the buffered range covering the playhead (else 0)
+      try { const t = player.currentTime, b = player.buffered;
+        for (let i = 0; i < b.length; i++) if (b.start(i) <= t && t <= b.end(i)) return b.end(i);
+      } catch (e) {}
+      return 0;
+    }
+    async function nativeGovernorTick(lat, stalled){
+      if (!NATIVE_GOVERNOR || !useNative || roomSyncDelay) return; // native live-edge path only
+      if (govCoolingUntil && Date.now() < govCoolingUntil) return;
+      if (document.visibilityState !== 'visible') { govBeats = 0; return; } // never seek hidden/locked
+      if (stalled || player.readyState < 3) { govBeats = 0; return; }
+      if (lat == null || !Number.isFinite(lat)) { govBeats = 0; return; }  // never seek on an unmeasured lat
+      const lateBy = lat - GOV_TARGET_LAT;
+      if (lateBy <= GOV_TRIGGER) { govBeats = 0; return; }        // hysteresis reset — not (yet) late enough
+      if (++govBeats < GOV_CONFIRMATIONS) return;                 // require SUSTAINED lateness, not a blip
+      const sk = player.seekable;
+      if (!sk || !sk.length) { govBeats = 0; return; }
+      const bufEnd = bufferedEndHere();
+      if (bufEnd <= 0) { govBeats = 0; return; }                  // playhead not inside a buffered range
+      const low = sk.start(0) + 0.5;
+      // Clamp to BOTH the seekable window AND what is actually downloaded, so the
+      // target can never land past the buffered edge (a gap) or at the raw edge.
+      const high = Math.min(sk.end(sk.length - 1) - GOV_EDGE_MARGIN, bufEnd - GOV_BUF_SAFETY);
+      if (high <= low) { govBeats = 0; return; }
+      const wanted = Math.min(Math.max(player.currentTime + (lat - GOV_TARGET_LAT), low), high);
+      if (wanted <= player.currentTime + GOV_FWD_TOL) { govBeats = 0; return; } // FORWARD-ONLY (the whole safety story)
+      if (!inBufferedStrict(player.buffered, wanted)) { govBeats = 0; return; } // never seek into a gap
+      const now = Date.now();
+      govSeekTimes = govSeekTimes.filter(t => now - t < 60000);
+      if (govSeekTimes.length >= GOV_CAP_PER_MIN) {               // persistently late -> one reattach, then back off
+        govBeats = 0; govCoolingUntil = now + GOV_COOLDOWN_MS * 3; govSeekTimes = [];
+        logEvent('gov-cap', { lat: rnd3(lat) });
+        reattach('gov-cap');
+        return;
+      }
+      const gen = alignGeneration;
+      govBeats = 0; govCoolingUntil = now + GOV_COOLDOWN_MS; govSeekTimes.push(now);
+      const before = player.currentTime;
+      try {
+        const seeked = waitForMediaEvent('seeked', 1800);
+        lastAppSeekAt = Date.now();     // self-classify: a governed forward seek, not an 'audible-seek' violation
+        player.currentTime = wanted;     // the ONE forward seek
+        logEvent('gov-seek', { lat: rnd3(lat), late: rnd3(lateBy), before: rnd3(before), want: rnd3(wanted) });
+        const committed = await seeked;
+        if (gen !== alignGeneration) return;                     // a newer attachment took over -> drop
+        logEvent('gov-result', { committed, pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), rs: player.readyState });
+        if (!committed) reattach('gov-uncommitted');             // never leave the player wedged
+      } catch (e) { logEvent('gov-error', { msg: String((e && e.message) || e) }); }
+    }
     function watchAudibleHealth(lat, stalled){
       if (!audibleActive()) { resetAudibleWatchdogs(); return; }
       if (stale()) {
@@ -1894,6 +1978,10 @@
       const target = roomTarget();
       const lateBy = (lat != null && Number.isFinite(lat)) ? lat - Math.max(target, 0) : null;
       if (lat != null) untrackedReattaches = 0; // tracking works again — re-arm the cap
+      // Native path: the forward-seek governor holds ~1.2s and front-runs the
+      // coarse 8s reattach below (which becomes a last-resort backstop on native).
+      // Fire-and-forget: it self-throttles and guards internally.
+      nativeGovernorTick(lat, stalled);
       if (driftCorrection && !stalled && lateBy != null && lateBy > LATE_DRIFT_REATTACH_SEC) {
         lateDriftBeats++;
         untrackedBeats = 0;
