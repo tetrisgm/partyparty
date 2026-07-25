@@ -413,6 +413,11 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 		"-ar", strconv.Itoa(c.SampleRate),
 		"-c:a", c.Codec, "-b:a", snap.bitrate,
 		"-flush_packets", "1", // low-latency: emit each packet immediately instead of buffering
+		// Kill the muxer's startup/interleave buffering — with a single audio
+		// stream there's nothing to interleave, and muxpreload/muxdelay otherwise
+		// hold ~0.5-0.7s before the first packets leave. max_delay 0 keeps muxing
+		// delay minimal on the RTSP leg.
+		"-max_delay", "0", "-muxdelay", "0", "-muxpreload", "0", "-max_interleave_delta", "0",
 	)
 	// HTTPS-only: guests are LL-HLS only (the client no longer offers a plain
 	// fallback), so we push a single RTSP stream MediaMTX repackages into LL-HLS
