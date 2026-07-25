@@ -741,7 +741,7 @@
     // Aggressive mode starts with a modest cushion (not the reliability-era 2.5s,
     // not the raw edge). 0.5s starved into stalls on real Wi-Fi; 1.2s is the
     // stable low-latency startup.
-    if (aggressive) PREBUF = 1.2;
+    if (aggressive) PREBUF = 3.0; // build a full cushion before first play so we don't start already-starving
     const debug = new URLSearchParams(location.search).get('debug') === '1';
     // One production sync design ("Precise", 2026-07): native no-seek starts
     // against the server's EXT-X-START pin on the fine stream shape, ONE silent
@@ -1159,24 +1159,25 @@
           // converges instead of drifting. Small back buffer — we sit at the front.
           preferManagedMediaSource: true,
           lowLatencyMode: usingLL(),
-          // Sit ~1.3s behind live — that gap IS the jitter buffer. Field-proven:
-          // tighter starved the buffer to 0 on normal Wi-Fi and oscillated
-          // 1.3s<->10s, so 1.3 stays until server partDur is cut. On congested
-          // party Wi-Fi (multi-second dropouts) no target under ~2s can avoid
-          // stalls — stability wins over a lower number.
-          liveSyncDuration: 1.3,
-          // Governor for the random 2-4s spikes. hls.js pins the catch-up rate at
-          // the cap for any excess >~0.7s, so this rate IS the reel-in speed:
-          // 1.35x erases a ~2s drift in ~6s, pitch-preserved, no skip. Past
-          // liveMaxLatencyDuration it hard-snaps to live (an audible skip); 3s is
-          // tight enough to cut the 4s tail without snapping on routine jitter.
-          // (The real 4.5->5.6s ratchet is fixed upstream — the capture tee now
-          // drops instead of back-pressuring; see internal/broadcast/broadcast.go.)
-          liveMaxLatencyDuration: 3,
-          maxLiveSyncPlaybackRate: 1.35,
+          // Sit ~3s behind live — that gap IS the jitter buffer, sized for
+          // RELIABILITY over a low number. The field report was "cuts off all the
+          // time," so the cushion is now deep enough to coast through a
+          // multi-second Wi-Fi dropout instead of starving to buf=0. 1.3s was the
+          // tight floor that still cut off; 3s trades ~1.7s of latency for no
+          // cutoffs (the owner's explicit call). Dial back only once the field is
+          // provably stall-free.
+          liveSyncDuration: 3.0,
+          // With a 3s cushion the catch-up stays gentle — it rarely needs to reel
+          // in, and a soft 1.15x is inaudible on music. Hard-snap only if we fall
+          // >9s behind (essentially never at a 3s target); a snap is an audible
+          // skip we don't want to trigger on ordinary jitter. (The 4.5->5.6s
+          // ratchet is fixed upstream — the capture tee drops instead of
+          // back-pressuring; see internal/broadcast/broadcast.go.)
+          liveMaxLatencyDuration: 9,
+          maxLiveSyncPlaybackRate: 1.15,
           liveDurationInfinity: true,
-          backBufferLength: 6,
-          maxBufferLength: 8,
+          backBufferLength: 10,
+          maxBufferLength: 30,
           maxBufferHole: 0.1,
           testBandwidth: false, // single bitrate — skip the startup ABR probe that delays the first fragment
           startFragPrefetch: true,
@@ -1268,7 +1269,7 @@
     const STARTUP_BUDGET_MS = 12000;
     const JOIN_WATCHDOG_MS = 15000;
     const STARTUP_BUFFER_MIN = 2.5;
-    const startupBufferMin = () => useNative ? 0.75 : (aggressive ? 1.2 : STARTUP_BUFFER_MIN);
+    const startupBufferMin = () => useNative ? 0.75 : (aggressive ? 3.0 : STARTUP_BUFFER_MIN);
     const PROGRESS_WINDOW_MS = 700;
     const MAX_ALIGN_SEEKS = 4;
     let needsAlign = false, alignGeneration = 0;
@@ -1904,8 +1905,8 @@
     // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
     // fails to commit falls back to reattach() so the player is never left wedged.
     const NATIVE_GOVERNOR = true;   // kill switch (OTA-flippable) for this P0 seek path
-    const GOV_TARGET_LAT = 1.2;     // hold ~1.2s behind live (above the ~+/-0.5s native lat noise)
-    const GOV_TRIGGER = 0.9;        // arm when lat exceeds target by this (lat > ~2.1s)
+    const GOV_TARGET_LAT = 3.0;     // hold ~3s behind live — a deep cushion (matches the aggressive path); reliability over a low number
+    const GOV_TRIGGER = 1.0;        // arm when lat exceeds target by this (lat > ~4s) — only correct a device that's drifted well past the cushion
     const GOV_CONFIRMATIONS = 2;    // sustained beats (~4s) before acting — well below the 8s reattach
     const GOV_FWD_TOL = 0.75;       // minimum forward jump; a smaller correction isn't worth a skip
     const GOV_EDGE_MARGIN = 0.9;    // land at least this far off the live edge (inside the 24s window)
