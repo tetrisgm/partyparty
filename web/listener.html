@@ -730,7 +730,7 @@
     const urlMode = new URLSearchParams(location.search).get('mode');
     const playbackMode = (urlMode === 'aggressive' || urlMode === 'proven')
       ? urlMode
-      : (window.__ppMode === 'aggressive' ? 'aggressive' : 'proven');
+      : (window.__ppMode === 'proven' ? 'proven' : 'aggressive'); // DEFAULT aggressive; ?mode=proven or config forces the lock-safe fallback
     const aggressive = playbackMode === 'aggressive';
     const mmsAvailable = ('ManagedMediaSource' in window) || ('MediaSource' in window);
     // Aggressive + MSE/MMS present -> hls.js on Apple too. Shell browsers (CriOS/
