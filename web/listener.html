@@ -704,7 +704,7 @@
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
     let attached = false, ready = false; // pre-buffer state (hls.js path)
-    const PREBUF = 2.5;                    // seconds of cushion before we let them tap
+    let PREBUF = 2.5;                      // seconds of cushion before we let them tap (aggressive mode lowers it below, once the mode is known)
     // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
     // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
     // certain Androids) answer 'maybe' to the native-HLS probe but can't
@@ -738,6 +738,10 @@
     const forceHlsOnApple = aggressive && mmsAvailable && !iosShellBrowser;
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser) && !forceHlsOnApple;
     const platform = useNative ? 'native' : 'hls';
+    // Aggressive mode starts near the live edge instead of the reliability-era
+    // 2.5s cushion — the LAN is stable, so hls.js's own lowLatency + rate catch-up
+    // owns the edge and we don't pre-park seconds of buffer.
+    if (aggressive) PREBUF = 0.5;
     const debug = new URLSearchParams(location.search).get('debug') === '1';
     // One production sync design ("Precise", 2026-07): native no-seek starts
     // against the server's EXT-X-START pin on the fine stream shape, ONE silent
@@ -1159,6 +1163,8 @@
           liveSyncOnStallIncrease: 0,
           liveDurationInfinity: true,
           backBufferLength: 6,
+          maxBufferLength: 4,   // don't buffer far ahead — a deep forward buffer lets the playhead drift back from live
+          maxBufferHole: 0.1,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
         } : {
           lowLatencyMode: usingLL(),
@@ -1248,7 +1254,7 @@
     const STARTUP_BUDGET_MS = 12000;
     const JOIN_WATCHDOG_MS = 15000;
     const STARTUP_BUFFER_MIN = 2.5;
-    const startupBufferMin = () => useNative ? 0.75 : STARTUP_BUFFER_MIN;
+    const startupBufferMin = () => useNative ? 0.75 : (aggressive ? 0.5 : STARTUP_BUFFER_MIN);
     const PROGRESS_WINDOW_MS = 700;
     const MAX_ALIGN_SEEKS = 4;
     let needsAlign = false, alignGeneration = 0;
@@ -1410,7 +1416,7 @@
         const sk = player.seekable;
         if (sk && sk.length) {
           const low = sk.start(0) + 0.5;
-          const high = sk.end(sk.length - 1) - Math.max(3, STARTUP_BUFFER_MIN);
+          const high = sk.end(sk.length - 1) - (aggressive ? 0.6 : Math.max(3, STARTUP_BUFFER_MIN));
           if (high <= low) return null;
           if (wanted < low - START_ALIGN_TOLERANCE || wanted > high + START_ALIGN_TOLERANCE) return null;
           wanted = Math.min(Math.max(wanted, low), high);
