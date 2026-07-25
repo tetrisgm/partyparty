@@ -1153,24 +1153,27 @@
         const target = latencyTarget || (usingLL() ? ROOM_TARGET_FALLBACK : 10);
         const cfg = aggressive ? {
           // AGGRESSIVE: ride the LL live edge. Prefer ManagedMediaSource (so this
-          // path works on iPhone), OMIT liveSyncDuration so hls.js targets the
-          // playlist's PART-HOLD-BACK (the tightest legal live point), and allow a
-          // gentle pitch-preserved rate catch-up so a lagging device converges to
-          // the edge instead of drifting. Small back buffer — we sit at the front.
+          // path works on iPhone), pin liveSyncDuration just above the playlist's
+          // PART-HOLD-BACK (the tightest STABLE live point — the raw edge starves),
+          // and allow a gentle pitch-preserved rate catch-up so a lagging device
+          // converges instead of drifting. Small back buffer — we sit at the front.
           preferManagedMediaSource: true,
           lowLatencyMode: usingLL(),
-          // Sit ~1.3s behind live — that gap IS the jitter buffer. Riding the raw
-          // edge (part-hold-back) starved the buffer to 0 on normal Wi-Fi and
-          // oscillated 1.3s<->10s. 1.3s is the stable low-latency point.
+          // Sit ~1.3s behind live — that gap IS the jitter buffer. Field-proven:
+          // tighter starved the buffer to 0 on normal Wi-Fi and oscillated
+          // 1.3s<->10s, so 1.3 stays until server partDur is cut. On congested
+          // party Wi-Fi (multi-second dropouts) no target under ~2s can avoid
+          // stalls — stability wins over a lower number.
           liveSyncDuration: 1.3,
-          // Governor that actually kills the random 2-4s spikes (field-observed:
-          // latency ratcheted 4.5->5.6 within a set and never recovered because
-          // the old 1.1x catch-up needed ~25s to reel in a 4s drift). 1.25x is a
-          // pitch-preserved tempo bump that erases a 2-4s drift in a few seconds
-          // with no audio skip; anything past 4s hard-snaps forward to live.
-          liveMaxLatencyDuration: 4,
-          maxLiveSyncPlaybackRate: 1.25,
-          liveSyncOnStallIncrease: 0,
+          // Governor for the random 2-4s spikes. hls.js pins the catch-up rate at
+          // the cap for any excess >~0.7s, so this rate IS the reel-in speed:
+          // 1.35x erases a ~2s drift in ~6s, pitch-preserved, no skip. Past
+          // liveMaxLatencyDuration it hard-snaps to live (an audible skip); 3s is
+          // tight enough to cut the 4s tail without snapping on routine jitter.
+          // (The real 4.5->5.6s ratchet is fixed upstream — the capture tee now
+          // drops instead of back-pressuring; see internal/broadcast/broadcast.go.)
+          liveMaxLatencyDuration: 3,
+          maxLiveSyncPlaybackRate: 1.35,
           liveDurationInfinity: true,
           backBufferLength: 6,
           maxBufferLength: 8,
@@ -1193,7 +1196,6 @@
           // Do not speed up healthy playback. A device that falls far outside
           // the live window may reattach itself without touching room state.
           maxLiveSyncPlaybackRate: 1.0,
-          liveSyncOnStallIncrease: 0,
           liveDurationInfinity: true,
           backBufferLength: 30,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,

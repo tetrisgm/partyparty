@@ -429,22 +429,35 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	// HTTPS-only: guests are LL-HLS only (the client no longer offers a plain
 	// fallback), so we push a single RTSP stream MediaMTX repackages into LL-HLS
 	// over HTTPS, plus the optional recording — no plain-HLS playlist at all.
-	// use_fifo + onfail=ignore: a dying MediaMTX must never stall or kill the
-	// recording, and a full disk must never kill the live broadcast.
-	tee := "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]" + b.ingestURL
+	//
+	// Each leg drains through its OWN fifo that DROPS on overflow instead of
+	// blocking — load-bearing for latency STABILITY. The default fifo (and a leg
+	// with no fifo at all, as the record leg used to be) BLOCKS when its consumer
+	// is slow, which back-pressures the shared tee -> ffmpeg stops draining stdin
+	// -> PCM piles up in the capture ring -> the live edge falls PERMANENTLY
+	// behind real time (a one-way latency ratchet — the field-observed 4.5->5.6s
+	// creep). onfail=ignore only survives a leg that fails to OPEN, not one that
+	// is merely SLOW; drop_pkts_on_overflow is what actually decouples a slow
+	// record disk or cloud upload from the live RTSP leg. It drops only after the
+	// fifo's default ~1.3s (60-packet) queue fills, so normal write bursts never
+	// drop; a real stall costs a brief per-leg gap instead of ratcheting everyone.
+	// (fifo_options carries a single option deliberately: an internal ':' needs
+	// tee-level escaping that this bundled ffmpeg mis-parses — verified — leaking
+	// the option to the slave muxer; the default queue depth is the right
+	// threshold for every leg anyway.)
+	const dropFifo = ":use_fifo=1:fifo_options=drop_pkts_on_overflow=1"
+	tee := "[f=rtsp:rtsp_transport=tcp:onfail=ignore" + dropFifo + "]" + b.ingestURL
 	if snap.recordPath != "" {
-		tee += "|[f=adts:onfail=ignore]" + snap.recordPath
+		tee += "|[f=adts:onfail=ignore" + dropFifo + "]" + snap.recordPath
 	}
 	// Optional THIRD leg — the cloud mirror for remote guests. Stream-copies the
 	// SAME already-encoded AAC (no second encode) into a plain-HLS playlist in a
-	// scratch dir that internal/livemirror ships to R2. It carries the identical
-	// isolation the recording leg relies on — onfail=ignore + use_fifo=1 — so a
-	// slow or failing cloud upload draining this FIFO can NEVER back-pressure or
-	// break the LAN RTSP leg above. Only present when a mirror dir is configured;
-	// with the mirror off this whole clause is skipped and the tee is exactly the
-	// RTSP (+ optional record) legs it is today.
+	// scratch dir that internal/livemirror ships to R2. With drop-on-overflow it is
+	// fully decoupled: a slow or failing cloud upload draining this FIFO can never
+	// back-pressure the LAN RTSP leg above. Only present when a mirror dir is
+	// configured; with the mirror off the tee is just the RTSP (+ record) legs.
 	if snap.mirrorDir != "" {
-		tee += "|[f=hls:hls_time=3:hls_list_size=8:hls_flags=delete_segments+omit_endlist:hls_segment_type=mpegts:onfail=ignore:use_fifo=1]" + filepath.Join(snap.mirrorDir, "live.m3u8")
+		tee += "|[f=hls:hls_time=3:hls_list_size=8:hls_flags=delete_segments+omit_endlist:hls_segment_type=mpegts:onfail=ignore" + dropFifo + "]" + filepath.Join(snap.mirrorDir, "live.m3u8")
 	}
 	args = append(args, "-f", "tee", "-map", "0:a", tee)
 	return args

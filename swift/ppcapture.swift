@@ -123,7 +123,14 @@ guard err == noErr, aggID != kAudioObjectUnknown else {
     fail("aggregate device failed (err \(err))", code: 4)
 }
 
-let ring = PCMRing(capacitySamples: rate * ch * 8) // ~8s of headroom
+// ~0.5s ring. It only needs to absorb producer/consumer scheduling jitter (HAL
+// IOProc -> blocking writer), which is tens of ms — the tee legs now
+// drop-on-overflow so a downstream stall no longer back-pressures the writer. A
+// deep (was 8s) ring turned a transient stall into seconds of ACCUMULATING
+// latency before it finally dropped (the ratchet); a shallow ring makes a stall
+// cost a short bounded gap + instant resync instead. Drop path already exists in
+// PCMRing.push().
+let ring = PCMRing(capacitySamples: rate * ch / 2)
 var procID: AudioDeviceIOProcID?
 err = AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { _, inInputData, _, _, _ in
     let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inInputData))

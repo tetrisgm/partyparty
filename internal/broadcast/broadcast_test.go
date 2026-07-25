@@ -389,13 +389,15 @@ func teeArg(t *testing.T, args []string) string {
 	return ""
 }
 
-const rtspLeg = "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]rtsp://127.0.0.1:8554/party"
+const rtspLeg = "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]rtsp://127.0.0.1:8554/party"
 
 // TestBuildArgsMirrorLeg pins the critical-safety contract: the cloud-mirror
 // tee leg is present ONLY when a mirror dir is configured, it never alters the
-// LAN RTSP leg or the record leg, and it carries the exact isolation flags
-// (onfail=ignore + use_fifo=1) that keep a slow/dead cloud upload from ever
-// back-pressuring the live LAN stream.
+// LAN RTSP leg or the record leg, and every leg carries the exact isolation
+// flags (onfail=ignore + use_fifo=1 + drop_pkts_on_overflow=1) that keep a
+// slow/dead cloud upload OR record disk from ever back-pressuring the live LAN
+// stream — the drop-on-overflow is what makes "slow" (not just "failed to open")
+// non-blocking, closing the one-way latency ratchet.
 func TestBuildArgsMirrorLeg(t *testing.T) {
 	b := New(testCfg("ffmpeg"), t.TempDir(), "", "rtsp://127.0.0.1:8554/party")
 	base := argSnap{bitrate: "320k", channels: 2, hlsTime: 1, delivery: "llhls"}
@@ -413,7 +415,7 @@ func TestBuildArgsMirrorLeg(t *testing.T) {
 	rec := base
 	rec.recordPath = "/tmp/set.aac"
 	offRec := teeArg(t, b.buildArgs("test", 48000, 2, rec))
-	if offRec != rtspLeg+"|[f=adts:onfail=ignore]/tmp/set.aac" {
+	if offRec != rtspLeg+"|[f=adts:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]/tmp/set.aac" {
 		t.Fatalf("mirror-off record tee = %q", offRec)
 	}
 
@@ -421,7 +423,7 @@ func TestBuildArgsMirrorLeg(t *testing.T) {
 	on := base
 	on.mirrorDir = "/scratch/livemirror"
 	got := teeArg(t, b.buildArgs("test", 48000, 2, on))
-	wantHLS := "[f=hls:hls_time=3:hls_list_size=8:hls_flags=delete_segments+omit_endlist:hls_segment_type=mpegts:onfail=ignore:use_fifo=1]/scratch/livemirror/live.m3u8"
+	wantHLS := "[f=hls:hls_time=3:hls_list_size=8:hls_flags=delete_segments+omit_endlist:hls_segment_type=mpegts:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]/scratch/livemirror/live.m3u8"
 	if got != rtspLeg+"|"+wantHLS {
 		t.Fatalf("mirror-on tee = %q, want RTSP leg + %q", got, wantHLS)
 	}
@@ -433,7 +435,7 @@ func TestBuildArgsMirrorLeg(t *testing.T) {
 	both := rec
 	both.mirrorDir = "/scratch/livemirror"
 	gotBoth := teeArg(t, b.buildArgs("test", 48000, 2, both))
-	wantBoth := rtspLeg + "|[f=adts:onfail=ignore]/tmp/set.aac|" + wantHLS
+	wantBoth := rtspLeg + "|[f=adts:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]/tmp/set.aac|" + wantHLS
 	if gotBoth != wantBoth {
 		t.Fatalf("mirror-on+record tee = %q, want %q", gotBoth, wantBoth)
 	}
