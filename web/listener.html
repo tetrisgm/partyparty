@@ -1159,12 +1159,17 @@
           // the edge instead of drifting. Small back buffer — we sit at the front.
           preferManagedMediaSource: true,
           lowLatencyMode: usingLL(),
-          // Sit ~1.5s behind live — that gap IS the jitter buffer. Riding the raw
+          // Sit ~1.3s behind live — that gap IS the jitter buffer. Riding the raw
           // edge (part-hold-back) starved the buffer to 0 on normal Wi-Fi and
-          // stalled/oscillated 1.3s<->10s. 1.5s is the stable low-latency point.
-          liveSyncDuration: 1.5,
-          liveMaxLatencyDuration: 6,
-          maxLiveSyncPlaybackRate: 1.1,  // gentle pitch-preserved catch-up — no overshoot/oscillation
+          // oscillated 1.3s<->10s. 1.3s is the stable low-latency point.
+          liveSyncDuration: 1.3,
+          // Governor that actually kills the random 2-4s spikes (field-observed:
+          // latency ratcheted 4.5->5.6 within a set and never recovered because
+          // the old 1.1x catch-up needed ~25s to reel in a 4s drift). 1.25x is a
+          // pitch-preserved tempo bump that erases a 2-4s drift in a few seconds
+          // with no audio skip; anything past 4s hard-snaps forward to live.
+          liveMaxLatencyDuration: 4,
+          maxLiveSyncPlaybackRate: 1.25,
           liveSyncOnStallIncrease: 0,
           liveDurationInfinity: true,
           backBufferLength: 6,
