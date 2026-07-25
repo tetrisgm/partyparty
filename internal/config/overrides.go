@@ -25,7 +25,17 @@ type Overrides struct {
 	SegDur        *string  // LL-HLS segment duration (MediaMTX, applied at startup)
 	SegCount      *int     // LL-HLS playlist length (MediaMTX, applied at startup)
 	LatencyTarget *float64 // room delay seconds, 0 = auto (applied at startup)
+	Codec         *string  // audio encoder (ffmpeg -c:a, per-broadcast)
 }
+
+// codecs is the allowlist of audio encoders the bundled ffmpeg has AND MediaMTX
+// can repackage into LL-HLS. aac_at (Apple AAC, default) and aac are the safe,
+// universally-playable AAC-LC path. libopus is the low-DELAY option (~5-20ms
+// algorithmic latency vs AAC-LC's ~130ms) — a real encoder-latency win, gated on
+// the mediamtx->iOS Opus-in-HLS path actually playing (test before defaulting;
+// the adts recording + mpegts mirror legs are AAC-only and degrade via
+// onfail=ignore while the live LL-HLS leg carries Opus).
+var codecs = map[string]bool{"aac_at": true, "aac": true, "libopus": true}
 
 var bitrateRE = regexp.MustCompile(`^([0-9]{2,4})k$`)
 
@@ -47,6 +57,7 @@ func ParseOverrides(raw []byte) Overrides {
 			SegDur           *string  `json:"segDur"`
 			SegCount         *int     `json:"segCount"`
 			LatencyTargetSec *float64 `json:"latencyTargetSec"`
+			Codec            *string  `json:"codec"`
 		} `json:"server"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil || doc.Server == nil {
@@ -93,6 +104,9 @@ func ParseOverrides(raw []byte) Overrides {
 	}
 	if s.LatencyTargetSec != nil && *s.LatencyTargetSec >= 0 && *s.LatencyTargetSec <= 15 {
 		o.LatencyTarget = s.LatencyTargetSec
+	}
+	if s.Codec != nil && codecs[*s.Codec] {
+		o.Codec = s.Codec
 	}
 	return o
 }
@@ -149,6 +163,9 @@ func (c Config) WithOverrides(o Overrides) Config {
 	}
 	if o.LatencyTarget != nil {
 		c.LatencyTarget = *o.LatencyTarget
+	}
+	if o.Codec != nil {
+		c.Codec = *o.Codec
 	}
 	return c
 }
