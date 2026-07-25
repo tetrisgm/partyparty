@@ -719,7 +719,24 @@
     // (identical to Safari, EXT-X-START honored) instead of telling people to
     // switch browsers.
     const iosShellBrowser = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
-    const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
+    // Playback mode. "proven" (default) = native <audio> on Apple — the LOCK-SAFE
+    // path that keeps playing screen-off / backgrounded. "aggressive" routes Apple
+    // onto hls.js via ManagedMediaSource too: we control the buffer (much lower
+    // latency) and get the seek / gentle-rate levers for tight sync. It stays
+    // OPT-IN until MMS is confirmed to survive a screen lock — that lock-safety is
+    // the whole product invariant. ?mode=aggressive|proven overrides per-device for
+    // testing; window.__ppMode is the config default; no ManagedMediaSource => the
+    // device always falls back to proven native regardless of mode.
+    const urlMode = new URLSearchParams(location.search).get('mode');
+    const playbackMode = (urlMode === 'aggressive' || urlMode === 'proven')
+      ? urlMode
+      : (window.__ppMode === 'aggressive' ? 'aggressive' : 'proven');
+    const aggressive = playbackMode === 'aggressive';
+    const mmsAvailable = ('ManagedMediaSource' in window) || ('MediaSource' in window);
+    // Aggressive + MSE/MMS present -> hls.js on Apple too. Shell browsers (CriOS/
+    // FxiOS/EdgiOS) stay native even in aggressive mode (their MSE was field-flaky).
+    const forceHlsOnApple = aggressive && mmsAvailable && !iosShellBrowser;
+    const useNative = nativeHLS && (isAppleUA || iosShellBrowser) && !forceHlsOnApple;
     const platform = useNative ? 'native' : 'hls';
     const debug = new URLSearchParams(location.search).get('debug') === '1';
     // One production sync design ("Precise", 2026-07): native no-seek starts
@@ -842,7 +859,8 @@
           scr: screen.width + 'x' + screen.height + '@' + (window.devicePixelRatio || 1),
           net: c.effectiveType || '', dl: c.downlink || 0,
           lang: navigator.language || '', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone) || '',
-          native: useNative, mem: navigator.deviceMemory || 0, cores: navigator.hardwareConcurrency || 0,
+          native: useNative, mode: playbackMode, mms: ('ManagedMediaSource' in window),
+          mem: navigator.deviceMemory || 0, cores: navigator.hardwareConcurrency || 0,
         });
       } catch (e) {}
     })();
@@ -1129,7 +1147,20 @@
       } else if (Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
         const target = latencyTarget || (usingLL() ? ROOM_TARGET_FALLBACK : 10);
-        const cfg = {
+        const cfg = aggressive ? {
+          // AGGRESSIVE: ride the LL live edge. Prefer ManagedMediaSource (so this
+          // path works on iPhone), OMIT liveSyncDuration so hls.js targets the
+          // playlist's PART-HOLD-BACK (the tightest legal live point), and allow a
+          // gentle pitch-preserved rate catch-up so a lagging device converges to
+          // the edge instead of drifting. Small back buffer — we sit at the front.
+          preferManagedMediaSource: true,
+          lowLatencyMode: usingLL(),
+          maxLiveSyncPlaybackRate: 1.5,
+          liveSyncOnStallIncrease: 0,
+          liveDurationInfinity: true,
+          backBufferLength: 6,
+          manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
+        } : {
           lowLatencyMode: usingLL(),
           // Hold at the server's ROOM TARGET using hls.js's own gentle,
           // pitch-preserved rate sync. Native iOS is aligned separately from
