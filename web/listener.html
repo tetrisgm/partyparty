@@ -1165,6 +1165,8 @@
           backBufferLength: 6,
           maxBufferLength: 4,   // don't buffer far ahead — a deep forward buffer lets the playhead drift back from live
           maxBufferHole: 0.1,
+          testBandwidth: false, // single bitrate — skip the startup ABR probe that delays the first fragment
+          startFragPrefetch: true,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
         } : {
           lowLatencyMode: usingLL(),

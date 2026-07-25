@@ -407,10 +407,17 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	// the old "plain-HLS segments on disk" check now that we don't tee plain HLS.
 	args := []string{"-hide_banner", "-loglevel", "warning", "-progress", b.progressFile()}
 	args = append(args, input...)
+	// Encode at the CAPTURE rate for the mac tap (its rate follows the output
+	// device — 44.1k or 48k), so ffmpeg never resamples: a resample is an extra
+	// filter + delay for zero benefit, and AAC/HLS play either rate natively.
+	outRate := c.SampleRate
+	if device == "mac" && inRate > 0 {
+		outRate = inRate
+	}
 	args = append(args,
 		"-vn",
 		"-ac", strconv.Itoa(snap.channels),
-		"-ar", strconv.Itoa(c.SampleRate),
+		"-ar", strconv.Itoa(outRate),
 		"-c:a", c.Codec, "-b:a", snap.bitrate,
 		"-flush_packets", "1", // low-latency: emit each packet immediately instead of buffering
 		// Kill the muxer's startup/interleave buffering — with a single audio
