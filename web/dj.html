@@ -730,6 +730,10 @@
         <button class="ghost" id="accountRefreshBtn" type="button">Refresh</button>
         <button class="ghost dangertext" id="accountSignOutBtn" type="button">Sign out</button>
       </div>
+      <div class="account-actions">
+        <button class="ghost" id="privacyBtn" type="button">Privacy policy</button>
+        <button class="ghost" id="supportBtn" type="button">Support</button>
+      </div>
       <div id="accountSettingsMsg" class="hint" style="display:none"></div>
     </section>
 
@@ -1148,6 +1152,18 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     loadAccountStatus({ silent: true, fresh: true }).then(() => { msg.textContent = 'Account refreshed.'; });
   };
   $('accountSignOutBtn').onclick = signOutAccount;
+  function openProductPage(path){
+    const url = 'https://partyparty.party' + path;
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pp) {
+        window.webkit.messageHandlers.pp.postMessage({ action: 'openURL', url });
+        return;
+      }
+    } catch (e) {}
+    window.open(url, '_blank', 'noopener');
+  }
+  $('privacyBtn').onclick = () => openProductPage('/privacy');
+  $('supportBtn').onclick = () => openProductPage('/support');
 
   // Black-box recorder (console side): JS errors + key admin actions folded
   // into the Mac session log. A broken console means the DJ can't operate, so

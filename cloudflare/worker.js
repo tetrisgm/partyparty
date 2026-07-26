@@ -408,11 +408,25 @@ async function accountResponse(request, env) {
       <div class="sectionhead" style="margin:0 0 12px"><div><h2>Linked Macs</h2><p>Only Macs you approve can provision a secure room address.</p></div></div>
       ${deviceRows}<p class="hint" id="device-unlink-out" role="status"></p>
     </div>
+    <div class="card" style="margin-top:16px">
+      <div class="sectionhead"><div><h2>Privacy</h2><p>Review what partyparty stores or permanently delete this account.</p></div></div>
+      <div class="ecta"><a class="btn lt sm" href="/privacy">Privacy policy</a><a class="btn lt sm" href="/support">Support</a></div>
+      <details style="margin-top:18px">
+        <summary style="cursor:pointer;color:#b42318;font-weight:650">Delete account</summary>
+        <p class="hint">This permanently deletes your account, DJ profile, linked-Mac records, and associated cloud account data. Party audio, posts, and uploads already stored on your Mac stay on that Mac.</p>
+        <div class="authform" style="margin-top:10px">
+          <label for="delete-confirm">Type <b>DELETE</b> to confirm</label>
+          <input id="delete-confirm" autocomplete="off" spellcheck="false">
+          <button class="btn" id="delete-account" type="button" style="background:#b42318">Permanently delete account</button>
+        </div>
+        <p class="hint" id="delete-account-out" role="status"></p>
+      </details>
+    </div>
   </div>
   <script>
-(function(){var b=document.getElementById('sign-out');if(b)b.addEventListener('click',function(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/'})});var out=document.getElementById('device-unlink-out');document.querySelectorAll('[data-unlink-install]').forEach(function(btn){btn.addEventListener('click',function(){var id=btn.getAttribute('data-unlink-install');btn.disabled=true;if(out)out.textContent='Unlinking...';fetch('/api/install-link/unlink',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({install_id:id})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(o){if(!o.ok)throw new Error(o.json&&o.json.error||'Could not unlink.');if(out)out.textContent='Unlinked.';setTimeout(function(){location.reload()},400)}).catch(function(e){if(out)out.textContent=e.message;btn.disabled=false})})})})();
+(function(){var b=document.getElementById('sign-out');if(b)b.addEventListener('click',function(){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(function(){location.href='/'})});var out=document.getElementById('device-unlink-out');document.querySelectorAll('[data-unlink-install]').forEach(function(btn){btn.addEventListener('click',function(){var id=btn.getAttribute('data-unlink-install');btn.disabled=true;if(out)out.textContent='Unlinking...';fetch('/api/install-link/unlink',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({install_id:id})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(o){if(!o.ok)throw new Error(o.json&&o.json.error||'Could not unlink.');if(out)out.textContent='Unlinked.';setTimeout(function(){location.reload()},400)}).catch(function(e){if(out)out.textContent=e.message;btn.disabled=false})})})});var del=document.getElementById('delete-account'),confirmInput=document.getElementById('delete-confirm'),delOut=document.getElementById('delete-account-out');if(del)del.addEventListener('click',function(){if(confirmInput.value!=='DELETE'){delOut.textContent='Type DELETE exactly to confirm.';return}del.disabled=true;delOut.textContent='Deleting your account...';fetch('/api/account/delete',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:'DELETE'})}).then(function(r){return r.json().then(function(j){return {ok:r.ok,json:j}})}).then(function(o){if(!o.ok)throw new Error(o.json&&o.json.error||'Could not delete account.');delOut.textContent='Account deleted.';setTimeout(function(){location.href='/'},500)}).catch(function(e){delOut.textContent=e.message;del.disabled=false})})})();
   <\/script>
-  <footer><span>partyparty</span><span>Signed in as ${esc(user.email || "")}</span></footer>`;
+  <footer><span>partyparty</span><span><a href="/privacy">Privacy</a> · <a href="/support">Support</a></span></footer>`;
   return new Response(shell({
     title: "Account \xB7 partyparty",
     desc: "Manage Macs linked to your partyparty account.",
@@ -420,6 +434,45 @@ async function accountResponse(request, env) {
     url: "/account",
     body
   }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+function legalResponse(pathname) {
+  const privacy = pathname === "/privacy";
+  const body = privacy ? `<div class="page">
+    <div class="card">
+      <h1>Privacy policy</h1>
+      <p class="sub">Effective July 26, 2026</p>
+      <h2>What partyparty does</h2>
+      <p>The Mac app serves live audio and the active party room directly to guests on the same Wi-Fi. Party audio, guest names, posts, comments, reactions, photos, and videos stay on the DJ's Mac. They are not uploaded to partyparty's cloud service.</p>
+      <h2>Account data</h2>
+      <p>When a DJ signs in, partyparty stores the account email address, account and DJ profile identifiers, and a random install identifier for each linked Mac. These records are used only to authenticate the DJ and provision a certificate-backed local room address.</p>
+      <h2>Diagnostics</h2>
+      <p>The Mac App Store edition keeps diagnostics on the Mac and does not upload session logs or status telemetry. Cloudflare may process ordinary request metadata needed to operate and secure the website, authentication, and certificate broker.</p>
+      <h2>Sharing and tracking</h2>
+      <p>partyparty does not sell personal data, track people across apps or websites, or use account data for advertising.</p>
+      <h2>Retention and deletion</h2>
+      <p>Account data is kept while the account is active. A signed-in DJ can permanently delete the account and its associated cloud data from <a href="/account"><u>Account</u></a>. Content stored locally in an event folder remains under the Mac owner's control.</p>
+      <h2>Contact</h2>
+      <p>Questions or privacy requests: <a href="mailto:support@partyparty.party"><u>support@partyparty.party</u></a>.</p>
+    </div>
+  </div>` : `<div class="page">
+    <div class="card">
+      <h1>Support</h1>
+      <p class="sub">Help with partyparty for Mac.</p>
+      <h2>Contact</h2>
+      <p>Email <a href="mailto:support@partyparty.party"><u>support@partyparty.party</u></a> with the app version, macOS version, and a short description of what happened.</p>
+      <h2>Before a party</h2>
+      <p>Connect the Mac and guests to the venue Wi-Fi, open partyparty, select the audio source, and use the displayed HTTPS QR code. Guests need no account and can keep listening while their iPhone is locked.</p>
+      <h2>Account and privacy</h2>
+      <p>Manage linked Macs or delete an account from <a href="/account"><u>Account</u></a>. Read the <a href="/privacy"><u>privacy policy</u></a>.</p>
+    </div>
+  </div>`;
+  return new Response(shell({
+    title: `${privacy ? "Privacy" : "Support"} \xB7 partyparty`,
+    desc: privacy ? "How partyparty handles account and party data." : "Support for partyparty on Mac.",
+    ogImage: DEFAULT_OG_IMAGE,
+    url: pathname,
+    body: body + `<footer><span>partyparty</span><span><a href="/privacy">Privacy</a> \xB7 <a href="/support">Support</a></span></footer>`
+  }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } });
 }
 function renderNotFound() {
   return shell({
@@ -1054,6 +1107,7 @@ async function googleAuthCallback(request, env) {
 }
 var APPLE_AUTH_URL = "https://appleid.apple.com/auth/authorize";
 var APPLE_TOKEN_URL = "https://appleid.apple.com/auth/token";
+var APPLE_REVOKE_URL = "https://appleid.apple.com/auth/revoke";
 var APPLE_ISS = "https://appleid.apple.com";
 function b64urlBytes(bytes) {
   let bin = "";
@@ -1134,6 +1188,21 @@ async function appleAuthCallback(request, env) {
   if (!emailNorm) return oauthError("verify");
   const session = await createAuthSession(env, request, emailNorm);
   if (!session || !session.cookie) return oauthError("session");
+  const revokeToken = String(tok.refresh_token || tok.access_token || "");
+  if (revokeToken) {
+    const now = nowMs();
+    const tokenKind = tok.refresh_token ? "refresh_token" : "access_token";
+    await env.DB.prepare(
+      `INSERT INTO auth_provider_tokens
+         (provider, user_id, provider_sub, revoke_token, token_kind, created_ms, updated_ms)
+       VALUES ('apple', ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(provider, user_id) DO UPDATE SET
+         provider_sub=excluded.provider_sub,
+         revoke_token=excluded.revoke_token,
+         token_kind=excluded.token_kind,
+         updated_ms=excluded.updated_ms`
+    ).bind(session.user.id, String(claims.sub || ""), revokeToken, tokenKind, now, now).run();
+  }
   const dest = await signInLanding(env, session.user, st.redirect);
   const headers = new Headers({ location: dest, "cache-control": "no-store" });
   headers.append("set-cookie", session.cookie);
@@ -1163,6 +1232,102 @@ async function authMe(request, env) {
       display_name: user.display_name
     }
   });
+}
+async function revokeAppleCredential(env, userId) {
+  const credential = await env.DB.prepare(
+    "SELECT revoke_token, token_kind FROM auth_provider_tokens WHERE provider='apple' AND user_id=? LIMIT 1"
+  ).bind(userId).first();
+  if (!credential?.revoke_token) return;
+  const secret = await appleClientSecret(env);
+  const response = await fetch(APPLE_REVOKE_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: env.AUTH_APPLE_ID,
+      client_secret: secret,
+      token: credential.revoke_token,
+      token_type_hint: credential.token_kind === "access_token" ? "access_token" : "refresh_token"
+    }).toString()
+  });
+  if (!response.ok) throw new Error(`apple revoke failed: ${response.status}`);
+}
+async function deleteR2Prefix(env, prefix) {
+  if (!env?.DL) return;
+  let cursor = void 0;
+  for (let page = 0; page < 20; page += 1) {
+    const listed = await env.DL.list({ prefix, limit: 1e3, cursor });
+    for (const object of listed.objects || []) await env.DL.delete(object.key);
+    if (!listed.truncated || !listed.cursor) return;
+    cursor = listed.cursor;
+  }
+}
+async function deleteMachineDNS(env, slug) {
+  if (!slug || !(env.CF_DNS_TOKEN && env.CF_ZONE_ID && env.BROKER_BASE)) return;
+  const host = machineHost(env, slug);
+  const records = await cfDNS(env, "GET", `?type=A&name=${encodeURIComponent(host)}`) || [];
+  for (const record of records) await cfDNS(env, "DELETE", "/" + record.id);
+}
+async function authDeleteAccount(request, env) {
+  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (!env.DB) return jsonResp(503, { error: "account db not configured" });
+  const user = await getSessionUser(env, request);
+  if (!user) return jsonResp(401, { error: "sign in required" });
+  const body = await readJson(request, 1024);
+  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+  if (String(body.confirm || "") !== "DELETE") return jsonResp(400, { error: "type DELETE to confirm" });
+  if (hasAppleProvider(env)) {
+    try {
+      await revokeAppleCredential(env, user.id);
+    } catch (error) {
+      console.warn("apple credential revoke failed during account deletion", {
+        message: String(error?.message || error)
+      });
+    }
+  }
+  const installs = await env.DB.prepare(
+    "SELECT install_id, install_slug FROM device_installs WHERE user_id=?"
+  ).bind(user.id).all();
+  const rows = installs?.results || [];
+  for (const row of rows) {
+    await env.DB.prepare("DELETE FROM live_installs WHERE install_id=?").bind(row.install_id).run();
+  }
+  const statements = [
+    ["DELETE FROM event_guests WHERE user_id=?", user.id],
+    ["DELETE FROM event_guest_claims WHERE user_id=?", user.id],
+    ["DELETE FROM event_rsvps WHERE user_id=?", user.id],
+    ["DELETE FROM post_comments WHERE author_user_id=?", user.id],
+    ["DELETE FROM posts WHERE author_user_id=?", user.id],
+    ["DELETE FROM follows WHERE follower_user_id=? OR dj_profile_id IN (SELECT id FROM dj_profiles WHERE user_id=?)", user.id, user.id],
+    ["DELETE FROM event_aliases WHERE slug IN (SELECT slug FROM events WHERE owner_user_id=?)", user.id],
+    ["DELETE FROM publish_events WHERE user_id=?", user.id],
+    ["DELETE FROM events WHERE owner_user_id=?", user.id],
+    ["DELETE FROM device_installs WHERE user_id=?", user.id],
+    ["DELETE FROM auth_magic_tokens WHERE user_id=? OR email_norm=?", user.id, user.email_norm],
+    ["DELETE FROM users WHERE id=?", user.id]
+  ];
+  for (const [sql, ...bindings] of statements) await env.DB.prepare(sql).bind(...bindings).run();
+  for (const row of rows) {
+    const id = String(row.install_id || "");
+    const slug = String(row.install_slug || "");
+    const cleanup = [
+      env.DL?.delete(`broker/${id}.json`).catch(() => {
+      }),
+      env.DL?.delete(installLinkAttemptKey(id)).catch(() => {
+      }),
+      deleteR2Prefix(env, `logs/${id}/`).catch(() => {
+      }),
+      deleteR2Prefix(env, `telemetry/${id}/`).catch(() => {
+      }),
+      deleteMachineDNS(env, slug).catch(() => {
+      })
+    ];
+    if (slug) cleanup.push(env.DL?.delete(`broker/slug/${slug}`).catch(() => {
+    }));
+    await Promise.all(cleanup);
+  }
+  const headers = new Headers({ "content-type": "application/json" });
+  headers.append("set-cookie", cookieHeader(SESSION_COOKIE, "", { maxAge: 0, httpOnly: true, secure: true, sameSite: "Lax" }));
+  return new Response(JSON.stringify({ ok: true, deleted: true }), { status: 200, headers });
 }
 async function installLinkCreate(request, env) {
   if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
@@ -1915,6 +2080,13 @@ var worker_default = {
         return jsonResp(200, { user: null });
       }
     }
+    if (pathname === "/api/account/delete") {
+      try {
+        return await authDeleteAccount(request, env);
+      } catch (_) {
+        return jsonResp(500, { error: "account deletion unavailable" });
+      }
+    }
     if (pathname === "/api/version") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
@@ -1977,6 +2149,13 @@ var worker_default = {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }
         });
       }
+    }
+    if (pathname === "/privacy" || pathname === "/support") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const response = legalResponse(pathname);
+      return request.method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
     }
     if (pathname.startsWith("/api/broker/")) {
       try {

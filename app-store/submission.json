@@ -1,0 +1,34 @@
+{
+  "bundleId": "fm.partyparty.app",
+  "sku": "partyparty-mac-2026",
+  "primaryLanguage": "en-US",
+  "platform": "MAC_OS",
+  "versionSource": "app/Info.plist",
+  "primaryCategory": "MUSIC",
+  "secondaryCategory": "ENTERTAINMENT",
+  "price": "FREE",
+  "releaseType": "MANUAL",
+  "contentRights": "USES_THIRD_PARTY_CONTENT",
+  "usesNonExemptEncryption": false,
+  "collectsData": true,
+  "privacyDataTypes": [
+    {
+      "type": "EMAIL_ADDRESS",
+      "linkedToUser": true,
+      "tracking": false,
+      "purposes": ["APP_FUNCTIONALITY"]
+    },
+    {
+      "type": "USER_ID",
+      "linkedToUser": true,
+      "tracking": false,
+      "purposes": ["APP_FUNCTIONALITY"]
+    },
+    {
+      "type": "DEVICE_ID",
+      "linkedToUser": true,
+      "tracking": false,
+      "purposes": ["APP_FUNCTIONALITY"]
+    }
+  ]
+}

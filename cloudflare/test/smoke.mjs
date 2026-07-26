@@ -77,9 +77,14 @@ test("normalization and bounded JSON parsing remain strict", async () => {
   assert.equal(await readJson(new Request("https://x/", { method: "POST", body: '{"too":"large"}' }), 2), null);
 });
 
-test("landing, version, appcast, installer, and OTA artifacts are served", async () => {
+test("landing, legal pages, version, appcast, installer, and OTA artifacts are served", async () => {
   const env = baseEnv();
   assert.equal(await (await worker.fetch(new Request("https://partyparty.party/"), env)).text(), "landing");
+  for (const path of ["/privacy", "/support"]) {
+    const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
+    assert.equal(response.status, 200, path);
+    assert.match(await response.text(), /partyparty/);
+  }
   const version = await (await worker.fetch(new Request("https://partyparty.party/api/version"), env)).json();
   assert.equal(version.version, APP_VERSION);
   assert.equal((await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env)).status, 200);
@@ -132,6 +137,58 @@ test("account pages still gate anonymous users", async () => {
   const response = await worker.fetch(new Request("https://partyparty.party/account"), env);
   assert.equal(response.status, 302);
   assert.match(response.headers.get("location") || "", /^\/login/);
+});
+
+test("account deletion removes the user and linked install credentials", async () => {
+  const calls = [];
+  const user = {
+    id: "user-1",
+    email: "dj@example.com",
+    email_norm: "dj@example.com",
+    display_name: "DJ",
+  };
+  const DB = {
+    prepare(sql) {
+      return {
+        bind(...args) {
+          return {
+            async first() {
+              if (sql.includes("FROM auth_sessions")) return user;
+              return null;
+            },
+            async all() {
+              if (sql.includes("FROM device_installs")) {
+                return { results: [{ install_id: "abcdef123456", install_slug: "disco12" }] };
+              }
+              return { results: [] };
+            },
+            async run() {
+              calls.push([sql, args]);
+              return { meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    },
+  };
+  const DL = new MemoryR2({
+    "broker/abcdef123456.json": "{}",
+    "broker/slug/disco12": "abcdef123456",
+    "logs/abcdef123456/session.log.gz": new Uint8Array([1]),
+    "telemetry/abcdef123456/1.json": "{}",
+  });
+  const response = await worker.fetch(new Request("https://partyparty.party/api/account/delete", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      cookie: "pp_session=valid",
+    },
+    body: JSON.stringify({ confirm: "DELETE" }),
+  }), { DB, DL });
+  assert.equal(response.status, 200);
+  assert.ok(calls.some(([sql]) => sql === "DELETE FROM users WHERE id=?"));
+  assert.equal(await DL.get("broker/abcdef123456.json"), null);
+  assert.equal(await DL.get("logs/abcdef123456/session.log.gz"), null);
 });
 
 let failures = 0;

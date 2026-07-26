@@ -16,6 +16,10 @@ fail() {
 INFO="$APP/Contents/Info.plist"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INFO")" = "$EXPECTED_BUNDLE_ID" ] ||
   fail "unexpected bundle identifier"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$INFO")" = "public.app-category.music" ] ||
+  fail "App Store category is not Music"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$INFO")" = "false" ] ||
+  fail "export-compliance declaration is missing"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")"
 BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO")"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+$ ]] || fail "invalid version $VERSION"

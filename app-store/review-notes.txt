@@ -1,0 +1,14 @@
+partyparty is a two-device, same-Wi-Fi product. The Mac is the DJ server; an iPhone is the guest player.
+
+Review steps:
+1. Launch partyparty and sign in with Apple, Google, or email. Account creation is automatic on first sign-in.
+2. Connect the Mac and a default-configured iPhone to the same Wi-Fi network.
+3. In the Mac app, choose "Mac output (everything)" or an available audio input and press Go Live.
+4. macOS asks for System Audio Recording only when Mac output is selected, or Microphone only when an input device is selected. Local Network access is used to serve the room.
+5. Scan the HTTPS QR code shown by the Mac with the iPhone. The guest page requires no account.
+6. Start playback on the iPhone, then lock it. Audio continues through native HLS/AVPlayer and lock-screen media controls remain available.
+7. The wall view is available from the Mac app and displays the room QR plus guest posts and media.
+
+The app does not create Wi-Fi networks, install privileged helpers, request an administrator password, or require Screen Recording. The Mac App Store build contains no Sparkle updater and uploads no session diagnostics.
+
+Privacy policy and support links are available in the app's Settings sheet. Signed-in users can permanently delete their account from Manage Account.

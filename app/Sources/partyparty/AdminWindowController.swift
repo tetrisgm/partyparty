@@ -272,6 +272,13 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             pushLoginState()
         case "openSignIn":
             openSignIn(body["url"] as? String)
+        case "openURL":
+            guard let raw = body["url"] as? String,
+                  let url = URL(string: raw),
+                  url.scheme == "https",
+                  url.host == "partyparty.party",
+                  ["/privacy", "/support", "/account"].contains(url.path) else { return }
+            NSWorkspace.shared.open(url)
         case "captureSourceChanged":
             setCaptureSource(body["device"] as? String)
         case "resetConsole":
