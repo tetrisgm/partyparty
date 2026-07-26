@@ -1576,7 +1576,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // hear nothing. It takes priority over ordinary notes and shows red.
       const streamHealth = s.streamHealth || '';
       const permissionNote = capturePermissionNote(live);
-      const note = streamHealth || s.broadcast.note || (st === 'error' ? s.broadcast.lastError : '') || startError || permissionNote;
+      // A cold Core Audio tap can legitimately need its automatic rebuild
+      // before the first frames arrive. Do not turn that expected "starting"
+      // interval into a permission error; only a captureBad note is actionable.
+      const broadcastNote = st !== 'starting' || s.broadcast.captureBad ? s.broadcast.note : '';
+      const note = streamHealth || broadcastNote || (st === 'error' ? s.broadcast.lastError : '') || startError || permissionNote;
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnote').classList.toggle('danger-note', !!streamHealth);
       $('bcnoteText').textContent = note || '';
