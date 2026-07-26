@@ -25,6 +25,24 @@ SHIP_ARGS="${AUTOSHIP_SHIP_ARGS:-}"
 mkdir -p "$ROOT/build"
 log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"; }
 
+tooling_only_changes() {
+  local file
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    case "$file" in
+      AGENTS.md|README.md|.github/*|codex/*|docs/*|*_test.go|app/Tests/*|cloudflare/test/*|\
+      scripts/auto-ship.sh|scripts/analyze-session-log.mjs|scripts/e2e-sync.sh|\
+      scripts/perf-bench.mjs|scripts/stream-e2e.mjs|scripts/stream-selftest.sh|\
+      scripts/synctest/*|scripts/test-*|scripts/verify-*)
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  done <<< "$1"
+  return 0
+}
+
 # --- single-flight (atomic mkdir lock; flock is absent on macOS) --------------
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   # Steal a stale lock from a crashed run (>30 min old); else another ship owns it.
@@ -64,6 +82,31 @@ auto_mode=""
 last_rel="$(git log --grep='^Record partyparty .* release$' -1 --format=%H 2>/dev/null || true)"
 if [ -n "$last_rel" ]; then
   changed="$(git diff --name-only "$last_rel" HEAD 2>/dev/null || true)"
+
+  # Documentation, diagnostics, and test harnesses do not change any shipped
+  # bytes. Push and receipt the exact clean HEAD without buying an identical
+  # build, notarization, upload, or deploy. Keep this list explicit: unknown
+  # paths remain product work and fall through to the normal release lanes.
+  if [ -n "$changed" ] && tooling_only_changes "$changed"; then
+    if printf '%s' "$SHIP_ARGS" | grep -q -- '--dry-run'; then
+      log "tooling-only change (dry-run) — would push main + skip all release work"
+      exit 0
+    fi
+    head_sha="$(git rev-parse HEAD)"
+    receipt="$ROOT/build/.last-tooling-processed"
+    if [ "$(cat "$receipt" 2>/dev/null || true)" = "$head_sha" ]; then
+      exit 0
+    fi
+    log "tooling-only change since $(git rev-parse --short "$last_rel") — push main, skip release ($(git rev-parse --short HEAD))"
+    if git push origin main >> "$LOG" 2>&1; then
+      printf '%s' "$head_sha" > "$receipt"
+      log "tooling-only commit processed + pushed ($(git rev-parse --short HEAD))"
+      exit 0
+    fi
+    log "tooling-only push FAILED — will retry on the next trigger"
+    exit 1
+  fi
+
   noncf="$(printf '%s\n' "$changed" | grep -vE '^cloudflare/' || true)"
   if [ -n "$changed" ] && [ -z "$noncf" ]; then
     if printf '%s' "$SHIP_ARGS" | grep -q -- '--dry-run'; then
