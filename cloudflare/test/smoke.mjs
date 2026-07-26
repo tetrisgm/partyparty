@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import worker, {
+  APP_VERSION,
   cookieHeader,
   normalizeHandle,
   parseCookies,
@@ -53,7 +54,7 @@ const baseEnv = () => ({
     "appcast.xml": "<rss/>",
     "partyparty.pkg": new Uint8Array([1, 2, 3]),
     "content/manifest.json": JSON.stringify({ version: 9 }),
-    "content/app-version": "107.87",
+    "content/app-version": APP_VERSION,
   }),
   BROKER_BASE: "partyparty.party",
   CF_DNS_TOKEN: "token",
@@ -80,7 +81,7 @@ test("landing, version, appcast, installer, and OTA artifacts are served", async
   const env = baseEnv();
   assert.equal(await (await worker.fetch(new Request("https://partyparty.party/"), env)).text(), "landing");
   const version = await (await worker.fetch(new Request("https://partyparty.party/api/version"), env)).json();
-  assert.equal(version.version, "107.87");
+  assert.equal(version.version, APP_VERSION);
   assert.equal((await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env)).status, 200);
   assert.equal((await worker.fetch(new Request("https://partyparty.party/partyparty.pkg"), env)).status, 200);
   assert.equal((await worker.fetch(new Request("https://partyparty.party/content/manifest.json"), env)).status, 200);

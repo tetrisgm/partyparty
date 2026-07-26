@@ -2064,6 +2064,7 @@ var worker_default = {
   }
 };
 export {
+  APP_VERSION,
   RESERVED_HANDLES,
   cookieHeader,
   worker_default as default,
