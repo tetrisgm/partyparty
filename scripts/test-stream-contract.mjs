@@ -71,6 +71,8 @@ const e2e = read('scripts/stream-e2e.mjs');
 assert.match(e2e, /hlsSegmentCount: 48/);
 assert.match(e2e, /hlsSegmentDuration: 500ms/);
 assert.match(e2e, /hlsPartDuration: 150ms/);
+assert.match(e2e, /latencyTarget: 1,/);
+assert.doesNotMatch(e2e, /latencyTarget:\s*3/);
 assert.doesNotMatch(e2e, /--delivery|--latency-target|--part-duration|--seg-duration|--seg-count/);
 
 console.log('PASS fixed streaming contract');
