@@ -1,6 +1,10 @@
 package server
 
-// syncTarget is zero for the single production playback design: guests join at
-// the native LL-HLS live edge and the visible-only forward governor bounds any
-// later drift. Historical parked-room modes and persisted switches are gone.
-func (s *srv) syncTarget() float64 { return 0 }
+// roomLatencyTarget is the one production playout contract. MediaMTX's emitted
+// playlist has a one-second EXT-X-TARGETDURATION, so three seconds is the
+// nearest standards-safe EXT-X-START offset from the live edge. The server pin
+// gives native AVPlayer clients a common start without client-side startup
+// seeks, preserving lock-screen playback.
+const roomLatencyTarget = 3.0
+
+func (s *srv) syncTarget() float64 { return roomLatencyTarget }

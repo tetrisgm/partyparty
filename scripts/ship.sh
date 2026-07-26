@@ -135,6 +135,11 @@ verify_worker() {
   ( cd cloudflare && node test/smoke.mjs )
 }
 
+verify_stream_contract() {
+  node scripts/test-stream-contract.mjs
+  node scripts/test-session-log-analyzer.mjs
+}
+
 verify_swift() {
   ( cd app && swift build )
 }
@@ -150,6 +155,8 @@ if [ "$SKIP_TESTS" != "1" ]; then
   verify_go
   echo ">> verify Worker"
   verify_worker
+  echo ">> verify streaming contract"
+  verify_stream_contract
   if [ "$MODE" = "app" ]; then
     echo ">> verify Swift"
     verify_swift

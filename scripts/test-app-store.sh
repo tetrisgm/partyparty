@@ -8,16 +8,50 @@ if [[ "$APP" != /* ]]; then
   APP="$ROOT/$APP"
 fi
 STATUS_URL="http://127.0.0.1:8000/api/status"
+APP_EXEC="$APP/Contents/MacOS/partyparty"
+SERVER_EXEC="$APP/Contents/Helpers/partyparty-server"
 
 "$ROOT/scripts/verify-app-store.sh" "$APP"
+
+authority="$(/usr/bin/codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
+if [[ "$authority" = Apple\ Distribution:* ]]; then
+  echo "Apple Distribution bundle verified; runtime launch is tested after App Store installation."
+  exit 0
+fi
 
 if curl -fsS --max-time 1 "$STATUS_URL" >/dev/null 2>&1; then
   echo "Port 8000 is already in use. Quit the installed partyparty before running the Store launch test." >&2
   exit 1
 fi
 
+exact_pid() {
+  /bin/ps -axo pid=,command= | /usr/bin/awk -v command="$1" '
+    {
+      pid = $1
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "")
+      if ($0 == command) {
+        print pid
+        exit
+      }
+    }
+  '
+}
+
+terminate_exact() {
+  local command="$1" pid
+  pid="$(exact_pid "$command")"
+  [ -n "$pid" ] || return 0
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 25); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.2
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
 cleanup() {
-  /usr/bin/osascript -e 'tell application id "fm.partyparty.app" to quit' >/dev/null 2>&1 || true
+  terminate_exact "$APP_EXEC"
+  terminate_exact "$SERVER_EXEC --no-open --port 8000"
 }
 trap cleanup EXIT
 
@@ -38,7 +72,6 @@ printf '%s' "$status" | /usr/bin/python3 -c '
 import json, sys
 s = json.load(sys.stdin)
 assert s.get("appVersion"), "missing appVersion"
-assert s.get("delivery") in {"hls", "llhls"}, "missing internal delivery state"
 assert "streamUrl" not in s, "plain HTTP guest URL must not be advertised"
 '
 

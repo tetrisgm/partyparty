@@ -75,17 +75,20 @@ remain on the Mac in the Store edition. App Store Connect privacy answers must
 match the bundled manifest and must not claim analytics or diagnostics
 collection for the Store build.
 
-## Automated clean launch
+## Automated verification
 
-On a Mac where no other partyparty instance is running:
+Verify an App Store bundle with:
 
 ```sh
 scripts/test-app-store.sh
 ```
 
-This verifies the reviewed bundle, launches it, waits for the sandboxed local
-server, checks `/api/status`, confirms that no plain-HTTP guest URL is exposed,
-quits the app, and confirms its child server exits.
+For an Apple Distribution candidate, this verifies the complete submission
+bundle but does not attempt to launch it. macOS blocks distribution-signed
+bundles before App Store installation and Apple re-signing. For a locally
+launchable Apple Development build, the script also waits for the sandboxed
+local server, checks `/api/status`, confirms that no plain-HTTP guest URL is
+exposed, quits the app, and confirms its child server exits.
 
 ## Physical acceptance
 

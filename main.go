@@ -171,16 +171,6 @@ func main() {
 		}
 	}
 
-	// Apply OTA server overrides (bitrate, channels, HLS/LL timing, latency
-	// target) from the payload's config.json BEFORE anything is built from cfg.
-	// Every value is strictly validated, so an accepted override is always a safe
-	// pipeline setting; a bad or absent config leaves the built-in defaults
-	// untouched. MediaMTX LL-timing takes effect from launch; the broadcaster
-	// re-reads the encode params on each Go Live.
-	if payload != nil {
-		cfg = cfg.WithOverrides(config.ParseOverrides(payload.Config()))
-	}
-
 	// Resolve the capture helper + ffmpeg. In the default build these extract from
 	// the embedded copies; in the signed .app build (-tags bundle) they resolve to
 	// the pre-signed binaries in Contents/Helpers/.
@@ -191,10 +181,9 @@ func main() {
 		}
 	}
 
-	// Low-latency activation is ASYNC (see below, after the server is up): a
-	// first cert issuance takes 30s-3min and blocking startup on it means a
-	// dead console ("white screen") the whole time. The server starts on plain
-	// HLS immediately; a completed activation flips delivery live.
+	// Certificate activation is asynchronous so a first issuance cannot block
+	// the local DJ console. Guest playback has one production path: cert-backed
+	// HTTPS LL-HLS.
 	if cfg.LiveHost == "" {
 		cfg.LiveHost = activate.HostFromEnvOrFile()
 	}
@@ -207,15 +196,7 @@ func main() {
 		}
 		return activate.BrokerHost()
 	}
-	deliveryFlag := cfg.Delivery // what the user asked for, pre-resolution
-
-	// HTTPS + LL-HLS is the ONLY real-world delivery path — there is no silent
-	// plain-HLS downgrade. "auto" always resolves to LL-HLS; without a cert, Go
-	// Live is refused (fail loud) and the offline party rides the cached cert.
-	// -delivery=hls remains only as a non-default dev/emergency escape hatch.
-	if cfg.Delivery == "auto" {
-		cfg.Delivery = "llhls"
-	}
+	cfg.Delivery = "llhls"
 
 	ip := netinfo.PrimaryLanIP()
 	// 127.0.0.1, NOT "localhost": MediaMTX binds its RTSP ingest to 127.0.0.1
@@ -275,24 +256,17 @@ func main() {
 			log.Printf("reaped %d orphaned mediamtx process(es) from a previous run", n)
 		}
 		mtx = mediamtx.NewServer(mtxBinPath, cfgPath, bc.ExternalWriter())
-		// One fixed LL timing profile (part/seg/count from config) — the old
-		// per-latency-mode MediaMTX bouncing is gone with the latency selector.
-		// Called by async activation: swap in the real cert and rewrite the
-		// MediaMTX config (MediaMTX isn't running yet in plain-HLS mode).
+		// One fixed LL timing profile. Async activation swaps in the real cert
+		// without changing the playback or encoding mode.
 		applyActivation = func(certFile, keyFile string) error {
 			certPath, keyPath = certFile, keyFile
 			return writeMTXConfig()
 		}
-		if cfg.Delivery == "llhls" {
-			if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
-				// No silent downgrade: stay LL-HLS. /api/start reaps + retries
-				// MediaMTX and refuses Go Live if it truly can't start, rather than
-				// serving a degraded plain-HLS stream nobody asked for.
-				log.Printf("mediamtx failed to start: %v — LL-HLS unavailable (no plain-HLS fallback)", err)
-			}
+		if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
+			log.Printf("mediamtx failed to start: %v — LL-HLS unavailable", err)
 		}
-	} else if cfg.Delivery == "llhls" {
-		log.Printf("mediamtx binary unavailable — LL-HLS cannot start (no plain-HLS fallback)")
+	} else {
+		log.Printf("mediamtx binary unavailable — LL-HLS cannot start")
 	}
 	// Session diagnostics (the Plex model): one verbose file per run in
 	// ~/Library/Logs/partyparty, teeing the stdlib logger AND the broadcast
@@ -308,7 +282,7 @@ func main() {
 			diagLog.Printf("system: macOS %s · %s · %s", cmdOut("sw_vers", "-productVersion"), cmdOut("sysctl", "-n", "hw.model"), runtime.GOARCH)
 			diagLog.Printf("install: id=%s slug=%s", id, activate.InstallSlug())
 			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
-			diagLog.Printf("config: delivery=%s bitrate=%s part=%s seg=%s", cfg.Delivery, cfg.Bitrate, cfg.PartDur, cfg.SegDur)
+			diagLog.Printf("config: https-llhls native-apple target=3s bitrate=%s part=%s seg=%s count=%d", cfg.Bitrate, cfg.PartDur, cfg.SegDur, cfg.SegCount)
 			if payload != nil {
 				// The store's own "serving cached payload" line is emitted during
 				// Open() above, before this logger exists — so record the active
@@ -334,14 +308,7 @@ func main() {
 		}
 	}
 
-	// The broadcaster re-reads OTA encode overrides (bitrate, channels, HLS
-	// timing) on each Go Live, so a config pushed mid-session takes effect on the
-	// next broadcast without a relaunch. Then start the update loop (push + the
-	// periodic floor). Both are wired now that diagLog and bc exist.
 	if payload != nil {
-		bc.SetOverrides(func() config.Overrides {
-			return config.ParseOverrides(payload.Config())
-		})
 		go payload.Run(context.Background())
 	}
 
@@ -447,36 +414,6 @@ func main() {
 		defer activationMu.Unlock()
 		return activationEngaged
 	}
-	engageLowLatency := func(source string) {
-		if deliveryFlag == "hls" || mtx == nil || applyActivation == nil {
-			return
-		}
-		// Auto-engage after a real certificate is available. Native HLS remains
-		// the iPhone path so background and lock-screen playback stay under
-		// AVPlayer; the guest page performs bounded wall-clock alignment while it
-		// is visible. Engage when idle and never restart a live set.
-		for {
-			st := bc.Status()
-			if st.State == "idle" || st.State == "error" {
-				if bc.Delivery() != "hls" {
-					return
-				}
-				if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
-					log.Printf("activate: mediamtx not ready after %s: %v — LL-HLS unavailable", source, err)
-					return
-				}
-				// Atomic idle-check + switch: a set that started during
-				// EnsureReady's up-to-6s wait must NOT be yanked
-				// (SetDelivery stops any broadcast). If one snuck in, loop
-				// and wait for the next idle gap.
-				if bc.SetDeliveryIfIdle("llhls") {
-					log.Printf("activate: low-latency room engaged (%s)", source)
-					return
-				}
-			}
-			time.Sleep(5 * time.Second)
-		}
-	}
 	applyActivationResult := func(res activate.Result, source string) bool {
 		handler.SetActivationResult(res)
 		if !res.OK {
@@ -495,7 +432,6 @@ func main() {
 		handler.SetActivation(res.Host)
 		markActivationEngaged()
 		log.Printf("activate: secure link ready from %s — %s", source, res.Host)
-		engageLowLatency(source)
 		return true
 	}
 	explicitCertLoaded := false
@@ -586,13 +522,9 @@ func main() {
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
 	// at partyparty.party (per-install slugged domain + DNS-01 cert).
-	// Cached-cert engagement above is local-only and does not wait for this
-	// loop. Online refresh keeps trying to upsert DNS / issue + renew the cert;
-	// failures never tear down an already-engaged cached cert. Runs whenever we
-	// have no explicit cert — delivery is always LL-HLS now, so the old
-	// cfg.Delivery=="hls" gate would have (wrongly) disabled all online
-	// issuance/renewal.
-	if deliveryFlag != "hls" && cfg.CertFile == "" && mtx != nil && applyActivation != nil {
+	// Cached-cert activation above is local-only and does not wait for this loop.
+	// Online refresh keeps DNS and the cert current without changing stream mode.
+	if cfg.CertFile == "" && mtx != nil && applyActivation != nil {
 		networkChanged := make(chan struct{}, 1)
 		go func() {
 			lastIP := netinfo.PrimaryLanIP()
@@ -669,13 +601,11 @@ func main() {
 	fmt.Println("  Guests     :  secure venue-Wi-Fi link shown in the console")
 	fmt.Println("  ───────────────────────────────────────────────")
 	fmt.Println("  Open the DJ console, choose a capture source, hit Start.")
-	if bc.Delivery() == "llhls" {
-		host := activationHost()
-		if host == "" {
-			host = ip
-		}
-		fmt.Printf("  Low-latency: LL-HLS at https://%s:%d/live/%s/index.m3u8\n", host, cfg.TLSPort, cfg.StreamPath)
+	host := activationHost()
+	if host == "" {
+		host = ip
 	}
+	fmt.Printf("  Low-latency: LL-HLS at https://%s:%d/live/%s/index.m3u8\n", host, cfg.TLSPort, cfg.StreamPath)
 	fmt.Println()
 
 	// Open the DJ console automatically (skip for headless test-tone runs and when
@@ -757,7 +687,7 @@ func main() {
 				for {
 					time.Sleep(2 * time.Second)
 					live := bc.Status().State == "live"
-					if live && !lastLive && bc.Delivery() == "llhls" {
+					if live && !lastLive {
 						time.Sleep(5 * time.Second) // let LL-HLS parts+segments accumulate
 						if bc.Status().State != "live" {
 							lastLive = live
@@ -808,7 +738,7 @@ func main() {
 				ongoingLogged := false
 				for {
 					time.Sleep(1 * time.Second)
-					if bc.Status().State != "live" || bc.Delivery() != "llhls" {
+					if bc.Status().State != "live" {
 						lastTip = ""
 						lastAdvance, windowStart = time.Time{}, time.Time{}
 						windowMaxGap, advances, ongoingLogged = 0, 0, false

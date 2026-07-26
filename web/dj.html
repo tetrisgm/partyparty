@@ -1419,8 +1419,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     loadDevices();
   }
 
-  localStorage.removeItem('pp.bitrate');
-  localStorage.removeItem('pp.latency');
   let lastLt = null, lastStatus = null, startError = '';
   function copySync(){
     const s = lastStatus; if (!s) return;
@@ -1506,15 +1504,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const sel = $('device');
     const device = sel.value;
     const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
-    const bitrate = '320k';
     localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
     let ok = false;
     try {
-      const r = await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name) +
-        '&bitrate=' + encodeURIComponent(bitrate) + '&mono=0', { method:'POST' });
+      const r = await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name), { method:'POST' });
       if (!r.ok) {
-        // Never fail silently — this exact hole is how "Maximum stability
-        // bricked everything" felt like a mystery instead of an error message.
+        // Never fail silently when capture or the LL-HLS engine cannot start.
         startError = 'Could not start the broadcast.';
         try { const e = await r.json(); if (e && e.error) startError = e.error; } catch (e) {}
       } else {

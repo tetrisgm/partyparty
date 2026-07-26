@@ -51,7 +51,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 		Port: 8000, TLSPort: 8443, Name: "partyparty",
 		Bitrate: "320k", Codec: "aac", Channels: 2, SampleRate: 48000,
 		HLSTime: 1, HLSList: 24, FFmpeg: stub,
-		Delivery: "hls", RTSPPort: 8554, HLSPort: 8888, StreamPath: "party",
+		Delivery: "llhls", RTSPPort: 8554, HLSPort: 8888, StreamPath: "party",
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -179,6 +179,12 @@ func TestStatusEndpoint(t *testing.T) {
 	if bc["state"] != "idle" {
 		t.Errorf("broadcast.state = %v, want idle", bc["state"])
 	}
+	if _, ok := bc["delivery"]; ok {
+		t.Errorf("obsolete broadcast delivery leaked into status: %v", bc["delivery"])
+	}
+	if _, ok := bc["segDur"]; ok {
+		t.Errorf("obsolete plain-HLS segment duration leaked into status: %v", bc["segDur"])
+	}
 	if _, ok := body["streamUrl"]; ok {
 		t.Errorf("streamUrl should be gone (HTTPS-only, LL-HLS only): %v", body["streamUrl"])
 	}
@@ -188,11 +194,11 @@ func TestStatusEndpoint(t *testing.T) {
 	if body["llhlsUrl"] != "" {
 		t.Errorf("llhlsUrl = %v, want empty", body["llhlsUrl"])
 	}
-	if body["delivery"] != "hls" {
-		t.Errorf("delivery = %v", body["delivery"])
+	if _, ok := body["delivery"]; ok {
+		t.Errorf("obsolete delivery selector leaked into status: %v", body["delivery"])
 	}
-	if body["latencyTarget"] != 10.0 { // internal pre-activation state: 3*1+7
-		t.Errorf("latencyTarget = %v, want 10", body["latencyTarget"])
+	if body["latencyTarget"] != 3.0 {
+		t.Errorf("latencyTarget = %v, want 3", body["latencyTarget"])
 	}
 	streamSync, ok := body["streamSync"].(map[string]any)
 	if !ok || streamSync["ready"] != false || streamSync["generation"] != 0.0 {
@@ -876,7 +882,7 @@ func TestGuestPostsAreImmediatelyVisibleAndDeleteRoutesWork(t *testing.T) {
 
 func TestPostOnlyEndpoints(t *testing.T) {
 	env := newTestEnv(t, nil)
-	for _, p := range []string{"/api/start", "/api/stop", "/api/delivery", "/api/shutdown", "/api/open-settings", "/api/link-install"} {
+	for _, p := range []string{"/api/start", "/api/stop", "/api/shutdown", "/api/open-settings", "/api/link-install"} {
 		w := do(env.srv, "GET", p, "")
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, w.Code)
@@ -908,7 +914,6 @@ func TestDJControlEndpointsRejectedFromLAN(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/start?device=test"},
 		{http.MethodPost, "/api/stop"},
-		{http.MethodPost, "/api/delivery?mode=hls"},
 		{http.MethodPost, "/api/open-settings?pane=audio"},
 		{http.MethodPost, "/api/link-install"},
 		{http.MethodGet, "/api/devices"},
@@ -947,30 +952,14 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 		t.Errorf("error = %v", body["error"])
 	}
 
-	// Plain HLS is the offline-safe fallback: it can start before cert activation.
-	w = do(env.srv, "POST", "/api/start?device=0", djAddr)
-	if w.Code != http.StatusOK {
-		t.Fatalf("start real device in hls without cert = %d, want 200 (%s)", w.Code, w.Body.String())
-	}
-	if env.bc.Status().State != "starting" {
-		t.Fatal("broadcaster should have started in hls")
-	}
-	w = do(env.srv, "POST", "/api/stop", djAddr)
-	if w.Code != http.StatusOK {
-		t.Fatalf("stop after hls start = %d", w.Code)
-	}
-	waitIdle(t, env.bc)
-
-	// LL-HLS still needs the real cert; otherwise iOS rejects the stream URL.
-	env.bc.SetDelivery("llhls")
+	// A real device always needs the cert-backed LL-HLS route.
 	w = do(env.srv, "POST", "/api/start?device=0", djAddr)
 	if w.Code != http.StatusConflict {
-		t.Fatalf("start llhls real device without cert = %d, want 409", w.Code)
+		t.Fatalf("start real device without cert = %d, want 409", w.Code)
 	}
 	if env.bc.Status().State != "idle" {
 		t.Fatal("broadcaster should not have started")
 	}
-	env.bc.SetDelivery("hls")
 
 	// The test tone is always allowed — the DJ's own rehearsal.
 	w = do(env.srv, "POST", "/api/start?device=test&bitrate=999k", djAddr)
@@ -981,8 +970,8 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 	if st.State != "starting" {
 		t.Fatalf("state = %q, want starting", st.State)
 	}
-	if st.Bitrate != "320k" { // 999k fails the allowlist → config default
-		t.Errorf("bitrate = %q, want default 320k (bad value must not pass through)", st.Bitrate)
+	if st.Bitrate != "320k" {
+		t.Errorf("bitrate = %q, want fixed 320k", st.Bitrate)
 	}
 
 	w = do(env.srv, "POST", "/api/stop", djAddr)
@@ -998,8 +987,8 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 		t.Fatalf("start real device after activation = %d, want 200 (%s)", w.Code, w.Body.String())
 	}
 	st = env.bc.Status()
-	if st.State != "starting" || st.Channels != 1 {
-		t.Fatalf("state/channels = %q/%d, want starting/1 (mono)", st.State, st.Channels)
+	if st.State != "starting" || st.Channels != 2 {
+		t.Fatalf("state/channels = %q/%d, want starting/2 (fixed stereo)", st.State, st.Channels)
 	}
 	do(env.srv, "POST", "/api/stop", djAddr)
 	waitIdle(t, env.bc)
@@ -1059,32 +1048,6 @@ func TestStartStopCreatesDJFeedPosts(t *testing.T) {
 	}
 	if got["Started the stream."] != 1 || got["Stopped the stream."] != 1 {
 		t.Fatalf("stream posts = %#v", got)
-	}
-}
-
-func TestDeliveryEndpoint(t *testing.T) {
-	env := newTestEnv(t, nil)
-
-	w := do(env.srv, "POST", "/api/delivery?mode=bogus", djAddr)
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("bogus mode = %d, want 400", w.Code)
-	}
-
-	// MTX is nil → llhls is structurally unavailable.
-	w = do(env.srv, "POST", "/api/delivery?mode=llhls", djAddr)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("llhls without mediamtx = %d, want 400", w.Code)
-	}
-	if body := decodeJSON(t, w); !strings.Contains(body["error"].(string), "low-latency unavailable") {
-		t.Errorf("error = %v", body["error"])
-	}
-
-	w = do(env.srv, "POST", "/api/delivery?mode=hls", djAddr)
-	if w.Code != http.StatusOK {
-		t.Fatalf("hls mode = %d, want 200", w.Code)
-	}
-	if env.bc.Delivery() != "hls" {
-		t.Errorf("delivery = %q", env.bc.Delivery())
 	}
 }
 
@@ -1176,7 +1139,7 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:10\n"))
+		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:10\n#EXT-X-STREAM-INF:BANDWIDTH=328000\nstream.m3u8\n"))
 	}))
 	defer upstream.Close()
 	u, err := url.Parse(upstream.URL)
@@ -1197,18 +1160,38 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 		t.Fatalf("proxied redirect = %d location %q", w.Code, w.Header().Get("Location"))
 	}
 	w = do(env.srv, http.MethodGet, "/live/party/index.m3u8?cookieCheck=1&_HLS_msn=12&_HLS_part=3", "192.168.1.25:5000")
-	if w.Code != http.StatusOK || !strings.HasPrefix(w.Body.String(), "#EXTM3U") {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES") {
 		t.Fatalf("proxied playlist = %d %q", w.Code, w.Body.String())
 	}
 	if gotPath != "/party/index.m3u8" || gotQuery != "cookieCheck=1&_HLS_msn=12&_HLS_part=3" {
 		t.Fatalf("upstream request = %s?%s", gotPath, gotQuery)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/live/party/index.m3u8?cookieCheck=1", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	compressed := httptest.NewRecorder()
+	env.srv.ServeHTTP(compressed, req)
+	if compressed.Code != http.StatusOK || compressed.Header().Get("Content-Encoding") != "gzip" {
+		t.Fatalf("gzip playlist = %d encoding %q", compressed.Code, compressed.Header().Get("Content-Encoding"))
+	}
+	zr, err := gzip.NewReader(compressed.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = zr.Close()
+	if !bytes.Contains(body, []byte("#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES")) {
+		t.Fatalf("compressed playlist was not rewritten:\n%s", body)
 	}
 }
 
 func TestHeartbeatAndRoster(t *testing.T) {
 	env := newTestEnv(t, nil)
 	// Loopback RemoteAddr keeps friendlyName from spawning a reverse-DNS lookup.
-	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&name=Neon%20Fox&emoji=%F0%9F%AA%A9&lat=250&plat=hls&del=llhls&rate=1&buf=3.5&v=test" /* v required since 0.26: no-v heartbeats are legacy zombie tabs */, "127.0.0.1:5000")
+	w := do(env.srv, "GET", "/api/heartbeat?cid=abc&name=Neon%20Fox&emoji=%F0%9F%AA%A9&lat=250&plat=native&rate=1&buf=3.5&v=test" /* v required since 0.26: no-v heartbeats are legacy zombie tabs */, "127.0.0.1:5000")
 	if w.Code != http.StatusOK {
 		t.Fatalf("heartbeat = %d", w.Code)
 	}
@@ -1228,8 +1211,8 @@ func TestHeartbeatAndRoster(t *testing.T) {
 	if entry["latencyMs"] != 250.0 || entry["hasLatency"] != true {
 		t.Errorf("roster entry latency = %v/%v", entry["latencyMs"], entry["hasLatency"])
 	}
-	if entry["platform"] != "hls" || entry["delivery"] != "llhls" {
-		t.Errorf("roster entry platform/delivery = %v/%v", entry["platform"], entry["delivery"])
+	if entry["platform"] != "native" {
+		t.Errorf("roster entry platform = %v", entry["platform"])
 	}
 	if entry["name"] != "Neon Fox" || entry["emoji"] != "🪩" || entry["device"] == "" {
 		t.Errorf("roster entry identity/device = %v/%v/%v", entry["name"], entry["emoji"], entry["device"])
@@ -1239,7 +1222,7 @@ func TestHeartbeatAndRoster(t *testing.T) {
 	if guestEntry["name"] != "Neon Fox" || guestEntry["emoji"] != "🪩" {
 		t.Errorf("public roster identity = %#v", guestEntry)
 	}
-	for _, private := range []string{"device", "ip", "platform", "delivery", "latencyMs"} {
+	for _, private := range []string{"device", "ip", "platform", "latencyMs"} {
 		if _, exposed := guestEntry[private]; exposed {
 			t.Errorf("public roster exposed %s: %#v", private, guestEntry)
 		}
@@ -1251,7 +1234,7 @@ func TestHeartbeatAndRoster(t *testing.T) {
 }
 
 func TestActivationFlow(t *testing.T) {
-	env := newTestEnv(t, func(c *config.Config) { c.Delivery = "llhls" })
+	env := newTestEnv(t, nil)
 
 	body := decodeJSON(t, do(env.srv, "GET", "/api/status", ""))
 	if act := body["activation"].(map[string]any); act["ready"] != false {

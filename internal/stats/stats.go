@@ -17,11 +17,9 @@ type client struct {
 	paused    bool
 	platform  string // "native" (iOS Safari) or "hls" (Android/desktop)
 
-	// Controller debug telemetry (v3): which delivery the guest actually ended
-	// up on after probing, its playback rate, and buffered seconds ahead.
-	delivery string
-	rate     float64
-	bufS     float64
+	// Controller debug telemetry: playback rate and buffered seconds ahead.
+	rate float64
+	bufS float64
 
 	// Party identity is guest-chosen. Device/IP stay separate and are exposed
 	// only to the DJ's details view.
@@ -81,16 +79,13 @@ func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, h
 }
 
 // Debug records the controller telemetry a guest reports with each heartbeat.
-func (l *Listeners) Debug(key, delivery string, rate, bufS float64) {
+func (l *Listeners) Debug(key string, rate, bufS float64) {
 	if key == "" {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if c := l.clients[key]; c != nil {
-		if delivery != "" {
-			c.delivery = delivery
-		}
 		c.rate = rate
 		c.bufS = bufS
 	}
@@ -226,7 +221,6 @@ func (l *Listeners) LatencySpread() LatencyStat {
 // Listener is one active listener for the DJ's roster.
 type Listener struct {
 	Platform   string  `json:"platform"` // "native" | "hls"
-	Delivery   string  `json:"delivery,omitempty"`
 	Name       string  `json:"name,omitempty"`
 	Emoji      string  `json:"emoji,omitempty"`
 	Device     string  `json:"device,omitempty"`
@@ -255,7 +249,6 @@ func (l *Listeners) Roster() []Listener {
 	for _, c := range active {
 		out = append(out, Listener{
 			Platform:   c.platform,
-			Delivery:   c.delivery,
 			Name:       c.name,
 			Emoji:      c.emoji,
 			Device:     c.device,

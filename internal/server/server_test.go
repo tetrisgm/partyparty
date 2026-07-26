@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"partyparty/internal/broadcast"
@@ -30,16 +31,44 @@ func TestParseDurSeconds(t *testing.T) {
 	}
 }
 
-func TestValidBitrate(t *testing.T) {
-	for _, ok := range []string{"64k", "96k", "128k", "160k", "192k", "256k", "320k"} {
-		if got := validBitrate(ok); got != ok {
-			t.Errorf("validBitrate(%q) = %q, want it passed through", ok, got)
-		}
+func TestRewriteLivePlaylistPinsMultivariant(t *testing.T) {
+	in := []byte("#EXTM3U\n#EXT-X-VERSION:10\n#EXT-X-STREAM-INF:BANDWIDTH=328000,CODECS=\"mp4a.40.2\"\nstream.m3u8\n")
+	got := string(rewriteLivePlaylist(in, 3))
+	want := "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES"
+	if !strings.Contains(got, want) {
+		t.Fatalf("playlist missing %q:\n%s", want, got)
 	}
-	for _, bad := range []string{"", "999k", "128", "320", "banana", "64K"} {
-		if got := validBitrate(bad); got != "" {
-			t.Errorf("validBitrate(%q) = %q, want empty", bad, got)
-		}
+	if strings.Count(got, "#EXT-X-START:") != 1 {
+		t.Fatalf("playlist contains duplicate start pins:\n%s", got)
+	}
+	if again := string(rewriteLivePlaylist([]byte(got), 3)); again != got {
+		t.Fatalf("playlist rewrite is not idempotent:\n%s", again)
+	}
+}
+
+func TestRewriteLivePlaylistRaisesPartHoldBack(t *testing.T) {
+	in := []byte("#EXTM3U\n#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.42750,CAN-SKIP-UNTIL=6.000\n#EXT-X-PART-INF:PART-TARGET=0.17100\n")
+	got := string(rewriteLivePlaylist(in, 3))
+	if !strings.Contains(got, "PART-HOLD-BACK=0.513000") {
+		t.Fatalf("playlist holdback was not raised to 3x part target:\n%s", got)
+	}
+	if strings.Contains(got, "#EXT-X-START:") {
+		t.Fatalf("media playlist must not receive EXT-X-START:\n%s", got)
+	}
+}
+
+func TestRewriteLivePlaylistKeepsLargerPartHoldBack(t *testing.T) {
+	in := []byte("#EXTM3U\n#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.600\n#EXT-X-PART-INF:PART-TARGET=0.171\n")
+	if got := string(rewriteLivePlaylist(in, 3)); got != string(in) {
+		t.Fatalf("larger holdback changed:\n%s", got)
+	}
+}
+
+func TestRewriteLivePlaylistAddsMissingPartHoldBack(t *testing.T) {
+	in := []byte("#EXTM3U\n#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES\n#EXT-X-PART-INF:PART-TARGET=0.171\n")
+	got := string(rewriteLivePlaylist(in, 3))
+	if !strings.Contains(got, "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.513000") {
+		t.Fatalf("missing holdback was not added:\n%s", got)
 	}
 }
 

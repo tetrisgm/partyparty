@@ -666,18 +666,11 @@
       pendingReload = true; // playing: reload at the next pause (never kill audio)
     }
 
-    let STREAM = null, delivery = 'llhls';
-    // LOW-LATENCY ONLY. The guest link is always the secure https domain, so
-    // loading this page already proved DNS + TLS work → LL-HLS plays. Plain HLS
-    // is not offered (no insecure/slow fallback). STREAM stays only as a
-    // dev/localhost escape hatch.
+    // LOW-LATENCY ONLY. Loading the guest page already proved DNS + TLS work,
+    // and every player receives the same HTTPS LL-HLS stream.
     let LLSTREAM = null;
-    // The room target is an authoritative playout deadline, never a live peer
-    // average or control loop. Every listener can add or remove delay once,
-    // while muted, without a faulty device changing anyone else's playback.
-    // Once audio opens, continuity wins: one slow device cannot move another.
-    const ROOM_TARGET_FALLBACK = 7.0;
-    let latencyTarget = 0, streamStartedAt = 0, streamGeneration = 0, streamReady = false;
+    const ROOM_TARGET_FALLBACK = 3.0;
+    let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
@@ -703,7 +696,6 @@
     // an Apple device onto ManagedMediaSource.
     const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
     const platform = useNative ? 'native' : 'hls';
-    const playbackMode = platform;
     if (!useNative) PREBUF = 3.0;
     const debug = new URLSearchParams(location.search).get('debug') === '1';
     // The engine choice is fixed. Apple uses lock-safe native HLS; other
@@ -761,7 +753,7 @@
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
     // out of the temporal dead zone so that path can never throw.
-    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, 'sync-failed': 1, 'sync-watchdog': 1, reconnect: 1, 'drift-reconnect': 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'audible-seek': 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'gov-seek': 1, 'gov-error': 1, 'audible-seek': 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
     let evSeq = 0, evStart = Date.now();
     const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
@@ -822,7 +814,7 @@
           scr: screen.width + 'x' + screen.height + '@' + (window.devicePixelRatio || 1),
           net: c.effectiveType || '', dl: c.downlink || 0,
           lang: navigator.language || '', tz: (Intl.DateTimeFormat().resolvedOptions().timeZone) || '',
-          native: useNative, mode: playbackMode, mms: ('ManagedMediaSource' in window),
+          native: useNative, mode: platform,
           mem: navigator.deviceMemory || 0, cores: navigator.hardwareConcurrency || 0,
         });
       } catch (e) {}
@@ -856,12 +848,12 @@
     // playSummary: rolling per-session tallies for the pagehide "final state".
     let sumStalls = 0, sumStallMs = 0, sumMaxStallMs = 0, stallStartedAt = 0;
     let sumRecovers = 0, sumPlayMs = 0, sumPlayStart = 0, sumMaxLatency = 0;
-    let alignSeeks = 0, generationAlignSeeks = 0, audibleSeeks = 0;
+    let audibleSeeks = 0;
     let lastAppSeekAt = 0; // stamped when OUR code issues a seek, to tell app seeks from lock-screen scrubs
     function playSummary(){
       const playing = sumPlayStart ? sumPlayMs + (Date.now() - sumPlayStart) : sumPlayMs;
       const stallMs = sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0);
-      return { stalls: sumStalls, stallMs, maxStallMs: sumMaxStallMs, recovers: sumRecovers, alignSeeks, audibleSeeks, playMs: playing, maxLat: Math.round(sumMaxLatency * 10) / 10, ev: evSeq };
+      return { stalls: sumStalls, stallMs, maxStallMs: sumMaxStallMs, recovers: sumRecovers, audibleSeeks, playMs: playing, maxLat: Math.round(sumMaxLatency * 10) / 10, ev: evSeq };
     }
 
     // NTP-style clock sync to the Mac (the master clock) so every phone computes
@@ -918,7 +910,6 @@
       try { await clockSyncing; } finally { clockSyncing = null; }
     }
 
-    const streamElapsed = () => clockSynced && streamStartedAt ? (serverNow() - streamStartedAt) / 1000 : null;
     function currentTimelineOrigin(){
       try {
         if (typeof player.getStartDate !== 'function') return null;
@@ -1033,17 +1024,14 @@
     // gets suspended while muted+locked, resume (foreground) restarts it.
     function pauseGuest(){
       userPaused = true;
-      syncFailed = syncFailed || joinMuted;
-      joinMuted = false; joinStartedAt = 0; needsAlign = false;
       player.muted = true; setPlayingUI(false); setStatus('paused'); logEvent('mute');
     }
     // A muted pause keeps the native stream warm. If media kept advancing,
     // resume is an immediate unmute with no seek and no chance of a click.
     function resumeGuest(){
-      if (syncFailed) { retrySync('resume'); return; }
+      if (playBlocked) { retryPlayback('resume'); return; }
       userPaused = false; yielded = false; claimAudio();
       if (!player.paused && player.readyState >= 2 && !stale()) {
-        joinMuted = false; joinStartedAt = 0; needsAlign = false;
         player.muted = false;
         if (!sumPlayStart) sumPlayStart = Date.now();
         setPlayingUI(true); setStatus('live'); logEvent('unmute', { warm: true, lat: rnd3(measureLatency()) });
@@ -1058,11 +1046,9 @@
     const RETRY = { maxNumRetry: 1e9, retryDelayMs: 500, maxRetryDelayMs: 2000 };
     const LOAD_POLICY = { default: { maxTimeToFirstByteMs: 10000, maxLoadTimeMs: 20000, timeoutRetry: RETRY, errorRetry: RETRY } };
 
-    // The stream THIS device plays. Native HLS remains mandatory on Apple
-    // devices for background and lock-screen playback; the page only performs
-    // bounded seeks while visible and never replaces AVPlayer with MSE there.
-    const chosenStream = () => LLSTREAM || STREAM;   // LL always; STREAM = dev fallback only
-    const usingLL = () => !!LLSTREAM;
+    // Native HLS remains mandatory on Apple devices for background and
+    // lock-screen playback.
+    const chosenStream = () => LLSTREAM;
 
     // Rate-limited, live-gated re-attach: recover from a stale/broken HLS session
     // (e.g. MediaMTX invalidating the session when the publisher rebuilds on a
@@ -1077,21 +1063,16 @@
       untrackedBeats = 0;
       setStatus('reconnecting…');
       if (!attachSafe()) return;
-      if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAlignedAudible(reason || 'reattach');
+      if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAudible(reason || 'reattach');
       if (started && !userPaused && !yielded) player.play().catch(()=>{});
     }
 
     function attach(){
-      // Guard on the stream we ACTUALLY play (LL-HLS), not the retired plain-HLS
-      // STREAM. HTTPS-only removed streamUrl from /api/status, so STREAM is now
-      // always null — the old `if (!STREAM) return` silently bailed out of every
-      // playback (native AND hls.js), leaving every guest stuck on "Preparing".
       if (!chosenStream() || !live || !streamReady) return false;
       const src = chosenStream();
-      alignGeneration++;
-      generationAlignSeeks = 0;
+      attachGeneration++;
       timelineOriginMs = null;
-      syncFailed = false;
+      playBlocked = false;
       attached = true;
       if (useNative) {
         player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
@@ -1105,10 +1086,10 @@
         return true;
       } else if (Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
-        const target = latencyTarget || (usingLL() ? ROOM_TARGET_FALLBACK : 10);
+        const target = roomTarget();
         const cfg = {
           preferManagedMediaSource: true,
-          lowLatencyMode: usingLL(),
+          lowLatencyMode: true,
           // Sit ~3s behind live — that gap IS the jitter buffer, sized for
           // RELIABILITY over a low number. The field report was "cuts off all the
           // time," so the cushion is now deep enough to coast through a
@@ -1116,14 +1097,14 @@
           // tight floor that still cut off; 3s trades ~1.7s of latency for no
           // cutoffs (the owner's explicit call). Dial back only once the field is
           // provably stall-free.
-          liveSyncDuration: 3.0,
+          liveSyncDuration: target,
           // With a 3s cushion the catch-up stays gentle — it rarely needs to reel
           // in, and a soft 1.15x is inaudible on music. Hard-snap only if we fall
           // >9s behind (essentially never at a 3s target); a snap is an audible
           // skip we don't want to trigger on ordinary jitter. (The 4.5->5.6s
           // ratchet is fixed upstream — the capture tee drops instead of
           // back-pressuring; see internal/broadcast/broadcast.go.)
-          liveMaxLatencyDuration: 9,
+          liveMaxLatencyDuration: target + 6,
           maxLiveSyncPlaybackRate: 1.15,
           liveDurationInfinity: true,
           backBufferLength: 10,
@@ -1185,29 +1166,37 @@
       catch (e) { setStatus('player error — reload the page'); return false; }
     }
 
-    // One lock-safe startup path: attach native AVPlayer on Apple, open audio
-    // immediately, and let the visible-only forward governor correct drift.
+    // The server's EXT-X-START pin is the startup synchronizer. The page never
+    // seeks during startup; it opens the native player directly and measures
+    // the achieved PROGRAM-DATE-TIME latency after playback begins.
     const SYNC_WARN_AT = 1.0;
     const JOIN_WATCHDOG_MS = 15000;
-    let needsAlign = false, alignGeneration = 0, alignedGeneration = -1;
-    let joinMuted = false, joinStartedAt = 0, syncFailed = false;
-    const roomTarget = () => 0;
-    function beginAlignedAudible(){
-      if (alignedGeneration === alignGeneration) return false;
-      alignedGeneration = alignGeneration;
-      needsAlign = false;
-      joinMuted = false;
-      if (!joinStartedAt) joinStartedAt = Date.now();
+    let attachGeneration = 0, audibleGeneration = -1, openedGeneration = -1;
+    let audibleReason = 'join', listenRequestedAt = 0, playBlocked = false;
+    const roomTarget = () => latencyTarget || ROOM_TARGET_FALLBACK;
+    function beginAudible(reason){
+      if (audibleGeneration === attachGeneration) return false;
+      audibleGeneration = attachGeneration;
+      audibleReason = reason || 'join';
+      listenRequestedAt = Date.now();
       player.muted = false;
       setPlayingUI(true);
-      play().catch(() => {});
-      const generation = alignGeneration;
+      const generation = attachGeneration;
       setTimeout(() => {
-        if (generation === alignGeneration && started && live && player.paused && !userPaused && !yielded) {
+        if (generation === attachGeneration && live && player.paused && !userPaused && !yielded) {
           setStatus('Could not start playback. Tap Retry.');
         }
       }, JOIN_WATCHDOG_MS);
       return true;
+    }
+    function reportAudioOpen(lat){
+      if (openedGeneration === attachGeneration || player.muted || lat == null) return;
+      openedGeneration = attachGeneration;
+      logEvent('audio-open', {
+        why: audibleReason, target: rnd3(roomTarget()), lat: rnd3(lat),
+        joinMs: listenRequestedAt ? Date.now() - listenRequestedAt : 0,
+        ref: syncReference(), rate: player.playbackRate, seeks: 0,
+      });
     }
     function waitForMediaEvent(name, maxWaitMs){
       return new Promise(resolve => {
@@ -1224,28 +1213,27 @@
         player.addEventListener(name, onEvent, { once: true });
       });
     }
-    function failAudioGate(_generation, message){
-      syncFailed = true;
+    function showPlayFailure(message){
+      playBlocked = true;
       player.muted = true;
       setPlayingUI(false);
       ico.textContent = '↻';
       btnlabel.textContent = 'Retry';
       setStatus(message || 'Could not start playback.');
     }
-    function retrySync(reason){
+    function retryPlayback(reason){
       userPaused = false;
       yielded = false;
-      syncFailed = false;
+      playBlocked = false;
       claimAudio();
       if (player.error || player.readyState < 2 || stale()) {
         lastReattach = 0;
         reattach(reason || 'retry');
         return;
       }
-      beginAlignedAudible();
-      player.play().catch(() => failAudioGate(alignGeneration, 'Tap Retry to start playback.'));
+      beginAudible(reason || 'retry');
+      player.play().catch(() => showPlayFailure('Tap Retry to start playback.'));
     }
-    async function alignOnce(){}
 
     // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a
     // guest never taps into silence and thinks it's broken; then "Tap to listen".
@@ -1295,12 +1283,7 @@
       try { await player.play(); }
       catch (e) {
         if (live) reportErr('play-failed', (e && e.name || '') + ' ' + (e && e.message || ''));
-        if (joinMuted) failAudioGate(alignGeneration, 'Tap Retry sync to start playback.');
-        else {
-          syncFailed = true; player.muted = true;
-          ico.textContent = '↻'; btnlabel.textContent = 'Retry sync';
-          setStatus(live ? 'Tap Retry sync to start playback.' : 'waiting for the DJ…');
-        }
+        showPlayFailure(live ? 'Tap Retry to start playback.' : 'waiting for the DJ…');
       }
     }
 
@@ -1325,10 +1308,8 @@
     function onClaim(msg){
       if (!msg || msg.tabId === tabId || msg.ts <= myClaim) return;
       myClaim = msg.ts; // adopt so we don't out-race a fresher claim later
-      // Yield if we are audible OR about to open a synchronized audio gate.
-      if (started && !userPaused && (!player.muted || joinMuted) && !player.paused) {
+      if (started && !userPaused && !player.muted && !player.paused) {
         yielded = true;
-        joinMuted = false; joinStartedAt = 0; needsAlign = false;
         // MUTE as well as pause: any path that later resurrects playback
         // (DJ stop→restart auto-resume, version self-reload) then comes back
         // SILENT instead of echoing the active tab — reclaim unmutes.
@@ -1348,8 +1329,7 @@
       claimPlaybackSession(); // in-gesture: audio must ignore the Silent switch
       // A yielded tab (another tab took the audio) reclaims on tap.
       if (yielded) { yielded = false; claimAudio(); userPaused = false; recoverPlayback('tab-reclaim'); return; }
-      if (syncFailed) { retrySync('retry'); return; }
-      if (joinMuted) { pauseGuest(); return; }
+      if (playBlocked) { retryPlayback('retry'); return; }
       // Interruption recovery: element paused by the SYSTEM (call/Siri) or
       // STALLED (no current data — the frozen-tab case) while not deliberately
       // muted. This tap means "come back", not "mute me". (Muted-pause keeps
@@ -1357,7 +1337,15 @@
       if (started && !userPaused && !player.muted && (player.paused || player.readyState < 3)) { recoverPlayback(); return; }
       if (started && !player.muted) { pauseGuest(); }              // listening → mute (stay warm)
       else if (started) { resumeGuest(); }                          // muted → unmute (instant, in sync)
-      else { if (!ready || !streamReady) return; userPaused = false; beginAlignedAudible('join'); mediaSession(); claimAudio(); play().catch(()=>{}); } // first play (register media session in the gesture)
+      else {
+        if (!ready || !streamReady) return;
+        userPaused = false;
+        if (!attached && !attachSafe()) return;
+        beginAudible('join');
+        mediaSession();
+        claimAudio();
+        play().catch(()=>{});
+      }
     });
 
     // The WHOLE hero is a resume target when the system paused us (AirPods
@@ -1383,13 +1371,14 @@
         logEvent('rebuffer', { ms: stallMs, buf: rnd(bufferedAhead()), lat: rnd3(measureLatency()), audible: !player.muted });
       }
       if (!sumPlayStart && !player.muted) sumPlayStart = Date.now(); // audible play-time clock
-      logEvent('playing', { first: !wasStarted, lat: rnd(measureLatency()), buf: rnd(bufferedAhead()), muted: player.muted, ll: usingLL() });
-      if (needsAlign || joinMuted) { setStatus('syncing with the room…'); alignOnce(); }
-      else if (syncFailed) {
-        setPlayingUI(false); ico.textContent = '↻'; btnlabel.textContent = 'Retry sync';
-        setStatus('Playback timing could not be verified.');
+      logEvent('playing', { first: !wasStarted, lat: rnd(measureLatency()), buf: rnd(bufferedAhead()), muted: player.muted, ll: true });
+      if (!player.muted && !yielded) {
+        playBlocked = false;
+        claimAudio();
+        setPlayingUI(true);
+        setStatus('live');
+        reportAudioOpen(measureLatency());
       }
-      else if (!player.muted && !yielded) { claimAudio(); setPlayingUI(true); setStatus('live'); }
     });
     player.addEventListener('waiting', () => {
       stalledSinceBeat = true;
@@ -1448,28 +1437,23 @@
       // drifter started exactly this way), so it stays IMPORTANT for the logs.
       const appSeek = Date.now() - lastAppSeekAt < 2000;
       logEvent(audible ? (appSeek ? 'audible-seek' : 'external-seek') : 'seek',
-        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), appAligns: alignSeeks });
+        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: appSeek });
     });
     player.addEventListener('seeked', sampleProgress);
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
     let untrackedBeats = 0;
     let originCandidate = null, originRepeats = 0, untrackedReattaches = 0;
     function audibleActive(){
-      return started && !player.muted && !userPaused && !yielded && !joinMuted && live && streamReady;
+      return started && !player.muted && !userPaused && !yielded && live && streamReady;
     }
     function resetAudibleWatchdogs(){
       untrackedBeats = 0;
       originCandidate = null;
       originRepeats = 0;
     }
-    // An AUDIBLE re-attach skips the muted align gate (a hidden tab — e.g. a
-    // locked phone — never runs beginAlignedAudible), so attach() leaves
-    // timelineOriginMs null and every native latency read returns null. Without
-    // this restore, the untracked watchdog would re-attach such a player every
-    // ~20s forever (each one an audio dropout). Re-derive the origin passively
-    // from the heartbeat — same 3-stable-samples rule as ensureTimelineOrigin,
-    // no seek, no gate — so measurability comes back and the drift watchdog can
-    // do its job instead.
+    // A re-attach clears the native timeline origin. Re-derive it passively from
+    // stable getStartDate() samples so measurement returns without touching
+    // playback.
     function tryRestoreTimelineOrigin(){
       if (!useNative || timelineOriginMs != null) return false;
       const value = currentTimelineOrigin();
@@ -1495,19 +1479,17 @@
         logEvent('reconnect', { why: reason || 'recover', err: player.error && player.error.code, rs: player.readyState, staleMs: lastProgress ? Date.now() - lastProgress : 0 });
         reattach(reason || 'recover'); // this device gets a fresh session; no room state changes
       } else {
-        beginAlignedAudible(reason || 'recover');
+        beginAudible(reason || 'recover');
         recoveringUntil = Date.now() + 4000;
         player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
       }
     }
     // --- Native forward-seek-to-live governor ---------------------------------
-    // The locked-safe native path (AVPlayer <audio>) has no in-play latency
-    // correction: it parks at hold-back and every rebuffer is added permanently,
-    // so latency only GROWS — the field 4.5->5.6s ratchet that never recovers
-    // until a manual refresh. hls.js erases drift with a seamless pitch-preserved
-    // rate nudge; AVPlayer can't change rate, so the only lever is a seek. This
-    // pulls a drifted device back toward GOV_TARGET_LAT with a single FORWARD
-    // seek to live — NEVER backward: a backward seek into the unbuffered edge is
+    // AVPlayer can accumulate latency after a rebuffer. Unlike hls.js it cannot
+    // erase that drift with a seamless pitch-preserved rate nudge, so the only
+    // available foreground correction is a seek. This
+    // pulls a drifted device back toward the shared room target with a single
+    // FORWARD seek — NEVER backward: a backward seek into the unbuffered edge is
     // the Safari-27 silent-forever hang, and on a locked phone the guest can't
     // tap to recover. Safety (adversarially verified): (a) forward-only — the
     // seek fires only when the CLAMPED target exceeds currentTime + GOV_FWD_TOL,
@@ -1517,15 +1499,14 @@
     // the tab is hidden/locked — the 2s heartbeat is frozen there, so no seek is
     // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
     // fails to commit falls back to reattach() so the player is never left wedged.
-    const NATIVE_GOVERNOR = true;   // kill switch (OTA-flippable) for this P0 seek path
-    const GOV_TARGET_LAT = 1.5;
-    const GOV_TRIGGER = 1.0;          // arm when lat exceeds target by this
-    const GOV_CONFIRMATIONS = 2;    // sustained beats (~4s) before acting — well below the 8s reattach
+    const GOV_TRIGGER = 0.75;       // keep healthy measured spread below one second
+    const GOV_CONFIRMATIONS = 2;    // sustained beats before one correction
     const GOV_FWD_TOL = 0.75;       // minimum forward jump; a smaller correction isn't worth a skip
     const GOV_EDGE_MARGIN = 0.9;    // land at least this far off the live edge (inside the 24s window)
     const GOV_BUF_SAFETY = 0.3;     // land at least this far inside the buffered end, never at it
     const GOV_COOLDOWN_MS = 5000;   // minimum gap between governor seeks
     const GOV_CAP_PER_MIN = 6;      // beyond this, escalate to one reattach and back off (persistent lateness)
+    const UNTRACKED_REATTACH_CONFIRMATIONS = 10;
     let govBeats = 0, govCoolingUntil = 0, govSeekTimes = [];
     function inBufferedStrict(buffered, t){
       try { for (let i = 0; i < buffered.length; i++) if (buffered.start(i) <= t && t <= buffered.end(i)) return true; } catch (e) {}
@@ -1538,12 +1519,12 @@
       return 0;
     }
     async function nativeGovernorTick(lat, stalled){
-      if (!NATIVE_GOVERNOR || !useNative) return;
+      if (!useNative) return;
       if (govCoolingUntil && Date.now() < govCoolingUntil) return;
       if (document.visibilityState !== 'visible') { govBeats = 0; return; } // never seek hidden/locked
       if (stalled || player.readyState < 3) { govBeats = 0; return; }
       if (lat == null || !Number.isFinite(lat)) { govBeats = 0; return; }  // never seek on an unmeasured lat
-      const targetLat = GOV_TARGET_LAT;
+      const targetLat = roomTarget();
       const lateBy = lat - targetLat;
       if (lateBy <= GOV_TRIGGER) { govBeats = 0; return; }        // hysteresis reset — not (yet) late enough
       if (++govBeats < GOV_CONFIRMATIONS) return;                 // require SUSTAINED lateness, not a blip
@@ -1567,16 +1548,16 @@
         reattach('gov-cap');
         return;
       }
-      const gen = alignGeneration;
+      const gen = attachGeneration;
       govBeats = 0; govCoolingUntil = now + GOV_COOLDOWN_MS; govSeekTimes.push(now);
       const before = player.currentTime;
       try {
         const seeked = waitForMediaEvent('seeked', 1800);
-        lastAppSeekAt = Date.now();     // self-classify: a governed forward seek, not an 'audible-seek' violation
+        lastAppSeekAt = Date.now();     // self-classify this as an app-governed audible seek
         player.currentTime = wanted;     // the ONE forward seek
         logEvent('gov-seek', { lat: rnd3(lat), late: rnd3(lateBy), before: rnd3(before), want: rnd3(wanted) });
         const committed = await seeked;
-        if (gen !== alignGeneration) return;                     // a newer attachment took over -> drop
+        if (gen !== attachGeneration) return;                    // a newer attachment took over -> drop
         logEvent('gov-result', { committed, pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), rs: player.readyState });
         if (!committed) reattach('gov-uncommitted');             // never leave the player wedged
       } catch (e) { logEvent('gov-error', { msg: String((e && e.message) || e) }); }
@@ -1591,9 +1572,8 @@
       }
 
       if (lat != null) untrackedReattaches = 0; // tracking works again — re-arm the cap
-      // Native path: the forward-seek governor holds ~1.2s and front-runs the
-      // coarse 8s reattach below (which becomes a last-resort backstop on native).
-      // Fire-and-forget: it self-throttles and guards internally.
+      // Fire-and-forget: the native governor self-throttles and only acts while
+      // visible. Lock-screen playback remains untouched.
       nativeGovernorTick(lat, stalled);
       if (!stalled && lat == null && player.readyState >= 3 && bufferedAhead() > 1) {
         // Cheap path first: if we can make latency measurable again WITHOUT a
@@ -1695,7 +1675,15 @@
           title: titleEl.textContent || 'Live', artist: 'partyparty',
           artwork: [{ src: '/art-512.png', sizes: '512x512', type: 'image/png' }]
         });
-        navigator.mediaSession.setActionHandler('play',  () => { if (syncFailed) retrySync('media-session'); else if (started) resumeGuest(); else if (streamReady) { beginAlignedAudible('media-session'); play().catch(()=>{}); } });
+        navigator.mediaSession.setActionHandler('play',  () => {
+          if (playBlocked) retryPlayback('media-session');
+          else if (started) resumeGuest();
+          else if (streamReady) {
+            if (!attached && !attachSafe()) return;
+            beginAudible('media-session');
+            play().catch(()=>{});
+          }
+        });
         navigator.mediaSession.setActionHandler('pause', () => { if (started) pauseGuest(); });
       } catch (e) {}
     }
@@ -1712,9 +1700,9 @@
       resumeWanted = started && !userPaused && !yielded; // a yielded tab must not auto-resume into audio
       try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
       try { player.removeAttribute('src'); player.load(); } catch (e) {}
-      alignGeneration++;
-      started = false; attached = false; ready = false; errRetries = 0; joinMuted = false; joinStartedAt = 0; needsAlign = false; syncFailed = false;
-      timelineOriginMs = null; alignedGeneration = -1; generationAlignSeeks = 0;
+      attachGeneration++;
+      started = false; attached = false; ready = false; errRetries = 0; playBlocked = false;
+      timelineOriginMs = null; audibleGeneration = -1; openedGeneration = -1;
       recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
       resetAudibleWatchdogs();
       untrackedReattaches = 0; // full teardown = fresh session — re-arm the cap
@@ -1728,15 +1716,12 @@
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         lastPollOK = Date.now();
         considerReload(s.appVersion);
-        if (s.streamUrl) STREAM = s.streamUrl;
         LLSTREAM = s.llhlsUrl || null;
-        if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;
         const streamChanged = !!streamGeneration && !!nextGeneration && nextGeneration !== streamGeneration;
-        streamStartedAt = nextStartedAt;
         streamGeneration = nextGeneration;
         if (!document.body.dataset.eventTitle) setEventTitle(s.name || 'partyparty'); // feed owns the title once the event loads
         const wasLive = live;
@@ -1780,7 +1765,11 @@
           // gesture-less play gets a few retries, then the bright tap button.
           if (live && streamReady && resumeWanted && ready && !userPaused && !yielded) {
             if (++resumeTries > 5) { resumeWanted = false; }
-            else { beginAlignedAudible('dj-restart'); play().catch(() => {}); }
+            else {
+              if (!attached && !attachSafe()) return;
+              beginAudible('dj-restart');
+              play().catch(() => {});
+            }
           }
         }
         // Mid-play hiccup (not a stop): the resume nudge. Covers a real PAUSE
@@ -1796,7 +1785,7 @@
     syncClock(); setInterval(syncClock, 30000);
 
     // Heartbeat so the DJ console can count listeners, sense strain, and measure
-    // inter-device latency spread (any delivery mode).
+    // inter-device latency spread.
     let diagEl = null;
     function showDebug(lat){
       if (!diagEl){
@@ -1810,15 +1799,14 @@
         'latency  : ' + (lat != null ? lat.toFixed(3) + ' s' : 'n/a') + '  ref=' + syncReference() + '\n' +
         'target   : ' + roomTarget().toFixed(1) + ' s  err=' + (lat != null ? ((lat - roomTarget()) >= 0 ? '+' : '') + (lat - roomTarget()).toFixed(3) + 's' : '?') + '\n' +
         'timeline : pdt=' + (measureProgramLatency() != null ? measureProgramLatency().toFixed(3) : 'n/a') + '\n' +
-        'buffer   : ' + bufferedAhead().toFixed(1) + ' s ahead  ·  ' + (usingLL() ? 'LL' : 'plain') + '  ·  v' + PAGE_VERSION + '\n' +
+        'buffer   : ' + bufferedAhead().toFixed(1) + ' s ahead  ·  LL  ·  v' + PAGE_VERSION + '\n' +
         'clock    : ' + (clockSynced ? (clockOffset >= 0 ? '+' : '') + Math.round(clockOffset) + ' ms ±' + Math.round(clockUncertainty) : 'syncing…') + '\n' +
         'stream   : gen=' + streamGeneration + ' ready=' + streamReady + '\n' +
         'stalls   : ' + sumStalls + '  total=' + Math.round(sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0)) + 'ms' + '\n' +
-        'seeks    : startup=' + alignSeeks + '  audible=' + audibleSeeks;
+        'seeks    : audible=' + audibleSeeks;
     }
 
-    // Buffer depth is diagnostic only. Playback remains native and rate=1.0
-    // after the one optional muted startup correction.
+    // Buffer depth is diagnostic only. Native playback stays at rate 1.0.
     function bufferedAhead(){
       try {
         const t = player.currentTime, b = player.buffered;
@@ -1837,10 +1825,10 @@
       // Re-derive it here passively (getStartDate only, no seek, no buffer floor).
       if (timelineOriginMs == null) tryRestoreTimelineOrigin();
       const lat = measureLatency();
+      reportAudioOpen(lat);
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
       watchAudibleHealth(lat, stalled);
       let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
-        + '&del=' + (usingLL() ? 'llhls' : 'hls')
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION);
       if (guestName) url += '&name=' + encodeURIComponent(guestName);
@@ -1851,10 +1839,10 @@
       // timeline between transitions — latency drift, buffer depth, rate.
       if (++hbTick % 6 === 0) logEvent('health', {
         lat: rnd3(lat), ref: syncReference(), pdt: rnd3(measureProgramLatency()), buf: rnd(bufferedAhead()),
-        rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: usingLL(),
+        rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: true,
         stalls: sumStalls, stallMs: sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0),
         maxStallMs: sumMaxStallMs, progressAge: lastProgress ? Date.now() - lastProgress : 0,
-        alignSeeks, audibleSeeks,
+        audibleSeeks,
       });
       stalledSinceBeat = false;
       if (debug) showDebug(lat);
@@ -1864,9 +1852,9 @@
     function updateDelayBadge(){
       const lat = started ? measureLatency() : null;
       const error = lat == null ? null : lat - roomTarget();
-      delayBadge.classList.toggle('syncing', joinMuted || (started && lat == null));
+      delayBadge.classList.toggle('syncing', started && lat == null);
       delayBadge.classList.toggle('warn', error != null && Math.abs(error) >= SYNC_WARN_AT);
-      delayBadge.textContent = joinMuted && lat == null ? 'syncing...' : (lat != null ? lat.toFixed(2) + ' s' : '-- s');
+      delayBadge.textContent = lat != null ? lat.toFixed(2) + ' s' : (started ? 'syncing...' : '-- s');
       delayBadge.title = lat == null
         ? 'Waiting for a synchronized playback clock'
         : 'Room target ' + roomTarget().toFixed(2) + ' s; sync error ' + (error >= 0 ? '+' : '') + error.toFixed(2) + ' s; ' + syncReference();
@@ -2193,16 +2181,11 @@
         userPaused = false;
         mediaSession(); // register lock-screen controls inside the gesture
         if (started && streamReady) {
-          // The first welcome-card touch only prebuffered the stream. Make the
-          // single optional startup correction now, while it is still muted.
           claimAudio();
-          beginAlignedAudible('welcome');
-          alignOnce();
+          beginAudible('welcome');
         } else if (live && streamReady) {
-          // The button itself may be the guest's first touch. The capture-phase
-          // primer has started the player, but `playing` can still be pending;
-          // keep it muted through the same room-alignment gate as every join.
-          beginAlignedAudible('welcome');
+          if (!attached && !attachSafe()) return;
+          beginAudible('welcome');
           play().catch(() => {});
         } else {
           // A guest may enter the page before real media exists. Keep the same
@@ -2219,7 +2202,7 @@
         setTimeout(() => {
           if (live && streamReady && !userPaused && (player.paused || player.readyState < 2)) {
             reportErr('join-stuck', 'paused=' + player.paused + ' rs=' + player.readyState +
-              ' muted=' + player.muted + ' err=' + (player.error && player.error.code) + ' src=' + (usingLL() ? 'll' : 'plain'));
+              ' muted=' + player.muted + ' err=' + (player.error && player.error.code) + ' src=ll');
           }
         }, 3500);
       });

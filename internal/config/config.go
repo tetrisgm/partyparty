@@ -22,21 +22,22 @@ type Config struct {
 	NoOpen     bool
 	FFmpeg     string
 
-	// Delivery + LL-HLS (MediaMTX) settings.
-	Delivery    string // "auto" (default: llhls only with a real domain+cert, else hls), "llhls", or "hls"
+	// LL-HLS (MediaMTX) settings. Delivery remains an internal broadcaster field
+	// until the protected encoder cleanup, but production always sets "llhls".
+	Delivery    string
 	MediaMTXBin string
 	RTSPPort    int
 	HLSPort     int
 	StreamPath  string
-	Domain      string // public hostname for the cert/URL; "" = plain-HLS IP until broker activation
+	Domain      string // public hostname for the cert/URL; "" = broker activation
 	CertFile    string // real cert (fullchain); "" = self-signed
 	KeyFile     string
 	LiveHost    string // Plex-style low-latency host (auto cert + A record via Cloudflare); "" = off
 
-	// LL-HLS tuning (MediaMTX). Defaults tuned for iPhone stability.
-	PartDur  string // EXT-X-PART duration, e.g. "350ms"
-	SegDur   string // HLS segment duration, e.g. "1s"
-	SegCount int    // segments kept in the LL-HLS playlist
+	// Fixed LL-HLS profile verified with native iPhone playback.
+	PartDur  string
+	SegDur   string
+	SegCount int // segments kept in the LL-HLS playlist
 
 }
 
@@ -45,18 +46,10 @@ func Parse() Config {
 	flag.IntVar(&c.Port, "port", envInt("PARTYPARTY_PORT", 8000), "HTTP port (localhost console + diagnostics; never advertised to guests)")
 	flag.IntVar(&c.TLSPort, "tls-port", envInt("PARTYPARTY_TLS_PORT", 8443), "HTTPS port for the guest page — the only link guests ever see")
 	flag.StringVar(&c.Name, "name", env("PARTYPARTY_NAME", "partyparty"), "display name shown to guests")
-	flag.StringVar(&c.Bitrate, "bitrate", env("PARTYPARTY_BITRATE", "320k"), "AAC audio bitrate (LAN has headroom — default to max quality)")
-	flag.StringVar(&c.Codec, "codec", env("PARTYPARTY_CODEC", "aac_at"), "AAC encoder (aac_at = Apple, best on macOS; aac = portable fallback)")
-	flag.IntVar(&c.SampleRate, "sample-rate", envInt("PARTYPARTY_SAMPLE_RATE", 48000), "audio sample rate")
-	flag.IntVar(&c.HLSTime, "hls-time", envInt("PARTYPARTY_HLS_TIME", 1), "HLS segment length in seconds (lower = less latency, less drop-cushion)")
-	flag.IntVar(&c.HLSList, "hls-list", envInt("PARTYPARTY_HLS_LIST", 24), "number of segments kept in the playlist (deep window: the room parks ~10s behind live and needs margin on both sides)")
 	flag.StringVar(&c.Device, "device", env("PARTYPARTY_DEVICE", "auto"), "default capture device index")
 	flag.BoolVar(&c.Tone, "tone", false, "auto-start a 440 Hz test tone on launch")
 	flag.BoolVar(&c.NoOpen, "no-open", false, "don't auto-open the DJ console in a browser (the native app hosts it in-window)")
 	flag.StringVar(&c.FFmpeg, "ffmpeg", env("PARTYPARTY_FFMPEG", "ffmpeg"), "path to the ffmpeg binary")
-	mono := false
-	flag.BoolVar(&mono, "mono", env("PARTYPARTY_MONO", "") == "1", "broadcast in mono (about half the bandwidth)")
-	flag.StringVar(&c.Delivery, "delivery", env("PARTYPARTY_DELIVERY", "auto"), "delivery: HTTPS LL-HLS (hls is retained only for supervised development)")
 	flag.StringVar(&c.MediaMTXBin, "mediamtx", env("PARTYPARTY_MEDIAMTX", ""), "path to mediamtx binary (default: found on PATH)")
 	flag.IntVar(&c.RTSPPort, "rtsp-port", envInt("PARTYPARTY_RTSP_PORT", 8554), "MediaMTX RTSP ingest port")
 	flag.IntVar(&c.HLSPort, "hls-port", envInt("PARTYPARTY_HLS_PORT", 8888), "MediaMTX LL-HLS (HTTPS) port")
@@ -65,14 +58,17 @@ func Parse() Config {
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")
-	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "150ms"), "LL-HLS part duration")
-	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "500ms"), "LL-HLS segment duration")
-	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 48), "LL-HLS segments retained in the live playlist")
 	flag.Parse()
+	c.Bitrate = "320k"
+	c.Codec = "aac_at"
 	c.Channels = 2
-	if mono {
-		c.Channels = 1
-	}
+	c.SampleRate = 48000
+	c.HLSTime = 1
+	c.HLSList = 24
+	c.Delivery = "llhls"
+	c.PartDur = "150ms"
+	c.SegDur = "500ms"
+	c.SegCount = 48
 	return c
 }
 

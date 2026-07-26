@@ -1,10 +1,57 @@
 # Current handoff
 
 The product is venue-Wi-Fi only. The Mac serves HTTPS LL-HLS and the active-room
-social feed directly to guests. Apple devices use native AVPlayer so audio stays
-smooth and continues while locked. Public event pages, remote listening, cloud
+social feed directly to guests. Public event pages, remote listening, cloud
 party content, replays, hotspot setup, playback modes, and old stream settings
 are retired.
+
+## Streaming contract
+
+- AAC-LC, 320 kbps stereo, 48 kHz.
+- 500 ms segments, 150 ms parts, 48 retained segments.
+- One three-second room target.
+- The Go `/live` proxy injects a precise negative three-second `EXT-X-START`
+  into the multivariant playlist and enforces Apple's minimum three-part
+  `PART-HOLD-BACK`.
+- Apple browsers always use native `<audio>`/AVPlayer. This is non-negotiable:
+  background and lock-screen playback must continue.
+- There is no startup seek loop. The visible-only governor may make a
+  forward-only correction into already buffered media after two sustained
+  measurements more than 750 ms late. It never runs hidden or locked.
+- Non-Apple browsers use one hls.js profile with the same target.
+
+The old delivery endpoint, public delivery state, request bitrate/mono knobs,
+automatic set recording activation, dynamic server payload settings, sync
+presets, and alternate Apple engines are no longer production paths.
+
+## Physical acceptance
+
+Use physical iOS 26.4 and iOS 27 devices on ordinary venue Wi-Fi. This is the
+required supervised gate before touching the protected encoder/capture cleanup:
+
+1. Start a real DJ capture and join at least four phones within 30 seconds.
+2. Confirm every phone becomes audible with no refresh and no startup seek.
+3. Compare the phones acoustically. Maximum phone-to-phone spread is 1.0 second;
+   0.5 second or less is the preferred result.
+4. Confirm measured latency clusters around the three-second target. Investigate
+   any open above four seconds and fail any open above nine seconds.
+5. Lock every phone for at least 20 minutes. Audio must remain smooth and
+   continuous; no web governor action may occur while hidden.
+6. Unlock two phones, background/foreground Safari, and interrupt one network
+   path. A visible late phone must converge without moving healthy peers.
+7. Restart the DJ stream once. Listening phones must recover automatically.
+8. Run `node scripts/analyze-session-log.mjs --strict <session.log>`. There must
+   be no failed stream contract, governor error, startup-spread, or steady-room
+   spread finding.
+
+The analyzer treats app-governed forward seeks as recovery evidence, not an
+automatic failure. External/OS seeks and untracked reattachments remain warnings
+that require checking the following health windows.
+
+After this gate passes, the supervised cleanup may remove the inert plain-HLS,
+delivery-switch, recording-tee, and per-broadcast override code still contained
+inside `internal/broadcast/`. Do not change that package before the real go-live
+test.
 
 The direct build remains for migration and Sparkle updates. The App Store lane is
 sandboxed and Sparkle-free:
@@ -14,6 +61,6 @@ scripts/build-app-store.sh
 scripts/package-app-store.sh
 ```
 
-The remaining owner-dependent step is App Store Connect submission material and
-a distribution provisioning profile. Do not change `internal/broadcast/` without
-a supervised go-live test.
+Apple Distribution signing and the Store provisioning profile are configured.
+After the physical streaming gate, package and upload the newest source version,
+then finish the App Store Connect screenshots, privacy answers, and submission.

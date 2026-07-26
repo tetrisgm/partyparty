@@ -72,9 +72,9 @@ hlsServerCert: $WORK/cert.pem
 hlsServerKey: $WORK/key.pem
 hlsVariant: lowLatency
 hlsAlwaysRemux: yes
-hlsSegmentCount: 7
-hlsSegmentDuration: 1s
-hlsPartDuration: 200ms
+hlsSegmentCount: 48
+hlsSegmentDuration: 500ms
+hlsPartDuration: 150ms
 hlsAllowOrigins: ['*']
 authInternalUsers:
 - user: any
@@ -89,13 +89,13 @@ EOF
 start_mtx(){ "$MTX" "$WORK/mtx.yml" > "$WORK/mtx.log" 2>&1 & PIDS+=($!); MTX_PID=$!; }
 # The EXACT tee the app builds (broadcast.go buildArgs): rtsp guest leg (opts
 # overridable to test cures) + adts recording leg, both onfail=ignore.
-TEE_RTSP="${TEE_RTSP:-rtsp_transport=tcp:onfail=ignore:use_fifo=1}"
+TEE_RTSP="${TEE_RTSP:-rtsp_transport=tcp:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1}"
 start_pub(){
   "$FF" -hide_banner -loglevel warning -progress "$WORK/progress.txt" \
     -re -f lavfi -i "sine=frequency=440:sample_rate=48000" \
     -vn -ac 2 -ar 48000 -c:a aac -b:a 320k \
     -f tee -map 0:a \
-    "[f=rtsp:$TEE_RTSP]rtsp://127.0.0.1:$RTSP_PORT/party|[f=adts:onfail=ignore]$WORK/rec.aac" \
+    "[f=rtsp:$TEE_RTSP]rtsp://127.0.0.1:$RTSP_PORT/party|[f=adts:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]$WORK/rec.aac" \
     > "$WORK/pub.log" 2>&1 & PIDS+=($!); PUB_PID=$!
 }
 

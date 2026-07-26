@@ -33,8 +33,6 @@ import (
 	"partyparty/internal/stats"
 )
 
-const defaultLLHLSLatencyTarget = 7.0
-
 type Deps struct {
 	Config      config.Config
 	Broadcaster *broadcast.Broadcaster
@@ -48,7 +46,7 @@ type Deps struct {
 	// an adopted cloud payload is served without an app update.
 	Payload *ota.Store
 
-	// Events is the party's social layer (feed + media + recordings).
+	// Events is the party's active-room social layer.
 	// nil disables the feed endpoints.
 	Events *event.Store
 
@@ -132,9 +130,8 @@ func New(d Deps) *Srv {
 		Deps: d, vendor: http.FileServer(http.FS(webFS)),
 		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL),
 	}}
-	// The /live proxy injects the EXT-X-START room-start pin; the offset is
-	// read at REQUEST time from s.syncTarget so it always equals what
-	// /api/status reports as the room target.
+	// The /live proxy pins every player to the room target and normalizes
+	// MediaMTX's LL-HLS holdback to Apple's authoring requirement.
 	s.liveProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live")
 	if _, err := os.Stat(audioProvenPath()); err == nil {
 		s.audioProven.Store(true)
@@ -177,6 +174,11 @@ func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string) http.Ha
 	upstream := fmt.Sprintf("127.0.0.1:%d", hlsPort)
 	return &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
+			// Ask MediaMTX for an editable playlist body. Recompress playlist
+			// responses for the guest below when the browser accepts gzip.
+			wantGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
+			*r = *r.WithContext(context.WithValue(r.Context(), liveProxyGzipKey{}, wantGzip))
+			r.Header.Del("Accept-Encoding")
 			r.URL.Scheme = "https"
 			r.URL.Host = upstream
 			r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
@@ -197,36 +199,32 @@ func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string) http.Ha
 			if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, prefix+"/") {
 				resp.Header.Set("Location", prefix+location)
 			}
-			// Pin the room's start position in the MULTIVARIANT playlist (index.m3u8,
-			// fetched once per join) so every device begins the SAME distance behind
-			// the live edge. This is a server-side start HINT, not a client seek —
-			// it tightens the room toward zero spread with NO risk of the Safari-27
-			// seek hang, and a player that ignores it just falls back to the natural
-			// hold-back position (still no gross outlier). Media playlists pass
-			// through untouched. Per RFC 8216 EXT-X-START belongs in the multivariant.
 			if resp.Request != nil && resp.StatusCode == http.StatusOK &&
-				strings.HasSuffix(resp.Request.URL.Path, "/index.m3u8") {
-				if d := roomTarget(); d > 0.5 {
-					body, err := io.ReadAll(resp.Body)
-					_ = resp.Body.Close()
-					if err != nil {
+				strings.HasSuffix(resp.Request.URL.Path, ".m3u8") {
+				body, err := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if err != nil {
+					return err
+				}
+				body = rewriteLivePlaylist(body, roomTarget())
+				if gzipOK, _ := resp.Request.Context().Value(liveProxyGzipKey{}).(bool); gzipOK {
+					var compressed bytes.Buffer
+					zw := gzip.NewWriter(&compressed)
+					if _, err := zw.Write(body); err != nil {
 						return err
 					}
-					pl := string(body)
-					if strings.Contains(pl, "#EXT-X-STREAM-INF") && !strings.Contains(pl, "EXT-X-START") {
-						tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.3f,PRECISE=YES\n", d)
-						if i := strings.IndexByte(pl, '\n'); i >= 0 && strings.HasPrefix(pl, "#EXTM3U") {
-							pl = pl[:i+1] + tag + pl[i+1:]
-						} else {
-							pl = "#EXTM3U\n" + tag + pl
-						}
-						body = []byte(pl)
+					if err := zw.Close(); err != nil {
+						return err
 					}
-					resp.Body = io.NopCloser(bytes.NewReader(body))
-					resp.ContentLength = int64(len(body))
-					resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+					body = compressed.Bytes()
+					resp.Header.Set("Content-Encoding", "gzip")
+					resp.Header.Add("Vary", "Accept-Encoding")
+				} else {
 					resp.Header.Del("Content-Encoding")
 				}
+				resp.Body = io.NopCloser(bytes.NewReader(body))
+				resp.ContentLength = int64(len(body))
+				resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
 			}
 			return nil
 		},
@@ -235,6 +233,83 @@ func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string) http.Ha
 			http.Error(w, "live stream temporarily unavailable", http.StatusBadGateway)
 		},
 	}
+}
+
+type liveProxyGzipKey struct{}
+
+// rewriteLivePlaylist applies the two server-side controls native AVPlayer can
+// honor while locked: a common EXT-X-START deadline in the multivariant
+// playlist, and a PART-HOLD-BACK of at least 3x PART-TARGET in media playlists.
+func rewriteLivePlaylist(body []byte, target float64) []byte {
+	pl := string(body)
+	if strings.Contains(pl, "#EXT-X-STREAM-INF") && target > 0.5 && !strings.Contains(pl, "#EXT-X-START:") {
+		tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.3f,PRECISE=YES\n", target)
+		if i := strings.IndexByte(pl, '\n'); i >= 0 && strings.HasPrefix(pl, "#EXTM3U") {
+			pl = pl[:i+1] + tag + pl[i+1:]
+		} else {
+			pl = "#EXTM3U\n" + tag + pl
+		}
+	}
+
+	partTarget := playlistAttributeFloat(pl, "#EXT-X-PART-INF:", "PART-TARGET")
+	if partTarget <= 0 {
+		return []byte(pl)
+	}
+	minHoldBack := partTarget * 3
+	lines := strings.Split(pl, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "#EXT-X-SERVER-CONTROL:") {
+			continue
+		}
+		current := playlistAttributeFloat(line, "", "PART-HOLD-BACK")
+		if current+0.0000005 >= minHoldBack {
+			break
+		}
+		lines[i] = replacePlaylistAttribute(line, "PART-HOLD-BACK", strconv.FormatFloat(minHoldBack, 'f', 6, 64))
+		break
+	}
+	return []byte(strings.Join(lines, "\n"))
+}
+
+func playlistAttributeFloat(playlist, linePrefix, name string) float64 {
+	for _, line := range strings.Split(playlist, "\n") {
+		if linePrefix != "" && !strings.HasPrefix(line, linePrefix) {
+			continue
+		}
+		key := name + "="
+		start := strings.Index(line, key)
+		if start < 0 {
+			continue
+		}
+		start += len(key)
+		end := strings.IndexByte(line[start:], ',')
+		if end < 0 {
+			end = len(line) - start
+		}
+		value, err := strconv.ParseFloat(strings.Trim(strings.TrimSpace(line[start:start+end]), `"`), 64)
+		if err == nil {
+			return value
+		}
+	}
+	return 0
+}
+
+func replacePlaylistAttribute(line, name, value string) string {
+	key := name + "="
+	start := strings.Index(line, key)
+	if start < 0 {
+		separator := ","
+		if strings.HasSuffix(line, ":") {
+			separator = ""
+		}
+		return line + separator + key + value
+	}
+	valueStart := start + len(key)
+	valueEnd := strings.IndexByte(line[valueStart:], ',')
+	if valueEnd < 0 {
+		valueEnd = len(line) - valueStart
+	}
+	return line[:valueStart] + value + line[valueStart+valueEnd:]
 }
 
 // webFS is the live content source: the OTA payload store if present (which
@@ -565,14 +640,13 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSONGzip(w, r, http.StatusOK, map[string]any{
 			"name":           s.Config.Name,
 			"appVersion":     s.version(),
-			"broadcast":      bc,
+			"broadcast":      broadcastStatus(bc),
 			"listeners":      health.Listeners,
 			"listenersTotal": s.Listeners.TotalUnique(),
 			"health":         health,
 			"urls":           s.urls(),
 			"lan":            s.lanStateSnapshot(), // honest LAN readiness from observed LAN vs cloud listeners
 			"llhlsUrl":       s.llhlsURL(),
-			"delivery":       bc.Delivery,
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
 			"audioProven":    s.audioProven.Load(),
@@ -874,48 +948,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
-		s.Listeners.Debug(key, q.Get("del"), rate, buf)
+		s.Listeners.Debug(key, rate, buf)
 		s.Listeners.Meta(key, clientIP(r), s.friendlyName(clientIP(r), r.UserAgent()))
 		s.Listeners.Identity(key, clipStr(strings.TrimSpace(q.Get("name")), 40), clipStr(strings.TrimSpace(q.Get("emoji")), 16))
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	case "/api/delivery":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		mode := r.URL.Query().Get("mode")
-		if mode != "llhls" && mode != "hls" {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "mode must be llhls or hls"})
-			return
-		}
-		if mode == "llhls" {
-			if s.MTX == nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "low-latency unavailable (install mediamtx)"})
-				return
-			}
-			// Without a real (publicly-trusted) cert, LL-HLS would hand every
-			// iPhone an https:// URL Safari rejects — worse than any latency.
-			if !s.realCert() {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "low latency needs a real HTTPS certificate (--domain/--cert/--key) — iPhones can't play the self-signed fallback"})
-				return
-			}
-			if err := s.MTX.EnsureReady(s.Config.RTSPPort, s.Config.HLSPort, 6*time.Second); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-				return
-			}
-			s.Broadcaster.SetDelivery("llhls")
-		} else {
-			s.Broadcaster.SetDelivery("hls")
-			if s.MTX != nil {
-				// StopWait, not Stop: a quick toggle back to llhls within the
-				// SIGINT grace would otherwise launch a replacement that loses
-				// the port race to the still-dying instance.
-				s.MTX.StopWait()
-			}
-		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/open-settings":
 		if r.Method != http.MethodPost {
@@ -966,28 +1001,17 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "device required"})
 			return
 		}
-		// LL-HLS needs a publicly-trusted cert. Plain HLS is the offline-safe
-		// fallback and must be able to start before activation completes.
-		if device != "test" && s.Broadcaster.Delivery() == "llhls" && !s.realCert() {
+		// Every guest path is HTTPS LL-HLS, so a real device cannot go live
+		// before the cached or freshly issued certificate is active.
+		if device != "test" && !s.realCert() {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "secure guest link isn't ready yet — hold on (needs internet once)"})
 			return
-		}
-		opts := broadcast.Options{Bitrate: validBitrate(q.Get("bitrate"))}
-		switch q.Get("mono") {
-		case "1", "true":
-			opts.Channels = 1
-		case "0", "false":
-			opts.Channels = 2
-		}
-		// Record the set into the active room folder by default.
-		if s.Events != nil && q.Get("record") != "0" && s.Broadcaster.Delivery() == "llhls" {
-			opts.RecordPath = s.Events.RecordingPath()
 		}
 		// One fixed LL timing profile now (no latency modes, no MediaMTX
 		// bouncing) — but a start must still revive a silently-dead MediaMTX,
 		// or ffmpeg pushes into the void and guests see a "live" broadcast
 		// nobody can hear. If a stale orphan owns the ports, reap and retry.
-		if s.Broadcaster.Delivery() == "llhls" && s.MTX != nil && !s.MTX.Running() {
+		if s.MTX != nil && !s.MTX.Running() {
 			err := s.MTX.EnsureReady(s.Config.RTSPPort, s.Config.HLSPort, 6*time.Second)
 			if err != nil {
 				if n := mediamtx.ReapOrphans(s.Config.RTSPPort, s.Config.HLSPort); n > 0 {
@@ -999,7 +1023,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		s.Broadcaster.Start(device, q.Get("name"), opts)
+		s.Broadcaster.Start(device, q.Get("name"), broadcast.Options{})
 		s.addStreamFeedPost("Started the stream.")
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/stop":
@@ -1044,6 +1068,21 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func broadcastStatus(status broadcast.Status) map[string]any {
+	return map[string]any{
+		"state":      status.State,
+		"device":     status.Device,
+		"deviceName": status.DeviceName,
+		"since":      status.Since,
+		"bitrate":    status.Bitrate,
+		"channels":   status.Channels,
+		"sampleRate": status.SampleRate,
+		"lastError":  status.LastError,
+		"note":       status.Note,
+		"captureBad": status.CaptureBad,
+	}
+}
+
 func (s *srv) addStreamFeedPost(text string) {
 	if s.Events == nil {
 		return
@@ -1066,10 +1105,10 @@ func (s *srv) addStreamFeedPost(text string) {
 	}
 }
 
-// llhlsURL is the low-latency upgrade a guest MAY use if its device can
-// resolve the domain and complete TLS — "" when not engaged/available.
+// llhlsURL is the one guest stream URL, available once the cert-backed LAN
+// hostname is active.
 func (s *srv) llhlsURL() string {
-	if s.Broadcaster.Delivery() != "llhls" || !s.realCert() {
+	if !s.realCert() {
 		return ""
 	}
 	host := s.liveDomain()
@@ -1244,17 +1283,6 @@ func suggest(status string, bc broadcast.Status) string {
 	return "The venue Wi-Fi is congested or isolating guests. Move closer to the access point or ask the venue to disable client isolation."
 }
 
-// validBitrate allowlists the quality values the console can request; anything
-// else returns "" so the broadcaster keeps its configured default.
-func validBitrate(v string) string {
-	switch v {
-	case "64k", "96k", "128k", "160k", "192k", "256k", "320k":
-		return v
-	default:
-		return ""
-	}
-}
-
 // realCert reports whether the https guest link is actually SERVABLE — the
 // gate for LL-HLS (iOS Safari rejects self-signed certs on LAN
 // IPs). True only once SetActivation ran, which main.go does strictly after a
@@ -1278,16 +1306,9 @@ func (s *srv) liveDomain() string {
 	return s.actDomain
 }
 
-// currentTarget computes the fixed room target exposed by /api/status.
-func (s *srv) currentTarget() float64 {
-	bc := s.Broadcaster.Status()
-	health := s.Listeners.Health(bc.State == "live", kbps(bc.Bitrate))
-	return s.latencyTarget(bc, health.Status)
-}
-
 func (s *srv) streamSyncState(bc broadcast.Status, target float64) map[string]any {
 	generation := bc.Since
-	if bc.State != "live" || bc.Delivery != "llhls" || s.MTX == nil {
+	if bc.State != "live" || s.MTX == nil {
 		s.streamSyncMu.Lock()
 		if generation != s.streamSyncGeneration || bc.State != "live" {
 			s.streamSyncGeneration = generation
@@ -1354,8 +1375,8 @@ func (s *srv) refreshStreamSync(generation int64, target float64) {
 	s.streamSyncMu.Unlock()
 
 	if ready && !wasReady && s.Diag != nil {
-		s.Diag.Printf("stream sync ready: generation=%d real=%.3fs gaps=%.3fs holdback=%.3fs target=%.3fs playlist=%s",
-			generation, state.RealHistory, state.GapHistory, state.PartHoldBack, target, state.Generation)
+		s.Diag.Printf("stream sync ready: generation=%d real=%.3fs gaps=%.3fs holdback=%.3fs part=%.3fs target=%.3fs playlist=%s",
+			generation, state.RealHistory, state.GapHistory, state.PartHoldBack, state.PartTarget, target, state.Generation)
 	}
 }
 
@@ -1367,21 +1388,7 @@ func (s *srv) activationState() map[string]any {
 	return map[string]any{"ready": s.realCert(), "reason": reason}
 }
 
-// latencyTarget is the fixed wall-clock delay used for startup alignment.
-// Moving this value while a room is live made healthy players seek whenever a
-// struggling peer changed room health. Recovery is now strictly per-device.
-func (s *srv) latencyTarget(bc broadcast.Status, _ string) float64 {
-	if bc.Delivery == "llhls" {
-		// Production LL-HLS rides the native live edge.
-		return s.syncTarget()
-	}
-	seg := bc.SegDur
-	if seg <= 0 {
-		seg = 1
-	}
-	// Plain HLS remains a development-only escape hatch with a deeper target.
-	return 3*seg + 7
-}
+func (s *srv) latencyTarget(_ broadcast.Status, _ string) float64 { return s.syncTarget() }
 
 func lastN(s []string, n int) []string {
 	if len(s) <= n {

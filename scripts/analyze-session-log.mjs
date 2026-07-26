@@ -5,48 +5,48 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const EVENT_RE = /^(\d\d):(\d\d):(\d\d)\.(\d{3}) \| ev\[(.*?)\] ([^ ]+)(?: (.*))?$/;
-const STREAM_READY_RE = /stream sync ready: generation=(\d+) real=([0-9.]+)s gaps=([0-9.]+)s holdback=([0-9.]+)s target=([0-9.]+)s playlist=(.*)$/;
+const STREAM_READY_RE = /stream sync ready: generation=(\d+) real=([0-9.]+)s gaps=([0-9.]+)s holdback=([0-9.]+)s part=([0-9.]+)s target=([0-9.]+)s playlist=(.*)$/;
+const ROOM_TARGET_SEC = 3;
+const MAX_ROOM_SPREAD_MS = 1000;
 const KNOWN_KEYS = [
-  'aligned', 'audible', 'before', 'buf', 'committed', 'corrected', 'correction',
-  'degraded', 'error', 'first', 'gen', 'joinMs', 'lat', 'll', 'maxError',
-  'mD', 'mMode', 'mPin', 'mSeek', // sync-approach tags (v53.61+): effective target/mode/pin/seek
-  'quant', // v53.63+: open landed within expected native quantization (not genuinely degraded)
-  'muted', 'pos', 'progressAge', 'rate', 'real', 'ref', 'rs', 'samples', 'seek',
-  'seeking', 'seeks', 'staleMs', 'target', 'used', 'want', 'why',
+  'app', 'audible', 'audibleSeeks', 'before', 'buf', 'committed', 'err',
+  'first', 'gen', 'joinMs', 'lat', 'late', 'll', 'maxStallMs', 'ms', 'muted',
+  'pdt', 'pos', 'progressAge', 'rate', 'ready', 'real', 'ref', 'rs', 'samples',
+  'seeks', 'stallMs', 'stalls', 'staleMs', 'streamReady', 'target', 'used',
+  'v', 'want', 'warm', 'why',
 ];
 
 function timeToMs(h, m, s, ms) {
   return (((Number(h) * 60 + Number(m)) * 60 + Number(s)) * 1000) + Number(ms);
 }
 
-function scalar(v) {
-  if (v === 'true') return true;
-  if (v === 'false') return false;
-  if (v === 'null') return null;
-  if (/^-?(?:\d+|\d*\.\d+)$/.test(v)) return Number(v);
-  return v;
+function scalar(value) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (value === 'null') return null;
+  if (/^-?(?:\d+|\d*\.\d+)$/.test(value)) return Number(value);
+  return value;
 }
 
-function num(v) {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
-}
-
-function bool(v) {
-  return v === true || v === 'true';
+function num(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 export function parseFields(raw = '') {
   const out = {};
-  const t = raw.match(/^\+([0-9.]+)ms(?: |$)/);
-  if (t) out.t = Number(t[1]);
-  const n = raw.match(/(?:^| )#([0-9.]+)(?: |$)/);
-  if (n) out.n = Number(n[1]);
+  const elapsed = raw.match(/^\+([0-9.]+)ms(?: |$)/);
+  if (elapsed) out.t = Number(elapsed[1]);
+  const sequence = raw.match(/(?:^| )#([0-9.]+)(?: |$)/);
+  if (sequence) out.n = Number(sequence[1]);
   for (const key of KNOWN_KEYS) {
-    const re = new RegExp(`(?:^| )${key}=([^ ]*)`);
-    const m = raw.match(re);
-    if (m) out[key] = scalar(m[1]);
+    const match = raw.match(new RegExp(`(?:^| )${key}=([^ ]*)`));
+    if (match) out[key] = scalar(match[1]);
   }
   return out;
+}
+
+function inc(object, key) {
+  object[key] = (object[key] || 0) + 1;
 }
 
 function emptyClient(name) {
@@ -55,252 +55,189 @@ function emptyClient(name) {
     events: 0,
     counts: {},
     opens: [],
-    failures: 0,
-    watchdogs: 0,
+    health: [],
     stalls: 0,
     reconnects: 0,
-    alignRequests: 0,
+    governorSeeks: 0,
+    externalSeeks: 0,
     latestHealth: null,
   };
 }
 
-function inc(obj, key) {
-  obj[key] = (obj[key] || 0) + 1;
-}
-
-function summarizeCohorts(opens, windowMs = 30000) {
+function startupCohorts(opens, windowMs = 30000) {
   const usable = opens
-    .filter((o) => num(o.lat) !== null && num(o.timeMs) !== null)
+    .filter((sample) => num(sample.lat) !== null)
     .sort((a, b) => a.timeMs - b.timeMs);
-  const cohorts = [];
-  for (const open of usable) {
-    const last = cohorts[cohorts.length - 1];
-    if (!last || open.timeMs - last.lastMs > windowMs) {
-      cohorts.push({ opens: [], firstMs: open.timeMs, lastMs: open.timeMs });
+  const groups = [];
+  for (const sample of usable) {
+    const last = groups[groups.length - 1];
+    if (!last || sample.timeMs - last.firstMs > windowMs) {
+      groups.push({ samples: [], firstMs: sample.timeMs });
     }
-    const c = cohorts[cohorts.length - 1];
-    c.opens.push(open);
-    c.lastMs = open.timeMs;
+    groups[groups.length - 1].samples.push(sample);
   }
-  return cohorts.map((c, idx) => {
-    const lats = c.opens.map((o) => o.lat);
-    const min = Math.min(...lats);
-    const max = Math.max(...lats);
-    return {
-      index: idx + 1,
-      count: c.opens.length,
-      spreadMs: Math.round((max - min) * 1000),
-      minLatencySec: min,
-      maxLatencySec: max,
-      clients: c.opens.map((o) => o.client),
-    };
-  });
+  return groups.map((group, index) => summarizeSpread(group.samples, index + 1));
 }
 
-// Per sync-approach (v53.61+) rollup: the DJ flips the "Sync approach" radio and
-// every guest re-aligns, stamping the effective mode on its audio-open + health
-// telemetry (mMode/mSeek/mPin/mD). Grouping by mMode turns one party's log into a
-// head-to-head: per approach, how many devices reached audio vs stayed silent
-// (the #1 priority), the startup spread, and the latency band.
-function approachBucket(map, mode) {
-  let a = map.get(mode);
-  if (!a) {
-    a = { mode, seek: null, pin: null, target: null, opens: [], openClients: new Set(), seenClients: new Set() };
-    map.set(mode, a);
+function healthWindows(samples, windowMs = 15000) {
+  const buckets = new Map();
+  for (const sample of samples) {
+    if (num(sample.lat) === null) continue;
+    const key = Math.floor(sample.timeMs / windowMs);
+    if (!buckets.has(key)) buckets.set(key, new Map());
+    buckets.get(key).set(sample.client, sample);
   }
-  return a;
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([key, byClient]) => summarizeSpread([...byClient.values()], key))
+    .filter((window) => window.count >= 2);
+}
+
+function summarizeSpread(samples, index) {
+  const lats = samples.map((sample) => sample.lat);
+  const min = Math.min(...lats);
+  const max = Math.max(...lats);
+  return {
+    index,
+    count: samples.length,
+    spreadMs: Math.round((max - min) * 1000),
+    minLatencySec: min,
+    maxLatencySec: max,
+    clients: samples.map((sample) => sample.client),
+  };
+}
+
+function spreadWarnings(warnings, label, windows) {
+  const max = Math.max(0, ...windows.map((window) => window.spreadMs));
+  if (max > MAX_ROOM_SPREAD_MS) {
+    warnings.push({ level: 'fail', message: `${label} spread reached ${max}ms; room ceiling is ${MAX_ROOM_SPREAD_MS}ms` });
+  } else if (max > 500) {
+    warnings.push({ level: 'warn', message: `${label} spread reached ${max}ms; preferred band is <=500ms` });
+  }
+  return max;
 }
 
 export function analyzeText(text, source = '<stdin>') {
   const counts = {};
-  const seen = new Set(); // (client, seq) dedupe of re-uploaded batches
+  const seen = new Set();
   const clients = new Map();
   const opens = [];
-  const approaches = new Map(); // mMode -> approachBucket
+  const health = [];
   const streamReady = [];
   const lines = text.split(/\r?\n/);
 
   for (const line of lines) {
-    const sr = line.match(STREAM_READY_RE);
-    if (sr) {
+    const ready = line.match(STREAM_READY_RE);
+    if (ready) {
       streamReady.push({
-        generation: Number(sr[1]),
-        realHistorySec: Number(sr[2]),
-        gapHistorySec: Number(sr[3]),
-        holdbackSec: Number(sr[4]),
-        targetSec: Number(sr[5]),
-        playlist: sr[6],
+        generation: Number(ready[1]),
+        realHistorySec: Number(ready[2]),
+        gapHistorySec: Number(ready[3]),
+        holdbackSec: Number(ready[4]),
+        partTargetSec: Number(ready[5]),
+        targetSec: Number(ready[6]),
+        playlist: ready[7],
       });
     }
 
-    const ev = line.match(EVENT_RE);
-    if (!ev) continue;
-    const [, hh, mm, ss, ms, who, kind, rawFields = ''] = ev;
+    const event = line.match(EVENT_RE);
+    if (!event) continue;
+    const [, hh, mm, ss, ms, who, kind, rawFields = ''] = event;
     const timeMs = timeToMs(hh, mm, ss, ms);
     const fields = parseFields(rawFields);
-    // The uploader can re-send a batch (network retry), duplicating events in
-    // the DJ log. Dedupe on (client, per-client sequence) when a seq exists.
     if (fields.n != null) {
-      const dupKey = who + '#' + fields.n;
-      if (seen.has(dupKey)) continue;
-      seen.add(dupKey);
+      const duplicateKey = `${who}#${fields.n}`;
+      if (seen.has(duplicateKey)) continue;
+      seen.add(duplicateKey);
     }
-    inc(counts, kind);
 
+    inc(counts, kind);
     if (!clients.has(who)) clients.set(who, emptyClient(who));
     const client = clients.get(who);
     client.events++;
     inc(client.counts, kind);
-
-    if (kind === 'align-request') client.alignRequests++;
-    if (kind === 'sync-failed') client.failures++;
-    if (kind === 'sync-watchdog') client.watchdogs++;
     if (kind === 'stall' || kind === 'rebuffer') client.stalls++;
-    if (kind === 'reconnect') client.reconnects++;
-    if (kind === 'health' && num(fields.lat) !== null) {
-      client.latestHealth = { lat: fields.lat, buf: fields.buf, ref: fields.ref, timeMs };
-    }
-    // Any event tagged with a sync approach (health fires continuously, so a phone
-    // that is alive-but-silent under an approach is still "seen" under it).
-    if (fields.mMode != null) {
-      const a = approachBucket(approaches, String(fields.mMode));
-      a.seenClients.add(who);
-      if (num(fields.mSeek) !== null) a.seek = num(fields.mSeek);
-      if (num(fields.mPin) !== null) a.pin = num(fields.mPin);
-      if (num(fields.mD) !== null) a.target = num(fields.mD);
-    }
+    if (kind === 'reconnect' || kind === 'untracked-reconnect') client.reconnects++;
+    if (kind === 'audible-seek' && fields.app === true) client.governorSeeks++;
+    if (kind === 'external-seek' || (kind === 'audible-seek' && fields.app !== true)) client.externalSeeks++;
 
     if (kind === 'audio-open') {
       const open = {
         client: who,
         timeMs,
-        aligned: bool(fields.aligned),
-        degraded: bool(fields.degraded),
         lat: num(fields.lat),
+        target: num(fields.target),
         joinMs: num(fields.joinMs),
-        error: num(fields.error),
-        maxError: num(fields.maxError),
         rate: num(fields.rate),
-        seeks: num(fields.seeks),
-        mode: fields.mMode != null ? String(fields.mMode) : null,
         ref: fields.ref || '',
         why: fields.why || '',
       };
       opens.push(open);
       client.opens.push(open);
-      if (open.mode != null) {
-        const a = approachBucket(approaches, open.mode);
-        a.opens.push(open);
-        a.openClients.add(who);
-      }
+    }
+    if (kind === 'health' && num(fields.lat) !== null) {
+      const sample = { client: who, timeMs, lat: fields.lat, buf: num(fields.buf), ref: fields.ref || '' };
+      health.push(sample);
+      client.health.push(sample);
+      client.latestHealth = sample;
     }
   }
 
-  const cohorts = summarizeCohorts(opens);
-
-  // Rank approaches for the A/B verdict: fewest silent devices first (the #1
-  // priority), then tightest startup spread, then lowest latency.
-  const approachesOut = [...approaches.values()].map((a) => {
-    const lats = a.opens.map((o) => o.lat).filter((v) => num(v) !== null);
-    const min = lats.length ? Math.min(...lats) : null;
-    const max = lats.length ? Math.max(...lats) : null;
-    const seen = a.seenClients.size;
-    const opened = a.openClients.size;
-    return {
-      mode: a.mode,
-      seek: a.seek,
-      pin: a.pin,
-      target: a.target,
-      devicesSeen: seen,
-      devicesOpened: opened,
-      silent: Math.max(0, seen - opened),
-      opens: a.opens.length,
-      degraded: a.opens.filter((o) => o.degraded).length,
-      minLatencySec: min,
-      maxLatencySec: max,
-      spreadMs: (min !== null && max !== null) ? Math.round((max - min) * 1000) : null,
-      maxSeeks: Math.max(0, ...a.opens.map((o) => o.seeks || 0)),
-    };
-  }).sort((a, b) =>
-    (a.silent - b.silent) ||
-    ((a.spreadMs ?? Infinity) - (b.spreadMs ?? Infinity)) ||
-    ((a.maxLatencySec ?? Infinity) - (b.maxLatencySec ?? Infinity)));
-  const recommendation = approachesOut.find((a) => a.devicesOpened > 0)?.mode ?? null;
-
-  const clientsOut = [...clients.values()].map((c) => ({
-    ...c,
-    alignedOpens: c.opens.filter((o) => o.aligned).length,
-    degradedOpens: c.opens.filter((o) => o.degraded).length,
-    maxSeeks: Math.max(0, ...c.opens.map((o) => o.seeks || 0), c.alignRequests),
-  })).sort((a, b) => a.name.localeCompare(b.name));
-
-  const degraded = opens.filter((o) => o.degraded).length;
-  const joinMs = opens.map((o) => o.joinMs).filter((v) => num(v) !== null);
-  const maxJoinMs = joinMs.length ? Math.max(...joinMs) : null;
-  const maxOpenSeeks = Math.max(0, ...opens.map((o) => o.seeks || 0));
-  const maxCohortSpreadMs = Math.max(0, ...cohorts.map((c) => c.spreadMs));
+  const cohorts = startupCohorts(opens);
+  const steadyWindows = healthWindows(health);
+  const joinTimes = opens.map((open) => open.joinMs).filter((value) => num(value) !== null);
+  const maxJoinMs = joinTimes.length ? Math.max(...joinTimes) : null;
   const warnings = [];
 
-  for (const s of streamReady) {
-    // The room target is now approach-driven (presets: tight 2s / balanced ~3s /
-    // deep 6s), so only flag values outside the sane LL-HLS band as suspect.
-    if (s.targetSec < 1 || s.targetSec > 10) {
-      warnings.push({ level: 'warn', message: `stream target is ${s.targetSec.toFixed(3)}s, outside the sane 1–10s range` });
+  for (const ready of streamReady) {
+    if (Math.abs(ready.targetSec - ROOM_TARGET_SEC) > 0.01) {
+      warnings.push({ level: 'fail', message: `stream target is ${ready.targetSec.toFixed(3)}s; fixed room contract is ${ROOM_TARGET_SEC.toFixed(3)}s` });
+    }
+    if (ready.partTargetSec <= 0 || ready.holdbackSec + 0.001 < ready.partTargetSec * 3) {
+      warnings.push({ level: 'fail', message: `playlist PART-HOLD-BACK ${ready.holdbackSec.toFixed(3)}s is below 3x PART-TARGET ${ready.partTargetSec.toFixed(3)}s` });
     }
   }
-  for (const a of approachesOut) {
-    if (a.silent > 0) {
-      warnings.push({ level: 'fail', message: `approach '${a.mode}': ${a.silent} device(s) polled but never opened audio (silent under this approach)` });
+  for (const open of opens) {
+    if (open.target !== null && Math.abs(open.target - ROOM_TARGET_SEC) > 0.01) {
+      warnings.push({ level: 'fail', message: `${open.client} opened against target ${open.target.toFixed(3)}s instead of ${ROOM_TARGET_SEC.toFixed(3)}s` });
+    }
+    if (open.lat !== null && open.lat > ROOM_TARGET_SEC + 6) {
+      warnings.push({ level: 'fail', message: `${open.client} opened ${open.lat.toFixed(3)}s behind, more than 6s past target` });
+    } else if (open.lat !== null && open.lat > ROOM_TARGET_SEC + 1) {
+      warnings.push({ level: 'warn', message: `${open.client} opened ${open.lat.toFixed(3)}s behind, outside the target +1s band` });
     }
   }
   if (opens.length === 0) {
-    warnings.push({ level: 'warn', message: 'no audio-open events found; no listener startup acceptance can be computed' });
-  }
-  if ((counts['sync-watchdog'] || 0) > 0) {
-    warnings.push({ level: 'fail', message: `${counts['sync-watchdog']} sync-watchdog event(s); muted startup exceeded the watchdog` });
-  }
-  if ((counts['sync-failed'] || 0) > 0) {
-    warnings.push({ level: 'fail', message: `${counts['sync-failed']} sync-failed event(s); at least one listener reached the broken retry state` });
-  }
-  if ((counts['audible-seek'] || 0) > 0) {
-    warnings.push({ level: 'fail', message: `${counts['audible-seek']} audible seek event(s); post-unmute app-directed seeks must stay zero` });
-  }
-  if ((counts['external-seek'] || 0) > 0) {
-    warnings.push({ level: 'warn', message: `${counts['external-seek']} external seek(s) (lock-screen/OS scrub, not app code); each can park a guest behind — drift-reconnect should recover them` });
+    warnings.push({ level: 'warn', message: 'no audio-open events found; listener startup acceptance cannot be computed' });
   }
   if (maxJoinMs !== null && maxJoinMs > 15000) {
-    warnings.push({ level: 'fail', message: `slowest audio-open took ${Math.round(maxJoinMs)}ms; watchdog budget is 15000ms` });
+    warnings.push({ level: 'fail', message: `slowest audio-open took ${Math.round(maxJoinMs)}ms; join watchdog is 15000ms` });
   }
-  if (opens.length && degraded / opens.length >= 0.05) {
-    warnings.push({ level: degraded ? 'warn' : 'ok', message: `${degraded}/${opens.length} audio-open event(s) were degraded or timing-unverified` });
+  if ((counts['gov-error'] || 0) > 0) {
+    warnings.push({ level: 'fail', message: `${counts['gov-error']} native governor error event(s)` });
   }
-  if (maxCohortSpreadMs > 1000) {
-    warnings.push({ level: 'fail', message: `max startup cohort spread is ${maxCohortSpreadMs}ms; acceptance ceiling is 1000ms` });
-  } else if (maxCohortSpreadMs > 500) {
-    warnings.push({ level: 'warn', message: `max startup cohort spread is ${maxCohortSpreadMs}ms; typical target is <=500ms` });
+  if ((counts['external-seek'] || 0) > 0) {
+    warnings.push({ level: 'warn', message: `${counts['external-seek']} external seek(s); verify the governor returned each visible phone to the room band` });
   }
-  if (maxOpenSeeks > 4) {
-    warnings.push({ level: 'fail', message: `max muted startup seeks is ${maxOpenSeeks}; loop guard should cap at 4` });
+  if ((counts['untracked-reconnect'] || 0) > 0) {
+    warnings.push({ level: 'warn', message: `${counts['untracked-reconnect']} untracked timeline reattachment(s)` });
   }
+
+  const maxStartupSpreadMs = spreadWarnings(warnings, 'startup cohort', cohorts);
+  const maxSteadySpreadMs = spreadWarnings(warnings, 'steady-state room', steadyWindows);
+  const clientsOut = [...clients.values()].sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     source,
     totalLines: lines.length,
-    eventCount: Object.values(counts).reduce((a, b) => a + b, 0),
+    eventCount: Object.values(counts).reduce((sum, count) => sum + count, 0),
     clientCount: clients.size,
     counts,
-    startup: {
-      audioOpens: opens.length,
-      alignedOpens: opens.filter((o) => o.aligned).length,
-      degradedOpens: degraded,
-      maxJoinMs,
-      maxOpenSeeks,
-      maxCohortSpreadMs,
-    },
+    startup: { audioOpens: opens.length, maxJoinMs, maxSpreadMs: maxStartupSpreadMs },
+    steady: { samples: health.length, windows: steadyWindows.length, maxSpreadMs: maxSteadySpreadMs },
     streamReady,
     cohorts,
-    approaches: approachesOut,
-    recommendation,
+    steadyWindows,
     clients: clientsOut,
     warnings,
   };
@@ -308,36 +245,35 @@ export function analyzeText(text, source = '<stdin>') {
 
 function latestLog() {
   const dir = path.join(os.homedir(), 'Library', 'Logs', 'partyparty');
-  let entries = [];
   try {
-    entries = fs.readdirSync(dir)
+    return fs.readdirSync(dir)
       .filter((name) => /^session-.*\.log$/.test(name))
       .map((name) => {
         const file = path.join(dir, name);
         return { file, mtime: fs.statSync(file).mtimeMs };
       })
-      .sort((a, b) => b.mtime - a.mtime);
+      .sort((a, b) => b.mtime - a.mtime)[0]?.file || null;
   } catch {
     return null;
   }
-  return entries[0]?.file || null;
 }
 
-function fmtSec(v) {
-  return v == null ? 'n/a' : `${Number(v).toFixed(3)}s`;
+function fmtSec(value) {
+  return value == null ? 'n/a' : `${Number(value).toFixed(3)}s`;
 }
 
 function printReport(summary) {
+  const counts = summary.counts;
   console.log(`Session log: ${summary.source}`);
   console.log(`Events: ${summary.eventCount} across ${summary.clientCount} client(s)`);
-  const c = summary.counts;
-  console.log(`Startup: audio-open=${summary.startup.audioOpens} aligned=${summary.startup.alignedOpens} degraded=${summary.startup.degradedOpens} maxJoin=${summary.startup.maxJoinMs == null ? 'n/a' : `${Math.round(summary.startup.maxJoinMs)}ms`} maxSeeks=${summary.startup.maxOpenSeeks}`);
-  console.log(`Problems: sync-failed=${c['sync-failed'] || 0} watchdog=${c['sync-watchdog'] || 0} stall=${c.stall || 0} rebuffer=${c.rebuffer || 0} reconnect=${c.reconnect || 0} audible-seek=${c['audible-seek'] || 0} external-seek=${c['external-seek'] || 0}`);
-  console.log(`Recoveries: drift-reconnect=${c['drift-reconnect'] || 0} untracked-reconnect=${c['untracked-reconnect'] || 0}`);
+  console.log(`Startup: opens=${summary.startup.audioOpens} maxJoin=${summary.startup.maxJoinMs == null ? 'n/a' : `${Math.round(summary.startup.maxJoinMs)}ms`} maxSpread=${summary.startup.maxSpreadMs}ms`);
+  console.log(`Steady room: samples=${summary.steady.samples} comparedWindows=${summary.steady.windows} maxSpread=${summary.steady.maxSpreadMs}ms`);
+  console.log(`Playback: stalls=${counts.stall || 0} rebuffer=${counts.rebuffer || 0} reconnect=${counts.reconnect || 0} governorSeeks=${counts['audible-seek'] || 0} externalSeeks=${counts['external-seek'] || 0}`);
+
   if (summary.streamReady.length) {
-    console.log('\nStream sync readiness:');
-    for (const s of summary.streamReady) {
-      console.log(`  gen ${s.generation}: real=${fmtSec(s.realHistorySec)} gaps=${fmtSec(s.gapHistorySec)} holdback=${fmtSec(s.holdbackSec)} target=${fmtSec(s.targetSec)}`);
+    console.log('\nStream readiness:');
+    for (const ready of summary.streamReady) {
+      console.log(`  gen ${ready.generation}: real=${fmtSec(ready.realHistorySec)} holdback=${fmtSec(ready.holdbackSec)} part=${fmtSec(ready.partTargetSec)} target=${fmtSec(ready.targetSec)}`);
     }
   }
   if (summary.cohorts.length) {
@@ -346,55 +282,37 @@ function printReport(summary) {
       console.log(`  #${cohort.index}: n=${cohort.count} spread=${cohort.spreadMs}ms lat=${fmtSec(cohort.minLatencySec)}..${fmtSec(cohort.maxLatencySec)}`);
     }
   }
-  if (summary.approaches && summary.approaches.length) {
-    console.log('\nSync approaches (A/B — best behaved first):');
-    for (const a of summary.approaches) {
-      const dials = `seek=${a.seek ?? '?'} pin=${a.pin ?? '?'} target=${a.target ?? '?'}s`;
-      const silent = a.silent > 0 ? `  ⚠ SILENT=${a.silent}` : '';
-      console.log(`  ${a.mode.padEnd(9)} ${dials.padEnd(28)} opened=${a.devicesOpened}/${a.devicesSeen} spread=${a.spreadMs == null ? 'n/a' : `${a.spreadMs}ms`} lat=${fmtSec(a.minLatencySec)}..${fmtSec(a.maxLatencySec)} degraded=${a.degraded} maxSeeks=${a.maxSeeks}${silent}`);
-    }
-    if (summary.recommendation) {
-      console.log(`  → best behaved this session: ${summary.recommendation} (fewest silent, then tightest spread, then lowest latency)`);
-    }
-  }
   if (summary.clients.length) {
     console.log('\nClient outcomes:');
-    for (const cl of summary.clients) {
-      const latest = cl.latestHealth ? ` latestHealth=${fmtSec(cl.latestHealth.lat)} buf=${cl.latestHealth.buf ?? 'n/a'}` : '';
-      console.log(`  ${cl.name}`);
-      console.log(`    events=${cl.events} opens=${cl.opens.length} aligned=${cl.alignedOpens} degraded=${cl.degradedOpens} seeks=${cl.maxSeeks} failures=${cl.failures} watchdog=${cl.watchdogs} stalls=${cl.stalls} reconnects=${cl.reconnects}${latest}`);
+    for (const client of summary.clients) {
+      const latest = client.latestHealth ? ` latest=${fmtSec(client.latestHealth.lat)} buf=${client.latestHealth.buf ?? 'n/a'}` : '';
+      console.log(`  ${client.name}: opens=${client.opens.length} stalls=${client.stalls} reconnects=${client.reconnects} governorSeeks=${client.governorSeeks} externalSeeks=${client.externalSeeks}${latest}`);
     }
   }
   console.log('\nAcceptance:');
-  if (!summary.warnings.length) {
-    console.log('  PASS: no acceptance warnings found in this log');
-  } else {
-    for (const w of summary.warnings) {
-      console.log(`  ${w.level.toUpperCase()}: ${w.message}`);
-    }
-  }
+  if (!summary.warnings.length) console.log('  PASS: no acceptance warnings found in this log');
+  for (const warning of summary.warnings) console.log(`  ${warning.level.toUpperCase()}: ${warning.message}`);
 }
 
 async function main(argv) {
   const json = argv.includes('--json');
   const strict = argv.includes('--strict');
-  const files = argv.filter((a) => !a.startsWith('--'));
+  const files = argv.filter((arg) => !arg.startsWith('--'));
   const target = files[0] || latestLog();
   if (!target) {
     console.error('No session log supplied and none found in ~/Library/Logs/partyparty.');
     process.exit(1);
   }
-  const text = fs.readFileSync(target, 'utf8');
-  const summary = analyzeText(text, target);
+  const summary = analyzeText(fs.readFileSync(target, 'utf8'), target);
   if (json) console.log(JSON.stringify(summary, null, 2));
   else printReport(summary);
-  if (strict && summary.warnings.some((w) => w.level === 'fail')) process.exit(2);
+  if (strict && summary.warnings.some((warning) => warning.level === 'fail')) process.exit(2);
 }
 
 const self = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === self) {
-  main(process.argv.slice(2)).catch((err) => {
-    console.error(err && err.stack || err);
+  main(process.argv.slice(2)).catch((error) => {
+    console.error(error?.stack || error);
     process.exit(1);
   });
 }

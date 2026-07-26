@@ -244,18 +244,18 @@ function getInsecure(url, timeoutMs = 5000, redirects = 5, cookie = '') {
       res.on('end', () => {
         const status = res.statusCode || 0;
         const location = res.headers.location;
+        const setCookie = res.headers['set-cookie'] || [];
+        const cookieBits = Array.isArray(setCookie) ? setCookie : [setCookie];
+        const responseCookie = cookieBits
+          .map((value) => String(value).split(';')[0])
+          .filter(Boolean)
+          .join('; ') || cookie;
         if (redirects > 0 && status >= 300 && status < 400 && location) {
           const nextURL = new URL(location, u).toString();
-          const setCookie = res.headers['set-cookie'] || [];
-          const cookieBits = Array.isArray(setCookie) ? setCookie : [setCookie];
-          const nextCookie = cookieBits
-            .map((v) => String(v).split(';')[0])
-            .filter(Boolean)
-            .join('; ') || cookie;
-          getInsecure(nextURL, timeoutMs, redirects - 1, nextCookie).then(resolve, reject);
+          getInsecure(nextURL, timeoutMs, redirects - 1, responseCookie).then(resolve, reject);
           return;
         }
-        resolve({ status, body });
+        resolve({ status, body, headers: res.headers, cookie: responseCookie });
       });
     });
     req.on('timeout', () => req.destroy(new Error(`GET ${url} timed out`)));
@@ -314,19 +314,12 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     '--no-open',
     '--port', String(httpPort),
     '--tls-port', String(tlsPort),
-    '--delivery', 'llhls',
     '--domain', '127.0.0.1',
     '--cert', cert,
     '--key', key,
     '--rtsp-port', String(rtspPort),
     '--hls-port', String(hlsPort),
     '--stream-path', 'party',
-    // Match the shipped room profile exactly. A browser test with easier LL-HLS
-    // timing is not evidence that the phones receive a healthy stream.
-    '--seg-duration', '1s',
-    '--part-duration', '500ms',
-    '--seg-count', '24',
-    '--latency-target', '3',
     '--name', 'partyparty e2e',
   ], {
     cwd: ROOT,
@@ -346,7 +339,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     label: 'real server /api/status',
   });
 
-  await fetchJSON(`http://127.0.0.1:${httpPort}/api/start?device=test&record=0&bitrate=320k`, {
+  await fetchJSON(`http://127.0.0.1:${httpPort}/api/start?device=test`, {
     method: 'POST',
   });
 
@@ -385,6 +378,17 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     const off = Math.abs(parseFloat(m[1]));
     if (Math.abs(off - syncReady.latencyTarget) > 0.02) fail(`EXT-X-START offset ${off}s != room target ${syncReady.latencyTarget}s`);
     log(`PASS EXT-X-START pin present: TIME-OFFSET=-${off.toFixed(3)}s == room target`);
+
+    const variant = mv.body.split(/\r?\n/).find((line) => line && !line.startsWith('#'));
+    if (!variant) fail(`multivariant playlist has no media variant:\n${mv.body.slice(0, 300)}`);
+    const mediaUrl = new URL(variant, `https://127.0.0.1:${tlsPort}/live/party/index.m3u8`).href;
+    const media = await getInsecure(mediaUrl, 5000, 5, mv.cookie);
+    const part = Number(/PART-TARGET=([0-9.]+)/.exec(media.body || '')?.[1]);
+    const holdback = Number(/PART-HOLD-BACK=([0-9.]+)/.exec(media.body || '')?.[1]);
+    if (!(part > 0) || !(holdback + 0.001 >= part * 3)) {
+      fail(`media playlist has invalid part holdback: part=${part} holdback=${holdback}\n${(media.body || '').slice(0, 500)}`);
+    }
+    log(`PASS media playlist holdback: ${holdback.toFixed(3)}s >= 3 x ${part.toFixed(3)}s`);
   }
 
   return {
@@ -406,7 +410,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
         const s = await fetchJSON(statusURL).catch(() => null);
         return s && s.broadcast && s.broadcast.state !== 'live';
       }, { timeoutMs: 10000, label: 'real publisher stopped' }).catch(() => null);
-      await fetchJSON(`http://127.0.0.1:${httpPort}/api/start?device=test&record=0&bitrate=320k`, {
+      await fetchJSON(`http://127.0.0.1:${httpPort}/api/start?device=test`, {
         method: 'POST',
       });
       const s = await waitFor(async () => {
@@ -473,9 +477,9 @@ hlsServerCert: ${cert}
 hlsServerKey: ${key}
 hlsVariant: lowLatency
 hlsAlwaysRemux: yes
-hlsSegmentCount: 24
-hlsSegmentDuration: 1s
-hlsPartDuration: 500ms
+hlsSegmentCount: 48
+hlsSegmentDuration: 500ms
+hlsPartDuration: 150ms
 hlsAllowOrigins: ['*']
 authInternalUsers:
 - user: any
@@ -512,27 +516,25 @@ paths:
             deviceName: 'Test tone (440 Hz)',
             bitrate: '320k',
             channels: 2,
-            segDur: 1,
-            delivery: 'llhls',
+            segDur: 0.5,
             sampleRate: 48000,
           },
           listeners: 1,
           listenersTotal: 1,
           llhlsUrl: streamUrl,
-          delivery: 'llhls',
           llhlsAvailable: true,
           llhlsRealCert: true,
-          latencyTarget: 7,
+          latencyTarget: 3,
           streamSync: {
             generation: mockStartedAt,
             ready: mockLive && mockReady,
             checking: mockLive && !mockReady,
             publishing: mockLive,
             playlist: `mock-${mockStartedAt}_audio.m3u8`,
-            realHistory: mockReady ? 9 : 0,
+            realHistory: mockReady ? 4 : 0,
             gapHistory: mockReady ? 14 : 2,
-            partHoldBack: 2.5,
-            partTarget: 1,
+            partHoldBack: 0.513,
+            partTarget: 0.171,
           },
           health: {},
           urls: { primary: `http://127.0.0.1:${webPort}/`, ip: '127.0.0.1', port: webPort, interfaces: [] },
@@ -621,7 +623,7 @@ function startMockPublisher(workDir, ffmpeg, rtspPort) {
     '-re', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
     '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'aac', '-b:a', '320k',
     '-f', 'tee', '-map', '0:a',
-    `[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1]rtsp://127.0.0.1:${rtspPort}/party|[f=adts:onfail=ignore]${path.join(workDir, 'rec.aac')}`,
+    `[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]rtsp://127.0.0.1:${rtspPort}/party|[f=adts:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]${path.join(workDir, 'rec.aac')}`,
   ], {
     cwd: workDir,
     logPath: path.join(workDir, `publisher-${Date.now()}.log`),
@@ -716,7 +718,7 @@ async function createGuestSession(stack, browser, opts = {}) {
 async function assertGuestActions(page) {
   if (!(await page.locator('#composer').isVisible())) fail('guest identity/comment composer is not visible');
 
-  await page.locator('#shareBtn').click();
+  await page.locator('#qrBtn').click();
   await page.waitForFunction(() => {
     const root = document.getElementById('qrShare');
     return root && (root.querySelector('canvas') || root.querySelector('img'));
@@ -798,13 +800,8 @@ async function driveGuest(stack, label, browser, session = null, opts = {}) {
     }, { timeoutMs: 15000, label: 'LL-HLS manifest fetch' });
     const media = await waitForMediaReady(page, 25000);
     const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
-    // Playwright WebKit does not expose a valid native-HLS getStartDate bridge,
-    // so it exercises the bounded audible-degraded path rather than real iOS's
-    // verified PDT path. Keep the strict budget on Chromium/hls.js.
-    // The client's own STARTUP_BUDGET_MS is 12s; assert against that (+margin),
-    // not a stricter figure. NOTE: the hls.js seek loop routinely uses most of
-    // this budget — tightening hls.js startup speed is a tracked follow-up
-    // (docs/sync-redesign.md); the native path already opens on progression.
+    // Playwright WebKit does not expose iPhone's valid native-HLS getStartDate
+    // bridge, so it proves native playback continuity but not PDT measurement.
     const joinBudget = ENGINE === 'webkit' ? 15500 : 12800;
     if (joinMs > joinBudget) fail(`muted startup exceeded the ${joinBudget}ms product budget: ${joinMs}ms`);
     const progress = await assertPlaybackProgress(page);
@@ -1023,7 +1020,6 @@ async function syncState(page) {
       pdt,
       ref,
       target: typeof roomTarget === 'function' ? roomTarget() : null,
-      streamStartedAt: typeof streamStartedAt === 'number' ? streamStartedAt : 0,
       currentTime: p?.currentTime || 0,
       clockOffset: typeof clockOffset === 'number' ? clockOffset : null,
       paused: p?.paused ?? true,
@@ -1033,7 +1029,8 @@ async function syncState(page) {
       startDateValid,
       seekableStart,
       seekableEnd,
-      alignSeeks: typeof alignSeeks === 'number' ? alignSeeks : null,
+      attachGeneration: typeof attachGeneration === 'number' ? attachGeneration : null,
+      audibleGeneration: typeof audibleGeneration === 'number' ? audibleGeneration : null,
       audibleSeeks: typeof audibleSeeks === 'number' ? audibleSeeks : null,
       stalls: typeof sumStalls === 'number' ? sumStalls : null,
     };
@@ -1074,7 +1071,7 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
         errorA: Number.isFinite(a.target) ? a.latency - a.target : null,
         errorB: Number.isFinite(b.target) ? b.latency - b.target : null,
         rawA: a.currentTime, rawB: b.currentTime, rateA: a.rate, rateB: b.rate,
-        refA: a.ref, refB: b.ref, alignA: a.alignSeeks, alignB: b.alignSeeks,
+        refA: a.ref, refB: b.ref,
         audibleA: a.audibleSeeks, audibleB: b.audibleSeeks,
       });
     }
@@ -1109,11 +1106,8 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   if (!allowInjectedSeek && p90 > 1.0) {
     fail(`room sync gap too wide: p90=${p90.toFixed(3)}s median=${median.toFixed(3)}s (want <1.0s): ${JSON.stringify(samples)}`);
   }
-  if (samples.some((s) => s.alignA > 4 || s.alignB > 4)) {
-    fail(`startup alignment exceeded the four-seek muted budget: ${JSON.stringify(samples)}`);
-  }
   if (!allowInjectedSeek && samples.some((s) => s.audibleA > 0 || s.audibleB > 0)) {
-    fail(`startup alignment changed position after audio opened: ${JSON.stringify(samples)}`);
+    fail(`clean-room playback required an audible correction: ${JSON.stringify(samples)}`);
   }
   // The product boundary is sub-second device-to-device timing. A tighter
   // controller caused audible seek loops on real iPhones, so this test protects
@@ -1126,7 +1120,7 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   if (targetMedian > 1.0 || targetP90 > 1.0) {
     fail(`listeners missed the authoritative deadline: median error=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
-  log(`PASS browser room-sync ${label}: peers=${aMedian.toFixed(3)}s/${bMedian.toFixed(3)}s; spread median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s; deadline error median=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s (${samples.length} samples, local PDT, <=4 muted startup seeks)`);
+  log(`PASS browser room-sync ${label}: peers=${aMedian.toFixed(3)}s/${bMedian.toFixed(3)}s; spread median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s; deadline error median=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s (${samples.length} samples, local PDT)`);
   return { median, p90, aMedian, bMedian, targetMedian, targetP90, samples };
 }
 
@@ -1163,21 +1157,21 @@ function assertContinuous(before, after, label, minProgress = 3) {
   log(`PASS browser continuity ${label}: progress=${progress.toFixed(3)}s, no waits, no seeks`);
 }
 
-async function assertAlignmentTransactionClosed(page, label) {
+async function assertAudibleTransactionClosed(page, label) {
   const before = await syncState(page);
-  const accepted = await page.evaluate(() => beginAlignedAudible('synthetic-native-reentry'));
+  const accepted = await page.evaluate(() => beginAudible('synthetic-reentry'));
   await sleep(250);
   const after = await syncState(page);
-  if (accepted !== false || after.muted || after.paused || after.alignSeeks !== before.alignSeeks) {
-    fail(`${label} reopened a completed startup transaction: accepted=${accepted} before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
+  if (accepted !== false || after.muted || after.paused || after.audibleGeneration !== before.audibleGeneration) {
+    fail(`${label} reopened a completed audible transaction: accepted=${accepted} before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
   }
-  log(`PASS browser startup transaction ${label}: re-entry refused, seeks=${after.alignSeeks}`);
+  log(`PASS browser audible transaction ${label}: re-entry refused at generation=${after.audibleGeneration}`);
 }
 
 async function assertInjectedDriftIsolation(first, second) {
   await Promise.all([
-    assertAlignmentTransactionClosed(first, 'healthy peer'),
-    assertAlignmentTransactionClosed(second, 'delayed peer'),
+    assertAudibleTransactionClosed(first, 'healthy peer'),
+    assertAudibleTransactionClosed(second, 'delayed peer'),
   ]);
   await startContinuityProbe(first);
   await startContinuityProbe(second);
