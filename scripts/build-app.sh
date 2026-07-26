@@ -67,6 +67,15 @@ cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT/app/PrivacyInfo.xcprivacy" "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 if [ "$APP_STORE" = "1" ]; then
+  ACTOOL_INFO="$(mktemp)"
+  xcrun actool "$ROOT/app/AppAssets.xcassets" \
+    --compile "$APP/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" \
+    --app-icon AppIcon \
+    --product-type com.apple.product-type.application \
+    --output-partial-info-plist "$ACTOOL_INFO"
+  rm -f "$ACTOOL_INFO"
   /usr/libexec/PlistBuddy -c 'Delete :SUAutomaticallyUpdate' "$APP/Contents/Info.plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c 'Delete :SUEnableAutomaticChecks' "$APP/Contents/Info.plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c 'Delete :SUFeedURL' "$APP/Contents/Info.plist" 2>/dev/null || true
@@ -97,6 +106,12 @@ if [ "$APP_STORE" != "1" ] && [ -d "$BIN/Sparkle.framework" ]; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/partyparty" 2>/dev/null || true
 fi
 chmod +x "$APP/Contents/Helpers/"* "$APP/Contents/MacOS/partyparty"
+# Store packages reject quarantine/provenance metadata copied from downloaded
+# provisioning material. Code signatures are applied after this cleanup.
+if [ "$APP_STORE" = "1" ]; then
+  chmod -R u+w "$APP"
+  xattr -cr "$APP"
+fi
 
 codesign_one() { # $1=path  $2=entitlements (optional)
   local path="$1" ent="${2:-}"

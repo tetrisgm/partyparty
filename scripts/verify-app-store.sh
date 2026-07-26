@@ -34,8 +34,11 @@ done
 [ ! -e "$APP/Contents/Frameworks/Sparkle.framework" ] || fail "Sparkle is bundled"
 [ ! -e "$APP/Contents/Library/LaunchDaemons" ] || fail "LaunchDaemons are bundled"
 [ ! -e "$APP/Contents/Library/PrivilegedHelperTools" ] || fail "privileged helpers are bundled"
+[ -f "$APP/Contents/Resources/Assets.car" ] || fail "compiled asset catalog is missing"
 unreadable="$(find "$APP" ! -perm -o+r -print -quit)"
 [ -z "$unreadable" ] || fail "bundle item is not world-readable: $unreadable"
+forbidden_xattr="$(xattr -lr "$APP" 2>/dev/null | grep -E 'com\\.apple\\.(quarantine|provenance|macl):' | head -1 || true)"
+[ -z "$forbidden_xattr" ] || fail "bundle contains forbidden extended attribute: $forbidden_xattr"
 
 PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 [ -f "$PRIVACY" ] || fail "PrivacyInfo.xcprivacy is missing"
