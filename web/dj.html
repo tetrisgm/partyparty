@@ -683,17 +683,6 @@
   </div>
 </div>
 
-<div class="softaskov" id="captureSoftAsk" role="presentation" hidden>
-  <div class="softask" role="dialog" aria-modal="true" aria-labelledby="captureSoftTitle" aria-describedby="captureSoftCopy">
-    <h2 id="captureSoftTitle">Allow System Audio Recording</h2>
-    <p id="captureSoftCopy">partyparty uses the audio playing on this Mac so guests can hear the set. It never records your screen. macOS will ask next.</p>
-    <div class="softask-actions">
-      <button class="ghost" id="captureSoftLater" type="button">Cancel</button>
-      <button class="go" id="captureSoftAllow" type="button">Continue</button>
-    </div>
-  </div>
-</div>
-
 <!-- "What should I pick?" — a focused guide popover (not the whole Settings sheet). -->
 <div class="softaskov" id="sourceGuideSheet" role="presentation">
   <div class="softask sourceguide" role="dialog" aria-modal="true" aria-labelledby="sourceGuideTitle">
@@ -1470,37 +1459,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     localStorage.setItem('pp.adv', $('advToggle').checked ? '1' : '0');
   };
 
-  let captureSoftAskAccepted = false;
-  function showCaptureSoftAsk(){
-    const ov = $('captureSoftAsk');
-    if (!ov) return;
-    ov.hidden = false;
-    ov.classList.add('show');
-    setTimeout(() => {
-      const allow = $('captureSoftAllow');
-      if (allow) allow.focus();
-    }, 0);
-  }
-  function hideCaptureSoftAsk(){
-    const ov = $('captureSoftAsk');
-    if (!ov) return;
-    ov.classList.remove('show');
-    ov.hidden = true;
-  }
-  function shouldSoftAskForCapture(opts){
-    opts = opts || {};
-    return !captureSoftAskAccepted &&
-      !opts.allowUndetermined &&
-      selectedCaptureDevice() === 'mac' &&
-      effectiveCapturePermissionState() === 'undetermined';
-  }
-
-  async function startBroadcast(opts) {
-    opts = opts || {};
-    if (shouldSoftAskForCapture(opts)) {
-      showCaptureSoftAsk();
-      return false;
-    }
+  async function startBroadcast() {
     const sel = $('device');
     const device = sel.value;
     const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
@@ -1530,12 +1489,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       startBroadcast();
     }
   };
-  $('captureSoftAllow').onclick = () => {
-    captureSoftAskAccepted = true;
-    hideCaptureSoftAsk();
-    startBroadcast({ allowUndetermined: true });
-  };
-  $('captureSoftLater').onclick = hideCaptureSoftAsk;
   $('device').onchange = syncCaptureSourceSelection;
   $('device').addEventListener('pointerdown', refreshDevicesForPicker);
   $('device').addEventListener('focus', refreshDevicesForPicker);
