@@ -9,7 +9,10 @@
 - Capture backpressure was eliminated by bounded capture buffering and
   non-blocking FFmpeg tee outputs. The audio core must not be changed without a
   supervised go-live test.
-- A visible-only, forward native governor repairs material drift. It remains
-  inert while Safari is hidden or the phone is locked.
+- Healthy native playback is passive: partyparty never seeks or rate-steers it.
+  A visible phone that remains at least 750 ms beyond the one-second room
+  target for three measurements gets one bounded fresh HLS attachment. Missing
+  timing telemetry alone never interrupts audio. Nothing runs while Safari is
+  hidden or the phone is locked.
 - Venue Wi-Fi is the only supported network topology. macOS Internet Sharing,
   personal hotspots, captive portals, and cloud live relays are retired.

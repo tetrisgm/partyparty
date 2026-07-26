@@ -30,12 +30,13 @@ checkInlineScripts('web/dj.html');
 const listener = read('web/listener.html');
 assert.match(listener, /const ROOM_TARGET_FALLBACK = 1\.0;/);
 assert.match(listener, /const useNative = nativeHLS && \(isAppleUA \|\| iosShellBrowser\);/);
-assert.match(listener, /const UNTRACKED_REATTACH_CONFIRMATIONS = 10;/);
-assert.match(listener, /const GOV_TRIGGER = 0\.5;/);
-assert.match(listener, /const GOV_REATTACH_AT = 0\.75;/);
-assert.match(listener, /logEvent\('gov-reattach'/);
+assert.match(listener, /const OUTLIER_LATE_BY = 0\.75;/);
+assert.match(listener, /const OUTLIER_CONFIRMATIONS = 3;/);
+assert.match(listener, /const OUTLIER_COOLDOWN_MS = 30000;/);
+assert.match(listener, /const OUTLIER_MAX_REATTACHES = 2;/);
+assert.match(listener, /logEvent\('outlier-reattach'/);
 assert.match(listener, /document\.visibilityState !== 'visible'/);
-assert.doesNotMatch(listener, /forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
+assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');
 assert.doesNotMatch(dj, /\/api\/start[^'"\n]*(?:bitrate|mono)|[?&](?:bitrate|mono)=/);

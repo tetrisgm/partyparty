@@ -752,7 +752,7 @@
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
     // out of the temporal dead zone so that path can never throw.
-    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'gov-seek': 1, 'gov-reattach': 1, 'gov-error': 1, 'audible-seek': 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, 'outlier-reattach': 1, stall: 1, rebuffer: 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
     let evSeq = 0, evStart = Date.now();
     const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
@@ -848,7 +848,6 @@
     let sumStalls = 0, sumStallMs = 0, sumMaxStallMs = 0, stallStartedAt = 0;
     let sumRecovers = 0, sumPlayMs = 0, sumPlayStart = 0, sumMaxLatency = 0;
     let audibleSeeks = 0;
-    let lastAppSeekAt = 0; // stamped when OUR code issues a seek, to tell app seeks from lock-screen scrubs
     function playSummary(){
       const playing = sumPlayStart ? sumPlayMs + (Date.now() - sumPlayStart) : sumPlayMs;
       const stallMs = sumStallMs + (stallStartedAt ? Date.now() - stallStartedAt : 0);
@@ -1059,7 +1058,7 @@
       const now = Date.now();
       if (now - lastReattach < 2500) return;
       lastReattach = now;
-      untrackedBeats = 0;
+      resetAudibleWatchdogs();
       setStatus('reconnecting…');
       if (!attachSafe()) return;
       if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAudible(reason || 'reattach');
@@ -1186,21 +1185,6 @@
         why: audibleReason, target: rnd3(roomTarget()), lat: rnd3(lat),
         joinMs: listenRequestedAt ? Date.now() - listenRequestedAt : 0,
         ref: syncReference(), rate: player.playbackRate, seeks: 0,
-      });
-    }
-    function waitForMediaEvent(name, maxWaitMs){
-      return new Promise(resolve => {
-        let done = false;
-        const finish = (ok) => {
-          if (done) return;
-          done = true;
-          player.removeEventListener(name, onEvent);
-          clearTimeout(timer);
-          resolve(ok);
-        };
-        const onEvent = () => finish(true);
-        const timer = setTimeout(() => finish(false), Math.max(0, maxWaitMs));
-        player.addEventListener(name, onEvent, { once: true });
       });
     }
     function showPlayFailure(message){
@@ -1416,28 +1400,25 @@
     player.addEventListener('seeking', () => {
       const audible = started && !player.muted && !userPaused && !yielded;
       if (audible) audibleSeeks++;
-      // 'audible-seek' = OUR code seeked an unmuted player. Historically a
-      // passive-playback violation (should stay near zero) — now ALSO the
-      // sanctioned native forward-seek governor (nativeGovernorTick), which
-      // self-classifies here via lastAppSeekAt; a burst of them means the
-      // governor is actively holding a drifty device, not a bug. A seek we didn't
-      // issue — lock-screen
-      // scrub, Control Center, Safari itself — is 'external-seek': not our
-      // fault, but it can park a guest far behind (the 2026-07-13 party's 34s
-      // drifter started exactly this way), so it stays IMPORTANT for the logs.
-      const appSeek = Date.now() - lastAppSeekAt < 2000;
-      logEvent(audible ? (appSeek ? 'audible-seek' : 'external-seek') : 'seek',
-        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: appSeek });
+      // partyparty never seeks a healthy native player. An audible seek comes
+      // from Safari, Control Center, or the guest and can move this phone away
+      // from the room, so retain it as an important diagnostic.
+      logEvent(audible ? 'external-seek' : 'seek',
+        { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: false });
     });
     player.addEventListener('seeked', sampleProgress);
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
-    let untrackedBeats = 0;
-    let originCandidate = null, originRepeats = 0, untrackedReattaches = 0;
+    const OUTLIER_LATE_BY = 0.75;
+    const OUTLIER_CONFIRMATIONS = 3;
+    const OUTLIER_COOLDOWN_MS = 30000;
+    const OUTLIER_MAX_REATTACHES = 2;
+    let outlierBeats = 0, outlierCoolingUntil = 0, outlierReattaches = 0;
+    let originCandidate = null, originRepeats = 0;
     function audibleActive(){
       return started && !player.muted && !userPaused && !yielded && live && streamReady;
     }
     function resetAudibleWatchdogs(){
-      untrackedBeats = 0;
+      outlierBeats = 0;
       originCandidate = null;
       originRepeats = 0;
     }
@@ -1474,94 +1455,37 @@
         player.play().catch(() => { setPlayingUI(false); setStatus('tap Resume to keep listening'); });
       }
     }
-    // --- Native forward-seek-to-live governor ---------------------------------
-    // AVPlayer can accumulate latency after a rebuffer. Unlike hls.js it cannot
-    // erase that drift with a seamless pitch-preserved rate nudge, so the only
-    // available foreground correction is a seek. This
-    // pulls a drifted device back toward the shared room target with a single
-    // FORWARD seek — NEVER backward: a backward seek into the unbuffered edge is
-    // the Safari-27 silent-forever hang, and on a locked phone the guest can't
-    // tap to recover. Safety (adversarially verified): (a) forward-only — the
-    // seek fires only when the CLAMPED target exceeds currentTime + GOV_FWD_TOL,
-    // tested synchronously with the assignment, so backward is unreachable;
-    // (b) `high` is clamped to the DOWNLOADED edge and the target must be strictly
-    // inside player.buffered, so a seek-into-a-gap is unreachable; (c) inert while
-    // the tab is hidden/locked — the 2s heartbeat is frozen there, so no seek is
-    // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
-    // fails to commit falls back to reattach() so the player is never left wedged.
-    const GOV_TRIGGER = 0.5;        // correct before a healthy peer can drift a full second away
-    const GOV_CONFIRMATIONS = 2;    // sustained beats before one correction
-    const GOV_FWD_TOL = 0.35;       // correct a half-second drift before peer spread reaches one second
-    const GOV_EDGE_MARGIN = 0.2;    // one LL-HLS part behind the seekable edge
-    const GOV_BUF_SAFETY = 0.1;     // stay inside downloaded media, never at its raw end
-    const GOV_COOLDOWN_MS = 5000;   // minimum gap between governor seeks
-    const GOV_CAP_PER_MIN = 6;      // beyond this, escalate to one reattach and back off (persistent lateness)
-    const GOV_REATTACH_AT = 0.75;    // no safe seek target: rejoin only for a materially late visible phone
-    const UNTRACKED_REATTACH_CONFIRMATIONS = 10;
-    let govBeats = 0, govCoolingUntil = 0, govSeekTimes = [];
-    function governorBlocked(reason, lat, lateBy){
-      govBeats = 0;
-      if (lateBy < GOV_REATTACH_AT) return;
-      const now = Date.now();
-      govCoolingUntil = now + GOV_COOLDOWN_MS * 3;
-      govSeekTimes = [];
-      sumRecovers++;
-      logEvent('gov-reattach', { why: reason, lat: rnd3(lat), late: rnd3(lateBy) });
-      reattach('gov-' + reason);
-    }
-    function inBufferedStrict(buffered, t){
-      try { for (let i = 0; i < buffered.length; i++) if (buffered.start(i) <= t && t <= buffered.end(i)) return true; } catch (e) {}
-      return false;
-    }
-    function bufferedEndHere(){ // end of the buffered range covering the playhead (else 0)
-      try { const t = player.currentTime, b = player.buffered;
-        for (let i = 0; i < b.length; i++) if (b.start(i) <= t && t <= b.end(i)) return b.end(i);
-      } catch (e) {}
-      return 0;
-    }
-    async function nativeGovernorTick(lat, stalled){
-      if (!useNative) return;
-      if (govCoolingUntil && Date.now() < govCoolingUntil) return;
-      if (document.visibilityState !== 'visible') { govBeats = 0; return; } // never seek hidden/locked
-      if (stalled || player.readyState < 3) { govBeats = 0; return; }
-      if (lat == null || !Number.isFinite(lat)) { govBeats = 0; return; }  // never seek on an unmeasured lat
-      const targetLat = roomTarget();
-      const lateBy = lat - targetLat;
-      if (lateBy <= GOV_TRIGGER) { govBeats = 0; return; }        // hysteresis reset — not (yet) late enough
-      if (++govBeats < GOV_CONFIRMATIONS) return;                 // require SUSTAINED lateness, not a blip
-      const sk = player.seekable;
-      if (!sk || !sk.length) { governorBlocked('no-seekable', lat, lateBy); return; }
-      const bufEnd = bufferedEndHere();
-      if (bufEnd <= 0) { governorBlocked('no-buffer', lat, lateBy); return; }
-      const low = sk.start(0) + 0.5;
-      // Clamp to BOTH the seekable window AND what is actually downloaded, so the
-      // target can never land past the buffered edge (a gap) or at the raw edge.
-      const high = Math.min(sk.end(sk.length - 1) - GOV_EDGE_MARGIN, bufEnd - GOV_BUF_SAFETY);
-      if (high <= low) { governorBlocked('no-landing', lat, lateBy); return; }
-      const wanted = Math.min(Math.max(player.currentTime + (lat - targetLat), low), high);
-      if (wanted <= player.currentTime + GOV_FWD_TOL) { govBeats = 0; return; } // FORWARD-ONLY (the whole safety story)
-      if (!inBufferedStrict(player.buffered, wanted)) { governorBlocked('buffer-gap', lat, lateBy); return; }
-      const now = Date.now();
-      govSeekTimes = govSeekTimes.filter(t => now - t < 60000);
-      if (govSeekTimes.length >= GOV_CAP_PER_MIN) {               // persistently late -> one reattach, then back off
-        govBeats = 0; govCoolingUntil = now + GOV_COOLDOWN_MS * 3; govSeekTimes = [];
-        logEvent('gov-cap', { lat: rnd3(lat) });
-        reattach('gov-cap');
+    // Native AVPlayer owns normal LL-HLS playout. The page never seeks or
+    // continuously steers a healthy player. A sustained, measured gross
+    // outlier gets one bounded fresh native attachment; an unavailable
+    // timeline is diagnostic only and must never interrupt audible playback.
+    function considerNativeOutlier(lat, stalled){
+      if (!useNative || document.visibilityState !== 'visible' || stalled || player.readyState < 3) {
+        outlierBeats = 0;
         return;
       }
-      const gen = attachGeneration;
-      govBeats = 0; govCoolingUntil = now + GOV_COOLDOWN_MS; govSeekTimes.push(now);
-      const before = player.currentTime;
-      try {
-        const seeked = waitForMediaEvent('seeked', 1800);
-        lastAppSeekAt = Date.now();     // self-classify this as an app-governed audible seek
-        player.currentTime = wanted;     // the ONE forward seek
-        logEvent('gov-seek', { lat: rnd3(lat), late: rnd3(lateBy), before: rnd3(before), want: rnd3(wanted) });
-        const committed = await seeked;
-        if (gen !== attachGeneration) return;                    // a newer attachment took over -> drop
-        logEvent('gov-result', { committed, pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), rs: player.readyState });
-        if (!committed) reattach('gov-uncommitted');             // never leave the player wedged
-      } catch (e) { logEvent('gov-error', { msg: String((e && e.message) || e) }); }
+      if (lat == null || !Number.isFinite(lat)) {
+        outlierBeats = 0;
+        tryRestoreTimelineOrigin();
+        return;
+      }
+      const lateBy = lat - roomTarget();
+      if (lateBy < OUTLIER_LATE_BY) {
+        outlierBeats = 0;
+        return;
+      }
+      if (++outlierBeats < OUTLIER_CONFIRMATIONS) return;
+      outlierBeats = 0;
+      const now = Date.now();
+      if (now < outlierCoolingUntil || outlierReattaches >= OUTLIER_MAX_REATTACHES) return;
+      outlierCoolingUntil = now + OUTLIER_COOLDOWN_MS;
+      outlierReattaches++;
+      sumRecovers++;
+      logEvent('outlier-reattach', {
+        lat: rnd3(lat), late: rnd3(lateBy), attempt: outlierReattaches,
+        ref: syncReference(), progressAge: lastProgress ? now - lastProgress : 0,
+      });
+      reattach('latency-outlier');
     }
     function watchAudibleHealth(lat, stalled){
       if (!audibleActive()) { resetAudibleWatchdogs(); return; }
@@ -1572,39 +1496,7 @@
         return;
       }
 
-      if (lat != null) untrackedReattaches = 0; // tracking works again — re-arm the cap
-      // Fire-and-forget: the native governor self-throttles and only acts while
-      // visible. Lock-screen playback remains untouched.
-      nativeGovernorTick(lat, stalled);
-      if (!stalled && lat == null && player.readyState >= 3 && bufferedAhead() > 1) {
-        // Cheap path first: if we can make latency measurable again WITHOUT a
-        // re-attach, do that — the player keeps playing, and from the next beat
-        // the drift watchdog sees a real number.
-        if (tryRestoreTimelineOrigin()) { untrackedBeats = 0; return; }
-        untrackedBeats++;
-        if (untrackedBeats >= UNTRACKED_REATTACH_CONFIRMATIONS) {
-          const beats = untrackedBeats;
-          resetAudibleWatchdogs();
-          // A re-attach that lands unmeasurable again would re-fire forever —
-          // each one is an audio dropout for a listener who may be perfectly
-          // near the live edge (e.g. clock never synced, so latency can never
-          // be measured). Two attempts, then playing-untracked beats silence.
-          if (untrackedReattaches >= 2) return;
-          untrackedReattaches++;
-          recoveringUntil = 0;
-          sumRecovers++;
-          logEvent('untracked-reconnect', {
-            // 'attempt', NOT 'n' — logEvent reserves n for the per-event sequence
-            // and caller fields would clobber it (breaking the analyzer's
-            // (client,seq) dedupe, which would then drop this very event).
-            beats, attempt: untrackedReattaches, buf: rnd(bufferedAhead()), rs: player.readyState,
-            progressAge: lastProgress ? Date.now() - lastProgress : 0, ref: syncReference(),
-          });
-          reattach('untracked-latency');
-        }
-      } else {
-        untrackedBeats = 0;
-      }
+      considerNativeOutlier(lat, stalled);
     }
     player.addEventListener('pause',   () => {
       if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
@@ -1706,7 +1598,9 @@
       timelineOriginMs = null; audibleGeneration = -1; openedGeneration = -1;
       recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
       resetAudibleWatchdogs();
-      untrackedReattaches = 0; // full teardown = fresh session — re-arm the cap
+      outlierBeats = 0;
+      outlierCoolingUntil = 0;
+      outlierReattaches = 0;
       setPlayingUI(false); setStatus('');
       updateIdleButton(); // shows "Waiting for DJ"
     }

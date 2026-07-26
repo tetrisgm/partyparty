@@ -1048,7 +1048,7 @@ async function injectDrift(page, seconds) {
   }, seconds);
 }
 
-async function assertRoomSync(first, second, label = 'steady', { allowInjectedSeek = false } = {}) {
+async function assertRoomSync(first, second, label = 'steady', { allowInjectedDrift = false } = {}) {
   try {
     await waitFor(async () => {
       const states = await Promise.all([syncState(first), syncState(second)]);
@@ -1104,12 +1104,12 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
     fail(`room sync targets diverged across listeners: ${JSON.stringify(samples)}`);
   }
   // The product invariant: device-to-device spread stays below one second.
-  // Gate clean-room startup separately from the deliberate late-phone recovery
-  // scenario, where one app-governed forward correction is expected.
-  if (!allowInjectedSeek && p90 >= 1.0) {
+  // Gate clean-room startup separately from the deliberate synthetic-drift
+  // scenario. partyparty itself never seeks a healthy player.
+  if (!allowInjectedDrift && p90 >= 1.0) {
     fail(`room sync gap too wide: p90=${p90.toFixed(3)}s median=${median.toFixed(3)}s (must stay below 1.0s): ${JSON.stringify(samples)}`);
   }
-  if (!allowInjectedSeek && samples.some((s) => s.audibleA > 0 || s.audibleB > 0)) {
+  if (!allowInjectedDrift && samples.some((s) => s.audibleA > 0 || s.audibleB > 0)) {
     fail(`clean-room playback required an audible correction: ${JSON.stringify(samples)}`);
   }
   // The product boundary is sub-second device-to-device timing. A tighter
@@ -1195,7 +1195,7 @@ async function assertInjectedDriftIsolation(first, second) {
   const [afterFirst, afterSecond] = await Promise.all([continuityState(first), continuityState(second)]);
   assertContinuous(beforeFirst, afterFirst, 'healthy peer after another device drifts', 6);
   assertContinuous(beforeSecond, afterSecond, 'drifted device remains playing', 6);
-  await assertRoomSync(first, second, 'after-650ms-drift', { allowInjectedSeek: true });
+  await assertRoomSync(first, second, 'after-650ms-drift', { allowInjectedDrift: true });
 }
 
 async function main() {

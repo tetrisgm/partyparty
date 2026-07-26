@@ -11,7 +11,7 @@ const WARN_OPEN_LATENCY_SEC = 1.5;
 const MAX_OPEN_LATENCY_SEC = 2;
 const MAX_ROOM_SPREAD_MS = 1000;
 const KNOWN_KEYS = [
-  'app', 'audible', 'audibleSeeks', 'before', 'buf', 'committed', 'err',
+  'app', 'attempt', 'audible', 'audibleSeeks', 'before', 'buf', 'committed', 'err',
   'first', 'gen', 'joinMs', 'lat', 'late', 'll', 'maxStallMs', 'ms', 'muted',
   'pdt', 'pos', 'progressAge', 'rate', 'ready', 'real', 'ref', 'rs', 'samples',
   'seeks', 'stallMs', 'stalls', 'staleMs', 'streamReady', 'target', 'used',
@@ -60,7 +60,8 @@ function emptyClient(name) {
     health: [],
     stalls: 0,
     reconnects: 0,
-    governorSeeks: 0,
+    outlierReattaches: 0,
+    legacyGovernorSeeks: 0,
     externalSeeks: 0,
     latestHealth: null,
   };
@@ -159,8 +160,9 @@ export function analyzeText(text, source = '<stdin>') {
     client.events++;
     inc(client.counts, kind);
     if (kind === 'stall' || kind === 'rebuffer') client.stalls++;
-    if (kind === 'reconnect' || kind === 'untracked-reconnect') client.reconnects++;
-    if (kind === 'audible-seek' && fields.app === true) client.governorSeeks++;
+    if (kind === 'reconnect' || kind === 'outlier-reattach' || kind === 'untracked-reconnect') client.reconnects++;
+    if (kind === 'outlier-reattach') client.outlierReattaches++;
+    if (kind === 'audible-seek' && fields.app === true) client.legacyGovernorSeeks++;
     if (kind === 'external-seek' || (kind === 'audible-seek' && fields.app !== true)) client.externalSeeks++;
 
     if (kind === 'audio-open') {
@@ -190,6 +192,8 @@ export function analyzeText(text, source = '<stdin>') {
   const joinTimes = opens.map((open) => open.joinMs).filter((value) => num(value) !== null);
   const maxJoinMs = joinTimes.length ? Math.max(...joinTimes) : null;
   const warnings = [];
+  const legacyGovernorSeeks = [...clients.values()]
+    .reduce((total, client) => total + client.legacyGovernorSeeks, 0);
 
   for (const ready of streamReady) {
     if (Math.abs(ready.targetSec - ROOM_TARGET_SEC) > 0.01) {
@@ -216,10 +220,13 @@ export function analyzeText(text, source = '<stdin>') {
     warnings.push({ level: 'fail', message: `slowest audio-open took ${Math.round(maxJoinMs)}ms; join watchdog is 15000ms` });
   }
   if ((counts['gov-error'] || 0) > 0) {
-    warnings.push({ level: 'fail', message: `${counts['gov-error']} native governor error event(s)` });
+    warnings.push({ level: 'fail', message: `${counts['gov-error']} legacy native-governor error event(s)` });
+  }
+  if (legacyGovernorSeeks > 0) {
+    warnings.push({ level: 'fail', message: `${legacyGovernorSeeks} legacy app-authored native seek(s)` });
   }
   if ((counts['external-seek'] || 0) > 0) {
-    warnings.push({ level: 'warn', message: `${counts['external-seek']} external seek(s); verify the governor returned each visible phone to the room band` });
+    warnings.push({ level: 'warn', message: `${counts['external-seek']} external seek(s); verify each visible phone returned to the room band` });
   }
   if ((counts['untracked-reconnect'] || 0) > 0) {
     warnings.push({ level: 'warn', message: `${counts['untracked-reconnect']} untracked timeline reattachment(s)` });
@@ -270,7 +277,7 @@ function printReport(summary) {
   console.log(`Events: ${summary.eventCount} across ${summary.clientCount} client(s)`);
   console.log(`Startup: opens=${summary.startup.audioOpens} maxJoin=${summary.startup.maxJoinMs == null ? 'n/a' : `${Math.round(summary.startup.maxJoinMs)}ms`} maxSpread=${summary.startup.maxSpreadMs}ms`);
   console.log(`Steady room: samples=${summary.steady.samples} comparedWindows=${summary.steady.windows} maxSpread=${summary.steady.maxSpreadMs}ms`);
-  console.log(`Playback: stalls=${counts.stall || 0} rebuffer=${counts.rebuffer || 0} reconnect=${counts.reconnect || 0} governorSeeks=${counts['audible-seek'] || 0} externalSeeks=${counts['external-seek'] || 0}`);
+  console.log(`Playback: stalls=${counts.stall || 0} rebuffer=${counts.rebuffer || 0} reconnect=${counts.reconnect || 0} outlierReattach=${counts['outlier-reattach'] || 0} externalSeeks=${counts['external-seek'] || 0}`);
 
   if (summary.streamReady.length) {
     console.log('\nStream readiness:');
@@ -288,7 +295,7 @@ function printReport(summary) {
     console.log('\nClient outcomes:');
     for (const client of summary.clients) {
       const latest = client.latestHealth ? ` latest=${fmtSec(client.latestHealth.lat)} buf=${client.latestHealth.buf ?? 'n/a'}` : '';
-      console.log(`  ${client.name}: opens=${client.opens.length} stalls=${client.stalls} reconnects=${client.reconnects} governorSeeks=${client.governorSeeks} externalSeeks=${client.externalSeeks}${latest}`);
+      console.log(`  ${client.name}: opens=${client.opens.length} stalls=${client.stalls} reconnects=${client.reconnects} outlierReattach=${client.outlierReattaches} legacyGovernorSeeks=${client.legacyGovernorSeeks} externalSeeks=${client.externalSeeks}${latest}`);
     }
   }
   console.log('\nAcceptance:');
