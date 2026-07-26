@@ -168,12 +168,10 @@ elog("ppcapture: FORMAT \(rate) \(ch)")
 elog("ppcapture: capturing system audio via Core Audio tap (\(rate) Hz, \(ch) ch, f32le)")
 Thread.detachNewThread { ring.writerLoop() }
 
-// Capture-health monitor. The global tap goes SILENT (no IOProc frames) when
-// another app takes EXCLUSIVE/HOG mode of the output device — Roon, Audirvana,
-// etc. in "Exclusive Mode" bypass the system mixer entirely, so there's nothing
-// to tap. The Mac side otherwise can't tell (ffmpeg keeps running on an empty
-// pipe), so we detect the frame stall here, attribute it to hog mode when we
-// can, and print machine-readable markers the parent surfaces to the DJ.
+// Capture-health monitor. A Core Audio tap may produce no callbacks while the
+// Mac output is silent, so absence of frames alone is not a failure signal.
+// Exclusive/HOG ownership is authoritative: surface it, then rebuild once the
+// owner releases the device. Default-device changes are handled separately.
 func defaultOutputDevice() -> AudioObjectID {
     var dev = AudioObjectID(0)
     var addr = AudioObjectPropertyAddress(
@@ -195,7 +193,7 @@ func hogOwner(_ dev: AudioObjectID) -> pid_t {
 Thread.detachNewThread {
     let me = getpid()
     var last = ring.pushedCount()
-    var stalledFor = 0
+    var quietFor = 0
     var flagged = false
     var wasHogged = false
     while true {
@@ -205,20 +203,16 @@ Thread.detachNewThread {
         last = now
         if advancing {
             if flagged { elog("ppcapture: CAPTURE-OK"); flagged = false; wasHogged = false }
-            stalledFor = 0
+            quietFor = 0
             continue
         }
-        stalledFor += 2
+        quietFor += 2
         let owner = hogOwner(defaultOutputDevice())
         let hoggedNow = owner > 0 && owner != me
-        if stalledFor >= 4 && !flagged {
+        if quietFor >= 4 && hoggedNow && !flagged {
             flagged = true
-            if hoggedNow {
-                wasHogged = true
-                elog("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=\(owner)")
-            } else {
-                elog("ppcapture: CAPTURE-STALLED no-frames")
-            }
+            wasHogged = true
+            elog("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=\(owner)")
         } else if flagged && wasHogged && !hoggedNow {
             // The exclusive app released the device but our tap is still wedged
             // (frames never resumed) — the aggregate device needs a clean

@@ -510,29 +510,10 @@ func TestCaptureNote(t *testing.T) {
 	if st := b.Status(); st.Note != "" || st.CaptureBad {
 		t.Fatalf("after CAPTURE-OK note=%q captureBad=%v, want cleared + false", st.Note, st.CaptureBad)
 	}
-	// A single CAPTURE-STALLED attempts silent recovery (rebuild) — no note yet,
-	// so a transient hiccup doesn't flash the menu-bar alarm.
-	fs.Write([]byte("ppcapture: CAPTURE-STALLED no-frames\n"))
-	if n := b.Status().Note; n != "" {
-		t.Fatalf("after one CAPTURE-STALLED note = %q, want empty (silent recovery attempt)", n)
-	}
-	// Once stall rebuilds are exhausted, a persistent warning appears + alarm.
-	b.mu.Lock()
-	b.stallRebuilds = maxStallRebuilds
-	b.mu.Unlock()
-	fs.Write([]byte("ppcapture: CAPTURE-STALLED no-frames\n"))
-	if st := b.Status(); !strings.Contains(st.Note, "isn't recovering") || !st.CaptureBad {
-		t.Fatalf("after exhausted stalls note=%q captureBad=%v, want persistent warning + true", st.Note, st.CaptureBad)
-	}
-	// CAPTURE-OK clears the warning and resets the counter.
+	// CAPTURE-OK clears the exclusive-output warning.
+	fs.Write([]byte("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=742\n"))
 	fs.Write([]byte("ppcapture: CAPTURE-OK\n"))
 	if st := b.Status(); st.Note != "" || st.CaptureBad {
 		t.Fatalf("after CAPTURE-OK note=%q captureBad=%v, want cleared + false", st.Note, st.CaptureBad)
-	}
-	b.mu.Lock()
-	reset := b.stallRebuilds
-	b.mu.Unlock()
-	if reset != 0 {
-		t.Fatalf("stallRebuilds after CAPTURE-OK = %d, want 0", reset)
 	}
 }

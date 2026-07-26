@@ -75,7 +75,6 @@ type Broadcaster struct {
 	lastName        string
 	lastOpts        Options
 	lastAutoRestart time.Time
-	stallRebuilds   int                     // consecutive stall-triggered rebuilds; bounded so an unrecoverable stall can't thrash forever, reset on CAPTURE-OK
 	overridesFn     func() config.Overrides // OTA encode overrides, re-read on each Start (nil = none)
 	recordBase      string                  // the user-requested recording path; rebuilds record to fresh segments off this so a device-yank never truncates it
 	recordSeg       int                     // recording segment counter, bumped per auto-restart
@@ -200,10 +199,6 @@ func (w *formatScanner) Write(p []byte) (int, error) {
 		switch {
 		case strings.Contains(s, "CAPTURE-BLOCKED"):
 			w.b.setCaptureNote("Another app has taken EXCLUSIVE control of your Mac's audio output (e.g. Roon or Audirvana in Exclusive Mode) — partyparty can't capture it, so guests hear nothing. Turn OFF Exclusive/Hog Mode for this output in that app (or point it at a different device, or route it through BlackHole). It recovers on its own once released; if not, Stop and Go Live again.")
-		case strings.Contains(s, "CAPTURE-STALLED"):
-			// Frames actually stopped flowing — the tap is genuinely wedged.
-			// Rebuild, but bounded (onStall) so an unrecoverable stall can't loop.
-			w.b.onStall()
 		case strings.Contains(s, "CAPTURE-OK"):
 			w.b.captureRecovered()
 		case strings.Contains(s, "CAPTURE-UNHOGGED"):
@@ -257,11 +252,6 @@ func (b *Broadcaster) pushLog(chunk string) {
 	}
 }
 
-// maxStallRebuilds bounds consecutive stall-triggered rebuilds: after this many
-// without frames coming back (no CAPTURE-OK), stop rebuilding and warn instead,
-// so an unrecoverable stall can't thrash the room every throttle window forever.
-const maxStallRebuilds = 3
-
 // tryAutoRestart rebuilds a mac capture whose tap wedged — an exclusive app
 // (Roon) released the output device, or the default output changed under it.
 // Throttled to once per 15s so a flapping device can't thrash the room, and only
@@ -297,33 +287,8 @@ func segmentedRecordPath(base string, n int) string {
 	return strings.TrimSuffix(base, ext) + "-" + strconv.Itoa(n+1) + ext
 }
 
-// onStall reacts to a genuine frame stall (CAPTURE-STALLED): rebuild the tap,
-// but bound the attempts. A transient stall recovers on the first rebuild (and
-// CAPTURE-OK resets the count via captureRecovered); an UNRECOVERABLE stall
-// would otherwise rebuild every 15s forever, so after maxStallRebuilds we stop
-// and surface a persistent warning instead of thrashing the room silently.
-// Transient rebuilds show no note — Start clears it — so only a real, stuck
-// failure trips the menu-bar alarm.
-func (b *Broadcaster) onStall() {
-	b.mu.Lock()
-	exhausted := b.stallRebuilds >= maxStallRebuilds
-	b.mu.Unlock()
-	if exhausted {
-		b.setCaptureNote("The Mac's audio capture stalled and isn't recovering — no sound is reaching guests. Switch your output device (menu-bar volume), or Stop and Go Live again.")
-		return
-	}
-	if b.tryAutoRestart() {
-		b.mu.Lock()
-		b.stallRebuilds++
-		b.mu.Unlock()
-	}
-}
-
-// captureRecovered clears the stall bookkeeping when frames resume (CAPTURE-OK).
+// captureRecovered clears an exclusive-output warning when frames resume.
 func (b *Broadcaster) captureRecovered() {
-	b.mu.Lock()
-	b.stallRebuilds = 0
-	b.mu.Unlock()
 	b.setCaptureNote("")
 }
 
