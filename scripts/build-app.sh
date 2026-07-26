@@ -37,8 +37,13 @@ fi
 # identity, else fall back to ad-hoc (which re-prompts for permission each build).
 EXPLICIT_ID="${PP_SIGN_ID:-}"
 SIGN_ID="$EXPLICIT_ID"
+SIGN_KEYCHAIN="${PP_KEYCHAIN:-}"
 if [ -z "$SIGN_ID" ]; then
-  SIGN_ID="$(security find-identity -p codesigning -v 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+  if [ -n "$SIGN_KEYCHAIN" ]; then
+    SIGN_ID="$(security find-identity -p codesigning -v "$SIGN_KEYCHAIN" 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+  else
+    SIGN_ID="$(security find-identity -p codesigning -v 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+  fi
   [ -z "$SIGN_ID" ] && SIGN_ID="-"
 fi
 
@@ -105,6 +110,7 @@ codesign_one() { # $1=path  $2=entitlements (optional)
     # Hardened runtime + secure timestamp — both required for notarization.
     args+=(--options runtime --timestamp --sign "$SIGN_ID")
   fi
+  [ -n "$SIGN_KEYCHAIN" ] && args+=(--keychain "$SIGN_KEYCHAIN")
   [ -n "$ent" ] && args+=(--entitlements "$ent")
   codesign "${args[@]}" "$path"
 }

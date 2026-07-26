@@ -78,7 +78,7 @@ if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT
   /usr/bin/security cms -D -i "$APP/Contents/embedded.provisionprofile" > "$work/profile.plist"
-  app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$work/profile.plist")"
+  app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$work/profile.plist")"
   [[ "$app_id" = *".$EXPECTED_BUNDLE_ID" ]] || fail "profile application identifier is $app_id"
 elif [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
   fail "distribution build has no provisioning profile"
