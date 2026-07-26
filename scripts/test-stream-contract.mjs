@@ -36,6 +36,10 @@ assert.doesNotMatch(listener, /forceHlsOnApple|beginAlignedAudible|alignOnce|syn
 
 const dj = read('web/dj.html');
 assert.doesNotMatch(dj, /\/api\/start[^'"\n]*(?:bitrate|mono)|[?&](?:bitrate|mono)=/);
+assert.match(dj, /\$\('shareCard'\)\.hidden = !linkReady;/);
+assert.match(dj, /\$\('partyQrPanel'\)\.hidden = !linkReady;/);
+assert.match(dj, /if \(linkReady\) renderQR\(guestUrl\);/);
+assert.match(dj, /Starting audio…/);
 
 const playback = read('internal/server/playback.go');
 assert.match(playback, /const roomLatencyTarget = 3\.0/);

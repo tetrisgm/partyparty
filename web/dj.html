@@ -1612,7 +1612,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         lb.className = 'golive go';
         lb.disabled = true;
       } else {
-        lb.textContent = (st === 'starting') ? 'Starting...' : (live ? 'End set' : 'Go Live');
+        lb.textContent = (st === 'starting') ? 'Starting audio…' : (live ? 'End set' : 'Go Live');
         lb.className = 'golive ' + (live ? 'stop' : 'go');
         lb.disabled = false;
       }
@@ -1648,6 +1648,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const directHttps = typeof s.urls.primary === 'string' && s.urls.primary.indexOf('https://') === 0;
       const guestUrl = directHttps ? s.urls.primary : '';
       const linkReady = !!guestUrl && secure;
+      // The room link exists independently of capture. Keep it visible while
+      // idle and while audio starts so the QR never disappears behind a slow
+      // Core Audio permission/cold-start cycle.
+      $('shareCard').hidden = !linkReady;
+      $('partyQrPanel').hidden = !linkReady;
+      if (linkReady) renderQR(guestUrl);
       const roster = s.roster || [];
       const peopleCount = roster.length + 1;
       if ($('pcount')) $('pcount').textContent = peopleCount;
