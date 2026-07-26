@@ -8,8 +8,7 @@ energy where energy belongs: the **photography, the copy, and one brand accent**
 (partyparty pink). Nothing else is tinted.
 
 Three surfaces share these tokens:
-- **Landing page** (`site/index.html`, public web) — predominantly **light**, with a
-  few full-bleed **black "product moment"** bands (hero, in-sync, final CTA). ✅ done.
+- **Landing page** (`site/index.html`) — product/download information only.
 - **App console** (`web/dj.html`, macOS WKWebView) — stays **dark** (DJ booth), macOS
   13px type ladder, one Liquid-Glass surface (the sticky Go-Live bar). ⬜ to do.
 - **Guest player** (`web/listener.html`) — dark, iOS 17px/44px ladder. ⬜ to do.
@@ -121,18 +120,15 @@ everything in `@media (prefers-reduced-motion:reduce)`.**
   line + Media Session.
 - **Footer:** light, hairline top, `--label-tertiary` 12–14px, flat/minimal.
 
-## Sign in with Apple (for the hosted platform)
+## Sign in with Apple
 Use the **official Sign in with Apple JS** rendered button (`appleid.auth.js`) — do not
 hand-roll. `data-type="continue"` to match sibling "Continue with Google/…"; white +
 `data-border` on light pages, black on dark; `data-height="48"`, `data-width="100%"`,
 `data-border-radius="12"` (match our card radius). Flow = OIDC:
-`AppleID.auth.init({clientId:<Services ID>, scope:'name email', redirectURI, state,
-nonce, usePopup:true})` → `signIn()` returns `id_token` + `code`; **name/email arrive
-ONLY on first authorization — persist them.** Verify `id_token` server-side against
-Apple's keys. **Rule (App Store 4.8):** if we offer Google/other social login, we MUST
-offer Sign in with Apple at equal-or-greater prominence (name+email, private-relay email,
-no tracking) — build it in from day one on the platform. Not gating today (app ships
-notarized, not via App Store), but mirror the provider set on the web for parity.
+The Worker owns the web authorization redirect and validates Apple's returned
+identity token. **Rule (App Store 4.8):** because Google sign-in is offered,
+Sign in with Apple must have equal prominence and preserve private-relay email.
+The native app opens this account flow in the system browser.
 
 ## Pitfalls (the "fake Apple" tells — avoid)
 Multi-color gradients as primary language · Bold 700/800 headlines · loose/positive

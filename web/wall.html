@@ -230,7 +230,7 @@
       const count = Number(s.listeners || 0);
       $('listenerCount').textContent = String(count);
       $('listenerLabel').textContent = count === 1 ? 'listening' : 'listening';
-      const guestUrl = s.urls && (s.urls.public || s.urls.primary) || '';
+      const guestUrl = s.urls && s.urls.primary || '';
       $('joinUrl').textContent = guestUrl;
       renderQR(guestUrl);
       const state = s.broadcast && s.broadcast.state || 'idle';

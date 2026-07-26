@@ -22,8 +22,6 @@ func TestReduceLanState(t *testing.T) {
 		{"no host -> unavailable", with(func(i *lanInputs) { i.Host = "" }), lanUnavailable},
 		{"cert up, nobody joined -> ready", base, lanReady},
 		{"LAN listeners -> confirmed", with(func(i *lanInputs) { i.LanListeners = 2 }), lanConfirmed},
-		{"only cloud listeners -> cloud_fallback", with(func(i *lanInputs) { i.CloudListeners = 3 }), lanCloudFallback},
-		{"LAN presence beats cloud -> confirmed", with(func(i *lanInputs) { i.LanListeners = 1; i.CloudListeners = 5 }), lanConfirmed},
 	}
 	for _, c := range cases {
 		if got := reduceLanState(c.in).State; got != c.want {
@@ -32,7 +30,7 @@ func TestReduceLanState(t *testing.T) {
 	}
 
 	// The observed counts are carried through for the console to display.
-	if s := reduceLanState(with(func(i *lanInputs) { i.LanListeners = 4; i.CloudListeners = 1 })); s.LanListeners != 4 || s.CloudListeners != 1 {
+	if s := reduceLanState(with(func(i *lanInputs) { i.LanListeners = 4 })); s.LanListeners != 4 {
 		t.Errorf("counts not carried through: %+v", s)
 	}
 }

@@ -1,16 +1,18 @@
 # AGENTS.md — partyparty (for Codex / autonomous agents)
 
-partyparty is a macOS menu-bar app that turns a DJ's Mac into a **self-contained
-LAN party server**: guests scan a QR, join over Wi-Fi, and hear a low-latency
-HLS stream + post photos/videos/comments — all working with **ZERO internet**.
-A Cloudflare Worker (`partyparty.party` — the product domain; the old `party.ramine.net` shim has been fully removed, never reference it) is the cloud side: sign-in, DJ
-event replay pages, OTA updates.
+partyparty is a macOS menu-bar app that turns a DJ's Mac into a LAN party
+server. Guests on the same venue Wi-Fi scan a QR and use HTTPS LL-HLS plus the
+active-room feed, all served by the Mac. A Cloudflare Worker
+(`partyparty.party`) handles sign-in, Mac activation, LAN hostname/certificate
+coordination, diagnostics, downloads, and direct-build updates. It never hosts
+event pages or party content.
 
 ## Layout
-- `main.go` + `internal/` — the Go server/binary (audio capture, HLS, HTTP, local DNS).
+- `main.go` + `internal/` — the Go server/binary (audio capture, LL-HLS, HTTPS).
 - `app/` — the Swift menu-bar shell (SwiftPM). Loads the Go server's console in a webview.
 - `web/` — served pages: `dj.html` (DJ console), `listener.html` / `wall.html` (**GUEST** pages). Embedded in the binary + shipped as an OTA payload.
-- `cloudflare/worker.js` — the public website + broker (D1 + R2). Tests: `cloudflare/test/smoke.mjs`.
+- `cloudflare/worker.js` — landing/downloads, identity, activation, LAN broker,
+  diagnostics, and update metadata. Tests: `cloudflare/test/smoke.mjs`.
 
 ## Verify EVERY change before you commit
 - Go: `go build ./... && go vet ./... && gofmt -l .` (must print nothing) `&& go test ./...`
@@ -22,9 +24,17 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
 1. **Guest offline join.** Guests join / listen / post on the LAN with NO account and NO internet. NEVER gate guest routes (`/`, `/wall`, `/hls/`, `/api/status`, `/api/heartbeat`, media/reaction posts) or `listener.html` / `wall.html` on auth, activation, or network.
 2. **DJ activation gate (shipped v15.47).** The DJ app requires a linked account before the console / Go Live run (`/api/start` → 403 `not_activated`; `dj.html` blocking gate; server latch `accActivated`). Keep it. A once-activated Mac must still work OFFLINE (the account cache in `internal/activate`).
 3. **HTTPS + LL-HLS only** for guests. Do NOT reintroduce a plain-HTTP guest fallback.
-4. **No cloud relay.** The Mac serves the stream; the cloud only hosts MP3 replays. Never route live audio through the cloud.
+4. **No cloud party product.** The Mac serves live audio and active-room posts.
+   Never add public event pages, replays, remote listening, or cloud party feeds.
 5. **The audio core is OFF-LIMITS for autonomous work.** Do NOT modify `internal/broadcast/` (ffmpeg / tee / MediaMTX) and do NOT remove the "dead" plain-HLS code — that needs a supervised go-live test.
 6. **Email transport is MXroute SMTP — NEVER a paid email API.** No Resend, SendGrid, Postmark, Mailgun, etc. The owner has a lifetime MXroute account and pays for nothing else. Magic-link email sends via SMTP (`sendViaMXroute` over `cloudflare:sockets`; `AUTH_EMAIL_SERVER` / `MXROUTE_SMTP_*` secrets). Reference: `~/dev/stack/runbooks/email-smtp-dns.md`.
+7. **One network topology and playback path.** The venue provides Wi-Fi. Do not
+   restore Internet Sharing, hotspots, captive portals, or DNS hijacking. Apple
+   guests always use native HLS/AVPlayer so lock-screen playback remains intact.
+8. **App Store permission floor.** Store builds stay sandboxed and Sparkle-free.
+   They may request Local Network, System Audio Recording, or Microphone only
+   when needed, plus an optional user-enabled login item. Never require admin,
+   privileged helpers, Screen Recording, or automatic network reconfiguration.
 
 ## Rules
 - Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.

@@ -33,13 +33,6 @@ type Config struct {
 	KeyFile     string
 	LiveHost    string // Plex-style low-latency host (auto cert + A record via Cloudflare); "" = off
 
-	// CloudMirror enables the cloud HLS mirror for remote (off-LAN) guests: a
-	// third, ISOLATED HLS tee leg (stream-copy, onfail=ignore+use_fifo=1) writes
-	// a plain-HLS copy to a scratch dir that internal/livemirror ships to R2 via
-	// the broker. Off by default — a build with it off behaves exactly as today
-	// and the LAN/RTSP leg is never touched.
-	CloudMirror bool
-
 	// LL-HLS tuning (MediaMTX). Defaults tuned for iPhone stability.
 	PartDur  string // EXT-X-PART duration, e.g. "350ms"
 	SegDur   string // HLS segment duration, e.g. "1s"
@@ -50,11 +43,6 @@ type Config struct {
 	// default 3x target duration. 0 = off. Spec says live offsets inside 3xTD
 	// SHOULD NOT be used and iOS may ignore/misbehave — device-test only.
 	StartOffset float64
-
-	// LatencyTarget pins every listener to the same wall-clock delay behind the
-	// DJ (seconds). 0 = auto (plain HLS varies by segment size; LL-HLS: 7).
-	// The room dropping together matters more than absolute closeness to the DJ.
-	LatencyTarget float64
 }
 
 func Parse() Config {
@@ -82,12 +70,10 @@ func Parse() Config {
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")
-	flag.BoolVar(&c.CloudMirror, "cloud-mirror", env("PARTYPARTY_CLOUD_MIRROR", "1") != "0", "mirror the live set to the cloud (R2 via the broker) for remote guests — adds an isolated stream-copy HLS tee leg + uploader; off = LAN-only, exactly as today")
-	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "500ms"), "LL-HLS part duration (Precise room profile: fine parts halve the start-position quantization and drop PART-HOLD-BACK to ~1.3s, growing the EXT-X-START pin's honor margin)")
-	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "1s"), "LL-HLS segment duration (1s puts the -3s room pin at the RFC 8216 three-target-duration boundary instead of inside the discouraged zone)")
-	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 24), "LL-HLS segments kept in the playlist (window seconds at 1s segments). The window must comfortably EXCEED where devices actually sit plus the drift watchdog's reach — the 2026-07-15 party field-disproved the 12s 'failure budget': native starts open DEEP (guests ran 5-10s behind, not near the 3s target), so a 12s window left the deepest phone ~1.6s from the back edge, it fell off the back on every hiccup, and since the drift watchdog fires at target+8s=11s (past a 12s edge) it had no room to recover — the phone went SILENT instead of audible-but-late. 24s clears the 11s watchdog trigger with margin; the watchdog now bounds worst-case drift, so the window is a safety net, not the cap.")
+	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "150ms"), "LL-HLS part duration")
+	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "500ms"), "LL-HLS segment duration")
+	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 48), "LL-HLS segments retained in the live playlist")
 	flag.Float64Var(&c.StartOffset, "start-offset", 0, "EXPERIMENTAL: seconds before live to ask players to start (injects #EXT-X-START:TIME-OFFSET=-N into the plain-HLS playlist; 0 = off)")
-	flag.Float64Var(&c.LatencyTarget, "latency-target", envFloat("PARTYPARTY_LATENCY_TARGET", 0), "wall-clock delay behind the DJ every listener aligns to, in seconds (0 = auto per delivery mode)")
 	flag.Parse()
 	c.Channels = 2
 	if mono {
@@ -107,15 +93,6 @@ func envInt(key string, def int) int {
 	if v, ok := os.LookupEnv(key); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
-		}
-	}
-	return def
-}
-
-func envFloat(key string, def float64) float64 {
-	if v, ok := os.LookupEnv(key); ok {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
 		}
 	}
 	return def

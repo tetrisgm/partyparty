@@ -2,9 +2,7 @@ package server
 
 import (
 	"archive/zip"
-	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -17,18 +15,13 @@ import (
 	"strings"
 	"time"
 
-	"partyparty/internal/activate"
 	"partyparty/internal/event"
-	"partyparty/internal/publish"
-	postsync "partyparty/internal/sync"
 )
 
 // The event feed: guests post text + photos/videos from the player page; the
 // DJ sees, posts to, and moderates the same feed from the console. Guests are
 // pseudonymous (fun name + emoji chosen client-side); their private cid stays
 // server-side so the Mac can associate identity and optional subscriptions.
-
-const publicPartyBase = "https://partyparty.party"
 
 // isDJ: the console is the app's own WKWebView on localhost — loopback is the
 // DJ, everyone else on the LAN is a guest. Same trust model as /api/shutdown.
@@ -111,14 +104,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		photos, videos, audio := s.Events.MediaTypeCounts(r.URL.Query().Get("cid"), dj)
 		meta := s.Events.Meta()
-		links := s.eventOnlineLinks()
 		reactions, spikes := s.Events.ReactionSnapshot()
 		body := map[string]any{
-			"title": meta.Title, "host": meta.Host, "starts": meta.Starts, "slug": meta.Slug,
+			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
 			"date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
 			"features": meta.Features, "moderationMode": meta.ModerationMode,
 			"reactions": reactions, "spikes": spikes,
-			"onlineSlug": links.Slug, "onlineUrl": links.OnlineURL, "published": links.Published,
 			// dir = the event's identity; clients reset their cursor when it
 			// changes (switching to an OLDER event must replay its posts).
 			"dir":   filepath.Base(s.Events.Dir()),
@@ -323,28 +314,14 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
-		s.triggerSyncDrain() // live feed sharing: room comments reach the web page in seconds
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": c.ID})
-	case "/api/post-publish":
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		if err := s.Events.SetPublish(r.URL.Query().Get("id"), r.URL.Query().Get("on") != "0"); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/event-config":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
-		// Slug is a *pointer so a title/host edit that omits it doesn't wipe the
-		// DJ's chosen slug — only an explicit slug field touches it.
 		var body struct {
 			Title, Host, Starts string
-			Slug                *string
 			Date                *string `json:"date"`
 			Time                *string `json:"time"`
 			Place               *string `json:"place"`
@@ -358,12 +335,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		if err := s.Events.SetMeta(body.Title, body.Host, body.Starts); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return true
-		}
-		if body.Slug != nil {
-			if _, err := s.Events.SetSlug(*body.Slug); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-				return true
-			}
 		}
 		if body.Date != nil || body.Time != nil || body.Place != nil {
 			meta := s.Events.Meta()
@@ -396,64 +367,9 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "slug": meta.Slug, "moderationMode": meta.ModerationMode,
+			"ok": true, "moderationMode": meta.ModerationMode,
 			"date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
 		})
-	case "/api/recap/generate":
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		includeRequests := r.URL.Query().Get("includeRequests") == "1" || r.URL.Query().Get("includeRequests") == "true"
-		data, err := s.Events.GenerateRecap(event.RecapOptions{IncludeRequestDetails: includeRequests})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":      true,
-			"path":    filepath.Join(s.Events.RecapDir(), "index.html"),
-			"recap":   data,
-			"summary": data.Stats,
-		})
-	case "/api/recap.zip":
-		if !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		if r.Method != http.MethodGet {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
-			return true
-		}
-		recapDir := s.Events.RecapDir()
-		if st, err := os.Stat(filepath.Join(recapDir, "index.html")); err != nil || st.IsDir() {
-			http.Error(w, "generate recap first", http.StatusNotFound)
-			return true
-		}
-		name := "partyparty-recap-" + filepath.Base(s.Events.Dir()) + ".zip"
-		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
-		zw := zip.NewWriter(w)
-		_ = filepath.WalkDir(recapDir, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() || strings.HasPrefix(d.Name(), ".") {
-				return nil
-			}
-			rel, err := filepath.Rel(recapDir, path)
-			if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-				return nil
-			}
-			src, err := os.Open(path)
-			if err != nil {
-				return nil
-			}
-			defer src.Close()
-			dst, err := zw.CreateHeader(&zip.FileHeader{Name: filepath.ToSlash(rel), Method: zip.Store})
-			if err == nil {
-				_, _ = io.Copy(dst, src)
-			}
-			return nil
-		})
-		_ = zw.Close()
 	case "/api/event-features":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -481,32 +397,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": s.Events.Meta().Links})
-	case "/api/publish":
-		// Publish the current event's recorded set to its ONLINE /e/<slug> page
-		// (DJ-initiated; the button always publishes, no duration threshold).
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		res, err := s.publishCurrentSet(r.Context())
-		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-			return true
-		}
-		_, _ = s.Events.SetSlug(res.Slug)
-		s.syncCurrentPostsAsync(res.Slug)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": res.URL, "slug": res.Slug, "warning": res.Warning})
-	case "/api/sync-posts":
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		res, err := s.syncCurrentPosts(r.Context(), "")
-		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sync": res})
 	case "/api/media.zip":
 		// "Everyone can take the media home": one tap streams the whole
 		// event's media as an uncompressed zip (photos/videos are already
@@ -576,7 +466,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
-		s.triggerSyncDrain() // live feed sharing: room posts/photos reach the web page in seconds
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": p.ID})
 	case "/api/upload":
 		if r.Method != http.MethodPost {
@@ -681,81 +570,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cover": "/event-cover"})
-	case "/api/event-cover":
-		if !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		if r.Method == http.MethodDelete {
-			id, secret := activate.InstallCreds()
-			base := os.Getenv("PARTYPARTY_BROKER")
-			if base == "" {
-				base = "https://partyparty.party"
-			}
-			cctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-			defer cancel()
-			err := publish.DeleteCover(cctx, s.Events.Slug(), publish.Creds{
-				ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
-			}, base)
-			if err != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-				return true
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-			return true
-		}
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST or DELETE required"})
-			return true
-		}
-		const maxCoverUpload = 15 << 20
-		r.Body = http.MaxBytesReader(w, r.Body, maxCoverUpload+(1<<20))
-		f, hdr, err := r.FormFile("file")
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
-			return true
-		}
-		defer f.Close()
-		ext := strings.ToLower(filepath.Ext(hdr.Filename))
-		if len(ext) > 8 {
-			ext = ""
-		}
-		tmp, err := os.CreateTemp("", "pcover-*"+ext)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-			return true
-		}
-		tmpPath := tmp.Name()
-		defer os.Remove(tmpPath)
-		n, copyErr := io.Copy(tmp, io.LimitReader(f, maxCoverUpload+1))
-		closeErr := tmp.Close()
-		if copyErr != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": copyErr.Error()})
-			return true
-		}
-		if closeErr != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": closeErr.Error()})
-			return true
-		}
-		if n > maxCoverUpload {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "file too large"})
-			return true
-		}
-		id, secret := activate.InstallCreds()
-		base := os.Getenv("PARTYPARTY_BROKER")
-		if base == "" {
-			base = "https://partyparty.party"
-		}
-		cctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-		defer cancel()
-		err = publish.PublishCover(cctx, tmpPath, s.Events.Slug(), publish.Creds{
-			ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
-		}, base)
-		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/guest-contact":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -816,38 +630,12 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	case "/api/event-fresh":
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		if err := s.Events.Fresh(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/netcheck":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"checks": runNetChecks(s.netCheckOptions())})
-	case "/api/events":
-		if !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"events": s.Events.List()})
-	case "/api/event-switch":
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		if err := s.Events.SwitchTo(r.URL.Query().Get("dir")); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/open-logs":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -866,10 +654,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
-		if err := s.Events.ExportArchive(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-			return true
-		}
 		if runtime.GOOS == "darwin" {
 			_ = exec.Command("open", s.Events.Dir()).Start()
 		}
@@ -878,30 +662,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
-}
-
-type eventLinks struct {
-	Slug      string
-	OnlineURL string
-	Published bool
-}
-
-func (s *srv) eventOnlineLinks() eventLinks {
-	if s.Events == nil {
-		return eventLinks{}
-	}
-	installSlug := activate.InstallSlug()
-	metaSlug := s.Events.Slug()
-	slug := publish.SlugForEvent(metaSlug, installSlug)
-	if strings.TrimSpace(slug) == "" {
-		return eventLinks{}
-	}
-	published := metaSlug != "" || s.Events.LastPublishedSig() != ""
-	links := eventLinks{Slug: slug, Published: published}
-	if published {
-		links.OnlineURL = publicPartyBase + "/e/" + slug
-	}
-	return links
 }
 
 func nextUploadedFile(mr *multipart.Reader) (*multipart.Part, error) {
@@ -915,109 +675,6 @@ func nextUploadedFile(mr *multipart.Reader) (*multipart.Part, error) {
 		}
 		_ = part.Close()
 	}
-}
-
-// publishCurrentSet remuxes + uploads the current event's set recording to its
-// online /e/<slug> page, reusing this install's broker identity for auth.
-func (s *srv) publishCurrentSet(ctx context.Context) (*publish.Result, error) {
-	id, secret := activate.InstallCreds()
-	base := os.Getenv("PARTYPARTY_BROKER")
-	if base == "" {
-		base = "https://partyparty.party"
-	}
-	cctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
-	defer cancel()
-	return publish.FromEvent(cctx, s.Config.FFmpeg, s.Events, publish.Creds{
-		ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
-	}, base)
-}
-
-func (s *srv) syncCurrentPosts(ctx context.Context, slug string) (postsync.Result, error) {
-	if !s.beginPostSyncRun() {
-		return postsync.Result{}, errPostSyncRunning
-	}
-	defer func() {
-		s.endPostSyncRun()
-		// A drain that collided with this manual/after-publish run may have
-		// observed stale backlog and returned. Re-check once the state writer is
-		// released; the kick is buffered and never blocks the caller.
-		s.triggerSyncDrain()
-	}()
-	id, secret := activate.InstallCreds()
-	installSlug := activate.InstallSlug()
-	if slug == "" {
-		slug = publish.SlugForEvent(s.Events.Slug(), installSlug)
-	}
-	base := os.Getenv("PARTYPARTY_BROKER")
-	if base == "" {
-		base = "https://partyparty.party"
-	}
-	cctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
-	defer cancel()
-	live := s.Broadcaster != nil && s.Broadcaster.Status().State == "live"
-	return postsync.SyncPostsWithOptions(cctx, s.Events.Dir(), publish.Creds{
-		ID: id, Secret: secret, InstallSlug: installSlug,
-	}, slug, base, postsync.Options{DeferLargeMedia: live})
-}
-
-func (s *srv) syncCurrentPostsAsync(slug string) {
-	if s.Events == nil {
-		return
-	}
-	go func() {
-		res, err := s.syncCurrentPosts(context.Background(), slug)
-		if errors.Is(err, errPostSyncRunning) {
-			return // the active writer or its follow-up drain owns this work
-		}
-		if s.Diag == nil {
-			return
-		}
-		if err != nil {
-			s.Diag.Printf("post sync failed: %v", err)
-			return
-		}
-		if res.Offline {
-			s.Diag.Printf("post sync deferred: offline (%s)", res.LastError)
-			return
-		}
-		s.Diag.Printf("post sync complete: posts=%d media=%d skipped_posts=%d skipped_media=%d deferred_media=%d", res.PostsPushed, res.MediaPushed, res.PostsSkipped, res.MediaSkipped, res.MediaDeferred)
-	}()
-}
-
-func (s *srv) eventMirrorState() map[string]any {
-	if s.Events == nil {
-		return nil
-	}
-	links := s.eventOnlineLinks()
-	if links.Slug == "" && links.OnlineURL == "" {
-		return nil
-	}
-	id, secret := activate.InstallCreds()
-	backlog, err := postsync.PendingBacklog(s.Events.Dir(), publish.Creds{
-		ID: id, Secret: secret, InstallSlug: activate.InstallSlug(),
-	}, links.Slug)
-	postsPending := backlog.PostsPending
-	mediaPending := backlog.MediaPending
-	uploadsPending := backlog.UploadsPending
-	mediaMissing := backlog.MediaMissing
-	pending := postsPending + mediaPending + uploadsPending + mediaMissing
-	setPublished := s.Events.LastPublishedSig() != ""
-	done := setPublished && links.OnlineURL != "" && pending == 0 && err == nil
-	m := map[string]any{
-		"slug":           links.Slug,
-		"url":            links.OnlineURL,
-		"published":      setPublished,
-		"pending":        pending,
-		"done":           done,
-		"postsPending":   postsPending,
-		"mediaPending":   mediaPending,
-		"uploadsPending": uploadsPending,
-		"mediaMissing":   mediaMissing,
-	}
-	if err != nil {
-		m["error"] = err.Error()
-	}
-	return m
 }
 
 // eventState summarizes the feed for /api/status (console header + badges).

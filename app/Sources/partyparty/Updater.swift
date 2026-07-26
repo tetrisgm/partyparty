@@ -1,5 +1,13 @@
 import AppKit
 import Foundation
+#if APP_STORE
+final class Updater {
+    init(isBusy: @escaping () -> Bool) {}
+    func checkForUpdates() {}
+    func checkNow() {}
+    func broadcastDidEnd() {}
+}
+#else
 import Sparkle
 
 /// Wraps Sparkle's updater (EdDSA-verified). Feed URL + public EdDSA key come
@@ -104,3 +112,4 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     /// intentionally show nothing to defer past the live set. Nothing to do.
     func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {}
 }
+#endif

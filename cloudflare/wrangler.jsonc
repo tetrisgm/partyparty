@@ -22,16 +22,13 @@
   ],
 
   // Downloads live here (partyparty.zip, appcast.xml). Created by deploy-site.sh.
-  // Also stores cert-broker install records (broker/<id>.json) AND published set
-  // media (event/<slug>/<set>.m4a + peaks + cover).
+  // Also stores cert-broker install records, diagnostics, and OTA payloads.
   "r2_buckets": [
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],
 
-  // Event pages database (Phase-1 web): events + published sets. Create once:
-  //   wrangler d1 create partyparty-events
-  // paste the printed database_id below, then apply cloudflare/schema.sql:
-  //   wrangler d1 execute partyparty-events --remote --file=schema.sql
+  // Identity, sessions, and linked-Mac state. The historic database name is
+  // retained to avoid a destructive production migration.
   "d1_databases": [
     { "binding": "DB", "database_name": "partyparty-events", "database_id": "5344bf77-632f-45b4-b0f5-13f49faaf94a" }
   ],
@@ -56,21 +53,14 @@
     "CF_ZONE_ID": "f156a8f56d299f1d0451bbb9223c1f08"
   },
 
-  // Bind the Worker to the product domain. custom_domain:true makes wrangler
-  // provision the DNS record + edge cert; the wildcard zone route rides the
-  // zone's Universal SSL (*.partyparty.party), so handle links need no
-  // provisioning at all.
+  // Bind the product domain and machine namespace. The wildcard route is only
+  // operational plumbing for certificate-backed LAN hostnames.
   "routes": [
-    // The product domain. ONE wildcard zone route covers every handle's
-    // permanent link (Universal SSL on the partyparty.party zone includes
-    // *.partyparty.party) — no per-DJ provisioning, ever.
     { "pattern": "partyparty.party", "custom_domain": true },
     { "pattern": "*.partyparty.party/*", "zone_name": "partyparty.party" }
   ],
 
-  // 1-minute GC sweep of the live_installs presence registry (expire dead rows +
-  // delete grey slug-host A records orphaned by a crashed Mac). The FIRST cron on
-  // this Worker — correctness lives in the read path; this only keeps R2/DNS tidy.
+  // Self-heal the machine-namespace DNS anchor.
   "triggers": { "crons": ["* * * * *"] },
 
   "observability": { "enabled": true }

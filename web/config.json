@@ -1,5 +1,3 @@
 {
-  "flags": { "autoPublish": false },
-  "tunables": { "publishAutoMinSec": 180 },
-  "server": { "latencyTargetSec": 3, "segCount": 48, "segDur": "500ms", "partDur": "150ms" }
+  "server": { "segCount": 48, "segDur": "500ms", "partDur": "150ms" }
 }

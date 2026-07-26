@@ -2,10 +2,7 @@ package server
 
 import (
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
@@ -155,20 +152,9 @@ func TestSuggest(t *testing.T) {
 	if got := suggest("idle", stereoHigh); got != "" {
 		t.Errorf("no suggestion expected when idle, got %q", got)
 	}
-	cases := []struct {
-		bc   broadcast.Status
-		want string
-	}{
-		{broadcast.Status{Channels: 2, Bitrate: "320k"}, "Network strain — turn on Mono and/or lower the audio quality."},
-		{broadcast.Status{Channels: 2, Bitrate: "96k"}, "Network strain — turn on Mono."},
-		{broadcast.Status{Channels: 1, Bitrate: "320k"}, "Network strain — lower the audio quality."},
-		{broadcast.Status{Channels: 1, Bitrate: "64k"}, "Network strain — already near the floor; the Wi-Fi/access point is likely the limit."},
-	}
-	for _, c := range cases {
-		for _, status := range []string{"strain", "congested"} {
-			if got := suggest(status, c.bc); got != c.want {
-				t.Errorf("suggest(%q, ch=%d br=%s) = %q, want %q", status, c.bc.Channels, c.bc.Bitrate, got, c.want)
-			}
+	for _, status := range []string{"strain", "congested"} {
+		if got := suggest(status, stereoHigh); got == "" {
+			t.Errorf("suggest(%q) = empty, want venue Wi-Fi guidance", status)
 		}
 	}
 }
@@ -176,142 +162,3 @@ func TestSuggest(t *testing.T) {
 // ---- latencyTarget: fixed room contract ----
 
 func bareSrv(cfg config.Config) *srv { return &srv{Deps: Deps{Config: cfg}} }
-
-// setRoomSyncForTest sets the in-memory room-sync toggles deterministically,
-// consuming the lazy-load Once so no on-disk room-settings.json can override
-// them. Room sync is OFF by default (guests ride the live edge); tests that
-// exercise the park/pin turn it on explicitly. Accepts either the bare srv or
-// the exported Srv wrapper used by newTestEnv.
-func setRoomSyncForTest(s *srv, delay, drift bool) {
-	s.roomSyncOnce.Do(func() {})
-	s.roomSyncMu.Lock()
-	s.roomSyncDelay, s.driftCorrection = delay, drift
-	s.roomSyncMu.Unlock()
-}
-
-func setEnvRoomSync(s *Srv, delay, drift bool) { setRoomSyncForTest(&s.srv, delay, drift) }
-
-func TestLatencyTargetPinned(t *testing.T) {
-	s := bareSrv(config.Config{LatencyTarget: 4.2})
-	// Room-sync OFF (default): LL-HLS rides the live edge — no park.
-	if got := s.latencyTarget(broadcast.Status{Delivery: "llhls"}, "good"); got != 0 {
-		t.Errorf("edge llhls target = %v, want 0 (room sync off)", got)
-	}
-	// Room-sync ON: the configured park is pinned regardless of room health.
-	setRoomSyncForTest(s, true, false)
-	if got := s.latencyTarget(broadcast.Status{Delivery: "llhls"}, "good"); got != 4.2 {
-		t.Errorf("pinned llhls target = %v, want 4.2", got)
-	}
-	// Plain HLS keeps the configured target in either mode (no live-edge path).
-	if got := s.latencyTarget(broadcast.Status{Delivery: "hls", SegDur: 2}, "congested"); got != 4.2 {
-		t.Errorf("pinned hls target = %v, want 4.2", got)
-	}
-}
-
-func TestLatencyTargetBase(t *testing.T) {
-	cases := []struct {
-		bc   broadcast.Status
-		want float64
-	}{
-		{broadcast.Status{Delivery: "llhls"}, 7.0},            // fixed LL room deadline
-		{broadcast.Status{Delivery: "llhls", SegDur: 3}, 7.0}, // segdur irrelevant for llhls
-		{broadcast.Status{Delivery: "hls", SegDur: 1}, 10},    // 3*1+7
-		{broadcast.Status{Delivery: "hls", SegDur: 2}, 13},    // 3*2+7
-		{broadcast.Status{Delivery: "hls", SegDur: 3}, 16},    // 3*3+7
-		{broadcast.Status{Delivery: "hls", SegDur: 0}, 10},    // 0 → seg defaults to 1
-	}
-	for _, c := range cases {
-		s := bareSrv(config.Config{})
-		setRoomSyncForTest(s, true, false) // room sync ON: LL-HLS resolves the default park
-		if got := s.latencyTarget(c.bc, "good"); got != c.want {
-			t.Errorf("latencyTarget(%s seg=%v) = %v, want %v", c.bc.Delivery, c.bc.SegDur, got, c.want)
-		}
-	}
-	// Room-sync OFF (default): the LL-HLS target collapses to the live edge.
-	if got := bareSrv(config.Config{}).latencyTarget(broadcast.Status{Delivery: "llhls"}, "good"); got != 0 {
-		t.Errorf("off llhls target = %v, want 0 (live edge)", got)
-	}
-}
-
-func TestLatencyTargetDoesNotMoveWithRoomHealth(t *testing.T) {
-	bc := broadcast.Status{Delivery: "llhls"}
-	// Room-sync ON: fixed park, unaffected by room health.
-	s := bareSrv(config.Config{})
-	setRoomSyncForTest(s, true, false)
-	for _, health := range []string{"idle", "good", "strain", "congested"} {
-		if got := s.latencyTarget(bc, health); got != 7.0 {
-			t.Errorf("health %q moved park to %v, want fixed 7.0", health, got)
-		}
-	}
-	// Room-sync OFF (default): live edge, also unaffected by room health.
-	off := bareSrv(config.Config{})
-	for _, health := range []string{"idle", "good", "strain", "congested"} {
-		if got := off.latencyTarget(bc, health); got != 0 {
-			t.Errorf("health %q moved edge to %v, want fixed 0", health, got)
-		}
-	}
-}
-
-// ---- bonjour parsers, against a stub dns-sd on PATH ----
-
-const dnssdStub = `#!/bin/sh
-case "$1" in
--B)
-	printf '%s\n' \
-		"Browsing for _companion-link._tcp" \
-		"DATE: ---Wed 01 Jul 2026---" \
-		"Timestamp     A/R    Flags  if Domain               Service Type          Instance Name" \
-		"14:20:01.123  Add        3  10 local.               _companion-link._tcp. Ramine's iPhone" \
-		"14:20:01.124  Add        2  10 local.               _companion-link._tcp. Living Room TV" \
-		"14:20:01.125  Add        2  10 local.               _companion-link._tcp. Ramine's iPhone" \
-		"14:20:01.126  Rmv        0  10 local.               _companion-link._tcp. Gone Device"
-	;;
--L)
-	if [ "$2" = "Truncated" ]; then
-		echo "iPad._companion-link._tcp.local. can be reached at "
-	elif [ "$2" = "Silent" ]; then
-		:
-	else
-		echo "iPad-Mini._companion-link._tcp.local. can be reached at iPad-Mini.local.:49153 (interface 10)"
-	fi
-	;;
-esac
-exit 0
-`
-
-func installDNSSDStub(t *testing.T) {
-	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "dns-sd"), []byte(dnssdStub), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir)
-}
-
-func TestBrowseInstances(t *testing.T) {
-	installDNSSDStub(t)
-	names := browseInstances("_companion-link._tcp", 2*time.Second)
-	want := []string{"Ramine's iPhone", "Living Room TV"}
-	if len(names) != len(want) {
-		t.Fatalf("browseInstances = %q, want %q (dedup + Add-only)", names, want)
-	}
-	for i := range want {
-		if names[i] != want[i] {
-			t.Errorf("names[%d] = %q, want %q", i, names[i], want[i])
-		}
-	}
-}
-
-func TestResolveInstanceHost(t *testing.T) {
-	installDNSSDStub(t)
-	if got := resolveInstanceHost("iPad-Mini", "_companion-link._tcp", 2*time.Second); got != "iPad-Mini.local" {
-		t.Errorf("resolveInstanceHost = %q, want iPad-Mini.local", got)
-	}
-	// dns-sd killed mid-line at the timeout: marker present, host missing.
-	if got := resolveInstanceHost("Truncated", "_companion-link._tcp", 2*time.Second); got != "" {
-		t.Errorf("truncated output should resolve to \"\", got %q", got)
-	}
-	if got := resolveInstanceHost("Silent", "_companion-link._tcp", 2*time.Second); got != "" {
-		t.Errorf("empty output should resolve to \"\", got %q", got)
-	}
-}

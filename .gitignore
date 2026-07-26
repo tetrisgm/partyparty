@@ -16,6 +16,7 @@ auto.crt
 auto.key
 # Swift package build artifacts
 /app/.build/
+/app/.build-app-store/
 /app/.swiftpm/
 # assembled .app bundle output
 /build/

@@ -31,14 +31,11 @@ import (
 	"partyparty/internal/config"
 	"partyparty/internal/diag"
 	"partyparty/internal/event"
-	"partyparty/internal/livemirror"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
 	"partyparty/internal/ota"
-	"partyparty/internal/publish"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
-	postsync "partyparty/internal/sync"
 )
 
 //go:embed all:web
@@ -48,6 +45,11 @@ var webFS embed.FS
 // shown in the UIs and broadcast to clients so stale player pages refresh
 // themselves after an update instead of running old logic forever.
 var appVersion = "dev"
+
+// appStoreBuild is stamped to "1" for the sandboxed Mac App Store edition.
+// Store builds serve only bundled UI assets; downloaded executable web payloads
+// are intentionally disabled by App Store policy.
+var appStoreBuild = "0"
 
 // peekConn re-serves bytes already read off the wire (for first-byte sniffing).
 type peekConn struct {
@@ -111,279 +113,6 @@ func telemetryLoop(port int, bc *broadcast.Broadcaster) {
 	}
 }
 
-// brokerBase resolves the broker URL (PARTYPARTY_BROKER, else the prod default),
-// matching every other broker call in this file.
-func brokerBase() string {
-	if base := os.Getenv("PARTYPARTY_BROKER"); base != "" {
-		return base
-	}
-	return "https://partyparty.party"
-}
-
-const maxLiveAckBytes = 256 << 10
-
-type liveAck struct {
-	WebListeners int `json:"webListeners"`
-	WebPosts     []struct {
-		ID     string `json:"id"`
-		Author string `json:"author"`
-		Emoji  string `json:"emoji"`
-		Text   string `json:"text"`
-		TS     int64  `json:"ts"`
-	} `json:"webPosts"`
-}
-
-type webPostAdder interface {
-	AddWebPost(webID, author, emoji, text string, ts int64) (bool, error)
-}
-
-func decodeLiveAck(resp *http.Response) (liveAck, error) {
-	var ack liveAck
-	if resp.StatusCode != http.StatusOK {
-		return ack, fmt.Errorf("broker returned %s", resp.Status)
-	}
-	if resp.ContentLength > maxLiveAckBytes {
-		return ack, fmt.Errorf("broker response exceeds %d bytes", maxLiveAckBytes)
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxLiveAckBytes+1))
-	if err != nil {
-		return ack, fmt.Errorf("read broker response: %w", err)
-	}
-	if len(data) > maxLiveAckBytes {
-		return ack, fmt.Errorf("broker response exceeds %d bytes", maxLiveAckBytes)
-	}
-	if err := json.Unmarshal(data, &ack); err != nil {
-		return ack, fmt.Errorf("decode broker response: %w", err)
-	}
-	return ack, nil
-}
-
-func ingestLiveAck(ack liveAck, posts webPostAdder, handler *server.Srv, webSince *int64, logf func(string, ...any)) error {
-	if handler != nil {
-		handler.SetWebListeners(ack.WebListeners)
-	}
-	if posts == nil {
-		return nil
-	}
-	for _, wp := range ack.WebPosts {
-		added, err := posts.AddWebPost(wp.ID, wp.Author, wp.Emoji, wp.Text, wp.TS)
-		if err != nil {
-			return fmt.Errorf("persist web post %q: %w", wp.ID, err)
-		}
-		if added {
-			logf("web post joined the room feed: %s (%s)", wp.ID, wp.Author)
-		}
-		if wp.TS > *webSince {
-			*webSince = wp.TS
-		}
-	}
-	return nil
-}
-
-func recordLiveCheckinFailure(beatFails *int, handler *server.Srv, logf func(string, ...any), err error) {
-	*beatFails++
-	// A venue can be offline for hours. Record the first failure immediately,
-	// then one reminder every five minutes instead of writing the same line on
-	// every 30-second heartbeat forever.
-	if *beatFails == 1 || *beatFails%10 == 0 {
-		logf("live check-in failed (%d consecutive): %v", *beatFails, err)
-	}
-	if *beatFails >= 3 && handler != nil {
-		handler.SetWebListeners(0)
-	}
-}
-
-func recordWebPostFailure(failures *int, logf func(string, ...any), err error) {
-	*failures++
-	if *failures == 1 || *failures%10 == 0 {
-		logf("web post inject failed (%d consecutive): %v", *failures, err)
-	}
-}
-
-// advertisedPort is the port the broker should hand guests: the Mac's direct TLS
-// listener (nil-safe wrapper for the pre-handler fallback).
-func advertisedPort(handler *server.Srv, fallback int) int {
-	if handler != nil {
-		return handler.AdvertisedGuestPort()
-	}
-	return fallback
-}
-
-// liveCheckinLoop is the auto-discovery presence heartbeat: while broadcasting,
-// POST /api/broker/live every 30s with {id, secret, lan_ip, title, now_playing}
-// so the broker can match guests on the same public IP to this party. On the
-// live->idle edge it posts /api/broker/offline so a clean stop removes the party
-// instantly (the broker's TTL is only the crash backstop). A sibling to
-// telemetryLoop but NOT gated on PARTYPARTY_TELEMETRY — discovery must not hinge
-// on a debug toggle. Best-effort throughout: failures are sampled into the
-// diagnostic log and none of this work blocks the broadcast.
-func liveCheckinLoop(bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger, guestPort int, handler *server.Srv) {
-	if appVersion == "dev" {
-		return // dev/`go run` must not advertise the install's cloud namespace
-	}
-	id, secret := activate.InstallCreds()
-	if id == "" {
-		return // never registered — nothing to authenticate with
-	}
-	base := brokerBase()
-	cl := &http.Client{Timeout: 10 * time.Second}
-	logf := func(format string, args ...any) {
-		if dl != nil {
-			dl.Printf(format, args...)
-		}
-	}
-	wasLive := false
-	var lastBeat time.Time
-	var webSince int64 // max web-post ts ingested (the check-in delivery cursor)
-	beatFails := 0
-	webPostFails := 0
-	for {
-		// Poll faster than the 30s heartbeat so the live->idle edge (a Stop that
-		// doesn't quit the app) drops presence promptly; the beat itself is still
-		// rate-limited to ~30s below.
-		time.Sleep(5 * time.Second)
-		live := bc.Status().State == "live"
-		switch {
-		case live:
-			if wasLive && time.Since(lastBeat) < 30*time.Second {
-				continue // not due yet
-			}
-			title, nowPlaying := "", ""
-			if events != nil {
-				title = events.Meta().Title
-				nowPlaying = liveNowPlaying(events)
-			}
-			lanListeners := 0
-			if handler != nil {
-				lanListeners = handler.ActiveListeners()
-			}
-			body, _ := json.Marshal(map[string]any{
-				"id": id, "secret": secret,
-				"lan_ip":      netinfo.PrimaryLanIP(),
-				"guest_port":  advertisedPort(handler, guestPort), // the Mac's direct TLS port
-				"listeners":   lanListeners,
-				"web_since":   webSince, // delivery cursor: only web posts newer than what we've ingested
-				"title":       title,
-				"now_playing": nowPlaying,
-			})
-			if r, err := cl.Post(base+"/api/broker/live", "application/json", bytes.NewReader(body)); err == nil {
-				// The web side of the party rides back on this heartbeat: the
-				// cloud-mirror listener count for the room's combined tally, and
-				// web guests' wall posts to inject into the ROOM feed (deduped by
-				// cloud id inside AddWebPost, so replays are always safe).
-				ack, ackErr := decodeLiveAck(r)
-				r.Body.Close()
-				if ackErr == nil {
-					beatFails = 0
-					if ingestErr := ingestLiveAck(ack, events, handler, &webSince, logf); ingestErr != nil {
-						recordWebPostFailure(&webPostFails, logf, ingestErr)
-					} else {
-						webPostFails = 0
-					}
-				} else {
-					// A broker outage or captive-portal HTML must not leave a stale
-					// "M online" painted on the console for the rest of the set.
-					recordLiveCheckinFailure(&beatFails, handler, logf, ackErr)
-				}
-			} else {
-				recordLiveCheckinFailure(&beatFails, handler, logf, err)
-			}
-			lastBeat = time.Now()
-			wasLive = true
-		case wasLive:
-			if handler != nil {
-				handler.SetWebListeners(0)
-			}
-			postLiveOffline(base, id, secret, cl, logf)
-			wasLive = false
-			lastBeat = time.Time{}
-		}
-	}
-}
-
-// postLiveOffline tells the broker this Mac is no longer live (removes it from
-// auto-discovery). Best-effort; logf may be nil.
-func postLiveOffline(base, id, secret string, cl *http.Client, logf func(string, ...any)) {
-	body, _ := json.Marshal(map[string]any{"id": id, "secret": secret})
-	if r, err := cl.Post(base+"/api/broker/offline", "application/json", bytes.NewReader(body)); err == nil {
-		r.Body.Close()
-		if (r.StatusCode < 200 || r.StatusCode >= 300) && logf != nil {
-			logf("live offline post failed: broker returned %s", r.Status)
-		}
-	} else if logf != nil {
-		logf("live offline post failed: %v", err)
-	}
-}
-
-// liveNowPlaying renders the DJ's current track for the discovery banner
-// ("Title — Artist"), or "" when nothing is shared.
-func liveNowPlaying(events *event.Store) string {
-	current, _ := events.TrackSnapshot()
-	if current == nil {
-		return ""
-	}
-	if current.Artist != "" {
-		return current.Title + " — " + current.Artist
-	}
-	return current.Title
-}
-
-// startLiveMirror runs the cloud-mirror uploader across the broadcast lifecycle:
-// one livemirror session per go-live (started on the active edge, torn down when
-// the set settles to idle/error). A device-yank rebuild dips through
-// stopping/idle briefly and is treated as still-active so the upload session —
-// and the scratch dir it watches — survive the rebuild. Off entirely unless the
-// mirror leg is configured and this install is registered.
-func startLiveMirror(scratch string, bc *broadcast.Broadcaster, events *event.Store, dl *diag.Logger) {
-	if appVersion == "dev" {
-		return
-	}
-	id, secret := activate.InstallCreds()
-	if id == "" {
-		return // never registered — uploads would only 401
-	}
-	logf := log.Printf
-	if dl != nil {
-		logf = dl.Printf
-	}
-	m := livemirror.New(livemirror.Config{
-		Base:       brokerBase(),
-		Creds:      livemirror.Creds{ID: id, Secret: secret},
-		ScratchDir: scratch,
-		SlugFn: func() string {
-			metaSlug := ""
-			if events != nil {
-				metaSlug = events.Meta().Slug
-			}
-			return publish.SlugForEvent(metaSlug, activate.InstallSlug())
-		},
-		Logf: logf,
-	})
-	go func() {
-		var cancel context.CancelFunc
-		active := false
-		for {
-			time.Sleep(2 * time.Second)
-			st := bc.Status().State
-			isActive := st == "live" || st == "starting" || st == "stopping"
-			switch {
-			case isActive && !active:
-				active = true
-				session := strconv.FormatInt(time.Now().UnixMilli(), 10)
-				var ctx context.Context
-				ctx, cancel = context.WithCancel(context.Background())
-				go m.Run(ctx, session)
-			case !isActive && active:
-				active = false
-				if cancel != nil {
-					cancel()
-					cancel = nil
-				}
-			}
-		}
-	}()
-}
-
 func main() {
 	cfg := config.Parse()
 
@@ -411,7 +140,7 @@ func main() {
 			embVer, _ = strconv.Atoi(strings.TrimSpace(string(b)))
 		}
 		contentBase := ""
-		if appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
+		if appStoreBuild != "1" && appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
 			base := os.Getenv("PARTYPARTY_BROKER")
 			if base == "" {
 				base = "https://partyparty.party"
@@ -494,25 +223,6 @@ func main() {
 
 	bc := broadcast.New(cfg, runDir, helperPath, ingestURL)
 	ls := stats.New(20 * time.Second)
-
-	// Cloud mirror (remote-guest HLS via R2, opt-in --cloud-mirror): point the
-	// broadcaster's ISOLATED third tee leg at a scratch dir under runDir. The
-	// uploader that ships it starts near the telemetry loop below, once the event
-	// store + diagnostics exist. Off by default — the leg is absent and the
-	// pipeline (LAN RTSP + optional record) is byte-for-byte what it is today.
-	// The scratch dir is a subdir of runDir, so cleanRunDir (which only sweeps
-	// runDir's own *.m3u8/*.ts) never touches it.
-	var mirrorScratch string
-	if cfg.CloudMirror {
-		mirrorScratch = filepath.Join(runDir, "livemirror")
-		if err := os.MkdirAll(mirrorScratch, 0o755); err != nil {
-			log.Printf("cloud mirror disabled: scratch dir %s: %v", mirrorScratch, err)
-			mirrorScratch = ""
-		} else {
-			livemirror.CleanScratch(mirrorScratch)
-			bc.SetMirrorDir(mirrorScratch)
-		}
-	}
 
 	// MediaMTX (LL-HLS): embedded+extracted in dev, or from Contents/Helpers/ in
 	// the .app build; fall back to PATH if neither is present.
@@ -606,13 +316,12 @@ func main() {
 		}
 	}
 
-	// The event's social layer lives in a normal, Finder-visible folder — the
-	// DJ can open it and drag media/recordings straight out. Feed, uploads,
-	// and set recordings all land here; a restart mid-party resumes the same
-	// event. Fail-soft: no store just means no feed, never no broadcast.
+	// The LAN event store lives inside Application Support (and therefore inside
+	// the App Sandbox container in Mac App Store builds). Guests can still post
+	// during the party without granting broad Music-folder access.
 	var events *event.Store
-	if home, err := os.UserHomeDir(); err == nil {
-		if st, err := event.Open(filepath.Join(home, "Music", "partyparty")); err == nil {
+	if stateDir, err := activate.StateDir(); err == nil {
+		if st, err := event.Open(filepath.Join(stateDir, "events")); err == nil {
 			events = st
 			events.StartThumbWorker(cfg.FFmpeg)
 		} else {
@@ -643,7 +352,6 @@ func main() {
 		Diag:        diagLog,
 		Version:     appVersion,
 	})
-	handler.StartSyncDrain(context.Background())
 
 	// tcp4, NOT tcp: on some Macs `net.Listen("tcp", ...)` binds an IPv6-only
 	// socket, and if that machine's IPv6 loopback (::1) is also broken, NOTHING
@@ -696,8 +404,6 @@ func main() {
 			log.Printf("selftest: console loopback %s reachable", addr)
 		}
 	}()
-
-	handler.StartDiscovery() // Bonjour: resolve guest IPs → friendly device names
 
 	httpSrv := &http.Server{Handler: handler}
 	go func() {
@@ -955,8 +661,7 @@ func main() {
 	fmt.Println("  partyparty is running")
 	fmt.Println("  ───────────────────────────────────────────────")
 	fmt.Printf("  DJ console :  http://localhost:%d/dj\n", cfg.Port)
-	fmt.Printf("  Guests     :  http://%s:%d/\n", ip, cfg.Port)
-	fmt.Printf("  (.local)   :  http://%s:%d/\n", netinfo.LocalHostname(), cfg.Port)
+	fmt.Println("  Guests     :  secure venue-Wi-Fi link shown in the console")
 	fmt.Println("  ───────────────────────────────────────────────")
 	fmt.Println("  Open the DJ console, choose a capture source, hit Start.")
 	if bc.Delivery() == "llhls" {
@@ -984,20 +689,6 @@ func main() {
 	// transcribes numbers off phones mid-party. PARTYPARTY_TELEMETRY=0 disables.
 	if os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
 		go telemetryLoop(cfg.Port, bc)
-	}
-
-	// Live presence check-in for auto-discovery: announce this Mac to the broker
-	// every 30s while broadcasting so guests on the same Wi-Fi can find the party
-	// ("A party is on this Wi-Fi — Join <DJ>"). A sibling to telemetryLoop but
-	// deliberately NOT gated on PARTYPARTY_TELEMETRY — discovery must never depend
-	// on a debug toggle. Best-effort + logged; a graceful stop/quit posts offline.
-	go liveCheckinLoop(bc, events, diagLog, cfg.TLSPort, handler)
-
-	// Cloud mirror uploader: when the leg is on, ship each go-live's scratch HLS
-	// to the broker for remote guests. One upload session per go-live, torn down
-	// when the set ends.
-	if mirrorScratch != "" {
-		startLiveMirror(mirrorScratch, bc, events, diagLog)
 	}
 
 	// Room snapshots into the diagnostics log: every 60s while live, who's
@@ -1038,13 +729,6 @@ func main() {
 				if wasActive && !active {
 					diagLog.Printf("broadcast ended (state=%s) — uploading session log", st)
 					uploadLogOnce(diagLog)
-					// A cleanly-ended set of real length auto-publishes to its
-					// online page (the manual "Publish now" button has no such
-					// floor). Errors don't auto-publish — the DJ can still push
-					// it by hand.
-					if st == "idle" && events != nil {
-						maybeAutoPublish(events, cfg.FFmpeg, payload, time.Since(liveStart), diagLog)
-					}
 					liveStart = time.Time{}
 				}
 				wasActive = active
@@ -1175,16 +859,6 @@ func main() {
 		diagLog.Printf("shutting down (signal)")
 		uploadLogOnce(diagLog) // final flush — best effort, bounded
 	}
-	// Drop live presence on a graceful quit so the party disappears from
-	// auto-discovery immediately instead of waiting out the broker's TTL. The
-	// check-in loop also posts offline on the live->idle edge; both are the same
-	// idempotent call. Bounded + best-effort so it never delays shutdown.
-	if appVersion != "dev" {
-		if id, secret := activate.InstallCreds(); id != "" {
-			handler.SetWebListeners(0)
-			postLiveOffline(brokerBase(), id, secret, &http.Client{Timeout: 3 * time.Second}, nil)
-		}
-	}
 	bc.Stop()
 	if mtx != nil {
 		mtx.Stop()
@@ -1259,122 +933,6 @@ func uploadLogOnce(dl *diag.Logger) {
 	}
 }
 
-// maybeAutoPublish publishes a finished set to its online /e/<slug> page — but
-// only for REAL sets. Dev builds and telemetry-off installs never publish (same
-// rule as logs/telemetry, so a dev instance sharing install.json stays quiet).
-// Sets shorter than the configured floor are skipped so sound-checks and test
-// blips don't spam the page, and a set already published (manually, or by a
-// prior auto) is skipped by signature. The upload itself runs off the poller.
-func maybeAutoPublish(events *event.Store, ffmpeg string, payload *ota.Store, dur time.Duration, dl *diag.Logger) {
-	if appVersion == "dev" || os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
-		return
-	}
-	var cfgJSON []byte
-	if payload != nil {
-		cfgJSON = payload.Config()
-	}
-	if !autoPublishEnabled(cfgJSON) {
-		return
-	}
-	if dur < autoPublishMinDur(cfgJSON) {
-		return // too short — a sound-check, not a set worth a page
-	}
-	// Snapshot the set NOW (not inside the goroutine): capture the exact
-	// recordings + meta + signature we validated, so a "New event"/next Go Live
-	// during the up-to-10-min upload can't swap what gets published (TOCTOU).
-	recordings := events.LatestSetRecordings()
-	if len(recordings) == 0 {
-		return // nothing recorded (recording off, or no audio captured)
-	}
-	sig := publish.Signature(recordings)
-	if sig == events.LastPublishedSig() {
-		return // already online (manual publish, or a prior auto)
-	}
-	id, secret := activate.InstallCreds()
-	if id == "" {
-		return // never registered — nowhere to publish
-	}
-	m := events.Meta()
-	base := os.Getenv("PARTYPARTY_BROKER")
-	if base == "" {
-		base = "https://partyparty.party"
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		creds := publish.Creds{ID: id, Secret: secret, InstallSlug: activate.InstallSlug()}
-		res, err := publish.Publish(ctx, ffmpeg, recordings, publish.Meta{
-			Slug: m.Slug, Title: m.Title, Host: m.Host, Starts: m.Starts,
-		}, creds, base)
-		if dl == nil {
-			return
-		}
-		if err != nil {
-			dl.Printf("auto-publish failed: %v", err)
-			return
-		}
-		events.SetPublishedSig(sig)
-		_, _ = events.SetSlug(res.Slug)
-		if res.Warning != "" {
-			dl.Printf("auto-published set → %s (%s)", res.URL, res.Warning)
-		} else {
-			dl.Printf("auto-published set → %s", res.URL)
-		}
-		autoSyncPosts(events, res.Slug, creds, base, dl)
-	}()
-}
-
-func autoSyncPosts(events *event.Store, slug string, creds publish.Creds, base string, dl *diag.Logger) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
-		defer cancel()
-		res, err := postsync.SyncPosts(ctx, events.Dir(), creds, slug, base)
-		if err != nil {
-			dl.Printf("auto post sync failed: %v", err)
-			return
-		}
-		if res.Offline {
-			dl.Printf("auto post sync deferred: offline (%s)", res.LastError)
-			return
-		}
-		dl.Printf("auto post sync complete: posts=%d media=%d skipped_posts=%d skipped_media=%d", res.PostsPushed, res.MediaPushed, res.PostsSkipped, res.MediaSkipped)
-	}()
-}
-
-// autoPublishEnabled reads the OTA flags.autoPublish switch (default OFF).
-// Auto-publish is opt-in: the DJ turns it on in the console settings (which
-// drives /api/stop?publish=1), or an OTA push can force it on for a fleet.
-func autoPublishEnabled(cfgJSON []byte) bool {
-	var c struct {
-		Flags struct {
-			AutoPublish *bool `json:"autoPublish"`
-		} `json:"flags"`
-	}
-	if len(cfgJSON) > 0 && json.Unmarshal(cfgJSON, &c) == nil && c.Flags.AutoPublish != nil {
-		return *c.Flags.AutoPublish
-	}
-	return false
-}
-
-// autoPublishMinDur is the minimum set length for auto-publish: env override,
-// else the OTA tunables.publishAutoMinSec, else 3 minutes.
-func autoPublishMinDur(cfgJSON []byte) time.Duration {
-	if v := os.Getenv("PARTYPARTY_PUBLISH_MIN_SEC"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-			return time.Duration(n) * time.Second
-		}
-	}
-	var c struct {
-		Tunables struct {
-			PublishAutoMinSec *int `json:"publishAutoMinSec"`
-		} `json:"tunables"`
-	}
-	if len(cfgJSON) > 0 && json.Unmarshal(cfgJSON, &c) == nil && c.Tunables.PublishAutoMinSec != nil && *c.Tunables.PublishAutoMinSec >= 0 {
-		return time.Duration(*c.Tunables.PublishAutoMinSec) * time.Second
-	}
-	return 3 * time.Minute
-}
-
 // humanizeActivation turns raw activation errors into console-worthy English.
 // The DJ saw "certificate: ACME register: 503 : 503 Service Unavailable" in
 // the field — accurate, useless, and scary. The retry loop is automatic; the
@@ -1391,7 +949,7 @@ func humanizeActivation(reason string) string {
 	case strings.Contains(r, "resolve") || strings.Contains(r, "dns"):
 		return "waiting for the new address to become reachable (DNS) — retrying automatically"
 	case strings.Contains(r, "no lan") || strings.Contains(r, "network"):
-		return "no network connection — join a Wi-Fi network or start your hotspot"
+		return "no network connection — join the venue Wi-Fi network"
 	default:
 		return reason
 	}

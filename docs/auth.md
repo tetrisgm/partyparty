@@ -61,7 +61,9 @@ The primary app link flow starts inside the local DJ console:
 5. The Mac opens that URL in the browser. If the user is not signed in, `/link-mac` redirects to `/login?redirect=/link-mac?...`.
 6. `GET /link-mac` renders a confirmation page only. It does not bind the install.
 7. The confirmation form submits `POST /link-mac`.
-8. The Worker marks the browser token used and upserts `device_installs`, binding the install id/slug to the signed-in user and DJ profile.
+8. The Worker marks the browser token used and upserts `device_installs`, binding
+   the install id/slug to the signed-in user. The historical profile table is
+   internal schema compatibility, not a public profile product.
 
 Relevant files:
 

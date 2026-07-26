@@ -56,22 +56,16 @@ func LanInterfaces() []Iface {
 	return out
 }
 
-// score: lower means more likely to be the AP/hotspot subnet guests join.
-func score(ip string) int {
-	switch {
-	case strings.HasPrefix(ip, "192.168.2."):
-		return 0 // macOS Internet Sharing default subnet
-	case strings.HasPrefix(ip, "172.20.10."):
-		return 0 // iPhone Personal Hotspot subnet
-	case strings.HasPrefix(ip, "192.168."):
-		return 1
-	case strings.HasPrefix(ip, "10."):
-		return 2
-	case strings.HasPrefix(ip, "172."):
-		return 3
-	default:
-		return 9
+// score prefers Wi-Fi, then other private venue-LAN addresses.
+func score(iface Iface) int {
+	if iface.Iface == "en0" {
+		return 0
 	}
+	ip := iface.Address
+	if strings.HasPrefix(ip, "192.168.") || strings.HasPrefix(ip, "10.") || strings.HasPrefix(ip, "172.") {
+		return 1
+	}
+	return 9
 }
 
 func PrimaryLanIP() string {
@@ -79,7 +73,7 @@ func PrimaryLanIP() string {
 	if len(list) == 0 {
 		return "127.0.0.1"
 	}
-	sort.SliceStable(list, func(i, j int) bool { return score(list[i].Address) < score(list[j].Address) })
+	sort.SliceStable(list, func(i, j int) bool { return score(list[i]) < score(list[j]) })
 	return list[0].Address
 }
 

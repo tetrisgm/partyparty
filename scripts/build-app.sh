@@ -11,10 +11,28 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 GO="${GO:-go}"
-APP="$ROOT/build/partyparty.app"
-ENT="$ROOT/app/partyparty.entitlements"
+APP_STORE="${PARTYPARTY_APP_STORE:-0}"
+if [ "$APP_STORE" = "1" ]; then
+  # SwiftPM rewrites/removes Package.resolved when the Store manifest excludes
+  # Sparkle. Preserve the direct lane's pinned dependency across this build.
+  RESOLVED="$ROOT/app/Package.resolved"
+  if [ -f "$RESOLVED" ]; then
+    RESOLVED_BACKUP="$(mktemp)"
+    cp "$RESOLVED" "$RESOLVED_BACKUP"
+    trap 'cp "$RESOLVED_BACKUP" "$RESOLVED"; rm -f "$RESOLVED_BACKUP"' EXIT
+  fi
+  APP="$ROOT/build/partyparty-app-store.app"
+  ENT="$ROOT/app/partyparty-app-store.entitlements"
+  CHILD_ENT="$ROOT/app/partyparty-app-store-child.entitlements"
+  SWIFT_ARGS=(-c release --package-path "$ROOT/app" --scratch-path "$ROOT/app/.build-app-store" -Xswiftc -DAPP_STORE)
+else
+  APP="$ROOT/build/partyparty.app"
+  ENT="$ROOT/app/partyparty.entitlements"
+  CHILD_ENT=""
+  SWIFT_ARGS=(-c release --package-path "$ROOT/app")
+fi
 
-# Stable signing keeps the TCC (Screen Recording) grant across rebuilds. Prefer an
+# Stable signing keeps the audio-capture permission grant across rebuilds. Prefer an
 # explicit PP_SIGN_ID (CI), else auto-detect a local Developer ID Application
 # identity, else fall back to ad-hoc (which re-prompts for permission each build).
 EXPLICIT_ID="${PP_SIGN_ID:-}"
@@ -26,15 +44,15 @@ fi
 
 echo ">> Go server (-tags bundle)"
 APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/app/Info.plist" 2>/dev/null || echo dev)"
-"$GO" build -tags bundle -ldflags "-X main.appVersion=$APP_VERSION" -o "$ROOT/build/partyparty-server" "$ROOT"
+"$GO" build -tags bundle -ldflags "-X main.appVersion=$APP_VERSION -X main.appStoreBuild=$APP_STORE" -o "$ROOT/build/partyparty-server" "$ROOT"
 
 echo ">> Swift menu-bar app (release)"
-swift build -c release --package-path "$ROOT/app"
-BIN="$(swift build -c release --package-path "$ROOT/app" --show-bin-path)"
+PARTYPARTY_APP_STORE="$APP_STORE" swift build "${SWIFT_ARGS[@]}"
+BIN="$(PARTYPARTY_APP_STORE="$APP_STORE" swift build "${SWIFT_ARGS[@]}" --show-bin-path)"
 
 echo ">> assembling $APP"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "$APP/Contents/Frameworks" "$APP/Contents/Library/LaunchDaemons"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN/partyparty"               "$APP/Contents/MacOS/partyparty"
 cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
 cp "$ROOT/assets/ffmpeg"           "$APP/Contents/Helpers/ffmpeg"
@@ -42,6 +60,18 @@ cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
 cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
+if [ "$APP_STORE" = "1" ]; then
+  /usr/libexec/PlistBuddy -c 'Delete :SUAutomaticallyUpdate' "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :SUEnableAutomaticChecks' "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :SUFeedURL' "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :SUPublicEDKey' "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c 'Delete :SUScheduledCheckInterval' "$APP/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${APP_STORE_BUNDLE_ID:-fm.partyparty.app}" "$APP/Contents/Info.plist"
+  if [ -n "${APP_STORE_PROVISIONING_PROFILE:-}" ]; then
+    cp "$APP_STORE_PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
+  fi
+else
+  mkdir -p "$APP/Contents/Library/LaunchDaemons"
 # BOTH privileged helpers are GONE. pp-port443 (clean links) went first; pp-port80
 # followed after it was found to permanently break loopback — it created a macOS
 # network service on lo0 for Internet Sharing, which survived app uninstall and
@@ -52,9 +82,10 @@ cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
 # a later release can drop the stubs once every install has cycled through.
 cp "$ROOT/app/net.ramine.partyparty.port80.plist"  "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port80.plist"
 cp "$ROOT/app/net.ramine.partyparty.port443.plist" "$APP/Contents/Library/LaunchDaemons/net.ramine.partyparty.port443.plist"
+fi
 
 # Sparkle framework (auto-update) — embed + make it discoverable via rpath.
-if [ -d "$BIN/Sparkle.framework" ]; then
+if [ "$APP_STORE" != "1" ] && [ -d "$BIN/Sparkle.framework" ]; then
   cp -R "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/partyparty" 2>/dev/null || true
 fi
@@ -65,6 +96,10 @@ codesign_one() { # $1=path  $2=entitlements (optional)
   local args=(--force)
   if [ "$SIGN_ID" = "-" ]; then
     args+=(--sign -)
+  elif [ "$APP_STORE" = "1" ]; then
+    # App Store distribution is sandboxed and signed by Apple after review;
+    # hardened-runtime/notarization flags belong only to direct distribution.
+    args+=(--sign "$SIGN_ID")
   else
     # Hardened runtime + secure timestamp — both required for notarization.
     args+=(--options runtime --timestamp --sign "$SIGN_ID")
@@ -87,15 +122,25 @@ if [ -d "$SPK" ]; then
     codesign_one "$SPK"
   fi
 fi
-# ppcapture creates the Core Audio tap, so IT needs the audio-input
-# entitlement (hardened runtime denies audio otherwise). The rest don't.
-for b in mediamtx ffmpeg partyparty-server; do
-  codesign_one "$APP/Contents/Helpers/$b"
-done
-codesign_one "$APP/Contents/Helpers/ppcapture" "$ENT"
+# Store helpers inherit the parent sandbox. Direct builds keep the established
+# capture entitlement only on ppcapture.
+if [ "$APP_STORE" = "1" ]; then
+  for b in mediamtx ffmpeg partyparty-server ppcapture; do
+    codesign_one "$APP/Contents/Helpers/$b" "$CHILD_ENT"
+  done
+else
+  for b in mediamtx ffmpeg partyparty-server; do
+    codesign_one "$APP/Contents/Helpers/$b"
+  done
+  codesign_one "$APP/Contents/Helpers/ppcapture" "$ENT"
+fi
 codesign_one "$APP/Contents/MacOS/partyparty" "$ENT"
 codesign_one "$APP" "$ENT"
 
 echo ">> verify"
 codesign --verify --strict --verbose=2 "$APP"
+if [ "$APP_STORE" = "1" ]; then
+  codesign -d --entitlements :- "$APP" 2>&1 | grep -q 'com.apple.security.app-sandbox'
+  [ ! -d "$APP/Contents/Frameworks/Sparkle.framework" ]
+fi
 echo ">> built $APP"

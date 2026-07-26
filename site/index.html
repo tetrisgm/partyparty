@@ -36,23 +36,6 @@
   .nav-a:hover{color:var(--ink)}
   .nav-dl{font-size:14px;font-weight:600;color:var(--accent)}
 
-  /* Auto-discovery: a live party on this exact Wi-Fi (matched egress IP), PairDrop-style. */
-  .disc-band{background:var(--accent);color:var(--accent-ink);overflow:hidden;position:sticky;top:48px;z-index:49}
-  .disc-band[hidden]{display:none}
-  .disc{display:flex;align-items:center;gap:15px;max-width:1040px;margin:0 auto;padding:13px 22px;color:var(--accent-ink)}
-  .disc:hover .disc-go{background:rgba(255,255,255,.30)}
-  .disc-live{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
-  .disc-dot{width:9px;height:9px;border-radius:50%;background:#fff;animation:discPulse 1.7s infinite}
-  @keyframes discPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.6)}70%{box-shadow:0 0 0 8px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
-  .disc-txt{flex:1;font-size:15px;line-height:1.3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .disc-txt b{font-weight:700}
-  .disc-np{opacity:.82}
-  .disc-go{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.55);padding:9px 18px;border-radius:999px;font-weight:600;font-size:15px;white-space:nowrap;transition:background .15s}
-  .disc-band.on{animation:discIn .45s ease}
-  @keyframes discIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
-  @media(prefers-reduced-motion:reduce){.disc-band.on{animation:none}.disc-dot{animation:none}}
-  @media(max-width:600px){.disc-live span:last-child{display:none}.disc{gap:11px;padding:11px 16px}.disc-txt{font-size:14px}.disc-go{padding:8px 15px;font-size:14px}}
-
   .hero{padding:104px 0 84px;text-align:center}
   h1{font-size:clamp(46px,7.4vw,84px);line-height:1.04;font-weight:700;letter-spacing:-.022em;text-wrap:balance}
   .lede{font-size:clamp(18px,2.4vw,23px);color:var(--ink-2);max-width:44ch;margin:22px auto 0;text-wrap:balance}
@@ -128,14 +111,6 @@
   </div>
 </nav>
 
-<div class="disc-band" id="discBand" hidden>
-  <a class="disc" id="discLink" href="#">
-    <span class="disc-live"><span class="disc-dot"></span><span>Live now</span></span>
-    <span class="disc-txt"><b id="discDj">A DJ</b> is playing on this Wi-Fi<span class="disc-np" id="discNp"></span></span>
-    <span class="disc-go">Join &rarr;</span>
-  </a>
-</div>
-
 <header class="hero wrap">
   <h1>The party,<br>on every phone.</h1>
   <p class="lede">partyparty turns your Mac into the venue. Guests scan a QR and the music plays on their phones — perfectly together. No app. No accounts. No internet required.</p>
@@ -165,7 +140,7 @@
       <p class="sub">The stream opens in the browser already on their phone and stays in step with everyone else's — engineered so the whole room drops at the same moment.</p>
       <ul>
         <li><span class="tick">✓</span><span><b>Keeps playing locked.</b>&nbsp;Phone in pocket, screen off — the music stays on.</span></li>
-        <li><span class="tick">✓</span><span><b>A page for the night.</b>&nbsp;Photos, shout-outs and the guest list, live at the party.</span></li>
+        <li><span class="tick">✓</span><span><b>Local to the room.</b>&nbsp;Audio, photos, shout-outs and the guest list stay on the venue Wi-Fi.</span></li>
         <li><span class="tick">✓</span><span><b>iPhone and Android.</b>&nbsp;If it has a browser and earbuds, it's in.</span></li>
       </ul>
     </div>
@@ -185,7 +160,7 @@
       <div class="cell"><h3>No internet needed</h3><p>The party runs entirely on your Mac over local Wi-Fi. The venue's connection can die — the music doesn't.</p></div>
       <div class="cell"><h3>Nothing to install</h3><p>A popup dies the second you ask 40 strangers to download an app. Here they scan a QR and they're listening.</p></div>
       <div class="cell"><h3>In sync by design</h3><p>Every phone locks to the same beat — and the system snaps any stray back to the room, automatically.</p></div>
-      <div class="cell"><h3>Every set, saved</h3><p>End the night and your set becomes a shareable replay page on your DJ profile. You killed it — now there's proof.</p></div>
+      <div class="cell"><h3>Venue Wi-Fi only</h3><p>No hotspot setup or Mac-hosted network. Join the venue Wi-Fi, show the QR, and the Mac serves the room directly.</p></div>
     </div>
   </div>
 </section>
@@ -199,7 +174,7 @@
 </section>
 
 <footer>
-  <div class="fine">Made by Ramine · <a href="/live">Explore parties</a> · <a href="/login">Sign in</a> · <a href="/faq">FAQ</a> · <span id="yr">2026</span></div>
+  <div class="fine">Made by Ramine · <a href="/login">Sign in</a> · <a href="/faq">FAQ</a> · <span id="yr">2026</span></div>
 </footer>
 
 <script>
@@ -209,45 +184,6 @@
   fetch('/api/me', { credentials:'same-origin', cache:'no-store' })
     .then(r => r.ok ? r.json() : null)
     .then(j => { if (j && j.user && navAuth) { navAuth.textContent = 'Account'; navAuth.href = '/account'; } })
-    .catch(() => {});
-  // Auto-discovery (no QR): the Worker lists live parties; we PROBE each one's
-  // LAN host from here to find which is on THIS Wi-Fi. We can't trust a cloud
-  // IP-match — iPhones behind iCloud Private Relay / carrier NAT show a different
-  // public IP than the DJ's Mac on the same network. But the DJ's LAN host only
-  // answers (with its valid cert) from the party's own Wi-Fi, so a reachable
-  // probe is authenticated proof. First reachable party wins.
-  function ppProbe(url, ms){
-    return new Promise(function(resolve){
-      var done=false, ctrl=new AbortController();
-      var t=setTimeout(function(){ if(!done){done=true; try{ctrl.abort();}catch(e){} resolve(false);} }, ms);
-      fetch(url,{mode:'no-cors',cache:'no-store',signal:ctrl.signal})
-        .then(function(){ if(!done){done=true; clearTimeout(t); resolve(true);} })
-        .catch(function(){ if(!done){done=true; clearTimeout(t); resolve(false);} });
-    });
-  }
-  function ppShowParty(p){
-    const join = p.joinUrl || (p.handle ? 'https://' + p.handle + '.partyparty.party/' : '');
-    if (!join) return;
-    document.getElementById('discLink').href = join;
-    document.getElementById('discDj').textContent = p.djName || p.eventTitle || 'A DJ';
-    if (p.nowPlaying) document.getElementById('discNp').textContent = ' — ' + p.nowPlaying;
-    const band = document.getElementById('discBand');
-    band.hidden = false;
-    requestAnimationFrame(() => band.classList.add('on'));
-  }
-  fetch('/api/discover', { cache:'no-store' })
-    .then(r => r.ok ? r.json() : null)
-    .then(j => {
-      const parties = (j && j.parties) || [];
-      let shown = false;
-      parties.forEach(p => {
-        if (!p.joinUrl) return;
-        // 12s window: Chrome's local-network permission prompt and congested
-        // venue Wi-Fi can stall the probe well past a snappy timeout; the banner
-        // simply appears whenever a party proves reachable, so patience is free.
-        ppProbe(p.joinUrl, 12000).then(ok => { if (ok && !shown) { shown = true; ppShowParty(p); } });
-      });
-    })
     .catch(() => {});
   fetch('/api/version', { cache:'no-store' })
     .then(r => r.json())

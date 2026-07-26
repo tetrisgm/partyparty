@@ -6,19 +6,16 @@ import ServiceManagement
 /// Open Console, Quit. Supervises the Go server child.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let server = ServerController()
-    private var updater: Updater!            // created AFTER the move check — Sparkle must
-                                             // never download into a translocated/Downloads copy
+    private var updater: Updater!
     private var api: APIClient!
     private var poller: StatusPoller!
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Before ANYTHING (especially the server child): offer to relocate to
-        // /Applications. Running from ~/Downloads breaks Sparkle updates and
-        // triggers Gatekeeper app-translocation; one click here fixes both
-        // forever (the LetsMove pattern).
-        if moveToApplicationsIfNeeded() { return } // relaunching from the new home
+        #if !APP_STORE
+        if moveToApplicationsIfNeeded() { return }
+        #endif
 
         // Background auto-update installs and relaunches while idle. A prepared
         // update waits until the current broadcast ends, never interrupting it.
@@ -27,9 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return st == "live" || st == "starting"
         })
         server.start()
-        LegacyHelperCleanup.run()       // unregister the old privileged root helpers
-        NetworkRepair.promptIfDamaged() // guide the user to undo any lo0 damage a past version did
-        registerLoginItemByDefault()
+        #if !APP_STORE
+        LegacyHelperCleanup.run()
+        NetworkRepair.promptIfDamaged()
+        #endif
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
         setupStatusItem()
@@ -272,30 +270,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: Login item
-
-    /// A party app should just BE there next time the Mac starts — enable
-    /// start-at-login once, by default (no password, no dialog; SMAppService
-    /// shows it under System Settings → General → Login Items). The console's
-    /// "Start partyparty at login" toggle is the opt-OUT, and because this
-    /// runs only once, a user who turns it off STAYS off.
-    private func registerLoginItemByDefault() {
-        let applied = "PPLoginItemDefaultApplied"
-        let d = UserDefaults.standard
-        guard !d.bool(forKey: applied) else { return }
-        // Only from an installed home — a dev build in ~/dev shouldn't enroll.
-        guard isInstalled else { return }
-        if SMAppService.mainApp.status == .enabled {
-            d.set(true, forKey: applied) // already on (pkg postinstall era, or manual)
-            return
-        }
-        do {
-            try SMAppService.mainApp.register()
-            d.set(true, forKey: applied) // flag only after SUCCESS — a transient
-            // SMAppService failure retries next launch instead of losing the default
-        } catch {
-            NSLog("partyparty: login-item default enroll failed (will retry next launch): \(error)")
-        }
-    }
 
     // MARK: Console window
 

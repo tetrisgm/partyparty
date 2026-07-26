@@ -11,7 +11,7 @@ import (
 
 func doGz(s *Srv, target string, acceptGzip bool) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, target, nil)
-	req.RemoteAddr = guestAddr
+	req.RemoteAddr = "192.168.1.44:1234"
 	if acceptGzip {
 		req.Header.Set("Accept-Encoding", "gzip")
 	}

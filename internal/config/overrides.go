@@ -17,14 +17,13 @@ import (
 // recovery). A whole-document parse failure yields an empty Overrides (all
 // defaults), so malformed config is inert.
 type Overrides struct {
-	Bitrate       *string  // AAC bitrate, e.g. "256k" (ffmpeg, per-broadcast)
-	Channels      *int     // 1 or 2 (ffmpeg, per-broadcast)
-	HLSTime       *int     // plain-HLS segment seconds (ffmpeg, per-broadcast)
-	HLSList       *int     // plain-HLS playlist length (ffmpeg, per-broadcast)
-	PartDur       *string  // LL-HLS part duration (MediaMTX, applied at startup)
-	SegDur        *string  // LL-HLS segment duration (MediaMTX, applied at startup)
-	SegCount      *int     // LL-HLS playlist length (MediaMTX, applied at startup)
-	LatencyTarget *float64 // room delay seconds, 0 = auto (applied at startup)
+	Bitrate  *string // AAC bitrate, e.g. "256k" (ffmpeg, per-broadcast)
+	Channels *int    // 1 or 2 (ffmpeg, per-broadcast)
+	HLSTime  *int    // plain-HLS segment seconds (ffmpeg, per-broadcast)
+	HLSList  *int    // plain-HLS playlist length (ffmpeg, per-broadcast)
+	PartDur  *string // LL-HLS part duration (MediaMTX, applied at startup)
+	SegDur   *string // LL-HLS segment duration (MediaMTX, applied at startup)
+	SegCount *int    // LL-HLS playlist length (MediaMTX, applied at startup)
 }
 
 var bitrateRE = regexp.MustCompile(`^([0-9]{2,4})k$`)
@@ -39,14 +38,13 @@ func ParseOverrides(raw []byte) Overrides {
 	}
 	var doc struct {
 		Server *struct {
-			Bitrate          *string  `json:"bitrate"`
-			Channels         *int     `json:"channels"`
-			HLSTimeSec       *int     `json:"hlsTimeSec"`
-			HLSListLen       *int     `json:"hlsListLen"`
-			PartDur          *string  `json:"partDur"`
-			SegDur           *string  `json:"segDur"`
-			SegCount         *int     `json:"segCount"`
-			LatencyTargetSec *float64 `json:"latencyTargetSec"`
+			Bitrate    *string `json:"bitrate"`
+			Channels   *int    `json:"channels"`
+			HLSTimeSec *int    `json:"hlsTimeSec"`
+			HLSListLen *int    `json:"hlsListLen"`
+			PartDur    *string `json:"partDur"`
+			SegDur     *string `json:"segDur"`
+			SegCount   *int    `json:"segCount"`
 		} `json:"server"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil || doc.Server == nil {
@@ -90,9 +88,6 @@ func ParseOverrides(raw []byte) Overrides {
 	// still bounding worst-case desync.
 	if s.SegCount != nil && *s.SegCount >= 3 && *s.SegCount <= 48 {
 		o.SegCount = s.SegCount
-	}
-	if s.LatencyTargetSec != nil && *s.LatencyTargetSec >= 0 && *s.LatencyTargetSec <= 15 {
-		o.LatencyTarget = s.LatencyTargetSec
 	}
 	return o
 }
@@ -146,9 +141,6 @@ func (c Config) WithOverrides(o Overrides) Config {
 	}
 	if o.SegCount != nil {
 		c.SegCount = *o.SegCount
-	}
-	if o.LatencyTarget != nil {
-		c.LatencyTarget = *o.LatencyTarget
 	}
 	return c
 }

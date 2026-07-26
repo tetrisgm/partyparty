@@ -40,7 +40,6 @@
   .auth-status{font-size:13px;line-height:1.5;color:var(--label-secondary);margin-top:16px;min-height:20px}
   .auth-status.error{color:var(--danger)}
   .auth-status.ok{color:#1d883d}
-  /* End-of-set "publish the party" moment */
   .setwrap{margin:0 0 14px;border-radius:12px;background:rgba(255,45,85,.08);border:1px solid rgba(255,45,85,.28);padding:12px 14px}
   .setwrap[hidden]{display:none}
   .setwrap-in{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -128,11 +127,6 @@
   button.ghost:hover{background:var(--fill-hover)}
   button:disabled{opacity:.4;cursor:default}
   .url{font-size:22px;font-weight:700;color:var(--label);word-break:break-all;margin:2px 0;letter-spacing:-.01em}
-  .online-rows{display:grid;gap:10px;margin-top:12px}
-  .online-item{display:grid;gap:4px}
-  .online-url{display:flex;align-items:center;gap:8px;min-width:0}
-  .online-url .url{flex:1;min-width:0;font-size:13px;font-weight:600;margin:0}
-  .online-url button{height:26px;padding:0 10px;font-size:12px;flex:0 0 auto}
   .muted{color:var(--label-secondary);font-size:13px}
   #qr{margin:16px 0;display:flex;justify-content:center;background:#fff;width:fit-content;padding:12px;border-radius:var(--r-md);border:1px solid var(--separator)}
   .listener{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--separator);font-size:13px}
@@ -350,16 +344,6 @@
   .guest-setup-nudge span{font-size:13px;line-height:1.45}
   .guest-nudge-dismiss{width:26px;height:26px;padding:0;border-radius:50%;flex:0 0 auto;background:var(--fill);color:var(--label-secondary);font-size:12px;line-height:1}
   .guest-nudge-dismiss:hover{background:var(--fill-hover);color:var(--label)}
-  .profile-nudge{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;border-color:rgba(255,45,111,.28);background:linear-gradient(135deg,rgba(255,45,111,.13),rgba(255,255,255,.035))}
-  .profile-nudge[hidden]{display:none}
-  .profile-nudge h2{font-size:17px;margin:0 0 4px}
-  .profile-nudge p{font-size:13px;line-height:1.45;color:var(--label-secondary);margin:0}
-  .profile-nudge-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
-  .guest-hotspot-card{border:1px solid rgba(255,149,0,.32);background:rgba(255,149,0,.08);border-radius:var(--r-sm);padding:11px;display:grid;gap:8px}
-  .guest-hotspot-card[hidden]{display:none}
-  .guest-hotspot-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-  .guest-hotspot-top b{font-size:13px;color:var(--label)}
-  .guest-hotspot-steps{font-size:12px;color:#8a5200;line-height:1.5}
   .guest-qr-grid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr);gap:14px;align-items:start}
   .guest-qr-panel[hidden]{display:none}
   .guest-qr-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--label-tertiary);margin-bottom:6px}
@@ -443,7 +427,7 @@
   .eventedit[data-field="title"] [data-edit-group="title"],
   .eventedit[data-field="host"] [data-edit-group="host"],
   .eventedit[data-field="schedule"] [data-edit-group="schedule"]{display:grid}
-  #guestSetupStrip,#wifiQrPanel,#hotspotFallback,#shareHint,#hotspotReady,#hotspotNoInternet,#pubSet,#onlineSet,#devnameWrap{display:none!important}
+  #shareHint,#devnameWrap{display:none!important}
   .party-grid{grid-template-columns:minmax(0,1fr) 360px}
   .guesthead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .guesthead h2{margin:0!important}
@@ -458,7 +442,7 @@
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
-  @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.pub-row{align-items:stretch;flex-direction:column}.pub-row .muted{white-space:normal!important}.guest-setup-top{flex-direction:column}.guest-setup-actions{justify-content:flex-start;max-width:none}.guest-action-note{text-align:left}.guest-hotspot-top{align-items:flex-start;flex-direction:column}.guest-qr-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
+  @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.ehost{align-items:flex-start;gap:8px 10px}.schedule-inline{white-space:normal}.titlerow{flex-direction:column}}
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
@@ -469,7 +453,7 @@
   <div class="authbanner-in">
     <span class="gate-brand">partyparty beta</span>
     <span class="gate-title" id="accountTitle">partyparty · early access</span>
-    <span class="gate-explain" id="accountExplain">Turn this Mac into a LAN party server: guests scan a QR to listen and post on your Wi-Fi. One-time sign-in links this Mac so you can publish and replay sets online.</span>
+    <span class="gate-explain" id="accountExplain">Link this Mac once so partyparty can provision its secure Wi-Fi address. After that, the room can run without internet.</span>
     <div class="auth-steps" aria-label="First-run steps">
       <span>1. Sign in once</span>
       <span>2. Pick your audio source</span>
@@ -556,8 +540,6 @@
       </div>
       <div class="event-qr" id="shareCard" hidden>
         <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
-          <div class="offline-status" id="hotspotReady" style="display:none"></div>
-          <div class="hint" id="hotspotNoInternet" style="display:none">Guests need to be on the same Wi-Fi as this Mac before scanning.</div>
           <div id="qr" role="img" aria-label="Party Wi-Fi link QR code"></div>
           <div class="visually-hidden" id="url">—</div>
           <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
@@ -620,106 +602,6 @@
     <div id="netCheckOut" style="margin-top:10px;font-size:12px;line-height:1.7;text-align:left"></div>
   </div>
 
-  <div class="card profile-nudge" id="profileSetupNudge" hidden>
-    <div>
-      <h2>Set your DJ profile</h2>
-      <p>Your event pages use this name for hosted by and public profile links.</p>
-    </div>
-    <div class="profile-nudge-actions">
-      <button class="ghost" id="profileSetupDismissBtn" type="button">Not now</button>
-      <button class="go" id="profileSetupOpenBtn" type="button">Set DJ profile</button>
-    </div>
-  </div>
-
-  <!-- Hidden support state for guest setup, Wi-Fi QR, publish, and online links.
-       The party QR itself lives in the event header. -->
-  <div class="share-support" id="shareSupport" hidden>
-    <div class="guest-setup" id="guestSetupStrip" hidden>
-      <div class="guest-setup-top">
-        <div class="guest-setup-copy">
-          <h3 id="guestSetupHeadline">Checking your network…</h3>
-          <p id="guestSetupWriteup">Looking for the best way guests should join.</p>
-        </div>
-        <div class="guest-setup-actions" id="guestSetupActions"></div>
-      </div>
-      <div class="guest-selftest" id="guestSetupSelfTest">Before guests arrive, scan this yourself to confirm they can connect.</div>
-      <div class="warn guest-setup-nudge" id="guestSetupNudge" hidden>
-        <span>Guests not connecting? Make sure they're on the same Wi-Fi as this Mac.</span>
-        <button class="guest-nudge-dismiss" id="guestSetupNudgeClose" type="button" aria-label="Dismiss" title="Dismiss">✕</button>
-      </div>
-      <div class="guest-hotspot-card" id="guestHotspotCard" hidden>
-        <div class="guest-hotspot-top">
-          <b id="guestHotspotTitle">iPhone Personal Hotspot</b>
-        </div>
-        <div class="guest-hotspot-steps" id="guestHotspotSteps">No Wi-Fi here? On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.</div>
-      </div>
-    </div>
-    <div class="guest-qr-panel" id="wifiQrPanel" hidden>
-      <div class="guest-qr-label">Join Wi-Fi QR</div>
-      <details id="wifiJoin" style="margin-top:0">
-        <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)"><span id="wifiJoinSummary">Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →</span></summary>
-        <div style="margin-top:10px">
-          <div class="hint" id="wifiJoinHelp" style="margin:0 0 8px">Enter the Wi-Fi guests should join (the venue's, or your iPhone hotspot). Their phone camera joins it from this QR — then they scan the party QR.</div>
-          <input id="wifiSsid" placeholder="Wi-Fi network name (SSID)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px;margin-bottom:8px">
-          <input id="wifiPass" placeholder="Wi-Fi password (leave blank if open)" autocomplete="off" spellcheck="false" style="width:100%;padding:9px 11px;border:1px solid var(--separator);border-radius:8px;font-size:14px">
-          <div id="wifiQr" style="margin-top:12px"></div>
-          <div class="hint" id="wifiQrHint" style="display:none;margin-top:6px"><b>①</b> Scan to join the Wi-Fi · then the party QR is <b>②</b></div>
-        </div>
-      </details>
-    </div>
-    <div class="warn offline-fallback" id="hotspotFallback" style="display:none">
-      <div><b>No Wi-Fi here?</b></div>
-      <div>On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.</div>
-    </div>
-
-    <div id="pubSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
-      <div id="setWrap" class="setwrap" hidden>
-        <div class="setwrap-in">
-          <span class="setwrap-msg" id="setWrapMsg">🎉 Set wrapped — publish tonight's party page so everyone can relive it.</span>
-          <button class="go" id="setWrapBtn" type="button">Publish the party</button>
-        </div>
-      </div>
-      <div class="pub-summary">
-        <div class="pub-summary-copy">
-          <h2 style="font-size:15px;margin:0 0 6px">Publish this set online 🌐</h2>
-          <div class="hint" style="margin:0">Create the replay page when the set is ready. Event details and cover art live up top; publish controls stay here.</div>
-        </div>
-        <div class="pub-summary-actions">
-          <button class="ghost" id="pubFieldsBtn" type="button">Publish options</button>
-        </div>
-      </div>
-      <div class="pub-fields" id="pubFields">
-        <input id="pubTitle" type="hidden" value="">
-        <div class="pub-row">
-          <span class="muted" style="white-space:nowrap">partyparty.party/e/</span>
-          <input id="pubSlug" type="text" placeholder="auto" maxlength="48" spellcheck="false" autocapitalize="off"
-            style="flex:1;min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:8px 10px;color:var(--label);font:inherit;font-size:13px">
-          <button class="go" id="pubBtn" type="button">Publish now</button>
-        </div>
-        <div id="pubResult" class="hint" style="display:none"></div>
-        <div id="mirrorStatus" class="hint" style="display:none"></div>
-      </div>
-    </div>
-
-    <div id="onlineSet" style="margin-top:18px;border-top:1px solid var(--separator);padding-top:16px">
-      <h2 style="font-size:15px;margin:0 0 6px">partyparty online 🌐</h2>
-      <div class="online-rows">
-        <div class="online-item">
-          <span class="muted">Your event page</span>
-          <div id="onlineEvent"></div>
-        </div>
-        <div class="online-item">
-          <span class="muted">Explore partyparty</span>
-          <div id="onlineHome"></div>
-        </div>
-        <div class="online-item">
-          <span class="muted">Account</span>
-          <div id="onlineLogin"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <div class="card event-admin-tools" id="eventManagePanel">
     <div class="linkeditor" id="linkEditor">
       <div class="linkeditor-head"><b>Your links</b></div>
@@ -735,46 +617,6 @@
       <div class="spikeline" id="djReactionSpike"></div>
     </div>
     <div id="modQueue" hidden><div id="modList"></div></div>
-    <div class="row" style="margin-top:12px">
-      <button class="ghost" id="eventsBtn" style="flex:1">Your events</button>
-    </div>
-    <div id="eventsPanel" hidden style="margin-top:12px;border-top:1px solid var(--separator);padding-top:12px">
-      <button class="ghost" id="freshBtn" style="width:100%">＋ Create new event</button>
-      <div class="eventcreate" id="createEventPanel">
-        <div class="eventform-grid">
-          <label class="eventform-field">
-            <span>Event name</span>
-            <input id="createEventTitle" type="text" maxlength="80" autocomplete="off" spellcheck="false" placeholder="Warehouse Friday">
-          </label>
-          <label class="eventform-field">
-            <span>Host / creator</span>
-            <input id="createEventHost" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Your DJ name">
-          </label>
-          <label class="eventform-field">
-            <span>Date</span>
-            <input id="createEventDate" type="date">
-          </label>
-          <label class="eventform-field">
-            <span>Time</span>
-            <select id="createEventTime"></select>
-          </label>
-          <label class="eventform-field wide">
-            <span>Place</span>
-            <input id="createEventPlace" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Venue or address">
-          </label>
-          <label class="eventform-field wide">
-            <span>Online page</span>
-            <input id="createEventSlug" type="text" maxlength="48" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Auto">
-          </label>
-        </div>
-        <div class="eventform-actions">
-          <span class="eventform-status" id="createEventStatus"></span>
-          <button class="ghost" id="createEventCancelBtn" type="button">Cancel</button>
-          <button class="go" id="createEventSaveBtn" type="button">Create event</button>
-        </div>
-      </div>
-      <div id="eventsList" style="margin-top:8px"></div>
-    </div>
   </div>
 
   <div class="party-grid">
@@ -833,7 +675,6 @@
         <span class="metricsep">·</span>
         <span>Sync <b id="syncSpread">—</b></span>
       </div>
-      <div class="kv adv"><span>Room target (everyone aligns to this)</span><span id="roomTarget">—</span></div>
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
@@ -886,7 +727,6 @@
       </div>
       <div class="account-actions">
         <button class="ghost" id="accountOpenBtn" type="button">Manage account</button>
-        <button class="ghost" id="accountEditProfileBtn" type="button">Edit DJ profile</button>
         <button class="ghost" id="accountRefreshBtn" type="button">Refresh</button>
         <button class="ghost dangertext" id="accountSignOutBtn" type="button">Sign out</button>
       </div>
@@ -894,21 +734,9 @@
     </section>
 
     <section class="settings-section">
-      <label for="quality">Audio quality</label>
-      <select id="quality">
-        <option value="64k">Minimum — 64 kbps</option>
-        <option value="96k">Low — 96 kbps</option>
-        <option value="128k">Medium — 128 kbps</option>
-        <option value="160k">Balanced — 160 kbps</option>
-        <option value="192k">High — 192 kbps</option>
-        <option value="256k">Very high — 256 kbps</option>
-        <option value="320k" selected>Max — 320 kbps</option>
-      </select>
-      <label class="inapp-check" style="margin-top:14px"><input type="checkbox" id="stableSettings" checked> Stable settings</label>
-      <div class="hint" style="margin:5px 0 0">On (recommended): extra buffer so audio stays smooth and never chops, even on busy Wi‑Fi. Turn off to chase the lowest latency, with less margin for network hiccups.</div>
       <div id="inapp" style="display:none;margin-top:14px">
         <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
-        <div class="hint" style="margin:5px 0 0">partyparty opens at login so your party’s ready — turn this off in Settings.</div>
+        <div class="hint" style="margin:5px 0 0">Optional. partyparty stays off at login unless you enable this.</div>
       </div>
       <button class="ghost" id="permBtnAlways" style="margin-top:14px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
       <div class="hint" id="permBtnHint" style="margin:5px 0 0">Turn on partyparty in the list.</div>
@@ -936,8 +764,6 @@
       <h3 style="font-size:13px;margin:12px 0 6px">Network health</h3>
       <div class="stat"><span class="badge" id="healthPill">—</span><span class="muted" id="healthDetail" style="margin-left:6px"></span></div>
       <div id="healthSuggest" class="warn" style="display:none;margin-top:12px"></div>
-      <h3 style="font-size:13px;margin:12px 0 6px">Network</h3>
-      <div id="ifaces"></div>
     </div>
   </div>
 </div>
@@ -1052,78 +878,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 <script src="/vendor/qrcode.min.js"></script>
 <script>
   const $ = id => document.getElementById(id);
+  const escT = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let qrText = null, lastState = 'idle';
-  const ONLINE_BASE = 'https://partyparty.party';
-  let lastOnlineSlug = '';
-  let onlinePagePublished = false;
-  function escT(s){
-    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  }
-  async function copyText(text, btn){
-    let copied = false;
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-        copied = true;
-      }
-    } catch (e) {}
-    if (!copied) {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        copied = document.execCommand('copy');
-        ta.remove();
-      } catch (e) {}
-    }
-    if (btn) {
-      const old = btn.textContent;
-      btn.textContent = copied ? 'Copied ✓' : 'Copy failed';
-      setTimeout(() => { btn.textContent = old; }, 1400);
-    }
-  }
-  function renderOnlineUrl(id, url){
-    $(id).innerHTML = '<div class="online-url"><span class="url">' + escT(url) + '</span>' +
-      '<button class="ghost" type="button" data-copy-url="' + escT(url) + '">Copy</button></div>';
-  }
-  function renderOnline(slug, url, published){
-    lastOnlineSlug = typeof slug === 'string' ? slug.trim() : '';
-    onlinePagePublished = !!published;
-    const saved = localStorage.getItem('pp.lastEventUrl') || '';
-    const eventUrl = url || (published && lastOnlineSlug ? (ONLINE_BASE + '/e/' + encodeURIComponent(lastOnlineSlug)) : saved);
-    if (eventUrl) {
-      renderOnlineUrl('onlineEvent', eventUrl);
-    } else {
-      $('onlineEvent').innerHTML = '<div class="hint" style="margin:0">Publish a set to create your shareable page.</div>';
-    }
-    renderOnlineUrl('onlineHome', ONLINE_BASE);
-    renderOnlineUrl('onlineLogin', ONLINE_BASE + '/account');
-  }
-  function renderMirror(m){
-    const el = $('mirrorStatus');
-    const url = m && m.url;
-    if (!m || !url || !m.published) {
-      el.style.display = 'none';
-      return;
-    }
-    el.style.display = 'block';
-    const pending = Number(m.pending || 0);
-    let sync = 'mirror complete';
-    if (pending > 0) sync = 'syncing photos & videos…';
-    if (m.error) sync = 'mirror will retry';
-    el.innerHTML = 'Your party is online → <span style="color:var(--accent);font-weight:600">' + escT(url) + '</span> ' +
-      '<button class="ghost" type="button" data-copy-url="' + escT(url) + '" style="height:24px;padding:0 9px;font-size:11px;margin-left:6px">Copy</button>' +
-      '<span style="color:var(--label-secondary)"> · ' + escT(sync) + '</span>';
-  }
-  document.addEventListener('click', (e) => {
-    const btn = e.target && e.target.closest && e.target.closest('[data-copy-url]');
-    if (btn) copyText(btn.dataset.copyUrl, btn);
-  });
-  renderOnline('');
 
   let accountLinked = false;
   // Startup activation latch: once this Mac shows linked (online or on a cached
@@ -1139,7 +895,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   let refreshTimer = null;
   let accountWatchTimer = null;
   const ACCOUNT_GATE_TITLE = 'partyparty · early access';
-  const ACCOUNT_GATE_EXPLANATION = 'Turn this Mac into a LAN party server: guests scan a QR to listen and post on your Wi-Fi. One-time sign-in links this Mac so you can publish and replay sets online.';
+  const ACCOUNT_GATE_EXPLANATION = 'Link this Mac once so partyparty can provision its secure Wi-Fi address. After that, the room can run without internet.';
   const ACCOUNT_OFFLINE_MESSAGE = 'You’re offline — connect to the internet once to activate, then partyparty works offline at your venue.';
   const ACCOUNT_SIGNING_MESSAGE = 'Finish signing in — partyparty unlocks here automatically.';
   const ACCOUNT_RETRY_MIN_MS = 3000;
@@ -1159,29 +915,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   function accountEmail(st){
     const user = st && st.user || {};
     return user.email || '';
-  }
-  function accountHandle(st){
-    const profile = st && st.profile || {};
-    return profile.handle ? '@' + profile.handle : '';
-  }
-  function accountProfileComplete(st){
-    const profile = st && st.profile || {};
-    const user = st && st.user || {};
-    return !!((profile.displayName || user.displayName) && profile.handle);
-  }
-  function renderProfileNudge(st){
-    const nudge = $('profileSetupNudge');
-    if (!nudge) return;
-    const linked = !!(st && st.linked);
-    const complete = accountProfileComplete(st);
-    const dismissed = localStorage.getItem('pp.profileNudgeDismissed') === '1';
-    if (complete) localStorage.removeItem('pp.profileNudgeDismissed');
-    nudge.hidden = !linked || complete || dismissed;
-  }
-  function accountEventsSummary(st){
-    const events = st && Array.isArray(st.events) ? st.events : [];
-    if (!events.length) return 'No online events yet.';
-    return events.slice(0, 3).map(ev => ev.title || ev.slug).filter(Boolean).join(' · ');
   }
   function accountCheckedText(st){
     const n = Number(st && st.checkedMs || 0);
@@ -1216,7 +949,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     badge.className = 'statebadge' + (linked ? '' : (err ? ' hidden' : ' pending'));
     badge.textContent = linked ? 'Signed in' : (err ? 'Needs sign in' : 'Signed out');
     $('accountOpenBtn').textContent = linked ? 'Manage account' : 'Sign in / Sign up';
-    $('accountEditProfileBtn').style.display = linked ? '' : 'none';
     $('accountSignOutBtn').style.display = linked ? '' : 'none';
     if (!linked) {
       box.innerHTML = '<div class="account-empty">' +
@@ -1231,12 +963,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const rows = [
       ['Account', accountName(st)],
       ['Email', accountEmail(st) || 'No email on file'],
-      ['DJ name', hostName || 'Set your DJ profile name'],
-      ['DJ profile', accountHandle(st) || 'Create a handle'],
+      ['DJ name', hostName || 'Set the host name on the event'],
       ['This Mac', install.slug || install.id || 'Linked'],
       ['Guest host', install.host || 'Assigned when online'],
       ['License', license.ok ? 'Verified' : (license.reason || 'Needs review')],
-      ['Events', accountEventsSummary(st)],
     ];
     if (st.offline) rows.push(['Offline', 'Using saved verification on this Mac']);
     const checked = accountCheckedText(st);
@@ -1252,7 +982,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     currentAccountState = st || null;
     accountLinked = linked;
     renderSettingsAccount(st || { linked: false });
-    renderProfileNudge(st || { linked: false });
     if (title) title.textContent = ACCOUNT_GATE_TITLE;
     if (explain) explain.textContent = ACCOUNT_GATE_EXPLANATION;
     // Activation model: the app requires a linked account before it runs. Once
@@ -1325,29 +1054,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       msg.textContent = 'Account opened in your browser.';
     } catch (e) {
       msg.textContent = e && e.message ? e.message : 'Could not open account.';
-    } finally {
-      btn.disabled = false;
-    }
-  }
-  async function openProfileFromSettings(){
-    const btn = $('accountEditProfileBtn');
-    const msg = $('accountSettingsMsg');
-    const linked = !!(currentAccountState && currentAccountState.linked);
-    msg.style.display = 'block';
-    if (!linked) {
-      msg.textContent = 'Sign in first, then create your DJ profile.';
-      await startAccountSignIn();
-      return;
-    }
-    btn.disabled = true;
-    msg.textContent = 'Opening your DJ profile...';
-    try {
-      const r = await fetch('/api/account/profile', { method: 'POST' });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'Could not open profile.');
-      msg.textContent = 'Profile editor opened in your browser.';
-    } catch (e) {
-      msg.textContent = e && e.message ? e.message : 'Could not open profile.';
     } finally {
       btn.disabled = false;
     }
@@ -1435,12 +1141,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
   $('accountSignInBtn').onclick = startAccountSignIn;
   $('accountOpenBtn').onclick = openAccountFromSettings;
-  $('accountEditProfileBtn').onclick = openProfileFromSettings;
-  $('profileSetupOpenBtn').onclick = openProfileFromSettings;
-  $('profileSetupDismissBtn').onclick = () => {
-    localStorage.setItem('pp.profileNudgeDismissed', '1');
-    renderProfileNudge(currentAccountState || { linked: false });
-  };
   $('accountRefreshBtn').onclick = () => {
     const msg = $('accountSettingsMsg');
     msg.style.display = 'block';
@@ -1703,16 +1403,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     loadDevices();
   }
 
-  // Settings persist ONLY on explicit user change (pp.explicit guard). Old
-  // builds auto-saved whatever value each Go Live used, which cemented stale
-  // defaults (e.g. 160k) over new ones — migrate those away once.
-  if (!localStorage.getItem('pp.explicit')) {
-    localStorage.removeItem('pp.bitrate');
-    localStorage.removeItem('pp.latency');
-  }
-  const markExplicit = () => localStorage.setItem('pp.explicit', '1');
-  const savedQ = localStorage.getItem('pp.bitrate');
-  if (savedQ) $('quality').value = savedQ;
+  localStorage.removeItem('pp.bitrate');
+  localStorage.removeItem('pp.latency');
   let lastLt = null, lastStatus = null, startError = '';
   function copySync(){
     const s = lastStatus; if (!s) return;
@@ -1727,7 +1419,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     L.push(new Date().toLocaleString() + ' · app v' + (s.appVersion || '?'));
     L.push('');
     L.push('Listeners: ' + roster.length + (roster.filter(r=>r.delivery==='llhls').length ? ' (' + roster.filter(r=>r.delivery==='llhls').length + ' low-latency)' : ''));
-    if (typeof s.latencyTarget === 'number') L.push('Room target: ~' + s.latencyTarget.toFixed(1) + ' s');
     if (lt.count) {
       L.push('Delay from DJ (glass-to-glass): ~' + (lt.medMs/1000).toFixed(2) + ' s median');
       L.push('Dancer↔dancer spread: ' + Math.round(lt.spreadMs) + ' ms  (closest ' + Math.round(lt.minMs) + ' / median ' + Math.round(lt.medMs) + ' / furthest ' + Math.round(lt.maxMs) + ' ms)');
@@ -1761,7 +1452,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     dt.onclick = () => { detailsOn = !detailsOn; localStorage.setItem('pp.rosterDetails', detailsOn ? '1' : '0'); paint(); refresh(); };
   }
 
-  $('quality').onchange = () => { markExplicit(); localStorage.setItem('pp.bitrate', $('quality').value); };
   // Advanced view: reveal the FFmpeg log + network cards (hidden by default).
   const advOn = localStorage.getItem('pp.adv') === '1';
   $('advToggle').checked = advOn;
@@ -1802,7 +1492,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const sel = $('device');
     const device = sel.value;
     const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
-    const bitrate = $('quality').value;
+    const bitrate = '320k';
     localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
     let ok = false;
     try {
@@ -1837,26 +1527,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     startBroadcast({ allowUndetermined: true });
   };
   $('captureSoftLater').onclick = hideCaptureSoftAsk;
-  // STABLE SETTINGS: server-authoritative (persisted in room-settings.json), ON
-  // by default. ON = generous guest buffers + governor (smooth, never chops);
-  // OFF = tighter, lowest latency with less margin. The guest pages read it from
-  // /api/status and pick their playback profile.
-  (function(){
-    const s = $('stableSettings');
-    if (!s) return;
-    fetch('/api/room-settings').then(r => r.json()).then(j => { s.checked = j.stable !== false; }).catch(() => {});
-    s.onchange = () => { fetch('/api/room-settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ stable: s.checked }) }).catch(() => {}); };
-  })();
   $('device').onchange = syncCaptureSourceSelection;
   $('device').addEventListener('pointerdown', refreshDevicesForPicker);
   $('device').addEventListener('focus', refreshDevicesForPicker);
   $('screenPermBtn').onclick = openCapturePermissionSettings;
   $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
-  $('guestSetupNudgeClose').onclick = () => {
-    guestSetupNudgeDismissed = true;
-    $('guestSetupNudge').hidden = true;
-  };
   function renderQR(text){
     if (text === qrText) return;
     qrText = text;
@@ -1864,306 +1540,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     new QRCode($('qr'), { text, width:200, height:200, correctLevel: QRCode.CorrectLevel.M });
   }
 
-  // Optional "join the Wi-Fi" QR — for venue networks where guests aren't already
-  // on the Wi-Fi. One QR can't both join Wi-Fi AND open a URL, and iOS only
-  // auto-joins a WIFI: QR from the Camera app, so it's a two-step flow.
-  function esc80211(s){ return String(s).replace(/([\\;,":])/g, '\\$1'); }
-  function renderWifiQr(){
-    const s = $('wifiSsid'), p = $('wifiPass'); if (!s) return;
-    const ssid = (s.value || '').trim(), pass = p ? p.value : '';
-    try { localStorage.setItem('pp.wifiSsid', ssid); localStorage.setItem('pp.wifiPass', pass); } catch (e) {}
-    const box = $('wifiQr'), hint = $('wifiQrHint');
-    box.innerHTML = '';
-    if (!ssid) { box.style.cssText = 'margin-top:12px'; hint.style.display = 'none'; return; }
-    const payload = 'WIFI:T:' + (pass ? 'WPA' : 'nopass') + ';S:' + esc80211(ssid) + ';' + (pass ? 'P:' + esc80211(pass) + ';' : '') + ';';
-    new QRCode(box, { text: payload, width:180, height:180, correctLevel: QRCode.CorrectLevel.M });
-    box.style.cssText = 'margin-top:12px;display:flex;justify-content:center;background:#fff;padding:10px;border-radius:12px;width:fit-content';
-    hint.style.display = 'block';
-  }
-  (function(){
-    const s = $('wifiSsid'), p = $('wifiPass'); if (!s || !p) return;
-    try { s.value = localStorage.getItem('pp.wifiSsid') || ''; p.value = localStorage.getItem('pp.wifiPass') || ''; } catch (e) {}
-    const markManual = () => { try { localStorage.removeItem('pp.wifiAuto'); } catch (e) {} renderWifiQr(); };
-    s.oninput = markManual; p.oninput = markManual;
-    if (s.value) { $('wifiJoin').open = true; renderWifiQr(); }
-  })();
-
-  const IPHONE_HOTSPOT_GUIDANCE = 'No Wi-Fi here? On your iPhone: Settings → Personal Hotspot → turn it on. Join it on this Mac, and have guests join the same hotspot — everyone stays connected and keeps their internet.';
-  const GUEST_SETUP_NUDGE_MS = 60000;
-  let lastNetworkSituation = null, networkSituationLoading = false, lastGuestSetupOpts = null;
-  let guestSetupConfirmed = false, lastGuestSetupGuestCount = null, guestSetupQrShownAt = 0, lastGuestSetupSituation = '', guestSetupNudgeDismissed = false;
-  let guestConnectionTestActive = false, guestConnectionTestMessage = '';
-
-  function guestSetupPlan(info){
-    const situation = String((info && info.situation) || '').trim();
-    const plans = {
-      shared_wifi_ready: {
-        headline: "You're set — guests just scan the code.",
-        writeup: 'Everyone on this Wi-Fi can reach your Mac. Show the QR.',
-        action: 'party',
-        showPartyQr: true,
-        showWifiQr: false,
-        showHotspotCard: false,
-        wifiMode: ''
-      },
-      ethernet_can_host: {
-        headline: "Use your iPhone's Personal Hotspot.",
-        writeup: IPHONE_HOTSPOT_GUIDANCE,
-        action: 'two_step',
-        showPartyQr: true,
-        showWifiQr: true,
-        showHotspotCard: true,
-        wifiMode: 'iphone_hotspot',
-        hotspotTitle: 'iPhone Personal Hotspot',
-        hotspotSteps: IPHONE_HOTSPOT_GUIDANCE
-      },
-      wifi_no_internet: {
-        headline: 'Share the Wi-Fi and the link.',
-        writeup: 'Guests on this Wi-Fi can reach you, but the smart link needs internet. Give them the Wi-Fi + this link.',
-        action: 'two_step',
-        showPartyQr: true,
-        showWifiQr: true,
-        showHotspotCard: false,
-        wifiMode: 'venue'
-      },
-      no_network: {
-        headline: "Use your iPhone's Personal Hotspot.",
-        writeup: IPHONE_HOTSPOT_GUIDANCE,
-        action: 'two_step',
-        showPartyQr: true,
-        showWifiQr: true,
-        showHotspotCard: true,
-        wifiMode: 'iphone_hotspot',
-        hotspotTitle: 'iPhone Personal Hotspot',
-        hotspotSteps: IPHONE_HOTSPOT_GUIDANCE
-      }
-    };
-    return plans[situation] ? Object.assign({ situation: situation }, plans[situation]) : null;
-  }
-
-  function renderGuestSetupActions(plan){
-    const actions = $('guestSetupActions');
-    if (!actions) return;
-    if (!plan) {
-      actions.innerHTML = '';
-      return;
-    }
-    const note = plan.action === 'two_step' ? 'Show both QR codes below.' : 'Show the party QR below.';
-    const label = guestConnectionTestActive ? 'Test tone live' : (guestSetupConfirmed ? 'Test again' : 'Test a guest connection');
-    actions.innerHTML = '<button class="ghost" id="guestTestBtn" type="button">' + escT(label) + '</button>' +
-      '<span class="guest-action-note">' + escT(note) + '</span>';
-    const btn = $('guestTestBtn');
-    if (btn) btn.disabled = lastState === 'starting';
-  }
-
-  function setGuestWifiMode(mode){
-    const panel = $('wifiQrPanel'), details = $('wifiJoin');
-    const summary = $('wifiJoinSummary'), help = $('wifiJoinHelp');
-    const s = $('wifiSsid'), p = $('wifiPass');
-    if (!panel || !details || !summary || !help || !s || !p) return;
-    if (mode === 'optional') {
-      panel.hidden = false;
-      details.open = false;
-      summary.textContent = 'Guests need a Wi-Fi password? Add a "join Wi-Fi" QR →';
-      help.textContent = 'Enter the Wi-Fi guests should join (the venue’s, or your iPhone hotspot). Their phone camera joins it from this QR, then they scan the party QR.';
-      renderWifiQr();
-      return;
-    }
-    if (!mode) {
-      panel.hidden = true;
-      details.open = false;
-      return;
-    }
-    panel.hidden = false;
-    details.open = true;
-    try {
-      if (localStorage.getItem('pp.wifiAuto') === 'hotspot' && s.value.trim().toLowerCase() === 'partyparty' && !p.value) {
-        s.value = '';
-      }
-      localStorage.removeItem('pp.wifiAuto');
-    } catch (e) {}
-    if (mode === 'iphone_hotspot') {
-      summary.textContent = "Step 1: join your iPhone's hotspot";
-      help.textContent = 'Enter your iPhone hotspot name and password. Guests scan this first, then the party QR.';
-    } else if (mode === 'hotspot') {
-      summary.textContent = 'Step 1: join the hotspot Wi-Fi';
-      help.textContent = 'Enter the hotspot Wi-Fi name and password. Guests scan this first, then the party QR.';
-    } else {
-      summary.textContent = 'Step 1: join the venue Wi-Fi';
-      help.textContent = 'Enter the Wi-Fi guests should join. Their phone camera joins it from this QR, then they scan the party QR.';
-    }
-    renderWifiQr();
-  }
-
-  function renderGuestSelfTest(guestCount){
-    const el = $('guestSetupSelfTest');
-    if (!el) return;
-    if (Number.isFinite(guestCount)) {
-      if (guestCount >= 1 && (guestConnectionTestActive || lastGuestSetupGuestCount === 0 || lastGuestSetupGuestCount == null || guestSetupConfirmed)) {
-        guestSetupConfirmed = true;
-        guestConnectionTestActive = false;
-        guestConnectionTestMessage = '';
-      }
-      lastGuestSetupGuestCount = guestCount;
-    }
-    const error = !!guestConnectionTestMessage && !guestConnectionTestActive && !guestSetupConfirmed;
-    el.className = 'guest-selftest' + (guestSetupConfirmed ? ' ok' : (error ? ' error' : (guestConnectionTestActive ? ' testing' : '')));
-    el.textContent = guestSetupConfirmed
-      ? '✓ Guests can reach you.'
-      : (guestConnectionTestMessage || 'Before guests arrive, scan this yourself to confirm they can connect.');
-  }
-
-  function selectTestToneSource(){
-    const sel = $('device');
-    if (!sel) return false;
-    const hasTest = [...sel.options].some(o => o.value === 'test');
-    if (!hasTest) return false;
-    sel.value = 'test';
-    syncCaptureSourceSelection();
-    localStorage.setItem('pp.device', 'test');
-    return true;
-  }
-  async function startGuestConnectionTest(){
-    guestSetupConfirmed = false;
-    guestConnectionTestActive = true;
-    guestConnectionTestMessage = 'Starting a 440 Hz test tone. Scan the Party QR with a phone and confirm you hear the beep.';
-    renderGuestSelfTest(lastGuestSetupGuestCount);
-    renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
-    if (lastState === 'live' || lastState === 'starting') {
-      if (selectedCaptureDevice() === 'test') {
-        guestConnectionTestMessage = 'Test tone is live. Scan the Party QR with a phone and confirm you hear the 440 Hz beep.';
-      } else {
-        guestConnectionTestActive = false;
-        guestConnectionTestMessage = 'Stop the current broadcast first, then run the test tone before guests arrive.';
-      }
-      renderGuestSelfTest(lastGuestSetupGuestCount);
-      renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
-      return;
-    }
-    if (!selectTestToneSource()) {
-      guestConnectionTestActive = false;
-      guestConnectionTestMessage = 'Test tone source is not available yet. Refresh sources and try again.';
-      renderGuestSelfTest(lastGuestSetupGuestCount);
-      renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
-      return;
-    }
-    const ok = await startBroadcast({ allowUndetermined: true });
-    if (ok) {
-      guestConnectionTestMessage = 'Test tone is live. Scan the Party QR with a phone and confirm you hear the 440 Hz beep.';
-    } else {
-      guestConnectionTestActive = false;
-      guestConnectionTestMessage = startError || 'Could not start the test tone.';
-    }
-    renderGuestSelfTest(lastGuestSetupGuestCount);
-    renderGuestSetupActions(guestSetupPlan(lastNetworkSituation) || { action: 'party' });
-  }
-  $('guestSetupActions').addEventListener('click', (e) => {
-    const btn = e.target && e.target.closest && e.target.closest('#guestTestBtn');
-    if (btn) startGuestConnectionTest();
-  });
-
-  function renderGuestSetup(info, opts){
-    opts = opts || {};
-    lastGuestSetupOpts = opts;
-    const strip = $('guestSetupStrip');
-    if (!strip) return;
-    const linkReady = !!opts.linkReady;
-    const plan = guestSetupPlan(info);
-    // Same preference as the main status render: the QR carries the direct HTTPS
-    // machine link whenever it is available (reliable low-latency Wi-Fi join); the
-    // public cloud URL is the fallback for early setup / off-Wi-Fi guests.
-    const directHttps = !!(info && typeof info.primaryUrl === 'string' && info.primaryUrl.indexOf('https://') === 0);
-    const guestUrl = (directHttps ? info.primaryUrl : (info && (info.publicUrl || info.primaryUrl))) || opts.guestUrl || '';
-    const fallbackGuestCount = Number(opts.guestCount || 0);
-    const endpointGuestCount = Number(info && info.guestCount);
-    const guestCount = Number.isFinite(endpointGuestCount) ? endpointGuestCount : fallbackGuestCount;
-    if (!linkReady) {
-      strip.hidden = true;
-      return;
-    }
-    const activePlan = plan || {
-      situation: 'checking',
-      headline: 'Checking your network…',
-      writeup: 'Show the party QR while partyparty checks the best guest path.',
-      action: 'party',
-      showPartyQr: true,
-      showWifiQr: false,
-      showHotspotCard: false,
-      wifiMode: ''
-    };
-    strip.hidden = false;
-    $('guestSetupHeadline').textContent = activePlan.headline;
-    $('guestSetupWriteup').textContent = activePlan.writeup;
-    renderGuestSetupActions(activePlan);
-    if (guestUrl) {
-      $('url').textContent = guestUrl;
-      renderQR(guestUrl);
-    }
-    const partyPanel = $('partyQrPanel');
-    if (partyPanel) partyPanel.hidden = !linkReady;
-    const wifiMode = (!plan || activePlan.situation === 'shared_wifi_ready')
-      ? 'optional'
-      : (activePlan.showWifiQr ? activePlan.wifiMode : '');
-    setGuestWifiMode(wifiMode);
-    renderGuestSelfTest(guestCount);
-
-    const situationChanged = activePlan.situation !== lastGuestSetupSituation;
-    if (situationChanged) {
-      guestSetupQrShownAt = 0;
-      lastGuestSetupSituation = activePlan.situation;
-      guestSetupNudgeDismissed = false;
-    }
-    const shareVisible = $('shareCard') && !$('shareCard').hidden;
-    const partyQrShown = !!(linkReady && shareVisible && (!partyPanel || !partyPanel.hidden));
-    if (partyQrShown && !guestSetupConfirmed) {
-      if (!guestSetupQrShownAt) guestSetupQrShownAt = Date.now();
-    } else {
-      guestSetupQrShownAt = 0;
-    }
-    const nudgeEligible = activePlan.situation === 'shared_wifi_ready' || activePlan.situation === 'wifi_no_internet';
-    const showNudge = nudgeEligible && !guestSetupNudgeDismissed && !guestSetupConfirmed && guestCount === 0 &&
-      guestSetupQrShownAt && (Date.now() - guestSetupQrShownAt >= GUEST_SETUP_NUDGE_MS);
-    const nudge = $('guestSetupNudge');
-    if (nudge) nudge.hidden = !showNudge;
-    const hotspotCard = $('guestHotspotCard');
-    if (hotspotCard) {
-      hotspotCard.hidden = !activePlan.showHotspotCard;
-      $('guestHotspotTitle').textContent = activePlan.hotspotTitle || 'Hotspot option';
-      $('guestHotspotSteps').textContent = activePlan.hotspotSteps || IPHONE_HOTSPOT_GUIDANCE;
-    }
-  }
-
-  async function refreshNetworkSituation(opts){
-    if (lastNetworkSituation) renderGuestSetup(lastNetworkSituation, opts);
-    if (networkSituationLoading) return;
-    networkSituationLoading = true;
-    try {
-      const r = await fetch('/api/network-situation', { cache:'no-store' });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data && data.error ? data.error : 'network situation unavailable');
-      lastNetworkSituation = data;
-      renderGuestSetup(data, opts);
-    } catch (e) {
-      renderGuestSetup(lastNetworkSituation, opts);
-    } finally {
-      networkSituationLoading = false;
-    }
-  }
-
-  // Honest LAN readiness (execution-plan §6/§7). Says whether guests on THIS
-  // Wi-Fi actually reach the low-latency room on this Mac, or are being sent to
-  // the cloud stream — and which check failed. Display only: it NEVER gates Go
-  // Live and never touches the QR. Older runtimes don't send `lan`, so an absent
-  // or unknown state renders nothing rather than guessing.
-  // Honest LAN readiness, driven by OBSERVED reality — real listener counts, not
-  // a self-probe (the Mac can't see the guest-side network that actually breaks
-  // things). confirmed = guests are on the LAN room; cloud_fallback = guests are
-  // here but on the cloud stream; ready = serving, nobody has joined yet.
+  // Honest LAN readiness from observed guest connections. This reports whether
+  // the venue Wi-Fi can reach the Mac; there is deliberately no cloud fallback.
   function renderLanState(l){
     const el = $('lanState');
     if (!el) return;
     if (!l || typeof l !== 'object' || !l.state) { el.hidden = true; return; }
-    const lanN = l.lanListeners | 0, cloudN = l.cloudListeners | 0;
+    const lanN = l.lanListeners | 0;
     let tone = 'offline-status', text = '';
     switch (l.state) {
       case 'confirmed':
@@ -2175,12 +1558,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         tone = 'hint';
         text = 'LAN room ready — scan the QR with your own phone to confirm guests can reach it.';
         break;
-      case 'cloud_fallback':
-        tone = 'warn';
-        text = 'Guests are on the cloud stream' + (cloudN > 0 ? ' (' + cloudN + ')' : '')
-             + ', not the LAN room — higher latency. This Wi-Fi may be blocking phone-to-Mac traffic. The party still works over the internet.';
-        break;
-      default: el.hidden = true; return; // 'unavailable'/unknown — the setup card already covers it
+      default: el.hidden = true; return;
     }
     el.textContent = text;
     el.className = tone;
@@ -2192,8 +1570,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const s = await (await fetch('/api/status', { cache:'no-store' })).json();
       const st = s.broadcast.state;
       if (st !== lastState) djLog('bstate', { from: lastState, to: st, dev: s.broadcast.deviceName || '', bad: !!s.broadcast.captureBad });
-      if ((lastState === 'live' || lastState === 'starting') && st === 'idle') onSetEnded(s.event);
-      if (st === 'live' || st === 'starting') hideSetWrap();
       lastState = st;
       // Version pin (bottom-left) + self-refresh when the server updates
       // beneath an open console — only while idle (never mid-broadcast).
@@ -2208,7 +1584,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       badge.style.display = (st && st !== 'idle') ? '' : 'none';
       if ((st === 'live' || st === 'starting') && s.broadcast.deviceName) {
         const ch = s.broadcast.channels === 1 ? 'mono' : 'stereo';
-        const delay = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) ? ' · ~' + s.latencyTarget.toFixed(1) + 's delay' : '';
+        const delay = '';
         $('devname').textContent = '▶ ' + s.broadcast.deviceName + ' · ' + s.broadcast.bitrate + ' ' + ch + delay;
         $('devnameWrap').hidden = false;
       } else {
@@ -2261,62 +1637,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('permBtnHint').style.display = showPermButton ? 'block' : 'none';
       updateCapturePermissionUI();
       const secure = s.llhlsRealCert === true;
-      // The QR carries the link that RELIABLY connects on the party Wi-Fi: the
-      // direct HTTPS machine link (https://<handle>.party.partyparty.party:8443/),
-      // served straight off this Mac for the lowest latency. Prefer it whenever it
-      // is a real HTTPS link (cert loaded). Only before the secure link is up — or
-      // with no handle at all — fall back to the public cloud URL, so early
-      // scanners still hear the cloud stream while the Wi-Fi link finishes setting
-      // up. The public/cloud URL stays the link to hand to guests NOT on the Wi-Fi.
       const directHttps = typeof s.urls.primary === 'string' && s.urls.primary.indexOf('https://') === 0;
-      const guestUrl = directHttps ? s.urls.primary : (s.urls.public || s.urls.primary);
-      const linkReady = !!guestUrl && (secure || s.delivery === 'hls');
+      const guestUrl = directHttps ? s.urls.primary : '';
+      const linkReady = !!guestUrl && secure;
       const roster = s.roster || [];
-      const hotspot = s.hotspot || {};
-      const offlineMode = hotspot.mode === 'offline' || s.captive === true;
-      renderMirror(s.mirror);
-      if (s.mirror) {
-        renderOnline(s.mirror.slug || lastOnlineSlug, s.mirror.url || '', s.mirror.published);
-      }
-      if (linkReady) {
-        $('setupCard').style.display = 'none';
-        stopPendingType();
-        $('shareCard').hidden = false;
-        $('url').textContent = guestUrl;
-        renderQR(guestUrl);
-        const bridgeUp = !!hotspot.bridgeUp;
-        $('hotspotReady').style.display = offlineMode && bridgeUp ? 'block' : 'none';
-        $('hotspotNoInternet').style.display = offlineMode ? 'block' : 'none';
-        $('hotspotFallback').style.display = offlineMode && !bridgeUp ? 'block' : 'none';
-        $('shareHint').textContent = !secure
-          ? 'Setting up the secure low-latency link for this Wi-Fi. Until it is ready, guests who scan hear the party on the cloud stream (a few seconds behind).'
-          : offlineMode
-          ? 'Guests join the same Wi-Fi as this Mac, then scan this code. It opens in Safari/Chrome so it keeps playing in the background.'
-          : 'Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.';
-        if (offlineMode && bridgeUp) {
-          const bridge = hotspot.bridgeIP ? ' (' + hotspot.bridgeIP + ')' : '';
-          $('hotspotReady').textContent = 'Wi-Fi ready — guests join the same network, then scan.' + bridge;
-        }
-        $('netCheckOut').textContent = ''; // stale diagnostics vanish once the link is up
-      } else {
-        // No guest link yet → no "Guests join here" theater. The setup card
-        // owns this state: spinner, staged lines, connection test.
-        $('shareCard').hidden = true;
-        $('hotspotReady').style.display = 'none';
-        $('hotspotNoInternet').style.display = 'none';
-        $('hotspotFallback').style.display = 'none';
-        $('setupCard').style.display = 'block';
-        startPendingType();
-        $('pendingReason').textContent = (s.activation && s.activation.reason) || '';
-        renderQR('');
-      }
-      refreshNetworkSituation({ linkReady: linkReady, guestUrl: guestUrl, guestCount: roster.length });
       const peopleCount = roster.length + 1;
       if ($('pcount')) $('pcount').textContent = peopleCount;
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
-      $('roomTarget').textContent = (typeof s.latencyTarget === 'number' && s.latencyTarget > 0)
-        ? (s.latencyTarget.toFixed(1) + ' s')
-        : '—';
       // Spread is only meaningful WITHIN a cohort: LL devices park ~1-2s
       // behind the DJ, compatible fallback parks at the room target — mixing
       // them would read as seconds of "spread" that no two neighbors hear.
@@ -2370,15 +1697,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('healthPill').className = 'badge ' + (cls[h.status] || '');
       $('healthPill').textContent = txt[h.status] || '—';
       $('healthDetail').textContent = (h.listeners || 0) + ' listening' +
-        (Number(s.webListeners) > 0 ? ' · ' + s.webListeners + ' online' : '') + ' · ' + (h.struggling || 0) +
+        ' · ' + (h.struggling || 0) +
         ' struggling · ~' + (h.mbps ? h.mbps.toFixed(1) : '0') + ' Mbps';
       $('healthSuggest').style.display = h.suggestion ? 'block' : 'none';
       $('healthSuggest').textContent = h.suggestion || '';
       $('log').textContent = (s.log || []).join('\n') || '—';
       $('log').scrollTop = $('log').scrollHeight;
-      $('ifaces').innerHTML = (s.urls.interfaces || []).map(i =>
-        '<div class="kv"><span>' + esc(i.iface) + '</span><span>' + esc(i.address) + '</span></div>'
-      ).join('') || '<div class="muted">no LAN interface found — join your iPhone Personal Hotspot</div>';
     } catch (e) {
       // /api/status unreachable — the one moment a start error MUST still
       // show (Go Live against a quit/crashed app would otherwise be silent).
@@ -2408,7 +1732,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 
   // ── Event identity: display first, edit only when requested ──
   const PH = { startsEdit: 'add date & place' };
-  const normSlug = (v) => (v || '').toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 48);
   const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', slug: '' };
   let eventEditField = '';
   let hostAutofillSaved = '';
@@ -2461,7 +1784,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
   }
   populateTimeSelect('eventTimeInput');
-  populateTimeSelect('createEventTime');
   function scheduleLine(date, clock, place){
     const parts = [];
     if (date) {
@@ -2545,10 +1867,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     });
   });
 
-  // ── Publish the recorded set to its online /e/<slug> replay page ──
-  let pubSlugTouched = false;
-  const pubSlug = $('pubSlug'), pubBtn = $('pubBtn'), pubResult = $('pubResult');
-  const pubFields = $('pubFields'), pubFieldsBtn = $('pubFieldsBtn');
+  // ── Local event cover ──
   const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverChangeBtn = $('pubCoverChangeBtn'), pubCoverResult = $('pubCoverResult'), eventCover = $('eventCover'), eventCoverImg = $('eventCoverImg');
   const COVER_PILE = [
     '/covers/hero.jpg',
@@ -2584,7 +1903,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     '/covers/tiny-club.webp'
   ];
   let coverPreviewURL = '';
-  let currentCover = { kind: '', index: 0, src: '', uploaded: false, file: null };
+  let currentCover = { kind: '', index: 0, src: '', file: null };
   let coverMetaSeen = false;
   function setCoverStatus(msg, kind){
     if (!pubCoverResult) return;
@@ -2632,10 +1951,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const src = COVER_PILE[next];
     setCoverImage(src);
     rememberCoverIndex(next);
-    currentCover = { kind: 'curated', index: next, src, uploaded: false, file: null };
+    currentCover = { kind: 'curated', index: next, src, file: null };
     if (opts.status) setCoverStatus('', '');
     const persist = opts.persist === false ? Promise.resolve() : persistCoverRef(src);
-    if (opts.upload) return persist.then(() => uploadCurrentCover(''));
     return persist;
   }
   function syncEventCover(ref){
@@ -2650,7 +1968,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     coverMetaSeen = true;
     if (ref === '/event-cover') {
       setCoverImage(ref + '?event=' + encodeURIComponent(eventMeta.slug || 'current'));
-      currentCover = { kind:'local', index:-1, src:ref, uploaded:onlinePagePublished, file:null };
+      currentCover = { kind:'local', index:-1, src:ref, file:null };
       return;
     }
     const index = COVER_PILE.indexOf(ref);
@@ -2658,37 +1976,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       selectCuratedCover(index, { persist:false });
     }
   }
-  function coverFilename(src){
-    const name = String(src || '').split('/').pop() || 'cover.jpg';
-    return name.indexOf('.') > 0 ? name : 'cover.jpg';
-  }
   function showCoverPreview(file){
     if (!file || !eventCover || !eventCoverImg) return;
     if (coverPreviewURL) URL.revokeObjectURL(coverPreviewURL);
     coverPreviewURL = URL.createObjectURL(file);
     setCoverImage(coverPreviewURL);
-    currentCover = { kind: 'upload', index: -1, src: coverPreviewURL, uploaded: false, file };
+    currentCover = { kind: 'upload', index: -1, src: coverPreviewURL, file };
   }
   function pickCover(){ if (pubCoverFile) pubCoverFile.click(); }
   function hasFileDrop(e){ return e && e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'); }
-  async function currentCoverBlob(){
-    if (!currentCover || !currentCover.src) throw new Error('no cover selected');
-    if (currentCover.kind === 'upload' && currentCover.file) {
-      return { blob: currentCover.file, filename: currentCover.file.name || 'cover.jpg' };
-    }
-    const r = await fetch(currentCover.src, { cache:'force-cache' });
-    if (!r.ok) throw new Error('cover image unavailable');
-    return { blob: await r.blob(), filename: coverFilename(currentCover.src) };
-  }
-  async function uploadCoverBlob(blob, filename){
-    await savePubSlug();
-    const fd = new FormData();
-    fd.append('file', blob, filename || 'cover.jpg');
-    const r = await fetch('/api/event-cover', { method:'POST', body: fd });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok || d.error) throw new Error(d.error || 'upload failed');
-    currentCover.uploaded = true;
-  }
   async function saveLocalCoverBlob(blob, filename){
     const fd = new FormData();
     fd.append('file', blob, filename || 'cover.jpg');
@@ -2697,33 +1993,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (!r.ok || d.error) throw new Error(d.error || 'local cover save failed');
     eventMeta.cover = d.cover || '/event-cover';
   }
-  async function uploadCurrentCover(successMessage){
-    if (!currentCover || !currentCover.src) return true;
-    setCoverBusy(true);
-    setCoverStatus('Uploading cover…', '');
-    try {
-      const picked = await currentCoverBlob();
-      await uploadCoverBlob(picked.blob, picked.filename);
-      setCoverStatus(successMessage || '', '');
-      return true;
-    } catch (e) {
-      setCoverStatus('Couldn’t set cover: ' + (e.message || e), 'error');
-      return false;
-    } finally {
-      setCoverBusy(false);
-    }
-  }
-  async function ensureCoverUploaded(){
-    if (!currentCover || !currentCover.src || currentCover.uploaded) return;
-    const picked = await currentCoverBlob();
-    await uploadCoverBlob(picked.blob, picked.filename);
-  }
   async function shuffleCoverImage(){
     let next = Math.floor(Math.random() * COVER_PILE.length);
     if (COVER_PILE.length > 1 && currentCover.kind === 'curated') {
       while (next === currentCover.index) next = Math.floor(Math.random() * COVER_PILE.length);
     }
-    await selectCuratedCover(next, { status: true, upload: onlinePagePublished });
+    await selectCuratedCover(next, { status: true });
   }
   async function uploadCoverFile(file){
     if (!file) return;
@@ -2736,7 +2011,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     setCoverStatus('Saving cover…', '');
     try {
       await saveLocalCoverBlob(file, file.name);
-      if (onlinePagePublished) await uploadCoverBlob(file, file.name);
       setCoverStatus('', '');
       if (pubCoverFile) pubCoverFile.value = '';
     } catch (e) {
@@ -2745,30 +2019,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       setCoverBusy(false);
     }
   }
-  function setPubFieldsOpen(open, focus){
-    if (!pubFields) return;
-    pubFields.classList.toggle('show', !!open);
-    if (pubFieldsBtn) pubFieldsBtn.textContent = open ? 'Hide publish options' : 'Publish options';
-    if (open && focus) {
-      try { pubFields.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
-      setTimeout(() => { const t = $('pubSlug') || $('pubBtn'); if (t) t.focus(); }, 120);
-    }
-  }
-  if (pubFieldsBtn) pubFieldsBtn.onclick = () => setPubFieldsOpen(!pubFields.classList.contains('show'), true);
-  function syncPublish(slug){ // feed → field, unless the DJ is editing it
-    if (pubSlug === document.activeElement || pubSlugTouched) return;
-    if (typeof slug === 'string' && slug !== pubSlug.value) pubSlug.value = slug;
-  }
-  const savePubSlug = () => {
-    const v = normSlug(pubSlug.value);
-    if (v !== pubSlug.value) pubSlug.value = v;
-    pubSlugTouched = false;
-    return fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ slug: v }) }).catch(()=>{});
-  };
-  pubSlug.addEventListener('input', () => { pubSlugTouched = true; });
-  pubSlug.addEventListener('blur', savePubSlug);
-  pubSlug.addEventListener('keydown', (e) => { if (e.key === 'Enter') pubSlug.blur(); });
   selectCuratedCover(savedCoverIndex(), { persist:false });
   if (pubCoverBtn) pubCoverBtn.addEventListener('click', pickCover);
   if (pubCoverChangeBtn) pubCoverChangeBtn.addEventListener('click', shuffleCoverImage);
@@ -2797,64 +2047,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       uploadCoverFile(file);
     });
   }
-  // End-of-set moment: when a set wraps, invite the DJ to publish the party page
-  // right where they're looking, then show the live link. Reuses the publish flow.
-  function onSetEnded(ev){
-    const wrap = $('setWrap'), msg = $('setWrapMsg'), btn = $('setWrapBtn');
-    if (!wrap) return;
-    wrap.classList.remove('done');
-    const posts = (ev && Number(ev.posts)) || 0, media = (ev && Number(ev.media)) || 0;
-    const bits = [];
-    if (posts) bits.push(posts + (posts === 1 ? ' post' : ' posts'));
-    if (media) bits.push(media + (media === 1 ? ' photo/clip' : ' photos & clips'));
-    const haul = bits.length ? ' — your guests dropped ' + bits.join(' and ') : '';
-    msg.textContent = '🎉 Set wrapped' + haul + '. Publish tonight’s party page so everyone can relive it.';
-    btn.hidden = false;
-    wrap.hidden = false;
-    try { wrap.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
-  }
-  function hideSetWrap(){ const w = $('setWrap'); if (w) { w.hidden = true; w.classList.remove('done'); } }
-  function setWrapPublished(url){
-    const wrap = $('setWrap'), msg = $('setWrapMsg'), btn = $('setWrapBtn');
-    if (!wrap || !url) return;
-    wrap.classList.add('done');
-    btn.hidden = true;
-    const bare = String(url).replace(/^https?:\/\//, '');
-    msg.innerHTML = '✅ Your party page is live — <a href="' + escT(url) + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">' + escT(bare) + '</a> · <span id="setWrapCopy" style="cursor:pointer;text-decoration:underline">copy link</span>';
-    const c = $('setWrapCopy'); if (c) c.onclick = () => copyText(url, c);
-    wrap.hidden = false;
-  }
-  if ($('setWrapBtn')) $('setWrapBtn').onclick = () => setPubFieldsOpen(true, true);
-  pubBtn.addEventListener('click', async () => {
-    pubBtn.disabled = true; const label = pubBtn.textContent; pubBtn.textContent = 'Publishing…';
-    pubResult.style.display = 'block';
-    pubResult.textContent = 'Remuxing and uploading your set — this can take a moment…';
-    try {
-      await savePubSlug(); // land the slug BEFORE publishing, else it uses the old/auto one
-      if (currentCover && currentCover.src && !currentCover.uploaded) {
-        pubResult.textContent = 'Uploading cover image…';
-        await ensureCoverUploaded();
-        pubResult.textContent = 'Remuxing and uploading your set — this can take a moment…';
-      }
-      const r = await fetch('/api/publish', { method:'POST' });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) throw new Error(d.error || 'publish failed');
-      if (d.url) {
-        localStorage.setItem('pp.lastEventUrl', d.url);
-        renderOnline(d.slug || lastOnlineSlug, d.url, true);
-        setWrapPublished(d.url);
-      }
-      const bare = d.url.replace(/^https?:\/\//, '');
-      const warn = d.warning ? ' · <span style="color:var(--label-secondary)">' + escT(d.warning) + '</span>' : '';
-      pubResult.innerHTML = 'Published → <span style="color:var(--accent);font-weight:600">' + escT(bare) + '</span> · <span id="pubCopy" style="cursor:pointer;text-decoration:underline">copy link</span>' + warn;
-      const c = $('pubCopy');
-      if (c) c.onclick = () => copyText(d.url, c);
-    } catch (e) {
-      pubResult.textContent = 'Couldn’t publish: ' + (e.message || e);
-    } finally {
-      pubBtn.disabled = false; pubBtn.textContent = label;
-    }
-  });
   function syncHeader(title, host, starts, slug, date, clock, place, cover){
     const fallbackHost = accountEventHost() || 'the DJ';
     const shouldAutofillHost = isPlaceholderHost(host);
@@ -2881,8 +2073,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const active = document.activeElement;
       if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm(eventEditField);
     }
-    const pt = $('pubTitle');
-    if (pt && document.activeElement !== pt) pt.value = eventMeta.title || '';
     if (eventMeta.title) document.title = eventMeta.title + ' — partyparty';
     if (shouldAutofillHost && fallbackHost !== 'the DJ') persistAccountEventHost(fallbackHost);
   }
@@ -2895,7 +2085,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const allPosts = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
     const replying = new Set();
-    let newestAct = 0, on = false, curDir = '';
+    let newestAct = 0, on = false;
     const linkTypes = [
       ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['mixcloud', 'Mixcloud'],
       ['resident_advisor', 'Resident Advisor'], ['venmo', 'Venmo'], ['cashapp', 'Cash App'], ['paypal', 'PayPal']
@@ -3243,9 +2433,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         stateBadge(stateOf(p)) +
         '<span style="margin-left:auto;display:flex;gap:6px;align-items:center">' +
         modButtons(p.id, '', stateOf(p)) +
-        (p.web
-          ? '<span class="pubbtn off" style="cursor:default;text-decoration:none" title="Posted from the web event page — it already lives online.">from the web</span>'
-          : '<button class="pubbtn' + (p.noPublish ? ' off' : '') + '" data-pub="' + escT(p.id) + '" data-off="' + (p.noPublish ? '1' : '0') + '" title="Choose whether this post joins the online replay page later.">' + (p.noPublish ? 'online: skip' : 'online: publish') + '</button>') +
         '<button class="pdel" data-del="' + escT(p.id) + '">Remove</button></span></div>' +
         (p.text ? '<div class="wtext' + big + '">' + escT(p.text) + '</div>' : '') +
         (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '') +
@@ -3358,14 +2545,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (el) { el.remove(); nodes.delete(d.del); allPosts.delete(d.del); replying.delete(d.del); renderModQueue(); }
         return;
       }
-      if (d.pub) {
-        const on = d.off === '1'; // currently off → turn ON
-        await fetch('/api/post-publish?id=' + encodeURIComponent(d.pub) + '&on=' + (on ? '1' : '0'), { method:'POST' });
-        e.target.dataset.off = on ? '0' : '1';
-        e.target.classList.toggle('off', !on);
-        e.target.textContent = on ? 'will publish' : 'not publishing';
-        return;
-      }
       if (d.csend) {
         const inp = list.querySelector('input[data-cpost="' + d.csend + '"]');
         const text = inp && inp.value.trim();
@@ -3435,13 +2614,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (!r.ok) return false;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
-        let switched = false;
-        if (data.dir && data.dir !== curDir) {
-          // Event switched: reset the cursor or an older event's posts (act <
-          // our high-water mark) would never arrive.
-          curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); allPosts.clear(); authors.clear(); replying.clear(); list.innerHTML = '';
-        }
-        if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
+        if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
         const countParts = [
           (data.total || 0) + (data.total === 1 ? ' post' : ' posts'),
           (data.photos || 0) + (data.photos === 1 ? ' photo' : ' photos'),
@@ -3451,12 +2624,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         $('eventCounts').textContent = countParts.join(' · ');
         if ($('feedCount')) $('feedCount').textContent = data.total || '';
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
-        syncPublish(data.slug);
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderTrackPanel(data.features || {}, data.nowPlaying || null, data.recentTracks || [], data.trackAsks || 0);
         renderLinkEditor(data.links || []);
         renderHeroLinks(data.links || []);
-        renderOnline(data.onlineSlug || data.slug, data.onlineUrl || '', data.published);
         pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
@@ -3572,90 +2743,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       return fetch('/api/open-media', { method:'POST' });
     }
     if ($('actionOpenFolderBtn')) $('actionOpenFolderBtn').onclick = openCurrentEventFolder;
-    function setCreateEventOpen(open){
-      const panel = $('createEventPanel'), btn = $('freshBtn');
-      if (!panel || !btn) return;
-      panel.classList.toggle('show', !!open);
-      btn.textContent = open ? 'Close new event' : '＋ Create new event';
-      setFormStatus('createEventStatus', '', '');
-      if (open) {
-        $('createEventTitle').value = '';
-        const accountHost = accountName(currentAccountState || {});
-        $('createEventHost').value = (eventMeta.host && eventMeta.host !== 'the DJ') ? eventMeta.host : accountHost;
-        $('createEventDate').value = todayISO();
-        $('createEventTime').value = '20:00';
-        $('createEventPlace').value = '';
-        $('createEventSlug').value = '';
-        setTimeout(() => $('createEventTitle').focus(), 80);
-      }
-    }
-    $('freshBtn').onclick = () => setCreateEventOpen(!$('createEventPanel').classList.contains('show'));
-    $('createEventCancelBtn').onclick = () => setCreateEventOpen(false);
-    async function createEvent(){
-      const title = inputValue('createEventTitle');
-      const host = inputValue('createEventHost');
-      const date = inputValue('createEventDate');
-      const clock = inputValue('createEventTime') || '20:00';
-      const place = inputValue('createEventPlace');
-      const starts = scheduleLine(date, clock, place);
-      const rawSlug = inputValue('createEventSlug');
-      const slug = normSlug(rawSlug);
-      if (!title) { setFormStatus('createEventStatus', 'Add an event name.', 'error'); $('createEventTitle').focus(); return; }
-      if (!host) { setFormStatus('createEventStatus', 'Add a host name.', 'error'); $('createEventHost').focus(); return; }
-      if (!date) { setFormStatus('createEventStatus', 'Pick a date.', 'error'); $('createEventDate').focus(); return; }
-      if (rawSlug && rawSlug !== slug) $('createEventSlug').value = slug;
-      const btn = $('createEventSaveBtn');
-      btn.disabled = true; btn.textContent = 'Creating…';
-      setFormStatus('createEventStatus', 'Creating event page…', '');
-      try {
-        let r = await fetch('/api/event-fresh', { method:'POST' });
-        let d = await r.json().catch(() => ({}));
-        if (!r.ok || d.error) throw new Error(d.error || 'new event failed');
-        r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ title, host, starts, slug, date, time:clock, place }) });
-        d = await r.json().catch(() => ({}));
-        if (!r.ok || d.error) throw new Error(d.error || 'event setup failed');
-        setFormStatus('createEventStatus', 'Created.', 'ok');
-        location.reload();
-      } catch (e) {
-        setFormStatus('createEventStatus', 'Couldn’t create: ' + (e.message || e), 'error');
-      } finally {
-        btn.disabled = false; btn.textContent = 'Create event';
-      }
-    }
-    $('createEventSaveBtn').onclick = createEvent;
-    ['createEventTitle', 'createEventHost', 'createEventDate', 'createEventTime', 'createEventPlace', 'createEventSlug'].forEach(id => {
-      const el = $(id);
-      if (el) el.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); createEvent(); }
-        if (e.key === 'Escape') { e.preventDefault(); setCreateEventOpen(false); }
-      });
-    });
-    // "Your events" — the Partiful list: every party page, switchable.
-    $('eventsBtn').onclick = async () => {
-      const panel = $('eventsPanel');
-      if (!panel.hidden) { panel.hidden = true; return; }
-      panel.hidden = false;
-      const listEl = $('eventsList');
-      listEl.innerHTML = '<span class="muted">Loading…</span>';
-      try {
-        const data = await (await fetch('/api/events')).json();
-        listEl.innerHTML = (data.events || []).map(ev =>
-          '<div style="display:flex;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px solid var(--separator)">' +
-          '<b>' + escT(ev.title) + '</b>' +
-          '<span class="muted" style="font-size:11px">' + escT(ev.dir) + ' · ' + ev.posts + (ev.posts === 1 ? ' post' : ' posts') + ' · ' + ev.media + ' media</span>' +
-          (ev.current
-            ? '<span class="muted" style="margin-left:auto;font-size:11px">current</span>'
-            : '<button class="ghost" data-open="' + escT(ev.dir) + '" style="margin-left:auto;height:24px;font-size:11px;padding:0 10px">Open</button>') +
-          '</div>').join('') || '<span class="muted">No events yet.</span>';
-      } catch (e) { listEl.innerHTML = '<span class="muted">Couldn\'t load events.</span>'; }
-    };
-    $('eventsList').addEventListener('click', async (e) => {
-      const dir = e.target && e.target.dataset && e.target.dataset.open;
-      if (!dir) return;
-      await fetch('/api/event-switch?dir=' + encodeURIComponent(dir), { method:'POST' });
-      location.reload();
-    });
     // Connection test: which hop is the venue's network blocking?
     $('netCheckBtn').onclick = async () => {
       const out = $('netCheckOut');
@@ -3669,7 +2756,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if ((data.checks || []).every(c => c.ok)) {
           out.innerHTML += '<div class="muted" style="margin-top:6px">Everything reachable — the certificate should come through on the next retry. If it stays stuck, send me a screenshot of this.</div>';
         } else {
-          out.innerHTML += '<div class="muted" style="margin-top:6px">Something on this network is blocking a hop ❌ above — try your iPhone Personal Hotspot for the one-time setup; after that the party works offline.</div>';
+          out.innerHTML += '<div class="muted" style="margin-top:6px">This venue Wi-Fi is blocking a required setup hop. Move the Mac to an unrestricted internet connection, finish activation, then return to the venue Wi-Fi.</div>';
         }
       } catch (e) { out.textContent = 'Test failed to run — is the app still up?'; }
       $('netCheckBtn').disabled = false;

@@ -1,9 +1,5 @@
-// Package event is the party's social layer: a per-event feed of posts
-// (text + photos/videos) plus the media files themselves and the set
-// recordings, all stored in a normal, user-visible folder the DJ can open in
-// Finder and drag from (~/Music/partyparty/<date>). The Mac IS the event's
-// server while the party runs; publishing the page online later just means
-// syncing this folder. Optional guest contact information remains private.
+// Package event stores the active room's feed, media, and set recording on the
+// Mac. Optional guest contact information remains private.
 package event
 
 import (
@@ -46,9 +42,7 @@ type Comment struct {
 }
 
 // Post is one feed entry. CID is the author's private client id; only the
-// pseudonym leaves the server in feed responses. NoPublish marks posts the DJ excluded
-// from the future ONLINE page (they stay visible at the party — exclusion
-// is curation for later, removal is Delete).
+// pseudonym leaves the server in feed responses.
 type Post struct {
 	ID  string `json:"id"`
 	TS  int64  `json:"ts"`  // unix millis (creation)
@@ -63,13 +57,7 @@ type Post struct {
 	State     string         `json:"state,omitempty"`
 	Comments  []Comment      `json:"comments,omitempty"`
 	Reactions map[string]int `json:"reactions,omitempty"`
-	NoPublish bool           `json:"noPublish,omitempty"`
-	// Web marks a post that ORIGINATED on the cloud event page (injected into
-	// the room by the live check-in). Derived from the journal CID prefix on
-	// load; the console uses it to hide the publish toggle (web posts already
-	// live in the cloud — republishing is meaningless).
-	Web     bool `json:"web,omitempty"`
-	Deleted bool `json:"-"`
+	Deleted   bool           `json:"-"`
 }
 
 // Request is one private guest song request for the DJ. CID stays server-side;
@@ -106,7 +94,6 @@ type line struct {
 	Request   *Request      `json:"request,omitempty"`
 	Track     *CurrentTrack `json:"track,omitempty"`
 	State     string        `json:"state,omitempty"`
-	On        bool          `json:"on,omitempty"` // publish flag value
 	MediaID   string        `json:"mediaId,omitempty"`
 	Thumb     string        `json:"thumb,omitempty"`
 	TS        int64         `json:"ts,omitempty"`
@@ -123,9 +110,7 @@ type Guest struct {
 	Created   int64  `json:"createdAt"`           // unix millis
 }
 
-// Meta is the event's public identity (meta.json) — what the welcome card
-// shows: "<Host> is hosting <Title>". DJ-editable from the console. Starts is
-// a free-text invite line ("Saturday 9pm — rooftop") for the pre-event page.
+// Meta is the active room identity shown to guests and edited by the DJ.
 type Meta struct {
 	Title          string          `json:"title"`
 	Host           string          `json:"host"`
@@ -137,10 +122,6 @@ type Meta struct {
 	Features       map[string]bool `json:"features,omitempty"`
 	ModerationMode string          `json:"moderationMode,omitempty"`
 	Links          []Link          `json:"links,omitempty"`
-	// Slug is the DJ's chosen /e/<slug> for this event's ONLINE page. "" means
-	// auto-derive one from the install at publish time. Charset-gated (see
-	// SetSlug) to the Worker's EVENT_RE so a bad value can never reach the page.
-	Slug string `json:"slug,omitempty"`
 }
 
 type Link struct {
@@ -451,7 +432,7 @@ func (s *Store) Wait() <-chan struct{} {
 
 // use switches the store to dir, creating the layout and replaying the journal.
 func (s *Store) use(dir string) error {
-	for _, sub := range []string{"", "media", filepath.Join("media", "thumbs"), "recordings", "recap"} {
+	for _, sub := range []string{"", "media", filepath.Join("media", "thumbs"), "recordings"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 			return err
 		}
@@ -473,9 +454,6 @@ func (s *Store) use(dir string) error {
 			case l.Op == "post" && l.Post != nil:
 				p := *l.Post
 				p.CID = l.CID
-				if strings.HasPrefix(l.CID, "web:") {
-					p.Web = true // journals written before the field get it back
-				}
 				p.State = normalizeState(p.State)
 				for i := range p.Comments {
 					p.Comments[i].State = normalizeState(p.Comments[i].State)
@@ -574,10 +552,6 @@ func (s *Store) use(dir string) error {
 					}
 				}
 				currentTrack = nil
-			case l.Op == "publish":
-				if p, ok := byID[l.ID]; ok {
-					p.NoPublish = !l.On
-				}
 			case l.Op == "thumb":
 				for _, p := range posts {
 					for i := range p.Media {
@@ -620,7 +594,7 @@ func (s *Store) use(dir string) error {
 	return nil
 }
 
-// Meta returns the event's public identity.
+// Meta returns the active room identity.
 func (s *Store) Meta() Meta {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -784,32 +758,6 @@ func (s *Store) saveMetaLocked() error {
 	return os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644)
 }
 
-// Slug returns the DJ's chosen online slug for this event ("" = auto at publish).
-func (s *Store) Slug() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.meta.Slug
-}
-
-// SetSlug stores a DJ-chosen /e/<slug>, normalized to the Worker's EVENT_RE
-// charset ([A-Za-z0-9_.-], 1-48). An empty/blank value clears it (revert to
-// the auto-derived slug at publish). Returns the normalized slug actually
-// stored. A value that normalizes to nothing usable is rejected.
-func (s *Store) SetSlug(raw string) (string, error) {
-	slug := NormalizeSlug(raw)
-	if strings.TrimSpace(raw) != "" && slug == "" {
-		return "", errors.New("slug must contain letters or numbers")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.meta.Slug = slug
-	if err := s.saveMetaLocked(); err != nil {
-		return "", err
-	}
-	s.changed()
-	return slug, nil
-}
-
 // SetFeature updates one DJ-controlled guest feature switch and persists it.
 func (s *Store) SetFeature(name string, on bool) error {
 	if !validFeature(name) {
@@ -859,31 +807,6 @@ func (s *Store) SetModerationMode(mode string) error {
 	return nil
 }
 
-// NormalizeSlug lowercases, keeps the Worker's EVENT_RE charset ([a-z0-9_.-])
-// as-is, turns any run of UNSUPPORTED characters into a single hyphen, trims
-// stray separators, and clips to 48 — yielding a value that always satisfies
-// EVENT_RE, or "" when nothing usable remains. Kept in lockstep with the
-// client-side normSlug() in web/dj.html so the preview matches what's stored.
-func NormalizeSlug(raw string) string {
-	raw = strings.ToLower(strings.TrimSpace(raw))
-	var b strings.Builder
-	lastDash := false
-	for _, r := range raw {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' {
-			b.WriteRune(r)
-			lastDash = false
-		} else if b.Len() > 0 && !lastDash {
-			b.WriteByte('-') // a run of unsupported chars collapses to one hyphen
-			lastDash = true
-		}
-	}
-	out := strings.Trim(b.String(), "-._")
-	if len(out) > 48 {
-		out = strings.Trim(out[:48], "-._")
-	}
-	return out
-}
-
 // RecordingFiles lists this event's set recordings (recordings/set-*.aac) in
 // PLAY order — the raw material a publish remuxes into one faststart .m4a.
 func (s *Store) RecordingFiles() []string {
@@ -916,25 +839,6 @@ func (s *Store) RecordingFiles() []string {
 	return files
 }
 
-// LatestSetRecordings returns just the MOST RECENT set's files — the newest
-// base "set-<ts>.aac" plus any device-yank segments sharing that <ts> — in play
-// order. This is what a publish uploads: one set, NOT every set ever recorded
-// in the event folder (each Go Live starts a fresh <ts>).
-func (s *Store) LatestSetRecordings() []string {
-	all := s.RecordingFiles() // play order: ts ascending, then segment
-	if len(all) == 0 {
-		return nil
-	}
-	lastTS, _ := recordingKey(filepath.Base(all[len(all)-1]))
-	var out []string
-	for _, f := range all {
-		if ts, _ := recordingKey(filepath.Base(f)); ts == lastTS {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
 // recordingKey extracts (timestamp, segment#) from a recording filename.
 // "set-20060102-150405.aac" -> ("20060102150405", 1);
 // "set-20060102-150405-2.aac" -> ("20060102150405", 2).
@@ -952,121 +856,6 @@ func recordingKey(name string) (string, int) {
 		}
 	}
 	return ts, seg
-}
-
-// LastPublishedSig returns the signature of whatever was last published from
-// this event (or ""). Used to skip auto-publishing a set that was already
-// published (manually or by a prior auto).
-func (s *Store) LastPublishedSig() string {
-	s.mu.Lock()
-	p := filepath.Join(s.dir, "recordings", ".published")
-	s.mu.Unlock()
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-// SetPublishedSig records the signature of the just-published set.
-func (s *Store) SetPublishedSig(sig string) {
-	s.mu.Lock()
-	p := filepath.Join(s.dir, "recordings", ".published")
-	s.mu.Unlock()
-	_ = os.WriteFile(p, []byte(sig), 0o644)
-}
-
-// Info describes one event folder for the console's event list.
-type Info struct {
-	Dir     string `json:"dir"` // folder name under baseDir
-	Title   string `json:"title"`
-	Starts  string `json:"starts,omitempty"`
-	Posts   int    `json:"posts"`
-	Media   int    `json:"media"`
-	Current bool   `json:"current"`
-}
-
-// List enumerates every event folder, newest first (folder names sort by date).
-func (s *Store) List() []Info {
-	s.mu.Lock()
-	base, cur := s.baseDir, s.dir
-	s.mu.Unlock()
-	entries, _ := os.ReadDir(base)
-	var out []Info
-	for i := len(entries) - 1; i >= 0; i-- {
-		e := entries[i]
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		dir := filepath.Join(base, e.Name())
-		info := Info{Dir: e.Name(), Title: "partyparty", Current: dir == cur}
-		if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
-			var m Meta
-			if json.Unmarshal(data, &m) == nil {
-				if m.Title != "" {
-					info.Title = m.Title
-					if isLegacyAutoTitle(info.Title, e.Name()) {
-						info.Title = "partyparty"
-					}
-				}
-				info.Starts = m.Starts
-			}
-		}
-		// Post/media counts by replaying the journal ops (files are small).
-		if data, err := os.ReadFile(filepath.Join(dir, "posts.jsonl")); err == nil {
-			alive := map[string]int{}
-			for _, raw := range strings.Split(string(data), "\n") {
-				var l line
-				if json.Unmarshal([]byte(raw), &l) != nil {
-					continue
-				}
-				switch {
-				case l.Op == "post" && l.Post != nil:
-					alive[l.Post.ID] = len(l.Post.Media)
-				case l.Op == "delete":
-					delete(alive, l.ID)
-				}
-			}
-			info.Posts = len(alive)
-			for _, m := range alive {
-				info.Media += m
-			}
-		}
-		out = append(out, info)
-	}
-	return out
-}
-
-// SwitchTo opens another existing event folder (the Partiful "your events"
-// move — nothing is created or destroyed).
-func (s *Store) SwitchTo(dirName string) error {
-	if dirName == "" || dirName != filepath.Base(dirName) || strings.HasPrefix(dirName, ".") {
-		return errors.New("bad event name")
-	}
-	s.mu.Lock()
-	dir := filepath.Join(s.baseDir, dirName)
-	s.mu.Unlock()
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		return errors.New("no such event")
-	}
-	return s.use(dir)
-}
-
-// Fresh abandons the current feed and starts a new event directory (the old
-// one stays on disk untouched — nothing is ever destroyed).
-func (s *Store) Fresh() error {
-	s.mu.Lock()
-	base := s.baseDir
-	s.mu.Unlock()
-	date := time.Now().Format("2006-01-02")
-	dir := filepath.Join(base, date)
-	for n := 2; ; n++ {
-		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-			break
-		}
-		dir = filepath.Join(base, fmt.Sprintf("%s (%d)", date, n))
-	}
-	return s.use(dir)
 }
 
 // Dir returns the current event directory (for "Open media folder" etc.).
@@ -1309,61 +1098,6 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	return p, "", nil
 }
 
-// AddWebPost injects a post written by an OFF-LAN guest on the cloud event
-// page into the room's feed — the wall is one shared party. Keyed by the cloud
-// post id (CID "web:<id>", persisted in the journal) so the live check-in can
-// hand us the same posts every beat without duplicates, and marked NoPublish
-// so the after-set mirror never echoes it back to the cloud it came from.
-// Returns whether the post was newly added.
-func (s *Store) AddWebPost(webID, author, emoji, text string, ts int64) (bool, error) {
-	text = strings.TrimSpace(text)
-	if webID == "" || text == "" {
-		return false, nil
-	}
-	if len(text) > 2000 {
-		text = text[:2000]
-	}
-	cid := "web:" + webID
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var latestAct int64
-	for _, p := range s.posts {
-		if p.CID == cid {
-			return false, nil // already in the room
-		}
-		if p.Act > latestAct {
-			latestAct = p.Act
-		}
-	}
-	p := &Post{
-		ID: newID(), CID: cid,
-		Author: clip(author, 40), Emoji: clip(emoji, 8), Text: text,
-		NoPublish: true, Web: true,
-	}
-	// Keep the cloud's creation timestamp when sane so the shared wall orders the
-	// same on both sides. Activity must be the arrival time, though: feed clients
-	// use Act as a strictly increasing cursor, and an older cloud TS would wake a
-	// long-poll only to be filtered back out forever.
-	now := time.Now().UnixMilli()
-	if ts > 0 && ts <= now {
-		p.TS = ts
-	} else {
-		p.TS = now
-	}
-	p.Act = now
-	if p.Act <= latestAct {
-		p.Act = latestAct + 1
-	}
-	p.State = initialState(s.meta.ModerationMode)
-	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
-		return false, err
-	}
-	s.posts = append(s.posts, p)
-	s.byID[p.ID] = p
-	s.changed()
-	return true, nil
-}
-
 // AddComment appends a reply under a post.
 func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*Comment, error) {
 	text = strings.TrimSpace(text)
@@ -1435,25 +1169,7 @@ func (s *Store) AddPostReaction(postID, reaction string) error {
 	return nil
 }
 
-// SetPublish flags whether a post joins the future ONLINE page (DJ curation;
-// party visibility is unaffected).
-func (s *Store) SetPublish(postID string, on bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p, ok := s.byID[postID]
-	if !ok || p.Deleted {
-		return errors.New("no such post")
-	}
-	if err := s.appendLine(line{Op: "publish", ID: postID, On: on}); err != nil {
-		return err
-	}
-	p.NoPublish = !on
-	s.changed()
-	return nil
-}
-
-// SetPostState changes in-party moderation visibility. It is separate from
-// NoPublish/SetPublish, which only curates the future online page.
+// SetPostState changes in-party moderation visibility.
 func (s *Store) SetPostState(id, state string) error {
 	if !validState(state) {
 		return errors.New("unknown state")
@@ -1830,8 +1546,7 @@ func (s *Store) AddReaction(kind string) error {
 }
 
 // ReactionSnapshot returns the current last-60s counts and a sparse spike map.
-// Totals are retained in memory for later recap use, but the live payload stays
-// small and focused on what the DJ can act on right now.
+// The live payload stays small and focused on what the DJ can act on now.
 func (s *Store) ReactionSnapshot() (map[string]int, map[string]int) {
 	now := time.Now().UnixMilli()
 	cutoff := now - reactionWindow.Milliseconds()

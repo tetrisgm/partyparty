@@ -1,7 +1,6 @@
 package server
 
 import (
-	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -203,8 +202,8 @@ func TestStatusEndpoint(t *testing.T) {
 	if !ok {
 		t.Fatalf("urls is not an object: %T", body["urls"])
 	}
-	if p, _ := urls["primary"].(string); !strings.HasPrefix(p, "http://") {
-		t.Errorf("primary url = %q, want http:// before activation", p)
+	if p, _ := urls["primary"].(string); p != "" {
+		t.Errorf("primary url = %q, want no insecure guest URL before activation", p)
 	}
 	act, ok := body["activation"].(map[string]any)
 	if !ok || act["ready"] != false {
@@ -461,78 +460,6 @@ func TestEventFeaturesDJBypass(t *testing.T) {
 	w = doBody(s, http.MethodPost, "/api/upload", "127.0.0.1:1234", ct, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("DJ upload status = %d, body %q", w.Code, w.Body.String())
-	}
-}
-
-func TestRecapGenerateAndZipRoutes(t *testing.T) {
-	ev, err := event.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := New(Deps{Events: ev})
-	media, err := ev.SaveMedia("photo.jpg", strings.NewReader("photo"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := ev.AddPost("cid", "Guest", "*", "approved post", []event.Media{media}, false); err != nil {
-		t.Fatal(err)
-	}
-
-	guest := "192.168.1.44:3333"
-	w := do(s, http.MethodPost, "/api/recap/generate", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest recap generate status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodPost, "/api/recap/generate", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("DJ recap generate status = %d, body %q", w.Code, w.Body.String())
-	}
-	body := decodeJSON(t, w)
-	if body["path"] == "" {
-		t.Fatalf("recap response missing path: %#v", body)
-	}
-	if _, err := os.Stat(filepath.Join(ev.Dir(), "recap", "index.html")); err != nil {
-		t.Fatalf("recap index missing: %v", err)
-	}
-
-	w = do(s, http.MethodGet, "/api/recap.zip", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest recap zip status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodGet, "/api/recap.zip", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("recap zip status = %d, body %q", w.Code, w.Body.String())
-	}
-	zr, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]bool{}
-	for _, f := range zr.File {
-		got[f.Name] = true
-	}
-	for _, name := range []string{"index.html", "manifest.json", "assets/" + media.ID} {
-		if !got[name] {
-			t.Fatalf("zip missing %s; got %#v", name, got)
-		}
-	}
-}
-
-func TestRemovedEventLifecycleRoutesReturnNotFound(t *testing.T) {
-	ev, err := event.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := New(Deps{Events: ev})
-	for _, path := range []string{
-		"/api/event-retention",
-		"/api/event-end",
-		"/api/event-cleanup",
-		"/api/event-delete",
-	} {
-		if w := do(s, http.MethodPost, path, "127.0.0.1:1234"); w.Code != http.StatusNotFound {
-			t.Errorf("POST %s status = %d, body %q; want 404", path, w.Code, w.Body.String())
-		}
 	}
 }
 
@@ -966,18 +893,6 @@ func TestPostOnlyEndpoints(t *testing.T) {
 	}
 }
 
-func TestStopImmediatelyClearsWebListeners(t *testing.T) {
-	env := newTestEnv(t, nil)
-	env.srv.SetWebListeners(7)
-	w := do(env.srv, http.MethodPost, "/api/stop", djAddr)
-	if w.Code != http.StatusOK {
-		t.Fatalf("stop status = %d, body %q", w.Code, w.Body.String())
-	}
-	if got := env.srv.webListeners.Load(); got != 0 {
-		t.Fatalf("webListeners after stop = %d, want 0", got)
-	}
-}
-
 func TestShutdownRejectedFromLAN(t *testing.T) {
 	env := newTestEnv(t, nil)
 	// NOTE: the loopback success path calls os.Exit and is untestable in-process
@@ -1002,7 +917,6 @@ func TestDJControlEndpointsRejectedFromLAN(t *testing.T) {
 		{http.MethodPost, "/api/delivery?mode=hls"},
 		{http.MethodPost, "/api/open-settings?pane=audio"},
 		{http.MethodPost, "/api/link-install"},
-		{http.MethodGet, "/api/network-situation"},
 		{http.MethodGet, "/api/devices"},
 	} {
 		w := do(env.srv, tc.method, tc.path, "192.168.1.44:3333")

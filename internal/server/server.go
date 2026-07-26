@@ -29,7 +29,6 @@ import (
 	"partyparty/internal/diag"
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
-	"partyparty/internal/netinfo"
 	"partyparty/internal/ota"
 	"partyparty/internal/stats"
 )
@@ -88,32 +87,11 @@ type srv struct {
 	accStatusMu sync.Mutex
 	accStatus   accountStatusCache
 
-	// Web guests listening to this party's cloud mirror right now, from the
-	// live check-in response (0 while idle/offline). Written by the check-in
-	// loop, read by /api/status — the room and the web share one count.
-	webListeners atomic.Int64
-
-	// Room-sync toggles (per-DJ, persisted to stateDir/room-settings.json). Both
-	// OFF by default: guests ride the live edge (lowest latency) and no drift
-	// re-pull runs. ON restores the 3s unison park (EXT-X-START) / drift watchdog.
-	// Guarded by roomSyncMu; lazily loaded once via roomSyncOnce.
-	roomSyncOnce    sync.Once
-	roomSyncMu      sync.Mutex
-	roomSyncDelay   bool
-	driftCorrection bool
-	stable          bool // STABLE SETTINGS toggle (default ON); see ensureRoomSyncLoaded
-
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
-	bonjour    sync.Map // ip -> friendly Bonjour name ("Ramine's iPhone")
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
 	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
 	clientEvN  int32    // global event ceiling — a rotating cid can't defeat this
 	clientCIDs int32    // distinct-cid ceiling — a rotating cid can't grow clientLogN without bound
-
-	syncDrainOnce    sync.Once
-	syncDrainKick    chan struct{}
-	syncDrainMu      sync.Mutex
-	syncDrainRunning bool
 
 	devNoLoginLogOnce sync.Once
 
@@ -152,7 +130,7 @@ func New(d Deps) *Srv {
 	}
 	s := &Srv{srv{
 		Deps: d, vendor: http.FileServer(http.FS(webFS)),
-		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL), syncDrainKick: make(chan struct{}, 1),
+		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL),
 	}}
 	// The /live proxy injects the EXT-X-START room-start pin; the offset is
 	// read at REQUEST time from s.syncTarget so it always equals what
@@ -364,25 +342,6 @@ func (s *Srv) SetStreamHealth(note string) {
 	s.healthMu.Unlock()
 }
 
-// SetWebListeners records how many web guests are on the cloud mirror right
-// now (from the live check-in response) so the room's surfaces can show one
-// combined party count.
-func (s *Srv) SetWebListeners(n int) {
-	if n < 0 {
-		n = 0
-	}
-	s.webListeners.Store(int64(n))
-}
-
-// ActiveListeners is the LAN listener count the check-in reports to the broker
-// so the web event page can show the ROOM's side of the combined party count.
-func (s *Srv) ActiveListeners() int {
-	if s.Listeners == nil {
-		return 0
-	}
-	return s.Listeners.Active()
-}
-
 func (s *srv) streamHealthText() string {
 	s.healthMu.Lock()
 	defer s.healthMu.Unlock()
@@ -501,34 +460,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
 		s.handleMedia(w, r)
-	case p == "/api/room-settings":
-		// DJ room-sync toggles. POST {roomSyncDelay?, driftCorrection?} sets them
-		// (each field optional — omitted keeps its current value); any method
-		// returns the current state. Default OFF: guests ride the live edge.
-		if r.Method == http.MethodPost {
-			var body struct {
-				RoomSyncDelay   *bool `json:"roomSyncDelay"`
-				DriftCorrection *bool `json:"driftCorrection"`
-				Stable          *bool `json:"stable"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			delay, drift := s.roomSyncState()
-			if body.RoomSyncDelay != nil {
-				delay = *body.RoomSyncDelay
-			}
-			if body.DriftCorrection != nil {
-				drift = *body.DriftCorrection
-			}
-			if body.RoomSyncDelay != nil || body.DriftCorrection != nil {
-				s.setRoomSync(delay, drift)
-			}
-			if body.Stable != nil {
-				s.setStable(*body.Stable)
-			}
-		}
-		delay, drift := s.roomSyncState()
-		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, map[string]any{"roomSyncDelay": delay, "driftCorrection": drift, "stable": s.stableEnabled()})
 	case strings.HasPrefix(p, "/api/"):
 		if s.handleFeedAPI(w, r) {
 			return
@@ -540,55 +471,7 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type urls struct {
-	Primary     string          `json:"primary"`
-	Public      string          `json:"public,omitempty"`
-	IP          string          `json:"ip"`
-	Port        int             `json:"port"`
-	HostnameURL string          `json:"hostnameUrl"`
-	Interfaces  []netinfo.Iface `json:"interfaces"`
-}
-
-// publicPartyURL builds the DJ's permanent guest-facing link — the ONE URL that
-// is their profile when idle and their party when live (<handle>.partyparty.party,
-// the proxied Worker router). This is what the console shows and the QR encodes;
-// the machine hostname (ramine-live...:8443) stays internal plumbing the router
-// hands guests off to. Empty (caller falls back to the direct machine link) when
-// it cannot work: offline/captive parties (the cloud router is unreachable — the
-// QR must encode the LAN host directly), no handle yet, a handle with dots or
-// underscores (can't form the single-label hostname the router serves), or no
-// activated domain to derive the zone from.
-func publicPartyURL(domain, handle string) string {
-	if handle == "" || domain == "" {
-		return ""
-	}
-	for _, r := range handle {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.' && r != '_' {
-			return ""
-		}
-	}
-	// The machine host is <slug>.party.<zone> in the broker namespace; the public
-	// link is <handle>.<zone>. Derive <zone> by dropping the machine prefix:
-	// <slug>.party. (two labels) in the broker namespace, else one label (a
-	// legacy <slug>.<zone> or a BYO live-host). Getting this wrong once put the
-	// stray "party." into the QR link (seth.party.partyparty.party).
-	var zone string
-	if parts := strings.SplitN(domain, ".", 3); len(parts) == 3 && parts[1] == "party" {
-		zone = parts[2] // seth-live.party.partyparty.party -> partyparty.party
-	} else if i := strings.Index(domain, "."); i > 0 && i+1 < len(domain) {
-		zone = domain[i+1:] // ramine-live.partyparty.party -> partyparty.party
-	} else {
-		return ""
-	}
-	return "https://" + zone + "/@" + handle
-}
-
-// accountHandle is the linked profile's handle from the in-memory account-status
-// cache (primed by the console's /api/account/status poll; sourced online or
-// from the on-disk account cache, so it survives offline). "" until known.
-func (s *srv) accountHandle() string {
-	s.accStatusMu.Lock()
-	defer s.accStatusMu.Unlock()
-	return s.accStatus.status.Profile.Handle
+	Primary string `json:"primary"`
 }
 
 // AdvertisedGuestPort is the port guests use to reach this Mac: always the
@@ -604,7 +487,6 @@ func (s *srv) AdvertisedGuestPort() int {
 }
 
 func (s *srv) urls() urls {
-	ip := netinfo.PrimaryLanIP()
 	// The Plex model: the ONLY advertised link is https:// on the activated
 	// domain. The page itself requires working DNS + TLS — exactly the gate
 	// that guarantees the LL stream will play for whoever loaded it. No http
@@ -613,21 +495,10 @@ func (s *srv) urls() urls {
 	if d := s.liveDomain(); d != "" && s.realCert() {
 		port := s.AdvertisedGuestPort()
 		return urls{
-			Primary:     fmt.Sprintf("https://%s:%d/", d, port),
-			Public:      publicPartyURL(d, s.accountHandle()),
-			IP:          ip,
-			Port:        port,
-			HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
-			Interfaces:  netinfo.LanInterfaces(),
+			Primary: fmt.Sprintf("https://%s:%d/", d, port),
 		}
 	}
-	return urls{
-		Primary:     fmt.Sprintf("http://%s:%d/", ip, s.Config.Port),
-		IP:          ip,
-		Port:        s.Config.Port,
-		HostnameURL: fmt.Sprintf("http://%s:%d/", netinfo.LocalHostname(), s.Config.Port),
-		Interfaces:  netinfo.LanInterfaces(),
-	}
+	return urls{}
 }
 
 func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache string) {
@@ -697,7 +568,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"broadcast":      bc,
 			"listeners":      health.Listeners,
 			"listenersTotal": s.Listeners.TotalUnique(),
-			"webListeners":   s.webListeners.Load(),
 			"health":         health,
 			"urls":           s.urls(),
 			"lan":            s.lanStateSnapshot(), // honest LAN readiness from observed LAN vs cloud listeners
@@ -708,14 +578,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"audioProven":    s.audioProven.Load(),
 			"activation":     s.activationState(),
 			"latencyTarget":  latencyTarget,
-			"sync":           s.syncModeState(),
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
-			"roomSync":       s.roomSyncStatePayload(),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"latency":        s.Listeners.LatencySpread(),
 			"roster":         rosterBody,
 			"event":          s.eventState(),
-			"mirror":         s.eventMirrorState(),
 			"config":         s.payloadConfig(),
 			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
 			"streamHealth":   s.streamHealthText(),
@@ -757,15 +624,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		received := time.Now().UnixMilli()
 		sent := time.Now().UnixMilli()
 		writeJSON(w, http.StatusOK, map[string]any{"t": sent, "received": received, "sent": sent})
-	case "/api/network-situation":
-		if r.Method != http.MethodGet {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		writeJSON(w, http.StatusOK, s.networkSituation())
 	case "/api/account/status":
 		if !s.requireDJ(w, r) {
 			return
@@ -1121,8 +979,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		case "0", "false":
 			opts.Channels = 2
 		}
-		// Record the set by default (opt-out via record=0): the event page can
-		// publish it later, and a recording nobody wanted deletes in one click.
+		// Record the set into the active room folder by default.
 		if s.Events != nil && q.Get("record") != "0" && s.Broadcaster.Delivery() == "llhls" {
 			opts.RecordPath = s.Events.RecordingPath()
 		}
@@ -1160,30 +1017,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				wasStreaming = true
 			}
 		}
-		s.webListeners.Store(0)
 		s.Broadcaster.Stop()
 		if wasStreaming {
 			s.addStreamFeedPost("Stopped the stream.")
-		}
-		// Opt-in auto-publish (DJ toggle, default off): push the just-ended set to
-		// its shareable /e/<slug> page. Fire-and-forget — publish is slow (remux +
-		// upload) and needs a linked account + connectivity, so it must never hold
-		// up the Stop response or the local party.
-		if r.URL.Query().Get("publish") == "1" {
-			go func() {
-				res, err := s.publishCurrentSet(context.Background())
-				if err != nil {
-					if s.Diag != nil {
-						s.Diag.Printf("auto-publish failed: %v", err)
-					}
-					return
-				}
-				_, _ = s.Events.SetSlug(res.Slug)
-				s.syncCurrentPostsAsync(res.Slug)
-				if s.Diag != nil {
-					s.Diag.Printf("auto-published set -> %s", res.URL)
-				}
-			}()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/shutdown":
@@ -1251,12 +1087,6 @@ func (s *srv) friendlyName(ip, ua string) string {
 	label := deviceName(ua)
 	if ip == "" || strings.HasPrefix(ip, "127.") || ip == "::1" || ip == "1" {
 		return label
-	}
-	// Best: the device's FRIENDLY Bonjour name ("Ramine's iPhone").
-	if v, ok := s.bonjour.Load(ip); ok {
-		if name, _ := v.(string); name != "" {
-			return name
-		}
 	}
 	if v, ok := s.hostCache.Load(ip); ok {
 		if name, _ := v.(string); name != "" {
@@ -1406,23 +1236,12 @@ func parseDurSeconds(d string) float64 {
 	return n
 }
 
-// suggest returns a quality hint when the network is straining.
+// suggest reports venue Wi-Fi trouble without exposing retired stream presets.
 func suggest(status string, bc broadcast.Status) string {
 	if status != "strain" && status != "congested" {
 		return ""
 	}
-	stereo := bc.Channels == 2
-	high := kbps(bc.Bitrate) > 96
-	switch {
-	case stereo && high:
-		return "Network strain — turn on Mono and/or lower the audio quality."
-	case stereo:
-		return "Network strain — turn on Mono."
-	case high:
-		return "Network strain — lower the audio quality."
-	default:
-		return "Network strain — already near the floor; the Wi-Fi/access point is likely the limit."
-	}
+	return "The venue Wi-Fi is congested or isolating guests. Move closer to the access point or ask the venue to disable client isolation."
 }
 
 // validBitrate allowlists the quality values the console can request; anything
@@ -1553,16 +1372,8 @@ func (s *srv) activationState() map[string]any {
 // struggling peer changed room health. Recovery is now strictly per-device.
 func (s *srv) latencyTarget(bc broadcast.Status, _ string) float64 {
 	if bc.Delivery == "llhls" {
-		// The room's global sync approach owns the LL-HLS target so /api/status,
-		// the EXT-X-START pin, and the client's align math all read ONE value and
-		// can't disagree. syncTarget() resolves the current preset's target (or
-		// inherits Config.LatencyTarget / the LL-HLS default). The historical
-		// authoritative-deadline reasoning now lives in the "balanced"/"deep"
-		// presets in syncmode.go.
+		// Production LL-HLS rides the native live edge.
 		return s.syncTarget()
-	}
-	if s.Config.LatencyTarget > 0 {
-		return s.Config.LatencyTarget
 	}
 	seg := bc.SegDur
 	if seg <= 0 {

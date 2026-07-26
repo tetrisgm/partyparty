@@ -205,11 +205,6 @@
   .saveall{display:inline-block;color:var(--accent);font-size:13px;font-weight:600;text-decoration:none;margin:0 2px 12px}
   .saveall[hidden]{display:none}
   .saveall:hover{text-decoration:underline}
-  .onlinecard{background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:13px 14px;margin:0 0 12px;box-shadow:var(--shadow);font-size:13px;line-height:1.45;color:var(--label-secondary)}
-  .onlinecard[hidden]{display:none}
-  .onlinecard a{color:var(--accent);font-weight:700;text-decoration:none;word-break:break-all}
-  .onlinecard a:hover{text-decoration:underline}
-  .onlinecopy{margin-bottom:4px}
   .djlinks{background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:13px 14px;margin:0 0 12px;box-shadow:var(--shadow)}
   .djlinks[hidden]{display:none}
   .djlinks h3{margin:0 0 9px;font-size:14px;letter-spacing:0;color:var(--label)}
@@ -456,7 +451,7 @@
   .pill{order:7}
   .reactions,.trackid,.trackrequest{order:8}
   .foot{order:9;margin:18px 0 0;padding:0}
-  .statline,.downhint,#onlineCard{display:none!important}
+  .statline,.downhint{display:none!important}
   .listenbar{
     left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:700px;
     display:grid;grid-template-columns:1fr;gap:9px;padding:10px;border-radius:22px;
@@ -598,9 +593,6 @@
       </div>
       <div class="albumstrip" id="albumStrip"><div class="albumempty">No photos yet.</div></div>
     </section>
-    <div class="onlinecard" id="onlineCard" hidden>
-      <div class="onlinecopy">This party lives on here → <a id="onlineLink" target="_blank" rel="noopener"></a></div>
-    </div>
     <section class="djlinks" id="djLinks" hidden>
       <h3>DJ links</h3>
       <div class="linkgroup" id="followLinks" data-label="Follow"></div>
@@ -697,15 +689,11 @@
     // Once audio opens, continuity wins: one slow device cannot move another.
     const ROOM_TARGET_FALLBACK = 7.0;
     let latencyTarget = 0, streamStartedAt = 0, streamGeneration = 0, streamReady = false;
-    // Room-sync toggles from /api/status (DJ-controlled, both default OFF): park =
-    // the EXT-X-START delay, drift = the late-drift re-pull. OFF => ride the edge.
-    let roomSyncDelay = false, driftCorrection = false;
-    let stableMode = true; // STABLE SETTINGS (default ON): generous buffers + governor. From /api/status s.roomSync.stable.
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
     let attached = false, ready = false; // pre-buffer state (hls.js path)
-    let PREBUF = 2.5;                      // seconds of cushion before we let them tap (aggressive mode lowers it below, once the mode is known)
+    let PREBUF = 2.5;
     // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
     // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
     // certain Androids) answer 'maybe' to the native-HLS probe but can't
@@ -720,42 +708,17 @@
     // (identical to Safari, EXT-X-START honored) instead of telling people to
     // switch browsers.
     const iosShellBrowser = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
-    // Playback mode. "proven" (default) = native <audio> on Apple — the LOCK-SAFE
-    // path that keeps playing screen-off / backgrounded. "aggressive" routes Apple
-    // onto hls.js via ManagedMediaSource too: we control the buffer (much lower
-    // latency) and get the seek / gentle-rate levers for tight sync. It stays
-    // OPT-IN until MMS is confirmed to survive a screen lock — that lock-safety is
-    // the whole product invariant. ?mode=aggressive|proven overrides per-device for
-    // testing; window.__ppMode is the config default; no ManagedMediaSource => the
-    // device always falls back to proven native regardless of mode.
-    const urlMode = new URLSearchParams(location.search).get('mode');
-    const playbackMode = (urlMode === 'aggressive' || urlMode === 'proven')
-      ? urlMode
-      : (window.__ppMode === 'proven' ? 'proven' : 'aggressive'); // DEFAULT aggressive; ?mode=proven or config forces the lock-safe fallback
-    const aggressive = playbackMode === 'aggressive';
-    const mmsAvailable = ('ManagedMediaSource' in window) || ('MediaSource' in window);
-    // Apple now DEFAULTS to the native <audio> path: it plays smoothly at low
-    // latency and is lock-safe, whereas hls.js/ManagedMediaSource SEEK-STORMS at a
-    // tight live edge on Safari (~1 audible skip/sec — the field "choppy"; smooth
-    // only when the buffer is bloated to ~4s). So MMS on Apple is strictly OPT-IN
-    // via ?mode=aggressive or window.__ppMode==='aggressive'. (Non-Apple always
-    // uses hls.js regardless — this gate only decides Apple's engine.)
-    const wantAggressiveMMS = urlMode === 'aggressive'
-      || (urlMode !== 'proven' && window.__ppMode === 'aggressive');
-    const forceHlsOnApple = wantAggressiveMMS && mmsAvailable && !iosShellBrowser;
-    const useNative = nativeHLS && (isAppleUA || iosShellBrowser) && !forceHlsOnApple;
+    // One engine per platform. Apple always uses native AVPlayer because it is
+    // smooth and keeps playing while the phone is locked. Other browsers use
+    // hls.js only when they lack native HLS. No URL or remote setting can switch
+    // an Apple device onto ManagedMediaSource.
+    const useNative = nativeHLS && (isAppleUA || iosShellBrowser);
     const platform = useNative ? 'native' : 'hls';
-    // Aggressive mode starts with a modest cushion (not the reliability-era 2.5s,
-    // not the raw edge). 0.5s starved into stalls on real Wi-Fi; 1.2s is the
-    // stable low-latency startup.
-    if (aggressive) PREBUF = 3.0; // build a full cushion before first play so we don't start already-starving
+    const playbackMode = platform;
+    if (!useNative) PREBUF = 3.0;
     const debug = new URLSearchParams(location.search).get('debug') === '1';
-    // One production sync design ("Precise", 2026-07): native no-seek starts
-    // against the server's EXT-X-START pin on the fine stream shape, ONE silent
-    // muted re-roll when the first draw verifies >1s off target, hls.js keeps
-    // its muted seek loop, recovery is always a re-attach. The experiment-era
-    // presets and per-device URL dials are gone.
-    let rerollUsed = false; // once per muted join transaction
+    // The engine choice is fixed. Apple uses lock-safe native HLS; other
+    // browsers use hls.js. Recovery re-attaches the same media element.
 
     // ── Vendor loading ──────────────────────────────────────────────────
     // hls.js (404KB) stays off the Apple join path. The small QR renderer is
@@ -1030,15 +993,13 @@
       if (parts.length > 1) return (parts[0][0] + parts[1][0]).toUpperCase();
       return s.slice(0, 2).toUpperCase();
     }
-    function paintGuests(roster, total, web){
+    function paintGuests(roster, total){
       const guests = Array.isArray(roster) ? roster : [];
       const list = [{ name: guestHostName, emoji: '🎧', host: true }].concat(guests);
       const n = Math.max(Number(total) || 0, guests.length) + 1;
       if (!guestLine || !guestAvatars || !guestCountBtn) return;
       guestLine.hidden = false;
-      // One party: the room count, plus anyone listening on the web event page.
-      const w = Number(web) || 0;
-      guestCountBtn.textContent = n + (n === 1 ? ' guest' : ' guests') + (w > 0 ? ' · ' + w + ' online' : '');
+      guestCountBtn.textContent = n + (n === 1 ? ' guest' : ' guests');
       guestAvatars.textContent = '';
       const shown = list.slice(0, 5);
       shown.forEach((r, i) => {
@@ -1085,7 +1046,6 @@
       userPaused = true;
       syncFailed = syncFailed || joinMuted;
       joinMuted = false; joinStartedAt = 0; needsAlign = false;
-      clearTimeout(joinWatchdog); joinWatchdog = 0;
       player.muted = true; setPlayingUI(false); setStatus('paused'); logEvent('mute');
     }
     // A muted pause keeps the native stream warm. If media kept advancing,
@@ -1094,7 +1054,7 @@
       if (syncFailed) { retrySync('resume'); return; }
       userPaused = false; yielded = false; claimAudio();
       if (!player.paused && player.readyState >= 2 && !stale()) {
-        joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false;
+        joinMuted = false; joinStartedAt = 0; needsAlign = false;
         player.muted = false;
         if (!sumPlayStart) sumPlayStart = Date.now();
         setPlayingUI(true); setStatus('live'); logEvent('unmute', { warm: true, lat: rnd3(measureLatency()) });
@@ -1125,7 +1085,6 @@
       const now = Date.now();
       if (now - lastReattach < 2500) return;
       lastReattach = now;
-      lateDriftBeats = 0;
       untrackedBeats = 0;
       setStatus('reconnecting…');
       if (!attachSafe()) return;
@@ -1158,12 +1117,7 @@
       } else if (Hls.isSupported()) {
         if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
         const target = latencyTarget || (usingLL() ? ROOM_TARGET_FALLBACK : 10);
-        const cfg = aggressive ? {
-          // AGGRESSIVE: ride the LL live edge. Prefer ManagedMediaSource (so this
-          // path works on iPhone), pin liveSyncDuration just above the playlist's
-          // PART-HOLD-BACK (the tightest STABLE live point — the raw edge starves),
-          // and allow a gentle pitch-preserved rate catch-up so a lagging device
-          // converges instead of drifting. Small back buffer — we sit at the front.
+        const cfg = {
           preferManagedMediaSource: true,
           lowLatencyMode: usingLL(),
           // Sit ~3s behind live — that gap IS the jitter buffer, sized for
@@ -1173,7 +1127,7 @@
           // tight floor that still cut off; 3s trades ~1.7s of latency for no
           // cutoffs (the owner's explicit call). Dial back only once the field is
           // provably stall-free.
-          liveSyncDuration: stableMode ? 3.0 : 1.5, // STABLE OFF rides tighter (MMS/non-Apple path)
+          liveSyncDuration: 3.0,
           // With a 3s cushion the catch-up stays gentle — it rarely needs to reel
           // in, and a soft 1.15x is inaudible on music. Hard-snap only if we fall
           // >9s behind (essentially never at a 3s target); a snap is an audible
@@ -1188,24 +1142,6 @@
           maxBufferHole: 0.1,
           testBandwidth: false, // single bitrate — skip the startup ABR probe that delays the first fragment
           startFragPrefetch: true,
-          manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
-        } : {
-          lowLatencyMode: usingLL(),
-          // Hold at the server's ROOM TARGET using hls.js's own gentle,
-          // pitch-preserved rate sync. Native iOS is aligned separately from
-          // PROGRAM-DATE-TIME, so PC/Android and iPhone use the same clock frame.
-          // liveSyncDuration deliberately overrides hls.js's tighter LL default;
-          // it's the reconciliation point. (Legal alone — the old crash was
-          // liveMaxLatencyDuration WITHOUT this.)
-          liveSyncDuration: target,
-          // A badly stalled non-Apple player may recover itself, but a healthy
-          // player is never dragged around by another device's condition.
-          liveMaxLatencyDuration: target + 5,
-          // Do not speed up healthy playback. A device that falls far outside
-          // the live window may reattach itself without touching room state.
-          maxLiveSyncPlaybackRate: 1.0,
-          liveDurationInfinity: true,
-          backBufferLength: 30,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
         };
         hls = new Hls(cfg);
@@ -1260,89 +1196,29 @@
       catch (e) { setStatus('player error — reload the page'); return false; }
     }
 
-    // Synchronization is a verified startup transaction, not a timer and not a
-    // steady-state controller. AVPlayer echoes a requested currentTime while a
-    // seek is pending, so only post-seek progression plus repeated PDT samples
-    // can open the audio gate.
-    // Native WebKit exposes the HLS timeline origin at whole-second
-    // granularity. A 550ms absolute window accepts that common-mode rounding
-    // while the actual product check remains pairwise: listeners must be under
-    // one second apart, typically under 500ms.
-    const START_ALIGN_TOLERANCE = 0.55;
+    // One lock-safe startup path: attach native AVPlayer on Apple, open audio
+    // immediately, and let the visible-only forward governor correct drift.
     const SYNC_WARN_AT = 1.0;
-    const LATE_DRIFT_REATTACH_SEC = 8.0;
-    const LATE_DRIFT_CONFIRMATIONS = 3;
-    const UNTRACKED_REATTACH_CONFIRMATIONS = 10;
-    const STARTUP_BUDGET_MS = 12000;
     const JOIN_WATCHDOG_MS = 15000;
-    const STARTUP_BUFFER_MIN = 2.5;
-    const startupBufferMin = () => useNative ? 0.75 : (aggressive ? 3.0 : STARTUP_BUFFER_MIN);
-    const PROGRESS_WINDOW_MS = 700;
-    const MAX_ALIGN_SEEKS = 4;
-    let needsAlign = false, alignGeneration = 0;
-    let alignedGeneration = -1;
-    let alignPromise = null;
-    let joinMuted = false, joinReason = '', joinStartedAt = 0, joinWatchdog = 0, syncFailed = false;
-    const roomTarget = () => roomSyncDelay ? (latencyTarget || ROOM_TARGET_FALLBACK) : 0;
-    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-    const startupTimeLeft = () => Math.max(0, STARTUP_BUDGET_MS - (joinStartedAt ? Date.now() - joinStartedAt : 0));
-    const canAlign = (generation) => generation === alignGeneration && joinMuted && started && !player.paused && !userPaused && !yielded && live && streamReady;
-    function beginAlignedAudible(reason){
-      // Native AVPlayer can emit pause/playing while a seek rebuilds its live
-      // buffer. Those events are part of this attachment's startup transaction,
-      // not new interruptions. Never let them start another alignment cycle.
-      if (joinMuted || alignPromise || alignedGeneration === alignGeneration) return false;
-      // Room sync delay OFF: no park to align to — play straight from the live
-      // edge. Skip the mute -> seek -> verify transaction (it only applies with a
-      // target behind live). Normal stall/error recovery still covers this play,
-      // and a 15s check surfaces a stuck player so we never fail silent.
-      if (!roomSyncDelay) {
-        alignedGeneration = alignGeneration;
-        needsAlign = false;
-        joinMuted = false;
-        if (!joinStartedAt) joinStartedAt = Date.now();
-        if (player.muted) player.muted = false;
-        setPlayingUI(true);
-        play().catch(() => {});
-        const edgeGen = alignGeneration;
-        setTimeout(() => {
-          if (edgeGen === alignGeneration && started && live && player.paused && !userPaused && !yielded) {
-            setStatus('Could not start playback. Tap Retry.');
-          }
-        }, JOIN_WATCHDOG_MS);
-        return true;
-      }
-      joinMuted = true;
-      syncFailed = false;
-      rerollUsed = false; // fresh transaction — every close path re-arms the one re-roll
-      joinReason = reason || 'join';
+    let needsAlign = false, alignGeneration = 0, alignedGeneration = -1;
+    let joinMuted = false, joinStartedAt = 0, syncFailed = false;
+    const roomTarget = () => 0;
+    function beginAlignedAudible(){
+      if (alignedGeneration === alignGeneration) return false;
+      alignedGeneration = alignGeneration;
+      needsAlign = false;
+      joinMuted = false;
       if (!joinStartedAt) joinStartedAt = Date.now();
-      needsAlign = true;
-      player.muted = true;
-      setPlayingUI(false);
-      ico.textContent = '…';
-      btnlabel.textContent = 'Syncing…';
-      if (btnHint) btnHint.textContent = 'Lining up with everyone';
-      setStatus('syncing with the room…');
-      armJoinWatchdog();
-      return true;
-    }
-    // The watchdog is generation-keyed, so anything that bumps the generation
-    // MID-transaction (the Precise re-roll's re-attach) MUST re-arm it for the
-    // new generation — otherwise a re-attached element that never reaches
-    // 'playing' leaves the guest muted at "Syncing…" forever with no visible
-    // failure (the fail-silent class this product must never regress into).
-    function armJoinWatchdog(){
-      clearTimeout(joinWatchdog);
-      const watchedGeneration = alignGeneration;
-      joinWatchdog = setTimeout(() => {
-        if (!joinMuted || watchedGeneration !== alignGeneration) return;
-        logEvent('sync-watchdog', {
-          lat: rnd3(measureLatency()), ref: syncReference(), rs: player.readyState,
-          buf: rnd(bufferedAhead()), seeking: player.seeking, seeks: generationAlignSeeks,
-        });
-        failAudioGate(watchedGeneration, 'Playback timing could not be verified.');
+      player.muted = false;
+      setPlayingUI(true);
+      play().catch(() => {});
+      const generation = alignGeneration;
+      setTimeout(() => {
+        if (generation === alignGeneration && started && live && player.paused && !userPaused && !yielded) {
+          setStatus('Could not start playback. Tap Retry.');
+        }
       }, JOIN_WATCHDOG_MS);
+      return true;
     }
     function waitForMediaEvent(name, maxWaitMs){
       return new Promise(resolve => {
@@ -1351,294 +1227,36 @@
           if (done) return;
           done = true;
           player.removeEventListener(name, onEvent);
+          clearTimeout(timer);
           resolve(ok);
         };
         const onEvent = () => finish(true);
+        const timer = setTimeout(() => finish(false), Math.max(0, maxWaitMs));
         player.addEventListener(name, onEvent, { once: true });
-        setTimeout(() => finish(false), Math.max(0, maxWaitMs));
       });
     }
-    async function ensureTimelineOrigin(generation, maxWaitMs){
-      if (!useNative) return true;
-      if (timelineOriginMs != null) return true;
-      const deadline = Date.now() + Math.max(0, maxWaitMs);
-      let candidate = null, repeats = 0;
-      while (Date.now() < deadline && canAlign(generation)) {
-        const value = currentTimelineOrigin();
-        if (value != null) {
-          if (value === candidate) repeats++;
-          else { candidate = value; repeats = 1; }
-          if (repeats >= 3) {
-            timelineOriginMs = candidate;
-            logEvent('timeline', { origin: candidate, samples: repeats });
-            return true;
-          }
-        }
-        await wait(100);
-      }
-      return false;
-    }
-    function timelineOriginConsistent(){
-      if (!useNative || timelineOriginMs == null) return true;
-      const current = currentTimelineOrigin();
-      if (current == null || current === timelineOriginMs) return true;
-      logEvent('timeline-change', { from: timelineOriginMs, to: current });
-      timelineOriginMs = null;
-      return false;
-    }
-    async function waitForProgress(generation, maxWaitMs){
-      const deadline = Date.now() + Math.max(0, maxWaitMs);
-      while (Date.now() < deadline && canAlign(generation)) {
-        if (player.readyState >= 3 && !player.seeking && bufferedAhead() >= startupBufferMin()) {
-          const startedAt = performance.now();
-          const mediaAt = player.currentTime;
-          await wait(Math.min(PROGRESS_WINDOW_MS, Math.max(0, deadline - Date.now())));
-          if (!canAlign(generation) || player.seeking) return null;
-          const wallDelta = (performance.now() - startedAt) / 1000;
-          const mediaDelta = player.currentTime - mediaAt;
-          const rate = wallDelta > 0 ? mediaDelta / wallDelta : 0;
-          if (wallDelta >= 0.5 && rate >= 0.8 && rate <= 1.2 && player.readyState >= 3 && bufferedAhead() >= startupBufferMin()) {
-            return { rate, wallDelta, mediaDelta };
-          }
-          logEvent('progress-wait', { rate: rnd3(rate), media: rnd3(mediaDelta), wall: rnd3(wallDelta), rs: player.readyState, buf: rnd(bufferedAhead()) });
-        }
-        await wait(100);
-      }
-      return null;
-    }
-    async function verifyAlignment(generation){
-      const progress = await waitForProgress(generation, Math.min(2500, startupTimeLeft()));
-      if (!progress || !timelineOriginConsistent()) return null;
-      const samples = [];
-      for (let i = 0; i < 3; i++) {
-        if (!canAlign(generation) || !timelineOriginConsistent()) return null;
-        const lat = measureLatency();
-        if (lat == null) return null;
-        samples.push(lat - roomTarget());
-        if (i < 2) await wait(300);
-      }
-      const maxError = Math.max.apply(null, samples.map(Math.abs));
-      return {
-        ok: maxError <= START_ALIGN_TOLERANCE,
-        maxError,
-        error: samples[samples.length - 1],
-        rate: progress.rate,
-      };
-    }
-    async function requestAlignSeek(generation, reason){
-      if (!canAlign(generation) || !player.muted) return null;
-      const lat = measureLatency();
-      if (lat == null || player.readyState < 2) return null;
-      const target = roomTarget();
-      const delta = lat - target; // >0 = too far behind, so seek forward.
-      if (Math.abs(delta) <= START_ALIGN_TOLERANCE) return false;
-      if (generationAlignSeeks >= MAX_ALIGN_SEEKS) return null;
-      let wanted = mediaNow() + delta;
-      try {
-        const sk = player.seekable;
-        if (sk && sk.length) {
-          const low = sk.start(0) + 0.5;
-          const high = sk.end(sk.length - 1) - (aggressive ? 0.6 : Math.max(3, STARTUP_BUFFER_MIN));
-          if (high <= low) return null;
-          if (wanted < low - START_ALIGN_TOLERANCE || wanted > high + START_ALIGN_TOLERANCE) return null;
-          wanted = Math.min(Math.max(wanted, low), high);
-          const before = player.currentTime;
-          const seeked = waitForMediaEvent('seeked', Math.min(1800, startupTimeLeft()));
-          lastAppSeekAt = Date.now();
-          player.currentTime = wanted;
-          alignSeeks++; generationAlignSeeks++;
-          logEvent('align-request', {
-            why: reason || 'startup', ref: syncReference(), lat: rnd3(lat), target: rnd3(target),
-            correction: rnd3(delta), before: rnd3(before), want: rnd3(wanted), seek: generationAlignSeeks,
-          });
-          const committed = await seeked;
-          logEvent('align-result', {
-            committed, pos: rnd3(player.currentTime), lat: rnd3(measureLatency()),
-            seeking: player.seeking, rs: player.readyState, seek: generationAlignSeeks,
-          });
-          return committed;
-        } else {
-          return null;
-        }
-      } catch (e) { return null; }
-    }
-    async function openAudioGate(generation, verification, aligned){
-      if (!canAlign(generation)) return;
-      const reason = joinReason || 'join';
-      const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
-      // The startup transaction is closed even when it degrades. Once audio is
-      // audible this generation never performs another app-directed seek.
-      alignedGeneration = generation;
-      joinMuted = false; joinReason = ''; joinStartedAt = 0;
-      clearTimeout(joinWatchdog); joinWatchdog = 0;
-      syncFailed = false;
-      player.muted = false;
-      if (!sumPlayStart) sumPlayStart = Date.now();
-      claimAudio(); setPlayingUI(true); setStatus(aligned ? 'live' : 'timing unverified');
-      // Two-tier open quality: `aligned` keeps the strict 0.55s bar; `degraded`
-      // now means GENUINELY bad (beyond the ~1s start-position quantization the
-      // native no-seek path leaves by design, plus slack). The 2026-07-13 party
-      // flagged 22/26 opens "degraded" when 20 of them were the designed
-      // quantization — that made the flag useless for judging the pin.
-      const openErr = verification && verification.error != null ? Math.abs(verification.error) : null;
-      const quantized = !aligned && openErr != null && openErr <= 1.6;
-      logEvent('audio-open', {
-        why: reason, aligned: !!aligned, quant: quantized, degraded: !aligned && !quantized,
-        ref: syncReference(), lat: rnd3(measureLatency()), joinMs,
-        error: verification ? rnd3(verification.error) : null,
-        maxError: verification ? rnd3(verification.maxError) : null,
-        rate: verification ? rnd3(verification.rate) : null,
-        seeks: generationAlignSeeks, reroll: rerollUsed,
-      });
-      rerollUsed = false; // transaction closed — next join gets a fresh re-roll
-    }
-    function failAudioGate(generation, message){
-      if (generation !== alignGeneration || !joinMuted) return;
-      const reason = joinReason || 'join';
-      const joinMs = joinStartedAt ? Date.now() - joinStartedAt : 0;
-      clearTimeout(joinWatchdog); joinWatchdog = 0;
-      joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false;
-      rerollUsed = false; // transaction closed
-      syncFailed = true; player.muted = true;
+    function failAudioGate(_generation, message){
+      syncFailed = true;
+      player.muted = true;
       setPlayingUI(false);
       ico.textContent = '↻';
-      btnlabel.textContent = 'Retry sync';
-      if (btnHint) btnHint.textContent = 'Playback is ready; timing was not verified';
-      setStatus(message || 'Could not line up playback.');
-      logEvent('sync-failed', {
-        why: reason, joinMs, lat: rnd3(measureLatency()), ref: syncReference(),
-        rs: player.readyState, buf: rnd(bufferedAhead()), seeking: player.seeking, seeks: generationAlignSeeks,
-      });
+      btnlabel.textContent = 'Retry';
+      setStatus(message || 'Could not start playback.');
     }
     function retrySync(reason){
-      if (!live || !streamReady) {
-        resumeWanted = true;
-        updateIdleButton();
-        return;
-      }
-      userPaused = false; yielded = false; syncFailed = false;
+      userPaused = false;
+      yielded = false;
+      syncFailed = false;
       claimAudio();
-      if (started && (player.error || player.readyState < 2 || stale())) {
+      if (player.error || player.readyState < 2 || stale()) {
         lastReattach = 0;
-        reattach(reason || 'sync-retry');
+        reattach(reason || 'retry');
         return;
       }
-      if (!attached && !attachSafe()) return;
-      if (!beginAlignedAudible(reason || 'sync-retry')) return;
-      if (!started || player.paused) player.play().catch(() => failAudioGate(alignGeneration, 'Tap Retry sync to start playback.'));
-      else alignOnce();
+      beginAlignedAudible();
+      player.play().catch(() => failAudioGate(alignGeneration, 'Tap Retry to start playback.'));
     }
-    async function alignOnce(){
-      if (alignPromise) return alignPromise;
-      if (!needsAlign && !joinMuted) return;
-      needsAlign = false;
-      const generation = alignGeneration;
-      alignPromise = (async () => {
-        if (!clockSynced || Date.now() - clockSyncedAt > 30000) await syncClock();
-        if (!clockSynced || !canAlign(generation)) {
-          failAudioGate(generation, 'Could not verify the room clock.');
-          return;
-        }
-
-        // NATIVE PATH (iOS/Safari AVPlayer): NO startup seek — the seek is what
-        // hangs Safari 27 (a backward seek into the unbuffered edge never commits,
-        // freezes the player, and drifts it seconds late → the silent-forever bug).
-        // Open at the natural position instead. This trades tightness for
-        // robustness: the E2E proved a no-seek open leaves the ~1s start-position
-        // quantization uncorrected, so the residual native spread is measured by
-        // the physical mic test — and if it exceeds the budget, server-side
-        // EXT-X-START pinning (not a client seek) is the tightening layer. A player
-        // that ever progressed ALWAYS opens audible; muted-forever is impossible.
-        if (useNative) {
-          let progress = null;
-          while (startupTimeLeft() > 0 && canAlign(generation)) {
-            progress = await waitForProgress(generation, Math.min(2000, startupTimeLeft()));
-            if (progress) break;
-          }
-          if (!canAlign(generation)) return;
-          if (!progress) { failAudioGate(generation, 'Could not start playback. Tap Retry sync.'); return; }
-          await ensureTimelineOrigin(generation, Math.min(1200, startupTimeLeft()));
-          const verification = await verifyAlignment(generation); // telemetry only, never a seek
-          if (!canAlign(generation)) return;
-          const ok = !!(verification && verification.ok);
-          // Precise re-roll: the natural start is a draw quantized by part
-          // boundaries. If the FIRST draw verifies badly off target and there's
-          // budget left, re-attach the SAME user-blessed element once (still
-          // muted, no seek) and take a second draw — the 'playing' handler
-          // re-enters alignOnce on the fresh generation, where rerollUsed makes
-          // whatever comes back open unconditionally. Never loops, never leaves
-          // the player muted over imperfect timing.
-          const verr = verification && verification.error != null ? Math.abs(verification.error) : null;
-          if (!ok && !rerollUsed && verr != null && verr > 1.0 && startupTimeLeft() >= 4000) {
-            rerollUsed = true;
-            logEvent('start-reroll', {
-              error: rnd3(verification.error), lat: rnd3(measureLatency()),
-              target: rnd3(roomTarget()), gen: streamGeneration,
-            });
-            if (attachSafe()) {
-              // attach() bumped the generation — re-arm the generation-keyed
-              // join watchdog or a never-playing re-attach fails SILENT.
-              armJoinWatchdog();
-              player.play().catch(() => {});
-              return;
-            }
-            // re-attach refused (cooldown/stream state) — fall through and open
-          }
-          logEvent('align-settled', {
-            corrected: false, natural: true, ref: syncReference(), lat: rnd3(measureLatency()),
-            target: rnd3(roomTarget()), error: verification ? rnd3(verification.error) : null,
-            maxError: verification ? rnd3(verification.maxError) : null,
-            rate: verification ? rnd3(verification.rate) : rnd3(progress.rate), seeks: 0, reroll: rerollUsed,
-          });
-          await openAudioGate(generation, verification || { ok: false, error: null, maxError: null, rate: progress.rate }, ok);
-          return;
-        }
-
-        // hls.js PATH (Chromium/Android): the muted seek loop is SAFE here (no
-        // Safari-27 hang) and it corrects the ~1s start-position quantization a
-        // no-seek open leaves behind — the E2E measured 0.98s spread without it vs
-        // 0.12s with it. Keep it.
-        let sawProgress = false;
-        let lastVerification = null;
-        while (startupTimeLeft() > 0 && canAlign(generation)) {
-          const progress = await waitForProgress(generation, Math.min(2500, startupTimeLeft()));
-          if (!progress) continue;
-          sawProgress = true;
-          if (!await ensureTimelineOrigin(generation, Math.min(1500, startupTimeLeft()))) continue;
-
-          const verification = await verifyAlignment(generation);
-          if (verification) lastVerification = verification;
-          if (verification && verification.ok) {
-            logEvent('align-settled', {
-              corrected: generationAlignSeeks > 0, ref: syncReference(), lat: rnd3(measureLatency()),
-              target: rnd3(roomTarget()), error: rnd3(verification.error), maxError: rnd3(verification.maxError),
-              rate: rnd3(verification.rate), seeks: generationAlignSeeks,
-            });
-            await openAudioGate(generation, verification, true);
-            return;
-          }
-
-          const requested = await requestAlignSeek(generation, 'startup');
-          if (requested == null && generationAlignSeeks >= MAX_ALIGN_SEEKS) break;
-          if (requested == null) await wait(100);
-        }
-
-        if (!canAlign(generation)) return;
-        // A player that ever progressed opens audible (unverified badge if the
-        // timing was not confirmed) rather than staying silent. Only a player that
-        // never progressed at all shows the visible retry.
-        if (sawProgress) {
-          await openAudioGate(generation, lastVerification, !!(lastVerification && lastVerification.ok));
-          return;
-        }
-        failAudioGate(generation, 'Could not line up playback. Tap Retry sync.');
-      })();
-      try {
-        await alignPromise;
-      } finally {
-        alignPromise = null;
-      }
-    }
+    async function alignOnce(){}
 
     // Idle-state button: gray + "Preparing…" while the stream pre-buffers, so a
     // guest never taps into silence and thinks it's broken; then "Tap to listen".
@@ -1845,13 +1463,12 @@
     });
     player.addEventListener('seeked', sampleProgress);
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
-    let lateDriftBeats = 0, untrackedBeats = 0;
+    let untrackedBeats = 0;
     let originCandidate = null, originRepeats = 0, untrackedReattaches = 0;
     function audibleActive(){
       return started && !player.muted && !userPaused && !yielded && !joinMuted && live && streamReady;
     }
     function resetAudibleWatchdogs(){
-      lateDriftBeats = 0;
       untrackedBeats = 0;
       originCandidate = null;
       originRepeats = 0;
@@ -1912,8 +1529,7 @@
     // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
     // fails to commit falls back to reattach() so the player is never left wedged.
     const NATIVE_GOVERNOR = true;   // kill switch (OTA-flippable) for this P0 seek path
-    const GOV_TARGET_LAT = 1.5;       // STABLE ON: hold ~1.5s behind live — native AVPlayer plays SMOOTHLY here (no MMS seek-storm); the governor only pulls back a device that has drifted toward the 3s HOLD-BACK fallback
-    const GOV_TARGET_LAT_TIGHT = 1.0; // STABLE OFF: ride tighter (less margin, lowest latency)
+    const GOV_TARGET_LAT = 1.5;
     const GOV_TRIGGER = 1.0;          // arm when lat exceeds target by this
     const GOV_CONFIRMATIONS = 2;    // sustained beats (~4s) before acting — well below the 8s reattach
     const GOV_FWD_TOL = 0.75;       // minimum forward jump; a smaller correction isn't worth a skip
@@ -1933,12 +1549,12 @@
       return 0;
     }
     async function nativeGovernorTick(lat, stalled){
-      if (!NATIVE_GOVERNOR || !useNative || roomSyncDelay) return; // native live-edge path only
+      if (!NATIVE_GOVERNOR || !useNative) return;
       if (govCoolingUntil && Date.now() < govCoolingUntil) return;
       if (document.visibilityState !== 'visible') { govBeats = 0; return; } // never seek hidden/locked
       if (stalled || player.readyState < 3) { govBeats = 0; return; }
       if (lat == null || !Number.isFinite(lat)) { govBeats = 0; return; }  // never seek on an unmeasured lat
-      const targetLat = stableMode ? GOV_TARGET_LAT : GOV_TARGET_LAT_TIGHT;
+      const targetLat = GOV_TARGET_LAT;
       const lateBy = lat - targetLat;
       if (lateBy <= GOV_TRIGGER) { govBeats = 0; return; }        // hysteresis reset — not (yet) late enough
       if (++govBeats < GOV_CONFIRMATIONS) return;                 // require SUSTAINED lateness, not a blip
@@ -1985,32 +1601,11 @@
         return;
       }
 
-      const target = roomTarget();
-      const lateBy = (lat != null && Number.isFinite(lat)) ? lat - Math.max(target, 0) : null;
       if (lat != null) untrackedReattaches = 0; // tracking works again — re-arm the cap
       // Native path: the forward-seek governor holds ~1.2s and front-runs the
       // coarse 8s reattach below (which becomes a last-resort backstop on native).
       // Fire-and-forget: it self-throttles and guards internally.
       nativeGovernorTick(lat, stalled);
-      if (driftCorrection && !stalled && lateBy != null && lateBy > LATE_DRIFT_REATTACH_SEC) {
-        lateDriftBeats++;
-        untrackedBeats = 0;
-        if (lateDriftBeats >= LATE_DRIFT_CONFIRMATIONS) {
-          const beats = lateDriftBeats;
-          const buf = bufferedAhead();
-          resetAudibleWatchdogs();
-          recoveringUntil = 0;
-          sumRecovers++;
-          logEvent('drift-reconnect', {
-            lat: rnd3(lat), target: rnd3(target), late: rnd3(lateBy), beats,
-            buf: rnd(buf), rs: player.readyState, ref: syncReference(),
-          });
-          reattach('late-drift');
-        }
-        return;
-      }
-      lateDriftBeats = 0;
-
       if (!stalled && lat == null && player.readyState >= 3 && bufferedAhead() > 1) {
         // Cheap path first: if we can make latency measurable again WITHOUT a
         // re-attach, do that — the player keeps playing, and from the next beat
@@ -2129,13 +1724,11 @@
       try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
       try { player.removeAttribute('src'); player.load(); } catch (e) {}
       alignGeneration++;
-      clearTimeout(joinWatchdog); joinWatchdog = 0;
-      started = false; attached = false; ready = false; errRetries = 0; joinMuted = false; joinReason = ''; joinStartedAt = 0; needsAlign = false; syncFailed = false;
+      started = false; attached = false; ready = false; errRetries = 0; joinMuted = false; joinStartedAt = 0; needsAlign = false; syncFailed = false;
       timelineOriginMs = null; alignedGeneration = -1; generationAlignSeeks = 0;
       recoveringUntil = 0; lastProgress = 0; lastTime = NaN; stallStartedAt = 0;
       resetAudibleWatchdogs();
       untrackedReattaches = 0; // full teardown = fresh session — re-arm the cap
-      rerollUsed = false;
       setPlayingUI(false); setStatus('');
       updateIdleButton(); // shows "Waiting for DJ"
     }
@@ -2150,7 +1743,6 @@
         LLSTREAM = s.llhlsUrl || null;
         if (s.delivery) delivery = s.delivery;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) latencyTarget = s.latencyTarget;
-        if (s.roomSync && typeof s.roomSync === 'object') { roomSyncDelay = !!s.roomSync.delay; driftCorrection = !!s.roomSync.drift; stableMode = s.roomSync.stable !== false; }
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;
@@ -2181,7 +1773,7 @@
         const eventHost = s.event && String(s.event.host || '').trim();
         if (eventHost) guestHostName = eventHost;
         const totalListeners = Number(s.listeners || 0);
-        paintGuests(s.roster || [], totalListeners, Number(s.webListeners || 0));
+        paintGuests(s.roster || [], totalListeners);
         countEl.textContent = '';
         if (!live && (started || attached)) {
           // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an
@@ -2343,8 +1935,6 @@
       const $id = (i) => document.getElementById(i);
       const feedSec = $id('feedSec'), feedList = $id('feedList'), downhint = $id('downhint');
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      const onlineCard = $id('onlineCard'), onlineLink = $id('onlineLink');
-      const onlineCopy = onlineCard.querySelector('.onlinecopy');
       const djLinks = $id('djLinks'), followLinks = $id('followLinks'), tipLinks = $id('tipLinks');
       const albumSec = $id('albumSec'), albumStrip = $id('albumStrip'), albumAdd = $id('albumAdd');
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
@@ -2363,16 +1953,6 @@
       let currentFeatures = Object.assign({}, featureDefaults);
       let featureSig = JSON.stringify(currentFeatures);
       let currentLinks = [];
-      let currentOnlineUrl = '';
-      function paintOnlineLinks(){
-        onlineCopy.hidden = !currentOnlineUrl;
-        if (currentOnlineUrl) {
-          onlineLink.href = currentOnlineUrl;
-          onlineLink.textContent = currentOnlineUrl;
-        }
-        onlineCard.hidden = !currentOnlineUrl;
-      }
-      paintOnlineLinks();
       function setFeatures(features){
         const next = Object.assign({}, featureDefaults, features || {});
         const sig = JSON.stringify(next);
@@ -2859,7 +2439,7 @@
       // comment) — the cursor is `act`, not creation time.
       const nodes = new Map(); // post id -> element
       const expanded = new Set(); // posts with all comments shown
-      let newestAct = 0, feedOn = false, curDir = '';
+      let newestAct = 0, feedOn = false;
       const fmtTime = (ts) => {
         const d = new Date(ts);
         return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
@@ -3067,14 +2647,7 @@
             feedOn = true;
             feedSec.hidden = !featureOn('wallMode'); downhint.hidden = !featureOn('wallMode');
           }
-          let switched = false;
-          if (data.dir && data.dir !== curDir) {
-            // The DJ switched events: reset the cursor so the other event's
-            // (older-timestamped) posts actually arrive.
-            curDir = data.dir; newestAct = 0; switched = true; nodes.clear(); expanded.clear(); albumItems.clear(); feedList.innerHTML = '';
-            persistGuestProfile();
-          }
-          if (data.cursor && !switched) newestAct = Math.max(newestAct, data.cursor);
+          if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
@@ -3090,8 +2663,6 @@
           }
           const st = $id('startsLine');
           st.hidden = !data.starts; if (data.starts) st.textContent = data.starts;
-          currentOnlineUrl = data.onlineUrl || '';
-          paintOnlineLinks();
           maybeWelcome(data);
           const sa = $id('saveAll');
           sa.hidden = !(featureOn('wallMode') && data.media > 0);
