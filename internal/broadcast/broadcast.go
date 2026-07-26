@@ -43,7 +43,7 @@ type Options struct {
 
 // Broadcaster manages the capture pipeline: an FFmpeg process writing a live
 // HLS playlist + segments into runDir. For the "mac" source it also runs the
-// ScreenCaptureKit helper whose PCM output is piped into FFmpeg.
+// Core Audio process-tap helper whose PCM output is piped into FFmpeg.
 type Broadcaster struct {
 	cfg        config.Config
 	runDir     string
@@ -876,7 +876,7 @@ func (b *Broadcaster) Status() Status {
 		case "test":
 			note = "No audio yet — ffmpeg is still starting."
 		case "mac":
-			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again — and make sure something is playing. (If you denied it: System Settings → Privacy & Security → Screen & System Audio Recording → allow partyparty.)"
+			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again — and make sure something is playing. If you denied it, open System Settings → Privacy & Security → System Audio Recording Only and allow partyparty."
 		default:
 			note = "No audio yet. Grant microphone permission (System Settings → Privacy & Security → Microphone) and check that your source is routed to this device."
 		}

@@ -498,8 +498,8 @@
 <div class="page">
   <div id="bcnote" class="warn" style="display:none">
     <div id="bcnoteText"></div>
-    <button class="ghost" id="screenPermBtn" style="margin-top:10px;width:100%">Open System Audio Recording settings</button>
-    <div class="hint" id="capturePermHint" style="margin:6px 0 0">Turn on partyparty in the list.</div>
+    <button class="ghost" id="audioPermBtn" style="display:none;margin-top:10px;width:100%">Open System Audio Recording Only</button>
+    <div class="hint" id="capturePermHint" style="display:none;margin:6px 0 0">Turn on partyparty in the list.</div>
   </div>
 
   <div class="eventtop">
@@ -685,11 +685,11 @@
 
 <div class="softaskov" id="captureSoftAsk" role="presentation" hidden>
   <div class="softask" role="dialog" aria-modal="true" aria-labelledby="captureSoftTitle" aria-describedby="captureSoftCopy">
-    <h2 id="captureSoftTitle">Let partyparty capture your Mac's audio so guests hear what you're playing</h2>
-    <p id="captureSoftCopy">You'll see one macOS prompt after you choose Allow. This is what lets the party hear the actual set, not silence.</p>
+    <h2 id="captureSoftTitle">Allow System Audio Recording</h2>
+    <p id="captureSoftCopy">partyparty uses the audio playing on this Mac so guests can hear the set. It never records your screen. macOS will ask next.</p>
     <div class="softask-actions">
-      <button class="ghost" id="captureSoftLater" type="button">Not now</button>
-      <button class="go" id="captureSoftAllow" type="button">Allow</button>
+      <button class="ghost" id="captureSoftLater" type="button">Cancel</button>
+      <button class="go" id="captureSoftAllow" type="button">Continue</button>
     </div>
   </div>
 </div>
@@ -742,8 +742,8 @@
         <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
         <div class="hint" style="margin:5px 0 0">Optional. partyparty stays off at login unless you enable this.</div>
       </div>
-      <button class="ghost" id="permBtnAlways" style="margin-top:14px;width:100%;font-size:12px">Audio permission not working? Open settings →</button>
-      <div class="hint" id="permBtnHint" style="margin:5px 0 0">Turn on partyparty in the list.</div>
+      <button class="ghost" id="permBtnAlways" style="display:none;margin-top:14px;width:100%;font-size:12px">Open audio privacy settings →</button>
+      <div class="hint" id="permBtnHint" style="display:none;margin:5px 0 0">Turn on partyparty in the list.</div>
       <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session — hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
     </section>
 
@@ -1320,7 +1320,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     return capturePermission.kind === 'microphone' ? 'mic' : 'audio';
   }
   function captureSettingsLabel(){
-    return capturePermission.kind === 'microphone' ? 'Open Microphone settings' : 'Open System Audio Recording settings';
+    return capturePermission.kind === 'microphone' ? 'Open Microphone settings' : 'Open System Audio Recording Only';
   }
   // Server-durable proof that Mac-audio capture has worked on this install
   // (/api/status audioProven). The localStorage flag alone was origin-scoped
@@ -1336,11 +1336,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
   function updateCapturePermissionUI(){
     const label = captureSettingsLabel();
-    const top = $('screenPermBtn');
+    const top = $('audioPermBtn');
     const always = $('permBtnAlways');
     const alwaysHint = $('permBtnHint');
     if (top) top.textContent = label;
-    if (always) always.textContent = 'Audio permission not working? ' + label + ' →';
+    if (always) always.textContent = label + ' →';
     if (alwaysHint) alwaysHint.style.display = always && always.style.display !== 'none' ? 'block' : 'none';
   }
   function capturePermissionNote(live){
@@ -1350,10 +1350,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (capturePermission.kind === 'microphone') {
         return 'Microphone access is off for partyparty. Open Microphone settings and turn on partyparty in the list.';
       }
-      return 'System Audio Recording access is off for partyparty. Open System Audio Recording settings and turn on partyparty in the list.';
-    }
-    if (state === 'undetermined' && capturePermission.kind === 'systemAudio') {
-      return 'System audio permission has not been confirmed yet. If Go Live does not prompt or capture audio, open System Audio Recording settings and turn on partyparty in the list.';
+      return 'System Audio Recording is off for partyparty. Open System Audio Recording Only and turn on partyparty.';
     }
     return '';
   }
@@ -1492,7 +1489,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
   function shouldSoftAskForCapture(opts){
     opts = opts || {};
-    return !captureSoftAskAccepted && !opts.allowUndetermined && capturePermissionApplies() && effectiveCapturePermissionState() === 'undetermined';
+    return !captureSoftAskAccepted &&
+      !opts.allowUndetermined &&
+      selectedCaptureDevice() === 'mac' &&
+      effectiveCapturePermissionState() === 'undetermined';
   }
 
   async function startBroadcast(opts) {
@@ -1539,7 +1539,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   $('device').onchange = syncCaptureSourceSelection;
   $('device').addEventListener('pointerdown', refreshDevicesForPicker);
   $('device').addEventListener('focus', refreshDevicesForPicker);
-  $('screenPermBtn').onclick = openCapturePermissionSettings;
+  $('audioPermBtn').onclick = openCapturePermissionSettings;
   $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
   function renderQR(text){
@@ -1627,8 +1627,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('bcnote').style.display = note ? 'block' : 'none';
       $('bcnote').classList.toggle('danger-note', !!streamHealth);
       $('bcnoteText').textContent = note || '';
-      $('screenPermBtn').style.display = 'block';
-      $('capturePermHint').style.display = 'block';
       // Once Mac-audio capture has actually gone live, the permission is
       // provably granted — the "permission not working?" escape hatch would
       // just be noise. It comes back if an error note ever shows. The server
@@ -1640,7 +1638,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         try { localStorage.setItem('pp.audioOK', '1'); } catch (e) {}
       }
       const effectivePermission = effectiveCapturePermissionState();
-      const showPermButton = capturePermissionApplies() && (note || effectivePermission !== 'granted');
+      const permissionFailure = effectivePermission === 'denied' ||
+        (capturePermission.kind === 'systemAudio' &&
+          /system audio recording|record system audio/i.test(note || ''));
+      $('audioPermBtn').style.display = permissionFailure ? 'block' : 'none';
+      $('capturePermHint').style.display = permissionFailure ? 'block' : 'none';
+      const showPermButton = capturePermissionApplies() && permissionFailure;
       $('permBtnAlways').style.display = showPermButton ? 'block' : 'none';
       $('permBtnHint').style.display = showPermButton ? 'block' : 'none';
       updateCapturePermissionUI();

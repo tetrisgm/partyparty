@@ -850,14 +850,13 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if !s.requireDJ(w, r) {
 			return
 		}
-		// System-audio capture (Core Audio process tap) lives under
-		// Privacy & Security → "Screen & System Audio Recording" on modern macOS
-		// (the ScreenCapture TCC pane). Open it so the DJ can toggle partyparty on.
+		// Core Audio process taps use the dedicated System Audio Recording Only
+		// privacy pane. Screen Recording is not required.
 		switch r.URL.Query().Get("pane") {
 		case "mic":
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone").Start()
-		default: // "audio" / "screen" / anything → the audio-recording pane
-			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture").Start()
+		default: // "audio" / anything → the audio-recording pane
+			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture").Start()
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/devices":

@@ -43,6 +43,10 @@ assert.match(dj, /\$\('shareCard'\)\.hidden = !linkReady;/);
 assert.match(dj, /\$\('partyQrPanel'\)\.hidden = !linkReady;/);
 assert.match(dj, /if \(linkReady\) renderQR\(guestUrl\);/);
 assert.match(dj, /Starting audio…/);
+assert.match(dj, /Allow System Audio Recording/);
+assert.match(dj, /It never records your screen/);
+assert.match(dj, /selectedCaptureDevice\(\) === 'mac'/);
+assert.doesNotMatch(dj, /screenPermBtn|permission has not been confirmed/);
 
 const playback = read('internal/server/playback.go');
 assert.match(playback, /const roomLatencyTarget = 1\.0/);
@@ -51,6 +55,8 @@ const server = read('internal/server/server.go');
 assert.doesNotMatch(server, /EXT-X-START|rewriteLivePlaylist|PART-HOLD-BACK/);
 assert.doesNotMatch(server, /case "\/api\/delivery"/);
 assert.doesNotMatch(server, /"delivery":\s*s\.Broadcaster/);
+assert.match(server, /Privacy_AudioCapture/);
+assert.doesNotMatch(server, /Privacy_ScreenCapture|Screen & System Audio Recording/);
 
 const config = read('internal/config/config.go');
 assert.match(config, /c\.Bitrate = "320k"/);

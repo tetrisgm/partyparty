@@ -8,7 +8,7 @@ FFMPEG_URL = https://www.osxexperts.net/ffmpeg81arm.zip
 SWIFTFLAGS = -O -swift-version 5 -target arm64-apple-macos26.0 \
   -framework CoreAudio
 
-# ScreenCaptureKit system-audio helper (embedded into the Go binary).
+# Core Audio system-audio helper (embedded into the Go binary).
 $(HELPER): $(SWIFT_SRC)
 	@mkdir -p assets
 	swiftc $(SWIFTFLAGS) -o $(HELPER) $(SWIFT_SRC)
