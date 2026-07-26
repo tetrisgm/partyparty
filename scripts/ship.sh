@@ -141,6 +141,7 @@ verify_stream_contract() {
 }
 
 verify_swift() {
+  node scripts/test-menu-bar-contract.mjs
   ( cd app && swift build )
 }
 

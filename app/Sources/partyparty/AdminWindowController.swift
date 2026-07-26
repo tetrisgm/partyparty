@@ -35,6 +35,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     private var signInWC: SignInWindowController?
     // Consecutive blank-console recovery attempts (reset to 0 on a healthy boot).
     private var bootAttempts = 0
+    private var pendingGuestQR = false
 
     init(port: Int) {
         self.port = port
@@ -192,7 +193,49 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         pushLoginState()
         pushCapturePermission()
+        if pendingGuestQR { revealGuestQR() }
         scheduleBootWatchdog()
+    }
+
+    func showGuestQR() {
+        pendingGuestQR = true
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        revealGuestQR()
+    }
+
+    private func revealGuestQR() {
+        let js = """
+        (function () {
+          try {
+            if (window.__ppOpenQRInterval) clearInterval(window.__ppOpenQRInterval);
+            var attempts = 0;
+            function reveal() {
+              var card = document.getElementById('shareCard');
+              var qr = document.getElementById('qr');
+              if (!card || !qr || card.hidden || !qr.childElementCount) return false;
+              card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              return true;
+            }
+            if (!reveal()) {
+              window.__ppOpenQRInterval = setInterval(function () {
+                if (reveal() || ++attempts >= 40) {
+                  clearInterval(window.__ppOpenQRInterval);
+                  window.__ppOpenQRInterval = 0;
+                }
+              }, 250);
+            }
+            return true;
+          } catch (e) {
+            return false;
+          }
+        })()
+        """
+        webView.evaluateJavaScript(js) { [weak self] result, error in
+            if error == nil, result as? Bool == true {
+                self?.pendingGuestQR = false
+            }
+        }
     }
 
     // MARK: - Boot watchdog (self-heal + report a console that never comes alive)

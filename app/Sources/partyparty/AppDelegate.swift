@@ -1,9 +1,9 @@
 import AppKit
 import ServiceManagement
 
-/// Regular app (Dock icon + full window/menu bar). The menu-bar 🕺 is a glanceable
-/// broadcast monitor — it does NOT duplicate the console: just live status,
-/// Open Console, Quit. Supervises the Go server child.
+/// Regular app (Dock icon + full window/menu bar). The menu-bar monitor exposes
+/// the live controls a DJ needs without keeping the console window visible.
+/// Supervises the Go server child.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let server = ServerController()
     private var updater: Updater!
@@ -190,7 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let header: String
         switch s.state {
         case "live":
-            var t = "Live · \(s.listeners) listening"
+            var t = "Live"
             if s.struggling > 0 { t += " · \(s.struggling) buffering" }
             header = t
         case "starting": header = "Starting…"
@@ -203,23 +203,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         h.isEnabled = false
         menu.addItem(h)
 
-        // Surface a live capture problem right here, prominently, with a
-        // one-click jump to the full explanation on the DJ screen.
-        if s.captureBad && (s.state == "live" || s.state == "starting") {
-            let warn = NSMenuItem(title: "🔴 Guests hear nothing — audio capture problem", action: #selector(showConsole), keyEquivalent: "")
-            warn.target = self
-            menu.addItem(warn)
-            if !s.note.isEmpty {
-                let detail = NSMenuItem(title: firstSentence(s.note), action: nil, keyEquivalent: "")
-                detail.isEnabled = false
-                menu.addItem(detail)
-            }
+        let listenerLabel = s.listeners == 1 ? "1 listener" : "\(s.listeners) listeners"
+        let listeners = NSMenuItem(title: listenerLabel, action: nil, keyEquivalent: "")
+        listeners.isEnabled = false
+        menu.addItem(listeners)
+
+        let broadcasting = s.state == "live" || s.state == "starting"
+        if broadcasting && s.captureBad {
+            let capture = item("Audio capture: Problem — open console", #selector(showConsole))
+            menu.addItem(capture)
+        } else {
+            let condition = broadcasting ? "Audio capture: Healthy" : "Audio capture: Not active"
+            let capture = NSMenuItem(title: condition, action: nil, keyEquivalent: "")
+            capture.isEnabled = false
+            menu.addItem(capture)
+        }
+        if broadcasting && s.captureBad && !s.note.isEmpty {
+            let detail = NSMenuItem(title: firstSentence(s.note), action: nil, keyEquivalent: "")
+            detail.isEnabled = false
+            menu.addItem(detail)
         }
         menu.addItem(.separator())
 
-        // No Go Live / Stop here: starting or killing the party is a deliberate
-        // act — both live in the console only. The menu bar just monitors.
-        menu.addItem(item("Open \(appName)", #selector(showConsole)))
+        let qr = item("Open Guest QR", #selector(showGuestQR))
+        qr.isEnabled = !s.guestURL.isEmpty
+        menu.addItem(qr)
+        menu.addItem(item("Open Console", #selector(showConsole)))
+        let stop = item("Stop Set", #selector(stopSet))
+        stop.isEnabled = broadcasting
+        menu.addItem(stop)
+        menu.addItem(.separator())
         menu.addItem(item("Check for Updates…", #selector(checkUpdates)))
         menu.addItem(item("Quit \(appName)", #selector(quit)))
     }
@@ -280,6 +293,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         console?.showWindow(nil)
         console?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func showGuestQR() {
+        if console == nil {
+            console = AdminWindowController(port: server.port)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        console?.showGuestQR()
+    }
+
+    @objc private func stopSet() {
+        let s = poller.status
+        guard s.state == "live" || s.state == "starting" else { return }
+        api.stopBroadcast { [weak self] stopped in
+            guard let self else { return }
+            if stopped {
+                self.poller.refresh()
+                return
+            }
+            self.showConsole()
+            let alert = NSAlert()
+            alert.messageText = "Couldn’t stop the set"
+            alert.informativeText = "Open the console and try End set again."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -10,6 +10,7 @@ struct ServerStatus {
     var note = ""           // the human explanation, for the menu-bar tooltip
     var appVersion = ""     // effective visible version: app + adopted OTA payload
     var appUpdate = false   // cloud advertises a newer app build — pull it via Sparkle now
+    var guestURL = ""       // secure LAN room URL; empty until the QR is usable
 }
 
 struct UpdateCheckResult {
@@ -24,7 +25,7 @@ final class APIClient {
     init(port: Int) { self.port = port }
 
     func fetchStatus(_ done: @escaping (ServerStatus?) -> Void) {
-        guard let u = URL(string: "http://localhost:\(port)/api/status") else { done(nil); return }
+        guard let u = URL(string: "http://127.0.0.1:\(port)/api/status") else { done(nil); return }
         URLSession.shared.dataTask(with: u) { data, _, _ in
             guard let data = data,
                   let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
@@ -43,12 +44,31 @@ final class APIClient {
             }
             s.appVersion = o["appVersion"] as? String ?? ""
             s.appUpdate = (o["appUpdate"] as? Bool) ?? false // drives the push-triggered Sparkle check
+            if (o["llhlsRealCert"] as? Bool) == true,
+               let urls = o["urls"] as? [String: Any],
+               let primary = urls["primary"] as? String,
+               primary.hasPrefix("https://") {
+                s.guestURL = primary
+            }
             DispatchQueue.main.async { done(s) }
         }.resume()
     }
 
+    func stopBroadcast(_ done: @escaping (Bool) -> Void) {
+        guard let u = URL(string: "http://127.0.0.1:\(port)/api/stop") else {
+            done(false)
+            return
+        }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        URLSession.shared.dataTask(with: req) { _, response, _ in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            DispatchQueue.main.async { done((200..<300).contains(status)) }
+        }.resume()
+    }
+
     func checkUpdates(_ done: @escaping (UpdateCheckResult?) -> Void) {
-        guard let u = URL(string: "http://localhost:\(port)/api/update/check") else {
+        guard let u = URL(string: "http://127.0.0.1:\(port)/api/update/check") else {
             done(nil)
             return
         }
