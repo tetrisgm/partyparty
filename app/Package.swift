@@ -5,8 +5,8 @@ import Foundation
 // The native macOS shell: a menu-bar app that supervises the Go server (shipped
 // in the .app's Contents/Helpers/) and presents the DJ admin in a native window.
 // Built with SwiftPM (no .xcodeproj); scripts/build-app.sh assembles the bundle.
-// Direct builds include Sparkle. Mac App Store builds use StoreKit updates and
-// therefore compile without the Sparkle dependency.
+// Direct migration builds include Sparkle. Mac App Store builds receive updates
+// from the App Store and compile without Sparkle or old-install repair code.
 let appStoreBuild = ProcessInfo.processInfo.environment["PARTYPARTY_APP_STORE"] == "1"
 let packageDependencies: [Package.Dependency] = appStoreBuild
     ? []
@@ -14,6 +14,9 @@ let packageDependencies: [Package.Dependency] = appStoreBuild
 let targetDependencies: [Target.Dependency] = appStoreBuild
     ? []
     : [.product(name: "Sparkle", package: "Sparkle")]
+let targetExcludes = appStoreBuild
+    ? ["LegacyHelperCleanup.swift", "NetworkRepair.swift"]
+    : []
 
 let package = Package(
     name: "partyparty",
@@ -23,7 +26,8 @@ let package = Package(
         .executableTarget(
             name: "partyparty",
             dependencies: targetDependencies,
-            path: "Sources/partyparty"
+            path: "Sources/partyparty",
+            exclude: targetExcludes
         )
     ]
 )

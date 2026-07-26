@@ -8,7 +8,7 @@ func TestPostReactionsReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	post, _, err := st.AddPost("guest-1", "Guest", "🎉", "hello", nil, false)
+	post, err := st.AddPost("guest-1", "Guest", "🎉", "hello", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

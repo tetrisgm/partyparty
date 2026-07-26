@@ -327,3 +327,24 @@ func TestCachedPayloadSurvivesRestart(t *testing.T) {
 		t.Fatalf("cached version not restored: %d", restarted.PayloadVersion())
 	}
 }
+
+func TestOpenEmbeddedCannotFetchOrAdoptCachedPayload(t *testing.T) {
+	embedded := fstest.MapFS{
+		"listener.html": {Data: []byte("REVIEWED")},
+		"config.json":   {Data: []byte(`{"src":"embedded"}`)},
+	}
+	store, err := OpenEmbedded(embedded, 87, "108.87", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.stateDir != "" || store.manifestURL != "" || store.subscribeURL != "" {
+		t.Fatalf("embedded store has remote/cache paths: state=%q manifest=%q subscribe=%q",
+			store.stateDir, store.manifestURL, store.subscribeURL)
+	}
+	if got := read(t, store, "listener.html"); got != "REVIEWED" {
+		t.Fatalf("served content = %q, want reviewed bundle", got)
+	}
+	if store.PayloadVersion() != 87 {
+		t.Fatalf("payload version = %d, want 87", store.PayloadVersion())
+	}
+}

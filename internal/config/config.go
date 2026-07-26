@@ -38,11 +38,6 @@ type Config struct {
 	SegDur   string // HLS segment duration, e.g. "1s"
 	SegCount int    // segments kept in the LL-HLS playlist
 
-	// EXPERIMENTAL: negative seconds injected as #EXT-X-START:TIME-OFFSET into
-	// the plain-HLS playlist to ask players to park closer to live than the
-	// default 3x target duration. 0 = off. Spec says live offsets inside 3xTD
-	// SHOULD NOT be used and iOS may ignore/misbehave — device-test only.
-	StartOffset float64
 }
 
 func Parse() Config {
@@ -61,19 +56,18 @@ func Parse() Config {
 	flag.StringVar(&c.FFmpeg, "ffmpeg", env("PARTYPARTY_FFMPEG", "ffmpeg"), "path to the ffmpeg binary")
 	mono := false
 	flag.BoolVar(&mono, "mono", env("PARTYPARTY_MONO", "") == "1", "broadcast in mono (about half the bandwidth)")
-	flag.StringVar(&c.Delivery, "delivery", env("PARTYPARTY_DELIVERY", "auto"), "delivery: auto (llhls if a real cert is set, else plain hls), llhls, or hls")
+	flag.StringVar(&c.Delivery, "delivery", env("PARTYPARTY_DELIVERY", "auto"), "delivery: HTTPS LL-HLS (hls is retained only for supervised development)")
 	flag.StringVar(&c.MediaMTXBin, "mediamtx", env("PARTYPARTY_MEDIAMTX", ""), "path to mediamtx binary (default: found on PATH)")
 	flag.IntVar(&c.RTSPPort, "rtsp-port", envInt("PARTYPARTY_RTSP_PORT", 8554), "MediaMTX RTSP ingest port")
 	flag.IntVar(&c.HLSPort, "hls-port", envInt("PARTYPARTY_HLS_PORT", 8888), "MediaMTX LL-HLS (HTTPS) port")
 	flag.StringVar(&c.StreamPath, "stream-path", env("PARTYPARTY_STREAM_PATH", "party"), "MediaMTX stream path name")
-	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty = plain-HLS IP until broker activation")
+	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty uses broker activation")
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.LiveHost, "live-host", env("PARTYPARTY_LIVE_HOST", ""), "hostname for automatic low-latency setup (Let's Encrypt cert + Cloudflare A record -> this Mac's LAN IP); needs PARTYPARTY_CF_TOKEN")
 	flag.StringVar(&c.PartDur, "part-duration", env("PARTYPARTY_PART_DUR", "150ms"), "LL-HLS part duration")
 	flag.StringVar(&c.SegDur, "seg-duration", env("PARTYPARTY_SEG_DUR", "500ms"), "LL-HLS segment duration")
 	flag.IntVar(&c.SegCount, "seg-count", envInt("PARTYPARTY_SEG_COUNT", 48), "LL-HLS segments retained in the live playlist")
-	flag.Float64Var(&c.StartOffset, "start-offset", 0, "EXPERIMENTAL: seconds before live to ask players to start (injects #EXT-X-START:TIME-OFFSET=-N into the plain-HLS playlist; 0 = off)")
 	flag.Parse()
 	c.Channels = 2
 	if mono {

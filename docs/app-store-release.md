@@ -1,0 +1,132 @@
+# Mac App Store release
+
+## Product boundary
+
+The Store edition is the venue-Wi-Fi product:
+
+- The Mac serves the DJ console, guest page, party feed, uploads, and HTTPS
+  LL-HLS.
+- Guests need no account and no internet after joining the venue Wi-Fi.
+- iPhones use native HLS/AVPlayer so audio continues while Safari is backgrounded
+  or the phone is locked.
+- The app never creates or selects Wi-Fi networks.
+- The app never installs privileged helpers or asks for an administrator
+  password.
+- Store builds contain no Sparkle, LaunchDaemon, network-repair, or downloaded
+  web-payload behavior.
+- Store builds keep diagnostics on the Mac. They do not upload session status or
+  logs.
+
+Do not add cloud listening, public event pages, replays, previous-event browsing,
+hotspots, Internet Sharing, captive portals, plain-HTTP guest links, alternate
+iPhone playback engines, or playback presets.
+
+## Apple prerequisites
+
+Create these in the Apple Developer and App Store Connect accounts before
+packaging:
+
+1. A macOS App Store record with bundle ID `fm.partyparty.app`.
+2. An Apple Distribution certificate available in the login keychain.
+3. A Mac Installer Distribution certificate available in the login keychain.
+4. A Mac App Store distribution provisioning profile for `fm.partyparty.app`.
+5. An App Store Connect API key when command-line upload validation is desired.
+
+The profile, app record, signing identities, and app bundle must all use team
+`52WM463HR2`.
+
+## Build and package
+
+Local ad-hoc Store build:
+
+```sh
+scripts/build-app-store.sh
+scripts/verify-app-store.sh
+```
+
+Distribution package:
+
+```sh
+APP_STORE_PROVISIONING_PROFILE=/absolute/path/profile.provisionprofile \
+PP_SIGN_ID='Apple Distribution: ... (52WM463HR2)' \
+APP_STORE_INSTALLER_ID='Mac Installer Distribution: ... (52WM463HR2)' \
+scripts/package-app-store.sh
+```
+
+Add `APP_STORE_VALIDATE=1`, `APP_STORE_CONNECT_KEY_ID`, and
+`APP_STORE_CONNECT_ISSUER_ID` to run Apple's upload validation after packaging.
+
+The verifier rejects an incorrect bundle ID, missing privacy manifest, Sparkle,
+LaunchDaemons, privileged helpers, extra helper binaries, missing sandbox/network
+or audio entitlements, extra child entitlements, an incorrect provisioning
+profile, and a non-distribution signature.
+
+## Privacy
+
+The privacy manifest declares:
+
+- email address and user ID for account sign-in;
+- the install/device ID used to link the Mac and provision its secure LAN name;
+- app functionality as the only collection purpose;
+- no tracking.
+
+Guest names, posts, uploads, listening status, audio, and session diagnostics
+remain on the Mac in the Store edition. App Store Connect privacy answers must
+match the bundled manifest and must not claim analytics or diagnostics
+collection for the Store build.
+
+## Automated clean launch
+
+On a Mac where no other partyparty instance is running:
+
+```sh
+scripts/test-app-store.sh
+```
+
+This verifies the reviewed bundle, launches it, waits for the sandboxed local
+server, checks `/api/status`, confirms that no plain-HTTP guest URL is exposed,
+quits the app, and confirms its child server exits.
+
+## Physical acceptance
+
+Run this once on a clean macOS user account before uploading a candidate:
+
+1. Install the candidate package and launch it from `/Applications`.
+2. Confirm there is no administrator prompt.
+3. Confirm no Screen Recording prompt appears.
+4. Link the Mac account and then disconnect internet access. Relaunch and confirm
+   the DJ console still opens and the activation cache remains valid.
+5. Reconnect to venue-style Wi-Fi. Confirm the app requests Local Network access
+   only when the LAN service is used.
+6. Select Mac audio. Start Go Live and confirm the System Audio Recording prompt
+   appears at that point, not at launch.
+7. Stop, select a microphone or audio interface, and confirm the Microphone
+   prompt appears only when that source is used.
+8. Scan the displayed QR with at least two default-configured iPhones on the same
+   Wi-Fi. Confirm the URL is HTTPS and both phones become audible.
+9. Lock both phones for five minutes. Confirm playback continues and lock-screen
+   media controls remain available.
+10. Unlock both phones. Confirm playback remains smooth and neither phone is
+    grossly behind the room.
+11. Post text and a photo from a guest. Confirm they appear in the active room and
+    in the Mac's event folder, with no email field, media ZIP, previous-event
+    page, or cloud party page.
+12. Enable the optional login item, restart the user session, and confirm the app
+    launches without requesting new privileges.
+13. Inspect Activity Monitor's Sandbox column for the app and bundled helpers.
+14. Quit the app and confirm all helpers terminate.
+
+Capture the app window and a live guest/QR state for App Store screenshots. In
+App Review notes, state that the reviewer needs two devices on the same Wi-Fi,
+that guest playback uses the HTTPS QR link, and that locked-phone playback is an
+intentional core feature.
+
+## Direct-install migration
+
+The direct build remains only as a migration channel until the Store edition is
+approved and existing installs have been directed to it. Do not remove Sparkle
+or the one-time old-helper cleanup before then: doing so would strand the
+currently installed population. After the Store version is publicly available,
+ship one final direct build that points users to the Store, then remove the
+direct build, Sparkle, installer stubs, and release/appcast machinery in one
+source cleanup.

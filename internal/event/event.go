@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -100,28 +99,24 @@ type line struct {
 }
 
 // Guest is the private per-guest record (guests.json, DJ-only). It captures
-// the party identity chosen on the phone and an optional email subscription.
-// TokenHash is retained only so events created by older versions still load.
+// only the party identity chosen on the phone.
 type Guest struct {
 	Pseudonym string `json:"pseudonym"`
 	Emoji     string `json:"emoji"`
-	Contact   string `json:"contact,omitempty"`
-	TokenHash string `json:"tokenHash,omitempty"` // legacy keepsake claim hash
-	Created   int64  `json:"createdAt"`           // unix millis
+	Created   int64  `json:"createdAt"` // unix millis
 }
 
 // Meta is the active room identity shown to guests and edited by the DJ.
 type Meta struct {
-	Title          string          `json:"title"`
-	Host           string          `json:"host"`
-	Starts         string          `json:"starts,omitempty"`
-	Date           string          `json:"date,omitempty"`
-	Time           string          `json:"time,omitempty"`
-	Place          string          `json:"place,omitempty"`
-	Cover          string          `json:"cover,omitempty"`
-	Features       map[string]bool `json:"features,omitempty"`
-	ModerationMode string          `json:"moderationMode,omitempty"`
-	Links          []Link          `json:"links,omitempty"`
+	Title    string          `json:"title"`
+	Host     string          `json:"host"`
+	Starts   string          `json:"starts,omitempty"`
+	Date     string          `json:"date,omitempty"`
+	Time     string          `json:"time,omitempty"`
+	Place    string          `json:"place,omitempty"`
+	Cover    string          `json:"cover,omitempty"`
+	Features map[string]bool `json:"features,omitempty"`
+	Links    []Link          `json:"links,omitempty"`
 }
 
 type Link struct {
@@ -132,16 +127,12 @@ type Link struct {
 
 const (
 	StateApproved = "approved"
-	StatePending  = "pending"
 	StateHidden   = "hidden"
 
 	RequestStateNew       = "new"
 	RequestStateDone      = "done"
 	RequestStateDismissed = "dismissed"
 	RequestStateStarred   = "starred"
-
-	ModerationPostModerate = "post_moderate"
-	ModerationPreApprove   = "pre_approve"
 )
 
 var linkTypeLabels = map[string]string{
@@ -158,10 +149,6 @@ var linkTypeLabels = map[string]string{
 	"other":            "Link",
 }
 
-func isLegacyAutoTitle(title, dirName string) bool {
-	return strings.TrimSpace(title) == "party "+strings.TrimSpace(dirName)
-}
-
 func normalizeState(state string) string {
 	switch state {
 	case StateHidden:
@@ -172,15 +159,7 @@ func normalizeState(state string) string {
 }
 
 func validState(state string) bool {
-	return state == StateApproved || state == StatePending || state == StateHidden
-}
-
-func normalizeModerationMode(_ string) string {
-	return ModerationPostModerate
-}
-
-func validModerationMode(mode string) bool {
-	return mode == ModerationPostModerate || mode == ModerationPreApprove
+	return state == StateApproved || state == StateHidden
 }
 
 func normalizeRequestState(state string) string {
@@ -203,10 +182,6 @@ func ValidRequestVibe(vibe string) bool {
 	default:
 		return false
 	}
-}
-
-func initialState(_ string) string {
-	return StateApproved
 }
 
 var postReactionTypes = map[string]bool{
@@ -329,7 +304,6 @@ func normalizeLinks(in []Link) ([]Link, error) {
 // Store manages the current event directory. Safe for concurrent use.
 type Store struct {
 	mu           sync.Mutex
-	baseDir      string
 	dir          string
 	meta         Meta
 	posts        []*Post
@@ -391,24 +365,14 @@ func newReactionCounters() map[string]*reactionCounter {
 	return out
 }
 
-// Open finds today's most recent event under baseDir (or creates one), so an
-// app restart mid-party lands back in the same feed.
+// Open uses one active room per calendar day, so an app restart mid-party
+// lands back in the same feed without exposing a previous-room picker.
 func Open(baseDir string) (*Store, error) {
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return nil, err
 	}
-	date := time.Now().Format("2006-01-02")
-	dir := ""
-	entries, _ := os.ReadDir(baseDir)
-	for _, e := range entries { // ReadDir sorts by name → the last date match wins
-		if e.IsDir() && strings.HasPrefix(e.Name(), date) {
-			dir = filepath.Join(baseDir, e.Name())
-		}
-	}
-	if dir == "" {
-		dir = filepath.Join(baseDir, date)
-	}
-	s := &Store{baseDir: baseDir, notify: make(chan struct{})}
+	dir := filepath.Join(baseDir, time.Now().Format("2006-01-02"))
+	s := &Store{notify: make(chan struct{})}
 	if err := s.use(dir); err != nil {
 		return nil, err
 	}
@@ -570,22 +534,13 @@ func (s *Store) use(dir string) error {
 	if data, err := os.ReadFile(filepath.Join(dir, "guests.json")); err == nil {
 		_ = json.Unmarshal(data, &guests)
 	}
-	dirName := filepath.Base(dir)
 	meta := Meta{Title: "partyparty", Host: "the DJ"}
 	if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
 		_ = json.Unmarshal(data, &meta)
 	}
-	legacyAutoTitle := isLegacyAutoTitle(meta.Title, dirName)
 	meta.Features = normalizeFeatures(meta.Features)
-	meta.ModerationMode = normalizeModerationMode(meta.ModerationMode)
 	meta.Links, _ = normalizeLinks(meta.Links)
 	meta.Cover = normalizeCoverRef(meta.Cover)
-	if legacyAutoTitle {
-		meta.Title = "partyparty"
-		if data, err := json.MarshalIndent(meta, "", " "); err == nil {
-			_ = os.WriteFile(filepath.Join(dir, "meta.json"), data, 0o644)
-		}
-	}
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
 	s.currentTrack, s.recentTracks, s.trackAsks = currentTrack, recentTracks, nil
@@ -600,7 +555,6 @@ func (s *Store) Meta() Meta {
 	defer s.mu.Unlock()
 	m := s.meta
 	m.Features = normalizeFeatures(s.meta.Features)
-	m.ModerationMode = normalizeModerationMode(s.meta.ModerationMode)
 	m.Links = append([]Link(nil), s.meta.Links...)
 	m.Cover = normalizeCoverRef(s.meta.Cover)
 	return m
@@ -791,73 +745,6 @@ func (s *Store) SetLinks(links []Link) error {
 	return nil
 }
 
-// SetModerationMode preserves compatibility with older clients while keeping
-// every event in post-moderation mode. DJs can still delete unwanted content.
-func (s *Store) SetModerationMode(mode string) error {
-	if !validModerationMode(mode) {
-		return errors.New("unknown moderation mode")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.meta.ModerationMode = normalizeModerationMode(mode)
-	if err := s.saveMetaLocked(); err != nil {
-		return err
-	}
-	s.changed()
-	return nil
-}
-
-// RecordingFiles lists this event's set recordings (recordings/set-*.aac) in
-// PLAY order — the raw material a publish remuxes into one faststart .m4a.
-func (s *Store) RecordingFiles() []string {
-	s.mu.Lock()
-	dir := filepath.Join(s.dir, "recordings")
-	s.mu.Unlock()
-	entries, _ := os.ReadDir(dir)
-	var files []string
-	for _, e := range entries {
-		n := e.Name()
-		if e.IsDir() || !strings.HasPrefix(n, "set-") || !strings.HasSuffix(n, ".aac") {
-			continue
-		}
-		files = append(files, filepath.Join(dir, n))
-	}
-	// A plain lexical sort is WRONG: segment 1 is "set-<ts>.aac" and its
-	// device-yank siblings are "set-<ts>-2.aac", "-3.aac". Because '-' (0x2D)
-	// sorts before '.' (0x2E), the base segment would land LAST and the set
-	// would play scrambled. Sort by (timestamp, segment#) instead — treating a
-	// bare base file as segment 1. The timestamp itself contains a hyphen
-	// (date-time), so parse structurally, not by the last '-'.
-	sort.SliceStable(files, func(i, j int) bool {
-		ti, si := recordingKey(filepath.Base(files[i]))
-		tj, sj := recordingKey(filepath.Base(files[j]))
-		if ti != tj {
-			return ti < tj
-		}
-		return si < sj
-	})
-	return files
-}
-
-// recordingKey extracts (timestamp, segment#) from a recording filename.
-// "set-20060102-150405.aac" -> ("20060102150405", 1);
-// "set-20060102-150405-2.aac" -> ("20060102150405", 2).
-func recordingKey(name string) (string, int) {
-	core := strings.TrimSuffix(strings.TrimPrefix(name, "set-"), ".aac")
-	parts := strings.Split(core, "-") // [date, time] or [date, time, N]
-	seg := 1
-	ts := core
-	if len(parts) >= 2 {
-		ts = parts[0] + parts[1]
-		if len(parts) >= 3 {
-			if n, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
-				seg = n
-			}
-		}
-	}
-	return ts, seg
-}
-
 // Dir returns the current event directory (for "Open media folder" etc.).
 func (s *Store) Dir() string {
 	s.mu.Lock()
@@ -870,21 +757,6 @@ func (s *Store) RecordingPath() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return filepath.Join(s.dir, "recordings", "set-"+time.Now().Format("20060102-150405")+".aac")
-}
-
-// MediaFiles lists every stored media file (for the everything-zip).
-func (s *Store) MediaFiles() []string {
-	s.mu.Lock()
-	dir := filepath.Join(s.dir, "media")
-	s.mu.Unlock()
-	entries, _ := os.ReadDir(dir)
-	var files []string
-	for _, e := range entries {
-		if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-			files = append(files, filepath.Join(dir, e.Name()))
-		}
-	}
-	return files
 }
 
 func newID() string {
@@ -1032,16 +904,15 @@ func (s *Store) SetMediaThumb(mediaID string) error {
 	return nil
 }
 
-// AddPost validates, journals, and returns the stored post. The second return
-// value is kept empty for source compatibility with older claim-link callers.
+// AddPost validates, journals, and returns the stored post.
 // Media entries are re-verified against files present in this event's media dir.
-func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool) (*Post, string, error) {
+func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool) (*Post, error) {
 	text = strings.TrimSpace(text)
 	if len(text) > 2000 {
 		text = text[:2000]
 	}
 	if text == "" && len(media) == 0 {
-		return nil, "", errors.New("empty post")
+		return nil, errors.New("empty post")
 	}
 	verified := make([]Media, 0, len(media))
 	for _, m := range media {
@@ -1078,10 +949,10 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	if dj {
 		p.State = StateApproved
 	} else {
-		p.State = initialState(s.meta.ModerationMode)
+		p.State = StateApproved
 	}
 	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	s.posts = append(s.posts, p)
 	s.byID[p.ID] = p
@@ -1095,7 +966,7 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 		_ = s.saveGuestsLocked()
 	}
 	s.changed()
-	return p, "", nil
+	return p, nil
 }
 
 // AddComment appends a reply under a post.
@@ -1127,7 +998,7 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 	if dj {
 		c.State = StateApproved
 	} else {
-		c.State = initialState(s.meta.ModerationMode)
+		c.State = StateApproved
 	}
 	if err := s.appendLine(line{Op: "comment", ID: postID, CID: cid, Comment: c}); err != nil {
 		return nil, err
@@ -1317,24 +1188,6 @@ func (s *Store) SetGuestProfile(cid, name, emoji string) error {
 	}
 	g.Pseudonym = name
 	g.Emoji = emoji
-	return s.saveGuestsLocked()
-}
-
-// SetContact stores a guest's optional private email subscription; it is
-// never exposed in the public feed.
-func (s *Store) SetContact(cid, contact string) error {
-	contact = clip(strings.TrimSpace(contact), 120)
-	if cid == "" {
-		return errors.New("missing cid")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	g, ok := s.guests[cid]
-	if !ok {
-		g = &Guest{Created: time.Now().UnixMilli()}
-		s.guests[cid] = g
-	}
-	g.Contact = contact
 	return s.saveGuestsLocked()
 }
 
@@ -1659,8 +1512,6 @@ func postVisibleTo(p *Post, cid string, dj bool) bool {
 	switch normalizeState(p.State) {
 	case StateApproved:
 		return true
-	case StatePending:
-		return cid != "" && p.CID == cid
 	default:
 		return false
 	}
@@ -1675,9 +1526,6 @@ func visibleComments(comments []Comment, cid string, dj bool) []Comment {
 		state := normalizeState(c.State)
 		if !dj {
 			if state == StateHidden {
-				continue
-			}
-			if state == StatePending && (cid == "" || c.CID != cid) {
 				continue
 			}
 		}

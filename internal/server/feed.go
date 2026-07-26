@@ -1,13 +1,10 @@
 package server
 
 import (
-	"archive/zip"
 	"encoding/json"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -21,7 +18,7 @@ import (
 // The event feed: guests post text + photos/videos from the player page; the
 // DJ sees, posts to, and moderates the same feed from the console. Guests are
 // pseudonymous (fun name + emoji chosen client-side); their private cid stays
-// server-side so the Mac can associate identity and optional subscriptions.
+// server-side so the Mac can associate activity within the current room.
 
 // isDJ: the console is the app's own WKWebView on localhost — loopback is the
 // DJ, everyone else on the LAN is a guest. Same trust model as /api/shutdown.
@@ -108,10 +105,10 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		body := map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
 			"date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
-			"features": meta.Features, "moderationMode": meta.ModerationMode,
+			"features":  meta.Features,
 			"reactions": reactions, "spikes": spikes,
-			// dir = the event's identity; clients reset their cursor when it
-			// changes (switching to an OLDER event must replay its posts).
+			// dir = the current room identity; clients reset their cursor when a
+			// fresh room is created.
 			"dir":   filepath.Base(s.Events.Dir()),
 			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount,
 			"photos": photos, "videos": videos, "audio": audio, "cursor": cursor, "dj": dj,
@@ -326,7 +323,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			Time                *string `json:"time"`
 			Place               *string `json:"place"`
 			Cover               *string `json:"cover"`
-			ModerationMode      *string `json:"moderationMode"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
@@ -359,16 +355,9 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				return true
 			}
 		}
-		if body.ModerationMode != nil {
-			if err := s.Events.SetModerationMode(*body.ModerationMode); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-				return true
-			}
-		}
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "moderationMode": meta.ModerationMode,
-			"date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
+			"ok": true, "date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
 		})
 	case "/api/event-features":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
@@ -397,31 +386,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": s.Events.Meta().Links})
-	case "/api/media.zip":
-		// "Everyone can take the media home": one tap streams the whole
-		// event's media as an uncompressed zip (photos/videos are already
-		// compressed — Store mode keeps a 2GB set from cooking the Mac).
-		files := s.Events.MediaFiles()
-		if len(files) == 0 {
-			http.Error(w, "no media yet", http.StatusNotFound)
-			return true
-		}
-		name := "partyparty-media-" + filepath.Base(s.Events.Dir()) + ".zip"
-		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(name, `"`, "")+`"`)
-		zw := zip.NewWriter(w)
-		for _, f := range files {
-			src, err := os.Open(f)
-			if err != nil {
-				continue
-			}
-			dst, err := zw.CreateHeader(&zip.FileHeader{Name: filepath.Base(f), Method: zip.Store})
-			if err == nil {
-				_, _ = io.Copy(dst, src)
-			}
-			src.Close()
-		}
-		_ = zw.Close()
 	case "/api/post":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -461,7 +425,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many posts", "retry": true})
 			return true
 		}
-		p, _, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, dj)
+		p, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, dj)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
@@ -570,21 +534,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cover": "/event-cover"})
-	case "/api/guest-contact":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return true
-		}
-		var body struct{ CID, Contact string }
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
-			return true
-		}
-		if err := s.Events.SetContact(body.CID, body.Contact); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/post-delete":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})

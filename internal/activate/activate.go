@@ -7,14 +7,14 @@
 //     guests on the same Wi-Fi resolve it locally (RFC1918 in public DNS —
 //     exactly what Plex does).
 //
-// Requirements (both optional — without them partyparty just uses plain HLS):
+// Optional self-managed configuration (normal installs use the account broker):
 //   - PARTYPARTY_LIVE_HOST (or --live-host): e.g. "dj.example.net"
 //   - PARTYPARTY_CF_TOKEN env, or a token in <app-support>/cf-token, scoped to
 //     Zone → DNS → Edit for that host's zone.
 //
-// Everything fails SOFT: offline, bad token, DNS-rebind-protected router — the
-// app logs why and falls back to plain HLS. The locked-phone rule is untouched
-// (LL-HLS is still standard HLS through the native player).
+// A failed refresh keeps a previously cached certificate usable offline. If no
+// valid certificate exists, Go Live stays unavailable rather than exposing a
+// guest URL iPhones cannot trust.
 package activate
 
 import (

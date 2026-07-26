@@ -248,9 +248,11 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.scheduleBootWatchdog() }
         default:
             diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts — WebView is not rendering /dj"])
+#if !APP_STORE
             // A dead 127.0.0.1 (an old version's lo0 damage) is the usual cause a
             // reload can't fix — surface the one-time repair instead of a blank window.
             NetworkRepair.promptIfDamaged()
+#endif
         }
     }
 
@@ -375,14 +377,11 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
-        let legacyGranted = state == .granted ? "true" : "false"
         webView.evaluateJavaScript("""
         (function () {
           var payload = \(json);
           if (window.ppSetCapturePermission) {
             window.ppSetCapturePermission(payload);
-          } else if (window.ppSetScreenPermission) {
-            window.ppSetScreenPermission(\(legacyGranted));
           }
         })();
         """)

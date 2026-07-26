@@ -159,6 +159,27 @@ func Open(embedded fs.FS, embeddedVer int, stateDir, contentBase, appVersion str
 	return s, nil
 }
 
+// OpenEmbedded creates a Store that can only serve assets shipped inside the
+// app. Mac App Store builds use this path so downloaded or previously cached
+// web payloads can never alter the reviewed product.
+func OpenEmbedded(embedded fs.FS, embeddedVer int, appVersion string, diag func(string, ...any)) (*Store, error) {
+	pub, err := base64.StdEncoding.DecodeString(payloadSigningKeyB64)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("ota: bad embedded signing key")
+	}
+	if diag == nil {
+		diag = func(string, ...any) {}
+	}
+	return &Store{
+		embedded: embedded, embeddedVer: embeddedVer,
+		appVersion: appVersion,
+		pub:        ed25519.PublicKey(pub),
+		client:     &http.Client{Timeout: 35 * time.Second},
+		diag:       diag,
+		active:     embedded, version: embeddedVer,
+	}, nil
+}
+
 // Open implements fs.FS, delegating to the currently-active content.
 func (s *Store) Open(name string) (fs.File, error) {
 	s.mu.RLock()

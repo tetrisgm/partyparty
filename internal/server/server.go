@@ -1061,7 +1061,7 @@ func (s *srv) addStreamFeedPost(text string) {
 	if author == "" {
 		author = "the DJ"
 	}
-	if _, _, err := s.Events.AddPost("dj", author, "🎧", text, nil, true); err != nil && s.Diag != nil {
+	if _, err := s.Events.AddPost("dj", author, "🎧", text, nil, true); err != nil && s.Diag != nil {
 		s.Diag.Printf("stream feed post failed: %v", err)
 	}
 }

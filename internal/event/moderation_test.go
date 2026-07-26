@@ -46,7 +46,7 @@ func TestModerationStateOpsReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, _, err := st.AddPost("cid-1", "Guest", ":)", "post", nil, false)
+	p, err := st.AddPost("cid-1", "Guest", ":)", "post", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestModerationStateOpsReplay(t *testing.T) {
 	if err := st.SetPostState(p.ID, StateHidden); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetCommentState(p.ID, c.ID, StatePending); err != nil {
+	if err := st.SetCommentState(p.ID, c.ID, StateHidden); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,59 +72,8 @@ func TestModerationStateOpsReplay(t *testing.T) {
 	if posts[0].State != StateHidden {
 		t.Fatalf("post state = %q, want hidden", posts[0].State)
 	}
-	if len(posts[0].Comments) != 1 || posts[0].Comments[0].State != StateApproved {
-		t.Fatalf("comments = %#v, want legacy pending normalized to approved", posts[0].Comments)
-	}
-}
-
-func TestLegacyPreApproveIsIgnored(t *testing.T) {
-	st, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := st.Meta().ModerationMode; got != ModerationPostModerate {
-		t.Fatalf("default moderation mode = %q, want post_moderate", got)
-	}
-	p, _, err := st.AddPost("cid-1", "Guest", ":)", "approved now", nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.State != StateApproved {
-		t.Fatalf("default post state = %q, want approved", p.State)
-	}
-	if err := st.SetModerationMode(ModerationPreApprove); err != nil {
-		t.Fatal(err)
-	}
-	if got := st.Meta().ModerationMode; got != ModerationPostModerate {
-		t.Fatalf("legacy moderation mode = %q, want post_moderate", got)
-	}
-	p, _, err = st.AddPost("cid-2", "Guest", ":)", "needs review", nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.State != StateApproved {
-		t.Fatalf("guest post state = %q, want approved", p.State)
-	}
-	c, err := st.AddComment(p.ID, "cid-3", "Other", ":D", "needs review too", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.State != StateApproved {
-		t.Fatalf("guest comment state = %q, want approved", c.State)
-	}
-	djPost, _, err := st.AddPost("dj", "Ramine", "🎧", "host update", nil, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if djPost.State != StateApproved {
-		t.Fatalf("pre-approve DJ post state = %q, want approved", djPost.State)
-	}
-	djComment, err := st.AddComment(p.ID, "dj", "Ramine", "🎧", "host reply", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if djComment.State != StateApproved {
-		t.Fatalf("pre-approve DJ comment state = %q, want approved", djComment.State)
+	if len(posts[0].Comments) != 1 || posts[0].Comments[0].State != StateHidden {
+		t.Fatalf("comments = %#v, want hidden", posts[0].Comments)
 	}
 }
 
@@ -134,7 +83,7 @@ func TestDeleteCommentDropsOnReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, _, err := st.AddPost("cid-1", "Guest", ":)", "post", nil, false)
+	p, err := st.AddPost("cid-1", "Guest", ":)", "post", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

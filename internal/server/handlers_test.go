@@ -191,7 +191,7 @@ func TestStatusEndpoint(t *testing.T) {
 	if body["delivery"] != "hls" {
 		t.Errorf("delivery = %v", body["delivery"])
 	}
-	if body["latencyTarget"] != 10.0 { // plain HLS, 1s segments: 3*1+7
+	if body["latencyTarget"] != 10.0 { // internal pre-activation state: 3*1+7
 		t.Errorf("latencyTarget = %v, want 10", body["latencyTarget"])
 	}
 	streamSync, ok := body["streamSync"].(map[string]any)
@@ -434,7 +434,7 @@ func TestGuestProfilePersistsWithoutKeepsakeClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := guests["phone-1"]
-	if g.Pseudonym != "Neon Fox" || g.Emoji != "🪩" || g.TokenHash != "" {
+	if g.Pseudonym != "Neon Fox" || g.Emoji != "🪩" {
 		t.Fatalf("guest profile = %#v", g)
 	}
 }
@@ -801,12 +801,6 @@ func TestGuestPostsAreImmediatelyVisibleAndDeleteRoutesWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ev.SetModerationMode(event.ModerationPreApprove); err != nil {
-		t.Fatal(err)
-	}
-	if got := ev.Meta().ModerationMode; got != event.ModerationPostModerate {
-		t.Fatalf("legacy pre-approve mode = %q, want post_moderate", got)
-	}
 	s := New(Deps{Events: ev})
 	postJSON := func(target, remote string, body any) *httptest.ResponseRecorder {
 		data, err := json.Marshal(body)
@@ -1019,9 +1013,6 @@ func TestStartStopCreatesDJFeedPosts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := ev.SetMeta("Rooftop Ritual", "Ramine", "-"); err != nil {
-		t.Fatal(err)
-	}
-	if err := ev.SetModerationMode(event.ModerationPreApprove); err != nil {
 		t.Fatal(err)
 	}
 	env.srv.Events = ev

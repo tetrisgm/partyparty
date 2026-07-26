@@ -549,7 +549,7 @@ paths:
         sendJSON(res, { ok: true });
         return;
       }
-      if (u.pathname === '/api/client-events' || u.pathname === '/api/guest-contact' || u.pathname === '/api/guest-profile') {
+      if (u.pathname === '/api/client-events' || u.pathname === '/api/guest-profile') {
         req.resume();
         sendJSON(res, { ok: true });
         return;

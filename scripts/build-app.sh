@@ -60,6 +60,7 @@ cp "$ROOT/assets/mediamtx"         "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture"        "$APP/Contents/Helpers/ppcapture"
 cp "$ROOT/app/Info.plist"          "$APP/Contents/Info.plist"
 cp "$ROOT/app/AppIcon.icns"        "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/app/PrivacyInfo.xcprivacy" "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 if [ "$APP_STORE" = "1" ]; then
   /usr/libexec/PlistBuddy -c 'Delete :SUAutomaticallyUpdate' "$APP/Contents/Info.plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c 'Delete :SUEnableAutomaticChecks' "$APP/Contents/Info.plist" 2>/dev/null || true
@@ -142,5 +143,6 @@ codesign --verify --strict --verbose=2 "$APP"
 if [ "$APP_STORE" = "1" ]; then
   codesign -d --entitlements :- "$APP" 2>&1 | grep -q 'com.apple.security.app-sandbox'
   [ ! -d "$APP/Contents/Frameworks/Sparkle.framework" ]
+  "$ROOT/scripts/verify-app-store.sh" "$APP"
 fi
 echo ">> built $APP"

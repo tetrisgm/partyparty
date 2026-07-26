@@ -32,7 +32,7 @@ func TestEventUIDataCoverAndPostReactionRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	post, _, err := ev.AddPost("guest-1", "Guest", "🎉", "hello", []event.Media{media}, false)
+	post, err := ev.AddPost("guest-1", "Guest", "🎉", "hello", []event.Media{media}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

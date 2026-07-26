@@ -38,13 +38,13 @@ final class ServerController {
             return
         }
         stopping = false
+#if !APP_STORE
         reapOrphans()  // kill a stale server from a previous instance so we bind clean
+#endif
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = ["--no-open", "--port", String(port)]
-        var env = ProcessInfo.processInfo.environment
-        env.removeValue(forKey: "PARTYPARTY_CAPTIVE") // legacy: partyparty never creates networks now
-        p.environment = env
+        p.environment = ProcessInfo.processInfo.environment
         p.terminationHandler = { [weak self] proc in
             DispatchQueue.main.async { self?.childExited(proc) }
         }
@@ -57,6 +57,7 @@ final class ServerController {
         }
     }
 
+#if !APP_STORE
     /// Kill any orphaned server child from a previous app instance before we
     /// spawn a fresh one. THIS is the after-update white-screen fix: Sparkle (or
     /// a force-quit / crash) can leave the old `partyparty-server` holding port
@@ -98,6 +99,7 @@ final class ServerController {
         }
         return rc == 0
     }
+#endif
 
     func restart() {
         stop()

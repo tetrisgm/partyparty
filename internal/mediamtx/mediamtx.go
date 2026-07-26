@@ -175,8 +175,8 @@ func (s *Server) Start() error {
 
 // EnsureReady starts MediaMTX (if needed) and waits for both its RTSP ingest
 // port and HTTPS HLS endpoint. A MediaMTX that launches but never opens either
-// guest-critical port (port conflict, bad config) is a hard error — callers
-// fall back to plain HLS instead of showing guests a dead stream.
+// guest-critical port (port conflict, bad config) is a hard error so callers
+// refuse Go Live instead of showing guests a dead stream.
 func (s *Server) EnsureReady(rtspPort, hlsPort int, timeout time.Duration) error {
 	if err := s.Start(); err != nil {
 		return err

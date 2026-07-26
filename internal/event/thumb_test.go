@@ -49,7 +49,7 @@ esac
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.AddPost("cid", "guest", ":)", "", []Media{m}, false); err != nil {
+	if _, err := st.AddPost("cid", "guest", ":)", "", []Media{m}, false); err != nil {
 		t.Fatal(err)
 	}
 	src, ok := st.MediaPath(m.ID)
@@ -109,7 +109,7 @@ func TestThumbWorkerSkipsWhenToolMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.AddPost("cid", "guest", ":)", "", []Media{m}, false); err != nil {
+	if _, err := st.AddPost("cid", "guest", ":)", "", []Media{m}, false); err != nil {
 		t.Fatal(err)
 	}
 	src, _ := st.MediaPath(m.ID)

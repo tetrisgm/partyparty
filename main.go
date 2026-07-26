@@ -51,6 +51,10 @@ var appVersion = "dev"
 // are intentionally disabled by App Store policy.
 var appStoreBuild = "0"
 
+func cloudDiagnosticsEnabled() bool {
+	return appStoreBuild != "1" && appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0"
+}
+
 // peekConn re-serves bytes already read off the wire (for first-byte sniffing).
 type peekConn struct {
 	net.Conn
@@ -79,8 +83,8 @@ func (l *chanListener) Addr() net.Addr            { return l.addr }
 
 // telemetryLoop ships /api/status snapshots to the cloud while broadcasting.
 func telemetryLoop(port int, bc *broadcast.Broadcaster) {
-	if appVersion == "dev" {
-		return // dev/`go run` instances must not pollute the install's cloud namespace
+	if !cloudDiagnosticsEnabled() {
+		return
 	}
 	id, secret := activate.InstallCreds()
 	if id == "" {
@@ -140,7 +144,7 @@ func main() {
 			embVer, _ = strconv.Atoi(strings.TrimSpace(string(b)))
 		}
 		contentBase := ""
-		if appStoreBuild != "1" && appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
+		if cloudDiagnosticsEnabled() {
 			base := os.Getenv("PARTYPARTY_BROKER")
 			if base == "" {
 				base = "https://partyparty.party"
@@ -153,7 +157,14 @@ func main() {
 				diagLog.Printf(f, a...)
 			}
 		}
-		if st, oerr := ota.Open(web, embVer, sd, contentBase, appVersion, diagf); oerr == nil {
+		var st *ota.Store
+		var oerr error
+		if appStoreBuild == "1" {
+			st, oerr = ota.OpenEmbedded(web, embVer, appVersion, diagf)
+		} else {
+			st, oerr = ota.Open(web, embVer, sd, contentBase, appVersion, diagf)
+		}
+		if oerr == nil {
 			payload = st
 		} else {
 			log.Printf("ota disabled: %v", oerr)
@@ -198,12 +209,6 @@ func main() {
 	}
 	deliveryFlag := cfg.Delivery // what the user asked for, pre-resolution
 
-	// LL-HLS is served over HTTPS; without a real (publicly-trusted) cert the
-	// self-signed cert on a bare LAN IP is rejected by iOS Safari, so guests would
-	// get a stream they can't play. "auto" therefore picks LL-HLS only when a real
-	// domain+cert is configured explicitly; otherwise plain HLS now, upgraded in
-	// the background by activation. Passing --delivery llhls explicitly still
-	// forces it (e.g. testing with a trusted self-signed cert on the phone).
 	// HTTPS + LL-HLS is the ONLY real-world delivery path — there is no silent
 	// plain-HLS downgrade. "auto" always resolves to LL-HLS; without a cert, Go
 	// Live is refused (fail loud) and the offline party rides the cached cert.
@@ -457,7 +462,7 @@ func main() {
 					return
 				}
 				if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
-					log.Printf("activate: mediamtx not ready after %s: %v — staying on plain HLS", source, err)
+					log.Printf("activate: mediamtx not ready after %s: %v — LL-HLS unavailable", source, err)
 					return
 				}
 				// Atomic idle-check + switch: a set that started during
@@ -479,7 +484,7 @@ func main() {
 		}
 		if applyActivation != nil {
 			if err := applyActivation(res.CertFile, res.KeyFile); err != nil {
-				log.Printf("activate: mediamtx config failed after %s: %v — staying on plain HLS", source, err)
+				log.Printf("activate: mediamtx config failed after %s: %v — LL-HLS unavailable", source, err)
 				return false
 			}
 		}
@@ -687,7 +692,7 @@ func main() {
 	// (R2 via the site Worker, authenticated with this install's broker
 	// identity) so playback problems can be analyzed after the fact — nobody
 	// transcribes numbers off phones mid-party. PARTYPARTY_TELEMETRY=0 disables.
-	if os.Getenv("PARTYPARTY_TELEMETRY") != "0" {
+	if cloudDiagnosticsEnabled() {
 		go telemetryLoop(cfg.Port, bc)
 	}
 
@@ -848,7 +853,9 @@ func main() {
 				}
 			}()
 		}
-		go uploadLogLoop(diagLog, bc)
+		if cloudDiagnosticsEnabled() {
+			go uploadLogLoop(diagLog, bc)
+		}
 	}
 
 	sig := make(chan os.Signal, 1)
@@ -857,7 +864,9 @@ func main() {
 
 	if diagLog != nil {
 		diagLog.Printf("shutting down (signal)")
-		uploadLogOnce(diagLog) // final flush — best effort, bounded
+		if cloudDiagnosticsEnabled() {
+			uploadLogOnce(diagLog) // final flush — best effort, bounded
+		}
 	}
 	bc.Stop()
 	if mtx != nil {
@@ -883,7 +892,7 @@ func cmdOut(name string, args ...string) string {
 // analyzable almost live. Same auth + namespace as telemetry;
 // PARTYPARTY_TELEMETRY=0 disables it all.
 func uploadLogLoop(dl *diag.Logger, bc *broadcast.Broadcaster) {
-	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" {
+	if !cloudDiagnosticsEnabled() {
 		return
 	}
 	for {
@@ -903,8 +912,8 @@ func uploadLogLoop(dl *diag.Logger, bc *broadcast.Broadcaster) {
 }
 
 func uploadLogOnce(dl *diag.Logger) {
-	if os.Getenv("PARTYPARTY_TELEMETRY") == "0" || appVersion == "dev" {
-		return // dev instances share the Mac's install.json — keep their noise local
+	if !cloudDiagnosticsEnabled() {
+		return
 	}
 	id, secret := activate.InstallCreds()
 	if id == "" {

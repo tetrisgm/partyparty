@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSaveMediaIsInvisibleUntilUploadCompletes(t *testing.T) {
+func TestSaveMediaPublishesCompletedUpload(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -24,9 +24,6 @@ func TestSaveMediaIsInvisibleUntilUploadCompletes(t *testing.T) {
 	if _, err := writer.Write([]byte("partial upload")); err != nil {
 		t.Fatal(err)
 	}
-	if files := st.MediaFiles(); len(files) != 0 {
-		t.Fatalf("MediaFiles exposed in-flight upload: %v", files)
-	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +34,7 @@ func TestSaveMediaIsInvisibleUntilUploadCompletes(t *testing.T) {
 	if got.media.Size != int64(len("partial upload")) {
 		t.Fatalf("saved size = %d", got.media.Size)
 	}
-	if files := st.MediaFiles(); len(files) != 1 {
-		t.Fatalf("MediaFiles after completion = %v, want one file", files)
+	if _, ok := st.MediaPath(got.media.ID); !ok {
+		t.Fatalf("completed media %q is unavailable", got.media.ID)
 	}
 }

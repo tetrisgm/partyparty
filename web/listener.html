@@ -192,9 +192,6 @@
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input{flex:1}
   .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
-  .welemail{margin-top:0}
-  .weloptional{color:var(--label-tertiary);font-weight:400}
-  .welnote{color:var(--label-tertiary);font-size:12px;line-height:1.35;margin-top:7px;text-align:left}
   .welemojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:10px}
   .welemojis[hidden]{display:none}
   .welemojis button{font-size:21px;background:transparent;border:none;border-radius:10px;padding:8px 0;cursor:pointer}
@@ -202,9 +199,6 @@
   .welgo{width:100%;margin-top:auto;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(255,45,85,.28)}
   .welgo:active{transform:scale(.98)}
   .welspace{flex:0 0 6dvh}
-  .saveall{display:inline-block;color:var(--accent);font-size:13px;font-weight:600;text-decoration:none;margin:0 2px 12px}
-  .saveall[hidden]{display:none}
-  .saveall:hover{text-decoration:underline}
   .djlinks{background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:13px 14px;margin:0 0 12px;box-shadow:var(--shadow)}
   .djlinks[hidden]{display:none}
   .djlinks h3{margin:0 0 9px;font-size:14px;letter-spacing:0;color:var(--label)}
@@ -376,7 +370,6 @@
   }
   .feedhead{font-size:22px;margin:20px 0 3px;color:var(--party-ink)}
   .feedsub{font-size:13px;color:var(--party-muted);margin:0 0 14px}
-  .saveall{color:var(--party-ink);font-weight:850}
   .album,.onlinecard,.djlinks,.post{
     background:var(--party-card);border:1px solid var(--party-line);box-shadow:0 10px 30px rgba(82,38,33,.1);
   }
@@ -585,7 +578,6 @@
   <!-- The party wall: pseudonymous posts + photos/videos from everyone here. -->
   <section class="feed" id="feedSec" hidden>
     <div class="feedhead" id="feedTitle">Party feed</div>
-    <a class="saveall" id="saveAll" href="/api/media.zip" hidden>⬇️ Take all the media home</a>
     <section class="album" id="albumSec" hidden>
       <div class="sectionrow">
         <h2>Photos &amp; videos</h2>
@@ -612,9 +604,6 @@
         <input id="welName" maxlength="40" autocomplete="off" placeholder="Your name" enterkeyhint="done">
       </div>
       <div class="welemojis" id="welEmojis" hidden></div>
-      <div class="wellabel">Email <span class="weloptional">(optional)</span></div>
-      <input id="welEmail" class="welemail" type="email" inputmode="email" autocapitalize="off" autocorrect="off" autocomplete="email" placeholder="you@example.com" enterkeyhint="done">
-      <div class="welnote" id="welEmailNote">You’ll get email updates from the party host.</div>
       <div class="welspace"></div>
       <button class="welgo" id="welGo" type="button">Let's party 🎉</button>
     </div>
@@ -2170,7 +2159,6 @@
         $id('welStarts').textContent = data.starts || '';
         $id('welName').value = myName;
         $id('welEmoji').textContent = myEmoji;
-        try { $id('welEmail').value = localStorage.getItem('pp.guestEmail') || ''; } catch (e) {}
         welOv.classList.add('show');
       }
       // Any FIRST touch on the welcome card (name field, emoji, shuffle…) is
@@ -2201,14 +2189,6 @@
         myEmoji = $id('welEmoji').textContent;
         persistGuestProfile();
         paintChip();
-        // Optional email from the join form → same private per-event store as the
-        // subscribe box (kept on the Mac, no account, no internet needed).
-        const joinEmail = ($id('welEmail').value || '').trim();
-        if (joinEmail && /.+@.+\..+/.test(joinEmail)) {
-          try { localStorage.setItem('pp.guestEmail', joinEmail); } catch (e) {}
-          fetch('/api/guest-contact', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cid, contact: joinEmail }) }).catch(() => {});
-        }
         welOv.classList.remove('show');
         userPaused = false;
         mediaSession(); // register lock-screen controls inside the gesture
@@ -2652,21 +2632,15 @@
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
           setEventCover(data.cover || '/covers/hero.jpg');
-          const welNote = $id('welEmailNote');
           if (data.host) {
             const hl = $id('hostedLine'); hl.textContent = 'hosted by ' + data.host; hl.hidden = false;
             guestHostName = data.host;
-            if (welNote) welNote.textContent = 'You’ll get email updates from ' + data.host + '.';
           } else {
             $id('hostedLine').hidden = true;
-            if (welNote) welNote.textContent = 'You’ll get email updates from the party host.';
           }
           const st = $id('startsLine');
           st.hidden = !data.starts; if (data.starts) st.textContent = data.starts;
           maybeWelcome(data);
-          const sa = $id('saveAll');
-          sa.hidden = !(featureOn('wallMode') && data.media > 0);
-          if (data.media > 0) sa.textContent = '⬇️ Take all the media home (' + data.media + (data.media === 1 ? ' file)' : ' files)');
           if (!featureOn('wallMode')) return true;
           // Prune what the server no longer returns: DJ-removed posts and,
           // after "Start a fresh wall", the previous wall's entries.
