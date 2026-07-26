@@ -28,9 +28,12 @@ checkInlineScripts('web/listener.html');
 checkInlineScripts('web/dj.html');
 
 const listener = read('web/listener.html');
-assert.match(listener, /const ROOM_TARGET_FALLBACK = 3\.0;/);
+assert.match(listener, /const ROOM_TARGET_FALLBACK = 1\.0;/);
 assert.match(listener, /const useNative = nativeHLS && \(isAppleUA \|\| iosShellBrowser\);/);
 assert.match(listener, /const UNTRACKED_REATTACH_CONFIRMATIONS = 10;/);
+assert.match(listener, /const GOV_TRIGGER = 0\.5;/);
+assert.match(listener, /const GOV_REATTACH_AT = 0\.75;/);
+assert.match(listener, /logEvent\('gov-reattach'/);
 assert.match(listener, /document\.visibilityState !== 'visible'/);
 assert.doesNotMatch(listener, /forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
@@ -42,10 +45,10 @@ assert.match(dj, /if \(linkReady\) renderQR\(guestUrl\);/);
 assert.match(dj, /Starting audio…/);
 
 const playback = read('internal/server/playback.go');
-assert.match(playback, /const roomLatencyTarget = 3\.0/);
+assert.match(playback, /const roomLatencyTarget = 1\.0/);
 
 const server = read('internal/server/server.go');
-assert.match(server, /#EXT-X-START:TIME-OFFSET=-%\.3f,PRECISE=YES/);
+assert.doesNotMatch(server, /EXT-X-START|rewriteLivePlaylist|PART-HOLD-BACK/);
 assert.doesNotMatch(server, /case "\/api\/delivery"/);
 assert.doesNotMatch(server, /"delivery":\s*s\.Broadcaster/);
 

@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const EVENT_RE = /^(\d\d):(\d\d):(\d\d)\.(\d{3}) \| ev\[(.*?)\] ([^ ]+)(?: (.*))?$/;
 const STREAM_READY_RE = /stream sync ready: generation=(\d+) real=([0-9.]+)s gaps=([0-9.]+)s holdback=([0-9.]+)s part=([0-9.]+)s target=([0-9.]+)s playlist=(.*)$/;
-const ROOM_TARGET_SEC = 3;
+const ROOM_TARGET_SEC = 1;
+const WARN_OPEN_LATENCY_SEC = 1.5;
+const MAX_OPEN_LATENCY_SEC = 2;
 const MAX_ROOM_SPREAD_MS = 1000;
 const KNOWN_KEYS = [
   'app', 'audible', 'audibleSeeks', 'before', 'buf', 'committed', 'err',
@@ -109,8 +111,8 @@ function summarizeSpread(samples, index) {
 
 function spreadWarnings(warnings, label, windows) {
   const max = Math.max(0, ...windows.map((window) => window.spreadMs));
-  if (max > MAX_ROOM_SPREAD_MS) {
-    warnings.push({ level: 'fail', message: `${label} spread reached ${max}ms; room ceiling is ${MAX_ROOM_SPREAD_MS}ms` });
+  if (max >= MAX_ROOM_SPREAD_MS) {
+    warnings.push({ level: 'fail', message: `${label} spread reached ${max}ms; room contract is below ${MAX_ROOM_SPREAD_MS}ms` });
   } else if (max > 500) {
     warnings.push({ level: 'warn', message: `${label} spread reached ${max}ms; preferred band is <=500ms` });
   }
@@ -193,18 +195,18 @@ export function analyzeText(text, source = '<stdin>') {
     if (Math.abs(ready.targetSec - ROOM_TARGET_SEC) > 0.01) {
       warnings.push({ level: 'fail', message: `stream target is ${ready.targetSec.toFixed(3)}s; fixed room contract is ${ROOM_TARGET_SEC.toFixed(3)}s` });
     }
-    if (ready.partTargetSec <= 0 || ready.holdbackSec + 0.001 < ready.partTargetSec * 3) {
-      warnings.push({ level: 'fail', message: `playlist PART-HOLD-BACK ${ready.holdbackSec.toFixed(3)}s is below 3x PART-TARGET ${ready.partTargetSec.toFixed(3)}s` });
+    if (ready.partTargetSec <= 0) {
+      warnings.push({ level: 'fail', message: `playlist has invalid PART-TARGET ${ready.partTargetSec.toFixed(3)}s` });
     }
   }
   for (const open of opens) {
     if (open.target !== null && Math.abs(open.target - ROOM_TARGET_SEC) > 0.01) {
       warnings.push({ level: 'fail', message: `${open.client} opened against target ${open.target.toFixed(3)}s instead of ${ROOM_TARGET_SEC.toFixed(3)}s` });
     }
-    if (open.lat !== null && open.lat > ROOM_TARGET_SEC + 6) {
-      warnings.push({ level: 'fail', message: `${open.client} opened ${open.lat.toFixed(3)}s behind, more than 6s past target` });
-    } else if (open.lat !== null && open.lat > ROOM_TARGET_SEC + 1) {
-      warnings.push({ level: 'warn', message: `${open.client} opened ${open.lat.toFixed(3)}s behind, outside the target +1s band` });
+    if (open.lat !== null && open.lat >= MAX_OPEN_LATENCY_SEC) {
+      warnings.push({ level: 'fail', message: `${open.client} opened ${open.lat.toFixed(3)}s behind; production latency must stay below ${MAX_OPEN_LATENCY_SEC.toFixed(1)}s` });
+    } else if (open.lat !== null && open.lat > WARN_OPEN_LATENCY_SEC) {
+      warnings.push({ level: 'warn', message: `${open.client} opened ${open.lat.toFixed(3)}s behind, outside the preferred ${WARN_OPEN_LATENCY_SEC.toFixed(1)}s band` });
     }
   }
   if (opens.length === 0) {

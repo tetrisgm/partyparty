@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -130,9 +129,9 @@ func New(d Deps) *Srv {
 		Deps: d, vendor: http.FileServer(http.FS(webFS)),
 		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL),
 	}}
-	// The /live proxy pins every player to the room target and normalizes
-	// MediaMTX's LL-HLS holdback to Apple's authoring requirement.
-	s.liveProxy = newLiveProxy(d.Config.HLSPort, s.syncTarget, "/live")
+	// The /live proxy keeps LL-HLS on the guest page's HTTPS origin without
+	// rewriting MediaMTX's low-latency playlist.
+	s.liveProxy = newLiveProxy(d.Config.HLSPort, "/live")
 	if _, err := os.Stat(audioProvenPath()); err == nil {
 		s.audioProven.Store(true)
 	}
@@ -170,15 +169,10 @@ func (s *srv) markAudioProven() {
 // newLiveProxy keeps the guest page and LL-HLS on one public HTTPS origin.
 // MediaMTX remains loopback-only from the Go server's point of view; guests no
 // longer need a second TLS connection to a second externally reachable port.
-func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string) http.Handler {
+func newLiveProxy(hlsPort int, prefix string) http.Handler {
 	upstream := fmt.Sprintf("127.0.0.1:%d", hlsPort)
 	return &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
-			// Ask MediaMTX for an editable playlist body. Recompress playlist
-			// responses for the guest below when the browser accepts gzip.
-			wantGzip := strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
-			*r = *r.WithContext(context.WithValue(r.Context(), liveProxyGzipKey{}, wantGzip))
-			r.Header.Del("Accept-Encoding")
 			r.URL.Scheme = "https"
 			r.URL.Host = upstream
 			r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
@@ -199,33 +193,6 @@ func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string) http.Ha
 			if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, prefix+"/") {
 				resp.Header.Set("Location", prefix+location)
 			}
-			if resp.Request != nil && resp.StatusCode == http.StatusOK &&
-				strings.HasSuffix(resp.Request.URL.Path, ".m3u8") {
-				body, err := io.ReadAll(resp.Body)
-				_ = resp.Body.Close()
-				if err != nil {
-					return err
-				}
-				body = rewriteLivePlaylist(body, roomTarget())
-				if gzipOK, _ := resp.Request.Context().Value(liveProxyGzipKey{}).(bool); gzipOK {
-					var compressed bytes.Buffer
-					zw := gzip.NewWriter(&compressed)
-					if _, err := zw.Write(body); err != nil {
-						return err
-					}
-					if err := zw.Close(); err != nil {
-						return err
-					}
-					body = compressed.Bytes()
-					resp.Header.Set("Content-Encoding", "gzip")
-					resp.Header.Add("Vary", "Accept-Encoding")
-				} else {
-					resp.Header.Del("Content-Encoding")
-				}
-				resp.Body = io.NopCloser(bytes.NewReader(body))
-				resp.ContentLength = int64(len(body))
-				resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
-			}
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -233,83 +200,6 @@ func newLiveProxy(hlsPort int, roomTarget func() float64, prefix string) http.Ha
 			http.Error(w, "live stream temporarily unavailable", http.StatusBadGateway)
 		},
 	}
-}
-
-type liveProxyGzipKey struct{}
-
-// rewriteLivePlaylist applies the two server-side controls native AVPlayer can
-// honor while locked: a common EXT-X-START deadline in the multivariant
-// playlist, and a PART-HOLD-BACK of at least 3x PART-TARGET in media playlists.
-func rewriteLivePlaylist(body []byte, target float64) []byte {
-	pl := string(body)
-	if strings.Contains(pl, "#EXT-X-STREAM-INF") && target > 0.5 && !strings.Contains(pl, "#EXT-X-START:") {
-		tag := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.3f,PRECISE=YES\n", target)
-		if i := strings.IndexByte(pl, '\n'); i >= 0 && strings.HasPrefix(pl, "#EXTM3U") {
-			pl = pl[:i+1] + tag + pl[i+1:]
-		} else {
-			pl = "#EXTM3U\n" + tag + pl
-		}
-	}
-
-	partTarget := playlistAttributeFloat(pl, "#EXT-X-PART-INF:", "PART-TARGET")
-	if partTarget <= 0 {
-		return []byte(pl)
-	}
-	minHoldBack := partTarget * 3
-	lines := strings.Split(pl, "\n")
-	for i, line := range lines {
-		if !strings.HasPrefix(line, "#EXT-X-SERVER-CONTROL:") {
-			continue
-		}
-		current := playlistAttributeFloat(line, "", "PART-HOLD-BACK")
-		if current+0.0000005 >= minHoldBack {
-			break
-		}
-		lines[i] = replacePlaylistAttribute(line, "PART-HOLD-BACK", strconv.FormatFloat(minHoldBack, 'f', 6, 64))
-		break
-	}
-	return []byte(strings.Join(lines, "\n"))
-}
-
-func playlistAttributeFloat(playlist, linePrefix, name string) float64 {
-	for _, line := range strings.Split(playlist, "\n") {
-		if linePrefix != "" && !strings.HasPrefix(line, linePrefix) {
-			continue
-		}
-		key := name + "="
-		start := strings.Index(line, key)
-		if start < 0 {
-			continue
-		}
-		start += len(key)
-		end := strings.IndexByte(line[start:], ',')
-		if end < 0 {
-			end = len(line) - start
-		}
-		value, err := strconv.ParseFloat(strings.Trim(strings.TrimSpace(line[start:start+end]), `"`), 64)
-		if err == nil {
-			return value
-		}
-	}
-	return 0
-}
-
-func replacePlaylistAttribute(line, name, value string) string {
-	key := name + "="
-	start := strings.Index(line, key)
-	if start < 0 {
-		separator := ","
-		if strings.HasSuffix(line, ":") {
-			separator = ""
-		}
-		return line + separator + key + value
-	}
-	valueStart := start + len(key)
-	valueEnd := strings.IndexByte(line[valueStart:], ',')
-	if valueEnd < 0 {
-		valueEnd = len(line) - valueStart
-	}
-	return line[:valueStart] + value + line[valueStart+valueEnd:]
 }
 
 // webFS is the live content source: the OTA payload store if present (which
@@ -1388,7 +1278,7 @@ func (s *srv) activationState() map[string]any {
 	return map[string]any{"ready": s.realCert(), "reason": reason}
 }
 
-func (s *srv) latencyTarget(_ broadcast.Status, _ string) float64 { return s.syncTarget() }
+func (s *srv) latencyTarget(_ broadcast.Status, _ string) float64 { return roomLatencyTarget }
 
 func lastN(s []string, n int) []string {
 	if len(s) <= n {

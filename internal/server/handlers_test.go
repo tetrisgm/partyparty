@@ -197,8 +197,8 @@ func TestStatusEndpoint(t *testing.T) {
 	if _, ok := body["delivery"]; ok {
 		t.Errorf("obsolete delivery selector leaked into status: %v", body["delivery"])
 	}
-	if body["latencyTarget"] != 3.0 {
-		t.Errorf("latencyTarget = %v, want 3", body["latencyTarget"])
+	if body["latencyTarget"] != 1.0 {
+		t.Errorf("latencyTarget = %v, want 1", body["latencyTarget"])
 	}
 	streamSync, ok := body["streamSync"].(map[string]any)
 	if !ok || streamSync["ready"] != false || streamSync["generation"] != 0.0 {
@@ -1160,7 +1160,7 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 		t.Fatalf("proxied redirect = %d location %q", w.Code, w.Header().Get("Location"))
 	}
 	w = do(env.srv, http.MethodGet, "/live/party/index.m3u8?cookieCheck=1&_HLS_msn=12&_HLS_part=3", "192.168.1.25:5000")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES") {
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "#EXT-X-START:") {
 		t.Fatalf("proxied playlist = %d %q", w.Code, w.Body.String())
 	}
 	if gotPath != "/party/index.m3u8" || gotQuery != "cookieCheck=1&_HLS_msn=12&_HLS_part=3" {
@@ -1171,20 +1171,11 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 	compressed := httptest.NewRecorder()
 	env.srv.ServeHTTP(compressed, req)
-	if compressed.Code != http.StatusOK || compressed.Header().Get("Content-Encoding") != "gzip" {
+	if compressed.Code != http.StatusOK || compressed.Header().Get("Content-Encoding") != "" {
 		t.Fatalf("gzip playlist = %d encoding %q", compressed.Code, compressed.Header().Get("Content-Encoding"))
 	}
-	zr, err := gzip.NewReader(compressed.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := io.ReadAll(zr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = zr.Close()
-	if !bytes.Contains(body, []byte("#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES")) {
-		t.Fatalf("compressed playlist was not rewritten:\n%s", body)
+	if strings.Contains(compressed.Body.String(), "#EXT-X-START:") {
+		t.Fatalf("playlist was unexpectedly delayed:\n%s", compressed.Body.String())
 	}
 }
 

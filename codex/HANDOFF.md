@@ -9,15 +9,15 @@ are retired.
 
 - AAC-LC, 320 kbps stereo, 48 kHz.
 - 500 ms segments, 150 ms parts, 48 retained segments.
-- One three-second room target.
-- The Go `/live` proxy injects a precise negative three-second `EXT-X-START`
-  into the multivariant playlist and enforces Apple's minimum three-part
-  `PART-HOLD-BACK`.
+- One 1.0-second client playout target.
+- The Go `/live` proxy passes MediaMTX's LL-HLS playlists through unchanged.
+  It does not add `EXT-X-START` or inflate `PART-HOLD-BACK`.
 - Apple browsers always use native `<audio>`/AVPlayer. This is non-negotiable:
   background and lock-screen playback must continue.
 - There is no startup seek loop. The visible-only governor may make a
   forward-only correction into already buffered media after two sustained
-  measurements more than 750 ms late. It never runs hidden or locked.
+  measurements more than 500 ms late. Its landing point stays one LL-HLS part
+  behind the seekable edge. It never runs hidden or locked.
 - Non-Apple browsers use one hls.js profile with the same target.
 
 The old delivery endpoint, public delivery state, request bitrate/mono knobs,
@@ -31,10 +31,10 @@ required supervised gate before touching the protected encoder/capture cleanup:
 
 1. Start a real DJ capture and join at least four phones within 30 seconds.
 2. Confirm every phone becomes audible with no refresh and no startup seek.
-3. Compare the phones acoustically. Maximum phone-to-phone spread is 1.0 second;
+3. Compare the phones acoustically. Phone-to-phone spread must stay below 1.0 second;
    0.5 second or less is the preferred result.
-4. Confirm measured latency clusters around the three-second target. Investigate
-   any open above four seconds and fail any open above nine seconds.
+4. Confirm measured latency clusters around the one-second target. Investigate
+   any open above 1.5 seconds and fail any open at or above two seconds.
 5. Lock every phone for at least 20 minutes. Audio must remain smooth and
    continuous; no web governor action may occur while hidden.
 6. Unlock two phones, background/foreground Safari, and interrupt one network

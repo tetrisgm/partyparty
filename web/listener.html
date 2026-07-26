@@ -669,7 +669,7 @@
     // LOW-LATENCY ONLY. Loading the guest page already proved DNS + TLS work,
     // and every player receives the same HTTPS LL-HLS stream.
     let LLSTREAM = null;
-    const ROOM_TARGET_FALLBACK = 3.0;
+    const ROOM_TARGET_FALLBACK = 1.0;
     let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let timelineOriginMs = null;
@@ -686,9 +686,8 @@
       || (/Version\/[\d.]+.*Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)); // real Safari
     // Chrome/Firefox/Edge on iOS are WebKit shells: same native HLS player as
     // Safari underneath, but their (Managed)MSE support is flaky — hls.js there
-    // synced noticeably worse in the field. Route them to the NATIVE pipeline
-    // (identical to Safari, EXT-X-START honored) instead of telling people to
-    // switch browsers.
+    // synced noticeably worse in the field. Route them to the same native
+    // live-edge pipeline as Safari instead of telling people to switch browsers.
     const iosShellBrowser = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
     // One engine per platform. Apple always uses native AVPlayer because it is
     // smooth and keeps playing while the phone is locked. Other browsers use
@@ -753,7 +752,7 @@
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
     // out of the temporal dead zone so that path can never throw.
-    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'gov-seek': 1, 'gov-error': 1, 'audible-seek': 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
+    const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, 'untracked-reconnect': 1, stall: 1, rebuffer: 1, 'gov-seek': 1, 'gov-reattach': 1, 'gov-error': 1, 'audible-seek': 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
     let evSeq = 0, evStart = Date.now();
     const rnd = (x) => (x == null || isNaN(x) ? null : Math.round(x * 10) / 10);
@@ -1090,20 +1089,11 @@
         const cfg = {
           preferManagedMediaSource: true,
           lowLatencyMode: true,
-          // Sit ~3s behind live — that gap IS the jitter buffer, sized for
-          // RELIABILITY over a low number. The field report was "cuts off all the
-          // time," so the cushion is now deep enough to coast through a
-          // multi-second Wi-Fi dropout instead of starving to buf=0. 1.3s was the
-          // tight floor that still cut off; 3s trades ~1.7s of latency for no
-          // cutoffs (the owner's explicit call). Dial back only once the field is
-          // provably stall-free.
+          // Non-Apple browsers use the same one-second room target. Apple stays
+          // on native AVPlayer for smooth lock-screen playback.
           liveSyncDuration: target,
-          // With a 3s cushion the catch-up stays gentle — it rarely needs to reel
-          // in, and a soft 1.15x is inaudible on music. Hard-snap only if we fall
-          // >9s behind (essentially never at a 3s target); a snap is an audible
-          // skip we don't want to trigger on ordinary jitter. (The 4.5->5.6s
-          // ratchet is fixed upstream — the capture tee drops instead of
-          // back-pressuring; see internal/broadcast/broadcast.go.)
+          // Catch up gently when possible; only a gross network stall reaches
+          // the hard latency ceiling.
           liveMaxLatencyDuration: target + 6,
           maxLiveSyncPlaybackRate: 1.15,
           liveDurationInfinity: true,
@@ -1166,9 +1156,9 @@
       catch (e) { setStatus('player error — reload the page'); return false; }
     }
 
-    // The server's EXT-X-START pin is the startup synchronizer. The page never
-    // seeks during startup; it opens the native player directly and measures
-    // the achieved PROGRAM-DATE-TIME latency after playback begins.
+    // Native AVPlayer joins MediaMTX's LL-HLS live edge directly. The page never
+    // seeks during startup; it measures PROGRAM-DATE-TIME latency after playback
+    // begins and only corrects sustained drift while the phone is visible.
     const SYNC_WARN_AT = 1.0;
     const JOIN_WATCHDOG_MS = 15000;
     let attachGeneration = 0, audibleGeneration = -1, openedGeneration = -1;
@@ -1499,15 +1489,26 @@
     // the tab is hidden/locked — the 2s heartbeat is frozen there, so no seek is
     // attempted mid-lock and native audio keeps playing untouched; (d) a seek that
     // fails to commit falls back to reattach() so the player is never left wedged.
-    const GOV_TRIGGER = 0.75;       // keep healthy measured spread below one second
+    const GOV_TRIGGER = 0.5;        // correct before a healthy peer can drift a full second away
     const GOV_CONFIRMATIONS = 2;    // sustained beats before one correction
-    const GOV_FWD_TOL = 0.75;       // minimum forward jump; a smaller correction isn't worth a skip
-    const GOV_EDGE_MARGIN = 0.9;    // land at least this far off the live edge (inside the 24s window)
-    const GOV_BUF_SAFETY = 0.3;     // land at least this far inside the buffered end, never at it
+    const GOV_FWD_TOL = 0.35;       // correct a half-second drift before peer spread reaches one second
+    const GOV_EDGE_MARGIN = 0.2;    // one LL-HLS part behind the seekable edge
+    const GOV_BUF_SAFETY = 0.1;     // stay inside downloaded media, never at its raw end
     const GOV_COOLDOWN_MS = 5000;   // minimum gap between governor seeks
     const GOV_CAP_PER_MIN = 6;      // beyond this, escalate to one reattach and back off (persistent lateness)
+    const GOV_REATTACH_AT = 0.75;    // no safe seek target: rejoin only for a materially late visible phone
     const UNTRACKED_REATTACH_CONFIRMATIONS = 10;
     let govBeats = 0, govCoolingUntil = 0, govSeekTimes = [];
+    function governorBlocked(reason, lat, lateBy){
+      govBeats = 0;
+      if (lateBy < GOV_REATTACH_AT) return;
+      const now = Date.now();
+      govCoolingUntil = now + GOV_COOLDOWN_MS * 3;
+      govSeekTimes = [];
+      sumRecovers++;
+      logEvent('gov-reattach', { why: reason, lat: rnd3(lat), late: rnd3(lateBy) });
+      reattach('gov-' + reason);
+    }
     function inBufferedStrict(buffered, t){
       try { for (let i = 0; i < buffered.length; i++) if (buffered.start(i) <= t && t <= buffered.end(i)) return true; } catch (e) {}
       return false;
@@ -1529,17 +1530,17 @@
       if (lateBy <= GOV_TRIGGER) { govBeats = 0; return; }        // hysteresis reset — not (yet) late enough
       if (++govBeats < GOV_CONFIRMATIONS) return;                 // require SUSTAINED lateness, not a blip
       const sk = player.seekable;
-      if (!sk || !sk.length) { govBeats = 0; return; }
+      if (!sk || !sk.length) { governorBlocked('no-seekable', lat, lateBy); return; }
       const bufEnd = bufferedEndHere();
-      if (bufEnd <= 0) { govBeats = 0; return; }                  // playhead not inside a buffered range
+      if (bufEnd <= 0) { governorBlocked('no-buffer', lat, lateBy); return; }
       const low = sk.start(0) + 0.5;
       // Clamp to BOTH the seekable window AND what is actually downloaded, so the
       // target can never land past the buffered edge (a gap) or at the raw edge.
       const high = Math.min(sk.end(sk.length - 1) - GOV_EDGE_MARGIN, bufEnd - GOV_BUF_SAFETY);
-      if (high <= low) { govBeats = 0; return; }
+      if (high <= low) { governorBlocked('no-landing', lat, lateBy); return; }
       const wanted = Math.min(Math.max(player.currentTime + (lat - targetLat), low), high);
       if (wanted <= player.currentTime + GOV_FWD_TOL) { govBeats = 0; return; } // FORWARD-ONLY (the whole safety story)
-      if (!inBufferedStrict(player.buffered, wanted)) { govBeats = 0; return; } // never seek into a gap
+      if (!inBufferedStrict(player.buffered, wanted)) { governorBlocked('buffer-gap', lat, lateBy); return; }
       const now = Date.now();
       govSeekTimes = govSeekTimes.filter(t => now - t < 60000);
       if (govSeekTimes.length >= GOV_CAP_PER_MIN) {               // persistently late -> one reattach, then back off

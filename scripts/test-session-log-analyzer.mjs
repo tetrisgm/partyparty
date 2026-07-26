@@ -12,13 +12,13 @@ assert.deepEqual(parseFields('+1200ms #7 lat=3.125 target=3 app=true why=join'),
 });
 
 const good = `
-03:01:01.100 | stream sync ready: generation=1 real=3.021s gaps=14.037s holdback=0.513s part=0.171s target=3.000s playlist=2026-07-26T03:01:01Z
-03:01:04.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] audio-open +2900ms #1 why=join target=3 lat=3.050 joinMs=2900 ref=pdt rate=1 seeks=0
-03:01:04.200 | ev[iPhone B | 192.168.1.11 cid-b.tab-b v115.87 guest] audio-open +3100ms #1 why=join target=3 lat=3.350 joinMs=3100 ref=pdt rate=1 seeks=0
-03:01:12.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] health +10900ms #2 lat=3.100 buf=2.5 ref=pdt
-03:01:12.200 | ev[iPhone B | 192.168.1.11 cid-b.tab-b v115.87 guest] health +11100ms #2 lat=3.400 buf=2.2 ref=pdt
-03:01:20.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] gov-seek +18900ms #3 lat=4.1 late=1.1 before=20 want=21.1
-03:01:20.010 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] audible-seek +18910ms #4 pos=21.1 lat=3 app=true
+03:01:01.100 | stream sync ready: generation=1 real=1.021s gaps=14.037s holdback=0.427s part=0.171s target=1.000s playlist=2026-07-26T03:01:01Z
+03:01:04.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] audio-open +2900ms #1 why=join target=1 lat=1.050 joinMs=2900 ref=pdt rate=1 seeks=0
+03:01:04.200 | ev[iPhone B | 192.168.1.11 cid-b.tab-b v115.87 guest] audio-open +3100ms #1 why=join target=1 lat=1.350 joinMs=3100 ref=pdt rate=1 seeks=0
+03:01:12.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] health +10900ms #2 lat=1.100 buf=2.5 ref=pdt
+03:01:12.200 | ev[iPhone B | 192.168.1.11 cid-b.tab-b v115.87 guest] health +11100ms #2 lat=1.400 buf=2.2 ref=pdt
+03:01:20.000 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] gov-seek +18900ms #3 lat=1.8 late=0.8 before=20 want=20.8
+03:01:20.010 | ev[iPhone A | 192.168.1.10 cid-a.tab-a v115.87 guest] audible-seek +18910ms #4 pos=20.8 lat=1 app=true
 `;
 
 let summary = analyzeText(good, 'good.log');
@@ -32,17 +32,15 @@ assert.equal(summary.clients[0].governorSeeks, 1);
 assert.deepEqual(summary.warnings, []);
 
 const badContract = good
-  .replace('holdback=0.513s', 'holdback=0.400s')
-  .replace('target=3.000s', 'target=4.000s');
+  .replace('target=1.000s', 'target=4.000s');
 summary = analyzeText(badContract, 'bad-contract.log');
 assert.ok(summary.warnings.some((warning) => warning.message.includes('fixed room contract')));
-assert.ok(summary.warnings.some((warning) => warning.message.includes('below 3x PART-TARGET')));
 
 const wide = `
-03:02:00.000 | ev[iPhone A] audio-open +3000ms #1 why=join target=3 lat=3.0 joinMs=3000 ref=pdt
-03:02:00.100 | ev[iPhone B] audio-open +3100ms #1 why=join target=3 lat=4.2 joinMs=3100 ref=pdt
-03:02:12.000 | ev[iPhone A] health +15000ms #2 lat=3.0 buf=2 ref=pdt
-03:02:12.100 | ev[iPhone B] health +15100ms #2 lat=4.3 buf=2 ref=pdt
+03:02:00.000 | ev[iPhone A] audio-open +3000ms #1 why=join target=1 lat=1.0 joinMs=3000 ref=pdt
+03:02:00.100 | ev[iPhone B] audio-open +3100ms #1 why=join target=1 lat=2.2 joinMs=3100 ref=pdt
+03:02:12.000 | ev[iPhone A] health +15000ms #2 lat=1.0 buf=2 ref=pdt
+03:02:12.100 | ev[iPhone B] health +15100ms #2 lat=2.3 buf=2 ref=pdt
 `;
 summary = analyzeText(wide, 'wide.log');
 assert.equal(summary.startup.maxSpreadMs, 1200);

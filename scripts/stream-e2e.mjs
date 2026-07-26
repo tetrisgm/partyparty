@@ -368,16 +368,14 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
   });
   log(`PASS server stream readiness: generation=${syncReady.streamSync.generation} real=${syncReady.streamSync.realHistory.toFixed(3)}s gaps=${syncReady.streamSync.gapHistory.toFixed(3)}s target=${syncReady.latencyTarget.toFixed(3)}s`);
 
-  // The Go /live proxy must inject the EXT-X-START room-start pin into the
-  // multivariant playlist so every device begins at the same offset with no
-  // client seek. It must match the advertised room target.
+  // The Go /live proxy must pass MediaMTX's low-latency playlist through
+  // without adding a server-side start delay.
   {
     const mv = await getInsecure(`https://127.0.0.1:${tlsPort}/live/party/index.m3u8`);
-    const m = /#EXT-X-START:TIME-OFFSET=(-?[0-9.]+)/.exec(mv.body || '');
-    if (!m) fail(`multivariant playlist missing EXT-X-START pin (status ${mv.status}):\n${(mv.body || '').slice(0, 300)}`);
-    const off = Math.abs(parseFloat(m[1]));
-    if (Math.abs(off - syncReady.latencyTarget) > 0.02) fail(`EXT-X-START offset ${off}s != room target ${syncReady.latencyTarget}s`);
-    log(`PASS EXT-X-START pin present: TIME-OFFSET=-${off.toFixed(3)}s == room target`);
+    if (/#EXT-X-START:/.test(mv.body || '')) {
+      fail(`multivariant playlist contains a server-added start delay:\n${(mv.body || '').slice(0, 300)}`);
+    }
+    log('PASS multivariant playlist has no server-added start delay');
 
     const variant = mv.body.split(/\r?\n/).find((line) => line && !line.startsWith('#'));
     if (!variant) fail(`multivariant playlist has no media variant:\n${mv.body.slice(0, 300)}`);
@@ -385,10 +383,10 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     const media = await getInsecure(mediaUrl, 5000, 5, mv.cookie);
     const part = Number(/PART-TARGET=([0-9.]+)/.exec(media.body || '')?.[1]);
     const holdback = Number(/PART-HOLD-BACK=([0-9.]+)/.exec(media.body || '')?.[1]);
-    if (!(part > 0) || !(holdback + 0.001 >= part * 3)) {
-      fail(`media playlist has invalid part holdback: part=${part} holdback=${holdback}\n${(media.body || '').slice(0, 500)}`);
+    if (!(part > 0) || !(holdback > part) || holdback >= 0.75) {
+      fail(`media playlist is not in the low-latency band: part=${part} holdback=${holdback}\n${(media.body || '').slice(0, 500)}`);
     }
-    log(`PASS media playlist holdback: ${holdback.toFixed(3)}s >= 3 x ${part.toFixed(3)}s`);
+    log(`PASS MediaMTX low-latency holdback passed through: ${holdback.toFixed(3)}s`);
   }
 
   return {
@@ -1026,6 +1024,7 @@ async function syncState(page) {
       muted: p?.muted ?? true,
       readyState: p?.readyState || 0,
       rate: p?.playbackRate || 0,
+      platform: typeof platform === 'string' ? platform : 'unknown',
       startDateValid,
       seekableStart,
       seekableEnd,
@@ -1071,6 +1070,7 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
         errorA: Number.isFinite(a.target) ? a.latency - a.target : null,
         errorB: Number.isFinite(b.target) ? b.latency - b.target : null,
         rawA: a.currentTime, rawB: b.currentTime, rateA: a.rate, rateB: b.rate,
+        platformA: a.platform, platformB: b.platform,
         refA: a.ref, refB: b.ref,
         audibleA: a.audibleSeeks, audibleB: b.audibleSeeks,
       });
@@ -1088,8 +1088,12 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   const targetErrors = samples.flatMap((s) => [s.errorA, s.errorB]).filter(Number.isFinite).map(Math.abs).sort((a, b) => a - b);
   const targetMedian = targetErrors[Math.floor(targetErrors.length / 2)];
   const targetP90 = targetErrors[Math.min(targetErrors.length - 1, Math.floor(targetErrors.length * 0.9))];
-  if (samples.some((s) => Math.abs(s.rateA - 1) > 0.001 || Math.abs(s.rateB - 1) > 0.001)) {
-    fail(`room sync changed playback rate: ${JSON.stringify(samples)}`);
+  if (samples.some((s) =>
+    (s.platformA === 'native' && Math.abs(s.rateA - 1) > 0.001)
+    || (s.platformB === 'native' && Math.abs(s.rateB - 1) > 0.001)
+    || (s.platformA === 'hls' && (s.rateA < 0.95 || s.rateA > 1.15))
+    || (s.platformB === 'hls' && (s.rateB < 0.95 || s.rateB > 1.15)))) {
+    fail(`room sync used an invalid playback rate: ${JSON.stringify(samples)}`);
   }
   if (samples.some((s) => s.refA !== 'pdt' || s.refB !== 'pdt')) {
     fail(`room sync did not use each player's PROGRAM-DATE-TIME: ${JSON.stringify(samples)}`);
@@ -1099,12 +1103,11 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   if (targetErrors.length !== samples.length * 2 || samples.some((s) => !Number.isFinite(s.targetA) || Math.abs(s.targetA - s.targetB) > 0.001)) {
     fail(`room sync targets diverged across listeners: ${JSON.stringify(samples)}`);
   }
-  // The product invariant: no HUGE device-to-device gaps. ~1s is livable (closer
-  // to 0 is better — the EXT-X-START pin chases that); a gross gap is the failure.
-  // Gate only on a clean room — the drift scenario injects an offset on purpose
-  // (passive playback must not chase it), so a wide spread there is correct.
-  if (!allowInjectedSeek && p90 > 1.0) {
-    fail(`room sync gap too wide: p90=${p90.toFixed(3)}s median=${median.toFixed(3)}s (want <1.0s): ${JSON.stringify(samples)}`);
+  // The product invariant: device-to-device spread stays below one second.
+  // Gate clean-room startup separately from the deliberate late-phone recovery
+  // scenario, where one app-governed forward correction is expected.
+  if (!allowInjectedSeek && p90 >= 1.0) {
+    fail(`room sync gap too wide: p90=${p90.toFixed(3)}s median=${median.toFixed(3)}s (must stay below 1.0s): ${JSON.stringify(samples)}`);
   }
   if (!allowInjectedSeek && samples.some((s) => s.audibleA > 0 || s.audibleB > 0)) {
     fail(`clean-room playback required an audible correction: ${JSON.stringify(samples)}`);
@@ -1112,12 +1115,12 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedSe
   // The product boundary is sub-second device-to-device timing. A tighter
   // controller caused audible seek loops on real iPhones, so this test protects
   // the accepted range while continuity tests below protect uninterrupted play.
-  if (median > 1.0 || p90 > 1.0) {
+  if (median >= 1.0 || p90 >= 1.0) {
     fail(`two-client sync spread too wide: median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
   // The product contract remains sub-second to the common deadline, while the
   // separate spread check catches peer disagreement.
-  if (targetMedian > 1.0 || targetP90 > 1.0) {
+  if (targetMedian >= 1.0 || targetP90 >= 1.0) {
     fail(`listeners missed the authoritative deadline: median error=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s samples=${JSON.stringify(samples)}`);
   }
   log(`PASS browser room-sync ${label}: peers=${aMedian.toFixed(3)}s/${bMedian.toFixed(3)}s; spread median=${median.toFixed(3)}s p90=${p90.toFixed(3)}s; deadline error median=${targetMedian.toFixed(3)}s p90=${targetP90.toFixed(3)}s (${samples.length} samples, local PDT)`);
@@ -1175,11 +1178,11 @@ async function assertInjectedDriftIsolation(first, second) {
   ]);
   await startContinuityProbe(first);
   await startContinuityProbe(second);
-  const injected = await injectDrift(second, 0.65);
+  const injected = await injectDrift(second, -0.65);
   if (!injected || Math.abs(injected.after - injected.before) < 0.5) {
-    fail(`could not inject the 650ms field drift: ${JSON.stringify(injected)}`);
+    fail(`could not inject the 650ms late-phone drift: ${JSON.stringify(injected)}`);
   }
-  log(`>> injected field drift: ${(injected.after - injected.before).toFixed(3)}s`);
+  log(`>> injected late-phone drift: ${(injected.after - injected.before).toFixed(3)}s`);
   await waitFor(async () => !(await second.evaluate(() => document.getElementById('player').seeking)), {
     timeoutMs: 5000,
     label: 'injected seek to settle',
