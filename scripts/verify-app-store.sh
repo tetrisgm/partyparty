@@ -34,6 +34,8 @@ done
 [ ! -e "$APP/Contents/Frameworks/Sparkle.framework" ] || fail "Sparkle is bundled"
 [ ! -e "$APP/Contents/Library/LaunchDaemons" ] || fail "LaunchDaemons are bundled"
 [ ! -e "$APP/Contents/Library/PrivilegedHelperTools" ] || fail "privileged helpers are bundled"
+unreadable="$(find "$APP" ! -perm -o+r -print -quit)"
+[ -z "$unreadable" ] || fail "bundle item is not world-readable: $unreadable"
 
 PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 [ -f "$PRIVACY" ] || fail "PrivacyInfo.xcprivacy is missing"
@@ -80,6 +82,9 @@ if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
   /usr/bin/security cms -D -i "$APP/Contents/embedded.provisionprofile" > "$work/profile.plist"
   app_id="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$work/profile.plist")"
   [[ "$app_id" = *".$EXPECTED_BUNDLE_ID" ]] || fail "profile application identifier is $app_id"
+  signed_app_id="$(entitlement_value "$APP" com.apple.application-identifier)"
+  [ "$signed_app_id" = "$app_id" ] ||
+    fail "signed application identifier $signed_app_id does not match profile $app_id"
 elif [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
   fail "distribution build has no provisioning profile"
 fi

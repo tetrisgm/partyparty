@@ -75,6 +75,7 @@ if [ "$APP_STORE" = "1" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${APP_STORE_BUNDLE_ID:-fm.partyparty.app}" "$APP/Contents/Info.plist"
   if [ -n "${APP_STORE_PROVISIONING_PROFILE:-}" ]; then
     cp "$APP_STORE_PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
+    chmod 644 "$APP/Contents/embedded.provisionprofile"
   fi
 else
   mkdir -p "$APP/Contents/Library/LaunchDaemons"
