@@ -215,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let appMenu = NSMenu()
         appItem.submenu = appMenu
         _ = appMenu.addItem(withTitle: "About \(appName)",
-                            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+                            action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(.separator())
         _ = appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
@@ -242,5 +242,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.windowsMenu = window
 
         return main
+    }
+
+    @objc private func showAbout() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationVersion: version,
+            .version: "",
+        ])
     }
 }

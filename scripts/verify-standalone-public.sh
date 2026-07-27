@@ -17,5 +17,9 @@ cmp "$ZIP" "$TMP/immutable.zip"
 cmp "$ZIP" "$TMP/stable.zip"
 grep -q "sparkle:edSignature=" "$TMP/appcast.xml"
 grep -q "<sparkle:version>$BUILD</sparkle:version>" "$TMP/appcast.xml"
-grep -q "\"standaloneBuild\":\"$BUILD\"" "$TMP/version.json"
+grep -q "\"version\":\"$VERSION\"" "$TMP/version.json"
+if grep -q '"standaloneBuild"' "$TMP/version.json"; then
+  echo "Internal build number leaked through the public version endpoint." >&2
+  exit 1
+fi
 grep -q 'href="/partyparty-beta.zip"' "$TMP/site.html"
