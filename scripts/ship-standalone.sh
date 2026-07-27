@@ -35,9 +35,9 @@ grep -q "sparkle:version=\"$BUILD\"" "$APPCAST"
 
 (
   cd cloudflare
-  "$WRANGLER" deploy
   "$WRANGLER" r2 object put "partyparty-dl/standalone/$ZIP_NAME" --file "$ZIP" --content-type application/zip --remote
   "$WRANGLER" r2 object put "partyparty-dl/standalone/partyparty-beta.zip" --file "$ZIP" --content-type application/zip --remote
+  "$WRANGLER" deploy
   "$WRANGLER" r2 object put "partyparty-dl/standalone/appcast.xml" --file "$APPCAST" --content-type application/xml --remote
 )
 
