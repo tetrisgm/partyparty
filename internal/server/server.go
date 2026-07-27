@@ -70,6 +70,8 @@ type srv struct {
 	actLast    activate.Result
 	actLastSet bool
 
+	peersMu sync.RWMutex
+
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
 	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
@@ -235,6 +237,16 @@ func (s *Srv) SetActivationPending(reason string) {
 		s.actReason = reason
 	}
 	s.actMu.Unlock()
+}
+
+// SetPeers installs discovery after asynchronous secure-link activation. Fresh
+// Store installs do not have a broker hostname when the server is constructed,
+// so discovery cannot be treated as a launch-only dependency.
+func (s *Srv) SetPeers(directory *peers.Directory, peerID string) {
+	s.peersMu.Lock()
+	s.Peers = directory
+	s.PeerID = peerID
+	s.peersMu.Unlock()
 }
 
 // SetStreamHealth records the go-live health verdict (main.go's health check).
@@ -664,6 +676,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *srv) peerState() peers.Peer {
+	s.peersMu.RLock()
+	peerID := s.PeerID
+	s.peersMu.RUnlock()
 	bc := s.Broadcaster.Status()
 	name := strings.TrimSpace(s.Config.Name)
 	if s.Events != nil {
@@ -677,7 +692,7 @@ func (s *srv) peerState() peers.Peer {
 	syncState := s.streamSyncState(bc, roomLatencyTarget)
 	ready, _ := syncState["ready"].(bool)
 	return peers.Peer{
-		ID:        s.PeerID,
+		ID:        peerID,
 		Name:      name,
 		RoomURL:   s.urls().Primary,
 		StreamURL: s.llhlsURL(),
@@ -687,10 +702,13 @@ func (s *srv) peerState() peers.Peer {
 }
 
 func (s *srv) peerList() []peers.Peer {
-	if s.Peers == nil {
+	s.peersMu.RLock()
+	directory := s.Peers
+	s.peersMu.RUnlock()
+	if directory == nil {
 		return []peers.Peer{}
 	}
-	out := s.Peers.Peers()
+	out := directory.Peers()
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Name == out[j].Name {
 			return out[i].ID < out[j].ID

@@ -214,20 +214,9 @@ func main() {
 		}
 	}
 
-	peerID, _ := activate.InstallCreds()
-	if peerID == "" {
-		peerID = activate.InstallHostLabel()
-	}
 	peerCtx, stopPeers := context.WithCancel(context.Background())
 	var peerDirectory *peers.Directory
-	if host := activationHost(); peerID != "" && host != "" {
-		if directory, derr := peers.New(peerCtx, peerID, host, cfg.TLSPort); derr != nil {
-			log.Printf("peer discovery unavailable: %v", derr)
-		} else {
-			peerDirectory = directory
-			log.Printf("peer discovery: advertising %s as %s", host, peerID)
-		}
-	}
+	peerID, _ := activate.InstallCreds()
 
 	handler := server.New(server.Deps{
 		Config:      cfg,
@@ -242,6 +231,27 @@ func main() {
 		Diag:        diagLog,
 		Version:     appVersion,
 	})
+	startPeerDiscovery := func(host string) {
+		if peerDirectory != nil || host == "" {
+			return
+		}
+		id, _ := activate.InstallCreds()
+		if id == "" {
+			id = activate.InstallHostLabel()
+		}
+		if id == "" {
+			return
+		}
+		directory, derr := peers.New(peerCtx, id, host, cfg.TLSPort)
+		if derr != nil {
+			log.Printf("peer discovery unavailable: %v", derr)
+			return
+		}
+		peerDirectory = directory
+		handler.SetPeers(directory, id)
+		log.Printf("peer discovery: advertising %s as %s", host, id)
+	}
+	startPeerDiscovery(activationHost())
 
 	// tcp4, NOT tcp: on some Macs `net.Listen("tcp", ...)` binds an IPv6-only
 	// socket, and if that machine's IPv6 loopback (::1) is also broken, NOTHING
@@ -348,6 +358,7 @@ func main() {
 			return false
 		}
 		handler.SetActivation(res.Host)
+		startPeerDiscovery(res.Host)
 		markActivationEngaged()
 		log.Printf("activate: secure link ready from %s — %s", source, res.Host)
 		return true

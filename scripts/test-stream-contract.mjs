@@ -36,6 +36,9 @@ assert.match(listener, /const OUTLIER_COOLDOWN_MS = 30000;/);
 assert.match(listener, /const OUTLIER_MAX_REATTACHES = 2;/);
 assert.match(listener, /logEvent\('outlier-reattach'/);
 assert.match(listener, /document\.visibilityState !== 'visible'/);
+assert.match(listener, /<div class="djpickerhead">Now Playing<\/div>[\s\S]*?<div class="feedhead" id="feedTitle">Party feed<\/div>/);
+assert.match(listener, /discoveredPeers\.forEach\(\(peer\) =>/);
+assert.match(listener, /activePeerID === peer\.id \? 'Now playing'/);
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');
@@ -55,6 +58,9 @@ assert.doesNotMatch(server, /case "\/api\/delivery"/);
 assert.doesNotMatch(server, /"delivery":\s*s\.Broadcaster/);
 assert.match(server, /Privacy_AudioCapture/);
 assert.doesNotMatch(server, /Privacy_ScreenCapture|Screen & System Audio Recording/);
+
+const main = read('main.go');
+assert.match(main, /startPeerDiscovery\(res\.Host\)/);
 
 const config = read('internal/config/config.go');
 assert.match(config, /c\.Bitrate = "320k"/);

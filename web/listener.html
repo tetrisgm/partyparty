@@ -321,11 +321,12 @@
   .guestline{
     order:5;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 12px;
   }
-  .djpicker{order:6;width:100%;margin:0 0 14px;padding:10px;background:rgba(255,255,255,.42);border:1px solid var(--party-line);border-radius:12px}
+  .djpicker{width:100%;margin:0 0 18px;padding:0}
   .djpicker[hidden]{display:none}
-  .djpickerhead{font-size:11px;font-weight:800;color:var(--party-muted);text-transform:uppercase;margin:0 2px 7px}
-  .djlist{display:grid;gap:6px}
-  .djchoice{width:100%;min-height:44px;border:1px solid transparent;border-radius:8px;background:rgba(255,255,255,.44);color:var(--party-ink);padding:7px 10px;display:flex;align-items:center;gap:9px;text-align:left;cursor:pointer}
+  .djpickerhead{font-size:22px;font-weight:800;color:var(--label);margin:0 2px 10px}
+  .djlist{display:flex;gap:8px;overflow-x:auto;padding:1px 1px 8px;scrollbar-width:none}
+  .djlist::-webkit-scrollbar{display:none}
+  .djchoice{flex:0 0 min(280px,82vw);min-height:58px;border:1px solid var(--separator);border-radius:8px;background:#fff;color:var(--label);padding:9px 12px;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.05)}
   .djchoice.active{border-color:var(--accent);background:#fff0f4}
   .djchoice:disabled{opacity:.45;cursor:default}
   .djdot{width:9px;height:9px;border-radius:50%;background:var(--label-tertiary);flex:0 0 auto}
@@ -531,10 +532,6 @@
       <div class="avatars" id="guestAvatars"></div>
       <button class="guestcountbtn" id="guestCountBtn" type="button">Guest list</button>
     </div>
-    <section class="djpicker" id="djPicker" hidden aria-label="DJs on this Wi-Fi">
-      <div class="djpickerhead">DJs on this Wi-Fi</div>
-      <div class="djlist" id="djList"></div>
-    </section>
     <div class="count" id="count"></div>
     <div class="reactions" id="reactionBar" hidden>
       <button class="reactbtn" type="button" data-react="fire" aria-label="Fire" title="Fire">🔥</button>
@@ -593,6 +590,10 @@
 
   <!-- The party wall: pseudonymous posts + photos/videos from everyone here. -->
   <section class="feed" id="feedSec" hidden>
+    <section class="djpicker" id="djPicker" aria-label="Now Playing">
+      <div class="djpickerhead">Now Playing</div>
+      <div class="djlist" id="djList"></div>
+    </section>
     <div class="feedhead" id="feedTitle">Party feed</div>
     <section class="album" id="albumSec" hidden>
       <div class="sectionrow">
@@ -1099,18 +1100,16 @@
           setStatus('DJ disconnected');
         }
       }
-      const visible = discoveredPeers.length > 0;
-      djPicker.hidden = !visible;
+      djPicker.hidden = false;
       djList.textContent = '';
-      if (!visible) {
-        activePeerID = '';
-        return;
-      }
       const local = document.createElement('button');
       local.type = 'button';
-      local.className = 'djchoice live' + (activePeerID ? '' : ' active');
+      const localReady = live && streamReady;
+      local.className = 'djchoice' + (localReady ? ' live' : '') + (activePeerID ? '' : ' active');
+      local.disabled = !!activePeerID && !localReady;
       local.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
-        escapeHTML(guestHostName || 'This DJ') + '</b><small>This room</small></span>';
+        escapeHTML(guestHostName || 'This DJ') + '</b><small>' +
+        (!activePeerID ? 'Now playing' : (localReady ? 'Play' : 'Not live')) + '</small></span>';
       local.addEventListener('click', () => selectDJ(''));
       djList.appendChild(local);
       discoveredPeers.forEach((peer) => {
@@ -1121,7 +1120,8 @@
         button.disabled = !peer.live || !peer.ready || !peer.streamUrl;
         button.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
           escapeHTML(peer.name || 'PartyParty DJ') + '</b><small>' +
-          (peer.live ? (peer.ready ? 'Live · tap to switch' : 'Preparing stream') : 'Not live') +
+          (activePeerID === peer.id ? 'Now playing' :
+            (peer.live ? (peer.ready ? 'Play' : 'Preparing stream') : 'Not live')) +
           '</small></span>';
         button.addEventListener('click', () => selectDJ(peer.id));
         djList.appendChild(button);
