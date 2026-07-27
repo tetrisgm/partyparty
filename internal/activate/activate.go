@@ -147,7 +147,14 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 		return res
 	}
 
-	obs := observeResolver(ctx, host, lanIP)
+	// DNS agreement is readiness evidence, not certificate provisioning. Keep
+	// this first observation short so a fresh/stale venue resolver cannot hold
+	// the usable certificate and concrete status result behind a minute-long
+	// retry loop. The activation loop retries the complete observation on its
+	// own backoff until the resolver catches up.
+	resolveCtx, resolveCancel := context.WithTimeout(ctx, 2*time.Second)
+	obs := observeResolver(resolveCtx, host, lanIP)
+	resolveCancel()
 	res.ResolverMatches = obs.Matches
 	if !obs.Matches {
 		res.ReasonCode = ReasonResolverMismatch
@@ -470,30 +477,22 @@ func (o ResolverObservation) describe() string {
 }
 
 // observeResolver queries the network's configured resolver (PreferGo bypasses
-// the macOS mDNSResponder negative cache on the DJ's own Mac only). It retries
-// briefly for propagation, then returns structured evidence — no rebind
-// classification, no authoritative cross-check.
+// the macOS mDNSResponder negative cache on the DJ's own Mac only). One
+// observation returns structured evidence; callers own retry policy so DNS
+// propagation can never block certificate activation.
 func observeResolver(ctx context.Context, host, lanIP string) ResolverObservation {
 	res := &net.Resolver{PreferGo: true}
-	var last ResolverObservation
-	for i := 0; i < 12; i++ {
-		addrs, err := res.LookupHost(ctx, host)
-		last = ResolverObservation{Host: host, ExpectedIP: lanIP, Addrs: addrs, Err: err, At: time.Now()}
-		if err == nil {
-			for _, a := range addrs {
-				if a == lanIP {
-					last.Matches = true
-					return last
-				}
+	addrs, err := res.LookupHost(ctx, host)
+	obs := ResolverObservation{Host: host, ExpectedIP: lanIP, Addrs: addrs, Err: err, At: time.Now()}
+	if err == nil {
+		for _, a := range addrs {
+			if a == lanIP {
+				obs.Matches = true
+				break
 			}
 		}
-		select {
-		case <-ctx.Done():
-			return last
-		case <-time.After(5 * time.Second):
-		}
 	}
-	return last
+	return obs
 }
 
 // VerifyResolves reports nil when the network's resolver returns lanIP for host,
