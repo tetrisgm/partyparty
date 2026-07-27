@@ -882,7 +882,7 @@ func TestGuestPostsAreImmediatelyVisibleAndDeleteRoutesWork(t *testing.T) {
 
 func TestPostOnlyEndpoints(t *testing.T) {
 	env := newTestEnv(t, nil)
-	for _, p := range []string{"/api/start", "/api/stop", "/api/shutdown", "/api/open-settings", "/api/link-install"} {
+	for _, p := range []string{"/api/start", "/api/stop", "/api/shutdown", "/api/open-settings"} {
 		w := do(env.srv, "GET", p, "")
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("GET %s = %d, want 405", p, w.Code)
@@ -915,7 +915,6 @@ func TestDJControlEndpointsRejectedFromLAN(t *testing.T) {
 		{http.MethodPost, "/api/start?device=test"},
 		{http.MethodPost, "/api/stop"},
 		{http.MethodPost, "/api/open-settings?pane=audio"},
-		{http.MethodPost, "/api/link-install"},
 		{http.MethodGet, "/api/devices"},
 	} {
 		w := do(env.srv, tc.method, tc.path, "192.168.1.44:3333")
@@ -928,21 +927,8 @@ func TestDJControlEndpointsRejectedFromLAN(t *testing.T) {
 	}
 }
 
-func TestLinkInstallRejectsBadCode(t *testing.T) {
-	env := newTestEnv(t, nil)
-	body := bytes.NewBufferString(`{"code":"not-a-code"}`)
-	w := doBody(env.srv, "POST", "/api/link-install", djAddr, "application/json", body)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("link-install bad code = %d, want 400", w.Code)
-	}
-	if body := decodeJSON(t, w); body["error"] != "bad code" {
-		t.Errorf("error = %v", body["error"])
-	}
-}
-
 func TestStartValidationAndLifecycle(t *testing.T) {
 	env := newTestEnv(t, nil)
-	env.srv.setAccountActivated(true) // past the activation gate; this test covers device/lifecycle
 
 	w := do(env.srv, "POST", "/api/start", djAddr)
 	if w.Code != http.StatusBadRequest {
@@ -996,7 +982,6 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 
 func TestStartStopCreatesDJFeedPosts(t *testing.T) {
 	env := newTestEnv(t, nil)
-	env.srv.setAccountActivated(true)
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

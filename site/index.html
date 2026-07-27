@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>partyparty — the party, on every phone</title>
-<meta name="description" content="A free macOS app for silent-disco DJ popups. Your Mac is the venue: guests scan a QR and the music plays on their phones — perfectly together, no app, no account, no internet required.">
+<meta name="description" content="A macOS app for silent-disco DJ popups. Your Mac is the venue: guests scan a QR and the music plays on their phones — perfectly together, no app, no account, no internet required.">
 <meta property="og:title" content="partyparty">
 <meta property="og:description" content="Turn your Mac into the venue. Guests scan a QR and the music plays on every phone — together. No app, no account.">
 <meta property="og:type" content="website">
@@ -106,7 +106,6 @@
   <div class="nav-in">
     <a class="brand" href="/">🕺 partyparty</a>
     <span class="nav-sp"></span>
-    <a class="nav-a hide-sm" id="nav-auth" href="/login">Sign in</a>
     <a class="nav-dl" href="/partyparty.pkg">Download</a>
   </div>
 </nav>
@@ -174,17 +173,11 @@
 </section>
 
 <footer>
-  <div class="fine">PartyParty · <a href="/login">Sign in</a> · <a href="/faq">FAQ</a> · <a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <span id="yr">2026</span></div>
+  <div class="fine">PartyParty · <a href="/faq">FAQ</a> · <a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <span id="yr">2026</span></div>
 </footer>
 
 <script>
   document.getElementById('yr').textContent = new Date().getFullYear();
-  // Signed-in visitors get "Account" instead of "Sign in".
-  const navAuth = document.getElementById('nav-auth');
-  fetch('/api/me', { credentials:'same-origin', cache:'no-store' })
-    .then(r => r.ok ? r.json() : null)
-    .then(j => { if (j && j.user && navAuth) { navAuth.textContent = 'Account'; navAuth.href = '/account'; } })
-    .catch(() => {});
   fetch('/api/version', { cache:'no-store' })
     .then(r => r.json())
     .then(v => {

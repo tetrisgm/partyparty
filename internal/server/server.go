@@ -72,25 +72,12 @@ type srv struct {
 	actReason  string // why activation isn't ready yet (console pending state)
 	actLast    activate.Result
 	actLastSet bool
-	// accActivated: this Mac's DJ account is linked, or running on a cached
-	// prior activation (offline party after first sign-in). The console requires
-	// it before it renders and /api/start refuses without it. Default false =
-	// blocked, so a never-activated or signed-out install cannot go live.
-	// Refreshed by the /api/account/status handler that the console polls.
-	accActivated bool
-
-	// Last /api/account/status result, so the console's activation poll does not
-	// broker-roundtrip every 2s. Guarded by accStatusMu.
-	accStatusMu sync.Mutex
-	accStatus   accountStatusCache
 
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
 	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
 	clientEvN  int32    // global event ceiling — a rotating cid can't defeat this
 	clientCIDs int32    // distinct-cid ceiling — a rotating cid can't grow clientLogN without bound
-
-	devNoLoginLogOnce sync.Once
 
 	// streamHealthNote: set by the go-live health check (main.go) when the
 	// broadcast reports "live" but MediaMTX has no publisher on the path —
@@ -127,7 +114,7 @@ func New(d Deps) *Srv {
 	}
 	s := &Srv{srv{
 		Deps: d, vendor: http.FileServer(http.FS(webFS)),
-		limits: newLimiter(), accStatus: newAccountStatusCache(accountStatusCacheTTL),
+		limits: newLimiter(),
 	}}
 	// The /live proxy keeps LL-HLS on the guest page's HTTPS origin without
 	// rewriting MediaMTX's low-latency playlist.
@@ -274,30 +261,6 @@ func (s *Srv) SetActivationPending(reason string) {
 	s.actMu.Unlock()
 }
 
-// setAccountActivated latches this process "activated" the first time the DJ
-// account shows linked (or offline-cached-linked). The /api/account/status
-// handler the console polls calls it; /api/start reads it. It only ever latches
-// TRUE — a later sign-out/revoke never blocks a live party mid-set; it takes
-// effect on the next launch (fresh process starts back at false). Default false
-// means a never-activated install cannot go live.
-func (s *srv) setAccountActivated(v bool) {
-	if !v {
-		return
-	}
-	s.actMu.Lock()
-	s.accActivated = true
-	s.actMu.Unlock()
-}
-
-func (s *srv) accountActivated() bool {
-	if s.devNoLogin() {
-		return true
-	}
-	s.actMu.Lock()
-	defer s.actMu.Unlock()
-	return s.accActivated
-}
-
 // SetStreamHealth records the go-live health verdict (main.go's health check).
 // Empty = healthy (guests can hear); non-empty = a DJ-facing warning that the
 // broadcast shows "live" but the guest stream never reached MediaMTX.
@@ -311,67 +274,6 @@ func (s *srv) streamHealthText() string {
 	s.healthMu.Lock()
 	defer s.healthMu.Unlock()
 	return s.streamHealthNote
-}
-
-const accountStatusCacheTTL = 15 * time.Second
-
-type accountStatusSource func() (activate.AccountState, error)
-
-type accountStatusCache struct {
-	ttl       time.Duration
-	status    activate.AccountState
-	checkedAt time.Time
-	set       bool
-}
-
-func newAccountStatusCache(ttl time.Duration) accountStatusCache {
-	return accountStatusCache{ttl: ttl}
-}
-
-func (c *accountStatusCache) lookup(now func() time.Time, fresh bool, source accountStatusSource) (activate.AccountState, bool, error) {
-	if !fresh && c.set && c.ttl > 0 && now().Sub(c.checkedAt) < c.ttl {
-		return c.status, false, nil
-	}
-	status, err := source()
-	c.status = status
-	c.checkedAt = now()
-	c.set = true
-	return status, true, err
-}
-
-func (c *accountStatusCache) clear() {
-	ttl := c.ttl
-	*c = accountStatusCache{ttl: ttl}
-}
-
-func (s *srv) cachedAccountStatus(fresh bool, source accountStatusSource) activate.AccountState {
-	s.accStatusMu.Lock()
-	defer s.accStatusMu.Unlock()
-	status, _, _ := s.accStatus.lookup(time.Now, fresh, source)
-	return status
-}
-
-func (s *srv) clearAccountStatusCache() {
-	s.accStatusMu.Lock()
-	s.accStatus.clear()
-	s.accStatusMu.Unlock()
-}
-
-func (s *srv) devNoLogin() bool {
-	if os.Getenv("PP_DEV_NO_LOGIN") != "1" {
-		return false
-	}
-	active := s.Version == "dev"
-	if s.Diag != nil {
-		s.devNoLoginLogOnce.Do(func() {
-			if active {
-				s.Diag.Printf("WARNING: PP_DEV_NO_LOGIN=1 active; DJ account activation is bypassed for local development")
-				return
-			}
-			s.Diag.Printf("WARNING: PP_DEV_NO_LOGIN=1 ignored; app version %q is not a dev build", s.Version)
-		})
-	}
-	return active
 }
 
 func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -588,143 +490,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		received := time.Now().UnixMilli()
 		sent := time.Now().UnixMilli()
 		writeJSON(w, http.StatusOK, map[string]any{"t": sent, "received": received, "sent": sent})
-	case "/api/account/status":
-		if !s.requireDJ(w, r) {
-			return
-		}
-		if s.devNoLogin() {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"ok":        true,
-				"linked":    true,
-				"devBypass": true,
-				"checkedMs": time.Now().UnixMilli(),
-			})
-			return
-		}
-		broker := os.Getenv("PARTYPARTY_BROKER")
-		if broker == "" {
-			broker = "https://partyparty.party"
-		}
-		fresh := r.URL.Query().Get("fresh") == "1"
-		status := s.cachedAccountStatus(fresh, func() (activate.AccountState, error) {
-			status, err := activate.AccountStatus(broker, func(format string, args ...any) {
-				if s.Diag != nil {
-					s.Diag.Printf(format, args...)
-				}
-			})
-			// status.Linked is true both online-linked and offline-cached-linked
-			// (the cache only ever returns Linked when this Mac was linked before),
-			// so it is the single activation signal. It latches the process
-			// activated; a sign-out re-gates on the next launch, not mid-session.
-			s.setAccountActivated(status.Linked)
-			return status, err
-		})
-		writeJSON(w, http.StatusOK, status)
-	case "/api/account/sign-out":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		broker := os.Getenv("PARTYPARTY_BROKER")
-		if broker == "" {
-			broker = "https://partyparty.party"
-		}
-		if err := activate.SignOutAccount(broker, func(format string, args ...any) {
-			if s.Diag != nil {
-				s.Diag.Printf(format, args...)
-			}
-		}); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		}
-		s.clearAccountStatusCache()
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	case "/api/account/open":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		broker := os.Getenv("PARTYPARTY_BROKER")
-		if broker == "" {
-			broker = "https://partyparty.party"
-		}
-		_ = exec.Command("open", strings.TrimRight(broker, "/")+"/account").Start()
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	case "/api/account/profile":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		broker := os.Getenv("PARTYPARTY_BROKER")
-		if broker == "" {
-			broker = "https://partyparty.party"
-		}
-		_ = exec.Command("open", strings.TrimRight(broker, "/")+"/profile/edit").Start()
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	case "/api/link-install/start":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		broker := os.Getenv("PARTYPARTY_BROKER")
-		if broker == "" {
-			broker = "https://partyparty.party"
-		}
-		linkURL, err := activate.StartInstallLink(broker, func(format string, args ...any) {
-			if s.Diag != nil {
-				s.Diag.Printf(format, args...)
-			}
-		})
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		}
-		// inapp=1: the native app hosts sign-in in its own in-app window (no
-		// browser bounce), so just hand back the URL. Otherwise (browser
-		// fallback / dev) open the system browser as before.
-		if r.URL.Query().Get("inapp") != "1" {
-			_ = exec.Command("open", linkURL).Start()
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "url": linkURL})
-	case "/api/link-install":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		var body struct{ Code string }
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
-			return
-		}
-		broker := os.Getenv("PARTYPARTY_BROKER")
-		if broker == "" {
-			broker = "https://partyparty.party"
-		}
-		handle, err := activate.LinkInstall(broker, body.Code, func(format string, args ...any) {
-			if s.Diag != nil {
-				s.Diag.Printf(format, args...)
-			}
-		})
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "handle": handle})
 	case "/api/client-log":
 		// Guest-side error reports into the session diagnostics. Field lesson:
 		// a phone whose JOIN button silently fails never heartbeats — it was
@@ -875,13 +640,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !s.requireDJ(w, r) {
-			return
-		}
-		// Activation gate: the app requires a linked DJ account (or a cached prior
-		// activation for offline use) before it can go live. Guests are never
-		// touched by this — only this localhost-only DJ action.
-		if !s.accountActivated() {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "not_activated"})
 			return
 		}
 		q := r.URL.Query()

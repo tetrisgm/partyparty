@@ -22,7 +22,6 @@
   *{box-sizing:border-box;letter-spacing:0!important}
   body{margin:0;padding-bottom:40px;overflow-x:hidden;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
-  body.account-locked{padding-bottom:0;overflow:hidden}
   [hidden]{display:none!important}
   .authgate{position:sticky;top:0;z-index:50;background:var(--bg-elevated);border-bottom:1px solid var(--separator);padding:9px 16px;box-shadow:var(--shadow)}
   .authbanner-in{display:flex;align-items:center;gap:12px;flex-wrap:wrap;max-width:1120px;margin:0 auto}
@@ -66,12 +65,7 @@
   .settings-section:first-of-type{border-top:none;padding-top:0;margin-top:0}
   .settings-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
   .settings-title h3{font-size:15px;line-height:1.25;margin:0;color:var(--label)}
-  .accountbox{border:1px solid var(--separator);border-radius:var(--r-sm);background:var(--bg-elevated-2);padding:12px;display:grid;gap:9px}
-  .accountrow{display:flex;justify-content:space-between;gap:14px;border-top:1px solid var(--separator);padding-top:9px;color:var(--label-secondary)}
-  .accountrow:first-child{border-top:none;padding-top:0}
-  .accountrow b{font-weight:600;color:var(--label);text-align:right;word-break:break-word}
-  .account-empty{font-size:13px;color:var(--label-secondary);line-height:1.45}
-  .account-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .support-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   button.dangertext{color:var(--danger)}
   header.eventhead{max-width:680px;margin:0 auto;padding:30px 24px 16px;display:block}
   .eventhead-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
@@ -448,25 +442,7 @@
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
 </style>
 </head>
-<body class="account-locked">
-<div id="authGate" class="authgate blocking">
-  <div class="authbanner-in">
-    <span class="gate-brand">partyparty beta</span>
-    <span class="gate-title" id="accountTitle">partyparty · early access</span>
-    <span class="gate-explain" id="accountExplain">Link this Mac once so partyparty can provision its secure Wi-Fi address. After that, the room can run without internet.</span>
-    <div class="auth-steps" aria-label="First-run steps">
-      <span>1. Sign in once</span>
-      <span>2. Pick your audio source</span>
-      <span>3. Go Live — guests scan a QR</span>
-    </div>
-    <span class="authbanner-msg" id="accountMsg" role="status">Verifying this Mac's account.</span>
-    <span class="authbanner-actions">
-      <button class="go" id="accountSignInBtn" type="button">Sign in / Sign up</button>
-    </span>
-    <button class="lt sm" id="accountBrowserBtn" type="button" hidden style="margin-top:10px">Having trouble? Open sign-in in your browser</button>
-    <div class="auth-meta" id="accountMeta" hidden></div>
-  </div>
-</div>
+<body>
 
 <div id="appChrome">
 <!-- ADMIN ACTION BAR: everything the DJ operates — source, sharing, settings,
@@ -707,26 +683,10 @@
     <h2 style="margin:0 0 14px">Settings</h2>
 
     <section class="settings-section">
-      <div class="settings-title">
-        <h3>Account</h3>
-        <span class="statebadge pending" id="accountSettingsBadge">Checking</span>
-      </div>
-      <div class="accountbox" id="settingsAccount">
-        <div class="account-empty">Checking account...</div>
-      </div>
-      <div class="account-actions">
-        <button class="ghost" id="accountOpenBtn" type="button">Manage account</button>
-        <button class="ghost" id="accountRefreshBtn" type="button">Refresh</button>
-        <button class="ghost dangertext" id="accountSignOutBtn" type="button">Sign out</button>
-      </div>
-      <div class="account-actions">
+      <div class="support-actions">
         <button class="ghost" id="privacyBtn" type="button">Privacy policy</button>
         <button class="ghost" id="supportBtn" type="button">Support</button>
       </div>
-      <div id="accountSettingsMsg" class="hint" style="display:none"></div>
-    </section>
-
-    <section class="settings-section">
       <div id="inapp" style="display:none;margin-top:14px">
         <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
         <div class="hint" style="margin:5px 0 0">Optional. partyparty stays off at login unless you enable this.</div>
@@ -779,8 +739,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 
 <script>
 /* ── Early error boundary ──────────────────────────────────────────────────
-   MUST be the first script. The console body ships gated (class="account-locked")
-   and ~430 lines of top-level init run below before this page's own error
+   MUST be the first script. Hundreds of lines of top-level init run below
+   before this page's own error
    listeners get registered — so historically ANY throw during init (an older
    WebKit, a stale saved value) halted the script silently and left the body
    blank: a white screen with no beacon and no error report. This ES5-only guard
@@ -817,7 +777,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         '<div style="font-size:40px;line-height:1;margin-bottom:14px">🎧</div>' +
         '<div style="font-size:17px;font-weight:600;margin-bottom:6px">Let’s refresh the console</div>' +
         '<div style="font-size:13px;line-height:1.45;color:#6e6e73;margin-bottom:20px">Something got stuck ' +
-        'while loading. Resetting clears saved settings on this Mac and reloads — your account and party ' +
+        'while loading. Resetting clears saved settings on this Mac and reloads — your party ' +
         'stay intact.</div>' +
         '<button id="__ppBootReset" type="button" style="font:inherit;font-size:14px;font-weight:590;' +
         'background:#0071e3;color:#fff;border:0;border-radius:980px;padding:10px 22px;cursor:pointer">' +
@@ -874,273 +834,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   const escT = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let qrText = null, lastState = 'idle';
 
-  let accountLinked = false;
-  // Startup activation latch: once this Mac shows linked (online or on a cached
-  // prior activation), the console unlocks and STAYS unlocked for the session —
-  // a later sign-out/revoke never locks a live party mid-set; it takes effect on
-  // the next launch. Matches the server-side accActivated latch.
-  let consoleActivated = false;
-  let currentAccountState = null;
-  let accountPoll = null;
-  let accountRetryTimer = null;
-  let accountRetryDelayMs = 3000;
-  let accountSigningIn = false;
   let refreshTimer = null;
-  let accountWatchTimer = null;
-  const ACCOUNT_GATE_TITLE = 'partyparty · early access';
-  const ACCOUNT_GATE_EXPLANATION = 'Link this Mac once so partyparty can provision its secure Wi-Fi address. After that, the room can run without internet.';
-  const ACCOUNT_OFFLINE_MESSAGE = 'You’re offline — connect to the internet once to activate, then partyparty works offline at your venue.';
-  const ACCOUNT_SIGNING_MESSAGE = 'Finish signing in — partyparty unlocks here automatically.';
-  const ACCOUNT_RETRY_MIN_MS = 3000;
-  const ACCOUNT_RETRY_MAX_MS = 30000;
-
-  function accountName(st){
-    const host = accountHostName(st);
-    if (host) return host;
-    const user = st && st.user || {};
-    return user.email || 'your account';
-  }
-  function accountHostName(st){
-    const profile = st && st.profile || {};
-    const user = st && st.user || {};
-    return profile.displayName || (profile.handle ? '@' + profile.handle : '') || user.displayName || '';
-  }
-  function accountEmail(st){
-    const user = st && st.user || {};
-    return user.email || '';
-  }
-  function accountCheckedText(st){
-    const n = Number(st && st.checkedMs || 0);
-    if (!n) return '';
-    try { return new Date(n).toLocaleString(); } catch (e) { return ''; }
-  }
-  function stopAccountRetry(){
-    if (accountRetryTimer) clearTimeout(accountRetryTimer);
-    accountRetryTimer = null;
-  }
-  function stopAccountPoll(){
-    if (accountPoll) clearInterval(accountPoll);
-    accountPoll = null;
-    accountSigningIn = false;
-  }
-  function scheduleAccountRetry(){
-    if (consoleActivated || accountLinked || accountSigningIn) return;
-    stopAccountRetry();
-    const delay = accountRetryDelayMs || ACCOUNT_RETRY_MIN_MS;
-    accountRetryTimer = setTimeout(() => {
-      accountRetryTimer = null;
-      loadAccountStatus({ silent: true });
-    }, delay);
-    accountRetryDelayMs = Math.min(delay * 2, ACCOUNT_RETRY_MAX_MS);
-  }
-  function renderSettingsAccount(st){
-    const box = $('settingsAccount');
-    const badge = $('accountSettingsBadge');
-    if (!box || !badge) return;
-    const linked = !!(st && st.linked);
-    const err = st && st.error;
-    badge.className = 'statebadge' + (linked ? '' : (err ? ' hidden' : ' pending'));
-    badge.textContent = linked ? 'Signed in' : (err ? 'Needs sign in' : 'Signed out');
-    $('accountOpenBtn').textContent = linked ? 'Manage account' : 'Sign in / Sign up';
-    $('accountSignOutBtn').style.display = linked ? '' : 'none';
-    if (!linked) {
-      box.innerHTML = '<div class="account-empty">' +
-        (err ? 'This Mac is not linked to an account. Sign in or sign up to verify the app, link this Mac, and enable secure guest links.' :
-          'Not signed in. Sign in or sign up to verify the app, link this Mac, and enable secure guest links.') +
-        '</div>';
-      return;
-    }
-    const install = st.install || {};
-    const license = st.license || {};
-    const hostName = accountHostName(st);
-    const rows = [
-      ['Account', accountName(st)],
-      ['Email', accountEmail(st) || 'No email on file'],
-      ['DJ name', hostName || 'Set the host name on the event'],
-      ['This Mac', install.slug || install.id || 'Linked'],
-      ['Guest host', install.host || 'Assigned when online'],
-      ['License', license.ok ? 'Verified' : (license.reason || 'Needs review')],
-    ];
-    if (st.offline) rows.push(['Offline', 'Using saved verification on this Mac']);
-    const checked = accountCheckedText(st);
-    if (checked) rows.push(['Checked', checked]);
-    box.innerHTML = rows.map(row => '<div class="accountrow"><span>' + escT(row[0]) + '</span><b>' + escT(row[1]) + '</b></div>').join('');
-  }
-  function renderAccountState(st, checking){
-    const linked = !!(st && st.linked);
-    const gate = $('authGate');
-    const msg = $('accountMsg');
-    const title = $('accountTitle');
-    const explain = $('accountExplain');
-    currentAccountState = st || null;
-    accountLinked = linked;
-    renderSettingsAccount(st || { linked: false });
-    if (title) title.textContent = ACCOUNT_GATE_TITLE;
-    if (explain) explain.textContent = ACCOUNT_GATE_EXPLANATION;
-    // Activation model: the app requires a linked account before it runs. Once
-    // this Mac shows linked (online, or offline on a cached prior activation),
-    // latch consoleActivated so the console stays up for the whole session — a
-    // later sign-out never locks a live party; it re-gates on the next launch.
-    if (linked) consoleActivated = true;
-    if (consoleActivated) {
-      stopAccountRetry();
-      if (linked) stopAccountPoll();
-      gate.hidden = true;
-      gate.classList.remove('blocking');
-      document.body.classList.remove('account-locked');
-      startConsoleRefresh();
-      return;
-    }
-    // Not activated this session — block everything. No console, no capture, no
-    // Go Live until the DJ signs in (which links this Mac to an account).
-    stopConsoleRefresh();
-    gate.hidden = false;
-    gate.classList.add('blocking');
-    document.body.classList.add('account-locked');
-    $('accountMeta').hidden = true;
-    if (checking) {
-      msg.className = 'authbanner-msg';
-      msg.textContent = 'Checking whether this Mac is linked.';
-      return;
-    }
-    if (accountSigningIn) {
-      msg.className = 'auth-status' + (st && st.error ? ' error' : '');
-      msg.textContent = (st && st.error) ? ACCOUNT_OFFLINE_MESSAGE : ACCOUNT_SIGNING_MESSAGE;
-      return;
-    }
-    msg.className = 'authbanner-msg' + (st && st.error ? ' error' : '');
-    msg.textContent = (st && st.error) ? ACCOUNT_OFFLINE_MESSAGE : 'Sign in once to activate this Mac. Guests still join over Wi-Fi with no account.';
-    scheduleAccountRetry();
-  }
-  async function loadAccountStatus(opts){
-    opts = opts || {};
-    if (!opts.silent) renderAccountState(null, true);
-    try {
-      const url = opts.fresh ? '/api/account/status?fresh=1' : '/api/account/status';
-      const r = await fetch(url, { cache: 'no-store' });
-      const st = await r.json().catch(() => ({}));
-      if (!r.ok && !st.error) st.error = 'account check failed';
-      renderAccountState(st, false);
-      return st;
-    } catch (e) {
-      const st = { linked: false, error: e && e.message ? e.message : 'account check failed' };
-      renderAccountState(st, false);
-      return st;
-    }
-  }
-  async function openAccountFromSettings(){
-    const btn = $('accountOpenBtn');
-    const msg = $('accountSettingsMsg');
-    const linked = !!(currentAccountState && currentAccountState.linked);
-    msg.style.display = 'block';
-    msg.textContent = linked ? 'Opening your account in the browser...' : 'Opening sign-in…';
-    btn.disabled = true;
-    try {
-      if (!linked) {
-        await startAccountSignIn();
-        msg.textContent = 'Finish signing in — the app unlocks automatically.';
-        return;
-      }
-      const r = await fetch('/api/account/open', { method: 'POST' });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'Could not open account.');
-      msg.textContent = 'Account opened in your browser.';
-    } catch (e) {
-      msg.textContent = e && e.message ? e.message : 'Could not open account.';
-    } finally {
-      btn.disabled = false;
-    }
-  }
-  async function signOutAccount(){
-    const btn = $('accountSignOutBtn');
-    const msg = $('accountSettingsMsg');
-    btn.disabled = true;
-    msg.style.display = 'block';
-    msg.textContent = 'Signing out...';
-    try {
-      const r = await fetch('/api/account/sign-out', { method: 'POST' });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'Could not sign out.');
-      msg.textContent = 'Signed out.';
-      $('settingsSheet').classList.remove('show');
-      await loadAccountStatus({ fresh: true });
-    } catch (e) {
-      msg.textContent = e && e.message ? e.message : 'Could not sign out.';
-    } finally {
-      btn.disabled = false;
-    }
-  }
-  function startAccountPoll(){
-    accountSigningIn = true;
-    stopAccountRetry();
-    if (accountPoll) clearInterval(accountPoll);
-    accountPoll = setInterval(() => loadAccountStatus({ silent: true }), 2000);
-  }
-  async function startAccountSignIn(){
-    // In the native app, host sign-in in an in-app window (no browser bounce,
-    // no polling): ask Go for the one-time link URL, hand it to native, and let
-    // it call window.ppAccountLinked() when the bind lands. Outside the app
-    // (dev browser) fall back to the system browser + status poll.
-    const inApp = !!(window.ppNative && window.webkit?.messageHandlers?.pp);
-    const btn = $('accountSignInBtn');
-    const msg = $('accountMsg');
-    stopAccountPoll();
-    accountSigningIn = true;
-    stopAccountRetry();
-    btn.disabled = true;
-    msg.className = 'auth-status';
-    msg.textContent = inApp ? 'Opening sign-in…' : 'Opening sign-in / sign-up in your browser...';
-    try {
-      const r = await fetch('/api/link-install/start' + (inApp ? '?inapp=1' : ''), { method: 'POST' });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'Could not start sign-in.');
-      if (inApp) {
-        if (!j.url) throw new Error('Could not open the sign-in window.');
-        window.webkit.messageHandlers.pp.postMessage({ action: 'openSignIn', url: j.url });
-      } else {
-        startAccountPoll();
-      }
-      msg.textContent = ACCOUNT_SIGNING_MESSAGE;
-    } catch (e) {
-      stopAccountPoll();
-      msg.className = 'auth-status error';
-      msg.textContent = e && e.message ? e.message : 'Could not start sign-in.';
-      scheduleAccountRetry();
-    } finally {
-      btn.disabled = false;
-    }
-  }
-  // Escape hatch: if embedded sign-in is refused (some OAuth providers block
-  // web views), fall back to the system browser + poll — the original flow.
-  async function startAccountSignInBrowser(){
-    const msg = $('accountMsg');
-    stopAccountPoll();
-    accountSigningIn = true;
-    stopAccountRetry();
-    msg.className = 'auth-status';
-    msg.textContent = 'Opening sign-in in your browser...';
-    try {
-      const r = await fetch('/api/link-install/start', { method: 'POST' });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'Could not start sign-in.');
-      msg.textContent = 'Finish sign-in in your browser. partyparty unlocks here automatically.';
-      startAccountPoll();
-    } catch (e) {
-      stopAccountPoll();
-      msg.className = 'auth-status error';
-      msg.textContent = e && e.message ? e.message : 'Could not start sign-in.';
-      scheduleAccountRetry();
-    }
-  }
-  $('accountSignInBtn').onclick = startAccountSignIn;
-  $('accountOpenBtn').onclick = openAccountFromSettings;
-  $('accountRefreshBtn').onclick = () => {
-    const msg = $('accountSettingsMsg');
-    msg.style.display = 'block';
-    msg.textContent = 'Refreshing account...';
-    loadAccountStatus({ silent: true, fresh: true }).then(() => { msg.textContent = 'Account refreshed.'; });
-  };
-  $('accountSignOutBtn').onclick = signOutAccount;
   function openProductPage(path){
     const url = 'https://partyparty.party' + path;
     try {
@@ -1209,13 +903,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
   }
 
-  // First-run: sign in to link this Mac, then the guest link is ready instantly
-  // (a shared cert — there is no per-Mac certificate wait anymore). These lines
-  // fill the moment while the DJ signs in and the machine host is published.
+  // First-run: register an anonymous machine hostname and publish it to DNS.
+  // A shared certificate means there is no per-Mac certificate issuance wait.
   const PENDING_LINES = [
     'Setting up partyparty…',
-    'Sign in to link this Mac to your account.',
-    'Your @username becomes your permanent party link — print the QR once, it stays yours.',
+    'Creating this Mac’s private party address.',
+    'Publishing the secure Wi-Fi link.',
   ];
   // Lines APPEND (a growing activity log, not a replaced caption); the spinner
   // sits below the last line so the card always reads as "working".
@@ -1632,7 +1325,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       }
       const details = detailsOn;
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-      const hostName = eventMeta.host || accountEventHost() || 'the DJ';
+      const hostName = eventMeta.host || 'the DJ';
       const hostRow = '<div class="listener host"><span class="ldot dot-g"></span><span class="lemoji">🎧</span><span class="lname">' + esc(hostName) + '<span class="hostpill">DJ</span></span></div>';
       const guestRows = roster.map((r, i) => {
         // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
@@ -1687,39 +1380,20 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     loadDevices();
     refresh();
     refreshTimer = setInterval(refresh, 1000); // latency/sync numbers should feel live, not laggy
-    if (!accountWatchTimer) {
-      accountWatchTimer = setInterval(() => {
-        if (accountLinked) loadAccountStatus({ silent: true });
-      }, 60000);
-    }
   }
   function stopConsoleRefresh(){
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = null;
   }
-  loadAccountStatus();
+  startConsoleRefresh();
 
   // ── Event identity: display first, edit only when requested ──
   const PH = { startsEdit: 'add date & place' };
   const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', slug: '' };
   let eventEditField = '';
-  let hostAutofillSaved = '';
   function isPlaceholderHost(host){
     const h = String(host || '').trim().toLowerCase();
     return h === '' || h === 'the dj';
-  }
-  function accountEventHost(){
-    const host = accountHostName(currentAccountState || {});
-    return host && host !== 'your account' ? host : '';
-  }
-  function persistAccountEventHost(host){
-    if (!host || isPlaceholderHost(host) || hostAutofillSaved === host) return;
-    hostAutofillSaved = host;
-    fetch('/api/event-config', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ host })
-    }).catch(() => { hostAutofillSaved = ''; });
   }
   function setFormStatus(id, msg, kind){
     const el = $(id);
@@ -2017,7 +1691,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     });
   }
   function syncHeader(title, host, starts, slug, date, clock, place, cover){
-    const fallbackHost = accountEventHost() || 'the DJ';
+    const fallbackHost = 'the DJ';
     const shouldAutofillHost = isPlaceholderHost(host);
     eventMeta.title = title || 'partyparty';
     eventMeta.host = shouldAutofillHost ? fallbackHost : host;
@@ -2043,7 +1717,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm(eventEditField);
     }
     if (eventMeta.title) document.title = eventMeta.title + ' — partyparty';
-    if (shouldAutofillHost && fallbackHost !== 'the DJ') persistAccountEventHost(fallbackHost);
   }
 
   // ── The party wall (DJ view): render + post + comment + moderate + curate ──
@@ -2741,36 +2414,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     capturePermission = { state, kind };
     updateCapturePermissionUI();
   };
-  // Native calls this when in-app sign-in completes — drop the gate via one
-  // fresh status re-check (no polling). Clear accountSigningIn first so that if
-  // the re-check comes back not-linked (a transient blip), renderAccountState
-  // falls through to reschedule a retry instead of staying stuck.
-  window.ppAccountLinked = () => { accountSigningIn = false; loadAccountStatus({ fresh: true }); };
-  window.ppSignInStalled = () => {
-    if (consoleActivated) return;
-    const msg = $('accountMsg');
-    msg.className = 'auth-status';
-    msg.textContent = 'Having trouble? Open sign-in in your browser.';
-    const bb = $('accountBrowserBtn');
-    if (bb) {
-      bb.hidden = false;
-      bb.textContent = 'Having trouble? Open sign-in in your browser';
-    }
-  };
-  // Native calls this when the in-app sign-in window closes. If the DJ closed it
-  // without finishing, clear the "finishing sign-in" state and re-check so the
-  // gate recovers (a not-linked result reschedules retries) instead of promising
-  // an auto-unlock that will never come. No-op once the console is activated.
-  window.ppSignInClosed = () => {
-    if (consoleActivated) return;
-    accountSigningIn = false;
-    loadAccountStatus({ fresh: true });
-  };
   if (window.ppNative) {
     $('inapp').style.display = 'block';
     $('loginItem').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setLoginItem', on: $('loginItem').checked });
-    const bb = $('accountBrowserBtn');
-    if (bb) { bb.hidden = false; bb.onclick = startAccountSignInBrowser; }
     window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready', device: selectedCaptureDevice() });
   }
 </script>

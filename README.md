@@ -13,8 +13,8 @@ keep listening when Safari is backgrounded or the phone is locked.
   engine because it is smooth and survives screen lock.
 - The venue provides Wi-Fi. partyparty does not create a hotspot, captive portal,
   or Internet Sharing configuration.
-- The public Worker provides account sign-in, Mac activation, LAN hostname and
-  certificate coordination, diagnostics, downloads, and updates. It does not
+- The public Worker provides anonymous LAN hostname and certificate coordination,
+  diagnostics, downloads, and updates. It does not
   host event pages or relay party content.
 
 ## Run from source
@@ -27,7 +27,7 @@ capture helper.
 make run
 ```
 
-Open `http://localhost:8000/dj`, link the Mac, choose a capture source, and press
+Open `http://localhost:8000/dj`, choose a capture source, and press
 Go Live. Guests use the HTTPS QR shown in the console.
 
 The production stream profile is fixed at 320 kbps stereo AAC-LC, 500 ms LL-HLS

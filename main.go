@@ -280,7 +280,7 @@ func main() {
 			id, _ := activate.InstallCreds()
 			diagLog.Printf("partyparty v%s starting (%s)", appVersion, diagLog.Session())
 			diagLog.Printf("system: macOS %s · %s · %s", cmdOut("sw_vers", "-productVersion"), cmdOut("sysctl", "-n", "hw.model"), runtime.GOARCH)
-			diagLog.Printf("install: id=%s slug=%s", id, activate.InstallSlug())
+			diagLog.Printf("install: id=%s host_label=%s", id, activate.InstallHostLabel())
 			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
 			diagLog.Printf("config: https-llhls native-apple target=3s bitrate=%s part=%s seg=%s count=%d", cfg.Bitrate, cfg.PartDur, cfg.SegDur, cfg.SegCount)
 			if payload != nil {
@@ -521,7 +521,7 @@ func main() {
 	// Background low-latency activation (the Plex pattern) — the console is
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
-	// at partyparty.party (per-install slugged domain + DNS-01 cert).
+	// at partyparty.party (per-install hostname + DNS-01 cert).
 	// Cached-cert activation above is local-only and does not wait for this loop.
 	// Online refresh keeps DNS and the cert current without changing stream mode.
 	if cfg.CertFile == "" && mtx != nil && applyActivation != nil {

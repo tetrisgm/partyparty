@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,53 +65,6 @@ const (
 	ReasonDNSPublish       = "dns_publish_failed"
 	ReasonResolverMismatch = "resolver_mismatch"
 )
-
-type AccountState struct {
-	OK        bool           `json:"ok"`
-	Linked    bool           `json:"linked"`
-	Offline   bool           `json:"offline,omitempty"`
-	Error     string         `json:"error,omitempty"`
-	CheckedMS int64          `json:"checkedMs,omitempty"`
-	User      AccountUser    `json:"user,omitempty"`
-	Profile   AccountProfile `json:"profile,omitempty"`
-	Install   AccountInstall `json:"install,omitempty"`
-	License   AccountLicense `json:"license,omitempty"`
-	Events    []AccountEvent `json:"events,omitempty"`
-}
-
-type AccountUser struct {
-	ID          string `json:"id,omitempty"`
-	Email       string `json:"email,omitempty"`
-	DisplayName string `json:"displayName,omitempty"`
-}
-
-type AccountProfile struct {
-	ID          string `json:"id,omitempty"`
-	Handle      string `json:"handle,omitempty"`
-	DisplayName string `json:"displayName,omitempty"`
-}
-
-type AccountInstall struct {
-	ID   string `json:"id,omitempty"`
-	Slug string `json:"slug,omitempty"`
-	Host string `json:"host,omitempty"`
-}
-
-type AccountLicense struct {
-	OK     bool   `json:"ok"`
-	Source string `json:"source,omitempty"`
-	Reason string `json:"reason,omitempty"`
-}
-
-type AccountEvent struct {
-	Slug          string `json:"slug,omitempty"`
-	Title         string `json:"title,omitempty"`
-	Status        string `json:"status,omitempty"`
-	ScheduledAtMS int64  `json:"scheduled_at_ms,omitempty"`
-	Starts        string `json:"starts,omitempty"`
-	Where         string `json:"where_txt,omitempty"`
-	LocationName  string `json:"location_name,omitempty"`
-}
 
 type Logf func(format string, args ...any)
 
@@ -154,7 +106,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	postErr := b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp)
 	host := aResp.Host
 	if host == "" {
-		host = b.slug + "." + b.base
+		host = b.hostLabel + "." + b.base
 	}
 	if err := b.rememberHost(dir, host); err != nil {
 		logf("activate: could not persist broker host %s: %v", host, err)
@@ -163,7 +115,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 
 	if !certUsable(certFile, host) {
 		// The shared machine wildcard (*.party.<base>) is the ONLY cert path for
-		// broker installs: one cert covers every <slug>.party.<base> host, so
+		// broker installs: one cert covers every machine host under the base, so
 		// there is no per-Mac ACME and no Let's Encrypt rate limit. It is fetched
 		// over the authed broker endpoint and validated with certUsable — exactly
 		// like a self-issued cert — before it is trusted. No fallback by design: a
@@ -204,178 +156,24 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	return res
 }
 
-// LinkInstall binds this local install id/secret to a signed-in web account via
-// a one-time code generated at /account. Certificate DNS writes are broker-gated
-// on this link.
-func LinkInstall(brokerURL, code string, logf Logf) (string, error) {
-	code = strings.TrimSpace(strings.ToLower(code))
-	if !isHexN(code, 32) {
-		return "", errors.New("bad code")
-	}
-	dir, err := stateDir()
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
-	if err != nil {
-		return "", err
-	}
-	var out struct{ Handle string }
-	if err := b.post(ctx, "/api/broker/link-install", map[string]any{"id": b.id, "secret": b.secret, "code": code}, &out); err != nil {
-		return "", err
-	}
-	return out.Handle, nil
-}
-
-// StartInstallLink creates a short-lived browser handoff URL. The local install
-// authenticates to the broker with its id/secret; the user then signs in on the
-// website and the website binds this install to that account.
-func StartInstallLink(brokerURL string, logf Logf) (string, error) {
-	dir, err := stateDir()
-	if err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
-	if err != nil {
-		return "", err
-	}
-	var out struct{ URL string }
-	if err := b.post(ctx, "/api/broker/link-start", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
-		return "", err
-	}
-	u, err := url.Parse(out.URL)
-	base, berr := url.Parse(brokerURL)
-	if err != nil || berr != nil || u.Scheme != "https" || u.Host == "" || u.Host != base.Host {
-		return "", errors.New("broker returned a bad sign-in URL")
-	}
-	return out.URL, nil
-}
-
-// AccountStatus verifies the local install against the broker and returns the
-// linked web account. A successful linked response is cached locally so the app
-// can still open at an offline venue after the account was verified once.
-func AccountStatus(brokerURL string, logf Logf) (AccountState, error) {
-	dir, err := stateDir()
-	if err != nil {
-		return AccountState{OK: false, Linked: false, Error: err.Error()}, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
-	if err != nil {
-		return cachedAccountOrError(dir, err)
-	}
-	var out AccountState
-	if err := b.post(ctx, "/api/broker/account-status", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
-		return cachedAccountOrError(dir, err)
-	}
-	if out.CheckedMS == 0 {
-		out.CheckedMS = time.Now().UnixMilli()
-	}
-	if out.Install.ID == "" {
-		out.Install.ID = b.id
-	}
-	if out.Install.Slug == "" {
-		out.Install.Slug = b.slug
-	}
-	if out.Linked {
-		if err := saveAccountCache(dir, out); err != nil && logf != nil {
-			logf("activate: could not save account cache: %v", err)
-		}
-	} else {
-		if err := clearAccountCache(dir); err != nil && logf != nil {
-			logf("activate: could not clear account cache: %v", err)
-		}
-	}
-	return out, nil
-}
-
-func SignOutAccount(brokerURL string, logf Logf) error {
-	dir, err := stateDir()
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
-	if err != nil {
-		return err
-	}
-	var out struct {
-		OK      bool `json:"ok"`
-		Revoked int  `json:"revoked"`
-	}
-	if err := b.post(ctx, "/api/broker/account-unlink", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
-		return err
-	}
-	if !out.OK {
-		return errors.New("sign out failed")
-	}
-	return clearAccountCache(dir)
-}
-
-func cachedAccountOrError(dir string, err error) (AccountState, error) {
-	if st, ok := loadAccountCache(dir); ok && st.Linked {
-		st.Offline = true
-		st.Error = err.Error()
-		return st, nil
-	}
-	return AccountState{OK: false, Linked: false, Error: err.Error(), CheckedMS: time.Now().UnixMilli()}, err
-}
-
-func accountCachePath(dir string) string {
-	return filepath.Join(dir, "account.json")
-}
-
-func clearAccountCache(dir string) error {
-	if err := os.Remove(accountCachePath(dir)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-func loadAccountCache(dir string) (AccountState, bool) {
-	data, err := os.ReadFile(accountCachePath(dir))
-	if err != nil {
-		return AccountState{}, false
-	}
-	var st AccountState
-	if json.Unmarshal(data, &st) != nil || !st.Linked {
-		return AccountState{}, false
-	}
-	return st, true
-}
-
-func saveAccountCache(dir string, st AccountState) error {
-	st.Offline = false
-	st.Error = ""
-	data, err := json.Marshal(st)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(accountCachePath(dir), data, 0o600)
-}
-
-func isHexN(s string, n int) bool {
-	if len(s) != n {
-		return false
-	}
-	for _, c := range s {
-		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
 // brokerClient talks to the cert broker
 type brokerClient struct {
-	url, id, secret, base, slug string
+	url, id, secret, base, hostLabel string
+}
+
+type installRecord struct {
+	ID        string `json:"id"`
+	Secret    string `json:"secret"`
+	Base      string `json:"base"`
+	HostLabel string `json:"hostLabel"`
+	Slug      string `json:"Slug,omitempty"` // legacy installs; migrated on read
+}
+
+func (r installRecord) label() string {
+	if r.HostLabel != "" {
+		return r.HostLabel
+	}
+	return r.Slug
 }
 
 func (b *brokerClient) post(ctx context.Context, path string, body any, out any) error {
@@ -408,48 +206,57 @@ func (b *brokerClient) post(ctx context.Context, path string, body any, out any)
 }
 
 // loadOrRegisterInstall returns this Mac's broker identity, registering on
-// first use and persisting it (install.json, 0600). Pre-slug installs (no
-// memorable hostname) re-register once to pick one up.
+// first use and persisting it (install.json, 0600).
 func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf) (*brokerClient, error) {
 	path := filepath.Join(dir, "install.json")
-	var rec struct{ ID, Secret, Base, Slug string }
-	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil && rec.ID != "" && rec.Slug != "" {
-		return &brokerClient{url: brokerURL, id: rec.ID, secret: rec.Secret, base: rec.Base, slug: rec.Slug}, nil
+	var rec installRecord
+	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil && rec.ID != "" && rec.label() != "" {
+		rec.HostLabel = rec.label()
+		rec.Slug = ""
+		if migrated, err := json.Marshal(rec); err == nil {
+			_ = os.WriteFile(path, migrated, 0o600)
+		}
+		return &brokerClient{url: brokerURL, id: rec.ID, secret: rec.Secret, base: rec.Base, hostLabel: rec.HostLabel}, nil
 	}
 	b := &brokerClient{url: brokerURL}
-	var out struct{ ID, Secret, Base, Slug string }
+	var out struct {
+		ID        string `json:"id"`
+		Secret    string `json:"secret"`
+		Base      string `json:"base"`
+		HostLabel string `json:"hostLabel"`
+	}
 	if err := b.post(ctx, "/api/broker/register", map[string]any{}, &out); err != nil {
 		return nil, err
 	}
-	if out.ID == "" || out.Secret == "" || out.Base == "" || out.Slug == "" {
+	if out.ID == "" || out.Secret == "" || out.Base == "" || out.HostLabel == "" {
 		return nil, errors.New("register: malformed response")
 	}
-	rec.ID, rec.Secret, rec.Base, rec.Slug = out.ID, out.Secret, out.Base, out.Slug
+	rec.ID, rec.Secret, rec.Base, rec.HostLabel = out.ID, out.Secret, out.Base, out.HostLabel
 	data, _ := json.Marshal(rec)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return nil, err
 	}
-	logf("activate: registered install %s → %s.%s", out.ID, out.Slug, out.Base)
-	b.id, b.secret, b.base, b.slug = out.ID, out.Secret, out.Base, out.Slug
+	logf("activate: registered install %s → %s.%s", out.ID, out.HostLabel, out.Base)
+	b.id, b.secret, b.base, b.hostLabel = out.ID, out.Secret, out.Base, out.HostLabel
 	return b, nil
 }
 
 func (b *brokerClient) rememberHost(dir, host string) error {
-	base, ok := brokerBaseFromHost(host, b.slug)
+	base, ok := brokerBaseFromHost(host, b.hostLabel)
 	if !ok {
 		return nil
 	}
 	b.base = base
-	rec := struct{ ID, Secret, Base, Slug string }{ID: b.id, Secret: b.secret, Base: b.base, Slug: b.slug}
+	rec := installRecord{ID: b.id, Secret: b.secret, Base: b.base, HostLabel: b.hostLabel}
 	data, _ := json.Marshal(rec)
 	return os.WriteFile(filepath.Join(dir, "install.json"), data, 0o600)
 }
 
-func brokerBaseFromHost(host, slug string) (string, bool) {
+func brokerBaseFromHost(host, hostLabel string) (string, bool) {
 	host = strings.TrimSpace(strings.TrimSuffix(host, "."))
-	slug = strings.TrimSpace(strings.TrimSuffix(slug, "."))
-	prefix := slug + "."
-	if host == "" || slug == "" || !strings.HasPrefix(host, prefix) {
+	hostLabel = strings.TrimSpace(strings.TrimSuffix(hostLabel, "."))
+	prefix := hostLabel + "."
+	if host == "" || hostLabel == "" || !strings.HasPrefix(host, prefix) {
 		return "", false
 	}
 	base := strings.TrimPrefix(host, prefix)
@@ -530,33 +337,33 @@ func CachedCertReady(host string) (Result, bool) {
 	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}, true
 }
 
-// BrokerHost returns this install's guest hostname (<slug>.<base>) from the
+// BrokerHost returns this install's guest hostname (<hostLabel>.<base>) from the
 // persisted broker registration, or "" (BYO installs use their configured host).
 func BrokerHost() string {
 	dir, err := stateDir()
 	if err != nil {
 		return ""
 	}
-	var rec struct{ Base, Slug string }
+	var rec installRecord
 	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
-	if err != nil || json.Unmarshal(data, &rec) != nil || rec.Slug == "" || rec.Base == "" {
+	if err != nil || json.Unmarshal(data, &rec) != nil || rec.label() == "" || rec.Base == "" {
 		return ""
 	}
-	return rec.Slug + "." + rec.Base
+	return rec.label() + "." + rec.Base
 }
 
-// InstallSlug returns this install's memorable broker slug ("fader91"), or "".
-func InstallSlug() string {
+// InstallHostLabel returns this install's memorable two-word hostname label.
+func InstallHostLabel() string {
 	dir, err := stateDir()
 	if err != nil {
 		return ""
 	}
-	var rec struct{ Slug string }
+	var rec installRecord
 	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
 	if err != nil || json.Unmarshal(data, &rec) != nil {
 		return ""
 	}
-	return rec.Slug
+	return rec.label()
 }
 
 // HostFromEnvOrFile resolves the low-latency host from the env var or a

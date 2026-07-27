@@ -5,12 +5,13 @@ LL-HLS stream, active-room feed, uploads, reactions, comments, and requests.
 Guest routes are unauthenticated and continue to work without internet.
 
 The HTTPS hostname uses a publicly trusted certificate and resolves to the Mac's
-current private LAN address. Initial account linking and certificate issuance
-need internet. A linked Mac caches its account and valid certificate so later
-parties can run when the venue's internet uplink disappears.
+current private LAN address. The anonymous installation receives a stable
+two-party-word hostname and credential. Initial hostname and certificate
+provisioning need internet; the valid certificate is cached so later parties can
+run when the venue's internet uplink disappears.
 
-The Worker never receives live audio or party posts. It supports sign-in, Mac
-linking, LAN DNS/certificate coordination, diagnostics, downloads, and updates.
+The Worker never receives live audio or party posts. It supports anonymous LAN
+DNS/certificate coordination, diagnostics, downloads, and updates.
 
 The console must distinguish:
 

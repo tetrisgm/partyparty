@@ -4,6 +4,8 @@
 
 The Store edition is the venue-Wi-Fi product:
 
+- The paid App Store download is the purchase boundary. The app has no login,
+  product account, profile, username, or separate license check.
 - The Mac serves the DJ console, guest page, party feed, uploads, and HTTPS
   LL-HLS.
 - Guests need no account and no internet after joining the venue Wi-Fi.
@@ -63,12 +65,10 @@ profile, and a non-distribution signature.
 
 ## Privacy
 
-The privacy manifest declares:
-
-- email address and user ID for account sign-in;
-- the install/device ID used to link the Mac and provision its secure LAN name;
-- app functionality as the only collection purpose;
-- no tracking.
+The privacy manifest declares no user-account data and no tracking. The random
+installation credential used to provision a secure LAN name is infrastructure
+authentication, is not associated with a user identity, and is used only for app
+functionality.
 
 Guest names, posts, uploads, listening status, audio, and session diagnostics
 remain on the Mac in the Store edition. App Store Connect privacy answers must
@@ -97,8 +97,9 @@ Run this once on a clean macOS user account before uploading a candidate:
 1. Install the candidate package and launch it from `/Applications`.
 2. Confirm there is no administrator prompt.
 3. Confirm no Screen Recording prompt appears.
-4. Link the Mac account and then disconnect internet access. Relaunch and confirm
-   the DJ console still opens and the activation cache remains valid.
+4. Let the anonymous secure hostname finish provisioning, then disconnect
+   internet access. Relaunch and confirm the DJ console still opens and the
+   cached certificate remains valid.
 5. Reconnect to venue-style Wi-Fi. Confirm the app requests Local Network access
    only when the LAN service is used.
 6. Select Mac audio. Start Go Live and confirm the System Audio Recording prompt

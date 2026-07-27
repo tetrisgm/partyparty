@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import worker, {
   APP_VERSION,
-  cookieHeader,
-  normalizeHandle,
-  parseCookies,
   readJson,
   sha256Hex,
 } from "../worker.js";
@@ -64,15 +61,7 @@ const baseEnv = () => ({
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-test("cookie helpers keep secure session defaults", () => {
-  const parsed = parseCookies(new Request("https://partyparty.party/", { headers: { cookie: "a=one%20two; b=3" } }));
-  assert.deepEqual(parsed, { a: "one two", b: "3" });
-  assert.match(cookieHeader("pp", "x"), /HttpOnly; Secure; SameSite=Lax/);
-});
-
-test("normalization and bounded JSON parsing remain strict", async () => {
-  assert.equal(normalizeHandle("  DJ Name  "), "dj.name");
-  assert.equal(normalizeHandle("!"), "");
+test("bounded JSON parsing remains strict", async () => {
   assert.deepEqual(await readJson(new Request("https://x/", { method: "POST", body: '{"ok":true}' }), 32), { ok: true });
   assert.equal(await readJson(new Request("https://x/", { method: "POST", body: '{"too":"large"}' }), 2), null);
 });
@@ -113,6 +102,7 @@ test("broker ping remains public and registration remains available", async () =
   const body = await registered.json();
   assert.match(body.id, /^[a-f0-9]{12}$/);
   assert.match(body.secret, /^[a-f0-9]{48}$/);
+  assert.match(body.hostLabel, /^[a-z]+-[a-z]+$/);
 });
 
 test("retired cloud ingest endpoints reject requests", async () => {
@@ -132,63 +122,12 @@ test("retired cloud ingest endpoints reject requests", async () => {
   assert.equal(binary.status, 405);
 });
 
-test("account pages still gate anonymous users", async () => {
-  const env = { ...baseEnv(), DB: { prepare() { throw new Error("session query should fail closed"); } } };
-  const response = await worker.fetch(new Request("https://partyparty.party/account"), env);
-  assert.equal(response.status, 302);
-  assert.match(response.headers.get("location") || "", /^\/login/);
-});
-
-test("account deletion removes the user and linked install credentials", async () => {
-  const calls = [];
-  const user = {
-    id: "user-1",
-    email: "dj@example.com",
-    email_norm: "dj@example.com",
-    display_name: "DJ",
-  };
-  const DB = {
-    prepare(sql) {
-      return {
-        bind(...args) {
-          return {
-            async first() {
-              if (sql.includes("FROM auth_sessions")) return user;
-              return null;
-            },
-            async all() {
-              if (sql.includes("FROM device_installs")) {
-                return { results: [{ install_id: "abcdef123456", install_slug: "disco12" }] };
-              }
-              return { results: [] };
-            },
-            async run() {
-              calls.push([sql, args]);
-              return { meta: { changes: 1 } };
-            },
-          };
-        },
-      };
-    },
-  };
-  const DL = new MemoryR2({
-    "broker/abcdef123456.json": "{}",
-    "broker/slug/disco12": "abcdef123456",
-    "logs/abcdef123456/session.log.gz": new Uint8Array([1]),
-    "telemetry/abcdef123456/1.json": "{}",
-  });
-  const response = await worker.fetch(new Request("https://partyparty.party/api/account/delete", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      cookie: "pp_session=valid",
-    },
-    body: JSON.stringify({ confirm: "DELETE" }),
-  }), { DB, DL });
-  assert.equal(response.status, 200);
-  assert.ok(calls.some(([sql]) => sql === "DELETE FROM users WHERE id=?"));
-  assert.equal(await DL.get("broker/abcdef123456.json"), null);
-  assert.equal(await DL.get("logs/abcdef123456/session.log.gz"), null);
+test("retired identity and account routes stay gone", async () => {
+  const env = baseEnv();
+  for (const path of ["/login", "/account", "/auth/apple", "/auth/google", "/api/me", "/api/account/delete", "/link-mac"]) {
+    const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
+    assert.equal(response.status, 404, path);
+  }
 });
 
 let failures = 0;

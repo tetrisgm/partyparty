@@ -2,7 +2,7 @@
   "name": "partyparty-site",
   "private": true,
   "version": "0.0.0",
-  "description": "partyparty.party — identity, LAN provisioning, diagnostics, and app downloads.",
+  "description": "partyparty.party — LAN provisioning, diagnostics, and app downloads.",
   "type": "module",
   "scripts": {
     "check": "node --check worker.js",

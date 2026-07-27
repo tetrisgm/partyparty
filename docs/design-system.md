@@ -120,24 +120,14 @@ everything in `@media (prefers-reduced-motion:reduce)`.**
   line + Media Session.
 - **Footer:** light, hairline top, `--label-tertiary` 12–14px, flat/minimal.
 
-## Sign in with Apple
-Use the **official Sign in with Apple JS** rendered button (`appleid.auth.js`) — do not
-hand-roll. `data-type="continue"` to match sibling "Continue with Google/…"; white +
-`data-border` on light pages, black on dark; `data-height="48"`, `data-width="100%"`,
-`data-border-radius="12"` (match our card radius). Flow = OIDC:
-The Worker owns the web authorization redirect and validates Apple's returned
-identity token. **Rule (App Store 4.8):** because Google sign-in is offered,
-Sign in with Apple must have equal prominence and preserve private-relay email.
-The native app opens this account flow in the system browser.
-
 ## Pitfalls (the "fake Apple" tells — avoid)
 Multi-color gradients as primary language · Bold 700/800 headlines · loose/positive
 tracking on big type · cramped whitespace / too-wide columns · heavy borders + drop
 shadows + gradient card fills · tiny-radius fake squircles / broken concentricity ·
 glass-on-glass or glass everywhere / blur >30px · `@font-face` SF on the web · consumer
 hover (big lifts + colored glow + bouncy easings) · missing a11y guards / <44px phone
-targets / 44px controls on macOS (should be 28px) · restyling or shrinking the Sign in
-with Apple button · tinting everything (tint is semantic — primary action only).
+targets / 44px controls on macOS (should be 28px) · tinting everything (tint is
+semantic — primary action only).
 
 _Derived from an Apple-HIG / Liquid-Glass (iOS·macOS 26) / apple.com research pass. The
 landing page implements this; the console + guest page are next._
