@@ -17,33 +17,26 @@ APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$
   -ldflags "-X main.appVersion=$APP_VERSION" \
   -o "$ROOT/build/partyparty-server" "$ROOT"
 
-echo ">> Swift app (release)"
-swift build -c release --package-path "$ROOT/app" \
-  --scratch-path "$ROOT/app/.build-app-store" -Xswiftc -DAPP_STORE
-BIN="$(swift build -c release --package-path "$ROOT/app" \
-  --scratch-path "$ROOT/app/.build-app-store" -Xswiftc -DAPP_STORE --show-bin-path)"
+echo ">> Xcode app (release)"
+XCODE_BUILD="$ROOT/build/xcode-app-store"
+xcodebuild \
+  -project "$ROOT/app/partyparty.xcodeproj" \
+  -scheme partyparty \
+  -configuration Release \
+  -sdk macosx \
+  -derivedDataPath "$XCODE_BUILD" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+XCODE_APP="$XCODE_BUILD/Build/Products/Release/partyparty.app"
 
 echo ">> assembling $APP"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
-cp "$BIN/partyparty" "$APP/Contents/MacOS/partyparty"
+cp -R "$XCODE_APP" "$APP"
+mkdir -p "$APP/Contents/Helpers"
 cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
 cp "$ROOT/assets/ffmpeg" "$APP/Contents/Helpers/ffmpeg"
 cp "$ROOT/assets/mediamtx" "$APP/Contents/Helpers/mediamtx"
 cp "$ROOT/assets/ppcapture" "$APP/Contents/Helpers/ppcapture"
-cp "$ROOT/app/Info.plist" "$APP/Contents/Info.plist"
-cp "$ROOT/app/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-cp "$ROOT/app/PrivacyInfo.xcprivacy" "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
-
-ACTOOL_INFO="$(mktemp)"
-xcrun actool "$ROOT/app/AppAssets.xcassets" \
-  --compile "$APP/Contents/Resources" \
-  --platform macosx \
-  --minimum-deployment-target "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" \
-  --app-icon AppIcon \
-  --product-type com.apple.product-type.application \
-  --output-partial-info-plist "$ACTOOL_INFO"
-rm -f "$ACTOOL_INFO"
 
 if [ -n "${APP_STORE_PROVISIONING_PROFILE:-}" ]; then
   cp "$APP_STORE_PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"

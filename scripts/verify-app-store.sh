@@ -35,6 +35,10 @@ done
 [ ! -e "$APP/Contents/Library/LaunchDaemons" ] || fail "LaunchDaemons are bundled"
 [ ! -e "$APP/Contents/Library/PrivilegedHelperTools" ] || fail "privileged helpers are bundled"
 [ -f "$APP/Contents/Resources/Assets.car" ] || fail "compiled asset catalog is missing"
+for key in BuildMachineOSBuild DTPlatformBuild DTPlatformName DTPlatformVersion DTSDKBuild DTSDKName DTXcode DTXcodeBuild; do
+  /usr/libexec/PlistBuddy -c "Print :$key" "$INFO" >/dev/null 2>&1 ||
+    fail "Xcode build metadata is missing: $key"
+done
 unreadable="$(find "$APP" ! -perm -o+r -print -quit)"
 [ -z "$unreadable" ] || fail "bundle item is not world-readable: $unreadable"
 forbidden_xattr="$(xattr -lr "$APP" 2>/dev/null | grep -E 'com\\.apple\\.(quarantine|provenance|macl):' | head -1 || true)"
