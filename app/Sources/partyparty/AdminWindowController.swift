@@ -16,7 +16,7 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 
 /// The DJ console as a real, resizable window hosting web/dj.html in a WKWebView.
 /// A "pp" JS↔Swift bridge lets the in-app console toggle Start-at-Login and Quit.
-final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private enum CapturePermissionKind: String {
         case systemAudio
         case microphone
@@ -73,6 +73,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
 
         webView = WKWebView(frame: .zero, configuration: cfg)
         webView.navigationDelegate = self
+        webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = false
         win.contentView = webView
         loadConsole()
@@ -192,6 +193,27 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         pushCapturePermission()
         if pendingGuestQR { revealGuestQR() }
         scheduleBootWatchdog()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping ([URL]?) -> Void
+    ) {
+        guard let window else {
+            completionHandler(nil)
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canCreateDirectories = false
+        panel.beginSheetModal(for: window) { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
     }
 
     func showGuestQR() {

@@ -71,6 +71,8 @@ entitlement_value() {
 [ "$(entitlement_value "$APP" com.apple.security.network.client)" = "true" ] || fail "network client entitlement is missing"
 [ "$(entitlement_value "$APP" com.apple.security.network.server)" = "true" ] || fail "network server entitlement is missing"
 [ "$(entitlement_value "$APP" com.apple.security.device.audio-input)" = "true" ] || fail "audio input entitlement is missing"
+[ "$(entitlement_value "$APP" com.apple.security.files.user-selected.read-only)" = "true" ] ||
+  fail "user-selected read-only file entitlement is missing"
 if entitlement_value "$APP" com.apple.security.inherit >/dev/null 2>&1; then
   fail "main app must not inherit a sandbox"
 fi
