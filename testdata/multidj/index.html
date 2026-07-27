@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0d">
+  <title>PartyParty multi-DJ lab</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;color:#f5f5f7;background:#0b0b0d}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0b0b0d}
+    main{width:min(680px,100%);margin:auto;padding:24px 18px calc(40px + env(safe-area-inset-bottom))}
+    header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:30px}
+    h1{font-size:28px;margin:0 0 5px}p{color:#a1a1a6;margin:0;line-height:1.45}.eyebrow{color:#ff2d6f;font-weight:700;font-size:12px}
+    #qr{width:112px;height:112px;background:#fff;padding:6px;flex:0 0 auto}#qr img{width:100%;height:100%}
+    .start{width:100%;border:0;background:#ff2d6f;color:#fff;font:inherit;font-weight:750;font-size:18px;padding:16px;border-radius:8px}
+    .channels{display:grid;gap:10px;margin-top:18px}.channel{width:100%;display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:12px;text-align:left;border:1px solid #343438;background:#1c1c1e;color:#fff;padding:16px;border-radius:8px;font:inherit}
+    .channel.active{border-color:var(--channel);box-shadow:inset 3px 0 var(--channel)}.dot{width:10px;height:10px;border-radius:50%;background:var(--channel)}
+    .name{font-weight:750;font-size:17px}.track{display:block;color:#a1a1a6;font-size:13px;margin-top:3px}.state{color:#8e8e93;font-size:12px;font-variant-numeric:tabular-nums}
+    .channel.active .state{color:#fff}.metrics{margin-top:22px;border-top:1px solid #2c2c2e;padding-top:16px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8e8e93}
+    .metric{display:grid;grid-template-columns:62px 1fr;gap:10px;padding:4px 0}.metric b{color:#d1d1d6}.notice{margin-top:14px;color:#ff9f0a;font-size:13px}
+    [hidden]{display:none!important}@media(max-width:520px){#qr{display:none}main{padding-top:calc(20px + env(safe-area-inset-top))}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><div class="eyebrow">SWITCHING LAB</div><h1>Three live DJs</h1><p>Start once, then tap between channels. Alternate streams remain warm while this page is visible.</p></div>
+    <div id="qr" aria-label="QR code for this page"></div>
+  </header>
+  <button class="start" id="start">Start listening</button>
+  <div class="notice" id="notice" hidden></div>
+  <div class="channels" id="channels"></div>
+  <div class="metrics" id="metrics"></div>
+</main>
+<script src="/vendor/qrcode.min.js"></script>
+<script>
+  const players = new Map();
+  let channels = [], active = '', started = false, switchStarted = 0;
+  const $ = id => document.getElementById(id);
+  new QRCode($('qr'), { text: location.href, width:100, height:100, correctLevel:QRCode.CorrectLevel.M });
+
+  function makePlayer(url, muted) {
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.playsInline = true;
+    audio.muted = muted;
+    audio.src = url;
+    return audio;
+  }
+  function describe(audio) {
+    const buffered = audio.buffered.length ? Math.max(0, audio.buffered.end(audio.buffered.length - 1) - audio.currentTime) : 0;
+    return `${audio.paused ? 'paused' : 'playing'} · ready ${audio.readyState} · ${audio.currentTime.toFixed(1)}s · buffer ${buffered.toFixed(1)}s`;
+  }
+  function render() {
+    $('channels').innerHTML = channels.map(channel => {
+      const pair = players.get(channel.id);
+      const state = !started ? 'Not started' : channel.id === active
+        ? (pair?.fullReady ? `Full quality · ${Math.round(performance.now() - switchStarted)}ms` : 'Warm audio · loading full…')
+        : (pair?.warm.readyState >= 2 && !pair.warm.paused ? 'Ready' : 'Warming…');
+      return `<button class="channel ${channel.id === active ? 'active' : ''}" data-id="${channel.id}" style="--channel:${channel.color}">
+        <span class="dot"></span><span><span class="name">${channel.dj}</span><span class="track">${channel.title}</span></span><span class="state">${state}</span>
+      </button>`;
+    }).join('');
+    document.querySelectorAll('.channel').forEach(button => button.onclick = () => select(button.dataset.id));
+    if (started) {
+      $('metrics').innerHTML = channels.map(channel => {
+        const pair = players.get(channel.id);
+        return `<div class="metric"><b>${channel.id}</b><span>warm: ${describe(pair.warm)}<br>full: ${describe(pair.full)}</span></div>`;
+      }).join('');
+    }
+  }
+  async function start() {
+    $('start').disabled = true;
+    const results = await Promise.allSettled(channels.map(channel => players.get(channel.id).warm.play()));
+    const failed = results.filter(result => result.status === 'rejected').length;
+    started = true;
+    $('start').hidden = true;
+    if (failed) {
+      $('notice').hidden = false;
+      $('notice').textContent = `${failed} warm player${failed === 1 ? '' : 's'} did not start. This is an iOS behavior the lab is intended to expose.`;
+    }
+    await select(channels[0].id);
+  }
+  async function select(id) {
+    if (!started || id === active) return;
+    switchStarted = performance.now();
+    for (const [channelID, pair] of players) {
+      pair.warm.muted = channelID !== id;
+      pair.full.muted = true;
+      pair.fullReady = false;
+      if (channelID !== id) {
+        pair.full.pause();
+        pair.full.removeAttribute('src');
+        pair.full.load();
+        const channel = channels.find(item => item.id === channelID);
+        pair.full.src = channel.full;
+      }
+    }
+    active = id;
+    render();
+    const pair = players.get(id);
+    try {
+      await pair.full.play();
+      const promote = () => {
+        if (active !== id || pair.full.currentTime <= 0 || pair.full.readyState < 2) return;
+        pair.full.muted = false;
+        pair.warm.muted = true;
+        pair.fullReady = true;
+        render();
+      };
+      const deadline = performance.now() + 5000;
+      const waitForFull = () => {
+        if (active !== id) return;
+        if (pair.full.currentTime > 0 && pair.full.readyState >= 2) {
+          promote();
+          return;
+        }
+        if (performance.now() < deadline) setTimeout(waitForFull, 100);
+      };
+      waitForFull();
+    } catch (error) {
+      $('notice').hidden = false;
+      $('notice').textContent = `Full-quality start failed: ${error.message}. The warm channel remains audible.`;
+    }
+  }
+  fetch('/api/channels').then(response => response.json()).then(data => {
+    channels = data;
+    for (const channel of channels) {
+      players.set(channel.id, { warm:makePlayer(channel.warm, true), full:makePlayer(channel.full, true), fullReady:false });
+    }
+    $('start').onclick = start;
+    render();
+    setInterval(render, 1000);
+  }).catch(error => {
+    $('notice').hidden = false;
+    $('notice').textContent = `Could not load channels: ${error.message}`;
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    for (const pair of players.values()) pair.warm.play().catch(() => {});
+  });
+</script>
+</body>
+</html>
