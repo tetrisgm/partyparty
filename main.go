@@ -216,6 +216,7 @@ func main() {
 
 	peerCtx, stopPeers := context.WithCancel(context.Background())
 	var peerDirectory *peers.Directory
+	var peerHost string
 	peerID, _ := activate.InstallCreds()
 
 	handler := server.New(server.Deps{
@@ -232,8 +233,12 @@ func main() {
 		Version:     appVersion,
 	})
 	startPeerDiscovery := func(host string) {
-		if peerDirectory != nil || host == "" {
+		if host == "" || (peerDirectory != nil && peerHost == host) {
 			return
+		}
+		if peerDirectory != nil {
+			peerDirectory.Close()
+			peerDirectory = nil
 		}
 		id, _ := activate.InstallCreds()
 		if id == "" {
@@ -248,6 +253,7 @@ func main() {
 			return
 		}
 		peerDirectory = directory
+		peerHost = host
 		handler.SetPeers(directory, id)
 		log.Printf("peer discovery: advertising %s as %s", host, id)
 	}
@@ -332,15 +338,17 @@ func main() {
 	}
 	var activationMu sync.Mutex
 	activationEngaged := false
-	markActivationEngaged := func() {
+	activationEngagedHost := ""
+	markActivationEngaged := func(host string) {
 		activationMu.Lock()
 		activationEngaged = true
+		activationEngagedHost = host
 		activationMu.Unlock()
 	}
-	isActivationEngaged := func() bool {
+	isActivationEngagedFor := func(host string) bool {
 		activationMu.Lock()
 		defer activationMu.Unlock()
-		return activationEngaged
+		return activationEngaged && activationEngagedHost == host
 	}
 	applyActivationResult := func(res activate.Result, source string) bool {
 		handler.SetActivationResult(res)
@@ -359,7 +367,7 @@ func main() {
 		}
 		handler.SetActivation(res.Host)
 		startPeerDiscovery(res.Host)
-		markActivationEngaged()
+		markActivationEngaged(res.Host)
 		log.Printf("activate: secure link ready from %s — %s", source, res.Host)
 		return true
 	}
@@ -494,7 +502,7 @@ func main() {
 				// HTTPS listener + Go Live work everywhere, even where this Wi-Fi
 				// blocks LAN routing. Re-running Try/TryBroker each cycle also
 				// re-publishes the current LAN IP (the self-healing DNS refresh).
-				engaged := isActivationEngaged()
+				engaged := isActivationEngagedFor(res.Host)
 				if res.OK && !engaged {
 					engaged = applyActivationResult(res, "online refresh")
 				}

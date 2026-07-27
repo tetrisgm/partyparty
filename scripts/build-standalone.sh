@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-VERSION="${PP_VERSION:-123.89}"
-BUILD="${PP_BUILD:-191}"
+VERSION="${PP_VERSION:-123.90}"
+BUILD="${PP_BUILD:-192}"
 APP="$ROOT/build/partyparty-beta.app"
 SWIFT_BIN="$ROOT/app/.build/arm64-apple-macosx/release"
 SIGN_ID="${PP_SIGN_ID:-}"

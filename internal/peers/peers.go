@@ -52,6 +52,7 @@ type candidate struct {
 type Directory struct {
 	selfID string
 	server *zeroconf.Server
+	cancel context.CancelFunc
 	client *http.Client
 
 	mu         sync.RWMutex
@@ -64,8 +65,10 @@ func New(ctx context.Context, selfID, host string, port int) (*Directory, error)
 	if selfID == "" || host == "" || port <= 0 {
 		return nil, fmt.Errorf("invalid peer identity")
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	d := &Directory{
 		selfID:     selfID,
+		cancel:     cancel,
 		client:     &http.Client{Timeout: 1500 * time.Millisecond},
 		candidates: make(map[string]candidate),
 		peers:      make(map[string]Peer),
@@ -73,6 +76,7 @@ func New(ctx context.Context, selfID, host string, port int) (*Directory, error)
 	txt := []string{"id=" + selfID, "host=" + host, "port=" + strconv.Itoa(port)}
 	server, err := zeroconf.Register("partyparty-"+selfID, service, "local.", port, txt, nil)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	d.server = server
@@ -81,6 +85,7 @@ func New(ctx context.Context, selfID, host string, port int) (*Directory, error)
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
 		server.Shutdown()
+		cancel()
 		return nil, err
 	}
 	go d.consume(ctx, entries)
@@ -246,8 +251,13 @@ func (d *Directory) Peer(id string) (Peer, bool) {
 
 // Close stops the Bonjour advertisement.
 func (d *Directory) Close() {
-	if d != nil && d.server != nil {
-		d.server.Shutdown()
+	if d != nil {
+		if d.cancel != nil {
+			d.cancel()
+		}
+		if d.server != nil {
+			d.server.Shutdown()
+		}
 	}
 }
 

@@ -82,6 +82,23 @@ func TestBrokerRememberHostUpdatesCachedBase(t *testing.T) {
 	}
 }
 
+func TestBrokerRegistrationMustBelongToCurrentBroker(t *testing.T) {
+	for _, tc := range []struct {
+		broker string
+		base   string
+		want   bool
+	}{
+		{"https://partyparty.party", "party.partyparty.party", true},
+		{"https://partyparty.party", "partyparty.party", true},
+		{"https://partyparty.party", "party.ramine.net", false},
+		{"https://partyparty.party", "notpartyparty.party", false},
+	} {
+		if got := brokerOwnsBase(tc.broker, tc.base); got != tc.want {
+			t.Errorf("brokerOwnsBase(%q, %q) = %v, want %v", tc.broker, tc.base, got, tc.want)
+		}
+	}
+}
+
 func TestCachedCertReadyAcceptsNearExpiry(t *testing.T) {
 	dir := setupStateDir(t)
 	writeCachedLiveCert(t, "dj.example.net", renewWindow-time.Hour)

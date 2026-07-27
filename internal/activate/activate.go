@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,13 +218,17 @@ func (b *brokerClient) post(ctx context.Context, path string, body any, out any)
 func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf) (*brokerClient, error) {
 	path := filepath.Join(dir, "install.json")
 	var rec installRecord
-	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil && rec.ID != "" && rec.label() != "" {
+	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil &&
+		rec.ID != "" && rec.label() != "" && brokerOwnsBase(brokerURL, rec.Base) {
 		rec.HostLabel = rec.label()
 		rec.Slug = ""
 		if migrated, err := json.Marshal(rec); err == nil {
 			_ = os.WriteFile(path, migrated, 0o600)
 		}
 		return &brokerClient{url: brokerURL, id: rec.ID, secret: rec.Secret, base: rec.Base, hostLabel: rec.HostLabel}, nil
+	}
+	if rec.ID != "" && rec.label() != "" {
+		logf("activate: retired broker registration %s.%s does not belong to %s; registering this install with the current broker", rec.label(), rec.Base, brokerURL)
 	}
 	b := &brokerClient{url: brokerURL}
 	var out struct {
@@ -246,6 +251,16 @@ func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf
 	logf("activate: registered install %s → %s.%s", out.ID, out.HostLabel, out.Base)
 	b.id, b.secret, b.base, b.hostLabel = out.ID, out.Secret, out.Base, out.HostLabel
 	return b, nil
+}
+
+func brokerOwnsBase(brokerURL, base string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(brokerURL))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	base = strings.ToLower(strings.Trim(strings.TrimSpace(base), "."))
+	return host != "" && (base == host || strings.HasSuffix(base, "."+host))
 }
 
 func (b *brokerClient) rememberHost(dir, host string) error {
