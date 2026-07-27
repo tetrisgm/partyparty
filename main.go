@@ -29,6 +29,7 @@ import (
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
+	"partyparty/internal/peers"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
 )
@@ -213,6 +214,21 @@ func main() {
 		}
 	}
 
+	peerID, _ := activate.InstallCreds()
+	if peerID == "" {
+		peerID = activate.InstallHostLabel()
+	}
+	peerCtx, stopPeers := context.WithCancel(context.Background())
+	var peerDirectory *peers.Directory
+	if host := activationHost(); peerID != "" && host != "" {
+		if directory, derr := peers.New(peerCtx, peerID, host, cfg.TLSPort); derr != nil {
+			log.Printf("peer discovery unavailable: %v", derr)
+		} else {
+			peerDirectory = directory
+			log.Printf("peer discovery: advertising %s as %s", host, peerID)
+		}
+	}
+
 	handler := server.New(server.Deps{
 		Config:      cfg,
 		Broadcaster: bc,
@@ -220,6 +236,8 @@ func main() {
 		RunDir:      runDir,
 		Web:         web,
 		MTX:         mtx,
+		Peers:       peerDirectory,
+		PeerID:      peerID,
 		Events:      events,
 		Diag:        diagLog,
 		Version:     appVersion,
@@ -679,6 +697,10 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
+	stopPeers()
+	if peerDirectory != nil {
+		peerDirectory.Close()
+	}
 
 	if diagLog != nil {
 		diagLog.Printf("shutting down (signal)")

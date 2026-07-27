@@ -73,6 +73,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 		RunDir:      runDir,
 		Web:         web,
 		MTX:         nil,
+		PeerID:      "test-peer",
 		Version:     "test-1.2.3",
 	})
 	t.Cleanup(func() {
@@ -83,6 +84,21 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 		}
 	})
 	return &testEnv{srv: s, bc: bc, runDir: runDir}
+}
+
+func TestPeerEndpointIsMinimalAndPublic(t *testing.T) {
+	env := newTestEnv(t, nil)
+	w := do(env.srv, http.MethodGet, "/api/peer", "192.168.1.44:3333")
+	if w.Code != http.StatusOK {
+		t.Fatalf("peer status = %d, body %q", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if body["id"] != "test-peer" || body["live"] != false || body["ready"] != false {
+		t.Fatalf("peer body = %#v", body)
+	}
+	if _, exposed := body["roster"]; exposed {
+		t.Fatalf("peer endpoint exposed room details: %#v", body)
+	}
 }
 
 func do(s *Srv, method, target, remoteAddr string) *httptest.ResponseRecorder {

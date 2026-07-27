@@ -1319,7 +1319,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('partyQrPanel').hidden = !linkReady;
       if (linkReady) renderQR(guestUrl);
       const roster = s.roster || [];
-      const peopleCount = roster.length + 1;
+      const peers = Array.isArray(s.peers) ? s.peers : [];
+      const peopleCount = roster.length + peers.length + 1;
       if ($('pcount')) $('pcount').textContent = peopleCount;
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       const spreadOf = (list) => {
@@ -1338,6 +1339,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
       const hostName = eventMeta.host || 'the DJ';
       const hostRow = '<div class="listener host"><span class="ldot dot-g"></span><span class="lemoji">🎧</span><span class="lname">' + esc(hostName) + '<span class="hostpill">DJ</span></span></div>';
+      const peerRows = peers.map((peer) => {
+        const online = peer.live && peer.ready;
+        return '<div class="listener host"><span class="ldot ' + (online ? 'dot-g' : 'dot-x') + '"></span><span class="lemoji">🎧</span>' +
+          '<span class="lname">' + esc(peer.name || 'PartyParty DJ') + '<span class="hostpill">DJ</span>' +
+          '<span class="lip"> · ' + (online ? 'live' : (peer.live ? 'preparing' : 'not live')) + '</span></span></div>';
+      }).join('');
       const guestRows = roster.map((r, i) => {
         // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
         // red stalled · gray paused.
@@ -1363,7 +1370,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           '<div class="lbody"><span class="lname">' + name + '  <span class="lip">' + dev + ' · ' + esc(r.ip) + '</span></span>' +
           '<div class="ldetail">' + lat + ' · ' + bits + '</div></div></div>';
       }).join('');
-      $('roster').innerHTML = hostRow + guestRows;
+      $('roster').innerHTML = hostRow + peerRows + guestRows;
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
       const txt = { good:'Good', strain:'Strain', congested:'Congested', idle:'Idle' };

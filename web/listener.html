@@ -321,6 +321,18 @@
   .guestline{
     order:5;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 12px;
   }
+  .djpicker{order:6;width:100%;margin:0 0 14px;padding:10px;background:rgba(255,255,255,.42);border:1px solid var(--party-line);border-radius:12px}
+  .djpicker[hidden]{display:none}
+  .djpickerhead{font-size:11px;font-weight:800;color:var(--party-muted);text-transform:uppercase;margin:0 2px 7px}
+  .djlist{display:grid;gap:6px}
+  .djchoice{width:100%;min-height:44px;border:1px solid transparent;border-radius:8px;background:rgba(255,255,255,.44);color:var(--party-ink);padding:7px 10px;display:flex;align-items:center;gap:9px;text-align:left;cursor:pointer}
+  .djchoice.active{border-color:var(--accent);background:#fff0f4}
+  .djchoice:disabled{opacity:.45;cursor:default}
+  .djdot{width:9px;height:9px;border-radius:50%;background:var(--label-tertiary);flex:0 0 auto}
+  .djchoice.live .djdot{background:var(--success)}
+  .djcopy{min-width:0;flex:1}
+  .djcopy b,.djcopy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .djcopy b{font-size:14px}.djcopy small{font-size:11px;color:var(--label-secondary);margin-top:1px}
   .avatars{display:flex;align-items:center;min-width:0}
   .avatar{
     width:35px;height:35px;border-radius:50%;display:grid;place-items:center;margin-left:-7px;
@@ -519,6 +531,10 @@
       <div class="avatars" id="guestAvatars"></div>
       <button class="guestcountbtn" id="guestCountBtn" type="button">Guest list</button>
     </div>
+    <section class="djpicker" id="djPicker" hidden aria-label="DJs on this Wi-Fi">
+      <div class="djpickerhead">DJs on this Wi-Fi</div>
+      <div class="djlist" id="djList"></div>
+    </section>
     <div class="count" id="count"></div>
     <div class="reactions" id="reactionBar" hidden>
       <button class="reactbtn" type="button" data-react="fire" aria-label="Fire" title="Fire">🔥</button>
@@ -646,6 +662,8 @@
     const guestLine = document.getElementById('guestLine');
     const guestAvatars = document.getElementById('guestAvatars');
     const guestCountBtn = document.getElementById('guestCountBtn');
+    const djPicker = document.getElementById('djPicker');
+    const djList = document.getElementById('djList');
     const delayBadge = document.getElementById('delayBadge');
     // Build version stamped by the server at serve time. When the server
     // updates, open tabs would otherwise keep running old player logic forever
@@ -672,6 +690,9 @@
     const ROOM_TARGET_FALLBACK = 1.0;
     let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
+    let discoveredPeers = [], activePeerID = '';
+    const peerPlayers = new Map();
+    const peerHls = new Map();
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
     let attached = false, ready = false; // pre-buffer state (hls.js path)
@@ -971,6 +992,11 @@
       if (parts.length > 1) return (parts[0][0] + parts[1][0]).toUpperCase();
       return s.slice(0, 2).toUpperCase();
     }
+    function escapeHTML(value){
+      return String(value || '').replace(/[&<>"']/g, (char) => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+      })[char]);
+    }
     function paintGuests(roster, total){
       const guests = Array.isArray(roster) ? roster : [];
       const list = [{ name: guestHostName, emoji: '🎧', host: true }].concat(guests);
@@ -993,6 +1019,154 @@
         a.textContent = '+' + (n - shown.length);
         guestAvatars.appendChild(a);
       }
+    }
+    function peerPlayer(peer){
+      let audio = peerPlayers.get(peer.id);
+      if (audio) return audio;
+      audio = document.createElement('audio');
+      audio.preload = 'auto';
+      audio.playsInline = true;
+      audio.muted = true;
+      if (nativeHLS) {
+        audio.src = peer.streamUrl;
+      } else {
+        loadHls().then((ok) => {
+          if (!ok || !window.Hls || !Hls.isSupported() || peerHls.has(peer.id)) return;
+          const controller = new Hls({
+            lowLatencyMode: true,
+            liveSyncDuration: Math.max(1, latencyTarget || ROOM_TARGET_FALLBACK),
+            liveMaxLatencyDuration: Math.max(3, (latencyTarget || ROOM_TARGET_FALLBACK) + 2),
+            backBufferLength: 0,
+          });
+          controller.loadSource(peer.streamUrl);
+          controller.attachMedia(audio);
+          peerHls.set(peer.id, controller);
+        });
+      }
+      audio.addEventListener('playing', () => {
+        if (activePeerID !== peer.id || audio.muted) return;
+        setPlayingUI(true);
+        setStatus('live');
+      });
+      audio.addEventListener('waiting', () => {
+        if (activePeerID === peer.id && !audio.muted) setStatus('switching…');
+      });
+      audio.addEventListener('error', () => {
+        if (activePeerID !== peer.id) return;
+        setStatus('reconnecting to DJ…');
+        setTimeout(() => {
+          if (activePeerID === peer.id) {
+            audio.load();
+            audio.play().catch(() => setStatus('tap again to reconnect'));
+          }
+        }, 500);
+      });
+      document.body.appendChild(audio);
+      peerPlayers.set(peer.id, audio);
+      return audio;
+    }
+    function primePeerPlayers(){
+      discoveredPeers.forEach((peer) => {
+        if (!peer.live || !peer.ready || !peer.streamUrl) return;
+        const audio = peerPlayer(peer);
+        audio.muted = true;
+        audio.play().catch(() => {});
+      });
+    }
+    function paintDJs(peers){
+      discoveredPeers = Array.isArray(peers) ? peers : [];
+      const present = new Set(discoveredPeers.map((peer) => peer.id));
+      peerPlayers.forEach((audio, id) => {
+        if (present.has(id)) return;
+        audio.pause();
+        audio.remove();
+        peerPlayers.delete(id);
+        const controller = peerHls.get(id);
+        if (controller) controller.destroy();
+        peerHls.delete(id);
+      });
+      if (activePeerID && !discoveredPeers.some((peer) => peer.id === activePeerID && peer.live && peer.ready && peer.streamUrl)) {
+        const departed = peerPlayers.get(activePeerID);
+        if (departed) departed.muted = true;
+        activePeerID = '';
+        if (started && live && streamReady) {
+          player.muted = false;
+          player.play().catch(() => {});
+          setPlayingUI(true);
+          setStatus('DJ disconnected · back to this room');
+        } else {
+          setPlayingUI(false);
+          setStatus('DJ disconnected');
+        }
+      }
+      const visible = discoveredPeers.length > 0;
+      djPicker.hidden = !visible;
+      djList.textContent = '';
+      if (!visible) {
+        activePeerID = '';
+        return;
+      }
+      const local = document.createElement('button');
+      local.type = 'button';
+      local.className = 'djchoice live' + (activePeerID ? '' : ' active');
+      local.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
+        escapeHTML(guestHostName || 'This DJ') + '</b><small>This room</small></span>';
+      local.addEventListener('click', () => selectDJ(''));
+      djList.appendChild(local);
+      discoveredPeers.forEach((peer) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'djchoice' + (peer.live && peer.ready ? ' live' : '') +
+          (activePeerID === peer.id ? ' active' : '');
+        button.disabled = !peer.live || !peer.ready || !peer.streamUrl;
+        button.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
+          escapeHTML(peer.name || 'PartyParty DJ') + '</b><small>' +
+          (peer.live ? (peer.ready ? 'Live · tap to switch' : 'Preparing stream') : 'Not live') +
+          '</small></span>';
+        button.addEventListener('click', () => selectDJ(peer.id));
+        djList.appendChild(button);
+      });
+      primePeerPlayers();
+    }
+    function selectDJ(id){
+      claimPlaybackSession();
+      claimAudio();
+      if (!id) {
+        activePeerID = '';
+        peerPlayers.forEach((audio) => { audio.muted = true; });
+        if (started) {
+          userPaused = false;
+          player.muted = false;
+          player.play().catch(() => recoverPlayback('dj-switch'));
+          setPlayingUI(true);
+        } else {
+          btn.click();
+        }
+        paintDJs(discoveredPeers);
+        return;
+      }
+      const peer = discoveredPeers.find((candidate) => candidate.id === id);
+      if (!peer || !peer.live || !peer.ready || !peer.streamUrl) return;
+      const audio = peerPlayer(peer);
+      const switchStartedAt = performance.now();
+      const wasWarm = !audio.paused && audio.readyState >= 2;
+      peerPlayers.forEach((candidate, peerID) => { candidate.muted = peerID !== id; });
+      player.muted = true;
+      activePeerID = id;
+      audio.muted = false;
+      audio.play().then(() => {
+        setPlayingUI(true);
+        setStatus('live');
+        btnHint.textContent = peer.name || 'PartyParty DJ';
+        logEvent('dj-switch', { peer: id, ms: Math.round(performance.now() - switchStartedAt), warm: wasWarm });
+      }).catch(() => {
+        audio.muted = true;
+        activePeerID = '';
+        player.muted = false;
+        setStatus('tap again to switch');
+        logEvent('dj-switch-failed', { peer: id, ms: Math.round(performance.now() - switchStartedAt) });
+      });
+      paintDJs(discoveredPeers);
     }
     // Current-track text for the listen-bar hint. Declared in THIS (outer) scope
     // because applyBtnHint runs here; renderTrackID (an inner scope) writes it.
@@ -1301,6 +1475,21 @@
 
     btn.addEventListener('click', () => {
       claimPlaybackSession(); // in-gesture: audio must ignore the Silent switch
+      primePeerPlayers();
+      if (activePeerID) {
+        const audio = peerPlayers.get(activePeerID);
+        if (!audio) return;
+        if (audio.muted) {
+          audio.muted = false;
+          audio.play().catch(() => {});
+          setPlayingUI(true);
+        } else {
+          audio.muted = true;
+          setPlayingUI(false);
+          setStatus('paused');
+        }
+        return;
+      }
       // A yielded tab (another tab took the audio) reclaims on tap.
       if (yielded) { yielded = false; claimAudio(); userPaused = false; recoverPlayback('tab-reclaim'); return; }
       if (playBlocked) { retryPlayback('retry'); return; }
@@ -1346,6 +1535,7 @@
       }
       if (!sumPlayStart && !player.muted) sumPlayStart = Date.now(); // audible play-time clock
       logEvent('playing', { first: !wasStarted, lat: rnd(measureLatency()), buf: rnd(bufferedAhead()), muted: player.muted, ll: true });
+      if (activePeerID) return;
       if (!player.muted && !yielded) {
         playBlocked = false;
         claimAudio();
@@ -1355,6 +1545,7 @@
       }
     });
     player.addEventListener('waiting', () => {
+      if (activePeerID) return;
       stalledSinceBeat = true;
       if (started && !stallStartedAt) {
         stallStartedAt = Date.now(); sumStalls++;
@@ -1370,6 +1561,7 @@
     // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
     // normal between refreshes) — only treat it as real when starved.
     player.addEventListener('stalled', () => {
+      if (activePeerID) return;
       if (!live) return; // poll() handles the DJ-stopped teardown
       if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
     });
@@ -1499,6 +1691,7 @@
       considerNativeOutlier(lat, stalled);
     }
     player.addEventListener('pause',   () => {
+      if (activePeerID) return;
       if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
       // We pause by MUTING, never player.pause(). A real pause here is a system
       // interruption (phone call, Siri, another app) — if the user didn't ask
@@ -1516,6 +1709,7 @@
       setPlayingUI(false); if (started) setStatus('paused');
     });
     player.addEventListener('error',   () => {
+      if (activePeerID) return;
       reportErr('media', 'code=' + (player.error && player.error.code) + ' ' + ((player.error && player.error.message) || '') + ' live=' + live);
       if (!live) return; // DJ stopped — poll() tears down and shows "Waiting for DJ"
       // The stream is supposedly live but the player keeps dying (e.g. the
@@ -1633,7 +1827,7 @@
             gaps: syncState && rnd3(syncState.gapHistory), target: rnd3(latencyTarget),
           });
         }
-        if (streamChanged && (started || attached)) {
+        if (!activePeerID && streamChanged && (started || attached)) {
           // A publisher rebuild creates a different PDT timeline and may leave
           // AVPlayer holding a now-invalid MediaMTX session. Tear down the
           // transport but keep this same, user-blessed audio element.
@@ -1643,8 +1837,9 @@
         if (eventHost) guestHostName = eventHost;
         const totalListeners = Number(s.listeners || 0);
         paintGuests(s.roster || [], totalListeners);
+        paintDJs(s.peers || []);
         countEl.textContent = '';
-        if (!live && (started || attached)) {
+        if (!activePeerID && !live && (started || attached)) {
           // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an
           // endless reconnect loop against a dead stream. `attached` matters
           // too — a prebuffered-but-never-tapped page holds a live hls.js
@@ -1671,7 +1866,7 @@
         // *and* a STALL that never fired a pause event (Seth's frozen-tab case:
         // came back paused:false but stuck) — recoverPlayback re-attaches once
         // progress has been stale past the live window.
-        else if (started && live && streamReady && !userPaused && !yielded && (player.paused || stale())) {
+        else if (!activePeerID && started && live && streamReady && !userPaused && !yielded && (player.paused || stale())) {
           recoverPlayback();
         }
       } catch (e) { if (!started) setStatus('offline'); }
@@ -1723,13 +1918,23 @@
       reportAudioOpen(lat);
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
       watchAudibleHealth(lat, stalled);
-      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
+      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded || !!activePeerID ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION);
       if (guestName) url += '&name=' + encodeURIComponent(guestName);
       if (guestEmoji) url += '&emoji=' + encodeURIComponent(guestEmoji);
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
       fetch(url, { cache: 'no-store' }).catch(() => {});
+      if (activePeerID) {
+        const peer = discoveredPeers.find((candidate) => candidate.id === activePeerID);
+        if (peer && peer.roomUrl) {
+          let peerHeartbeat = peer.roomUrl + '/api/heartbeat?stalled=0&paused=0&cid=' +
+            encodeURIComponent(cid) + '&plat=native&v=' + encodeURIComponent(PAGE_VERSION);
+          if (guestName) peerHeartbeat += '&name=' + encodeURIComponent(guestName);
+          if (guestEmoji) peerHeartbeat += '&emoji=' + encodeURIComponent(guestEmoji);
+          fetch(peerHeartbeat, { mode: 'no-cors', cache: 'no-store' }).catch(() => {});
+        }
+      }
       // Periodic health into the recorder (~every 12s): the steady-state
       // timeline between transitions — latency drift, buffer depth, rate.
       if (++hbTick % 6 === 0) logEvent('health', {
@@ -2052,6 +2257,7 @@
       welOv.addEventListener('click', () => {
         if (primed || !welOv.classList.contains('show')) return;
         primed = true;
+        primePeerPlayers();
         userPaused = false;
         player.muted = true;
         if (live && streamReady) {
@@ -2065,6 +2271,7 @@
 
       $id('welGo').addEventListener('click', () => {
         claimPlaybackSession(); // in-gesture: make audio ignore the Silent switch
+        primePeerPlayers();
         welcomed = true;
         logEvent('lets-party', { live: live, streamReady: streamReady, ready: ready });
         try { localStorage.setItem('pp.welcomed', '1'); } catch (e) {}

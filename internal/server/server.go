@@ -28,6 +28,7 @@ import (
 	"partyparty/internal/diag"
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
+	"partyparty/internal/peers"
 	"partyparty/internal/stats"
 )
 
@@ -38,6 +39,8 @@ type Deps struct {
 	RunDir      string
 	Web         fs.FS
 	MTX         *mediamtx.Server // nil if mediamtx unavailable (LL-HLS disabled)
+	Peers       *peers.Directory // nil when Bonjour discovery is unavailable
+	PeerID      string
 
 	// Events is the party's active-room social layer.
 	// nil disables the feed endpoints.
@@ -424,7 +427,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"event":          s.eventState(),
 			"config":         s.payloadConfig(),
 			"streamHealth":   s.streamHealthText(),
+			"peers":          s.peerList(),
 		})
+	case "/api/peer":
+		writeJSON(w, http.StatusOK, s.peerState())
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate. Expose the
 		// server receive/transmit pair so clients can use the full four-timestamp
@@ -509,7 +515,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				s.Diag.Printf("ev[%s] %s %s", who, clipStr(kind, 20), compactFields(ev))
 			}
 			switch kind {
-			case "error", "media", "play-failed", "join-stuck", "reconnect", "offline", "dj-stop":
+			case "error", "media", "play-failed", "join-stuck", "reconnect", "offline", "dj-stop", "dj-switch-failed":
 				urgent = true
 			}
 		}
@@ -655,6 +661,43 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "unknown api"})
 	}
+}
+
+func (s *srv) peerState() peers.Peer {
+	bc := s.Broadcaster.Status()
+	name := strings.TrimSpace(s.Config.Name)
+	if s.Events != nil {
+		if host := strings.TrimSpace(s.Events.Meta().Host); host != "" {
+			name = host
+		}
+	}
+	if name == "" {
+		name = "PartyParty DJ"
+	}
+	syncState := s.streamSyncState(bc, roomLatencyTarget)
+	ready, _ := syncState["ready"].(bool)
+	return peers.Peer{
+		ID:        s.PeerID,
+		Name:      name,
+		RoomURL:   s.urls().Primary,
+		StreamURL: s.llhlsURL(),
+		Live:      bc.State == "live",
+		Ready:     ready,
+	}
+}
+
+func (s *srv) peerList() []peers.Peer {
+	if s.Peers == nil {
+		return []peers.Peer{}
+	}
+	out := s.Peers.Peers()
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name == out[j].Name {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
 }
 
 func broadcastStatus(status broadcast.Status) map[string]any {
