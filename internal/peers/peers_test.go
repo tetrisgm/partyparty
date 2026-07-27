@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grandcat/zeroconf"
+	"partyparty/internal/event"
 )
 
 func TestTXTValues(t *testing.T) {
@@ -72,6 +73,22 @@ func TestProbeKeepsOnlyVerifiedPeer(t *testing.T) {
 	got := d.Peers()
 	if len(got) != 1 || got[0].ID != "other" || got[0].RoomURL != server.URL || !got[0].Ready {
 		t.Fatalf("peers = %#v", got)
+	}
+}
+
+func TestMergePostsAppliesChangesAndRemovals(t *testing.T) {
+	previous := []event.Post{{ID: "keep", Text: "old"}, {ID: "remove"}}
+	changed := []event.Post{{ID: "keep", Text: "new"}, {ID: "add"}}
+	got := mergePosts(previous, changed, []string{"keep", "add"})
+	byID := make(map[string]event.Post, len(got))
+	for _, post := range got {
+		byID[post.ID] = post
+	}
+	if len(byID) != 2 || byID["keep"].Text != "new" || byID["add"].ID != "add" {
+		t.Fatalf("merged posts = %#v", got)
+	}
+	if _, exists := byID["remove"]; exists {
+		t.Fatalf("removed post survived: %#v", got)
 	}
 }
 

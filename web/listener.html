@@ -2316,7 +2316,7 @@
       let previewURLs = [];
       const albumItems = new Map();
       function albumMediaHTML(item){
-        const src = '/media/' + encodeURIComponent(item.id);
+        const src = item.url || ('/media/' + encodeURIComponent(item.id));
         const thumb = item.thumb || src;
         if (item.type === 'video') {
           if (item.thumb) return '<a class="albumtile" href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(item.thumb) + '" loading="lazy" alt=""><span class="vplay">▶</span></a>';
@@ -2549,7 +2549,7 @@
       }
       function renderPost(p){
         const media = (p.media || []).map(m => {
-          const src = '/media/' + encodeURIComponent(m.id);
+          const src = m.url || ('/media/' + encodeURIComponent(m.id));
           const thumb = m.thumb || src;
           if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(thumb) + '" data-fallback-src="' + src + '" loading="lazy" alt=""></a>';
           if (m.type === 'video') {

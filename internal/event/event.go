@@ -25,6 +25,7 @@ type Media struct {
 	Name  string `json:"name"` // original filename, sanitized (display only)
 	Size  int64  `json:"size"`
 	Thumb string `json:"thumb,omitempty"` // /media/thumb/<id>, generated async
+	URL   string `json:"url,omitempty"`   // absolute URL when federated from another Mac
 }
 
 // Comment is one reply under a post. Same privacy rule as posts: CID stays

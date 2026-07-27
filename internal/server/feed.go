@@ -1,18 +1,22 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"partyparty/internal/event"
+	"partyparty/internal/peers"
 )
 
 // The event feed: guests post text + photos/videos from the player page; the
@@ -88,9 +92,13 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		// ~25s heartbeat), then answer. Posts and comments land on every open
 		// page within a network round-trip instead of a polling interval.
 		if len(posts) == 0 && cursor <= since && r.URL.Query().Get("wait") == "1" {
+			wait := 25 * time.Second
+			if len(s.roomPeers()) > 0 {
+				wait = 2 * time.Second
+			}
 			select {
 			case <-s.Events.Wait():
-			case <-time.After(25 * time.Second):
+			case <-time.After(wait):
 			case <-r.Context().Done():
 				return true
 			}
@@ -99,6 +107,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		if posts == nil {
 			posts = []event.Post{}
 		}
+		posts, ids, mediaCount, cursor = mergeRoomFeed(posts, ids, mediaCount, cursor, since, s.roomPeers())
 		photos, videos, audio := s.Events.MediaTypeCounts(r.URL.Query().Get("cid"), dj)
 		meta := s.Events.Meta()
 		reactions, spikes := s.Events.ReactionSnapshot()
@@ -167,6 +176,11 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if peerID, postID, remote := splitRoomPostID(body.Post); remote {
+			body.Post = postID
+			s.proxyRoomWrite(w, r, peerID, body)
 			return true
 		}
 		if !s.isDJ(r) && !s.limits.allow(guestLimitKey(body.CID, r), "reaction") {
@@ -300,6 +314,11 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		var body struct{ Post, CID, Author, Emoji, Text string }
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if peerID, postID, remote := splitRoomPostID(body.Post); remote {
+			body.Post = postID
+			s.proxyRoomWrite(w, r, peerID, body)
 			return true
 		}
 		if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "comment") {
@@ -708,4 +727,87 @@ func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeFile(w, r, p)
+}
+
+const roomPostSeparator = "~"
+
+func roomPostID(peerID, postID string) string {
+	return peerID + roomPostSeparator + postID
+}
+
+func splitRoomPostID(id string) (peerID, postID string, remote bool) {
+	peerID, postID, remote = strings.Cut(id, roomPostSeparator)
+	return
+}
+
+func mergeRoomFeed(local []event.Post, ids []string, mediaCount int, cursor, since int64, roomPeers []peers.Peer) ([]event.Post, []string, int, int64) {
+	posts := append([]event.Post(nil), local...)
+	allIDs := append([]string(nil), ids...)
+	for _, peer := range roomPeers {
+		if peer.Room == nil {
+			continue
+		}
+		if peer.Room.Cursor > cursor {
+			cursor = peer.Room.Cursor
+		}
+		for _, remote := range peer.Room.Posts {
+			allIDs = append(allIDs, roomPostID(peer.ID, remote.ID))
+			if remote.Act <= since {
+				continue
+			}
+			remote.ID = roomPostID(peer.ID, remote.ID)
+			for i := range remote.Media {
+				remote.Media[i].URL = peer.RoomURL + "/media/" + url.PathEscape(remote.Media[i].ID)
+				if remote.Media[i].Thumb != "" {
+					remote.Media[i].Thumb = peer.RoomURL + remote.Media[i].Thumb
+				}
+			}
+			mediaCount += len(remote.Media)
+			posts = append(posts, remote)
+		}
+	}
+	sort.Slice(posts, func(i, j int) bool { return posts[i].TS < posts[j].TS })
+	return posts, allIDs, mediaCount, cursor
+}
+
+func (s *srv) proxyRoomWrite(w http.ResponseWriter, r *http.Request, peerID string, body any) {
+	s.peersMu.RLock()
+	directory := s.Peers
+	s.peersMu.RUnlock()
+	if directory == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "that DJ is no longer reachable"})
+		return
+	}
+	peer, ok := directory.Peer(peerID)
+	if !ok {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "that DJ is no longer reachable"})
+		return
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, peer.RoomURL+r.URL.Path, bytes.NewReader(payload))
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "couldn't reach that DJ"})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "couldn't reach that DJ"})
+		return
+	}
+	defer resp.Body.Close()
+	response, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "invalid response from that DJ"})
+		return
+	}
+	if contentType := resp.Header.Get("Content-Type"); contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(response)
 }

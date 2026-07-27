@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/grandcat/zeroconf"
+	"partyparty/internal/event"
 )
 
 const service = "_partyparty._tcp"
@@ -24,6 +25,21 @@ type Peer struct {
 	StreamURL string `json:"streamUrl,omitempty"`
 	Live      bool   `json:"live"`
 	Ready     bool   `json:"ready"`
+	Room      *Room  `json:"room,omitempty"`
+}
+
+// Room is the compact public social snapshot shared between Macs at one venue.
+// Audio and media remain served by their owning Mac.
+type Room struct {
+	Roster []Guest      `json:"roster"`
+	Posts  []event.Post `json:"posts"`
+	IDs    []string     `json:"ids"`
+	Cursor int64        `json:"cursor"`
+}
+
+type Guest struct {
+	Name  string `json:"name"`
+	Emoji string `json:"emoji"`
 }
 
 type candidate struct {
@@ -135,7 +151,14 @@ func (d *Directory) probe(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.roomURL+"/api/peer", nil)
+			d.mu.RLock()
+			previous := d.peers[c.id]
+			d.mu.RUnlock()
+			since := int64(0)
+			if previous.Room != nil {
+				since = previous.Room.Cursor
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.roomURL+"/api/peer?since="+strconv.FormatInt(since, 10), nil)
 			if err != nil {
 				return
 			}
@@ -155,6 +178,9 @@ func (d *Directory) probe(ctx context.Context) {
 				return
 			}
 			peer.RoomURL = c.roomURL
+			if since > 0 && previous.Room != nil && peer.Room != nil {
+				peer.Room.Posts = mergePosts(previous.Room.Posts, peer.Room.Posts, peer.Room.IDs)
+			}
 			d.mu.Lock()
 			d.peers[c.id] = peer
 			d.mu.Unlock()
@@ -172,6 +198,27 @@ func (d *Directory) probe(ctx context.Context) {
 	d.mu.Unlock()
 }
 
+func mergePosts(previous, changed []event.Post, currentIDs []string) []event.Post {
+	keep := make(map[string]bool, len(currentIDs))
+	for _, id := range currentIDs {
+		keep[id] = true
+	}
+	posts := make(map[string]event.Post, len(previous)+len(changed))
+	for _, post := range previous {
+		if keep[post.ID] {
+			posts[post.ID] = post
+		}
+	}
+	for _, post := range changed {
+		posts[post.ID] = post
+	}
+	out := make([]event.Post, 0, len(posts))
+	for _, post := range posts {
+		out = append(out, post)
+	}
+	return out
+}
+
 func (d *Directory) removePeer(id string) {
 	d.mu.Lock()
 	delete(d.peers, id)
@@ -187,6 +234,14 @@ func (d *Directory) Peers() []Peer {
 		out = append(out, peer)
 	}
 	return out
+}
+
+// Peer returns one currently reachable peer.
+func (d *Directory) Peer(id string) (Peer, bool) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	peer, ok := d.peers[id]
+	return peer, ok
 }
 
 // Close stops the Bonjour advertisement.

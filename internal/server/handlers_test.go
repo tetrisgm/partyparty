@@ -86,7 +86,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 	return &testEnv{srv: s, bc: bc, runDir: runDir}
 }
 
-func TestPeerEndpointIsMinimalAndPublic(t *testing.T) {
+func TestPeerEndpointSharesOnlyPublicRoomState(t *testing.T) {
 	env := newTestEnv(t, nil)
 	w := do(env.srv, http.MethodGet, "/api/peer", "192.168.1.44:3333")
 	if w.Code != http.StatusOK {
@@ -96,8 +96,12 @@ func TestPeerEndpointIsMinimalAndPublic(t *testing.T) {
 	if body["id"] != "test-peer" || body["live"] != false || body["ready"] != false {
 		t.Fatalf("peer body = %#v", body)
 	}
-	if _, exposed := body["roster"]; exposed {
-		t.Fatalf("peer endpoint exposed room details: %#v", body)
+	room, ok := body["room"].(map[string]any)
+	if !ok {
+		t.Fatalf("peer endpoint did not expose public room snapshot: %#v", body)
+	}
+	if len(room["roster"].([]any)) != 0 || len(room["posts"].([]any)) != 0 || len(room["ids"].([]any)) != 0 {
+		t.Fatalf("empty public room snapshot = %#v", room)
 	}
 }
 

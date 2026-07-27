@@ -2066,7 +2066,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const t = new Date(p.ts);
       const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
       const media = (p.media || []).map(m => {
-        const src = '/media/' + encodeURIComponent(m.id);
+        const src = m.url || ('/media/' + encodeURIComponent(m.id));
         const thumb = m.thumb || src;
         if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(thumb) + '" data-fallback-src="' + src + '" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px" alt=""></a>';
         if (m.type === 'video') {

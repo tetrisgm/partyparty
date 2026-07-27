@@ -417,11 +417,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			rosterBody = public
 		}
+		rosterBody, roomListeners := s.roomRoster(rosterBody)
 		writeJSONGzip(w, r, http.StatusOK, map[string]any{
 			"name":           s.Config.Name,
 			"appVersion":     s.version(),
 			"broadcast":      broadcastStatus(bc),
-			"listeners":      health.Listeners,
+			"listeners":      roomListeners,
 			"listenersTotal": s.Listeners.TotalUnique(),
 			"health":         health,
 			"urls":           s.urls(),
@@ -442,7 +443,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"peers":          s.peerList(),
 		})
 	case "/api/peer":
-		writeJSON(w, http.StatusOK, s.peerState())
+		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+		writeJSON(w, http.StatusOK, s.peerState(since))
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate. Expose the
 		// server receive/transmit pair so clients can use the full four-timestamp
@@ -675,7 +677,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *srv) peerState() peers.Peer {
+func (s *srv) peerState(since int64) peers.Peer {
 	s.peersMu.RLock()
 	peerID := s.PeerID
 	s.peersMu.RUnlock()
@@ -691,6 +693,23 @@ func (s *srv) peerState() peers.Peer {
 	}
 	syncState := s.streamSyncState(bc, roomLatencyTarget)
 	ready, _ := syncState["ready"].(bool)
+	roster := s.Listeners.Roster()
+	publicRoster := make([]peers.Guest, 0, len(roster))
+	for _, listener := range roster {
+		publicRoster = append(publicRoster, peers.Guest{Name: listener.Name, Emoji: listener.Emoji})
+	}
+	var posts []event.Post
+	var ids []string
+	var cursor int64
+	if s.Events != nil {
+		posts, ids, _, cursor = s.Events.FeedFor(since, "", false)
+	}
+	if posts == nil {
+		posts = []event.Post{}
+	}
+	if ids == nil {
+		ids = []string{}
+	}
 	return peers.Peer{
 		ID:        peerID,
 		Name:      name,
@@ -698,6 +717,7 @@ func (s *srv) peerState() peers.Peer {
 		StreamURL: s.llhlsURL(),
 		Live:      bc.State == "live",
 		Ready:     ready,
+		Room:      &peers.Room{Roster: publicRoster, Posts: posts, IDs: ids, Cursor: cursor},
 	}
 }
 
@@ -709,6 +729,9 @@ func (s *srv) peerList() []peers.Peer {
 		return []peers.Peer{}
 	}
 	out := directory.Peers()
+	for i := range out {
+		out[i].Room = nil
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Name == out[j].Name {
 			return out[i].ID < out[j].ID
@@ -716,6 +739,48 @@ func (s *srv) peerList() []peers.Peer {
 		return out[i].Name < out[j].Name
 	})
 	return out
+}
+
+func (s *srv) roomRoster(local any) (any, int) {
+	switch roster := local.(type) {
+	case []map[string]string:
+		out := append([]map[string]string(nil), roster...)
+		for _, peer := range s.roomPeers() {
+			if peer.Room == nil {
+				continue
+			}
+			for _, guest := range peer.Room.Roster {
+				out = append(out, map[string]string{"name": guest.Name, "emoji": guest.Emoji})
+			}
+		}
+		return out, len(out)
+	default:
+		// The DJ console retains detailed local health rows. Remote guests are
+		// appended as public identity-only rows because their playback health
+		// belongs to the Mac serving their stream.
+		out, _ := json.Marshal(local)
+		var rows []map[string]any
+		_ = json.Unmarshal(out, &rows)
+		for _, peer := range s.roomPeers() {
+			if peer.Room == nil {
+				continue
+			}
+			for _, guest := range peer.Room.Roster {
+				rows = append(rows, map[string]any{"name": guest.Name, "emoji": guest.Emoji, "remote": true})
+			}
+		}
+		return rows, len(rows)
+	}
+}
+
+func (s *srv) roomPeers() []peers.Peer {
+	s.peersMu.RLock()
+	directory := s.Peers
+	s.peersMu.RUnlock()
+	if directory == nil {
+		return nil
+	}
+	return directory.Peers()
 }
 
 func broadcastStatus(status broadcast.Status) map[string]any {

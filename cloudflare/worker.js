@@ -3,12 +3,12 @@ var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 var APP_VERSION = "123.88";
 var APP_VERSION_DATE = "2026-07-26";
-var STANDALONE_BUILD = "189";
+var STANDALONE_BUILD = "190";
 var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
 var STANDALONE_FILES = {
   "/appcast.xml": { key: "standalone/appcast.xml", type: "application/xml; charset=utf-8", cache: "public, max-age=300" },
   "/partyparty-beta.zip": { key: "standalone/partyparty-beta.zip", type: "application/zip", cache: "public, max-age=300", download: "partyparty-beta.zip" },
-  "/downloads/partyparty-123.88-189.zip": { key: "standalone/partyparty-123.88-189.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.88-189.zip" }
+  "/downloads/partyparty-123.88-190.zip": { key: "standalone/partyparty-123.88-190.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.88-190.zip" }
 };
 var READ_JSON_TOO_LARGE = /* @__PURE__ */ new WeakSet();
 var esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 VERSION="${PP_VERSION:-123.88}"
-BUILD="${PP_BUILD:-189}"
+BUILD="${PP_BUILD:-190}"
 APP="$ROOT/build/partyparty-beta.app"
 SWIFT_BIN="$ROOT/app/.build/arm64-apple-macosx/release"
 SIGN_ID="${PP_SIGN_ID:-}"
