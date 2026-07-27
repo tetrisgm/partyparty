@@ -49,8 +49,11 @@ app: $(HELPER) $(MEDIAMTX) $(FFMPEG)
 app-store-package: $(HELPER) $(MEDIAMTX) $(FFMPEG)
 	./scripts/package-app-store.sh
 
+standalone: $(HELPER) $(MEDIAMTX) $(FFMPEG)
+	./scripts/build-standalone.sh
+
 clean:
 	rm -f $(BINARY) $(HELPER)
 	rm -rf build
 
-.PHONY: helper build run tone devices app app-store-package clean
+.PHONY: helper build run tone devices app app-store-package standalone clean

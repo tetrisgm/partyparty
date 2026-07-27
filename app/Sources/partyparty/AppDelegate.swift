@@ -10,15 +10,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var poller: StatusPoller!
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
+    private var updater: Updater!
+    private var wasBroadcasting = false
+    private var lastUpdateCheck = Date.distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         server.start()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
+        updater = Updater { [weak self] in
+            guard let self else { return false }
+            let state = self.poller?.status.state ?? ""
+            return state == "live" || state == "starting"
+        }
         setupStatusItem()
         poller = StatusPoller(api: api)
         poller.onChange = { [weak self] s in
-            self?.updateIcon(s)
+            guard let self else { return }
+            self.updateIcon(s)
+            let broadcasting = s.state == "live" || s.state == "starting"
+            if self.wasBroadcasting && !broadcasting {
+                self.updater.broadcastDidEnd()
+            }
+            self.wasBroadcasting = broadcasting
         }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
@@ -107,6 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         qr.isEnabled = !s.guestURL.isEmpty
         menu.addItem(qr)
         menu.addItem(item("Open Console", #selector(showConsole)))
+#if STANDALONE
+        menu.addItem(item("Check for Updates…", #selector(checkForUpdates)))
+#endif
         let stop = item("Stop Set", #selector(stopSet))
         stop.isEnabled = broadcasting
         menu.addItem(stop)
@@ -172,6 +189,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+
+    @objc private func checkForUpdates() {
+        updater.checkForUpdates()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard Date().timeIntervalSince(lastUpdateCheck) >= 300 else { return }
+        lastUpdateCheck = Date()
+        updater?.checkInBackground()
+    }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {

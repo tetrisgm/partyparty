@@ -61,9 +61,11 @@ test("bounded JSON parsing remains strict", async () => {
   assert.equal(await readJson(new Request("https://x/", { method: "POST", body: '{"too":"large"}' }), 2), null);
 });
 
-test("landing, legal pages, version, and the temporary private beta are served", async () => {
+test("landing, legal pages, version, and signed standalone release files are served", async () => {
   const env = baseEnv();
-  await env.DL.put("private-beta/partyparty-123.88.zip", new Uint8Array([80, 75, 3, 4]));
+  await env.DL.put("standalone/partyparty-beta.zip", new Uint8Array([80, 75, 3, 4]));
+  await env.DL.put("standalone/partyparty-123.88-189.zip", new Uint8Array([80, 75, 3, 4]));
+  await env.DL.put("standalone/appcast.xml", "<rss/>");
   assert.equal(await (await worker.fetch(new Request("https://partyparty.party/"), env)).text(), "landing");
   for (const path of ["/privacy", "/support"]) {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
@@ -72,15 +74,20 @@ test("landing, legal pages, version, and the temporary private beta are served",
   }
   const version = await (await worker.fetch(new Request("https://partyparty.party/api/version"), env)).json();
   assert.equal(version.version, APP_VERSION);
-  const beta = await worker.fetch(new Request("https://partyparty.party/private-beta/partyparty-123.88.zip"), env);
+  assert.equal(version.standaloneBuild, "189");
+  assert.equal(version.standaloneDownload, "/partyparty-beta.zip");
+  const beta = await worker.fetch(new Request("https://partyparty.party/partyparty-beta.zip"), env);
   assert.equal(beta.status, 200);
   assert.equal(beta.headers.get("content-type"), "application/zip");
-  assert.equal(beta.headers.get("content-disposition"), 'attachment; filename="partyparty-123.88-private-beta.zip"');
+  assert.equal(beta.headers.get("content-disposition"), 'attachment; filename="partyparty-beta.zip"');
   assert.equal((await beta.arrayBuffer()).byteLength, 4);
-  const betaHead = await worker.fetch(new Request("https://partyparty.party/private-beta/partyparty-123.88.zip", { method: "HEAD" }), env);
+  const betaHead = await worker.fetch(new Request("https://partyparty.party/partyparty-beta.zip", { method: "HEAD" }), env);
   assert.equal(betaHead.status, 200);
   assert.equal(betaHead.headers.get("content-length"), "4");
-  for (const path of ["/appcast.xml", "/partyparty.pkg", "/partyparty.zip", "/content/manifest.json", "/content/state.json"]) {
+  assert.equal((await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env)).status, 200);
+  const immutable = await worker.fetch(new Request("https://partyparty.party/downloads/partyparty-123.88-189.zip"), env);
+  assert.equal(immutable.headers.get("cache-control"), "public, max-age=31536000, immutable");
+  for (const path of ["/private-beta/partyparty-123.88.zip", "/partyparty.pkg", "/partyparty.zip", "/content/manifest.json", "/content/state.json"]) {
     assert.equal((await worker.fetch(new Request(`https://partyparty.party${path}`), env)).status, 404, path);
   }
 });
