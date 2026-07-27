@@ -1,7 +1,6 @@
 // cloudflare/worker.js
-var ZIP_RE = /^\/[A-Za-z0-9._-]+\.(zip|pkg|dmg)$/;
-var CONTENT_RE = /^\/content\/(manifest\.json|payload-\d+\.tar\.gz)$/;
 var SITE_ORIGIN = "https://partyparty.party";
+var APP_STORE_URL = "https://apps.apple.com/app/id6794880742";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 var APP_VERSION = "123.88";
 var APP_VERSION_DATE = "2026-07-26";
@@ -58,13 +57,6 @@ async function sha256Hex(str) {
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-function compareProductVersions(a, b) {
-  const pa = /^(\d+)\.(\d+)$/.exec(String(a || "").trim());
-  const pb = /^(\d+)\.(\d+)$/.exec(String(b || "").trim());
-  if (!pa || !pb) return Number.NEGATIVE_INFINITY;
-  const major = Number(pa[1]) - Number(pb[1]);
-  return major || Number(pa[2]) - Number(pb[2]);
-}
 var CSS = `
 :root{--bg:#f5f5f7;--card:#fff;--ink:#1d1d1f;--ink2:#6e6e73;--ink3:#86868b;--line:#e6e6e9;--accent:#ff2d6f;--pill:999px;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);line-height:1.45}a{color:inherit;text-decoration:none}
@@ -76,7 +68,7 @@ footer{max-width:760px;margin:0 auto;padding:24px 20px 48px;color:var(--ink3);fo
 @media(max-width:560px){.sectionhead{display:grid}.navlinks .btn:first-child{display:none}}
 `;
 var SVGDEFS = "";
-var NAV = `<nav><a class="brand" href="/">partyparty</a><div class="navlinks"><a class="btn lt sm" href="/partyparty.pkg">Get the app</a></div></nav>`;
+var NAV = `<nav><a class="brand" href="/">partyparty</a><div class="navlinks"><a class="btn lt sm" href="${APP_STORE_URL}">View on the Mac App Store</a></div></nav>`;
 var TOAST_JS = "";
 function shell({ title, desc, ogImage, url, body }) {
   const pageUrl = absUrl(url || "/");
@@ -202,41 +194,6 @@ async function ensureHostLabel(env, id, rec) {
   await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
   return hostLabel;
 }
-async function contentState(env) {
-  const cache = caches.default;
-  const key = new Request("https://pp-internal-cache/content-state");
-  try {
-    const hit = await cache.match(key);
-    if (hit) return await hit.json();
-  } catch (e) {
-  }
-  const state = await readContentState(env);
-  try {
-    await cache.put(key, new Response(JSON.stringify(state), {
-      headers: { "content-type": "application/json", "cache-control": "max-age=3" }
-    }));
-  } catch (e) {
-  }
-  return state;
-}
-async function readContentState(env) {
-  let payloadVersion = 0, minRuntime = 1, appVersion = "";
-  try {
-    const m = await env.DL.get("content/manifest.json");
-    if (m) {
-      const j = await m.json();
-      payloadVersion = j.payloadVersion || 0;
-      minRuntime = j.minRuntime || 1;
-    }
-  } catch (e) {
-  }
-  try {
-    const a = await env.DL.get("content/app-version");
-    if (a) appVersion = (await a.text()).trim();
-  } catch (e) {
-  }
-  return { payloadVersion, minRuntime, appVersion };
-}
 function machineHost(env, label) {
   return `${label}.party.${env.BROKER_BASE}`;
 }
@@ -358,8 +315,6 @@ async function discoverRateLimited(ipHash, bucket = "discover", maxAge = 2) {
   }
 }
 function brokerJsonCap(pathname) {
-  if (pathname === "/api/broker/log") return 81e5;
-  if (pathname === "/api/broker/telemetry") return 128e3;
   return 16384;
 }
 async function broker(request, env, pathname) {
@@ -442,9 +397,7 @@ async function broker(request, env, pathname) {
   const id = String(body.id || "");
   if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => o ? o.json() : null);
-  const READ_ONLY = ["/api/broker/telemetry-dump", "/api/broker/log-list", "/api/broker/log-get"];
-  if (isAdmin && READ_ONLY.includes(pathname)) {
-  } else if (!rec || rec.secret !== body.secret) {
+  if (!rec || rec.secret !== body.secret) {
     return jsonResp(403, { error: "bad credentials" });
   }
   await ensureHostLabel(env, id, rec);
@@ -470,49 +423,6 @@ async function broker(request, env, pathname) {
     }
     return jsonResp(200, receipt);
   }
-  if (pathname === "/api/broker/telemetry") {
-    if (!body.snap) return jsonResp(400, { error: "no snap" });
-    await env.DL.put(`telemetry/${id}/${Date.now()}.json`, JSON.stringify(body.snap));
-    return jsonResp(200, { ok: true });
-  }
-  if (pathname === "/api/broker/log") {
-    const session = String(body.session || "").replace(/[^a-zA-Z0-9._-]/g, "");
-    if (!body.log || !session) return jsonResp(400, { error: "no log/session" });
-    let bytes;
-    try {
-      bytes = Uint8Array.from(atob(body.log), (c) => c.charCodeAt(0));
-    } catch (e) {
-      return jsonResp(400, { error: "bad base64" });
-    }
-    if (bytes.length > 6e6) return jsonResp(413, { error: "log too large" });
-    await env.DL.put(`logs/${id}/${session}.log.gz`, bytes);
-    return jsonResp(200, { ok: true });
-  }
-  if (pathname === "/api/broker/log-list") {
-    const list = await env.DL.list({ prefix: `logs/${id}/`, limit: 1e3 });
-    return jsonResp(200, { logs: list.objects.map((o) => ({ key: o.key, size: o.size, uploaded: o.uploaded })) });
-  }
-  if (pathname === "/api/broker/log-get") {
-    const key = String(body.key || "");
-    if (!key.startsWith(`logs/${id}/`)) return jsonResp(400, { error: "bad key" });
-    const o = await env.DL.get(key);
-    if (!o) return jsonResp(404, { error: "not found" });
-    const buf = new Uint8Array(await o.arrayBuffer());
-    let b64 = "";
-    for (let i = 0; i < buf.length; i += 32768) b64 += String.fromCharCode.apply(null, buf.subarray(i, i + 32768));
-    return jsonResp(200, { key, gz: btoa(b64) });
-  }
-  if (pathname === "/api/broker/telemetry-dump") {
-    const n = Math.min(Number(body.n) || 10, 50);
-    const list = await env.DL.list({ prefix: `telemetry/${id}/`, limit: 1e3 });
-    const keys = list.objects.map((o) => o.key).sort().slice(-n);
-    const entries = [];
-    for (const k of keys) {
-      const o = await env.DL.get(k);
-      if (o) entries.push({ key: k, snap: await o.json() });
-    }
-    return jsonResp(200, { entries });
-  }
   return jsonResp(404, { error: "unknown broker endpoint" });
 }
 var worker_default = {
@@ -527,19 +437,7 @@ var worker_default = {
       if (request.method === "HEAD") {
         return new Response(null, { headers: { ...headers, "content-type": "application/json" } });
       }
-      let version = APP_VERSION, date = APP_VERSION_DATE;
-      try {
-        const a = await env.DL.get("content/app-version");
-        if (a) {
-          const v = (await a.text()).trim();
-          if (v && compareProductVersions(v, version) >= 0) {
-            version = v;
-            if (a.uploaded) date = new Date(a.uploaded).toISOString().slice(0, 10);
-          }
-        }
-      } catch (e) {
-      }
-      return jsonResp(200, { version, date }, headers);
+      return jsonResp(200, { version: APP_VERSION, date: APP_VERSION_DATE }, headers);
     }
     if (pathname === "/privacy" || pathname === "/support") {
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -554,65 +452,6 @@ var worker_default = {
       } catch (e) {
         return jsonResp(500, { error: String(e && e.message || e) });
       }
-    }
-    const isFeed = pathname === "/appcast.xml";
-    const isZip = ZIP_RE.test(pathname);
-    if (isFeed || isZip) {
-      if (request.method !== "GET" && request.method !== "HEAD") {
-        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
-      }
-      const key = pathname.slice(1);
-      const obj = await env.DL.get(key);
-      if (!obj) return new Response("Not found \u2014 run `make release`.", { status: 404 });
-      const headers = new Headers();
-      obj.writeHttpMetadata(headers);
-      headers.set("etag", obj.httpEtag);
-      if (isFeed) {
-        headers.set("content-type", "application/xml");
-        headers.set("cache-control", "public, max-age=60");
-      } else {
-        headers.set(
-          "content-type",
-          key.endsWith(".dmg") ? "application/x-apple-diskimage" : key.endsWith(".pkg") ? "application/octet-stream" : "application/zip"
-        );
-        const dlName = key === "partyparty.pkg" ? "PartyParty Installer.pkg" : key;
-        headers.set("content-disposition", `attachment; filename="${dlName}"`);
-        const isLatestAlias = key === "partyparty.zip" || key === "partyparty.pkg" || key === "partyparty.dmg";
-        headers.set("cache-control", isLatestAlias ? "public, max-age=300" : "public, max-age=86400, immutable");
-      }
-      return new Response(request.method === "HEAD" ? null : obj.body, { headers });
-    }
-    if (CONTENT_RE.test(pathname)) {
-      if (request.method !== "GET" && request.method !== "HEAD") {
-        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
-      }
-      const key = pathname.slice(1);
-      const obj = await env.DL.get(key);
-      if (!obj) return new Response("Not found \u2014 run scripts/publish-payload.sh.", { status: 404 });
-      const headers = new Headers();
-      obj.writeHttpMetadata(headers);
-      headers.set("etag", obj.httpEtag);
-      const isManifest = key === "content/manifest.json";
-      headers.set("content-type", isManifest ? "application/json" : "application/gzip");
-      headers.set("cache-control", isManifest ? "public, max-age=60" : "public, max-age=86400, immutable");
-      return new Response(request.method === "HEAD" ? null : obj.body, { headers });
-    }
-    if (pathname === "/content/state.json" || pathname === "/content/subscribe") {
-      const first = await contentState(env);
-      if (pathname === "/content/state.json") {
-        return new Response(JSON.stringify(first), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
-      }
-      const q = new URL(request.url).searchParams;
-      const cv = parseInt(q.get("cv") || "0", 10) || 0;
-      const av = q.get("av") || "";
-      const moved = (s2) => (s2.payloadVersion || 0) > cv || !!s2.appVersion && s2.appVersion !== av;
-      let s = first;
-      const deadline = Date.now() + 2e4;
-      while (!moved(s) && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 2e3));
-        s = await contentState(env);
-      }
-      return new Response(JSON.stringify({ ...s, changed: moved(s) }), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
     }
     if (pathname === "/") {
       if (request.method !== "GET" && request.method !== "HEAD") {

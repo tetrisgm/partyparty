@@ -47,12 +47,7 @@ const assets = {
 
 const baseEnv = () => ({
   ASSETS: assets,
-  DL: new MemoryR2({
-    "appcast.xml": "<rss/>",
-    "partyparty.pkg": new Uint8Array([1, 2, 3]),
-    "content/manifest.json": JSON.stringify({ version: 9 }),
-    "content/app-version": APP_VERSION,
-  }),
+  DL: new MemoryR2(),
   BROKER_BASE: "partyparty.party",
   CF_DNS_TOKEN: "token",
   CF_ZONE_ID: "0123456789abcdef0123456789abcdef",
@@ -66,7 +61,7 @@ test("bounded JSON parsing remains strict", async () => {
   assert.equal(await readJson(new Request("https://x/", { method: "POST", body: '{"too":"large"}' }), 2), null);
 });
 
-test("landing, legal pages, version, appcast, installer, and OTA artifacts are served", async () => {
+test("landing, legal pages, and version are served; direct updates stay retired", async () => {
   const env = baseEnv();
   assert.equal(await (await worker.fetch(new Request("https://partyparty.party/"), env)).text(), "landing");
   for (const path of ["/privacy", "/support"]) {
@@ -76,9 +71,9 @@ test("landing, legal pages, version, appcast, installer, and OTA artifacts are s
   }
   const version = await (await worker.fetch(new Request("https://partyparty.party/api/version"), env)).json();
   assert.equal(version.version, APP_VERSION);
-  assert.equal((await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env)).status, 200);
-  assert.equal((await worker.fetch(new Request("https://partyparty.party/partyparty.pkg"), env)).status, 200);
-  assert.equal((await worker.fetch(new Request("https://partyparty.party/content/manifest.json"), env)).status, 200);
+  for (const path of ["/appcast.xml", "/partyparty.pkg", "/partyparty.zip", "/content/manifest.json", "/content/state.json"]) {
+    assert.equal((await worker.fetch(new Request(`https://partyparty.party${path}`), env)).status, 404, path);
+  }
 });
 
 test("retired public party, profile, discovery, and media routes stay gone", async () => {

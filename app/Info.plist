@@ -11,7 +11,7 @@
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>net.ramine.partyparty</string>
+	<string>fm.partyparty.app</string>
 	<key>CFBundleName</key>
 	<string>partyparty</string>
 	<key>CFBundlePackageType</key>
@@ -47,15 +47,5 @@
 	<string>partyparty lets guests on the venue Wi-Fi connect to this Mac to hear the live audio stream and join the party.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>partyparty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
-	<key>SUAutomaticallyUpdate</key>
-	<true/>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUFeedURL</key>
-	<string>https://partyparty.party/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>qFmaq5ijn3m2sbiadmkBVvGIjz8v9+piqE/T+YZ1/u0=</string>
-	<key>SUScheduledCheckInterval</key>
-	<integer>3600</integer>
 </dict>
 </plist>

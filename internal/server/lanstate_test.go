@@ -9,7 +9,8 @@ import (
 func TestReduceLanState(t *testing.T) {
 	base := lanInputs{
 		CertReady: true, Host: "seth-live.party.partyparty.party",
-		ExpectedIP: "192.168.4.30", ChecksComplete: true,
+		ExpectedIP: "192.168.4.30", DNSPublished: true,
+		ResolverMatches: true, ChecksComplete: true,
 	}
 	with := func(f func(*lanInputs)) lanInputs { c := base; f(&c); return c }
 
@@ -20,6 +21,9 @@ func TestReduceLanState(t *testing.T) {
 	}{
 		{"no cert -> unavailable", with(func(i *lanInputs) { i.CertReady = false }), lanUnavailable},
 		{"no host -> unavailable", with(func(i *lanInputs) { i.Host = "" }), lanUnavailable},
+		{"no LAN IP -> unavailable", with(func(i *lanInputs) { i.ExpectedIP = "" }), lanUnavailable},
+		{"A record not verified -> unavailable", with(func(i *lanInputs) { i.DNSPublished = false }), lanUnavailable},
+		{"resolver mismatch -> unavailable", with(func(i *lanInputs) { i.ResolverMatches = false }), lanUnavailable},
 		{"cert up, nobody joined -> ready", base, lanReady},
 		{"LAN listeners -> confirmed", with(func(i *lanInputs) { i.LanListeners = 2 }), lanConfirmed},
 	}
@@ -54,7 +58,10 @@ func TestStatusIncludesLanObject(t *testing.T) {
 // genuine guest heartbeat (which the console never sends) flips it to confirmed.
 func TestConfirmedRequiresRealGuestListener(t *testing.T) {
 	env := newTestEnv(t, nil)
-	env.srv.SetActivationResult(activate.Result{CertReady: true, Host: "seth-live.party.partyparty.party"})
+	env.srv.SetActivationResult(activate.Result{
+		CertReady: true, Host: "seth-live.party.partyparty.party",
+		ExpectedIP: "192.168.4.30", DNSPublished: true, ResolverMatches: true,
+	})
 
 	if st := env.srv.lanStateSnapshot(); st.State != lanReady {
 		t.Fatalf("cert up, no guest: lan = %q, want ready (NOT confirmed)", st.State)

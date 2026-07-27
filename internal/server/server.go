@@ -28,7 +28,6 @@ import (
 	"partyparty/internal/diag"
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
-	"partyparty/internal/ota"
 	"partyparty/internal/stats"
 )
 
@@ -39,11 +38,6 @@ type Deps struct {
 	RunDir      string
 	Web         fs.FS
 	MTX         *mediamtx.Server // nil if mediamtx unavailable (LL-HLS disabled)
-
-	// Payload is the over-the-air content store (nil = serve embedded Web
-	// only). When set, all web content and the version stamp come from it, so
-	// an adopted cloud payload is served without an app update.
-	Payload *ota.Store
 
 	// Events is the party's active-room social layer.
 	// nil disables the feed endpoints.
@@ -108,12 +102,8 @@ type srv struct {
 }
 
 func New(d Deps) *Srv {
-	webFS := d.Web
-	if d.Payload != nil {
-		webFS = d.Payload // /vendor/ follows OTA swaps too, since the store IS the FS
-	}
 	s := &Srv{srv{
-		Deps: d, vendor: http.FileServer(http.FS(webFS)),
+		Deps: d, vendor: http.FileServer(http.FS(d.Web)),
 		limits: newLimiter(),
 	}}
 	// The /live proxy keeps LL-HLS on the guest page's HTTPS origin without
@@ -189,32 +179,15 @@ func newLiveProxy(hlsPort int, prefix string) http.Handler {
 	}
 }
 
-// webFS is the live content source: the OTA payload store if present (which
-// serves the embedded copy until a newer payload is verified), else embedded.
 func (s *srv) webFS() fs.FS {
-	if s.Payload != nil {
-		return s.Payload
-	}
 	return s.Web
 }
 
-// version is the effective content version stamped into pages and reported to
-// clients. Payload-aware, so adopting a new payload changes the version and
-// stale tabs self-refresh — same mechanism as an app update.
 func (s *srv) version() string {
-	if s.Payload != nil {
-		return s.Payload.Version(s.Version)
-	}
 	return s.Version
 }
 
-// payloadConfig is the OTA config.json (feature flags + tunables) surfaced to
-// clients in /api/status, so remotely-shipped config takes effect with the
-// rest of the payload. Falls back to the embedded config when no store is set.
 func (s *srv) payloadConfig() json.RawMessage {
-	if s.Payload != nil {
-		return s.Payload.Config()
-	}
 	if data, err := fs.ReadFile(s.Web, "config.json"); err == nil && json.Valid(data) {
 		return json.RawMessage(data)
 	}
@@ -450,38 +423,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"roster":         rosterBody,
 			"event":          s.eventState(),
 			"config":         s.payloadConfig(),
-			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
 			"streamHealth":   s.streamHealthText(),
-		})
-	case "/api/update/check":
-		if r.Method != http.MethodPost {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
-			return
-		}
-		if !s.requireDJ(w, r) {
-			return
-		}
-		payloadChanged := false
-		if s.Payload != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-			defer cancel()
-			adopted, err := s.Payload.Refresh(ctx)
-			if err != nil {
-				writeJSON(w, http.StatusBadGateway, map[string]any{
-					"ok":         false,
-					"error":      err.Error(),
-					"appVersion": s.version(),
-					"appUpdate":  s.Payload.AppUpdateAvailable(),
-				})
-				return
-			}
-			payloadChanged = adopted
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":             true,
-			"appVersion":     s.version(),
-			"payloadChanged": payloadChanged,
-			"appUpdate":      s.Payload != nil && s.Payload.AppUpdateAvailable(),
 		})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate. Expose the

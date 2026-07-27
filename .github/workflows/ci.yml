@@ -1,8 +1,7 @@
 name: CI
 
 # MANUAL ONLY. Disabled the push/PR auto-triggers deliberately: releases are
-# built + verified locally by scripts/ship.sh (go build + go test + smoke run
-# before every push), so per-push macOS-runner CI only burned Actions minutes
+# built + verified locally before every push, so per-push macOS-runner CI burned Actions minutes
 # and spammed failure emails. Run on demand from the Actions tab if ever needed.
 on:
   workflow_dispatch:

@@ -10,7 +10,6 @@ cd "$(dirname "$0")/.."
   exit 1
 }
 
-export PARTYPARTY_APP_STORE=1
 export REQUIRE_APP_STORE_DISTRIBUTION=1
 if [ -n "${APP_STORE_KEYCHAIN:-}" ]; then
   export PP_KEYCHAIN="$APP_STORE_KEYCHAIN"

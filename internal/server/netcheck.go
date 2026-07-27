@@ -39,6 +39,7 @@ type netCheckOptions struct {
 	BrokerBase string
 	GuestHost  string
 	GuestURL   string
+	ExpectedIP string
 }
 
 func (s *srv) netCheckOptions() netCheckOptions {
@@ -54,6 +55,7 @@ func (s *srv) netCheckOptions() netCheckOptions {
 		BrokerBase: broker,
 		GuestHost:  host,
 		GuestURL:   s.urls().Primary,
+		ExpectedIP: s.lanStateSnapshot().ExpectedIP,
 	}
 }
 
@@ -75,7 +77,16 @@ func runNetChecks(opts netCheckOptions) []netCheck {
 		checks = append(checks, struct {
 			name string
 			run  func() (string, error)
-		}{netCheckPartyDNS, func() (string, error) { return lookup(guestHost) }})
+		}{netCheckPartyDNS, func() (string, error) {
+			ip, err := lookup(guestHost)
+			if err != nil {
+				return "", err
+			}
+			if opts.ExpectedIP != "" && ip != opts.ExpectedIP {
+				return "", fmt.Errorf("resolved to %s, expected this Mac at %s", ip, opts.ExpectedIP)
+			}
+			return ip, nil
+		}})
 	}
 	if opts.GuestURL != "" {
 		checks = append(checks, struct {

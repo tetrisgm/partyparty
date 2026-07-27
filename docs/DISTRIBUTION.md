@@ -1,19 +1,16 @@
 # Distribution
 
-partyparty has two build lanes from the same source.
+partyparty is distributed only through the Mac App Store under bundle ID
+`fm.partyparty.app`. There is no Developer ID build, Sparkle updater, installer,
+download alias, appcast, or web-payload update channel.
 
-## Mac App Store
+Build a local ad-hoc Store bundle with:
 
 ```sh
-scripts/build-app-store.sh
+scripts/build-app.sh
 ```
 
-This produces `build/partyparty-app-store.app` with App Sandbox, network client
-and server, and audio-input entitlements. It excludes Sparkle, downloaded OTA
-content, privileged-helper migration code, and network-repair code.
-
-For submission packaging, provide the App Store provisioning profile and signing
-identities:
+Build a signed submission package with:
 
 ```sh
 APP_STORE_PROVISIONING_PROFILE=/path/profile.provisionprofile \
@@ -22,18 +19,5 @@ APP_STORE_INSTALLER_ID="3rd Party Mac Developer Installer: ..." \
 scripts/package-app-store.sh
 ```
 
-## Direct distribution
-
-The existing Developer ID build remains available during App Store transition:
-
-```sh
-scripts/build-app.sh
-```
-
-It includes Sparkle and legacy cleanup code solely to migrate already-installed
-direct builds. New product behavior must not depend on privileged helpers or
-administrator access.
-
-The public Worker serves the landing page, stable installer, Sparkle appcast,
-immutable direct-build artifacts, and `/api/version`. It does not serve public
-event pages, replays, remote listeners, or party media.
+The public Worker serves the website and anonymous LAN hostname/certificate
+broker only. Product updates are delivered by the Mac App Store.

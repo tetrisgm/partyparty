@@ -13,42 +13,46 @@ const (
 
 // lanInputs is the observed evidence the reducer consumes.
 type lanInputs struct {
-	CertReady      bool   // a usable certificate/key exists for Host
-	Host           string // the machine hostname (empty => no LAN identity yet)
-	ExpectedIP     string // the current LAN IP guests would use
-	ChecksComplete bool   // activation has run at least once
-	LanListeners   int    // guests connected to the LAN room right now (this Mac)
+	CertReady       bool   // a usable certificate/key exists for Host
+	Host            string // the machine hostname (empty => no LAN identity yet)
+	ExpectedIP      string // the current LAN IP guests would use
+	DNSPublished    bool   // broker verified the current A record
+	ResolverMatches bool   // this Mac's active resolver returns ExpectedIP
+	ChecksComplete  bool   // activation has run at least once
+	LanListeners    int    // guests connected to the LAN room right now (this Mac)
 }
 
 // lanState is the /api/status `lan` object the DJ console reads.
 type lanState struct {
-	State        string `json:"state"`
-	Host         string `json:"host,omitempty"`
-	ExpectedIP   string `json:"expectedIp,omitempty"`
-	GuestPort    int    `json:"guestPort,omitempty"`
-	CertReady    bool   `json:"certReady"`
-	LanListeners int    `json:"lanListeners"`
-	CheckedAtMs  int64  `json:"checkedAtMs,omitempty"`
+	State           string `json:"state"`
+	Host            string `json:"host,omitempty"`
+	ExpectedIP      string `json:"expectedIp,omitempty"`
+	GuestPort       int    `json:"guestPort,omitempty"`
+	CertReady       bool   `json:"certReady"`
+	DNSPublished    bool   `json:"dnsPublished"`
+	ResolverMatches bool   `json:"resolverMatches"`
+	LanListeners    int    `json:"lanListeners"`
+	CheckedAtMs     int64  `json:"checkedAtMs,omitempty"`
 }
 
 // reduceLanState maps observed evidence to exactly one state, most-informative
 // first. Ground truth (a real LAN connection) always beats a guess.
 func reduceLanState(in lanInputs) lanState {
 	st := lanState{
-		Host:         in.Host,
-		ExpectedIP:   in.ExpectedIP,
-		CertReady:    in.CertReady,
-		LanListeners: in.LanListeners,
+		Host:            in.Host,
+		ExpectedIP:      in.ExpectedIP,
+		CertReady:       in.CertReady,
+		DNSPublished:    in.DNSPublished,
+		ResolverMatches: in.ResolverMatches,
+		LanListeners:    in.LanListeners,
 	}
 	switch {
-	case !in.CertReady || in.Host == "":
+	case in.LanListeners > 0:
+		// A real guest heartbeat is the strongest possible venue proof.
+		st.State = lanConfirmed
+	case !in.CertReady || in.Host == "" || in.ExpectedIP == "" || !in.DNSPublished || !in.ResolverMatches:
 		// The secure link isn't up yet; the console's setup card covers this.
 		st.State = lanUnavailable
-	case in.LanListeners > 0:
-		// Observed: guests are on the LAN room right now. Proof, not prediction —
-		// this count is fed only by guest heartbeats (/api/heartbeat), never the
-		// console's own traffic.
-		st.State = lanConfirmed
 	default:
 		// Cert up, listener serving, nobody has tried yet — honest "ready".
 		st.State = lanReady
@@ -70,11 +74,13 @@ func (s *srv) lanStateSnapshot() lanState {
 		lan = s.Listeners.Active()
 	}
 	st := reduceLanState(lanInputs{
-		CertReady:      res.CertReady,
-		Host:           res.Host,
-		ExpectedIP:     res.ExpectedIP,
-		ChecksComplete: ran,
-		LanListeners:   lan,
+		CertReady:       res.CertReady,
+		Host:            res.Host,
+		ExpectedIP:      res.ExpectedIP,
+		DNSPublished:    res.DNSPublished,
+		ResolverMatches: res.ResolverMatches,
+		ChecksComplete:  ran,
+		LanListeners:    lan,
 	})
 	st.GuestPort = s.Config.TLSPort
 	st.CheckedAtMs = time.Now().UnixMilli()

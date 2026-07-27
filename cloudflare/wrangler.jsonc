@@ -1,11 +1,9 @@
 {
-  // partyparty.party — one Worker serves the static landing page (../site) and
-  // streams the big app download + Sparkle appcast from an R2 bucket (Pages caps
-  // files at 25 MB; the .app zip is ~60-100 MB). Deploy with: make deploy-site
+  // partyparty.party — one Worker serves the static website and LAN broker.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "partyparty-site",
   "main": "worker.js",
-  "compatibility_date": "2024-12-01",
+  "compatibility_date": "2026-07-07",
   "account_id": "4e958c1f2621ced0354e94826590e34f",
 
   // Landing page (index.html etc.). Served for any path that isn't an R2 file.
@@ -15,8 +13,7 @@
     "run_worker_first": true
   },
 
-  // Downloads live here (partyparty.zip, appcast.xml). Created by deploy-site.sh.
-  // Also stores cert-broker install records, diagnostics, and OTA payloads.
+  // Stores cert-broker install records and wildcard certificate material.
   "r2_buckets": [
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],

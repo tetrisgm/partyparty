@@ -23,7 +23,7 @@ auto.key
 # Cloudflare deploy tooling (wrangler installed locally)
 /cloudflare/node_modules/
 .wrangler/
-# generated Sparkle appcast / release artifacts + stray release zips
+# generated submission artifacts
 /dist/
 /partyparty*.zip
 /e2e-sync

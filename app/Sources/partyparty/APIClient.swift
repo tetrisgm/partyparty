@@ -8,15 +8,8 @@ struct ServerStatus {
     var struggling = 0
     var captureBad = false  // real capture failure (hogged/stalled output)
     var note = ""           // the human explanation, for the menu-bar tooltip
-    var appVersion = ""     // effective visible version: app + adopted OTA payload
-    var appUpdate = false   // cloud advertises a newer app build — pull it via Sparkle now
-    var guestURL = ""       // secure LAN room URL; empty until the QR is usable
-}
-
-struct UpdateCheckResult {
     var appVersion = ""
-    var payloadChanged = false
-    var appUpdate = false
+    var guestURL = ""       // secure LAN room URL; empty until the QR is usable
 }
 
 /// Thin client for the local Go server (menu-bar status monitor).
@@ -43,7 +36,6 @@ final class APIClient {
                 s.struggling = (h["struggling"] as? NSNumber)?.intValue ?? 0
             }
             s.appVersion = o["appVersion"] as? String ?? ""
-            s.appUpdate = (o["appUpdate"] as? Bool) ?? false // drives the push-triggered Sparkle check
             if (o["llhlsRealCert"] as? Bool) == true,
                let urls = o["urls"] as? [String: Any],
                let primary = urls["primary"] as? String,
@@ -64,29 +56,6 @@ final class APIClient {
         URLSession.shared.dataTask(with: req) { _, response, _ in
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             DispatchQueue.main.async { done((200..<300).contains(status)) }
-        }.resume()
-    }
-
-    func checkUpdates(_ done: @escaping (UpdateCheckResult?) -> Void) {
-        guard let u = URL(string: "http://127.0.0.1:\(port)/api/update/check") else {
-            done(nil)
-            return
-        }
-        var req = URLRequest(url: u)
-        req.httpMethod = "POST"
-        URLSession.shared.dataTask(with: req) { data, response, _ in
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let data = data,
-                  let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                DispatchQueue.main.async { done(nil) }
-                return
-            }
-            var r = UpdateCheckResult()
-            r.appVersion = o["appVersion"] as? String ?? ""
-            r.payloadChanged = (o["payloadChanged"] as? Bool) ?? false
-            r.appUpdate = (o["appUpdate"] as? Bool) ?? false
-            DispatchQueue.main.async { done(r) }
         }.resume()
     }
 

@@ -38,9 +38,6 @@ final class ServerController {
             return
         }
         stopping = false
-#if !APP_STORE
-        reapOrphans()  // kill a stale server from a previous instance so we bind clean
-#endif
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = ["--no-open", "--port", String(port)]
@@ -57,50 +54,6 @@ final class ServerController {
         }
     }
 
-#if !APP_STORE
-    /// Kill any orphaned server child from a previous app instance before we
-    /// spawn a fresh one. THIS is the after-update white-screen fix: Sparkle (or
-    /// a force-quit / crash) can leave the old `partyparty-server` holding port
-    /// 8000, so the new console loads nothing. At start() we own no child yet, so
-    /// any running server binary is by definition an orphan — reap it (SIGTERM,
-    /// then SIGKILL stragglers) and wait for the port to free.
-    private func reapOrphans() {
-        for signal in ["-TERM", "-KILL"] {
-            let pk = Process()
-            pk.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-            // Match the server binary's argv; "partyparty-server" is unique to the
-            // child (the app itself is .../MacOS/partyparty, no "-server").
-            pk.arguments = [signal, "-f", "partyparty-server --no-open"]
-            do { try pk.run(); pk.waitUntilExit() } catch { break }
-            if signal == "-TERM" {
-                // Give a graceful exit a moment; skip the KILL if the port frees.
-                let deadline = Date().addingTimeInterval(2.5)
-                while portInUse() && Date() < deadline { usleep(100_000) }
-                if !portInUse() { return }
-            }
-        }
-        let deadline = Date().addingTimeInterval(1.5)
-        while portInUse() && Date() < deadline { usleep(100_000) }
-    }
-
-    /// True if something is still listening on our loopback port.
-    private func portInUse() -> Bool {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
-        if fd < 0 { return false }
-        defer { close(fd) }
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = in_port_t(UInt16(port).bigEndian)
-        inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr)
-        let rc = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        return rc == 0
-    }
-#endif
-
     func restart() {
         stop()
         restartCount = 0
@@ -109,8 +62,7 @@ final class ServerController {
 
     /// Actual supervision: a crashed server comes back on its own (the app
     /// used to run forever with a dead console). Restart only on ABNORMAL
-    /// exits — a clean exit(0) is deliberate (e.g. the orphan reaper asked us
-    /// to yield the port to a newer instance) and must NOT resurrect.
+    /// exits; a clean exit is deliberate and must not resurrect.
     private func childExited(_ proc: Process) {
         guard process === proc, !stopping else { return } // our stop(), or an old child
         process = nil

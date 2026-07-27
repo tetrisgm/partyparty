@@ -57,8 +57,7 @@ delivery-switch, recording-tee, and per-broadcast override code still contained
 inside `internal/broadcast/`. Do not change that package before the real go-live
 test.
 
-The direct build remains for migration and Sparkle updates. The App Store lane is
-sandboxed and Sparkle-free:
+The app is sandboxed and App Store-only:
 
 ```sh
 scripts/build-app-store.sh
@@ -66,5 +65,7 @@ scripts/package-app-store.sh
 ```
 
 Apple Distribution signing and the Store provisioning profile are configured.
-After the physical streaming gate, package and upload the newest source version,
-then finish the App Store Connect screenshots, privacy answers, and submission.
+Direct builds, Sparkle, appcasts, installer aliases, and OTA web payloads are
+retired. After the physical streaming gate, package and upload the newest source
+version, then finish the App Store Connect screenshots, privacy answers, and
+submission.

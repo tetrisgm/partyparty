@@ -125,12 +125,7 @@ App Review notes, state that the reviewer needs two devices on the same Wi-Fi,
 that guest playback uses the HTTPS QR link, and that locked-phone playback is an
 intentional core feature.
 
-## Direct-install migration
+## Distribution
 
-The direct build remains only as a migration channel until the Store edition is
-approved and existing installs have been directed to it. Do not remove Sparkle
-or the one-time old-helper cleanup before then: doing so would strand the
-currently installed population. After the Store version is publicly available,
-ship one final direct build that points users to the Store, then remove the
-direct build, Sparkle, installer stubs, and release/appcast machinery in one
-source cleanup.
+The Mac App Store is the only distribution and update channel. Direct installers,
+Sparkle, appcasts, and downloadable web payloads are retired.

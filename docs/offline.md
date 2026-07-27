@@ -10,8 +10,8 @@ two-party-word hostname and credential. Initial hostname and certificate
 provisioning need internet; the valid certificate is cached so later parties can
 run when the venue's internet uplink disappears.
 
-The Worker never receives live audio or party posts. It supports anonymous LAN
-DNS/certificate coordination, diagnostics, downloads, and updates.
+The Worker never receives live audio, party posts, or session diagnostics. It
+supports anonymous LAN DNS/certificate coordination and the product website.
 
 The console must distinguish:
 

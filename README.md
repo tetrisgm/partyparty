@@ -13,8 +13,8 @@ keep listening when Safari is backgrounded or the phone is locked.
   engine because it is smooth and survives screen lock.
 - The venue provides Wi-Fi. partyparty does not create a hotspot, captive portal,
   or Internet Sharing configuration.
-- The public Worker provides anonymous LAN hostname and certificate coordination,
-  diagnostics, downloads, and updates. It does not
+- The public Worker provides anonymous LAN hostname and certificate coordination
+  plus the product website. It does not
   host event pages or relay party content.
 
 ## Run from source
@@ -55,9 +55,7 @@ go test ./...
 cd app && swift build
 cd cloudflare && node test/smoke.mjs
 scripts/build-app.sh
-scripts/build-app-store.sh
 ```
 
-`scripts/build-app.sh` creates the direct-distribution Sparkle build.
-`scripts/build-app-store.sh` creates the sandboxed, Sparkle-free App Store build.
-See `docs/DISTRIBUTION.md`.
+`scripts/build-app.sh` creates the sandboxed Mac App Store app. See
+`docs/DISTRIBUTION.md`.

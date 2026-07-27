@@ -42,32 +42,15 @@ tone: build
 devices:
 	ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | sed -n '/audio devices/,$$p'
 
-# Native macOS .app (menu-bar shell + Go server + helpers). Ad-hoc signed for
-# local testing; the signed/notarized release is built by CI.
+# Native sandboxed Mac App Store app. Ad-hoc signed for local testing.
 app: $(HELPER) $(MEDIAMTX) $(FFMPEG)
 	GO=$(GO) ./scripts/build-app.sh
 
-# Notarize the local .app (needed for the privileged port-80 daemon). Requires a
-# one-time `xcrun notarytool store-credentials "pp-notary" ...` — see scripts/notarize.sh.
-notarize: app
-	./scripts/notarize.sh
-
-# Owner-facing ship command: verify, build, publish downloads/site, then flip
-# app/update feeds. One-time: cd cloudflare && npm install && npx wrangler login
-ship:
-	./scripts/ship.sh
-
-# Publish the landing page + current app download to partyparty.party
-# (Cloudflare Worker + R2). Lower-level helper; prefer `make ship`.
-deploy-site:
-	./scripts/deploy-site.sh
-
-# Back-compat alias for the old owner command. It now goes through ship so
-# versioning, verification, artifact order, and feed flips stay centralized.
-release: ship
+app-store-package: $(HELPER) $(MEDIAMTX) $(FFMPEG)
+	./scripts/package-app-store.sh
 
 clean:
 	rm -f $(BINARY) $(HELPER)
 	rm -rf build
 
-.PHONY: helper build run tone devices app notarize ship deploy-site release clean
+.PHONY: helper build run tone devices app app-store-package clean

@@ -266,8 +266,8 @@ func brokerBaseFromHost(host, hostLabel string) (string, bool) {
 	return base, true
 }
 
-// InstallCreds returns this Mac's broker identity for authenticated calls
-// (telemetry etc.), or empty strings if the install never registered.
+// InstallCreds returns this Mac's broker identity, or empty strings if the
+// install never registered.
 func InstallCreds() (id, secret string) {
 	dir, err := stateDir()
 	if err != nil {

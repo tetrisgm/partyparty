@@ -6,144 +6,22 @@ import ServiceManagement
 /// Supervises the Go server child.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let server = ServerController()
-    private var updater: Updater!
     private var api: APIClient!
     private var poller: StatusPoller!
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        #if !APP_STORE
-        if moveToApplicationsIfNeeded() { return }
-        #endif
-
-        // Background auto-update installs and relaunches while idle. A prepared
-        // update waits until the current broadcast ends, never interrupting it.
-        updater = Updater(isBusy: { [weak self] in
-            let st = self?.poller?.status.state
-            return st == "live" || st == "starting"
-        })
         server.start()
-        #if !APP_STORE
-        LegacyHelperCleanup.run()
-        NetworkRepair.promptIfDamaged()
-        #endif
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
         setupStatusItem()
         poller = StatusPoller(api: api)
         poller.onChange = { [weak self] s in
             self?.updateIcon(s)
-            self?.maybeTriggerAppUpdate(s)
-            self?.trackBroadcastEnd(s)
         }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
-    }
-
-    // Aggressive updates: the server's subscribe loop learns of a new build in
-    // seconds and flips appUpdate; pull it through Sparkle rather than waiting for
-    // its hourly timer. NOT a permanent one-shot — while the cloud still says a
-    // newer build exists, re-fire the silent check periodically so a transient
-    // failure is retried and a SECOND build published within a long-lived
-    // (never-quit) session is still picked up, instead of latching forever after
-    // the first attempt.
-    private var lastAppUpdatePush = Date.distantPast
-    private func maybeTriggerAppUpdate(_ s: ServerStatus) {
-        guard s.appUpdate else { return }
-        guard Date().timeIntervalSince(lastAppUpdatePush) > 120 else { return }
-        lastAppUpdatePush = Date()
-        updater?.checkNow()
-    }
-
-    // An update prepared mid-set is deferred by the updater; the moment the DJ
-    // stops broadcasting, install it on this live -> not-live edge.
-    private var wasBroadcasting = false
-    private func trackBroadcastEnd(_ s: ServerStatus) {
-        let live = (s.state == "live" || s.state == "starting")
-        if wasBroadcasting && !live { updater?.broadcastDidEnd() }
-        wasBroadcasting = live
-    }
-
-    private var lastForegroundCheck = Date.distantPast
-    func applicationDidBecomeActive(_ notification: Notification) {
-        guard Date().timeIntervalSince(lastForegroundCheck) > 300 else { return } // at most every 5 min
-        lastForegroundCheck = Date()
-        updater?.checkNow()
-    }
-
-    // MARK: Self-install (move to /Applications)
-
-    /// True when running from /Applications or ~/Applications — an INSTALLED
-    /// copy, as opposed to ~/Downloads (or a ~/Downloads/Applications decoy).
-    private var isInstalled: Bool {
-        let path = Bundle.main.bundleURL.path
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return path.hasPrefix("/Applications/") || path.hasPrefix(home + "/Applications/")
-    }
-
-    /// Returns true when a move+relaunch is underway and this instance should
-    /// do nothing further. `interactive` = invoked from a menu action (always
-    /// prompt); otherwise it's the launch check (skippable only in dev).
-    @discardableResult
-    private func moveToApplicationsIfNeeded(interactive: Bool = false) -> Bool {
-        let src = Bundle.main.bundleURL
-        if isInstalled { return false }
-        // Dev escape hatch is an ENV var only — never a persisted default, which
-        // would stick on a real install and silently defeat the move (it did).
-        if !interactive && ProcessInfo.processInfo.environment["PP_DEV_NO_MOVE"] == "1" { return false }
-
-        let fm = FileManager.default
-        var destDir = URL(fileURLWithPath: "/Applications", isDirectory: true)
-        if !fm.isWritableFile(atPath: destDir.path) {
-            // Non-admin account: fall back to the per-user Applications folder.
-            destDir = fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
-            try? fm.createDirectory(at: destDir, withIntermediateDirectories: true)
-        }
-        let dest = destDir.appendingPathComponent(src.lastPathComponent)
-
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Move \(appName) to the Applications folder?"
-        alert.informativeText = "It'll relaunch from there — updates and permissions work best that way. Takes a second, nothing to drag."
-        alert.addButton(withTitle: "Move to Applications")
-        alert.addButton(withTitle: "Not Now")
-        guard alert.runModal() == .alertFirstButtonReturn else { return false }
-
-        do {
-            if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
-            try fm.copyItem(at: src, to: dest) // works even from a translocated (read-only) mount
-            // Strip quarantine on the new copy: the user already approved the
-            // Gatekeeper first-open, and without this a programmatic move (as
-            // opposed to a Finder drag) would still be app-translocated.
-            let xattr = Process()
-            xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-            xattr.arguments = ["-dr", "com.apple.quarantine", dest.path]
-            try? xattr.run(); xattr.waitUntilExit()
-
-            let cfg = NSWorkspace.OpenConfiguration()
-            cfg.createsNewApplicationInstance = true
-            NSWorkspace.shared.openApplication(at: dest, configuration: cfg) { app, err in
-                DispatchQueue.main.async {
-                    // Only hand over if the new copy actually launched —
-                    // terminating blindly could leave the user with NOTHING.
-                    if app != nil { NSApp.terminate(nil); return }
-                    let e = NSAlert()
-                    e.messageText = "Couldn't relaunch from Applications"
-                    e.informativeText = (err?.localizedDescription ?? "Unknown error")
-                        + "\n\nThe copy IS in Applications — open it from there when you're ready."
-                    e.runModal()
-                    NSApp.terminate(nil) // this instance did no setup; don't linger half-alive
-                }
-            }
-            return true
-        } catch {
-            let e = NSAlert()
-            e.messageText = "Couldn't move \(appName)"
-            e.informativeText = "\(error.localizedDescription)\n\nYou can drag it to Applications yourself — it'll keep working from here meanwhile."
-            e.runModal()
-            return false
-        }
     }
 
     // MARK: Menu-bar monitor
@@ -233,7 +111,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         stop.isEnabled = broadcasting
         menu.addItem(stop)
         menu.addItem(.separator())
-        menu.addItem(item("Check for Updates…", #selector(checkUpdates)))
         menu.addItem(item("Quit \(appName)", #selector(quit)))
     }
 
@@ -242,38 +119,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let cut = s.split(separator: "—", maxSplits: 1).first.map(String.init) ?? s
         let t = cut.trimmingCharacters(in: .whitespaces)
         return t.count > 90 ? String(t.prefix(88)) + "…" : t
-    }
-
-    @objc private func checkUpdates() {
-        NSApp.activate(ignoringOtherApps: true)   // Sparkle's alert needs a frontmost app
-        // Sparkle can't update an app running from Downloads/a translocated
-        // mount. Rather than dead-end with that error, offer the move first —
-        // it relaunches from /Applications, where the update just works.
-        if !isInstalled {
-            if moveToApplicationsIfNeeded(interactive: true) { return } // relaunching
-        }
-        api.checkUpdates { [weak self] result in
-            guard let self = self else { return }
-            self.poller.refresh()
-            guard let result = result else {
-                self.updater.checkForUpdates()
-                return
-            }
-            if result.appUpdate {
-                self.updater.checkForUpdates()
-                return
-            }
-            let v = result.appVersion.isEmpty ? appVersion : result.appVersion
-            self.showUpToDate(version: v, adoptedContent: result.payloadChanged)
-        }
-    }
-
-    private func showUpToDate(version: String, adoptedContent: Bool) {
-        let alert = NSAlert()
-        alert.messageText = adoptedContent ? "\(appName) updated" : "\(appName) is up to date"
-        alert.informativeText = "You're running v\(version)."
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 
     private func item(_ title: String, _ sel: Selector) -> NSMenuItem {

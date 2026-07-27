@@ -1,17 +1,17 @@
 # Releasing
 
-Verified product work lands once on clean `main` and is pushed once. The
-`net.ramine.partyparty.autoship` launchd job runs the full direct-distribution
-release in the background. Do not run `scripts/ship.sh` interactively.
+Verified product work lands on clean `main` and is pushed once. Releases are Mac
+App Store submissions; there is no background direct-distribution ship daemon.
 
-The daemon verifies, signs, notarizes, uploads immutable artifacts, deploys the
-Worker and landing page, flips public aliases and version markers last, records
-release metadata, pushes `main`, and updates the installed direct build.
+Before uploading:
 
-Native, Go, Swift, entitlement, or packaging changes require a full release.
-Compatible web-only changes may use payload OTA for direct builds. App Store
-builds never load downloaded executable or web payload content; they advance
-through App Store releases.
+```sh
+go build ./... && go vet ./... && go test ./...
+(cd app && swift build)
+(cd cloudflare && node test/smoke.mjs)
+scripts/test-app-store.sh
+```
 
-Before submission, verify the Store app's signature, sandbox entitlements,
-embedded provisioning profile, bundle version/build, and absence of Sparkle.
+Create the signed package with `scripts/package-app-store.sh`, validate it, and
+upload that exact package to App Store Connect. Worker or website changes are
+deployed independently with Wrangler after their tests pass.

@@ -223,35 +223,6 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 }
 
-func TestUpdateCheckEndpoint(t *testing.T) {
-	env := newTestEnv(t, nil)
-
-	if w := do(env.srv, http.MethodGet, "/api/update/check", djAddr); w.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("GET /api/update/check = %d, want 405", w.Code)
-	}
-	if w := do(env.srv, http.MethodPost, "/api/update/check", "192.168.1.50:1234"); w.Code != http.StatusForbidden {
-		t.Fatalf("guest POST /api/update/check = %d, want 403", w.Code)
-	}
-
-	w := do(env.srv, http.MethodPost, "/api/update/check", djAddr)
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /api/update/check = %d: %s", w.Code, w.Body.String())
-	}
-	body := decodeJSON(t, w)
-	if body["ok"] != true {
-		t.Fatalf("ok = %v, want true", body["ok"])
-	}
-	if body["appVersion"] != "test-1.2.3" {
-		t.Fatalf("appVersion = %v, want test-1.2.3", body["appVersion"])
-	}
-	if body["payloadChanged"] != false {
-		t.Fatalf("payloadChanged = %v, want false", body["payloadChanged"])
-	}
-	if body["appUpdate"] != false {
-		t.Fatalf("appUpdate = %v, want false", body["appUpdate"])
-	}
-}
-
 func TestMediaThumbRouteServesGuardedThumb(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {

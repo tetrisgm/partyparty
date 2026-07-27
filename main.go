@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,7 +17,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -33,7 +29,6 @@ import (
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
-	"partyparty/internal/ota"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
 )
@@ -45,15 +40,6 @@ var webFS embed.FS
 // shown in the UIs and broadcast to clients so stale player pages refresh
 // themselves after an update instead of running old logic forever.
 var appVersion = "dev"
-
-// appStoreBuild is stamped to "1" for the sandboxed Mac App Store edition.
-// Store builds serve only bundled UI assets; downloaded executable web payloads
-// are intentionally disabled by App Store policy.
-var appStoreBuild = "0"
-
-func cloudDiagnosticsEnabled() bool {
-	return appStoreBuild != "1" && appVersion != "dev" && os.Getenv("PARTYPARTY_TELEMETRY") != "0"
-}
 
 // peekConn re-serves bytes already read off the wire (for first-byte sniffing).
 type peekConn struct {
@@ -81,42 +67,6 @@ func (l *chanListener) Accept() (net.Conn, error) { return <-l.conns, nil }
 func (l *chanListener) Close() error              { return nil }
 func (l *chanListener) Addr() net.Addr            { return l.addr }
 
-// telemetryLoop ships /api/status snapshots to the cloud while broadcasting.
-func telemetryLoop(port int, bc *broadcast.Broadcaster) {
-	if !cloudDiagnosticsEnabled() {
-		return
-	}
-	id, secret := activate.InstallCreds()
-	if id == "" {
-		return // never registered — nothing to authenticate with
-	}
-	base := os.Getenv("PARTYPARTY_BROKER")
-	if base == "" {
-		base = "https://partyparty.party"
-	}
-	cl := &http.Client{Timeout: 10 * time.Second}
-	for {
-		time.Sleep(30 * time.Second)
-		if bc.Status().State != "live" {
-			continue
-		}
-		resp, err := cl.Get(fmt.Sprintf("http://127.0.0.1:%d/api/status", port))
-		if err != nil {
-			continue
-		}
-		var snap json.RawMessage
-		err = json.NewDecoder(resp.Body).Decode(&snap)
-		resp.Body.Close()
-		if err != nil {
-			continue
-		}
-		body, _ := json.Marshal(map[string]any{"id": id, "secret": secret, "snap": snap})
-		if r, err := cl.Post(base+"/api/broker/telemetry", "application/json", bytes.NewReader(body)); err == nil {
-			r.Body.Close()
-		}
-	}
-}
-
 func main() {
 	cfg := config.Parse()
 
@@ -130,46 +80,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Over-the-air payload store — created FIRST so its config.json can adjust
-	// the streaming config before MediaMTX and the broadcaster are built from
-	// it. The store is an fs.FS serving the embedded copy until a newer verified
-	// cloud payload is adopted; the server reads all web content through it. Dev
-	// builds and telemetry-off instances never fetch. diagLog is assigned later
-	// (the diagnostics log opens below) — the store's logger closes over it.
 	var diagLog *diag.Logger
-	var payload *ota.Store
-	{
-		embVer := 0
-		if b, rerr := fs.ReadFile(web, "PAYLOAD_VERSION"); rerr == nil {
-			embVer, _ = strconv.Atoi(strings.TrimSpace(string(b)))
-		}
-		contentBase := ""
-		if cloudDiagnosticsEnabled() {
-			base := os.Getenv("PARTYPARTY_BROKER")
-			if base == "" {
-				base = "https://partyparty.party"
-			}
-			contentBase = base + "/content"
-		}
-		sd, _ := activate.StateDir()
-		diagf := func(f string, a ...any) {
-			if diagLog != nil {
-				diagLog.Printf(f, a...)
-			}
-		}
-		var st *ota.Store
-		var oerr error
-		if appStoreBuild == "1" {
-			st, oerr = ota.OpenEmbedded(web, embVer, appVersion, diagf)
-		} else {
-			st, oerr = ota.Open(web, embVer, sd, contentBase, appVersion, diagf)
-		}
-		if oerr == nil {
-			payload = st
-		} else {
-			log.Printf("ota disabled: %v", oerr)
-		}
-	}
 
 	// Resolve the capture helper + ffmpeg. In the default build these extract from
 	// the embedded copies; in the signed .app build (-tags bundle) they resolve to
@@ -283,12 +194,6 @@ func main() {
 			diagLog.Printf("install: id=%s host_label=%s", id, activate.InstallHostLabel())
 			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
 			diagLog.Printf("config: https-llhls native-apple target=3s bitrate=%s part=%s seg=%s count=%d", cfg.Bitrate, cfg.PartDur, cfg.SegDur, cfg.SegCount)
-			if payload != nil {
-				// The store's own "serving cached payload" line is emitted during
-				// Open() above, before this logger exists — so record the active
-				// payload version here for the shipped diagnostics.
-				diagLog.Printf("ota: serving payload %d (runtime %d)", payload.PayloadVersion(), ota.RuntimeVersion)
-			}
 			bc.SetDiag(diagLog)
 		} else {
 			log.Printf("diagnostics log unavailable: %v", err)
@@ -308,17 +213,12 @@ func main() {
 		}
 	}
 
-	if payload != nil {
-		go payload.Run(context.Background())
-	}
-
 	handler := server.New(server.Deps{
 		Config:      cfg,
 		Broadcaster: bc,
 		Listeners:   ls,
 		RunDir:      runDir,
 		Web:         web,
-		Payload:     payload,
 		MTX:         mtx,
 		Events:      events,
 		Diag:        diagLog,
@@ -334,12 +234,12 @@ func main() {
 	// with no dependence on IPv6. THIS is the field white screen's root cause.
 	ln, err := net.Listen("tcp4", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil && errors.Is(err, syscall.EADDRINUSE) {
-		// Almost certainly our own orphan: a force-quit app (or a Sparkle update
-		// relaunch) skips child cleanup and the old server squats on the port,
+		// Almost certainly our own orphan: a force-quit can skip child cleanup
+		// and leave the old server squatting on the port,
 		// which white-screens the new console. Ask it to exit (loopback-only
 		// endpoint), then retry the bind with backoff for a few seconds — a
 		// draining server can take longer than a single retry to release. The
-		// Swift launcher also reaps orphans, so this is defense-in-depth.
+		// This loopback-only handoff is the sandbox-safe recovery path.
 		cl := &http.Client{Timeout: 2 * time.Second}
 		if resp, perr := cl.Post(fmt.Sprintf("http://127.0.0.1:%d/api/shutdown", cfg.Port), "", nil); perr == nil {
 			resp.Body.Close()
@@ -618,14 +518,6 @@ func main() {
 		bc.Start("test", "Test tone (440 Hz)", broadcast.Options{})
 	}
 
-	// Debug telemetry: while live, snapshot /api/status to the cloud every 30s
-	// (R2 via the site Worker, authenticated with this install's broker
-	// identity) so playback problems can be analyzed after the fact — nobody
-	// transcribes numbers off phones mid-party. PARTYPARTY_TELEMETRY=0 disables.
-	if cloudDiagnosticsEnabled() {
-		go telemetryLoop(cfg.Port, bc)
-	}
-
 	// Room snapshots into the diagnostics log: every 60s while live, who's
 	// listening and how well (latency/buffer/stalls) — the after-party answer
 	// to "the sound was bad", without anyone screenshotting anything.
@@ -662,8 +554,7 @@ func main() {
 					liveStart = time.Now()
 				}
 				if wasActive && !active {
-					diagLog.Printf("broadcast ended (state=%s) — uploading session log", st)
-					uploadLogOnce(diagLog)
+					diagLog.Printf("broadcast ended (state=%s)", st)
 					liveStart = time.Time{}
 				}
 				wasActive = active
@@ -783,9 +674,6 @@ func main() {
 				}
 			}()
 		}
-		if cloudDiagnosticsEnabled() {
-			go uploadLogLoop(diagLog, bc)
-		}
 	}
 
 	sig := make(chan os.Signal, 1)
@@ -794,9 +682,6 @@ func main() {
 
 	if diagLog != nil {
 		diagLog.Printf("shutting down (signal)")
-		if cloudDiagnosticsEnabled() {
-			uploadLogOnce(diagLog) // final flush — best effort, bounded
-		}
 	}
 	bc.Stop()
 	if mtx != nil {
@@ -814,62 +699,6 @@ func cmdOut(name string, args ...string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
-}
-
-// uploadLogLoop ships the session log to the cloud while it keeps growing —
-// every 30s DURING a broadcast, every 3 minutes otherwise, and PROMPTLY (a
-// few seconds, debounced) whenever a client reports a problem so a failure is
-// analyzable almost live. Same auth + namespace as telemetry;
-// PARTYPARTY_TELEMETRY=0 disables it all.
-func uploadLogLoop(dl *diag.Logger, bc *broadcast.Broadcaster) {
-	if !cloudDiagnosticsEnabled() {
-		return
-	}
-	for {
-		wait := 3 * time.Minute
-		if bc.Status().State == "live" {
-			wait = 30 * time.Second
-		}
-		timer := time.NewTimer(wait)
-		select {
-		case <-dl.Urgent():
-			timer.Stop()                // don't leak the abandoned timer when a nudge wins
-			time.Sleep(3 * time.Second) // let a burst of related events coalesce
-		case <-timer.C:
-		}
-		uploadLogOnce(dl)
-	}
-}
-
-func uploadLogOnce(dl *diag.Logger) {
-	if !cloudDiagnosticsEnabled() {
-		return
-	}
-	id, secret := activate.InstallCreds()
-	if id == "" {
-		return // never registered — nowhere to file it under
-	}
-	data := dl.TailIfDirty(4 << 20)
-	if data == nil {
-		return
-	}
-	var gz bytes.Buffer
-	zw := gzip.NewWriter(&gz)
-	_, _ = zw.Write(data)
-	_ = zw.Close()
-	base := os.Getenv("PARTYPARTY_BROKER")
-	if base == "" {
-		base = "https://partyparty.party"
-	}
-	body, _ := json.Marshal(map[string]any{
-		"id": id, "secret": secret,
-		"session": dl.Session(),
-		"log":     base64.StdEncoding.EncodeToString(gz.Bytes()),
-	})
-	cl := &http.Client{Timeout: 15 * time.Second}
-	if resp, err := cl.Post(base+"/api/broker/log", "application/json", bytes.NewReader(body)); err == nil {
-		resp.Body.Close()
-	}
 }
 
 // humanizeActivation turns raw activation errors into console-worthy English.

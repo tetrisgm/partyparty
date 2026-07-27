@@ -288,11 +288,6 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.scheduleBootWatchdog() }
         default:
             diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts — WebView is not rendering /dj"])
-#if !APP_STORE
-            // A dead 127.0.0.1 (an old version's lo0 damage) is the usual cause a
-            // reload can't fix — surface the one-time repair instead of a blank window.
-            NetworkRepair.promptIfDamaged()
-#endif
         }
     }
 
