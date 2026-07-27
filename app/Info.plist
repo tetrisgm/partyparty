@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>123.88</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>184</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationCategoryType</key>
@@ -43,6 +43,8 @@
 	<string>partyparty broadcasts the Mac’s audio to your guests’ phones.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>PartyParty</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>partyparty discovers other DJs and lets guests on the venue Wi-Fi connect to live audio streams.</string>
 	<key>NSBonjourServices</key>

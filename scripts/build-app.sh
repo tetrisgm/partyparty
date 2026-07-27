@@ -4,20 +4,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-GO="${GO:-go}"
 APP="$ROOT/build/partyparty.app"
 ENT="$ROOT/app/partyparty-app-store.entitlements"
 CHILD_ENT="$ROOT/app/partyparty-app-store-child.entitlements"
 SIGN_ID="${PP_SIGN_ID:--}"
 SIGN_KEYCHAIN="${PP_KEYCHAIN:-}"
 
-echo ">> Go server (-tags bundle)"
-APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/app/Info.plist")"
-"$GO" build -tags bundle \
-  -ldflags "-X main.appVersion=$APP_VERSION" \
-  -o "$ROOT/build/partyparty-server" "$ROOT"
-
-echo ">> Xcode app (release)"
+echo ">> Xcode app and bundled helpers (release)"
 XCODE_BUILD="$ROOT/build/xcode-app-store"
 xcodebuild \
   -project "$ROOT/app/partyparty.xcodeproj" \
@@ -32,11 +25,6 @@ XCODE_APP="$XCODE_BUILD/Build/Products/Release/partyparty.app"
 echo ">> assembling $APP"
 rm -rf "$APP"
 cp -R "$XCODE_APP" "$APP"
-mkdir -p "$APP/Contents/Helpers"
-cp "$ROOT/build/partyparty-server" "$APP/Contents/Helpers/partyparty-server"
-cp "$ROOT/assets/ffmpeg" "$APP/Contents/Helpers/ffmpeg"
-cp "$ROOT/assets/mediamtx" "$APP/Contents/Helpers/mediamtx"
-cp "$ROOT/assets/ppcapture" "$APP/Contents/Helpers/ppcapture"
 
 if [ -n "${APP_STORE_PROVISIONING_PROFILE:-}" ]; then
   cp "$APP_STORE_PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"

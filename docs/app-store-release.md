@@ -58,10 +58,18 @@ scripts/package-app-store.sh
 Add `APP_STORE_VALIDATE=1`, `APP_STORE_CONNECT_KEY_ID`, and
 `APP_STORE_CONNECT_ISSUER_ID` to run Apple's upload validation after packaging.
 
-The verifier rejects an incorrect bundle ID, missing privacy manifest, Sparkle,
+The packaging script creates a signed Xcode archive and exports it with
+`xcodebuild -exportArchive`. Do not replace this with a hand-assembled
+`productbuild --component` package. TestFlight and the App Store require the
+archive/export metadata and signing transformations that Xcode applies during
+distribution.
+
+The verifier expands the exact exported package and rejects an incorrect bundle
+ID, missing asset catalog or privacy manifest, quarantine attributes, Sparkle,
 LaunchDaemons, privileged helpers, extra helper binaries, missing sandbox/network
 or audio entitlements, extra child entitlements, an incorrect provisioning
-profile, and a non-distribution signature.
+profile, a non-distribution app signature, or a non-App-Store installer
+signature.
 
 ## Privacy
 
@@ -81,6 +89,12 @@ Verify an App Store bundle with:
 
 ```sh
 scripts/test-app-store.sh
+```
+
+Verify the exact package submitted to Apple with:
+
+```sh
+scripts/verify-app-store-package.sh dist/partyparty-app-store.pkg
 ```
 
 For an Apple Distribution candidate, this verifies the complete submission

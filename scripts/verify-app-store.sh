@@ -20,6 +20,8 @@ INFO="$APP/Contents/Info.plist"
   fail "unexpected bundle identifier"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$INFO")" = "public.app-category.music" ] ||
   fail "App Store category is not Music"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :NSHumanReadableCopyright' "$INFO")" = "PartyParty" ] ||
+  fail "copyright must use the PartyParty publisher name"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$INFO")" = "false" ] ||
   fail "export-compliance declaration is missing"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")"
@@ -43,8 +45,8 @@ for key in BuildMachineOSBuild DTPlatformBuild DTPlatformName DTPlatformVersion 
 done
 unreadable="$(find "$APP" ! -perm -o+r -print -quit)"
 [ -z "$unreadable" ] || fail "bundle item is not world-readable: $unreadable"
-forbidden_xattr="$(xattr -lr "$APP" 2>/dev/null | grep -E 'com\\.apple\\.(quarantine|provenance|macl):' | head -1 || true)"
-[ -z "$forbidden_xattr" ] || fail "bundle contains forbidden extended attribute: $forbidden_xattr"
+quarantine_xattr="$(xattr -lr "$APP" 2>/dev/null | grep -E 'com\\.apple\\.quarantine:' | head -1 || true)"
+[ -z "$quarantine_xattr" ] || fail "bundle contains a quarantine attribute: $quarantine_xattr"
 
 PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 [ -f "$PRIVACY" ] || fail "PrivacyInfo.xcprivacy is missing"

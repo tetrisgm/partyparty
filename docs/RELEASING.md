@@ -12,6 +12,9 @@ go build ./... && go vet ./... && go test ./...
 scripts/test-app-store.sh
 ```
 
-Create the signed package with `scripts/package-app-store.sh`, validate it, and
-upload that exact package to App Store Connect. Worker or website changes are
-deployed independently with Wrangler after their tests pass.
+Create the signed Xcode archive/export package with
+`scripts/package-app-store.sh`, validate it with
+`scripts/verify-app-store-package.sh`, and upload that exact package to App
+Store Connect. Never substitute a hand-assembled `productbuild --component`
+package. Worker or website changes are deployed independently with Wrangler
+after their tests pass.

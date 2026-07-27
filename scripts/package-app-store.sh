@@ -10,22 +10,72 @@ cd "$(dirname "$0")/.."
   exit 1
 }
 
-export REQUIRE_APP_STORE_DISTRIBUTION=1
-if [ -n "${APP_STORE_KEYCHAIN:-}" ]; then
-  export PP_KEYCHAIN="$APP_STORE_KEYCHAIN"
+PROFILE_PLIST="$(mktemp)"
+EXPORT_OPTIONS="$(mktemp)"
+trap 'rm -f "$PROFILE_PLIST" "$EXPORT_OPTIONS"' EXIT
+security cms -D -i "$APP_STORE_PROVISIONING_PROFILE" > "$PROFILE_PLIST"
+PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")"
+PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")"
+TEAM_ID="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")"
+[ "$TEAM_ID" = "52WM463HR2" ] || {
+  echo "unexpected provisioning profile team: $TEAM_ID" >&2
+  exit 1
+}
+
+PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+mkdir -p "$PROFILE_DIR"
+INSTALLED_PROFILE="$PROFILE_DIR/$PROFILE_UUID.provisionprofile"
+if [ "$APP_STORE_PROVISIONING_PROFILE" != "$INSTALLED_PROFILE" ]; then
+  install -m 644 "$APP_STORE_PROVISIONING_PROFILE" "$INSTALLED_PROFILE"
 fi
-./scripts/build-app.sh
-./scripts/verify-app-store.sh "$PWD/build/partyparty.app"
 
+ARCHIVE="$PWD/build/partyparty.xcarchive"
+EXPORT_DIR="$PWD/build/app-store-export"
+rm -rf "$ARCHIVE" "$EXPORT_DIR"
+
+xcodebuild \
+  -project "$PWD/app/partyparty.xcodeproj" \
+  -scheme partyparty \
+  -configuration Release \
+  -destination "generic/platform=macOS" \
+  -archivePath "$ARCHIVE" \
+  CODE_SIGN_STYLE=Manual \
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  CODE_SIGN_IDENTITY="$PP_SIGN_ID" \
+  PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+  PP_SIGN_KEYCHAIN="${APP_STORE_KEYCHAIN:-}" \
+  archive
+
+ARCHIVED_APP="$ARCHIVE/Products/Applications/partyparty.app"
+REQUIRE_APP_STORE_DISTRIBUTION=1 ./scripts/verify-app-store.sh "$ARCHIVED_APP"
+
+/usr/bin/plutil -create xml1 "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :destination string export" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :distributionBundleIdentifier string fm.partyparty.app" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :manageAppVersionAndBuildNumber bool false" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :signingCertificate string $PP_SIGN_ID" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :installerSigningCertificate string $APP_STORE_INSTALLER_ID" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTIONS"
+/usr/libexec/PlistBuddy -c "Add :provisioningProfiles:fm.partyparty.app string $PROFILE_NAME" "$EXPORT_OPTIONS"
+
+xcodebuild \
+  -exportArchive \
+  -archivePath "$ARCHIVE" \
+  -exportPath "$EXPORT_DIR" \
+  -exportOptionsPlist "$EXPORT_OPTIONS"
+
+EXPORTED_PKG="$(find "$EXPORT_DIR" -maxdepth 1 -type f -name '*.pkg' -print -quit)"
+[ -n "$EXPORTED_PKG" ] || {
+  echo "Xcode did not export a Mac App Store package." >&2
+  exit 1
+}
 mkdir -p dist
-productbuild_args=(
-  --component "$PWD/build/partyparty.app" /Applications
-  --sign "$APP_STORE_INSTALLER_ID"
-)
-[ -n "${APP_STORE_KEYCHAIN:-}" ] && productbuild_args+=(--keychain "$APP_STORE_KEYCHAIN")
-productbuild "${productbuild_args[@]}" "$PWD/dist/partyparty-app-store.pkg"
+cp "$EXPORTED_PKG" "$PWD/dist/partyparty-app-store.pkg"
 
-pkgutil --check-signature "$PWD/dist/partyparty-app-store.pkg"
+./scripts/verify-app-store-package.sh "$PWD/dist/partyparty-app-store.pkg"
 
 if [ "${APP_STORE_VALIDATE:-0}" = "1" ]; then
   : "${APP_STORE_CONNECT_KEY_ID:?set APP_STORE_CONNECT_KEY_ID for validation}"
