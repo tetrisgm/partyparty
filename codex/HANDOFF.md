@@ -57,7 +57,7 @@ delivery-switch, recording-tee, and per-broadcast override code still contained
 inside `internal/broadcast/`. Do not change that package before the real go-live
 test.
 
-The app is sandboxed and App Store-only:
+The production edition is sandboxed and App Store-only:
 
 ```sh
 scripts/build-app-store.sh
@@ -65,7 +65,9 @@ scripts/package-app-store.sh
 ```
 
 Apple Distribution signing and the Store provisioning profile are configured.
-Direct builds, Sparkle, appcasts, installer aliases, and OTA web payloads are
-retired. After the physical streaming gate, package and upload the newest source
-version, then finish the App Store Connect screenshots, privacy answers, and
-submission.
+The separately identified standalone beta channel is authorized for Developer
+ID signed/notarized testing builds and Sparkle updates, but is not implemented
+yet. It must not alter the Store target or restore the retired shared release
+daemon or OTA web payload system. After the physical streaming gate, package
+and upload the newest Store source version, then finish the App Store Connect
+screenshots, privacy answers, and submission.

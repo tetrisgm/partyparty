@@ -35,18 +35,30 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
 7. **One network topology and playback path.** The venue provides Wi-Fi. Do not
    restore Internet Sharing, hotspots, captive portals, or DNS hijacking. Apple
    guests always use native HLS/AVPlayer so lock-screen playback remains intact.
-8. **App Store permission floor.** Store builds stay sandboxed and Sparkle-free.
-   They may request Local Network, System Audio Recording, or Microphone only
-   when needed, plus an optional user-enabled login item. Never require admin,
-   privileged helpers, Screen Recording, or automatic network reconfiguration.
+8. **Two isolated distribution channels.** Store builds stay sandboxed,
+   Sparkle-free, and updated only by Apple. The standalone beta is a separate
+   Developer ID signed and notarized build with a separate bundle identifier;
+   it may contain Sparkle and update from the signed PartyParty beta appcast.
+   Neither edition may require admin, privileged helpers, Screen Recording, or
+   automatic network reconfiguration. Both may request Local Network, System
+   Audio Recording, or Microphone only when needed, plus an optional
+   user-enabled login item.
 
 ## Rules
 - Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.
-- Push verified `main` once per coherent change. Native releases are packaged
-  with `scripts/package-app-store.sh` and delivered only through App Store
-  Connect. Website/Worker changes deploy through Wrangler after smoke tests.
-- Never restore Sparkle, direct installers, appcasts, downloadable executable web
-  payloads, or the retired direct-release daemon.
+- Push verified `main` once per coherent change. Native releases produce two
+  independently verified artifacts from the same clean commit:
+  `scripts/package-app-store.sh` for App Store Connect, and the standalone beta
+  ship workflow for the PartyParty website/update feed. Website/Worker changes
+  deploy through Wrangler after smoke tests.
+- Standalone distribution is a beta/testing channel. Its app, archive, appcast,
+  update signature, immutable download, and website link must agree on the exact
+  version/build and source commit. Never put Sparkle, its keys, its framework,
+  appcast metadata, Developer ID-only entitlements, or standalone update code in
+  the Mac App Store product.
+- Do not restore the retired shared direct-release daemon or any downloaded
+  web-payload system. A standalone release may publish only a complete signed
+  and notarized app artifact through its dedicated bounded ship workflow.
 - NEVER commit secrets (`*.pem`, `*.key`, `*.p8`, `*.seed`, API keys). Secrets live in `~/Library/Application Support/partyparty` and as Cloudflare Worker secrets.
 - Match the surrounding code style; keep changes tight and well-tested.
 - Commit messages end with: `Co-Authored-By: Codex <noreply@openai.com>`

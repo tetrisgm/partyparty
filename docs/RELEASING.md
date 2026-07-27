@@ -1,7 +1,8 @@
 # Releasing
 
-Verified product work lands on clean `main` and is pushed once. Releases are Mac
-App Store submissions; there is no background direct-distribution ship daemon.
+Verified product work lands on clean `main` and is pushed once. Native releases
+may target the Mac App Store, the standalone beta channel, or both. Each channel
+has a separate package and verifier; neither may reuse the other's artifact.
 
 Before uploading:
 
@@ -18,3 +19,13 @@ Create the signed Xcode archive/export package with
 Store Connect. Never substitute a hand-assembled `productbuild --component`
 package. Worker or website changes are deployed independently with Wrangler
 after their tests pass.
+
+The standalone beta workflow must build from the same clean `main` commit,
+Developer ID sign every executable, notarize and staple the complete artifact,
+verify the Sparkle EdDSA signature, publish an immutable versioned download, and
+only then update the stable download, appcast, website, and version endpoint.
+The Store verifier must continue rejecting Sparkle and standalone-only content.
+
+Do not use the retired shared release daemon or web-payload updater. The
+standalone workflow must be one bounded, owner-facing release command with the
+same stale-safe locking and immutable-artifact rules as other release tooling.

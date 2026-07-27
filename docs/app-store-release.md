@@ -141,5 +141,8 @@ intentional core feature.
 
 ## Distribution
 
-The Mac App Store is the only distribution and update channel. Direct installers,
-Sparkle, appcasts, and downloadable web payloads are retired.
+This target is the Mac App Store production channel and receives updates only
+from Apple. A separately identified Developer ID signed standalone beta may be
+distributed for testing, but its Sparkle framework, updater code, appcast,
+entitlements, and release metadata must never enter this Store target or package.
+Downloaded web payloads and privileged installers remain retired.

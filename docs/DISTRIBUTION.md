@@ -1,8 +1,13 @@
 # Distribution
 
-partyparty is distributed only through the Mac App Store under bundle ID
-`fm.partyparty.app`. There is no Developer ID build, Sparkle updater, installer,
-download alias, appcast, or web-payload update channel.
+partyparty has two isolated macOS distribution channels built from the same
+clean `main` commit.
+
+## Mac App Store
+
+The production edition uses bundle ID `fm.partyparty.app`. It is sandboxed,
+contains no Sparkle code or framework, and receives updates only through the
+Mac App Store.
 
 Build a local ad-hoc Store bundle with:
 
@@ -19,10 +24,29 @@ APP_STORE_INSTALLER_ID="3rd Party Mac Developer Installer: ..." \
 scripts/package-app-store.sh
 ```
 
-The submission script is the only supported package path. It archives the
+The submission script is the only supported Store package path. It archives the
 complete app with Xcode, exports the archive for App Store Connect, expands and
 verifies the resulting package, and can run Apple's upload validation. Never
 submit a package assembled directly with `productbuild --component`.
 
-The public Worker serves the website and anonymous LAN hostname/certificate
-broker only. Product updates are delivered by the Mac App Store.
+## Standalone beta
+
+The testing edition must use a separate bundle identifier so it can coexist
+with the Store edition and never impersonate an App Store receipt-bearing app.
+It is Developer ID signed, notarized, stapled, and distributed from the
+PartyParty website. Sparkle may exist only in this edition and must verify an
+EdDSA-signed appcast and update archive.
+
+The standalone artifact is a complete app release, not a downloaded web payload.
+Every release must publish an immutable versioned archive first, verify its
+signature and notarization, then update the stable download, appcast, website,
+and version endpoint. All public metadata must identify the same version/build
+and source commit.
+
+The standalone updater must never execute privileged installation, alter network
+configuration, or weaken the permission floor. The retired shared release daemon
+and web-payload updater remain prohibited.
+
+The public Worker may serve the product website, anonymous LAN
+hostname/certificate broker, standalone beta download, and signed beta appcast.
+It must never host party pages, audio, posts, replays, or remote listening.
