@@ -15,11 +15,11 @@ if [ -n "${APP_STORE_KEYCHAIN:-}" ]; then
   export PP_KEYCHAIN="$APP_STORE_KEYCHAIN"
 fi
 ./scripts/build-app.sh
-./scripts/verify-app-store.sh "$PWD/build/partyparty-app-store.app"
+./scripts/verify-app-store.sh "$PWD/build/partyparty.app"
 
 mkdir -p dist
 productbuild_args=(
-  --component "$PWD/build/partyparty-app-store.app" /Applications
+  --component "$PWD/build/partyparty.app" /Applications
   --sign "$APP_STORE_INSTALLER_ID"
 )
 [ -n "${APP_STORE_KEYCHAIN:-}" ] && productbuild_args+=(--keychain "$APP_STORE_KEYCHAIN")

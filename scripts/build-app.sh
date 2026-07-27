@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 GO="${GO:-go}"
-APP="$ROOT/build/partyparty-app-store.app"
+APP="$ROOT/build/partyparty.app"
 ENT="$ROOT/app/partyparty-app-store.entitlements"
 CHILD_ENT="$ROOT/app/partyparty-app-store-child.entitlements"
 SIGN_ID="${PP_SIGN_ID:--}"

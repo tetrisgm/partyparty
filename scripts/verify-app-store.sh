@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-APP="${1:-$PWD/build/partyparty-app-store.app}"
+APP="${1:-$PWD/build/partyparty.app}"
 EXPECTED_BUNDLE_ID="${APP_STORE_BUNDLE_ID:-fm.partyparty.app}"
 
 fail() {
@@ -11,6 +11,8 @@ fail() {
 }
 
 [ -d "$APP/Contents" ] || fail "app bundle not found at $APP"
+[ "$(basename "$APP")" = "partyparty.app" ] ||
+  fail "App Store payload must use the canonical bundle name partyparty.app"
 /usr/bin/codesign --verify --strict --verbose=2 "$APP"
 
 INFO="$APP/Contents/Info.plist"
