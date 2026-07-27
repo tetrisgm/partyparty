@@ -31,7 +31,7 @@ ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
   "$RELEASE_DIR"
 [ -f "$APPCAST" ]
 grep -q "sparkle:edSignature=" "$APPCAST"
-grep -q "sparkle:version=\"$BUILD\"" "$APPCAST"
+grep -q "<sparkle:version>$BUILD</sparkle:version>" "$APPCAST"
 
 (
   cd cloudflare
