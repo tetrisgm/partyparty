@@ -24,6 +24,7 @@ auto.key
 /cloudflare/node_modules/
 .wrangler/
 # generated submission artifacts
+testdata/music/*.flac
 /dist/
 /partyparty*.zip
 /e2e-sync
