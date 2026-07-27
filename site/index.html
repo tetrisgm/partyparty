@@ -106,7 +106,7 @@
   <div class="nav-in">
     <a class="brand" href="/">🕺 partyparty</a>
     <span class="nav-sp"></span>
-    <span class="nav-dl">Coming to the Mac App Store</span>
+    <a class="nav-dl" href="/private-beta/partyparty-123.88.zip">Download private beta</a>
   </div>
 </nav>
 
@@ -114,8 +114,8 @@
   <h1>The party,<br>on every phone.</h1>
   <p class="lede">partyparty turns your Mac into the venue. Guests scan a QR and the music plays on their phones — perfectly together. No app. No accounts. No internet required.</p>
   <div class="cta">
-    <span class="btn">Coming to the Mac App Store</span>
-    <span class="meta" data-version-line>Free · Apple Silicon · macOS 26+</span>
+    <a class="btn" href="/private-beta/partyparty-123.88.zip">Download private beta</a>
+    <span class="meta" data-version-line>Apple-notarized · Apple Silicon · macOS 26+</span>
   </div>
 </header>
 
@@ -167,8 +167,8 @@
 <section class="finale wrap">
   <h2 class="rv">Throw a party where speakers<br>would get you shut down.</h2>
   <div class="cta rv">
-    <span class="btn">Coming to the Mac App Store</span>
-    <span class="meta" data-version-line>Free · Apple Silicon · macOS 26+</span>
+    <a class="btn" href="/private-beta/partyparty-123.88.zip">Download private beta</a>
+    <span class="meta" data-version-line>Apple-notarized · Apple Silicon · macOS 26+</span>
   </div>
 </section>
 
@@ -183,7 +183,7 @@
     .then(v => {
       if (!v || !v.version) return;
       document.querySelectorAll('[data-version-line]').forEach(el => {
-        el.textContent = 'Free · Apple Silicon · macOS 26+ · v' + v.version;
+        el.textContent = 'Apple-notarized · Apple Silicon · macOS 26+ · v' + v.version;
       });
     }).catch(() => {});
   const io = new IntersectionObserver((es) => {

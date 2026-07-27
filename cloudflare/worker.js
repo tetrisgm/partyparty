@@ -3,6 +3,8 @@ var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 var APP_VERSION = "123.88";
 var APP_VERSION_DATE = "2026-07-26";
+var PRIVATE_BETA_PATH = "/private-beta/partyparty-123.88.zip";
+var PRIVATE_BETA_KEY = "private-beta/partyparty-123.88.zip";
 var READ_JSON_TOO_LARGE = /* @__PURE__ */ new WeakSet();
 var esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var absUrl = (s) => {
@@ -428,6 +430,21 @@ var worker_default = {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
+    if (pathname === PRIVATE_BETA_PATH) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+      }
+      const object = await env.DL.get(PRIVATE_BETA_KEY);
+      if (!object) return new Response("Not Found", { status: 404 });
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set("content-type", "application/zip");
+      headers.set("content-length", String(object.size));
+      headers.set("content-disposition", 'attachment; filename="partyparty-123.88-private-beta.zip"');
+      headers.set("cache-control", "public, max-age=86400");
+      if (object.httpEtag) headers.set("etag", object.httpEtag);
+      return new Response(request.method === "HEAD" ? null : object.body, { headers });
+    }
     if (pathname === "/api/version") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
