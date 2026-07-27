@@ -1,6 +1,5 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
-var APP_STORE_URL = "https://apps.apple.com/app/id6794880742";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
 var APP_VERSION = "123.88";
 var APP_VERSION_DATE = "2026-07-26";
@@ -68,7 +67,7 @@ footer{max-width:760px;margin:0 auto;padding:24px 20px 48px;color:var(--ink3);fo
 @media(max-width:560px){.sectionhead{display:grid}.navlinks .btn:first-child{display:none}}
 `;
 var SVGDEFS = "";
-var NAV = `<nav><a class="brand" href="/">partyparty</a><div class="navlinks"><a class="btn lt sm" href="${APP_STORE_URL}">View on the Mac App Store</a></div></nav>`;
+var NAV = `<nav><a class="brand" href="/">partyparty</a><div class="navlinks"><span class="btn lt sm">Coming to the Mac App Store</span></div></nav>`;
 var TOAST_JS = "";
 function shell({ title, desc, ogImage, url, body }) {
   const pageUrl = absUrl(url || "/");
