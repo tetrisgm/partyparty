@@ -10,6 +10,7 @@ cd "$(dirname "$0")/.."
   exit 1
 }
 
+make assets/ppcapture
 PROFILE_PLIST="$(mktemp)"
 EXPORT_OPTIONS="$(mktemp)"
 trap 'rm -f "$PROFILE_PLIST" "$EXPORT_OPTIONS"' EXIT

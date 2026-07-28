@@ -11,9 +11,10 @@ import (
 const recognizedTrackMarker = "ppcapture: TRACK "
 
 type recognizedTrack struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Artist string `json:"artist"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist"`
+	ArtworkURL string `json:"artworkUrl"`
 }
 
 func parseRecognizedTrack(line string) (recognizedTrack, bool) {
@@ -50,7 +51,7 @@ func (s *srv) watchRecognizedTracks() {
 			if !ok {
 				continue
 			}
-			_, changed, err := s.Events.SetRecognizedTrack(track.ID, track.Title, track.Artist)
+			_, changed, err := s.Events.SetRecognizedTrack(track.ID, track.Title, track.Artist, track.ArtworkURL)
 			if err != nil {
 				log.Printf("track recognition: save failed: %v", err)
 				continue

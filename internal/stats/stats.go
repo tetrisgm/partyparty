@@ -16,6 +16,7 @@ type client struct {
 	hasLat    bool
 	paused    bool
 	platform  string // "native" (iOS Safari) or "hls" (Android/desktop)
+	djID      string // selected LAN DJ; empty means this Mac
 
 	// Controller debug telemetry: playback rate and buffered seconds ahead.
 	rate float64
@@ -27,6 +28,19 @@ type client struct {
 	device string // friendly device label derived from the User-Agent
 	name   string
 	emoji  string
+}
+
+// Selection records which LAN DJ this browser selected. Empty means the Mac
+// receiving this heartbeat, so paused listeners remain in their current group.
+func (l *Listeners) Selection(key, djID string) {
+	if key == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if c := l.clients[key]; c != nil {
+		c.djID = djID
+	}
 }
 
 type Listeners struct {
@@ -232,6 +246,7 @@ type Listener struct {
 	BufS       float64 `json:"bufS,omitempty"`
 	Stalled    bool    `json:"stalled"`
 	Paused     bool    `json:"paused"`
+	DJID       string  `json:"djId,omitempty"`
 }
 
 // Roster returns the currently-active listeners, stable-ordered by join time.
@@ -266,6 +281,7 @@ func (l *Listeners) Roster() []Listener {
 			BufS:       c.bufS,
 			Stalled:    !c.lastStall.IsZero() && now.Sub(c.lastStall) < 12*time.Second,
 			Paused:     c.paused,
+			DJID:       c.djID,
 		})
 	}
 	return out

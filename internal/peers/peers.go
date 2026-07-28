@@ -35,6 +35,7 @@ type Peer struct {
 	Generation    int64               `json:"generation,omitempty"`
 	LatencyTarget float64             `json:"latencyTarget,omitempty"`
 	NowPlaying    *event.CurrentTrack `json:"nowPlaying,omitempty"`
+	Links         []event.Link        `json:"links,omitempty"`
 	Room          *Room               `json:"room,omitempty"`
 }
 
@@ -52,6 +53,7 @@ type Guest struct {
 	Name   string `json:"name"`
 	Emoji  string `json:"emoji"`
 	Paused bool   `json:"paused,omitempty"`
+	DJID   string `json:"djId,omitempty"`
 }
 
 type candidate struct {

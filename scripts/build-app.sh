@@ -11,6 +11,7 @@ SIGN_ID="${PP_SIGN_ID:--}"
 SIGN_KEYCHAIN="${PP_KEYCHAIN:-}"
 
 echo ">> Xcode app and bundled helpers (release)"
+make assets/ppcapture
 XCODE_BUILD="$ROOT/build/xcode-app-store"
 xcodebuild \
   -project "$ROOT/app/partyparty.xcodeproj" \

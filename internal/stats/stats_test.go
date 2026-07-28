@@ -22,3 +22,14 @@ func TestActiveCountsAndPrunesWithinWindow(t *testing.T) {
 		t.Fatalf("expired Active() = %d, want 0", got)
 	}
 }
+
+func TestRosterKeepsSelectedDJWhilePaused(t *testing.T) {
+	l := New(time.Minute)
+	l.Heartbeat("guest-1", false, true, 0, false, "native")
+	l.Selection("guest-1", "seth")
+
+	roster := l.Roster()
+	if len(roster) != 1 || !roster[0].Paused || roster[0].DJID != "seth" {
+		t.Fatalf("paused roster = %#v, want selected DJ seth", roster)
+	}
+}

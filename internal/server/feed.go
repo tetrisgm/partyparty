@@ -674,16 +674,17 @@ func (s *srv) eventState() map[string]any {
 }
 
 type feedTrack struct {
-	Title  string `json:"title"`
-	Artist string `json:"artist,omitempty"`
-	SetAt  int64  `json:"setAt"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist,omitempty"`
+	ArtworkURL string `json:"artworkUrl,omitempty"`
+	SetAt      int64  `json:"setAt"`
 }
 
 func feedTrackFrom(tr *event.CurrentTrack) *feedTrack {
 	if tr == nil || tr.Title == "" {
 		return nil
 	}
-	return &feedTrack{Title: tr.Title, Artist: tr.Artist, SetAt: tr.SetAt}
+	return &feedTrack{Title: tr.Title, Artist: tr.Artist, ArtworkURL: tr.ArtworkURL, SetAt: tr.SetAt}
 }
 
 func feedTracksFrom(tracks []event.CurrentTrack) []feedTrack {
@@ -692,7 +693,7 @@ func feedTracksFrom(tracks []event.CurrentTrack) []feedTrack {
 		if tr.Title == "" {
 			continue
 		}
-		out = append(out, feedTrack{Title: tr.Title, Artist: tr.Artist, SetAt: tr.SetAt})
+		out = append(out, feedTrack{Title: tr.Title, Artist: tr.Artist, ArtworkURL: tr.ArtworkURL, SetAt: tr.SetAt})
 	}
 	if out == nil {
 		out = []feedTrack{}

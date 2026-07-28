@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-VERSION="${PP_VERSION:-124.01}"
-BUILD="${PP_BUILD:-203}"
+VERSION="${PP_VERSION:-124.02}"
+BUILD="${PP_BUILD:-204}"
 APP="$ROOT/build/partyparty-beta.app"
 SWIFT_BIN="$ROOT/app/.build/arm64-apple-macosx/release"
 SIGN_ID="${PP_SIGN_ID:-}"
@@ -18,6 +18,7 @@ fi
   exit 1
 }
 
+make assets/ppcapture
 PARTYPARTY_STANDALONE=1 swift build \
   --package-path app \
   -c release \

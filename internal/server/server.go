@@ -568,6 +568,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
+		s.Listeners.Selection(key, clipStr(strings.TrimSpace(q.Get("dj")), 160))
 		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
 		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
 		s.Listeners.Debug(key, rate, buf)
@@ -692,7 +693,7 @@ func (s *srv) peerState(since int64) peers.Peer {
 	publicRoster := make([]peers.Guest, 0, len(roster))
 	for _, listener := range roster {
 		publicRoster = append(publicRoster, peers.Guest{
-			ID: listener.ID, Name: listener.Name, Emoji: listener.Emoji, Paused: listener.Paused,
+			ID: listener.ID, Name: listener.Name, Emoji: listener.Emoji, Paused: listener.Paused, DJID: listener.DJID,
 		})
 	}
 	var posts []event.Post
@@ -702,8 +703,10 @@ func (s *srv) peerState(since int64) peers.Peer {
 		posts, ids, _, cursor = s.Events.FeedFor(since, "", false)
 	}
 	var nowPlaying *event.CurrentTrack
+	var links []event.Link
 	if s.Events != nil {
 		nowPlaying, _ = s.Events.TrackSnapshot()
+		links = s.Events.Meta().Links
 	}
 	if posts == nil {
 		posts = []event.Post{}
@@ -721,6 +724,7 @@ func (s *srv) peerState(since int64) peers.Peer {
 		Generation:    generation,
 		LatencyTarget: roomLatencyTarget,
 		NowPlaying:    nowPlaying,
+		Links:         links,
 		Room:          &peers.Room{Roster: publicRoster, Posts: posts, IDs: ids, Cursor: cursor},
 	}
 }
@@ -830,23 +834,22 @@ func (s *srv) listenerGroups(local []stats.Listener) []publicListenerGroup {
 		}
 	}
 	for _, listener := range local {
-		assign(listener.ID, listener.Name, listener.Emoji, "", !listener.Paused)
+		assign(listener.ID, listener.Name, listener.Emoji, listener.DJID, !listener.Paused)
 	}
 	for _, peer := range roomPeers {
 		if peer.Room == nil {
 			continue
 		}
 		for _, listener := range peer.Room.Roster {
-			assign(listener.ID, listener.Name, listener.Emoji, peer.ID, !listener.Paused)
+			group := listener.DJID
+			if group == "" {
+				group = peer.ID
+			}
+			assign(listener.ID, listener.Name, listener.Emoji, group, !listener.Paused)
 		}
 	}
 
-	notListening := publicListenerGroup{DJ: "Not listening", Listeners: []publicListener{}}
 	for _, listener := range assignments {
-		if !listener.active {
-			notListening.Listeners = append(notListening.Listeners, listener.person)
-			continue
-		}
 		if i, ok := groupIndex[listener.group]; ok {
 			groups[i].Listeners = append(groups[i].Listeners, listener.person)
 		}
@@ -858,10 +861,6 @@ func (s *srv) listenerGroups(local []stats.Listener) []publicListenerGroup {
 	}
 	for i := range groups {
 		sortPeople(groups[i].Listeners)
-	}
-	sortPeople(notListening.Listeners)
-	if len(notListening.Listeners) > 0 {
-		groups = append(groups, notListening)
 	}
 	return groups
 }

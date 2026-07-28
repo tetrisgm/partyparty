@@ -83,14 +83,15 @@ func TestRecognizedTrackDeduplicatesCatalogCallbacks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, changed, err := st.SetRecognizedTrack("shazam-1", "Song", "Artist"); err != nil || !changed {
+	if _, changed, err := st.SetRecognizedTrack("shazam-1", "Song", "Artist", "https://example.com/art.jpg"); err != nil || !changed {
 		t.Fatalf("first match changed=%v err=%v", changed, err)
 	}
-	if _, changed, err := st.SetRecognizedTrack("shazam-1", "Song", "Artist"); err != nil || changed {
+	if _, changed, err := st.SetRecognizedTrack("shazam-1", "Song", "Artist", "https://example.com/art.jpg"); err != nil || changed {
 		t.Fatalf("duplicate match changed=%v err=%v", changed, err)
 	}
 	current, recent := st.TrackSnapshot()
-	if current == nil || current.MatchID != "shazam-1" || len(recent) != 0 {
+	if current == nil || current.MatchID != "shazam-1" ||
+		current.ArtworkURL != "https://example.com/art.jpg" || len(recent) != 0 {
 		t.Fatalf("current=%#v recent=%#v", current, recent)
 	}
 }

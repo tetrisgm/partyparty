@@ -148,7 +148,10 @@ final class TrackRecognizer: NSObject, SHSessionDelegate {
         }
         lastID = matchID
         state.unlock()
-        let payload: [String: String] = ["id": matchID, "title": title, "artist": artist]
+        var payload: [String: String] = ["id": matchID, "title": title, "artist": artist]
+        if let artworkURL = item.artworkURL?.absoluteString {
+            payload["artworkUrl"] = artworkURL
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               !data.isEmpty else { return }
         elog("ppcapture: TRACK " + data.base64EncodedString())

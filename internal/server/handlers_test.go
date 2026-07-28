@@ -108,7 +108,7 @@ func TestPeerEndpointSharesOnlyPublicRoomState(t *testing.T) {
 	}
 }
 
-func TestStatusGroupsListenersByPlaybackState(t *testing.T) {
+func TestStatusKeepsPausedListenersWithTheirDJ(t *testing.T) {
 	env := newTestEnv(t, nil)
 	env.srv.Listeners.Heartbeat("playing-phone", false, false, 1100, true, "native")
 	env.srv.Listeners.Identity("playing-phone", "Alex", "🪩")
@@ -117,24 +117,18 @@ func TestStatusGroupsListenersByPlaybackState(t *testing.T) {
 
 	body := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", "192.168.1.44:3333"))
 	groups, ok := body["listenerGroups"].([]any)
-	if !ok || len(groups) != 2 {
-		t.Fatalf("listener groups = %#v, want playing DJ and not-listening groups", body["listenerGroups"])
+	if !ok || len(groups) != 1 {
+		t.Fatalf("listener groups = %#v, want one DJ group", body["listenerGroups"])
 	}
 	playing := groups[0].(map[string]any)
 	if playing["dj"] != "partyparty" {
 		t.Fatalf("playing group DJ = %#v", playing["dj"])
 	}
 	playingListeners := playing["listeners"].([]any)
-	if len(playingListeners) != 1 || playingListeners[0].(map[string]any)["name"] != "Alex" {
+	if len(playingListeners) != 2 ||
+		playingListeners[0].(map[string]any)["name"] != "Alex" ||
+		playingListeners[1].(map[string]any)["name"] != "Sam" {
 		t.Fatalf("playing listeners = %#v", playingListeners)
-	}
-	paused := groups[1].(map[string]any)
-	if paused["dj"] != "Not listening" {
-		t.Fatalf("paused group = %#v", paused)
-	}
-	pausedListeners := paused["listeners"].([]any)
-	if len(pausedListeners) != 1 || pausedListeners[0].(map[string]any)["name"] != "Sam" {
-		t.Fatalf("paused listeners = %#v", pausedListeners)
 	}
 }
 

@@ -75,11 +75,12 @@ type Request struct {
 // CurrentTrack is the DJ-shared "now playing" state. It is deliberately
 // manual for the MVP; future integrations can feed the same store method.
 type CurrentTrack struct {
-	Title   string `json:"title"`
-	Artist  string `json:"artist,omitempty"`
-	Note    string `json:"note,omitempty"`
-	MatchID string `json:"matchId,omitempty"`
-	SetAt   int64  `json:"setAt"`
+	Title      string `json:"title"`
+	Artist     string `json:"artist,omitempty"`
+	ArtworkURL string `json:"artworkUrl,omitempty"`
+	Note       string `json:"note,omitempty"`
+	MatchID    string `json:"matchId,omitempty"`
+	SetAt      int64  `json:"setAt"`
 }
 
 // line is the on-disk journal record: a post, comment, request, track update,
@@ -1296,9 +1297,9 @@ func (s *Store) SetCurrentTrack(title, artist, note string) (CurrentTrack, error
 
 // SetRecognizedTrack stores a Shazam catalog match. Repeated callbacks for the
 // same catalog item are idempotent and do not create duplicate set-list rows.
-func (s *Store) SetRecognizedTrack(matchID, title, artist string) (CurrentTrack, bool, error) {
+func (s *Store) SetRecognizedTrack(matchID, title, artist, artworkURL string) (CurrentTrack, bool, error) {
 	tr := cleanTrack(CurrentTrack{
-		Title: title, Artist: artist, MatchID: strings.TrimSpace(matchID),
+		Title: title, Artist: artist, ArtworkURL: artworkURL, MatchID: strings.TrimSpace(matchID),
 		SetAt: time.Now().UnixMilli(),
 	})
 	if tr.Title == "" {
@@ -1388,6 +1389,13 @@ func (s *Store) TrackSnapshot() (*CurrentTrack, []CurrentTrack) {
 func cleanTrack(tr CurrentTrack) CurrentTrack {
 	tr.Title = clip(strings.TrimSpace(tr.Title), 120)
 	tr.Artist = clip(strings.TrimSpace(tr.Artist), 120)
+	tr.ArtworkURL = clip(strings.TrimSpace(tr.ArtworkURL), 1000)
+	if tr.ArtworkURL != "" {
+		u, err := url.Parse(tr.ArtworkURL)
+		if err != nil || u.Scheme != "https" || u.Host == "" {
+			tr.ArtworkURL = ""
+		}
+	}
 	tr.Note = clip(strings.TrimSpace(tr.Note), 240)
 	tr.MatchID = clip(strings.TrimSpace(tr.MatchID), 160)
 	if tr.Title == "" {
