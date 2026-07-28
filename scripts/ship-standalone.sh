@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-VERSION="${PP_VERSION:-124.06}"
-BUILD="${PP_BUILD:-208}"
+VERSION="${PP_VERSION:-124.07}"
+BUILD="${PP_BUILD:-209}"
 APP="$ROOT/build/partyparty-beta.app"
 RELEASE_DIR="$ROOT/dist/standalone-$VERSION-$BUILD"
 ZIP_NAME="partyparty-$VERSION-$BUILD.zip"
@@ -12,6 +12,11 @@ ZIP="$RELEASE_DIR/$ZIP_NAME"
 APPCAST="$RELEASE_DIR/appcast.xml"
 WRANGLER="$ROOT/cloudflare/node_modules/.bin/wrangler"
 GENERATE_APPCAST="$ROOT/app/.build/artifacts/sparkle/Sparkle/bin/generate_appcast"
+
+if curl -fsI "https://partyparty.party/downloads/$ZIP_NAME" >/dev/null 2>&1; then
+  echo "Refusing to reuse published standalone version $VERSION build $BUILD." >&2
+  exit 1
+fi
 
 "$ROOT/scripts/build-standalone.sh"
 rm -rf "$RELEASE_DIR"

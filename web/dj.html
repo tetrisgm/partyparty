@@ -311,7 +311,13 @@
   .event-qr{display:grid;place-items:center;align-self:stretch;min-width:0}
   .event-qr .party-qr-panel{width:100%;height:100%;display:grid;place-items:center}
   #qr{width:200px;height:200px;margin:0;overflow:hidden;border-radius:12px;background:#fff}
+  #qr[hidden]{display:none}
   #qr canvas,#qr img{display:block;max-width:100%;max-height:100%}
+  .qr-pending{width:200px;min-height:200px;border:1px solid var(--separator);border-radius:12px;background:var(--bg-elevated-2);padding:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+  .qr-pending[hidden]{display:none}
+  .qr-pending strong{font-size:15px;line-height:1.25;color:var(--label)}
+  .qr-pending span{font-size:12px;line-height:1.45;color:var(--label-secondary)}
+  .qr-pending small{font-size:11px;line-height:1.3;color:var(--label-tertiary)}
   .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
   .share-support{display:none!important}
   .guest-setup{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:14px;margin:0 0 16px;display:grid;gap:12px}
@@ -531,9 +537,15 @@
           <h1 class="ename"><span id="titleEdit">Name your event</span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
         </div>
       </div>
-      <div class="event-qr" id="shareCard" hidden>
+      <div class="event-qr" id="shareCard">
         <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
-          <div id="qr" role="img" aria-label="Party Wi-Fi link QR code"></div>
+          <div id="qr" role="img" aria-label="Party Wi-Fi link QR code" hidden></div>
+          <div class="qr-pending" id="qrPending" role="status" aria-live="polite">
+            <span class="spin16" aria-hidden="true"></span>
+            <strong>Creating secure guest link</strong>
+            <span id="pendingReason">Connecting this Mac to the current Wi-Fi.</span>
+            <small>Retrying automatically</small>
+          </div>
           <div class="visually-hidden" id="url">-</div>
           <div class="hint" id="shareHint">Guests scan this with their phone camera.</div>
           <div id="lanState" hidden></div>
@@ -555,19 +567,6 @@
       </div>
     </div>
     </header>
-  </div>
-
-  <!-- First-run activation gets its OWN box (there's no point advertising
-       "Guests join here" before a link exists): spinner beside the title,
-       Apple-toned lines typed character by character, all one style, and the
-       connection test right where you'd need it. -->
-  <div class="card" id="setupCard" style="display:none">
-    <div class="cardhead" style="margin-bottom:8px">
-      <h2 style="margin:0">Setting up partyparty</h2>
-    </div>
-    <div id="setupLines"></div>
-    <div class="setupline" id="pendingReason"></div>
-    <div style="margin-top:10px"><span class="spin16" style="display:inline-block"></span></div>
   </div>
 
   <div class="card event-admin-tools" id="eventManagePanel">
@@ -892,45 +891,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 
   // First-run: register an anonymous machine hostname and publish it to DNS.
   // A shared certificate means there is no per-Mac certificate issuance wait.
-  const PENDING_LINES = [
-    'Setting up partyparty…',
-    'Creating a secure address for this Mac.',
-    'Checking that this Wi-Fi can reach it.',
-  ];
-  // Lines APPEND (a growing activity log, not a replaced caption); the spinner
-  // sits below the last line so the card always reads as "working".
-  let typeTimer = null, typing = false;
-  function startPendingType(){
-    if (typing) return;
-    typing = true;
-    const box = $('setupLines');
-    box.innerHTML = '';
-    let li = 0;
-    const typeLine = () => {
-      if (!typing) return;
-      const div = document.createElement('div');
-      div.className = 'setupline';
-      box.appendChild(div);
-      const line = PENDING_LINES[li];
-      let ci = 0;
-      const tick = () => {
-        if (!typing) return;
-        ci++;
-        div.textContent = line.slice(0, ci);
-        if (ci < line.length) {
-          div.insertAdjacentHTML('beforeend', '<span class="caret"></span>');
-          typeTimer = setTimeout(tick, 26);
-          return;
-        }
-        li++;
-        if (li < PENDING_LINES.length) typeTimer = setTimeout(typeLine, 5000);
-      };
-      tick();
-    };
-    typeLine();
-  }
-  function stopPendingType(){ typing = false; clearTimeout(typeTimer); }
-
   // Settings sheet (the gear).
   {
     const ov = $('settingsSheet');
@@ -1285,19 +1245,18 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // will open the link.
       const dnsPublished = s.lan && s.lan.dnsPublished === true;
       const linkReady = !!guestUrl && secure && dnsPublished;
-      $('setupCard').style.display = linkReady ? 'none' : 'block';
       if (linkReady) {
-        stopPendingType();
+        $('qr').hidden = false;
+        $('qrPending').hidden = true;
       } else {
-        startPendingType();
+        $('qr').hidden = true;
+        $('qrPending').hidden = false;
         $('pendingReason').textContent = (s.activation && s.activation.reason) ||
           'Waiting for the secure guest link to match this Mac on the current Wi-Fi.';
       }
       // The room link exists independently of capture. Keep it visible while
       // idle and while audio starts so the QR never disappears behind a slow
       // Core Audio permission/cold-start cycle.
-      $('shareCard').hidden = !linkReady;
-      $('partyQrPanel').hidden = !linkReady;
       if (linkReady) renderQR(guestUrl);
       const roster = s.roster || [];
       const peers = Array.isArray(s.peers) ? s.peers : [];
