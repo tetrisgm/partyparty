@@ -43,9 +43,10 @@ codesign_one() {
 }
 
 echo ">> codesigning inside-out ($SIGN_ID)"
-for helper in mediamtx ffmpeg partyparty-server ppcapture; do
+for helper in mediamtx ffmpeg partyparty-server; do
   codesign_one "$APP/Contents/Helpers/$helper" "$CHILD_ENT"
 done
+codesign_one "$APP/Contents/Helpers/ppcapture.app" "$ROOT/app/partyparty-app-store-capture.entitlements"
 codesign_one "$APP/Contents/MacOS/partyparty" "$ENT"
 codesign_one "$APP" "$ENT"
 

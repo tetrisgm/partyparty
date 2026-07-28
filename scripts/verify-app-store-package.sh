@@ -27,9 +27,11 @@ quarantine_payload_xattr="$(xattr -lr "$work/package" 2>/dev/null | grep -E 'com
   fail "expanded package has a quarantine attribute: $quarantine_payload_xattr"
 
 apps=()
-while IFS= read -r -d '' app; do
-  apps+=("$app")
-done < <(find "$work/package" -type d -name '*.app' -print0)
+while IFS= read -r -d '' payload; do
+  while IFS= read -r -d '' app; do
+    apps+=("$app")
+  done < <(find "$payload" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print0)
+done < <(find "$work/package" -type d -name Payload -print0)
 [ "${#apps[@]}" -eq 1 ] || fail "expected one app payload, found ${#apps[@]}"
 [ "$(basename "${apps[0]}")" = "partyparty.app" ] ||
   fail "unexpected app payload name: $(basename "${apps[0]}")"

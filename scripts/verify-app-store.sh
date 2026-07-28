@@ -54,8 +54,8 @@ PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 [ "$(/usr/bin/plutil -extract NSPrivacyTracking raw -o - "$PRIVACY")" = "false" ] ||
   fail "privacy manifest enables tracking"
 
-expected_helpers=$'ffmpeg\nmediamtx\npartyparty-server\nppcapture'
-actual_helpers="$(find "$APP/Contents/Helpers" -mindepth 1 -maxdepth 1 -type f -print | sed 's#.*/##' | sort)"
+expected_helpers=$'ffmpeg\nmediamtx\npartyparty-server\nppcapture.app'
+actual_helpers="$(find "$APP/Contents/Helpers" -mindepth 1 -maxdepth 1 -print | sed 's#.*/##' | sort)"
 [ "$actual_helpers" = "$expected_helpers" ] || fail "unexpected helper set: $actual_helpers"
 
 entitlements() {
@@ -77,7 +77,7 @@ if entitlement_value "$APP" com.apple.security.inherit >/dev/null 2>&1; then
   fail "main app must not inherit a sandbox"
 fi
 
-for helper in ffmpeg mediamtx partyparty-server ppcapture; do
+for helper in ffmpeg mediamtx partyparty-server; do
   path="$APP/Contents/Helpers/$helper"
   [ "$(entitlement_value "$path" com.apple.security.app-sandbox)" = "true" ] ||
     fail "$helper is not sandboxed"
@@ -89,7 +89,33 @@ for helper in ffmpeg mediamtx partyparty-server ppcapture; do
     fail "$helper has unexpected entitlements: $keys"
 done
 
-otool -L "$APP/Contents/Helpers/ppcapture" | grep -q '/ShazamKit.framework/'
+[ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.app-sandbox)" = "true" ] ||
+  fail "ppcapture is not directly sandboxed"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist")" = "$EXPECTED_BUNDLE_ID" ] ||
+  fail "ppcapture does not use the Shazam-enabled app identifier"
+[ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.network.client)" = "true" ] ||
+  fail "ppcapture has no network client access for ShazamKit"
+[ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.device.audio-input)" = "true" ] ||
+  fail "ppcapture has no audio input access"
+if entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.inherit >/dev/null 2>&1; then
+  fail "ppcapture must not inherit the app sandbox because ShazamKit error 202 results"
+fi
+capture_keys="$(entitlements "$APP/Contents/Helpers/ppcapture.app" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
+  'import json,sys; print("\n".join(sorted(json.load(sys.stdin))))')"
+capture_expected=$'com.apple.security.app-sandbox\ncom.apple.security.device.audio-input\ncom.apple.security.network.client\ncom.apple.security.temporary-exception.mach-lookup.global-name'
+if [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
+  capture_expected=$'com.apple.application-identifier\ncom.apple.developer.team-identifier\ncom.apple.security.app-sandbox\ncom.apple.security.device.audio-input\ncom.apple.security.network.client\ncom.apple.security.temporary-exception.mach-lookup.global-name'
+  capture_app_id="$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.application-identifier)"
+  [[ "$capture_app_id" = *".$EXPECTED_BUNDLE_ID" ]] ||
+    fail "ppcapture application identifier is $capture_app_id"
+fi
+[ "$capture_keys" = "$capture_expected" ] || fail "ppcapture has unexpected entitlements: $capture_keys"
+capture_mach_services="$(entitlements "$APP/Contents/Helpers/ppcapture.app" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
+  'import json,sys; print("\n".join(json.load(sys.stdin)["com.apple.security.temporary-exception.mach-lookup.global-name"]))')"
+[ "$capture_mach_services" = "com.apple.shazamd" ] ||
+  fail "ppcapture has an unexpected temporary Mach service exception: $capture_mach_services"
+
+otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'
 
 if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
   work="$(mktemp -d)"
