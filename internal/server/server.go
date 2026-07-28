@@ -307,6 +307,18 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, cover)
+	case p == "/dj-avatar":
+		if s.Events == nil {
+			http.NotFound(w, r)
+			return
+		}
+		avatar, ok := s.Events.AvatarPath()
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFile(w, r, avatar)
 	case strings.HasPrefix(p, "/covers/"):
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
@@ -704,9 +716,11 @@ func (s *srv) peerState(since int64) peers.Peer {
 	}
 	var nowPlaying *event.CurrentTrack
 	var links []event.Link
+	var bio, avatar string
 	if s.Events != nil {
 		nowPlaying, _ = s.Events.TrackSnapshot()
-		links = s.Events.Meta().Links
+		meta := s.Events.Meta()
+		links, bio, avatar = meta.Links, meta.Bio, meta.Avatar
 	}
 	if posts == nil {
 		posts = []event.Post{}
@@ -717,6 +731,8 @@ func (s *srv) peerState(since int64) peers.Peer {
 	return peers.Peer{
 		ID:            peerID,
 		Name:          name,
+		Bio:           bio,
+		Avatar:        avatar,
 		RoomURL:       s.urls().Primary,
 		StreamURL:     s.llhlsURL(),
 		Live:          bc.State == "live",

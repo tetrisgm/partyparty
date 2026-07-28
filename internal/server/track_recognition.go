@@ -9,6 +9,7 @@ import (
 )
 
 const recognizedTrackMarker = "ppcapture: TRACK "
+const recognizedTrackSilentMarker = "ppcapture: TRACK-SILENT"
 
 type recognizedTrack struct {
 	ID         string `json:"id"`
@@ -40,13 +41,19 @@ func (s *srv) watchRecognizedTracks() {
 	seenLines := make(map[string]struct{})
 	for range ticker.C {
 		for _, line := range s.Broadcaster.Log() {
-			if !strings.Contains(line, recognizedTrackMarker) {
+			if !strings.Contains(line, recognizedTrackMarker) && !strings.Contains(line, recognizedTrackSilentMarker) {
 				continue
 			}
 			if _, seen := seenLines[line]; seen {
 				continue
 			}
 			seenLines[line] = struct{}{}
+			if strings.Contains(line, recognizedTrackSilentMarker) {
+				if err := s.Events.ClearCurrentTrack(); err != nil {
+					log.Printf("track recognition: clear failed: %v", err)
+				}
+				continue
+			}
 			track, ok := parseRecognizedTrack(line)
 			if !ok {
 				continue

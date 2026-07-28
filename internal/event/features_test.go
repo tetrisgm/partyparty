@@ -1,6 +1,7 @@
 package event
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -19,7 +20,8 @@ func TestFeatureDefaultsFilledOnLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(st.Dir(), "meta.json"), data, 0o644); err != nil {
+	legacyMeta := filepath.Join(st.Dir(), "meta.json")
+	if err := os.WriteFile(legacyMeta, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -29,6 +31,12 @@ func TestFeatureDefaultsFilledOnLoad(t *testing.T) {
 	}
 	if got, want := reloaded.Meta().Features, FeatureDefaults(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("features = %#v, want %#v", got, want)
+	}
+	if _, err := os.Stat(legacyMeta); !os.IsNotExist(err) {
+		t.Fatalf("legacy meta still exists: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(reloaded.Dir(), "data", "meta.json")); err != nil {
+		t.Fatalf("migrated meta missing: %v", err)
 	}
 }
 
@@ -48,7 +56,7 @@ func TestSetFeaturePersists(t *testing.T) {
 	}
 
 	var meta Meta
-	data, err := os.ReadFile(filepath.Join(st.Dir(), "meta.json"))
+	data, err := os.ReadFile(filepath.Join(st.Dir(), "data", "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +92,7 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	}
 
 	var meta Meta
-	data, err := os.ReadFile(filepath.Join(st.Dir(), "meta.json"))
+	data, err := os.ReadFile(filepath.Join(st.Dir(), "data", "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,5 +115,43 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	}
 	if got := reloaded.Meta().Links; len(got) != 2 || got[0].Label != "Instagram" {
 		t.Fatalf("reloaded links = %#v", got)
+	}
+}
+
+func TestProfilePersistsInsideDataDirectory(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetProfile("  Dance floor specialist  "); err != nil {
+		t.Fatal(err)
+	}
+	wantAvatar := []byte("profile image")
+	if _, err := st.SaveAvatar("dj.png", bytes.NewReader(wantAvatar)); err != nil {
+		t.Fatal(err)
+	}
+
+	meta := st.Meta()
+	if meta.Bio != "Dance floor specialist" || meta.Avatar != "/dj-avatar" {
+		t.Fatalf("profile meta = %#v", meta)
+	}
+	avatarPath, ok := st.AvatarPath()
+	if !ok {
+		t.Fatal("AvatarPath did not find saved profile photo")
+	}
+	gotAvatar, err := os.ReadFile(avatarPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotAvatar, wantAvatar) {
+		t.Fatalf("saved avatar = %q, want %q", gotAvatar, wantAvatar)
+	}
+	for _, name := range []string{"meta.json", "profile.png"} {
+		if _, err := os.Stat(filepath.Join(st.Dir(), "data", name)); err != nil {
+			t.Fatalf("data/%s missing: %v", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(st.Dir(), name)); !os.IsNotExist(err) {
+			t.Fatalf("top-level %s exists: %v", name, err)
+		}
 	}
 }

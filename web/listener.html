@@ -327,7 +327,7 @@
   .djlist{display:flex;gap:8px;overflow-x:auto;padding:1px 1px 8px;scrollbar-width:none}
   .djlist::-webkit-scrollbar{display:none}
   .djchoice{flex:0 0 min(280px,82vw);min-height:58px;border:1px solid var(--separator);border-radius:8px;background:#fff;color:var(--label);padding:9px 12px;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.05)}
-  .djchoice.active{border-color:var(--accent);background:#fff0f4}
+  .djchoice.active{border-color:var(--dj-color,var(--accent));background:color-mix(in srgb,var(--dj-color,var(--accent)) 9%,#fff)}
   .djchoice:disabled{opacity:.45;cursor:default}
   .djdot{width:9px;height:9px;border-radius:50%;background:var(--label-tertiary);flex:0 0 auto}
   .djchoice.live .djdot{background:var(--success)}
@@ -468,7 +468,7 @@
   .composerline .mechip{max-width:128px;min-width:0;height:40px;padding:0 10px;gap:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;box-shadow:none}
   .composerline .mechip b{overflow:hidden;text-overflow:ellipsis}
   .composerline .mechip input{width:86px;min-width:50px}
-  .composerline input[type=text]{height:48px;padding:0 12px;border:1px solid var(--separator);border-radius:12px;background:#f5f5f7;font-size:16px}
+  .composerline input[type=text]{height:48px;padding:0 12px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff;font-size:16px}
   .composericon{background:#f0f0f3}
   .postbtn{height:48px;border-radius:10px;padding:0 14px}
   .feed{max-width:720px;margin:0 auto;padding:8px 20px calc(170px + env(safe-area-inset-bottom))}
@@ -551,7 +551,7 @@
     display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;
     border:1px solid var(--separator);border-radius:8px;background:#fff;text-align:center;
   }
-  .djchoice.active{border:2px solid var(--accent);padding:13px 9px 10px;background:#fff0f4}
+  .djchoice.active{border:2px solid var(--dj-color,var(--accent));padding:13px 9px 10px;background:color-mix(in srgb,var(--dj-color,var(--accent)) 9%,#fff)}
   .djava{
     position:relative;width:66px;height:66px;display:grid;place-items:center;flex:0 0 66px;
     border-radius:50%;background:linear-gradient(145deg,#323238,#666672);color:#fff;
@@ -568,7 +568,8 @@
   .djcopy b,.djcopy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djcopy b{font-size:14px}
   .djcopy small{margin-top:3px;color:var(--label-secondary);font-size:11px}
-  .djselected{min-height:15px;color:var(--accent);font-size:10px;font-weight:900}
+  .djselected:empty{display:none}
+  .djselected{min-height:15px;color:var(--dj-color,var(--accent));font-size:10px;font-weight:900}
   .djchoice.connecting{border-color:#ff9f0a}
   .djchoice.failed{border-color:#ff3b30}
   .playbars{display:flex;align-items:center;justify-content:flex-end;gap:3px;width:28px;height:24px;margin-left:auto}
@@ -644,11 +645,11 @@
   :root[data-theme="dark"] .feed,:root[data-theme="dark"] .djpickerhead,:root[data-theme="dark"] .feedhead{color:var(--label)}
   :root[data-theme="dark"] .album,:root[data-theme="dark"] .djlinks,:root[data-theme="dark"] .post,
   :root[data-theme="dark"] .djchoice{background:#1b1f21;border-color:var(--separator);color:var(--label);box-shadow:none}
-  :root[data-theme="dark"] .djchoice.active{background:#480014;border-color:var(--accent)}
+  :root[data-theme="dark"] .djchoice.active{background:var(--dj-tint,#173b27);border-color:var(--dj-color,var(--accent))}
   :root[data-theme="dark"] .sidetray{background:rgba(24,27,29,.97)}
   :root[data-theme="dark"] .listeneravatar{background:#24282b}
   :root[data-theme="dark"] .listenbar{background:rgba(25,28,30,.94);border-color:var(--separator)}
-  :root[data-theme="dark"] .composerline input[type=text]{background:#1b1f21;color:var(--label)}
+  :root[data-theme="dark"] .composerline input[type=text]{background:#303539;border-color:rgba(255,255,255,.16);color:var(--label)}
   :root[data-theme="dark"] .composericon{background:#24282b;color:var(--label)}
 
   .themerow{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px}
@@ -669,7 +670,7 @@
     color:#fff;box-shadow:none!important;animation:none!important;
   }
   .listenbar .btn .ico{width:auto;height:auto;background:transparent;font-size:20px}
-  .playerbarrow{display:flex;align-items:center;gap:12px;min-width:0;padding:7px 11px;border-radius:14px;background:#20c965;color:#fff}
+  .playerbarrow{display:flex;align-items:center;gap:12px;min-width:0;padding:7px 11px;border-radius:14px;background:var(--selected-dj-color,#20c965);color:#fff;transition:background-color .18s ease}
   .playersummary{
     min-width:0;flex:1;height:52px;display:flex;align-items:center;gap:12px;padding:0;
     border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;
@@ -689,20 +690,21 @@
     box-shadow:0 -16px 50px rgba(0,0,0,.24);overflow:hidden;
   }
   .playersheet.open{transform:translateY(var(--sheet-drag,0px))}
-  .playersheethead{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;padding:10px 12px 2px;background:var(--sheet-bg);touch-action:none}
+  .playersheethead{position:absolute;inset:0 0 auto 0;z-index:3;display:flex;justify-content:flex-end;padding:12px;pointer-events:none;touch-action:none}
   .sheetcollapse{width:36px;height:36px;border:0;border-radius:50%;background:var(--fill);color:var(--label);font-size:22px;line-height:1;cursor:pointer}
-  .playersheetscroll{height:calc(100% - 48px);overflow:auto;padding:4px 20px calc(28px + env(safe-area-inset-bottom))}
+  .sheetcollapse{pointer-events:auto;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+  .playersheetscroll{height:100%;overflow:auto;padding:28px 20px calc(28px + env(safe-area-inset-bottom));overscroll-behavior:contain}
   .sheetlinks{display:flex;gap:7px;flex-wrap:wrap;margin:2px 0 24px}
   .sheetlinks a{display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border-radius:999px;background:var(--fill);color:var(--label);font-size:11px;font-weight:750;text-decoration:none}
+  .sheetbio{margin:-12px 0 24px;color:var(--label-secondary);font-size:14px;line-height:1.45;white-space:pre-wrap}
+  .sheetbio:empty{display:none}
   .sheettrack{max-width:430px;margin:0 auto 24px;text-align:center}
   .sheetart{display:block;width:min(76vw,360px);aspect-ratio:1;margin:0 auto 20px;border-radius:10px;object-fit:cover;background:var(--fill);box-shadow:0 14px 38px rgba(0,0,0,.18)}
   .sheettitle{font-size:25px;font-weight:850;line-height:1.12;overflow-wrap:anywhere}
   .sheetartist{margin-top:6px;color:var(--label-secondary);font-size:17px}
   .sheetcontrols{display:flex;align-items:center;justify-content:center;margin:18px 0 8px}
-  .sheetplay{width:58px;height:58px;border:0;border-radius:50%;background:var(--accent);color:#fff;font-size:22px;font-weight:800;cursor:pointer}
-  .sheetplay::before{content:"";display:block;width:0;height:0;margin-left:5px;border-top:10px solid transparent;border-bottom:10px solid transparent;border-left:16px solid #fff}
-  body.playing .sheetplay::before{content:"❚❚";width:auto;height:auto;margin-left:0;border:0;color:#fff;font-size:20px;line-height:1}
-  .sheetcount{text-align:center;color:var(--label-secondary);font-size:13px;margin-bottom:28px}
+  .sheetplay{width:58px;height:58px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:var(--selected-dj-color,#20c965);color:#fff;cursor:pointer}
+  .sheetplay svg{display:block;width:24px;height:24px;fill:currentColor}
   .sheetsectiontitle{font-size:20px;font-weight:850;margin:24px 0 10px}
   .playersheet .djlist{margin:0 -2px}
   .playersheet .listenergroups{padding-bottom:20px}
@@ -822,7 +824,7 @@
       <div class="composerline">
         <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
         <button class="composericon" id="attachBtn" type="button" aria-label="Add photos or videos" title="Add photos or videos">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="15" height="15" rx="2"/><circle cx="7.5" cy="9.5" r="1.5"/><path d="m17.5 15-3.5-3.5-9 8"/><circle cx="18.5" cy="5.5" r="4.5" fill="currentColor" stroke="none"/><path d="M18.5 3.5v4M16.5 5.5h4" stroke="#fff"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="8" cy="10" r="1.5"/><path d="m4 17 4-4 3 3 2-2 4 4"/><path d="M20 4v7M16.5 7.5h7"/></svg>
         </button>
         <button class="postbtn" id="postBtn" type="button">Post</button>
       </div>
@@ -841,12 +843,12 @@
       <div class="sheetsectiontitle" id="sheetDJHeading">1 DJ now playing</div>
       <div class="djlist" id="sheetDJList"></div>
       <div class="sheetlinks" id="sheetLinks"></div>
+      <div class="sheetbio" id="sheetBio"></div>
       <div class="sheettrack">
         <img class="sheetart" id="sheetArt" src="/art-512.png" alt="">
         <div class="sheettitle" id="sheetTrackTitle">Live party audio</div>
         <div class="sheetartist" id="sheetTrackArtist"></div>
-        <div class="sheetcontrols"><button class="sheetplay" id="sheetPlay" type="button" aria-label="Play">▶</button></div>
-        <div class="sheetcount" id="sheetListenCount">0 listening</div>
+        <div class="sheetcontrols"><button class="sheetplay" id="sheetPlay" type="button" aria-label="Play"></button></div>
       </div>
       <div class="sheetsectiontitle" id="sheetListenersHeading">Listeners</div>
       <div class="listenergroups" id="sheetListenerGroups"></div>
@@ -860,17 +862,16 @@
       <div class="djswitchnotice" id="djSwitchNotice" role="status" aria-live="polite" hidden></div>
       <div class="djlist" id="djList"></div>
     </section>
+    <section class="djlinks" id="djLinks" hidden>
+      <div class="linkgroup" id="followLinks" data-label="Follow"></div>
+      <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
+    </section>
     <div class="feedhead" id="feedTitle">Party feed</div>
     <section class="album" id="albumSec" hidden>
       <div class="sectionrow">
         <h2>Photos &amp; videos</h2>
       </div>
       <div class="albumstrip" id="albumStrip"><div class="albumempty">No photos yet.</div></div>
-    </section>
-    <section class="djlinks" id="djLinks" hidden>
-      <h3>DJ links</h3>
-      <div class="linkgroup" id="followLinks" data-label="Follow"></div>
-      <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
     </section>
     <div id="feedList"><div class="feedempty">Nothing here yet - start the wall 🎉</div></div>
   </section>
@@ -951,8 +952,8 @@
     const sheetTrackTitle = document.getElementById('sheetTrackTitle');
     const sheetTrackArtist = document.getElementById('sheetTrackArtist');
     const sheetLinks = document.getElementById('sheetLinks');
+    const sheetBio = document.getElementById('sheetBio');
     const sheetPlay = document.getElementById('sheetPlay');
-    const sheetListenCount = document.getElementById('sheetListenCount');
     const playerSheetScroll = playerSheet.querySelector('.playersheetscroll');
     const sheetListenersHeading = document.getElementById('sheetListenersHeading');
     const lightThemeBtn = document.getElementById('lightThemeBtn');
@@ -988,7 +989,16 @@
     let localLatencyTarget = 0, localStreamGeneration = 0, localStreamReady = false, localLive = false;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let discoveredPeers = [], selectedDJId = '', listenerCountsByDJ = new Map(), listenerGroups = [];
-    let localDJLinks = [];
+    let localDJLinks = [], localDJAvatar = '', localDJBio = '';
+    const djPalette = [
+      ['#20c965', '#173b27'], ['#0a84ff', '#16334f'], ['#ff453a', '#4a211f'],
+      ['#ff9f0a', '#4a3518'], ['#bf5af2', '#3c2448'], ['#64d2ff', '#173b47'],
+      ['#ffd60a', '#463f17'], ['#ff375f', '#481d2a'], ['#30d158', '#193d26'],
+      ['#5e5ce6', '#26264a']
+    ];
+    function djPaletteAt(index){
+      return djPalette[Math.abs(Number(index) || 0) % djPalette.length];
+    }
     let switchSequence = 0, switchingTo = null, failedDJ = null;
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
@@ -1390,7 +1400,7 @@
       const activeCount = djs.filter((dj) => dj.live).length;
       djPickerHead.textContent = activeCount + ' ' + (activeCount === 1 ? 'DJ' : 'DJs') + ' now playing';
       sheetDJHeading.textContent = djPickerHead.textContent;
-      djs.forEach((dj) => {
+      djs.forEach((dj, index) => {
         const button = document.createElement('button');
         button.type = 'button';
         const { id, name, ready, live, avatar } = dj;
@@ -1400,6 +1410,9 @@
         const listeners = Number(listenerCountsByDJ.get(id) || 0);
         button.className = 'djchoice' + (selected ? ' active' : '') +
           (connecting ? ' connecting' : '') + (failed ? ' failed' : '');
+        const palette = djPaletteAt(index);
+        button.style.setProperty('--dj-color', palette[0]);
+        button.style.setProperty('--dj-tint', palette[1]);
         button.disabled = switchingTo !== null || !live || !ready;
         button.setAttribute('aria-pressed', selected ? 'true' : 'false');
         button.setAttribute('aria-label', name + ', ' + listeners + ' listening, ' +
@@ -1411,7 +1424,7 @@
           '<span class="djeq" aria-hidden="true"><i></i><i></i><i></i></span></span>' +
           '<span class="djcopy"><b>' + escapeHTML(name) + '</b><small>' +
           listeners + ' listening</small></span><span class="djselected">' +
-          (connecting ? 'Connecting…' : (selected ? '✓ Listening' : (failed ? 'Try again' : ''))) +
+          (connecting ? 'Connecting…' : (failed ? 'Try again' : '')) +
           '</span>';
         button.addEventListener('click', () => selectDJ(id));
         target.appendChild(button);
@@ -1425,13 +1438,13 @@
       djPicker.hidden = false;
       const djs = [{
         id: '', name: guestHostName || 'This DJ', ready: localStreamReady,
-        live: localLive, avatar: '',
+        live: localLive, avatar: localDJAvatar,
       }].concat(discoveredPeers
         .filter((peer) => peer.live || peer.id === selectedDJId)
         .map((peer) => ({
           id: peer.id, name: peer.name || 'PartyParty DJ',
           ready: !!peer.ready && !!peer.streamUrl, live: !!peer.live,
-          avatar: peer.avatar || '',
+          avatar: peer.avatar ? new URL(peer.avatar, peer.roomUrl).href : '',
         })));
       renderDJSelector(djs, djList);
       renderDJSelector(djs, sheetDJList);
@@ -1553,8 +1566,17 @@
       const peer = selectedDJ();
       return peer && Array.isArray(peer.links) ? peer.links : localDJLinks;
     }
+    function selectedBio(){
+      const peer = selectedDJ();
+      return peer ? String(peer.bio || '') : localDJBio;
+    }
     function selectedListenerCount(){
       return Number(listenerCountsByDJ.get(selectedDJId) || 0);
+    }
+    function selectedDJIndex(){
+      if (!selectedDJId) return 0;
+      const index = discoveredPeers.findIndex((candidate) => candidate.id === selectedDJId);
+      return index < 0 ? 0 : index + 1;
     }
     function artworkSource(track){
       const raw = track && String(track.artworkUrl || '');
@@ -1577,23 +1599,48 @@
       sheetTrackTitle.textContent = track && track.title ? track.title : 'Live party audio';
       sheetTrackArtist.textContent = track && track.artist ? track.artist : djName;
       listenCount.textContent = listenerText;
-      sheetListenCount.textContent = listenerText;
+      const palette = djPaletteAt(selectedDJIndex());
+      document.documentElement.style.setProperty('--selected-dj-color', palette[0]);
       sheetLinks.textContent = '';
+      sheetBio.textContent = selectedBio();
+      const mainLinks = document.getElementById('djLinks');
+      const followLinks = document.getElementById('followLinks');
+      const tipLinks = document.getElementById('tipLinks');
+      if (followLinks) followLinks.textContent = '';
+      if (tipLinks) tipLinks.textContent = '';
+      let linkCount = 0;
       selectedLinks().forEach((link) => {
         const href = link && String(link.url || '');
         try {
           const url = new URL(href);
           if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
-          const chip = document.createElement('a');
-          chip.href = url.href;
-          chip.target = '_blank';
-          chip.rel = 'noopener';
-          chip.textContent = link.label || link.type || 'Link';
-          sheetLinks.appendChild(chip);
+          const makeChip = () => {
+            const chip = document.createElement('a');
+            chip.href = url.href;
+            chip.target = '_blank';
+            chip.rel = 'noopener';
+            chip.textContent = link.label || link.type || 'Link';
+            return chip;
+          };
+          sheetLinks.appendChild(makeChip());
+          const tip = ['venmo', 'cashapp', 'paypal'].includes(link.type);
+          const parent = tip ? tipLinks : followLinks;
+          if (parent) {
+            const chip = makeChip();
+            chip.className = 'djlinkchip' + (tip ? ' tip' : '');
+            parent.appendChild(chip);
+          }
+          linkCount++;
         } catch (e) {}
       });
-      sheetPlay.textContent = '';
-      sheetPlay.setAttribute('aria-label', document.body.classList.contains('playing') ? 'Pause' : 'Play');
+      if (followLinks) followLinks.hidden = !followLinks.children.length;
+      if (tipLinks) tipLinks.hidden = !tipLinks.children.length;
+      if (mainLinks) mainLinks.hidden = linkCount === 0;
+      const isPlaying = document.body.classList.contains('playing');
+      sheetPlay.innerHTML = isPlaying
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5Z"/></svg>';
+      sheetPlay.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
       applyBtnHint();
     }
     function setPlayingUI(on){
@@ -2321,6 +2368,8 @@
         }
         const eventHost = s.event && String(s.event.host || '').trim();
         if (eventHost) guestHostName = eventHost;
+        localDJAvatar = s.event && String(s.event.avatar || '');
+        localDJBio = s.event && String(s.event.bio || '');
         paintListenerGroups(s.listenerGroups || []);
         paintDJs(s.peers || []);
         if (selectedDJId) {
@@ -2583,19 +2632,6 @@
       function renderDJLinks(links){
         currentLinks = Array.isArray(links) ? links : currentLinks;
         localDJLinks = currentLinks;
-        followLinks.textContent = '';
-        tipLinks.textContent = '';
-        let followN = 0, tipN = 0;
-        for (const link of currentLinks) {
-          if (tipTypes.has(link && link.type)) {
-            tipN += addLinkChip(tipLinks, link);
-          } else {
-            followN += addLinkChip(followLinks, link);
-          }
-        }
-        followLinks.hidden = followN === 0;
-        tipLinks.hidden = tipN === 0;
-        djLinks.hidden = followN + tipN === 0;
         updatePlayerDetails();
       }
       function updateReactionUI(counts){
@@ -3226,6 +3262,8 @@
           } else {
             $id('hostedLine').hidden = true;
           }
+          localDJAvatar = String(data.avatar || localDJAvatar || '');
+          localDJBio = String(data.bio || localDJBio || '');
           const st = $id('startsLine');
           st.hidden = !data.starts; if (data.starts) st.textContent = data.starts;
           maybeWelcome(data);

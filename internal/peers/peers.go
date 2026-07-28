@@ -28,6 +28,8 @@ const (
 type Peer struct {
 	ID            string              `json:"id"`
 	Name          string              `json:"name"`
+	Bio           string              `json:"bio,omitempty"`
+	Avatar        string              `json:"avatar,omitempty"`
 	RoomURL       string              `json:"roomUrl"`
 	StreamURL     string              `json:"streamUrl,omitempty"`
 	Live          bool                `json:"live"`

@@ -93,6 +93,8 @@ final class TrackRecognizer: NSObject, SHSessionDelegate {
     private var pending = 0
     private var lastID = ""
     private var lastErrorAt = Date.distantPast
+    private var lastLoudAt = Date()
+    private var silenceAnnounced = false
 
     init?(sampleRate: Int, channels: Int) {
         guard let format = AVAudioFormat(
@@ -108,7 +110,20 @@ final class TrackRecognizer: NSObject, SHSessionDelegate {
     }
 
     func enqueue(_ interleaved: [Float32]) {
+        var energy: Float = 0
+        for sample in interleaved {
+            energy += sample * sample
+        }
+        let rms = interleaved.isEmpty ? 0 : sqrt(energy / Float(interleaved.count))
         state.lock()
+        if rms >= 0.002 {
+            lastLoudAt = Date()
+            silenceAnnounced = false
+        } else {
+            state.unlock()
+            announceSilenceIfNeeded()
+            return
+        }
         guard pending < 3 else {
             state.unlock()
             return
@@ -142,7 +157,7 @@ final class TrackRecognizer: NSObject, SHSessionDelegate {
         let artist = item.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let matchID = item.shazamID ?? "\(artist)\u{0}\(title)"
         state.lock()
-        guard matchID != lastID else {
+        guard Date().timeIntervalSince(lastLoudAt) < 6, matchID != lastID else {
             state.unlock()
             return
         }
@@ -155,6 +170,19 @@ final class TrackRecognizer: NSObject, SHSessionDelegate {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               !data.isEmpty else { return }
         elog("ppcapture: TRACK " + data.base64EncodedString())
+    }
+
+    func announceSilenceIfNeeded() {
+        state.lock()
+        let shouldAnnounce = !silenceAnnounced && Date().timeIntervalSince(lastLoudAt) >= 10
+        if shouldAnnounce {
+            silenceAnnounced = true
+            lastID = ""
+        }
+        state.unlock()
+        if shouldAnnounce {
+            elog("ppcapture: TRACK-SILENT \(Int(Date().timeIntervalSince1970 * 1000))")
+        }
     }
 
     func session(_ session: SHSession, didNotFindMatchFor signature: SHSignature, error: Error?) {
@@ -292,6 +320,7 @@ Thread.detachNewThread {
     var wasHogged = false
     while true {
         Thread.sleep(forTimeInterval: 2)
+        trackRecognizer?.announceSilenceIfNeeded()
         let now = ring.pushedCount()
         let advancing = now != last
         last = now

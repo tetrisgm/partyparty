@@ -114,6 +114,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		body := map[string]any{
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
 			"date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
+			"bio": meta.Bio, "avatar": meta.Avatar,
 			"features":  meta.Features,
 			"reactions": reactions, "spikes": spikes,
 			// dir = the current room identity; clients reset their cursor when a
@@ -403,6 +404,24 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": s.Events.Meta().Links})
+	case "/api/dj-profile":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct {
+			Bio string `json:"bio"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if err := s.Events.SetProfile(body.Bio); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		meta := s.Events.Meta()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "bio": meta.Bio, "avatar": meta.Avatar})
 	case "/api/post":
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -551,6 +570,27 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cover": "/event-cover"})
+	case "/api/dj-avatar-local":
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, event.MaxAvatarBytes+(1<<20))
+		f, hdr, err := r.FormFile("file")
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "no file"})
+			return true
+		}
+		defer f.Close()
+		if _, err := s.Events.SaveAvatar(hdr.Filename, f); err != nil {
+			status := http.StatusBadRequest
+			if strings.Contains(err.Error(), "too large") {
+				status = http.StatusRequestEntityTooLarge
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "avatar": "/dj-avatar"})
 	case "/api/post-delete":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -659,6 +699,8 @@ func (s *srv) eventState() map[string]any {
 		"time":     meta.Time,
 		"place":    meta.Place,
 		"cover":    meta.Cover,
+		"bio":      meta.Bio,
+		"avatar":   meta.Avatar,
 		"features": meta.Features,
 		"posts":    len(ids),
 		"media":    mediaCount,

@@ -113,6 +113,8 @@ type Guest struct {
 type Meta struct {
 	Title    string          `json:"title"`
 	Host     string          `json:"host"`
+	Bio      string          `json:"bio,omitempty"`
+	Avatar   string          `json:"avatar,omitempty"`
 	Starts   string          `json:"starts,omitempty"`
 	Date     string          `json:"date,omitempty"`
 	Time     string          `json:"time,omitempty"`
@@ -195,7 +197,10 @@ var postReactionTypes = map[string]bool{
 	"🪩":  true,
 }
 
-const MaxCoverBytes int64 = 15 << 20
+const (
+	MaxCoverBytes  int64 = 15 << 20
+	MaxAvatarBytes int64 = 8 << 20
+)
 
 func validPostReaction(reaction string) bool {
 	return postReactionTypes[reaction]
@@ -383,6 +388,43 @@ func Open(baseDir string) (*Store, error) {
 	return s, nil
 }
 
+func dataDir(dir string) string {
+	return filepath.Join(dir, "data")
+}
+
+func dataPath(dir, name string) string {
+	return filepath.Join(dataDir(dir), name)
+}
+
+func migrateEventData(dir string) error {
+	if err := os.MkdirAll(dataDir(dir), 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name != "posts.jsonl" && name != "guests.json" && name != "meta.json" &&
+			name != "setlist.txt" && !strings.HasPrefix(name, "cover.") &&
+			!strings.HasPrefix(name, "profile.") {
+			continue
+		}
+		from, to := filepath.Join(dir, name), dataPath(dir, name)
+		if _, err := os.Stat(to); err == nil {
+			continue
+		}
+		if err := os.Rename(from, to); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
 // changed wakes every parked long-poll (close-and-replace broadcast).
 func (s *Store) changed() {
 	s.notifyMu.Lock()
@@ -400,17 +442,20 @@ func (s *Store) Wait() <-chan struct{} {
 
 // use switches the store to dir, creating the layout and replaying the journal.
 func (s *Store) use(dir string) error {
-	for _, sub := range []string{"", "media", filepath.Join("media", "thumbs"), "recordings"} {
+	for _, sub := range []string{"", "data", "media", filepath.Join("media", "thumbs"), "recordings"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 			return err
 		}
+	}
+	if err := migrateEventData(dir); err != nil {
+		return err
 	}
 	posts, byID := []*Post{}, map[string]*Post{}
 	requests, byReqID := []*Request{}, map[string]*Request{}
 	var currentTrack *CurrentTrack
 	recentTracks := []CurrentTrack{}
 	setlistTracks := []CurrentTrack{}
-	if data, err := os.ReadFile(filepath.Join(dir, "posts.jsonl")); err == nil {
+	if data, err := os.ReadFile(dataPath(dir, "posts.jsonl")); err == nil {
 		for _, raw := range strings.Split(string(data), "\n") {
 			if strings.TrimSpace(raw) == "" {
 				continue
@@ -538,11 +583,11 @@ func (s *Store) use(dir string) error {
 		}
 	}
 	guests := map[string]*Guest{}
-	if data, err := os.ReadFile(filepath.Join(dir, "guests.json")); err == nil {
+	if data, err := os.ReadFile(dataPath(dir, "guests.json")); err == nil {
 		_ = json.Unmarshal(data, &guests)
 	}
 	meta := Meta{Title: "partyparty", Host: "the DJ"}
-	if data, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
+	if data, err := os.ReadFile(dataPath(dir, "meta.json")); err == nil {
 		_ = json.Unmarshal(data, &meta)
 	}
 	meta.Features = normalizeFeatures(meta.Features)
@@ -565,6 +610,7 @@ func (s *Store) Meta() Meta {
 	m.Features = normalizeFeatures(s.meta.Features)
 	m.Links = append([]Link(nil), s.meta.Links...)
 	m.Cover = normalizeCoverRef(s.meta.Cover)
+	m.Avatar = strings.TrimSpace(s.meta.Avatar)
 	return m
 }
 
@@ -650,7 +696,7 @@ func (s *Store) SaveCover(origName string, r io.Reader) (string, error) {
 	s.mu.Lock()
 	dir := s.dir
 	s.mu.Unlock()
-	tmp, err := os.CreateTemp(dir, ".cover-upload-*")
+	tmp, err := os.CreateTemp(dataDir(dir), ".cover-upload-*")
 	if err != nil {
 		return "", err
 	}
@@ -668,16 +714,16 @@ func (s *Store) SaveCover(origName string, r io.Reader) (string, error) {
 	if err := tmp.Close(); err != nil {
 		return "", err
 	}
-	dst := filepath.Join(dir, "cover"+ext)
+	dst := dataPath(dir, "cover"+ext)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.dir != dir {
 		return "", errors.New("event changed while saving cover")
 	}
-	entries, _ := os.ReadDir(dir)
+	entries, _ := os.ReadDir(dataDir(dir))
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "cover.") {
-			_ = os.Remove(filepath.Join(dir, entry.Name()))
+			_ = os.Remove(dataPath(dir, entry.Name()))
 		}
 	}
 	if err := os.Rename(tmpPath, dst); err != nil {
@@ -700,13 +746,13 @@ func (s *Store) CoverPath() (string, bool) {
 	}
 	dir := s.dir
 	s.mu.Unlock()
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(dataDir(dir))
 	if err != nil {
 		return "", false
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "cover.") {
-			return filepath.Join(dir, entry.Name()), true
+			return dataPath(dir, entry.Name()), true
 		}
 	}
 	return "", false
@@ -717,7 +763,93 @@ func (s *Store) saveMetaLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.dir, "meta.json"), data, 0o644)
+	return os.WriteFile(dataPath(s.dir, "meta.json"), data, 0o644)
+}
+
+// SetProfile stores the DJ biography. The avatar is uploaded separately so a
+// text edit never rewrites image data.
+func (s *Store) SetProfile(bio string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.meta.Bio = clip(strings.TrimSpace(bio), 600)
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// SaveAvatar stores the DJ profile image inside the event's data directory.
+func (s *Store) SaveAvatar(origName string, r io.Reader) (string, error) {
+	ext := strings.ToLower(filepath.Ext(filepath.Base(origName)))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+	default:
+		return "", errors.New("profile photo must be a JPG, PNG, or WebP")
+	}
+	s.mu.Lock()
+	dir := s.dir
+	s.mu.Unlock()
+	tmp, err := os.CreateTemp(dataDir(dir), ".profile-upload-*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	n, err := io.Copy(tmp, io.LimitReader(r, MaxAvatarBytes+1))
+	if err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if n > MaxAvatarBytes {
+		tmp.Close()
+		return "", errors.New("profile photo is too large")
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	dst := dataPath(dir, "profile"+ext)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dir != dir {
+		return "", errors.New("event changed while saving profile photo")
+	}
+	entries, _ := os.ReadDir(dataDir(dir))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "profile.") {
+			_ = os.Remove(dataPath(dir, entry.Name()))
+		}
+	}
+	if err := os.Rename(tmpPath, dst); err != nil {
+		return "", err
+	}
+	s.meta.Avatar = "/dj-avatar"
+	if err := s.saveMetaLocked(); err != nil {
+		return "", err
+	}
+	s.changed()
+	return dst, nil
+}
+
+// AvatarPath returns the current event-local DJ profile image.
+func (s *Store) AvatarPath() (string, bool) {
+	s.mu.Lock()
+	if s.meta.Avatar != "/dj-avatar" {
+		s.mu.Unlock()
+		return "", false
+	}
+	dir := s.dir
+	s.mu.Unlock()
+	entries, err := os.ReadDir(dataDir(dir))
+	if err != nil {
+		return "", false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "profile.") {
+			return dataPath(dir, entry.Name()), true
+		}
+	}
+	return "", false
 }
 
 // SetFeature updates one DJ-controlled guest feature switch and persists it.
@@ -1364,7 +1496,7 @@ func (s *Store) writeSetlistLocked() error {
 			fmt.Fprintf(&out, "%s  %s\n", when, tr.Title)
 		}
 	}
-	path := filepath.Join(s.dir, "setlist.txt")
+	path := dataPath(s.dir, "setlist.txt")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(out.String()), 0o644); err != nil {
 		return err
@@ -1412,7 +1544,7 @@ func (s *Store) saveGuestsLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.dir, "guests.json"), data, 0o600)
+	return os.WriteFile(dataPath(s.dir, "guests.json"), data, 0o600)
 }
 
 // AddTrackAsk records one guest "what's this track?" tap in a rolling window.
@@ -1617,7 +1749,7 @@ func (s *Store) appendLine(l line) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(s.dir, "posts.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(dataPath(s.dir, "posts.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}

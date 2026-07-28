@@ -449,7 +449,7 @@ func TestGuestProfilePersistsWithoutKeepsakeClaim(t *testing.T) {
 	if _, exists := decodeJSON(t, w)["claimUrl"]; exists {
 		t.Fatalf("post response still issued a keepsake claim: %q", w.Body.String())
 	}
-	data, err := os.ReadFile(filepath.Join(ev.Dir(), "guests.json"))
+	data, err := os.ReadFile(filepath.Join(ev.Dir(), "data", "guests.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,6 +564,38 @@ func TestEventLinksEndpointValidationAndExposure(t *testing.T) {
 	eventState := status["event"].(map[string]any)
 	if got, ok := eventState["links"].([]any); !ok || len(got) != 2 {
 		t.Fatalf("status event links = %#v, want 2", eventState["links"])
+	}
+}
+
+func TestDJProfileEndpointsAndPublicExposure(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := newTestEnv(t, nil)
+	env.srv.Events = ev
+	s := env.srv
+
+	if w := doBody(s, http.MethodPost, "/api/dj-profile", "192.168.1.44:3333", "application/json", bytes.NewBufferString(`{"bio":"guest edit"}`)); w.Code != http.StatusForbidden {
+		t.Fatalf("guest profile status = %d, want 403", w.Code)
+	}
+	w := doBody(s, http.MethodPost, "/api/dj-profile", djAddr, "application/json", bytes.NewBufferString(`{"bio":"Dance floor specialist"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ profile status = %d, body %q", w.Code, w.Body.String())
+	}
+	body, contentType := multipartUpload(t, "dj.png", "image/png")
+	w = doBody(s, http.MethodPost, "/api/dj-avatar-local", djAddr, contentType, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("DJ avatar status = %d, body %q", w.Code, w.Body.String())
+	}
+
+	feed := decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
+	if feed["bio"] != "Dance floor specialist" || feed["avatar"] != "/dj-avatar" {
+		t.Fatalf("public profile = bio %#v avatar %#v", feed["bio"], feed["avatar"])
+	}
+	w = do(s, http.MethodGet, "/dj-avatar", "192.168.1.44:3333")
+	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), []byte("media bytes")) {
+		t.Fatalf("avatar response status=%d body=%q", w.Code, w.Body.String())
 	}
 }
 

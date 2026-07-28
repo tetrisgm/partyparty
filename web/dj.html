@@ -237,16 +237,14 @@
   .requestactions .danger{color:var(--danger)}
   .requestempty{color:var(--label-tertiary);font-size:12px;padding:4px 0}
   /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
-  #actionbar{position:sticky;top:0;z-index:20;background:var(--glass-bg);
-    -webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
-    border-bottom:1px solid var(--separator)}
+  #actionbar{position:absolute;top:0;left:0;right:0;z-index:20;background:linear-gradient(rgba(0,0,0,.64),rgba(0,0,0,0));border:0}
   .abinner{max-width:none;margin:0;padding:10px 20px;display:flex;align-items:center;gap:10px}
   .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:0}
   .source-picker{display:flex;align-items:center;gap:8px;min-width:230px;max-width:330px;flex:0 1 330px}
   .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
   .source-step label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .source-row{position:relative;display:flex;align-items:center;gap:6px;min-width:0;flex:1}
-  .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:999px;height:42px;font-weight:700;background-color:var(--bg-elevated);color:transparent}
+  .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:999px;height:42px;font-weight:700;background-color:rgba(18,18,20,.78);color:transparent;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
   .source-row select option{color:var(--label);background:var(--bg-elevated)}
   .device-display{position:absolute;left:16px;right:16px;z-index:1;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
   .source-hint{display:none}
@@ -260,7 +258,7 @@
   .golive.go:hover{filter:brightness(1.04)}
   .golive.stop{background:transparent;color:var(--accent);border:1px solid var(--accent);box-shadow:none}
   /* ── The event page below the bar: desktop width, not a phone layout ── */
-  .page{max-width:1060px;margin:0 auto;padding:28px 24px 72px}
+  .page{max-width:1060px;margin:0 auto;padding:0 24px 72px}
   .eventtop{display:grid;grid-template-columns:1fr;gap:18px;align-items:stretch}
   .eventtop > .card + .card{margin-top:0}
   header.eventhead{width:100%;max-width:none;padding:30px}
@@ -276,12 +274,6 @@
   .ehost{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:18px;color:var(--label-secondary);font-weight:500;margin:20px 0 0}
   .host-by{display:inline-flex;align-items:center;min-width:0}
   .host-by b{color:var(--label);font-weight:750;overflow-wrap:anywhere}
-  .schedule-inline{min-height:34px;max-width:100%;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--separator);border-radius:999px;padding:6px 11px;background:var(--fill);color:var(--link);font:700 13px/1.25 var(--sans);text-align:left}
-  .schedule-inline:hover{background:var(--fill-hover)}
-  .schedule-inline.has-value{border-color:transparent;background:transparent;color:var(--label-secondary);padding-left:2px}
-  .schedule-inline.has-value:hover{background:var(--fill)}
-  .schedule-inline svg{width:15px;height:15px;display:block;flex:0 0 auto}
-  .schedule-inline span{min-width:0;overflow-wrap:anywhere}
   .hostlinks{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px;padding-top:24px;border-top:1px solid var(--separator)}
   .hostlinks[hidden]{display:none}
   .hostlinks .ll{display:inline-flex;align-items:center;gap:7px;height:44px;border:1px solid var(--separator);border-radius:999px;padding:0 17px;background:rgba(255,255,255,.03);color:var(--label);font-size:14px;font-weight:750}
@@ -364,6 +356,16 @@
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
   .linkeditor{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .profileeditor{display:grid;grid-template-columns:82px minmax(0,1fr);gap:14px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--separator)}
+  .profilephoto{width:82px;height:82px;border-radius:50%;object-fit:cover;background:var(--fill);border:1px solid var(--separator)}
+  .profilephoto-actions{display:grid;align-content:start;gap:7px}
+  .profilephoto-actions textarea{width:100%;min-height:74px;resize:vertical;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:9px 10px;color:var(--label);font:inherit}
+  .profilebuttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .profilestatus{font-size:12px;color:var(--label-secondary)}
+  .rostergroup{padding:10px 0;border-bottom:1px solid var(--separator)}
+  .rostergroup:last-child{border-bottom:0}
+  .rostergrouphead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800}
+  .rostergrouphead small{color:var(--label-secondary);font-weight:600}
   .linkeditor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
   .linkeditor-head b{font-size:13px}
   .linkrows{display:grid;gap:8px}
@@ -390,7 +392,6 @@
   #djFeed{display:grid;gap:12px}
   #djFeed .wpost{border:1px solid var(--separator);border-radius:18px;background:rgba(255,255,255,.035);padding:18px}
   #requestCard{display:none!important;margin-bottom:16px}
-  #trackCard{display:none!important}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
   .sheetov.show{display:flex}
@@ -438,7 +439,7 @@
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
   @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.livestrip{align-items:flex-start;flex-direction:column}.nowplaying-pill{min-width:0}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
-  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.ehost{align-items:flex-start;gap:8px 10px}.schedule-inline{white-space:normal}.titlerow{flex-direction:column}}
+  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.ehost{align-items:flex-start;gap:8px 10px}.titlerow{flex-direction:column}}
   @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
 </style>
 </head>
@@ -457,7 +458,7 @@
       </div>
       <div class="source-row">
         <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
-        <select id="device" aria-labelledby="sourceStepLabel" title="🖥️ Mac output captures everything playing (macOS asks once - click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live - if a phone hears the beep, the network path works."></select>
+        <select id="device" aria-labelledby="sourceStepLabel" title="Choose Mac output or a connected audio interface."></select>
       </div>
     </div>
     <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
@@ -506,10 +507,6 @@
         </div>
         <div class="ehost">
           <span class="host-by">hosted by&nbsp;<b id="hostEdit">the DJ</b><button class="fieldedit" type="button" data-event-field="host" aria-label="Edit host" title="Edit host"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></span>
-          <button class="schedule-inline" id="scheduleEditBtn" type="button" data-event-field="schedule" aria-label="Add date, time, and place" title="Add date, time, and place">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
-            <span id="startsEdit">add date &amp; place</span>
-          </button>
           <span id="devnameWrap" hidden>▶ <b id="devname"></b></span>
         </div>
         <div class="hostlinks" id="heroLinks" hidden></div>
@@ -518,10 +515,8 @@
         <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
           <div id="qr" role="img" aria-label="Party Wi-Fi link QR code"></div>
           <div class="visually-hidden" id="url">-</div>
-          <div class="hint" id="shareHint">Guests scan this with their phone camera - they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+          <div class="hint" id="shareHint">Guests scan this with their phone camera.</div>
           <div id="lanState" hidden></div>
-          <button class="ghost" id="netCheckBtn" style="margin-top:10px">Test guest connection</button>
-          <div id="netCheckOut" style="margin-top:10px;font-size:12px;line-height:1.7;text-align:left"></div>
         </div>
       </div>
     </div>
@@ -536,18 +531,6 @@
           <span>Host / creator</span>
           <input id="eventHostInput" type="text" maxlength="40" autocomplete="off" spellcheck="false">
         </label>
-        <label class="eventform-field" data-edit-group="schedule">
-          <span>Date</span>
-          <input id="eventDateInput" type="date">
-        </label>
-        <label class="eventform-field" data-edit-group="schedule">
-          <span>Time</span>
-          <select id="eventTimeInput"></select>
-        </label>
-        <label class="eventform-field wide" data-edit-group="schedule">
-          <span>Place</span>
-          <input id="eventPlaceInput" type="text" maxlength="120" autocomplete="off" spellcheck="false" placeholder="Venue or address">
-        </label>
       </div>
       <div class="eventform-actions">
         <span class="eventform-status" id="eventEditStatus"></span>
@@ -556,13 +539,6 @@
       </div>
     </div>
     </header>
-  </div>
-
-  <div class="card livestrip" id="liveStrip" hidden>
-    <div class="wave" aria-hidden="true">
-      <i style="animation-delay:0s"></i><i style="animation-delay:.08s"></i><i style="animation-delay:.18s"></i><i style="animation-delay:.31s"></i><i style="animation-delay:.12s"></i><i style="animation-delay:.44s"></i><i style="animation-delay:.26s"></i><i style="animation-delay:.52s"></i><i style="animation-delay:.2s"></i><i style="animation-delay:.39s"></i><i style="animation-delay:.05s"></i><i style="animation-delay:.58s"></i><i style="animation-delay:.34s"></i><i style="animation-delay:.66s"></i>
-    </div>
-    <div class="nowplaying-pill">Now playing<b id="heroTrackText"></b></div>
   </div>
 
   <!-- First-run activation gets its OWN box (there's no point advertising
@@ -581,6 +557,18 @@
   <div class="card event-admin-tools" id="eventManagePanel">
     <div class="linkeditor" id="linkEditor">
       <div class="linkeditor-head"><b>Your links</b></div>
+      <div class="profileeditor">
+        <img class="profilephoto" id="profilePhoto" src="/art-512.png" alt="DJ profile photo">
+        <div class="profilephoto-actions">
+          <textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea>
+          <div class="profilebuttons">
+            <button class="ghost" id="profilePhotoBtn" type="button">Choose profile photo</button>
+            <button class="go" id="saveProfileBtn" type="button">Save profile</button>
+            <span class="profilestatus" id="profileStatus"></span>
+          </div>
+          <input id="profilePhotoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        </div>
+      </div>
       <div class="linkrows" id="linkRows"></div>
       <div class="linkactions">
         <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
@@ -598,23 +586,6 @@
   <div class="party-grid">
     <main class="party-feed-col">
   <section id="ptab-wall">
-    <div class="card trackcard" id="trackCard" style="display:none">
-      <div class="cardhead">
-        <h2>Now playing</h2>
-        <span class="muted" id="trackAskCount"></span>
-      </div>
-      <form class="trackform" id="trackForm">
-        <input id="trackInput" maxlength="120" autocomplete="off" placeholder="Track title">
-        <button class="go" id="trackSetBtn" type="submit">Set</button>
-        <button class="ghost" id="trackClearBtn" type="button">Clear</button>
-      </form>
-      <div class="trackcurrentdj">
-        <small>Current</small>
-        <b id="trackCurrentDJ"></b>
-      </div>
-      <div class="trackrecentdj" id="trackRecentDJ"></div>
-    </div>
-
     <div class="card" id="requestCard" style="display:none">
       <div class="cardhead">
         <h2>Song requests</h2>
@@ -667,9 +638,7 @@
     <div class="sourceguide-body">
       <h3>① Capture everything on the Mac (easiest)</h3>
       <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
-      <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
-      <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
-      <h3>③ Hardware controller / mixer</h3>
+      <h3>② Hardware controller / mixer</h3>
       <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
       <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
     </div>
@@ -702,9 +671,7 @@
         <div id="helpNote" style="display:block">
           <h3>① Capture everything on the Mac (easiest)</h3>
           <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
-          <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
-          <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
-          <h3>③ Hardware controller / mixer</h3>
+          <h3>② Hardware controller / mixer</h3>
           <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
           <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
         </div>
@@ -988,16 +955,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
     const value = sel && sel.value;
     if (value === 'mac') return '🖥️ Mac output (everything)';
-    if (value === 'test') return '🔔 Test tone';
     return opt ? opt.textContent.replace(/\s+-\s+.*/, '') : 'Audio source';
   }
   function updateDeviceDisplay(){
     const out = $('deviceDisplay');
     if (out) out.textContent = deviceDisplayText();
   }
-  function capturePermissionApplies(){
-    return selectedCaptureDevice() !== 'test';
-  }
+  function capturePermissionApplies(){ return true; }
   function captureSettingsPane(){
     return capturePermission.kind === 'microphone' ? 'mic' : 'audio';
   }
@@ -1064,9 +1028,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         mac.value = 'mac'; mac.textContent = '🖥️ Capture the Mac’s output (system audio)';
         sel.appendChild(mac);
       }
-      const tone = document.createElement('option');
-      tone.value = 'test'; tone.textContent = '🔔 Test tone (440 Hz)';
-      sel.appendChild(tone);
       for (const d of (data.devices || [])) {
         const o = document.createElement('option');
         o.value = String(d.index);
@@ -1084,7 +1045,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       updateDeviceDisplay();
       syncCaptureSourceSelection();
     } catch (e) {
-      sel.innerHTML = '<option value="test">🔔 Test tone (440 Hz)</option>';
+      sel.innerHTML = '<option value="mac">🖥️ Capture the Mac’s output (system audio)</option>';
       updateDeviceDisplay();
       syncCaptureSourceSelection();
     }
@@ -1210,9 +1171,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           : 'A guest reached the LAN room - streaming straight off this Mac.';
         break;
       case 'ready':
-        tone = 'hint';
-        text = 'Guest link ready on this Wi-Fi. Test it with a phone before the party.';
-        break;
+        el.hidden = true;
+        return;
       default:
         text = 'Guest link is not reachable on this Wi-Fi yet. Guests cannot join until this is resolved.';
         break;
@@ -1337,40 +1297,25 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       }
       const details = detailsOn;
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-      const hostName = eventMeta.host || 'the DJ';
-      const hostRow = '<div class="listener host"><span class="ldot dot-g"></span><span class="lemoji">🎧</span><span class="lname">' + esc(hostName) + '<span class="hostpill">DJ</span></span></div>';
-      const peerRows = peers.map((peer) => {
-        const online = peer.live && peer.ready;
-        return '<div class="listener host"><span class="ldot ' + (online ? 'dot-g' : 'dot-x') + '"></span><span class="lemoji">🎧</span>' +
-          '<span class="lname">' + esc(peer.name || 'PartyParty DJ') + '<span class="hostpill">DJ</span>' +
-          '<span class="lip"> · ' + (online ? 'live' : (peer.live ? 'preparing' : 'not live')) + '</span></span></div>';
+      const detailByName = new Map(roster.map((row) => [String(row.name || '').toLowerCase(), row]));
+      const groups = Array.isArray(s.listenerGroups) ? s.listenerGroups : [];
+      $('roster').innerHTML = groups.map((group) => {
+        const listeners = Array.isArray(group.listeners) ? group.listeners : [];
+        const rows = listeners.length ? listeners.map((person, index) => {
+          const name = esc(person.name || ('Guest ' + (index + 1)));
+          const emoji = esc(person.emoji || '•');
+          const detail = detailByName.get(String(person.name || '').toLowerCase());
+          let extra = '';
+          if (details && detail) {
+            const latency = detail.hasLatency ? (detail.latencyMs / 1000).toFixed(1) + ' s delay' : 'measuring';
+            extra = '<div class="ldetail">' + latency + (detail.paused ? ' · paused' : '') + '</div>';
+          }
+          return '<div class="listener"><span class="lemoji">' + emoji + '</span><div class="lbody"><span class="lname">' + name + '</span>' + extra + '</div></div>';
+        }).join('') : '<div class="muted" style="padding:8px 0">No listeners right now.</div>';
+        return '<section class="rostergroup"><div class="rostergrouphead"><span>🎧 ' + esc(group.dj || 'DJ') +
+          '</span><small>' + listeners.length + (listeners.length === 1 ? ' listener' : ' listeners') +
+          '</small></div>' + rows + '</section>';
       }).join('');
-      const guestRows = roster.map((r, i) => {
-        // Health at a glance: green healthy · yellow warming-up/thin-buffer ·
-        // red stalled · gray paused.
-        const cls = r.paused ? 'dot-x'
-          : r.stalled ? 'dot-r'
-          : (!r.hasLatency || (r.bufS && r.bufS < 2)) ? 'dot-y'
-          : 'dot-g';
-        const dot = '<span class="ldot ' + cls + '"></span>';
-        const name = esc(r.name || ('Guest ' + (i + 1)));
-        const emoji = esc(r.emoji || '•');
-        if (!details) {
-          return '<div class="listener">' + dot + '<span class="lemoji">' + emoji + '</span><span class="lname">' + name + '</span></div>';
-        }
-        const dev = esc(r.device || 'device');
-        const lat = r.hasLatency ? (r.latencyMs / 1000).toFixed(1) + ' s delay' : 'measuring…';
-        const bits = [
-          'HTTPS LL-HLS',
-          'buf ' + (r.bufS || 0).toFixed(0) + 's',
-          (r.rate && Math.abs(r.rate - 1) > 0.001 ? r.rate.toFixed(2) + '×' : ''),
-          (r.stalled ? 'stalled' : ''), (r.paused ? 'paused' : '')
-        ].filter(Boolean).join(' · ');
-        return '<div class="listener det">' + dot + '<span class="lemoji">' + emoji + '</span>' +
-          '<div class="lbody"><span class="lname">' + name + '  <span class="lip">' + dev + ' · ' + esc(r.ip) + '</span></span>' +
-          '<div class="ldetail">' + lat + ' · ' + bits + '</div></div></div>';
-      }).join('');
-      $('roster').innerHTML = hostRow + peerRows + guestRows;
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
       const txt = { good:'Good', strain:'Strain', congested:'Congested', idle:'Idle' };
@@ -1406,8 +1351,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   startConsoleRefresh();
 
   // ── Event identity: display first, edit only when requested ──
-  const PH = { startsEdit: 'add date & place' };
-  const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', slug: '' };
+  const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', bio: '', avatar: '', slug: '' };
   let eventEditField = '';
   function isPlaceholderHost(host){
     const h = String(host || '').trim().toLowerCase();
@@ -1422,46 +1366,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
   function inputValue(id){ const el = $(id); return el ? el.value.trim() : ''; }
   function setInputValue(id, value){ const el = $(id); if (el && document.activeElement !== el) el.value = value || ''; }
-  function todayISO(){
-    const now = new Date();
-    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-    return local.toISOString().slice(0, 10);
-  }
-  function timeLabel(value){
-    const parts = String(value || '').split(':');
-    const date = new Date(2000, 0, 1, Number(parts[0]) || 0, Number(parts[1]) || 0);
-    return date.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
-  }
-  function populateTimeSelect(id){
-    const select = $(id);
-    if (!select || select.options.length) return;
-    for (let minutes = 0; minutes < 24 * 60; minutes += 15) {
-      const hour = Math.floor(minutes / 60).toString().padStart(2, '0');
-      const minute = (minutes % 60).toString().padStart(2, '0');
-      const value = hour + ':' + minute;
-      const option = document.createElement('option');
-      option.value = value; option.textContent = timeLabel(value);
-      select.appendChild(option);
-    }
-  }
-  populateTimeSelect('eventTimeInput');
-  function scheduleLine(date, clock, place){
-    const parts = [];
-    if (date) {
-      const parsed = new Date(date + 'T12:00:00');
-      parts.push(Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' }));
-    }
-    if (clock) parts.push(timeLabel(clock));
-    if (place) parts.push(place);
-    return parts.join(' · ');
-  }
   function fillEventEditForm(field){
     setInputValue('eventTitleInput', eventMeta.title);
     setInputValue('eventHostInput', eventMeta.host);
-    setInputValue('eventDateInput', eventMeta.date || todayISO());
-    setInputValue('eventTimeInput', eventMeta.time || '20:00');
-    setInputValue('eventPlaceInput', eventMeta.place);
-    const labels = { title:'event name', host:'host', schedule:'date, time, and place' };
+    const labels = { title:'event name', host:'host' };
     $('eventEditHeading').textContent = 'Edit ' + (labels[field] || 'event');
     setFormStatus('eventEditStatus', '', '');
   }
@@ -1477,7 +1385,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (head) head.classList.toggle('editing', !!eventEditField);
     if (eventEditField) {
       fillEventEditForm(eventEditField);
-      const focusID = { title:'eventTitleInput', host:'eventHostInput', schedule:'eventDateInput' }[eventEditField];
+      const focusID = { title:'eventTitleInput', host:'eventHostInput' }[eventEditField];
       setTimeout(() => { const el = $(focusID); if (el) el.focus(); }, 30);
     }
     refresh();
@@ -1496,11 +1404,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       body.host = inputValue('eventHostInput');
       if (!body.host) { setFormStatus('eventEditStatus', 'Add a host name.', 'error'); $('eventHostInput').focus(); return; }
     } else {
-      body.date = inputValue('eventDateInput');
-      body.time = inputValue('eventTimeInput') || '20:00';
-      body.place = inputValue('eventPlaceInput');
-      if (!body.date) { setFormStatus('eventEditStatus', 'Pick a date.', 'error'); $('eventDateInput').focus(); return; }
-      body.starts = scheduleLine(body.date, body.time, body.place);
+      return;
     }
     const btn = $('eventEditSaveBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
@@ -1520,7 +1424,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
   }
   if ($('eventEditSaveBtn')) $('eventEditSaveBtn').onclick = saveEventDetails;
-  ['eventTitleInput', 'eventHostInput', 'eventDateInput', 'eventTimeInput', 'eventPlaceInput'].forEach(id => {
+  ['eventTitleInput', 'eventHostInput'].forEach(id => {
     const el = $(id);
     if (el) el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveEventDetails(); }
@@ -1721,14 +1625,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (typeof cover === 'string') eventMeta.cover = cover;
     $('titleEdit').textContent = eventMeta.title;
     $('hostEdit').textContent = eventMeta.host;
-    $('startsEdit').textContent = eventMeta.starts || PH.startsEdit;
-    const scheduleBtn = $('scheduleEditBtn');
-    if (scheduleBtn) {
-      scheduleBtn.classList.toggle('has-value', !!eventMeta.starts);
-      const label = eventMeta.starts ? 'Edit date, time, and place' : 'Add date, time, and place';
-      scheduleBtn.setAttribute('aria-label', label);
-      scheduleBtn.title = label;
-    }
     syncEventCover(eventMeta.cover);
     if (eventEditField) {
       const active = document.activeElement;
@@ -1867,6 +1763,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       rows.textContent = '';
       for (const link of clean) rows.appendChild(linkRow(link));
     }
+    function renderProfile(bio, avatar){
+      eventMeta.bio = String(bio || '');
+      eventMeta.avatar = String(avatar || '');
+      const bioInput = $('profileBio');
+      if (bioInput && document.activeElement !== bioInput) bioInput.value = eventMeta.bio;
+      const photo = $('profilePhoto');
+      if (photo) photo.src = eventMeta.avatar ? eventMeta.avatar + '?v=' + encodeURIComponent(eventMeta.avatar) : '/art-512.png';
+    }
     function collectLinks(){
       const links = [];
       let bad = false;
@@ -1917,43 +1821,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const def = reactionDefs.find(([key]) => key === top.key);
       $('djReactionSpike').textContent = (def ? def[1] : top.key) + ' ×' + top.n + ' just now';
     }
-    function trackFeatureOn(features){
-      return !!(features && Object.prototype.hasOwnProperty.call(features, 'trackId') ? features.trackId !== false : false);
-    }
-    function trackText(track){
-      if (!track || !track.title) return '';
-      return track.artist ? track.title + ' - ' + track.artist : track.title;
-    }
-    function renderTrackPanel(features, nowPlaying, recentTracks, askCount){
-      const card = $('trackCard');
-      const cur = trackText(nowPlaying);
-      const liveStrip = $('liveStrip');
-      if (liveStrip) liveStrip.hidden = !cur;
-      const heroTrack = $('heroTrackText');
-      if (heroTrack) heroTrack.textContent = cur || '';
-      card.style.display = 'none';
-      if (!cur && !trackFeatureOn(features || {})) {
-        $('trackRecentDJ').textContent = '';
-        $('trackAskCount').textContent = '';
-        return;
-      }
-      card.classList.toggle('off', !trackFeatureOn(features || {}));
-      $('trackCurrentDJ').textContent = cur || '';
-      const asks = Number(askCount || 0);
-      $('trackAskCount').textContent = trackFeatureOn(features || {})
-        ? (asks ? asks + (asks === 1 ? ' asked' : ' asked') + " what's playing" : "0 asked what's playing")
-        : 'Track ID off';
-      const list = $('trackRecentDJ');
-      list.textContent = '';
-      const recent = Array.isArray(recentTracks) ? recentTracks.slice(0, 8) : [];
-      for (const tr of recent) {
-        const text = trackText(tr);
-        if (!text) continue;
-        const item = document.createElement('div');
-        item.textContent = text;
-        list.appendChild(item);
-      }
-    }
     $('addLinkBtn').addEventListener('click', () => {
       $('linkRows').appendChild(linkRow({ type:'instagram', url:'' }));
       const rows = $('linkRows').querySelectorAll('.linkrow');
@@ -1984,6 +1851,42 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         status.textContent = err.message || 'link save failed';
       } finally {
         $('saveLinksBtn').disabled = false;
+      }
+    });
+    $('profilePhotoBtn').addEventListener('click', () => $('profilePhotoFile').click());
+    $('profilePhotoFile').addEventListener('change', async () => {
+      const file = $('profilePhotoFile').files && $('profilePhotoFile').files[0];
+      if (!file) return;
+      const status = $('profileStatus');
+      status.textContent = 'Uploading…';
+      const fd = new FormData();
+      fd.append('file', file, file.name || 'profile.jpg');
+      try {
+        const r = await fetch('/api/dj-avatar-local', { method:'POST', body:fd });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) throw new Error(data.error || 'upload failed');
+        renderProfile(eventMeta.bio, data.avatar || '/dj-avatar');
+        $('profilePhoto').src = (data.avatar || '/dj-avatar') + '?v=' + Date.now();
+        status.textContent = 'Photo saved';
+      } catch (error) {
+        status.textContent = error.message || 'upload failed';
+      }
+    });
+    $('saveProfileBtn').addEventListener('click', async () => {
+      const status = $('profileStatus');
+      $('saveProfileBtn').disabled = true;
+      status.textContent = 'Saving…';
+      try {
+        const r = await fetch('/api/dj-profile', { method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ bio:$('profileBio').value.trim() }) });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) throw new Error(data.error || 'save failed');
+        renderProfile(data.bio, data.avatar);
+        status.textContent = 'Saved';
+      } catch (error) {
+        status.textContent = error.message || 'save failed';
+      } finally {
+        $('saveProfileBtn').disabled = false;
       }
     });
     const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
@@ -2231,33 +2134,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         e.target.disabled = false;
       }
     });
-    $('trackForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const input = $('trackInput');
-      const title = input.value.trim();
-      if (!title) { input.focus(); return; }
-      $('trackSetBtn').disabled = true;
-      try {
-        const r = await fetch('/api/track/current', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title }) });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || d.error) throw new Error(d.error || 'track update failed');
-        input.value = '';
-        await poll();
-      } catch (err) {
-        input.title = err.message || 'track update failed';
-      } finally {
-        $('trackSetBtn').disabled = false;
-      }
-    });
-    $('trackClearBtn').addEventListener('click', async () => {
-      $('trackClearBtn').disabled = true;
-      try {
-        await fetch('/api/track/clear', { method:'POST' });
-        await poll();
-      } finally {
-        $('trackClearBtn').disabled = false;
-      }
-    });
     list.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       const pid = e.target && e.target.dataset && e.target.dataset.cpost;
@@ -2285,8 +2161,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if ($('feedCount')) $('feedCount').textContent = data.total || '';
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
-        renderTrackPanel(data.features || {}, data.nowPlaying || null, data.recentTracks || [], data.trackAsks || 0);
         renderLinkEditor(data.links || []);
+        renderProfile(data.bio, data.avatar);
         renderHeroLinks(data.links || []);
         pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
@@ -2403,24 +2279,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       return fetch('/api/open-media', { method:'POST' });
     }
     if ($('actionOpenFolderBtn')) $('actionOpenFolderBtn').onclick = openCurrentEventFolder;
-    // Connection test: prove the exact DNS and HTTPS path guests use.
-    $('netCheckBtn').onclick = async () => {
-      const out = $('netCheckOut');
-      $('netCheckBtn').disabled = true;
-      out.textContent = 'Testing…';
-      try {
-        const data = await (await fetch('/api/netcheck', { method:'POST' })).json();
-        out.innerHTML = (data.checks || []).map(c =>
-          '<div>' + (c.ok ? '✅' : '❌') + ' ' + escT(c.name) +
-          ' <span class="muted" style="font-size:11px">' + escT(c.detail) + ' · ' + c.ms + 'ms</span></div>').join('');
-        if ((data.checks || []).every(c => c.ok)) {
-          out.innerHTML += '<div class="hint" style="margin-top:6px">This Mac can resolve and open the secure guest link. Scan the QR with a phone for final venue proof.</div>';
-        } else {
-          out.innerHTML += '<div class="offline-status" style="margin-top:6px">The secure guest link is not ready on this Wi-Fi. Guests cannot join here until the failed check is fixed.</div>';
-        }
-      } catch (e) { out.textContent = 'Test failed to run - is the app still up?'; }
-      $('netCheckBtn').disabled = false;
-    };
   })();
 
   // In-app controls - only when running inside the native menu-bar app.
