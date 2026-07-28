@@ -390,8 +390,6 @@
   .sectionrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
   .sectionrow h2{font-size:19px;line-height:1.1;margin:0;letter-spacing:-.02em}
   .sectionrow span{color:var(--party-muted);font-size:12px;font-weight:750;white-space:nowrap}
-  .albumplus{width:34px;height:34px;flex:0 0 auto;border:none;border-radius:50%;background:var(--accent);color:#fff;font-size:23px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0 0 2px}
-  .albumplus[hidden]{display:none!important}
   .album{border-radius:20px;padding:14px;margin:0 0 14px}
   .albumstrip{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
   .albumtile{position:relative;display:block;aspect-ratio:1;border-radius:9px;overflow:hidden;background:rgba(255,255,255,.35)}
@@ -521,22 +519,58 @@
     box-shadow:none;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   }
   .actionbar .toptool svg{width:21px;height:21px}
+  #peopleBtn{position:relative}
+  .peoplebadge{
+    position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;display:grid;place-items:center;
+    padding:0 4px;border:2px solid rgba(20,20,22,.92);border-radius:999px;background:var(--accent);
+    color:#fff;font-size:10px;font-weight:900;line-height:1;box-sizing:border-box;
+  }
   .hero{
     min-height:0;width:100%;max-width:720px;margin:0 auto;padding:0;
     display:flex;align-items:stretch;text-align:left;
   }
   .hero .artwork{
     order:0;width:100%;height:auto;aspect-ratio:16/10;margin:0;border-radius:0;
-    box-shadow:none;background:#161315;overflow:hidden;
+    box-shadow:none;background:#161315;overflow:hidden;position:relative;
   }
   .hero .artwork img{width:100%;height:100%;object-fit:cover;display:block}
   body.playing .artwork{animation:none}
   .hosted,.starts,.pill,.guestline,.count,.eq,.statline,.downhint{display:none!important}
   .hero .reactions,.hero .trackrequest,.hero .trackid{order:2;align-self:center}
-  .foot{
-    order:1;margin:0;padding:14px 18px 13px;color:var(--party-muted);
-    font-size:12px;line-height:1.4;text-align:left;
+  .hero .artwork .foot{
+    position:absolute;left:0;right:0;bottom:0;z-index:2;margin:0;padding:34px 16px 12px;
+    color:#fff;font-size:11px;line-height:1.35;text-align:left;
+    background:linear-gradient(180deg,transparent,rgba(0,0,0,.72));
   }
+  .djpickerhead{font-size:22px;font-weight:800;margin:0 2px 11px}
+  .djswitchnotice{margin:-4px 2px 9px;color:#b42318;font-size:12px;font-weight:700}
+  .djswitchnotice[hidden]{display:none}
+  .djlist{gap:10px;padding:1px 1px 9px}
+  .djchoice{
+    position:relative;flex:0 0 132px;min-height:150px;padding:14px 10px 11px;
+    display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;
+    border:1px solid var(--separator);border-radius:8px;background:#fff;text-align:center;
+  }
+  .djchoice.active{border:2px solid var(--accent);padding:13px 9px 10px;background:#fff0f4}
+  .djava{
+    position:relative;width:66px;height:66px;display:grid;place-items:center;flex:0 0 66px;
+    border-radius:50%;background:linear-gradient(145deg,#323238,#666672);color:#fff;
+    font-size:20px;font-weight:900;overflow:hidden;
+  }
+  .djava img{width:100%;height:100%;object-fit:cover}
+  .djeq{position:absolute;right:-3px;bottom:0;width:25px;height:25px;display:none;align-items:center;justify-content:center;gap:2px;border:2px solid #fff;border-radius:50%;background:var(--success)}
+  .djchoice.active .djeq{display:flex}
+  .djeq i{width:2px;height:5px;border-radius:2px;background:#fff}
+  body.playing .djchoice.active .djeq i{animation:playbar .65s ease-in-out infinite alternate}
+  body.playing .djchoice.active .djeq i:nth-child(2){animation-delay:-.3s}
+  body.playing .djchoice.active .djeq i:nth-child(3){animation-delay:-.5s}
+  .djcopy{width:100%;min-width:0}
+  .djcopy b,.djcopy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .djcopy b{font-size:14px}
+  .djcopy small{margin-top:3px;color:var(--label-secondary);font-size:11px}
+  .djselected{min-height:15px;color:var(--accent);font-size:10px;font-weight:900}
+  .djchoice.connecting{border-color:#ff9f0a}
+  .djchoice.failed{border-color:#ff3b30}
   .playbars{display:flex;align-items:center;justify-content:flex-end;gap:3px;width:28px;height:24px;margin-left:auto}
   .playbars i{display:block;width:3px;height:5px;border-radius:2px;background:currentColor;opacity:.65}
   body.playing .playbars i{animation:playbar .8s ease-in-out infinite alternate}
@@ -605,6 +639,7 @@
     <div class="actionbar-tools">
       <button class="toptool" id="peopleBtn" type="button" aria-label="Show listeners" title="Listeners">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="peoplebadge" id="peopleBadge">1</span>
       </button>
       <button class="toptool" id="qrBtn" type="button" aria-label="Show QR code" title="Show QR code">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
@@ -642,6 +677,7 @@
   <div class="hero">
     <div class="artwork">
       <img id="coverImage" src="/covers/hero.jpg" alt="Event cover">
+      <div class="foot">Keep this browser tab open. Audio keeps playing with your screen locked, even on Silent.</div>
     </div>
     <div class="hosted" id="hostedLine" hidden></div>
     <div class="starts" id="startsLine" hidden></div>
@@ -679,7 +715,6 @@
       <div class="reqstatus" id="requestStatus"></div>
     </form>
 
-    <div class="foot">Keep this browser tab open — audio keeps playing with your screen locked, even on Silent.</div>
     <div class="statline" id="statline" hidden></div>
     <div class="downhint" id="downhint" hidden>the party wall<span class="chev">⌄</span></div>
   </div>
@@ -697,7 +732,7 @@
       <div class="composerline">
         <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
         <button class="composericon" id="attachBtn" type="button" aria-label="Add photos or videos" title="Add photos or videos">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-4.5-4.5L5 21"/><path d="M18 3v6M15 6h6"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4.5" width="15" height="15" rx="2"/><circle cx="7.5" cy="9.5" r="1.5"/><path d="m17.5 15-3.5-3.5-9 8"/><circle cx="18.5" cy="5.5" r="4.5" fill="currentColor" stroke="none"/><path d="M18.5 3.5v4M16.5 5.5h4" stroke="#fff"/></svg>
         </button>
         <button class="postbtn" id="postBtn" type="button">Post</button>
       </div>
@@ -710,14 +745,14 @@
   <!-- The party wall: pseudonymous posts + photos/videos from everyone here. -->
   <section class="feed" id="feedSec" hidden>
     <section class="djpicker" id="djPicker" aria-label="Now Playing">
-      <div class="djpickerhead">Now Playing</div>
+      <div class="djpickerhead" id="djPickerHead">1 DJ now playing</div>
+      <div class="djswitchnotice" id="djSwitchNotice" role="status" aria-live="polite" hidden></div>
       <div class="djlist" id="djList"></div>
     </section>
     <div class="feedhead" id="feedTitle">Party feed</div>
     <section class="album" id="albumSec" hidden>
       <div class="sectionrow">
         <h2>Photos &amp; videos</h2>
-        <button class="albumplus" id="albumAdd" type="button" aria-label="Add photos or videos" title="Add photos or videos">+</button>
       </div>
       <div class="albumstrip" id="albumStrip"><div class="albumempty">No photos yet.</div></div>
     </section>
@@ -784,6 +819,8 @@
     const guestCountBtn = document.getElementById('guestCountBtn');
     const djPicker = document.getElementById('djPicker');
     const djList = document.getElementById('djList');
+    const djPickerHead = document.getElementById('djPickerHead');
+    const djSwitchNotice = document.getElementById('djSwitchNotice');
     const delayBadge = document.getElementById('delayBadge');
     const menuBtn = document.getElementById('menuBtn');
     const peopleBtn = document.getElementById('peopleBtn');
@@ -791,6 +828,7 @@
     const peopleTray = document.getElementById('peopleTray');
     const trayBackdrop = document.getElementById('trayBackdrop');
     const listenerGroupsEl = document.getElementById('listenerGroups');
+    const peopleBadge = document.getElementById('peopleBadge');
     // Build version stamped by the server at serve time. When the server
     // updates, open tabs would otherwise keep running old player logic forever
     // — poll() compares and refreshes at a safe moment.
@@ -817,7 +855,8 @@
     let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let localLatencyTarget = 0, localStreamGeneration = 0, localStreamReady = false, localLive = false;
     let hls = null, started = false, live = false, stalledSinceBeat = false;
-    let discoveredPeers = [], activePeerID = '';
+    let discoveredPeers = [], selectedDJId = '', listenerCountsByDJ = new Map();
+    let switchSequence = 0, switchingTo = null, failedDJ = null;
     let timelineOriginMs = null;
     const mediaNow = () => player.currentTime;
     let attached = false, ready = false; // pre-buffer state (hls.js path)
@@ -1007,7 +1046,7 @@
     let clockOffset = 0, clockSynced = false, clockBestRTT = 0, clockUncertainty = 0, clockSyncedAt = 0, clockSyncing = null;
     const serverNow = () => Date.now() + clockOffset;
     function clockURL(){
-      const peer = activePeerID && discoveredPeers.find((candidate) => candidate.id === activePeerID);
+      const peer = selectedDJId && discoveredPeers.find((candidate) => candidate.id === selectedDJId);
       return peer && peer.roomUrl ? peer.roomUrl + '/api/time' : '/api/time';
     }
     function resetClock(){
@@ -1159,6 +1198,20 @@
       if (!listenerGroupsEl) return;
       listenerGroupsEl.textContent = '';
       const rows = Array.isArray(groups) ? groups : [];
+      listenerCountsByDJ = new Map();
+      let djCount = 0, listenerCount = 0;
+      rows.forEach((group) => {
+        const listeners = Array.isArray(group.listeners) ? group.listeners : [];
+        listenerCount += listeners.length;
+        if (group.dj !== 'Not listening') {
+          djCount++;
+          listenerCountsByDJ.set(group.id || '', listeners.length);
+        }
+      });
+      const peopleCount = djCount + listenerCount;
+      peopleBadge.textContent = peopleCount > 99 ? '99+' : String(peopleCount);
+      peopleBadge.hidden = peopleCount === 0;
+      peopleBtn.setAttribute('aria-label', 'Show ' + peopleCount + (peopleCount === 1 ? ' person' : ' people'));
       if (!rows.length) {
         listenerGroupsEl.innerHTML = '<div class="listenerempty">No DJs found yet.</div>';
         return;
@@ -1192,40 +1245,54 @@
         listenerGroupsEl.appendChild(section);
       });
     }
+    function renderDJSelector(djs){
+      djList.textContent = '';
+      const activeCount = djs.filter((dj) => dj.live).length;
+      djPickerHead.textContent = activeCount + ' ' + (activeCount === 1 ? 'DJ' : 'DJs') + ' now playing';
+      djs.forEach((dj) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        const { id, name, ready, live, avatar } = dj;
+        const selected = selectedDJId === id;
+        const connecting = switchingTo === id;
+        const failed = failedDJ === id;
+        const listeners = Number(listenerCountsByDJ.get(id) || 0);
+        button.className = 'djchoice' + (selected ? ' active' : '') +
+          (connecting ? ' connecting' : '') + (failed ? ' failed' : '');
+        button.disabled = switchingTo !== null || !live || !ready;
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        button.setAttribute('aria-label', name + ', ' + listeners + ' listening, ' +
+          (selected ? 'currently selected' : (ready ? 'tap to switch' : 'unavailable')));
+        const avatarHTML = avatar
+          ? '<img src="' + escapeHTML(avatar) + '" alt="">'
+          : escapeHTML(initials(name, 'DJ'));
+        button.innerHTML = '<span class="djava">' + avatarHTML +
+          '<span class="djeq" aria-hidden="true"><i></i><i></i><i></i></span></span>' +
+          '<span class="djcopy"><b>' + escapeHTML(name) + '</b><small>' +
+          listeners + ' listening</small></span><span class="djselected">' +
+          (connecting ? 'Connecting…' : (selected ? '✓ Listening' : (failed ? 'Try again' : ''))) +
+          '</span>';
+        button.addEventListener('click', () => selectDJ(id));
+        djList.appendChild(button);
+      });
+    }
     function paintDJs(peers){
       discoveredPeers = Array.isArray(peers) ? peers : [];
-      if (activePeerID && !discoveredPeers.some((peer) => peer.id === activePeerID && peer.live && peer.ready && peer.streamUrl)) {
+      if (selectedDJId && !discoveredPeers.some((peer) => peer.id === selectedDJId && peer.live && peer.ready && peer.streamUrl)) {
         selectDJ('', 'DJ disconnected · back to this room');
       }
       djPicker.hidden = false;
-      djList.textContent = '';
-      const local = document.createElement('button');
-      local.type = 'button';
-      const localReady = localLive && localStreamReady;
-      local.className = 'djchoice' + (localReady ? ' live' : '') + (activePeerID ? '' : ' active');
-      local.disabled = !!activePeerID && !localReady;
-      const localTrack = trackText(localNowPlaying);
-      local.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
-        escapeHTML(guestHostName || 'This DJ') + '</b><small>' +
-        (!activePeerID ? 'Now playing' : (localReady ? 'Play' : 'Not live')) + '</small>' +
-        (localTrack ? '<span class="djtrack">' + escapeHTML(localTrack) + '</span>' : '') + '</span>';
-      local.addEventListener('click', () => selectDJ(''));
-      djList.appendChild(local);
-      discoveredPeers.forEach((peer) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'djchoice' + (peer.live && peer.ready ? ' live' : '') +
-          (activePeerID === peer.id ? ' active' : '');
-        button.disabled = !peer.live || !peer.ready || !peer.streamUrl;
-        const peerTrack = trackText(peer.nowPlaying);
-        button.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
-          escapeHTML(peer.name || 'PartyParty DJ') + '</b><small>' +
-          (activePeerID === peer.id ? 'Now playing' :
-            (peer.live ? (peer.ready ? 'Play' : 'Preparing stream') : 'Not live')) +
-          '</small>' + (peerTrack ? '<span class="djtrack">' + escapeHTML(peerTrack) + '</span>' : '') + '</span>';
-        button.addEventListener('click', () => selectDJ(peer.id));
-        djList.appendChild(button);
-      });
+      const djs = [{
+        id: '', name: guestHostName || 'This DJ', ready: localStreamReady,
+        live: localLive, avatar: '',
+      }].concat(discoveredPeers
+        .filter((peer) => peer.live || peer.id === selectedDJId)
+        .map((peer) => ({
+          id: peer.id, name: peer.name || 'PartyParty DJ',
+          ready: !!peer.ready && !!peer.streamUrl, live: !!peer.live,
+          avatar: peer.avatar || '',
+        })));
+      renderDJSelector(djs);
       updateSelectedTrackHint();
     }
     function applySelectedSource(peer){
@@ -1243,15 +1310,30 @@
         latencyTarget = localLatencyTarget || ROOM_TARGET_FALLBACK;
       }
     }
+    let djNoticeTimer = 0;
+    function showDJNotice(message){
+      clearTimeout(djNoticeTimer);
+      djSwitchNotice.textContent = message || '';
+      djSwitchNotice.hidden = !message;
+      if (message) djNoticeTimer = setTimeout(() => { djSwitchNotice.hidden = true; }, 5000);
+    }
     function selectDJ(id, notice){
+      if (switchingTo !== null) return;
       claimPlaybackSession();
       claimAudio();
       const peer = id ? discoveredPeers.find((candidate) => candidate.id === id) : null;
       if (id && (!peer || !peer.live || !peer.ready || !peer.streamUrl)) return;
-      if (id === activePeerID) return;
+      if (id === selectedDJId) return;
+      const previousID = selectedDJId;
+      const previousPeer = previousID ? discoveredPeers.find((candidate) => candidate.id === previousID) : null;
+      const shouldResume = started && !userPaused && !yielded;
+      const token = ++switchSequence;
       const switchStartedAt = performance.now();
+      switchingTo = id;
+      failedDJ = null;
+      selectedDJId = id;
+      paintDJs(discoveredPeers);
       resetTransport();
-      activePeerID = id;
       applySelectedSource(peer);
       updateSelectedTrackHint();
       resetClock();
@@ -1259,19 +1341,44 @@
       userPaused = false;
       yielded = false;
       ready = useNative;
-      if (!attachSafe()) return;
+      if (!attachSafe()) {
+        switchingTo = null;
+        selectedDJId = previousID;
+        failedDJ = id;
+        applySelectedSource(previousPeer);
+        paintDJs(discoveredPeers);
+        showDJNotice('Could not connect to that DJ.');
+        return;
+      }
       beginAudible('dj-switch');
       mediaSession();
       setStatus(notice || 'switching…');
       player.play().then(() => {
+        if (token !== switchSequence) return;
+        switchingTo = null;
         setPlayingUI(true);
         setStatus('live');
+        showDJNotice(notice || '');
+        paintDJs(discoveredPeers);
         logEvent('dj-switch', { peer: id || 'local', ms: Math.round(performance.now() - switchStartedAt) });
       }).catch(() => {
-        setStatus('tap again to switch');
+        if (token !== switchSequence) return;
+        switchingTo = null;
+        failedDJ = id;
+        selectedDJId = previousID;
+        resetTransport();
+        applySelectedSource(previousPeer);
+        updateSelectedTrackHint();
+        ready = useNative;
+        if (shouldResume && attachSafe()) {
+          beginAudible('dj-switch-rollback');
+          player.play().catch(() => {});
+        }
+        setStatus('DJ switch failed');
+        showDJNotice('Could not switch DJs. You are still listening to the previous DJ.');
+        paintDJs(discoveredPeers);
         logEvent('dj-switch-failed', { peer: id || 'local', ms: Math.round(performance.now() - switchStartedAt) });
       });
-      paintDJs(discoveredPeers);
     }
     // Current-track text for the listen-bar hint. Declared in THIS (outer) scope
     // because applyBtnHint runs here; renderTrackID (an inner scope) writes it.
@@ -1284,9 +1391,17 @@
       return track.artist ? track.title + ' — ' + track.artist : track.title;
     }
     function updateSelectedTrackHint(){
-      const peer = activePeerID && discoveredPeers.find((candidate) => candidate.id === activePeerID);
+      const peer = selectedDJId && discoveredPeers.find((candidate) => candidate.id === selectedDJId);
       npHintText = trackText(peer ? peer.nowPlaying : localNowPlaying);
       applyBtnHint();
+    }
+    function selectedTrack(){
+      const peer = selectedDJId && discoveredPeers.find((candidate) => candidate.id === selectedDJId);
+      return peer ? peer.nowPlaying : localNowPlaying;
+    }
+    function selectedDJName(){
+      const peer = selectedDJId && discoveredPeers.find((candidate) => candidate.id === selectedDJId);
+      return (peer && peer.name) || guestHostName || 'The DJ';
     }
     function setPlayingUI(on){
       document.body.classList.toggle('playing', on);
@@ -1300,6 +1415,12 @@
     function applyBtnHint(){
       if (!btnHint) return;
       const on = document.body.classList.contains('playing');
+      const track = selectedTrack();
+      if (on && track && track.title) {
+        btnlabel.textContent = track.title;
+        btnHint.textContent = track.artist || selectedDJName();
+        return;
+      }
       btnHint.textContent = on ? (npHintText || 'Audio stays on with screen locked')
                                : (live ? (npHintText || 'Low-latency party audio') : 'The DJ has not started yet');
     }
@@ -1928,8 +2049,8 @@
             gaps: syncState && rnd3(syncState.gapHistory), target: rnd3(localLatencyTarget),
           });
         }
-        if (!activePeerID) applySelectedSource(null);
-        if (!activePeerID && localStreamChanged && (started || attached)) {
+        if (!selectedDJId) applySelectedSource(null);
+        if (!selectedDJId && localStreamChanged && (started || attached)) {
           // A publisher rebuild creates a different PDT timeline and may leave
           // AVPlayer holding a now-invalid MediaMTX session. Tear down the
           // transport but keep this same, user-blessed audio element.
@@ -1939,8 +2060,8 @@
         if (eventHost) guestHostName = eventHost;
         paintListenerGroups(s.listenerGroups || []);
         paintDJs(s.peers || []);
-        if (activePeerID) {
-          const selected = discoveredPeers.find((peer) => peer.id === activePeerID);
+        if (selectedDJId) {
+          const selected = discoveredPeers.find((peer) => peer.id === selectedDJId);
           if (selected && selected.live && selected.ready && selected.streamUrl) {
             const selectedGeneration = Number(selected.generation) || 0;
             const selectedChanged = LLSTREAM !== selected.streamUrl ||
@@ -2037,15 +2158,15 @@
       reportAudioOpen(lat);
       if (lat != null && lat > sumMaxLatency) sumMaxLatency = lat;
       watchAudibleHealth(lat, stalled);
-      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded || !!activePeerID ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
+      let url = '/api/heartbeat?stalled=' + (stalled ? '1' : '0') + '&paused=' + (userPaused || yielded || !!selectedDJId ? '1' : '0') + '&cid=' + encodeURIComponent(cid) + '&plat=' + platform
         + '&buf=' + bufferedAhead().toFixed(1)
         + '&v=' + encodeURIComponent(PAGE_VERSION);
       if (guestName) url += '&name=' + encodeURIComponent(guestName);
       if (guestEmoji) url += '&emoji=' + encodeURIComponent(guestEmoji);
       if (lat != null) url += '&lat=' + Math.round(lat * 1000);
       fetch(url, { cache: 'no-store' }).catch(() => {});
-      if (activePeerID) {
-        const peer = discoveredPeers.find((candidate) => candidate.id === activePeerID);
+      if (selectedDJId) {
+        const peer = discoveredPeers.find((candidate) => candidate.id === selectedDJId);
         if (peer && peer.roomUrl) {
           let peerHeartbeat = peer.roomUrl + '/api/heartbeat?stalled=' + (stalled ? '1' : '0') +
             '&paused=' + (userPaused || yielded ? '1' : '0') + '&cid=' +
@@ -2135,7 +2256,7 @@
       const feedSec = $id('feedSec'), feedList = $id('feedList'), downhint = $id('downhint');
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const djLinks = $id('djLinks'), followLinks = $id('followLinks'), tipLinks = $id('tipLinks');
-      const albumSec = $id('albumSec'), albumStrip = $id('albumStrip'), albumAdd = $id('albumAdd');
+      const albumSec = $id('albumSec'), albumStrip = $id('albumStrip');
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const featureDefaults = {
         uploads: true, videoUploads: true, comments: true, reactions: false,
@@ -2448,7 +2569,6 @@
         albumStrip.innerHTML = items.length
           ? items.map(albumMediaHTML).join('')
           : '<div class="albumempty">No photos yet.</div>';
-        if (albumAdd) albumAdd.hidden = !featureOn('uploads');
       }
       function updateAlbumPost(p){
         for (const key of [...albumItems.keys()]) {
@@ -2467,7 +2587,6 @@
           if (!alive.has(item.post)) albumItems.delete(key);
         }
       }
-      if (albumAdd) albumAdd.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
       function openComposer(focusText){
         if (!featureOn('wallMode') || (!featureOn('comments') && !featureOn('uploads'))) return;
         composer.hidden = false;

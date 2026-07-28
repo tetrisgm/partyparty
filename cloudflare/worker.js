@@ -1,7 +1,7 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var APP_VERSION = "124.00";
+var APP_VERSION = "124.01";
 var APP_VERSION_DATE = "2026-07-27";
 var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
 var STANDALONE_FILES = {
@@ -12,7 +12,8 @@ var STANDALONE_FILES = {
   "/downloads/partyparty-123.97-199.zip": { key: "standalone/partyparty-123.97-199.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.97-199.zip" },
   "/downloads/partyparty-123.98-200.zip": { key: "standalone/partyparty-123.98-200.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.98-200.zip" },
   "/downloads/partyparty-123.99-201.zip": { key: "standalone/partyparty-123.99-201.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.99-201.zip" },
-  "/downloads/partyparty-124.00-202.zip": { key: "standalone/partyparty-124.00-202.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.00-202.zip" }
+  "/downloads/partyparty-124.00-202.zip": { key: "standalone/partyparty-124.00-202.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.00-202.zip" },
+  "/downloads/partyparty-124.01-203.zip": { key: "standalone/partyparty-124.01-203.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.01-203.zip" }
 };
 var READ_JSON_TOO_LARGE = /* @__PURE__ */ new WeakSet();
 var esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
