@@ -105,8 +105,8 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	if meta.Links[0].Label != "Instagram" || meta.Links[0].URL != "https://instagram.com/dj" || meta.Links[0].Type != "instagram" {
 		t.Fatalf("first persisted link = %#v", meta.Links[0])
 	}
-	if meta.Links[1].Label != "Venmo" || meta.Links[1].URL != "http://venmo.com/u/dj" {
-		t.Fatalf("second persisted link = %#v, want default Venmo label and normalized scheme", meta.Links[1])
+	if meta.Links[1].Label != "Venmo" || meta.Links[1].URL != "https://account.venmo.com/u/dj" {
+		t.Fatalf("second persisted link = %#v, want default Venmo label and canonical profile URL", meta.Links[1])
 	}
 
 	reloaded, err := Open(filepath.Dir(st.Dir()))

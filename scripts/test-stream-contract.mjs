@@ -61,6 +61,10 @@ assert.doesNotMatch(listener, /—/);
 assert.match(listener, /sheetPlay\.addEventListener\('click', \(\) => btn\.click\(\)\)/);
 assert.match(listener, /body:not\(\.playing\) \.playbars\{visibility:hidden\}/);
 assert.match(listener, /artworkUrl/);
+assert.match(listener, /servicefavicon/);
+assert.match(listener, /instagram: 'https:\/\/www\.instagram\.com\/favicon\.ico'/);
+assert.match(listener, /soundcloud: 'https:\/\/soundcloud\.com\/favicon\.ico'/);
+assert.match(listener, /venmo: 'https:\/\/account\.venmo\.com\/favicon\.ico'/);
 assert.match(listener, /switchingTo !== null/);
 assert.match(listener, /selectedDJId = previousID/);
 assert.match(listener, /Could not switch DJs/);
@@ -76,6 +80,9 @@ assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|u
 
 const dj = read('web/dj.html');
 assert.match(dj, />About You</);
+assert.match(dj, />Event Details</);
+assert.match(dj, /Add another link/);
+assert.match(dj, /https:\/\/account\.venmo\.com\/u\//);
 assert.match(dj, /id="profileName"/);
 assert.match(dj, /id="profilePhotoRemoveBtn"/);
 assert.doesNotMatch(dj, /Guests connected to the LAN room/);
@@ -85,7 +92,9 @@ assert.doesNotMatch(dj, /\/api\/start[^'"\n]*(?:bitrate|mono)|[?&](?:bitrate|mon
 assert.match(dj, /\$\('shareCard'\)\.hidden = !linkReady;/);
 assert.match(dj, /\$\('partyQrPanel'\)\.hidden = !linkReady;/);
 assert.match(dj, /if \(linkReady\) renderQR\(guestUrl\);/);
-assert.match(dj, /Starting audio…/);
+assert.match(dj, /Starting Audio/);
+assert.match(dj, /Stop Broadcasting/);
+assert.doesNotMatch(dj, /id="badge"/);
 assert.doesNotMatch(dj, /captureSoftAsk|screenPermBtn|permission has not been confirmed/);
 
 const playback = read('internal/server/playback.go');

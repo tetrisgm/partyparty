@@ -390,15 +390,16 @@
   .party-grid{gap:14px;margin-top:14px}
   .party-grid .card{padding:20px}
   .guest-sidebar .card{min-height:240px}
-  .linkeditor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-  .linkeditor-head b{font-size:13px}
-  .linkrows{display:grid;gap:8px}
-  .linkrow{display:grid;grid-template-columns:145px minmax(0,1fr) 28px;gap:8px;align-items:center}
-  .linkrow input{min-width:0;height:34px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 10px;color:var(--label);font:inherit;font-size:13px;outline:none}
+  .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:30px;margin:0 0 18px;padding:0 0 12px;border-bottom:1px solid var(--separator)}
+  .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:18px;line-height:1.25;font-weight:750}
+  .linkrows{display:grid;gap:10px}
+  .linkrow{display:grid;grid-template-columns:145px minmax(0,1fr) 30px;gap:10px;align-items:center}
+  .linkrow select,.linkrow input{height:40px}
+  .linkrow input{min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:8px;padding:0 12px;color:var(--label);font:inherit;font-size:13px;outline:none}
   .linkrow input:focus{border-color:var(--accent)}
   .linkrow .bad{border-color:rgba(255,59,48,.65)}
   .linkdel{width:28px;height:28px;padding:0;border-radius:999px;background:var(--fill);color:var(--label-secondary)}
-  .linkactions{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .linkactions{display:flex;align-items:center;gap:8px;margin-top:14px}
   .linkstatus{font-size:12px;color:var(--label-secondary);min-height:16px}
   .event-admin-tools{display:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:16px;padding:14px;margin:18px 0 0}
   body.event-manage-open .event-admin-tools{display:block}
@@ -407,14 +408,14 @@
   body:not(.event-manage-open) .guest-sidebar #detailsToggle,
   body:not(.event-manage-open) .guest-sidebar #copySync{display:none!important}
   body.event-manage-open .eventhead .eventedit{display:block}
-  #eventCard{padding:24px;margin-top:0!important}
+  #eventCard{padding:20px 22px;margin-top:0!important}
   #eventCard .cardhead{margin-bottom:16px}
   #eventCard .cardhead h2{font-size:20px}
-  #eventCard > .composer{background:rgba(255,255,255,.06)!important;border-radius:18px!important;padding:16px!important;margin-bottom:14px!important}
+  #eventCard > .composer{background:var(--fill)!important;border:1px solid var(--separator)!important;border-radius:8px!important;padding:14px!important;margin-bottom:14px!important}
   #eventCard > .composer.dropping{border-color:var(--accent)!important;background:rgba(255,45,111,.12)!important;box-shadow:0 0 0 3px rgba(255,45,111,.16)}
   #eventCard textarea{font-size:16px!important}
   #djFeed{display:grid;gap:12px}
-  #djFeed .wpost{border:1px solid var(--separator);border-radius:18px;background:rgba(255,255,255,.035);padding:18px}
+  #djFeed .wpost{border:1px solid var(--separator);border-radius:8px;background:rgba(255,255,255,.035);padding:18px}
   #requestCard{display:none!important;margin-bottom:16px}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
@@ -487,7 +488,6 @@
     </div>
     <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
     <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-    <span class="badge" id="badge" style="display:none"></span>
     <button class="ghost action-folder" id="actionOpenFolderBtn" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/></svg>
       Open event folder
@@ -524,6 +524,7 @@
       <span id="pubCoverResult" class="cover-status" role="status"></span>
     </div>
     <header class="card eventhead herocard" id="eventHead">
+    <div class="sectiontitle"><h2>Event Details</h2></div>
     <div class="eventhead-grid">
       <div class="event-copy">
         <div class="titlerow">
@@ -590,7 +591,7 @@
       </div>
       <div class="linkrows" id="linkRows"></div>
       <div class="linkactions">
-        <button class="ghost" id="addLinkBtn" type="button">＋ Add link</button>
+        <button class="ghost" id="addLinkBtn" type="button">＋ Add another link</button>
         <button class="go" id="saveLinksBtn" type="button">Save links</button>
         <span class="linkstatus" id="linkStatus"></span>
       </div>
@@ -1215,10 +1216,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         const mine = '__PP_VERSION__';
         if (!mine.includes('PP_VERSION') && s.appVersion !== mine && st === 'idle') location.reload();
       }
-      const badge = $('badge');
-      badge.textContent = st;
-      badge.className = 'badge ' + (st === 'live' ? 'live' : st === 'error' ? 'error' : st === 'starting' ? 'starting' : '');
-      badge.style.display = (st && st !== 'idle') ? '' : 'none';
       if ((st === 'live' || st === 'starting') && s.broadcast.deviceName) {
         const ch = s.broadcast.channels === 1 ? 'mono' : 'stereo';
         const delay = '';
@@ -1240,7 +1237,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         lb.className = 'golive go';
         lb.disabled = true;
       } else {
-        lb.textContent = (st === 'starting') ? 'Starting audio…' : (live ? 'End set' : 'Go Live');
+        lb.textContent = (st === 'starting') ? 'Starting Audio' : (live ? 'Stop Broadcasting' : 'Go Live');
         lb.className = 'golive ' + (live ? 'stop' : 'go');
         lb.disabled = false;
       }
@@ -1682,7 +1679,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         case 'bandcamp': return 'https://' + username.toLowerCase() + '.bandcamp.com/';
         case 'mixcloud': return 'https://www.mixcloud.com/' + encoded + '/';
         case 'resident_advisor': return 'https://ra.co/dj/' + encoded;
-        case 'venmo': return 'https://venmo.com/u/' + encoded;
+        case 'venmo': return 'https://account.venmo.com/u/' + encoded;
         case 'cashapp': return 'https://cash.app/$' + encoded;
         case 'paypal': return 'https://paypal.me/' + encoded;
         default: return '';

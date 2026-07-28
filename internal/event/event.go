@@ -301,6 +301,10 @@ func normalizeLinks(in []Link) ([]Link, error) {
 			return nil, errors.New("link URL must use http or https")
 		}
 		u.Scheme = scheme
+		if typ == "venmo" && (strings.EqualFold(u.Hostname(), "venmo.com") || strings.EqualFold(u.Hostname(), "www.venmo.com") || strings.EqualFold(u.Hostname(), "account.venmo.com")) {
+			u.Scheme = "https"
+			u.Host = "account.venmo.com"
+		}
 		out = append(out, Link{Label: defaultLinkLabel(typ), URL: u.String(), Type: typ})
 	}
 	if out == nil {

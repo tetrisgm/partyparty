@@ -209,6 +209,9 @@
   .djprofilelink{min-height:44px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--separator);color:var(--label);font-size:14px;font-weight:700;text-decoration:none}
   .djprofilelink:last-child{border-bottom:0}
   .djprofilelink svg{width:18px;height:18px;flex:0 0 auto;color:var(--label-secondary)}
+  .djprofilelink .servicefavicon{width:20px;height:20px;flex:0 0 auto;border-radius:4px;object-fit:contain;background:#fff}
+  .djprofilelink .servicefallback{display:none}
+  .djprofilelink.favicon-failed .servicefallback{display:block}
   .djprofilelink span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djprofilelink::after{content:'›';color:var(--label-tertiary);font-size:22px;font-weight:400}
   @media (prefers-reduced-motion:reduce){body.playing .btn,body.playing .artwork,.eq i{animation:none}}
@@ -1600,6 +1603,11 @@
     }
     function renderProfileLinks(target, links){
       target.textContent = '';
+      const faviconByType = {
+        instagram: 'https://www.instagram.com/favicon.ico',
+        soundcloud: 'https://soundcloud.com/favicon.ico',
+        venmo: 'https://account.venmo.com/favicon.ico'
+      };
       (Array.isArray(links) ? links : []).forEach((link) => {
         try {
           const url = new URL(String(link && link.url || ''));
@@ -1609,7 +1617,27 @@
           row.href = url.href;
           row.target = '_blank';
           row.rel = 'noopener';
-          row.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>';
+          const type = String(link && link.type || '').toLowerCase();
+          const favicon = faviconByType[type];
+          if (favicon) {
+            const image = document.createElement('img');
+            image.className = 'servicefavicon';
+            image.src = favicon;
+            image.alt = '';
+            image.addEventListener('error', () => row.classList.add('favicon-failed'), {once:true});
+            row.appendChild(image);
+          }
+          const fallback = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          fallback.setAttribute('class', favicon ? 'servicefallback' : '');
+          fallback.setAttribute('viewBox', '0 0 24 24');
+          fallback.setAttribute('fill', 'none');
+          fallback.setAttribute('stroke', 'currentColor');
+          fallback.setAttribute('stroke-width', '2');
+          fallback.setAttribute('stroke-linecap', 'round');
+          fallback.setAttribute('stroke-linejoin', 'round');
+          fallback.setAttribute('aria-hidden', 'true');
+          fallback.innerHTML = '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/>';
+          row.appendChild(fallback);
           const label = document.createElement('span');
           label.textContent = link.label || link.type || 'Link';
           row.appendChild(label);
