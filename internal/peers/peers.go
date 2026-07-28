@@ -21,6 +21,7 @@ const service = "_partyparty._tcp"
 const (
 	browseInterval = 5 * time.Second
 	browseDuration = 1200 * time.Millisecond
+	peerGrace      = 12 * time.Second
 )
 
 // Peer is a directly reachable PartyParty DJ on this LAN.
@@ -64,6 +65,7 @@ type Directory struct {
 	mu         sync.RWMutex
 	candidates map[string]candidate
 	peers      map[string]Peer
+	peerSeen   map[string]time.Time
 }
 
 // New starts Bonjour advertisement, browsing, and HTTPS reachability probes.
@@ -78,6 +80,7 @@ func New(ctx context.Context, selfID, host string, port int) (*Directory, error)
 		client:     &http.Client{Timeout: 1500 * time.Millisecond},
 		candidates: make(map[string]candidate),
 		peers:      make(map[string]Peer),
+		peerSeen:   make(map[string]time.Time),
 	}
 	txt := []string{"id=" + selfID, "host=" + host, "port=" + strconv.Itoa(port)}
 	server, err := zeroconf.Register("partyparty-"+selfID, service, "local.", port, txt, nil)
@@ -183,26 +186,17 @@ func (d *Directory) probe(ctx context.Context) {
 			}
 			resp, err := d.client.Do(req)
 			if err != nil {
-				if previous.ID != "" {
-					log.Printf("peer discovery: lost %s: %v", c.id, err)
-				}
-				d.removePeer(c.id)
+				d.markPeerUnavailable(c.id, err.Error())
 				return
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
-				if previous.ID != "" {
-					log.Printf("peer discovery: lost %s: %s", c.id, resp.Status)
-				}
-				d.removePeer(c.id)
+				d.markPeerUnavailable(c.id, resp.Status)
 				return
 			}
 			var peer Peer
 			if json.NewDecoder(resp.Body).Decode(&peer) != nil || peer.ID != c.id {
-				if previous.ID != "" {
-					log.Printf("peer discovery: lost %s: invalid identity", c.id)
-				}
-				d.removePeer(c.id)
+				d.markPeerUnavailable(c.id, "invalid identity")
 				return
 			}
 			peer.RoomURL = c.roomURL
@@ -211,6 +205,10 @@ func (d *Directory) probe(ctx context.Context) {
 			}
 			d.mu.Lock()
 			d.peers[c.id] = peer
+			if d.peerSeen == nil {
+				d.peerSeen = make(map[string]time.Time)
+			}
+			d.peerSeen[c.id] = time.Now()
 			d.mu.Unlock()
 			if previous.ID == "" {
 				log.Printf("peer discovery: connected to %s (%s)", peer.ID, peer.Name)
@@ -224,6 +222,7 @@ func (d *Directory) probe(ctx context.Context) {
 		if now.Sub(c.seen) > 2*time.Minute {
 			delete(d.candidates, id)
 			delete(d.peers, id)
+			delete(d.peerSeen, id)
 		}
 	}
 	d.mu.Unlock()
@@ -250,9 +249,15 @@ func mergePosts(previous, changed []event.Post, currentIDs []string) []event.Pos
 	return out
 }
 
-func (d *Directory) removePeer(id string) {
+func (d *Directory) markPeerUnavailable(id, reason string) {
 	d.mu.Lock()
-	delete(d.peers, id)
+	lastSeen := d.peerSeen[id]
+	peer := d.peers[id]
+	if peer.ID != "" && !lastSeen.IsZero() && time.Since(lastSeen) >= peerGrace {
+		delete(d.peers, id)
+		delete(d.peerSeen, id)
+		log.Printf("peer discovery: lost %s: %s", id, reason)
+	}
 	d.mu.Unlock()
 }
 

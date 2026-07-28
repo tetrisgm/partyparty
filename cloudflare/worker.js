@@ -1,13 +1,13 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var APP_VERSION = "123.91";
+var APP_VERSION = "123.92";
 var APP_VERSION_DATE = "2026-07-27";
 var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
 var STANDALONE_FILES = {
   "/appcast.xml": { key: "standalone/appcast.xml", type: "application/xml; charset=utf-8", cache: "public, max-age=300" },
   "/partyparty-beta.zip": { key: "standalone/partyparty-beta.zip", type: "application/zip", cache: "public, max-age=300", download: "partyparty-beta.zip" },
-  "/downloads/partyparty-123.91-193.zip": { key: "standalone/partyparty-123.91-193.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.91-193.zip" }
+  "/downloads/partyparty-123.92-194.zip": { key: "standalone/partyparty-123.92-194.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.92-194.zip" }
 };
 var READ_JSON_TOO_LARGE = /* @__PURE__ */ new WeakSet();
 var esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

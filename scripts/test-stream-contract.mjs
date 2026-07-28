@@ -39,6 +39,7 @@ assert.match(listener, /document\.visibilityState !== 'visible'/);
 assert.match(listener, /<div class="djpickerhead">Now Playing<\/div>[\s\S]*?<div class="feedhead" id="feedTitle">Party feed<\/div>/);
 assert.match(listener, /discoveredPeers\.forEach\(\(peer\) =>/);
 assert.match(listener, /activePeerID === peer\.id \? 'Now playing'/);
+assert.match(listener, /audio\.muted = peer\.id !== activePeerID;/);
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');

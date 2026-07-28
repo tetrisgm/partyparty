@@ -1070,7 +1070,9 @@
       discoveredPeers.forEach((peer) => {
         if (!peer.live || !peer.ready || !peer.streamUrl) return;
         const audio = peerPlayer(peer);
-        audio.muted = true;
+        // Status polling repaints this list every three seconds. Never mute the
+        // selected DJ while warming the other streams in the background.
+        audio.muted = peer.id !== activePeerID;
         audio.play().catch(() => {});
       });
     }

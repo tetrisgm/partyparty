@@ -109,6 +109,22 @@ func TestProbeKeepsOnlyVerifiedPeer(t *testing.T) {
 	}
 }
 
+func TestTransientProbeFailureKeepsPeer(t *testing.T) {
+	d := &Directory{
+		peers:    map[string]Peer{"other": {ID: "other", Name: "Seth"}},
+		peerSeen: map[string]time.Time{"other": time.Now()},
+	}
+	d.markPeerUnavailable("other", "temporary timeout")
+	if _, ok := d.Peer("other"); !ok {
+		t.Fatal("one transient probe failure removed a live peer")
+	}
+	d.peerSeen["other"] = time.Now().Add(-peerGrace)
+	d.markPeerUnavailable("other", "sustained timeout")
+	if _, ok := d.Peer("other"); ok {
+		t.Fatal("peer survived beyond the outage grace period")
+	}
+}
+
 func TestMergePostsAppliesChangesAndRemovals(t *testing.T) {
 	previous := []event.Post{{ID: "keep", Text: "old"}, {ID: "remove"}}
 	changed := []event.Post{{ID: "keep", Text: "new"}, {ID: "add"}}
