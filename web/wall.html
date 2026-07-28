@@ -214,8 +214,7 @@
     }
     function renderNowPlaying(data){
       const track = data && data.nowPlaying;
-      const on = featureOn(data && data.features || {}, 'trackId', false);
-      if (on && track && track.title) {
+      if (track && track.title) {
         $('nowPlaying').textContent = track.artist ? track.title + ' — ' + track.artist : track.title;
       } else {
         $('nowPlaying').textContent = 'Live';

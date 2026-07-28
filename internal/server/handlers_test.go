@@ -613,7 +613,7 @@ func TestReactionsGateLimitAndFeedAggregates(t *testing.T) {
 	}
 }
 
-func TestTrackIDGateLimitFeedAndAskCount(t *testing.T) {
+func TestTrackIDAskGateDoesNotHideRecognizedTracks(t *testing.T) {
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -622,8 +622,8 @@ func TestTrackIDGateLimitFeedAndAskCount(t *testing.T) {
 	now := time.Now()
 	s.limits.now = func() time.Time { return now }
 
-	// trackId now defaults on; this test exercises the off->hidden / on->shown
-	// gate explicitly, so start it from off regardless of the default.
+	// The legacy flag still controls guest track-ID requests, but automatic
+	// recognition is room state and must always remain visible.
 	if err := ev.SetFeature("trackId", false); err != nil {
 		t.Fatal(err)
 	}
@@ -652,15 +652,16 @@ func TestTrackIDGateLimitFeedAndAskCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := feed("/api/feed", "192.168.1.44:3333")
-	if _, ok := body["nowPlaying"]; ok {
-		t.Fatalf("feed exposed nowPlaying while feature off: %#v", body["nowPlaying"])
+	nowPlaying, ok := body["nowPlaying"].(map[string]any)
+	if !ok || nowPlaying["title"] != "Hidden Tune" || nowPlaying["artist"] != "Private Artist" {
+		t.Fatalf("nowPlaying = %#v, want Hidden Tune/Private Artist while asks are off", body["nowPlaying"])
 	}
 
 	if err := ev.SetFeature("trackId", true); err != nil {
 		t.Fatal(err)
 	}
 	body = feed("/api/feed", "192.168.1.44:3333")
-	nowPlaying, ok := body["nowPlaying"].(map[string]any)
+	nowPlaying, ok = body["nowPlaying"].(map[string]any)
 	if !ok || nowPlaying["title"] != "Hidden Tune" || nowPlaying["artist"] != "Private Artist" {
 		t.Fatalf("nowPlaying = %#v, want Hidden Tune/Private Artist", body["nowPlaying"])
 	}

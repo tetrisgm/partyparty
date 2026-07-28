@@ -122,13 +122,11 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount,
 			"photos": photos, "videos": videos, "audio": audio, "cursor": cursor, "dj": dj,
 		}
-		if s.featureOn("trackId") {
-			current, recent := s.Events.TrackSnapshot()
-			body["nowPlaying"] = feedTrackFrom(current)
-			body["recentTracks"] = feedTracksFrom(recent)
-			if dj {
-				body["trackAsks"] = s.Events.TrackAskCount()
-			}
+		current, recent := s.Events.TrackSnapshot()
+		body["nowPlaying"] = feedTrackFrom(current)
+		body["recentTracks"] = feedTracksFrom(recent)
+		if dj && s.featureOn("trackId") {
+			body["trackAsks"] = s.Events.TrackAskCount()
 		}
 		if dj {
 			body["links"] = meta.Links

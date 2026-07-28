@@ -710,7 +710,7 @@ func (s *srv) peerState(since int64) peers.Peer {
 		posts, ids, _, cursor = s.Events.FeedFor(since, "", false)
 	}
 	var nowPlaying *event.CurrentTrack
-	if s.Events != nil && s.featureOn("trackId") {
+	if s.Events != nil {
 		nowPlaying, _ = s.Events.TrackSnapshot()
 	}
 	if posts == nil {

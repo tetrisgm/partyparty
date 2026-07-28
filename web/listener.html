@@ -1979,7 +1979,7 @@
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const featureDefaults = {
         uploads: true, videoUploads: true, comments: true, reactions: false,
-        requests: false, trackId: false, wallMode: true
+        requests: false, trackId: true, wallMode: true
       };
       const reactionDefs = [
         ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'], ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
@@ -2066,7 +2066,7 @@
         reactionAmbient.textContent = top ? top.emoji + ' ×' + top.n : '';
       }
       function renderTrackID(nowPlaying){
-        currentTrack = (featureOn('trackId') && nowPlaying && nowPlaying.title) ? nowPlaying : null;
+        currentTrack = (nowPlaying && nowPlaying.title) ? nowPlaying : null;
         localNowPlaying = currentTrack;
         updateSelectedTrackHint();
         paintDJs(discoveredPeers);
