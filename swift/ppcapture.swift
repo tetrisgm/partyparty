@@ -13,6 +13,8 @@
 
 import Foundation
 import CoreAudio
+import AVFoundation
+import ShazamKit
 
 let errOut = FileHandle.standardError
 func elog(_ s: String) { errOut.write((s + "\n").data(using: .utf8)!) }
@@ -59,7 +61,7 @@ final class PCMRing {
         cond.unlock()
     }
 
-    func writerLoop() {
+    func writerLoop(onChunk: (([Float32]) -> Void)? = nil) {
         var out = [Float32](repeating: 0, count: 16384)
         while true {
             cond.lock()
@@ -72,7 +74,93 @@ final class PCMRing {
             used -= n
             cond.unlock()
             out.withUnsafeBytes { writeOut(Data(bytes: $0.baseAddress!, count: n * 4)) }
+            if let onChunk {
+                onChunk(Array(out.prefix(n)))
+            }
         }
+    }
+}
+
+/// ShazamKit receives a copy after PCM has already been written downstream.
+/// Its serial queue is strictly bounded, so recognition can never hold up or
+/// accumulate latency in the live audio path.
+final class TrackRecognizer: NSObject, SHSessionDelegate {
+    private let session = SHSession()
+    private let format: AVAudioFormat
+    private let channels: Int
+    private let queue = DispatchQueue(label: "fm.partyparty.track-recognition", qos: .utility)
+    private let state = NSLock()
+    private var pending = 0
+    private var lastID = ""
+    private var lastErrorAt = Date.distantPast
+
+    init?(sampleRate: Int, channels: Int) {
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Double(sampleRate),
+            channels: AVAudioChannelCount(channels),
+            interleaved: false
+        ) else { return nil }
+        self.format = format
+        self.channels = channels
+        super.init()
+        session.delegate = self
+    }
+
+    func enqueue(_ interleaved: [Float32]) {
+        state.lock()
+        guard pending < 3 else {
+            state.unlock()
+            return
+        }
+        pending += 1
+        state.unlock()
+        queue.async { [self] in
+            defer {
+                state.lock()
+                pending -= 1
+                state.unlock()
+            }
+            let frames = interleaved.count / channels
+            guard frames > 0,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
+                  let dst = buffer.floatChannelData else { return }
+            buffer.frameLength = AVAudioFrameCount(frames)
+            for frame in 0..<frames {
+                for channel in 0..<channels {
+                    dst[channel][frame] = interleaved[frame * channels + channel]
+                }
+            }
+            session.matchStreamingBuffer(buffer, at: nil)
+        }
+    }
+
+    func session(_ session: SHSession, didFind match: SHMatch) {
+        guard let item = match.mediaItems.first,
+              let title = item.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty else { return }
+        let artist = item.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let matchID = item.shazamID ?? "\(artist)\u{0}\(title)"
+        state.lock()
+        guard matchID != lastID else {
+            state.unlock()
+            return
+        }
+        lastID = matchID
+        state.unlock()
+        let payload: [String: String] = ["id": matchID, "title": title, "artist": artist]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              !data.isEmpty else { return }
+        elog("ppcapture: TRACK " + data.base64EncodedString())
+    }
+
+    func session(_ session: SHSession, didNotFindMatchFor signature: SHSignature, error: Error?) {
+        guard let error else { return }
+        state.lock()
+        let shouldLog = Date().timeIntervalSince(lastErrorAt) >= 60
+        if shouldLog { lastErrorAt = Date() }
+        state.unlock()
+        if shouldLog { elog("ppcapture: track recognition unavailable (\(error.localizedDescription))") }
     }
 }
 
@@ -131,6 +219,7 @@ guard err == noErr, aggID != kAudioObjectUnknown else {
 // cost a short bounded gap + instant resync instead. Drop path already exists in
 // PCMRing.push().
 let ring = PCMRing(capacitySamples: rate * ch / 2)
+let trackRecognizer = TrackRecognizer(sampleRate: rate, channels: ch)
 var procID: AudioDeviceIOProcID?
 err = AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { _, inInputData, _, _, _ in
     let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inInputData))
@@ -166,7 +255,9 @@ signal(SIGTERM) { _ in exit(0) }
 
 elog("ppcapture: FORMAT \(rate) \(ch)")
 elog("ppcapture: capturing system audio via Core Audio tap (\(rate) Hz, \(ch) ch, f32le)")
-Thread.detachNewThread { ring.writerLoop() }
+Thread.detachNewThread {
+    ring.writerLoop { samples in trackRecognizer?.enqueue(samples) }
+}
 
 // Capture-health monitor. A Core Audio tap may produce no callbacks while the
 // Mac output is silent, so absence of frames alone is not a failure signal.

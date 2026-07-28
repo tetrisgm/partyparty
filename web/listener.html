@@ -332,8 +332,9 @@
   .djdot{width:9px;height:9px;border-radius:50%;background:var(--label-tertiary);flex:0 0 auto}
   .djchoice.live .djdot{background:var(--success)}
   .djcopy{min-width:0;flex:1}
-  .djcopy b,.djcopy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .djcopy b,.djcopy small,.djcopy .djtrack{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djcopy b{font-size:14px}.djcopy small{font-size:11px;color:var(--label-secondary);margin-top:1px}
+  .djcopy .djtrack{font-size:12px;color:var(--label);font-weight:700;margin-top:3px}
   .avatars{display:flex;align-items:center;min-width:0}
   .avatar{
     width:35px;height:35px;border-radius:50%;display:grid;place-items:center;margin-left:-7px;
@@ -1042,9 +1043,11 @@
       const localReady = localLive && localStreamReady;
       local.className = 'djchoice' + (localReady ? ' live' : '') + (activePeerID ? '' : ' active');
       local.disabled = !!activePeerID && !localReady;
+      const localTrack = trackText(localNowPlaying);
       local.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
         escapeHTML(guestHostName || 'This DJ') + '</b><small>' +
-        (!activePeerID ? 'Now playing' : (localReady ? 'Play' : 'Not live')) + '</small></span>';
+        (!activePeerID ? 'Now playing' : (localReady ? 'Play' : 'Not live')) + '</small>' +
+        (localTrack ? '<span class="djtrack">' + escapeHTML(localTrack) + '</span>' : '') + '</span>';
       local.addEventListener('click', () => selectDJ(''));
       djList.appendChild(local);
       discoveredPeers.forEach((peer) => {
@@ -1053,14 +1056,16 @@
         button.className = 'djchoice' + (peer.live && peer.ready ? ' live' : '') +
           (activePeerID === peer.id ? ' active' : '');
         button.disabled = !peer.live || !peer.ready || !peer.streamUrl;
+        const peerTrack = trackText(peer.nowPlaying);
         button.innerHTML = '<span class="djdot"></span><span class="djcopy"><b>' +
           escapeHTML(peer.name || 'PartyParty DJ') + '</b><small>' +
           (activePeerID === peer.id ? 'Now playing' :
             (peer.live ? (peer.ready ? 'Play' : 'Preparing stream') : 'Not live')) +
-          '</small></span>';
+          '</small>' + (peerTrack ? '<span class="djtrack">' + escapeHTML(peerTrack) + '</span>' : '') + '</span>';
         button.addEventListener('click', () => selectDJ(peer.id));
         djList.appendChild(button);
       });
+      updateSelectedTrackHint();
     }
     function applySelectedSource(peer){
       if (peer) {
@@ -1087,6 +1092,7 @@
       resetTransport();
       activePeerID = id;
       applySelectedSource(peer);
+      updateSelectedTrackHint();
       resetClock();
       syncClock();
       userPaused = false;
@@ -1099,7 +1105,6 @@
       player.play().then(() => {
         setPlayingUI(true);
         setStatus('live');
-        if (peer) btnHint.textContent = peer.name || 'PartyParty DJ';
         logEvent('dj-switch', { peer: id || 'local', ms: Math.round(performance.now() - switchStartedAt) });
       }).catch(() => {
         setStatus('tap again to switch');
@@ -1112,6 +1117,16 @@
     // (Reaching into the inner-scope currentTrack from here throws a ReferenceError
     // and silently broke the play button — never do that.)
     let npHintText = '';
+    let localNowPlaying = null;
+    function trackText(track){
+      if (!track || !track.title) return '';
+      return track.artist ? track.title + ' — ' + track.artist : track.title;
+    }
+    function updateSelectedTrackHint(){
+      const peer = activePeerID && discoveredPeers.find((candidate) => candidate.id === activePeerID);
+      npHintText = trackText(peer ? peer.nowPlaying : localNowPlaying);
+      applyBtnHint();
+    }
     function setPlayingUI(on){
       document.body.classList.toggle('playing', on);
       ico.textContent = on ? '❚❚' : '►';
@@ -2050,14 +2065,11 @@
         }
         reactionAmbient.textContent = top ? top.emoji + ' ×' + top.n : '';
       }
-      function trackText(track){
-        if (!track || !track.title) return '';
-        return track.artist ? track.title + ' — ' + track.artist : track.title;
-      }
       function renderTrackID(nowPlaying){
         currentTrack = (featureOn('trackId') && nowPlaying && nowPlaying.title) ? nowPlaying : null;
-        npHintText = currentTrack ? trackText(currentTrack) : '';
-        applyBtnHint(); // the current track shows in the listen bar, under "Tap to listen"
+        localNowPlaying = currentTrack;
+        updateSelectedTrackHint();
+        paintDJs(discoveredPeers);
       }
       reactionBar.addEventListener('click', async (e) => {
         const btn = e.target && e.target.closest && e.target.closest('button[data-react]');

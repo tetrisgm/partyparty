@@ -1,6 +1,11 @@
 package event
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestCurrentTrackRotatesRecentAndPersists(t *testing.T) {
 	dir := t.TempDir()
@@ -62,5 +67,30 @@ func TestCurrentTrackRotatesRecentAndPersists(t *testing.T) {
 	}
 	if len(recent) != 2 || recent[0].Title != "Second Tune" || recent[1].Title != "First Tune" {
 		t.Fatalf("reopened cleared recent = %#v, want Second then First", recent)
+	}
+	setlist, err := os.ReadFile(filepath.Join(reopened.Dir(), "setlist.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(setlist)
+	if !strings.Contains(text, "One Artist - First Tune") || !strings.Contains(text, "Second Tune") {
+		t.Fatalf("setlist.txt = %q", text)
+	}
+}
+
+func TestRecognizedTrackDeduplicatesCatalogCallbacks(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := st.SetRecognizedTrack("shazam-1", "Song", "Artist"); err != nil || !changed {
+		t.Fatalf("first match changed=%v err=%v", changed, err)
+	}
+	if _, changed, err := st.SetRecognizedTrack("shazam-1", "Song", "Artist"); err != nil || changed {
+		t.Fatalf("duplicate match changed=%v err=%v", changed, err)
+	}
+	current, recent := st.TrackSnapshot()
+	if current == nil || current.MatchID != "shazam-1" || len(recent) != 0 {
+		t.Fatalf("current=%#v recent=%#v", current, recent)
 	}
 }

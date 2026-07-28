@@ -12,6 +12,7 @@ PLIST="$APP/Contents/Info.plist"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$PLIST")" = "https://partyparty.party/appcast.xml" ]
 [ -d "$APP/Contents/Frameworks/Sparkle.framework" ]
 codesign --verify --deep --strict --verbose=2 "$APP"
+otool -L "$APP/Contents/Helpers/ppcapture" | grep -q '/ShazamKit.framework/'
 if codesign -d --entitlements :- "$APP" 2>&1 | grep -q 'com.apple.security.app-sandbox'; then
   echo "Standalone app must not use the App Sandbox entitlement." >&2
   exit 1

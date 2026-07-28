@@ -117,6 +117,9 @@ func New(d Deps) *Srv {
 	if _, err := os.Stat(audioProvenPath()); err == nil {
 		s.audioProven.Store(true)
 	}
+	if d.Broadcaster != nil && d.Events != nil {
+		go s.watchRecognizedTracks()
+	}
 	return s
 }
 
@@ -706,6 +709,10 @@ func (s *srv) peerState(since int64) peers.Peer {
 	if s.Events != nil {
 		posts, ids, _, cursor = s.Events.FeedFor(since, "", false)
 	}
+	var nowPlaying *event.CurrentTrack
+	if s.Events != nil && s.featureOn("trackId") {
+		nowPlaying, _ = s.Events.TrackSnapshot()
+	}
 	if posts == nil {
 		posts = []event.Post{}
 	}
@@ -721,6 +728,7 @@ func (s *srv) peerState(since int64) peers.Peer {
 		Ready:         ready,
 		Generation:    generation,
 		LatencyTarget: roomLatencyTarget,
+		NowPlaying:    nowPlaying,
 		Room:          &peers.Room{Roster: publicRoster, Posts: posts, IDs: ids, Cursor: cursor},
 	}
 }

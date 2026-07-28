@@ -75,10 +75,11 @@ type Request struct {
 // CurrentTrack is the DJ-shared "now playing" state. It is deliberately
 // manual for the MVP; future integrations can feed the same store method.
 type CurrentTrack struct {
-	Title  string `json:"title"`
-	Artist string `json:"artist,omitempty"`
-	Note   string `json:"note,omitempty"`
-	SetAt  int64  `json:"setAt"`
+	Title   string `json:"title"`
+	Artist  string `json:"artist,omitempty"`
+	Note    string `json:"note,omitempty"`
+	MatchID string `json:"matchId,omitempty"`
+	SetAt   int64  `json:"setAt"`
 }
 
 // line is the on-disk journal record: a post, comment, request, track update,
@@ -304,20 +305,21 @@ func normalizeLinks(in []Link) ([]Link, error) {
 
 // Store manages the current event directory. Safe for concurrent use.
 type Store struct {
-	mu           sync.Mutex
-	dir          string
-	meta         Meta
-	posts        []*Post
-	byID         map[string]*Post
-	requests     []*Request
-	byReqID      map[string]*Request
-	guests       map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
-	reactions    map[string]*reactionCounter
-	currentTrack *CurrentTrack
-	recentTracks []CurrentTrack
-	trackAsks    []int64
-	thumbQ       chan thumbJob
-	thumbOnce    sync.Once
+	mu            sync.Mutex
+	dir           string
+	meta          Meta
+	posts         []*Post
+	byID          map[string]*Post
+	requests      []*Request
+	byReqID       map[string]*Request
+	guests        map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
+	reactions     map[string]*reactionCounter
+	currentTrack  *CurrentTrack
+	recentTracks  []CurrentTrack
+	setlistTracks []CurrentTrack
+	trackAsks     []int64
+	thumbQ        chan thumbJob
+	thumbOnce     sync.Once
 
 	// Long-poll wakeup: closed and replaced on every visible mutation, so
 	// /api/feed?wait=1 can hold requests and answer the INSTANT something
@@ -406,6 +408,7 @@ func (s *Store) use(dir string) error {
 	requests, byReqID := []*Request{}, map[string]*Request{}
 	var currentTrack *CurrentTrack
 	recentTracks := []CurrentTrack{}
+	setlistTracks := []CurrentTrack{}
 	if data, err := os.ReadFile(filepath.Join(dir, "posts.jsonl")); err == nil {
 		for _, raw := range strings.Split(string(data), "\n") {
 			if strings.TrimSpace(raw) == "" {
@@ -501,6 +504,7 @@ func (s *Store) use(dir string) error {
 			case l.Op == "track-current" && l.Track != nil:
 				if currentTrack != nil && currentTrack.Title != "" {
 					recentTracks = append([]CurrentTrack{*currentTrack}, recentTracks...)
+					setlistTracks = append(setlistTracks, *currentTrack)
 					if len(recentTracks) > trackHistoryLimit {
 						recentTracks = recentTracks[:trackHistoryLimit]
 					}
@@ -512,6 +516,7 @@ func (s *Store) use(dir string) error {
 			case l.Op == "track-clear":
 				if currentTrack != nil && currentTrack.Title != "" {
 					recentTracks = append([]CurrentTrack{*currentTrack}, recentTracks...)
+					setlistTracks = append(setlistTracks, *currentTrack)
 					if len(recentTracks) > trackHistoryLimit {
 						recentTracks = recentTracks[:trackHistoryLimit]
 					}
@@ -544,7 +549,8 @@ func (s *Store) use(dir string) error {
 	meta.Cover = normalizeCoverRef(meta.Cover)
 	s.mu.Lock()
 	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
-	s.currentTrack, s.recentTracks, s.trackAsks = currentTrack, recentTracks, nil
+	s.currentTrack, s.recentTracks, s.setlistTracks, s.trackAsks = currentTrack, recentTracks, setlistTracks, nil
+	_ = s.writeSetlistLocked()
 	s.mu.Unlock()
 	s.changed()
 	return nil
@@ -1283,8 +1289,34 @@ func (s *Store) SetCurrentTrack(title, artist, note string) (CurrentTrack, error
 	}
 	s.rotateTrackLocked()
 	s.currentTrack = &tr
+	_ = s.writeSetlistLocked()
 	s.changed()
 	return tr, nil
+}
+
+// SetRecognizedTrack stores a Shazam catalog match. Repeated callbacks for the
+// same catalog item are idempotent and do not create duplicate set-list rows.
+func (s *Store) SetRecognizedTrack(matchID, title, artist string) (CurrentTrack, bool, error) {
+	tr := cleanTrack(CurrentTrack{
+		Title: title, Artist: artist, MatchID: strings.TrimSpace(matchID),
+		SetAt: time.Now().UnixMilli(),
+	})
+	if tr.Title == "" {
+		return CurrentTrack{}, false, errors.New("missing title")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.currentTrack != nil && tr.MatchID != "" && s.currentTrack.MatchID == tr.MatchID {
+		return *s.currentTrack, false, nil
+	}
+	if err := s.appendLine(line{Op: "track-current", Track: &tr, TS: tr.SetAt}); err != nil {
+		return CurrentTrack{}, false, err
+	}
+	s.rotateTrackLocked()
+	s.currentTrack = &tr
+	_ = s.writeSetlistLocked()
+	s.changed()
+	return tr, true, nil
 }
 
 // ClearCurrentTrack removes the public now-playing slot, keeping the last track
@@ -1300,6 +1332,7 @@ func (s *Store) ClearCurrentTrack() error {
 	}
 	s.rotateTrackLocked()
 	s.currentTrack = nil
+	_ = s.writeSetlistLocked()
 	s.changed()
 	return nil
 }
@@ -1309,9 +1342,33 @@ func (s *Store) rotateTrackLocked() {
 		return
 	}
 	s.recentTracks = append([]CurrentTrack{*s.currentTrack}, s.recentTracks...)
+	s.setlistTracks = append(s.setlistTracks, *s.currentTrack)
 	if len(s.recentTracks) > trackHistoryLimit {
 		s.recentTracks = s.recentTracks[:trackHistoryLimit]
 	}
+}
+
+func (s *Store) writeSetlistLocked() error {
+	tracks := append([]CurrentTrack(nil), s.setlistTracks...)
+	if s.currentTrack != nil && s.currentTrack.Title != "" {
+		tracks = append(tracks, *s.currentTrack)
+	}
+	var out strings.Builder
+	out.WriteString("PartyParty set list\n\n")
+	for _, tr := range tracks {
+		when := time.UnixMilli(tr.SetAt).Format("15:04")
+		if tr.Artist != "" {
+			fmt.Fprintf(&out, "%s  %s - %s\n", when, tr.Artist, tr.Title)
+		} else {
+			fmt.Fprintf(&out, "%s  %s\n", when, tr.Title)
+		}
+	}
+	path := filepath.Join(s.dir, "setlist.txt")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(out.String()), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // TrackSnapshot returns copies of now-playing and the capped recent history.
@@ -1332,6 +1389,7 @@ func cleanTrack(tr CurrentTrack) CurrentTrack {
 	tr.Title = clip(strings.TrimSpace(tr.Title), 120)
 	tr.Artist = clip(strings.TrimSpace(tr.Artist), 120)
 	tr.Note = clip(strings.TrimSpace(tr.Note), 240)
+	tr.MatchID = clip(strings.TrimSpace(tr.MatchID), 160)
 	if tr.Title == "" {
 		return CurrentTrack{}
 	}

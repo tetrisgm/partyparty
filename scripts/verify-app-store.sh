@@ -89,6 +89,8 @@ for helper in ffmpeg mediamtx partyparty-server ppcapture; do
     fail "$helper has unexpected entitlements: $keys"
 done
 
+otool -L "$APP/Contents/Helpers/ppcapture" | grep -q '/ShazamKit.framework/'
+
 if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT
