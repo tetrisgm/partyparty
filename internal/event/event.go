@@ -1520,6 +1520,9 @@ func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids [
 		if p.Act > cursor {
 			cursor = p.Act
 		}
+		if legacyStreamStatusPost(p) {
+			continue
+		}
 		if !postVisibleTo(p, cid, dj) {
 			continue
 		}
@@ -1540,6 +1543,13 @@ func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids [
 	}
 	sort.Slice(posts, func(i, j int) bool { return posts[i].TS < posts[j].TS })
 	return posts, ids, mediaCount, cursor
+}
+
+func legacyStreamStatusPost(p *Post) bool {
+	if p == nil || p.CID != "dj" || !p.DJ || p.Emoji != "🎧" || len(p.Media) != 0 || len(p.Comments) != 0 {
+		return false
+	}
+	return p.Text == "Started the stream." || p.Text == "Stopped the stream."
 }
 
 // MediaTypeCounts returns visible media totals for feed headings.
