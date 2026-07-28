@@ -50,11 +50,14 @@ func reduceLanState(in lanInputs) lanState {
 	case in.LanListeners > 0:
 		// A real guest heartbeat is the strongest possible venue proof.
 		st.State = lanConfirmed
-	case !in.CertReady || in.Host == "" || in.ExpectedIP == "" || !in.DNSPublished || !in.ResolverMatches:
+	case !in.CertReady || in.Host == "" || in.ExpectedIP == "" || !in.DNSPublished:
 		// The secure link isn't up yet; the console's setup card covers this.
 		st.State = lanUnavailable
 	default:
-		// Cert up, listener serving, nobody has tried yet - honest "ready".
+		// The broker has verified the exact A record and the certificate is
+		// usable. This Mac's resolver is diagnostic only: its cache, VPN, or
+		// encrypted-DNS policy can disagree even while guest phones resolve the
+		// freshly published record correctly.
 		st.State = lanReady
 	}
 	return st

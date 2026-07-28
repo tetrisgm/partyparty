@@ -1279,8 +1279,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const secure = s.llhlsRealCert === true;
       const directHttps = typeof s.urls.primary === 'string' && s.urls.primary.indexOf('https://') === 0;
       const guestUrl = directHttps ? s.urls.primary : '';
-      const lanReady = s.lan && (s.lan.state === 'ready' || s.lan.state === 'confirmed');
-      const linkReady = !!guestUrl && secure && lanReady;
+      // A verified broker publication plus the usable certificate is the guest
+      // link contract. Do not gate the QR on this Mac's resolver cache: VPNs,
+      // encrypted DNS, and stale local answers can differ from the phones that
+      // will open the link.
+      const dnsPublished = s.lan && s.lan.dnsPublished === true;
+      const linkReady = !!guestUrl && secure && dnsPublished;
       $('setupCard').style.display = linkReady ? 'none' : 'block';
       if (linkReady) {
         stopPendingType();

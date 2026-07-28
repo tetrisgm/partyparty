@@ -23,7 +23,7 @@ func TestReduceLanState(t *testing.T) {
 		{"no host -> unavailable", with(func(i *lanInputs) { i.Host = "" }), lanUnavailable},
 		{"no LAN IP -> unavailable", with(func(i *lanInputs) { i.ExpectedIP = "" }), lanUnavailable},
 		{"A record not verified -> unavailable", with(func(i *lanInputs) { i.DNSPublished = false }), lanUnavailable},
-		{"resolver mismatch -> unavailable", with(func(i *lanInputs) { i.ResolverMatches = false }), lanUnavailable},
+		{"resolver mismatch remains ready after verified publish", with(func(i *lanInputs) { i.ResolverMatches = false }), lanReady},
 		{"cert up, nobody joined -> ready", base, lanReady},
 		{"LAN listeners -> confirmed", with(func(i *lanInputs) { i.LanListeners = 2 }), lanConfirmed},
 	}

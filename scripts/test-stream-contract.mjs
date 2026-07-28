@@ -92,6 +92,9 @@ assert.doesNotMatch(dj, /\/api\/start[^'"\n]*(?:bitrate|mono)|[?&](?:bitrate|mon
 assert.match(dj, /\$\('shareCard'\)\.hidden = !linkReady;/);
 assert.match(dj, /\$\('partyQrPanel'\)\.hidden = !linkReady;/);
 assert.match(dj, /if \(linkReady\) renderQR\(guestUrl\);/);
+assert.match(dj, /const dnsPublished = s\.lan && s\.lan\.dnsPublished === true;/);
+assert.match(dj, /const linkReady = !!guestUrl && secure && dnsPublished;/);
+assert.doesNotMatch(dj, /const linkReady = !!guestUrl && secure && lanReady;/);
 assert.match(dj, /Starting Audio/);
 assert.match(dj, /Stop Broadcasting/);
 assert.doesNotMatch(dj, /id="badge"/);
