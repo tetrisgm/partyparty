@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-VERSION="${PP_VERSION:-123.90}"
-BUILD="${PP_BUILD:-192}"
+VERSION="${PP_VERSION:-123.91}"
+BUILD="${PP_BUILD:-193}"
 APP="$ROOT/build/partyparty-beta.app"
 SWIFT_BIN="$ROOT/app/.build/arm64-apple-macosx/release"
 SIGN_ID="${PP_SIGN_ID:-}"
@@ -63,8 +63,8 @@ for helper in mediamtx ffmpeg partyparty-server; do
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/Helpers/$helper"
 done
 codesign --force --options runtime --timestamp --entitlements "$ENT" --sign "$SIGN_ID" "$APP/Contents/Helpers/ppcapture"
-codesign --force --options runtime --timestamp --entitlements "$ENT" --sign "$SIGN_ID" "$APP/Contents/MacOS/partyparty"
-codesign --force --options runtime --timestamp --entitlements "$ENT" --sign "$SIGN_ID" "$APP"
+codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/partyparty"
+codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
 
 "$ROOT/scripts/verify-standalone.sh" "$APP" "$VERSION" "$BUILD"
 echo "built $APP"

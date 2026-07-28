@@ -1,4 +1,5 @@
 import AppKit
+import Network
 import ServiceManagement
 
 /// Regular app (Dock icon + full window/menu bar). The menu-bar monitor exposes
@@ -11,10 +12,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
     private var updater: Updater!
+    private var localNetworkBrowser: NWBrowser?
     private var wasBroadcasting = false
     private var lastUpdateCheck = Date.distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        requestLocalNetworkAccess()
         server.start()
         NSApp.mainMenu = buildMainMenu()      // Cmd+W / Cmd+Q / copy-paste for the window
         api = APIClient(port: server.port)
@@ -36,6 +39,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)
+    }
+
+    private func requestLocalNetworkAccess() {
+        let browser = NWBrowser(
+            for: .bonjour(type: "_partyparty._tcp", domain: "local."),
+            using: .tcp
+        )
+        browser.stateUpdateHandler = { state in
+            if case .failed = state {
+                browser.cancel()
+            }
+        }
+        browser.browseResultsChangedHandler = { _, _ in }
+        browser.start(queue: .main)
+        localNetworkBrowser = browser
     }
 
     // MARK: Menu-bar monitor
@@ -202,6 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
+        localNetworkBrowser?.cancel()
         server.stop()
     }
 

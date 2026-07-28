@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +17,11 @@ import (
 )
 
 const service = "_partyparty._tcp"
+
+const (
+	browseInterval = 5 * time.Second
+	browseDuration = 1200 * time.Millisecond
+)
 
 // Peer is a directly reachable PartyParty DJ on this LAN.
 type Peer struct {
@@ -81,50 +87,58 @@ func New(ctx context.Context, selfID, host string, port int) (*Directory, error)
 	}
 	d.server = server
 
-	entries := make(chan *zeroconf.ServiceEntry)
-	resolver, err := zeroconf.NewResolver(nil)
-	if err != nil {
-		server.Shutdown()
-		cancel()
-		return nil, err
-	}
-	go d.consume(ctx, entries)
-	go func() {
-		if err := resolver.Browse(ctx, service, "local.", entries); err != nil {
-			return
-		}
-	}()
+	go d.browseLoop(ctx)
 	go d.probeLoop(ctx)
 	return d, nil
 }
 
-func (d *Directory) consume(ctx context.Context, entries <-chan *zeroconf.ServiceEntry) {
+func (d *Directory) browseLoop(ctx context.Context) {
+	ticker := time.NewTicker(browseInterval)
+	defer ticker.Stop()
+	d.browseOnce(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case entry, ok := <-entries:
-			if !ok {
-				return
-			}
-			values := txtValues(entry.Text)
-			id, host := values["id"], values["host"]
-			if id == "" || id == d.selfID || host == "" {
-				continue
-			}
-			port := entry.Port
-			if p, err := strconv.Atoi(values["port"]); err == nil && p > 0 {
-				port = p
-			}
-			d.mu.Lock()
-			d.candidates[id] = candidate{
-				id:      id,
-				roomURL: fmt.Sprintf("https://%s:%d", host, port),
-				seen:    time.Now(),
-			}
-			d.mu.Unlock()
+		case <-ticker.C:
+			d.browseOnce(ctx)
 		}
 	}
+}
+
+// browseOnce uses macOS DNS-SD, which shares the system Bonjour cache and
+// handles interface changes more reliably than a private multicast socket.
+func (d *Directory) browseOnce(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	services, err := browseServices(int(browseDuration / time.Millisecond))
+	if err != nil {
+		log.Printf("peer discovery: Bonjour browse failed: %v", err)
+		return
+	}
+	for _, found := range services {
+		d.acceptCandidate(found)
+	}
+}
+
+func (d *Directory) acceptCandidate(found discoveredService) bool {
+	id, host, port := found.id, found.host, found.port
+	if id == "" || id == d.selfID || host == "" {
+		return false
+	}
+	if port <= 0 {
+		return false
+	}
+	roomURL := fmt.Sprintf("https://%s:%d", host, port)
+	d.mu.Lock()
+	previous, existed := d.candidates[id]
+	d.candidates[id] = candidate{id: id, roomURL: roomURL, seen: time.Now()}
+	d.mu.Unlock()
+	if !existed || previous.roomURL != roomURL {
+		log.Printf("peer discovery: found %s at %s", id, roomURL)
+	}
+	return true
 }
 
 func (d *Directory) probeLoop(ctx context.Context) {
@@ -169,16 +183,25 @@ func (d *Directory) probe(ctx context.Context) {
 			}
 			resp, err := d.client.Do(req)
 			if err != nil {
+				if previous.ID != "" {
+					log.Printf("peer discovery: lost %s: %v", c.id, err)
+				}
 				d.removePeer(c.id)
 				return
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
+				if previous.ID != "" {
+					log.Printf("peer discovery: lost %s: %s", c.id, resp.Status)
+				}
 				d.removePeer(c.id)
 				return
 			}
 			var peer Peer
 			if json.NewDecoder(resp.Body).Decode(&peer) != nil || peer.ID != c.id {
+				if previous.ID != "" {
+					log.Printf("peer discovery: lost %s: invalid identity", c.id)
+				}
 				d.removePeer(c.id)
 				return
 			}
@@ -189,6 +212,9 @@ func (d *Directory) probe(ctx context.Context) {
 			d.mu.Lock()
 			d.peers[c.id] = peer
 			d.mu.Unlock()
+			if previous.ID == "" {
+				log.Printf("peer discovery: connected to %s (%s)", peer.ID, peer.Name)
+			}
 		}()
 	}
 	wg.Wait()

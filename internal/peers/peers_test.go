@@ -23,6 +23,25 @@ func TestTXTValues(t *testing.T) {
 	}
 }
 
+func TestAcceptCandidateRequiresResolvedTXT(t *testing.T) {
+	d := &Directory{
+		selfID:     "self",
+		candidates: make(map[string]candidate),
+		peers:      make(map[string]Peer),
+	}
+	if d.acceptCandidate(discoveredService{}) {
+		t.Fatal("PTR-only browse result was accepted as a complete candidate")
+	}
+	resolved := discoveredService{id: "other", host: "cosmic-jam.party.partyparty.party", port: 8443}
+	if !d.acceptCandidate(resolved) {
+		t.Fatal("resolved service was rejected")
+	}
+	got := d.candidates["other"]
+	if got.roomURL != "https://cosmic-jam.party.partyparty.party:8443" {
+		t.Fatalf("candidate = %#v", got)
+	}
+}
+
 func TestBonjourAdvertisement(t *testing.T) {
 	if os.Getenv("PP_TEST_MDNS") != "1" {
 		t.Skip("set PP_TEST_MDNS=1 for a physical multicast round trip")
@@ -50,6 +69,20 @@ func TestBonjourAdvertisement(t *testing.T) {
 				return
 			}
 		}
+	}
+}
+
+func TestNativeBonjourBrowse(t *testing.T) {
+	if os.Getenv("PP_TEST_MDNS") != "1" {
+		t.Skip("set PP_TEST_MDNS=1 for a physical multicast round trip")
+	}
+	services, err := browseServices(1500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("services: %#v", services)
+	if len(services) < 2 {
+		t.Fatalf("expected at least two PartyParty services, got %d", len(services))
 	}
 }
 
