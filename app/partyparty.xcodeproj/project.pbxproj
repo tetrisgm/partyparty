@@ -14,6 +14,7 @@
 		100000000000000000000005 /* ServerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* ServerController.swift */; };
 		100000000000000000000006 /* StatusPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* StatusPoller.swift */; };
 		100000000000000000000007 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* main.swift */; };
+		10000000000000000000000A /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* Updater.swift */; };
 		100000000000000000000008 /* AppAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* AppAssets.xcassets */; };
 		100000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -30,6 +31,7 @@
 		200000000000000000000009 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		20000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		20000000000000000000000B /* partyparty.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = partyparty.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000C /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +66,7 @@
 				200000000000000000000005 /* ServerController.swift */,
 				200000000000000000000006 /* StatusPoller.swift */,
 				200000000000000000000007 /* main.swift */,
+				20000000000000000000000C /* Updater.swift */,
 			);
 			path = Sources/partyparty;
 			sourceTree = "<group>";
@@ -176,6 +179,7 @@
 				100000000000000000000005 /* ServerController.swift in Sources */,
 				100000000000000000000006 /* StatusPoller.swift in Sources */,
 				100000000000000000000007 /* main.swift in Sources */,
+				10000000000000000000000A /* Updater.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
