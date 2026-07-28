@@ -357,8 +357,12 @@
   .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
   .linkeditor{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
   .profileeditor{display:grid;grid-template-columns:82px minmax(0,1fr);gap:14px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--separator)}
+  .profileimagewrap{position:relative;width:82px;height:82px}
   .profilephoto{width:82px;height:82px;border-radius:50%;object-fit:cover;background:var(--fill);border:1px solid var(--separator)}
+  .profileremove{position:absolute;top:-5px;right:-5px;width:24px;height:24px;display:grid;place-items:center;padding:0;border:2px solid var(--bg-elevated);border-radius:50%;background:#55565c;color:#fff;font:700 15px/1 var(--sans);cursor:pointer}
   .profilephoto-actions{display:grid;align-content:start;gap:7px}
+  .profilefield{display:grid;gap:6px;color:var(--label-secondary);font-size:12px;font-weight:650}
+  .profilefield input{height:38px;background:var(--fill);border:1px solid var(--separator);border-radius:8px;padding:0 10px;color:var(--label);font:inherit;font-size:14px}
   .profilephoto-actions textarea{width:100%;min-height:74px;resize:vertical;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:9px 10px;color:var(--label);font:inherit}
   .profilebuttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .profilestatus{font-size:12px;color:var(--label-secondary)}
@@ -366,6 +370,26 @@
   .rostergroup:last-child{border-bottom:0}
   .rostergrouphead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800}
   .rostergrouphead small{color:var(--label-secondary);font-weight:600}
+  /* macOS-style hierarchy: quiet grouped surfaces, aligned fields, one clear
+     action row per section. */
+  .page{max-width:1120px;padding:0 24px 64px}
+  .eventtop{gap:14px}
+  .card,.linkeditor{border-radius:8px;box-shadow:none}
+  header.eventhead{padding:22px 24px;background:var(--bg-elevated)}
+  .eventhead-grid{grid-template-columns:minmax(0,1fr) 180px;gap:24px;min-height:180px}
+  .ename{font-size:34px;line-height:1.12}
+  .event-admin-tools{margin-top:14px;padding:0;background:transparent;border:0;box-shadow:none}
+  .linkeditor{padding:20px 22px;background:var(--bg-elevated);margin:0}
+  .linkeditor-head{margin:0 0 18px;padding-bottom:12px;border-bottom:1px solid var(--separator)}
+  .linkeditor-head b{font-size:18px}
+  .profileeditor{grid-template-columns:96px minmax(0,1fr);gap:18px;margin-bottom:18px;padding-bottom:18px}
+  .profileimagewrap,.profilephoto{width:96px;height:96px}
+  .profilephoto-actions{gap:10px}
+  .profilephoto-actions textarea{min-height:86px;border-radius:8px}
+  .profilebuttons,.linkactions{justify-content:flex-end;padding-top:4px}
+  .party-grid{gap:14px;margin-top:14px}
+  .party-grid .card{padding:20px}
+  .guest-sidebar .card{min-height:240px}
   .linkeditor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
   .linkeditor-head b{font-size:13px}
   .linkrows{display:grid;gap:8px}
@@ -503,13 +527,8 @@
     <div class="eventhead-grid">
       <div class="event-copy">
         <div class="titlerow">
-          <h1 class="ename"><span id="titleEdit">partyparty</span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
+          <h1 class="ename"><span id="titleEdit">Name your event</span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
         </div>
-        <div class="ehost">
-          <span class="host-by">hosted by&nbsp;<b id="hostEdit">the DJ</b><button class="fieldedit" type="button" data-event-field="host" aria-label="Edit host" title="Edit host"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></span>
-          <span id="devnameWrap" hidden>▶ <b id="devname"></b></span>
-        </div>
-        <div class="hostlinks" id="heroLinks" hidden></div>
       </div>
       <div class="event-qr" id="shareCard" hidden>
         <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
@@ -526,10 +545,6 @@
         <label class="eventform-field wide" data-edit-group="title">
           <span>Event name</span>
           <input id="eventTitleInput" type="text" maxlength="80" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="eventform-field wide" data-edit-group="host">
-          <span>Host / creator</span>
-          <input id="eventHostInput" type="text" maxlength="40" autocomplete="off" spellcheck="false">
         </label>
       </div>
       <div class="eventform-actions">
@@ -556,11 +571,15 @@
 
   <div class="card event-admin-tools" id="eventManagePanel">
     <div class="linkeditor" id="linkEditor">
-      <div class="linkeditor-head"><b>Your links</b></div>
+      <div class="linkeditor-head"><b>About You</b></div>
       <div class="profileeditor">
-        <img class="profilephoto" id="profilePhoto" src="/art-512.png" alt="DJ profile photo">
+        <div class="profileimagewrap">
+          <img class="profilephoto" id="profilePhoto" src="/art-512.png" alt="DJ profile photo">
+          <button class="profileremove" id="profilePhotoRemoveBtn" type="button" aria-label="Remove profile photo" title="Remove profile photo" hidden>×</button>
+        </div>
         <div class="profilephoto-actions">
-          <textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea>
+          <label class="profilefield"><span>Name</span><input id="profileName" type="text" maxlength="40" autocomplete="name" placeholder="Your DJ name"></label>
+          <label class="profilefield"><span>About</span><textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea></label>
           <div class="profilebuttons">
             <button class="ghost" id="profilePhotoBtn" type="button">Choose profile photo</button>
             <button class="go" id="saveProfileBtn" type="button">Save profile</button>
@@ -1140,6 +1159,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (lastState === 'live' || lastState === 'starting') {
       fetch('/api/stop', { method:'POST' }).then(refresh);
     } else {
+      if (!eventMeta.title.trim()) {
+        setEventEditOpen('title');
+        return;
+      }
       startBroadcast();
     }
   };
@@ -1162,14 +1185,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const el = $('lanState');
     if (!el) return;
     if (!l || typeof l !== 'object' || !l.state) { el.hidden = true; return; }
-    const lanN = l.lanListeners | 0;
     let tone = 'offline-status', text = '';
     switch (l.state) {
       case 'confirmed':
-        text = lanN > 0
-          ? ('Guests connected to the LAN room (' + lanN + ') - streaming straight off this Mac.')
-          : 'A guest reached the LAN room - streaming straight off this Mac.';
-        break;
+        el.hidden = true;
+        return;
       case 'ready':
         el.hidden = true;
         return;
@@ -1351,7 +1371,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   startConsoleRefresh();
 
   // ── Event identity: display first, edit only when requested ──
-  const eventMeta = { title: 'partyparty', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', bio: '', avatar: '', slug: '' };
+  const eventMeta = { title: '', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', bio: '', avatar: '', slug: '' };
   let eventEditField = '';
   function isPlaceholderHost(host){
     const h = String(host || '').trim().toLowerCase();
@@ -1368,8 +1388,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   function setInputValue(id, value){ const el = $(id); if (el && document.activeElement !== el) el.value = value || ''; }
   function fillEventEditForm(field){
     setInputValue('eventTitleInput', eventMeta.title);
-    setInputValue('eventHostInput', eventMeta.host);
-    const labels = { title:'event name', host:'host' };
+    const labels = { title:'event name' };
     $('eventEditHeading').textContent = 'Edit ' + (labels[field] || 'event');
     setFormStatus('eventEditStatus', '', '');
   }
@@ -1385,7 +1404,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (head) head.classList.toggle('editing', !!eventEditField);
     if (eventEditField) {
       fillEventEditForm(eventEditField);
-      const focusID = { title:'eventTitleInput', host:'eventHostInput' }[eventEditField];
+      const focusID = { title:'eventTitleInput' }[eventEditField];
       setTimeout(() => { const el = $(focusID); if (el) el.focus(); }, 30);
     }
     refresh();
@@ -1400,9 +1419,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (eventEditField === 'title') {
       body.title = inputValue('eventTitleInput');
       if (!body.title) { setFormStatus('eventEditStatus', 'Add an event name.', 'error'); $('eventTitleInput').focus(); return; }
-    } else if (eventEditField === 'host') {
-      body.host = inputValue('eventHostInput');
-      if (!body.host) { setFormStatus('eventEditStatus', 'Add a host name.', 'error'); $('eventHostInput').focus(); return; }
     } else {
       return;
     }
@@ -1424,7 +1440,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
   }
   if ($('eventEditSaveBtn')) $('eventEditSaveBtn').onclick = saveEventDetails;
-  ['eventTitleInput', 'eventHostInput'].forEach(id => {
+  ['eventTitleInput'].forEach(id => {
     const el = $(id);
     if (el) el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); saveEventDetails(); }
@@ -1615,7 +1631,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   function syncHeader(title, host, starts, slug, date, clock, place, cover){
     const fallbackHost = 'the DJ';
     const shouldAutofillHost = isPlaceholderHost(host);
-    eventMeta.title = title || 'partyparty';
+    eventMeta.title = title || '';
     eventMeta.host = shouldAutofillHost ? fallbackHost : host;
     eventMeta.starts = starts || '';
     if (typeof slug === 'string') eventMeta.slug = slug;
@@ -1623,14 +1639,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (typeof clock === 'string') eventMeta.time = clock;
     if (typeof place === 'string') eventMeta.place = place;
     if (typeof cover === 'string') eventMeta.cover = cover;
-    $('titleEdit').textContent = eventMeta.title;
-    $('hostEdit').textContent = eventMeta.host;
+    $('titleEdit').textContent = eventMeta.title || 'Name your event';
     syncEventCover(eventMeta.cover);
     if (eventEditField) {
       const active = document.activeElement;
       if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm(eventEditField);
     }
-    if (eventMeta.title) document.title = eventMeta.title + ' - partyparty';
+    document.title = (eventMeta.title ? eventMeta.title + ' - ' : '') + 'partyparty';
   }
 
   // ── The party wall (DJ view): render + post + comment + moderate + curate ──
@@ -1653,12 +1668,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
     ];
     let linkSig = '';
-    function validHTTPURL(v){
-      try {
-        const u = new URL((v || '').trim());
-        return u.protocol === 'http:' || u.protocol === 'https:';
-      } catch (e) { return false; }
-    }
     function cleanUsername(raw){
       const username = String(raw || '').trim().replace(/^[@$]+/, '');
       return /^[a-z0-9][a-z0-9._-]{0,79}$/i.test(username) ? username : '';
@@ -1702,26 +1711,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         return cleanUsername(link.url);
       }
     }
-    function linkLabel(link){
-      return linkTypeLabels.get(link && link.type) || 'Link';
-    }
-    function renderHeroLinks(links){
-      const wrap = $('heroLinks');
-      if (!wrap) return;
-      const clean = (Array.isArray(links) ? links : [])
-        .filter(link => link && linkTypeLabels.has(link.type) && validHTTPURL(link.url));
-      wrap.hidden = clean.length === 0;
-      wrap.textContent = '';
-      for (const link of clean) {
-        const a = document.createElement('a');
-        a.className = 'll';
-        a.href = link.url.trim();
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.textContent = linkLabel(link);
-        wrap.appendChild(a);
-      }
-    }
     function editorRows(links){
       const list = Array.isArray(links) ? links : [];
       const picked = new Map();
@@ -1763,13 +1752,17 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       rows.textContent = '';
       for (const link of clean) rows.appendChild(linkRow(link));
     }
-    function renderProfile(bio, avatar){
+    function renderProfile(name, bio, avatar){
+      eventMeta.host = String(name || eventMeta.host || 'the DJ');
       eventMeta.bio = String(bio || '');
       eventMeta.avatar = String(avatar || '');
+      const nameInput = $('profileName');
+      if (nameInput && document.activeElement !== nameInput) nameInput.value = isPlaceholderHost(eventMeta.host) ? '' : eventMeta.host;
       const bioInput = $('profileBio');
       if (bioInput && document.activeElement !== bioInput) bioInput.value = eventMeta.bio;
       const photo = $('profilePhoto');
       if (photo) photo.src = eventMeta.avatar ? eventMeta.avatar + '?v=' + encodeURIComponent(eventMeta.avatar) : '/art-512.png';
+      $('profilePhotoRemoveBtn').hidden = !eventMeta.avatar;
     }
     function collectLinks(){
       const links = [];
@@ -1845,7 +1838,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (!r.ok || d.error) throw new Error(d.error || 'link save failed');
         linkSig = '';
         renderLinkEditor(d.links || []);
-        renderHeroLinks(d.links || []);
         status.textContent = 'Saved';
       } catch (err) {
         status.textContent = err.message || 'link save failed';
@@ -1865,11 +1857,23 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         const r = await fetch('/api/dj-avatar-local', { method:'POST', body:fd });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || data.error) throw new Error(data.error || 'upload failed');
-        renderProfile(eventMeta.bio, data.avatar || '/dj-avatar');
+        renderProfile(eventMeta.host, eventMeta.bio, data.avatar || '/dj-avatar');
         $('profilePhoto').src = (data.avatar || '/dj-avatar') + '?v=' + Date.now();
-        status.textContent = 'Photo saved';
+        status.textContent = '';
       } catch (error) {
         status.textContent = error.message || 'upload failed';
+      }
+    });
+    $('profilePhotoRemoveBtn').addEventListener('click', async () => {
+      const status = $('profileStatus');
+      try {
+        const r = await fetch('/api/dj-avatar-local', { method:'DELETE' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) throw new Error(data.error || 'remove failed');
+        renderProfile(eventMeta.host, eventMeta.bio, '');
+        status.textContent = '';
+      } catch (error) {
+        status.textContent = error.message || 'remove failed';
       }
     });
     $('saveProfileBtn').addEventListener('click', async () => {
@@ -1878,10 +1882,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       status.textContent = 'Saving…';
       try {
         const r = await fetch('/api/dj-profile', { method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ bio:$('profileBio').value.trim() }) });
+          body:JSON.stringify({ name:$('profileName').value.trim(), bio:$('profileBio').value.trim() }) });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || data.error) throw new Error(data.error || 'save failed');
-        renderProfile(data.bio, data.avatar);
+        renderProfile(data.name, data.bio, data.avatar);
         status.textContent = 'Saved';
       } catch (error) {
         status.textContent = error.message || 'save failed';
@@ -2162,8 +2166,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderLinkEditor(data.links || []);
-        renderProfile(data.bio, data.avatar);
-        renderHeroLinks(data.links || []);
+        renderProfile(data.host, data.bio, data.avatar);
         pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);

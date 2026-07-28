@@ -199,16 +199,18 @@
   .welgo{width:100%;margin-top:auto;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(255,45,85,.28)}
   .welgo:active{transform:scale(.98)}
   .welspace{flex:0 0 6dvh}
-  .djlinks{background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:13px 14px;margin:0 0 12px;box-shadow:var(--shadow)}
-  .djlinks[hidden]{display:none}
-  .djlinks h3{margin:0 0 9px;font-size:14px;letter-spacing:0;color:var(--label)}
-  .linkgroup{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-  .linkgroup[hidden]{display:none}
-  .linkgroup::before{content:attr(data-label);flex:0 0 100%;color:var(--label-tertiary);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
-  .djlinkchip{display:inline-flex;align-items:center;gap:7px;min-height:36px;max-width:100%;border-radius:999px;background:var(--fill);color:var(--label);padding:8px 12px;text-decoration:none;font-size:13px;font-weight:800}
-  .djlinkchip b{font-size:14px;line-height:1;flex:0 0 auto}
-  .djlinkchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .djlinkchip.tip{background:#fff0f4;color:var(--accent)}
+  .djprofile{background:var(--card);border:1px solid var(--separator);border-radius:12px;padding:14px;margin:0 0 14px;box-shadow:0 2px 12px rgba(0,0,0,.05)}
+  .djprofile[hidden]{display:none}
+  .djprofilename{font-size:16px;font-weight:850;color:var(--label)}
+  .djprofilebio{margin-top:5px;color:var(--label-secondary);font-size:14px;line-height:1.45;white-space:pre-wrap}
+  .djprofilebio:empty{display:none}
+  .djprofilelinks{display:grid;margin-top:12px;border-top:1px solid var(--separator)}
+  .djprofilelinks:empty{display:none}
+  .djprofilelink{min-height:44px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--separator);color:var(--label);font-size:14px;font-weight:700;text-decoration:none}
+  .djprofilelink:last-child{border-bottom:0}
+  .djprofilelink svg{width:18px;height:18px;flex:0 0 auto;color:var(--label-secondary)}
+  .djprofilelink span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .djprofilelink::after{content:'›';color:var(--label-tertiary);font-size:22px;font-weight:400}
   @media (prefers-reduced-motion:reduce){body.playing .btn,body.playing .artwork,.eq i{animation:none}}
   .toptool{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.08)}
   .toptool:active{transform:scale(.95)}
@@ -384,7 +386,7 @@
   }
   .feedhead{font-size:22px;margin:20px 0 3px;color:var(--party-ink)}
   .feedsub{font-size:13px;color:var(--party-muted);margin:0 0 14px}
-  .album,.onlinecard,.djlinks,.post{
+  .album,.onlinecard,.djprofile,.post{
     background:var(--party-card);border:1px solid var(--party-line);box-shadow:0 10px 30px rgba(82,38,33,.1);
   }
   .sectionrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
@@ -474,7 +476,7 @@
   .feed{max-width:720px;margin:0 auto;padding:8px 20px calc(170px + env(safe-area-inset-bottom))}
   .feedhead{font-size:26px;margin-top:14px}
   .feedsub{margin-bottom:16px}
-  .album,.djlinks,.post{background:#fff;border-color:rgba(0,0,0,.08);box-shadow:0 2px 12px rgba(0,0,0,.05)}
+  .album,.djprofile,.post{background:#fff;border-color:rgba(0,0,0,.08);box-shadow:0 2px 12px rgba(0,0,0,.05)}
   .post{border-radius:14px}
   .pverb{color:var(--label-secondary);font-size:12px;font-weight:500}
   .postactions{position:relative;display:flex;align-items:center;gap:12px;margin-top:10px;padding-top:8px;border-top:1px solid var(--separator)}
@@ -643,7 +645,7 @@
   :root{--sheet-bg:#eceff2}
   :root[data-theme="dark"] body,:root[data-theme="dark"] html{background:#141719;color:var(--label)}
   :root[data-theme="dark"] .feed,:root[data-theme="dark"] .djpickerhead,:root[data-theme="dark"] .feedhead{color:var(--label)}
-  :root[data-theme="dark"] .album,:root[data-theme="dark"] .djlinks,:root[data-theme="dark"] .post,
+  :root[data-theme="dark"] .album,:root[data-theme="dark"] .djprofile,:root[data-theme="dark"] .post,
   :root[data-theme="dark"] .djchoice{background:#1b1f21;border-color:var(--separator);color:var(--label);box-shadow:none}
   :root[data-theme="dark"] .djchoice.active{background:var(--dj-tint,#173b27);border-color:var(--dj-color,var(--accent))}
   :root[data-theme="dark"] .sidetray{background:rgba(24,27,29,.97)}
@@ -693,11 +695,9 @@
   .playersheethead{position:absolute;inset:0 0 auto 0;z-index:3;display:flex;justify-content:flex-end;padding:12px;pointer-events:none;touch-action:none}
   .sheetcollapse{width:36px;height:36px;border:0;border-radius:50%;background:var(--fill);color:var(--label);font-size:22px;line-height:1;cursor:pointer}
   .sheetcollapse{pointer-events:auto;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
-  .playersheetscroll{height:100%;overflow:auto;padding:28px 20px calc(28px + env(safe-area-inset-bottom));overscroll-behavior:contain}
-  .sheetlinks{display:flex;gap:7px;flex-wrap:wrap;margin:2px 0 24px}
-  .sheetlinks a{display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border-radius:999px;background:var(--fill);color:var(--label);font-size:11px;font-weight:750;text-decoration:none}
-  .sheetbio{margin:-12px 0 24px;color:var(--label-secondary);font-size:14px;line-height:1.45;white-space:pre-wrap}
-  .sheetbio:empty{display:none}
+  .playersheetscroll{height:100%;overflow:auto;padding:12px 20px calc(28px + env(safe-area-inset-bottom));overscroll-behavior:contain}
+  .playersheetscroll > .sheetsectiontitle:first-child{min-height:36px;display:flex;align-items:center;margin:0 52px 10px 0}
+  .playersheet .djprofile{background:var(--fill);box-shadow:none;margin:8px 0 22px}
   .sheettrack{max-width:430px;margin:0 auto 24px;text-align:center}
   .sheetart{display:block;width:min(76vw,360px);aspect-ratio:1;margin:0 auto 20px;border-radius:10px;object-fit:cover;background:var(--fill);box-shadow:0 14px 38px rgba(0,0,0,.18)}
   .sheettitle{font-size:25px;font-weight:850;line-height:1.12;overflow-wrap:anywhere}
@@ -842,8 +842,11 @@
     <div class="playersheetscroll">
       <div class="sheetsectiontitle" id="sheetDJHeading">1 DJ now playing</div>
       <div class="djlist" id="sheetDJList"></div>
-      <div class="sheetlinks" id="sheetLinks"></div>
-      <div class="sheetbio" id="sheetBio"></div>
+      <section class="djprofile" id="sheetProfile" hidden>
+        <div class="djprofilename" id="sheetProfileName"></div>
+        <div class="djprofilebio" id="sheetBio"></div>
+        <div class="djprofilelinks" id="sheetLinks"></div>
+      </section>
       <div class="sheettrack">
         <img class="sheetart" id="sheetArt" src="/art-512.png" alt="">
         <div class="sheettitle" id="sheetTrackTitle">Live party audio</div>
@@ -862,9 +865,10 @@
       <div class="djswitchnotice" id="djSwitchNotice" role="status" aria-live="polite" hidden></div>
       <div class="djlist" id="djList"></div>
     </section>
-    <section class="djlinks" id="djLinks" hidden>
-      <div class="linkgroup" id="followLinks" data-label="Follow"></div>
-      <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
+    <section class="djprofile" id="djProfile" hidden>
+      <div class="djprofilename" id="djProfileName"></div>
+      <div class="djprofilebio" id="djProfileBio"></div>
+      <div class="djprofilelinks" id="djProfileLinks"></div>
     </section>
     <div class="feedhead" id="feedTitle">Party feed</div>
     <section class="album" id="albumSec" hidden>
@@ -951,8 +955,14 @@
     const sheetArt = document.getElementById('sheetArt');
     const sheetTrackTitle = document.getElementById('sheetTrackTitle');
     const sheetTrackArtist = document.getElementById('sheetTrackArtist');
+    const sheetProfile = document.getElementById('sheetProfile');
+    const sheetProfileName = document.getElementById('sheetProfileName');
     const sheetLinks = document.getElementById('sheetLinks');
     const sheetBio = document.getElementById('sheetBio');
+    const djProfile = document.getElementById('djProfile');
+    const djProfileName = document.getElementById('djProfileName');
+    const djProfileBio = document.getElementById('djProfileBio');
+    const djProfileLinks = document.getElementById('djProfileLinks');
     const sheetPlay = document.getElementById('sheetPlay');
     const playerSheetScroll = playerSheet.querySelector('.playersheetscroll');
     const sheetListenersHeading = document.getElementById('sheetListenersHeading');
@@ -1588,6 +1598,39 @@
       }
       return currentCoverSrc || '/art-512.png';
     }
+    function renderProfileLinks(target, links){
+      target.textContent = '';
+      (Array.isArray(links) ? links : []).forEach((link) => {
+        try {
+          const url = new URL(String(link && link.url || ''));
+          if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
+          const row = document.createElement('a');
+          row.className = 'djprofilelink';
+          row.href = url.href;
+          row.target = '_blank';
+          row.rel = 'noopener';
+          row.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>';
+          const label = document.createElement('span');
+          label.textContent = link.label || link.type || 'Link';
+          row.appendChild(label);
+          target.appendChild(row);
+        } catch (e) {}
+      });
+    }
+    function renderSelectedProfile(){
+      const name = selectedDJName();
+      const bio = selectedBio();
+      const links = selectedLinks();
+      const visible = !!(bio || links.length);
+      sheetProfileName.textContent = name;
+      sheetBio.textContent = bio;
+      renderProfileLinks(sheetLinks, links);
+      sheetProfile.hidden = !visible;
+      djProfileName.textContent = name;
+      djProfileBio.textContent = bio;
+      renderProfileLinks(djProfileLinks, links);
+      djProfile.hidden = !visible;
+    }
     function updatePlayerDetails(){
       const track = selectedTrack();
       const djName = selectedDJName();
@@ -1601,41 +1644,7 @@
       listenCount.textContent = listenerText;
       const palette = djPaletteAt(selectedDJIndex());
       document.documentElement.style.setProperty('--selected-dj-color', palette[0]);
-      sheetLinks.textContent = '';
-      sheetBio.textContent = selectedBio();
-      const mainLinks = document.getElementById('djLinks');
-      const followLinks = document.getElementById('followLinks');
-      const tipLinks = document.getElementById('tipLinks');
-      if (followLinks) followLinks.textContent = '';
-      if (tipLinks) tipLinks.textContent = '';
-      let linkCount = 0;
-      selectedLinks().forEach((link) => {
-        const href = link && String(link.url || '');
-        try {
-          const url = new URL(href);
-          if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
-          const makeChip = () => {
-            const chip = document.createElement('a');
-            chip.href = url.href;
-            chip.target = '_blank';
-            chip.rel = 'noopener';
-            chip.textContent = link.label || link.type || 'Link';
-            return chip;
-          };
-          sheetLinks.appendChild(makeChip());
-          const tip = ['venmo', 'cashapp', 'paypal'].includes(link.type);
-          const parent = tip ? tipLinks : followLinks;
-          if (parent) {
-            const chip = makeChip();
-            chip.className = 'djlinkchip' + (tip ? ' tip' : '');
-            parent.appendChild(chip);
-          }
-          linkCount++;
-        } catch (e) {}
-      });
-      if (followLinks) followLinks.hidden = !followLinks.children.length;
-      if (tipLinks) tipLinks.hidden = !tipLinks.children.length;
-      if (mainLinks) mainLinks.hidden = linkCount === 0;
+      renderSelectedProfile();
       const isPlaying = document.body.classList.contains('playing');
       sheetPlay.innerHTML = isPlaying
         ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
@@ -2568,7 +2577,6 @@
       const $id = (i) => document.getElementById(i);
       const feedSec = $id('feedSec'), feedList = $id('feedList'), downhint = $id('downhint');
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      const djLinks = $id('djLinks'), followLinks = $id('followLinks'), tipLinks = $id('tipLinks');
       const albumSec = $id('albumSec'), albumStrip = $id('albumStrip');
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const featureDefaults = {
@@ -2597,37 +2605,6 @@
       }
       function featureOn(name){
         return currentFeatures[name] !== false;
-      }
-      const tipTypes = new Set(['venmo', 'cashapp', 'paypal']);
-      const linkIcons = {
-        instagram: '◎', soundcloud: '☁', bandcamp: '▰', mixcloud: '☁', resident_advisor: 'RA',
-        venmo: 'V', cashapp: '$', paypal: 'P', website: '↗', newsletter: '@', other: '↗'
-      };
-      const linkLabels = {
-        instagram: 'Instagram', soundcloud: 'SoundCloud', bandcamp: 'Bandcamp', mixcloud: 'Mixcloud',
-        resident_advisor: 'Resident Advisor', venmo: 'Venmo', cashapp: 'Cash App', paypal: 'PayPal',
-        website: 'Website', newsletter: 'Newsletter', other: 'Link'
-      };
-      function safeHTTP(url){
-        try {
-          const u = new URL(url);
-          return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : '';
-        } catch (e) { return ''; }
-      }
-      function addLinkChip(parent, link){
-        const href = safeHTTP(link && link.url);
-        if (!href) return 0;
-        const typ = link.type || 'other';
-        const a = document.createElement('a');
-        a.className = 'djlinkchip' + (tipTypes.has(typ) ? ' tip' : '');
-        a.href = href; a.target = '_blank'; a.rel = 'noopener';
-        const icon = document.createElement('b');
-        icon.textContent = linkIcons[typ] || linkIcons.other;
-        const label = document.createElement('span');
-        label.textContent = linkLabels[typ] || 'Link';
-        a.appendChild(icon); a.appendChild(label);
-        parent.appendChild(a);
-        return 1;
       }
       function renderDJLinks(links){
         currentLinks = Array.isArray(links) ? links : currentLinks;

@@ -43,6 +43,9 @@ assert.doesNotMatch(listener, /✓ Listening/);
 assert.match(listener, /const djPalette = \[/);
 assert.match(listener, /--selected-dj-color/);
 assert.match(listener, /id="sheetBio"/);
+assert.match(listener, /id="sheetProfileName"/);
+assert.match(listener, /id="djProfileBio"/);
+assert.match(listener, /row\.className = 'djprofilelink'/);
 assert.doesNotMatch(listener, /id="sheetListenCount"/);
 assert.match(listener, /let discoveredPeers = \[\], selectedDJId = ''/);
 assert.match(listener, /function openPlayerSheet\(anchor\)/);
@@ -72,6 +75,12 @@ assert.match(listener, /navigator\.mediaSession\.setActionHandler\('pause',[\s\S
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');
+assert.match(dj, />About You</);
+assert.match(dj, /id="profileName"/);
+assert.match(dj, /id="profilePhotoRemoveBtn"/);
+assert.doesNotMatch(dj, /Guests connected to the LAN room/);
+assert.doesNotMatch(dj, /hosted by&nbsp;/);
+assert.doesNotMatch(dj, /id="heroLinks"/);
 assert.doesNotMatch(dj, /\/api\/start[^'"\n]*(?:bitrate|mono)|[?&](?:bitrate|mono)=/);
 assert.match(dj, /\$\('shareCard'\)\.hidden = !linkReady;/);
 assert.match(dj, /\$\('partyQrPanel'\)\.hidden = !linkReady;/);

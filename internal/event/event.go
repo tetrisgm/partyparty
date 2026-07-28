@@ -586,9 +586,12 @@ func (s *Store) use(dir string) error {
 	if data, err := os.ReadFile(dataPath(dir, "guests.json")); err == nil {
 		_ = json.Unmarshal(data, &guests)
 	}
-	meta := Meta{Title: "partyparty", Host: "the DJ"}
+	meta := Meta{Host: "the DJ"}
 	if data, err := os.ReadFile(dataPath(dir, "meta.json")); err == nil {
 		_ = json.Unmarshal(data, &meta)
+	}
+	if strings.EqualFold(strings.TrimSpace(meta.Title), "partyparty") {
+		meta.Title = ""
 	}
 	meta.Features = normalizeFeatures(meta.Features)
 	meta.Links, _ = normalizeLinks(meta.Links)
@@ -766,12 +769,35 @@ func (s *Store) saveMetaLocked() error {
 	return os.WriteFile(dataPath(s.dir, "meta.json"), data, 0o644)
 }
 
-// SetProfile stores the DJ biography. The avatar is uploaded separately so a
-// text edit never rewrites image data.
-func (s *Store) SetProfile(bio string) error {
+// SetProfile stores the public DJ name and biography. The avatar is uploaded
+// separately so a text edit never rewrites image data.
+func (s *Store) SetProfile(name, bio string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if name = clip(strings.TrimSpace(name), 40); name != "" {
+		s.meta.Host = name
+	}
 	s.meta.Bio = clip(strings.TrimSpace(bio), 600)
+	if err := s.saveMetaLocked(); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
+// RemoveAvatar restores the built-in profile image.
+func (s *Store) RemoveAvatar() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, _ := os.ReadDir(dataDir(s.dir))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "profile.") {
+			if err := os.Remove(dataPath(s.dir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	s.meta.Avatar = ""
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}

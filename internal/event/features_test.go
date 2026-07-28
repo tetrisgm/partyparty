@@ -123,7 +123,7 @@ func TestProfilePersistsInsideDataDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetProfile("  Dance floor specialist  "); err != nil {
+	if err := st.SetProfile("  DJ Luna  ", "  Dance floor specialist  "); err != nil {
 		t.Fatal(err)
 	}
 	wantAvatar := []byte("profile image")
@@ -132,7 +132,7 @@ func TestProfilePersistsInsideDataDirectory(t *testing.T) {
 	}
 
 	meta := st.Meta()
-	if meta.Bio != "Dance floor specialist" || meta.Avatar != "/dj-avatar" {
+	if meta.Host != "DJ Luna" || meta.Bio != "Dance floor specialist" || meta.Avatar != "/dj-avatar" {
 		t.Fatalf("profile meta = %#v", meta)
 	}
 	avatarPath, ok := st.AvatarPath()
@@ -153,5 +153,11 @@ func TestProfilePersistsInsideDataDirectory(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(st.Dir(), name)); !os.IsNotExist(err) {
 			t.Fatalf("top-level %s exists: %v", name, err)
 		}
+	}
+	if err := st.RemoveAvatar(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.AvatarPath(); ok || st.Meta().Avatar != "" {
+		t.Fatal("RemoveAvatar left a public avatar")
 	}
 }

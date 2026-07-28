@@ -579,7 +579,7 @@ func TestDJProfileEndpointsAndPublicExposure(t *testing.T) {
 	if w := doBody(s, http.MethodPost, "/api/dj-profile", "192.168.1.44:3333", "application/json", bytes.NewBufferString(`{"bio":"guest edit"}`)); w.Code != http.StatusForbidden {
 		t.Fatalf("guest profile status = %d, want 403", w.Code)
 	}
-	w := doBody(s, http.MethodPost, "/api/dj-profile", djAddr, "application/json", bytes.NewBufferString(`{"bio":"Dance floor specialist"}`))
+	w := doBody(s, http.MethodPost, "/api/dj-profile", djAddr, "application/json", bytes.NewBufferString(`{"name":"DJ Luna","bio":"Dance floor specialist"}`))
 	if w.Code != http.StatusOK {
 		t.Fatalf("DJ profile status = %d, body %q", w.Code, w.Body.String())
 	}
@@ -590,12 +590,19 @@ func TestDJProfileEndpointsAndPublicExposure(t *testing.T) {
 	}
 
 	feed := decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
-	if feed["bio"] != "Dance floor specialist" || feed["avatar"] != "/dj-avatar" {
-		t.Fatalf("public profile = bio %#v avatar %#v", feed["bio"], feed["avatar"])
+	if feed["host"] != "DJ Luna" || feed["bio"] != "Dance floor specialist" || feed["avatar"] != "/dj-avatar" {
+		t.Fatalf("public profile = host %#v bio %#v avatar %#v", feed["host"], feed["bio"], feed["avatar"])
 	}
 	w = do(s, http.MethodGet, "/dj-avatar", "192.168.1.44:3333")
 	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), []byte("media bytes")) {
 		t.Fatalf("avatar response status=%d body=%q", w.Code, w.Body.String())
+	}
+	w = do(s, http.MethodDelete, "/api/dj-avatar-local", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete avatar status = %d, body %q", w.Code, w.Body.String())
+	}
+	if _, ok := ev.AvatarPath(); ok {
+		t.Fatal("avatar still exists after delete")
 	}
 }
 
