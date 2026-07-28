@@ -1070,10 +1070,10 @@
       discoveredPeers.forEach((peer) => {
         if (!peer.live || !peer.ready || !peer.streamUrl) return;
         const audio = peerPlayer(peer);
-        // Status polling repaints this list every three seconds. Never mute the
-        // selected DJ while warming the other streams in the background.
+        // Let AVPlayer preload the stream, but do not run multiple native HLS
+        // sessions concurrently. On iPhone that can degrade the selected
+        // session even when the other elements are muted.
         audio.muted = peer.id !== activePeerID;
-        audio.play().catch(() => {});
       });
     }
     function paintDJs(peers){
@@ -1135,7 +1135,10 @@
       claimAudio();
       if (!id) {
         activePeerID = '';
-        peerPlayers.forEach((audio) => { audio.muted = true; });
+        peerPlayers.forEach((audio) => {
+          audio.muted = true;
+          audio.pause();
+        });
         if (started) {
           userPaused = false;
           player.muted = false;
@@ -1152,14 +1155,19 @@
       const audio = peerPlayer(peer);
       const switchStartedAt = performance.now();
       const wasWarm = !audio.paused && audio.readyState >= 2;
-      peerPlayers.forEach((candidate, peerID) => { candidate.muted = peerID !== id; });
-      player.muted = true;
       activePeerID = id;
+      peerPlayers.forEach((candidate, peerID) => {
+        candidate.muted = peerID !== id;
+        if (peerID !== id) candidate.pause();
+      });
+      player.muted = true;
+      player.pause();
       audio.muted = false;
       audio.play().then(() => {
         setPlayingUI(true);
         setStatus('live');
         btnHint.textContent = peer.name || 'PartyParty DJ';
+        mediaSession();
         logEvent('dj-switch', { peer: id, ms: Math.round(performance.now() - switchStartedAt), warm: wasWarm });
       }).catch(() => {
         audio.muted = true;
@@ -1521,7 +1529,7 @@
     // genuinely stuck). A muted-pause has readyState high, so it's excluded.
     document.querySelector('.hero').addEventListener('click', (e) => {
       if (e.target.closest('#btn') || e.target.closest('.toptool')) return; // their own handlers
-      if (started && !userPaused && !player.muted && !yielded && (player.paused || player.readyState < 3)) recoverPlayback();
+      if (!activePeerID && started && !userPaused && !player.muted && !yielded && (player.paused || player.readyState < 3)) recoverPlayback();
     });
 
     let errRetries = 0;
@@ -1740,6 +1748,14 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       syncClock();
+      if (activePeerID) {
+        const selected = peerPlayers.get(activePeerID);
+        const playing = !!selected && !selected.muted && !selected.paused;
+        setPlayingUI(playing);
+        setStatus(playing ? 'live' : 'tap to resume');
+        poll();
+        return;
+      }
       // Coming back to the tab: reconnect if the interruption outlived the
       // live window, and check for a newer page version IMMEDIATELY (a tab
       // parked in the background for days must not keep running old code).
@@ -1753,7 +1769,7 @@
     // (may still need a tap on stricter iOS — the button says "Resume").
     try {
       navigator.mediaDevices && navigator.mediaDevices.addEventListener('devicechange', () => {
-        if (started && !userPaused && !yielded && player.paused) recoverPlayback();
+        if (!activePeerID && started && !userPaused && !yielded && player.paused) recoverPlayback();
       });
     } catch (e) {}
 
@@ -1765,6 +1781,13 @@
           artwork: [{ src: '/art-512.png', sizes: '512x512', type: 'image/png' }]
         });
         navigator.mediaSession.setActionHandler('play',  () => {
+          if (activePeerID) {
+            const selected = peerPlayers.get(activePeerID);
+            if (!selected) return;
+            selected.muted = false;
+            selected.play().then(() => setPlayingUI(true)).catch(() => setStatus('tap to resume'));
+            return;
+          }
           if (playBlocked) retryPlayback('media-session');
           else if (started) resumeGuest();
           else if (streamReady) {
@@ -1773,7 +1796,16 @@
             play().catch(()=>{});
           }
         });
-        navigator.mediaSession.setActionHandler('pause', () => { if (started) pauseGuest(); });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          if (activePeerID) {
+            const selected = peerPlayers.get(activePeerID);
+            if (selected) selected.muted = true;
+            setPlayingUI(false);
+            setStatus('paused');
+            return;
+          }
+          if (started) pauseGuest();
+        });
       } catch (e) {}
     }
 

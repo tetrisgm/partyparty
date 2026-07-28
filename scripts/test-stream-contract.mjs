@@ -40,6 +40,14 @@ assert.match(listener, /<div class="djpickerhead">Now Playing<\/div>[\s\S]*?<div
 assert.match(listener, /discoveredPeers\.forEach\(\(peer\) =>/);
 assert.match(listener, /activePeerID === peer\.id \? 'Now playing'/);
 assert.match(listener, /audio\.muted = peer\.id !== activePeerID;/);
+const primePeerPlayers = listener.match(/function primePeerPlayers\(\)\{([\s\S]*?)\n    \}/);
+assert.ok(primePeerPlayers, 'primePeerPlayers function is missing');
+assert.doesNotMatch(primePeerPlayers[1], /audio\.play\(\)/);
+assert.match(listener, /if \(peerID !== id\) candidate\.pause\(\);/);
+assert.match(listener, /if \(activePeerID\) \{[\s\S]*?const selected = peerPlayers\.get\(activePeerID\);[\s\S]*?poll\(\);[\s\S]*?return;/);
+assert.match(listener, /if \(!activePeerID && started && !userPaused && !yielded && player\.paused\) recoverPlayback\(\);/);
+assert.match(listener, /navigator\.mediaSession\.setActionHandler\('play',[\s\S]*?if \(activePeerID\) \{[\s\S]*?selected\.play\(\)/);
+assert.match(listener, /navigator\.mediaSession\.setActionHandler\('pause',[\s\S]*?if \(activePeerID\) \{/);
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');
