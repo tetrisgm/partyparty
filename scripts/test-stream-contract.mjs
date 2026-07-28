@@ -79,6 +79,13 @@ assert.match(listener, /navigator\.mediaSession\.setActionHandler\('pause',[\s\S
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');
+const djIDs = new Set([...dj.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]));
+const djIDRefs = [...dj.matchAll(/\$\(["']([^"']+)["']\)/g)].map((match) => match[1]);
+assert.deepEqual(
+  [...new Set(djIDRefs.filter((id) => !djIDs.has(id)))].sort(),
+  [],
+  'DJ console JavaScript references an element that is no longer in the page',
+);
 assert.match(dj, />About You</);
 assert.match(dj, />Event Details</);
 assert.match(dj, /Add another link/);
@@ -88,17 +95,24 @@ assert.match(dj, /id="profilePhotoRemoveBtn"/);
 assert.doesNotMatch(dj, /Guests connected to the LAN room/);
 assert.doesNotMatch(dj, /hosted by&nbsp;/);
 assert.doesNotMatch(dj, /id="heroLinks"/);
+assert.doesNotMatch(dj, /\$\('devname(?:Wrap)?'\)/);
 assert.doesNotMatch(dj, /\/api\/start[^'"\n]*(?:bitrate|mono)|[?&](?:bitrate|mono)=/);
-assert.match(dj, /if \(linkReady\) renderQR\(guestUrl\);/);
+assert.match(dj, /renderQR\(guestUrl\);[\s\S]*?return;/);
 assert.match(dj, /id="qrPending" role="status" aria-live="polite"/);
 assert.match(dj, /Creating secure guest link/);
 assert.match(dj, /Retrying automatically/);
+assert.match(dj, /const INITIAL_GUEST_URL = __PP_INITIAL_GUEST_URL_JSON__;/);
+assert.match(dj, /function renderGuestLink\(s\)/);
+assert.match(dj, /renderGuestLink\(null\);/);
+assert.match(dj, /const s = await \(await fetch\('\/api\/status'[\s\S]*?renderGuestLink\(s\);[\s\S]*?const st = s\.broadcast\.state;/);
+assert.match(dj, /console\.error\('console refresh failed:', message\);/);
+assert.match(dj, /djLog\('error', \{ msg: 'console refresh failed: ' \+ message \}\);/);
 assert.match(dj, /\$\('qr'\)\.hidden = false;/);
 assert.match(dj, /\$\('qrPending'\)\.hidden = true;/);
 assert.doesNotMatch(dj, /\$\('shareCard'\)\.hidden = !linkReady;/);
 assert.doesNotMatch(dj, /\$\('partyQrPanel'\)\.hidden = !linkReady;/);
 assert.doesNotMatch(dj, /id="setupCard"/);
-assert.match(dj, /const dnsPublished = s\.lan && s\.lan\.dnsPublished === true;/);
+assert.match(dj, /const dnsPublished = !!\(s && s\.lan && s\.lan\.dnsPublished === true\);/);
 assert.match(dj, /const linkReady = !!guestUrl && secure;/);
 assert.doesNotMatch(dj, /const linkReady = !!guestUrl && secure && lanReady;/);
 assert.doesNotMatch(dj, /const linkReady = !!guestUrl && secure && dnsPublished;/);

@@ -20,7 +20,7 @@ func TestCachedCertReadyBYOHostFromLocalFiles(t *testing.T) {
 	writeCachedLiveCert(t, "dj.example.net", renewWindow+24*time.Hour)
 
 	res, ok := CachedCertReady("dj.example.net")
-	if !ok || !res.OK {
+	if !ok || !res.OK || !res.CertReady {
 		t.Fatalf("CachedCertReady = (%+v, %v), want usable result", res, ok)
 	}
 	if res.Host != "dj.example.net" {

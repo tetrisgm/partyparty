@@ -36,6 +36,11 @@ import (
 
 const (
 	renewWindow = 30 * 24 * time.Hour
+	// Broker operations are simple JSON and R2 reads that normally complete in
+	// well under a second. A captive portal or broken venue uplink must produce
+	// a visible retry reason, not leave first-run setup spinning for minutes.
+	brokerAttemptTimeout = 15 * time.Second
+	brokerRequestTimeout = 8 * time.Second
 )
 
 // Result reports what activation achieved. The fields separate independent
@@ -86,7 +91,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	certFile := filepath.Join(dir, "live-cert.pem")
 	keyFile := filepath.Join(dir, "live-key.pem")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), brokerAttemptTimeout)
 	defer cancel()
 
 	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
@@ -194,7 +199,8 @@ func (b *brokerClient) post(ctx context.Context, path string, body any, out any)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: brokerRequestTimeout}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -356,7 +362,7 @@ func CachedCertReady(host string) (Result, bool) {
 	if !certValid(certFile, host, time.Hour) {
 		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "cached certificate is missing, expired, or for a different host"}, false
 	}
-	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile}, true
+	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile, CertReady: true}, true
 }
 
 // BrokerHost returns this install's guest hostname (<hostLabel>.<base>) from the

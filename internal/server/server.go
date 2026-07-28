@@ -383,6 +383,17 @@ func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache strin
 		// logic forever).
 		data = []byte(strings.ReplaceAll(string(data), "__PP_VERSION__", s.version()))
 	}
+	if name == "dj.html" {
+		// The server already knows whether its cached certificate is engaged.
+		// Embed that stable URL in the first document so the QR does not depend
+		// on a later /api/status fetch or the rest of the console renderer.
+		initialURL, _ := json.Marshal(s.urls().Primary)
+		data = []byte(strings.ReplaceAll(
+			string(data),
+			"__PP_INITIAL_GUEST_URL_JSON__",
+			string(initialURL),
+		))
+	}
 	w.Header().Set("Content-Type", mimeFor(name))
 	if cache != "" {
 		w.Header().Set("Cache-Control", cache)

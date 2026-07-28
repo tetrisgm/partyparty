@@ -59,7 +59,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 	bc := broadcast.New(cfg, runDir, "", "")
 	web := fstest.MapFS{
 		"listener.html": {Data: []byte("<html>listener __PP_VERSION__</html>")},
-		"dj.html":       {Data: []byte("<html>dj __PP_VERSION__</html>")},
+		"dj.html":       {Data: []byte("<html>dj __PP_VERSION__ <script>const U=__PP_INITIAL_GUEST_URL_JSON__;</script></html>")},
 		"wall.html":     {Data: []byte("<html>wall __PP_VERSION__</html>")},
 		"covers/hero.jpg": {
 			Data: []byte("jpg stub"),
@@ -1094,8 +1094,15 @@ func TestWebPagesAndRouting(t *testing.T) {
 		t.Errorf("cache-control = %q", cc)
 	}
 
-	if w := do(env.srv, "GET", "/dj", ""); !strings.Contains(w.Body.String(), "dj") {
-		t.Errorf("GET /dj body = %s", w.Body.String())
+	if w := do(env.srv, "GET", "/dj", ""); !strings.Contains(w.Body.String(), `const U="";`) {
+		t.Errorf("GET /dj did not embed an empty initial guest URL: %s", w.Body.String())
+	}
+	env.srv.SetActivation("cosmic-party.party.partyparty.party")
+	if w := do(env.srv, "GET", "/dj", ""); !strings.Contains(
+		w.Body.String(),
+		`const U="https://cosmic-party.party.partyparty.party:8443/";`,
+	) {
+		t.Errorf("GET /dj did not embed the ready guest URL: %s", w.Body.String())
 	}
 	if w := do(env.srv, "GET", "/dj/", ""); w.Code != http.StatusOK {
 		t.Errorf("GET /dj/ = %d", w.Code)

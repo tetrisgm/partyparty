@@ -312,11 +312,6 @@ func main() {
 	}()
 
 	httpSrv := &http.Server{Handler: handler}
-	go func() {
-		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal(err)
-		}
-	}()
 
 	// HTTPS guest listener (the Plex model): the ADVERTISED link is
 	// https://<domain>:<tls-port>/ - the page itself rides the activated cert,
@@ -379,18 +374,6 @@ func main() {
 			explicitCertLoaded = true
 		}
 	}
-	// Boot fast path: a cert issued on a previous run is cached (~90-day
-	// validity), so load it SYNCHRONOUSLY here before we serve. Otherwise the
-	// listener comes up with no cert, the DJ's already-open phone tab hammers
-	// it ("certificate not provisioned yet" x4 in every session log), and the
-	// console flashes "setting up the secure link" until async activation
-	// re-fetches. With the cache, the guest link is live and Go Live un-gated
-	// from t=0; async activation still runs to renew / engage LL.
-	if !explicitCertLoaded && cfg.CertFile == "" {
-		if res, ok := activate.CachedCertReady(activationHost()); ok {
-			applyActivationResult(res, "cached certificate")
-		}
-	}
 	if rawLn, err := net.Listen("tcp4", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
 		tlsSrv := &http.Server{
 			Handler: handler,
@@ -413,6 +396,16 @@ func main() {
 		})}
 		tlsCh := &chanListener{conns: make(chan net.Conn), addr: rawLn.Addr()}
 		httpCh := &chanListener{conns: make(chan net.Conn), addr: rawLn.Addr()}
+		// Boot fast path: a cert issued on a previous run is cached (~90-day
+		// validity), so engage it synchronously after the HTTPS listener has
+		// successfully bound but before it accepts connections or the console
+		// can load. This preserves first-paint QR rendering without advertising
+		// a secure URL whose local port failed to open.
+		if !explicitCertLoaded && cfg.CertFile == "" {
+			if res, ok := activate.CachedCertReady(activationHost()); ok {
+				applyActivationResult(res, "cached certificate")
+			}
+		}
 		go func() {
 			if err := tlsSrv.ServeTLS(tlsCh, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("tls listener: %v", err)
@@ -454,6 +447,16 @@ func main() {
 		log.Printf("tls listener failed on :%d: %v - the https guest link is unavailable", cfg.TLSPort, err)
 		handler.SetActivationPending(fmt.Sprintf("port %d is taken by another app - quit it and relaunch partyparty", cfg.TLSPort))
 	}
+
+	// Start serving the console only after synchronous cached activation and
+	// TLS listener setup finish. The TCP port is already bound, so the native
+	// shell can launch immediately, but its first /dj response cannot race
+	// ahead and embed an empty secure URL when a valid cached URL exists.
+	go func() {
+		if err := httpSrv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	}()
 
 	// Background low-latency activation (the Plex pattern) - the console is
 	// already serving; this never blocks startup. Two paths, both fail-soft:
