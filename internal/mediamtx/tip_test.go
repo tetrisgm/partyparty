@@ -22,7 +22,7 @@ func TestPlaylistTipTokenTracksNewestPart(t *testing.T) {
 		t.Fatalf("tip = %q, want 41|part_43_0.mp4", a)
 	}
 	// A new part emission MUST change the token even when the media sequence
-	// hasn't rolled — that change is what the cadence heartbeat times.
+	// hasn't rolled - that change is what the cadence heartbeat times.
 	b := playlistTipToken(tipPlaylistA + "#EXT-X-PART:DURATION=1.000,URI=\"part_43_1.mp4\"\n")
 	if b == a {
 		t.Fatal("new part did not change the tip token")

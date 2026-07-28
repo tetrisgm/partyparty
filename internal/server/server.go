@@ -50,7 +50,7 @@ type Deps struct {
 	// snapshots, anything support would need after a bad party.
 	Diag *diag.Logger
 
-	// Version is the app build version — shown in UIs and broadcast to clients
+	// Version is the app build version - shown in UIs and broadcast to clients
 	// so stale player pages refresh themselves after an update.
 	Version string
 }
@@ -61,7 +61,7 @@ type srv struct {
 	liveProxy http.Handler
 	limits    *limiter
 
-	// Async activation result (cert broker / BYO) — set after launch so the
+	// Async activation result (cert broker / BYO) - set after launch so the
 	// server can start serving instantly while certs are obtained in the
 	// background. Guarded by actMu.
 	actMu      sync.Mutex
@@ -75,11 +75,11 @@ type srv struct {
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
 	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
-	clientEvN  int32    // global event ceiling — a rotating cid can't defeat this
-	clientCIDs int32    // distinct-cid ceiling — a rotating cid can't grow clientLogN without bound
+	clientEvN  int32    // global event ceiling - a rotating cid can't defeat this
+	clientCIDs int32    // distinct-cid ceiling - a rotating cid can't grow clientLogN without bound
 
 	// streamHealthNote: set by the go-live health check (main.go) when the
-	// broadcast reports "live" but MediaMTX has no publisher on the path —
+	// broadcast reports "live" but MediaMTX has no publisher on the path -
 	// i.e. guests hear nothing. Surfaced in /api/status so the console tells
 	// the DJ honestly instead of showing a false "Live". Guarded by healthMu.
 	healthMu         sync.Mutex
@@ -100,7 +100,7 @@ type srv struct {
 	// status API for Core Audio tap permission, so this observed proof is the
 	// ONLY reliable signal. Persisted server-side (Application Support) because
 	// the console's earlier localStorage flag was origin-scoped and got wiped by
-	// origin changes and data-store resets — which re-scared DJs with a
+	// origin changes and data-store resets - which re-scared DJs with a
 	// "permission not confirmed" banner on Macs that were already granted.
 	audioProven     atomic.Bool
 	audioProvenSave sync.Once
@@ -123,7 +123,7 @@ func New(d Deps) *Srv {
 	return s
 }
 
-// audioProvenPath is the durable "Mac audio capture has worked here" marker —
+// audioProvenPath is the durable "Mac audio capture has worked here" marker -
 // ~/Library/Application Support/partyparty/audio-proven. Empty string disables
 // persistence (in-memory only) when the config dir is unavailable.
 func audioProvenPath() string {
@@ -232,7 +232,7 @@ func (s *Srv) SetActivation(domain string) {
 	s.actMu.Unlock()
 }
 
-// SetActivationPending records why the secure link isn't ready yet — shown in
+// SetActivationPending records why the secure link isn't ready yet - shown in
 // the console while Go Live is gated.
 func (s *Srv) SetActivationPending(reason string) {
 	s.actMu.Lock()
@@ -272,7 +272,7 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// LAN host from a public origin to prove the guest is on the party's Wi-Fi.
 	// Chromium may preflight such public→private requests; answering with
 	// Allow-Private-Network keeps the probe (and any future PNA-gated fetch) from
-	// false-negativing an on-LAN guest. Read-only, no credentials — allowing any
+	// false-negativing an on-LAN guest. Read-only, no credentials - allowing any
 	// origin is safe here.
 	if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Private-Network") == "true" {
 		h := w.Header()
@@ -311,7 +311,7 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/vendor/"):
-		// Through serveWeb (not the FileServer) so text assets gzip — hls.js is
+		// Through serveWeb (not the FileServer) so text assets gzip - hls.js is
 		// 404KB plain, ~130KB gzipped, fetched by every non-Apple guest.
 		s.serveWeb(w, r, strings.TrimPrefix(p, "/"), "public, max-age=3600")
 	case strings.HasPrefix(p, "/live/"):
@@ -335,7 +335,7 @@ type urls struct {
 // AdvertisedGuestPort is the port guests use to reach this Mac: always the
 // direct TLS listener. An earlier build could advertise a bare :443 (hiding the
 // port behind the privileged pp-port443 redirect) whenever a TLS handshake
-// succeeded there — but the handshake never proved the redirect actually
+// succeeded there - but the handshake never proved the redirect actually
 // forwarded, so a half-broken helper (e.g. one that lost its approval in a macOS
 // reset) handed guests a dead port-less link in the QR while
 // https://<host>:<tlsPort>/ still worked. Reliability beats a cosmetic port, so
@@ -346,7 +346,7 @@ func (s *srv) AdvertisedGuestPort() int {
 
 func (s *srv) urls() urls {
 	// The Plex model: the ONLY advertised link is https:// on the activated
-	// domain. The page itself requires working DNS + TLS — exactly the gate
+	// domain. The page itself requires working DNS + TLS - exactly the gate
 	// that guarantees the LL stream will play for whoever loaded it. No http
 	// fallback link is ever shown; until activation completes, Primary stays
 	// http and the console renders a "setting up the secure link" state.
@@ -459,7 +459,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"t": sent, "received": received, "sent": sent})
 	case "/api/client-log":
 		// Guest-side error reports into the session diagnostics. Field lesson:
-		// a phone whose JOIN button silently fails never heartbeats — it was
+		// a phone whose JOIN button silently fails never heartbeats - it was
 		// completely invisible. Now the page tells us what broke.
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
@@ -471,7 +471,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		nAny, _ := s.clientLogN.LoadOrStore(body.CID, new(int32))
-		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest — no log floods
+		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest - no log floods
 			if s.Diag != nil {
 				s.Diag.Printf("client[%s v%s]: %s: %s", clientIP(r), clipStr(body.V, 16), clipStr(body.Kind, 16), clipStr(body.Msg, 300))
 			}
@@ -496,7 +496,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		// Bound the memory a LAN peer can consume: an empty batch tracks nothing,
 		// the cid is length-clipped so the map key can't be huge, and a rotating
-		// cid can't grow clientLogN without limit — past the distinct-cid ceiling
+		// cid can't grow clientLogN without limit - past the distinct-cid ceiling
 		// we accept-and-ignore (existing clients keep working). This closes the
 		// unauthenticated map-growth DoS the per-event cap alone didn't.
 		if len(body.Events) == 0 {
@@ -511,7 +511,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		key := "ev:" + body.CID
 		if _, seen := s.clientLogN.Load(key); !seen && atomic.AddInt32(&s.clientCIDs, 1) > 20000 {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-			return // distinct-client ceiling hit — stop tracking new cids
+			return // distinct-client ceiling hit - stop tracking new cids
 		}
 		nAny, _ := s.clientLogN.LoadOrStore(key, new(int32))
 		urgent := false
@@ -523,7 +523,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			// Global ceiling: a peer rotating cid every batch can't defeat the
-			// per-cid cap, so bound total logged events for the process too —
+			// per-cid cap, so bound total logged events for the process too -
 			// past it we stop appending and stop forcing cloud uploads.
 			if atomic.AddInt32(&s.clientEvN, 1) > 500000 {
 				break
@@ -619,11 +619,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		// Every guest path is HTTPS LL-HLS, so a real device cannot go live
 		// before the cached or freshly issued certificate is active.
 		if device != "test" && !s.realCert() {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "secure guest link isn't ready yet — hold on (needs internet once)"})
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "secure guest link isn't ready yet - hold on (needs internet once)"})
 			return
 		}
 		// One fixed LL timing profile now (no latency modes, no MediaMTX
-		// bouncing) — but a start must still revive a silently-dead MediaMTX,
+		// bouncing) - but a start must still revive a silently-dead MediaMTX,
 		// or ffmpeg pushes into the void and guests see a "live" broadcast
 		// nobody can hear. If a stale orphan owns the ports, reap and retry.
 		if s.MTX != nil && !s.MTX.Running() {
@@ -1015,7 +1015,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // writeJSONGzip is writeJSON for hot polled payloads (/api/status: every guest,
-// every 3s, roster+sync state — a few KB that gzip to a fraction on venue
+// every 3s, roster+sync state - a few KB that gzip to a fraction on venue
 // Wi-Fi). Small bodies skip compression; anything under one MTU gains nothing.
 func writeJSONGzip(w http.ResponseWriter, r *http.Request, status int, v any) {
 	b, err := json.Marshal(v)
@@ -1068,7 +1068,7 @@ func suggest(status string, bc broadcast.Status) string {
 	return "The venue Wi-Fi is congested or isolating guests. Move closer to the access point or ask the venue to disable client isolation."
 }
 
-// realCert reports whether the https guest link is actually SERVABLE — the
+// realCert reports whether the https guest link is actually SERVABLE - the
 // gate for LL-HLS (iOS Safari rejects self-signed certs on LAN
 // IPs). True only once SetActivation ran, which main.go does strictly after a
 // cert loaded and the TLS listener bound: raw --cert/--key config presence

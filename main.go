@@ -57,7 +57,7 @@ func (c *peekConn) Read(p []byte) (int, error) {
 	return c.Conn.Read(p)
 }
 
-// chanListener is a net.Listener fed pre-accepted conns from a channel — lets
+// chanListener is a net.Listener fed pre-accepted conns from a channel - lets
 // one raw port drive both an https server and an http-redirect server.
 type chanListener struct {
 	conns chan net.Conn
@@ -162,7 +162,7 @@ func main() {
 		// RTSP/HLS ports with a STALE config+cert, our replacement loses the
 		// bind, and guests get a stream no phone will accept while everything
 		// LOOKS engaged (field: friend broadcast 6 minutes to zero joinable
-		// guests). Reap by PORT OWNERSHIP — the orphan may be an old app
+		// guests). Reap by PORT OWNERSHIP - the orphan may be an old app
 		// version at a different binary path, so path matching isn't enough.
 		if n := mediamtx.ReapOrphans(cfg.RTSPPort, cfg.HLSPort); n > 0 {
 			log.Printf("reaped %d orphaned mediamtx process(es) from a previous run", n)
@@ -175,10 +175,10 @@ func main() {
 			return writeMTXConfig()
 		}
 		if err := ensureMTXReady(mtx, cfg.RTSPPort, cfg.HLSPort); err != nil {
-			log.Printf("mediamtx failed to start: %v — LL-HLS unavailable", err)
+			log.Printf("mediamtx failed to start: %v - LL-HLS unavailable", err)
 		}
 	} else {
-		log.Printf("mediamtx binary unavailable — LL-HLS cannot start")
+		log.Printf("mediamtx binary unavailable - LL-HLS cannot start")
 	}
 	// Session diagnostics (the Plex model): one verbose file per run in
 	// ~/Library/Logs/partyparty, teeing the stdlib logger AND the broadcast
@@ -210,7 +210,7 @@ func main() {
 			events = st
 			events.StartThumbWorker(cfg.FFmpeg)
 		} else {
-			log.Printf("event store unavailable: %v — feed disabled", err)
+			log.Printf("event store unavailable: %v - feed disabled", err)
 		}
 	}
 
@@ -261,7 +261,7 @@ func main() {
 
 	// tcp4, NOT tcp: on some Macs `net.Listen("tcp", ...)` binds an IPv6-only
 	// socket, and if that machine's IPv6 loopback (::1) is also broken, NOTHING
-	// local can reach the server — the console loads http://127.0.0.1:<port> and
+	// local can reach the server - the console loads http://127.0.0.1:<port> and
 	// gets nothing, a permanent white screen, even though the process is healthy
 	// and its outbound work succeeds. Forcing tcp4 binds 0.0.0.0 (all IPv4
 	// interfaces), so 127.0.0.1 (console) and the LAN IP (guests) both resolve
@@ -271,7 +271,7 @@ func main() {
 		// Almost certainly our own orphan: a force-quit can skip child cleanup
 		// and leave the old server squatting on the port,
 		// which white-screens the new console. Ask it to exit (loopback-only
-		// endpoint), then retry the bind with backoff for a few seconds — a
+		// endpoint), then retry the bind with backoff for a few seconds - a
 		// draining server can take longer than a single retry to release. The
 		// This loopback-only handoff is the sandbox-safe recovery path.
 		cl := &http.Client{Timeout: 2 * time.Second}
@@ -295,7 +295,7 @@ func main() {
 	}
 
 	// Record exactly what we bound, and self-test that the console's loopback
-	// address is actually reachable from our own process — so a "white screen"
+	// address is actually reachable from our own process - so a "white screen"
 	// that is really an unreachable listener is named in the log instead of
 	// guessed at. Logged over the diag channel, which is independent of this
 	// HTTP listener.
@@ -319,7 +319,7 @@ func main() {
 	}()
 
 	// HTTPS guest listener (the Plex model): the ADVERTISED link is
-	// https://<domain>:<tls-port>/ — the page itself rides the activated cert,
+	// https://<domain>:<tls-port>/ - the page itself rides the activated cert,
 	// so a guest who can load it is guaranteed to be able to play the LL
 	// stream (same DNS + TLS). The listener starts now with a hot-loadable
 	// cert; connections before activation simply fail, and no URL is
@@ -357,7 +357,7 @@ func main() {
 		}
 		if applyActivation != nil {
 			if err := applyActivation(res.CertFile, res.KeyFile); err != nil {
-				log.Printf("activate: mediamtx config failed after %s: %v — LL-HLS unavailable", source, err)
+				log.Printf("activate: mediamtx config failed after %s: %v - LL-HLS unavailable", source, err)
 				return false
 			}
 		}
@@ -368,7 +368,7 @@ func main() {
 		handler.SetActivation(res.Host)
 		startPeerDiscovery(res.Host)
 		markActivationEngaged(res.Host)
-		log.Printf("activate: secure link ready from %s — %s", source, res.Host)
+		log.Printf("activate: secure link ready from %s - %s", source, res.Host)
 		return true
 	}
 	explicitCertLoaded := false
@@ -404,7 +404,7 @@ func main() {
 			}},
 		}
 		// Plaintext hitting the HTTPS port (old QR, hand-typed http://) would get
-		// Go's ugly "Client sent an HTTP request to an HTTPS server" — redirect
+		// Go's ugly "Client sent an HTTP request to an HTTPS server" - redirect
 		// to https instead. We can't run http and https on one port with stock
 		// listeners, so sniff the first byte: 0x16 = TLS handshake → the TLS
 		// server; anything else → a 301-to-https server.
@@ -444,18 +444,18 @@ func main() {
 			}
 		}()
 		// The https listener is UP: if an explicit cert also loaded, the secure
-		// guest link is real — this (not raw config presence) is what un-gates
+		// guest link is real - this (not raw config presence) is what un-gates
 		// Go Live and the advertised https URL. Async activation performs the
 		// equivalent SetActivation after its own successful cert load.
 		if explicitCertLoaded && cfg.Domain != "" {
 			handler.SetActivation(cfg.Domain)
 		}
 	} else {
-		log.Printf("tls listener failed on :%d: %v — the https guest link is unavailable", cfg.TLSPort, err)
-		handler.SetActivationPending(fmt.Sprintf("port %d is taken by another app — quit it and relaunch partyparty", cfg.TLSPort))
+		log.Printf("tls listener failed on :%d: %v - the https guest link is unavailable", cfg.TLSPort, err)
+		handler.SetActivationPending(fmt.Sprintf("port %d is taken by another app - quit it and relaunch partyparty", cfg.TLSPort))
 	}
 
-	// Background low-latency activation (the Plex pattern) — the console is
+	// Background low-latency activation (the Plex pattern) - the console is
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
 	// at partyparty.party (per-install hostname + DNS-01 cert).
@@ -487,7 +487,7 @@ func main() {
 				defer timer.Stop()
 				select {
 				case <-networkChanged:
-					log.Printf("activate: LAN address changed to %s — refreshing the secure guest link now", netinfo.PrimaryLanIP())
+					log.Printf("activate: LAN address changed to %s - refreshing the secure guest link now", netinfo.PrimaryLanIP())
 				case <-timer.C:
 				}
 			}
@@ -498,7 +498,7 @@ func main() {
 				}
 				res := activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
 				handler.SetActivationResult(res)
-				// OK now means the certificate is usable — apply it ONCE so the
+				// OK now means the certificate is usable - apply it ONCE so the
 				// HTTPS listener + Go Live work everywhere, even where this Wi-Fi
 				// blocks LAN routing. Re-running Try/TryBroker each cycle also
 				// re-publishes the current LAN IP (the self-healing DNS refresh).
@@ -519,9 +519,9 @@ func main() {
 						res.Reason = "local activation apply failed"
 					}
 					handler.SetActivationPending(humanizeActivation(res.Reason))
-					log.Printf("activate: secure link not ready — %s (retrying in %s)", res.Reason, retryIn)
+					log.Printf("activate: secure link not ready - %s (retrying in %s)", res.Reason, retryIn)
 				} else {
-					log.Printf("activate: LAN not fully ready on this network — %s (retrying in %s)", res.Reason, retryIn)
+					log.Printf("activate: LAN not fully ready on this network - %s (retrying in %s)", res.Reason, retryIn)
 				}
 				waitForRefresh(retryIn)
 				if retryIn *= 2; retryIn > 4*time.Minute {
@@ -556,7 +556,7 @@ func main() {
 	}
 
 	// Room snapshots into the diagnostics log: every 60s while live, who's
-	// listening and how well (latency/buffer/stalls) — the after-party answer
+	// listening and how well (latency/buffer/stalls) - the after-party answer
 	// to "the sound was bad", without anyone screenshotting anything.
 	if diagLog != nil {
 		go func() {
@@ -574,7 +574,7 @@ func main() {
 				diagLog.Printf("roster: %s", data)
 			}
 		}()
-		// A finished set is the moment the log matters most — ship it the
+		// A finished set is the moment the log matters most - ship it the
 		// moment broadcasting stops, not at the next 3-minute tick.
 		go func() {
 			wasActive := false
@@ -599,8 +599,8 @@ func main() {
 		}()
 		// Go-live health: a few seconds after the broadcast reports "live", ask
 		// MediaMTX's own manifest whether the guest stream actually landed.
-		// ffmpeg's -progress only proves the encoder runs — the recording tee leg
-		// alone keeps it "live" — NOT that the RTSP publish reached MediaMTX. This
+		// ffmpeg's -progress only proves the encoder runs - the recording tee leg
+		// alone keeps it "live" - NOT that the RTSP publish reached MediaMTX. This
 		// catches a false-live ("Live" but guests hear nothing) within ~7s, ships
 		// the verdict urgently, and lets the console tell the DJ honestly.
 		if mtx != nil {
@@ -641,10 +641,10 @@ func main() {
 							handler.SetStreamHealth("")
 						case "DEAD-STREAM":
 							diagLog.MarkUrgent()
-							handler.SetStreamHealth("You’re Live, but no audio is reaching guests — the low-latency engine never received the stream. Stop and Go Live again.")
+							handler.SetStreamHealth("You’re Live, but no audio is reaching guests - the low-latency engine never received the stream. Stop and Go Live again.")
 						case "CAPTURE-DEAD":
 							diagLog.MarkUrgent()
-							handler.SetStreamHealth("You’re Live, but no audio is being captured — make sure something is playing and the right source is selected, then Stop and Go Live again.")
+							handler.SetStreamHealth("You’re Live, but no audio is being captured - make sure something is playing and the right source is selected, then Stop and Go Live again.")
 						}
 					}
 					lastLive = live
@@ -654,7 +654,7 @@ func main() {
 			// playlist's tip once a second and log when NEW MEDIA stops being
 			// emitted. The 2026-07-13 party showed 2-3 phones on different IPs
 			// stalling within ~1s of each other with nothing in the server log
-			// to attribute it — a production hiccup (capture/encoder/MediaMTX)
+			// to attribute it - a production hiccup (capture/encoder/MediaMTX)
 			// starves every guest at the same instant, while venue-Wi-Fi trouble
 			// hits phones one at a time. These lines make the next field log
 			// tell those apart.
@@ -744,7 +744,7 @@ func cmdOut(name string, args ...string) string {
 
 // humanizeActivation turns raw activation errors into console-worthy English.
 // The DJ saw "certificate: ACME register: 503 : 503 Service Unavailable" in
-// the field — accurate, useless, and scary. The retry loop is automatic; the
+// the field - accurate, useless, and scary. The retry loop is automatic; the
 // message's only job is to say WHO is being waited on.
 func humanizeActivation(reason string) string {
 	r := strings.ToLower(reason)
@@ -752,13 +752,13 @@ func humanizeActivation(reason string) string {
 	case strings.Contains(r, "link this mac") || strings.Contains(r, "account link"):
 		return "link this Mac to your partyparty account before secure low-latency setup can finish"
 	case strings.Contains(r, "acme") || strings.Contains(r, "letsencrypt") || strings.Contains(r, "let's encrypt"):
-		return "the free certificate service (Let's Encrypt) isn't answering right now — retrying automatically, this usually clears in a few minutes"
+		return "the free certificate service (Let's Encrypt) isn't answering right now - retrying automatically, this usually clears in a few minutes"
 	case strings.Contains(r, "register") || strings.Contains(r, "broker") || strings.Contains(r, "partyparty.party"):
-		return "can't reach the partyparty setup service — check the internet connection; retrying automatically"
+		return "can't reach the partyparty setup service - check the internet connection; retrying automatically"
 	case strings.Contains(r, "resolve") || strings.Contains(r, "dns"):
-		return "waiting for the new address to become reachable (DNS) — retrying automatically"
+		return "waiting for the new address to become reachable (DNS) - retrying automatically"
 	case strings.Contains(r, "no lan") || strings.Contains(r, "network"):
-		return "no network connection — join the venue Wi-Fi network"
+		return "no network connection - join the venue Wi-Fi network"
 	default:
 		return reason
 	}
@@ -773,7 +773,7 @@ func ensureMTXReady(mtx *mediamtx.Server, rtspPort, hlsPort int) error {
 		return nil
 	}
 	if n := mediamtx.ReapOrphans(rtspPort, hlsPort); n > 0 {
-		log.Printf("reaped %d mediamtx orphan(s) after readiness failure — retrying", n)
+		log.Printf("reaped %d mediamtx orphan(s) after readiness failure - retrying", n)
 		return mtx.EnsureReady(rtspPort, hlsPort, 6*time.Second)
 	}
 	return err

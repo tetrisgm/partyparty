@@ -46,7 +46,7 @@ type Comment struct {
 type Post struct {
 	ID  string `json:"id"`
 	TS  int64  `json:"ts"`  // unix millis (creation)
-	Act int64  `json:"act"` // last activity (creation/comment) — the feed cursor,
+	Act int64  `json:"act"` // last activity (creation/comment) - the feed cursor,
 	// so a comment on an old post still reaches every client
 	CID       string         `json:"-"`
 	Author    string         `json:"author"`
@@ -313,7 +313,7 @@ type Store struct {
 	byID          map[string]*Post
 	requests      []*Request
 	byReqID       map[string]*Request
-	guests        map[string]*Guest // cid -> guest — PRIVATE, never in feed responses
+	guests        map[string]*Guest // cid -> guest - PRIVATE, never in feed responses
 	reactions     map[string]*reactionCounter
 	currentTrack  *CurrentTrack
 	recentTracks  []CurrentTrack
@@ -324,7 +324,7 @@ type Store struct {
 
 	// Long-poll wakeup: closed and replaced on every visible mutation, so
 	// /api/feed?wait=1 can hold requests and answer the INSTANT something
-	// happens — the wall feels realtime without a 1s hammering interval.
+	// happens - the wall feels realtime without a 1s hammering interval.
 	notifyMu sync.Mutex
 	notify   chan struct{}
 }
@@ -992,7 +992,7 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c.TS = time.Now().UnixMilli() // under the lock — keeps Act monotonic across clients
+	c.TS = time.Now().UnixMilli() // under the lock - keeps Act monotonic across clients
 	p, ok := s.byID[postID]
 	if !ok || p.Deleted {
 		return nil, errors.New("no such post")
@@ -1138,7 +1138,7 @@ func (s *Store) DeleteComment(postID, commentID string) error {
 	return nil
 }
 
-// Delete tombstones a post (DJ moderation). Media files stay on disk — the
+// Delete tombstones a post (DJ moderation). Media files stay on disk - the
 // folder is the DJ's archive; the feed just stops showing the post.
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()

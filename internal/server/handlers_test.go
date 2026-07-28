@@ -966,7 +966,7 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 		t.Fatal("broadcaster should not have started")
 	}
 
-	// The test tone is always allowed — the DJ's own rehearsal.
+	// The test tone is always allowed - the DJ's own rehearsal.
 	w = do(env.srv, "POST", "/api/start?device=test&bitrate=999k", djAddr)
 	if w.Code != http.StatusOK {
 		t.Fatalf("start test tone = %d, want 200 (%s)", w.Code, w.Body.String())

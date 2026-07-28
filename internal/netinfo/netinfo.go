@@ -12,7 +12,7 @@ type Iface struct {
 	Address string `json:"address"`
 }
 
-// VPN/tunnel interfaces a guest can never reach — exclude them from join URLs.
+// VPN/tunnel interfaces a guest can never reach - exclude them from join URLs.
 func isTunnel(name string) bool {
 	for _, p := range []string{"utun", "tun", "tap", "ppp", "ipsec", "wg", "gif", "stf"} {
 		if strings.HasPrefix(name, p) {
@@ -34,7 +34,7 @@ func LanInterfaces() []Iface {
 			continue
 		}
 		if isTunnel(ifc.Name) {
-			continue // skip VPN tunnels (e.g. WireGuard's utun) — guests can't reach them
+			continue // skip VPN tunnels (e.g. WireGuard's utun) - guests can't reach them
 		}
 		addrs, _ := ifc.Addrs()
 		for _, a := range addrs {

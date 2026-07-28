@@ -78,8 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if s.captureBad && (s.state == "live" || s.state == "starting") {
             button.title = "🕺 🔴"
             button.toolTip = s.note.isEmpty
-                ? "partyparty — audio capture problem; open the app for details"
-                : "partyparty — \(s.note)"
+                ? "partyparty - audio capture problem; open the app for details"
+                : "partyparty - \(s.note)"
             return
         }
         button.toolTip = appName
@@ -104,7 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if s.struggling > 0 { t += " · \(s.struggling) buffering" }
             header = t
         case "starting": header = "Starting…"
-        case "error":    header = "Broadcast error — open console"
+        case "error":    header = "Broadcast error - open console"
         default:         header = "Not broadcasting"
         }
         let bundleVer = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let broadcasting = s.state == "live" || s.state == "starting"
         if broadcasting && s.captureBad {
-            let capture = item("Audio capture: Problem — open console", #selector(showConsole))
+            let capture = item("Audio capture: Problem - open console", #selector(showConsole))
             menu.addItem(capture)
         } else {
             let condition = broadcasting ? "Audio capture: Healthy" : "Audio capture: Not active"
@@ -151,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// First sentence of a note, capped, for the compact menu detail line.
     private func firstSentence(_ s: String) -> String {
-        let cut = s.split(separator: "—", maxSplits: 1).first.map(String.init) ?? s
+        let cut = s.components(separatedBy: " - ").first ?? s
         let t = cut.trimmingCharacters(in: .whitespaces)
         return t.count > 90 ? String(t.prefix(88)) + "…" : t
     }

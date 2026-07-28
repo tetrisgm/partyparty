@@ -1099,7 +1099,7 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedDr
     fail(`room sync did not use each player's PROGRAM-DATE-TIME: ${JSON.stringify(samples)}`);
   }
   // The room target is config-driven (not a hardcoded value), but every listener
-  // must use the SAME one — a room-wide constant, never per-device.
+  // must use the SAME one - a room-wide constant, never per-device.
   if (targetErrors.length !== samples.length * 2 || samples.some((s) => !Number.isFinite(s.targetA) || Math.abs(s.targetA - s.targetB) > 0.001)) {
     fail(`room sync targets diverged across listeners: ${JSON.stringify(samples)}`);
   }

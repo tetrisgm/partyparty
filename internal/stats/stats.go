@@ -82,7 +82,7 @@ func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, h
 	}
 	// Authoritative each beat: a device that stops reporting a valid latency
 	// (reconnect, getStartDate going Invalid) drops out of the spread instead of
-	// freezing a stale value — so the metric tells the truth during trouble.
+	// freezing a stale value - so the metric tells the truth during trouble.
 	c.hasLat = hasLat
 	if hasLat {
 		c.lat = latMs
@@ -198,7 +198,7 @@ func (l *Listeners) Health(live bool, bitrateKbps int) Health {
 	return h
 }
 
-// LatencyStat summarizes the inter-listener latency spread from heartbeats —
+// LatencyStat summarizes the inter-listener latency spread from heartbeats -
 // the 10/10 metric: how close together the dancers hear the music.
 type LatencyStat struct {
 	Count    int     `json:"count"`

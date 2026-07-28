@@ -7,7 +7,7 @@
 <title>partyparty</title>
 <style>
   /* Light, Apple-Snapshot/Apple-Music-web aesthetic: warm gray canvas, white
-     cards with soft depth, one accent. Dark mode later — light first. */
+     cards with soft depth, one accent. Dark mode later - light first. */
   :root{
     color-scheme:light;
     --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
@@ -29,7 +29,7 @@
   }
   /* The event hero fills the first screen; the party wall scrolls below.
      SAFE centering: justify-content:center clips overflow off the TOP on
-     small phones (unreachable by scrolling — field bug: decapitated title,
+     small phones (unreachable by scrolling - field bug: decapitated title,
      vanished artwork). flex-start + an auto-margin pair centers when there's
      room and flows from the top when there isn't. */
   .hero{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:24px;position:relative}
@@ -57,7 +57,7 @@
   }
   .btn:active{transform:scale(.97)}
   .btn.preparing{background:#e2e2e7;color:#515154;cursor:default;box-shadow:none;animation:breathe 1.6s ease-in-out infinite}
-  @keyframes breathe{0%,100%{opacity:.82}50%{opacity:1}} /* shallow trough — the label must stay legible in daylight */
+  @keyframes breathe{0%,100%{opacity:.82}50%{opacity:1}} /* shallow trough - the label must stay legible in daylight */
   body.playing .btn{background:var(--success);box-shadow:0 8px 24px rgba(52,199,89,.3);animation:pulse 2.2s infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,199,89,.35)}70%{box-shadow:0 0 0 22px rgba(52,199,89,0)}100%{box-shadow:0 0 0 0 rgba(52,199,89,0)}}
   .ico{font-size:20px;line-height:1}
@@ -175,7 +175,7 @@
   .cbox input{flex:1;background:var(--fill);border:none;border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;color:var(--label);outline:none}
   .cbox button{background:none;border:none;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer}
   /* Welcome gate: the one REQUIRED tap ("Let's party") doubles as the iOS
-     media-activation gesture — buffering starts the instant they're in. */
+     media-activation gesture - buffering starts the instant they're in. */
   /* The welcome gate fills the screen like an invite, not a popup: the event
      name breathes at the top, the picking happens in the middle. */
   .welov{position:fixed;inset:0;background:var(--bg);display:none;justify-content:center;z-index:30;overflow:auto}
@@ -191,7 +191,7 @@
   .welemoji{font-size:22px;background:var(--card);border:1px solid var(--separator);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input{flex:1}
-  .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex — must NOT grow */
+  .welcard input[type=email]{flex:0 0 auto} /* direct child of the column flex - must NOT grow */
   .welemojis{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:10px}
   .welemojis[hidden]{display:none}
   .welemojis button{font-size:21px;background:transparent;border:none;border-radius:10px;padding:8px 0;cursor:pointer}
@@ -276,7 +276,7 @@
   /* Top action bar: identity (emoji + name) at the far left, QR + share at the
      far right. In normal flow, so it scrolls with the page. */
   .actionbar{position:fixed;top:0;left:0;right:0;z-index:12;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;max-width:720px;margin:0 auto;padding:calc(9px + env(safe-area-inset-top)) 14px 6px;box-sizing:border-box;background:rgba(245,245,247,.82);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-bottom:1px solid rgba(0,0,0,.05)}
-  /* the fixed bar is out of flow — push page content below it */
+  /* the fixed bar is out of flow - push page content below it */
   body{padding-top:calc(58px + env(safe-area-inset-top))}
   .actionbar-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
   .actionbar .mechip{min-width:0;max-width:54vw}
@@ -637,7 +637,9 @@
     --label-tertiary:#85858b;--separator:rgba(255,255,255,.10);--fill:rgba(255,255,255,.08);
     --party-bg:#141719;--party-bg-2:#141719;--party-ink:#f5f5f7;
     --party-muted:#a9a9ae;--party-card:#1b1f21;--party-line:rgba(255,255,255,.10);
+    --sheet-bg:#202427;
   }
+  :root{--sheet-bg:#eceff2}
   :root[data-theme="dark"] body,:root[data-theme="dark"] html{background:#141719;color:var(--label)}
   :root[data-theme="dark"] .feed,:root[data-theme="dark"] .djpickerhead,:root[data-theme="dark"] .feedhead{color:var(--label)}
   :root[data-theme="dark"] .album,:root[data-theme="dark"] .djlinks,:root[data-theme="dark"] .post,
@@ -661,12 +663,13 @@
   .djeq{right:-6px;bottom:-2px;z-index:2}
   body:not(.playing) .playbars{visibility:hidden}
 
-  .listenbar .btn{
-    width:46px;height:46px;min-width:46px;padding:0;border-radius:50%;
-    display:grid;place-items:center;flex:0 0 46px;
+  .listenbar .btn,.listenbar .btn.preparing,body.playing .listenbar .btn{
+    width:34px;height:46px;min-width:34px;padding:0;border:0;border-radius:0;
+    display:grid;place-items:center;flex:0 0 34px;background:transparent!important;
+    color:#fff;box-shadow:none!important;animation:none!important;
   }
-  .listenbar .btn .ico{width:30px;height:30px}
-  .playerbarrow{display:flex;align-items:center;gap:12px;min-width:0}
+  .listenbar .btn .ico{width:auto;height:auto;background:transparent;font-size:20px}
+  .playerbarrow{display:flex;align-items:center;gap:12px;min-width:0;padding:7px 11px;border-radius:14px;background:#20c965;color:#fff}
   .playersummary{
     min-width:0;flex:1;height:52px;display:flex;align-items:center;gap:12px;padding:0;
     border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;
@@ -682,19 +685,14 @@
   .playersheet{
     position:fixed;left:0;right:0;bottom:0;z-index:30;height:min(92dvh,860px);
     transform:translateY(105%);transition:transform .28s ease;
-    border-radius:20px 20px 0 0;background:var(--bg);color:var(--label);
+    border-radius:20px 20px 0 0;background:var(--sheet-bg);color:var(--label);
     box-shadow:0 -16px 50px rgba(0,0,0,.24);overflow:hidden;
   }
-  .playersheet.open{transform:translateY(0)}
-  .playersheethead{position:sticky;top:0;z-index:2;display:flex;justify-content:center;padding:8px 12px 4px;background:var(--bg)}
-  .sheetcollapse{width:44px;height:36px;border:0;border-radius:999px;background:var(--fill);color:var(--label);font-size:24px;line-height:1;cursor:pointer}
+  .playersheet.open{transform:translateY(var(--sheet-drag,0px))}
+  .playersheethead{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;padding:10px 12px 2px;background:var(--sheet-bg);touch-action:none}
+  .sheetcollapse{width:36px;height:36px;border:0;border-radius:50%;background:var(--fill);color:var(--label);font-size:22px;line-height:1;cursor:pointer}
   .playersheetscroll{height:calc(100% - 48px);overflow:auto;padding:4px 20px calc(28px + env(safe-area-inset-bottom))}
-  .sheetdj{display:flex;align-items:center;gap:12px;margin:2px 0 18px}
-  .sheetdjavatar{width:50px;height:50px;display:grid;place-items:center;flex:0 0 50px;border-radius:50%;background:var(--fill)}
-  .sheetdjavatar svg{width:25px;height:25px}
-  .sheetdjcopy{min-width:0;flex:1}
-  .sheetdjcopy b{display:block;font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .sheetlinks{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px}
+  .sheetlinks{display:flex;gap:7px;flex-wrap:wrap;margin:2px 0 24px}
   .sheetlinks a{display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border-radius:999px;background:var(--fill);color:var(--label);font-size:11px;font-weight:750;text-decoration:none}
   .sheettrack{max-width:430px;margin:0 auto 24px;text-align:center}
   .sheetart{display:block;width:min(76vw,360px);aspect-ratio:1;margin:0 auto 20px;border-radius:10px;object-fit:cover;background:var(--fill);box-shadow:0 14px 38px rgba(0,0,0,.18)}
@@ -711,7 +709,7 @@
   body.playersheetopen{overflow:hidden}
   @media (min-width:700px){
     .playersheet{left:50%;right:auto;width:620px;transform:translate(-50%,105%);border-radius:20px 20px 0 0}
-    .playersheet.open{transform:translate(-50%,0)}
+    .playersheet.open{transform:translate(-50%,var(--sheet-drag,0px))}
   }
   @media (prefers-reduced-motion:reduce){
     .playersheet,.playersheetbackdrop{transition:none}
@@ -748,7 +746,7 @@
     <div class="traysection">
       <div class="traylabel">Connection</div>
       <div class="diagnostics" aria-label="Stream diagnostics">
-        <span class="modechip wifi" id="modeChip" title="You're on the party Wi‑Fi — low-latency local audio">Wi‑Fi</span>
+        <span class="modechip wifi" id="modeChip" title="You're on the party Wi‑Fi - low-latency local audio">Wi‑Fi</span>
         <span class="delaybadge" id="delayBadge" aria-label="Playback delay">-- s</span>
         <span class="pageversion">v__PP_VERSION__</span>
       </div>
@@ -760,13 +758,6 @@
         </div>
       </div>
     </div>
-  </aside>
-  <aside class="sidetray peopletray" id="peopleTray" aria-label="Listeners" aria-hidden="true">
-    <div class="trayhead">
-      <b>Listeners</b>
-      <button class="trayclose" type="button" data-close-tray aria-label="Close listeners">×</button>
-    </div>
-    <div class="listenergroups" id="listenerGroups"></div>
   </aside>
 
   <div class="hero">
@@ -844,15 +835,12 @@
   <div class="playersheetbackdrop" id="playerSheetBackdrop"></div>
   <section class="playersheet" id="playerSheet" role="dialog" aria-modal="true" aria-label="Player details" aria-hidden="true">
     <div class="playersheethead">
-      <button class="sheetcollapse" id="sheetCollapse" type="button" aria-label="Collapse player" title="Collapse">⌄</button>
+      <button class="sheetcollapse" id="sheetCollapse" type="button" aria-label="Close player" title="Close">×</button>
     </div>
     <div class="playersheetscroll">
-      <div class="sheetdj">
-        <span class="sheetdjavatar" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-        </span>
-        <span class="sheetdjcopy"><b id="sheetDJName">The DJ</b><span class="sheetlinks" id="sheetLinks"></span></span>
-      </div>
+      <div class="sheetsectiontitle" id="sheetDJHeading">1 DJ now playing</div>
+      <div class="djlist" id="sheetDJList"></div>
+      <div class="sheetlinks" id="sheetLinks"></div>
       <div class="sheettrack">
         <img class="sheetart" id="sheetArt" src="/art-512.png" alt="">
         <div class="sheettitle" id="sheetTrackTitle">Live party audio</div>
@@ -860,9 +848,7 @@
         <div class="sheetcontrols"><button class="sheetplay" id="sheetPlay" type="button" aria-label="Play">▶</button></div>
         <div class="sheetcount" id="sheetListenCount">0 listening</div>
       </div>
-      <div class="sheetsectiontitle" id="sheetDJHeading">1 DJ now playing</div>
-      <div class="djlist" id="sheetDJList"></div>
-      <div class="sheetsectiontitle">Listeners</div>
+      <div class="sheetsectiontitle" id="sheetListenersHeading">Listeners</div>
       <div class="listenergroups" id="sheetListenerGroups"></div>
     </div>
   </section>
@@ -886,7 +872,7 @@
       <div class="linkgroup" id="followLinks" data-label="Follow"></div>
       <div class="linkgroup" id="tipLinks" data-label="Tip"></div>
     </section>
-    <div id="feedList"><div class="feedempty">Nothing here yet — start the wall 🎉</div></div>
+    <div id="feedList"><div class="feedempty">Nothing here yet - start the wall 🎉</div></div>
   </section>
 
   <div class="welov" id="welOv">
@@ -920,10 +906,10 @@
   <script>
     const player = document.getElementById('player');
     // iOS plays an <audio> element through the ringer / Silent switch by default,
-    // so a phone on Silent Mode shows "Playing" but is DEAD SILENT — the exact
+    // so a phone on Silent Mode shows "Playing" but is DEAD SILENT - the exact
     // field failure on a locked, pocketed iOS-27 phone (2026-07-16, confirmed).
     // Declaring the 'playback' audio-session category makes media play through the
-    // MEDIA volume and IGNORE the Silent switch — which is precisely what a party
+    // MEDIA volume and IGNORE the Silent switch - which is precisely what a party
     // wants. Web Audio Session API, Safari 16.4+; a no-op (caught) elsewhere. Set
     // it now AND inside the first user gesture (iOS is most reliable when the
     // category is (re)asserted within the activating gesture).
@@ -950,9 +936,7 @@
     const menuBtn = document.getElementById('menuBtn');
     const peopleBtn = document.getElementById('peopleBtn');
     const menuTray = document.getElementById('menuTray');
-    const peopleTray = document.getElementById('peopleTray');
     const trayBackdrop = document.getElementById('trayBackdrop');
-    const listenerGroupsEl = document.getElementById('listenerGroups');
     const peopleBadge = document.getElementById('peopleBadge');
     const sheetListenerGroups = document.getElementById('sheetListenerGroups');
     const sheetDJList = document.getElementById('sheetDJList');
@@ -966,10 +950,11 @@
     const sheetArt = document.getElementById('sheetArt');
     const sheetTrackTitle = document.getElementById('sheetTrackTitle');
     const sheetTrackArtist = document.getElementById('sheetTrackArtist');
-    const sheetDJName = document.getElementById('sheetDJName');
     const sheetLinks = document.getElementById('sheetLinks');
     const sheetPlay = document.getElementById('sheetPlay');
     const sheetListenCount = document.getElementById('sheetListenCount');
+    const playerSheetScroll = playerSheet.querySelector('.playersheetscroll');
+    const sheetListenersHeading = document.getElementById('sheetListenersHeading');
     const lightThemeBtn = document.getElementById('lightThemeBtn');
     const darkThemeBtn = document.getElementById('darkThemeBtn');
     [miniArt, sheetArt].forEach((image) => image.addEventListener('error', () => {
@@ -978,7 +963,7 @@
     }));
     // Build version stamped by the server at serve time. When the server
     // updates, open tabs would otherwise keep running old player logic forever
-    // — poll() compares and refreshes at a safe moment.
+    // - poll() compares and refreshes at a safe moment.
     const PAGE_VERSION = '__PP_VERSION__';
     const versioned = !PAGE_VERSION.includes('PP_VERSION'); // false in raw/dev serving
     let pendingReload = false;
@@ -1012,13 +997,13 @@
     // Player-path choice. Native HLS is the lock-safe path on Apple devices, so
     // Safari/iOS keep it. Everywhere else prefer hls.js: some browsers (Edge,
     // certain Androids) answer 'maybe' to the native-HLS probe but can't
-    // actually play it — trusting canPlayType there means silent forever-loading.
+    // actually play it - trusting canPlayType there means silent forever-loading.
     const nativeHLS = !!player.canPlayType('application/vnd.apple.mpegurl');
     const isAppleUA = /iP(hone|ad|od)/.test(navigator.userAgent)
       || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) // iPadOS masquerading as Mac
       || (/Version\/[\d.]+.*Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)); // real Safari
     // Chrome/Firefox/Edge on iOS are WebKit shells: same native HLS player as
-    // Safari underneath, but their (Managed)MSE support is flaky — hls.js there
+    // Safari underneath, but their (Managed)MSE support is flaky - hls.js there
     // synced noticeably worse in the field. Route them to the same native
     // live-edge pipeline as Safari instead of telling people to switch browsers.
     const iosShellBrowser = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
@@ -1077,13 +1062,13 @@
 
     // ── Black-box recorder ──────────────────────────────────────────────
     // A structured, batched event stream for EVERY meaningful thing this
-    // client does — open, environment, play/pause/stall/recover/align/error,
-    // connectivity, multi-tab, periodic health — POSTed to the Mac, folded
+    // client does - open, environment, play/pause/stall/recover/align/error,
+    // connectivity, multi-tab, periodic health - POSTed to the Mac, folded
     // into its session log, and uploaded to the cloud. This is how a guest's
     // whole story (joined → played → stalled → lost) becomes visible for
     // after-the-fact analysis. Fire-and-forget: it must NEVER touch playback.
     // IMPORTANT declared before logEvent: an error thrown during early page
-    // parse routes error→reportErr→logEvent, which reads IMPORTANT — keep it
+    // parse routes error→reportErr→logEvent, which reads IMPORTANT - keep it
     // out of the temporal dead zone so that path can never throw.
     const IMPORTANT = { error: 1, media: 1, 'play-failed': 1, 'join-stuck': 1, reconnect: 1, 'outlier-reattach': 1, stall: 1, rebuffer: 1, 'external-seek': 1, offline: 1, 'dj-stop': 1, nav: 1 };
     const evBuf = [];
@@ -1094,7 +1079,7 @@
       try {
         const e = { t: Date.now() - evStart, n: ++evSeq, k: kind };
         // t/n/k are reserved (n is the per-event sequence the analyzer dedupes
-        // on) — a caller field must never clobber them.
+        // on) - a caller field must never clobber them.
         if (fields) for (const key in fields) { if (key === 't' || key === 'n' || key === 'k') continue; const v = fields[key]; if (v !== undefined && v !== null) e[key] = v; }
         evBuf.push(e);
         if (evBuf.length > 300) evBuf.splice(0, evBuf.length - 300); // never grow unbounded if uploads hang
@@ -1110,7 +1095,7 @@
       const batch = evBuf.splice(0, evBuf.length);
       const body = JSON.stringify({ cid, tab: tabId, v: PAGE_VERSION, plat: platform, page: 'guest', events: batch });
       // Put a failed batch back at the front (oldest-first) so the events most
-      // worth keeping — the stall/disconnect story — survive a network blip.
+      // worth keeping - the stall/disconnect story - survive a network blip.
       // Only on transport failure; an HTTP rejection means the server saw it.
       const requeue = () => { evBuf.unshift.apply(evBuf, batch); if (evBuf.length > 300) evBuf.splice(0, evBuf.length - 300); };
       try {
@@ -1118,7 +1103,7 @@
         flushing = true; flushSince = Date.now();
         const mine = ++flushSeq;
         // Abort a wedged (never-settling) socket so its .catch fires and requeues
-        // the batch — otherwise a half-open Wi-Fi socket strands exactly the
+        // the batch - otherwise a half-open Wi-Fi socket strands exactly the
         // stall/disconnect events we most want until the page closes.
         const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         const ato = ac ? setTimeout(() => { try { ac.abort(); } catch (e) {} }, 10000) : 0;
@@ -1130,14 +1115,14 @@
     window.addEventListener('pagehide', () => { logEvent('pagehide', playSummary()); flushEvents(true); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) flushEvents(true); });
 
-    // reportErr kept as the error shorthand — now just an important event.
+    // reportErr kept as the error shorthand - now just an important event.
     function reportErr(kind, msg){ logEvent(kind, { msg: String(msg == null ? '?' : msg).slice(0, 300) }); }
     window.addEventListener('error', (e) => reportErr('error',
       (e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0)));
     window.addEventListener('unhandledrejection', (e) => reportErr('error',
       'promise: ' + (e.reason && (e.reason.message || e.reason))));
 
-    // Environment snapshot — who/what is connecting (parse iOS/browser Mac-side).
+    // Environment snapshot - who/what is connecting (parse iOS/browser Mac-side).
     (function(){
       try {
         const c = navigator.connection || {};
@@ -1286,7 +1271,7 @@
       return measureProgramLatency() != null ? 'pdt' : 'none';
     }
 
-    // The pill only shows transient/problem states — "live" is redundant with
+    // The pill only shows transient/problem states - "live" is redundant with
     // the big play button, so it (and empty states) hide the pill entirely.
     const pill = document.getElementById('pill');
     function setStatus(t){ pilltext.textContent = t || ''; pill.style.display = (!t || t === 'live') ? 'none' : ''; }
@@ -1320,7 +1305,7 @@
       })[char]);
     }
     function closeTrays(){
-      [menuTray, peopleTray].forEach((tray) => {
+      [menuTray].forEach((tray) => {
         tray.classList.remove('open');
         tray.setAttribute('aria-hidden', 'true');
       });
@@ -1335,7 +1320,6 @@
       document.body.classList.add('trayopen');
     }
     menuBtn.addEventListener('click', () => openTray(menuTray));
-    peopleBtn.addEventListener('click', () => openTray(peopleTray));
     trayBackdrop.addEventListener('click', closeTrays);
     document.querySelectorAll('[data-close-tray]').forEach((button) => button.addEventListener('click', closeTrays));
     document.addEventListener('keydown', (event) => {
@@ -1395,7 +1379,6 @@
       peopleBadge.textContent = peopleCount > 99 ? '99+' : String(peopleCount);
       peopleBadge.hidden = peopleCount === 0;
       peopleBtn.setAttribute('aria-label', 'Show ' + peopleCount + (peopleCount === 1 ? ' person' : ' people'));
-      renderListenerGroups(listenerGroupsEl, rows);
       renderListenerGroups(sheetListenerGroups, rows);
       updatePlayerDetails();
     }
@@ -1543,12 +1526,12 @@
     // Current-track text for the listen-bar hint. Declared in THIS (outer) scope
     // because applyBtnHint runs here; renderTrackID (an inner scope) writes it.
     // (Reaching into the inner-scope currentTrack from here throws a ReferenceError
-    // and silently broke the play button — never do that.)
+    // and silently broke the play button - never do that.)
     let npHintText = '';
     let localNowPlaying = null;
     function trackText(track){
       if (!track || !track.title) return '';
-      return track.artist ? track.title + ' — ' + track.artist : track.title;
+      return track.artist ? track.title + ' - ' + track.artist : track.title;
     }
     function updateSelectedTrackHint(){
       const peer = selectedDJId && discoveredPeers.find((candidate) => candidate.id === selectedDJId);
@@ -1593,7 +1576,6 @@
       sheetArt.src = artwork;
       sheetTrackTitle.textContent = track && track.title ? track.title : 'Live party audio';
       sheetTrackArtist.textContent = track && track.artist ? track.artist : djName;
-      sheetDJName.textContent = djName;
       listenCount.textContent = listenerText;
       sheetListenCount.textContent = listenerText;
       sheetLinks.textContent = '';
@@ -1637,24 +1619,55 @@
                                : (live ? (npHintText || 'Low-latency party audio') : 'The DJ has not started yet');
     }
 
-    function openPlayerSheet(){
+    function openPlayerSheet(anchor){
       closeTrays();
       playerSheet.classList.add('open');
       playerSheet.setAttribute('aria-hidden', 'false');
       playerSheetBackdrop.classList.add('show');
       document.body.classList.add('playersheetopen');
       updatePlayerDetails();
+      requestAnimationFrame(() => {
+        playerSheetScroll.scrollTo({
+          top: anchor === 'listeners' ? sheetListenersHeading.offsetTop - 8 : 0,
+          behavior: anchor === 'listeners' ? 'smooth' : 'auto'
+        });
+      });
     }
     function closePlayerSheet(){
       playerSheet.classList.remove('open');
       playerSheet.setAttribute('aria-hidden', 'true');
       playerSheetBackdrop.classList.remove('show');
       document.body.classList.remove('playersheetopen');
+      playerSheet.style.removeProperty('--sheet-drag');
     }
-    playerSummary.addEventListener('click', openPlayerSheet);
+    playerSummary.addEventListener('click', () => openPlayerSheet());
+    peopleBtn.addEventListener('click', () => openPlayerSheet('listeners'));
     sheetCollapse.addEventListener('click', closePlayerSheet);
     playerSheetBackdrop.addEventListener('click', closePlayerSheet);
     sheetPlay.addEventListener('click', () => btn.click());
+    let sheetTouchStart = null;
+    let sheetTouchDelta = 0;
+    playerSheet.addEventListener('touchstart', (event) => {
+      if (event.touches.length !== 1 || playerSheetScroll.scrollTop > 0) return;
+      sheetTouchStart = event.touches[0].clientY;
+      sheetTouchDelta = 0;
+    }, { passive: true });
+    playerSheet.addEventListener('touchmove', (event) => {
+      if (sheetTouchStart == null || event.touches.length !== 1) return;
+      const delta = event.touches[0].clientY - sheetTouchStart;
+      if (delta <= 0 || playerSheetScroll.scrollTop > 0) return;
+      sheetTouchDelta = delta;
+      playerSheet.style.setProperty('--sheet-drag', Math.min(delta, 220) + 'px');
+      event.preventDefault();
+    }, { passive: false });
+    playerSheet.addEventListener('touchend', () => {
+      if (sheetTouchStart == null) return;
+      const shouldClose = sheetTouchDelta > 80;
+      sheetTouchStart = null;
+      sheetTouchDelta = 0;
+      if (shouldClose) closePlayerSheet();
+      else playerSheet.style.removeProperty('--sheet-drag');
+    });
 
     function setTheme(theme){
       const next = theme === 'dark' ? 'dark' : 'light';
@@ -1709,7 +1722,7 @@
     // Rate-limited, live-gated re-attach: recover from a stale/broken HLS session
     // (e.g. MediaMTX invalidating the session when the publisher rebuilds on a
     // capture-devicechange) WITHOUT tight-looping. A persistently-404 stream (DJ
-    // stopped) must never spin attach() — gate on `live` and a cooldown.
+    // stopped) must never spin attach() - gate on `live` and a cooldown.
     let lastReattach = 0;
     function reattach(reason){
       if (!live || !streamReady) return;
@@ -1731,10 +1744,10 @@
       playBlocked = false;
       attached = true;
       if (useNative) {
-        player.src = src;                          // Safari/iOS — native HLS, the lock-safe path
+        player.src = src;                          // Safari/iOS - native HLS, the lock-safe path
       } else if (!window.Hls) {
         // hls.js path, but the lazily-loaded script isn't in yet: wait for it,
-        // then re-attach. NEVER fall through to player.src=src on this path — a
+        // then re-attach. NEVER fall through to player.src=src on this path - a
         // non-Apple browser can't play HLS natively (the silent-forever-loading
         // bug). loadHls() resolves false only on a load error, where we degrade
         // to the same bare attempt the final else makes.
@@ -1757,7 +1770,7 @@
           backBufferLength: 10,
           maxBufferLength: 30,
           maxBufferHole: 0.1,
-          testBandwidth: false, // single bitrate — skip the startup ABR probe that delays the first fragment
+          testBandwidth: false, // single bitrate - skip the startup ABR probe that delays the first fragment
           startFragPrefetch: true,
           manifestLoadPolicy: LOAD_POLICY, playlistLoadPolicy: LOAD_POLICY, fragLoadPolicy: LOAD_POLICY,
         };
@@ -1773,7 +1786,7 @@
           if (staleSession) {
             // MediaMTX invalidates HLS sessions when the publisher is rebuilt.
             // hls.js may report the stale playlist as a non-fatal load error, so
-            // handle it before the fatal-only branch — but rate-limited via
+            // handle it before the fatal-only branch - but rate-limited via
             // reattach() so a persistent 404 can't spin the player.
             try { networkErrors++; reattach(); } catch (e) {}
             return;
@@ -1781,7 +1794,7 @@
           if (!d || !d.fatal) return;
           try {
             if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
-              // startLoad() cannot rebuild a broken MediaSource — this can.
+              // startLoad() cannot rebuild a broken MediaSource - this can.
               mediaErrors++;
               if (mediaErrors > 1) hls.swapAudioCodec();
               hls.recoverMediaError();
@@ -1810,7 +1823,7 @@
 
     function attachSafe(){
       try { return attach() !== false; }
-      catch (e) { setStatus('player error — reload the page'); return false; }
+      catch (e) { setStatus('player error - reload the page'); return false; }
     }
 
     // Native AVPlayer joins MediaMTX's LL-HLS live edge directly. The page never
@@ -1890,7 +1903,7 @@
         updateIdleButton();
         return;
       }
-      // A throwing attach must NOT burn the flag — leaving attached=true with
+      // A throwing attach must NOT burn the flag - leaving attached=true with
       // no player wedges the page at "Preparing…" forever; clearing it makes
       // the next 3s poll simply try again.
       if (!attachSafe()) { attached = false; return; }
@@ -1924,10 +1937,10 @@
     // ── Single active tab ──
     // Two open tabs playing the SAME stream = phasing/echo + doubled roster.
     // Whichever tab most recently STARTED playing owns the audio; the others
-    // yield (pause + "playing in another tab — tap to listen here"). Claims
+    // yield (pause + "playing in another tab - tap to listen here"). Claims
     // carry a timestamp so the newest wins with no ping-pong (yielding never
     // re-claims). BroadcastChannel where available, localStorage otherwise.
-    // (tabId is defined up top — shared with the black-box recorder.)
+    // (tabId is defined up top - shared with the black-box recorder.)
     let myClaim = 0, yielded = false, bchan = null;
     try { bchan = new BroadcastChannel('pp-audio'); } catch (e) {}
     function claimAudio(){
@@ -1944,11 +1957,11 @@
         yielded = true;
         // MUTE as well as pause: any path that later resurrects playback
         // (DJ stop→restart auto-resume, version self-reload) then comes back
-        // SILENT instead of echoing the active tab — reclaim unmutes.
+        // SILENT instead of echoing the active tab - reclaim unmutes.
         player.muted = true;
         try { player.pause(); } catch (e) {}
         setPlayingUI(false);
-        setStatus('playing on another tab — tap to listen here');
+        setStatus('playing on another tab - tap to listen here');
         logEvent('yield');
       }
     }
@@ -1963,7 +1976,7 @@
       if (yielded) { yielded = false; claimAudio(); userPaused = false; recoverPlayback('tab-reclaim'); return; }
       if (playBlocked) { retryPlayback('retry'); return; }
       // Interruption recovery: element paused by the SYSTEM (call/Siri) or
-      // STALLED (no current data — the frozen-tab case) while not deliberately
+      // STALLED (no current data - the frozen-tab case) while not deliberately
       // muted. This tap means "come back", not "mute me". (Muted-pause keeps
       // readyState high, so it correctly falls through to resumeGuest below.)
       if (started && !userPaused && !player.muted && (player.paused || player.readyState < 3)) { recoverPlayback(); return; }
@@ -1982,7 +1995,7 @@
 
     // The WHOLE hero is a resume target when the system paused us (AirPods
     // pulled, call ended, tab frozen): iOS won't auto-resume a web audio
-    // element after a route change — a gesture is required — so make that
+    // element after a route change - a gesture is required - so make that
     // gesture as forgiving as possible (tap anywhere up top, not just the
     // button). Harmless in other states (recoverPlayback only acts when
     // genuinely stuck). A muted-pause has readyState high, so it's excluded.
@@ -2021,28 +2034,28 @@
       }
       if (sumPlayStart) { sumPlayMs += Date.now() - sumPlayStart; sumPlayStart = 0; } // pause the play-time clock
       // A stall is a natural gap: if an app update has been waiting for a
-      // "safe moment" to refresh this page, this is it — otherwise a page
+      // "safe moment" to refresh this page, this is it - otherwise a page
       // that plays all night runs stale code all night.
       if (pendingReload) reloadKeepingIntent();
     });
     // Safari fires 'stalled' spuriously on live streams (~3s without bytes is
-    // normal between refreshes) — only treat it as real when starved.
+    // normal between refreshes) - only treat it as real when starved.
     player.addEventListener('stalled', () => {
       if (!live) return; // poll() handles the DJ-stopped teardown
       if (player.readyState < 3) { stalledSinceBeat = true; setStatus('reconnecting…'); player.play().catch(()=>{}); }
     });
     // RECONNECT, not resume: after an interruption longer than a few seconds
     // (voice message, phone call), the paused position has fallen out of the
-    // server's 32s live window — play() alone stalls at a dead spot ("I click
+    // server's 32s live window - play() alone stalls at a dead spot ("I click
     // to get back in and it's not allowing me", field report). Re-attach for
     // a fresh join at the live edge, aligned to the room.
     // Track when playback last ADVANCED. Muted-pause (our design) keeps the
-    // stream playing, so currentTime advances and this stays fresh — we won't
+    // stream playing, so currentTime advances and this stays fresh - we won't
     // needlessly re-attach. A real interruption (voice message, phone call,
     // backgrounded tab that iOS froze) stops progress, so this goes stale and
     // recoverPlayback re-attaches for a clean rejoin. Field: Seth's Chrome tab
     // froze reading a voice text, came back STALLED (paused:false) and couldn't
-    // recover — a pause-only check missed it; progress-staleness catches it.
+    // recover - a pause-only check missed it; progress-staleness catches it.
     let lastProgress = 0, lastTime = NaN, recoveringUntil = 0;
     function sampleProgress(){
       const current = player.currentTime;
@@ -2159,11 +2172,11 @@
     player.addEventListener('pause',   () => {
       if (pendingReload) { reloadKeepingIntent(); return; } // safe moment: nothing playing
       // We pause by MUTING, never player.pause(). A real pause here is a system
-      // interruption (phone call, Siri, another app) — if the user didn't ask
+      // interruption (phone call, Siri, another app) - if the user didn't ask
       // for it, resume as soon as we can. If the resume is REJECTED (active
       // call), show the truth instead of a green "Playing" over silence; the
       // poll nudge keeps retrying and 'playing' restores the UI on success.
-      if (yielded) { setPlayingUI(false); setStatus('playing on another tab — tap to listen here'); return; }
+      if (yielded) { setPlayingUI(false); setStatus('playing on another tab - tap to listen here'); return; }
       if (started && !userPaused) {
         // Try to resume (phone call/Siri ending). iOS blocks gesture-less
         // resume after an AirPods/route change, so if it's rejected show a
@@ -2175,11 +2188,11 @@
     });
     player.addEventListener('error',   () => {
       reportErr('media', 'code=' + (player.error && player.error.code) + ' ' + ((player.error && player.error.message) || '') + ' live=' + live);
-      if (!live) return; // DJ stopped — poll() tears down and shows "Waiting for DJ"
+      if (!live) return; // DJ stopped - poll() tears down and shows "Waiting for DJ"
       // The stream is supposedly live but the player keeps dying (e.g. the
       // server was reconfigured under us and this MediaSource is wedged): a
       // fresh page is the one reset that always works. Reload once, quietly.
-      // ONLY with a recently-successful status poll though — during a Wi-Fi
+      // ONLY with a recently-successful status poll though - during a Wi-Fi
       // outage "live" is just stale, and reloading an unreachable page would
       // strand the guest on the browser's error screen with no way back.
       if (errRetries >= 6 && Date.now() - lastPollOK < 8000) {
@@ -2205,14 +2218,14 @@
       // Coming back to the tab: reconnect if the interruption outlived the
       // live window, and check for a newer page version IMMEDIATELY (a tab
       // parked in the background for days must not keep running old code).
-      // Foregrounding a yielded tab reclaims — you're clearly using THIS one.
+      // Foregrounding a yielded tab reclaims - you're clearly using THIS one.
       if (yielded) { yielded = false; claimAudio(); userPaused = false; recoverPlayback('tab-reclaim'); }
       else if (started && !userPaused && (player.paused || stale())) recoverPlayback('foreground');
       poll();
     });
     // AirPods / audio-route change: iOS pauses on removal and does NOT
     // auto-resume on reinsert. Best-effort resume tied to the hardware event
-    // (may still need a tap on stricter iOS — the button says "Resume").
+    // (may still need a tap on stricter iOS - the button says "Resume").
     try {
       navigator.mediaDevices && navigator.mediaDevices.addEventListener('devicechange', () => {
         if (started && !userPaused && !yielded && player.paused) recoverPlayback();
@@ -2248,7 +2261,7 @@
     // this guest was listening so we can auto-resume when the DJ returns.
     // (Also restored across the wedged-stream self-reload via sessionStorage;
     // if the browser blocks the gesture-less play() we fall back to the
-    // bright "Tap to listen" button — never a stuck screen.)
+    // bright "Tap to listen" button - never a stuck screen.)
     let resumeWanted = false, resumeTries = 0;
     try { resumeWanted = sessionStorage.getItem('pp.resume') === '1'; sessionStorage.removeItem('pp.resume'); } catch (e) {}
     function resetTransport(){
@@ -2271,7 +2284,7 @@
       updateIdleButton(); // shows "Waiting for DJ"
     }
 
-    let lastPollOK = 0; // last successful /api/status — proves a reload could actually fetch the page
+    let lastPollOK = 0; // last successful /api/status - proves a reload could actually fetch the page
     async function poll(){
       try {
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
@@ -2332,7 +2345,7 @@
         if (!live && (started || attached)) {
           // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an
           // endless reconnect loop against a dead stream. `attached` matters
-          // too — a prebuffered-but-never-tapped page holds a live hls.js
+          // too - a prebuffered-but-never-tapped page holds a live hls.js
           // instance that would retry the dead URL forever and could replay
           // the PREVIOUS set's buffer on the first tap after a restart.
           stopPlayback();
@@ -2340,7 +2353,7 @@
           updateIdleButton();
           prebuffer();
           // Auto-resume a guest who was listening when the DJ stopped/restarted
-          // — no re-tap, no reload (the element keeps its user-activation).
+          // - no re-tap, no reload (the element keeps its user-activation).
           // Cleared by 'playing' on success; a browser that blocks the
           // gesture-less play gets a few retries, then the bright tap button.
           if (live && streamReady && resumeWanted && ready && !userPaused && !yielded) {
@@ -2354,7 +2367,7 @@
         }
         // Mid-play hiccup (not a stop): the resume nudge. Covers a real PAUSE
         // *and* a STALL that never fired a pause event (Seth's frozen-tab case:
-        // came back paused:false but stuck) — recoverPlayback re-attaches once
+        // came back paused:false but stuck) - recoverPlayback re-attaches once
         // progress has been stale past the live window.
         else if (started && live && streamReady && !userPaused && !yielded && (player.paused || stale())) {
           recoverPlayback();
@@ -2401,7 +2414,7 @@
       // Live-edge path (room sync off, the default) bypasses the align transaction
       // that normally latches the native timeline origin, and the shallow live-edge
       // buffer keeps the health watchdog's restore (gated on buf>1) from ever
-      // running — so on iOS the origin stays null and latency reads "-- s" forever.
+      // running - so on iOS the origin stays null and latency reads "-- s" forever.
       // Re-derive it here passively (getStartDate only, no seek, no buffer floor).
       if (timelineOriginMs == null) tryRestoreTimelineOrigin();
       const lat = measureLatency();
@@ -2430,7 +2443,7 @@
         }
       }
       // Periodic health into the recorder (~every 12s): the steady-state
-      // timeline between transitions — latency drift, buffer depth, rate.
+      // timeline between transitions - latency drift, buffer depth, rate.
       if (++hbTick % 6 === 0) logEvent('health', {
         lat: rnd3(lat), ref: syncReference(), pdt: rnd3(measureProgramLatency()), buf: rnd(bufferedAhead()),
         rs: player.readyState, rate: player.playbackRate, muted: player.muted, ll: true,
@@ -2660,8 +2673,8 @@
       });
 
       // Guests type their own name (no auto-generated handles). We pick an emoji
-      // FOR them — deterministic from cid so it's stable and varies person to
-      // person — which they can change by tapping it.
+      // FOR them - deterministic from cid so it's stable and varies person to
+      // person - which they can change by tapping it.
       const EMO = ['🪩','🕺','💃','🎧','🎶','✨','🔥','🦩','🍾','🎉','🌈','⚡️','🫧','🎊','🛼','🐆','🍒','🌙','👾','🦋','🐬','🍄','💎','🚀'];
       let h = 0; for (const ch of cid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
       // >>> not >>: h can exceed 2^31 and a signed shift would go NEGATIVE,
@@ -2718,7 +2731,7 @@
       // ── Welcome gate ──
       // iOS won't load media before a gesture, so the party's front door IS
       // the gesture: pick a name, tap "Let's party", and the player element
-      // gets activated inside that tap — buffering starts immediately, and a
+      // gets activated inside that tap - buffering starts immediately, and a
       // guest who arrives before the DJ auto-starts when the set begins.
       let welcomed = false;
       try { welcomed = localStorage.getItem('pp.welcomed') === '1'; } catch (e) {}
@@ -2791,7 +2804,7 @@
           updateIdleButton();
         }
         // Join-stuck detector: the DJ was live, the guest tapped, and nothing
-        // is playing seconds later — the exact silent failure that was
+        // is playing seconds later - the exact silent failure that was
         // invisible in the field. Report it with the player's state.
         setTimeout(() => {
           if (live && streamReady && !userPaused && (player.paused || player.readyState < 2)) {
@@ -2979,7 +2992,7 @@
           renderPendingFiles();
           closeComposer(true);
         } catch (e) {
-          attachN.textContent = e.message || 'failed — try again';
+          attachN.textContent = e.message || 'failed - try again';
         } finally {
           postBtn.disabled = false; postBtn.textContent = 'Post';
         }
@@ -2991,7 +3004,7 @@
 
       // Feed rendering: newest first; media served from /media/<id>. Nodes
       // are keyed by post id and REPLACED when a post gains activity (a new
-      // comment) — the cursor is `act`, not creation time.
+      // comment) - the cursor is `act`, not creation time.
       const nodes = new Map(); // post id -> element
       const expanded = new Set(); // posts with all comments shown
       let newestAct = 0, feedOn = false;
@@ -3048,7 +3061,7 @@
           }
           return '<audio src="' + src + '" controls preload="none"></audio>';
         }).join('');
-        // Short text-only shout-outs land BIG — a "TUNE 🔥" is a shout, not a footnote.
+        // Short text-only shout-outs land BIG - a "TUNE 🔥" is a shout, not a footnote.
         const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
         const el = document.createElement('div');
         el.className = 'post'; el.dataset.id = p.id; el.dataset.ts = p.ts;
@@ -3086,7 +3099,7 @@
           }
           if (active && document.activeElement === active) {
             // Mid-typing: the update must still LAND (the cursor has already
-            // advanced past this post — skipping would drop it forever, the
+            // advanced past this post - skipping would drop it forever, the
             // exact way a guest's own just-sent comment used to vanish).
             // Swap only the comments block; the focused input stays alive.
             const oldC = old.querySelector('.pcmts'), newC = el.querySelector('.pcmts');
@@ -3184,7 +3197,7 @@
         if (!feedOn && !force) return false;
         try {
           // wait=1 long-polls once the feed is up: the server answers the
-          // instant anything happens — realtime without a hammering interval.
+          // instant anything happens - realtime without a hammering interval.
           // (Never on the FIRST load: an empty event would park the request
           // 25s and hold the welcome card hostage.)
           const r = await fetch('/api/feed?cid=' + encodeURIComponent(cid) + '&since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store' });

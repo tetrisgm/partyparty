@@ -98,7 +98,7 @@ func TestStartIdempotent(t *testing.T) {
 		t.Fatal("Running() = false after Start")
 	}
 	waitFor(t, 2*time.Second, "stub logged its pid", func() bool { return len(readPIDs(pidLog)) >= 1 })
-	// A (wrong) second spawn would log its own PID within a beat — give it one.
+	// A (wrong) second spawn would log its own PID within a beat - give it one.
 	time.Sleep(150 * time.Millisecond)
 	if n := len(readPIDs(pidLog)); n != 1 {
 		t.Fatalf("expected exactly 1 spawned process, got %d", n)
@@ -146,7 +146,7 @@ func TestStopWaitGraceful(t *testing.T) {
 		t.Fatal("process still alive after StopWait")
 	}
 	if el >= 1400*time.Millisecond {
-		t.Fatalf("graceful SIGINT path took %v — kill escalation fired", el)
+		t.Fatalf("graceful SIGINT path took %v - kill escalation fired", el)
 	}
 	if s.Running() {
 		t.Fatal("Running() = true after StopWait")
@@ -167,7 +167,7 @@ func TestStopWaitKillEscalation(t *testing.T) {
 	s.StopWait()
 	el := time.Since(begin)
 	if el < 1400*time.Millisecond {
-		t.Fatalf("StopWait returned in %v — SIGINT-ignoring child cannot die before the grace period", el)
+		t.Fatalf("StopWait returned in %v - SIGINT-ignoring child cannot die before the grace period", el)
 	}
 	waitFor(t, 2*time.Second, "process reaped after Kill", func() bool { return !alive(pid) })
 }

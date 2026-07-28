@@ -9,7 +9,7 @@ import (
 
 // observeResolver is the structured guest-path resolver check that replaced the
 // old DoH rebind classifier: it records what the network's own resolver returns
-// and whether the expected IP is among the answers — no rebind judgement.
+// and whether the expected IP is among the answers - no rebind judgement.
 // Verified against Cloudflare's permanently stable one.one.one.one → 1.1.1.1
 // record; skipped offline.
 func TestObserveResolver(t *testing.T) {

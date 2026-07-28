@@ -1,9 +1,9 @@
-// ppcapture — captures macOS system audio via a Core Audio process tap and
+// ppcapture - captures macOS system audio via a Core Audio process tap and
 // writes raw interleaved Float32 PCM to stdout; partyparty pipes it into
-// FFmpeg. macOS 26+ only — no ScreenCaptureKit, no screen-recording TCC.
+// FFmpeg. macOS 26+ only - no ScreenCaptureKit, no screen-recording TCC.
 //
 // The "System Audio Recording" permission prompts INLINE (a one-click Allow
-// dialog, like microphone) on first use and survives app updates — no
+// dialog, like microphone) on first use and survives app updates - no
 // System Settings visit, ever.
 //
 // The tap's stream format follows the current OUTPUT device (44.1k or 48k),
@@ -26,7 +26,7 @@ func writeOut(_ data: Data) {
 
 /// Ring buffer between the HAL's realtime IO thread and a blocking writer
 /// thread. The IO thread must NEVER block (a blocked HAL glitches ALL system
-/// audio) — on overflow we drop and count instead.
+/// audio) - on overflow we drop and count instead.
 final class PCMRing {
     private var buf: [Float32]
     private var head = 0, tail = 0, used = 0
@@ -48,7 +48,7 @@ final class PCMRing {
         totalPushed &+= n
         if used + n > cap {
             dropped += n // never block the HAL thread
-            if dropped % (48000 * 2) < n { elog("ppcapture: output backpressure — dropped ~\(dropped / 96000)s so far") }
+            if dropped % (48000 * 2) < n { elog("ppcapture: output backpressure - dropped ~\(dropped / 96000)s so far") }
             cond.unlock()
             return
         }
@@ -180,7 +180,7 @@ desc.isPrivate = true
 var tapID = AudioObjectID(kAudioObjectUnknown)
 var err = AudioHardwareCreateProcessTap(desc, &tapID)
 guard err == noErr, tapID != kAudioObjectUnknown else {
-    fail("system-audio tap failed (err \(err)) — if a permission prompt appeared, click Allow and start again", code: 3)
+    fail("system-audio tap failed (err \(err)) - if a permission prompt appeared, click Allow and start again", code: 3)
 }
 
 // 2. The tap's format follows the current output device.
@@ -215,7 +215,7 @@ guard err == noErr, aggID != kAudioObjectUnknown else {
 }
 
 // ~0.5s ring. It only needs to absorb producer/consumer scheduling jitter (HAL
-// IOProc -> blocking writer), which is tens of ms — the tee legs now
+// IOProc -> blocking writer), which is tens of ms - the tee legs now
 // drop-on-overflow so a downstream stall no longer back-pressures the writer. A
 // deep (was 8s) ring turned a transient stall into seconds of ACCUMULATING
 // latency before it finally dropped (the ratchet); a shallow ring makes a stall
@@ -309,7 +309,7 @@ Thread.detachNewThread {
             elog("ppcapture: CAPTURE-BLOCKED exclusive-mode pid=\(owner)")
         } else if flagged && wasHogged && !hoggedNow {
             // The exclusive app released the device but our tap is still wedged
-            // (frames never resumed) — the aggregate device needs a clean
+            // (frames never resumed) - the aggregate device needs a clean
             // rebuild. Signal the parent to restart capture.
             wasHogged = false
             elog("ppcapture: CAPTURE-UNHOGGED")
@@ -320,7 +320,7 @@ Thread.detachNewThread {
 // Default-output-device change (AirPods connect to the Mac and macOS makes
 // them the current output, the DJ switches speakers↔interface, a display with
 // speakers is plugged in, …). The global tap's aggregate device is bound to
-// the OLD device's clock/format and stops delivering frames — guests get stuck
+// the OLD device's clock/format and stops delivering frames - guests get stuck
 // buffering with no recovery. The tap must be rebuilt against the new device
 // (which also re-reads its sample rate), so signal the parent to restart
 // capture. Debounced + throttled parent-side so a settling AirPods handshake

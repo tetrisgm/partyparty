@@ -7,7 +7,7 @@
 /run/
 *.log
 .DS_Store
-# certs / private keys — NEVER commit these (all generated at runtime)
+# certs / private keys - NEVER commit these (all generated at runtime)
 *.pem
 *.key
 *.crt

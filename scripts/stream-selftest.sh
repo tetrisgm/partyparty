@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# End-to-end stream self-test — no field Mac needed.
+# End-to-end stream self-test - no field Mac needed.
 #
 # Runs the real LL-HLS pipeline (bundled mediamtx + ffmpeg, a test-tone source
 # through the EXACT tee the app builds) under Seth's real config (hlsEncryption:
 # yes / lowLatency), then acts as a GUEST: pulls the HTTPS LL-HLS stream and
 # decodes it, confirming real audio actually reaches a listener end-to-end
-# (manifest -> media playlist -> segments -> decoded audio) — not just that the
+# (manifest -> media playlist -> segments -> decoded audio) - not just that the
 # manifest exists. Optionally injects a capture-rebuild to test resilience.
 #
 #   scripts/stream-selftest.sh            # happy path
@@ -99,7 +99,7 @@ start_pub(){
     > "$WORK/pub.log" 2>&1 & PIDS+=($!); PUB_PID=$!
 }
 
-# GUEST: pull the HTTPS LL-HLS, decode it, and measure the audio LEVEL — so we
+# GUEST: pull the HTTPS LL-HLS, decode it, and measure the audio LEVEL - so we
 # confirm the guest receives the DJ's actual SOUND, not just some bytes or
 # silence. Returns "secs|mean_dB|raw".
 guest_decode_secs(){
@@ -142,9 +142,9 @@ echo "== mediamtx publish/read events =="
 grep -iE "is publishing|is reading|created|error|already" "$WORK/mtx.log" | tail -8
 
 if [ "${s1:-0}" -ge "$MIN_SECS" ] && [ "${s2:-0}" -ge "$MIN_SECS" ] && [ "$a1" = "1" ] && [ "$a2" = "1" ]; then
-  echo "RESULT: PASS — a guest received the DJ's actual audio end-to-end (decoded + non-silent)."
+  echo "RESULT: PASS - a guest received the DJ's actual audio end-to-end (decoded + non-silent)."
 else
-  echo "RESULT: FAIL — guest did NOT receive the DJ's audio (reproduces 'guests hear nothing')."
+  echo "RESULT: FAIL - guest did NOT receive the DJ's audio (reproduces 'guests hear nothing')."
   echo "  decoded>=${MIN_SECS}s: #1=$([ "${s1:-0}" -ge "$MIN_SECS" ] && echo ok || echo NO) #2=$([ "${s2:-0}" -ge "$MIN_SECS" ] && echo ok || echo NO) | non-silent: #1=$([ "$a1" = 1 ] && echo ok || echo NO) #2=$([ "$a2" = 1 ] && echo ok || echo NO)"
   echo "---- guest ffmpeg detail ----"; tail -20 "$WORK/guest.log" 2>/dev/null
   exit 1

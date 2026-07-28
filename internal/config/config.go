@@ -9,7 +9,7 @@ import (
 // Config holds all tunables. CLI flags override env vars override defaults.
 type Config struct {
 	Port       int
-	TLSPort    int // HTTPS guest-page listener (the advertised link — the Plex model)
+	TLSPort    int // HTTPS guest-page listener (the advertised link - the Plex model)
 	Name       string
 	Bitrate    string
 	Codec      string
@@ -44,7 +44,7 @@ type Config struct {
 func Parse() Config {
 	var c Config
 	flag.IntVar(&c.Port, "port", envInt("PARTYPARTY_PORT", 8000), "HTTP port (localhost console + diagnostics; never advertised to guests)")
-	flag.IntVar(&c.TLSPort, "tls-port", envInt("PARTYPARTY_TLS_PORT", 8443), "HTTPS port for the guest page — the only link guests ever see")
+	flag.IntVar(&c.TLSPort, "tls-port", envInt("PARTYPARTY_TLS_PORT", 8443), "HTTPS port for the guest page - the only link guests ever see")
 	flag.StringVar(&c.Name, "name", env("PARTYPARTY_NAME", "partyparty"), "display name shown to guests")
 	flag.StringVar(&c.Device, "device", env("PARTYPARTY_DEVICE", "auto"), "default capture device index")
 	flag.BoolVar(&c.Tone, "tone", false, "auto-start a 440 Hz test tone on launch")

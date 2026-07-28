@@ -96,7 +96,7 @@ func (s *Store) makeThumb(tools thumbTools, job thumbJob) error {
 	base := thumbFileName(job.mediaID)
 	// The temp file MUST keep the real ".jpg" extension: ffmpeg and sips both
 	// choose the output muxer/format from the filename, and a bare ".tmp" makes
-	// ffmpeg fail with "Unable to choose an output format" — which silently
+	// ffmpeg fail with "Unable to choose an output format" - which silently
 	// killed every video thumbnail (guests saw an empty square instead of a
 	// poster). Keep the uniquifier in the middle, extension at the end.
 	ext := filepath.Ext(base)

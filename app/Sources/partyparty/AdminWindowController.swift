@@ -55,7 +55,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default() // persist localStorage prefs across launches
         let ucc = WKUserContentController()
-        // WKUserContentController retains its handler STRONGLY — adding self
+        // WKUserContentController retains its handler STRONGLY - adding self
         // directly cycles controller→webView→config→ucc→controller and the
         // window could never deallocate. The weak proxy breaks the cycle.
         ucc.add(WeakScriptHandler(self), name: "pp")
@@ -84,16 +84,16 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     private func loadConsole() {
         // Numeric loopback, NOT "localhost": on some Macs `localhost` resolves to
         // an address the WebView can't reach (a broken /etc/hosts or a dead IPv6
-        // ::1), which loads as a blank page and — because the diagnostics below
-        // also posted to localhost — reported nothing. 127.0.0.1 needs no DNS and
+        // ::1), which loads as a blank page and - because the diagnostics below
+        // also posted to localhost - reported nothing. 127.0.0.1 needs no DNS and
         // always hits the server's IPv4 listener. THIS is the field white-screen.
         guard let url = URL(string: "http://127.0.0.1:\(port)/dj") else { return }
         webView.load(URLRequest(url: url))
     }
 
     /// Clear the console's persisted web state (localStorage + caches) and reload.
-    /// The page's boot fallback calls this when init failed — most often a stale
-    /// saved value poisoning startup — so a clean-slate reload is the reliable
+    /// The page's boot fallback calls this when init failed - most often a stale
+    /// saved value poisoning startup - so a clean-slate reload is the reliable
     /// recovery. Scoped to the loopback origin so unrelated web data is not
     /// touched; party content lives server-side, so nothing real is lost.
     private func resetConsole() {
@@ -116,7 +116,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     }
 
     /// Forward a WebView diagnostic into the session log (which uploads to the
-    /// broker) via the local /api/client-events sink — the same black-box
+    /// broker) via the local /api/client-events sink - the same black-box
     /// recorder the web client uses. Navigation failures, WebContent crashes,
     /// captured JS console errors, and boot-state probes all land there, so a
     /// blank or stuck console is finally diagnosable remotely instead of guessed
@@ -170,21 +170,21 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     // window where the server is being reaped/rebound).
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         let ns = error as NSError
-        diag("error", ["msg": "provisional nav failed: \(ns.domain) \(ns.code) — \(ns.localizedDescription)"])
+        diag("error", ["msg": "provisional nav failed: \(ns.domain) \(ns.code) - \(ns.localizedDescription)"])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.loadConsole() }
     }
 
-    // A load that started then failed — retry the same way.
+    // A load that started then failed - retry the same way.
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         let ns = error as NSError
-        diag("error", ["msg": "nav failed: \(ns.domain) \(ns.code) — \(ns.localizedDescription)"])
+        diag("error", ["msg": "nav failed: \(ns.domain) \(ns.code) - \(ns.localizedDescription)"])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.loadConsole() }
     }
 
-    // The WebContent process crashed (rare, but leaves a permanent white view) —
+    // The WebContent process crashed (rare, but leaves a permanent white view) -
     // reload instead of sitting blank.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        diag("error", ["msg": "WebContent process terminated (crash) — reloading"])
+        diag("error", ["msg": "WebContent process terminated (crash) - reloading"])
         loadConsole()
     }
 
@@ -301,15 +301,15 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         bootAttempts += 1
         switch bootAttempts {
         case 1:
-            diag("error", ["msg": "console blank after load — reloading (1/2)"])
+            diag("error", ["msg": "console blank after load - reloading (1/2)"])
             loadConsole()
             scheduleBootWatchdog()
         case 2:
-            diag("error", ["msg": "console still blank — clearing WebView data store + reloading (2/2)"])
+            diag("error", ["msg": "console still blank - clearing WebView data store + reloading (2/2)"])
             resetConsole()
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.scheduleBootWatchdog() }
         default:
-            diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts — WebView is not rendering /dj"])
+            diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts - WebView is not rendering /dj"])
         }
     }
 

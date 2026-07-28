@@ -16,7 +16,7 @@ import (
 )
 
 // /api/netcheck (DJ-only): one button in the console runs the exact network
-// path activation needs — from THIS Mac, on THIS Wi-Fi — and reports each hop.
+// path activation needs - from THIS Mac, on THIS Wi-Fi - and reports each hop.
 // Built for the field failure where Let's Encrypt returned 503 on one venue's
 // network and nobody could tell whether the blocker was the Wi-Fi, DNS, our
 // broker, or Let's Encrypt itself.
@@ -178,7 +178,7 @@ func get(cl *http.Client, url string) (string, error) {
 	return fmt.Sprintf("HTTP %d", resp.StatusCode), nil
 }
 
-// leNonce exercises the endpoint family ACME registration actually POSTs to —
+// leNonce exercises the endpoint family ACME registration actually POSTs to -
 // a directory fetch can succeed while new-acct/new-nonce is throttled (that IS
 // the field failure: register → 503).
 func leNonce(cl *http.Client) (string, error) {

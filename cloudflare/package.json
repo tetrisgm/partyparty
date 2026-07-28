@@ -2,7 +2,7 @@
   "name": "partyparty-site",
   "private": true,
   "version": "0.0.0",
-  "description": "partyparty.party — website and anonymous LAN provisioning.",
+  "description": "partyparty.party - website and anonymous LAN provisioning.",
   "type": "module",
   "scripts": {
     "check": "node --check worker.js",

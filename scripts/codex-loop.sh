@@ -43,13 +43,13 @@ run_one() {
 
   if [ -n "$(git -C "$wt" log "$BASE"..HEAD --oneline 2>/dev/null)" ]; then
     if git -C "$wt" push -u origin "$branch" >/dev/null 2>&1; then
-      echo "[$name] pushed branch $branch — review it"
+      echo "[$name] pushed branch $branch - review it"
       mkdir -p "$DONE_DIR" && mv "$tf" "$DONE_DIR/"
     else
-      echo "[$name] committed but push failed — branch $branch kept locally"
+      echo "[$name] committed but push failed - branch $branch kept locally"
     fi
   else
-    echo "[$name] no commits produced — task left in queue (see log)"
+    echo "[$name] no commits produced - task left in queue (see log)"
   fi
   git -C "$ROOT" worktree remove --force "$wt" 2>/dev/null || true
 }

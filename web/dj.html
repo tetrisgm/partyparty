@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>partyparty — DJ console</title>
+<title>partyparty - DJ console</title>
 <style>
   /* The console reads as the event page first; DJ controls are explicit states. */
   :root{
@@ -343,7 +343,7 @@
   .guest-qr-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:var(--label-tertiary);margin-bottom:6px}
   .party-qr-panel .url{font-size:18px}
   .spin16{width:16px;height:16px;border-radius:50%;border:2px solid var(--separator);border-top-color:var(--accent);animation:pp-spin .9s linear infinite;flex:0 0 auto}
-  /* one voice for the whole setup story — no bold-vs-gray hierarchy */
+  /* one voice for the whole setup story - no bold-vs-gray hierarchy */
   .setupline{font-size:14px;color:var(--label-secondary);text-align:left;min-height:20px;line-height:1.55;margin-top:2px}
   .setupline .caret{display:inline-block;width:2px;height:1em;background:var(--label-tertiary);vertical-align:-2px;margin-left:2px;animation:pp-blink 1s steps(1) infinite}
   @keyframes pp-blink{50%{opacity:0}}
@@ -403,7 +403,7 @@
   .softask p{font-size:14px;line-height:1.5;color:var(--label-secondary);margin:0}
   .softask-actions{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}
   .softask-actions button{height:36px;border-radius:999px;padding:0 18px}
-  /* "What should I pick?" — a focused guide popover, NOT the full Settings sheet. */
+  /* "What should I pick?" - a focused guide popover, NOT the full Settings sheet. */
   .softask.sourceguide{max-width:460px;max-height:82vh;overflow:auto;text-align:left;padding-top:34px}
   .sourceguide-body h3{font-size:13.5px;font-weight:700;margin:16px 0 4px;color:var(--label)}
   .sourceguide-body h3:first-child{margin-top:2px}
@@ -445,8 +445,8 @@
 <body>
 
 <div id="appChrome">
-<!-- ADMIN ACTION BAR: everything the DJ operates — source, sharing, settings,
-     Go Live — lives up here. Below it, the page IS the event. -->
+<!-- ADMIN ACTION BAR: everything the DJ operates - source, sharing, settings,
+     Go Live - lives up here. Below it, the page IS the event. -->
 <div id="actionbar">
   <div class="abinner">
     <span class="brandmark">🕺 partyparty</span>
@@ -457,7 +457,7 @@
       </div>
       <div class="source-row">
         <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
-        <select id="device" aria-labelledby="sourceStepLabel" title="🖥️ Mac output captures everything playing (macOS asks once — click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live — if a phone hears the beep, the network path works."></select>
+        <select id="device" aria-labelledby="sourceStepLabel" title="🖥️ Mac output captures everything playing (macOS asks once - click Allow). One app only: install BlackHole and route the app to it. Hardware: the controller's REC/USB out, or an interface input. Not sure? Pick Test tone and Go Live - if a phone hears the beep, the network path works."></select>
       </div>
     </div>
     <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
@@ -517,8 +517,8 @@
       <div class="event-qr" id="shareCard" hidden>
         <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
           <div id="qr" role="img" aria-label="Party Wi-Fi link QR code"></div>
-          <div class="visually-hidden" id="url">—</div>
-          <div class="hint" id="shareHint">Guests scan this with their phone camera — they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
+          <div class="visually-hidden" id="url">-</div>
+          <div class="hint" id="shareHint">Guests scan this with their phone camera - they just need to be on your Wi-Fi. It opens in Safari/Chrome so it keeps playing in the background.</div>
           <div id="lanState" hidden></div>
           <button class="ghost" id="netCheckBtn" style="margin-top:10px">Test guest connection</button>
           <div id="netCheckOut" style="margin-top:10px;font-size:12px;line-height:1.7;text-align:left"></div>
@@ -646,10 +646,10 @@
   <aside id="ptab-people" class="guest-sidebar">
     <div class="card">
       <div class="guesthead"><h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
-      <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it — a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are — under about half a second and the room moves together.">
-        <span>Delay from DJ <b id="djDelay">—</b></span>
+      <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
+        <span>Delay from DJ <b id="djDelay">-</b></span>
         <span class="metricsep">·</span>
-        <span>Sync <b id="syncSpread">—</b></span>
+        <span>Sync <b id="syncSpread">-</b></span>
       </div>
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
@@ -659,14 +659,14 @@
   </div>
 </div>
 
-<!-- "What should I pick?" — a focused guide popover (not the whole Settings sheet). -->
+<!-- "What should I pick?" - a focused guide popover (not the whole Settings sheet). -->
 <div class="softaskov" id="sourceGuideSheet" role="presentation">
   <div class="softask sourceguide" role="dialog" aria-modal="true" aria-labelledby="sourceGuideTitle">
     <button class="cardx" id="sourceGuideCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
     <h2 id="sourceGuideTitle">What should I pick?</h2>
     <div class="sourceguide-body">
       <h3>① Capture everything on the Mac (easiest)</h3>
-      <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+      <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
       <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
       <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
       <h3>③ Hardware controller / mixer</h3>
@@ -693,7 +693,7 @@
       </div>
       <button class="ghost" id="permBtnAlways" style="display:none;margin-top:14px;width:100%;font-size:12px">Open audio privacy settings →</button>
       <div class="hint" id="permBtnHint" style="display:none;margin:5px 0 0">Turn on partyparty in the list.</div>
-      <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session — hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
+      <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session - hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
     </section>
 
     <div class="settings-section">
@@ -701,7 +701,7 @@
         <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Source guide</summary>
         <div id="helpNote" style="display:block">
           <h3>① Capture everything on the Mac (easiest)</h3>
-          <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio — click <b>Allow</b>, that’s it. No driver, no routing — it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+          <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
           <h3>② Capture only one app (e.g. RekordBox), no system sounds</h3>
           <p>Install <code>brew install blackhole-2ch</code>. Set RekordBox → Preferences → Audio → Output → <b>BlackHole 2ch</b> (or a Multi-Output Device incl. BlackHole so you still hear it), then pick BlackHole in the top bar.</p>
           <h3>③ Hardware controller / mixer</h3>
@@ -713,9 +713,9 @@
     </div>
     <div class="adv">
       <h3 style="font-size:13px;margin:12px 0 6px">FFmpeg log</h3>
-      <pre id="log">—</pre>
+      <pre id="log">-</pre>
       <h3 style="font-size:13px;margin:12px 0 6px">Network health</h3>
-      <div class="stat"><span class="badge" id="healthPill">—</span><span class="muted" id="healthDetail" style="margin-left:6px"></span></div>
+      <div class="stat"><span class="badge" id="healthPill">-</span><span class="muted" id="healthDetail" style="margin-left:6px"></span></div>
       <div id="healthSuggest" class="warn" style="display:none;margin-top:12px"></div>
     </div>
   </div>
@@ -723,12 +723,12 @@
 </div>
 
 <script>
-/* Liveness ping — the ABSOLUTE first thing, deliberately tiny and ES3, in its
+/* Liveness ping - the ABSOLUTE first thing, deliberately tiny and ES3, in its
    own script so nothing can stop it: it fires synchronously the instant the
    WebView begins executing the page. If this "pagehit" reaches the broker but
    the console still looks blank, the page IS running and the fault is later JS
    or rendering. If it NEVER arrives from an install that is clearly loading the
-   window, the WebView isn't executing the page at all — a native/WebView-level
+   window, the WebView isn't executing the page at all - a native/WebView-level
    failure that no page-side fix can reach. It is the single signal that tells us
    which side of the fence the bug is on. */
 try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.stringify(
@@ -741,7 +741,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 /* ── Early error boundary ──────────────────────────────────────────────────
    MUST be the first script. Hundreds of lines of top-level init run below
    before this page's own error
-   listeners get registered — so historically ANY throw during init (an older
+   listeners get registered - so historically ANY throw during init (an older
    WebKit, a stale saved value) halted the script silently and left the body
    blank: a white screen with no beacon and no error report. This ES5-only guard
    registers first, so it (1) reports the exact failure to the broker over the
@@ -777,7 +777,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         '<div style="font-size:40px;line-height:1;margin-bottom:14px">🎧</div>' +
         '<div style="font-size:17px;font-weight:600;margin-bottom:6px">Let’s refresh the console</div>' +
         '<div style="font-size:13px;line-height:1.45;color:#6e6e73;margin-bottom:20px">Something got stuck ' +
-        'while loading. Resetting clears saved settings on this Mac and reloads — your party ' +
+        'while loading. Resetting clears saved settings on this Mac and reloads - your party ' +
         'stay intact.</div>' +
         '<button id="__ppBootReset" type="button" style="font:inherit;font-size:14px;font-weight:590;' +
         'background:#0071e3;color:#fff;border:0;border-radius:980px;padding:10px 22px;cursor:pointer">' +
@@ -789,7 +789,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         // On a native build that advertises it, hand off to the app so it can
         // clear the whole WKWebView data store (localStorage + caches) and
         // reload. Older builds lack that handler, so fall back to clearing our
-        // own saved keys and reloading — enough to shake off a poisoned value.
+        // own saved keys and reloading - enough to shake off a poisoned value.
         if (window.ppNativeReset) {
           try { window.webkit.messageHandlers.pp.postMessage({ action: 'resetConsole' }); return; } catch (e) {}
         }
@@ -808,7 +808,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   window.addEventListener('error', function (e) {
     // Ignore resource-load errors (img/script/link 404s bubble here too); only a
     // synchronous JS exception blanks the page. And once init has completed
-    // (__ppBooted), the page's own handler owns runtime errors — don't nuke a
+    // (__ppBooted), the page's own handler owns runtime errors - don't nuke a
     // working console with the fallback.
     if (e && e.target && e.target !== window && e.target.tagName) return;
     if (window.__ppBooted) return;
@@ -880,12 +880,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   window.addEventListener('error', (e) => djLog('error', { msg: ((e.message || '?') + ' @' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0)).slice(0, 300) }));
   window.addEventListener('unhandledrejection', (e) => djLog('error', { msg: ('promise: ' + (e.reason && (e.reason.message || e.reason))).slice(0, 300) }));
   try { djLog('open', { ua: navigator.userAgent.slice(0, 160), scr: screen.width + 'x' + screen.height }); } catch (e) {}
-  // Init got past the dangerous top-level work — tell the early boundary the
+  // Init got past the dangerous top-level work - tell the early boundary the
   // console is alive so it never mistakes a working page for a boot failure.
   window.__ppBooted = true;
 
   // Page tabs: the wall / participants (the old Broadcast|Settings tabs are
-  // gone — admin actions live in the action bar, settings behind the gear).
+  // gone - admin actions live in the action bar, settings behind the gear).
   function showPTab(name){
     document.querySelectorAll('[id^="ptab-"]').forEach(p => p.hidden = (p.id !== 'ptab-' + name));
     document.querySelectorAll('.ptab').forEach(t => t.classList.toggle('active', t.dataset.ptab === name));
@@ -989,7 +989,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const value = sel && sel.value;
     if (value === 'mac') return '🖥️ Mac output (everything)';
     if (value === 'test') return '🔔 Test tone';
-    return opt ? opt.textContent.replace(/\s+—\s+.*/, '') : 'Audio source';
+    return opt ? opt.textContent.replace(/\s+-\s+.*/, '') : 'Audio source';
   }
   function updateDeviceDisplay(){
     const out = $('deviceDisplay');
@@ -1070,7 +1070,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       for (const d of (data.devices || [])) {
         const o = document.createElement('option');
         o.value = String(d.index);
-        o.textContent = (d.virtual ? '🎚️ ' : '🎤 ') + '[' + d.index + '] ' + d.name + (d.hint ? '  — ' + d.hint : '');
+        o.textContent = (d.virtual ? '🎚️ ' : '🎤 ') + '[' + d.index + '] ' + d.name + (d.hint ? '  - ' + d.hint : '');
         sel.appendChild(o);
       }
       const has = (v) => v && [...sel.options].some(o => o.value === v);
@@ -1135,7 +1135,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const b = document.getElementById('copySync'); if (b) { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => b.textContent = o, 1400); }
   }
   { const cs = document.getElementById('copySync'); if (cs) cs.onclick = copySync; }
-  // "Show details" / "Hide details" — a link-looking toggle, not a checkbox.
+  // "Show details" / "Hide details" - a link-looking toggle, not a checkbox.
   let detailsOn = localStorage.getItem('pp.rosterDetails') === '1';
   { const dt = $('detailsToggle');
     const paint = () => dt.textContent = detailsOn ? 'Hide details' : 'View details';
@@ -1169,7 +1169,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         ok = true;
       }
     } catch (e) {
-      startError = 'Could not reach the app — is it still running?';
+      startError = 'Could not reach the app - is it still running?';
     }
     refresh();
     return ok;
@@ -1206,8 +1206,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     switch (l.state) {
       case 'confirmed':
         text = lanN > 0
-          ? ('Guests connected to the LAN room (' + lanN + ') — streaming straight off this Mac.')
-          : 'A guest reached the LAN room — streaming straight off this Mac.';
+          ? ('Guests connected to the LAN room (' + lanN + ') - streaming straight off this Mac.')
+          : 'A guest reached the LAN room - streaming straight off this Mac.';
         break;
       case 'ready':
         tone = 'hint';
@@ -1229,7 +1229,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (st !== lastState) djLog('bstate', { from: lastState, to: st, dev: s.broadcast.deviceName || '', bad: !!s.broadcast.captureBad });
       lastState = st;
       // Version pin (bottom-left) + self-refresh when the server updates
-      // beneath an open console — only while idle (never mid-broadcast).
+      // beneath an open console - only while idle (never mid-broadcast).
       if (s.appVersion) {
         $('appver').textContent = 'v' + s.appVersion;
         const mine = '__PP_VERSION__';
@@ -1280,7 +1280,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('bcnote').classList.toggle('danger-note', !!streamHealth);
       $('bcnoteText').textContent = note || '';
       // Once Mac-audio capture has actually gone live, the permission is
-      // provably granted — the "permission not working?" escape hatch would
+      // provably granted - the "permission not working?" escape hatch would
       // just be noise. It comes back if an error note ever shows. The server
       // remembers durably (audioProven survives origin changes and web-state
       // resets); localStorage stays as a same-session fast path.
@@ -1333,7 +1333,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         $('syncSpread').textContent = Math.round(main.spread) + ' ms · ' + main.n + (main.n === 1 ? ' phone' : ' phones');
         $('copySync').style.display = 'inline-block';
       } else {
-        $('djDelay').textContent = '—'; $('syncSpread').textContent = '—'; $('copySync').style.display = 'none';
+        $('djDelay').textContent = '-'; $('syncSpread').textContent = '-'; $('copySync').style.display = 'none';
       }
       const details = detailsOn;
       const esc = (s) => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1375,16 +1375,16 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
       const txt = { good:'Good', strain:'Strain', congested:'Congested', idle:'Idle' };
       $('healthPill').className = 'badge ' + (cls[h.status] || '');
-      $('healthPill').textContent = txt[h.status] || '—';
+      $('healthPill').textContent = txt[h.status] || '-';
       $('healthDetail').textContent = (h.listeners || 0) + ' listening' +
         ' · ' + (h.struggling || 0) +
         ' struggling · ~' + (h.mbps ? h.mbps.toFixed(1) : '0') + ' Mbps';
       $('healthSuggest').style.display = h.suggestion ? 'block' : 'none';
       $('healthSuggest').textContent = h.suggestion || '';
-      $('log').textContent = (s.log || []).join('\n') || '—';
+      $('log').textContent = (s.log || []).join('\n') || '-';
       $('log').scrollTop = $('log').scrollHeight;
     } catch (e) {
-      // /api/status unreachable — the one moment a start error MUST still
+      // /api/status unreachable - the one moment a start error MUST still
       // show (Go Live against a quit/crashed app would otherwise be silent).
       if (startError) {
         $('bcnote').style.display = 'block';
@@ -1734,7 +1734,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const active = document.activeElement;
       if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm(eventEditField);
     }
-    if (eventMeta.title) document.title = eventMeta.title + ' — partyparty';
+    if (eventMeta.title) document.title = eventMeta.title + ' - partyparty';
   }
 
   // ── The party wall (DJ view): render + post + comment + moderate + curate ──
@@ -1922,7 +1922,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
     function trackText(track){
       if (!track || !track.title) return '';
-      return track.artist ? track.title + ' — ' + track.artist : track.title;
+      return track.artist ? track.title + ' - ' + track.artist : track.title;
     }
     function renderTrackPanel(features, nowPlaying, recentTracks, askCount){
       const card = $('trackCard');
@@ -2108,7 +2108,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (old) {
         const active = old.querySelector('input[data-cpost]');
         if (active && document.activeElement === active) {
-          // Mid-typing (incl. the DJ's own just-sent comment — Enter keeps the
+          // Mid-typing (incl. the DJ's own just-sent comment - Enter keeps the
           // input focused in WKWebView): the cursor already moved past this
           // post, so the update must land NOW. Swap only the comments block.
           const oldC = old.querySelector('.wcmts'), newC = el.querySelector('.wcmts');
@@ -2267,7 +2267,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     });
     async function poll(){
       try {
-        // wait=1 after the first load: long-poll — guest posts/comments land
+        // wait=1 after the first load: long-poll - guest posts/comments land
         // on the console the moment they happen.
         const r = await fetch('/api/feed?since=' + newestAct + (on ? '&wait=1' : ''), { cache:'no-store' });
         if (r.status === 404) return false;
@@ -2418,12 +2418,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         } else {
           out.innerHTML += '<div class="offline-status" style="margin-top:6px">The secure guest link is not ready on this Wi-Fi. Guests cannot join here until the failed check is fixed.</div>';
         }
-      } catch (e) { out.textContent = 'Test failed to run — is the app still up?'; }
+      } catch (e) { out.textContent = 'Test failed to run - is the app still up?'; }
       $('netCheckBtn').disabled = false;
     };
   })();
 
-  // In-app controls — only when running inside the native menu-bar app.
+  // In-app controls - only when running inside the native menu-bar app.
   window.ppSetLoginState = (on) => { const c = $('loginItem'); if (c) c.checked = !!on; };
   window.ppSetCapturePermission = (payload) => {
     const p = payload || {};

@@ -17,7 +17,7 @@ type Device struct {
 var lineRE = regexp.MustCompile(`\[(\d+)\]\s+(.*)$`)
 
 // List asks FFmpeg to enumerate avfoundation inputs. FFmpeg prints the list to
-// stderr and exits non-zero (no output specified) — that's expected.
+// stderr and exits non-zero (no output specified) - that's expected.
 func List(ffmpeg string) []Device {
 	cmd := exec.Command(ffmpeg, "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", "")
 	var stderr strings.Builder
@@ -63,9 +63,9 @@ func classify(d *Device) {
 		strings.Contains(l, "multi-output"),
 		strings.Contains(l, "multi output"):
 		d.Virtual = true
-		d.Hint = "virtual device — route RekordBox or the Mac's audio here, then capture it"
+		d.Hint = "virtual device - route RekordBox or the Mac's audio here, then capture it"
 	case strings.Contains(l, "microphone"), strings.Contains(l, " mic"):
-		d.Hint = "built-in mic — picks up the room, usually not what you want"
+		d.Hint = "built-in mic - picks up the room, usually not what you want"
 	}
 }
 

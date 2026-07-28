@@ -71,15 +71,15 @@ final class ServerController {
         if Date().timeIntervalSince(lastStart) > 60 { restartCount = 0 } // healthy run resets the budget
         restartCount += 1
         guard restartCount <= 5 else {
-            NSLog("partyparty: server keeps dying (status \(proc.terminationStatus)) — giving up")
+            NSLog("partyparty: server keeps dying (status \(proc.terminationStatus)) - giving up")
             return
         }
-        NSLog("partyparty: server exited (status \(proc.terminationStatus)) — restarting \(restartCount)/5")
+        NSLog("partyparty: server exited (status \(proc.terminationStatus)) - restarting \(restartCount)/5")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.start() }
     }
 
     /// SIGTERM (graceful Go shutdown: http.Server.Shutdown + ffmpeg/mediamtx teardown),
-    /// then SIGKILL if it overstays — so ports are released before relaunch.
+    /// then SIGKILL if it overstays - so ports are released before relaunch.
     func stop() {
         stopping = true
         guard let p = process, p.isRunning else { process = nil; return }

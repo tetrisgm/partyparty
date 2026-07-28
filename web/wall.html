@@ -215,7 +215,7 @@
     function renderNowPlaying(data){
       const track = data && data.nowPlaying;
       if (track && track.title) {
-        $('nowPlaying').textContent = track.artist ? track.title + ' — ' + track.artist : track.title;
+        $('nowPlaying').textContent = track.artist ? track.title + ' - ' + track.artist : track.title;
       } else {
         $('nowPlaying').textContent = 'Live';
       }

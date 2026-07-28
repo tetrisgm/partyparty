@@ -7,7 +7,7 @@ import (
 )
 
 // SetActivation must NOT drop the structured LAN evidence that SetActivationResult
-// recorded — the reducer needs CertReady/DNSPublished/ResolverMatches/ExpectedIP
+// recorded - the reducer needs CertReady/DNSPublished/ResolverMatches/ExpectedIP
 // to render a truthful state instead of a spurious "unavailable" post-activation.
 func TestSetActivationPreservesEvidence(t *testing.T) {
 	env := newTestEnv(t, nil)

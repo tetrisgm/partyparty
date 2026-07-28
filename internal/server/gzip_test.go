@@ -70,7 +70,7 @@ func TestStatusGzipsLargeResponsesOnly(t *testing.T) {
 	env := newTestEnv(t, nil)
 
 	// The status body must be valid JSON either way. Small payloads may skip
-	// compression (under one MTU there is nothing to win) — assert correctness,
+	// compression (under one MTU there is nothing to win) - assert correctness,
 	// not compression.
 	w := doGz(env.srv, "/api/status", true)
 	if w.Code != http.StatusOK {

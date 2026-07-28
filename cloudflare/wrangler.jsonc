@@ -1,5 +1,5 @@
 {
-  // partyparty.party — one Worker serves the static website and LAN broker.
+  // partyparty.party - one Worker serves the static website and LAN broker.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "partyparty-site",
   "main": "worker.js",
@@ -20,10 +20,10 @@
 
   // Cert broker (the Plex pattern): anonymous installs get memorable hostnames under
   // BROKER_BASE; the broker writes DNS-01 TXT + DNS-only A records for them.
-  // Needs the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN — Zone→DNS→Edit).
+  // Needs the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN - Zone→DNS→Edit).
   "vars": {
     "BROKER_BASE": "partyparty.party",
-    // The partyparty.party zone — machine hostnames' grey A records and ACME
+    // The partyparty.party zone - machine hostnames' grey A records and ACME
     // TXT challenges are written here.
     "CF_ZONE_ID": "f156a8f56d299f1d0451bbb9223c1f08"
   },

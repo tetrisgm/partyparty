@@ -27,7 +27,7 @@ type Status struct {
 	SampleRate int     `json:"sampleRate"`
 	LastError  string  `json:"lastError"`
 	Note       string  `json:"note,omitempty"`       // non-fatal hint, e.g. capture produces no audio yet
-	CaptureBad bool    `json:"captureBad,omitempty"` // a real capture failure (hogged/stalled output) — menu-bar alarm
+	CaptureBad bool    `json:"captureBad,omitempty"` // a real capture failure (hogged/stalled output) - menu-bar alarm
 }
 
 // Options are per-broadcast overrides; zero values fall back to config defaults.
@@ -35,7 +35,7 @@ type Options struct {
 	Bitrate  string  // e.g. "256k"; "" = config default
 	Channels int     // 1 = mono, 2 = stereo; 0 = config default
 	HLSTime  float64 // segment length in seconds; 0 = config default
-	// RecordPath: also write the encoded set to this file (ADTS/AAC — raw and
+	// RecordPath: also write the encoded set to this file (ADTS/AAC - raw and
 	// unkillable: no finalization step, so a crash mid-set loses nothing).
 	// "" = no recording. llhls delivery only (it rides the tee).
 	RecordPath string
@@ -67,7 +67,7 @@ type Broadcaster struct {
 	mirrorDir  string  // cloud-mirror scratch dir; "" = mirror off (no third tee leg)
 	startedAt  time.Time
 	lastError  string
-	captureUp  bool // this generation's tap actually announced a FORMAT (capture works — so an ffmpeg death is NOT a permission problem)
+	captureUp  bool // this generation's tap actually announced a FORMAT (capture works - so an ffmpeg death is NOT a permission problem)
 
 	// Last Start params + a throttle, so a tap wedged by a released exclusive
 	// device (Roon Exclusive Mode) can be auto-rebuilt without the DJ acting.
@@ -108,10 +108,10 @@ func (b *Broadcaster) SetDelivery(mode string) {
 	b.mu.Unlock()
 }
 
-// SetDeliveryIfIdle switches the delivery mode only when nothing is running —
+// SetDeliveryIfIdle switches the delivery mode only when nothing is running -
 // atomically, under the lock. The activation auto-engage path uses this so a
 // set that starts while activation is checking is never yanked ("never
-// restart a live set" — check-then-act with a 6s gap was exactly that bug).
+// restart a live set" - check-then-act with a 6s gap was exactly that bug).
 func (b *Broadcaster) SetDeliveryIfIdle(mode string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -132,7 +132,7 @@ func (b *Broadcaster) Delivery() string {
 // SetMirrorDir configures (or clears) the cloud-mirror scratch directory. When
 // set, every subsequent Start adds an ISOLATED third HLS tee leg (stream-copy
 // of the already-encoded AAC, onfail=ignore+use_fifo=1) writing live.m3u8 +
-// segments into dir — the source internal/livemirror ships to the cloud. "" (the
+// segments into dir - the source internal/livemirror ships to the cloud. "" (the
 // default) means no mirror leg, so the pipeline is byte-for-byte what it is
 // today. Set once at startup, before any broadcast. The mirror leg's failure is
 // fully non-fatal: onfail=ignore isolates it exactly like the recording leg, so
@@ -198,20 +198,20 @@ func (w *formatScanner) Write(p []byte) (int, error) {
 	if s := string(p); strings.Contains(s, "ppcapture: CAPTURE-") {
 		switch {
 		case strings.Contains(s, "CAPTURE-BLOCKED"):
-			w.b.setCaptureNote("Another app has taken EXCLUSIVE control of your Mac's audio output (e.g. Roon or Audirvana in Exclusive Mode) — partyparty can't capture it, so guests hear nothing. Turn OFF Exclusive/Hog Mode for this output in that app (or point it at a different device, or route it through BlackHole). It recovers on its own once released; if not, Stop and Go Live again.")
+			w.b.setCaptureNote("Another app has taken EXCLUSIVE control of your Mac's audio output (e.g. Roon or Audirvana in Exclusive Mode) - partyparty can't capture it, so guests hear nothing. Turn OFF Exclusive/Hog Mode for this output in that app (or point it at a different device, or route it through BlackHole). It recovers on its own once released; if not, Stop and Go Live again.")
 		case strings.Contains(s, "CAPTURE-OK"):
 			w.b.captureRecovered()
 		case strings.Contains(s, "CAPTURE-UNHOGGED"):
-			w.b.tryAutoRestart() // exclusive app released the device but tap wedged — rebuild
+			w.b.tryAutoRestart() // exclusive app released the device but tap wedged - rebuild
 		case strings.Contains(s, "CAPTURE-DEVICECHANGE"):
 			// The default output changed (AirPods grabbed the Mac, a display with
 			// speakers plugged in, monitor↔interface switch). The global tap's
 			// aggregate is bound to the OLD device and stops delivering usable
-			// frames, so rebuild against the new default — the fast path that
+			// frames, so rebuild against the new default - the fast path that
 			// front-runs the 4s stall detector. Throttled (15s) + debounced in
 			// the helper. This no longer wrongly reports a permission error on
 			// teardown (the gen-guard + captureUp fix), which was the real field
-			// bug — the rebuild itself is correct and necessary.
+			// bug - the rebuild itself is correct and necessary.
 			w.b.tryAutoRestart()
 		}
 	}
@@ -252,7 +252,7 @@ func (b *Broadcaster) pushLog(chunk string) {
 	}
 }
 
-// tryAutoRestart rebuilds a mac capture whose tap wedged — an exclusive app
+// tryAutoRestart rebuilds a mac capture whose tap wedged - an exclusive app
 // (Roon) released the output device, or the default output changed under it.
 // Throttled to once per 15s so a flapping device can't thrash the room, and only
 // for a live mac broadcast (test/device sources don't wedge this way). Returns
@@ -270,7 +270,7 @@ func (b *Broadcaster) tryAutoRestart() bool {
 	if !live || !mac || throttled {
 		return false
 	}
-	b.pushLog("[partyparty] capture stalled (device yanked or exclusive-mode release) — rebuilding the tap")
+	b.pushLog("[partyparty] capture stalled (device yanked or exclusive-mode release) - rebuilding the tap")
 	go b.startInternal(dev, name, opts, true)
 	return true
 }
@@ -293,7 +293,7 @@ func (b *Broadcaster) captureRecovered() {
 }
 
 // setCaptureNote records/clears the non-fatal capture warning (guarded by
-// logMu, like the log ring — the formatScanner that calls it never holds b.mu).
+// logMu, like the log ring - the formatScanner that calls it never holds b.mu).
 func (b *Broadcaster) setCaptureNote(s string) {
 	b.logMu.Lock()
 	b.captureNote = s
@@ -333,7 +333,7 @@ func (b *Broadcaster) cleanRunDir() {
 	}
 }
 
-// argSnap freezes the mutable encode settings for one Start — buildArgs runs
+// argSnap freezes the mutable encode settings for one Start - buildArgs runs
 // outside the lock and must not read live fields.
 type argSnap struct {
 	bitrate    string
@@ -355,7 +355,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 		input = []string{"-re", "-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=440:beep_factor=4:sample_rate=%d", c.SampleRate)}
 	case "mac":
 		// PCM piped in from the Core Audio tap helper on stdin. The tap's rate
-		// follows the OUTPUT device (44.1k or 48k) — the helper announces it
+		// follows the OUTPUT device (44.1k or 48k) - the helper announces it
 		// via a "FORMAT <rate> <ch>" stderr line before audio flows, and we
 		// declare exactly that here (raw f32le has no header; a wrong rate
 		// would silently pitch-shift the whole stream). c.SampleRate is only
@@ -367,13 +367,13 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	default:
 		input = []string{"-fflags", "+nobuffer", "-f", "avfoundation", "-thread_queue_size", "1024", "-i", ":" + device}
 	}
-	// -progress writes a "progress=" block ~1s after real frames start flowing —
+	// -progress writes a "progress=" block ~1s after real frames start flowing -
 	// a delivery-independent liveness signal (see producingOutput) that replaces
 	// the old "plain-HLS segments on disk" check now that we don't tee plain HLS.
 	args := []string{"-hide_banner", "-loglevel", "warning", "-progress", b.progressFile()}
 	args = append(args, input...)
 	// Encode at the CAPTURE rate for the mac tap (its rate follows the output
-	// device — 44.1k or 48k), so ffmpeg never resamples: a resample is an extra
+	// device - 44.1k or 48k), so ffmpeg never resamples: a resample is an extra
 	// filter + delay for zero benefit, and AAC/HLS play either rate natively.
 	outRate := c.SampleRate
 	if device == "mac" && inRate > 0 {
@@ -385,7 +385,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 		"-ar", strconv.Itoa(outRate),
 		"-c:a", c.Codec, "-b:a", snap.bitrate,
 		"-flush_packets", "1", // low-latency: emit each packet immediately instead of buffering
-		// Kill the muxer's startup/interleave buffering — with a single audio
+		// Kill the muxer's startup/interleave buffering - with a single audio
 		// stream there's nothing to interleave, and muxpreload/muxdelay otherwise
 		// hold ~0.5-0.7s before the first packets leave. max_delay 0 keeps muxing
 		// delay minimal on the RTSP leg.
@@ -393,21 +393,21 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	)
 	// HTTPS-only: guests are LL-HLS only (the client no longer offers a plain
 	// fallback), so we push a single RTSP stream MediaMTX repackages into LL-HLS
-	// over HTTPS, plus the optional recording — no plain-HLS playlist at all.
+	// over HTTPS, plus the optional recording - no plain-HLS playlist at all.
 	//
 	// Each leg drains through its OWN fifo that DROPS on overflow instead of
-	// blocking — load-bearing for latency STABILITY. The default fifo (and a leg
+	// blocking - load-bearing for latency STABILITY. The default fifo (and a leg
 	// with no fifo at all, as the record leg used to be) BLOCKS when its consumer
 	// is slow, which back-pressures the shared tee -> ffmpeg stops draining stdin
 	// -> PCM piles up in the capture ring -> the live edge falls PERMANENTLY
-	// behind real time (a one-way latency ratchet — the field-observed 4.5->5.6s
+	// behind real time (a one-way latency ratchet - the field-observed 4.5->5.6s
 	// creep). onfail=ignore only survives a leg that fails to OPEN, not one that
 	// is merely SLOW; drop_pkts_on_overflow is what actually decouples a slow
 	// record disk or cloud upload from the live RTSP leg. It drops only after the
 	// fifo's default ~1.3s (60-packet) queue fills, so normal write bursts never
 	// drop; a real stall costs a brief per-leg gap instead of ratcheting everyone.
 	// (fifo_options carries a single option deliberately: an internal ':' needs
-	// tee-level escaping that this bundled ffmpeg mis-parses — verified — leaking
+	// tee-level escaping that this bundled ffmpeg mis-parses - verified - leaking
 	// the option to the slave muxer; the default queue depth is the right
 	// threshold for every leg anyway.)
 	const dropFifo = ":use_fifo=1:fifo_options=drop_pkts_on_overflow=1"
@@ -415,7 +415,7 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	if snap.recordPath != "" {
 		tee += "|[f=adts:onfail=ignore" + dropFifo + "]" + snap.recordPath
 	}
-	// Optional THIRD leg — the cloud mirror for remote guests. Stream-copies the
+	// Optional THIRD leg - the cloud mirror for remote guests. Stream-copies the
 	// SAME already-encoded AAC (no second encode) into a plain-HLS playlist in a
 	// scratch dir that internal/livemirror ships to R2. With drop-on-overflow it is
 	// fully decoupled: a slow or failing cloud upload draining this FIFO can never
@@ -440,13 +440,13 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 
 	b.setCaptureNote("") // fresh start: drop any stale hogged-output warning
 
-	// The caller's ORIGINAL sparse opts — stashed as lastOpts for auto-restart to
+	// The caller's ORIGINAL sparse opts - stashed as lastOpts for auto-restart to
 	// replay, so a rebuild re-reads OTA overrides (not the frozen resolved values)
 	// and re-derives the recording segment from the un-mutated base path.
 	callerOpts := opts
 
 	// Apply OTA encode overrides the caller didn't set explicitly, re-read now so
-	// a config pushed mid-session lands on this Go Live. Done before the lock —
+	// a config pushed mid-session lands on this Go Live. Done before the lock -
 	// it reads config.json. Each value is already strictly validated; anything
 	// unset here falls back to the (also OTA-adjusted at startup) cfg defaults.
 	b.mu.Lock()
@@ -513,13 +513,13 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 
 	if device == "mac" && b.helperPath == "" {
 		b.state = "error"
-		b.lastError = "system-audio helper not built — run `make` to compile it"
+		b.lastError = "system-audio helper not built - run `make` to compile it"
 		b.mu.Unlock()
 		b.pushLog("[partyparty] " + b.lastError)
 		return
 	}
 
-	// Snapshot the mutable encode settings while we still hold the lock —
+	// Snapshot the mutable encode settings while we still hold the lock -
 	// buildArgs runs later, outside it, and must not race SetDelivery/Start.
 	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery, recordPath: opts.RecordPath, mirrorDir: b.mirrorDir}
 
@@ -545,7 +545,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 
 	// The helper starts FIRST and announces the tap's stream format (it
 	// follows the output device); ffmpeg's input args are built from it. The
-	// permission prompt (first use) can delay the announcement — wait
+	// permission prompt (first use) can delay the announcement - wait
 	// generously, then fall back to 48k/2ch (ffmpeg just exits fast if wrong,
 	// surfacing the error note).
 	inRate, inCh := 48000, 2
@@ -576,13 +576,13 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 			inRate, inCh = f[0], f[1]
 			b.mu.Lock()
 			if b.gen == myGen {
-				b.captureUp = true // tap works — never blame permissions on a later ffmpeg death
+				b.captureUp = true // tap works - never blame permissions on a later ffmpeg death
 			}
 			b.mu.Unlock()
 			b.pushLog(fmt.Sprintf("[partyparty] capturing at %d Hz, %d channel(s)", inRate, inCh))
 		case <-time.After(15 * time.Second):
 			formatAssumed = true
-			b.pushLog("[partyparty] helper never announced its format (permission prompt still up?) — assuming 48000/2 for now")
+			b.pushLog("[partyparty] helper never announced its format (permission prompt still up?) - assuming 48000/2 for now")
 		}
 	}
 
@@ -609,7 +609,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 		pw.Close()
 	}
 
-	// Publish ffmpeg — but ONLY if nothing superseded us while we waited on
+	// Publish ffmpeg - but ONLY if nothing superseded us while we waited on
 	// the format handshake (a 15s window when the permission prompt is up).
 	// A stale publish here used to clobber the successor broadcast's handle
 	// and orphan its ffmpeg: two encoders writing one playlist, forever.
@@ -638,7 +638,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 	// announcement past the wait, ffmpeg is now running on an assumed
 	// 48000/2. If the tap later reports something else (a 44.1 kHz output
 	// device is common), raw PCM decoded at the wrong rate is pitch-warped
-	// mush for the WHOLE set unless someone thinks to restart — the field
+	// mush for the WHOLE set unless someone thinks to restart - the field
 	// report was "scrubby and dropping". Restart automatically instead.
 	if formatAssumed && device == "mac" {
 		go func() {
@@ -646,11 +646,11 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 			case f := <-fscan.ch:
 				b.mu.Lock()
 				if b.gen == myGen {
-					b.captureUp = true // the late FORMAT arrived — capture is up
+					b.captureUp = true // the late FORMAT arrived - capture is up
 				}
 				b.mu.Unlock()
 				if f[0] == inRate && f[1] == inCh {
-					return // assumed right — leave the broadcast alone
+					return // assumed right - leave the broadcast alone
 				}
 				b.mu.Lock()
 				stale := b.gen != myGen
@@ -658,7 +658,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 				if stale {
 					return
 				}
-				b.pushLog(fmt.Sprintf("[partyparty] capture is actually %d Hz / %dch — restarting with the right settings", f[0], f[1]))
+				b.pushLog(fmt.Sprintf("[partyparty] capture is actually %d Hz / %dch - restarting with the right settings", f[0], f[1]))
 				b.Start(device, deviceName, opts)
 			case <-time.After(90 * time.Second):
 			}
@@ -674,7 +674,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if b.cmd != c {
-			return // a newer broadcast already took over — its handles, not ours
+			return // a newer broadcast already took over - its handles, not ours
 		}
 		if b.state == "stopping" {
 			b.state = "idle"
@@ -686,14 +686,14 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 		// A rebuild bumps gen at its very top (Stop's gen++) but publishes its new
 		// ffmpeg only after the format handshake, so for a moment b.cmd is still
 		// this dying one while gen has already moved on. That teardown is EXPECTED
-		// — don't flip to error. This was the field bug: a self-initiated rebuild
+		// - don't flip to error. This was the field bug: a self-initiated rebuild
 		// looked like a crash and got mislabeled a permission error even though
 		// capture was healthy the whole time.
 		if b.gen != gen {
 			// Still drop OUR now-dead handles so a later Stop can't latch onto a
 			// reaped ffmpeg and lose its stopping->idle transition (wedging state
 			// at "stopping"). b.cmd==c here (top guard), but only clear b.helper
-			// if it's still ours — the successor may already own it.
+			// if it's still ours - the successor may already own it.
 			b.cmd = nil
 			if b.helper == h {
 				b.helper = nil
@@ -707,11 +707,11 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 			b.lastError = "ffmpeg exited"
 		}
 		// Only blame the System Audio Recording permission when the tap never came
-		// up (its real signature). If capture was working — a FORMAT was announced
-		// — a later ffmpeg death is a transient encoder problem, not a permission
+		// up (its real signature). If capture was working - a FORMAT was announced
+		// - a later ffmpeg death is a transient encoder problem, not a permission
 		// one; don't send the DJ chasing a settings toggle that isn't the issue.
 		if b.device == "mac" && !b.captureUp {
-			b.lastError += " — allow System Audio Recording for partyparty, then Start again."
+			b.lastError += " - allow System Audio Recording for partyparty, then Start again."
 		}
 		b.pushLog("[partyparty] " + b.lastError)
 		b.cmd = nil
@@ -719,7 +719,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 	}(ff, helper, myGen)
 }
 
-// fail records an error outcome — but only for the broadcast generation that
+// fail records an error outcome - but only for the broadcast generation that
 // produced it: a superseded Start's failure must not clobber its successor.
 func (b *Broadcaster) fail(gen uint64, msg string) {
 	b.mu.Lock()
@@ -737,7 +737,7 @@ func (b *Broadcaster) fail(gen uint64, msg string) {
 
 func (b *Broadcaster) Stop() {
 	b.mu.Lock()
-	b.gen++ // supersede any in-flight Start — it sees the bump and aborts
+	b.gen++ // supersede any in-flight Start - it sees the bump and aborts
 	cmd, helper := b.cmd, b.helper
 	if cmd == nil && helper == nil {
 		b.state = "idle"
@@ -746,7 +746,7 @@ func (b *Broadcaster) Stop() {
 	}
 	if cmd == nil {
 		// Only the capture helper is up (a Start parked on the permission
-		// prompt): nothing is live, so there's nothing to wind down — the
+		// prompt): nothing is live, so there's nothing to wind down - the
 		// signal below kills the helper and the aborting Start stays hands-off.
 		b.state = "idle"
 	} else {
@@ -777,7 +777,7 @@ func (b *Broadcaster) Stop() {
 func (b *Broadcaster) progressFile() string { return filepath.Join(b.runDir, "progress.txt") }
 
 // producingOutput reports whether ffmpeg has actually started encoding this set
-// — the delivery-independent liveness signal that replaces the old plain-HLS
+// - the delivery-independent liveness signal that replaces the old plain-HLS
 // "segments on disk" check now that we no longer tee plain HLS. ffmpeg's
 // -progress file gets its first "progress=" block ~1s after real frames flow,
 // so starting->live flips exactly when audio is going out. cleanRunDir clears
@@ -791,10 +791,10 @@ func (b *Broadcaster) producingOutput() bool {
 }
 
 // ProgressSnapshot reads the current out_time_us and total_size from ffmpeg's
-// -progress file — a read-only sibling of producingOutput(). The go-live health
+// -progress file - a read-only sibling of producingOutput(). The go-live health
 // check samples it twice to tell whether the encoder is actually ADVANCING
 // (capture is flowing) vs frozen (tap wedged / no input), independent of whether
-// the guest RTSP leg ever published. Do NOT fold this into producingOutput — that
+// the guest RTSP leg ever published. Do NOT fold this into producingOutput - that
 // function's presence-of-"progress=" check drives the live transition and must
 // keep its exact semantics.
 func (b *Broadcaster) ProgressSnapshot() (outTimeUs int64, totalSize int64) {
@@ -821,7 +821,7 @@ func (b *Broadcaster) Status() Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.state == "starting" && b.producingOutput() {
-		// ffmpeg is actually encoding (its -progress file has a progress block) —
+		// ffmpeg is actually encoding (its -progress file has a progress block) -
 		// the truthful, delivery-independent liveness signal.
 		b.state = "live"
 	}
@@ -829,19 +829,19 @@ func (b *Broadcaster) Status() Status {
 	if !b.startedAt.IsZero() {
 		since = b.startedAt.UnixMilli()
 	}
-	captureNote := b.getCaptureNote() // hogged/exclusive output device — highest priority
+	captureNote := b.getCaptureNote() // hogged/exclusive output device - highest priority
 	note := captureNote
 	// A capture rate this low means the OUTPUT device is a Bluetooth headset
-	// in call (HFP) mode — guests would hear telephone-grade audio all night.
+	// in call (HFP) mode - guests would hear telephone-grade audio all night.
 	if note == "" && (b.state == "live" || b.state == "starting") && b.device == "mac" && b.inRate > 0 && b.inRate < 44100 {
-		note = fmt.Sprintf("Your Mac's audio output is running at %d kHz — that's Bluetooth-headset (call) quality, and guests hear it too. Switch the Mac's output to speakers or wired, then Stop and Go Live again.", b.inRate/1000)
+		note = fmt.Sprintf("Your Mac's audio output is running at %d kHz - that's Bluetooth-headset (call) quality, and guests hear it too. Switch the Mac's output to speakers or wired, then Stop and Go Live again.", b.inRate/1000)
 	}
 	if note == "" && b.state == "starting" && !b.startedAt.IsZero() && time.Since(b.startedAt) > 6*time.Second {
 		switch b.device {
 		case "test":
-			note = "No audio yet — ffmpeg is still starting."
+			note = "No audio yet - ffmpeg is still starting."
 		case "mac":
-			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again — and make sure something is playing. If you denied it, open System Settings → Privacy & Security → System Audio Recording Only and allow partyparty."
+			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again - and make sure something is playing. If you denied it, open System Settings → Privacy & Security → System Audio Recording Only and allow partyparty."
 		default:
 			note = "No audio yet. Grant microphone permission (System Settings → Privacy & Security → Microphone) and check that your source is routed to this device."
 		}

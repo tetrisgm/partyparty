@@ -24,7 +24,7 @@ import (
 // pseudonymous (fun name + emoji chosen client-side); their private cid stays
 // server-side so the Mac can associate activity within the current room.
 
-// isDJ: the console is the app's own WKWebView on localhost — loopback is the
+// isDJ: the console is the app's own WKWebView on localhost - loopback is the
 // DJ, everyone else on the LAN is a guest. Same trust model as /api/shutdown.
 func (s *srv) isDJ(r *http.Request) bool {
 	ip := clientIP(r)
@@ -154,7 +154,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		if !s.limits.allow(guestLimitKey(body.CID, r), "reaction") {
-			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many reactions", "retry": true})
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment - too many reactions", "retry": true})
 			return true
 		}
 		if err := s.Events.AddReaction(body.Type); err != nil {
@@ -182,7 +182,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		if !s.isDJ(r) && !s.limits.allow(guestLimitKey(body.CID, r), "reaction") {
-			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many reactions", "retry": true})
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment - too many reactions", "retry": true})
 			return true
 		}
 		if err := s.Events.AddPostReaction(strings.TrimSpace(body.Post), strings.TrimSpace(body.Reaction)); err != nil {
@@ -220,7 +220,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				return true
 			}
 			if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "request") {
-				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — requests are sparse", "retry": true})
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment - requests are sparse", "retry": true})
 				return true
 			}
 			if _, err := s.Events.AddRequest(body.CID, body.Text, body.Note, body.Vibe); err != nil {
@@ -290,7 +290,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		if !s.limits.allow(guestLimitKey(body.CID, r), "track-id") {
-			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many track asks", "retry": true})
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment - too many track asks", "retry": true})
 			return true
 		}
 		s.Events.AddTrackAsk()
@@ -320,7 +320,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "comment") {
-			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many comments", "retry": true})
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment - too many comments", "retry": true})
 			return true
 		}
 		c, err := s.Events.AddComment(body.Post, body.CID, body.Author, body.Emoji, body.Text, dj)
@@ -439,7 +439,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			}
 		}
 		if !dj && !s.limits.allow(guestLimitKey(body.CID, r), "post") {
-			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment — too many posts", "retry": true})
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "one moment - too many posts", "retry": true})
 			return true
 		}
 		p, err := s.Events.AddPost(body.CID, body.Author, body.Emoji, body.Text, body.Media, dj)
@@ -701,7 +701,7 @@ func feedTracksFrom(tracks []event.CurrentTrack) []feedTrack {
 	return out
 }
 
-// handleMedia serves uploaded files (inline, cacheable — ids are immutable).
+// handleMedia serves uploaded files (inline, cacheable - ids are immutable).
 func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
 	if s.Events == nil {
 		http.Error(w, "not found", http.StatusNotFound)

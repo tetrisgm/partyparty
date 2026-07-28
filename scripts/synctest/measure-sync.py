@@ -4,7 +4,7 @@
 The click track (make-clicktrack.sh) plays a sharp 1kHz impulse every 2s through
 partyparty to every device. One mic (record-room.sh) hears the SUPERPOSITION of
 all devices' clicks per event; the temporal spread of that burst IS the
-device-to-device spread — the one thing browser telemetry can never see (it
+device-to-device spread - the one thing browser telemetry can never see (it
 includes the speaker/DAC/Bluetooth output path).
 
   python3 scripts/synctest/measure-sync.py [room.wav]
@@ -85,7 +85,7 @@ def event_spread_ms(env, sr, center):
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "room.wav")
     if not os.path.exists(path):
-        sys.exit(f"no recording at {path} — run record-room.sh first")
+        sys.exit(f"no recording at {path} - run record-room.sh first")
     x, sr = load_wav(path)
     env = bandpass_env(x, sr)
     events = find_events(env, sr)
@@ -99,13 +99,13 @@ def main():
         flag = "  <-- LATE OUTLIER" if ncoh >= 2 and s > OK_MS else ("  (multi-cohort)" if ncoh >= 2 else "")
         print(f"  click {k+1:2d} @ {c/sr:6.2f}s   spread ~{s:6.1f} ms   cohorts={ncoh}{flag}")
     if not spreads:
-        sys.exit("\ncould not measure any clicks — check mic placement / volume / that the track was playing.")
+        sys.exit("\ncould not measure any clicks - check mic placement / volume / that the track was playing.")
     a = np.array(spreads)
     med, p95, mx = np.median(a), np.percentile(a, 95), a.max()
     verdict = "GREAT (<250ms)" if p95 < GREAT_MS else ("OK (<500ms)" if p95 < OK_MS else "TOO WIDE (>500ms)")
     print(f"\n=== device-to-device spread: median {med:.0f} ms | p95 {p95:.0f} ms | max {mx:.0f} ms ===")
     print(f"=== VERDICT: {verdict} ===")
-    print("note: Bluetooth output adds 150-300ms that NO sync scheme can remove — keep")
+    print("note: Bluetooth output adds 150-300ms that NO sync scheme can remove - keep")
     print("      all test devices on built-in speaker for a clean media-clock reading.")
 
 if __name__ == "__main__":

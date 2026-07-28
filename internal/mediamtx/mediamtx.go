@@ -189,11 +189,11 @@ func (s *Server) EnsureReady(rtspPort, hlsPort int, timeout time.Duration) error
 		return err
 	}
 	// The port answering is NOT enough: a stale orphan (old config, old CERT)
-	// can own it while OUR child died on "bind: address already in use" —
+	// can own it while OUR child died on "bind: address already in use" -
 	// field failure: the DJ broadcast into a zombie serving a certificate no
 	// phone accepts, and zero guests could join. Ready means OUR process.
 	if !s.Running() {
-		return fmt.Errorf("port %d is served by another mediamtx (stale orphan?) — our instance failed to bind", rtspPort)
+		return fmt.Errorf("port %d is served by another mediamtx (stale orphan?) - our instance failed to bind", rtspPort)
 	}
 	return nil
 }
@@ -285,14 +285,14 @@ func WaitHTTPSReady(addr string, timeout time.Duration) error {
 	return fmt.Errorf("mediamtx HLS endpoint not accepting HTTPS at %s after %s", addr, timeout)
 }
 
-// PathPublishing asks MediaMTX's own guest-facing truth — the local LL-HLS
-// master manifest — whether a live publisher exists on the given path. This is
+// PathPublishing asks MediaMTX's own guest-facing truth - the local LL-HLS
+// master manifest - whether a live publisher exists on the given path. This is
 // the HONEST liveness the app must consult before trusting "live": ffmpeg's
 // -progress only proves the encoder is running (the recording tee leg alone
 // keeps it running), NOT that the RTSP publish leg actually landed in MediaMTX.
 // Returns publishing=true when the manifest is a real playlist; false (with the
 // body prefix) when MediaMTX answers its "no stream is available on path
-// '<path>'" JSON — byte-for-byte what a guest sees. localhost-only, same
+// '<path>'" JSON - byte-for-byte what a guest sees. localhost-only, same
 // InsecureSkipVerify transport as WaitHTTPSReady.
 func PathPublishing(hlsPort int, path string) (publishing bool, httpCode int, bodyPrefix string) {
 	url := fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", hlsPort, path)
@@ -341,7 +341,7 @@ func InspectHLS(hlsPort int, streamPath string) HLSReadiness {
 // probeClient is shared by every loopback playlist probe. A per-call client
 // leaks: an abandoned zero-value Transport never expires its idle keep-alive
 // TLS connection (IdleConnTimeout=0) and MediaMTX sets no server-side idle
-// timeout either — at the part-cadence heartbeat's 1/s sampling that compounds
+// timeout either - at the part-cadence heartbeat's 1/s sampling that compounds
 // into thousands of stuck connections and goroutines over one live set, in
 // BOTH processes. Sharing also reuses the connection, so steady sampling costs
 // no TLS handshake at all.
@@ -382,7 +382,7 @@ func fetchMediaPlaylist(hlsPort int, streamPath string) (string, *url.URL, bool)
 // PlaylistTip returns an opaque token identifying the LIVE EDGE of the media
 // playlist. While the engine is healthy the token changes about once per
 // PART-TARGET; a token that stops changing means MediaMTX stopped emitting new
-// media — a PRODUCTION gap that every connected guest feels at the same moment
+// media - a PRODUCTION gap that every connected guest feels at the same moment
 // (unlike per-phone Wi-Fi trouble, which hits one guest at a time). The
 // part-cadence heartbeat samples this to attribute correlated guest stalls.
 func PlaylistTip(hlsPort int, streamPath string) (string, bool) {
@@ -544,7 +544,7 @@ func (s *Server) Stop() { s.stop(false) }
 // StopWait stops MediaMTX and BLOCKS until the process is actually gone.
 // Required before a config-change restart: the old instance holds the RTSP and
 // HLS ports until it dies, so launching the replacement early makes IT lose
-// the bind and exit — while WaitReady happily connects to the dying listener
+// the bind and exit - while WaitReady happily connects to the dying listener
 // and reports success. That race is exactly how switching latency modes
 // bricked broadcasting in the field until an app restart.
 func (s *Server) StopWait() { s.stop(true) }

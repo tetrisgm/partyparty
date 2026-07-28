@@ -1,4 +1,4 @@
-// Package diag writes the per-session diagnostics log — the "send us your
+// Package diag writes the per-session diagnostics log - the "send us your
 // logs" file every real service has. One file per app run, verbose on
 // purpose: hardware, network, activation attempts, capture formats, every
 // broadcast transition, who connected and how their playback went. The file

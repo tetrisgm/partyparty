@@ -6,7 +6,7 @@ import (
 
 // LAN readiness is based on the secure local listener and real guest heartbeats.
 const (
-	lanUnavailable = "unavailable" // no usable cert/host yet — the setup card owns this window
+	lanUnavailable = "unavailable" // no usable cert/host yet - the setup card owns this window
 	lanReady       = "ready"       // secure link up, listener serving, no guest has joined yet
 	lanConfirmed   = "confirmed"   // real guests are on the LAN room right now (or were, within the TTL)
 )
@@ -54,13 +54,13 @@ func reduceLanState(in lanInputs) lanState {
 		// The secure link isn't up yet; the console's setup card covers this.
 		st.State = lanUnavailable
 	default:
-		// Cert up, listener serving, nobody has tried yet — honest "ready".
+		// Cert up, listener serving, nobody has tried yet - honest "ready".
 		st.State = lanReady
 	}
 	return st
 }
 
-// lanStateSnapshot computes the LAN state inline from observed reality — cached
+// lanStateSnapshot computes the LAN state inline from observed reality - cached
 // activation (cert/host) and live LAN listener count. All
 // cheap in-memory reads (no network probes), so /api/status calls it directly.
 func (s *srv) lanStateSnapshot() lanState {

@@ -39,7 +39,7 @@ func TestCleanHostname(t *testing.T) {
 		{"my_device.lan", "my device"},
 		{"box.home.arpa", "box"},
 		{"plainhost", "plainhost"},
-		{"host.example.com", ""}, // still an FQDN — not a friendly name
+		{"host.example.com", ""}, // still an FQDN - not a friendly name
 		{"", ""},
 	}
 	for _, c := range cases {

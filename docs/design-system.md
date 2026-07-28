@@ -1,4 +1,4 @@
-# partyparty × Apple — design system
+# partyparty × Apple - design system
 
 **Rule: "Apple's SYSTEM, our CONTENT."** Adopt Apple's structure wholesale (SF type
 scale, 4/8-pt grid, semantic light+dark tokens, concentric squircle radii, ONE
@@ -8,10 +8,10 @@ energy where energy belongs: the **photography, the copy, and one brand accent**
 (partyparty pink). Nothing else is tinted.
 
 Three surfaces share these tokens:
-- **Landing page** (`site/index.html`) — product/download information only.
-- **App console** (`web/dj.html`, macOS WKWebView) — stays **dark** (DJ booth), macOS
+- **Landing page** (`site/index.html`) - product/download information only.
+- **App console** (`web/dj.html`, macOS WKWebView) - stays **dark** (DJ booth), macOS
   13px type ladder, one Liquid-Glass surface (the sticky Go-Live bar). ⬜ to do.
-- **Guest player** (`web/listener.html`) — dark, iOS 17px/44px ladder. ⬜ to do.
+- **Guest player** (`web/listener.html`) - dark, iOS 17px/44px ladder. ⬜ to do.
 
 ## Fonts (licensing matters)
 - **Public web / guest phone browser:** `-apple-system, BlinkMacSystemFont, "SF Pro
@@ -19,8 +19,8 @@ Three surfaces share these tokens:
   sans-serif`. Apple devices resolve to real SF *before* Inter loads; non-Apple gets
   self-hosted **Inter** (SIL OFL, `site/fonts/inter.woff2`, preloaded).
 - **In-app WKWebView:** system stack only (`-apple-system, BlinkMacSystemFont,
-  system-ui`) — ship NO webfont; real SF is on-device, free, legal.
-- **HARD RULE:** never `@font-face`/self-host San Francisco on the public site — the SF
+  system-ui`) - ship NO webfont; real SF is on-device, free, legal.
+- **HARD RULE:** never `@font-face`/self-host San Francisco on the public site - the SF
   license forbids website use (apple.com may only because Apple owns it). Inter is the
   legal fallback (`site/fonts/OFL-Inter.txt`).
 - Sizes in `rem` (root 16px) so OS text-scaling works. `font-synthesis:none`.
@@ -76,7 +76,7 @@ use **system blue** (`--link`). Status colors are semantic only.
   fallback elsewhere). Landing CTAs are full pills; **console buttons are 10px
   rounded-rect (macOS), not pills.**
 
-## Materials — Liquid Glass
+## Materials - Liquid Glass
 ONE glass layer per view, on **floating chrome only** (nav, sticky Go-Live bar). Never on
 content cards, never glass-on-glass.
 - **Light glass:** `background:rgba(255,255,255,.72); backdrop-filter:blur(20px)
@@ -108,7 +108,7 @@ everything in `@media (prefers-reduced-motion:reduce)`.**
   Text link = "How it works ›" in `--link`, underline on hover.
 - **Tile/bento:** flat `--bg-secondary` fill, 12px squircle, hairline only, **no shadow**,
   inner image radius < tile radius.
-- **vs block:** flat hairline-separated rows with a `--success` check + bolded lead — not
+- **vs block:** flat hairline-separated rows with a `--success` check + bolded lead - not
   bordered boxes.
 - **Console card:** `--bg-elevated`, 1px `--separator`, 12px radius, 20px padding, 24px
   gap; header 17px/600; controls 28–32px tall, 10px radius, `--fill`. Tab active-underline
@@ -120,14 +120,14 @@ everything in `@media (prefers-reduced-motion:reduce)`.**
   line + Media Session.
 - **Footer:** light, hairline top, `--label-tertiary` 12–14px, flat/minimal.
 
-## Pitfalls (the "fake Apple" tells — avoid)
+## Pitfalls (the "fake Apple" tells - avoid)
 Multi-color gradients as primary language · Bold 700/800 headlines · loose/positive
 tracking on big type · cramped whitespace / too-wide columns · heavy borders + drop
 shadows + gradient card fills · tiny-radius fake squircles / broken concentricity ·
 glass-on-glass or glass everywhere / blur >30px · `@font-face` SF on the web · consumer
 hover (big lifts + colored glow + bouncy easings) · missing a11y guards / <44px phone
 targets / 44px controls on macOS (should be 28px) · tinting everything (tint is
-semantic — primary action only).
+semantic - primary action only).
 
 _Derived from an Apple-HIG / Liquid-Glass (iOS·macOS 26) / apple.com research pass. The
 landing page implements this; the console + guest page are next._

@@ -98,7 +98,7 @@ func waitForState(t *testing.T, b *Broadcaster, want string, d time.Duration) {
 	t.Fatalf("state never became %q (still %q)", want, b.Status().State)
 }
 
-// waitAllDead asserts that every stub ffmpeg ever spawned is gone — the
+// waitAllDead asserts that every stub ffmpeg ever spawned is gone - the
 // no-orphans invariant.
 func waitAllDead(t *testing.T, pidLog string, d time.Duration) {
 	t.Helper()
@@ -212,7 +212,7 @@ func TestSetDeliveryIfIdle(t *testing.T) {
 	b.Stop()
 	waitForState(t, b, "idle", 3*time.Second)
 	if !b.SetDeliveryIfIdle("llhls") {
-		t.Fatal("idle again — switch should succeed")
+		t.Fatal("idle again - switch should succeed")
 	}
 }
 
@@ -236,7 +236,7 @@ func TestSecondStartSupersedesFirst(t *testing.T) {
 		t.Fatalf("state = %q, want starting", st.State)
 	}
 
-	// Stop must leave NO stub processes at all — the orphan check.
+	// Stop must leave NO stub processes at all - the orphan check.
 	b.Stop()
 	waitForState(t, b, "idle", 3*time.Second)
 	waitAllDead(t, pidLog, 4*time.Second)
@@ -271,7 +271,7 @@ func TestStartFailureThenRecovery(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A bare binary name is resolved via PATH at each Start — point PATH at an
+	// A bare binary name is resolved via PATH at each Start - point PATH at an
 	// empty dir first so the launch fails, then at the stub so it recovers.
 	b := New(testCfg("pp-ffmpeg-stub"), runDir, "", "")
 	t.Setenv("PATH", filepath.Join(dir, "definitely-empty"))
@@ -396,13 +396,13 @@ const rtspLeg = "[f=rtsp:rtsp_transport=tcp:onfail=ignore:use_fifo=1:fifo_option
 // LAN RTSP leg or the record leg, and every leg carries the exact isolation
 // flags (onfail=ignore + use_fifo=1 + drop_pkts_on_overflow=1) that keep a
 // slow/dead cloud upload OR record disk from ever back-pressuring the live LAN
-// stream — the drop-on-overflow is what makes "slow" (not just "failed to open")
+// stream - the drop-on-overflow is what makes "slow" (not just "failed to open")
 // non-blocking, closing the one-way latency ratchet.
 func TestBuildArgsMirrorLeg(t *testing.T) {
 	b := New(testCfg("ffmpeg"), t.TempDir(), "", "rtsp://127.0.0.1:8554/party")
 	base := argSnap{bitrate: "320k", channels: 2, hlsTime: 1, delivery: "llhls"}
 
-	// Mirror OFF: exactly the RTSP leg, no HLS leg — byte-for-byte as today.
+	// Mirror OFF: exactly the RTSP leg, no HLS leg - byte-for-byte as today.
 	off := teeArg(t, b.buildArgs("test", 48000, 2, base))
 	if off != rtspLeg {
 		t.Fatalf("mirror-off tee = %q, want exactly the RTSP leg %q", off, rtspLeg)
@@ -442,7 +442,7 @@ func TestBuildArgsMirrorLeg(t *testing.T) {
 }
 
 // TestSetMirrorDirFlowsToArgs verifies SetMirrorDir is what the live Start path
-// snapshots into the tee — the on/off toggle the --cloud-mirror flag drives.
+// snapshots into the tee - the on/off toggle the --cloud-mirror flag drives.
 func TestSetMirrorDirFlowsToArgs(t *testing.T) {
 	b, _, _ := newTestBroadcaster(t)
 	if b.MirrorDir() != "" {

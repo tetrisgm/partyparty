@@ -1,4 +1,4 @@
-# AGENTS.md — partyparty (for Codex / autonomous agents)
+# AGENTS.md - partyparty (for Codex / autonomous agents)
 
 partyparty is a macOS menu-bar app that turns a DJ's Mac into a LAN party
 server. Guests on the same venue Wi-Fi scan a QR and use HTTPS LL-HLS plus the
@@ -8,10 +8,10 @@ the product website. It never hosts
 event pages or party content.
 
 ## Layout
-- `main.go` + `internal/` — the Go server/binary (audio capture, LL-HLS, HTTPS).
-- `app/` — the Swift menu-bar shell (SwiftPM). Loads the Go server's console in a webview.
-- `web/` — served pages: `dj.html` (DJ console), `listener.html` / `wall.html` (**GUEST** pages). Embedded in the binary.
-- `cloudflare/worker.js` — website and anonymous LAN certificate/DNS broker.
+- `main.go` + `internal/` - the Go server/binary (audio capture, LL-HLS, HTTPS).
+- `app/` - the Swift menu-bar shell (SwiftPM). Loads the Go server's console in a webview.
+- `web/` - served pages: `dj.html` (DJ console), `listener.html` / `wall.html` (**GUEST** pages). Embedded in the binary.
+- `cloudflare/worker.js` - website and anonymous LAN certificate/DNS broker.
   Tests: `cloudflare/test/smoke.mjs`.
 
 ## Verify EVERY change before you commit
@@ -20,7 +20,7 @@ event pages or party content.
 - Swift: `cd app && swift build`
 Run the checks relevant to the files you touched. Only commit if they pass, and paste the output in your final report.
 
-## SACRED — never break these
+## SACRED - never break these
 1. **Guest offline join.** Guests join / listen / post on the LAN with NO account and NO internet. NEVER gate guest routes (`/`, `/wall`, `/hls/`, `/api/status`, `/api/heartbeat`, media/reaction posts) or `listener.html` / `wall.html` on auth, activation, or network.
 2. **Account-free DJ app.** The paid Mac App Store download is the purchase
    boundary. Never add a PartyParty login, license server, account gate, profile,
@@ -29,7 +29,7 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
 3. **HTTPS + LL-HLS only** for guests. Do NOT reintroduce a plain-HTTP guest fallback.
 4. **No cloud party product.** The Mac serves live audio and active-room posts.
    Never add public event pages, replays, remote listening, or cloud party feeds.
-5. **The audio core is OFF-LIMITS for autonomous work.** Do NOT modify `internal/broadcast/` (ffmpeg / tee / MediaMTX) and do NOT remove the "dead" plain-HLS code — that needs a supervised go-live test.
+5. **The audio core is OFF-LIMITS for autonomous work.** Do NOT modify `internal/broadcast/` (ffmpeg / tee / MediaMTX) and do NOT remove the "dead" plain-HLS code - that needs a supervised go-live test.
 6. **No authentication email service.** PartyParty has no product accounts or
    magic links. Do not add an email API or SMTP-based authentication.
 7. **One network topology and playback path.** The venue provides Wi-Fi. Do not

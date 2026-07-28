@@ -18,7 +18,7 @@ jobs:
 
       # The real ffmpeg/mediamtx/ppcapture are gitignored and built by `make`
       # for releases. For a compile-check we only need the go:embed targets to
-      # exist, so stub them — the binary won't run, but the code compiles.
+      # exist, so stub them - the binary won't run, but the code compiles.
       - name: Stub embedded assets
         run: |
           mkdir -p assets

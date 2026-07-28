@@ -2,9 +2,9 @@
 // LL-HLS for iPhones (the Plex *.plex.direct pattern):
 //
 //  1. a publicly-trusted certificate for a host you control (Let's Encrypt,
-//     DNS-01 via the Cloudflare API — never needs inbound reachability), and
+//     DNS-01 via the Cloudflare API - never needs inbound reachability), and
 //  2. a public A record pointing that host at the Mac's current LAN IP, so
-//     guests on the same Wi-Fi resolve it locally (RFC1918 in public DNS —
+//     guests on the same Wi-Fi resolve it locally (RFC1918 in public DNS -
 //     exactly what Plex does).
 //
 // Optional self-managed configuration (normal installs use the account broker):
@@ -41,7 +41,7 @@ const (
 // Result reports what activation achieved. The fields separate independent
 // facts that the old single OK conflated: a usable certificate, a VERIFIED DNS
 // publication, and local resolver agreement. LAN readiness is computed later
-// from all of this evidence plus TLS reachability — never inferred from OK alone.
+// from all of this evidence plus TLS reachability - never inferred from OK alone.
 type Result struct {
 	OK       bool // the whole chain succeeded (cert usable + DNS verified + resolver matches)
 	Host     string
@@ -71,7 +71,7 @@ type Logf func(format string, args ...any)
 
 // TryBroker is the zero-config activation path (the Plex pattern): the install
 // registers with the partyparty.party cert broker once and gets a MEMORABLE
-// hostname (disco42.pp.example.net — no IP-encoded eyesores), issues an exact
+// hostname (disco42.pp.example.net - no IP-encoded eyesores), issues an exact
 // cert for it locally (the private key never leaves this Mac; the broker only
 // publishes DNS records), and upserts the single A record to the current venue
 // IP at every launch. Fails soft like Try.
@@ -96,7 +96,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 
 	// The BROKER is the source of truth for the hostname AND returns a strict,
 	// VERIFIED Cloudflare receipt. Cloud reachability of the broker is not the
-	// same as a proven LAN A record — `verified` is the only truth that counts.
+	// same as a proven LAN A record - `verified` is the only truth that counts.
 	var aResp struct {
 		OK       bool   `json:"ok"`
 		Host     string `json:"host"`
@@ -118,8 +118,8 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 		// The shared machine wildcard (*.party.<base>) is the ONLY cert path for
 		// broker installs: one cert covers every machine host under the base, so
 		// there is no per-Mac ACME and no Let's Encrypt rate limit. It is fetched
-		// over the authed broker endpoint and validated with certUsable — exactly
-		// like a self-issued cert — before it is trusted. No fallback by design: a
+		// over the authed broker endpoint and validated with certUsable - exactly
+		// like a self-issued cert - before it is trusted. No fallback by design: a
 		// transient fetch failure leaves the cert not-yet-ready and the refresh
 		// loop retries; the renew window gives a buffer before any real expiry, and
 		// once fetched the cert is cached locally so later parties run offline.
@@ -304,7 +304,7 @@ func InstallCreds() (id, secret string) {
 }
 
 // CachedCert returns the previously-issued live cert/key paths when they exist
-// and the cert is currently valid (with an hour of margin) — so the TLS
+// and the cert is currently valid (with an hour of margin) - so the TLS
 // listener can serve the instant it comes up instead of racing async
 // re-activation. ok=false means no usable cache (issue fresh).
 func CachedCert() (certFile, keyFile string, ok bool) {
@@ -331,7 +331,7 @@ func CachedCert() (certFile, keyFile string, ok bool) {
 	}
 	now := time.Now()
 	if now.Before(c.NotBefore) || now.After(c.NotAfter.Add(-time.Hour)) {
-		return "", "", false // expired / not-yet-valid — don't serve it
+		return "", "", false // expired / not-yet-valid - don't serve it
 	}
 	return certFile, keyFile, true
 }
@@ -415,7 +415,7 @@ func stateDir() (string, error) {
 }
 
 // StateDir is the app's per-user state directory (certs, install creds, the OTA
-// payload cache) — ~/Library/Application Support/partyparty. Exported so other
+// payload cache) - ~/Library/Application Support/partyparty. Exported so other
 // packages can cache alongside without re-deriving the path.
 func StateDir() (string, error) { return stateDir() }
 
@@ -471,8 +471,8 @@ func fetchWildcard(ctx context.Context, b *brokerClient, certFile, keyFile strin
 // ResolverObservation is the structured result of asking the network's own DNS
 // resolver (the path guests' phones take) to resolve the machine host. It only
 // records what was returned; it never judges WHY a mismatch happened. A single
-// recursive-resolver mismatch is NOT proof of router rebind protection —
-// different recursive caches legitimately disagree during a TTL — so this type
+// recursive-resolver mismatch is NOT proof of router rebind protection -
+// different recursive caches legitimately disagree during a TTL - so this type
 // carries no rebind classification and there is no DoH cross-check.
 type ResolverObservation struct {
 	Host       string

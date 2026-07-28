@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// partyparty web perf bench — the stack `perf` skill's "measure first, never
+// partyparty web perf bench - the stack `perf` skill's "measure first, never
 // guess" harness, adapted to partyparty's guest hot path (listener.html).
 //
 // The skill's one idea: perceived speed is intent -> visible feedback. For a
@@ -20,7 +20,7 @@
 //
 //   node scripts/perf-bench.mjs
 //
-// PASS/FAIL is not the point here — the NUMBERS are. Capture a baseline, make
+// PASS/FAIL is not the point here - the NUMBERS are. Capture a baseline, make
 // one change, re-run, keep what moves the number (per the skill).
 
 import http from 'node:http';
