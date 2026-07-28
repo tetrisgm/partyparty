@@ -96,6 +96,9 @@ func TestPeerEndpointSharesOnlyPublicRoomState(t *testing.T) {
 	if body["id"] != "test-peer" || body["live"] != false || body["ready"] != false {
 		t.Fatalf("peer body = %#v", body)
 	}
+	if body["latencyTarget"] != roomLatencyTarget {
+		t.Fatalf("peer latency target = %#v", body["latencyTarget"])
+	}
 	room, ok := body["room"].(map[string]any)
 	if !ok {
 		t.Fatalf("peer endpoint did not expose public room snapshot: %#v", body)
@@ -1242,7 +1245,11 @@ func TestActivationFlow(t *testing.T) {
 
 func TestTimeEndpoint(t *testing.T) {
 	env := newTestEnv(t, nil)
-	body := decodeJSON(t, do(env.srv, "GET", "/api/time", ""))
+	response := do(env.srv, "GET", "/api/time", "")
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("CORS origin = %q", got)
+	}
+	body := decodeJSON(t, response)
 	ts, ok := body["t"].(float64)
 	if !ok || ts <= 0 {
 		t.Fatalf("t = %v", body["t"])

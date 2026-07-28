@@ -26,13 +26,15 @@ const (
 
 // Peer is a directly reachable PartyParty DJ on this LAN.
 type Peer struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	RoomURL   string `json:"roomUrl"`
-	StreamURL string `json:"streamUrl,omitempty"`
-	Live      bool   `json:"live"`
-	Ready     bool   `json:"ready"`
-	Room      *Room  `json:"room,omitempty"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	RoomURL       string  `json:"roomUrl"`
+	StreamURL     string  `json:"streamUrl,omitempty"`
+	Live          bool    `json:"live"`
+	Ready         bool    `json:"ready"`
+	Generation    int64   `json:"generation,omitempty"`
+	LatencyTarget float64 `json:"latencyTarget,omitempty"`
+	Room          *Room   `json:"room,omitempty"`
 }
 
 // Room is the compact public social snapshot shared between Macs at one venue.

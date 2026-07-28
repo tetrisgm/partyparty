@@ -449,6 +449,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		// Master clock for the listeners' NTP-style offset estimate. Expose the
 		// server receive/transmit pair so clients can use the full four-timestamp
 		// calculation instead of assuming all response time was symmetric.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		received := time.Now().UnixMilli()
 		sent := time.Now().UnixMilli()
 		writeJSON(w, http.StatusOK, map[string]any{"t": sent, "received": received, "sent": sent})
@@ -693,6 +694,7 @@ func (s *srv) peerState(since int64) peers.Peer {
 	}
 	syncState := s.streamSyncState(bc, roomLatencyTarget)
 	ready, _ := syncState["ready"].(bool)
+	generation, _ := syncState["generation"].(int64)
 	roster := s.Listeners.Roster()
 	publicRoster := make([]peers.Guest, 0, len(roster))
 	for _, listener := range roster {
@@ -711,13 +713,15 @@ func (s *srv) peerState(since int64) peers.Peer {
 		ids = []string{}
 	}
 	return peers.Peer{
-		ID:        peerID,
-		Name:      name,
-		RoomURL:   s.urls().Primary,
-		StreamURL: s.llhlsURL(),
-		Live:      bc.State == "live",
-		Ready:     ready,
-		Room:      &peers.Room{Roster: publicRoster, Posts: posts, IDs: ids, Cursor: cursor},
+		ID:            peerID,
+		Name:          name,
+		RoomURL:       s.urls().Primary,
+		StreamURL:     s.llhlsURL(),
+		Live:          bc.State == "live",
+		Ready:         ready,
+		Generation:    generation,
+		LatencyTarget: roomLatencyTarget,
+		Room:          &peers.Room{Roster: publicRoster, Posts: posts, IDs: ids, Cursor: cursor},
 	}
 }
 
