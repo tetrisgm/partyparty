@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-VERSION="${PP_VERSION:-124.07}"
-BUILD="${PP_BUILD:-209}"
+VERSION="${PP_VERSION:-124.08}"
+BUILD="${PP_BUILD:-210}"
 APP="$ROOT/build/partyparty-beta.app"
 RELEASE_DIR="$ROOT/dist/standalone-$VERSION-$BUILD"
 ZIP_NAME="partyparty-$VERSION-$BUILD.zip"
