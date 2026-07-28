@@ -39,7 +39,15 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
   done
   # ShazamKit cannot reach shazamd from a spawned inherited-sandbox helper.
   # Give the capture bundle its own narrow sandbox and reviewed Mach exception.
+  capture_entitlements="$ROOT/app/partyparty-app-store-capture.entitlements"
+  if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
+    capture_entitlements="$TEMP_DIR/partyparty-capture.entitlements"
+    cp "$ROOT/app/partyparty-app-store-capture.entitlements" "$capture_entitlements"
+    prefix="${AppIdentifierPrefix:-${DEVELOPMENT_TEAM}.}"
+    /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string ${prefix}${PRODUCT_BUNDLE_IDENTIFIER}" "$capture_entitlements"
+    /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string ${DEVELOPMENT_TEAM}" "$capture_entitlements"
+  fi
   codesign "${sign_args[@]}" \
-    --entitlements "$ROOT/app/partyparty-app-store-capture.entitlements" \
+    --entitlements "$capture_entitlements" \
     "$HELPERS/ppcapture.app"
 fi
