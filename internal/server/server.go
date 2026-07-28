@@ -440,6 +440,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"latency":        s.Listeners.LatencySpread(),
 			"roster":         rosterBody,
+			"listenerGroups": s.listenerGroups(roster),
 			"event":          s.eventState(),
 			"config":         s.payloadConfig(),
 			"streamHealth":   s.streamHealthText(),
@@ -637,7 +638,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.Broadcaster.Start(device, q.Get("name"), broadcast.Options{})
-		s.addStreamFeedPost("Started the stream.")
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/stop":
 		if r.Method != http.MethodPost {
@@ -647,17 +647,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if !s.requireDJ(w, r) {
 			return
 		}
-		wasStreaming := false
-		if s.Broadcaster != nil {
-			switch s.Broadcaster.Status().State {
-			case "starting", "live":
-				wasStreaming = true
-			}
-		}
 		s.Broadcaster.Stop()
-		if wasStreaming {
-			s.addStreamFeedPost("Stopped the stream.")
-		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/shutdown":
 		// Loopback-only orphan reaper: a force-quit app skips child cleanup and
@@ -701,7 +691,9 @@ func (s *srv) peerState(since int64) peers.Peer {
 	roster := s.Listeners.Roster()
 	publicRoster := make([]peers.Guest, 0, len(roster))
 	for _, listener := range roster {
-		publicRoster = append(publicRoster, peers.Guest{Name: listener.Name, Emoji: listener.Emoji})
+		publicRoster = append(publicRoster, peers.Guest{
+			ID: listener.ID, Name: listener.Name, Emoji: listener.Emoji, Paused: listener.Paused,
+		})
 	}
 	var posts []event.Post
 	var ids []string
@@ -785,6 +777,95 @@ func (s *srv) roomRoster(local any) (any, int) {
 	}
 }
 
+type publicListener struct {
+	Name  string `json:"name"`
+	Emoji string `json:"emoji"`
+}
+
+type publicListenerGroup struct {
+	ID        string           `json:"id,omitempty"`
+	DJ        string           `json:"dj"`
+	Listeners []publicListener `json:"listeners"`
+}
+
+func (s *srv) listenerGroups(local []stats.Listener) []publicListenerGroup {
+	name := strings.TrimSpace(s.Config.Name)
+	if s.Events != nil {
+		if host := strings.TrimSpace(s.Events.Meta().Host); host != "" {
+			name = host
+		}
+	}
+	if name == "" {
+		name = "This DJ"
+	}
+	groups := []publicListenerGroup{{DJ: name, Listeners: []publicListener{}}}
+	groupIndex := map[string]int{"": 0}
+	roomPeers := s.roomPeers()
+	for _, peer := range roomPeers {
+		groupIndex[peer.ID] = len(groups)
+		groups = append(groups, publicListenerGroup{
+			ID: peer.ID, DJ: peer.Name, Listeners: []publicListener{},
+		})
+	}
+
+	type assignment struct {
+		group  string
+		person publicListener
+		active bool
+	}
+	assignments := make(map[string]assignment)
+	fallbackKey := func(name, emoji string) string {
+		return "name:" + strings.ToLower(strings.TrimSpace(name)) + "\x00" + strings.TrimSpace(emoji)
+	}
+	assign := func(id, listenerName, emoji, group string, active bool) {
+		if id == "" {
+			id = fallbackKey(listenerName, emoji)
+		}
+		if current, ok := assignments[id]; ok && current.active && !active {
+			return
+		}
+		assignments[id] = assignment{
+			group: group, active: active,
+			person: publicListener{Name: listenerName, Emoji: emoji},
+		}
+	}
+	for _, listener := range local {
+		assign(listener.ID, listener.Name, listener.Emoji, "", !listener.Paused)
+	}
+	for _, peer := range roomPeers {
+		if peer.Room == nil {
+			continue
+		}
+		for _, listener := range peer.Room.Roster {
+			assign(listener.ID, listener.Name, listener.Emoji, peer.ID, !listener.Paused)
+		}
+	}
+
+	notListening := publicListenerGroup{DJ: "Not listening", Listeners: []publicListener{}}
+	for _, listener := range assignments {
+		if !listener.active {
+			notListening.Listeners = append(notListening.Listeners, listener.person)
+			continue
+		}
+		if i, ok := groupIndex[listener.group]; ok {
+			groups[i].Listeners = append(groups[i].Listeners, listener.person)
+		}
+	}
+	sortPeople := func(people []publicListener) {
+		sort.Slice(people, func(i, j int) bool {
+			return strings.ToLower(people[i].Name) < strings.ToLower(people[j].Name)
+		})
+	}
+	for i := range groups {
+		sortPeople(groups[i].Listeners)
+	}
+	sortPeople(notListening.Listeners)
+	if len(notListening.Listeners) > 0 {
+		groups = append(groups, notListening)
+	}
+	return groups
+}
+
 func (s *srv) roomPeers() []peers.Peer {
 	s.peersMu.RLock()
 	directory := s.Peers
@@ -807,28 +888,6 @@ func broadcastStatus(status broadcast.Status) map[string]any {
 		"lastError":  status.LastError,
 		"note":       status.Note,
 		"captureBad": status.CaptureBad,
-	}
-}
-
-func (s *srv) addStreamFeedPost(text string) {
-	if s.Events == nil {
-		return
-	}
-	posts, _, _ := s.Events.Feed(0)
-	for _, post := range posts {
-		if post.DJ && post.CID == "dj" && post.Text == text {
-			if err := s.Events.Delete(post.ID); err != nil && s.Diag != nil {
-				s.Diag.Printf("old stream feed post delete failed: %v", err)
-			}
-		}
-	}
-	meta := s.Events.Meta()
-	author := strings.TrimSpace(meta.Host)
-	if author == "" {
-		author = "the DJ"
-	}
-	if _, err := s.Events.AddPost("dj", author, "🎧", text, nil, true); err != nil && s.Diag != nil {
-		s.Diag.Printf("stream feed post failed: %v", err)
 	}
 }
 

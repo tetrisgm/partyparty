@@ -220,6 +220,7 @@ func (l *Listeners) LatencySpread() LatencyStat {
 
 // Listener is one active listener for the DJ's roster.
 type Listener struct {
+	ID         string  `json:"-"`
 	Platform   string  `json:"platform"` // "native" | "hls"
 	Name       string  `json:"name,omitempty"`
 	Emoji      string  `json:"emoji,omitempty"`
@@ -238,16 +239,22 @@ func (l *Listeners) Roster() []Listener {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	active := make([]*client, 0, len(l.clients))
-	for _, c := range l.clients {
+	type keyedClient struct {
+		key string
+		c   *client
+	}
+	active := make([]keyedClient, 0, len(l.clients))
+	for key, c := range l.clients {
 		if now.Sub(c.lastSeen) <= l.window {
-			active = append(active, c)
+			active = append(active, keyedClient{key: key, c: c})
 		}
 	}
-	sort.Slice(active, func(i, j int) bool { return active[i].firstSeen.Before(active[j].firstSeen) })
+	sort.Slice(active, func(i, j int) bool { return active[i].c.firstSeen.Before(active[j].c.firstSeen) })
 	out := make([]Listener, 0, len(active))
-	for _, c := range active {
+	for _, activeClient := range active {
+		key, c := activeClient.key, activeClient.c
 		out = append(out, Listener{
+			ID:         key,
 			Platform:   c.platform,
 			Name:       c.name,
 			Emoji:      c.emoji,

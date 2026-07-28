@@ -48,8 +48,10 @@ type Room struct {
 }
 
 type Guest struct {
-	Name  string `json:"name"`
-	Emoji string `json:"emoji"`
+	ID     string `json:"id,omitempty"`
+	Name   string `json:"name"`
+	Emoji  string `json:"emoji"`
+	Paused bool   `json:"paused,omitempty"`
 }
 
 type candidate struct {

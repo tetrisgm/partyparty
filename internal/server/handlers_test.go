@@ -108,6 +108,36 @@ func TestPeerEndpointSharesOnlyPublicRoomState(t *testing.T) {
 	}
 }
 
+func TestStatusGroupsListenersByPlaybackState(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.Listeners.Heartbeat("playing-phone", false, false, 1100, true, "native")
+	env.srv.Listeners.Identity("playing-phone", "Alex", "🪩")
+	env.srv.Listeners.Heartbeat("paused-phone", false, true, 0, false, "native")
+	env.srv.Listeners.Identity("paused-phone", "Sam", "✨")
+
+	body := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", "192.168.1.44:3333"))
+	groups, ok := body["listenerGroups"].([]any)
+	if !ok || len(groups) != 2 {
+		t.Fatalf("listener groups = %#v, want playing DJ and not-listening groups", body["listenerGroups"])
+	}
+	playing := groups[0].(map[string]any)
+	if playing["dj"] != "partyparty" {
+		t.Fatalf("playing group DJ = %#v", playing["dj"])
+	}
+	playingListeners := playing["listeners"].([]any)
+	if len(playingListeners) != 1 || playingListeners[0].(map[string]any)["name"] != "Alex" {
+		t.Fatalf("playing listeners = %#v", playingListeners)
+	}
+	paused := groups[1].(map[string]any)
+	if paused["dj"] != "Not listening" {
+		t.Fatalf("paused group = %#v", paused)
+	}
+	pausedListeners := paused["listeners"].([]any)
+	if len(pausedListeners) != 1 || pausedListeners[0].(map[string]any)["name"] != "Sam" {
+		t.Fatalf("paused listeners = %#v", pausedListeners)
+	}
+}
+
 func do(s *Srv, method, target, remoteAddr string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, nil)
 	if remoteAddr != "" {
@@ -975,7 +1005,7 @@ func TestStartValidationAndLifecycle(t *testing.T) {
 	waitIdle(t, env.bc)
 }
 
-func TestStartStopCreatesDJFeedPosts(t *testing.T) {
+func TestStartStopDoesNotCreateDJFeedPosts(t *testing.T) {
 	env := newTestEnv(t, nil)
 	ev, err := event.Open(t.TempDir())
 	if err != nil {
@@ -995,8 +1025,7 @@ func TestStartStopCreatesDJFeedPosts(t *testing.T) {
 		t.Fatalf("stop status = %d, body %q", w.Code, w.Body.String())
 	}
 	waitIdle(t, env.bc)
-	// Repeating the lifecycle must replace the previous matching system post,
-	// not fill the activity feed with duplicate starts and stops.
+	// Repeating the lifecycle must remain invisible to the social feed.
 	w = do(env.srv, http.MethodPost, "/api/start?device=test", djAddr)
 	if w.Code != http.StatusOK {
 		t.Fatalf("second start status = %d, body %q", w.Code, w.Body.String())
@@ -1011,23 +1040,10 @@ func TestStartStopCreatesDJFeedPosts(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("feed status = %d, body %q", w.Code, w.Body.String())
 	}
-	posts, ok := decodeJSON(t, w)["posts"].([]any)
-	if !ok {
-		t.Fatalf("posts missing/not array: %q", w.Body.String())
-	}
-	if len(posts) != 2 {
-		t.Fatalf("posts len = %d, want 2: %#v", len(posts), posts)
-	}
-	got := map[string]int{}
-	for _, raw := range posts {
-		p := raw.(map[string]any)
-		if p["author"] != "Ramine" || p["emoji"] != "🎧" || p["dj"] != true || p["state"] != event.StateApproved {
-			t.Fatalf("stream post = %#v", p)
+	if posts := decodeJSON(t, w)["posts"]; posts != nil {
+		if rows, ok := posts.([]any); !ok || len(rows) != 0 {
+			t.Fatalf("start/stop created feed posts: %#v", posts)
 		}
-		got[p["text"].(string)]++
-	}
-	if got["Started the stream."] != 1 || got["Stopped the stream."] != 1 {
-		t.Fatalf("stream posts = %#v", got)
 	}
 }
 
