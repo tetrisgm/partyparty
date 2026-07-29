@@ -158,15 +158,12 @@ without adding latency and without anyone's phone influencing anyone else's.
   when they cannot. One authority in all modes means offline drift is
   self-consistent and no mode depends on NTP quality.
 - Every guest reports its deviation from the schedule in the heartbeat it
-  already sends. Spread is therefore continuously observable in production, on
-  every network and device, rather than measured in one room on one afternoon.
+  already sends. This is telemetry for the DJ console and the analyzer only. It
+  is never an input to any room-wide value.
 - Server-side levers to shrink deviation, in order of how reliably they work:
   what the server publishes (deterministic), `PART-HOLD-BACK` (self-enforcing,
   since a player that ignores it stalls), and `EXT-X-START` (advisory, may be
-  ignored). Design around the first two; treat the third as an optimization
-  whose effect is visible in the reported numbers.
-- D adapts from measured spread and stall rate instead of being a constant that
-  someone guesses per venue.
+  ignored). Design around the first two; treat the third as an optimization.
 
 Existing pieces this builds on rather than replaces: PDT is already emitted and
 already read by both players (`web/listener.html:1325-1339`), per-listener
