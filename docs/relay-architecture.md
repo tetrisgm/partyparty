@@ -135,10 +135,24 @@ since it guarantees no guest traffic leaves the venue.
   no advisory tag to be honored, no command over AVPlayer, and no prior
   measurement at a venue. We control what "live" means by controlling what we
   publish.
-- The value of D is set by an algorithm that runs continuously from what
-  clients report about themselves, not by a person tuning a constant per venue.
-  One rule everywhere; different networks settle on different values on their
-  own.
+- **D is a constant, and it never responds to listener conditions.** It is
+  derived from the pipeline, not from any network, so it needs no per-venue
+  tuning and no adaptation. It differs between modes only because the relay
+  path has a larger floor, which is a derivation rather than a knob.
+- **No room-wide value may ever be a function of listener health.** A slow
+  device, or a hundred slow devices, must never lengthen the delay for anyone
+  else. This is already enforced structurally: `latencyTarget` accepts
+  broadcast status and room health and discards both
+  (`internal/server/server.go:1314`), and the product previously had the
+  opposite behavior, where a struggling peer moved room health and healthy
+  players moved with it. That property is preserved, not revisited.
+- Devices that cannot hold the schedule are handled **strictly per device**, by
+  the existing visible-only forward governor that never runs while locked or
+  backgrounded, and never affects a peer.
+
+What the schedule buys is coherence, not adaptation: every device targets the
+same declared point instead of independently choosing one. That removes spread
+without adding latency and without anyone's phone influencing anyone else's.
 - **The Mac is the clock authority in every mode.** Guests sync to the Mac
   directly when they can reach it, and to the Mac's clock carried by the relay
   when they cannot. One authority in all modes means offline drift is
@@ -350,40 +364,42 @@ reason instead of sitting on checking.
 Goal: the schedule is authored by the server and true by construction, with its
 value maintained by an algorithm rather than by anyone testing venues.
 
-This unit is deliberately one piece. An earlier draft split it into "observe at
-a party" and "then decide," which reintroduced exactly the tune-per-network
-approach this design exists to avoid. There is no measure-then-choose phase:
-the server declares the schedule, and the controller that maintains its value
-is part of the feature.
+Two earlier drafts of this unit were wrong in opposite directions. One split it
+into "observe at a party, then decide," which is per-venue tuning. The other
+added a controller that widened the delay when devices struggled, which lets a
+slow phone drag the whole room. Both are rejected. The schedule is a constant
+the server authors, and nothing about it responds to conditions.
 
 Changes:
 - Publish D on `/api/status` as the room's declared delay, defined as the
-  pipeline floor plus the declared hold-back.
+  pipeline floor plus a fixed declared hold-back. It stays a compile-time
+  constant per mode, in the spirit of `roomLatencyTarget`
+  (`internal/server/playback.go:7`).
 - Author the playlist so the live edge is the scheduled point: set the declared
   hold-back rather than relying on `EXT-X-START` being honored. Replace the
   tests that assert `EXT-X-START` absence
   (`internal/server/handlers_test.go:1277`, `:1291`) with tests that assert the
-  declared hold-back is what we intend.
-- Each guest reports, in the heartbeat it already sends, whether it is making
-  the schedule and by how much.
-- A bounded controller adjusts the declared hold-back from those reports:
-  widen when devices are not making it, narrow when they are comfortable, with
-  hysteresis so it cannot oscillate and a floor at the pipeline minimum. This
-  is the same code in LOCAL, DIRECT, and RELAY; the relay's larger floor is
-  absorbed automatically rather than configured.
+  declared hold-back is exactly what we intend.
+- Each guest reports its deviation from the schedule in the heartbeat it
+  already sends. This is telemetry only. It feeds the DJ console and the
+  analyzer, and it must never feed back into any room-wide value.
+- Devices that fall behind are corrected individually by the existing
+  visible-only forward governor. Locked and backgrounded playback is never
+  touched, and no correction is ever triggered by a peer's condition.
 - Confirm the PDT stamp originates at capture, since Unit 3 depends on it
   surviving unmodified.
 
 Tests: the delay identity (declared hold-back plus floor equals published D)
-against authored playlists; controller behavior against synthetic reports,
-including widening, narrowing, hysteresis, and floor clamping; deviation math;
-no oscillation under adversarial report sequences.
+against authored playlists; deviation math against synthetic heartbeats; and an
+explicit regression test that the room's published target is invariant across
+every broadcast status and health value, so the `latencyTarget(_, _)` property
+at `internal/server/server.go:1314` cannot be eroded later.
 
-Acceptance: with the controller running, room spread stays inside the contract
-on whatever network is present, without anyone choosing a value for that
-network. Verified by `node scripts/analyze-session-log.mjs --strict`, with the
-mic kit as an occasional check on the output-path layer telemetry structurally
-cannot see.
+Acceptance: room spread tightens against today's behavior with **no increase**
+in the one-second target, and a deliberately crippled device (throttled
+network) changes nothing for its peers. Verified by
+`node scripts/analyze-session-log.mjs --strict`, with the mic kit as an
+occasional check on the output-path layer telemetry structurally cannot see.
 
 ### Unit 3: the relay data plane
 
@@ -414,7 +430,11 @@ DHCP reservation, verified by the resolver check. Nothing there blocks Unit 1.
 
 1. **Cloud host** for the relay origin. Roughly 6 to 7 USD per month at launch
    size, with a documented resize path for large rooms.
-2. **D default**, and whether D may differ between LOCAL/DIRECT and RELAY. One
-   value is seamless across a mode flip; per-mode is lower latency on LAN.
-3. **Photos in RELAY mode** at launch: enabled behind the throttle, or dark
+2. **Photos in RELAY mode** at launch: enabled behind the throttle, or dark
    until measured.
+
+D is not a decision. It stays today's one-second target for LOCAL and DIRECT,
+and for RELAY it is that plus the extra pipeline floor of the contribution hop.
+Both are constants derived from the path, and neither responds to conditions.
+The non-negotiable constraint on Unit 2 is that the room's delay never grows
+because a listener is slow.
