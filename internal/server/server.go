@@ -64,6 +64,12 @@ type srv struct {
 	liveProxy http.Handler
 	limits    *limiter
 
+	// What the origin last reported about relayed guests. Guarded by relayMu.
+	relayMu        sync.RWMutex
+	relayListeners int
+	relaySpreadMs  float64
+	relayAt        time.Time
+
 	// Async activation result (cert broker / BYO) - set after launch so the
 	// server can start serving instantly while certs are obtained in the
 	// background. Guarded by actMu.
@@ -1031,9 +1037,17 @@ func (s *srv) llhlsURL() string {
 	return fmt.Sprintf("https://%s:%d/live/%s/index.m3u8", host, s.Config.TLSPort, s.Config.StreamPath)
 }
 
+// relayPublishedPlaylist is the playlist name contribution publishes to the
+// origin. Kept in step with contribute.PublishedPlaylist.
+const relayPublishedPlaylist = "stream.m3u8"
+
 func (s *srv) llhlsURLFor(r *http.Request) string {
 	if r.Header.Get("X-PartyParty-Relay") == "1" {
-		return fmt.Sprintf("/live/%s/index.m3u8", s.Config.StreamPath)
+		// Relayed guests fetch from the origin, which serves what contribution
+		// publishes under a fixed name beside the page itself. It is not the
+		// muxer's path: this Mac is unreachable from that guest's network, which
+		// is the whole reason they are on the relay.
+		return relayPublishedPlaylist
 	}
 	return s.llhlsURL()
 }

@@ -77,6 +77,10 @@ const (
 
 	// uploadTimeout stops a stalled origin from wedging the push loop forever.
 	uploadTimeout = 10 * time.Second
+
+	// pageRefreshInterval is how often the origin is asked whether it still has
+	// the guest page.
+	pageRefreshInterval = 15 * time.Second
 )
 
 // Status is what the console needs to say honestly whether relayed guests are
@@ -103,6 +107,13 @@ type Status struct {
 // something internally.
 const PublishedPlaylist = "stream.m3u8"
 
+// PublishedPage is the guest page served at the room's root by the origin. The
+// Mac publishes its OWN page rather than the origin embedding one, so a relayed
+// guest always gets the page that matches the version of the app they are
+// listening to, and a web change ships with the app instead of needing the
+// origin redeployed.
+const PublishedPage = "index.html"
+
 // Config describes one contribution.
 type Config struct {
 	// SourceURL is this Mac's local LL-HLS MULTIVARIANT playlist, on loopback.
@@ -114,6 +125,9 @@ type Config struct {
 	// a guessed media playlist name is how contribution came to fail with a 401
 	// on every cycle, which meant relayed guests received nothing at all.
 	SourceURL string
+	// Page returns the guest page to publish, or nil to publish none. Called once
+	// per session rather than per cycle: it does not change while a party runs.
+	Page func() []byte
 	// Target resolves this install's relay origin and publish credential. They
 	// come from the broker at registration rather than from static configuration,
 	// so every install gets its own and a Mac can only publish to its own room.
@@ -143,6 +157,11 @@ type Manager struct {
 	status  Status
 	enabled bool
 	wake    chan struct{}
+
+	// pageSent records that the guest page is on the origin, and pageCheckedAt
+	// when that was last confirmed rather than assumed.
+	pageSent      bool
+	pageCheckedAt time.Time
 
 	// sent tracks media already uploaded so each file is pushed exactly once.
 	// Pruned against the live playlist every cycle, so a long set cannot grow it
@@ -192,6 +211,7 @@ func (m *Manager) SetEnabled(on bool) {
 	if !on {
 		m.status.Running = false
 		m.sent = make(map[string]bool) // a fresh session re-pushes what the origin needs
+		m.pageSent = false
 	}
 	m.mu.Unlock()
 	m.signal()
@@ -335,6 +355,27 @@ func (m *Manager) cycle(ctx context.Context) error {
 		m.sent[name] = true
 		m.status.Pushed++
 		m.mu.Unlock()
+	}
+
+	// The page. A guest who cannot reach this Mac cannot fetch a page from it
+	// either, so without this the origin serves audio nobody has a player for.
+	//
+	// Confirmed periodically rather than pushed once. The origin drops a room when
+	// it restarts or when the room goes idle, and media recovers on its own
+	// because segment names roll forward every few seconds, but the page has one
+	// fixed name and would never be sent again. An origin restart mid party would
+	// leave every guest on a dead page for the rest of the night. A HEAD costs
+	// nothing next to re-uploading two hundred kilobytes on a timer.
+	if m.pageCheckDue() && !m.originHasPage(ctx) {
+		m.clearPagePushed()
+	}
+	if !m.pagePushed() && m.cfg.Page != nil {
+		if page := m.cfg.Page(); len(page) > 0 {
+			if err := m.upload(ctx, PublishedPage, page, "text/html; charset=utf-8"); err != nil {
+				return fmt.Errorf("upload page: %w", err)
+			}
+			m.markPagePushed()
+		}
 	}
 
 	// Forward the playlist otherwise untouched. This is what carries
@@ -562,4 +603,62 @@ func redact(raw string) string {
 		scheme = raw[:i+3]
 	}
 	return scheme + "***@" + raw[at+1:]
+}
+
+func (m *Manager) pagePushed() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.pageSent
+}
+
+func (m *Manager) markPagePushed() {
+	m.mu.Lock()
+	m.pageSent = true
+	m.pageCheckedAt = time.Now()
+	m.mu.Unlock()
+}
+
+// pageCheckDue reports whether it is time to confirm the origin still has the
+// guest page.
+func (m *Manager) pageCheckDue() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.pageSent {
+		return false // nothing to confirm; it is about to be pushed anyway
+	}
+	if time.Since(m.pageCheckedAt) < pageRefreshInterval {
+		return false
+	}
+	m.pageCheckedAt = time.Now()
+	return true
+}
+
+func (m *Manager) clearPagePushed() {
+	m.mu.Lock()
+	m.pageSent = false
+	m.mu.Unlock()
+}
+
+// originHasPage asks the origin whether the guest page is still published.
+// A failure to ask is treated as "still there", so a blip does not trigger a
+// pointless re-upload.
+func (m *Manager) originHasPage(ctx context.Context) bool {
+	base, _ := m.cfg.target()
+	if base == "" {
+		return true
+	}
+	target, err := joinURL(base, PublishedPage)
+	if err != nil {
+		return true
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
+	if err != nil {
+		return true
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return true
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }

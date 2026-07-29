@@ -32,6 +32,7 @@ import (
 	"partyparty/internal/netinfo"
 	"partyparty/internal/peers"
 	"partyparty/internal/relay"
+	"partyparty/internal/schedule"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
 )
@@ -223,6 +224,10 @@ func main() {
 
 	var relayManager *relay.Manager
 	var contributor *contribute.Manager
+	// Declared before contribution is configured because the two refer to each
+	// other: contribution publishes what this server renders, and the server is
+	// built below with the relay manager contribution drives.
+	var handler *server.Srv
 	{
 		brokerURL := os.Getenv("PARTYPARTY_BROKER")
 		if brokerURL == "" {
@@ -244,6 +249,10 @@ func main() {
 				}
 				return relayManager.Relay()
 			},
+			// The Mac publishes its OWN guest page, so a relayed guest always gets
+			// the page matching the app they are listening to and a web change ships
+			// with the app rather than needing the origin redeployed.
+			Page: func() []byte { return handler.GuestPage() },
 			Logf: log.Printf,
 		})
 		relayManager = relay.New(relay.Config{
@@ -260,7 +269,7 @@ func main() {
 		})
 	}
 
-	handler := server.New(server.Deps{
+	handler = server.New(server.Deps{
 		Config:      cfg,
 		Broadcaster: bc,
 		Listeners:   ls,
@@ -279,6 +288,15 @@ func main() {
 		relayManager.Start(relayCtx)
 		if contributor != nil {
 			go contributor.Run(relayCtx)
+			// The room's interactive surface for relayed guests. Without this the
+			// origin serves audio and answers 503 for everything else, so a relayed
+			// guest sees a party with no listeners, no feed and no way to post.
+			go contributor.RunPlane(relayCtx, contribute.PlaneHooks{
+				Snapshots:  handler.RoomSnapshots,
+				DelaySec:   func() float64 { return schedule.Delay },
+				ApplyWrite: handler.ApplyRelayWrite,
+				Presence:   handler.SetRelayPresence,
+			})
 		}
 	}
 	startPeerDiscovery := func(host string) {

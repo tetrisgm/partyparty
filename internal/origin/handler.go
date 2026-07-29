@@ -216,7 +216,12 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, token, name stri
 		http.Error(w, "room is not live", http.StatusNotFound)
 		return
 	}
-	if name == "" || !safeName(name) {
+	if name == "" {
+		// The room root is the guest page the Mac published. A relayed guest
+		// cannot fetch a page from the Mac, so this is the only page they get.
+		name = "index.html"
+	}
+	if !safeName(name) {
 		http.NotFound(w, r)
 		return
 	}

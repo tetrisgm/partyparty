@@ -140,6 +140,13 @@ func TestStatusKeepsPausedListenersWithTheirDJ(t *testing.T) {
 // because the bug it guards against was not in the relay package that chooses
 // the URL but in the status layer that used to discard it.
 func TestStatusAdvertisesJoinURLWhileChecking(t *testing.T) {
+	// Isolate persisted state. relay.New loads the DJ's saved connection-mode
+	// override and cached network verdicts from the real per-user state
+	// directory, which os.UserConfigDir derives from HOME. Without this the
+	// result depends on how the developer last used the app: setting the
+	// override to relay by hand made this test fail with mode "relay", which is
+	// a property of the machine rather than of the code under test.
+	t.Setenv("HOME", t.TempDir())
 	env := newTestEnv(t, nil)
 	env.srv.Relay = relay.New(relay.Config{})
 	env.srv.SetActivation("disco-party.party.partyparty.party")
@@ -166,6 +173,13 @@ func TestStatusAdvertisesJoinURLWhileChecking(t *testing.T) {
 // out, and the console says it is still setting up. That state must be brief and
 // self-clearing, never the resting state of the previous test.
 func TestStatusWithNoRegistrationYetHasNoJoinURL(t *testing.T) {
+	// Isolate persisted state. relay.New loads the DJ's saved connection-mode
+	// override and cached network verdicts from the real per-user state
+	// directory, which os.UserConfigDir derives from HOME. Without this the
+	// result depends on how the developer last used the app: setting the
+	// override to relay by hand made this test fail with mode "relay", which is
+	// a property of the machine rather than of the code under test.
+	t.Setenv("HOME", t.TempDir())
 	env := newTestEnv(t, nil)
 	env.srv.Relay = relay.New(relay.Config{})
 	env.srv.SetActivation("disco-party.party.partyparty.party")

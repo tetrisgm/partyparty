@@ -318,6 +318,8 @@ func contentTypeFor(name, uploaded string) string {
 		return "video/mp4"
 	case strings.HasSuffix(name, ".aac"):
 		return "audio/aac"
+	case strings.HasSuffix(name, ".html"):
+		return "text/html; charset=utf-8"
 	default:
 		return "application/octet-stream"
 	}
