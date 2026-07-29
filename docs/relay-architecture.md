@@ -1,14 +1,21 @@
 # Relay architecture v2 (trade study and replacement design)
 
-Status: design for review, second revision. Supersedes v1 (commit 5d82c95) after
+Status: design for review, revision 2.1. Supersedes v1 (commit 5d82c95) after
 owner review. No implementation has started.
+
+Revision 2.1 changes, from owner review of v2: a 500-listener-per-room scale
+requirement is now explicit and every option is graded against it; the SNI
+passthrough rejection is explained properly (the fan-out burden lands on the
+Mac's venue uplink, not the relay); and the Workers Paid bridge is REMOVED at
+owner direction, because it pays to keep alive a path that cannot serve a real
+party at any price.
 
 How this revision was produced: five parallel code and market recon passes
 (Worker flow, Mac relay client, wildcard and certificate estate, Cloudflare and
 VPS economics with live verification on 2026-07-28, alternative architectures),
 one synthesis, then three independent adversarial reviews (guest flow,
 invariants, numbers and ops). The adversarial findings are folded in below as
-normative requirements, marked R1..R16. Where a number could not be verified
+normative requirements, marked R1..R15. Where a number could not be verified
 live it is flagged.
 
 ## Correction first: the wildcard stays
@@ -82,19 +89,57 @@ day.
 This is a data-plane placement defect. No cache setting, geometry knob, or quota
 fixes it in place.
 
-## Trade study
+## Scale requirement: 500 listeners per room
+
+Owner requirement: parties can reach 500 people. The product must not lock into
+an architecture that can never serve that, even though typical rooms today are
+far smaller. Every option below is graded against N = 500.
+
+The scale physics, per relayed listener: ~0.32 Mbps audio plus ~0.16-0.28 Mbps
+of blocking playlist response bytes, so ~0.5-0.6 Mbps delivered; ~14.5 HTTPS
+req/s; ~1.15 req/s of per-listener API traffic (status, heartbeat, time,
+events, feed) that cannot be coalesced across listeners.
+
+| At N listeners | 20 | 200 | 500 |
+|---|---|---|---|
+| Mac venue uplink, SNI passthrough (N encrypted copies) | ~10-12 Mbps | ~100-120 Mbps | ~250-300 Mbps |
+| Mac venue uplink, terminating relay (one copy, R15) | ~0.6 Mbps | ~0.6 Mbps | ~0.6 Mbps |
+| Relay egress, terminating relay | ~10-12 Mbps | ~100-120 Mbps | ~250-300 Mbps |
+| Relay HTTPS req/s | ~290 | ~2,900 | ~7,250 |
+| Mac origin req/s behind relay coalescing (~15 media + 1.15 x N API) | ~40 | ~245 | ~590 |
+| Worker + DO req/s on the current path | ~290 | ~2,900 | ~7,250 |
+
+Consequences:
+
+- The current Cloudflare path is structurally dead at scale regardless of
+  payment: the DO soft limit is ~1,000 req/s per object, so one room saturates
+  somewhere near 20-40 listeners and a 500-person room is roughly 7x over the
+  limit. This is why the status quo is rejected as a destination AND as a paid
+  bridge.
+- SNI passthrough is structurally dead at scale in the other direction: the
+  N-copies burden lands on the DJ's venue uplink (see the rejection below).
+- The terminating relay scales by resizing the VPS: ~300 Mbps peak egress fits
+  a 1 Gbps port; ~7,250 req/s of small TLS responses wants a 4-vCPU instance
+  (Hetzner CPX31 class, ~16 EUR/month) rather than the 2-vCPU launch size, an
+  offline resize that keeps the IP and takes minutes; beyond one node,
+  per-room relay assignment in the register response adds horizontal capacity
+  with no client change. A 500-listener 4-hour party is ~440 GB of egress,
+  about $4.40 at DigitalOcean overage rates or ~1-2 EUR at Hetzner's (verify
+  at the console). The Mac's own load stays flat where it matters: one media
+  copy on the uplink, with only the per-listener API stream (~590 req/s at
+  N=500, trivial for the Go origin over HTTP/2) growing with N.
 
 Options evaluated. L = listener-hours per month; costs at L = 10/50/200/1000.
 
 | Option | Added latency | LL-HLS blocking fidelity | Cost at 10/50/200/1000 L | Code delta | 2 am story | Verdict |
 |---|---|---|---|---|---|---|
-| (a) Status quo on Workers Paid | Baseline; edge+DO tens of ms | Yes (45 s DO timeout covers the hold) | ~$5.00/$5.30/$6.60/$27.5-28.5, marginal ~$0.026-0.028 per L forever | 0 | Cloudflare's problem, but nothing you can do during their incident | BRIDGE ONLY |
+| (a) Status quo on Workers Paid | Baseline; edge+DO tens of ms | Yes (45 s DO timeout covers the hold) | ~$5.00/$5.30/$6.60/$27.5-28.5, marginal ~$0.026-0.028 per L forever | 0 | Cloudflare's problem, but nothing you can do during their incident | REJECT: the DO ~1,000 req/s soft limit caps a room near 20-40 listeners at any price; a 500-person room needs ~7,250 req/s. Paying $5 to keep this alive buys nothing (owner decision, v2.1) |
 | (b) VPS reverse HTTP/2 tunnel | One RTT guest-VPS + VPS-Mac, ~10-40 ms each US West; under one 150 ms part | Yes: long-poll RoundTrip per blocking request, single-flight keyed so distinct directives never coalesce | ~$6-7 flat at all four | Write ~1,000-1,500 Go + deploy script + bootstrap JS; delete ~800 protocol lines net | One VPS: systemd, disk, cert, provider outage; cron-alerted (R13) | PRIMARY |
 | (c) Minimal-delta VPS: port RelayRoom keeping the custom WS protocol | Same transport physics as (b) | Yes, field-proven protocol (32ccfd8, 33c5294) | Same as (b) | Write ~300-500 Go port; zero Mac delta (ConnectURL is Worker-issued and opaque) | Same VPS burden, plus today's single-WS defects survive | FALLBACK |
 | (d) R2 mirror plane | +3-6 s glass to glass | No. A passive object store cannot hold a GET until `_HLS_msn` exists; blocking is unimplementable | $0 to ~$138 depending on listeners per room | Revive ~850 lines of retired livemirror (e4df0da, retired 0a13bf8) | Low | REJECT: destroys in-room sync and the ~1.0 s target |
 | (e) DO to guest WebSocket push | n/a | n/a | n/a | n/a | n/a | REJECT: locked iPhones require native AVPlayer over plain HTTPS GETs; pushed bytes only reach a player via page JS, which suspends on lock |
 | (f) Off-the-shelf tunnels (frp, rathole, ssh -R, WireGuard) | Comparable to (b) | Raw TCP passes it, no media layer | ~$6 flat plus a foreign binary to supervise | Bundle and supervise a second binary in both editions, then still write the media policy layer | VPS plus supply chain | REJECT: WireGuard needs entitlements the product forbids; the rest converge to (b) plus dead weight |
-| (g) Pure TCP/SNI passthrough splice | Lowest; MediaMTX answers blocking natively; Mac terminates TLS with its existing cert | Perfect | ~$6 flat in money | New splice protocol both ends anyway (Mac cannot accept inbound) | VPS plus splice daemon | REJECT: encrypted passthrough forbids relay-side single-flight and cache, so the venue uplink carries N full copies (~6.4 Mbps upstream at 20 listeners) on exactly the hostile Wi-Fi this mode exists for; the photo throttle cannot exist at a path-blind relay; the e2e win is symbolic since every install holds the wildcard key |
+| (g) Pure TCP/SNI passthrough splice | Lowest; MediaMTX answers blocking natively; Mac terminates TLS with its existing cert | Perfect | ~$6 flat in money, but the real cost is venue uplink | New splice protocol both ends anyway (Mac cannot accept inbound) | VPS plus splice daemon | REJECT at the 500 scale requirement; see the dedicated section below |
 | (b+) Push-media hybrid on (b) | Slightly better first-request | Yes, but relayd must own LL-HLS playlist semantics against real AVPlayer behavior | Same as (b) | Moderate extra relayd complexity | Same as (b) | DEFERRED: the designated escape hatch if R15 measurement shows playlist fan-out (open decision 6) |
 | Geometry knob: widen parts in relay mode | +1.0-1.5 s | Yes | $0 | Tiny | None | REJECT: degrades the latency north star and leaves media in the Worker |
 
@@ -104,39 +149,75 @@ derivable and is retracted): Workers Paid total exceeds the transition state
 standalone VPS (~$6, post-decommission) at roughly 45 L per month, because DO
 request overage begins near 20 L.
 
-The decisive non-cost facts against (a) as the destination: the DO soft limit of
-1,000 requests per second caps one room somewhere near 20-40 listeners no matter
-what is paid (unmeasured; measure once with `wrangler tail` during the bridge,
-R16); every media byte transits single-threaded JS frame slicing; DO eviction
-mid-party orphans in-flight requests (in-memory pending map, `worker.js:695`);
-and a Cloudflare incident takes the relay down with no action available to you.
+The decisive non-cost facts against (a): the DO soft limit of 1,000 requests per
+second caps one room somewhere near 20-40 listeners no matter what is paid,
+which fails the 500-listener requirement outright; every media byte transits
+single-threaded JS frame slicing; DO eviction mid-party orphans in-flight
+requests (in-memory pending map, `worker.js:695`); and a Cloudflare incident
+takes the relay down with no action available to you.
+
+### Why SNI passthrough is rejected, stated properly
+
+The attraction is real: lowest latency, perfect blocking-playlist semantics
+because MediaMTX answers directly, and zero relay-side certificate work because
+each phone's TLS session terminates on the Mac using the wildcard cert it
+already holds.
+
+That last property is also the disqualifier. If the relay cannot read the
+bytes, it cannot deduplicate them. Every listener's stream is a separate,
+independently encrypted copy, and every one of those copies originates on the
+Mac and travels up through the venue Wi-Fi and the venue's ISP uplink to the
+relay before fanning out. The relay's egress is the same either way; what
+changes is WHERE the fan-out happens:
+
+- SNI passthrough: fan-out on the Mac. 200 listeners is ~64 Mbps of audio
+  alone, ~100-120 Mbps with playlist responses; 500 listeners is ~250-300
+  Mbps. Upstream, from a laptop, across party Wi-Fi, through a venue internet
+  connection that typically offers 10-50 Mbps up. Both the Wi-Fi airtime and
+  the ISP uplink carry all N copies.
+- Terminating relay: fan-out on the VPS. The Mac uploads roughly one copy
+  (~0.6 Mbps at any N, subject to R15 measurement) and the VPS serves N from a
+  1 Gbps port.
+
+A venue with guaranteed symmetric multi-hundred-megabit fiber could carry SNI
+passthrough. Relay mode exists precisely for hostile, unknown venue networks,
+so an architecture that only works on generous uplinks contradicts its own
+reason to exist, and it fails hardest at exactly the 500-person scale the
+product must be able to reach.
+
+Correction to v2: the earlier rejection also leaned on the photo throttle being
+impossible at a path-blind relay. That argument was weak, because under SNI the
+Mac terminates TLS and could enforce media policy itself. The uplink fan-out is
+the real and sufficient reason, and it is the only one this document relies on.
 
 ## Recommendation
 
-1. BRIDGE, today, zero code: flip the Cloudflare account to Workers Paid
-   ($5/month). 10M included requests cover roughly 192 relay listener-hours per
-   month, then $0.30 per million, about $0.026-0.028 per marginal listener-hour
-   all-in. This un-kills the product while the real fix is built, and it moves
-   audio proxying from the ToS-grey free tier onto the explicitly sanctioned
-   paid Developer Platform (CDN large-file carve-out, verified live
-   2026-07-28). It is a plan flip, not an architecture; do not let it calcify.
-2. PRIMARY: option (b), the VPS reverse HTTP/2 tunnel, with the hostname scheme
-   below and requirements R1..R16.
-3. FALLBACK: option (c), held in reserve, adopted only if (b)'s two-phone
+1. PRIMARY: option (b), the VPS reverse HTTP/2 tunnel, with the hostname scheme
+   below and requirements R1..R15.
+2. FALLBACK: option (c), held in reserve, adopted only if (b)'s two-phone
    acceptance surfaces an HTTP/2-specific failure not fixable within the unit.
+3. NO BRIDGE. The v2 Workers Paid bridge is removed at owner direction: it pays
+   to keep alive a path whose ~20-40 listener ceiling cannot serve a real party
+   at any price. Consequence, stated once: relay mode stays effectively capped
+   at ~2 listener-hours per day on the free plan until step 7 ships. That is
+   sufficient headroom for development and the two-phone acceptance, and
+   fielded installs' relay behavior is unchanged until they update.
 
 Why (b) over (c), argued on engineering risk: (c)'s unique advantage is zero Mac
-delta with retroactive fleet coverage, but the bridge neutralizes that urgency
-entirely; fielded 124.x installs keep relaying through the DO at pennies while
-the real fix lands. (c)'s risk is reimplementation divergence in ~270 lines of
-subtle DO protocol, and the two bug classes that protocol already paid for in
-the field, response compression (33c5294) and the cookie/redirect handshake for
-native HLS sessions (32ccfd8), are precisely the class a port re-risks. And (c)
-is a throwaway: its ported code is exactly what (b) exists to delete, namely the
-hand-rolled 512 KB ack window (`relay.go:38`, `:747-757`), the 20 s
-single-write stall that drops every listener at once (`relay.go:600-604`), and
-the shared audio FIFO with no per-listener fairness (`relay.go:890-905`).
-Building (c) first, then (b), buys nothing the bridge does not already buy.
+delta, so it ships sooner and covers fielded installs retroactively. Two things
+outweigh that. First, the 500-listener requirement cuts against (c)
+independently: its hand-rolled single-WebSocket protocol (JSON control frames,
+64 KB chunks, a manual 512 KB ack window at `relay.go:38`, `:747-757`, one 20 s
+write stall dropping every listener at `relay.go:600-604`, a shared audio FIFO
+with no per-listener fairness at `relay.go:890-905`) is the shakiest piece of
+the system at ~600 req/s of tunnel traffic, exactly the load a large room
+produces; (b) replaces all of it with stdlib HTTP/2 per-stream flow control.
+Second, (c)'s risk is reimplementation divergence in ~270 lines of subtle DO
+protocol, and the two bug classes that protocol already paid for in the field,
+response compression (33c5294) and the cookie/redirect handshake for native HLS
+sessions (32ccfd8), are precisely the class a port re-risks, for code built to
+be deleted. The beta fleet is small, so (c)'s retroactive coverage is worth
+little against either point.
 
 What (b) does not buy, stated honestly: transport physics. One HTTP/2 connection
 has the same TCP head-of-line loss behavior as one WebSocket. The wins are
@@ -384,9 +465,13 @@ listener-hour, not v1's 0.158 (that error was 35-50%). Consequences:
   assumption.
 
 Relay ingress stays near one copy per room subject to R15 measurement. Memory a
-few MB per room. CPU is byte copying and TLS. VPS money cost is flat; the
-current architecture on Workers Paid costs about $0.026-0.028 per listener-hour
-forever and caps a room at the DO throughput ceiling.
+few MB per room. CPU is byte copying and TLS, and it is the term that grows with
+listeners: budget a vCPU per roughly 2,000-3,000 small TLS responses per second,
+so the launch 2-vCPU instance covers rooms into the low hundreds and the CPX31
+class covers 500. VPS money cost is near flat by comparison; the current
+architecture on Workers Paid would cost about $0.026-0.028 per listener-hour
+forever AND still cap a room at the DO throughput ceiling, which is why paying
+for it was rejected.
 
 ## Deletions, resequenced
 
@@ -425,9 +510,9 @@ test/smoke.mjs`; `cd app && swift build` where app/ is touched. One coherent
 unit, one batched commit on main, one push, one standalone-beta ship. No Store
 or TestFlight upload.
 
-- Step 0, bridge, today, zero code: flip to Workers Paid. Verify: one phone
-  joins a relayed room end to end. Optionally run `wrangler tail` once to
-  measure the true DO message rate (R16).
+- Step 0, removed (v2.1, owner direction): no Workers Paid flip. The account
+  stays on the free plan throughout; ~2 listener-hours per day of legacy relay
+  headroom is sufficient for development and acceptance testing.
 - Step 1, `internal/relayd` + `cmd/pprelay`: tunnel accept (audio+bulk), grant
   verification with R5 grace, room registry, RoundTrip proxy, single-flight
   with cookie-aware keying (R3), `/live/`-only rolling cache (R4), media policy
@@ -467,9 +552,9 @@ or TestFlight upload.
   and `cf-ray` absent, strict analyzer pass.
 - Step 7, ship: one batched commit, push once, standalone beta only, update the
   installed app.
-- Step 8, decommission, gated on adoption: delete the DO path and binding;
-  optionally return the Workers plan to Free (post-fix traffic is
-  bootstrap-only and sits far inside 100k/day).
+- Step 8, decommission, gated on adoption: delete the DO path and binding. The
+  Workers plan stays Free throughout; post-fix traffic is bootstrap-only and
+  sits far inside 100k/day at any room size.
 
 ## Proofs that Worker usage is low frequency
 
@@ -486,16 +571,19 @@ or TestFlight upload.
 ## Open decisions for the owner
 
 1. Hosting. Recommend Hetzner CPX11, Hillsboro, budgeted $6-7 per month with
-   the IPv4 add-on, price verified in the order console at purchase time.
+   the IPv4 add-on, price verified in the order console at purchase time, with
+   the documented resize path to CPX31 class (~16 EUR) when rooms approach
+   hundreds of listeners; the resize keeps the IP and takes minutes.
    Fully-verified alternative: DigitalOcean Basic $6. Choosing Fly.io costs
    linear egress forever; choosing EU Hetzner costs ~0.3 s for US venues.
 2. Photos in relay mode at launch. Recommend enabled, under R2's Mac-enforced
    priority gate and the reduced 64-128 KB/s pace, with the kill switch ready.
    Shipping disabled costs guests photos at exactly the venues where relay
    runs; enabling later needs another ship.
-3. Workers plan after decommission. Recommend keeping Paid through the
-   transition (it is the bridge), dropping to Free after step 8. Keeping Paid
-   anyway is $5/month headroom insurance, defensible.
+3. Workers plan: stays Free throughout, per owner (the v2 paid bridge is
+   removed). Post-fix Worker traffic is bootstrap-only and sits far inside the
+   free tier, so nothing about the destination architecture ever needs the
+   paid plan.
 4. Legacy DO sunset window. Recommend deletion only after the Store build with
    the tunnel is live AND analytics show zero legacy connects for 14 days.
 5. Second relay node for EU venues. Recommend deferring; a US-West single node
