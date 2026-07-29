@@ -52,6 +52,34 @@ and reported rather than left hanging. If guests cannot reach the Mac and there
 is no internet, no software can carry audio between them. The console must say
 so plainly instead of sitting on "checking" forever.
 
+### Coverage, stated honestly
+
+| Situation | Solution | Status |
+|---|---|---|
+| No internet, DJ controls the router | Domain-wide DNS rule plus DHCP reservation (section 6) | Solved |
+| No internet, no router control, phones resolved recently | Immutable IP-derived names with a long TTL, so the cached answer survives (section 6) | Mitigated, bounded by TTL |
+| No internet, no router control, phones never resolved | none | **Not solvable** |
+| Venue Wi-Fi, devices can talk | DIRECT | Solved |
+| Venue Wi-Fi, devices isolated | RELAY | Solved |
+| No LAN path and no internet | NO PATH, detected and stated | Not solvable by anyone |
+
+The one unsolvable case is a boundary, not an oversight. A guest phone with no
+app must complete TLS for a name it can resolve. The certificate is never the
+obstacle because every install holds the shared wildcard; resolution is. With
+no internet and no way to add a router entry, the lookup has nowhere to go.
+Every escape is closed by a decision already made: a bare IP fails certificate
+validation and no public CA issues for private addresses; Bonjour resolves with
+zero configuration but no CA validates `.local`; installing a private CA on
+guest phones is not acceptable for a party; the Mac serving DNS needs the
+router cooperation we assumed absent; and the Mac creating its own network is
+the retired hotspot. This is the standard "HTTPS to a private address without
+DNS control" limit for a no-app web guest.
+
+Its practical scope is narrow: bring your own router and it is solved, use a
+venue with working internet and it is solved, and a venue whose internet dies
+mid-party is covered by the caching mitigation. What remains is a network you
+do not control that has never had internet.
+
 The important structural insight: **LOCAL and DIRECT are the same data path.**
 Guests fetch HTTPS LL-HLS straight from the Mac in both. They differ only in
 which supporting services are reachable:
@@ -229,12 +257,28 @@ settings, then set and forget:
 The resolver check above verifies both, so a misconfiguration is reported
 rather than discovered by guests.
 
+**Caching mitigation for networks you do not control.** Today the A record
+carries a 60 second TTL (`cloudflare/worker.js:274`), chosen so an address
+change reconverges quickly. That short TTL is also why a phone cannot survive
+the uplink dying mid-party: its cached answer expires within a minute.
+
+An **IP-derived name is immutable**, because the name states the address, so
+the mapping can never go stale and can safely carry a long TTL. Publishing
+`192-168-1-117.party.partyparty.party` alongside the stable hostname gives both
+properties at once: address drift is handled by minting a new name rather than
+waiting out a cache, and a phone that resolved once holds a valid answer for
+hours. It costs no new certificate work, since the shared wildcard already
+covers any label.
+
+This converts "the venue's internet died at 11pm" from a party-ending event
+into a non-event. It does nothing for a network that never had internet, where
+nothing was ever cached.
+
 Rejected alternatives, recorded so they are not revisited:
 
-- **IP-encoded labels offline.** They solve stale DNS caches during online IP
-  drift, which is a real problem, but not one LOCAL has: a travel router's
-  resolver is authoritative and instant. A router wildcard maps every *name* to
-  one *address*, not the reverse, so it cannot decode an IP from a label;
+- **IP-encoded labels as a router-configuration shortcut.** They help caching,
+  above, but not configuration. A router wildcard maps every *name* to one
+  *address*, not the reverse, so it cannot decode an address out of a label;
   dnsmasq's synth-domain can, but its label format is implementation-specific
   and coupling our naming to one router is the opposite of sturdy.
 - **Mac as the network's DNS server** via DHCP option 6. Self-heals on IP
@@ -246,34 +290,108 @@ Rejected alternatives, recorded so they are not revisited:
 
 ## 7. Plan
 
-Three independently shippable units, in dependency order. Each is verified with
+Four units, in dependency order. Each is independently shippable, verified with
 the AGENTS.md gates (`go build ./... && go vet ./... && gofmt -l .` printing
-nothing `&& go test ./...`, `cd cloudflare && node test/smoke.mjs`, and
-`cd app && swift build` when `app/` is touched), committed on `main`, and
-shipped to the standalone beta only.
+nothing `&& go test ./...`; `cd cloudflare && node test/smoke.mjs`;
+`cd app && swift build` when `app/` is touched), committed as one batched
+commit on `main`, pushed once, and shipped to the standalone beta only. No App
+Store or TestFlight upload.
 
-**Unit 1: the mode model.** Make the three modes and the impossible state
-explicit and honest end to end: the two-axis state machine, LOCAL as a first
-class mode rather than a registration failure, NO PATH detection and copy, the
-console and menu bar states, and the Automatic plus manual override setting.
-Small, touches no audio, and makes current behavior truthful. It is the
-skeleton the other two hang on.
+Sequencing rationale: Unit 1 defines the states Unit 4 must slot into. Unit 2
+gives the measurement that tells us whether Unit 3 is needed at all and how
+much. Unit 3 changes playback behavior and must not run before there is data.
+Building the relay first would mean rewriting it once the rest is settled.
 
-**Unit 2: the sync contract.** Publish D, carry the capture stamp end to end,
-report per-guest deviation, and make D adapt from observed spread. Applies to
-all three modes at once because it is mode independent. Verified against the
-existing analyzer thresholds, with the mic kit as an occasional check on the
-output-path layer that telemetry structurally cannot see.
+### Unit 1: the mode model
 
-**Unit 3: the relay data plane.** Replace the Durable Object proxy with
-push-to-origin: contribution from the Mac, MediaMTX on a cloud host, guests
-fetching from it, and the room API plane. Deletes the Worker media proxy, the
-Durable Object, and the Mac's custom WebSocket session code. Gated by the two
-phone isolated-Wi-Fi acceptance in `codex/HANDOFF.md`.
+Goal: five honest states derived from evidence, plus an override.
 
-Sequencing rationale: Unit 1 defines the states Unit 3 must slot into; Unit 2
-defines the invariant Unit 3 must preserve (the stamp). Building the relay
-first would mean rewriting it once both are settled.
+Changes:
+- `internal/relay/relay.go`: add `ModeLocal` and `ModeNoPath`. Replace the
+  degrade-to-direct behavior in `noteRegistrationFailure` (`:283-294`) with one
+  pure decision function over (internet reachable, resolver observation, probe
+  result, override) returning mode plus a stable reason code. Keep the verdict
+  cache, the network key, and the 24 hour expiry unchanged.
+- `internal/activate`: expose the latest `ResolverObservation` (`:524-564`) so
+  the manager can read it. It is computed already; it is not currently
+  reachable from the mode decision.
+- `internal/server/server.go`: surface mode, reason code, and resolver evidence
+  on `/api/status`; add a persisted mode-override setting endpoint.
+- `web/dj.html`: copy for all five states, and the override control
+  (Automatic, Prefer Direct, Prefer Relay, Local Only).
+- `app/Sources/partyparty/`: menu bar state text.
+
+Tests: a table test over every (internet, resolver, probe, override)
+combination asserting mode and reason code; NO PATH is reached only when the
+network is genuinely unserviceable; override precedence never lies (Prefer
+Relay without internet reports NO PATH rather than pretending); every existing
+manager mode test passes unmodified.
+
+Acceptance: normal venue Wi-Fi behaves exactly as today. With the Mac's
+internet disabled but the router still resolving, the room reports LOCAL, the
+QR is the direct link, and guests still join and hear audio. On a network with
+neither internet nor resolution, the console states NO PATH with the resolver
+reason instead of sitting on checking.
+
+### Unit 2: sync observability
+
+Goal: make the schedule explicit and the deviation visible, changing no
+playback behavior.
+
+Changes: publish D on `/api/status` as the room's declared delay; have each
+guest report its deviation from the schedule in the heartbeat it already sends;
+surface live room spread from `LatencySpread()` (`internal/stats/stats.go:213`)
+in the DJ console; extend the session analyzer summary with deviation against
+D. Confirm and document where the PDT stamp originates today, since Unit 4
+depends on that stamp surviving unmodified.
+
+Tests: deviation math against synthetic heartbeats; spread aggregation;
+analyzer output shape.
+
+Acceptance: a real party produces per-device deviation and room spread with no
+change in what anyone hears. This is the data that decides Unit 3.
+
+### Unit 3: sync enforcement, gated on Unit 2 data
+
+Goal: shrink spread using the server-side levers, in the order they are
+reliable: what the server publishes, then `PART-HOLD-BACK` (self-enforcing,
+since a player that ignores it stalls), then `EXT-X-START` (advisory).
+
+Changes: reintroduce the pin as a parameter rather than a constant, with the
+depth driven by measurement; make D adapt from observed spread and stall rate.
+Replace the tests that currently assert `EXT-X-START` absence
+(`internal/server/handlers_test.go:1277`, `:1291`).
+
+Do not start this unit until Unit 2 has produced spread data from a real party.
+If measured spread is already inside the room contract, this unit may reduce to
+nothing, which is a legitimate outcome.
+
+Acceptance: measured spread improves against the Unit 2 baseline with no
+regression in the one-second target, verified by
+`node scripts/analyze-session-log.mjs --strict`, with the mic kit as an
+occasional check on the output-path layer telemetry cannot see.
+
+### Unit 4: the relay data plane
+
+Goal: replace the Durable Object proxy with push-to-origin.
+
+Changes: contribution from the Mac (one outbound stream, capture stamp
+preserved); MediaMTX on a cloud host serving LL-HLS to guests; the room API
+plane; grey-clouded relay hostnames; bootstrap handoff to the relay origin.
+Deletes the Worker media proxy, the `RelayRoom` Durable Object, the
+`RELAY_ROOMS` binding, and the Mac's custom WebSocket session code
+(`internal/relay/relay.go:459-914`), while keeping the wildcard estate, the
+bootstrap, registration, and DNS coordination exactly as they are.
+
+The room API plane is the part with the most remaining detail and should be
+designed concretely at the start of this unit rather than assumed.
+
+Deletion of the legacy path is gated on fleet adoption, not on the new path
+working, so fielded installs are never stranded.
+
+Acceptance: the full two-phone isolated-Wi-Fi run in `codex/HANDOFF.md`, plus a
+relayed response carrying `x-pp-relay` and no `cf-ray`, plus Worker request
+volume that does not scale with listener count.
 
 ## 8. Decisions needed
 
