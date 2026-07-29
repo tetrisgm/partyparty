@@ -2542,11 +2542,31 @@
         lastPollOK = Date.now();
         considerReload(s.appVersion);
         const connection = s.connection && typeof s.connection === 'object' ? s.connection : null;
-        if (connection && connection.mode === 'relay' && connection.joinUrl) {
+        // Moving a guest to the relay, without bouncing one that is already there.
+        //
+        // joinUrl is the BOOTSTRAP, not the room. A relayed guest compared
+        // against it would navigate to the bootstrap, which would redirect back
+        // here, forever, killing audio on every poll. So the target is
+        // relayOrigin, and we never move a guest that is already on it.
+        if (connection && connection.mode === 'relay') {
+          const target = connection.relayOrigin || '';
+          if (target) {
+            try {
+              const relayURL = new URL(target, location.href);
+              if (relayURL.origin !== location.origin) {
+                location.replace(relayURL.origin + '/');
+                return;
+              }
+            } catch (e) {}
+          }
+        }
+        // The room came back to the LAN while this guest is on the relay origin.
+        // Send it home, using directUrl rather than joinUrl for the same reason.
+        if (connection && (connection.mode === 'direct' || connection.mode === 'local') && connection.directUrl) {
           try {
-            const relayURL = new URL(connection.joinUrl, location.href);
-            if (relayURL.origin !== location.origin) {
-              location.replace(relayURL.href);
+            const relayOrigin = connection.relayOrigin ? new URL(connection.relayOrigin, location.href).origin : '';
+            if (relayOrigin && relayOrigin === location.origin) {
+              location.replace(new URL(connection.directUrl, location.href).href);
               return;
             }
           } catch (e) {}

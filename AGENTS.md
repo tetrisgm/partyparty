@@ -1,12 +1,21 @@
 # AGENTS.md - partyparty (for Codex / autonomous agents)
 
 partyparty is a macOS menu-bar app that turns a DJ's Mac into a party server.
-Guests scan a QR and use HTTPS LL-HLS plus the active-room feed. The Mac selects
-one room-wide connection mode: direct on normal venue Wi-Fi, or a live
-Cloudflare reverse relay when the Wi-Fi isolates nearby devices. A Cloudflare
-Worker (`partyparty.party`) handles anonymous LAN hostname/certificate
-coordination, the ephemeral relay, and the product website. It never stores
-party history, recordings, or public event pages.
+Guests scan a QR and use HTTPS LL-HLS plus the active-room feed.
+
+The Mac selects ONE room-wide mode from two facts, whether guests can reach it
+and whether the internet is reachable: DIRECT (venue Wi-Fi), LOCAL (no internet,
+same LAN data path), RELAY (the Wi-Fi isolates devices), or NO PATH (neither
+works, stated honestly rather than left checking). See `docs/relay-architecture.md`,
+which is the authority.
+
+In RELAY the Mac PUSHES its own LL-HLS to a relay origin (`cmd/pporigin`) which
+fans it out, so the Mac sends one copy whether five or five hundred people
+listen. It forwards its own playlists byte for byte so PROGRAM-DATE-TIME, and
+with it the room schedule, survives. A Cloudflare Worker handles anonymous LAN
+hostname/certificate coordination, the bootstrap page, and the website. It is
+NEVER in the media path: no Durable Object, no socket, no per-request proxy. It
+never stores party history, recordings, or public event pages.
 
 ## Layout
 - `main.go` + `internal/` - the Go server/binary (audio capture, LL-HLS, HTTPS).
@@ -28,20 +37,24 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
    username, or StoreKit network check to Go Live. Anonymous install credentials
    exist only for LAN DNS/certificate provisioning.
 3. **HTTPS + LL-HLS only** for guests. Do NOT reintroduce a plain-HTTP guest fallback.
-4. **No stored cloud party product.** Direct mode serves live audio and
-   active-room posts from the Mac over venue Wi-Fi. Relay mode may reverse-proxy
-   live audio and lightweight room interaction only while the Mac is connected,
-   with brief rolling HLS cache for load control. HLS has strict queue priority.
-   Guest photos use a capped, throttled secondary path, and videos are disabled
-   in relay mode. Never add public event pages, replays, recordings, remote
-   archives, or cloud party feeds.
-5. **The audio core is OFF-LIMITS for autonomous work.** Do NOT modify `internal/broadcast/` (ffmpeg / tee / MediaMTX) and do NOT remove the "dead" plain-HLS code - that needs a supervised go-live test.
+4. **No stored cloud party product.** Direct and local modes serve live audio
+   and active-room posts from the Mac over venue Wi-Fi. Relay mode holds one
+   party's live window in memory on the origin and drops it when the room goes
+   quiet. Never add public event pages, replays, recordings, remote archives, or
+   cloud party feeds.
+5. **The audio core is OFF-LIMITS for autonomous work.** Do NOT modify `internal/broadcast/` (ffmpeg / tee / MediaMTX). Contribution reads the LL-HLS that package already produces rather than adding a leg to its tee, which is how the relay was built without touching it.
 6. **No authentication email service.** PartyParty has no product accounts or
    magic links. Do not add an email API or SMTP-based authentication.
 7. **One venue topology and playback path.** The venue provides Wi-Fi. Do not
    restore Internet Sharing, hotspots, captive portals, or DNS hijacking. The
-   Mac authoritatively selects direct or relay mode for the whole room. Apple
-   guests always use native HLS/AVPlayer so lock-screen playback remains intact.
+   Mac authoritatively selects the mode for the whole room. Apple guests always
+   use native HLS/AVPlayer so lock-screen playback remains intact.
+
+9. **The room delay never tracks listeners.** A slow device, or a hundred, must
+   never lengthen the delay for anyone else. `latencyTarget` deliberately
+   discards broadcast status and room health, and a regression test sweeps every
+   combination to keep it that way. Devices that fall behind are corrected
+   strictly per device.
 8. **Two isolated distribution channels.** Store builds stay sandboxed,
    Sparkle-free, and updated only by Apple. The standalone beta is a separate
    Developer ID signed and notarized build with a separate bundle identifier;

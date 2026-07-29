@@ -495,17 +495,20 @@ reload genuinely held before returning a playlist rather than an error.
 
 **Remaining**
 
-1. **Broker-minted room credentials.** The room token and publish secret are
-   currently a hand-generated pair in `/etc/pporigin-rooms.json` and the Mac's
-   configuration. Each install should receive its own from
-   `/api/broker/relay/register`, which is a Worker change plus a Go change.
-   Until then, RELAY works for one configured install rather than the fleet.
-2. **The room API plane's Mac side.** The origin serves reads, aggregates beats,
-   and queues writes, but nothing yet publishes room state to it or drains the
-   queue. Relayed audio works without this; relayed status, feed, and posts do
-   not.
-3. **Guest handoff.** The bootstrap should send a relayed guest to the room's
-   origin, with the navigation guards from section 3.
-4. **Legacy removal**, gated on fleet adoption: the Worker media proxy, the
-   `RelayRoom` Durable Object, and the Mac's WebSocket session code. Deliberately
-   last so no fielded install is stranded.
+Nothing in this design. The legacy relay is deleted rather than deprecated: the
+`RelayRoom` Durable Object, the Worker media proxy, the WebSocket connect
+endpoint, the Mac's socket data plane, and the loopback origin that fed it are
+gone, and the `RELAY_ROOMS` binding is retired with a delete migration. Room
+credentials are minted per install by the broker. The guest bootstrap hands off
+to the relay origin, and the listener carries the guard that stops a relayed
+guest bouncing between the origin and the bootstrap.
+
+Fielded installs speaking the old protocol stopped relaying when that shipped,
+which was the owner's explicit call.
+
+What is left is operational rather than architectural: run a real party and read
+the numbers the system already reports. The session analyzer computes startup and
+steady-room spread from every party automatically, `/__pp/health` reports the
+origin's rooms and media, and the DJ console shows the room's declared delay
+against its measured spread. If those disagree with this document, this document
+is wrong.

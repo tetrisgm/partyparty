@@ -245,3 +245,38 @@ func TestModeObserverMayCallBackIntoTheManager(t *testing.T) {
 		t.Fatal("observer deadlocked calling back into the manager")
 	}
 }
+
+// TestRelayGuestIsNotBouncedBetweenOriginAndBootstrap guards a loop that would
+// kill audio every few seconds.
+//
+// joinUrl is the BOOTSTRAP, not the room. A relayed guest that compared its own
+// origin against joinUrl would navigate to the bootstrap, which redirects back to
+// the relay origin, forever. The status payload therefore carries relayOrigin
+// separately, and the listener moves guests to THAT.
+func TestRelayGuestIsNotBouncedBetweenOriginAndBootstrap(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m := New(Config{})
+	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
+	m.mu.Lock()
+	m.reg = registration{RelayRegistration: activateRegistration(
+		"https://r-room.partyparty.party/",    // bootstrap
+		"https://room.relay.partyparty.party", // where guests are actually served
+		"net-1")}
+	m.netTried, m.internetOK, m.resolverOK = true, true, true
+	m.mu.Unlock()
+	m.applyProbe("net-1", false)
+
+	got := m.Snapshot()
+	if got.Mode != ModeRelay {
+		t.Fatalf("mode = %s, want relay", got.Mode)
+	}
+	if got.RelayOrigin != "https://room.relay.partyparty.party" {
+		t.Fatalf("relayOrigin = %q; without it a relayed guest cannot tell it has already arrived", got.RelayOrigin)
+	}
+	if got.RelayOrigin == got.JoinURL {
+		t.Fatal("relayOrigin must differ from the bootstrap, or the guard is meaningless")
+	}
+	if got.DirectURL == "" {
+		t.Fatal("directUrl must be published so a guest can be sent home when the room leaves relay")
+	}
+}

@@ -9,26 +9,29 @@ hotspot setup, playback modes, and old stream settings are retired.
 ## Network mode contract
 
 - The QR uses the stable public bootstrap while the setup service is reachable.
-  The bootstrap probes the Mac's real certificate-backed LAN endpoint before
-  loading the room.
+  The bootstrap probes the Mac's real certificate-backed LAN endpoint, then
+  redirects itself to the direct URL or to the relay origin. The guest's own
+  probe is the decision; nothing waits for the Mac to agree.
 - The browser reports only probe success or failure. The Mac is authoritative
   and selects `direct` or `relay` for the entire room.
 - A direct verdict is cached for the opaque public-IP plus LAN-subnet network
   key. An isolation verdict is cached the same way. Wi-Fi names are not stored.
 - If setup infrastructure is unavailable, a cached certificate still permits a
   direct QR and offline guest playback.
-- Relay mode uses one authenticated outbound WebSocket from the Mac. The relay
-  exposes only the guest routes, never the DJ console or broadcast controls.
-- Relay responses preserve the existing LL-HLS playlists and media bytes.
-  Immutable rolling media parts may be cached for up to 60 seconds to avoid
-  sending duplicate copies from the Mac. Party history is never retained.
-- LL-HLS responses use the priority queue. Guest photos use a capped, throttled
-  secondary path. Videos are not uploaded or delivered in relay mode, and the
-  guest UI explains that music is being protected. Event cover, DJ avatar,
-  track artwork, text posts, and reactions remain available.
+- Relay mode PUSHES: the Mac uploads its own LL-HLS to the relay origin, which
+  fans it out. The Mac sends one copy whether five or five hundred people listen,
+  and it is never in a guest's request path.
+- The Mac forwards its own playlists byte for byte, so PROGRAM-DATE-TIME and the
+  room schedule survive the relay. Nothing re-packages or re-stamps.
+- The origin holds one party's live window in memory, bounded, and drops it when
+  the room goes quiet. Party history is never retained.
+- The room API is served from the origin: the Mac publishes state, heartbeats
+  aggregate into one digest, and guest writes queue for the Mac. 500 listeners
+  cost the Mac what 5 do.
 - A direct listener that observes a room-wide switch to relay navigates to the
   relay origin. Direct and relayed playback are not mixed in one room.
-- The Mac console and menu bar must state `checking`, `direct`, or `relay`.
+- The Mac console and menu bar must state `checking`, `local`, `direct`,
+  `relay`, or `no path`.
   Relay copy must explain that the Wi-Fi limits nearby-device connections and
   that using the internet can increase DJ-to-listener delay.
 

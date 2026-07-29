@@ -31,10 +31,15 @@ const (
 // Status is the one authoritative room connection state exposed to the Mac
 // console and menu bar.
 type Status struct {
-	Mode           string `json:"mode"`
-	Reason         string `json:"reason,omitempty"` // stable machine code; see mode.go
-	Override       string `json:"override,omitempty"`
-	JoinURL        string `json:"joinUrl,omitempty"`
+	Mode     string `json:"mode"`
+	Reason   string `json:"reason,omitempty"` // stable machine code; see mode.go
+	Override string `json:"override,omitempty"`
+	JoinURL  string `json:"joinUrl,omitempty"`
+	// RelayOrigin is where a relayed guest is served. The listener needs it to
+	// tell "I should move to the relay" from "I am already there": joinUrl is the
+	// bootstrap, so a guest comparing against that would navigate back to the
+	// bootstrap, which would send it here again, forever.
+	RelayOrigin    string `json:"relayOrigin,omitempty"`
 	DirectURL      string `json:"directUrl,omitempty"`
 	KnownNetwork   bool   `json:"knownNetwork"`
 	RelayConnected bool   `json:"relayConnected"`
@@ -196,6 +201,7 @@ func (m *Manager) recomputeLocked() {
 	m.status.Reason = reason
 	m.status.Override = normalizeOverride(m.override)
 	m.status.DirectURL = m.directURL
+	m.status.RelayOrigin = m.reg.RelayURL
 	m.status.KnownNetwork = m.probe != nil
 	m.status.Message = messageFor(mode, reason)
 	m.status.JoinURL = m.joinURLLocked(mode)

@@ -12,28 +12,28 @@ provisioning need internet; the valid certificate is cached so later parties can
 run when the venue's internet uplink disappears.
 
 On an online network, the QR opens an unguessable public bootstrap that probes
-the Mac's direct HTTPS address. The browser reports the result and the Mac
-selects one mode for the room:
+the Mac's direct HTTPS address, then sends the guest to whichever path works:
 
-- **Direct:** the public bootstrap redirects to the Mac. Guest traffic stays on
-  venue Wi-Fi.
-- **Relay:** one authenticated outbound WebSocket from the Mac carries the live
-  guest HTTP and LL-HLS surface through Cloudflare. This is used only when a
-  phone proves that the venue isolates nearby devices.
+- **Direct:** straight to the Mac. Guest traffic stays on venue Wi-Fi.
+- **Local:** the same LAN path with no internet involved anywhere. Requires this
+  network's resolver to answer for the Mac's hostname, which the Mac checks and
+  reports rather than assumes.
+- **Relay:** the Mac pushes its LL-HLS to a relay origin that fans it out to
+  guests. Used only when a phone proves the venue isolates nearby devices.
+- **No path:** guests cannot reach the Mac and there is no internet. Nothing can
+  serve audio, and the console says so instead of waiting forever.
 
 Network verdicts are keyed without storing the Wi-Fi name and expire after 24
 hours. A changed LAN address immediately returns the Mac to checking. This
 prevents an old venue result from silently controlling a new network.
 
-Relay mode does not store an event, replay, recording, post, or upload. Rolling
-HLS media parts and relayed still photos may be cached for up to 60 seconds to
-avoid uploading identical bytes once per listener.
+Relay mode does not store an event, replay, recording, post, or upload. The
+origin holds one party's live window in memory, bounded, and drops it when the
+room goes quiet.
 
-Live music is the hard priority in relay mode. `/live/` responses use the
-priority queue. Guest photos use a capped, throttled secondary path. Videos are
-rejected before their bodies enter the tunnel. Text posts, reactions, event
-artwork, DJ profiles, and track artwork continue. Direct mode keeps full photo
-and video support.
+The Mac uploads each part once regardless of how many people are listening, and
+it is never in a guest's request path, so a large room costs it what a small one
+does.
 
 If the setup service is unavailable at launch but the cached certificate is
 valid, the QR uses the direct address. That preserves offline travel-router and
@@ -41,7 +41,10 @@ venue operation.
 
 The console must distinguish:
 
-- **Checking:** the public bootstrap is waiting for a phone to prove the path.
+- **Checking:** waiting for a phone to prove the path.
 - **Direct:** guests are reaching the Mac on venue Wi-Fi.
-- **Relay:** the Wi-Fi limits nearby-device connections and the live internet
-  relay is active or reconnecting.
+- **Local:** no internet here, and guests reach the Mac on this Wi-Fi anyway.
+- **Relay:** the Wi-Fi limits nearby-device connections, so audio goes through
+  the relay origin.
+- **No path:** guests cannot reach the Mac and there is no internet to fall back
+  on, with the reason stated.
