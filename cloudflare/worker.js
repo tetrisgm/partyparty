@@ -1,10 +1,11 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var APP_VERSION = "125.3";
+var APP_VERSION = "125.4";
 var APP_VERSION_DATE = "2026-07-29";
 var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
 var STANDALONE_FILES = {
+  "/downloads/partyparty-125.4-220.zip": { key: "standalone/partyparty-125.4-220.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.4-220.zip" },
   "/downloads/partyparty-125.3-219.zip": { key: "standalone/partyparty-125.3-219.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.3-219.zip" },
   "/downloads/partyparty-125.2-216.zip": { key: "standalone/partyparty-125.2-216.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.2-216.zip" },
   "/downloads/partyparty-125.1-218.zip": { key: "standalone/partyparty-125.1-218.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.1-218.zip" },
