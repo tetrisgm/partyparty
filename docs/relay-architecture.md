@@ -425,8 +425,28 @@ volume that does not scale with listener count.
 Section 6 is settled: single stable hostname, domain-wide router rule plus a
 DHCP reservation, verified by the resolver check. Nothing there blocks Unit 1.
 
-1. **Cloud host** for the relay origin. Roughly 6 to 7 USD per month at launch
-   size, with a documented resize path for large rooms.
+1. **Cloud host** for the relay origin. Settled: Hetzner CPX11 in Hillsboro,
+   about 5.85 USD per month with the IPv4 add-on, with DigitalOcean's 6 USD box
+   as the fallback if fully verified pricing matters more than the last dollar.
+
+   A fan-out relay is bandwidth bound, so the only number that decides this is
+   cost per TB of egress: Hetzner about 1.17 USD per TB after a 1 TB allowance
+   (the well known 20 TB figure is EU only; US plans include 1 TB, still roughly
+   4,500 listener-hours), DigitalOcean 10 USD per TB after 1 TB, and Fly.io 20
+   USD per TB with NO included egress at all. At 0.22 GB per listener-hour, one
+   500 person four hour party is 440 GB: nothing on Hetzner or DigitalOcean
+   because it fits the included terabyte, and 8.80 USD on Fly. Four such parties
+   a month is about 7 USD on Hetzner, 14 on DigitalOcean, and 40 on Fly.
+
+   Platform-as-a-service hosting was briefly recommended for having no server to
+   administer. That is worth roughly thirty minutes once, plus unattended
+   upgrades, and it is not worth paying seventeen times per terabyte forever for
+   a service whose whole job is sending bytes. The deploy script makes day to day
+   operation one command on any of them.
+
+   Note the HLS-push contribution decision is independent of this. It exists so
+   the capture timestamp survives to relayed guests; that it also frees the
+   origin from needing a raw TCP port is a bonus, not the reason.
 2. **Photos in RELAY mode** at launch: enabled behind the throttle, or dark
    until measured.
 
