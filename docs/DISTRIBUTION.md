@@ -48,5 +48,7 @@ configuration, or weaken the permission floor. The retired shared release daemon
 and web-payload updater remain prohibited.
 
 The public Worker may serve the product website, anonymous LAN
-hostname/certificate broker, standalone beta download, and signed beta appcast.
-It must never host party pages, audio, posts, replays, or remote listening.
+hostname/certificate broker, standalone beta download, signed beta appcast, and
+an ephemeral live relay when venue Wi-Fi isolates guests from the Mac. The relay
+does not retain party pages, audio, or posts and must never provide replays or a
+remote-listening product.
