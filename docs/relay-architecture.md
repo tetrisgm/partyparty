@@ -167,35 +167,56 @@ with zero provisioning, and the one historical wildcard pathology is already
 cured); relay media hostnames must be grey-clouded so no Worker can execute;
 and the Worker keeps only bootstrap, registration, and DNS coordination.
 
-## 6. The open question: LOCAL mode DNS
+## 6. LOCAL mode: name resolution is a runtime check, not an assumption
 
-LOCAL mode has one unsolved dependency. The hostname resolves because a public
-DNS A record points at the Mac's private LAN IP (`internal/activate/activate.go:7`).
-A guest phone must therefore perform a DNS lookup. With a genuinely dead uplink
-there is nowhere to send it, and the record's 60 second TTL means caching does
-not rescue it.
+LOCAL mode needs the guest's phone to resolve the Mac's hostname without any
+internet. Whether that works depends entirely on whether the network's resolver
+answers for our name, which is a property of the network, not something to
+assume either way.
 
-`docs/offline.md` assumes the narrower case, an uplink that dies mid-party
-after phones have already resolved and connected. The forest case, a travel
-router that never had internet, is not covered by that.
+**We can check it, and the check already exists.** `observeResolver`
+(`internal/activate/activate.go:551`) queries the network's own configured
+resolver with `PreferGo: true`, so it bypasses the macOS cache and asks the
+network rather than itself, and reports whether the hostname resolves to the
+Mac's current LAN IP. It returns structured evidence (`Matches`, `Addrs`,
+`Err`) and a stable `resolver_mismatch` reason code
+(`activate.go:59`, `:72`, `:209-213`). Today this is activation and LAN
+readiness evidence; it is promoted here to drive mode selection.
 
-Options, none yet chosen:
+**A bare IP is not an option, but an IP-encoded name is free.** Connecting to
+`https://192.168.1.117:8443` fails certificate validation, no public CA issues
+for RFC1918 addresses, and HTTPS-only is non-negotiable. However
+`scripts/issue-wildcard.sh` issues `*.party.partyparty.party`, described at
+`activate.go:170` as "the ONLY cert path for broker installs," and every
+install fetches that same shared wildcard. So any label under it is already
+covered with zero new issuance, including an IP-derived one such as
+`192-168-1-117.party.partyparty.party`. The certificate is never the obstacle.
+Only resolution is.
 
-1. **Require the brought network to resolve it.** Configure a static DNS entry
-   on the travel router pointing the hostname at the Mac. Works, costs a setup
-   step, and only applies to networks the DJ controls.
-2. **The Mac answers DNS for its own hostname**, advertised through the
-   router's DHCP. Effective, but it is close to the DNS-hijacking pattern the
-   product retired, and it needs router cooperation anyway.
-3. **A `.local` name via Bonjour**, which resolves with no DNS server at all.
-   The blocker is TLS: public CAs will not issue for `.local`, and the product
-   is HTTPS-only.
-4. **Accept the narrower scope**: LOCAL means an uplink that dies during or
-   between parties on a network whose resolver still answers, and the forest
-   case is explicitly out of scope until one of the above is chosen.
+This gives LOCAL a clean, checkable definition:
 
-This needs an owner decision before LOCAL can be claimed as a supported mode
-rather than a degraded fallback.
+- **Resolver answers for our name** (`Matches` true): LOCAL is viable. Serve
+  the direct link. No internet required for anything in the guest path.
+- **Resolver does not answer**: LOCAL cannot work on this network. This is a
+  fact about the venue's DNS, reported as such, with the remedy stated (add a
+  host entry on a router you control, or use a network with internet).
+
+**Reachability needs no cloud probe in LOCAL mode.** The bootstrap probe exists
+because on an online network we want to know about client isolation before a
+guest hits a dead page. Offline there is no bootstrap and no relay to fall back
+to, so the proof is simpler: a guest that loads the page has demonstrated both
+resolution and reachability. If no guest connects, the resolver observation
+distinguishes the two causes, which is what makes the message actionable rather
+than a shrug:
+
+- resolver mismatch: the network is not resolving our name.
+- resolver matches but nothing connects: the network is isolating devices, and
+  with no internet there is no relay, so this is NO PATH.
+
+Open only as a product choice, not a technical unknown: whether to also publish
+IP-encoded labels as a belt-and-braces path for DJ-controlled routers (one
+wildcard host rule covers every future IP), or to keep the single stable
+per-install hostname and require one static entry.
 
 ## 7. Plan
 
@@ -230,8 +251,9 @@ first would mean rewriting it once both are settled.
 
 ## 8. Decisions needed
 
-1. **LOCAL mode DNS**, section 6. Determines whether the forest case is
-   supported or explicitly out of scope.
+1. **IP-encoded labels for LOCAL**, section 6: publish them as a belt-and-braces
+   path for DJ-controlled routers, or keep the single stable hostname. Not a
+   blocker either way, since the resolver check decides viability at runtime.
 2. **Cloud host** for the relay origin. Roughly 6 to 7 USD per month at launch
    size, with a documented resize path for large rooms.
 3. **D default**, and whether D may differ between LOCAL/DIRECT and RELAY. One
