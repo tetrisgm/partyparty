@@ -45,7 +45,9 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
 echo "    $(ls -lh "$BUILD_DIR/pporigin" | awk '{print $5}')"
 
 echo "==> uploading release $STAMP"
-ssh_run "mkdir -p $REMOTE_ROOT/releases/$STAMP"
+# /opt is root-owned; take ownership once so every later deploy is unprivileged.
+ssh_run "sudo install -d -o \$(id -un) -g \$(id -gn) $REMOTE_ROOT $REMOTE_ROOT/releases
+         mkdir -p $REMOTE_ROOT/releases/$STAMP"
 scp -q -o BatchMode=yes "$BUILD_DIR/pporigin" "$HOST:$REMOTE_ROOT/releases/$STAMP/pporigin"
 scp -q -o BatchMode=yes deploy/origin/pporigin.service "$HOST:/tmp/pporigin.service"
 scp -q -o BatchMode=yes deploy/origin/chiptunes-deprioritize.conf "$HOST:/tmp/chiptunes-deprioritize.conf"
@@ -60,17 +62,18 @@ ssh_run "set -e
   sudo install -m 0644 /tmp/pporigin.service /etc/systemd/system/pporigin.service
 
   # partyparty outranks the radio and the video encode under contention.
+  # set-property applies the cgroup weights to the RUNNING units immediately and
+  # persists them, so a live 24/7 radio is never restarted to pick this up.
+  # Restarting it here would interrupt the very service we are trying to be a
+  # good neighbour to.
   for unit in rrr-stream rrr-youtube; do
     if systemctl list-unit-files | grep -q \"^\$unit.service\"; then
-      sudo mkdir -p /etc/systemd/system/\$unit.service.d
-      sudo install -m 0644 /tmp/chiptunes-deprioritize.conf \
-        /etc/systemd/system/\$unit.service.d/10-partyparty-priority.conf
+      sudo systemctl set-property \$unit.service CPUWeight=20 IOWeight=50 2>/dev/null || true
     fi
   done
 
   ln -sfn $REMOTE_ROOT/releases/$STAMP $REMOTE_ROOT/current
   sudo systemctl daemon-reload
-  sudo systemctl reload-or-restart rrr-stream rrr-youtube 2>/dev/null || true
   sudo systemctl enable --now pporigin
   sudo systemctl restart pporigin"
 
