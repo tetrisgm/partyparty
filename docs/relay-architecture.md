@@ -128,6 +128,17 @@ since it guarantees no guest traffic leaves the venue.
   ingest makes LOCAL and RELAY disagree while each still looks correct on its
   own.
 - The room publishes D. A chunk stamped T plays at T + D.
+- **D is declared, never discovered.** It is the pipeline floor (encode plus
+  packaging, fixed and known) plus the hold-back the server writes into the
+  playlist. Both terms are server-controlled, so a conforming player riding the
+  live edge of a playlist we author is on schedule by construction. This needs
+  no advisory tag to be honored, no command over AVPlayer, and no prior
+  measurement at a venue. We control what "live" means by controlling what we
+  publish.
+- The value of D is set by an algorithm that runs continuously from what
+  clients report about themselves, not by a person tuning a constant per venue.
+  One rule everywhere; different networks settle on different values on their
+  own.
 - **The Mac is the clock authority in every mode.** Guests sync to the Mac
   directly when they can reach it, and to the Mac's clock carried by the relay
   when they cannot. One authority in all modes means offline drift is
@@ -290,17 +301,18 @@ Rejected alternatives, recorded so they are not revisited:
 
 ## 7. Plan
 
-Four units, in dependency order. Each is independently shippable, verified with
+Three units, in dependency order. Each is independently shippable, verified with
 the AGENTS.md gates (`go build ./... && go vet ./... && gofmt -l .` printing
 nothing `&& go test ./...`; `cd cloudflare && node test/smoke.mjs`;
 `cd app && swift build` when `app/` is touched), committed as one batched
 commit on `main`, pushed once, and shipped to the standalone beta only. No App
 Store or TestFlight upload.
 
-Sequencing rationale: Unit 1 defines the states Unit 4 must slot into. Unit 2
-gives the measurement that tells us whether Unit 3 is needed at all and how
-much. Unit 3 changes playback behavior and must not run before there is data.
-Building the relay first would mean rewriting it once the rest is settled.
+Sequencing rationale: Unit 1 defines the states Unit 3 must slot into, and Unit
+2 defines the invariant Unit 3 must preserve, namely that the capture stamp and
+the declared schedule survive the relay unmodified. Building the relay first
+would mean rewriting it once the rest is settled. No unit waits on a field
+observation before it can be designed.
 
 ### Unit 1: the mode model
 
@@ -333,45 +345,47 @@ QR is the direct link, and guests still join and hear audio. On a network with
 neither internet nor resolution, the console states NO PATH with the resolver
 reason instead of sitting on checking.
 
-### Unit 2: sync observability
+### Unit 2: the scheduled playout contract
 
-Goal: make the schedule explicit and the deviation visible, changing no
-playback behavior.
+Goal: the schedule is authored by the server and true by construction, with its
+value maintained by an algorithm rather than by anyone testing venues.
 
-Changes: publish D on `/api/status` as the room's declared delay; have each
-guest report its deviation from the schedule in the heartbeat it already sends;
-surface live room spread from `LatencySpread()` (`internal/stats/stats.go:213`)
-in the DJ console; extend the session analyzer summary with deviation against
-D. Confirm and document where the PDT stamp originates today, since Unit 4
-depends on that stamp surviving unmodified.
+This unit is deliberately one piece. An earlier draft split it into "observe at
+a party" and "then decide," which reintroduced exactly the tune-per-network
+approach this design exists to avoid. There is no measure-then-choose phase:
+the server declares the schedule, and the controller that maintains its value
+is part of the feature.
 
-Tests: deviation math against synthetic heartbeats; spread aggregation;
-analyzer output shape.
+Changes:
+- Publish D on `/api/status` as the room's declared delay, defined as the
+  pipeline floor plus the declared hold-back.
+- Author the playlist so the live edge is the scheduled point: set the declared
+  hold-back rather than relying on `EXT-X-START` being honored. Replace the
+  tests that assert `EXT-X-START` absence
+  (`internal/server/handlers_test.go:1277`, `:1291`) with tests that assert the
+  declared hold-back is what we intend.
+- Each guest reports, in the heartbeat it already sends, whether it is making
+  the schedule and by how much.
+- A bounded controller adjusts the declared hold-back from those reports:
+  widen when devices are not making it, narrow when they are comfortable, with
+  hysteresis so it cannot oscillate and a floor at the pipeline minimum. This
+  is the same code in LOCAL, DIRECT, and RELAY; the relay's larger floor is
+  absorbed automatically rather than configured.
+- Confirm the PDT stamp originates at capture, since Unit 3 depends on it
+  surviving unmodified.
 
-Acceptance: a real party produces per-device deviation and room spread with no
-change in what anyone hears. This is the data that decides Unit 3.
+Tests: the delay identity (declared hold-back plus floor equals published D)
+against authored playlists; controller behavior against synthetic reports,
+including widening, narrowing, hysteresis, and floor clamping; deviation math;
+no oscillation under adversarial report sequences.
 
-### Unit 3: sync enforcement, gated on Unit 2 data
+Acceptance: with the controller running, room spread stays inside the contract
+on whatever network is present, without anyone choosing a value for that
+network. Verified by `node scripts/analyze-session-log.mjs --strict`, with the
+mic kit as an occasional check on the output-path layer telemetry structurally
+cannot see.
 
-Goal: shrink spread using the server-side levers, in the order they are
-reliable: what the server publishes, then `PART-HOLD-BACK` (self-enforcing,
-since a player that ignores it stalls), then `EXT-X-START` (advisory).
-
-Changes: reintroduce the pin as a parameter rather than a constant, with the
-depth driven by measurement; make D adapt from observed spread and stall rate.
-Replace the tests that currently assert `EXT-X-START` absence
-(`internal/server/handlers_test.go:1277`, `:1291`).
-
-Do not start this unit until Unit 2 has produced spread data from a real party.
-If measured spread is already inside the room contract, this unit may reduce to
-nothing, which is a legitimate outcome.
-
-Acceptance: measured spread improves against the Unit 2 baseline with no
-regression in the one-second target, verified by
-`node scripts/analyze-session-log.mjs --strict`, with the mic kit as an
-occasional check on the output-path layer telemetry cannot see.
-
-### Unit 4: the relay data plane
+### Unit 3: the relay data plane
 
 Goal: replace the Durable Object proxy with push-to-origin.
 
