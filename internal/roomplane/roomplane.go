@@ -28,6 +28,7 @@
 package roomplane
 
 import (
+	"bytes"
 	"encoding/json"
 	"sort"
 	"sync"
@@ -87,12 +88,27 @@ type Room struct {
 	listeners map[string]*listener
 	writes    []Write
 	now       func() time.Time
+
+	// versions assigns each kind a number that changes exactly when its bytes
+	// change. It is what lets a guest ask "has this changed since I looked"
+	// and lets the origin PARK that question instead of answering "here is the
+	// same thing again" seven times a second. Version numbers come from one
+	// room-global counter that survives Reset, so a version can never be reused
+	// for different bytes within a room's lifetime.
+	verCounter uint64
+	versions   map[string]uint64
+	// wake is closed and replaced whenever any snapshot's content changes.
+	// Parked readers re-check their kind's version and re-park if it was a
+	// different kind that changed.
+	wake chan struct{}
 }
 
 func New() *Room {
 	return &Room{
 		snapshots: make(map[string]json.RawMessage),
 		listeners: make(map[string]*listener),
+		versions:  make(map[string]uint64),
+		wake:      make(chan struct{}),
 		now:       time.Now,
 	}
 }
@@ -106,10 +122,22 @@ func (r *Room) Publish(kind string, body json.RawMessage, delaySec float64) bool
 	stored := make(json.RawMessage, len(body))
 	copy(stored, body)
 	r.mu.Lock()
-	r.snapshots[kind] = stored
 	if delaySec > 0 {
 		r.delaySec = delaySec
 	}
+	if bytes.Equal(r.snapshots[kind], stored) {
+		// Same bytes: no version bump and nobody parked on this is woken. The
+		// Mac republishes snapshots on a timer whether or not anything changed,
+		// and treating each republish as news would turn every parked guest
+		// read into a once-per-second poll.
+		r.mu.Unlock()
+		return true
+	}
+	r.snapshots[kind] = stored
+	r.verCounter++
+	r.versions[kind] = r.verCounter
+	close(r.wake)
+	r.wake = make(chan struct{})
 	r.mu.Unlock()
 	return true
 }
@@ -122,6 +150,43 @@ func (r *Room) Read(kind string) (json.RawMessage, bool) {
 	defer r.mu.RUnlock()
 	body, ok := r.snapshots[kind]
 	return body, ok
+}
+
+// ReadVersioned is Read plus the kind's content version, for callers that will
+// come back and ask "changed yet?".
+func (r *Room) ReadVersioned(kind string) (json.RawMessage, uint64, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	body, ok := r.snapshots[kind]
+	return body, r.versions[kind], ok
+}
+
+// WaitFor parks until kind's content differs from the version the caller
+// already has, or the deadline passes, and returns the current state either
+// way. This is what turns a guest's "poll until something happens" into one
+// held request, the same shape the Mac's own long-poll gives direct guests.
+func (r *Room) WaitFor(kind string, since uint64, deadline time.Time) (json.RawMessage, uint64, bool) {
+	for {
+		r.mu.RLock()
+		body, ok := r.snapshots[kind]
+		version := r.versions[kind]
+		wake := r.wake
+		r.mu.RUnlock()
+		if !ok || version != since {
+			return body, version, ok
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return body, version, ok
+		}
+		timer := time.NewTimer(remaining)
+		select {
+		case <-wake:
+			timer.Stop()
+		case <-timer.C:
+			return body, version, ok
+		}
+	}
 }
 
 // Beat records one guest heartbeat. It is deliberately cheap and never forwards
@@ -215,6 +280,13 @@ func (r *Room) Reset() {
 	r.listeners = make(map[string]*listener)
 	r.writes = nil
 	r.delaySec = 0
+	// verCounter deliberately survives, so a post-reset version can never
+	// collide with an ETag a guest is still holding. Wake parked readers: their
+	// kind is gone and they should answer "not ready" rather than sit out the
+	// full deadline on a dead room.
+	r.versions = make(map[string]uint64)
+	close(r.wake)
+	r.wake = make(chan struct{})
 }
 
 func (r *Room) evictExpiredLocked(now time.Time) {

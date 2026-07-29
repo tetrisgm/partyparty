@@ -34,6 +34,20 @@ if [[ "${1:-}" == "--rollback" ]]; then
   exit 0
 fi
 
+# A restart empties the origin's rooms. The Mac heals everything within a couple
+# of seconds (the room epoch triggers a full re-send), but native players that
+# 404 mid-stream treat it as fatal, so guests mid-party still get kicked to a
+# reload. Deploying under a live party once did exactly that during
+# verification. So: a live room defers the deploy unless the operator insists.
+if [[ "${PPORIGIN_FORCE:-}" != "1" ]]; then
+  LIVE="$(ssh_run "curl -fsS --max-time 5 -k https://127.0.0.1/__pp/health" 2>/dev/null || true)"
+  if [[ -n "$LIVE" && "$LIVE" != *'"rooms":0'* ]]; then
+    echo "!! a party is live on the origin right now: $LIVE" >&2
+    echo "!! deploy refused; re-run with PPORIGIN_FORCE=1 to kick the guests anyway" >&2
+    exit 75
+  fi
+fi
+
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 BUILD_DIR="build/origin"
 mkdir -p "$BUILD_DIR"

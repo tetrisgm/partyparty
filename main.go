@@ -284,6 +284,10 @@ func main() {
 		Version:     appVersion,
 	})
 	relayCtx, stopRelay := context.WithCancel(context.Background())
+	// The room writes its own post-set report into the event folder, so "how
+	// did the party actually go" has an answer that does not depend on anyone
+	// watching a dashboard mid-set.
+	go handler.RunSetReports(relayCtx)
 	if relayManager != nil {
 		relayManager.Start(relayCtx)
 		if contributor != nil {

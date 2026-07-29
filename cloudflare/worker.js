@@ -1,34 +1,43 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var APP_VERSION = "125.4";
-var APP_VERSION_DATE = "2026-07-29";
 var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
 var STANDALONE_FILES = {
-  "/downloads/partyparty-125.4-220.zip": { key: "standalone/partyparty-125.4-220.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.4-220.zip" },
-  "/downloads/partyparty-125.3-219.zip": { key: "standalone/partyparty-125.3-219.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.3-219.zip" },
-  "/downloads/partyparty-125.2-216.zip": { key: "standalone/partyparty-125.2-216.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.2-216.zip" },
-  "/downloads/partyparty-125.1-218.zip": { key: "standalone/partyparty-125.1-218.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.1-218.zip" },
-  "/downloads/partyparty-125.0-217.zip": { key: "standalone/partyparty-125.0-217.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.0-217.zip" },
   "/appcast.xml": { key: "standalone/appcast.xml", type: "application/xml; charset=utf-8", cache: "public, max-age=300" },
-  "/partyparty-beta.zip": { key: "standalone/partyparty-beta.zip", type: "application/zip", cache: "public, max-age=300", download: "partyparty-beta.zip" },
-  "/downloads/partyparty-123.95-197.zip": { key: "standalone/partyparty-123.95-197.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.95-197.zip" },
-  "/downloads/partyparty-123.96-198.zip": { key: "standalone/partyparty-123.96-198.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.96-198.zip" },
-  "/downloads/partyparty-123.97-199.zip": { key: "standalone/partyparty-123.97-199.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.97-199.zip" },
-  "/downloads/partyparty-123.98-200.zip": { key: "standalone/partyparty-123.98-200.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.98-200.zip" },
-  "/downloads/partyparty-123.99-201.zip": { key: "standalone/partyparty-123.99-201.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-123.99-201.zip" },
-  "/downloads/partyparty-124.00-202.zip": { key: "standalone/partyparty-124.00-202.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.00-202.zip" },
-  "/downloads/partyparty-124.01-203.zip": { key: "standalone/partyparty-124.01-203.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.01-203.zip" },
-  "/downloads/partyparty-124.02-204.zip": { key: "standalone/partyparty-124.02-204.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.02-204.zip" },
-  "/downloads/partyparty-124.05-207.zip": { key: "standalone/partyparty-124.05-207.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.05-207.zip" },
-  "/downloads/partyparty-124.08-210.zip": { key: "standalone/partyparty-124.08-210.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.08-210.zip" },
-  "/downloads/partyparty-124.09-211.zip": { key: "standalone/partyparty-124.09-211.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.09-211.zip" },
-  "/downloads/partyparty-124.10-212.zip": { key: "standalone/partyparty-124.10-212.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.10-212.zip" },
-  "/downloads/partyparty-124.11-213.zip": { key: "standalone/partyparty-124.11-213.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.11-213.zip" },
-  "/downloads/partyparty-124.12-214.zip": { key: "standalone/partyparty-124.12-214.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.12-214.zip" },
-  "/downloads/partyparty-124.13-215.zip": { key: "standalone/partyparty-124.13-215.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.13-215.zip" },
-  "/downloads/partyparty-124.14-216.zip": { key: "standalone/partyparty-124.14-216.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.14-216.zip" }
+  "/partyparty-beta.zip": { key: "standalone/partyparty-beta.zip", type: "application/zip", cache: "public, max-age=300", download: "partyparty-beta.zip" }
 };
+// Versioned release downloads are resolved from R2 BY NAME, never from a map in
+// this source. The map version of this shipped a release whose zip was uploaded
+// and advertised while the map had no entry, so every updating Mac got a 404
+// from a ship that passed all its gates. A name either exists in the bucket or
+// it does not; there is no registry to forget to update, and shipping a release
+// no longer edits or redeploys this Worker at all.
+var STANDALONE_RELEASE = /^\/downloads\/(partyparty-\d+(?:\.\d+)*-\d+\.zip)$/;
+
+// The published appcast is the single source of truth for what version is out:
+// it is the artifact Sparkle updates from, uploaded as the LAST step of a ship.
+// Deriving /api/version from it (instead of a constant edited at ship time)
+// means the site can never claim a version whose update feed does not serve it.
+// Cached briefly per isolate; the public release verifier polls for a minute.
+var VERSION_CACHE = { at: 0, version: "", date: "" };
+async function appcastVersion(env) {
+  const now = Date.now();
+  if (VERSION_CACHE.version && now - VERSION_CACHE.at < 30000) return VERSION_CACHE;
+  try {
+    const object = await env.DL.get("standalone/appcast.xml");
+    if (!object) return VERSION_CACHE;
+    const xml = await object.text();
+    const version = (xml.match(/<sparkle:shortVersionString>([^<]+)<\/sparkle:shortVersionString>/) || [])[1] || "";
+    let date = "";
+    const pub = (xml.match(/<pubDate>([^<]+)<\/pubDate>/) || [])[1];
+    if (pub) {
+      const parsed = new Date(pub);
+      if (!isNaN(parsed)) date = parsed.toISOString().slice(0, 10);
+    }
+    if (version) VERSION_CACHE = { at: now, version, date };
+  } catch (_) {}
+  return VERSION_CACHE;
+}
 var READ_JSON_TOO_LARGE = /* @__PURE__ */ new WeakSet();
 var esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var absUrl = (s) => {
@@ -818,7 +827,16 @@ var worker_default = {
     if (relayToken) {
       return relayBootstrapRequest(request, env, relayToken);
     }
-    const standaloneFile = STANDALONE_FILES[pathname];
+    let standaloneFile = STANDALONE_FILES[pathname];
+    const release = pathname.match(STANDALONE_RELEASE);
+    if (!standaloneFile && release) {
+      standaloneFile = {
+        key: `standalone/${release[1]}`,
+        type: "application/zip",
+        cache: "public, max-age=31536000, immutable",
+        download: release[1]
+      };
+    }
     if (standaloneFile) {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
@@ -836,6 +854,13 @@ var worker_default = {
       if (object.httpEtag) headers.set("etag", object.httpEtag);
       return new Response(request.method === "HEAD" ? null : object.body, { headers });
     }
+    if (pathname === "/api/relay-canary") {
+      const raw = await env.DL.get("canary/relay.json");
+      if (!raw) return jsonResp(200, { healthy: null, note: "no check has run yet" }, { "cache-control": "no-store" });
+      return new Response(await raw.text(), {
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+      });
+    }
     if (pathname === "/api/version") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
@@ -844,9 +869,11 @@ var worker_default = {
       if (request.method === "HEAD") {
         return new Response(null, { headers: { ...headers, "content-type": "application/json" } });
       }
+      const current = await appcastVersion(env);
+      if (!current.version) return jsonResp(503, { error: "version unavailable" }, { "cache-control": "no-store" });
       return jsonResp(200, {
-        version: APP_VERSION,
-        date: APP_VERSION_DATE,
+        version: current.version,
+        date: current.date,
         standaloneDownload: STANDALONE_DOWNLOAD
       }, headers);
     }
@@ -875,16 +902,62 @@ var worker_default = {
     return env.ASSETS.fetch(request);
   },
   // Keep the machine namespace anchored so absent hostnames return NXDOMAIN
-  // instead of falling through to a product wildcard.
+  // instead of falling through to a product wildcard, and watch the relay
+  // origin so a sick relay plane is known before a DJ finds out mid-party.
   async scheduled(event, env, ctx) {
     try {
       await ensureNamespaceAnchor(env);
     } catch (_) {
     }
+    try {
+      await relayCanary(env);
+    } catch (_) {
+    }
   }
 };
+
+// The relay canary. The origin serving relayed parties has exactly one
+// consumer-visible failure mode: a DJ goes live on an isolated network and
+// guests get nothing. The Mac now probes it before claiming RELAY, but that
+// only helps the DJ standing there; this records the outage as it happens, so
+// "how long was the relay down" has an answer and a recovery is visible without
+// anyone ssh-ing into the box. State lives beside the broker's other records;
+// /api/relay-canary serves the latest.
+async function relayCanary(env) {
+  const started = Date.now();
+  let healthy = false;
+  let detail = "";
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch("https://health.relay.partyparty.party/__pp/health", {
+      signal: controller.signal,
+      cf: { cacheTtl: 0 },
+    });
+    clearTimeout(timer);
+    healthy = response.ok;
+    detail = healthy ? await response.text() : `status ${response.status}`;
+  } catch (err) {
+    detail = String(err && err.message || err).slice(0, 200);
+  }
+  const previousRaw = await env.DL.get("canary/relay.json");
+  let previous = {};
+  if (previousRaw) {
+    try { previous = JSON.parse(await previousRaw.text()); } catch (_) {}
+  }
+  const record = {
+    healthy,
+    detail: detail.slice(0, 300),
+    checkedAt: started,
+    ms: Date.now() - started,
+    // The transition timestamps are what make an outage a fact instead of a
+    // guess: sickSince survives while sick, and clears on recovery.
+    sickSince: healthy ? 0 : (previous.healthy === false ? previous.sickSince || started : started),
+    lastHealthyAt: healthy ? started : previous.lastHealthyAt || 0,
+  };
+  await env.DL.put("canary/relay.json", JSON.stringify(record));
+}
 export {
-  APP_VERSION,
   worker_default as default,
   readJson,
   sha256Hex

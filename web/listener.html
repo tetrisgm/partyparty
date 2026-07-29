@@ -3481,6 +3481,7 @@
         const btn = feedList.querySelector('button[data-csend="' + pid + '"]');
         if (btn) btn.click();
       });
+      let feedTag = '';
       async function pollFeed(force){
         if (!feedOn && !force) return false;
         try {
@@ -3488,9 +3489,16 @@
           // instant anything happens - realtime without a hammering interval.
           // (Never on the FIRST load: an empty event would park the request
           // 25s and hold the welcome card hostage.)
-          const r = await fetch('/api/feed?cid=' + encodeURIComponent(cid) + '&since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store' });
+          // The relay origin serves the feed from a snapshot and parks only
+          // when told what we already have, so echo its ETag back. The Mac's
+          // own server ignores the header; either way the parked request stays
+          // the pacing instead of an instant answer turning this into a hot loop.
+          const feedHeaders = {};
+          if (feedOn && feedTag) feedHeaders['If-None-Match'] = feedTag;
+          const r = await fetch('/api/feed?cid=' + encodeURIComponent(cid) + '&since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store', headers: feedHeaders });
           if (r.status === 404) return false; // no event store
           if (!r.ok) return false;
+          feedTag = r.headers.get('ETag') || feedTag;
           const data = await r.json();
           const nextHostName = data.host ? String(data.host) : guestHostName;
           const nextAvatar = String(data.avatar || localDJAvatar || '');
@@ -3562,10 +3570,21 @@
       // Self-scheduling long-poll loop: a healthy parked request IS the wait,
       // so the breather is tiny; failures (offline, no event store, first poll
       // lost to a Wi-Fi blip) retry on a 5s cadence instead of hammering.
+      //
+      // Safety net: a server that does NOT park answers instantly, and a tiny
+      // breather against an instant answerer is a hot loop (7 requests a second
+      // per guest, at phone battery cost, multiplied by the room). Consecutive
+      // instant answers therefore stretch the breather to a polite poll until a
+      // parked (slow) answer proves long-poll is real again.
       (async () => {
+        let instant = 0;
         for (;;) {
+          const started = Date.now();
           const ok = await pollFeed(!feedOn);
-          await new Promise(r => setTimeout(r, ok && feedOn ? 150 : 5000));
+          const tookMs = Date.now() - started;
+          instant = (ok && feedOn && tookMs < 500) ? instant + 1 : 0;
+          const breather = !ok || !feedOn ? 5000 : (instant >= 4 ? 2000 : 150);
+          await new Promise(r => setTimeout(r, breather));
         }
       })();
     })();

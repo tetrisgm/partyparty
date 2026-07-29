@@ -54,6 +54,7 @@ const (
 	ReasonNoSecureLink  = "no_secure_link"
 	ReasonResolverBad   = "resolver_mismatch"
 	ReasonRelayNoNet    = "relay_needs_internet"
+	ReasonOriginDown    = "origin_unreachable"
 	ReasonOverride      = "override"
 )
 
@@ -65,6 +66,7 @@ type Evidence struct {
 	ResolverOK    bool   // this network's resolver returns our LAN IP for our host
 	HaveDirectURL bool   // a certificate-backed LAN URL exists (cached cert is enough)
 	Probe         *bool  // guest reachability report; nil until a guest reports
+	OriginDown    bool   // the relay origin's health endpoint is failing
 	Override      string // one of the Override constants; "" means auto
 }
 
@@ -125,6 +127,9 @@ func decide(e Evidence) (mode string, reason string) {
 		if !e.InternetOK {
 			return ModeNoPath, ReasonRelayNoNet
 		}
+		if e.OriginDown {
+			return ModeNoPath, ReasonOriginDown
+		}
 		return ModeRelay, ReasonOverride
 	}
 
@@ -140,6 +145,11 @@ func decide(e Evidence) (mode string, reason string) {
 		case *e.Probe:
 			// Reachable, but we have no secure link to hand out yet.
 			return ModeChecking, ReasonNoSecureLink
+		case e.OriginDown:
+			// Guests cannot reach the Mac and the relay origin is not answering.
+			// Claiming RELAY here hands every guest a dead page: the mode used to
+			// prove the Mac's side of the path and simply assume the relay's.
+			return ModeNoPath, ReasonOriginDown
 		default:
 			return ModeRelay, ReasonProbeIsolated
 		}
@@ -174,6 +184,7 @@ const (
 	noPathResolverMessage = "This Wi-Fi is not able to look up this Mac's address, and there is no internet to fall back on. Guests cannot reach the party here. On a router you control, point partyparty.party at this Mac, or use a network with internet."
 	noPathRelayMessage    = "Internet relay is selected but there is no internet connection. Switch to Automatic, or connect this Mac to the internet."
 	noPathLinkMessage     = "The secure guest link is not ready and there is no internet to set it up. Connect this Mac to the internet once to finish setup."
+	noPathOriginMessage   = "This Wi-Fi keeps guests from connecting directly, and the internet relay service is not responding right now. Guests cannot connect until the relay recovers or you use a different Wi-Fi."
 )
 
 func messageFor(mode, reason string) string {
@@ -190,6 +201,8 @@ func messageFor(mode, reason string) string {
 			return noPathRelayMessage
 		case ReasonNoSecureLink:
 			return noPathLinkMessage
+		case ReasonOriginDown:
+			return noPathOriginMessage
 		default:
 			return noPathResolverMessage
 		}

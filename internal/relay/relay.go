@@ -7,7 +7,9 @@ package relay
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -89,6 +91,7 @@ type Manager struct {
 
 	// Evidence behind the mode decision (see mode.go). Guarded by mu.
 	netTried    bool
+	originDown  bool
 	internetOK  bool
 	pendingMode string
 	resolverOK  bool
@@ -194,6 +197,7 @@ func (m *Manager) recomputeLocked() {
 		ResolverOK:    m.resolverOK,
 		HaveDirectURL: m.directURL != "",
 		Probe:         m.probe,
+		OriginDown:    m.originDown,
 		Override:      m.override,
 	})
 	m.status.Mode = mode
@@ -259,6 +263,16 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 		if currentIP := netinfo.PrimaryLanIP(); currentIP != lanIP {
 			lanIP = currentIP
 			continue
+		}
+		// Registration succeeding proves the BROKER answers; it says nothing
+		// about the origin that would actually serve relayed guests. Probing it
+		// here keeps the room mode honest: a dead origin makes the mode say NO
+		// PATH instead of sending a room full of guests to a dead page. At most
+		// one small request per refresh cycle.
+		if err == nil {
+			if origin := m.currentRelayOrigin(); origin != "" {
+				m.setOriginDown(!probeOrigin(ctx, origin))
+			}
 		}
 		nextDelay := registrationRefreshInterval
 		if err != nil {
@@ -375,6 +389,47 @@ func (m *Manager) ApplyRegistrationForTest(joinURL, networkKey string) {
 		JoinURL:    joinURL,
 		NetworkKey: networkKey,
 	}})
+}
+
+// currentRelayOrigin reads the registered origin URL.
+func (m *Manager) currentRelayOrigin() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.reg.RelayURL
+}
+
+// setOriginDown records whether the relay origin is answering, and re-derives
+// the mode when that changes.
+func (m *Manager) setOriginDown(down bool) {
+	m.mu.Lock()
+	if m.originDown == down {
+		m.mu.Unlock()
+		return
+	}
+	m.originDown = down
+	m.recomputeLocked()
+	m.mu.Unlock()
+	m.flushModeChange()
+	m.signal(m.stateChanged)
+}
+
+// probeOrigin asks the relay origin whether it is alive. One bounded GET of the
+// health endpoint; anything but a 200 is down.
+func probeOrigin(ctx context.Context, originURL string) bool {
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet,
+		strings.TrimRight(originURL, "/")+"/__pp/health", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+	return resp.StatusCode == http.StatusOK
 }
 
 // noteRegistrationFailure records that the broker is unreachable. It no longer

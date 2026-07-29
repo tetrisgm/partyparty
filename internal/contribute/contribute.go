@@ -77,10 +77,6 @@ const (
 
 	// uploadTimeout stops a stalled origin from wedging the push loop forever.
 	uploadTimeout = 10 * time.Second
-
-	// pageRefreshInterval is how often the origin is asked whether it still has
-	// the guest page.
-	pageRefreshInterval = 15 * time.Second
 )
 
 // Status is what the console needs to say honestly whether relayed guests are
@@ -158,10 +154,10 @@ type Manager struct {
 	enabled bool
 	wake    chan struct{}
 
-	// pageSent records that the guest page is on the origin, and pageCheckedAt
-	// when that was last confirmed rather than assumed.
-	pageSent      bool
-	pageCheckedAt time.Time
+	// pageSent records that the guest page is on the origin's current
+	// incarnation; originEpoch is which incarnation that is.
+	pageSent    bool
+	originEpoch string
 
 	// sent tracks media already uploaded so each file is pushed exactly once.
 	// Pruned against the live playlist every cycle, so a long set cannot grow it
@@ -359,16 +355,12 @@ func (m *Manager) cycle(ctx context.Context) error {
 
 	// The page. A guest who cannot reach this Mac cannot fetch a page from it
 	// either, so without this the origin serves audio nobody has a player for.
-	//
-	// Confirmed periodically rather than pushed once. The origin drops a room when
-	// it restarts or when the room goes idle, and media recovers on its own
-	// because segment names roll forward every few seconds, but the page has one
-	// fixed name and would never be sent again. An origin restart mid party would
-	// leave every guest on a dead page for the rest of the night. A HEAD costs
-	// nothing next to re-uploading two hundred kilobytes on a timer.
-	if m.pageCheckDue() && !m.originHasPage(ctx) {
-		m.clearPagePushed()
-	}
+	// Pushed once per origin EPOCH, not once per session: when the origin
+	// restarts it drops everything, and while rolling segment names re-upload on
+	// their own, the two fixed names (this page and the init segment) would
+	// never be sent again and every guest would sit on a dead page for the rest
+	// of the night. The epoch check in upload() clears the sent state the moment
+	// a response reveals a new incarnation.
 	if !m.pagePushed() && m.cfg.Page != nil {
 		if page := m.cfg.Page(); len(page) > 0 {
 			if err := m.upload(ctx, PublishedPage, page, "text/html; charset=utf-8"); err != nil {
@@ -442,6 +434,7 @@ func (m *Manager) upload(ctx context.Context, name string, body []byte, contentT
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+	m.observeEpoch(resp.Header.Get("X-PP-Room-Epoch"))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
@@ -614,51 +607,29 @@ func (m *Manager) pagePushed() bool {
 func (m *Manager) markPagePushed() {
 	m.mu.Lock()
 	m.pageSent = true
-	m.pageCheckedAt = time.Now()
 	m.mu.Unlock()
 }
 
-// pageCheckDue reports whether it is time to confirm the origin still has the
-// guest page.
-func (m *Manager) pageCheckDue() bool {
+// observeEpoch notices the origin restarting. Every PUT response carries the
+// room's epoch; a change means the store behind those successful-looking
+// uploads was emptied, so everything this side believes it already sent,
+// including the fixed-name page and init segment, must be sent again.
+func (m *Manager) observeEpoch(header string) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return // an origin too old to say; assume continuity rather than churn
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !m.pageSent {
-		return false // nothing to confirm; it is about to be pushed anyway
+	if m.originEpoch == header {
+		return
 	}
-	if time.Since(m.pageCheckedAt) < pageRefreshInterval {
-		return false
+	first := m.originEpoch == ""
+	m.originEpoch = header
+	if first {
+		return // first sight of this origin, nothing was lost
 	}
-	m.pageCheckedAt = time.Now()
-	return true
-}
-
-func (m *Manager) clearPagePushed() {
-	m.mu.Lock()
+	m.sent = make(map[string]bool)
 	m.pageSent = false
-	m.mu.Unlock()
-}
-
-// originHasPage asks the origin whether the guest page is still published.
-// A failure to ask is treated as "still there", so a blip does not trigger a
-// pointless re-upload.
-func (m *Manager) originHasPage(ctx context.Context) bool {
-	base, _ := m.cfg.target()
-	if base == "" {
-		return true
-	}
-	target, err := joinURL(base, PublishedPage)
-	if err != nil {
-		return true
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, target, nil)
-	if err != nil {
-		return true
-	}
-	resp, err := m.client.Do(req)
-	if err != nil {
-		return true
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	m.cfg.Logf("contribute: origin restarted (epoch %s); re-sending fixed-name assets", header)
 }

@@ -57,6 +57,9 @@ type object struct {
 
 // Room is one party's live window on the origin.
 type Room struct {
+	// epoch is set once at creation and never changes; see Epoch.
+	epoch int64
+
 	mu   sync.Mutex
 	cond *sync.Cond
 
@@ -78,10 +81,18 @@ func newRoom(now time.Time) *Room {
 		media:       make(map[string]*object),
 		lastPublish: now,
 		plane:       roomplane.New(),
+		epoch:       now.UnixNano(),
 	}
 	r.cond = sync.NewCond(&r.mu)
 	return r
 }
+
+// Epoch identifies this in-memory incarnation of the room. A new value means
+// everything previously uploaded is gone, however recently. The Mac compares it
+// across pushes to notice a restart, because from its side a restarted origin is
+// indistinguishable from a healthy one: uploads keep succeeding, only the store
+// behind them is empty.
+func (r *Room) Epoch() int64 { return r.epoch }
 
 // Plane exposes the room API state so the HTTP layer can serve guest reads and
 // queue guest writes without the Mac being involved per request.

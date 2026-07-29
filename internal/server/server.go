@@ -568,6 +568,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"latency":        s.Listeners.LatencySpread(),
+			"relay":          s.relayPresenceState(),
 			"schedule":       s.scheduleState(),
 			"roster":         rosterBody,
 			"listenerGroups": s.listenerGroups(roster),

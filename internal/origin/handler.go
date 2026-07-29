@@ -2,8 +2,10 @@ package origin
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -127,6 +129,10 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, token, name str
 	}
 
 	room, _ := h.store.Room(token, true)
+	// The room epoch rides every PUT response. It is how the Mac learns that the
+	// store restarted and its once-uploaded fixed-name files (the init segment,
+	// the guest page) no longer exist, even though every upload keeps succeeding.
+	w.Header().Set("X-PP-Room-Epoch", strconv.FormatInt(room.Epoch(), 10))
 	if strings.HasSuffix(name, ".m3u8") {
 		// The playlist is stored verbatim. It carries PROGRAM-DATE-TIME, and
 		// therefore the room's schedule, so rewriting any part of it here would
@@ -253,6 +259,32 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, token, name stri
 	writeBody(w, r, obj.body)
 }
 
+// planeParkMax bounds a parked room read. Under the Mac server's own 25s
+// long-poll heartbeat and well under any proxy idle timeout, so a parked guest
+// is answered by us rather than cut off by infrastructure.
+const planeParkMax = 20 * time.Second
+
+// planeETag is a strong validator for a snapshot version. The quotes are part
+// of the ETag grammar, not decoration.
+func planeETag(version uint64) string { return fmt.Sprintf("%q", strconv.FormatUint(version, 10)) }
+
+// etagMatches reports whether the client's If-None-Match names the current
+// version. Anything unparseable simply does not match, which degrades to an
+// immediate answer rather than an error.
+func etagMatches(header string, version uint64) bool {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(candidate), "W/"))
+		if candidate == planeETag(version) {
+			return true
+		}
+	}
+	return false
+}
+
 // roomAPI serves the room's interactive surface without involving the Mac per
 // request. Reads come from what the Mac last published; beats aggregate; writes
 // queue for the Mac to drain. This is what keeps 500 listeners as cheap for the
@@ -268,13 +300,25 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 
 	switch {
 	case r.Method == http.MethodGet:
-		body, published := plane.Read(endpoint)
+		body, version, published := plane.ReadVersioned(endpoint)
+		// The listener page long-polls with wait=1 and is BUILT on the parked
+		// request being the pacing: its loop breathes 150ms between answers. The
+		// Mac's own server parks until something happens, so the page assumed
+		// every server does. This one answered instantly from its snapshot, which
+		// turned every relayed guest into a 7-requests-a-second hot loop. So:
+		// when the guest proves it has the current content (If-None-Match), park
+		// until the content actually changes, exactly like the Mac would.
+		if published && r.URL.Query().Get("wait") == "1" &&
+			etagMatches(r.Header.Get("If-None-Match"), version) {
+			body, version, published = plane.WaitFor(endpoint, version, time.Now().Add(planeParkMax))
+		}
 		if !published {
 			// Not yet published is different from empty: saying "{}" here would
 			// render a live party as an empty one.
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
+		w.Header().Set("ETag", planeETag(version))
 		w.Header().Set("Content-Type", "application/json")
 		writeBody(w, r, body)
 

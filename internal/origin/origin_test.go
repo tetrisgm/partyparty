@@ -378,3 +378,53 @@ func itoa(v int) string {
 	}
 	return string(digits)
 }
+
+// The listener page long-polls with wait=1 and breathes 150ms between answers,
+// because on the Mac's own server the parked request IS the pacing. An origin
+// that answers instantly turns every relayed guest into a 7-requests-a-second
+// hot loop. So: a guest that proves what it already has (If-None-Match) parks
+// until the content changes, and a guest without proof is answered immediately.
+func TestRoomAPIParksLongPollUntilContentChanges(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	room, _ := store.Room(roomToken, false)
+	room.Plane().Publish("feed", json.RawMessage(`{"posts":1}`), 1.0)
+
+	// No proof of current content: answered immediately, with a validator.
+	first := get(t, h, "api/feed?wait=1")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first poll = %d", first.Code)
+	}
+	tag := first.Header().Get("ETag")
+	if tag == "" {
+		t.Fatal("no ETag on a room read; the page cannot prove what it has")
+	}
+
+	// Proof of current content: the request parks until the feed changes.
+	released := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		req := httptest.NewRequest(http.MethodGet, "/r/"+roomToken+"/api/feed?wait=1", nil)
+		req.Header.Set("If-None-Match", tag)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		released <- w
+	}()
+	select {
+	case w := <-released:
+		t.Fatalf("poll with current ETag answered instantly with %q; the hot loop is back", w.Body.String())
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	room.Plane().Publish("feed", json.RawMessage(`{"posts":2}`), 1.0)
+	select {
+	case w := <-released:
+		if w.Body.String() != `{"posts":2}` {
+			t.Fatalf("released with stale feed: %q", w.Body.String())
+		}
+		if w.Header().Get("ETag") == tag {
+			t.Fatal("new content served under the old validator")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a feed change never released the parked poll")
+	}
+}

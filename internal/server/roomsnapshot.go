@@ -147,3 +147,12 @@ func (s *srv) RelayPresence() (listeners int, spreadMs float64, fresh bool) {
 	}
 	return s.relayListeners, s.relaySpreadMs, true
 }
+
+// relayPresenceState is the status payload's honest account of relayed guests.
+// Without it the console counts only listeners this Mac serves directly, and a
+// relayed room full of people reads as zero: the count existed, arrived from
+// the origin, and was stored by SetRelayPresence, and nothing ever read it.
+func (s *srv) relayPresenceState() map[string]any {
+	listeners, spreadMs, fresh := s.RelayPresence()
+	return map[string]any{"listeners": listeners, "spreadMs": spreadMs, "fresh": fresh}
+}

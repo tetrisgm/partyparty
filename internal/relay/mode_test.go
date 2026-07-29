@@ -30,6 +30,28 @@ func TestDecideTable(t *testing.T) {
 			wantMode: ModeChecking, wantReason: ReasonStarting,
 		},
 
+		// --- Origin health gates every path that would say RELAY ----------
+		// A dead origin plus "guests can reach the Mac" is still DIRECT: the
+		// origin only matters when it would actually serve someone.
+		{
+			name: "isolated guests plus a dead origin is NO PATH, not a dead page",
+			ev: Evidence{NetTried: true, InternetOK: true, HaveDirectURL: true,
+				Probe: boolPtr(false), OriginDown: true},
+			wantMode: ModeNoPath, wantReason: ReasonOriginDown,
+		},
+		{
+			name: "forced relay with a dead origin says so instead of pretending",
+			ev: Evidence{NetTried: true, InternetOK: true, HaveDirectURL: true,
+				OriginDown: true, Override: OverrideRelay},
+			wantMode: ModeNoPath, wantReason: ReasonOriginDown,
+		},
+		{
+			name: "a dead origin does not matter when guests reach the Mac directly",
+			ev: Evidence{NetTried: true, InternetOK: true, HaveDirectURL: true,
+				Probe: boolPtr(true), OriginDown: true},
+			wantMode: ModeDirect, wantReason: ReasonProbeDirect,
+		},
+
 		// --- Automatic, internet available -------------------------------
 		{
 			name:     "online, nothing proven yet, waits for a guest",

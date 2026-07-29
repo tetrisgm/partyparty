@@ -3,7 +3,44 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-VERSION="${PP_VERSION:-124.14}"
+
+# The version string, like the build number below, is derived from what is
+# already published rather than hand-typed. The old default here was a stale
+# constant, which is the same defect that shipped an undeliverable release when
+# the build number had one: forget the env var once and the ship stamps whatever
+# was current when someone last edited this file. PP_VERSION still overrides for
+# deliberate jumps (a new major); otherwise the last published version's final
+# component is bumped by one.
+derive_version() {
+  local published
+  published=$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml 2>/dev/null |
+    grep -oE '<sparkle:shortVersionString>[0-9.]+</sparkle:shortVersionString>' |
+    grep -oE '[0-9.]+' | tail -1)
+  local live
+  live=$(curl -fsS --max-time 20 https://partyparty.party/api/version 2>/dev/null |
+    grep -oE '"version":"[0-9.]+"' | grep -oE '[0-9.]+' | head -1)
+  python3 - "$published" "$live" <<'DERIVE'
+import sys
+
+def parse(raw):
+    try:
+        parts = [int(p) for p in raw.strip().split(".") if p != ""]
+        return parts if parts else None
+    except ValueError:
+        return None
+
+candidates = [v for v in (parse(a) for a in sys.argv[1:]) if v]
+if not candidates:
+    sys.stderr.write("Cannot determine the published version; refusing to guess.
+")
+    sys.exit(1)
+current = max(candidates)
+current[-1] += 1
+print(".".join(str(p) for p in current))
+DERIVE
+}
+VERSION="${PP_VERSION:-$(derive_version)}"
+[ -n "$VERSION" ] || exit 1
 
 # The build number is what Sparkle compares, so it must only ever go up. It used
 # to default to a hardcoded constant, which meant any ship that did not happen to
@@ -36,6 +73,52 @@ derive_build() {
 BUILD="${PP_BUILD:-$(derive_build)}"
 [ -n "$BUILD" ] || exit 1
 echo "shipping version $VERSION build $BUILD"
+
+# Every ship writes a machine-readable receipt, success or failure. Reading a
+# ship's outcome from its log tail has produced false reports twice (a buffered
+# tail read as a stall, a wrapper exit code read as the ship's), and a receipt
+# keyed to the commit is what the autoship daemon gates on. The receipt is
+# written by a trap so a failure at ANY stage still records where it stopped.
+RECEIPTS="$ROOT/dist/receipts"
+mkdir -p "$RECEIPTS"
+COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+STAGE="starting"
+write_receipt() {
+  local status="$1" error="${2:-}"
+  python3 - "$RECEIPTS" "$VERSION" "$BUILD" "$COMMIT" "$STAGE" "$status" "$error" <<'RECEIPT'
+import json, os, sys, time
+receipts, version, build, commit, stage, status, error = sys.argv[1:8]
+receipt = {
+    "version": version, "build": int(build), "commit": commit,
+    "status": status, "stage": stage, "finishedAt": int(time.time()),
+    "downloadUrl": f"https://partyparty.party/downloads/partyparty-{version}-{build}.zip",
+}
+if error:
+    receipt["error"] = error[-2000:]
+path = os.path.join(receipts, f"ship-{version}-{build}.json")
+tmp = path + ".tmp"
+with open(tmp, "w") as f:
+    json.dump(receipt, f, indent=1)
+    f.write("
+")
+os.replace(tmp, path)
+latest = os.path.join(receipts, "latest.json")
+with open(latest + ".tmp", "w") as f:
+    json.dump(receipt, f, indent=1)
+    f.write("
+")
+os.replace(latest + ".tmp", latest)
+RECEIPT
+}
+on_exit() {
+  local code=$?
+  if [ "$code" -eq 0 ]; then
+    write_receipt success
+  else
+    write_receipt failed "exit $code during $STAGE"
+  fi
+}
+trap on_exit EXIT
 APP="$ROOT/build/partyparty-beta.app"
 RELEASE_DIR="$ROOT/dist/standalone-$VERSION-$BUILD"
 ZIP_NAME="partyparty-$VERSION-$BUILD.zip"
@@ -55,11 +138,13 @@ fi
 # mismatch is caught by verify-standalone.sh below, but the right place to agree
 # on the number is here, once, before anything is built.
 export PP_VERSION="$VERSION" PP_BUILD="$BUILD"
+STAGE="build"
 "$ROOT/scripts/build-standalone.sh"
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$RELEASE_DIR/notary.zip"
+STAGE="notarize"
 source "$ROOT/scripts/notary-lib.sh"
 notary_submit_with_retry "$RELEASE_DIR/notary.zip" "standalone-app" "$RELEASE_DIR/notary-id.txt"
 xcrun stapler staple "$APP"
@@ -67,6 +152,7 @@ xcrun stapler validate "$APP"
 REQUIRE_NOTARIZED=1 "$ROOT/scripts/verify-standalone.sh" "$APP" "$VERSION" "$BUILD"
 rm "$RELEASE_DIR/notary.zip"
 
+STAGE="package"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 "$GENERATE_APPCAST" \
   --download-url-prefix "https://partyparty.party/downloads/" \
@@ -88,47 +174,22 @@ if [ -n "$PUBLISHED_BUILD" ] && [ "$BUILD" -le "$PUBLISHED_BUILD" ]; then
   exit 1
 fi
 
+STAGE="publish"
 (
   cd cloudflare
+
+  # Publish-then-flip: both immutable zips land first, and the appcast, which is
+  # what makes installs act, lands LAST. The Worker resolves release downloads
+  # from the bucket by name and derives /api/version from this appcast, so a
+  # ship needs NO Worker edit and NO Worker deploy. The registration step this
+  # replaces was itself the cause of a broken release (map never updated, every
+  # updater 404ed) and then of a failed ship (the step crashed mid-publish), and
+  # the class is closed by there being nothing to register.
   "$WRANGLER" r2 object put "partyparty-dl/standalone/$ZIP_NAME" --file "$ZIP" --content-type application/zip --remote
   "$WRANGLER" r2 object put "partyparty-dl/standalone/partyparty-beta.zip" --file "$ZIP" --content-type application/zip --remote
-
-  # Register this build with the Worker BEFORE deploying it, and before the
-  # appcast is published below.
-  #
-  # The Worker serves downloads from an explicit per-version map, so an appcast
-  # advertising a version the map does not know sends every updating Mac to a
-  # 404. That is what 125.0 shipped: zip uploaded, appcast pointing at it, and
-  # Sparkle reporting "update error" because the path did not exist. Registering
-  # is part of shipping, not a step someone remembers.
-  #
-  # Absolute path deliberately: this runs inside a subshell that has already cd'd
-  # into cloudflare, and a relative path silently resolved to the wrong file.
-  python3 - "$ROOT/cloudflare/worker.js" "$VERSION" "$BUILD" <<'REGISTER'
-import re, sys, pathlib
-from datetime import date
-
-target, version, build = sys.argv[1], sys.argv[2], sys.argv[3]
-path = pathlib.Path(target)
-src = path.read_text()
-name = f"partyparty-{version}-{build}.zip"
-if f'"/downloads/{name}"' not in src:
-    entry = (f'  "/downloads/{name}": {{ key: "standalone/{name}", '
-             f'type: "application/zip", cache: "public, max-age=31536000, immutable", '
-             f'download: "{name}" }},\n')
-    anchor = "var STANDALONE_FILES = {\n"
-    at = src.index(anchor) + len(anchor)
-    src = src[:at] + entry + src[at:]
-src = re.sub(r'var APP_VERSION = "[^"]*";', f'var APP_VERSION = "{version}";', src, count=1)
-src = re.sub(r'var APP_VERSION_DATE = "[^"]*";',
-             f'var APP_VERSION_DATE = "{date.today().isoformat()}";', src, count=1)
-path.write_text(src)
-print(f"worker: registered {name}, APP_VERSION={version}")
-REGISTER
-  node test/smoke.mjs >/dev/null
-
-  "$WRANGLER" deploy
   "$WRANGLER" r2 object put "partyparty-dl/standalone/appcast.xml" --file "$APPCAST" --content-type application/xml --remote
 )
 
+STAGE="verify-public"
 "$ROOT/scripts/verify-standalone-public.sh" "$ZIP" "$VERSION" "$BUILD"
+STAGE="done"

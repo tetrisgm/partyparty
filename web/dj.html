@@ -1365,7 +1365,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const txt = { good:'Good', strain:'Strain', congested:'Congested', idle:'Idle' };
       $('healthPill').className = 'badge ' + (cls[h.status] || '');
       $('healthPill').textContent = txt[h.status] || '-';
-      $('healthDetail').textContent = (h.listeners || 0) + ' listening' +
+      const relay = s.relay || {};
+      const relayListeners = relay.fresh ? (relay.listeners || 0) : 0;
+      $('healthDetail').textContent = ((h.listeners || 0) + relayListeners) + ' listening' +
+        (relayListeners ? ' (' + relayListeners + ' via relay)' : '') +
         ' · ' + (h.struggling || 0) +
         ' struggling · ~' + (h.mbps ? h.mbps.toFixed(1) : '0') + ' Mbps';
       $('healthSuggest').style.display = h.suggestion ? 'block' : 'none';

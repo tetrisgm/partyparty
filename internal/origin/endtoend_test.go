@@ -236,3 +236,57 @@ func copyAll(dst *strings.Builder, resp *http.Response) (int, error) {
 		}
 	}
 }
+
+// An origin restart mid-party empties the store while the Mac's uploads keep
+// succeeding, so from the Mac everything looks fine. Rolling segment names
+// recover on their own; the two FIXED names (the init segment named by
+// EXT-X-MAP and the guest page) are deduped by the Mac and would never be sent
+// again. Without init.mp4 the stream is undecodable, so every guest joining
+// after the restart hears nothing for the rest of the night. The room epoch on
+// PUT responses is what lets the Mac notice and re-send.
+func TestOriginRestartRecoversFixedNameAssets(t *testing.T) {
+	mac := &fakeMac{playlist: macPlaylistV1}
+	macSrv := httptest.NewServer(mac.handler())
+	defer macSrv.Close()
+
+	store := origin.NewStore()
+	cfg := origin.Config{Tokens: func(room string) (string, bool) { return "secret", room == "room1" }}
+	originSrv := httptest.NewServer(origin.NewHandler(cfg, store))
+	defer originSrv.Close()
+
+	pusher := contribute.New(contribute.Config{
+		SourceURL: macSrv.URL + "/party/index.m3u8",
+		Page:      func() []byte { return []byte("<html>party</html>") },
+		Target:    func() (string, string) { return originSrv.URL + "/r/room1/", "secret" },
+		Logf:      func(string, ...any) {},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go pusher.Run(ctx)
+	pusher.SetEnabled(true)
+
+	guest := originSrv.Client()
+	waitFor200 := func(name string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			resp, err := guest.Get(originSrv.URL + "/r/room1/" + name)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return
+				}
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		t.Fatalf("%s never became fetchable", name)
+	}
+	waitFor200("init.mp4")
+	waitFor200("index.html")
+
+	// The restart: same address, empty store. Uploads keep succeeding.
+	*store = *origin.NewStore()
+
+	waitFor200("init.mp4")
+	waitFor200("index.html")
+}
