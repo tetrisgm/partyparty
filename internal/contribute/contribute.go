@@ -9,7 +9,7 @@
 // laptop in the request path of every listener and could not scale past a few
 // dozen no matter what was paid for it.
 //
-// Two constraints shape the whole package:
+// Three constraints shape the whole package:
 //
 //  1. The audio is NEVER re-encoded. ffmpeg runs with "-c copy", so the exact
 //     AAC bytes this Mac produced are what listeners receive. Re-encoding would
@@ -19,6 +19,22 @@
 //     already publishes on loopback rather than adding a leg to its ffmpeg tee.
 //     Capture and encode are untouched; this is a second reader of a stream that
 //     already exists.
+//  3. The capture timestamp must survive, and this is the open item.
+//
+// On (3): contribution currently pushes RTSP, which means the origin
+// re-packages and stamps PROGRAM-DATE-TIME at its OWN ingest. That breaks the
+// one-timeline contract in the worst possible way, because direct and relayed
+// guests each look correct alone and only disagree when compared, so it does not
+// show up in single-mode testing.
+//
+// The decided fix is to forward this Mac's own LL-HLS playlists and parts over
+// plain HTTP instead, PROGRAM-DATE-TIME included, so the capture stamp survives
+// by construction rather than by hoping the origin propagates absolute time. It
+// also removes the origin's need for a raw TCP port, which is what lets it deploy
+// anywhere rather than on a VPS someone administers.
+//
+// Until that lands, this package is correct about everything except which bytes
+// it hands the origin, and RELAY must not be cut over to it.
 package contribute
 
 import (
