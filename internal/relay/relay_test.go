@@ -63,7 +63,11 @@ func TestNetworkTransitionReturnsToChecking(t *testing.T) {
 	if status.Mode != ModeChecking || status.KnownNetwork {
 		t.Fatalf("transition status = %+v", status)
 	}
-	if status.JoinURL != "" || status.DirectURL != manager.directURL {
+	// The bootstrap MUST still be published on a new network. It is tied to the
+	// install rather than the network, and it is the only way a guest can probe
+	// and produce the verdict that ends "checking". Withholding it here is what
+	// deadlocked 125.0 at "creating secure guest link".
+	if status.JoinURL != "https://r-room.partyparty.party/" || status.DirectURL != manager.directURL {
 		t.Fatalf("transition URLs = %+v", status)
 	}
 

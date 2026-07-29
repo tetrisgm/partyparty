@@ -374,23 +374,33 @@ func (m *Manager) noteRegistrationFailure() {
 
 // joinURLLocked picks what the QR encodes, from the mode alone.
 //
-// While CHECKING we advertise nothing: handing out a link before the path is
-// established is how a guest lands on a dead page. NO PATH advertises nothing
-// because nothing would work. LOCAL uses the direct URL, because depending on a
-// bootstrap that is unreachable would be a guaranteed failure. The cloud modes
-// prefer the registered bootstrap so the room can classify a guest before it
-// hits anything. Caller holds mu.
+// CHECKING must still publish the bootstrap when one is registered. The
+// bootstrap is HOW the path gets proven: a guest scans it, probes the Mac, and
+// reports the verdict that decides the mode. Withholding the QR until the mode
+// is known deadlocks the whole thing, because the mode cannot be known until a
+// guest scans the QR. That regression shipped in 125.0 and presented as the
+// console sitting on "creating secure guest link" forever.
+//
+// The bootstrap is tied to the install, not the network, so it stays valid
+// across a venue change and is safe to publish the moment registration succeeds.
+//
+// While CHECKING we do NOT fall back to the direct URL: it has not been proven
+// on this network yet, and handing a guest an unproven link is how they land on
+// a dead page. LOCAL publishes it because there, a bootstrap that needs internet
+// is the guaranteed failure instead. Caller holds mu.
 func (m *Manager) joinURLLocked(mode string) string {
 	switch mode {
+	case ModeNoPath:
+		return ""
 	case ModeLocal:
 		return m.directURL
-	case ModeDirect, ModeRelay:
+	case ModeChecking:
+		return m.reg.JoinURL
+	default:
 		if m.reg.JoinURL != "" {
 			return m.reg.JoinURL
 		}
 		return m.directURL
-	default:
-		return ""
 	}
 }
 

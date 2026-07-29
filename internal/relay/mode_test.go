@@ -280,3 +280,50 @@ func TestRelayGuestIsNotBouncedBetweenOriginAndBootstrap(t *testing.T) {
 		t.Fatal("directUrl must be published so a guest can be sent home when the room leaves relay")
 	}
 }
+
+// TestCheckingStillPublishesAScannableQR guards the deadlock that shipped in
+// 125.0 and left the console on "creating secure guest link" forever.
+//
+// The mode cannot leave CHECKING until a guest probes, and a guest cannot probe
+// until it scans the QR. So withholding the QR during CHECKING is not caution,
+// it is a guarantee that the room never starts.
+func TestCheckingStillPublishesAScannableQR(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m := New(Config{})
+	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
+	m.mu.Lock()
+	m.netTried, m.internetOK, m.resolverOK = true, true, true
+	m.mu.Unlock()
+	m.applyRegistration(registration{RelayRegistration: activateRegistration(
+		"https://r-room.partyparty.party/", "https://room.relay.partyparty.party", "net-1")})
+
+	got := m.Snapshot()
+	if got.Mode != ModeChecking {
+		t.Fatalf("mode = %s, want checking before any probe", got.Mode)
+	}
+	if got.JoinURL == "" {
+		t.Fatal("checking published no QR, so no guest can ever probe and the room never starts")
+	}
+	if got.JoinURL != "https://r-room.partyparty.party/" {
+		t.Fatalf("checking must publish the bootstrap, got %q", got.JoinURL)
+	}
+
+	// And once a guest does probe, the room settles without the QR changing.
+	m.applyProbe("net-1", true)
+	if after := m.Snapshot(); after.Mode != ModeDirect || after.JoinURL != got.JoinURL {
+		t.Fatalf("after probe = %+v", after)
+	}
+}
+
+// TestCheckingWithoutABootstrapAdvertisesNothing: the direct URL has not been
+// proven on this network yet, so handing it out during CHECKING would send a
+// guest to a page that may not load. Offline installs reach LOCAL instead, which
+// does publish it.
+func TestCheckingWithoutABootstrapAdvertisesNothing(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m := New(Config{})
+	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
+	if got := m.Snapshot(); got.JoinURL != "" {
+		t.Fatalf("an unproven direct URL was advertised during checking: %+v", got)
+	}
+}
