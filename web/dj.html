@@ -679,6 +679,17 @@
     <h2 style="margin:0 0 14px">Settings</h2>
 
     <section class="settings-section">
+      <label for="connectionMode">How guests connect</label>
+      <select id="connectionMode">
+        <option value="auto" selected>Automatic (recommended)</option>
+        <option value="direct">Direct only, never use the internet relay</option>
+        <option value="relay">Internet relay</option>
+        <option value="local">Local only, keep everything on this Wi-Fi</option>
+      </select>
+      <div class="hint" id="connectionModeHint" style="margin:5px 0 0">Automatic picks the right one for each Wi-Fi. Local only keeps every guest connection on this network, with nothing going over the internet.</div>
+    </section>
+
+    <section class="settings-section">
       <div class="support-actions">
         <button class="ghost" id="privacyBtn" type="button">Privacy policy</button>
         <button class="ghost" id="supportBtn" type="button">Support</button>
@@ -1163,14 +1174,19 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const networkStatus = $('qrNetworkStatus');
       networkStatus.hidden = false;
       networkStatus.className = 'qr-network-status' +
-        (mode === 'direct' ? ' ready' : (mode === 'relay' ? ' relay' : ''));
+        ((mode === 'direct' || mode === 'local') ? ' ready'
+          : ((mode === 'relay' || mode === 'no_path') ? ' relay' : ''));
       networkStatus.textContent = !s
         ? 'Secure link ready. Checking this Wi-Fi.'
         : (mode === 'relay'
           ? 'Internet relay active.'
           : (mode === 'direct'
             ? 'Direct Wi-Fi connection.'
-            : 'Scan once to check this Wi-Fi.'));
+            : (mode === 'local'
+              ? 'Local Wi-Fi connection. No internet needed.'
+              : (mode === 'no_path'
+                ? 'Guests cannot reach the party on this Wi-Fi.'
+                : 'Scan once to check this Wi-Fi.'))));
       renderQR(guestUrl);
       return;
     }
@@ -1185,6 +1201,36 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // enriches this state later but is not required to escape the spinner.
   renderGuestLink(null);
 
+  // Connection-mode override. Server-authoritative and persisted, so a venue
+  // that always needs the same choice is set once.
+  (function(){
+    const select = $('connectionMode'), hint = $('connectionModeHint');
+    if (!select) return;
+    const baseHint = hint ? hint.textContent : '';
+    const show = (payload) => {
+      if (!hint) return;
+      if (payload && payload.available === false) {
+        hint.textContent = 'Connection modes are unavailable in this build.';
+        select.disabled = true;
+        return;
+      }
+      // Say what the choice actually produced, so a preference that cannot work
+      // here reads as a stated fact rather than a silent failure.
+      hint.textContent = (payload && payload.message) ? payload.message : baseHint;
+    };
+    fetch('/api/connection-mode', { cache:'no-store' })
+      .then(r => r.json())
+      .then(j => { if (j && j.override) select.value = j.override; show(j); })
+      .catch(() => {});
+    select.onchange = () => {
+      fetch('/api/connection-mode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ override: select.value }),
+      }).then(r => r.json()).then(show).catch(() => {});
+    };
+  })();
+
   function renderConnectionState(connection){
     const el = $('lanState');
     if (!el) return;
@@ -1192,6 +1238,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       el.hidden = true;
       return;
     }
+    // DIRECT is the expected case and needs no banner. LOCAL is also a healthy
+    // room, so it gets a quiet line rather than a warning: no internet is a fact
+    // about the venue, not a fault.
     if (connection.mode === 'direct') {
       el.hidden = true;
       return;
@@ -1201,7 +1250,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       text += ' Reconnecting the internet relay now.';
     }
     el.textContent = text;
-    el.className = 'offline-status' + (connection.mode === 'relay' ? ' relay' : '');
+    el.className = 'offline-status' +
+      (connection.mode === 'relay' ? ' relay' : (connection.mode === 'no_path' ? ' relay' : ''));
     el.hidden = false;
   }
 

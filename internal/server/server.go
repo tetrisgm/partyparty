@@ -218,6 +218,12 @@ func (s *Srv) SetActivationResult(res activate.Result) {
 	s.actLast = res
 	s.actLastSet = true
 	s.actMu.Unlock()
+	// The resolver observation is the evidence that decides whether guests can
+	// find this Mac with no internet at all, so it belongs in the mode decision
+	// rather than only in the LAN-readiness display.
+	if s.Relay != nil {
+		s.Relay.SetResolverOK(res.ResolverMatches)
+	}
 }
 
 func (s *Srv) SetActivation(domain string) {
@@ -232,8 +238,10 @@ func (s *Srv) SetActivation(domain string) {
 	s.actLast.OK = true
 	s.actLast.Host = domain
 	s.actLastSet = true
+	resolverOK := s.actLast.ResolverMatches
 	s.actMu.Unlock()
 	if s.Relay != nil {
+		s.Relay.SetResolverOK(resolverOK)
 		s.Relay.SetDirectURL(s.directGuestURL())
 	}
 }
@@ -467,6 +475,8 @@ func (s *srv) connectionState() relay.Status {
 	}
 	return relay.Status{
 		Mode:         relay.ModeDirect,
+		Reason:       relay.ReasonProbeDirect,
+		Override:     relay.OverrideAuto,
 		JoinURL:      direct,
 		DirectURL:    direct,
 		KnownNetwork: false,
@@ -529,6 +539,31 @@ func compressibleAsset(name string) bool {
 func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.URL.Path {
+	case "/api/connection-mode":
+		// The DJ's connection preference. POST {"override":"auto|direct|relay|local"}
+		// sets it; any method returns the current state. Automatic is the default
+		// and right almost always; the rest are preferences with honest fallback,
+		// never forced dead ends, so asking for relay with no internet reports
+		// NO PATH rather than pretending.
+		if s.Relay == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"override": relay.OverrideAuto, "available": false})
+			return
+		}
+		if r.Method == http.MethodPost {
+			var body struct {
+				Override string `json:"override"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			s.Relay.SetOverride(strings.TrimSpace(body.Override))
+		}
+		connection := s.Relay.Snapshot()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"override":  s.Relay.Override(),
+			"available": true,
+			"mode":      connection.Mode,
+			"reason":    connection.Reason,
+			"message":   connection.Message,
+		})
 	case "/api/status":
 		bc := s.Broadcaster.Status()
 		if bc.State == "live" && bc.Device == "mac" {

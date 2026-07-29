@@ -122,10 +122,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch s.connectionMode {
         case "direct":
             connectionTitle = "Connection: Direct Wi-Fi"
+        case "local":
+            // A working room that simply has no internet. Not a fault.
+            connectionTitle = "Connection: Local Wi-Fi"
         case "relay":
             connectionTitle = s.relayConnected
                 ? "Connection: Internet relay"
                 : "Connection: Reconnecting relay"
+        case "no_path":
+            // Guests cannot reach this Mac and there is no internet to relay
+            // through. Say so, so the DJ stops waiting for it to resolve itself.
+            connectionTitle = "Connection: Guests cannot connect here"
         default:
             connectionTitle = "Connection: Checking Wi-Fi"
         }

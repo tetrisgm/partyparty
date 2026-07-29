@@ -28,10 +28,6 @@ import (
 )
 
 const (
-	ModeChecking = "checking"
-	ModeDirect   = "direct"
-	ModeRelay    = "relay"
-
 	binaryIDBytes       = 36
 	maxChunkBytes       = 64 << 10
 	maxVerdicts         = 32
@@ -48,6 +44,8 @@ const (
 // console and menu bar.
 type Status struct {
 	Mode           string `json:"mode"`
+	Reason         string `json:"reason,omitempty"` // stable machine code; see mode.go
+	Override       string `json:"override,omitempty"`
 	JoinURL        string `json:"joinUrl,omitempty"`
 	DirectURL      string `json:"directUrl,omitempty"`
 	KnownNetwork   bool   `json:"knownNetwork"`
@@ -90,6 +88,13 @@ type Manager struct {
 	verdicts  map[string]verdict
 	directURL string
 
+	// Evidence behind the mode decision (see mode.go). Guarded by mu.
+	netTried   bool
+	internetOK bool
+	resolverOK bool
+	probe      *bool
+	override   string
+
 	regChanged   chan struct{}
 	stateChanged chan struct{}
 }
@@ -105,20 +110,16 @@ func New(cfg Config) *Manager {
 		verdicts:     loadVerdicts(),
 		regChanged:   make(chan struct{}, 1),
 		stateChanged: make(chan struct{}, 1),
+		override:     loadOverride(),
 		status: Status{
 			Mode:    ModeChecking,
+			Reason:  ReasonStarting,
 			Message: checkingMessage,
 		},
 	}
+	m.status.Override = m.override
 	return m
 }
-
-const (
-	checkingMessage = "Checking whether guests can connect directly on this Wi-Fi. Scan the QR code once to finish the check."
-	directMessage   = "Guests are connecting directly to this Mac on the venue Wi-Fi."
-	relayMessage    = "This Wi-Fi limits connections between nearby devices. PartyParty is using an internet connection so guests can keep listening. This may increase the delay between the DJ and listeners."
-	offlineMessage  = "The internet is unavailable. Guests will connect directly on this Wi-Fi."
-)
 
 // Start runs until ctx is canceled.
 func (m *Manager) Start(ctx context.Context) {
@@ -134,18 +135,72 @@ func (m *Manager) SetDirectURL(directURL string) {
 		m.mu.Unlock()
 		return
 	}
-	previousDirectURL := m.directURL
 	m.directURL = directURL
-	m.status.DirectURL = directURL
-	if m.status.Mode == ModeDirect {
-		if m.status.JoinURL == previousDirectURL {
-			m.status.JoinURL = directURL
-		} else if m.reg.JoinURL == "" || m.status.RelayConnected {
-			m.status.JoinURL = m.joinURLLocked()
-		}
-	}
+	m.recomputeLocked()
 	m.mu.Unlock()
 	m.signal(m.stateChanged)
+}
+
+// SetResolverOK records whether THIS network's own resolver answers for our
+// hostname with our LAN IP. It is the evidence that decides whether guests can
+// find this Mac with no internet at all, and it is the difference between "your
+// router is not resolving us" and "this Wi-Fi isolates devices" when nobody can
+// connect. Sourced from activate.observeResolver.
+func (m *Manager) SetResolverOK(ok bool) {
+	m.mu.Lock()
+	if m.resolverOK == ok {
+		m.mu.Unlock()
+		return
+	}
+	m.resolverOK = ok
+	m.recomputeLocked()
+	m.mu.Unlock()
+	m.signal(m.stateChanged)
+}
+
+// SetOverride records the DJ's connection-mode preference and persists it.
+func (m *Manager) SetOverride(value string) {
+	if !validOverride(value) {
+		return
+	}
+	m.mu.Lock()
+	if m.override == value {
+		m.mu.Unlock()
+		return
+	}
+	m.override = value
+	m.recomputeLocked()
+	m.mu.Unlock()
+	saveOverride(value)
+	m.signal(m.stateChanged)
+}
+
+// Override returns the current DJ preference.
+func (m *Manager) Override() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return normalizeOverride(m.override)
+}
+
+// recomputeLocked re-derives the room mode from current evidence. It is the ONE
+// place mode is decided, so no code path can set a mode that the evidence does
+// not support. Caller holds mu.
+func (m *Manager) recomputeLocked() {
+	mode, reason := decide(Evidence{
+		NetTried:      m.netTried,
+		InternetOK:    m.internetOK,
+		ResolverOK:    m.resolverOK,
+		HaveDirectURL: m.directURL != "",
+		Probe:         m.probe,
+		Override:      m.override,
+	})
+	m.status.Mode = mode
+	m.status.Reason = reason
+	m.status.Override = normalizeOverride(m.override)
+	m.status.DirectURL = m.directURL
+	m.status.KnownNetwork = m.probe != nil
+	m.status.Message = messageFor(mode, reason)
+	m.status.JoinURL = m.joinURLLocked(mode)
 }
 
 // Snapshot returns a consistent copy for /api/status.
@@ -232,11 +287,8 @@ func waitForRegistrationRefresh(ctx context.Context, currentIP string, maximum t
 
 func (m *Manager) noteNetworkTransition() {
 	m.mu.Lock()
-	m.status.Mode = ModeChecking
-	m.status.KnownNetwork = false
-	m.status.JoinURL = ""
-	m.status.DirectURL = m.directURL
-	m.status.Message = checkingMessage
+	m.probe = nil // a new network proves nothing until a guest reports again
+	m.recomputeLocked()
 	m.mu.Unlock()
 	m.signal(m.stateChanged)
 }
@@ -253,25 +305,22 @@ func (m *Manager) applyRegistration(next registration) {
 	previousConnect := m.reg.ConnectURL
 	networkChanged := m.reg.NetworkKey != next.NetworkKey
 	m.reg = next
+	m.netTried = true
+	m.internetOK = true
 	if networkChanged {
+		// A cached verdict for this exact network stands in for a fresh probe so
+		// a returning venue does not re-run the whole check.
+		m.probe = nil
 		if cached, ok := m.verdicts[next.NetworkKey]; ok &&
 			time.Since(time.UnixMilli(cached.UpdatedAt)) <= verdictMaxAge &&
-			validMode(cached.Mode) && cached.Mode != ModeChecking {
-			m.status.Mode = cached.Mode
-			m.status.KnownNetwork = true
+			(cached.Mode == ModeDirect || cached.Mode == ModeRelay) {
+			reachable := cached.Mode == ModeDirect
+			m.probe = &reachable
 		} else {
 			delete(m.verdicts, next.NetworkKey)
-			m.status.Mode = ModeChecking
-			m.status.KnownNetwork = false
 		}
 	}
-	m.status.DirectURL = m.directURL
-	if networkChanged {
-		m.status.JoinURL = ""
-	} else if m.status.RelayConnected {
-		m.status.JoinURL = m.joinURLLocked()
-	}
-	m.status.Message = messageForMode(m.status.Mode)
+	m.recomputeLocked()
 	m.mu.Unlock()
 
 	m.signal(m.stateChanged)
@@ -280,24 +329,39 @@ func (m *Manager) applyRegistration(next registration) {
 	}
 }
 
+// noteRegistrationFailure records that the broker is unreachable. It no longer
+// pretends the room is DIRECT: with no internet the mode is LOCAL when this
+// network can resolve us and NO PATH when it cannot, which is the difference
+// between a working forest party and a silent one.
 func (m *Manager) noteRegistrationFailure() {
 	m.mu.Lock()
-	if m.directURL != "" && (m.status.JoinURL == "" || m.status.Mode == ModeDirect) {
-		m.status.Mode = ModeDirect
-		m.status.JoinURL = m.directURL
-		m.status.DirectURL = m.directURL
-		m.status.KnownNetwork = false
-		m.status.Message = offlineMessage
-	}
+	m.netTried = true
+	m.internetOK = false
+	m.recomputeLocked()
 	m.mu.Unlock()
 	m.signal(m.stateChanged)
 }
 
-func (m *Manager) joinURLLocked() string {
-	if m.reg.JoinURL != "" {
-		return m.reg.JoinURL
+// joinURLLocked picks what the QR encodes, from the mode alone.
+//
+// While CHECKING we advertise nothing: handing out a link before the path is
+// established is how a guest lands on a dead page. NO PATH advertises nothing
+// because nothing would work. LOCAL uses the direct URL, because depending on a
+// bootstrap that is unreachable would be a guaranteed failure. The cloud modes
+// prefer the registered bootstrap so the room can classify a guest before it
+// hits anything. Caller holds mu.
+func (m *Manager) joinURLLocked(mode string) string {
+	switch mode {
+	case ModeLocal:
+		return m.directURL
+	case ModeDirect, ModeRelay:
+		if m.reg.JoinURL != "" {
+			return m.reg.JoinURL
+		}
+		return m.directURL
+	default:
+		return ""
 	}
-	return m.directURL
 }
 
 func (m *Manager) applyProbe(networkKey string, reachable bool) {
@@ -306,36 +370,18 @@ func (m *Manager) applyProbe(networkKey string, reachable bool) {
 		m.mu.Unlock()
 		return
 	}
-	mode := ModeRelay
-	if reachable && m.directURL != "" {
-		mode = ModeDirect
+	m.probe = &reachable
+	m.recomputeLocked()
+	mode := m.status.Mode
+	if mode == ModeDirect || mode == ModeRelay {
+		m.verdicts[networkKey] = verdict{Mode: mode, UpdatedAt: time.Now().UnixMilli()}
 	}
-	m.status.Mode = mode
-	m.status.KnownNetwork = true
-	m.status.JoinURL = m.joinURLLocked()
-	m.status.Message = messageForMode(mode)
-	m.verdicts[networkKey] = verdict{Mode: mode, UpdatedAt: time.Now().UnixMilli()}
 	copyForSave := cloneVerdicts(m.verdicts)
 	m.mu.Unlock()
 
 	saveVerdicts(copyForSave)
 	m.cfg.Logf("relay: this network is now %s", mode)
 	m.signal(m.stateChanged)
-}
-
-func messageForMode(mode string) string {
-	switch mode {
-	case ModeDirect:
-		return directMessage
-	case ModeRelay:
-		return relayMessage
-	default:
-		return checkingMessage
-	}
-}
-
-func validMode(mode string) bool {
-	return mode == ModeChecking || mode == ModeDirect || mode == ModeRelay
 }
 
 func (m *Manager) signal(ch chan struct{}) {
@@ -382,7 +428,8 @@ func (m *Manager) confirmRelayState(networkKey string) {
 	}
 	changed := !m.status.RelayConnected || m.status.JoinURL == ""
 	m.status.RelayConnected = true
-	m.status.JoinURL = m.joinURLLocked()
+	m.recomputeLocked()
+	m.status.RelayConnected = true
 	m.mu.Unlock()
 	if changed {
 		m.signal(m.stateChanged)

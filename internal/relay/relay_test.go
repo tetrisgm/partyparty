@@ -380,6 +380,8 @@ func TestRunSessionProxiesARequestOverWebSocket(t *testing.T) {
 		Secret:    "install-secret",
 	}
 	manager.mu.Lock()
+	isolated := false
+	manager.netTried, manager.internetOK, manager.probe = true, true, &isolated
 	manager.reg = sessionRegistration
 	manager.mu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -422,6 +424,7 @@ func TestManagerOwnsOneModeForTheNetwork(t *testing.T) {
 		"network-1",
 	)}
 	manager.directURL = "https://disco.party.partyparty.party:8443/"
+	manager.netTried, manager.internetOK, manager.resolverOK = true, true, true
 	manager.status = Status{Mode: ModeChecking}
 	manager.mu.Unlock()
 
@@ -451,6 +454,7 @@ func TestNetworkTransitionReturnsToChecking(t *testing.T) {
 		"network-1",
 	)}
 	manager.directURL = "https://disco.party.partyparty.party:8443/"
+	manager.netTried, manager.internetOK, manager.resolverOK = true, true, true
 	manager.status = Status{
 		Mode:         ModeDirect,
 		JoinURL:      "https://r-room.partyparty.party/",
@@ -469,9 +473,12 @@ func TestNetworkTransitionReturnsToChecking(t *testing.T) {
 		t.Fatalf("transition URLs = %+v", status)
 	}
 
+	// Losing the broker is LOCAL, not a faked DIRECT: guests still get the direct
+	// link, and the console says the internet is gone rather than implying the
+	// cloud check passed.
 	manager.noteRegistrationFailure()
 	status = manager.Snapshot()
-	if status.Mode != ModeDirect || status.JoinURL != manager.directURL {
+	if status.Mode != ModeLocal || status.JoinURL != manager.directURL {
 		t.Fatalf("offline transition status = %+v", status)
 	}
 }
