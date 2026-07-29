@@ -512,3 +512,45 @@ steady-room spread from every party automatically, `/__pp/health` reports the
 origin's rooms and media, and the DJ console shows the room's declared delay
 against its measured spread. If those disagree with this document, this document
 is wrong.
+
+**Addendum, 2026-07-29: the day the halves were joined**
+
+The design above was correct and the implementation of each half passed its
+tests, and the first time a phone was actually pointed at it, five wiring gaps
+surfaced, each invisible to unit tests and each fatal alone. They are recorded
+here because their SHAPE is the lesson: every one was a place where two
+components each honored their own contract and nobody had proven the joint.
+
+The contributor fetched a playlist path MediaMTX does not serve, and could not
+have read it anyway without the session cookie the multivariant playlist hands
+out. The declared hold-back was authored only on the direct path, so relayed
+guests would have run on the muxer's raw value. The origin validated publish
+credentials against a static file while the broker mints them per install. The
+room API plane existed, was tested, and was never started. The origin served no
+guest page at all.
+
+After those: the origin's oldest-first eviction deleted the two files uploaded
+once per set (the guest page and the init segment) as soon as a set outlived
+the live window, which is about three minutes. Heartbeats arrived as GET, were
+counted only on POST, and a phone audibly playing counted as nobody. The
+listener's long-poll assumed a parking server and became a seven-per-second hot
+loop against a snapshot origin; room snapshots now carry content versions, the
+origin parks on an ETag match, and the page paces itself against any server
+that answers instantly. An origin restart is now detected by an epoch on every
+PUT response, and the fixed-name assets are pinned and re-sent. RELAY is only
+claimed after the origin's health endpoint answers. Offline LOCAL required a
+resolver observation that the cached-certificate path never made.
+
+All of it is now verified end to end: a real iPhone in the simulator playing
+the relayed stream from the origin, the DJ console reading "1 listening (1 via
+relay)", three feed requests in thirty-five seconds where there would have been
+two hundred thirty, and an offline server settling on LOCAL with the direct URL
+in its QR. Releases ship through a launchd daemon
+(net.ramine.partyparty.autoship) from a dedicated clone, gated on receipts,
+with the Worker resolving release downloads from the bucket by name so a ship
+edits no source. The Worker cron probes the origin every minute and keeps
+outage transitions at /api/relay-canary. Every set writes its own report into
+the event folder.
+
+Still owed to reality: a party with more phones than one simulator, on a venue
+network nobody controls.
