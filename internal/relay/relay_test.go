@@ -59,6 +59,9 @@ func TestSessionStreamsRequestAndResponseBodies(t *testing.T) {
 			if request.Header.Get("Content-Type") != "application/json" {
 				t.Errorf("content type = %q", request.Header.Get("Content-Type"))
 			}
+			if got := request.Header.Get("Accept-Encoding"); got != "" {
+				t.Errorf("accept encoding reached origin = %q", got)
+			}
 			return &http.Response{
 				StatusCode: http.StatusCreated,
 				Header:     http.Header{"Content-Type": {"application/json"}},
@@ -73,7 +76,10 @@ func TestSessionStreamsRequestAndResponseBodies(t *testing.T) {
 		Method:  http.MethodPost,
 		Path:    "/api/comment",
 		HasBody: true,
-		Headers: map[string][]string{"Content-Type": {"application/json"}},
+		Headers: map[string][]string{
+			"Accept-Encoding": {"gzip"},
+			"Content-Type":    {"application/json"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

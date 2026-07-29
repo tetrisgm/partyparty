@@ -784,7 +784,7 @@ func copyRequestHeaders(dst http.Header, src map[string][]string) {
 
 func allowedRequestHeader(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "accept", "accept-encoding", "accept-language", "cache-control", "content-type",
+	case "accept", "accept-language", "cache-control", "content-type",
 		"if-modified-since", "if-none-match", "range", "user-agent", "x-pp-name":
 		return true
 	default:

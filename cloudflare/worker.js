@@ -1,7 +1,7 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var APP_VERSION = "124.10";
+var APP_VERSION = "124.11";
 var APP_VERSION_DATE = "2026-07-28";
 var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
 var STANDALONE_FILES = {
@@ -18,7 +18,8 @@ var STANDALONE_FILES = {
   "/downloads/partyparty-124.05-207.zip": { key: "standalone/partyparty-124.05-207.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.05-207.zip" },
   "/downloads/partyparty-124.08-210.zip": { key: "standalone/partyparty-124.08-210.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.08-210.zip" },
   "/downloads/partyparty-124.09-211.zip": { key: "standalone/partyparty-124.09-211.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.09-211.zip" },
-  "/downloads/partyparty-124.10-212.zip": { key: "standalone/partyparty-124.10-212.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.10-212.zip" }
+  "/downloads/partyparty-124.10-212.zip": { key: "standalone/partyparty-124.10-212.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.10-212.zip" },
+  "/downloads/partyparty-124.11-213.zip": { key: "standalone/partyparty-124.11-213.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-124.11-213.zip" }
 };
 var READ_JSON_TOO_LARGE = /* @__PURE__ */ new WeakSet();
 var esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -635,7 +636,7 @@ function relayHeadersForMac(request) {
   for (const [name, value] of request.headers) {
     const lower = name.toLowerCase();
     if ([
-      "accept", "accept-encoding", "accept-language", "cache-control",
+      "accept", "accept-language", "cache-control",
       "content-type", "if-modified-since", "if-none-match", "range",
       "user-agent", "x-pp-name",
     ].includes(lower)) {
