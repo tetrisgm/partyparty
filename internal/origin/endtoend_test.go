@@ -11,6 +11,7 @@ import (
 
 	"partyparty/internal/contribute"
 	"partyparty/internal/origin"
+	"partyparty/internal/schedule"
 )
 
 // This is the whole relay path with nothing stubbed between the two halves: a
@@ -19,10 +20,26 @@ import (
 // initialization segment, and it is what proves the room schedule survives the
 // relay rather than merely that each half compiles.
 
+// The multivariant playlist MediaMTX serves, naming a media playlist whose name
+// this side does not get to choose.
+const macMaster = `#EXTM3U
+#EXT-X-VERSION:10
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-STREAM-INF:BANDWIDTH=327500,CODECS="mp4a.40.2"
+audio1_stream.m3u8
+`
+
+// PART-HOLD-BACK here is the muxer's own value, derived from the real part
+// duration. The room's declared hold-back is longer, and the contribution path
+// is responsible for authoring it, exactly as the direct path does. A relayed
+// guest running on this raw number would sit at a different point in the stream
+// from every direct guest, which is the disagreement the schedule exists to
+// prevent.
 const macPlaylistV1 = `#EXTM3U
 #EXT-X-VERSION:9
 #EXT-X-TARGETDURATION:1
-#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000
+#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.42750
 #EXT-X-PART-INF:PART-TARGET=0.15000
 #EXT-X-MEDIA-SEQUENCE:7
 #EXT-X-MAP:URI="init.mp4"
@@ -36,7 +53,16 @@ seg7.mp4
 const macPlaylistV2 = macPlaylistV1 + `#EXT-X-PART:DURATION=0.15000,URI="seg8_part1.mp4"
 `
 
-// fakeMac serves what a DJ Mac's MediaMTX serves on loopback.
+// fakeMac serves what a DJ Mac's MediaMTX actually serves on loopback, including
+// the parts that are inconvenient.
+//
+// Two behaviours here are not decoration. MediaMTX answers 401 for any path it
+// does not recognise, and it REQUIRES a session cookie on the media playlist
+// while handing that cookie out on the multivariant one. An earlier version of
+// this fake served any URL ending in .m3u8 to anyone, so contribution passed
+// every test while pointing at a path that does not exist and would have been
+// refused even if it did. Relayed guests received nothing, and nothing here
+// noticed. A fake that is more permissive than the real thing tests only itself.
 type fakeMac struct {
 	mu       sync.Mutex
 	playlist string
@@ -49,20 +75,33 @@ func (f *fakeMac) setPlaylist(p string) {
 }
 
 func (f *fakeMac) handler() http.Handler {
+	const sessionCookie = "mediamtx-session"
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+		name := r.URL.Path[strings.LastIndexByte(r.URL.Path, '/')+1:]
+		switch {
+		case name == "index.m3u8":
+			http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "s1", Path: "/"})
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			_, _ = w.Write([]byte(macMaster))
+		case name == "audio1_stream.m3u8":
+			if c, err := r.Cookie(sessionCookie); err != nil || c.Value == "" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 			f.mu.Lock()
 			body := f.playlist
 			f.mu.Unlock()
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			_, _ = w.Write([]byte(body))
-			return
+		case strings.HasSuffix(name, ".m3u8"):
+			// Any other playlist name is not a thing MediaMTX serves.
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		default:
+			// Media bytes are unique per file so the guest side can prove it received
+			// exactly what the Mac produced.
+			w.Header().Set("Content-Type", "video/mp4")
+			_, _ = w.Write([]byte("bytes-of-" + name))
 		}
-		// Media bytes are unique per file so the guest side can prove it received
-		// exactly what the Mac produced.
-		name := r.URL.Path[strings.LastIndexByte(r.URL.Path, '/')+1:]
-		w.Header().Set("Content-Type", "video/mp4")
-		_, _ = w.Write([]byte("bytes-of-" + name))
 	})
 }
 
@@ -83,7 +122,7 @@ func TestRelayPathEndToEnd(t *testing.T) {
 	defer originSrv.Close()
 
 	pusher := contribute.New(contribute.Config{
-		SourceURL: macSrv.URL + "/party/stream.m3u8",
+		SourceURL: macSrv.URL + "/party/index.m3u8",
 		Target:    func() (string, string) { return originSrv.URL + "/r/room1/", "publish-secret" },
 		Logf:      func(string, ...any) {},
 	})
@@ -111,11 +150,18 @@ func TestRelayPathEndToEnd(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	if body != macPlaylistV1 {
-		t.Fatalf("guest playlist differs from the Mac's.\n--- got ---\n%s\n--- want ---\n%s", body, macPlaylistV1)
+	want := string(schedule.RewritePlaylist([]byte(macPlaylistV1)))
+	if body != want {
+		t.Fatalf("guest playlist differs from the Mac's.\n--- got ---\n%s\n--- want ---\n%s", body, want)
 	}
 	if !strings.Contains(body, "#EXT-X-PROGRAM-DATE-TIME:2026-07-29T21:14:03.250Z") {
 		t.Fatal("the capture stamp did not survive the relay, so the room schedule cannot")
+	}
+	// The declared hold-back, not the muxer's raw one. A relayed guest that ran on
+	// the raw value would sit at a different point in the stream from every direct
+	// guest, and the two would only disagree when someone stood between them.
+	if !strings.Contains(body, "PART-HOLD-BACK=0.90000") {
+		t.Fatalf("relayed guests are not on the room's declared schedule:\n%s", body)
 	}
 
 	// 2. Every media file the playlist names is fetchable, including the

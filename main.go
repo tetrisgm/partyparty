@@ -232,7 +232,7 @@ func main() {
 		// origin, which then fans it out. It reads the stream MediaMTX already
 		// serves on loopback, so internal/broadcast is untouched.
 		contributor = contribute.New(contribute.Config{
-			SourceURL: fmt.Sprintf("https://127.0.0.1:%d/%s/stream.m3u8", cfg.HLSPort, cfg.StreamPath),
+			SourceURL: fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", cfg.HLSPort, cfg.StreamPath),
 			// Resolved per push from the broker registration, so this install can
 			// only ever publish to its own room and needs nothing configured by hand.
 			Target: func() (string, string) {

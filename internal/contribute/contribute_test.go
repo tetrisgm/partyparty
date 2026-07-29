@@ -98,15 +98,41 @@ func (o *originStub) snapshot() ([]string, map[string][]byte, map[string]string)
 }
 
 // localStub serves what this Mac's MediaMTX would serve on loopback.
+const sampleMaster = `#EXTM3U
+#EXT-X-VERSION:10
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-STREAM-INF:BANDWIDTH=327500,CODECS="mp4a.40.2"
+audio1_stream.m3u8
+`
+
+// localStub behaves like the MediaMTX this actually reads, which means it
+// refuses what MediaMTX refuses: an unknown playlist name is a 401, and the
+// media playlist requires the session cookie handed out by the multivariant one.
+// A stub that served any .m3u8 to anyone let this package point at a path that
+// does not exist and still pass, while relayed guests got nothing.
 func localStub() *httptest.Server {
+	const sessionCookie = "mediamtx-session"
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+		name := r.URL.Path[strings.LastIndexByte(r.URL.Path, '/')+1:]
+		switch {
+		case name == "index.m3u8":
+			http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "s1", Path: "/"})
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			_, _ = w.Write([]byte(sampleMaster))
+		case name == "audio1_stream.m3u8":
+			if c, err := r.Cookie(sessionCookie); err != nil || c.Value == "" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 			_, _ = w.Write([]byte(samplePlaylist))
-			return
+		case strings.HasSuffix(name, ".m3u8"):
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		default:
+			w.Header().Set("Content-Type", "video/mp4")
+			_, _ = w.Write([]byte("media:" + strings.TrimPrefix(r.URL.Path, "/party/")))
 		}
-		w.Header().Set("Content-Type", "video/mp4")
-		_, _ = w.Write([]byte("media:" + strings.TrimPrefix(r.URL.Path, "/party/")))
 	}))
 }
 
@@ -129,7 +155,7 @@ func TestPlaylistIsForwardedByteForByte(t *testing.T) {
 	defer originSrv.Close()
 
 	m := New(Config{
-		SourceURL: local.URL + "/party/stream.m3u8",
+		SourceURL: local.URL + "/party/index.m3u8",
 		Target:    func() (string, string) { return originSrv.URL + "/room/", "" },
 	})
 	if err := runOneCycle(t, m); err != nil {
@@ -159,7 +185,7 @@ func TestMediaUploadsBeforeThePlaylistThatNamesIt(t *testing.T) {
 	originSrv := httptest.NewServer(origin.handler())
 	defer originSrv.Close()
 
-	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
+	m := New(Config{SourceURL: local.URL + "/party/index.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
 	if err := runOneCycle(t, m); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +225,7 @@ func TestEachMediaFileUploadsOnce(t *testing.T) {
 	originSrv := httptest.NewServer(origin.handler())
 	defer originSrv.Close()
 
-	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
+	m := New(Config{SourceURL: local.URL + "/party/index.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
 	for i := 0; i < 4; i++ {
 		if err := runOneCycle(t, m); err != nil {
 			t.Fatal(err)
@@ -229,7 +255,7 @@ func TestPublishCredentialIsSent(t *testing.T) {
 	defer originSrv.Close()
 
 	m := New(Config{
-		SourceURL: local.URL + "/party/stream.m3u8",
+		SourceURL: local.URL + "/party/index.m3u8",
 		Target:    func() (string, string) { return originSrv.URL + "/room/", "room-token" },
 	})
 	if err := runOneCycle(t, m); err != nil {
@@ -289,7 +315,7 @@ func TestDisabledContributionNeverPushes(t *testing.T) {
 	originSrv := httptest.NewServer(origin.handler())
 	defer originSrv.Close()
 
-	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
+	m := New(Config{SourceURL: local.URL + "/party/index.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go m.Run(ctx)
@@ -314,7 +340,7 @@ func TestFailingOriginIsReportedAndRetried(t *testing.T) {
 	defer originSrv.Close()
 
 	m := New(Config{
-		SourceURL: local.URL + "/party/stream.m3u8",
+		SourceURL: local.URL + "/party/index.m3u8",
 		Target:    func() (string, string) { return originSrv.URL + "/room/", "" },
 		Logf:      func(string, ...any) {},
 	})
@@ -338,7 +364,7 @@ func TestCredentialsNeverReachTheConsole(t *testing.T) {
 // TestSentTrackingIsPruned: a long set must not grow the dedupe map without
 // bound as parts age out of the live window.
 func TestSentTrackingIsPruned(t *testing.T) {
-	m := New(Config{SourceURL: "https://x/party/stream.m3u8", Target: func() (string, string) { return "https://y/room/", "" }})
+	m := New(Config{SourceURL: "https://x/party/index.m3u8", Target: func() (string, string) { return "https://y/room/", "" }})
 	m.sent["old_part.mp4"] = true
 	m.sent["seg7.mp4"] = true
 

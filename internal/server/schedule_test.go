@@ -81,7 +81,7 @@ func TestScheduleDeclaresHoldBack(t *testing.T) {
 
 	out := string(rewriteLivePlaylist([]byte(in)))
 
-	if !strings.Contains(out, "PART-HOLD-BACK="+formatHoldBack(schedulePartHoldBack)) {
+	if !strings.Contains(out, "PART-HOLD-BACK=0.90000") {
 		t.Fatalf("declared hold-back missing:\n%s", out)
 	}
 	// Everything that carries the audio or its timeline must survive untouched.

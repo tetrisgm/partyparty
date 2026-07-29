@@ -28,6 +28,7 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address (TLS is terminated by the reverse proxy in front)")
 	baseDomain := flag.String("base-domain", "", "serve each room at <token>.<base-domain>; empty uses /r/<token>/ paths")
 	roomsFile := flag.String("rooms", "", "JSON file of {\"room\":\"publish-token\"}; reloaded on SIGHUP")
+	broker := flag.String("broker", "https://partyparty.party", "broker that mints publish credentials; empty disables lookup")
 	certFile := flag.String("cert", "", "TLS certificate chain; enables HTTPS when set")
 	keyFile := flag.String("key", "", "TLS private key")
 	flag.Parse()
@@ -37,9 +38,13 @@ func main() {
 		log.Fatalf("origin: cannot read rooms file: %v", err)
 	}
 
+	// The broker is the authority on publish credentials, because it is what
+	// mints them when a Mac registers. The rooms file stays as a local override.
+	tokens := newBrokerTokens(*broker, rooms)
+
 	store := origin.NewStore()
 	handler := origin.NewHandler(origin.Config{
-		Tokens:     rooms.lookup,
+		Verify:     tokens.verify,
 		BaseDomain: *baseDomain,
 		Logf:       log.Printf,
 	}, store)

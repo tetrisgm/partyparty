@@ -15,6 +15,14 @@ type Config struct {
 	// listen, because a guest with no account is the product.
 	Tokens func(room string) (string, bool)
 
+	// Verify, when set, is asked whether a PRESENTED credential is the right one
+	// for a room, and takes precedence over Tokens. Publish credentials are minted
+	// per install by the broker, so in production the origin cannot know them
+	// ahead of time and must ask. Asking "is this correct" rather than "what is
+	// correct" means the broker never hands a publish credential to anything but
+	// the Mac that owns it, and the origin stores no secret that could publish.
+	Verify func(room, presented string) bool
+
 	// BaseDomain, when set, routes by the first label of the Host header, so a
 	// room is served at <token>.<BaseDomain>. Host routing keeps guest pages on
 	// absolute paths exactly as they are served on the LAN.
@@ -186,6 +194,10 @@ func (h *Handler) planeDrain(w http.ResponseWriter, r *http.Request, token strin
 }
 
 func (h *Handler) authorized(r *http.Request, token string) bool {
+	if h.cfg.Verify != nil {
+		got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		return got != "" && h.cfg.Verify(token, got)
+	}
 	if h.cfg.Tokens == nil {
 		return false
 	}

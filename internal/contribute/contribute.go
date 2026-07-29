@@ -50,11 +50,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
-	"path"
 	"strings"
 	"sync"
 	"time"
+
+	"partyparty/internal/schedule"
 )
 
 const (
@@ -94,9 +96,23 @@ type Status struct {
 	Pushed int `json:"pushed"`
 }
 
+// PublishedPlaylist is the name relayed guests fetch from the origin. It is
+// fixed rather than derived from the source URL, because the source is the
+// multivariant playlist and the thing published is the media playlist those two
+// have different names, and a guest URL must not change because a muxer renamed
+// something internally.
+const PublishedPlaylist = "stream.m3u8"
+
 // Config describes one contribution.
 type Config struct {
-	// SourceURL is this Mac's local LL-HLS media playlist, on loopback.
+	// SourceURL is this Mac's local LL-HLS MULTIVARIANT playlist, on loopback.
+	//
+	// The multivariant playlist, not the media playlist, for two reasons: it is
+	// the only one whose name is known ahead of time (the media playlist is named
+	// by the muxer, currently audio1_stream.m3u8), and fetching it is what
+	// establishes the session the media playlist then requires. Pointing this at
+	// a guessed media playlist name is how contribution came to fail with a 401
+	// on every cycle, which meant relayed guests received nothing at all.
 	SourceURL string
 	// Target resolves this install's relay origin and publish credential. They
 	// come from the broker at registration rather than from static configuration,
@@ -138,11 +154,18 @@ func New(cfg Config) *Manager {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {}
 	}
+	// A cookie jar, because MediaMTX hands out a session on the multivariant
+	// playlist and then REQUIRES it on the media playlist: without the cookie
+	// that request is a flat 401. Reading the stream is therefore a two step
+	// conversation, exactly as it is for a real player, and a client that cannot
+	// hold a cookie cannot read this Mac's own stream at all.
+	jar, _ := cookiejar.New(nil)
 	return &Manager{
 		cfg:  cfg,
 		wake: make(chan struct{}, 1),
 		sent: make(map[string]bool),
 		client: &http.Client{
+			Jar:     jar,
 			Timeout: uploadTimeout,
 			Transport: &http.Transport{
 				// Local MediaMTX serves the same hot-swapped cert on loopback.
@@ -263,10 +286,28 @@ func (m *Manager) wait(ctx context.Context, d time.Duration) bool {
 // get a 404 mid-stream, which native players treat as fatal rather than as
 // something to retry.
 func (m *Manager) cycle(ctx context.Context) error {
-	playlist, err := m.fetch(ctx, m.cfg.SourceURL, maxPlaylistBytes)
+	// Step one: the multivariant playlist. This names the media playlist and, on
+	// the same request, establishes the session the media playlist requires.
+	master, err := m.fetch(ctx, m.cfg.SourceURL, maxPlaylistBytes)
 	if err != nil {
-		return fmt.Errorf("read local playlist: %w", err)
+		return fmt.Errorf("read local multivariant playlist: %w", err)
 	}
+	variant, ok := firstVariant(master)
+	if !ok {
+		return errors.New("local multivariant playlist names no stream yet")
+	}
+
+	// Step two: the media playlist, then the schedule. Relayed guests must run on
+	// the same declared hold-back as direct guests, and the muxer advertises its
+	// own raw value, so the room's schedule is authored here exactly as the direct
+	// path authors it. Skipping this is not a rounding difference: it puts relayed
+	// listeners at a different point in the stream from everyone else, which is
+	// the one thing the schedule exists to prevent.
+	playlist, err := m.fetch(ctx, m.resolveSource(variant), maxPlaylistBytes)
+	if err != nil {
+		return fmt.Errorf("read local media playlist: %w", err)
+	}
+	playlist = schedule.RewritePlaylist(playlist)
 
 	names := mediaNames(playlist)
 	if len(names) == 0 {
@@ -296,9 +337,9 @@ func (m *Manager) cycle(ctx context.Context) error {
 		m.mu.Unlock()
 	}
 
-	// Forward the playlist EXACTLY as produced. This is what carries
+	// Forward the playlist otherwise untouched. This is what carries
 	// PROGRAM-DATE-TIME, and therefore the room's schedule, to relayed guests.
-	if err := m.upload(ctx, playlistName(m.cfg.SourceURL), playlist, "application/vnd.apple.mpegurl"); err != nil {
+	if err := m.upload(ctx, PublishedPlaylist, playlist, "application/vnd.apple.mpegurl"); err != nil {
 		return fmt.Errorf("upload playlist: %w", err)
 	}
 
@@ -371,6 +412,33 @@ func (m *Manager) resolveSource(name string) string {
 		return resolved
 	}
 	return name
+}
+
+// firstVariant returns the first stream URI a multivariant playlist names.
+//
+// A multivariant playlist is a run of #EXT-X-STREAM-INF tags each followed by a
+// bare URI line. There is only ever one audio rendition here, so the first URI
+// is the stream. A body that is already a media playlist has no STREAM-INF and
+// yields nothing, which is treated as "not ready" rather than misread as media.
+func firstVariant(master []byte) (string, bool) {
+	wantURI := false
+	for _, line := range strings.Split(string(master), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
+			wantURI = true
+			continue
+		}
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if wantURI {
+			return line, true
+		}
+	}
+	return "", false
 }
 
 // mediaNames returns every media URI the playlist references, in order.
@@ -457,17 +525,6 @@ func baseOf(rawURL string) string {
 		return rawURL[:i+1]
 	}
 	return rawURL
-}
-
-func playlistName(sourceURL string) string {
-	parsed, err := url.Parse(sourceURL)
-	if err != nil || parsed.Path == "" {
-		return "stream.m3u8"
-	}
-	if name := path.Base(parsed.Path); name != "." && name != "/" {
-		return name
-	}
-	return "stream.m3u8"
 }
 
 // joinURL appends one path element to a base, refusing anything that would

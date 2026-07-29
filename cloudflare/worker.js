@@ -378,6 +378,36 @@ async function broker(request, env, pathname) {
     await env.DL.put(`broker/${id2}.json`, JSON.stringify({ secret, hostLabel, created: Date.now() }));
     return jsonResp(200, { id: id2, secret, base: env.BROKER_BASE, hostLabel });
   }
+  // Does this credential publish to this room?
+  //
+  // Asked by the relay origin, which cannot know publish credentials: the broker
+  // mints one per install at registration and gives it only to that Mac. The
+  // origin therefore has to ask, and it asks whether a PRESENTED token is right
+  // rather than what the right token is, so no publish credential is ever handed
+  // out here and the origin box stores nothing that could publish to a room.
+  //
+  // Unauthenticated on purpose. It confirms only a token the caller already holds
+  // and never reveals one, and a 192 bit token is not guessable. Requiring a
+  // shared secret would mean provisioning one onto the origin, which is a
+  // credential to leak in exchange for nothing.
+  if (pathname === "/api/broker/relay/verify") {
+    const room = String(body.room || "");
+    const presented = String(body.token || "");
+    if (!/^[a-f0-9]{32}$/.test(room) || !/^[a-f0-9]{48}$/.test(presented)) {
+      return jsonResp(403, { ok: false });
+    }
+    const owner = await env.DL.get(`broker/relay/${room}`);
+    if (!owner) return jsonResp(404, { ok: false });
+    const raw = await env.DL.get(`broker/${await owner.text()}.json`);
+    if (!raw) return jsonResp(404, { ok: false });
+    let want = "";
+    try { want = String(JSON.parse(await raw.text()).relayPublishToken || ""); } catch (e) {}
+    if (!want || want.length !== presented.length) return jsonResp(403, { ok: false });
+    // Constant time compare, so a wrong answer never leaks where it went wrong.
+    let diff = 0;
+    for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ presented.charCodeAt(i);
+    return jsonResp(diff === 0 ? 200 : 403, { ok: diff === 0 }, { "cache-control": "no-store" });
+  }
   if (pathname === "/api/broker/wildcard-cert") {
     const id2 = String(body.id || "");
     if (!await authInstall(env, id2, body.secret || "")) {
