@@ -88,4 +88,18 @@ if [ "${APP_STORE_VALIDATE:-0}" = "1" ]; then
     --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 fi
 
+# Upload sends the build to App Store Connect, where it lands in TestFlight
+# processing. It does NOT submit anything for App Store review; that remains a
+# deliberate human step in the ASC UI. Guarded separately from validation so a
+# routine package run never uploads by accident.
+if [ "${APP_STORE_UPLOAD:-0}" = "1" ]; then
+  : "${APP_STORE_CONNECT_KEY_ID:?set APP_STORE_CONNECT_KEY_ID for upload}"
+  : "${APP_STORE_CONNECT_ISSUER_ID:?set APP_STORE_CONNECT_ISSUER_ID for upload}"
+  xcrun altool --upload-app \
+    -f "$PWD/dist/partyparty-app-store.pkg" \
+    -t macos \
+    --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+    --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+fi
+
 echo "built dist/partyparty-app-store.pkg"

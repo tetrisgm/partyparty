@@ -1,6 +1,7 @@
 package origin
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -265,7 +266,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, token, name stri
 		}
 		noStore(w.Header())
 		w.Header().Set("Content-Type", contentTypeFor(name, ""))
-		writeBody(w, r, body)
+		writeCompressible(w, r, body)
 		return
 	}
 
@@ -280,6 +281,10 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, token, name stri
 	// at the edge or in the client. Playlists never are.
 	w.Header().Set("Cache-Control", "public, max-age=30")
 	w.Header().Set("Content-Type", contentTypeFor(name, obj.contentType))
+	if strings.HasSuffix(name, ".html") {
+		writeCompressible(w, r, obj.body)
+		return
+	}
 	writeBody(w, r, obj.body)
 }
 
@@ -357,7 +362,7 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 		}
 		w.Header().Set("ETag", planeETag(version))
 		w.Header().Set("Content-Type", "application/json")
-		writeBody(w, r, body)
+		writeCompressible(w, r, body)
 
 	case r.Method == http.MethodPost:
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -394,6 +399,32 @@ func writeBody(w http.ResponseWriter, r *http.Request, body []byte) {
 		return
 	}
 	_, _ = w.Write(body)
+}
+
+// writeCompressible is writeBody plus on-the-fly gzip for text responses. The
+// guest page is about 200KB of HTML, and the guests this origin exists for are
+// exactly the ones on a congested venue network; the Mac's own server has
+// gzipped this page all along, and a relayed guest should not pay four times
+// the bytes for the same page. Media is never compressed (already compressed),
+// and tiny bodies are not worth the header.
+func writeCompressible(w http.ResponseWriter, r *http.Request, body []byte) {
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if len(body) < 1024 || !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		_, _ = w.Write(body)
+		return
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Add("Vary", "Accept-Encoding")
+	zw, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
+	if err != nil {
+		_, _ = w.Write(body)
+		return
+	}
+	_, _ = zw.Write(body)
+	_ = zw.Close()
 }
 
 func parseFloat(s string) (float64, bool) {

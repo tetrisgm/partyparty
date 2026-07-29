@@ -483,3 +483,32 @@ func TestHeartbeatArrivesTheWayThePageSendsIt(t *testing.T) {
 		t.Fatalf("a heartbeating phone counts as %d listeners", digest.Listeners)
 	}
 }
+
+// Relayed guests are exactly the ones on congested venue networks, and the
+// guest page is ~200KB of HTML. The Mac's own server has always gzipped it;
+// the origin must not make the constrained path pay four times the bytes.
+func TestOriginGzipsThePageButNeverMedia(t *testing.T) {
+	h, _ := testHandler()
+	big := "<html>" + strings.Repeat("party ", 2000) + "</html>"
+	put(t, h, "index.html", big, "text/html", publishToken)
+	put(t, h, "seg1.mp4", strings.Repeat("m", 4096), "video/mp4", publishToken)
+
+	req := httptest.NewRequest(http.MethodGet, "/r/"+roomToken+"/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Header().Get("Content-Encoding") != "gzip" {
+		t.Fatalf("page served raw to a gzip-capable guest (%d bytes)", w.Body.Len())
+	}
+	if w.Body.Len() >= len(big)/2 {
+		t.Fatalf("gzip did not meaningfully shrink the page: %d of %d", w.Body.Len(), len(big))
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/r/"+roomToken+"/seg1.mp4", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Header().Get("Content-Encoding") == "gzip" {
+		t.Fatal("media must never be recompressed on the serving path")
+	}
+}
