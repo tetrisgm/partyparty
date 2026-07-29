@@ -133,22 +133,46 @@ func TestStatusKeepsPausedListenersWithTheirDJ(t *testing.T) {
 	}
 }
 
-func TestStatusWaitsForFirstRelayStateBeforeAdvertisingJoinURL(t *testing.T) {
+// The QR is how CHECKING ends. A guest scans it, reaches the Mac or fails to,
+// and reports the verdict that picks the room mode. So a status response that
+// withholds the join URL while CHECKING cannot be waiting for anything: nothing
+// will ever arrive. This asserts the join URL survives all the way to the wire,
+// because the bug it guards against was not in the relay package that chooses
+// the URL but in the status layer that used to discard it.
+func TestStatusAdvertisesJoinURLWhileChecking(t *testing.T) {
 	env := newTestEnv(t, nil)
 	env.srv.Relay = relay.New(relay.Config{})
 	env.srv.SetActivation("disco-party.party.partyparty.party")
+	bootstrap := "https://r-abc123.partyparty.party/"
+	env.srv.Relay.ApplyRegistrationForTest(bootstrap, "net-1")
 
 	body := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", djAddr))
 	urls := body["urls"].(map[string]any)
 	if urls["primary"] != "https://disco-party.party.partyparty.party:8443/" {
 		t.Fatalf("direct URL = %#v", urls["primary"])
 	}
-	if _, exists := urls["join"]; exists {
-		t.Fatalf("checking status advertised join URL = %#v", urls["join"])
-	}
 	connection := body["connection"].(map[string]any)
 	if connection["mode"] != relay.ModeChecking {
-		t.Fatalf("connection = %#v", connection)
+		t.Fatalf("expected to still be checking, got %#v", connection["mode"])
+	}
+	if urls["join"] != bootstrap {
+		t.Fatalf("checking status must advertise a scannable join URL, got %#v.\n"+
+			"Without it no guest can scan, so no probe is ever reported, so the mode "+
+			"stays checking forever and the console sits on a spinner.", urls["join"])
+	}
+}
+
+// Before any broker attempt has completed there is genuinely nothing to hand
+// out, and the console says it is still setting up. That state must be brief and
+// self-clearing, never the resting state of the previous test.
+func TestStatusWithNoRegistrationYetHasNoJoinURL(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.Relay = relay.New(relay.Config{})
+	env.srv.SetActivation("disco-party.party.partyparty.party")
+
+	body := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", djAddr))
+	if urls := body["urls"].(map[string]any); urls["join"] != nil {
+		t.Fatalf("advertised a join URL before registering: %#v", urls["join"])
 	}
 }
 

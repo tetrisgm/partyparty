@@ -397,14 +397,18 @@ func (s *srv) urls() urls {
 		direct := fmt.Sprintf("https://%s:%d/", d, port)
 		join := direct
 		if s.Relay != nil {
-			connection := s.Relay.Snapshot()
-			switch {
-			case connection.Mode == relay.ModeChecking && !connection.RelayConnected:
-				join = ""
-			case strings.HasPrefix(connection.JoinURL, "https://"):
+			// The relay manager is the single authority on what the QR encodes:
+			// it already weighs the mode, the registered bootstrap and the direct
+			// URL. Re-deciding it here is what deadlocked 125.x. This switch used
+			// to blank the join URL for the whole of CHECKING unless a field
+			// called RelayConnected was set, and that field belonged to the
+			// socket relay that no longer exists, so nothing ever set it. The QR
+			// was therefore withheld for every CHECKING install, and CHECKING
+			// only ends when a guest scans the withheld QR and reports the probe.
+			// The console sat on "Creating secure guest link" forever.
+			join = ""
+			if connection := s.Relay.Snapshot(); strings.HasPrefix(connection.JoinURL, "https://") {
 				join = connection.JoinURL
-			default:
-				join = ""
 			}
 		}
 		return urls{Primary: direct, Join: join}

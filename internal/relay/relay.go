@@ -39,11 +39,10 @@ type Status struct {
 	// tell "I should move to the relay" from "I am already there": joinUrl is the
 	// bootstrap, so a guest comparing against that would navigate back to the
 	// bootstrap, which would send it here again, forever.
-	RelayOrigin    string `json:"relayOrigin,omitempty"`
-	DirectURL      string `json:"directUrl,omitempty"`
-	KnownNetwork   bool   `json:"knownNetwork"`
-	RelayConnected bool   `json:"relayConnected"`
-	Message        string `json:"message"`
+	RelayOrigin  string `json:"relayOrigin,omitempty"`
+	DirectURL    string `json:"directUrl,omitempty"`
+	KnownNetwork bool   `json:"knownNetwork"`
+	Message      string `json:"message"`
 }
 
 // Config contains only local runtime details. Install authentication remains in
@@ -240,6 +239,12 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 		}
 		lastIP = lanIP
 		if !usableLANIP(lanIP) {
+			// We cannot register without a LAN address, and "we have not tried
+			// yet" would otherwise stay true for as long as that lasts, pinning
+			// the room on CHECKING and the console on a spinner. Recording the
+			// failure lets the mode settle on the honest answer for a Mac with
+			// no usable address instead of an endless "starting".
+			m.noteRegistrationFailure()
 			var ok bool
 			lanIP, ok = waitForRegistrationRefresh(ctx, lastIP, lanPollInterval)
 			if !ok {
@@ -356,6 +361,20 @@ func (m *Manager) applyRegistration(next registration) {
 	if previousRelay != next.RelayURL {
 		m.signal(m.regChanged)
 	}
+}
+
+// ApplyRegistrationForTest puts the manager in the state it reaches after one
+// successful broker registration. It exists so tests in other packages can
+// assert what a registered install actually publishes, rather than only what an
+// install that has never reached the broker publishes. The distinction matters:
+// a status-layer bug that blanked the join URL for every registered CHECKING
+// install shipped twice while the tests only ever exercised the unregistered
+// case and stayed green.
+func (m *Manager) ApplyRegistrationForTest(joinURL, networkKey string) {
+	m.applyRegistration(registration{RelayRegistration: activate.RelayRegistration{
+		JoinURL:    joinURL,
+		NetworkKey: networkKey,
+	}})
 }
 
 // noteRegistrationFailure records that the broker is unreachable. It no longer
