@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "stream:e2e": "node scripts/stream-e2e.mjs"
+    "stream:e2e": "node scripts/stream-e2e.mjs",
+    "test": "node scripts/test-stream-contract.mjs && node scripts/test-listener-render-stability.mjs"
   },
   "devDependencies": {
     "playwright": "^1.61.1"

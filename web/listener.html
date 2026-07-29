@@ -209,9 +209,7 @@
   .djprofilelink{min-height:44px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--separator);color:var(--label);font-size:14px;font-weight:700;text-decoration:none}
   .djprofilelink:last-child{border-bottom:0}
   .djprofilelink svg{width:18px;height:18px;flex:0 0 auto;color:var(--label-secondary)}
-  .djprofilelink .servicefavicon{width:20px;height:20px;flex:0 0 auto;border-radius:4px;object-fit:contain;background:#fff}
-  .djprofilelink .servicefallback{display:none}
-  .djprofilelink.favicon-failed .servicefallback{display:block}
+  .djprofilelink .serviceicon{width:20px;height:20px;color:inherit}
   .djprofilelink span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djprofilelink::after{content:'›';color:var(--label-tertiary);font-size:22px;font-weight:400}
   @media (prefers-reduced-motion:reduce){body.playing .btn,body.playing .artwork,.eq i{animation:none}}
@@ -976,9 +974,41 @@
     const sheetListenersHeading = document.getElementById('sheetListenersHeading');
     const lightThemeBtn = document.getElementById('lightThemeBtn');
     const darkThemeBtn = document.getElementById('darkThemeBtn');
+    function setText(target, value){
+      if (!target) return false;
+      const next = String(value == null ? '' : value);
+      if (target.textContent === next) return false;
+      target.textContent = next;
+      return true;
+    }
+    function absoluteResourceURL(source){
+      try { return new URL(String(source || ''), location.href).href; } catch (e) { return ''; }
+    }
+    function setImageSource(image, source){
+      if (!image) return false;
+      const next = absoluteResourceURL(source);
+      if (!next || image.dataset.requestedSource === next) return false;
+      const failedAt = Number(image.dataset.failedAt || 0);
+      if (image.dataset.failedSource === next && Date.now() - failedAt < 60000) return false;
+      image.dataset.requestedSource = next;
+      image.dataset.failedSource = '';
+      image.dataset.failedAt = '';
+      if (image.src !== next) image.src = next;
+      return true;
+    }
+    function renderIfChanged(target, signature, render){
+      if (!target || target.dataset.renderSignature === signature) return false;
+      render();
+      target.dataset.renderSignature = signature;
+      return true;
+    }
     [miniArt, sheetArt].forEach((image) => image.addEventListener('error', () => {
+      image.dataset.failedSource = image.dataset.requestedSource || image.src;
+      image.dataset.failedAt = String(Date.now());
       const fallback = currentCoverSrc || '/art-512.png';
-      if (image.src !== new URL(fallback, location.href).href) image.src = fallback;
+      const fallbackURL = absoluteResourceURL(fallback);
+      image.dataset.requestedSource = fallbackURL;
+      if (image.src !== fallbackURL) image.src = fallbackURL;
     }));
     // Build version stamped by the server at serve time. When the server
     // updates, open tabs would otherwise keep running old player logic forever
@@ -1012,16 +1042,19 @@
       const next = valid ? nextMode : 'direct';
       const changed = next !== connectionMode;
       connectionMode = next;
-      document.body.dataset.connectionMode = next;
-      modeChip.classList.toggle('wifi', next === 'direct');
-      modeChip.classList.toggle('relay', next === 'relay');
-      modeChip.classList.toggle('checking', next === 'checking');
-      modeChip.textContent = next === 'relay' ? 'Internet relay' : next === 'checking' ? 'Checking Wi-Fi' : 'Wi-Fi';
-      modeChip.title = next === 'relay'
-        ? 'This Wi-Fi blocks nearby devices, so music is using an internet relay'
-        : next === 'checking'
-          ? 'Checking whether guests can connect directly on this Wi-Fi'
-          : 'Guests are listening directly from the DJ Mac on this Wi-Fi';
+      if (modeChip.dataset.mode !== next) {
+        modeChip.dataset.mode = next;
+        document.body.dataset.connectionMode = next;
+        modeChip.classList.toggle('wifi', next === 'direct');
+        modeChip.classList.toggle('relay', next === 'relay');
+        modeChip.classList.toggle('checking', next === 'checking');
+        setText(modeChip, next === 'relay' ? 'Internet relay' : next === 'checking' ? 'Checking Wi-Fi' : 'Wi-Fi');
+        modeChip.title = next === 'relay'
+          ? 'This Wi-Fi blocks nearby devices, so music is using an internet relay'
+          : next === 'checking'
+            ? 'Checking whether guests can connect directly on this Wi-Fi'
+            : 'Guests are listening directly from the DJ Mac on this Wi-Fi';
+      }
       if (changed) {
         for (const listener of connectionModeListeners) listener(next);
       }
@@ -1324,10 +1357,10 @@
     // The pill only shows transient/problem states - "live" is redundant with
     // the big play button, so it (and empty states) hide the pill entirely.
     const pill = document.getElementById('pill');
-    function setStatus(t){ pilltext.textContent = t || ''; pill.style.display = (!t || t === 'live') ? 'none' : ''; }
+    function setStatus(t){ setText(pilltext, t || ''); pill.style.display = (!t || t === 'live') ? 'none' : ''; }
     function setEventTitle(t){
       const title = t || 'partyparty';
-      titleEl.textContent = title;
+      setText(titleEl, title);
     }
     let currentCoverSrc = '';
     function setEventCover(src){
@@ -1381,39 +1414,54 @@
 
     function renderListenerGroups(target, rows){
       if (!target) return;
-      target.textContent = '';
-      if (!rows.length) {
-        target.innerHTML = '<div class="listenerempty">No DJs found yet.</div>';
-        return;
-      }
-      rows.forEach((group) => {
-        const listeners = Array.isArray(group.listeners) ? group.listeners : [];
-        const section = document.createElement('section');
-        section.className = 'listenergroup';
-        section.innerHTML =
-          '<div class="listenergrouphead"><span class="listenergroupicon">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M18 19a2 2 0 0 0 2-2v-3h-4v5h2ZM6 19a2 2 0 0 1-2-2v-3h4v5H6Z"/></svg>' +
-          '</span><span class="listenergroupcopy"><b>' + escapeHTML(group.dj || 'DJ') +
-          '</b><small>' + listeners.length + (listeners.length === 1 ? ' listener' : ' listeners') +
-          '</small></span></div><div class="listenerpeople"></div>';
-        const people = section.querySelector('.listenerpeople');
-        if (!listeners.length) {
-          people.innerHTML = '<div class="listenerempty">No listeners right now.</div>';
-        } else {
-          listeners.forEach((listener, index) => {
-            const person = document.createElement('div');
-            person.className = 'listenerperson';
-            person.innerHTML = '<span class="listeneravatar">' +
-              escapeHTML(listener.emoji || initials(listener.name, 'G' + (index + 1))) +
-              '</span><span>' + escapeHTML(listener.name || 'Guest') + '</span>';
-            people.appendChild(person);
-          });
+      const normalized = rows.map((group) => ({
+        id: String(group.id || ''),
+        dj: String(group.dj || 'DJ'),
+        listeners: (Array.isArray(group.listeners) ? group.listeners : []).map((listener) => ({
+          name: String(listener.name || 'Guest'),
+          emoji: String(listener.emoji || ''),
+        })),
+      }));
+      renderIfChanged(target, JSON.stringify(normalized), () => {
+        target.textContent = '';
+        if (!normalized.length) {
+          target.innerHTML = '<div class="listenerempty">No DJs found yet.</div>';
+          return;
         }
-        target.appendChild(section);
+        normalized.forEach((group) => {
+          const listeners = group.listeners;
+          const section = document.createElement('section');
+          section.className = 'listenergroup';
+          section.innerHTML =
+            '<div class="listenergrouphead"><span class="listenergroupicon">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><path d="M18 19a2 2 0 0 0 2-2v-3h-4v5h2ZM6 19a2 2 0 0 1-2-2v-3h4v5H6Z"/></svg>' +
+            '</span><span class="listenergroupcopy"><b>' + escapeHTML(group.dj) +
+            '</b><small>' + listeners.length + (listeners.length === 1 ? ' listener' : ' listeners') +
+            '</small></span></div><div class="listenerpeople"></div>';
+          const people = section.querySelector('.listenerpeople');
+          if (!listeners.length) {
+            people.innerHTML = '<div class="listenerempty">No listeners right now.</div>';
+          } else {
+            listeners.forEach((listener, index) => {
+              const person = document.createElement('div');
+              person.className = 'listenerperson';
+              person.innerHTML = '<span class="listeneravatar">' +
+                escapeHTML(listener.emoji || initials(listener.name, 'G' + (index + 1))) +
+                '</span><span>' + escapeHTML(listener.name) + '</span>';
+              people.appendChild(person);
+            });
+          }
+          target.appendChild(section);
+        });
       });
     }
+    let listenerGroupsSignature = '';
     function paintListenerGroups(groups){
-      listenerGroups = Array.isArray(groups) ? groups : [];
+      const nextGroups = Array.isArray(groups) ? groups : [];
+      const nextSignature = JSON.stringify(nextGroups);
+      if (nextSignature === listenerGroupsSignature) return;
+      listenerGroupsSignature = nextSignature;
+      listenerGroups = nextGroups;
       const rows = listenerGroups;
       listenerCountsByDJ = new Map();
       let djCount = 0, listenerCount = 0;
@@ -1426,7 +1474,7 @@
         }
       });
       const peopleCount = djCount + listenerCount;
-      peopleBadge.textContent = peopleCount > 99 ? '99+' : String(peopleCount);
+      setText(peopleBadge, peopleCount > 99 ? '99+' : String(peopleCount));
       peopleBadge.hidden = peopleCount === 0;
       peopleBtn.setAttribute('aria-label', 'Show ' + peopleCount + (peopleCount === 1 ? ' person' : ' people'));
       renderListenerGroups(sheetListenerGroups, rows);
@@ -1436,38 +1484,50 @@
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
     }
     function renderDJSelector(djs, target){
-      target.textContent = '';
       const activeCount = djs.filter((dj) => dj.live).length;
-      djPickerHead.textContent = activeCount + ' ' + (activeCount === 1 ? 'DJ' : 'DJs') + ' now playing';
-      sheetDJHeading.textContent = djPickerHead.textContent;
-      djs.forEach((dj, index) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        const { id, name, ready, live, avatar } = dj;
-        const selected = selectedDJId === id;
-        const connecting = switchingTo === id;
-        const failed = failedDJ === id;
-        const listeners = Number(listenerCountsByDJ.get(id) || 0);
-        button.className = 'djchoice' + (selected ? ' active' : '') +
-          (connecting ? ' connecting' : '') + (failed ? ' failed' : '');
-        const palette = djPaletteAt(index);
-        button.style.setProperty('--dj-color', palette[0]);
-        button.style.setProperty('--dj-tint', palette[1]);
-        button.disabled = switchingTo !== null || !live || !ready;
-        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-        button.setAttribute('aria-label', name + ', ' + listeners + ' listening, ' +
-          (selected ? 'currently selected' : (ready ? 'tap to switch' : 'unavailable')));
-        const avatarHTML = avatar
-          ? '<img src="' + escapeHTML(avatar) + '" alt="">'
-          : profileIcon();
-        button.innerHTML = '<span class="djava">' + avatarHTML +
-          '<span class="djeq" aria-hidden="true"><i></i><i></i><i></i></span></span>' +
-          '<span class="djcopy"><b>' + escapeHTML(name) + '</b><small>' +
-          listeners + ' listening</small></span><span class="djselected">' +
-          (connecting ? 'Connecting…' : (failed ? 'Try again' : '')) +
-          '</span>';
-        button.addEventListener('click', () => selectDJ(id));
-        target.appendChild(button);
+      const heading = activeCount + ' ' + (activeCount === 1 ? 'DJ' : 'DJs') + ' now playing';
+      setText(djPickerHead, heading);
+      setText(sheetDJHeading, heading);
+      const model = djs.map((dj, index) => {
+        const id = String(dj.id || '');
+        return {
+          id,
+          name: String(dj.name || 'PartyParty DJ'),
+          ready: !!dj.ready,
+          live: !!dj.live,
+          avatar: String(dj.avatar || ''),
+          selected: selectedDJId === id,
+          connecting: switchingTo === id,
+          failed: failedDJ === id,
+          listeners: Number(listenerCountsByDJ.get(id) || 0),
+          palette: djPaletteAt(index),
+        };
+      });
+      renderIfChanged(target, JSON.stringify(model), () => {
+        target.textContent = '';
+        model.forEach((dj) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'djchoice' + (dj.selected ? ' active' : '') +
+            (dj.connecting ? ' connecting' : '') + (dj.failed ? ' failed' : '');
+          button.style.setProperty('--dj-color', dj.palette[0]);
+          button.style.setProperty('--dj-tint', dj.palette[1]);
+          button.disabled = switchingTo !== null || !dj.live || !dj.ready;
+          button.setAttribute('aria-pressed', dj.selected ? 'true' : 'false');
+          button.setAttribute('aria-label', dj.name + ', ' + dj.listeners + ' listening, ' +
+            (dj.selected ? 'currently selected' : (dj.ready ? 'tap to switch' : 'unavailable')));
+          const avatarHTML = dj.avatar
+            ? '<img src="' + escapeHTML(dj.avatar) + '" alt="">'
+            : profileIcon();
+          button.innerHTML = '<span class="djava">' + avatarHTML +
+            '<span class="djeq" aria-hidden="true"><i></i><i></i><i></i></span></span>' +
+            '<span class="djcopy"><b>' + escapeHTML(dj.name) + '</b><small>' +
+            dj.listeners + ' listening</small></span><span class="djselected">' +
+            (dj.connecting ? 'Connecting…' : (dj.failed ? 'Try again' : '')) +
+            '</span>';
+          button.addEventListener('click', () => selectDJ(dj.id));
+          target.appendChild(button);
+        });
       });
     }
     function paintDJs(peers){
@@ -1588,7 +1648,9 @@
     }
     function updateSelectedTrackHint(){
       const peer = selectedDJId && discoveredPeers.find((candidate) => candidate.id === selectedDJId);
-      npHintText = trackText(peer ? peer.nowPlaying : localNowPlaying);
+      const next = trackText(peer ? peer.nowPlaying : localNowPlaying);
+      if (npHintText === next) return;
+      npHintText = next;
       applyBtnHint();
     }
     function selectedTrack(){
@@ -1628,48 +1690,59 @@
       }
       return currentCoverSrc || '/art-512.png';
     }
-    function renderProfileLinks(target, links){
-      target.textContent = '';
-      const faviconByType = {
-        instagram: 'https://www.instagram.com/favicon.ico',
-        soundcloud: 'https://soundcloud.com/favicon.ico',
-        venmo: 'https://account.venmo.com/favicon.ico'
+    function serviceIconMarkup(type){
+      const icons = {
+        instagram: {
+          color: '#E4405F',
+          path: 'M7.03.084c-1.277.06-2.149.264-2.911.563-.789.308-1.458.72-2.123 1.388S.922 3.372.617 4.162C.322 4.926.122 5.799.065 7.076.009 8.354-.004 8.764.003 12.023c.006 3.259.02 3.667.082 4.947.061 1.277.264 2.149.564 2.911.308.789.72 1.457 1.388 2.123.668.665 1.336 1.074 2.128 1.38.763.295 1.636.496 2.913.552 1.277.056 1.688.069 4.946.063 3.258-.006 3.668-.021 4.948-.081 1.28-.061 2.147-.266 2.91-.563.789-.309 1.458-.72 2.123-1.388.665-.668 1.074-1.338 1.38-2.129.295-.763.496-1.636.552-2.912.056-1.281.069-1.69.063-4.948-.006-3.258-.021-3.667-.082-4.947-.061-1.28-.264-2.149-.563-2.912-.308-.789-.72-1.457-1.388-2.123C21.298 1.33 20.628.921 19.838.617 19.074.321 18.202.12 16.924.065 15.647.009 15.236-.005 11.977.001 8.718.008 8.31.022 7.03.084m.14 21.693c-1.17-.051-1.805-.245-2.228-.408-.561-.216-.96-.477-1.382-.895-.422-.418-.681-.819-.9-1.378-.164-.424-.362-1.058-.417-2.228-.06-1.265-.072-1.644-.079-4.848-.007-3.204.005-3.583.061-4.848.05-1.169.246-1.805.408-2.228.216-.561.476-.96.895-1.382.419-.422.818-.681 1.378-.9.423-.165 1.058-.361 2.227-.417 1.266-.06 1.645-.072 4.848-.079 3.203-.007 3.584.005 4.85.061 1.169.051 1.805.244 2.228.408.561.216.96.475 1.382.895.422.419.682.818.9 1.379.166.422.362 1.056.417 2.226.06 1.266.074 1.645.08 4.848.006 3.203-.006 3.583-.061 4.848-.051 1.17-.245 1.806-.408 2.229-.216.56-.476.96-.896 1.381-.419.422-.818.682-1.378.9-.422.165-1.058.362-2.226.418-1.266.059-1.645.072-4.85.079-3.204.007-3.582-.006-4.848-.061M16.953 5.586a1.44 1.44 0 1 0 1.437-1.442 1.44 1.44 0 0 0-1.437 1.442M5.839 12.012c.006 3.403 2.77 6.156 6.173 6.149 3.402-.006 6.157-2.77 6.15-6.173-.006-3.403-2.77-6.156-6.174-6.15-3.403.007-6.156 2.771-6.15 6.174M8 12.008a4 4 0 1 1 4.008 3.992A4 4 0 0 1 8 12.008',
+        },
+        soundcloud: {
+          color: '#FF5500',
+          path: 'M23.999 14.165c-.052 1.796-1.612 3.169-3.4 3.169h-8.18a.68.68 0 0 1-.675-.683V7.862a.747.747 0 0 1 .452-.724s.75-.513 2.333-.513a5.364 5.364 0 0 1 2.763.755 5.433 5.433 0 0 1 2.57 3.54c.282-.08.574-.121.868-.12.884 0 1.73.358 2.347.992s.948 1.49.922 2.373ZM10.721 8.421c.247 2.98.427 5.697 0 8.672a.264.264 0 0 1-.53 0c-.395-2.946-.22-5.718 0-8.672a.264.264 0 0 1 .53 0ZM9.072 9.448c.285 2.659.37 4.986-.006 7.655a.277.277 0 0 1-.55 0c-.331-2.63-.256-5.02 0-7.655a.277.277 0 0 1 .556 0Zm-1.663-.257c.27 2.726.39 5.171 0 7.904a.266.266 0 0 1-.532 0c-.38-2.69-.257-5.21 0-7.904a.266.266 0 0 1 .532 0Zm-1.647.77a26.108 26.108 0 0 1-.008 7.147.272.272 0 0 1-.542 0 27.955 27.955 0 0 1 0-7.147.275.275 0 0 1 .55 0Zm-1.67 1.769c.421 1.865.228 3.5-.029 5.388a.257.257 0 0 1-.514 0c-.21-1.858-.398-3.549 0-5.389a.272.272 0 0 1 .543 0Zm-1.655-.273c.388 1.897.26 3.508-.01 5.412-.026.28-.514.283-.54 0-.244-1.878-.347-3.54-.01-5.412a.283.283 0 0 1 .56 0Zm-1.668.911c.4 1.268.257 2.292-.026 3.572a.257.257 0 0 1-.514 0c-.241-1.262-.354-2.312-.023-3.572a.283.283 0 0 1 .563 0Z',
+        },
       };
+      if (type === 'venmo') {
+        return '<svg class="serviceicon" viewBox="0 0 24 24" aria-hidden="true">' +
+          '<rect width="24" height="24" rx="5" fill="#008CFF"/>' +
+          '<path d="M6 5h4.2l1.2 8.4C13.2 11 14.5 8.3 14.8 5H19c-.4 5.5-3 11-7.2 14H7.7L6 5Z" fill="#fff"/></svg>';
+      }
+      const icon = icons[type];
+      if (icon) {
+        return '<svg class="serviceicon" viewBox="0 0 24 24" fill="' + icon.color +
+          '" aria-hidden="true"><path d="' + icon.path + '"/></svg>';
+      }
+      return '<svg class="serviceicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/>' +
+        '<path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>';
+    }
+    function renderProfileLinks(target, links){
+      const model = [];
       (Array.isArray(links) ? links : []).forEach((link) => {
         try {
           const url = new URL(String(link && link.url || ''));
           if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
+          model.push({
+            url: url.href,
+            type: String(link && link.type || '').toLowerCase(),
+            label: String(link && (link.label || link.type) || 'Link'),
+          });
+        } catch (e) {}
+      });
+      renderIfChanged(target, JSON.stringify(model), () => {
+        target.textContent = '';
+        model.forEach((link) => {
           const row = document.createElement('a');
           row.className = 'djprofilelink';
-          row.href = url.href;
+          row.href = link.url;
           row.target = '_blank';
           row.rel = 'noopener';
-          const type = String(link && link.type || '').toLowerCase();
-          const favicon = faviconByType[type];
-          if (favicon) {
-            const image = document.createElement('img');
-            image.className = 'servicefavicon';
-            image.src = favicon;
-            image.alt = '';
-            image.addEventListener('error', () => row.classList.add('favicon-failed'), {once:true});
-            row.appendChild(image);
-          }
-          const fallback = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          fallback.setAttribute('class', favicon ? 'servicefallback' : '');
-          fallback.setAttribute('viewBox', '0 0 24 24');
-          fallback.setAttribute('fill', 'none');
-          fallback.setAttribute('stroke', 'currentColor');
-          fallback.setAttribute('stroke-width', '2');
-          fallback.setAttribute('stroke-linecap', 'round');
-          fallback.setAttribute('stroke-linejoin', 'round');
-          fallback.setAttribute('aria-hidden', 'true');
-          fallback.innerHTML = '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/>';
-          row.appendChild(fallback);
+          row.innerHTML = serviceIconMarkup(link.type);
           const label = document.createElement('span');
-          label.textContent = link.label || link.type || 'Link';
+          label.textContent = link.label;
           row.appendChild(label);
           target.appendChild(row);
-        } catch (e) {}
+        });
       });
     }
     function renderSelectedProfile(){
@@ -1677,12 +1750,12 @@
       const bio = selectedBio();
       const links = selectedLinks();
       const visible = !!(bio || links.length);
-      sheetProfileName.textContent = name;
-      sheetBio.textContent = bio;
+      setText(sheetProfileName, name);
+      setText(sheetBio, bio);
       renderProfileLinks(sheetLinks, links);
       sheetProfile.hidden = !visible;
-      djProfileName.textContent = name;
-      djProfileBio.textContent = bio;
+      setText(djProfileName, name);
+      setText(djProfileBio, bio);
       renderProfileLinks(djProfileLinks, links);
       djProfile.hidden = !visible;
     }
@@ -1692,18 +1765,24 @@
       const listeners = selectedListenerCount();
       const listenerText = listeners + ' listening';
       const artwork = artworkSource(track);
-      miniArt.src = artwork;
-      sheetArt.src = artwork;
-      sheetTrackTitle.textContent = track && track.title ? track.title : 'Live party audio';
-      sheetTrackArtist.textContent = track && track.artist ? track.artist : djName;
-      listenCount.textContent = listenerText;
+      setImageSource(miniArt, artwork);
+      setImageSource(sheetArt, artwork);
+      setText(sheetTrackTitle, track && track.title ? track.title : 'Live party audio');
+      setText(sheetTrackArtist, track && track.artist ? track.artist : djName);
+      setText(listenCount, listenerText);
       const palette = djPaletteAt(selectedDJIndex());
-      document.documentElement.style.setProperty('--selected-dj-color', palette[0]);
+      if (document.documentElement.style.getPropertyValue('--selected-dj-color') !== palette[0]) {
+        document.documentElement.style.setProperty('--selected-dj-color', palette[0]);
+      }
       renderSelectedProfile();
       const isPlaying = document.body.classList.contains('playing');
-      sheetPlay.innerHTML = isPlaying
-        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
-        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5Z"/></svg>';
+      const playState = isPlaying ? 'pause' : 'play';
+      if (sheetPlay.dataset.playState !== playState) {
+        sheetPlay.dataset.playState = playState;
+        sheetPlay.innerHTML = isPlaying
+          ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
+          : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5Z"/></svg>';
+      }
       sheetPlay.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
       applyBtnHint();
     }
@@ -1721,13 +1800,13 @@
       const on = document.body.classList.contains('playing');
       const track = selectedTrack();
       if (track && track.title) {
-        btnlabel.textContent = track.title;
-        btnHint.textContent = track.artist || selectedDJName();
+        setText(btnlabel, track.title);
+        setText(btnHint, track.artist || selectedDJName());
         return;
       }
-      btnlabel.textContent = on ? 'Playing' : (started ? 'Resume' : (live ? 'Tap to listen' : 'Waiting for DJ'));
-      btnHint.textContent = on ? (npHintText || 'Audio stays on with screen locked')
-                               : (live ? (npHintText || 'Low-latency party audio') : 'The DJ has not started yet');
+      setText(btnlabel, on ? 'Playing' : (started ? 'Resume' : (live ? 'Tap to listen' : 'Waiting for DJ')));
+      setText(btnHint, on ? (npHintText || 'Audio stays on with screen locked')
+                          : (live ? (npHintText || 'Low-latency party audio') : 'The DJ has not started yet'));
     }
 
     function openPlayerSheet(anchor){
@@ -2465,7 +2544,7 @@
             }
           }
         }
-        countEl.textContent = '';
+        setText(countEl, '');
         if (!live && (started || attached)) {
           // The DJ stopped: go cleanly back to "Waiting for DJ" instead of an
           // endless reconnect loop against a dead stream. `attached` matters
@@ -2660,13 +2739,15 @@
       let currentFeatures = Object.assign({}, featureDefaults);
       let featureSig = JSON.stringify(currentFeatures);
       let currentLinks = [];
+      let currentLinksSignature = '';
+      let currentTrackSignature = '';
       function setFeatures(features){
         const next = Object.assign({}, featureDefaults, features || {});
         const sig = JSON.stringify(next);
         const changed = sig !== featureSig;
         currentFeatures = next;
         featureSig = sig;
-        applyFeatureUI();
+        if (changed) applyFeatureUI();
         return changed;
       }
       function featureOn(name){
@@ -2676,7 +2757,15 @@
         return connectionMode !== 'relay';
       }
       function renderDJLinks(links){
-        currentLinks = Array.isArray(links) ? links : currentLinks;
+        const next = Array.isArray(links) ? links : currentLinks;
+        const signature = JSON.stringify(next.map((link) => ({
+          type: String(link && link.type || ''),
+          label: String(link && link.label || ''),
+          url: String(link && link.url || ''),
+        })));
+        if (signature === currentLinksSignature) return;
+        currentLinksSignature = signature;
+        currentLinks = next;
         localDJLinks = currentLinks;
         updatePlayerDetails();
       }
@@ -2684,7 +2773,7 @@
         reactionCounts = counts || reactionCounts || {};
         reactionBar.hidden = !featureOn('reactions');
         if (!featureOn('reactions')) {
-          reactionAmbient.textContent = '';
+          setText(reactionAmbient, '');
           return;
         }
         let top = null;
@@ -2692,14 +2781,21 @@
           const n = Number(reactionCounts[type] || 0);
           if (n > 0 && (!top || n > top.n)) top = { emoji, n };
         }
-        reactionAmbient.textContent = top ? top.emoji + ' ×' + top.n : '';
+        setText(reactionAmbient, top ? top.emoji + ' ×' + top.n : '');
       }
       function renderTrackID(nowPlaying){
-        currentTrack = (nowPlaying && nowPlaying.title) ? nowPlaying : null;
+        const next = (nowPlaying && nowPlaying.title) ? nowPlaying : null;
+        const signature = JSON.stringify(next ? {
+          title: String(next.title || ''),
+          artist: String(next.artist || ''),
+          artworkUrl: String(next.artworkUrl || ''),
+        } : null);
+        if (signature === currentTrackSignature) return;
+        currentTrackSignature = signature;
+        currentTrack = next;
         localNowPlaying = currentTrack;
         updateSelectedTrackHint();
         paintDJs(discoveredPeers);
-        updatePlayerDetails();
       }
       reactionBar.addEventListener('click', async (e) => {
         const btn = e.target && e.target.closest && e.target.closest('button[data-react]');
@@ -2919,9 +3015,16 @@
           .filter(item => relayVideosAvailable() || item.type === 'image')
           .sort((a, b) => b.ts - a.ts)
           .slice(0, 12);
-        albumStrip.innerHTML = items.length
-          ? items.map(albumMediaHTML).join('')
-          : '<div class="albumempty">No photos yet.</div>';
+        const signature = JSON.stringify({
+          mode: connectionMode,
+          wall: featureOn('wallMode'),
+          items,
+        });
+        renderIfChanged(albumStrip, signature, () => {
+          albumStrip.innerHTML = items.length
+            ? items.map(albumMediaHTML).join('')
+            : '<div class="albumempty">No photos yet.</div>';
+        });
       }
       function updateAlbumPost(p){
         for (const key of [...albumItems.keys()]) {
@@ -3308,10 +3411,19 @@
           if (r.status === 404) return false; // no event store
           if (!r.ok) return false;
           const data = await r.json();
+          const nextHostName = data.host ? String(data.host) : guestHostName;
+          const nextAvatar = String(data.avatar || localDJAvatar || '');
+          const nextBio = String(data.bio || localDJBio || '');
+          const profileChanged = nextHostName !== guestHostName ||
+            nextAvatar !== localDJAvatar || nextBio !== localDJBio;
+          guestHostName = nextHostName;
+          localDJAvatar = nextAvatar;
+          localDJBio = nextBio;
           const featureChanged = setFeatures(data.features || {});
           renderDJLinks(data.links || []);
           updateReactionUI(data.reactions || {});
           renderTrackID(data.nowPlaying || null, data.recentTracks || []);
+          if (profileChanged) paintDJs(discoveredPeers);
           if (featureChanged && feedOn) {
             newestAct = 0; nodes.clear(); expanded.clear(); albumItems.clear(); feedList.innerHTML = '';
           }
@@ -3325,15 +3437,12 @@
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
           setEventCover(data.cover || '/covers/hero.jpg');
           if (data.host) {
-            const hl = $id('hostedLine'); hl.textContent = 'hosted by ' + data.host; hl.hidden = false;
-            guestHostName = data.host;
+            const hl = $id('hostedLine'); setText(hl, 'hosted by ' + data.host); hl.hidden = false;
           } else {
             $id('hostedLine').hidden = true;
           }
-          localDJAvatar = String(data.avatar || localDJAvatar || '');
-          localDJBio = String(data.bio || localDJBio || '');
           const st = $id('startsLine');
-          st.hidden = !data.starts; if (data.starts) st.textContent = data.starts;
+          st.hidden = !data.starts; if (data.starts) setText(st, data.starts);
           maybeWelcome(data);
           if (!featureOn('wallMode')) return true;
           // Prune what the server no longer returns: DJ-removed posts and,
