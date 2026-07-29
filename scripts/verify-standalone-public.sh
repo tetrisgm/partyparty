@@ -42,9 +42,15 @@ if grep -q '"standaloneBuild"' "$TMP/version.json"; then
 fi
 
 query="release=$VERSION-$BUILD-$(date +%s)"
-curl -fsS --retry 5 --retry-all-errors --retry-delay 3 \
+# Same patience as the convergence loop above. These used to give up after about
+# fifteen seconds while the loop above them allowed sixty, so a Worker deploy that
+# had reached the edge answering the HEAD check but not yet the edge answering
+# this GET failed the whole ship on a release that was in fact fine. A byte
+# comparison is the right gate; a stricter deadline than the readiness check that
+# precedes it is not.
+curl -fsS --retry 12 --retry-all-errors --retry-delay 5 \
   "https://partyparty.party/downloads/partyparty-$VERSION-$BUILD.zip?$query" -o "$TMP/immutable.zip"
-curl -fsS --retry 5 --retry-all-errors --retry-delay 3 \
+curl -fsS --retry 12 --retry-all-errors --retry-delay 5 \
   "https://partyparty.party/partyparty-beta.zip?$query" -o "$TMP/stable.zip"
 cmp "$ZIP" "$TMP/immutable.zip"
 cmp "$ZIP" "$TMP/stable.zip"

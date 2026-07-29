@@ -1,10 +1,11 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var APP_VERSION = "125.2";
+var APP_VERSION = "125.3";
 var APP_VERSION_DATE = "2026-07-29";
 var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
 var STANDALONE_FILES = {
+  "/downloads/partyparty-125.3-219.zip": { key: "standalone/partyparty-125.3-219.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.3-219.zip" },
   "/downloads/partyparty-125.2-216.zip": { key: "standalone/partyparty-125.2-216.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.2-216.zip" },
   "/downloads/partyparty-125.1-218.zip": { key: "standalone/partyparty-125.1-218.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.1-218.zip" },
   "/downloads/partyparty-125.0-217.zip": { key: "standalone/partyparty-125.0-217.zip", type: "application/zip", cache: "public, max-age=31536000, immutable", download: "partyparty-125.0-217.zip" },
@@ -590,12 +591,26 @@ async function probe(){
   }catch(_){return false}finally{clearTimeout(timer)}
 }
 async function report(reachable){
-  await fetch('/__pp/probe',{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-    body:JSON.stringify({reachable}),
-    cache:'no-store'
-  });
+  // keepalive, because this page navigates away immediately after calling this
+  // and an ordinary fetch is cancelled when it does. That dropped the verdict in
+  // exactly the case where it succeeded: a reachable guest reported, redirected
+  // to the Mac, and the report died with the page. Guests connected fine and the
+  // DJ console sat on "Scan the QR code once to finish the check" forever,
+  // because the scan that would finish it could never be delivered.
+  const body=JSON.stringify({reachable});
+  try{
+    await fetch('/__pp/probe',{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body,
+      cache:'no-store',
+      keepalive:true
+    });
+  }catch(_){
+    if(navigator.sendBeacon){
+      navigator.sendBeacon('/__pp/probe',new Blob([body],{type:'application/json'}));
+    }
+  }
 }
 // The guest's own probe IS the decision. It just proved whether this phone can
 // reach the Mac, which is the only question that matters, so waiting for the Mac
