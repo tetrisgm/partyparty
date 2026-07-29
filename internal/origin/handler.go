@@ -50,6 +50,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case strings.HasPrefix(rest, "__pp/plane/"):
+		h.planePublish(w, r, room, strings.TrimPrefix(rest, "__pp/plane/"))
+	case rest == "__pp/drain":
+		h.planeDrain(w, r, room)
 	case r.Method == http.MethodPut:
 		h.upload(w, r, room, rest)
 	case strings.HasPrefix(rest, "api/"):
@@ -125,6 +129,60 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, token, name str
 	}
 	noStore(w.Header())
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// planePublish accepts a room-state snapshot from the Mac. Guests then read it
+// from memory here, which is what keeps read cost flat as a room grows: 500
+// listeners polling status cost the Mac one publish, not 500 requests.
+func (h *Handler) planePublish(w http.ResponseWriter, r *http.Request, token, kind string) {
+	if !h.authorized(r, token) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodPut {
+		w.Header().Set("Allow", "PUT")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxUploadBytes+1))
+	if err != nil {
+		http.Error(w, "read failed", http.StatusBadRequest)
+		return
+	}
+	room, _ := h.store.Room(token, true)
+	delay, _ := parseFloat(r.URL.Query().Get("delaySec"))
+	if !room.Plane().Publish(kind, body, delay) {
+		http.Error(w, "bad snapshot", http.StatusBadRequest)
+		return
+	}
+	noStore(w.Header())
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// planeDrain hands the Mac one digest in place of every individual heartbeat and
+// write. This is the exchange that makes 500 listeners cost the Mac the same as
+// 5: its inbound rate is set by how often it drains, not by attendance.
+func (h *Handler) planeDrain(w http.ResponseWriter, r *http.Request, token string) {
+	if !h.authorized(r, token) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	room, ok := h.store.Room(token, false)
+	if !ok {
+		// Nothing published yet is not an error; it is an empty room.
+		noStore(w.Header())
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"listeners":0}`))
+		return
+	}
+	noStore(w.Header())
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(room.Plane().Drain())
 }
 
 func (h *Handler) authorized(r *http.Request, token string) bool {
