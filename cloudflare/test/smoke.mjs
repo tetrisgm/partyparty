@@ -81,7 +81,7 @@ test("bounded JSON parsing remains strict", async () => {
 test("landing, legal pages, version, and signed standalone release files are served", async () => {
   const env = baseEnv();
   await env.DL.put("standalone/partyparty-beta.zip", new Uint8Array([80, 75, 3, 4]));
-  await env.DL.put("standalone/partyparty-124.12-214.zip", new Uint8Array([80, 75, 3, 4]));
+  await env.DL.put("standalone/partyparty-124.13-215.zip", new Uint8Array([80, 75, 3, 4]));
   await env.DL.put("standalone/appcast.xml", "<rss/>");
   assert.equal(await (await worker.fetch(new Request("https://partyparty.party/"), env)).text(), "landing");
   for (const path of ["/privacy", "/support"]) {
@@ -102,7 +102,7 @@ test("landing, legal pages, version, and signed standalone release files are ser
   assert.equal(betaHead.status, 200);
   assert.equal(betaHead.headers.get("content-length"), "4");
   assert.equal((await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env)).status, 200);
-  const immutable = await worker.fetch(new Request("https://partyparty.party/downloads/partyparty-124.12-214.zip"), env);
+  const immutable = await worker.fetch(new Request("https://partyparty.party/downloads/partyparty-124.13-215.zip"), env);
   assert.equal(immutable.headers.get("cache-control"), "public, max-age=31536000, immutable");
   for (const path of ["/private-beta/partyparty-123.88.zip", "/partyparty.pkg", "/partyparty.zip", "/content/manifest.json", "/content/state.json"]) {
     assert.equal((await worker.fetch(new Request(`https://partyparty.party${path}`), env)).status, 404, path);
