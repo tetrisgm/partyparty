@@ -1,6 +1,6 @@
-// Package contribute pushes this Mac's already-encoded live audio to a remote
-// origin, so guests on a client-isolated network fetch from that origin instead
-// of reaching back through a tunnel to this laptop.
+// Package contribute pushes this Mac's live audio to a remote origin, so guests
+// on a client-isolated network fetch from that origin instead of reaching back
+// through a tunnel to this laptop.
 //
 // This is the ordinary shape for live streaming: contribution, then origin, then
 // fan-out. The Mac sends ONE copy out, about 0.32 Mbps, whether five people or
@@ -9,106 +9,144 @@
 // laptop in the request path of every listener and could not scale past a few
 // dozen no matter what was paid for it.
 //
-// Three constraints shape the whole package:
+// # WHAT IS PUSHED, AND WHY IT MATTERS
 //
-//  1. The audio is NEVER re-encoded. ffmpeg runs with "-c copy", so the exact
-//     AAC bytes this Mac produced are what listeners receive. Re-encoding would
-//     add delay, cost quality, and break the promise that direct and relayed
-//     guests hear the same stream.
-//  2. internal/broadcast is off-limits, so this reads the stream that package
-//     already publishes on loopback rather than adding a leg to its ffmpeg tee.
-//     Capture and encode are untouched; this is a second reader of a stream that
-//     already exists.
-//  3. The capture timestamp must survive, and this is the open item.
+// This forwards the Mac's OWN LL-HLS playlists and media files, byte for byte.
+// It does not hand the origin a stream to re-package.
 //
-// On (3): contribution currently pushes RTSP, which means the origin
-// re-packages and stamps PROGRAM-DATE-TIME at its OWN ingest. That breaks the
-// one-timeline contract in the worst possible way, because direct and relayed
-// guests each look correct alone and only disagree when compared, so it does not
-// show up in single-mode testing.
+// That is the difference between the room's schedule working and failing
+// invisibly. Every chunk carries the wall-clock time it was captured, as
+// PROGRAM-DATE-TIME, and the sync contract is that a chunk stamped T plays at
+// T + D. An origin that re-packaged (the RTSP shape) would stamp its OWN ingest
+// time, so direct and relayed guests would each look perfectly correct alone and
+// disagree only when compared. That is the worst class of bug: invisible in
+// single-mode testing, obvious to a room full of people. Forwarding the playlist
+// unchanged makes the stamp survive by construction rather than by hoping the
+// origin propagates absolute time.
 //
-// The decided fix is to forward this Mac's own LL-HLS playlists and parts over
-// plain HTTP instead, PROGRAM-DATE-TIME included, so the capture stamp survives
-// by construction rather than by hoping the origin propagates absolute time. It
-// also removes the origin's need for a raw TCP port, which is what lets it deploy
-// anywhere rather than on a VPS someone administers.
+// It also means the audio is never re-encoded, because there is no encoder here
+// at all, and that the origin needs nothing but HTTP, which lets it sit behind an
+// ordinary reverse proxy alongside other services instead of demanding a raw TCP
+// port of its own.
 //
-// Until that lands, this package is correct about everything except which bytes
-// it hands the origin, and RELAY must not be cut over to it.
+// internal/broadcast stays untouched: this reads the LL-HLS output that package
+// already produces rather than adding a leg to its ffmpeg tee.
+//
+// # THE ORIGIN
+//
+// Because this forwards finished LL-HLS, the origin does not need MediaMTX, an
+// encoder, or a raw TCP port. It needs to accept authenticated PUTs, serve the
+// same bytes back to guests, hold a blocking playlist request until the
+// requested part exists, and drop everything when the party ends. That is a
+// small HTTP service, which is why it can sit behind an ordinary reverse proxy
+// next to other services rather than demanding a box of its own.
 package contribute
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
-	"os/exec"
+	"io"
+	"net/http"
+	"net/url"
+	"path"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
 const (
-	// restartDelay bounds how fast a failing contribution retries. The origin
-	// being briefly unreachable is normal (venue uplink hiccup, origin restart),
-	// so this reconnects steadily without hammering.
-	restartDelay = 2 * time.Second
+	// pollInterval is how often the local playlist is re-read. Loopback requests
+	// are effectively free, and polling well inside the part duration keeps the
+	// added latency to a fraction of a part rather than a whole one.
+	pollInterval = 50 * time.Millisecond
 
-	// startupGrace is how long a run must survive before its failure counter is
-	// forgiven. A process that dies instantly is misconfigured; one that ran for
-	// a while and then dropped hit a network problem, which is not the same thing.
-	startupGrace = 30 * time.Second
+	// retryDelay bounds retry after a failed cycle. A briefly unreachable origin
+	// is normal, so this reconnects steadily without hammering.
+	retryDelay = 2 * time.Second
+
+	// maxMediaBytes bounds one media file. A 500ms AAC segment is tens of KB;
+	// this is a sanity ceiling, not a tuning knob.
+	maxMediaBytes = 8 << 20
+
+	maxPlaylistBytes = 1 << 20
+
+	// uploadTimeout stops a stalled origin from wedging the push loop forever.
+	uploadTimeout = 10 * time.Second
 )
 
 // Status is what the console needs to say honestly whether relayed guests are
-// actually being served.
+// being served.
 type Status struct {
-	// Running is true while a contribution process is alive. It does NOT by
-	// itself prove guests can hear anything; it proves this Mac is sending.
+	// Running is true while contribution is pushing successfully. It does NOT
+	// prove guests can hear anything; it proves this Mac is sending.
 	Running bool `json:"running"`
 	// Target is the origin being pushed to, without credentials.
 	Target string `json:"target,omitempty"`
-	// LastError is why the most recent attempt ended, empty when healthy.
+	// LastError is why the most recent cycle failed, empty when healthy.
 	LastError string `json:"lastError,omitempty"`
-	// Restarts counts consecutive failed attempts, reset once a run survives
-	// startupGrace. A climbing number is the signal that something is actually
-	// wrong rather than flapping.
-	Restarts int `json:"restarts"`
+	// Failures counts consecutive failed cycles. A climbing number means
+	// something is actually wrong rather than flapping.
+	Failures int `json:"failures"`
+	// Pushed counts media files uploaded this session.
+	Pushed int `json:"pushed"`
 }
 
 // Config describes one contribution.
 type Config struct {
-	// FFmpeg is the absolute path to the bundled binary. Never resolved from
-	// PATH: a headless launch has no useful PATH and must not pick up a stranger's
-	// ffmpeg.
-	FFmpeg string
-	// Source is the loopback RTSP URL internal/broadcast already publishes to.
-	Source string
-	// Target is the remote origin's RTSP ingest URL.
-	Target string
-	Logf   func(format string, args ...any)
+	// SourceURL is this Mac's local LL-HLS media playlist, on loopback.
+	SourceURL string
+	// TargetBase is the origin's upload base; media and playlists are PUT under it.
+	TargetBase string
+	// Token authenticates this Mac to the origin. Only this Mac may publish to its
+	// room; guests never need any credential to listen.
+	Token string
+	Logf  func(format string, args ...any)
 }
 
-// Manager supervises one contribution process for as long as it is enabled.
+// Manager supervises contribution for as long as it is enabled.
 type Manager struct {
-	cfg Config
+	cfg    Config
+	client *http.Client
 
 	mu      sync.RWMutex
 	status  Status
 	enabled bool
 	wake    chan struct{}
+
+	// sent tracks media already uploaded so each file is pushed exactly once.
+	// Pruned against the live playlist every cycle, so a long set cannot grow it
+	// without bound.
+	sent map[string]bool
 }
 
 func New(cfg Config) *Manager {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {}
 	}
-	return &Manager{cfg: cfg, wake: make(chan struct{}, 1)}
+	return &Manager{
+		cfg:  cfg,
+		wake: make(chan struct{}, 1),
+		sent: make(map[string]bool),
+		client: &http.Client{
+			Timeout: uploadTimeout,
+			Transport: &http.Transport{
+				// Local MediaMTX serves the same hot-swapped cert on loopback.
+				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+				MaxIdleConns:        16,
+				MaxIdleConnsPerHost: 16,
+				IdleConnTimeout:     90 * time.Second,
+				DisableCompression:  true, // media is already compressed; playlists are tiny
+			},
+		},
+	}
 }
 
-// SetEnabled turns contribution on or off. It is driven by the room mode: only
-// RELAY needs it, and pushing a copy of the stream to the internet in any other
-// mode would waste the DJ's uplink for nothing.
+// SetEnabled turns contribution on or off. Driven by the room mode: only RELAY
+// needs it, and pushing a copy of the stream to the internet in any other mode
+// would waste the DJ's uplink for nothing.
 func (m *Manager) SetEnabled(on bool) {
 	m.mu.Lock()
 	if m.enabled == on {
@@ -118,6 +156,7 @@ func (m *Manager) SetEnabled(on bool) {
 	m.enabled = on
 	if !on {
 		m.status.Running = false
+		m.sent = make(map[string]bool) // a fresh session re-pushes what the origin needs
 	}
 	m.mu.Unlock()
 	m.signal()
@@ -143,52 +182,54 @@ func (m *Manager) isEnabled() bool {
 	return m.enabled
 }
 
-// Run supervises contribution until ctx is cancelled.
+// Run pushes until ctx is cancelled.
 func (m *Manager) Run(ctx context.Context) {
 	for {
-		if err := ctx.Err(); err != nil {
+		if ctx.Err() != nil {
 			return
 		}
 		if !m.isEnabled() {
-			if !m.waitForChange(ctx, time.Minute) {
+			if !m.wait(ctx, time.Second) {
 				return
 			}
 			continue
 		}
 
-		startedAt := time.Now()
-		err := m.runOnce(ctx)
+		err := m.cycle(ctx)
 		if ctx.Err() != nil {
 			return
 		}
 
 		m.mu.Lock()
-		m.status.Running = false
-		if time.Since(startedAt) >= startupGrace {
-			// This run worked for a while; a drop after that is a network event,
-			// not a broken configuration.
-			m.status.Restarts = 0
-		} else {
-			m.status.Restarts++
-		}
 		if err != nil {
+			m.status.Running = false
+			m.status.Failures++
 			m.status.LastError = err.Error()
+		} else {
+			m.status.Running = true
+			m.status.Failures = 0
+			m.status.LastError = ""
+			m.status.Target = redact(m.cfg.TargetBase)
 		}
-		restarts := m.status.Restarts
+		failures := m.status.Failures
 		m.mu.Unlock()
 
+		delay := pollInterval
 		if err != nil {
-			m.cfg.Logf("contribute: push ended (attempt %d): %v", restarts, err)
+			delay = retryDelay
+			// Log the first failure and then rarely: a venue uplink that is down
+			// for a minute must not write hundreds of identical lines.
+			if failures == 1 || failures%30 == 0 {
+				m.cfg.Logf("contribute: push failing (%d in a row): %v", failures, err)
+			}
 		}
-		if !m.waitForChange(ctx, restartDelay) {
+		if !m.wait(ctx, delay) {
 			return
 		}
 	}
 }
 
-// waitForChange sleeps until the deadline, an enable/disable, or shutdown.
-// Reports false only when the context is done.
-func (m *Manager) waitForChange(ctx context.Context, d time.Duration) bool {
+func (m *Manager) wait(ctx context.Context, d time.Duration) bool {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
@@ -201,86 +242,242 @@ func (m *Manager) waitForChange(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-func (m *Manager) runOnce(ctx context.Context) error {
-	args, err := m.cfg.args()
+// cycle reads the local playlist, uploads anything new it references, then
+// uploads the playlist itself.
+//
+// The order is load-bearing: media BEFORE the playlist that names it. A guest
+// that fetched a playlist referencing a part the origin did not have yet would
+// get a 404 mid-stream, which native players treat as fatal rather than as
+// something to retry.
+func (m *Manager) cycle(ctx context.Context) error {
+	playlist, err := m.fetch(ctx, m.cfg.SourceURL, maxPlaylistBytes)
+	if err != nil {
+		return fmt.Errorf("read local playlist: %w", err)
+	}
+
+	names := mediaNames(playlist)
+	if len(names) == 0 {
+		return errors.New("local playlist references no media yet")
+	}
+
+	for _, name := range names {
+		m.mu.RLock()
+		already := m.sent[name]
+		m.mu.RUnlock()
+		if already {
+			continue
+		}
+		body, err := m.fetch(ctx, m.resolveSource(name), maxMediaBytes)
+		if err != nil {
+			// A part can vanish between being listed and being fetched at the tail
+			// of a live window. That is normal; skip it rather than failing the
+			// whole cycle and stalling every other part behind it.
+			continue
+		}
+		if err := m.upload(ctx, name, body, "video/mp4"); err != nil {
+			return fmt.Errorf("upload %s: %w", name, err)
+		}
+		m.mu.Lock()
+		m.sent[name] = true
+		m.status.Pushed++
+		m.mu.Unlock()
+	}
+
+	// Forward the playlist EXACTLY as produced. This is what carries
+	// PROGRAM-DATE-TIME, and therefore the room's schedule, to relayed guests.
+	if err := m.upload(ctx, playlistName(m.cfg.SourceURL), playlist, "application/vnd.apple.mpegurl"); err != nil {
+		return fmt.Errorf("upload playlist: %w", err)
+	}
+
+	m.pruneSent(names)
+	return nil
+}
+
+// pruneSent drops tracking for media the playlist no longer references.
+func (m *Manager) pruneSent(names []string) {
+	live := make(map[string]bool, len(names))
+	for _, n := range names {
+		live[n] = true
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for name := range m.sent {
+		if !live[name] {
+			delete(m.sent, name)
+		}
+	}
+}
+
+func (m *Manager) fetch(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, limit))
+}
+
+func (m *Manager) upload(ctx context.Context, name string, body []byte, contentType string) error {
+	target, err := joinURL(m.cfg.TargetBase, name)
 	if err != nil {
 		return err
 	}
-
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	cmd := exec.CommandContext(runCtx, m.cfg.FFmpeg, args...)
-	// Closed stdin, always. A spawned process that inherits an open stdin can sit
-	// forever waiting on input that never arrives, which is the single most
-	// common way background work silently wedges.
-	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = &tailWriter{limit: 2048}
-	// Own the process group so cancelling kills ffmpeg's children too, rather
-	// than orphaning them.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start: %w", err)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, target, bytes.NewReader(body))
+	if err != nil {
+		return err
 	}
-
-	m.mu.Lock()
-	m.status.Running = true
-	m.status.Target = redact(m.cfg.Target)
-	m.status.LastError = ""
-	m.mu.Unlock()
-	m.cfg.Logf("contribute: pushing the live stream to %s", redact(m.cfg.Target))
-
-	waitErr := cmd.Wait()
-
-	// Stop the whole process group; ffmpeg can leave a child behind on a hard
-	// failure and a stray encoder holding the source would block the next run.
-	if cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	req.Header.Set("Content-Type", contentType)
+	if m.cfg.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+m.cfg.Token)
 	}
-
-	if ctx.Err() != nil {
-		return nil // deliberate shutdown, not a failure
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return err
 	}
-	if waitErr != nil {
-		if tail, ok := cmd.Stderr.(*tailWriter); ok && tail.String() != "" {
-			return fmt.Errorf("%w: %s", waitErr, tail.String())
-		}
-		return waitErr
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("status %d", resp.StatusCode)
 	}
-	return errors.New("contribution ended unexpectedly")
+	return nil
 }
 
-// args builds the ffmpeg invocation. The shape matters more than it looks:
+func (m *Manager) resolveSource(name string) string {
+	if resolved, err := joinURL(baseOf(m.cfg.SourceURL), name); err == nil {
+		return resolved
+	}
+	return name
+}
+
+// mediaNames returns every media URI the playlist references, in order.
 //
-//	-c copy       the AAC bytes are forwarded untouched. No re-encode, ever.
-//	-rtsp_transport tcp   venue networks routinely drop UDP; TCP just works.
-//	-fflags +nobuffer / -flags +low_delay   do not add buffering on a live path.
-//	-muxdelay 0 -muxpreload 0   no startup hold in the muxer.
-func (c Config) args() ([]string, error) {
-	if strings.TrimSpace(c.FFmpeg) == "" {
-		return nil, errors.New("no ffmpeg path")
+// It parses generically rather than assuming the muxer's file naming: any
+// non-comment line is a URI, and EXT-X-MAP, EXT-X-PART, and EXT-X-PRELOAD-HINT
+// carry theirs in a URI attribute. That keeps this correct if MediaMTX's naming
+// changes.
+func mediaNames(playlist []byte) []string {
+	var names []string
+	seen := make(map[string]bool)
+	add := func(raw string) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || strings.Contains(raw, "://") || seen[raw] {
+			return
+		}
+		seen[raw] = true
+		names = append(names, raw)
 	}
-	if strings.TrimSpace(c.Source) == "" {
-		return nil, errors.New("no source URL")
+	for _, line := range strings.Split(string(playlist), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			add(line) // a full segment
+			continue
+		}
+		// EXT-X-MAP is the initialization segment. Missing it is not a degraded
+		// stream, it is an undecodable one, so it must be forwarded like any
+		// other media file.
+		if strings.HasPrefix(line, "#EXT-X-MAP:") ||
+			strings.HasPrefix(line, "#EXT-X-PART:") ||
+			strings.HasPrefix(line, "#EXT-X-PRELOAD-HINT:") {
+			if uri, ok := attrValue(line, "URI"); ok {
+				add(uri)
+			}
+		}
 	}
-	if strings.TrimSpace(c.Target) == "" {
-		return nil, errors.New("no target URL")
+	return names
+}
+
+// attrValue pulls a quoted attribute out of an EXT tag.
+func attrValue(line, want string) (string, bool) {
+	colon := strings.Index(line, ":")
+	if colon < 0 {
+		return "", false
 	}
-	return []string{
-		"-hide_banner", "-loglevel", "error", "-nostdin",
-		"-fflags", "+nobuffer", "-flags", "+low_delay",
-		"-rtsp_transport", "tcp",
-		"-i", c.Source,
-		"-c", "copy",
-		"-muxdelay", "0", "-muxpreload", "0",
-		"-rtsp_transport", "tcp",
-		"-f", "rtsp", c.Target,
-	}, nil
+	for _, attr := range splitAttrs(line[colon+1:]) {
+		name, value, ok := strings.Cut(attr, "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(name), want) {
+			continue
+		}
+		return strings.Trim(strings.TrimSpace(value), `"`), true
+	}
+	return "", false
+}
+
+// splitAttrs splits on commas outside quotes, because a URI can contain a comma.
+func splitAttrs(s string) []string {
+	var out []string
+	var cur strings.Builder
+	inQuotes := false
+	for _, r := range s {
+		switch {
+		case r == '"':
+			inQuotes = !inQuotes
+			cur.WriteRune(r)
+		case r == ',' && !inQuotes:
+			out = append(out, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+func baseOf(rawURL string) string {
+	if i := strings.LastIndex(rawURL, "/"); i >= 0 {
+		return rawURL[:i+1]
+	}
+	return rawURL
+}
+
+func playlistName(sourceURL string) string {
+	parsed, err := url.Parse(sourceURL)
+	if err != nil || parsed.Path == "" {
+		return "stream.m3u8"
+	}
+	if name := path.Base(parsed.Path); name != "." && name != "/" {
+		return name
+	}
+	return "stream.m3u8"
+}
+
+// joinURL appends one path element to a base, refusing anything that would
+// escape it. A media name comes out of a playlist, so it is data, and data must
+// never be able to aim an upload somewhere else.
+func joinURL(base, name string) (string, error) {
+	if strings.Contains(name, "://") || strings.Contains(name, "..") || strings.HasPrefix(name, "/") {
+		return "", fmt.Errorf("unsafe media name %q", name)
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	rel, err := url.Parse(name)
+	if err != nil {
+		return "", err
+	}
+	if rel.IsAbs() || rel.Host != "" {
+		return "", fmt.Errorf("unsafe media name %q", name)
+	}
+	if !strings.HasSuffix(parsed.Path, "/") {
+		parsed.Path += "/"
+	}
+	return parsed.ResolveReference(rel).String(), nil
 }
 
 // redact strips any userinfo from a URL before it reaches a log or the console.
-// Contribution credentials must never be printed.
 func redact(raw string) string {
 	at := strings.LastIndex(raw, "@")
 	if at < 0 {
@@ -291,28 +488,4 @@ func redact(raw string) string {
 		scheme = raw[:i+3]
 	}
 	return scheme + "***@" + raw[at+1:]
-}
-
-// tailWriter keeps only the last bytes written, so a failing ffmpeg's final
-// complaint is reportable without letting an unbounded log grow in memory.
-type tailWriter struct {
-	mu    sync.Mutex
-	limit int
-	buf   []byte
-}
-
-func (w *tailWriter) Write(p []byte) (int, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.buf = append(w.buf, p...)
-	if len(w.buf) > w.limit {
-		w.buf = w.buf[len(w.buf)-w.limit:]
-	}
-	return len(p), nil
-}
-
-func (w *tailWriter) String() string {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return strings.TrimSpace(string(w.buf))
 }
