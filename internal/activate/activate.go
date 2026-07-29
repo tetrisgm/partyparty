@@ -80,15 +80,26 @@ type Logf func(format string, args ...any)
 // venue Wi-Fi.
 type RelayRegistration struct {
 	JoinURL    string `json:"joinUrl"`
-	ConnectURL string `json:"connectUrl"`
 	NetworkKey string `json:"networkKey"`
+
+	// RelayURL and PublishToken are this install's own relay room and the
+	// credential that proves it owns it. Minted by the broker so every install
+	// gets its own, rather than a hand-placed pair that only scales to one Mac.
+	RelayURL     string `json:"relayUrl"`
+	PublishToken string `json:"publishToken"`
+	Room         string `json:"room"`
+
+	// Probe carries a guest's reachability verdict when one was reported since
+	// the last poll. There is no socket for the browser to push it over any more,
+	// so it rides the registration response instead. nil means nothing new.
+	Probe *bool `json:"probe"`
 }
 
 // RegisterRelay ensures this install has a stable, unguessable public join
 // address. The broker combines the venue's public address with the Mac's LAN
 // subnet into an opaque network key so the app can remember a proven direct or
 // isolated verdict without storing Wi-Fi names.
-func RegisterRelay(ctx context.Context, brokerURL, lanIP string, logf Logf) (RelayRegistration, error) {
+func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL string, logf Logf) (RelayRegistration, error) {
 	parsedLANIP := net.ParseIP(strings.TrimSpace(lanIP))
 	if parsedLANIP == nil || parsedLANIP.To4() == nil || parsedLANIP.IsLoopback() || parsedLANIP.IsLinkLocalUnicast() {
 		return RelayRegistration{}, errors.New("no LAN IP yet")
@@ -106,15 +117,12 @@ func RegisterRelay(ctx context.Context, brokerURL, lanIP string, logf Logf) (Rel
 	}
 	var out RelayRegistration
 	if err := b.post(ctx, "/api/broker/relay/register", map[string]any{
-		"id": b.id, "secret": b.secret, "lanIp": lanIP,
+		"id": b.id, "secret": b.secret, "lanIp": lanIP, "directUrl": directURL,
 	}, &out); err != nil {
 		return RelayRegistration{}, err
 	}
 	join, joinErr := url.Parse(out.JoinURL)
-	connect, connectErr := url.Parse(out.ConnectURL)
-	if joinErr != nil || connectErr != nil ||
-		join.Scheme != "https" || join.Host == "" ||
-		connect.Scheme != "wss" || connect.Host == "" ||
+	if joinErr != nil || join.Scheme != "https" || join.Host == "" ||
 		out.NetworkKey == "" {
 		return RelayRegistration{}, errors.New("relay registration: malformed response")
 	}

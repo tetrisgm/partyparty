@@ -83,10 +83,9 @@ func TestRelayPathEndToEnd(t *testing.T) {
 	defer originSrv.Close()
 
 	pusher := contribute.New(contribute.Config{
-		SourceURL:  macSrv.URL + "/party/stream.m3u8",
-		TargetBase: originSrv.URL + "/r/room1/",
-		Token:      "publish-secret",
-		Logf:       func(string, ...any) {},
+		SourceURL: macSrv.URL + "/party/stream.m3u8",
+		Target:    func() (string, string) { return originSrv.URL + "/r/room1/", "publish-secret" },
+		Logf:      func(string, ...any) {},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

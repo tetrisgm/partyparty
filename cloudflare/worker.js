@@ -472,23 +472,51 @@ async function broker(request, env, pathname) {
     if (!tokenCreated && !await env.DL.head(`broker/relay/${rec.relayToken}`)) {
       await env.DL.put(`broker/relay/${rec.relayToken}`, id);
     }
+    // Each install gets its own publish credential, minted once and reused, so a
+    // Mac can only ever publish to its own room. Hand-placed credentials do not
+    // scale past one install and are what this replaces.
+    if (!rec.relayPublishToken || !/^[a-f0-9]{48}$/.test(rec.relayPublishToken)) {
+      rec.relayPublishToken = randomHex(24);
+      await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+    }
+    // The bootstrap is stateless, so it reads the Mac's direct URL from here
+    // rather than from a live socket the Mac used to hold open.
+    if (typeof body.directUrl === "string" && body.directUrl !== rec.directUrl) {
+      rec.directUrl = body.directUrl.slice(0, 300);
+      await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+    }
+
     const publicIP = request.headers.get("cf-connecting-ip") || "";
     const networkKey = await sha256Hex(`network-v1:${publicIP}:${subnet}`);
     const host = relayHost(env, rec.relayToken);
+
+    // A guest's verdict, if one has been reported since the last poll. This is
+    // how the Mac learns whether the venue isolates devices now that there is no
+    // socket to push it over.
+    let probe = null;
+    const probeKey = `broker/relay-probe/${rec.relayToken}`;
+    const stored = await env.DL.get(probeKey);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(await stored.text());
+        if (typeof parsed.reachable === "boolean") probe = parsed.reachable;
+      } catch (e) {}
+      await env.DL.delete(probeKey); // consumed once, so a stale verdict cannot linger
+    }
+
     return jsonResp(200, {
       joinUrl: `https://${host}/`,
-      connectUrl: `wss://${env.BROKER_BASE}/api/broker/relay/connect/${rec.relayToken}`,
+      relayUrl: relayOriginFor(env, rec.relayToken),
+      publishToken: rec.relayPublishToken,
+      room: rec.relayToken,
       networkKey,
+      probe,
     });
   }
   return jsonResp(404, { error: "unknown broker endpoint" });
 }
 
 const RELAY_TOKEN_RE = /^[a-f0-9]{32}$/;
-const RELAY_BINARY_ID_BYTES = 36;
-const RELAY_CHUNK_BYTES = 64 * 1024;
-const RELAY_RESPONSE_WINDOW_BYTES = 512 * 1024;
-const RELAY_RESPONSE_TIMEOUT_MS = 45 * 1000;
 const RELAY_PHOTO_BYTES_PER_SECOND = 256 * 1024;
 const RELAY_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 
@@ -522,6 +550,7 @@ async function relayTokenExists(env, token) {
 
 function relayBootstrap(state) {
   const directURL = JSON.stringify(String(state.directUrl || ""));
+  const relayURL = JSON.stringify(String(state.relayUrl || ""));
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -541,14 +570,10 @@ button{margin-top:22px;border:0;border-radius:999px;padding:12px 20px;background
 <body><main><div class="spinner" aria-hidden="true"></div><h1>Checking this Wi-Fi</h1><p id="detail">Finding the fastest connection to the DJ.</p><button id="retry" hidden>Try Again</button></main>
 <script>
 const directURL=${directURL};
+const relayURL=${relayURL};
 const detail=document.getElementById('detail');
 const retry=document.getElementById('retry');
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
-async function state(){
-  const response=await fetch('/__pp/state',{cache:'no-store'});
-  if(!response.ok)throw new Error('state');
-  return response.json();
-}
 async function probe(){
   if(!directURL)return false;
   const controller=new AbortController();
@@ -569,25 +594,26 @@ async function report(reachable){
     cache:'no-store'
   });
 }
-async function waitForDecision(){
-  for(let attempt=0;attempt<30;attempt++){
-    const current=await state();
-    if(current.mode==='relay'){location.reload();return}
-    if(current.mode==='direct'&&current.directUrl){location.replace(current.directUrl);return}
-    await sleep(300);
-  }
-  throw new Error('decision');
-}
+// The guest's own probe IS the decision. It just proved whether this phone can
+// reach the Mac, which is the only question that matters, so waiting for the Mac
+// to agree would add a round trip and a way to get stuck.
+//
+// The report still goes out because the Mac needs the verdict to set the room's
+// mode and cache it for this network, but nothing here waits on it.
 async function run(){
   retry.hidden=true;
   detail.textContent='Finding the fastest connection to the DJ.';
-  try{
-    await report(await probe());
-    await waitForDecision();
-  }catch(_){
-    detail.textContent='The DJ connection is still being prepared.';
-    retry.hidden=false;
+  const reachable=await probe();
+  report(reachable).catch(function(){});
+  if(reachable&&directURL){location.replace(directURL);return}
+  if(relayURL){
+    // Isolated Wi-Fi: the relay origin serves this room directly. Guests fetch
+    // audio and the room API from there, never back through this page.
+    location.replace(relayURL+'/');
+    return;
   }
+  detail.textContent='This Wi-Fi will not let guests reach the DJ, and there is no internet connection to fall back on.';
+  retry.hidden=false;
 }
 retry.addEventListener('click',run);
 run();
@@ -688,341 +714,51 @@ function waitMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class RelayRoom {
-  constructor(ctx, env) {
-    this.ctx = ctx;
-    this.env = env;
-    this.pending = new Map();
-    this.roomState = {
-      mode: "checking",
-      directUrl: "",
-      networkKey: "",
-      version: "",
-      updatedAt: 0,
-    };
-    ctx.blockConcurrencyWhile(async () => {
-      const stored = await ctx.storage.get("roomState");
-      if (stored && typeof stored === "object") this.roomState = stored;
-    });
-  }
 
-  async fetch(request) {
-    const url = new URL(request.url);
-    if (url.pathname === "/connect") return this.connect(request);
-    if (url.pathname === "/probe") return this.probe(request);
-    if (url.pathname === "/state") return jsonResp(200, {
-      mode: this.roomState.mode,
-      directUrl: this.roomState.directUrl,
-      online: !!this.origin(),
-    }, { "cache-control": "no-store" });
-    if (url.pathname.startsWith("/room")) {
-      const publicPath = url.pathname.slice(5) || "/";
-      const path = publicPath + url.search;
-      if (this.roomState.mode !== "relay") {
-        if (publicPath !== "/") {
-          return new Response("The room connection changed. Reload the page.", {
-            status: 409,
-            headers: { "cache-control": "no-store" },
-          });
-        }
-        return new Response(relayBootstrap(this.roomState), {
-          headers: {
-            "content-type": "text/html; charset=utf-8",
-            "cache-control": "no-store",
-            "content-security-policy": "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' https:",
-          },
-        });
-      }
-      if (relayMediaUnavailable(request, publicPath)) return relayMediaUnavailableResponse();
-      if (relayPhotoTooLarge(request, publicPath)) {
-        return jsonResp(413, {
-          error: "This photo is too large for internet relay mode. Choose a photo under 20 MB.",
-          code: "relay_photo_too_large",
-        }, { "cache-control": "no-store" });
-      }
-      return this.proxy(request, path);
-    }
-    return new Response("Not Found", { status: 404 });
-  }
-
-  connect(request) {
-    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-      return new Response("Expected WebSocket", { status: 426 });
-    }
-    for (const socket of this.ctx.getWebSockets("origin")) {
-      try { socket.close(1012, "Mac reconnected"); } catch (_) {}
-    }
-    const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
-    this.ctx.acceptWebSocket(server, ["origin"]);
-    server.serializeAttachment({ role: "origin" });
-    return new Response(null, { status: 101, webSocket: client });
-  }
-
-  origin() {
-    return this.ctx.getWebSockets("origin").find((socket) => socket.readyState === 1) || null;
-  }
-
-  async probe(request) {
-    if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
-    const body = await readJson(request, 1024);
-    if (!body || typeof body.reachable !== "boolean") return jsonResp(400, { error: "bad probe" });
-    const origin = this.origin();
-    if (!origin) return jsonResp(503, { error: "Mac unavailable" });
-    if (this.roomState.mode !== "relay") {
-      origin.send(JSON.stringify({
-        type: "probe",
-        reachable: body.reachable,
-        networkKey: this.roomState.networkKey,
-      }));
-    }
-    return jsonResp(202, { ok: true, mode: this.roomState.mode }, { "cache-control": "no-store" });
-  }
-
-  async proxy(request, path) {
-    const origin = this.origin();
-    if (!origin) {
-      if (request.method === "GET" && path === "/") {
-        return new Response(relayOfflinePage(), {
-          status: 503,
-          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
-        });
-      }
-      return jsonResp(503, { error: "DJ Mac unavailable" }, { "cache-control": "no-store", "retry-after": "2" });
-    }
-
-    const id = crypto.randomUUID();
-    const hasBody = request.body !== null && !["GET", "HEAD"].includes(request.method);
-    let settle;
-    const responsePromise = new Promise((resolve, reject) => {
-      settle = { resolve, reject };
-    });
-    const timer = setTimeout(() => {
-      const pending = this.pending.get(id);
-      if (!pending) return;
-      this.pending.delete(id);
-      if (pending.controller) pending.controller.error(new Error("Mac response timed out"));
-      pending.reject(new Error("Mac response timed out"));
-      try { origin.send(JSON.stringify({ type: "request_cancel", id })); } catch (_) {}
-    }, hasBody ? 5 * 60 * 1000 : RELAY_RESPONSE_TIMEOUT_MS);
-    this.pending.set(id, {
-      ...settle,
-      timer,
-      controller: null,
-      started: false,
-      responseUnacked: 0,
-    });
-
-    origin.send(JSON.stringify({
-      type: "request",
-      id,
-      method: request.method,
-      path,
-      host: request.headers.get("x-pp-public-host") || "",
-      clientIp: request.headers.get("x-pp-client-ip") || "",
-      headers: relayHeadersForMac(request),
-      hasBody,
-    }));
-    const photoUpload = relayImageUpload(request, new URL(path, "https://relay.internal").pathname);
-    if (hasBody) this.pumpRequestBody(origin, id, request.body, photoUpload).catch((error) => this.failPending(id, error));
-
-    try {
-      return await responsePromise;
-    } catch (_) {
-      return jsonResp(502, { error: "The DJ Mac did not answer" }, {
-        "cache-control": "no-store",
-        "retry-after": "1",
-      });
-    }
-  }
-
-  async pumpRequestBody(origin, id, body, lowPriority) {
-    const reader = body.getReader();
-    const startedAt = Date.now();
-    let transferred = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
-        for (let offset = 0; offset < bytes.byteLength; offset += RELAY_CHUNK_BYTES) {
-          while (origin.bufferedAmount > 1024 * 1024) await waitMs(5);
-          const chunk = bytes.slice(offset, offset + RELAY_CHUNK_BYTES);
-          transferred += chunk.byteLength;
-          if (lowPriority && transferred > RELAY_PHOTO_MAX_BYTES) {
-            throw new Error("relay photo exceeds size limit");
-          }
-          origin.send(relayBinaryFrame(id, chunk));
-          if (lowPriority) {
-            const targetElapsed = transferred * 1000 / RELAY_PHOTO_BYTES_PER_SECOND;
-            const remaining = targetElapsed - (Date.now() - startedAt);
-            if (remaining > 0) await waitMs(remaining);
-          }
-        }
-      }
-      origin.send(JSON.stringify({ type: "request_end", id }));
-    } catch (error) {
-      try { origin.send(JSON.stringify({ type: "request_cancel", id })); } catch (_) {}
-      throw error;
-    }
-  }
-
-  failPending(id, error) {
-    const pending = this.pending.get(id);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    this.pending.delete(id);
-    if (pending.controller) pending.controller.error(error);
-    pending.reject(error);
-  }
-
-  async webSocketMessage(socket, message) {
-    if (typeof message !== "string") {
-      const parts = relayBinaryParts(message);
-      if (!parts) return;
-      const pending = this.pending.get(parts.id);
-      if (pending?.controller) {
-        pending.controller.enqueue(parts.body);
-        pending.responseUnacked += parts.body.byteLength;
-        if (pending.responseUnacked >= RELAY_RESPONSE_WINDOW_BYTES) {
-          const acknowledged = pending.responseUnacked;
-          pending.responseUnacked = 0;
-          socket.send(JSON.stringify({
-            type: "response_ack",
-            id: parts.id,
-            bytes: acknowledged,
-          }));
-        }
-      }
-      return;
-    }
-    let body;
-    try { body = JSON.parse(message); } catch (_) { return; }
-    if (body.type === "state") {
-      const mode = ["checking", "direct", "relay"].includes(body.mode) ? body.mode : "checking";
-      this.roomState = {
-        mode,
-        directUrl: /^https:\/\/[^/]+(?::\d+)?\/$/.test(String(body.directUrl || "")) ? body.directUrl : "",
-        networkKey: String(body.networkKey || "").slice(0, 128),
-        version: String(body.version || "").slice(0, 32),
-        updatedAt: Date.now(),
-      };
-      await this.ctx.storage.put("roomState", this.roomState);
-      socket.send(JSON.stringify({
-        type: "state_ack",
-        mode: this.roomState.mode,
-        networkKey: this.roomState.networkKey,
-      }));
-      return;
-    }
-    const id = String(body.id || "");
-    const pending = this.pending.get(id);
-    if (!pending) return;
-    if (body.type === "response") {
-      if (pending.started) return;
-      pending.started = true;
-      clearTimeout(pending.timer);
-      let controller;
-      const stream = new ReadableStream({
-        start(value) { controller = value; },
-        cancel: () => {
-          try { socket.send(JSON.stringify({ type: "request_cancel", id })); } catch (_) {}
-        },
-      });
-      pending.controller = controller;
-      const status = Number(body.status);
-      pending.resolve(new Response(stream, {
-        status: status >= 100 && status <= 599 ? status : 502,
-        headers: headersFromRelay(body.headers),
-      }));
-      return;
-    }
-    if (body.type === "response_end") {
-      clearTimeout(pending.timer);
-      this.pending.delete(id);
-      if (pending.controller) pending.controller.close();
-      else pending.reject(new Error("Mac response ended before headers"));
-      return;
-    }
-    if (body.type === "response_error") {
-      this.failPending(id, new Error(String(body.error || "Mac response failed")));
-    }
-  }
-
-  webSocketClose(socket) {
-    const attachment = socket.deserializeAttachment();
-    if (attachment?.role !== "origin") return;
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      if (pending.controller) pending.controller.error(new Error("Mac disconnected"));
-      pending.reject(new Error("Mac disconnected"));
-      this.pending.delete(id);
-    }
-  }
-}
-
-async function relayConnect(request, env, token) {
-  if (!RELAY_TOKEN_RE.test(token)) return new Response("Not Found", { status: 404 });
-  const id = request.headers.get("x-partyparty-install") || "";
-  const secret = request.headers.get("x-partyparty-secret") || "";
-  const rec = await authInstall(env, id, secret);
-  if (!rec || rec.relayToken !== token) return new Response("Forbidden", { status: 403 });
-  const stub = env.RELAY_ROOMS.getByName(token);
-  const headers = new Headers(request.headers);
-  headers.delete("x-partyparty-install");
-  headers.delete("x-partyparty-secret");
-  return stub.fetch(new Request("https://relay.internal/connect", { method: "GET", headers }));
-}
-
-function relayCacheablePath(pathname) {
-  return /^\/live\/.+\.(?:aac|m4s|mp4|ts)$/i.test(pathname) ||
-    /^\/media\/.+\.(?:jpe?g|png|gif|heic|heif|webp)$/i.test(pathname);
-}
-
-async function relayPublicRequest(request, env, ctx, token) {
+// The r-<token> hostname now serves ONE thing: the bootstrap page a guest lands
+// on after scanning the QR. It classifies the network and hands off. Media and
+// the room API never touch a Worker; they go straight to the relay origin, which
+// is why this file no longer contains a proxy or a Durable Object.
+async function relayBootstrapRequest(request, env, token) {
   if (!await relayTokenExists(env, token)) return new Response("Not Found", { status: 404 });
   const url = new URL(request.url);
-  if (relayMediaUnavailable(request, url.pathname)) return relayMediaUnavailableResponse();
-  if (relayPhotoTooLarge(request, url.pathname)) {
-    return jsonResp(413, {
-      error: "This photo is too large for internet relay mode. Choose a photo under 20 MB.",
-      code: "relay_photo_too_large",
-    }, { "cache-control": "no-store" });
-  }
-  const cacheable = request.method === "GET" &&
-    !request.headers.has("range") &&
-    relayCacheablePath(url.pathname);
-  const edgeCache = typeof caches !== "undefined" ? caches.default : null;
-  if (cacheable && edgeCache) {
-    const hit = await edgeCache.match(request);
-    if (hit) return hit;
+
+  // The guest's verdict, reported once per join. Low frequency by construction:
+  // one request per phone, never per part.
+  if (url.pathname === "/__pp/probe" && request.method === "POST") {
+    let reachable = false;
+    try { reachable = !!(await request.json()).reachable; } catch (e) {}
+    await env.DL.put(`broker/relay-probe/${token}`, JSON.stringify({
+      reachable, at: Date.now(),
+    }));
+    return jsonResp(200, { ok: true }, { "cache-control": "no-store" });
   }
 
-  const stub = env.RELAY_ROOMS.getByName(token);
-  let internalPath;
-  if (url.pathname === "/__pp/probe") internalPath = "/probe";
-  else if (url.pathname === "/__pp/state") internalPath = "/state";
-  else internalPath = "/room" + url.pathname;
-  const internalURL = new URL("https://relay.internal" + internalPath);
-  internalURL.search = url.search;
-  const headers = new Headers(request.headers);
-  headers.set("x-pp-public-host", url.host);
-  headers.set("x-pp-client-ip", request.headers.get("cf-connecting-ip") || "");
-  headers.delete("x-partyparty-install");
-  headers.delete("x-partyparty-secret");
-  const init = { method: request.method, headers, redirect: "manual" };
-  if (request.body && !["GET", "HEAD"].includes(request.method)) {
-    init.body = request.body;
-    init.duplex = "half";
+  const record = await relayRoomRecord(env, token);
+  return new Response(relayBootstrap(record), {
+    headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+// relayRoomRecord is what the bootstrap needs to decide where to send a guest:
+// the Mac's direct URL, written at registration, and this room's relay origin.
+async function relayRoomRecord(env, token) {
+  const relayUrl = relayOriginFor(env, token);
+  const pointer = await env.DL.get(`broker/relay/${token}`);
+  if (!pointer) return { directUrl: "", relayUrl };
+  try {
+    const id = (await pointer.text()).trim();
+    const raw = await env.DL.get(`broker/${id}.json`);
+    if (!raw) return { directUrl: "", relayUrl };
+    const rec = JSON.parse(await raw.text());
+    return { directUrl: String(rec.directUrl || ""), relayUrl };
+  } catch (e) {
+    return { directUrl: "", relayUrl };
   }
-  let response = await stub.fetch(new Request(internalURL, init));
-  if (cacheable && edgeCache && response.status === 200) {
-    const cacheHeaders = new Headers(response.headers);
-    cacheHeaders.set("cache-control", "public, max-age=60");
-    response = new Response(response.body, { status: response.status, headers: cacheHeaders });
-    ctx.waitUntil(edgeCache.put(request, response.clone()));
-  }
-  return response;
+}
+
+function relayOriginFor(env, token) {
+  return `https://${token}.relay.${env.BROKER_BASE}`;
 }
 
 var worker_default = {
@@ -1031,11 +767,7 @@ var worker_default = {
     const { pathname } = url;
     const relayToken = relayTokenFromHost(url.hostname, env);
     if (relayToken) {
-      return relayPublicRequest(request, env, ctx, relayToken);
-    }
-    const relayConnectMatch = pathname.match(/^\/api\/broker\/relay\/connect\/([a-f0-9]{32})$/);
-    if (relayConnectMatch) {
-      return relayConnect(request, env, relayConnectMatch[1]);
+      return relayBootstrapRequest(request, env, relayToken);
     }
     const standaloneFile = STANDALONE_FILES[pathname];
     if (standaloneFile) {

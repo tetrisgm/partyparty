@@ -24,10 +24,9 @@ func planeRig(t *testing.T) (*Manager, *origin.Store, func()) {
 		Tokens: func(string) (string, bool) { return "secret", true },
 	}, store))
 	m := New(Config{
-		SourceURL:  srv.URL + "/unused/stream.m3u8",
-		TargetBase: srv.URL + "/r/room1/",
-		Token:      "secret",
-		Logf:       func(string, ...any) {},
+		SourceURL: srv.URL + "/unused/stream.m3u8",
+		Target:    func() (string, string) { return srv.URL + "/r/room1/", "secret" },
+		Logf:      func(string, ...any) {},
 	})
 	m.SetEnabled(true)
 	return m, store, srv.Close
@@ -148,7 +147,7 @@ func TestPlaneIsSilentWhenNotRelaying(t *testing.T) {
 	}, store))
 	defer srv.Close()
 
-	m := New(Config{TargetBase: srv.URL + "/r/room1/", Token: "secret"})
+	m := New(Config{Target: func() (string, string) { return srv.URL + "/r/room1/", "secret" }})
 	// Deliberately NOT enabled.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

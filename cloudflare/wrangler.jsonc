@@ -18,17 +18,12 @@
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],
 
-  "durable_objects": {
-    "bindings": [
-      { "name": "RELAY_ROOMS", "class_name": "RelayRoom" }
-    ]
-  },
-
+  // The relay Durable Object is gone: guest media and the room API go straight to
+  // the relay origin, never through a Worker. The delete migration retires the
+  // class so its storage is released.
   "migrations": [
-    {
-      "tag": "relay-v1",
-      "new_sqlite_classes": ["RelayRoom"]
-    }
+    { "tag": "relay-v1", "new_sqlite_classes": ["RelayRoom"] },
+    { "tag": "relay-v2-remove-do", "deleted_classes": ["RelayRoom"] }
   ],
 
   // Cert broker (the Plex pattern): anonymous installs get memorable hostnames under

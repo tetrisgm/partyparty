@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,8 @@ import (
 // status cost one publish rather than 500 requests, and 500 heartbeats arrive as
 // a single digest. The Mac's inbound rate is set by how often it drains, not by
 // how many people came.
+
+var errNoOrigin = errors.New("no relay origin yet")
 
 const (
 	// planeInterval is one publish-and-drain cycle. Guests poll status every few
@@ -113,7 +116,11 @@ func (m *Manager) planeCycle(ctx context.Context, hooks PlaneHooks) {
 }
 
 func (m *Manager) publishSnapshot(ctx context.Context, kind string, body json.RawMessage, delaySec float64) error {
-	target, err := joinURL(m.cfg.TargetBase, "__pp/plane/"+kind)
+	base, token := m.cfg.target()
+	if base == "" {
+		return errNoOrigin
+	}
+	target, err := joinURL(base, "__pp/plane/"+kind)
 	if err != nil {
 		return err
 	}
@@ -125,8 +132,8 @@ func (m *Manager) publishSnapshot(ctx context.Context, kind string, body json.Ra
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if m.cfg.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+m.cfg.Token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -142,7 +149,11 @@ func (m *Manager) publishSnapshot(ctx context.Context, kind string, body json.Ra
 
 func (m *Manager) drain(ctx context.Context) (digest, error) {
 	var out digest
-	target, err := joinURL(m.cfg.TargetBase, "__pp/drain")
+	base, token := m.cfg.target()
+	if base == "" {
+		return out, errNoOrigin
+	}
+	target, err := joinURL(base, "__pp/drain")
 	if err != nil {
 		return out, err
 	}
@@ -150,8 +161,8 @@ func (m *Manager) drain(ctx context.Context) (digest, error) {
 	if err != nil {
 		return out, err
 	}
-	if m.cfg.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+m.cfg.Token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := m.client.Do(req)
 	if err != nil {

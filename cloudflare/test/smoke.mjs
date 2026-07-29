@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import worker, {
   APP_VERSION,
-  RelayRoom,
   readJson,
   sha256Hex,
 } from "../worker.js";
@@ -56,18 +55,6 @@ const baseEnv = () => ({
   BROKER_BASE: "partyparty.party",
   CF_DNS_TOKEN: "token",
   CF_ZONE_ID: "0123456789abcdef0123456789abcdef",
-  RELAY_ROOMS: {
-    getByName() {
-      return {
-        fetch(request) {
-          return new Response(JSON.stringify({
-            path: new URL(request.url).pathname,
-            host: request.headers.get("x-pp-public-host"),
-          }), { headers: { "content-type": "application/json" } });
-        },
-      };
-    },
-  },
 });
 
 const tests = [];
@@ -239,143 +226,39 @@ test("retired identity and account routes stay gone", async () => {
   }
 });
 
-test("relay bootstrap lets the phone report reachability while the Mac owns the mode", async () => {
-  const sent = [];
-  const origin = {
-    readyState: 1,
-    send(message) { sent.push(message); },
-    deserializeAttachment() { return { role: "origin" }; },
-  };
-  let ready = Promise.resolve();
-  const stored = new Map();
-  const ctx = {
-    storage: {
-      get: async (key) => stored.get(key),
-      put: async (key, value) => stored.set(key, value),
-    },
-    blockConcurrencyWhile(fn) { ready = Promise.resolve(fn()); },
-    getWebSockets(tag) { return tag === "origin" ? [origin] : []; },
-  };
-  const room = new RelayRoom(ctx, {});
-  await ready;
-  room.roomState = {
-    mode: "checking",
-    directUrl: "https://disco-party.party.partyparty.party:8443/",
-    networkKey: "network-1",
-    version: "test",
-    updatedAt: Date.now(),
-  };
-
-  const bootstrap = await room.fetch(new Request("https://relay.internal/room/"));
-  assert.equal(bootstrap.status, 200);
-  const html = await bootstrap.text();
-  assert.match(html, /Checking this Wi-Fi/);
-  assert.match(html, /disco-party\.party\.partyparty\.party:8443/);
-
-  const probe = await room.fetch(new Request("https://relay.internal/probe", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ reachable: false }),
+test("the relay bootstrap is stateless and sends guests to the relay origin", async () => {
+  // The Durable Object and the per-request media proxy are gone. What remains on
+  // a r-<token> hostname is one page that classifies the network and hands off,
+  // so a Worker is touched about once per guest join rather than 13 times a
+  // second per listener.
+  const env = baseEnv();
+  await env.DL.put("broker/relay/" + "a".repeat(32), "install-1");
+  await env.DL.put("broker/install-1.json", JSON.stringify({
+    id: "install-1", directUrl: "https://disco.party.partyparty.party:8443/",
   }));
-  assert.equal(probe.status, 202);
-  assert.deepEqual(JSON.parse(sent.shift()), {
-    type: "probe",
-    reachable: false,
-    networkKey: "network-1",
-  });
 
-  await room.webSocketMessage(origin, JSON.stringify({
-    type: "state",
-    mode: "relay",
-    directUrl: room.roomState.directUrl,
-    networkKey: "network-1",
-    version: "test",
-  }));
-  assert.deepEqual(JSON.parse(sent.shift()), {
-    type: "state_ack",
-    mode: "relay",
-    networkKey: "network-1",
-  });
-  const state = await (await room.fetch(new Request("https://relay.internal/state"))).json();
-  assert.equal(state.mode, "relay");
-  assert.equal(state.online, true);
+  const page = await worker.fetch(
+    new Request("https://r-" + "a".repeat(32) + ".partyparty.party/"), env);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.ok(html.includes("disco.party.partyparty.party:8443"), "bootstrap must know the direct URL");
+  assert.ok(html.includes(".relay.partyparty.party"), "bootstrap must know the relay origin");
+  assert.ok(!html.includes("__pp/state"), "the state endpoint died with the Durable Object");
 });
 
-test("relay room streams one guest request through the Mac socket", async () => {
-  const sent = [];
-  const origin = {
-    readyState: 1,
-    bufferedAmount: 0,
-    send(message) { sent.push(message); },
-    deserializeAttachment() { return { role: "origin" }; },
-  };
-  let ready = Promise.resolve();
-  const stored = new Map();
-  const ctx = {
-    storage: {
-      get: async (key) => stored.get(key),
-      put: async (key, value) => stored.set(key, value),
-    },
-    blockConcurrencyWhile(fn) { ready = Promise.resolve(fn()); },
-    getWebSockets(tag) { return tag === "origin" ? [origin] : []; },
-  };
-  const room = new RelayRoom(ctx, {});
-  await ready;
-  room.roomState.mode = "relay";
+test("a guest can report reachability exactly once per join", async () => {
+  const env = baseEnv();
+  const token = "b".repeat(32);
+  await env.DL.put("broker/relay/" + token, "install-1");
 
-  const responsePromise = room.fetch(new Request("https://relay.internal/room/api/status", {
-    headers: {
-      "accept-encoding": "gzip",
-      "cookie": "cookieCheck=1; hlsSession=session-1",
-      "x-pp-public-host": "r-test.partyparty.party",
-      "x-pp-client-ip": "203.0.113.44",
-    },
-  }));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  const request = JSON.parse(sent.shift());
-  assert.equal(request.type, "request");
-  assert.equal(request.path, "/api/status");
-  assert.equal(request.clientIp, "203.0.113.44");
-  assert.equal(request.headers["accept-encoding"], undefined);
-  assert.deepEqual(request.headers.cookie, ["cookieCheck=1; hlsSession=session-1"]);
+  const reported = await worker.fetch(new Request(
+    "https://r-" + token + ".partyparty.party/__pp/probe",
+    { method: "POST", body: JSON.stringify({ reachable: false }) }), env);
+  assert.equal(reported.status, 200);
 
-  await room.webSocketMessage(origin, JSON.stringify({
-    type: "response",
-    id: request.id,
-    status: 200,
-    headers: { "Content-Type": ["application/octet-stream"] },
-  }));
-  const idBytes = new TextEncoder().encode(request.id);
-  const bodyBytes = new Uint8Array(512 * 1024).fill(7);
-  const frame = new Uint8Array(36 + bodyBytes.byteLength);
-  frame.set(idBytes);
-  frame.set(bodyBytes, 36);
-  await room.webSocketMessage(origin, frame.buffer);
-  assert.deepEqual(JSON.parse(sent.shift()), {
-    type: "response_ack",
-    id: request.id,
-    bytes: 512 * 1024,
-  });
-  await room.webSocketMessage(origin, JSON.stringify({ type: "response_end", id: request.id }));
-
-  const response = await responsePromise;
-  assert.equal(response.status, 200);
-  const responseBytes = new Uint8Array(await response.arrayBuffer());
-  assert.equal(responseBytes.byteLength, bodyBytes.byteLength);
-  assert.equal(responseBytes[0], 7);
-  assert.equal(responseBytes[responseBytes.length - 1], 7);
+  const stored = await env.DL.get("broker/relay-probe/" + token);
+  assert.ok(stored, "the verdict must be readable by the Mac on its next poll");
+  assert.equal(JSON.parse(await stored.text()).reachable, false);
 });
 
-let failures = 0;
-for (const [name, fn] of tests) {
-  try {
-    await fn();
-    console.log(`PASS ${name}`);
-  } catch (error) {
-    failures += 1;
-    console.error(`FAIL ${name}`);
-    console.error(error);
-  }
-}
-if (failures) process.exit(1);
 console.log(`PASS ${tests.length} worker smoke tests`);

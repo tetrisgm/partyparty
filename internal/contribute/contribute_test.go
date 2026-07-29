@@ -129,8 +129,8 @@ func TestPlaylistIsForwardedByteForByte(t *testing.T) {
 	defer originSrv.Close()
 
 	m := New(Config{
-		SourceURL:  local.URL + "/party/stream.m3u8",
-		TargetBase: originSrv.URL + "/room/",
+		SourceURL: local.URL + "/party/stream.m3u8",
+		Target:    func() (string, string) { return originSrv.URL + "/room/", "" },
 	})
 	if err := runOneCycle(t, m); err != nil {
 		t.Fatal(err)
@@ -159,7 +159,7 @@ func TestMediaUploadsBeforeThePlaylistThatNamesIt(t *testing.T) {
 	originSrv := httptest.NewServer(origin.handler())
 	defer originSrv.Close()
 
-	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", TargetBase: originSrv.URL + "/room/"})
+	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
 	if err := runOneCycle(t, m); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestEachMediaFileUploadsOnce(t *testing.T) {
 	originSrv := httptest.NewServer(origin.handler())
 	defer originSrv.Close()
 
-	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", TargetBase: originSrv.URL + "/room/"})
+	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
 	for i := 0; i < 4; i++ {
 		if err := runOneCycle(t, m); err != nil {
 			t.Fatal(err)
@@ -229,9 +229,8 @@ func TestPublishCredentialIsSent(t *testing.T) {
 	defer originSrv.Close()
 
 	m := New(Config{
-		SourceURL:  local.URL + "/party/stream.m3u8",
-		TargetBase: originSrv.URL + "/room/",
-		Token:      "room-token",
+		SourceURL: local.URL + "/party/stream.m3u8",
+		Target:    func() (string, string) { return originSrv.URL + "/room/", "room-token" },
 	})
 	if err := runOneCycle(t, m); err != nil {
 		t.Fatal(err)
@@ -290,7 +289,7 @@ func TestDisabledContributionNeverPushes(t *testing.T) {
 	originSrv := httptest.NewServer(origin.handler())
 	defer originSrv.Close()
 
-	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", TargetBase: originSrv.URL + "/room/"})
+	m := New(Config{SourceURL: local.URL + "/party/stream.m3u8", Target: func() (string, string) { return originSrv.URL + "/room/", "" }})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go m.Run(ctx)
@@ -315,9 +314,9 @@ func TestFailingOriginIsReportedAndRetried(t *testing.T) {
 	defer originSrv.Close()
 
 	m := New(Config{
-		SourceURL:  local.URL + "/party/stream.m3u8",
-		TargetBase: originSrv.URL + "/room/",
-		Logf:       func(string, ...any) {},
+		SourceURL: local.URL + "/party/stream.m3u8",
+		Target:    func() (string, string) { return originSrv.URL + "/room/", "" },
+		Logf:      func(string, ...any) {},
 	})
 	if err := runOneCycle(t, m); err == nil {
 		t.Fatal("a failing origin must return an error")
@@ -339,7 +338,7 @@ func TestCredentialsNeverReachTheConsole(t *testing.T) {
 // TestSentTrackingIsPruned: a long set must not grow the dedupe map without
 // bound as parts age out of the live window.
 func TestSentTrackingIsPruned(t *testing.T) {
-	m := New(Config{SourceURL: "https://x/party/stream.m3u8", TargetBase: "https://y/room/"})
+	m := New(Config{SourceURL: "https://x/party/stream.m3u8", Target: func() (string, string) { return "https://y/room/", "" }})
 	m.sent["old_part.mp4"] = true
 	m.sent["seg7.mp4"] = true
 

@@ -222,12 +222,8 @@ func main() {
 	peerID, _ := activate.InstallCreds()
 
 	var relayManager *relay.Manager
-	var relayListener net.Listener
 	var contributor *contribute.Manager
-	if listener, relayErr := net.Listen("tcp4", "127.0.0.1:0"); relayErr != nil {
-		log.Printf("relay: guest-only origin unavailable: %v", relayErr)
-	} else {
-		relayListener = listener
+	{
 		brokerURL := os.Getenv("PARTYPARTY_BROKER")
 		if brokerURL == "" {
 			brokerURL = "https://partyparty.party"
@@ -235,17 +231,23 @@ func main() {
 		// Contribution: in RELAY mode this Mac pushes its own LL-HLS to the relay
 		// origin, which then fans it out. It reads the stream MediaMTX already
 		// serves on loopback, so internal/broadcast is untouched.
-		if cfg.RelayOrigin != "" {
-			contributor = contribute.New(contribute.Config{
-				SourceURL:  fmt.Sprintf("https://127.0.0.1:%d/%s/stream.m3u8", cfg.HLSPort, cfg.StreamPath),
-				TargetBase: strings.TrimRight(cfg.RelayOrigin, "/") + "/",
-				Token:      cfg.RelayToken,
-				Logf:       log.Printf,
-			})
-		}
+		contributor = contribute.New(contribute.Config{
+			SourceURL: fmt.Sprintf("https://127.0.0.1:%d/%s/stream.m3u8", cfg.HLSPort, cfg.StreamPath),
+			// Resolved per push from the broker registration, so this install can
+			// only ever publish to its own room and needs nothing configured by hand.
+			Target: func() (string, string) {
+				if cfg.RelayOrigin != "" {
+					return cfg.RelayOrigin, cfg.RelayToken // explicit override, for testing
+				}
+				if relayManager == nil {
+					return "", ""
+				}
+				return relayManager.Relay()
+			},
+			Logf: log.Printf,
+		})
 		relayManager = relay.New(relay.Config{
 			BrokerURL: brokerURL,
-			OriginURL: "http://" + listener.Addr().String(),
 			Version:   appVersion,
 			Logf:      log.Printf,
 			OnMode: func(mode string) {
@@ -273,14 +275,7 @@ func main() {
 		Version:     appVersion,
 	})
 	relayCtx, stopRelay := context.WithCancel(context.Background())
-	var relayHTTP *http.Server
-	if relayManager != nil && relayListener != nil {
-		relayHTTP = &http.Server{Handler: handler.GuestRelayHandler()}
-		go func() {
-			if serveErr := relayHTTP.Serve(relayListener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-				log.Printf("relay: guest-only origin stopped: %v", serveErr)
-			}
-		}()
+	if relayManager != nil {
 		relayManager.Start(relayCtx)
 		if contributor != nil {
 			go contributor.Run(relayCtx)
@@ -788,9 +783,6 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if relayHTTP != nil {
-		_ = relayHTTP.Shutdown(ctx)
-	}
 	_ = httpSrv.Shutdown(ctx)
 }
 

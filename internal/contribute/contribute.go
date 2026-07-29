@@ -98,12 +98,24 @@ type Status struct {
 type Config struct {
 	// SourceURL is this Mac's local LL-HLS media playlist, on loopback.
 	SourceURL string
-	// TargetBase is the origin's upload base; media and playlists are PUT under it.
-	TargetBase string
-	// Token authenticates this Mac to the origin. Only this Mac may publish to its
-	// room; guests never need any credential to listen.
-	Token string
-	Logf  func(format string, args ...any)
+	// Target resolves this install's relay origin and publish credential. They
+	// come from the broker at registration rather than from static configuration,
+	// so every install gets its own and a Mac can only publish to its own room.
+	// Returning an empty origin disables contribution.
+	Target func() (originURL, token string)
+	Logf   func(format string, args ...any)
+}
+
+// target reads the current destination, tolerating an unset resolver.
+func (c Config) target() (string, string) {
+	if c.Target == nil {
+		return "", ""
+	}
+	origin, token := c.Target()
+	if origin == "" {
+		return "", ""
+	}
+	return strings.TrimRight(origin, "/") + "/", token
 }
 
 // Manager supervises contribution for as long as it is enabled.
@@ -209,7 +221,8 @@ func (m *Manager) Run(ctx context.Context) {
 			m.status.Running = true
 			m.status.Failures = 0
 			m.status.LastError = ""
-			m.status.Target = redact(m.cfg.TargetBase)
+			base, _ := m.cfg.target()
+			m.status.Target = redact(base)
 		}
 		failures := m.status.Failures
 		m.mu.Unlock()
@@ -325,7 +338,11 @@ func (m *Manager) fetch(ctx context.Context, rawURL string, limit int64) ([]byte
 }
 
 func (m *Manager) upload(ctx context.Context, name string, body []byte, contentType string) error {
-	target, err := joinURL(m.cfg.TargetBase, name)
+	base, token := m.cfg.target()
+	if base == "" {
+		return errors.New("no relay origin yet")
+	}
+	target, err := joinURL(base, name)
 	if err != nil {
 		return err
 	}
@@ -334,8 +351,8 @@ func (m *Manager) upload(ctx context.Context, name string, body []byte, contentT
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)
-	if m.cfg.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+m.cfg.Token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := m.client.Do(req)
 	if err != nil {

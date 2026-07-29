@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -367,64 +366,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleAPI(w, r)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
-	}
-}
-
-// GuestRelayHandler is a loopback-only origin for the outbound relay client.
-// It deliberately removes the console page and forces every request through
-// the existing non-DJ authorization path. The listener that serves this handler
-// is bound to 127.0.0.1 on an ephemeral port in main.go.
-func (s *Srv) GuestRelayHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/dj" || r.URL.Path == "/dj/" {
-			http.NotFound(w, r)
-			return
-		}
-		if r.URL.Path == "/api/upload" && !relayImageUpload(r) {
-			writeJSON(w, http.StatusConflict, map[string]any{
-				"error": "Videos are unavailable while this Wi-Fi uses internet relay mode. Photos continue at reduced priority so music stays first.",
-				"code":  "relay_video_unavailable",
-			})
-			return
-		}
-		if strings.HasPrefix(r.URL.Path, "/media/") && !relayImageMediaPath(r.URL.Path) {
-			writeJSON(w, http.StatusConflict, map[string]any{
-				"error": "Videos are unavailable while this Wi-Fi uses internet relay mode. Photos continue at reduced priority so music stays first.",
-				"code":  "relay_video_unavailable",
-			})
-			return
-		}
-		clientIP := strings.TrimSpace(r.Header.Get("X-PartyParty-Client-IP"))
-		if net.ParseIP(clientIP) == nil {
-			clientIP = "198.51.100.1"
-		}
-		r.Header.Del("X-PartyParty-Client-IP")
-		r.RemoteAddr = net.JoinHostPort(clientIP, "443")
-		s.ServeHTTP(w, r)
-	})
-}
-
-func relayImageUpload(r *http.Request) bool {
-	encodedName := strings.TrimSpace(r.Header.Get("X-PP-Name"))
-	if encodedName != "" {
-		name, err := url.QueryUnescape(encodedName)
-		return err == nil && relayImageExtension(filepath.Ext(name))
-	}
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type"))), "image/")
-}
-
-func relayImageMediaPath(path string) bool {
-	id := strings.TrimPrefix(path, "/media/")
-	id = strings.TrimPrefix(id, "thumb/")
-	return relayImageExtension(filepath.Ext(id))
-}
-
-func relayImageExtension(ext string) bool {
-	switch strings.ToLower(ext) {
-	case ".jpg", ".jpeg", ".png", ".gif", ".heic", ".heif", ".webp":
-		return true
-	default:
-		return false
 	}
 }
 
