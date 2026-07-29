@@ -49,6 +49,12 @@ if curl -fsI "https://partyparty.party/downloads/$ZIP_NAME" >/dev/null 2>&1; the
   exit 1
 fi
 
+# Exported, not merely set: build-standalone.sh stamps the bundle from its own
+# PP_VERSION and PP_BUILD, so a build number this script derived but kept to
+# itself leaves the bundle stamped with the child's fallback instead. That
+# mismatch is caught by verify-standalone.sh below, but the right place to agree
+# on the number is here, once, before anything is built.
+export PP_VERSION="$VERSION" PP_BUILD="$BUILD"
 "$ROOT/scripts/build-standalone.sh"
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"

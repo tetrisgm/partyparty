@@ -4,7 +4,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 VERSION="${PP_VERSION:-124.14}"
-BUILD="${PP_BUILD:-216}"
+# 0 marks a local build, never a release. This used to default to a real-looking
+# build number, which meant a release built without PP_BUILD was stamped with a
+# stale constant that looked entirely legitimate. Releases always pass PP_BUILD;
+# a number that cannot be delivered should look wrong immediately rather than
+# blend in.
+BUILD="${PP_BUILD:-0}"
 APP="$ROOT/build/partyparty-beta.app"
 SWIFT_BIN="$ROOT/app/.build/arm64-apple-macosx/release"
 SIGN_ID="${PP_SIGN_ID:-}"
