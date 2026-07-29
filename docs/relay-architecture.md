@@ -1,8 +1,8 @@
 # PartyParty network and sync architecture (v3)
 
-Status: design for review. Supersedes v1 and v2, which were trade studies for
-the relay data plane alone. This version is the whole shape: one timeline, one
-schedule, three transports. No implementation has started.
+Status: BUILT AND DEPLOYED, except where noted in section 9. Supersedes v1 and
+v2, which were trade studies for the relay data plane alone. This version is the
+whole shape: one timeline, one schedule, three transports.
 
 ## 1. The shape
 
@@ -455,3 +455,59 @@ and for RELAY it is that plus the extra pipeline floor of the contribution hop.
 Both are constants derived from the path, and neither responds to conditions.
 The non-negotiable constraint on Unit 2 is that the room's delay never grows
 because a listener is slow.
+
+
+## 9. Build status
+
+Units 1 and 2 are complete. Unit 3's origin is deployed and verified in
+production; its remaining work is listed below.
+
+**Shipped and verified**
+
+- The mode model: five states from one pure decision function
+  (`internal/relay/mode.go`), the resolver observation promoted to a decision
+  input, the DJ override at `/api/connection-mode`, and console and menu bar copy.
+- The schedule: the `/live` proxy authors the declared hold-back
+  (`internal/server/schedule.go`), and a regression test sweeps every broadcast
+  state, health value, bitrate, and listener count to prove the room delay never
+  moves in response to conditions.
+- Contribution (`internal/contribute`): forwards this Mac's own LL-HLS byte for
+  byte, so the capture stamp survives, with no encoder in the path at all.
+- The room plane (`internal/roomplane`): reads served from the origin, heartbeats
+  aggregated into one digest, writes queued for the Mac.
+- The origin (`internal/origin`, `cmd/pporigin`): authenticated publish,
+  credential-free guest reads, blocking playlist reloads, bounded media window,
+  idle rooms swept.
+- Mode wiring: contribution starts and stops with RELAY.
+
+**Live infrastructure**
+
+Running on the existing Oracle box in us-sanjose-1 that also serves
+chiptunes.app, at about 39 ms from the owner's Mac. Grey DNS for
+`relay.partyparty.party` and `*.relay.partyparty.party`, a wildcard certificate
+renewed by certbot and hot-reloaded without a restart, and systemd weights giving
+partyparty a roughly 25 to 1 CPU share under contention while leaving the radio
+untouched when no party is live.
+
+Verified in production: authenticated publish accepted, unauthenticated publish
+refused, guest fetch byte identical with PROGRAM-DATE-TIME intact, and a blocking
+reload genuinely held before returning a playlist rather than an error.
+
+**Remaining**
+
+1. **Broker-minted room credentials.** The room token and publish secret are
+   currently a hand-generated pair in `/etc/pporigin-rooms.json` and the Mac's
+   configuration. Each install should receive its own from
+   `/api/broker/relay/register`, which is a Worker change plus a Go change.
+   Until then, RELAY works for one configured install rather than the fleet.
+2. **The room API plane's Mac side.** The origin serves reads, aggregates beats,
+   and queues writes, but nothing yet publishes room state to it or drains the
+   queue. Relayed audio works without this; relayed status, feed, and posts do
+   not.
+3. **Guest handoff.** The bootstrap should send a relayed guest to the room's
+   origin, with the navigation guards from section 3.
+4. **Legacy removal**, gated on fleet adoption: the Worker media proxy, the
+   `RelayRoom` Durable Object, and the Mac's WebSocket session code. Deliberately
+   last so no fielded install is stranded.
+5. **Two-phone physical acceptance** per `codex/HANDOFF.md`, which is the gate
+   before any of this is trusted at a real party.
