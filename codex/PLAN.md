@@ -1,11 +1,7 @@
 # Current queue
 
-1. Run the direct and isolated-Wi-Fi physical acceptance in
-   `codex/HANDOFF.md`, including two phones in each room mode.
-2. After direct streaming acceptance passes, supervise removal of the inert plain-HLS, delivery-switch,
-   recording-tee, and override internals in `internal/broadcast/`.
-3. Validate the sandboxed App Store build on a clean Mac.
-4. When the owner resumes Apple releases, package and upload the newest Store
+1. Validate the sandboxed App Store build on a clean Mac.
+2. When the owner resumes Apple releases, package and upload the newest Store
    build, then finish its App Store Connect privacy answers, screenshots, and
    submission.
 

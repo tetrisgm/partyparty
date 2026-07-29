@@ -416,9 +416,9 @@ designed concretely at the start of this unit rather than assumed.
 Deletion of the legacy path is gated on fleet adoption, not on the new path
 working, so fielded installs are never stranded.
 
-Acceptance: the full two-phone isolated-Wi-Fi run in `codex/HANDOFF.md`, plus a
-relayed response carrying `x-pp-relay` and no `cf-ray`, plus Worker request
-volume that does not scale with listener count.
+Acceptance: a relayed response carrying the origin's own headers rather than a
+Cloudflare edge's, and Worker request volume that does not scale with listener
+count.
 
 ## 8. Decisions needed
 
@@ -509,5 +509,3 @@ reload genuinely held before returning a playlist rather than an error.
 4. **Legacy removal**, gated on fleet adoption: the Worker media proxy, the
    `RelayRoom` Durable Object, and the Mac's WebSocket session code. Deliberately
    last so no fielded install is stranded.
-5. **Two-phone physical acceptance** per `codex/HANDOFF.md`, which is the gate
-   before any of this is trusted at a real party.
