@@ -60,6 +60,13 @@ type Config struct {
 	OriginURL string
 	Version   string
 	Logf      func(format string, args ...any)
+
+	// OnMode is called whenever the room mode changes. It is how contribution
+	// learns to start and stop: only RELAY needs the Mac to push a copy of the
+	// stream to the internet, and doing it in any other mode would spend the DJ's
+	// uplink for nothing. Called without the manager's lock held, so it is safe
+	// to call back into this package.
+	OnMode func(mode string)
 }
 
 type registration struct {
@@ -89,11 +96,12 @@ type Manager struct {
 	directURL string
 
 	// Evidence behind the mode decision (see mode.go). Guarded by mu.
-	netTried   bool
-	internetOK bool
-	resolverOK bool
-	probe      *bool
-	override   string
+	netTried    bool
+	internetOK  bool
+	pendingMode string
+	resolverOK  bool
+	probe       *bool
+	override    string
 
 	regChanged   chan struct{}
 	stateChanged chan struct{}
@@ -138,6 +146,7 @@ func (m *Manager) SetDirectURL(directURL string) {
 	m.directURL = directURL
 	m.recomputeLocked()
 	m.mu.Unlock()
+	m.flushModeChange()
 	m.signal(m.stateChanged)
 }
 
@@ -155,6 +164,7 @@ func (m *Manager) SetResolverOK(ok bool) {
 	m.resolverOK = ok
 	m.recomputeLocked()
 	m.mu.Unlock()
+	m.flushModeChange()
 	m.signal(m.stateChanged)
 }
 
@@ -186,6 +196,7 @@ func (m *Manager) Override() string {
 // place mode is decided, so no code path can set a mode that the evidence does
 // not support. Caller holds mu.
 func (m *Manager) recomputeLocked() {
+	previous := m.status.Mode
 	mode, reason := decide(Evidence{
 		NetTried:      m.netTried,
 		InternetOK:    m.internetOK,
@@ -201,6 +212,23 @@ func (m *Manager) recomputeLocked() {
 	m.status.KnownNetwork = m.probe != nil
 	m.status.Message = messageFor(mode, reason)
 	m.status.JoinURL = m.joinURLLocked(mode)
+	if mode != previous && m.cfg.OnMode != nil {
+		// Deferred past the lock: an observer that touches this manager would
+		// otherwise deadlock, and that is an easy mistake for a caller to make.
+		m.pendingMode = mode
+	}
+}
+
+// flushModeChange delivers a pending mode notification. Callers invoke it after
+// releasing the lock.
+func (m *Manager) flushModeChange() {
+	m.mu.Lock()
+	mode := m.pendingMode
+	m.pendingMode = ""
+	m.mu.Unlock()
+	if mode != "" && m.cfg.OnMode != nil {
+		m.cfg.OnMode(mode)
+	}
 }
 
 // Snapshot returns a consistent copy for /api/status.
@@ -290,6 +318,7 @@ func (m *Manager) noteNetworkTransition() {
 	m.probe = nil // a new network proves nothing until a guest reports again
 	m.recomputeLocked()
 	m.mu.Unlock()
+	m.flushModeChange()
 	m.signal(m.stateChanged)
 }
 
@@ -323,6 +352,7 @@ func (m *Manager) applyRegistration(next registration) {
 	m.recomputeLocked()
 	m.mu.Unlock()
 
+	m.flushModeChange()
 	m.signal(m.stateChanged)
 	if previousConnect != next.ConnectURL {
 		m.signal(m.regChanged)
@@ -339,6 +369,7 @@ func (m *Manager) noteRegistrationFailure() {
 	m.internetOK = false
 	m.recomputeLocked()
 	m.mu.Unlock()
+	m.flushModeChange()
 	m.signal(m.stateChanged)
 }
 
@@ -380,6 +411,7 @@ func (m *Manager) applyProbe(networkKey string, reachable bool) {
 	m.mu.Unlock()
 
 	saveVerdicts(copyForSave)
+	m.flushModeChange()
 	m.cfg.Logf("relay: this network is now %s", mode)
 	m.signal(m.stateChanged)
 }
@@ -417,6 +449,7 @@ func (m *Manager) setRelayConnected(connected bool) {
 	}
 	m.status.RelayConnected = connected
 	m.mu.Unlock()
+	m.flushModeChange()
 	m.signal(m.stateChanged)
 }
 

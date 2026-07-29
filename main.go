@@ -25,6 +25,7 @@ import (
 	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
+	"partyparty/internal/contribute"
 	"partyparty/internal/diag"
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
@@ -222,6 +223,7 @@ func main() {
 
 	var relayManager *relay.Manager
 	var relayListener net.Listener
+	var contributor *contribute.Manager
 	if listener, relayErr := net.Listen("tcp4", "127.0.0.1:0"); relayErr != nil {
 		log.Printf("relay: guest-only origin unavailable: %v", relayErr)
 	} else {
@@ -230,11 +232,29 @@ func main() {
 		if brokerURL == "" {
 			brokerURL = "https://partyparty.party"
 		}
+		// Contribution: in RELAY mode this Mac pushes its own LL-HLS to the relay
+		// origin, which then fans it out. It reads the stream MediaMTX already
+		// serves on loopback, so internal/broadcast is untouched.
+		if cfg.RelayOrigin != "" {
+			contributor = contribute.New(contribute.Config{
+				SourceURL:  fmt.Sprintf("https://127.0.0.1:%d/%s/stream.m3u8", cfg.HLSPort, cfg.StreamPath),
+				TargetBase: strings.TrimRight(cfg.RelayOrigin, "/") + "/",
+				Token:      cfg.RelayToken,
+				Logf:       log.Printf,
+			})
+		}
 		relayManager = relay.New(relay.Config{
 			BrokerURL: brokerURL,
 			OriginURL: "http://" + listener.Addr().String(),
 			Version:   appVersion,
 			Logf:      log.Printf,
+			OnMode: func(mode string) {
+				// Only RELAY needs a copy of the stream on the internet. Pushing in
+				// LOCAL or DIRECT would spend the DJ's uplink for nothing.
+				if contributor != nil {
+					contributor.SetEnabled(mode == relay.ModeRelay)
+				}
+			},
 		})
 	}
 
@@ -262,6 +282,9 @@ func main() {
 			}
 		}()
 		relayManager.Start(relayCtx)
+		if contributor != nil {
+			go contributor.Run(relayCtx)
+		}
 	}
 	startPeerDiscovery := func(host string) {
 		if host == "" || (peerDirectory != nil && peerHost == host) {

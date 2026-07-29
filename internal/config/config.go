@@ -29,6 +29,13 @@ type Config struct {
 	RTSPPort    int
 	HLSPort     int
 	StreamPath  string
+
+	// RelayOrigin and RelayToken configure contribution in RELAY mode: where this
+	// Mac pushes its LL-HLS, and the credential proving it owns that room. Empty
+	// RelayOrigin disables contribution entirely, which is the safe default,
+	// because pushing to an origin that does not exist would fail quietly.
+	RelayOrigin string
+	RelayToken  string
 	Domain      string // public hostname for the cert/URL; "" = broker activation
 	CertFile    string // real cert (fullchain); "" = self-signed
 	KeyFile     string
@@ -54,6 +61,8 @@ func Parse() Config {
 	flag.IntVar(&c.RTSPPort, "rtsp-port", envInt("PARTYPARTY_RTSP_PORT", 8554), "MediaMTX RTSP ingest port")
 	flag.IntVar(&c.HLSPort, "hls-port", envInt("PARTYPARTY_HLS_PORT", 8888), "MediaMTX LL-HLS (HTTPS) port")
 	flag.StringVar(&c.StreamPath, "stream-path", env("PARTYPARTY_STREAM_PATH", "party"), "MediaMTX stream path name")
+	flag.StringVar(&c.RelayOrigin, "relay-origin", env("PARTYPARTY_RELAY_ORIGIN", ""), "relay origin base URL for this room, e.g. https://<room>.relay.partyparty.party (empty disables contribution)")
+	flag.StringVar(&c.RelayToken, "relay-token", env("PARTYPARTY_RELAY_TOKEN", ""), "publish credential for the relay origin")
 	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty uses broker activation")
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")

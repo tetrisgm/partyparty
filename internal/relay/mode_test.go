@@ -1,6 +1,9 @@
 package relay
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func boolPtr(v bool) *bool { return &v }
 
@@ -172,5 +175,73 @@ func TestValidOverride(t *testing.T) {
 		if validOverride(bad) {
 			t.Fatalf("%q should not be a valid override", bad)
 		}
+	}
+}
+
+// TestModeObserverFiresOnlyOnChange is what drives contribution. Getting this
+// wrong is expensive in both directions: a missed RELAY notification means
+// relayed guests hear nothing, and a spurious one in LOCAL or DIRECT spends the
+// DJ's uplink pushing a copy of the stream nobody will fetch.
+func TestModeObserverFiresOnlyOnChange(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var seen []string
+	m := New(Config{OnMode: func(mode string) { seen = append(seen, mode) }})
+
+	// Startup: a secure link appears, but nothing is decided yet.
+	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
+	if len(seen) != 0 {
+		t.Fatalf("mode fired before anything was decided: %v", seen)
+	}
+
+	// Internet is reachable and a guest reports isolation: this room relays.
+	m.mu.Lock()
+	m.reg = registration{RelayRegistration: activateRegistration(
+		"https://r-room.partyparty.party/", "wss://partyparty.party/connect", "net-1")}
+	m.netTried, m.internetOK, m.resolverOK = true, true, true
+	m.mu.Unlock()
+	m.applyProbe("net-1", false)
+
+	// A repeated identical probe must not re-fire; contribution is already on.
+	m.applyProbe("net-1", false)
+
+	// The venue turns out to be fine after all.
+	m.applyProbe("net-1", true)
+
+	want := []string{ModeRelay, ModeDirect}
+	if len(seen) != len(want) {
+		t.Fatalf("observer saw %v, want %v", seen, want)
+	}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("observer saw %v, want %v", seen, want)
+		}
+	}
+}
+
+// TestModeObserverMayCallBackIntoTheManager: an observer that reads status is
+// the obvious thing a caller writes, and it must not deadlock.
+func TestModeObserverMayCallBackIntoTheManager(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	done := make(chan string, 4)
+	var m *Manager
+	m = New(Config{OnMode: func(mode string) {
+		done <- m.Snapshot().Mode // re-enters the manager's lock
+	}})
+
+	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
+	m.mu.Lock()
+	m.netTried, m.internetOK, m.resolverOK = true, false, true
+	m.mu.Unlock()
+	m.noteRegistrationFailure()
+
+	select {
+	case got := <-done:
+		if got != ModeLocal {
+			t.Fatalf("observer saw %q, want %q", got, ModeLocal)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("observer deadlocked calling back into the manager")
 	}
 }
