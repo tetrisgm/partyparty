@@ -499,17 +499,10 @@ func (m *Manager) runSession(ctx context.Context, reg registration) error {
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s := &session{
-		manager: m,
-		conn:    conn,
-		ctx:     sessionCtx,
-		client: &http.Client{Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			MaxIdleConns:          64,
-			MaxIdleConnsPerHost:   64,
-			IdleConnTimeout:       90 * time.Second,
-			DisableCompression:    true,
-			ResponseHeaderTimeout: 40 * time.Second,
-		}},
+		manager:  m,
+		conn:     conn,
+		ctx:      sessionCtx,
+		client:   newOriginClient(),
 		send:     make(chan outgoing, 128),
 		audio:    make(chan outgoing, 128),
 		requests: make(map[string]requestBody),
@@ -582,6 +575,25 @@ func (m *Manager) runSession(ctx context.Context, reg registration) error {
 				return err
 			}
 		}
+	}
+}
+
+func newOriginClient() *http.Client {
+	return &http.Client{
+		// MediaMTX uses redirects and host-scoped cookies to establish one
+		// native HLS session. A reverse proxy must return that handshake to the
+		// guest instead of following it on the Mac.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			MaxIdleConns:          64,
+			MaxIdleConnsPerHost:   64,
+			IdleConnTimeout:       90 * time.Second,
+			DisableCompression:    true,
+			ResponseHeaderTimeout: 40 * time.Second,
+		},
 	}
 }
 
@@ -784,7 +796,7 @@ func copyRequestHeaders(dst http.Header, src map[string][]string) {
 
 func allowedRequestHeader(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "accept", "accept-language", "cache-control", "content-type",
+	case "accept", "accept-language", "cache-control", "content-type", "cookie",
 		"if-modified-since", "if-none-match", "range", "user-agent", "x-pp-name":
 		return true
 	default:

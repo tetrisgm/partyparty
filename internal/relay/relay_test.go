@@ -59,6 +59,9 @@ func TestSessionStreamsRequestAndResponseBodies(t *testing.T) {
 			if request.Header.Get("Content-Type") != "application/json" {
 				t.Errorf("content type = %q", request.Header.Get("Content-Type"))
 			}
+			if request.Header.Get("Cookie") != "cookieCheck=1; hlsSession=session-1" {
+				t.Errorf("cookie = %q", request.Header.Get("Cookie"))
+			}
 			if got := request.Header.Get("Accept-Encoding"); got != "" {
 				t.Errorf("accept encoding reached origin = %q", got)
 			}
@@ -79,6 +82,7 @@ func TestSessionStreamsRequestAndResponseBodies(t *testing.T) {
 		Headers: map[string][]string{
 			"Accept-Encoding": {"gzip"},
 			"Content-Type":    {"application/json"},
+			"Cookie":          {"cookieCheck=1; hlsSession=session-1"},
 		},
 	})
 	if err != nil {
@@ -124,6 +128,38 @@ func TestSessionStreamsRequestAndResponseBodies(t *testing.T) {
 		case "response_error":
 			t.Fatalf("response error: %s", control.Error)
 		}
+	}
+}
+
+func TestOriginClientPreservesHLSCookieRedirect(t *testing.T) {
+	requests := 0
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests++
+		w.Header().Set("Location", "/live/party/index.m3u8?cookieCheck=1")
+		w.Header().Add("Set-Cookie", "cookieCheck=1; HttpOnly; Secure; SameSite=None")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer origin.Close()
+
+	client := newOriginClient()
+	defer client.CloseIdleConnections()
+	response, err := client.Get(origin.URL + "/live/party/index.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusFound)
+	}
+	if requests != 1 {
+		t.Fatalf("origin requests = %d, redirect was followed", requests)
+	}
+	if got := response.Header.Get("Location"); got != "/live/party/index.m3u8?cookieCheck=1" {
+		t.Fatalf("location = %q", got)
+	}
+	if got := response.Header.Get("Set-Cookie"); !strings.Contains(got, "cookieCheck=1") {
+		t.Fatalf("set-cookie = %q", got)
 	}
 }
 
