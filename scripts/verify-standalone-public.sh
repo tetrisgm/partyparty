@@ -16,14 +16,23 @@ for attempt in $(seq 1 12); do
     grep -q "sparkle:edSignature=" "$TMP/appcast.xml" &&
     grep -q "<sparkle:version>$BUILD</sparkle:version>" "$TMP/appcast.xml" &&
     grep -q "\"version\":\"$VERSION\"" "$TMP/version.json" &&
-    grep -q 'href="/partyparty-beta.zip"' "$TMP/site.html"; then
+    grep -q 'href="/partyparty-beta.zip"' "$TMP/site.html" &&
+    # The URL Sparkle will actually fetch must resolve. The appcast advertising a
+    # build is not the same as the Worker serving it: 125.0 shipped with the zip
+    # in R2 and the appcast pointing at it, but the Worker's download map had no
+    # entry, so every updating Mac got a 404 and reported "update error". Check
+    # the real path, not just the metadata that describes it.
+    curl -fsI -H 'Cache-Control: no-cache' \
+      "https://partyparty.party/downloads/partyparty-$VERSION-$BUILD.zip?$query" >/dev/null; then
     ready=1
     break
   fi
   sleep 5
 done
 if [ "$ready" != "1" ]; then
-  echo "Public release metadata did not converge to $VERSION build $BUILD within 60 seconds." >&2
+  echo "Public release did not converge to $VERSION build $BUILD within 60 seconds." >&2
+  echo "Check: appcast signature and version, /api/version, the site link, and" >&2
+  echo "that https://partyparty.party/downloads/partyparty-$VERSION-$BUILD.zip resolves." >&2
   exit 1
 fi
 

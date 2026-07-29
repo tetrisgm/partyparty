@@ -43,6 +43,37 @@ grep -q "<sparkle:version>$BUILD</sparkle:version>" "$APPCAST"
   "$WRANGLER" r2 object put "partyparty-dl/standalone/$ZIP_NAME" --file "$ZIP" --content-type application/zip --remote
   "$WRANGLER" r2 object put "partyparty-dl/standalone/partyparty-beta.zip" --file "$ZIP" --content-type application/zip --remote
   "$WRANGLER" deploy
+  # Register this build with the Worker BEFORE publishing the appcast.
+  #
+  # The Worker serves downloads from an explicit per-version map, so an appcast
+  # that advertises a version the map does not know sends every updating Mac to a
+  # 404. That is exactly what happened shipping 125.0: the zip uploaded, the
+  # appcast pointed at it, and Sparkle reported "update error" because the path
+  # did not exist. Updating the Worker is therefore part of shipping, not a
+  # manual step someone remembers.
+  python3 - "$VERSION" "$BUILD" <<'REGISTER'
+import re, sys, pathlib
+version, build = sys.argv[1], sys.argv[2]
+path = pathlib.Path("cloudflare/worker.js")
+src = path.read_text()
+name = f"partyparty-{version}-{build}.zip"
+entry = (f'  "/downloads/{name}": {{ key: "standalone/{name}", '
+         f'type: "application/zip", cache: "public, max-age=31536000, immutable", '
+         f'download: "{name}" }},\n')
+if f'"/downloads/{name}"' not in src:
+    anchor = "var STANDALONE_FILES = {\n"
+    at = src.index(anchor) + len(anchor)
+    src = src[:at] + entry + src[at:]
+src = re.sub(r'var APP_VERSION = "[^"]*";', f'var APP_VERSION = "{version}";', src, count=1)
+from datetime import date
+src = re.sub(r'var APP_VERSION_DATE = "[^"]*";',
+             f'var APP_VERSION_DATE = "{date.today().isoformat()}";', src, count=1)
+path.write_text(src)
+print(f"worker: registered {name} and set APP_VERSION {version}")
+REGISTER
+  ( cd "$ROOT/cloudflare" && node test/smoke.mjs >/dev/null )
+  ( cd "$ROOT/cloudflare" && "$WRANGLER" deploy )
+
   "$WRANGLER" r2 object put "partyparty-dl/standalone/appcast.xml" --file "$APPCAST" --content-type application/xml --remote
 )
 
