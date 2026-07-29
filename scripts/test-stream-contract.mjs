@@ -84,6 +84,10 @@ assert.match(listener, /const selectedChanged = LLSTREAM !== selected\.streamUrl
 assert.doesNotMatch(listener, /peerPlayers|peerHls|peerPlayer|primePeerPlayers|document\.createElement\('audio'\)/);
 assert.match(listener, /navigator\.mediaSession\.setActionHandler\('play',[\s\S]*?resumeGuest\(\)/);
 assert.match(listener, /navigator\.mediaSession\.setActionHandler\('pause',[\s\S]*?pauseGuest\(\)/);
+assert.match(listener, /function updateMediaSessionMetadata\(\)/);
+assert.match(listener, /mediaSessionMetadataSignature/);
+assert.match(listener, /venmo:\/\/paycharge\?txn=pay&recipients=/);
+assert.match(listener, /data-web-fallback|dataset\.webFallback/);
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');

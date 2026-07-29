@@ -1063,6 +1063,7 @@
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let discoveredPeers = [], selectedDJId = '', listenerCountsByDJ = new Map(), listenerGroups = [];
     let localDJLinks = [], localDJAvatar = '', localDJBio = '';
+    let mediaSessionHandlersRegistered = false, mediaSessionMetadataSignature = '';
     const djPalette = [
       ['#20c965', '#173b27'], ['#0a84ff', '#16334f'], ['#ff453a', '#4a211f'],
       ['#ff9f0a', '#4a3518'], ['#bf5af2', '#3c2448'], ['#64d2ff', '#173b47'],
@@ -1361,6 +1362,7 @@
     function setEventTitle(t){
       const title = t || 'partyparty';
       setText(titleEl, title);
+      updateMediaSessionMetadata();
     }
     let currentCoverSrc = '';
     function setEventCover(src){
@@ -1368,11 +1370,13 @@
       if (!coverImageEl || src === currentCoverSrc) return;
       currentCoverSrc = src;
       coverImageEl.src = src;
+      updatePlayerDetails();
     }
     if (coverImageEl) coverImageEl.addEventListener('error', () => {
       if (currentCoverSrc !== '/covers/hero.jpg') {
         currentCoverSrc = '/covers/hero.jpg';
         coverImageEl.src = currentCoverSrc;
+        updatePlayerDetails();
       }
     });
     function initials(name, fallback){
@@ -1688,7 +1692,7 @@
           if (url.protocol === 'https:' || url.origin === location.origin) return url.href;
         } catch (e) {}
       }
-      return currentCoverSrc || '/art-512.png';
+      return absoluteResourceURL(currentCoverSrc || '/art-512.png');
     }
     function serviceIconMarkup(type){
       const icons = {
@@ -1716,15 +1720,54 @@
         '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/>' +
         '<path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>';
     }
+    function venmoAppURL(profileURL){
+      try {
+        const url = new URL(profileURL);
+        if (!/^(?:www\.|account\.)?venmo\.com$/i.test(url.hostname)) return '';
+        const match = url.pathname.match(/^\/u\/([^/]+)\/?$/i);
+        if (!match) return '';
+        const username = decodeURIComponent(match[1]).replace(/^@/, '').trim();
+        if (!/^[A-Za-z0-9_-]+$/.test(username)) return '';
+        return 'venmo://paycharge?txn=pay&recipients=' + encodeURIComponent(username);
+      } catch (e) {
+        return '';
+      }
+    }
+    function openAppLink(event, appURL, fallbackURL){
+      event.preventDefault();
+      let fallbackTimer = 0;
+      const cleanup = () => {
+        clearTimeout(fallbackTimer);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        window.removeEventListener('pagehide', cleanup);
+      };
+      const onVisibilityChange = () => {
+        if (document.visibilityState === 'hidden') cleanup();
+      };
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      window.addEventListener('pagehide', cleanup);
+      fallbackTimer = setTimeout(() => {
+        cleanup();
+        location.href = fallbackURL;
+      }, 1200);
+      try {
+        location.href = appURL;
+      } catch (e) {
+        cleanup();
+        location.href = fallbackURL;
+      }
+    }
     function renderProfileLinks(target, links){
       const model = [];
       (Array.isArray(links) ? links : []).forEach((link) => {
         try {
           const url = new URL(String(link && link.url || ''));
           if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
+          const type = String(link && link.type || '').toLowerCase();
           model.push({
             url: url.href,
-            type: String(link && link.type || '').toLowerCase(),
+            appURL: type === 'venmo' ? venmoAppURL(url.href) : '',
+            type,
             label: String(link && (link.label || link.type) || 'Link'),
           });
         } catch (e) {}
@@ -1734,9 +1777,14 @@
         model.forEach((link) => {
           const row = document.createElement('a');
           row.className = 'djprofilelink';
-          row.href = link.url;
-          row.target = '_blank';
-          row.rel = 'noopener';
+          row.href = link.appURL || link.url;
+          if (link.appURL) {
+            row.dataset.webFallback = link.url;
+            row.addEventListener('click', (event) => openAppLink(event, link.appURL, link.url));
+          } else {
+            row.target = '_blank';
+            row.rel = 'noopener';
+          }
           row.innerHTML = serviceIconMarkup(link.type);
           const label = document.createElement('span');
           label.textContent = link.label;
@@ -1785,6 +1833,7 @@
       }
       sheetPlay.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
       applyBtnHint();
+      updateMediaSessionMetadata();
     }
     function setPlayingUI(on){
       document.body.classList.toggle('playing', on);
@@ -2422,15 +2471,26 @@
       });
     } catch (e) {}
 
-    function mediaSession(){
-      if (!('mediaSession' in navigator)) return;
+    function updateMediaSessionMetadata(){
+      if (!('mediaSession' in navigator) || typeof MediaMetadata !== 'function') return;
       try {
         const track = selectedTrack();
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: (track && track.title) || titleEl.textContent || 'Live',
+        const metadata = {
+          title: (track && track.title) || titleEl.textContent || 'Live party audio',
           artist: (track && track.artist) || selectedDJName(),
           artwork: [{ src: artworkSource(track) }]
-        });
+        };
+        const signature = JSON.stringify(metadata);
+        if (signature === mediaSessionMetadataSignature) return;
+        navigator.mediaSession.metadata = new MediaMetadata(metadata);
+        mediaSessionMetadataSignature = signature;
+      } catch (e) {}
+    }
+    function mediaSession(){
+      if (!('mediaSession' in navigator)) return;
+      updateMediaSessionMetadata();
+      if (mediaSessionHandlersRegistered) return;
+      try {
         navigator.mediaSession.setActionHandler('play',  () => {
           if (playBlocked) retryPlayback('media-session');
           else if (started) resumeGuest();
@@ -2443,6 +2503,7 @@
         navigator.mediaSession.setActionHandler('pause', () => {
           if (started) pauseGuest();
         });
+        mediaSessionHandlersRegistered = true;
       } catch (e) {}
     }
 

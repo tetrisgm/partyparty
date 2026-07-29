@@ -134,6 +134,25 @@ try {
   await page.addInitScript(() => {
     try { localStorage.setItem('pp.welcomed', '1'); } catch (error) {}
     window.__imageSourceWrites = [];
+    window.__mediaMetadataWrites = [];
+    class TestMediaMetadata {
+      constructor(metadata) {
+        Object.assign(this, metadata);
+        window.__mediaMetadataWrites.push(JSON.parse(JSON.stringify(metadata)));
+      }
+    }
+    Object.defineProperty(window, 'MediaMetadata', {
+      configurable: true,
+      value: TestMediaMetadata,
+    });
+    Object.defineProperty(navigator, 'mediaSession', {
+      configurable: true,
+      value: {
+        metadata: null,
+        playbackState: 'none',
+        setActionHandler() {},
+      },
+    });
     const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
     if (!descriptor || !descriptor.get || !descriptor.set) return;
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
@@ -171,6 +190,7 @@ try {
       trackTitleText: document.querySelector('#sheetTrackTitle').firstChild,
     };
     window.__stableImageWriteCount = window.__imageSourceWrites.length;
+    window.__stableMediaMetadataWriteCount = window.__mediaMetadataWrites.length;
   });
 
   await page.waitForTimeout(4200);
@@ -190,6 +210,7 @@ try {
       profileNameText: before.profileNameText === document.querySelector('#djProfileName').firstChild,
       trackTitleText: before.trackTitleText === document.querySelector('#sheetTrackTitle').firstChild,
       imageWrites: window.__imageSourceWrites.length === window.__stableImageWriteCount,
+      mediaMetadataWrites: window.__mediaMetadataWrites.length === window.__stableMediaMetadataWriteCount,
       serviceImages: document.querySelectorAll('.djprofilelink img').length,
       serviceIcons: document.querySelectorAll('#djProfileLinks .serviceicon').length,
     };
@@ -201,6 +222,33 @@ try {
   }
   assert.equal(stable.serviceImages, 0, 'profile services must not fetch remote favicon images');
   assert.equal(stable.serviceIcons, 3, 'all known profile services must have local icons');
+  const initialMetadata = await page.evaluate(() => window.__mediaMetadataWrites.at(-1));
+  assert.equal(initialMetadata.title, 'Night Drive', 'Media Session must receive the current track title');
+  assert.equal(initialMetadata.artist, 'DJ Luna', 'Media Session must receive the current track artist');
+
+  const venmoLink = await page.locator('#djProfileLinks .djprofilelink').filter({ hasText: 'Venmo' }).evaluate((link) => ({
+    href: link.getAttribute('href'),
+    fallback: link.dataset.webFallback,
+    target: link.getAttribute('target'),
+  }));
+  assert.equal(venmoLink.href, 'venmo://paycharge?txn=pay&recipients=djluna');
+  assert.equal(venmoLink.fallback, 'https://account.venmo.com/u/djluna');
+  assert.equal(venmoLink.target, null, 'Venmo app links must remain in the user gesture navigation');
+
+  feedBody.nowPlaying = {
+    title: 'Sunrise',
+    artist: 'The Second Track',
+    artworkUrl: '/artwork-2.png',
+  };
+  await page.waitForFunction(() =>
+    window.__mediaMetadataWrites.at(-1)?.title === 'Sunrise' &&
+    document.querySelector('#sheetTrackTitle')?.textContent === 'Sunrise',
+  );
+  const refreshedMetadata = await page.evaluate(() => window.__mediaMetadataWrites.at(-1));
+  assert.equal(refreshedMetadata.artist, 'The Second Track',
+    'Media Session metadata must refresh while the existing playback session stays active');
+  assert.match(refreshedMetadata.artwork[0].src, /\/artwork-2\.png$/);
+
   assert.deepEqual(externalRequests, [], `listener made external asset requests:\n${externalRequests.join('\n')}`);
   if (process.env.PARTYPARTY_RENDER_SCREENSHOT) {
     await page.screenshot({ path: process.env.PARTYPARTY_RENDER_SCREENSHOT, fullPage: true });
