@@ -28,6 +28,8 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address (TLS is terminated by the reverse proxy in front)")
 	baseDomain := flag.String("base-domain", "", "serve each room at <token>.<base-domain>; empty uses /r/<token>/ paths")
 	roomsFile := flag.String("rooms", "", "JSON file of {\"room\":\"publish-token\"}; reloaded on SIGHUP")
+	certFile := flag.String("cert", "", "TLS certificate chain; enables HTTPS when set")
+	keyFile := flag.String("key", "", "TLS private key")
 	flag.Parse()
 
 	rooms := newRoomTokens(*roomsFile)
@@ -77,7 +79,20 @@ func main() {
 		_ = server.Shutdown(ctx)
 	}()
 
-	log.Printf("origin: listening on %s", *addr)
+	if *certFile != "" && *keyFile != "" {
+		keeper, err := newCertKeeper(*certFile, *keyFile)
+		if err != nil {
+			log.Fatalf("origin: cannot load certificate: %v", err)
+		}
+		server.TLSConfig = tlsConfig(keeper)
+		log.Printf("origin: listening on %s (https)", *addr)
+		if err := server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("origin: %v", err)
+		}
+		return
+	}
+
+	log.Printf("origin: listening on %s (http; put TLS in front)", *addr)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("origin: %v", err)
 	}

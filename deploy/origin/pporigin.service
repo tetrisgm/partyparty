@@ -1,0 +1,52 @@
+[Unit]
+Description=partyparty relay origin (accepts pushed LL-HLS, serves guests)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+EnvironmentFile=/etc/pporigin.env
+ExecStart=/opt/pporigin/current/pporigin \
+  -addr :443 \
+  -base-domain ${PPORIGIN_BASE_DOMAIN} \
+  -rooms /etc/pporigin-rooms.json \
+  -cert ${PPORIGIN_CERT} \
+  -key ${PPORIGIN_KEY}
+Restart=always
+RestartSec=2
+# Binding 443 as a non-root user.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# --- Resource priority -------------------------------------------------------
+# This box also runs a 24/7 radio and a YouTube video encode. A party stutters in
+# front of a room full of people; a radio listener does not notice a hiccup. So
+# the relay wins CPU contention decisively. CPUWeight is relative (default 100),
+# and the chiptunes units are lowered to 20 by drop-ins, so the relay gets roughly
+# a 25:1 share when both want the CPU at once.
+CPUWeight=5000
+IOWeight=1000
+# Real-time audio delivery must not wait behind another process's page cache.
+MemoryMax=4G
+MemoryHigh=3G
+# Never let a relay bug swap the box or take the radio down with it.
+TasksMax=4096
+OOMPolicy=stop
+
+# --- Hardening ---------------------------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/pporigin
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
