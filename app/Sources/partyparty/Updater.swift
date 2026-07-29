@@ -9,6 +9,18 @@ final class Updater: NSObject, SPUUpdaterDelegate {
     private let isBusy: () -> Bool
     private var pendingInstall: (() -> Void)?
 
+    // Build 0 marks a local development build, never a release. A local build
+    // that auto-updates replaces itself with the public release within seconds
+    // of launching, which silently substitutes the code under test with the
+    // shipped one and makes every local verification a lie. It happened: an
+    // installed dev build reported the previous release's behavior minutes
+    // after being "verified", because it literally was the previous release.
+    // Manual "Check for Updates" still works on a dev build, so leaving one
+    // installed by accident has an exit.
+    private static var isDevBuild: Bool {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) == "0"
+    }
+
     init(isBusy: @escaping () -> Bool) {
         self.isBusy = isBusy
         super.init()
@@ -17,8 +29,8 @@ final class Updater: NSObject, SPUUpdaterDelegate {
             updaterDelegate: self,
             userDriverDelegate: nil
         )
-        controller.updater.automaticallyChecksForUpdates = true
-        controller.updater.automaticallyDownloadsUpdates = true
+        controller.updater.automaticallyChecksForUpdates = !Self.isDevBuild
+        controller.updater.automaticallyDownloadsUpdates = !Self.isDevBuild
     }
 
     func checkForUpdates() {
@@ -26,6 +38,7 @@ final class Updater: NSObject, SPUUpdaterDelegate {
     }
 
     func checkInBackground() {
+        if Self.isDevBuild { return }
         controller.updater.checkForUpdatesInBackground()
     }
 

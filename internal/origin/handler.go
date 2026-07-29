@@ -137,6 +137,12 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, token, name str
 		// The playlist is stored verbatim. It carries PROGRAM-DATE-TIME, and
 		// therefore the room's schedule, so rewriting any part of it here would
 		// desynchronise relayed guests from direct ones.
+		//
+		// It also names the room's fixed-name media: EXT-X-MAP is the init
+		// segment, uploaded once per set and required to decode ANYTHING. Pin it
+		// (and the guest page) so live-window eviction can never delete the two
+		// files whose age says nothing about their relevance.
+		room.Pin(append(mapURIs(body), "index.html"))
 		room.PutPlaylist(name, body)
 	} else {
 		room.PutMedia(name, body, r.Header.Get("Content-Type"))
@@ -213,6 +219,24 @@ func (h *Handler) authorized(r *http.Request, token string) bool {
 	}
 	got := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 	return got != "" && got == want
+}
+
+// mapURIs pulls every EXT-X-MAP URI out of a playlist.
+func mapURIs(playlist []byte) []string {
+	var names []string
+	for _, line := range strings.Split(string(playlist), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "#EXT-X-MAP:") {
+			continue
+		}
+		if i := strings.Index(line, `URI="`); i >= 0 {
+			rest := line[i+len(`URI="`):]
+			if j := strings.IndexByte(rest, '"'); j >= 0 {
+				names = append(names, rest[:j])
+			}
+		}
+	}
+	return names
 }
 
 // serve delivers media and playlists to guests, with no credential required.

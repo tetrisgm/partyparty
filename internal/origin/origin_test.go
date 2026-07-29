@@ -428,3 +428,37 @@ func TestRoomAPIParksLongPollUntilContentChanges(t *testing.T) {
 		t.Fatal("a feed change never released the parked poll")
 	}
 }
+
+// A set longer than the live window must not lose its fixed-name assets. The
+// page and the init segment are uploaded once at the start of a set, which
+// makes them the OLDEST objects in the room, and oldest-first eviction deleted
+// exactly those two a few minutes in: every guest joining after that got a 404
+// page and an undecodable stream while the room looked healthy. Found live, on
+// a phone, showing "not in the live window" where the party should have been.
+func TestLongSetsKeepThePageAndInitSegment(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "index.html", "<html>party</html>", "text/html", publishToken)
+	put(t, h, "party_init.mp4", "init-bytes", "video/mp4", publishToken)
+	put(t, h, "stream.m3u8", "#EXTM3U\n#EXT-X-MAP:URI=\"party_init.mp4\"\nseg0.mp4\n", "", publishToken)
+
+	// Three windows' worth of rolling media: everything older should age out,
+	// except what a new guest permanently needs.
+	for i := 0; i < 1600; i++ {
+		put(t, h, "seg"+itoa(i)+".mp4", "media", "video/mp4", publishToken)
+	}
+
+	if w := get(t, h, "index.html"); w.Code != http.StatusOK {
+		t.Fatalf("the guest page aged out of a live set: %d", w.Code)
+	}
+	if w := get(t, h, "party_init.mp4"); w.Code != http.StatusOK {
+		t.Fatalf("the init segment aged out; every new guest is undecodable: %d", w.Code)
+	}
+	if w := get(t, h, "seg0.mp4"); w.Code != http.StatusNotFound {
+		t.Fatalf("rolling media did not age out: %d", w.Code)
+	}
+	room, _ := store.Room(roomToken, false)
+	if s := store.Stats(); s.MediaFiles > 520 {
+		t.Fatalf("window not enforced: %d files", s.MediaFiles)
+	}
+	_ = room
+}

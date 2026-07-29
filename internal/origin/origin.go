@@ -60,6 +60,9 @@ type Room struct {
 	// epoch is set once at creation and never changes; see Epoch.
 	epoch int64
 
+	// pinned names are exempt from live-window eviction; see Pin.
+	pinned map[string]bool
+
 	mu   sync.Mutex
 	cond *sync.Cond
 
@@ -79,6 +82,7 @@ type Room struct {
 func newRoom(now time.Time) *Room {
 	r := &Room{
 		media:       make(map[string]*object),
+		pinned:      map[string]bool{"index.html": true},
 		lastPublish: now,
 		plane:       roomplane.New(),
 		epoch:       now.UnixNano(),
@@ -104,17 +108,55 @@ func (r *Room) PutMedia(name string, body []byte, contentType string) {
 	defer r.mu.Unlock()
 	if _, exists := r.media[name]; !exists {
 		r.order = append(r.order, name)
-		// Evict oldest beyond the window. A guest that asks for something already
-		// evicted gets a 404, which is the correct answer: it has fallen off the
-		// back of a live stream and must reattach.
-		for len(r.order) > maxMediaPerRoom {
+		// Evict oldest beyond the window, SKIPPING pinned names. Rolling media
+		// falling off the back of a live stream is correct: a guest that asks for
+		// it must reattach. But the guest page and the init segment are uploaded
+		// ONCE, at the start of a set, which makes them the oldest objects in the
+		// room by definition. The plain oldest-first eviction deleted exactly
+		// those two the moment a set outlived the window, about three minutes in:
+		// from then on every new guest got a 404 page and, worse, an undecodable
+		// stream, while the room looked perfectly healthy. Found by a phone
+		// showing "not in the live window" where the party should have been.
+		evictable := len(r.order) - r.pinnedCount()
+		for evictable > maxMediaPerRoom {
 			oldest := r.order[0]
 			r.order = r.order[1:]
+			if r.pinned[oldest] {
+				r.order = append(r.order, oldest) // rotate pinned names to safety
+				continue
+			}
 			delete(r.media, oldest)
+			evictable--
 		}
 	}
 	r.media[name] = &object{body: body, contentType: contentType}
 	r.lastPublish = time.Now()
+}
+
+// pinnedCount counts pinned names still present in order. Caller holds mu.
+func (r *Room) pinnedCount() int {
+	n := 0
+	for name := range r.pinned {
+		if _, ok := r.media[name]; ok {
+			n++
+		}
+	}
+	return n
+}
+
+// Pin marks names that must survive live-window eviction: the fixed-name
+// assets a set uploads once. Replaces the previous pin set, so a regenerated
+// stream with a new init segment name does not grow it forever. Names are
+// pinned whether or not they have arrived yet.
+func (r *Room) Pin(names []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pinned = make(map[string]bool, len(names))
+	for _, name := range names {
+		if name != "" {
+			r.pinned[name] = true
+		}
+	}
 }
 
 // PutPlaylist stores the playlist and wakes every blocked reader.

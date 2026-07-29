@@ -31,8 +31,7 @@ def parse(raw):
 
 candidates = [v for v in (parse(a) for a in sys.argv[1:]) if v]
 if not candidates:
-    sys.stderr.write("Cannot determine the published version; refusing to guess.
-")
+    sys.stderr.write("Cannot determine the published version; refusing to guess.\n")
     sys.exit(1)
 current = max(candidates)
 current[-1] += 1
@@ -99,14 +98,12 @@ path = os.path.join(receipts, f"ship-{version}-{build}.json")
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
     json.dump(receipt, f, indent=1)
-    f.write("
-")
+    f.write("\n")
 os.replace(tmp, path)
 latest = os.path.join(receipts, "latest.json")
 with open(latest + ".tmp", "w") as f:
     json.dump(receipt, f, indent=1)
-    f.write("
-")
+    f.write("\n")
 os.replace(latest + ".tmp", latest)
 RECEIPT
 }
