@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -180,6 +181,21 @@ func newLiveProxy(hlsPort int, prefix string) http.Handler {
 			// outside the proxy and gets the app's 404 page.
 			if location := resp.Header.Get("Location"); strings.HasPrefix(location, "/") && !strings.HasPrefix(location, prefix+"/") {
 				resp.Header.Set("Location", prefix+location)
+			}
+			// Author the room schedule into the media playlist (see schedule.go).
+			// Media bytes, timestamps, and PROGRAM-DATE-TIME pass through
+			// untouched; only the declared distance from the live edge is ours.
+			if resp.Request != nil && resp.StatusCode == http.StatusOK &&
+				strings.HasSuffix(resp.Request.URL.Path, ".m3u8") {
+				body, err := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				if err != nil {
+					return err
+				}
+				body = rewriteLivePlaylist(body)
+				resp.Body = io.NopCloser(bytes.NewReader(body))
+				resp.ContentLength = int64(len(body))
+				resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
 			}
 			return nil
 		},
@@ -601,6 +617,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
 			"log":            lastN(s.Broadcaster.Log(), 60),
 			"latency":        s.Listeners.LatencySpread(),
+			"schedule":       s.scheduleState(),
 			"roster":         rosterBody,
 			"listenerGroups": s.listenerGroups(roster),
 			"event":          s.eventState(),
