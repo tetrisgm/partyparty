@@ -213,10 +213,36 @@ than a shrug:
 - resolver matches but nothing connects: the network is isolating devices, and
   with no internet there is no relay, so this is NO PATH.
 
-Open only as a product choice, not a technical unknown: whether to also publish
-IP-encoded labels as a belt-and-braces path for DJ-controlled routers (one
-wildcard host rule covers every future IP), or to keep the single stable
-per-install hostname and require one static entry.
+**Router setup for a DJ-controlled network, sturdiest form.** Two one-time
+settings, then set and forget:
+
+1. A **domain-wide DNS rule** answering everything under `party.partyparty.party`
+   with the Mac's address (dnsmasq form: `address=/party.partyparty.party/<ip>`,
+   which most consumer travel routers run). Domain-wide rather than
+   host-specific so it survives a re-provisioned install, a changed hostname,
+   or any label we add later.
+2. A **DHCP reservation** for the Mac. This is the one that matters: the only
+   real failure mode is the Mac's address changing after a lease expiry or
+   router reboot, which silently aims the rule at whichever device inherited
+   the address.
+
+The resolver check above verifies both, so a misconfiguration is reported
+rather than discovered by guests.
+
+Rejected alternatives, recorded so they are not revisited:
+
+- **IP-encoded labels offline.** They solve stale DNS caches during online IP
+  drift, which is a real problem, but not one LOCAL has: a travel router's
+  resolver is authoritative and instant. A router wildcard maps every *name* to
+  one *address*, not the reverse, so it cannot decode an IP from a label;
+  dnsmasq's synth-domain can, but its label format is implementation-specific
+  and coupling our naming to one router is the opposite of sturdy.
+- **Mac as the network's DNS server** via DHCP option 6. Self-heals on IP
+  change, but the router must advertise the Mac's address, which is the very
+  thing that moves; it makes network-wide DNS depend on the app running; and it
+  drifts toward the DNS-hijacking pattern the product retired.
+- **Bonjour `.local`.** The only zero-config option, blocked by TLS: no public
+  CA validates `.local`, and HTTPS-only is non-negotiable.
 
 ## 7. Plan
 
@@ -251,12 +277,12 @@ first would mean rewriting it once both are settled.
 
 ## 8. Decisions needed
 
-1. **IP-encoded labels for LOCAL**, section 6: publish them as a belt-and-braces
-   path for DJ-controlled routers, or keep the single stable hostname. Not a
-   blocker either way, since the resolver check decides viability at runtime.
-2. **Cloud host** for the relay origin. Roughly 6 to 7 USD per month at launch
+Section 6 is settled: single stable hostname, domain-wide router rule plus a
+DHCP reservation, verified by the resolver check. Nothing there blocks Unit 1.
+
+1. **Cloud host** for the relay origin. Roughly 6 to 7 USD per month at launch
    size, with a documented resize path for large rooms.
-3. **D default**, and whether D may differ between LOCAL/DIRECT and RELAY. One
+2. **D default**, and whether D may differ between LOCAL/DIRECT and RELAY. One
    value is seamless across a mode flip; per-mode is lower latency on LAN.
-4. **Photos in RELAY mode** at launch: enabled behind the throttle, or dark
+3. **Photos in RELAY mode** at launch: enabled behind the throttle, or dark
    until measured.
