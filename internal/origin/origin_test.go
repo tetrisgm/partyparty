@@ -462,3 +462,24 @@ func TestLongSetsKeepThePageAndInitSegment(t *testing.T) {
 	}
 	_ = room
 }
+
+// The listener page sends heartbeats as GET (a fetch with no method), and the
+// Mac's server accepts that. The origin matched POST only, so every relayed
+// heartbeat bounced and a phone audibly playing counted as nobody, all night.
+// The page's actual wire format is the contract; this pins it.
+func TestHeartbeatArrivesTheWayThePageSendsIt(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	room, _ := store.Room(roomToken, false)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/r/"+roomToken+"/api/heartbeat?stalled=0&paused=0&cid=phone1&lat=1100", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("GET heartbeat = %d; the page's real heartbeat is refused", w.Code)
+	}
+	if digest := room.Plane().Drain(); digest.Listeners != 1 {
+		t.Fatalf("a heartbeating phone counts as %d listeners", digest.Listeners)
+	}
+}

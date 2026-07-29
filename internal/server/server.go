@@ -241,8 +241,11 @@ func (s *Srv) SetActivationResult(res activate.Result) {
 	s.actMu.Unlock()
 	// The resolver observation is the evidence that decides whether guests can
 	// find this Mac with no internet at all, so it belongs in the mode decision
-	// rather than only in the LAN-readiness display.
-	if s.Relay != nil {
+	// rather than only in the LAN-readiness display. Only when an observation
+	// was actually made: an attempt that died before reaching the resolver (no
+	// internet) knows nothing, and its zero value stomping a real observation
+	// is what kept an offline party on NO PATH while its router resolved fine.
+	if s.Relay != nil && res.ResolverObserved {
 		s.Relay.SetResolverOK(res.ResolverMatches)
 	}
 }
@@ -260,9 +263,12 @@ func (s *Srv) SetActivation(domain string) {
 	s.actLast.Host = domain
 	s.actLastSet = true
 	resolverOK := s.actLast.ResolverMatches
+	resolverObserved := s.actLast.ResolverObserved
 	s.actMu.Unlock()
 	if s.Relay != nil {
-		s.Relay.SetResolverOK(resolverOK)
+		if resolverObserved {
+			s.Relay.SetResolverOK(resolverOK)
+		}
 		s.Relay.SetDirectURL(s.directGuestURL())
 	}
 }

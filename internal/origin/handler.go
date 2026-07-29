@@ -323,6 +323,19 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 	noStore(w.Header())
 
 	switch {
+	// The heartbeat is matched by ENDPOINT before the read branch can claim it,
+	// because the listener page sends it as a plain GET (fetch with no method).
+	// The Mac's own server accepts that, and this origin must speak the page's
+	// contract rather than a tidier one: matching POST only meant every relayed
+	// guest's heartbeat bounced with 503, the room drained a count of zero all
+	// night, and a phone that was audibly playing counted as nobody. The wire
+	// format the page actually emits is the specification.
+	case endpoint == "heartbeat" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		q := r.URL.Query()
+		lat, hasLat := parseFloat(first(q["lat"]))
+		plane.Beat(first(q["cid"]), lat, hasLat)
+		w.WriteHeader(http.StatusNoContent)
+
 	case r.Method == http.MethodGet:
 		body, version, published := plane.ReadVersioned(endpoint)
 		// The listener page long-polls with wait=1 and is BUILT on the parked
@@ -345,12 +358,6 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 		w.Header().Set("ETag", planeETag(version))
 		w.Header().Set("Content-Type", "application/json")
 		writeBody(w, r, body)
-
-	case r.Method == http.MethodPost && endpoint == "heartbeat":
-		q := r.URL.Query()
-		lat, hasLat := parseFloat(first(q["lat"]))
-		plane.Beat(first(q["cid"]), lat, hasLat)
-		w.WriteHeader(http.StatusNoContent)
 
 	case r.Method == http.MethodPost:
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))

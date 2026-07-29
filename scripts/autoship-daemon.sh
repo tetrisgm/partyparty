@@ -116,6 +116,12 @@ if [ ! -d "$CLONE/cloudflare/node_modules" ]; then
   (cd "$CLONE/cloudflare" && npm ci --no-audit --no-fund >>"$LOG" 2>&1)
 fi
 
+# The bundled binaries (ffmpeg, mediamtx) are deliberately not in git, so a
+# fresh clone has none and the build dies at the copy step; the canonical repo
+# is the local source of truth for them. Mirrored on every pass so an upgraded
+# binary propagates, at local-disk cost only when something changed.
+rsync -a --delete --include="ffmpeg" --include="mediamtx" --include="ppcapture"   --exclude="*" "$CANONICAL/assets/" "$CLONE/assets/" >>"$LOG" 2>&1
+
 set +e
 "$RUN_CAPPED" --seconds "$SHIP_CAP_SECONDS" --label autoship -- \
   "$CLONE/scripts/ship-standalone.sh" >>"$LOG" 2>&1 </dev/null

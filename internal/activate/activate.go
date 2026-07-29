@@ -32,6 +32,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"partyparty/internal/netinfo"
 )
 
 const (
@@ -57,7 +59,14 @@ type Result struct {
 	ExpectedIP      string // the current LAN IP this activation published
 	DNSPublished    bool   // the broker returned a VERIFIED Cloudflare A-record receipt
 	ResolverMatches bool   // the local resolver returned ExpectedIP for Host
-	ReasonCode      string // stable machine code (see reason codes below); "" on success
+	// ResolverObserved reports whether ResolverMatches is an actual observation
+	// rather than a zero value. An activation attempt that dies before reaching
+	// the resolver (no internet, no broker) knows NOTHING about the resolver,
+	// and consumers must not treat its false as evidence: doing so made every
+	// offline retry stomp the boot-time observation back to "mismatch", which
+	// pinned a working travel-router party on NO PATH forever.
+	ResolverObserved bool
+	ReasonCode       string // stable machine code (see reason codes below); "" on success
 
 	Reason string // human-readable detail (for the log); text may change, code does not
 }
@@ -217,6 +226,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	obs := observeResolver(resolveCtx, host, lanIP)
 	resolveCancel()
 	res.ResolverMatches = obs.Matches
+	res.ResolverObserved = true
 	if !obs.Matches {
 		res.ReasonCode = ReasonResolverMismatch
 		res.Reason = obs.describe()
@@ -417,7 +427,21 @@ func CachedCertReady(host string) (Result, bool) {
 	if !certValid(certFile, host, time.Hour) {
 		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "cached certificate is missing, expired, or for a different host"}, false
 	}
-	return Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile, CertReady: true}, true
+	res := Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile, CertReady: true}
+	// The cached-cert path is the OFFLINE path: a travel-router party boots
+	// here with no broker and no internet, and whether guests can find this Mac
+	// rests entirely on the venue's own resolver. Not observing it left
+	// ResolverMatches at its zero value, which downstream read as "mismatch",
+	// which made LOCAL mode unreachable on exactly the network it exists for.
+	if lanIP := netinfo.PrimaryLanIP(); lanIP != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+		obs := observeResolver(ctx, host, lanIP)
+		cancel()
+		res.ExpectedIP = lanIP
+		res.ResolverMatches = obs.Matches
+		res.ResolverObserved = true
+	}
+	return res, true
 }
 
 // BrokerHost returns this install's guest hostname (<hostLabel>.<base>) from the
