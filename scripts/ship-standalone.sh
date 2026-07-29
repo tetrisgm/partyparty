@@ -4,7 +4,38 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 VERSION="${PP_VERSION:-124.14}"
-BUILD="${PP_BUILD:-216}"
+
+# The build number is what Sparkle compares, so it must only ever go up. It used
+# to default to a hardcoded constant, which meant any ship that did not happen to
+# pass PP_BUILD published a build number lower than the one already installed.
+# Sparkle then correctly refused to offer the update, the ship reported success,
+# and auto-update was silently dead. That shipped as 125.2 build 216 against an
+# installed 218.
+#
+# Derived from the record of what has actually been published: the Worker's
+# download map accumulates every registered build and is committed, and the live
+# appcast is what installs are comparing against right now. Highest of the two,
+# plus one.
+derive_build() {
+  local from_map from_feed
+  from_map=$(grep -oE 'partyparty-[0-9.]+-([0-9]+)\.zip' "$ROOT/cloudflare/worker.js" 2>/dev/null |
+    sed -E 's/.*-([0-9]+)\.zip/\1/' | sort -n | tail -1)
+  from_feed=$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml 2>/dev/null |
+    grep -oE '<sparkle:version>[0-9]+</sparkle:version>' |
+    sed -E 's/[^0-9]//g' | sort -n | tail -1)
+  local highest=0
+  for candidate in "$from_map" "$from_feed"; do
+    if [ -n "$candidate" ] && [ "$candidate" -gt "$highest" ] 2>/dev/null; then highest=$candidate; fi
+  done
+  if [ "$highest" -le 0 ]; then
+    echo "Cannot determine the last published build; refusing to guess." >&2
+    return 1
+  fi
+  echo $((highest + 1))
+}
+BUILD="${PP_BUILD:-$(derive_build)}"
+[ -n "$BUILD" ] || exit 1
+echo "shipping version $VERSION build $BUILD"
 APP="$ROOT/build/partyparty-beta.app"
 RELEASE_DIR="$ROOT/dist/standalone-$VERSION-$BUILD"
 ZIP_NAME="partyparty-$VERSION-$BUILD.zip"
@@ -37,6 +68,19 @@ ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 [ -f "$APPCAST" ]
 grep -q "sparkle:edSignature=" "$APPCAST"
 grep -q "<sparkle:version>$BUILD</sparkle:version>" "$APPCAST"
+
+# Refuse to flip the feed to a build that installs would reject. Every other gate
+# here checks the release is well formed, and a regressing build number is well
+# formed in every way while being undeliverable, so it passed all of them. This
+# is the only check that asks the question that matters: will an installed Mac
+# actually take this update.
+PUBLISHED_BUILD=$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml 2>/dev/null |
+  grep -oE '<sparkle:version>[0-9]+</sparkle:version>' | sed -E 's/[^0-9]//g' | sort -n | tail -1)
+if [ -n "$PUBLISHED_BUILD" ] && [ "$BUILD" -le "$PUBLISHED_BUILD" ]; then
+  echo "Refusing to publish build $BUILD over published build $PUBLISHED_BUILD." >&2
+  echo "Sparkle compares build numbers, so this release would never be offered." >&2
+  exit 1
+fi
 
 (
   cd cloudflare
