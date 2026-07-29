@@ -6,16 +6,22 @@ keep listening when Safari is backgrounded or the phone is locked.
 
 ## Product contract
 
-- Live audio, photos, videos, comments, reactions, and requests stay on the Mac.
-- Guests need no account and no internet.
+- Live audio, photos, videos, comments, reactions, and requests originate on
+  the Mac and are never stored as a cloud party or replay. Photos and videos
+  remain available in direct mode.
+- Guests need no account. Normal Wi-Fi and offline travel-router parties use
+  the direct mode and need no internet.
 - The guest link is HTTPS and the stream is LL-HLS. There is no HTTP fallback.
 - iPhones use native HLS/AVPlayer. This is the only supported Apple playback
   engine because it is smooth and survives screen lock.
 - The venue provides Wi-Fi. partyparty does not create a hotspot, captive portal,
   or Internet Sharing configuration.
-- The public Worker provides anonymous LAN hostname and certificate coordination
-  plus the product website. It does not
-  host event pages or relay party content.
+- The Mac selects one room-wide connection mode. Direct mode keeps traffic on
+  venue Wi-Fi. If a phone proves that the Wi-Fi isolates nearby devices, relay
+  mode carries music and lightweight room interaction through an ephemeral
+  Cloudflare reverse relay. HLS traffic has strict priority. Guest photos use a
+  capped, throttled secondary path, and videos are disabled in relay mode. The
+  relay does not create public event pages or retain party content.
 
 ## Run from source
 
@@ -54,8 +60,10 @@ go vet ./...
 go test ./...
 cd app && swift build
 cd cloudflare && node test/smoke.mjs
-scripts/build-app.sh
+scripts/build-app-store.sh
+scripts/build-standalone.sh
 ```
 
-`scripts/build-app.sh` creates the sandboxed Mac App Store app. See
+`scripts/build-app-store.sh` creates the sandboxed Mac App Store app.
+`scripts/build-standalone.sh` creates the separate Developer ID beta. See
 `docs/DISTRIBUTION.md`.

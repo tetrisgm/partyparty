@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,7 @@ import (
 	"partyparty/internal/event"
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/peers"
+	"partyparty/internal/relay"
 	"partyparty/internal/stats"
 )
 
@@ -41,6 +43,7 @@ type Deps struct {
 	MTX         *mediamtx.Server // nil if mediamtx unavailable (LL-HLS disabled)
 	Peers       *peers.Directory // nil when Bonjour discovery is unavailable
 	PeerID      string
+	Relay       *relay.Manager // nil only in tests or explicit local development
 
 	// Events is the party's active-room social layer.
 	// nil disables the feed endpoints.
@@ -230,6 +233,9 @@ func (s *Srv) SetActivation(domain string) {
 	s.actLast.Host = domain
 	s.actLastSet = true
 	s.actMu.Unlock()
+	if s.Relay != nil {
+		s.Relay.SetDirectURL(s.directGuestURL())
+	}
 }
 
 // SetActivationPending records why the secure link isn't ready yet - shown in
@@ -340,8 +346,67 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GuestRelayHandler is a loopback-only origin for the outbound relay client.
+// It deliberately removes the console page and forces every request through
+// the existing non-DJ authorization path. The listener that serves this handler
+// is bound to 127.0.0.1 on an ephemeral port in main.go.
+func (s *Srv) GuestRelayHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dj" || r.URL.Path == "/dj/" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Path == "/api/upload" && !relayImageUpload(r) {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error": "Videos are unavailable while this Wi-Fi uses internet relay mode. Photos continue at reduced priority so music stays first.",
+				"code":  "relay_video_unavailable",
+			})
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/media/") && !relayImageMediaPath(r.URL.Path) {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error": "Videos are unavailable while this Wi-Fi uses internet relay mode. Photos continue at reduced priority so music stays first.",
+				"code":  "relay_video_unavailable",
+			})
+			return
+		}
+		clientIP := strings.TrimSpace(r.Header.Get("X-PartyParty-Client-IP"))
+		if net.ParseIP(clientIP) == nil {
+			clientIP = "198.51.100.1"
+		}
+		r.Header.Del("X-PartyParty-Client-IP")
+		r.RemoteAddr = net.JoinHostPort(clientIP, "443")
+		s.ServeHTTP(w, r)
+	})
+}
+
+func relayImageUpload(r *http.Request) bool {
+	encodedName := strings.TrimSpace(r.Header.Get("X-PP-Name"))
+	if encodedName != "" {
+		name, err := url.QueryUnescape(encodedName)
+		return err == nil && relayImageExtension(filepath.Ext(name))
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type"))), "image/")
+}
+
+func relayImageMediaPath(path string) bool {
+	id := strings.TrimPrefix(path, "/media/")
+	id = strings.TrimPrefix(id, "thumb/")
+	return relayImageExtension(filepath.Ext(id))
+}
+
+func relayImageExtension(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".heic", ".heif", ".webp":
+		return true
+	default:
+		return false
+	}
+}
+
 type urls struct {
 	Primary string `json:"primary"`
+	Join    string `json:"join,omitempty"`
 }
 
 // AdvertisedGuestPort is the port guests use to reach this Mac: always the
@@ -364,11 +429,49 @@ func (s *srv) urls() urls {
 	// http and the console renders a "setting up the secure link" state.
 	if d := s.liveDomain(); d != "" && s.realCert() {
 		port := s.AdvertisedGuestPort()
-		return urls{
-			Primary: fmt.Sprintf("https://%s:%d/", d, port),
+		direct := fmt.Sprintf("https://%s:%d/", d, port)
+		join := direct
+		if s.Relay != nil {
+			connection := s.Relay.Snapshot()
+			switch {
+			case connection.Mode == relay.ModeChecking && !connection.RelayConnected:
+				join = ""
+			case strings.HasPrefix(connection.JoinURL, "https://"):
+				join = connection.JoinURL
+			default:
+				join = ""
+			}
 		}
+		return urls{Primary: direct, Join: join}
 	}
 	return urls{}
+}
+
+func (s *srv) directGuestURL() string {
+	if d := s.liveDomain(); d != "" && s.realCert() {
+		return fmt.Sprintf("https://%s:%d/", d, s.AdvertisedGuestPort())
+	}
+	return ""
+}
+
+func (s *srv) connectionState() relay.Status {
+	if s.Relay != nil {
+		return s.Relay.Snapshot()
+	}
+	direct := s.directGuestURL()
+	if direct == "" {
+		return relay.Status{
+			Mode:    relay.ModeChecking,
+			Message: "Preparing the secure guest connection.",
+		}
+	}
+	return relay.Status{
+		Mode:         relay.ModeDirect,
+		JoinURL:      direct,
+		DirectURL:    direct,
+		KnownNetwork: false,
+		Message:      "Guests are connecting directly to this Mac on the venue Wi-Fi.",
+	}
 }
 
 func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache string) {
@@ -387,7 +490,7 @@ func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache strin
 		// The server already knows whether its cached certificate is engaged.
 		// Embed that stable URL in the first document so the QR does not depend
 		// on a later /api/status fetch or the rest of the console renderer.
-		initialURL, _ := json.Marshal(s.urls().Primary)
+		initialURL, _ := json.Marshal(s.urls().Join)
 		data = []byte(strings.ReplaceAll(
 			string(data),
 			"__PP_INITIAL_GUEST_URL_JSON__",
@@ -453,7 +556,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"health":         health,
 			"urls":           s.urls(),
 			"lan":            s.lanStateSnapshot(), // honest LAN readiness from observed LAN vs cloud listeners
-			"llhlsUrl":       s.llhlsURL(),
+			"connection":     s.connectionState(),
+			"llhlsUrl":       s.llhlsURLFor(r),
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
 			"audioProven":    s.audioProven.Load(),
@@ -928,6 +1032,13 @@ func (s *srv) llhlsURL() string {
 		return ""
 	}
 	return fmt.Sprintf("https://%s:%d/live/%s/index.m3u8", host, s.Config.TLSPort, s.Config.StreamPath)
+}
+
+func (s *srv) llhlsURLFor(r *http.Request) string {
+	if r.Header.Get("X-PartyParty-Relay") == "1" {
+		return fmt.Sprintf("/live/%s/index.m3u8", s.Config.StreamPath)
+	}
+	return s.llhlsURL()
 }
 
 // friendlyName prefers the device's real network name ("Ramine's iPhone",

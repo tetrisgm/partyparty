@@ -41,6 +41,12 @@ cohort or comparable steady-state health window reaches one second of
 phone-to-phone spread.
 
 The venue provides Wi-Fi. partyparty does not configure a hotspot, Internet
-Sharing, DNS hijacking, or a captive portal. If the HTTPS LAN path is not
-reachable, the console reports that honestly and guests cannot join until the
-network path is fixed.
+Sharing, DNS hijacking, or a captive portal. The Mac selects direct mode when
+the HTTPS LAN path works and relay mode when a phone proves that client
+isolation blocks it. Both modes expose the same MediaMTX playlist and audio
+bytes to the same native player. Relay mode gives `/live/` responses priority
+and places capped, throttled guest photos on the secondary queue. Videos are
+disabled while relayed. Relay mode can increase DJ-to-listener delay because it
+adds an internet path, but it does not create a second timeline or mix direct
+and relayed listeners. The phone-to-phone spread target remains below one
+second.

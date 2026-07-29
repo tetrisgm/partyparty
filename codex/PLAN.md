@@ -1,18 +1,20 @@
 # Current queue
 
-1. Run the physical iOS 26.4/27 streaming acceptance in `codex/HANDOFF.md`.
-2. After that passes, supervise removal of the inert plain-HLS, delivery-switch,
+1. Run the direct and isolated-Wi-Fi physical acceptance in
+   `codex/HANDOFF.md`, including two phones in each room mode.
+2. After direct streaming acceptance passes, supervise removal of the inert plain-HLS, delivery-switch,
    recording-tee, and override internals in `internal/broadcast/`.
 3. Validate the sandboxed App Store build on a clean Mac.
-4. Implement the isolated standalone beta target, Developer ID/notarized
-   packaging, Sparkle EdDSA appcast, website download, and one-command ship
-   verification without changing the Store product.
-5. Package and upload the newest Store build, then finish its App Store Connect
-   privacy answers, screenshots, and submission.
+4. When the owner resumes Apple releases, package and upload the newest Store
+   build, then finish its App Store Connect privacy answers, screenshots, and
+   submission.
 
 Completed: the app is account-free. The Store edition remains App Store-only;
-policy now also permits a separately identified standalone beta for testing.
-The old shared direct-release daemon and OTA web payloads remain retired.
+the separately identified standalone beta is shipped through its signed Sparkle
+channel. The old shared direct-release daemon and OTA web payloads remain
+retired.
 
-Do not restore public event pages, online listening, cloud party feeds, replays,
-hotspot/captive-portal setup, alternate Apple playback engines, or stream presets.
+Do not restore public event pages, retained online listening, cloud party
+feeds, replays, hotspot/captive-portal setup, alternate Apple playback engines,
+or stream presets. The only cloud live path is the Mac-controlled ephemeral
+relay for isolated venue Wi-Fi.

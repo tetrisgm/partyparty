@@ -1,7 +1,8 @@
 # Multi-DJ LAN switching
 
-PartyParty Macs on the same venue Wi-Fi discover one another automatically.
-This feature has no cloud directory and no audio relay.
+PartyParty Macs on the same venue Wi-Fi discover one another automatically in
+direct mode. Relay mode is a room fallback for client-isolated Wi-Fi and does
+not replace Bonjour discovery between Macs.
 
 ## Production topology
 
@@ -20,6 +21,9 @@ This feature has no cloud directory and no audio relay.
 - Switching mutes the old native media element and unmutes the already-running
   selected element. It does not seek, relay, restart the room, or re-encode on
   behalf of another DJ.
+- When the Mac selects relay mode, its own guests and HLS bytes use that Mac's
+  outbound relay. Each Mac remains responsible for its own stream. The relay
+  never asks one DJ's Mac to carry another DJ's audio.
 
 ## Permissions
 

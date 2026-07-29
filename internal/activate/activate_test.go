@@ -1,6 +1,7 @@
 package activate
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -14,6 +15,14 @@ import (
 	"testing"
 	"time"
 )
+
+func TestRegisterRelayRejectsNonLANAddress(t *testing.T) {
+	for _, address := range []string{"", "127.0.0.1", "169.254.1.2", "::1", "not-an-ip"} {
+		if _, err := RegisterRelay(context.Background(), "https://partyparty.party", address, nil); err == nil {
+			t.Fatalf("RegisterRelay accepted %q", address)
+		}
+	}
+}
 
 func TestCachedCertReadyBYOHostFromLocalFiles(t *testing.T) {
 	setupStateDir(t)

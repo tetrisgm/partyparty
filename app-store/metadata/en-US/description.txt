@@ -2,14 +2,15 @@ partyparty turns a DJ's Mac into the audio and media hub for a room.
 
 Connect the Mac to the venue Wi-Fi, choose the Mac's output or an audio interface, and press Go Live. Guests scan the secure QR code and listen from Safari on the same network. On iPhone, playback continues when Safari is in the background or the phone is locked.
 
-The active room can also collect guest posts, comments, reactions, song requests, photos, and videos. Party content and live audio stay on the Mac rather than being published as a cloud event page.
+The active room can also collect guest posts, comments, reactions, song requests, photos, and videos. On ordinary Wi-Fi, party content and live audio stay on the local network. If a venue isolates nearby devices, PartyParty can relay live music and lightweight room interaction without creating a cloud event page or replay. Photos continue at reduced priority in relay mode, while videos wait for a direct connection.
 
 Built for real parties:
 
 - HTTPS low-latency HLS audio
 - Native iPhone playback with lock-screen controls
 - No guest accounts
-- No internet required for guests after the room is ready
+- Direct mode works without internet after the room is ready
+- Automatic fallback for client-isolated venue Wi-Fi
 - Mac system-audio, microphone, controller, and interface capture
 - A full-screen wall with the room QR and guest media
 - Local event folders for the DJ's recordings and party media

@@ -28,6 +28,7 @@ checkInlineScripts('web/listener.html');
 checkInlineScripts('web/dj.html');
 
 const listener = read('web/listener.html');
+const forbiddenDash = String.fromCodePoint(0x2014);
 assert.match(listener, /const ROOM_TARGET_FALLBACK = 1\.0;/);
 assert.match(listener, /const useNative = nativeHLS && \(isAppleUA \|\| iosShellBrowser\);/);
 assert.match(listener, /const OUTLIER_LATE_BY = 0\.75;/);
@@ -57,7 +58,7 @@ assert.match(listener, /playerSheet\.addEventListener\('touchend'/);
 assert.match(listener, /id="sheetCollapse"[^>]*>×<\/button>/);
 assert.match(listener, /\.playerbarrow\{[\s\S]*?background:var\(--selected-dj-color,#20c965\)/);
 assert.match(listener, /\.playersheet\{[\s\S]*?background:var\(--sheet-bg\)/);
-assert.doesNotMatch(listener, /—/);
+assert.ok(!listener.includes(forbiddenDash));
 assert.match(listener, /sheetPlay\.addEventListener\('click', \(\) => btn\.click\(\)\)/);
 assert.match(listener, /body:not\(\.playing\) \.playbars\{visibility:hidden\}/);
 assert.match(listener, /artworkUrl/);
@@ -112,17 +113,21 @@ assert.match(dj, /\$\('qrPending'\)\.hidden = true;/);
 assert.doesNotMatch(dj, /\$\('shareCard'\)\.hidden = !linkReady;/);
 assert.doesNotMatch(dj, /\$\('partyQrPanel'\)\.hidden = !linkReady;/);
 assert.doesNotMatch(dj, /id="setupCard"/);
-assert.match(dj, /const dnsPublished = !!\(s && s\.lan && s\.lan\.dnsPublished === true\);/);
+assert.match(dj, /typeof s\.urls\?\.join === 'string'/);
+assert.match(dj, /const mode = s && s\.connection && s\.connection\.mode \|\| 'checking';/);
 assert.match(dj, /const linkReady = !!guestUrl && secure;/);
-assert.doesNotMatch(dj, /const linkReady = !!guestUrl && secure && lanReady;/);
-assert.doesNotMatch(dj, /const linkReady = !!guestUrl && secure && dnsPublished;/);
-assert.match(dj, /Secure link created\. Updating it for this Wi-Fi\./);
-assert.match(dj, /Ready to scan\./);
+assert.match(dj, /Scan once to check this Wi-Fi\./);
+assert.match(dj, /Internet relay active\./);
+assert.match(dj, /Direct Wi-Fi connection\./);
+assert.match(dj, /function renderConnectionState\(connection\)/);
+assert.match(dj, /Reconnecting the internet relay now\./);
+assert.doesNotMatch(dj, /const dnsPublished =/);
 assert.match(dj, /\.spin16\{animation:pp-spin 1\.4s linear infinite!important\}/);
 assert.match(dj, /Starting Audio/);
 assert.match(dj, /Stop Broadcasting/);
 assert.doesNotMatch(dj, /id="badge"/);
 assert.doesNotMatch(dj, /captureSoftAsk|screenPermBtn|permission has not been confirmed/);
+assert.ok(!dj.includes(forbiddenDash));
 
 const playback = read('internal/server/playback.go');
 assert.match(playback, /const roomLatencyTarget = 1\.0/);
@@ -137,6 +142,15 @@ assert.doesNotMatch(server, /Privacy_ScreenCapture|Screen & System Audio Recordi
 
 const main = read('main.go');
 assert.match(main, /startPeerDiscovery\(res\.Host\)/);
+assert.match(main, /relay\.New\(relay\.Config/);
+
+const relayManager = read('internal/relay/relay.go');
+assert.match(relayManager, /ModeChecking = "checking"/);
+assert.match(relayManager, /ModeDirect\s+= "direct"/);
+assert.match(relayManager, /ModeRelay\s+= "relay"/);
+assert.match(relayManager, /case "state_ack":/);
+assert.match(relayManager, /s\.manager\.applyProbe/);
+assert.match(relayManager, /websocket\.Dial/);
 
 const config = read('internal/config/config.go');
 assert.match(config, /c\.Bitrate = "320k"/);

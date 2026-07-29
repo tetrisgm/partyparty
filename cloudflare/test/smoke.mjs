@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import worker, {
   APP_VERSION,
+  RelayRoom,
   readJson,
   sha256Hex,
 } from "../worker.js";
@@ -29,6 +30,10 @@ class MemoryR2 {
     this.items.set(key, bytes);
   }
   async delete(key) { this.items.delete(key); }
+  async head(key) {
+    if (!this.items.has(key)) return null;
+    return { size: this.items.get(key).byteLength || String(this.items.get(key)).length };
+  }
   async list({ prefix = "" } = {}) {
     return {
       objects: [...this.items.entries()]
@@ -51,6 +56,18 @@ const baseEnv = () => ({
   BROKER_BASE: "partyparty.party",
   CF_DNS_TOKEN: "token",
   CF_ZONE_ID: "0123456789abcdef0123456789abcdef",
+  RELAY_ROOMS: {
+    getByName() {
+      return {
+        fetch(request) {
+          return new Response(JSON.stringify({
+            path: new URL(request.url).pathname,
+            host: request.headers.get("x-pp-public-host"),
+          }), { headers: { "content-type": "application/json" } });
+        },
+      };
+    },
+  },
 });
 
 const tests = [];
@@ -114,6 +131,87 @@ test("broker ping remains public and registration remains available", async () =
   assert.match(body.id, /^[a-f0-9]{12}$/);
   assert.match(body.secret, /^[a-f0-9]{48}$/);
   assert.match(body.hostLabel, /^[a-z]+-[a-z]+$/);
+
+  const relay = await worker.fetch(new Request("https://partyparty.party/api/broker/relay/register", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.10",
+    },
+    body: JSON.stringify({ id: body.id, secret: body.secret, lanIp: "192.168.20.14" }),
+  }), env);
+  assert.equal(relay.status, 200);
+  const relayBody = await relay.json();
+  assert.match(relayBody.joinUrl, /^https:\/\/r-[a-f0-9]{32}\.partyparty\.party\/$/);
+  assert.match(relayBody.connectUrl, /^wss:\/\/partyparty\.party\/api\/broker\/relay\/connect\/[a-f0-9]{32}$/);
+  assert.match(relayBody.networkKey, /^[a-f0-9]{64}$/);
+  const relayToken = new URL(relayBody.joinUrl).hostname.slice(2, 34);
+  await env.DL.delete(`broker/relay/${relayToken}`);
+  const repaired = await worker.fetch(new Request("https://partyparty.party/api/broker/relay/register", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "cf-connecting-ip": "203.0.113.10",
+    },
+    body: JSON.stringify({ id: body.id, secret: body.secret, lanIp: "192.168.20.14" }),
+  }), env);
+  assert.equal(repaired.status, 200);
+  assert.ok(await env.DL.head(`broker/relay/${relayToken}`));
+
+  const invalidLAN = await worker.fetch(new Request("https://partyparty.party/api/broker/relay/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: body.id, secret: body.secret, lanIp: "127.0.0.1" }),
+  }), env);
+  assert.equal(invalidLAN.status, 400);
+
+  const publicRoom = await worker.fetch(
+    new Request(relayBody.joinUrl),
+    env,
+    { waitUntil() {} },
+  );
+  assert.equal(publicRoom.status, 200);
+  const routed = await publicRoom.json();
+  assert.equal(routed.path, "/room/");
+  assert.match(routed.host, /^r-[a-f0-9]{32}\.partyparty\.party$/);
+
+  const blockedUpload = await worker.fetch(new Request(new URL("/api/upload", relayBody.joinUrl), {
+    method: "POST",
+    body: new Uint8Array(1024),
+  }), env, { waitUntil() {} });
+  assert.equal(blockedUpload.status, 409);
+  assert.equal((await blockedUpload.json()).code, "relay_video_unavailable");
+  const blockedMedia = await worker.fetch(
+    new Request(new URL("/media/large-video.mp4", relayBody.joinUrl)),
+    env,
+    { waitUntil() {} },
+  );
+  assert.equal(blockedMedia.status, 409);
+  assert.equal((await blockedMedia.json()).code, "relay_video_unavailable");
+  const relayedPhoto = await worker.fetch(new Request(new URL("/api/upload", relayBody.joinUrl), {
+    method: "POST",
+    headers: { "content-type": "image/jpeg", "x-pp-name": "party.jpg" },
+    body: new Uint8Array(1024),
+  }), env, { waitUntil() {} });
+  assert.equal(relayedPhoto.status, 200);
+  assert.equal((await relayedPhoto.json()).path, "/room/api/upload");
+  const relayedPhotoDownload = await worker.fetch(
+    new Request(new URL("/media/party.jpg", relayBody.joinUrl)),
+    env,
+    { waitUntil() {} },
+  );
+  assert.equal(relayedPhotoDownload.status, 200);
+  assert.equal((await relayedPhotoDownload.json()).path, "/room/media/party.jpg");
+
+  const connect = await worker.fetch(new Request(relayBody.connectUrl.replace("wss:", "https:"), {
+    headers: {
+      upgrade: "websocket",
+      "x-partyparty-install": body.id,
+      "x-partyparty-secret": body.secret,
+    },
+  }), env);
+  assert.equal(connect.status, 200);
+  assert.equal((await connect.json()).path, "/connect");
 });
 
 test("retired cloud ingest endpoints reject requests", async () => {
@@ -139,6 +237,129 @@ test("retired identity and account routes stay gone", async () => {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
     assert.equal(response.status, 404, path);
   }
+});
+
+test("relay bootstrap lets the phone report reachability while the Mac owns the mode", async () => {
+  const sent = [];
+  const origin = {
+    readyState: 1,
+    send(message) { sent.push(message); },
+    deserializeAttachment() { return { role: "origin" }; },
+  };
+  let ready = Promise.resolve();
+  const stored = new Map();
+  const ctx = {
+    storage: {
+      get: async (key) => stored.get(key),
+      put: async (key, value) => stored.set(key, value),
+    },
+    blockConcurrencyWhile(fn) { ready = Promise.resolve(fn()); },
+    getWebSockets(tag) { return tag === "origin" ? [origin] : []; },
+  };
+  const room = new RelayRoom(ctx, {});
+  await ready;
+  room.roomState = {
+    mode: "checking",
+    directUrl: "https://disco-party.party.partyparty.party:8443/",
+    networkKey: "network-1",
+    version: "test",
+    updatedAt: Date.now(),
+  };
+
+  const bootstrap = await room.fetch(new Request("https://relay.internal/room/"));
+  assert.equal(bootstrap.status, 200);
+  const html = await bootstrap.text();
+  assert.match(html, /Checking this Wi-Fi/);
+  assert.match(html, /disco-party\.party\.partyparty\.party:8443/);
+
+  const probe = await room.fetch(new Request("https://relay.internal/probe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reachable: false }),
+  }));
+  assert.equal(probe.status, 202);
+  assert.deepEqual(JSON.parse(sent.shift()), {
+    type: "probe",
+    reachable: false,
+    networkKey: "network-1",
+  });
+
+  await room.webSocketMessage(origin, JSON.stringify({
+    type: "state",
+    mode: "relay",
+    directUrl: room.roomState.directUrl,
+    networkKey: "network-1",
+    version: "test",
+  }));
+  assert.deepEqual(JSON.parse(sent.shift()), {
+    type: "state_ack",
+    mode: "relay",
+    networkKey: "network-1",
+  });
+  const state = await (await room.fetch(new Request("https://relay.internal/state"))).json();
+  assert.equal(state.mode, "relay");
+  assert.equal(state.online, true);
+});
+
+test("relay room streams one guest request through the Mac socket", async () => {
+  const sent = [];
+  const origin = {
+    readyState: 1,
+    bufferedAmount: 0,
+    send(message) { sent.push(message); },
+    deserializeAttachment() { return { role: "origin" }; },
+  };
+  let ready = Promise.resolve();
+  const stored = new Map();
+  const ctx = {
+    storage: {
+      get: async (key) => stored.get(key),
+      put: async (key, value) => stored.set(key, value),
+    },
+    blockConcurrencyWhile(fn) { ready = Promise.resolve(fn()); },
+    getWebSockets(tag) { return tag === "origin" ? [origin] : []; },
+  };
+  const room = new RelayRoom(ctx, {});
+  await ready;
+  room.roomState.mode = "relay";
+
+  const responsePromise = room.fetch(new Request("https://relay.internal/room/api/status", {
+    headers: {
+      "x-pp-public-host": "r-test.partyparty.party",
+      "x-pp-client-ip": "203.0.113.44",
+    },
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const request = JSON.parse(sent.shift());
+  assert.equal(request.type, "request");
+  assert.equal(request.path, "/api/status");
+  assert.equal(request.clientIp, "203.0.113.44");
+
+  await room.webSocketMessage(origin, JSON.stringify({
+    type: "response",
+    id: request.id,
+    status: 200,
+    headers: { "Content-Type": ["application/octet-stream"] },
+  }));
+  const idBytes = new TextEncoder().encode(request.id);
+  const bodyBytes = new Uint8Array(512 * 1024).fill(7);
+  const frame = new Uint8Array(36 + bodyBytes.byteLength);
+  frame.set(idBytes);
+  frame.set(bodyBytes, 36);
+  await room.webSocketMessage(origin, frame.buffer);
+  assert.deepEqual(JSON.parse(sent.shift()), {
+    type: "response_ack",
+    id: request.id,
+    bytes: 512 * 1024,
+  });
+  await room.webSocketMessage(origin, JSON.stringify({ type: "response_end", id: request.id }));
+
+  const response = await responsePromise;
+  assert.equal(response.status, 200);
+  const responseBytes = new Uint8Array(await response.arrayBuffer());
+  assert.equal(responseBytes.byteLength, bodyBytes.byteLength);
+  assert.equal(responseBytes[0], 7);
+  assert.equal(responseBytes[responseBytes.length - 1], 7);
 });
 
 let failures = 0;

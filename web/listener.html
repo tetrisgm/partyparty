@@ -224,6 +224,8 @@
     background:#ff2d87;color:#fff;white-space:nowrap;vertical-align:middle;
   }
   .modechip::before{content:"📶";font-size:10px}
+  .modechip.relay::before{content:"↗"}
+  .modechip.checking::before{content:"…"}
   .delaybadge{
     position:fixed;top:calc(12px + env(safe-area-inset-top));left:12px;z-index:6;
     min-width:92px;padding:7px 9px;border:1px solid var(--separator);border-radius:7px;
@@ -401,6 +403,7 @@
   .albumtile img,.albumtile video{width:100%;height:100%;object-fit:cover;display:block}
   .albumtile .vplay{width:32px;height:32px;font-size:14px}
   .albumempty{grid-column:1/-1;color:var(--party-muted);font-size:13px;padding:16px 4px;text-align:center}
+  .relaymedianote{color:var(--party-muted);font-size:13px;line-height:1.45;padding:12px 4px 6px}
   .albumadd{
     width:100%;height:42px;margin-top:9px;border:none;border-radius:8px;background:#050505;color:#fff;
     font:inherit;font-size:14px;font-weight:850;cursor:pointer;
@@ -878,6 +881,7 @@
       <div class="sectionrow">
         <h2>Photos &amp; videos</h2>
       </div>
+      <div class="relaymedianote" id="relayMediaNote" hidden>Photos transfer at reduced priority while PartyParty relays the music. Videos are unavailable in this mode.</div>
       <div class="albumstrip" id="albumStrip"><div class="albumempty">No photos yet.</div></div>
     </section>
     <div id="feedList"><div class="feedempty">Nothing here yet - start the wall 🎉</div></div>
@@ -941,6 +945,7 @@
     const djPickerHead = document.getElementById('djPickerHead');
     const djSwitchNotice = document.getElementById('djSwitchNotice');
     const delayBadge = document.getElementById('delayBadge');
+    const modeChip = document.getElementById('modeChip');
     const menuBtn = document.getElementById('menuBtn');
     const peopleBtn = document.getElementById('peopleBtn');
     const menuTray = document.getElementById('menuTray');
@@ -1000,6 +1005,28 @@
     const ROOM_TARGET_FALLBACK = 1.0;
     let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let localLatencyTarget = 0, localStreamGeneration = 0, localStreamReady = false, localLive = false;
+    let connectionMode = /^r-[a-f0-9]{32}\.partyparty\.party$/i.test(location.hostname) ? 'relay' : 'checking';
+    const connectionModeListeners = [];
+    function setConnectionMode(nextMode){
+      const valid = nextMode === 'direct' || nextMode === 'relay' || nextMode === 'checking';
+      const next = valid ? nextMode : 'direct';
+      const changed = next !== connectionMode;
+      connectionMode = next;
+      document.body.dataset.connectionMode = next;
+      modeChip.classList.toggle('wifi', next === 'direct');
+      modeChip.classList.toggle('relay', next === 'relay');
+      modeChip.classList.toggle('checking', next === 'checking');
+      modeChip.textContent = next === 'relay' ? 'Internet relay' : next === 'checking' ? 'Checking Wi-Fi' : 'Wi-Fi';
+      modeChip.title = next === 'relay'
+        ? 'This Wi-Fi blocks nearby devices, so music is using an internet relay'
+        : next === 'checking'
+          ? 'Checking whether guests can connect directly on this Wi-Fi'
+          : 'Guests are listening directly from the DJ Mac on this Wi-Fi';
+      if (changed) {
+        for (const listener of connectionModeListeners) listener(next);
+      }
+    }
+    setConnectionMode(connectionMode);
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let discoveredPeers = [], selectedDJId = '', listenerCountsByDJ = new Map(), listenerGroups = [];
     let localDJLinks = [], localDJAvatar = '', localDJBio = '';
@@ -2374,6 +2401,17 @@
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         lastPollOK = Date.now();
         considerReload(s.appVersion);
+        const connection = s.connection && typeof s.connection === 'object' ? s.connection : null;
+        if (connection && connection.mode === 'relay' && connection.joinUrl) {
+          try {
+            const relayURL = new URL(connection.joinUrl, location.href);
+            if (relayURL.origin !== location.origin) {
+              location.replace(relayURL.href);
+              return;
+            }
+          } catch (e) {}
+        }
+        setConnectionMode(connection ? connection.mode : 'direct');
         localStreamURL = s.llhlsUrl || null;
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) localLatencyTarget = s.latencyTarget;
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
@@ -2605,7 +2643,7 @@
       const $id = (i) => document.getElementById(i);
       const feedSec = $id('feedSec'), feedList = $id('feedList'), downhint = $id('downhint');
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      const albumSec = $id('albumSec'), albumStrip = $id('albumStrip');
+      const albumSec = $id('albumSec'), albumStrip = $id('albumStrip'), relayMediaNote = $id('relayMediaNote');
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const featureDefaults = {
         uploads: true, videoUploads: true, comments: true, reactions: false,
@@ -2633,6 +2671,9 @@
       }
       function featureOn(name){
         return currentFeatures[name] !== false;
+      }
+      function relayVideosAvailable(){
+        return connectionMode !== 'relay';
       }
       function renderDJLinks(links){
         currentLinks = Array.isArray(links) ? links : currentLinks;
@@ -2873,7 +2914,11 @@
       function renderAlbum(totalMedia, photoTotal, videoTotal){
         if (!albumSec || !albumStrip) return;
         albumSec.hidden = !featureOn('wallMode');
-        const items = [...albumItems.values()].sort((a, b) => b.ts - a.ts).slice(0, 12);
+        relayMediaNote.hidden = relayVideosAvailable();
+        const items = [...albumItems.values()]
+          .filter(item => relayVideosAvailable() || item.type === 'image')
+          .sort((a, b) => b.ts - a.ts)
+          .slice(0, 12);
         albumStrip.innerHTML = items.length
           ? items.map(albumMediaHTML).join('')
           : '<div class="albumempty">No photos yet.</div>';
@@ -2907,6 +2952,9 @@
       function isVideoFile(file){
         return !!file && ((file.type && file.type.indexOf('video/') === 0) || /\.(mp4|mov|m4v|webm)$/i.test(file.name || ''));
       }
+      function isImageFile(file){
+        return !!file && ((file.type && file.type.indexOf('image/') === 0) || /\.(jpe?g|png|gif|heic|heif|webp)$/i.test(file.name || ''));
+      }
       function applyFeatureUI(){
         const wallOn = featureOn('wallMode');
         const commentsOn = wallOn && featureOn('comments');
@@ -2926,8 +2974,10 @@
         ctext.disabled = !commentsOn;
         attachBtn.hidden = !uploadsOn;
         attachBtn.disabled = !uploadsOn;
+        attachBtn.setAttribute('aria-label', relayVideosAvailable() ? 'Add photos or videos' : 'Add photos');
+        attachBtn.title = relayVideosAvailable() ? 'Add photos or videos' : 'Add photos';
         cfiles.disabled = !uploadsOn;
-        cfiles.accept = featureOn('videoUploads') ? 'image/*,video/*' : 'image/*';
+        cfiles.accept = featureOn('videoUploads') && relayVideosAvailable() ? 'image/*,video/*' : 'image/*';
         postBtn.hidden = !(commentsOn || uploadsOn);
         if (!uploadsOn) {
           cfiles.value = '';
@@ -2936,7 +2986,9 @@
         }
       }
       function fileAllowed(file){
-        return !!file && (featureOn('videoUploads') || !isVideoFile(file));
+        if (!file) return false;
+        if (!relayVideosAvailable()) return isImageFile(file);
+        return featureOn('videoUploads') || !isVideoFile(file);
       }
       function setPendingFiles(files, append){
         const incoming = [...(files || [])].filter(fileAllowed);
@@ -2980,9 +3032,16 @@
         });
         attachN.textContent = pendingFiles.length ? pendingFiles.length + ' selected' : '';
       }
-      attachBtn.addEventListener('click', () => { if (featureOn('wallMode') && featureOn('uploads')) cfiles.click(); });
+      attachBtn.addEventListener('click', () => {
+        if (featureOn('wallMode') && featureOn('uploads')) cfiles.click();
+      });
       cfiles.addEventListener('change', () => {
-        if (!featureOn('uploads')) { cfiles.value = ''; pendingFiles = []; renderPendingFiles(); return; }
+        if (!featureOn('uploads')) {
+          cfiles.value = '';
+          pendingFiles = [];
+          renderPendingFiles();
+          return;
+        }
         setPendingFiles(cfiles.files, pendingFiles.length > 0);
         cfiles.value = '';
         if (pendingFiles.length) openComposer(false);
@@ -3092,7 +3151,10 @@
         }).join('');
       }
       function renderPost(p){
-        const media = (p.media || []).map(m => {
+        const sourceMedia = p.media || [];
+        const videoHiddenByRelay = !relayVideosAvailable() && sourceMedia.some(m => m.type === 'video');
+        const visibleMedia = relayVideosAvailable() ? sourceMedia : sourceMedia.filter(m => m.type === 'image');
+        const media = visibleMedia.map(m => {
           const src = m.url || ('/media/' + encodeURIComponent(m.id));
           const thumb = m.thumb || src;
           if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + esc(thumb) + '" data-fallback-src="' + src + '" loading="lazy" alt=""></a>';
@@ -3113,6 +3175,7 @@
           '<span class="ptime">' + fmtTime(p.ts) + '</span></div>' +
           (p.text ? '<div class="ptext' + big + '">' + esc(p.text) + '</div>' : '') +
           (media ? '<div class="pmedia">' + media + '</div>' : '') +
+          (videoHiddenByRelay ? '<div class="relaymedianote">Videos are available only when guests connect directly on the venue Wi-Fi.</div>' : '') +
           renderComments(p) +
           (featureOn('wallMode') && featureOn('comments')
             ? '<div class="postactions"><div class="postreactions">' + renderPostReactions(p) + '</div>' +
@@ -3295,6 +3358,17 @@
           return true;
         } catch (e) { return false; }
       }
+      connectionModeListeners.push(() => {
+        cfiles.value = '';
+        pendingFiles = [];
+        renderPendingFiles();
+        newestAct = 0;
+        nodes.clear();
+        albumItems.clear();
+        feedList.innerHTML = '';
+        applyFeatureUI();
+        pollFeed(true);
+      });
       // Self-scheduling long-poll loop: a healthy parked request IS the wait,
       // so the breather is tiny; failures (offline, no event store, first poll
       // lost to a Wi-Fi blip) retry on a 5s cadence instead of hammering.

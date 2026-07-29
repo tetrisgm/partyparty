@@ -1,9 +1,36 @@
 # Current handoff
 
-The product is venue-Wi-Fi only. The Mac serves HTTPS LL-HLS and the active-room
-social feed directly to guests. Public event pages, remote listening, cloud
-party content, replays, hotspot setup, playback modes, and old stream settings
-are retired.
+The product is venue-Wi-Fi only. The Mac selects one room-wide connection mode.
+Direct mode serves HTTPS LL-HLS and the active-room social feed over venue
+Wi-Fi. Relay mode reverse-proxies that same live surface when the venue isolates
+nearby devices. Public event pages, retained cloud party content, replays,
+hotspot setup, playback modes, and old stream settings are retired.
+
+## Network mode contract
+
+- The QR uses the stable public bootstrap while the setup service is reachable.
+  The bootstrap probes the Mac's real certificate-backed LAN endpoint before
+  loading the room.
+- The browser reports only probe success or failure. The Mac is authoritative
+  and selects `direct` or `relay` for the entire room.
+- A direct verdict is cached for the opaque public-IP plus LAN-subnet network
+  key. An isolation verdict is cached the same way. Wi-Fi names are not stored.
+- If setup infrastructure is unavailable, a cached certificate still permits a
+  direct QR and offline guest playback.
+- Relay mode uses one authenticated outbound WebSocket from the Mac. The relay
+  exposes only the guest routes, never the DJ console or broadcast controls.
+- Relay responses preserve the existing LL-HLS playlists and media bytes.
+  Immutable rolling media parts may be cached for up to 60 seconds to avoid
+  sending duplicate copies from the Mac. Party history is never retained.
+- LL-HLS responses use the priority queue. Guest photos use a capped, throttled
+  secondary path. Videos are not uploaded or delivered in relay mode, and the
+  guest UI explains that music is being protected. Event cover, DJ avatar,
+  track artwork, text posts, and reactions remain available.
+- A direct listener that observes a room-wide switch to relay navigates to the
+  relay origin. Direct and relayed playback are not mixed in one room.
+- The Mac console and menu bar must state `checking`, `direct`, or `relay`.
+  Relay copy must explain that the Wi-Fi limits nearby-device connections and
+  that using the internet can increase DJ-to-listener delay.
 
 ## Streaming contract
 
@@ -48,6 +75,24 @@ required supervised gate before touching the protected encoder/capture cleanup:
    be no failed stream contract, startup-spread, or steady-room
    spread finding.
 
+Repeat the acceptance on a client-isolated Wi-Fi network:
+
+1. Relaunch the Mac app after joining the isolated network.
+2. Confirm the QR is withheld while the Mac refreshes its network identity, then
+   appears with `Checking Wi-Fi`.
+3. Scan it with the first iPhone. The bootstrap must move the whole room to
+   `Internet relay` without first exposing a dead direct page.
+4. Join a second iPhone from the same QR. Both phones must use the same relay
+   origin, become audible without a refresh, and remain within 1.0 second of one
+   another.
+5. Lock both phones for at least 20 minutes. Playback and lock-screen controls
+   must remain continuous.
+6. Post text and a still photo. Both must arrive on the Mac without affecting
+   playback. The picker must exclude videos, and a direct video request must be
+   rejected before its body enters the relay.
+7. Interrupt the Mac's internet connection briefly. The console must say the
+   relay is reconnecting, and the room must recover after internet returns.
+
 The analyzer reports bounded outlier reattachments as recovery evidence.
 External/OS seeks remain warnings that require checking the following health
 windows. Any legacy app-governor event in a current-version session is a failure.
@@ -65,9 +110,8 @@ scripts/package-app-store.sh
 ```
 
 Apple Distribution signing and the Store provisioning profile are configured.
-The separately identified standalone beta channel is authorized for Developer
-ID signed/notarized testing builds and Sparkle updates, but is not implemented
-yet. It must not alter the Store target or restore the retired shared release
-daemon or OTA web payload system. After the physical streaming gate, package
-and upload the newest Store source version, then finish the App Store Connect
-screenshots, privacy answers, and submission.
+The separately identified standalone beta ships through
+`scripts/ship-standalone.sh` as a Developer ID signed and notarized app with a
+Sparkle EdDSA appcast. It must not alter the Store target or restore the retired
+shared release daemon or OTA web payload system. Do not upload another Store or
+TestFlight build until the owner explicitly resumes Apple releases.

@@ -136,6 +136,7 @@
     const media = new Map();
     const tiles = [];
     let newestAct = 0, feedOn = false, curDir = '', qrText = '', wallOn = true;
+    let relayVideosUnavailable = /^r-[a-f0-9]{32}\.partyparty\.party$/i.test(location.hostname);
     let lastStatusOK = 0;
     const lastBurstAt = new Map();
 
@@ -223,13 +224,19 @@
     function renderStatus(s){
       lastStatusOK = Date.now();
       if (s.appVersion && !PAGE_VERSION.includes('PP_VERSION') && s.appVersion !== PAGE_VERSION) location.reload();
+      const nextRelayVideosUnavailable = !!(s.connection && s.connection.mode === 'relay');
+      if (nextRelayVideosUnavailable !== relayVideosUnavailable) {
+        relayVideosUnavailable = nextRelayVideosUnavailable;
+        media.clear();
+        renderCollage();
+      }
       const event = s.event || {};
       setWallEnabled(featureOn(event.features || {}, 'wallMode', true));
       updateIdentity({ title: event.title || s.name, host: event.host || 'the DJ' });
       const count = Number(s.listeners || 0);
       $('listenerCount').textContent = String(count);
       $('listenerLabel').textContent = count === 1 ? 'listening' : 'listening';
-      const guestUrl = s.urls && s.urls.primary || '';
+      const guestUrl = s.urls && (s.urls.join || (!s.connection && s.urls.primary)) || '';
       $('joinUrl').textContent = guestUrl;
       renderQR(guestUrl);
       const state = s.broadcast && s.broadcast.state || 'idle';
@@ -253,6 +260,7 @@
       const list = Array.isArray(p.media) ? p.media : [];
       for (const m of list) {
         if (!m || (m.type !== 'image' && m.type !== 'video')) continue;
+        if (relayVideosUnavailable && m.type === 'video') continue;
         const key = p.id + ':' + m.id;
         media.set(key, {
           key, post: p.id, id: m.id, type: m.type, src: mediaSource(m),
@@ -297,7 +305,9 @@
       const collage = $('collage');
       if (!items.length) {
         ensureTiles(0);
-        collage.innerHTML = '<div class="empty"><div><b>Scan to join</b><span>Photos and videos shared by guests appear here.</span></div></div>';
+        collage.innerHTML = relayVideosUnavailable
+          ? '<div class="empty"><div><b>Share a photo</b><span>Photos transfer at reduced priority. Videos are unavailable while PartyParty relays the music.</span></div></div>'
+          : '<div class="empty"><div><b>Scan to join</b><span>Photos and videos shared by guests appear here.</span></div></div>';
         return;
       }
       const empty = collage.querySelector('.empty');

@@ -14,11 +14,21 @@ for (const label of ['Open Guest QR', 'Open Console', 'Stop Set', 'Audio capture
 assert.match(delegate, /s\.listeners == 1 \? "1 listener" : "\\\(s\.listeners\) listeners"/);
 assert.match(delegate, /stop\.isEnabled = broadcasting/);
 assert.match(delegate, /qr\.isEnabled = !s\.guestURL\.isEmpty/);
+for (const label of [
+  'Connection: Direct Wi-Fi',
+  'Connection: Internet relay',
+  'Connection: Reconnecting relay',
+  'Connection: Checking Wi-Fi',
+]) {
+  assert.ok(delegate.includes(label), `menu-bar contract is missing "${label}"`);
+}
 
 const api = read('app/Sources/partyparty/APIClient.swift');
 assert.match(api, /http:\/\/127\.0\.0\.1:\\\(port\)\/api\/stop/);
 assert.match(api, /req\.httpMethod = "POST"/);
 assert.doesNotMatch(api, /http:\/\/localhost:/);
+assert.match(api, /urls\["join"\] as\? String/);
+assert.match(api, /if o\["connection"\] is \[String: Any\]/);
 
 const consoleController = read('app/Sources/partyparty/AdminWindowController.swift');
 assert.match(consoleController, /func showGuestQR\(\)/);

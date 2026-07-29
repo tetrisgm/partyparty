@@ -107,7 +107,9 @@ function legalResponse(pathname) {
       <h1>Privacy policy</h1>
       <p class="sub">Effective July 26, 2026</p>
       <h2>What partyparty does</h2>
-      <p>The Mac app serves live audio and the active party room directly to guests on the same Wi-Fi. Party audio, guest names, posts, comments, reactions, photos, and videos stay on the DJ's Mac. They are not uploaded to partyparty's cloud service.</p>
+      <p>On ordinary venue Wi-Fi, the Mac app serves live audio and the active party room directly to guests. If the Wi-Fi prevents nearby devices from connecting, the Mac can select relay mode so encrypted guest requests and live audio pass through partyparty's Cloudflare service while the room is active.</p>
+      <h2>Relay mode</h2>
+      <p>Relay mode is a live transport, not cloud party storage. Live audio, listening status, text posts, reactions, and still photos pass through to the DJ's Mac and are not retained by partyparty. Photo transfer is capped and throttled so music stays first. Videos are unavailable in relay mode and do not enter the relay. Short rolling HLS media parts and still photos may be cached for up to 60 seconds to avoid repeatedly uploading identical bytes from the Mac. There are no cloud recordings, replays, or public event pages.</p>
       <h2>Secure room address</h2>
       <p>Each installation receives a random credential and a two-word hostname used only to provision its certificate-backed local room address. This infrastructure identifier is not connected to a PartyParty account or profile.</p>
       <h2>Diagnostics</h2>
@@ -229,6 +231,20 @@ async function authInstall(env, id, secret) {
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => o ? o.json() : null);
   if (!rec || rec.secret !== secret) return null;
   return rec;
+}
+function randomHex(bytes) {
+  return [...crypto.getRandomValues(new Uint8Array(bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function relayHost(env, token) {
+  return `r-${token}.${env.BROKER_BASE}`;
+}
+function relaySubnet(ip) {
+  if (!isValidIPv4(ip)) return "";
+  const parts = ip.split(".");
+  const octets = parts.map(Number);
+  if (octets[0] === 0 || octets[0] === 127 || octets[0] >= 224 ||
+      (octets[0] === 169 && octets[1] === 254)) return "";
+  return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
 }
 function isValidIPv4(ip) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(ip || ""));
@@ -438,12 +454,584 @@ async function broker(request, env, pathname) {
     }
     return jsonResp(200, receipt);
   }
+  if (pathname === "/api/broker/relay/register") {
+    const subnet = relaySubnet(String(body.lanIp || ""));
+    if (!subnet) return jsonResp(400, { error: "bad LAN IP" });
+    let tokenCreated = false;
+    if (!rec.relayToken || !/^[a-f0-9]{32}$/.test(rec.relayToken)) {
+      rec.relayToken = randomHex(16);
+      tokenCreated = true;
+      await env.DL.put(`broker/relay/${rec.relayToken}`, id);
+      await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+    }
+    if (!tokenCreated && !await env.DL.head(`broker/relay/${rec.relayToken}`)) {
+      await env.DL.put(`broker/relay/${rec.relayToken}`, id);
+    }
+    const publicIP = request.headers.get("cf-connecting-ip") || "";
+    const networkKey = await sha256Hex(`network-v1:${publicIP}:${subnet}`);
+    const host = relayHost(env, rec.relayToken);
+    return jsonResp(200, {
+      joinUrl: `https://${host}/`,
+      connectUrl: `wss://${env.BROKER_BASE}/api/broker/relay/connect/${rec.relayToken}`,
+      networkKey,
+    });
+  }
   return jsonResp(404, { error: "unknown broker endpoint" });
 }
+
+const RELAY_TOKEN_RE = /^[a-f0-9]{32}$/;
+const RELAY_BINARY_ID_BYTES = 36;
+const RELAY_CHUNK_BYTES = 64 * 1024;
+const RELAY_RESPONSE_WINDOW_BYTES = 512 * 1024;
+const RELAY_RESPONSE_TIMEOUT_MS = 45 * 1000;
+const RELAY_PHOTO_BYTES_PER_SECOND = 256 * 1024;
+const RELAY_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+
+function relayTokenFromHost(hostname, env) {
+  const suffix = `.${String(env.BROKER_BASE || "").toLowerCase()}`;
+  const host = String(hostname || "").toLowerCase();
+  if (!host.endsWith(suffix)) return "";
+  const label = host.slice(0, -suffix.length);
+  if (!label.startsWith("r-")) return "";
+  const token = label.slice(2);
+  return RELAY_TOKEN_RE.test(token) ? token : "";
+}
+
+async function relayTokenExists(env, token) {
+  if (!RELAY_TOKEN_RE.test(token)) return false;
+  try {
+    const cache = caches.default;
+    const key = new Request(`https://relay-token.partyparty.internal/${token}`);
+    const hit = await cache.match(key);
+    if (hit) return hit.status === 204;
+    const exists = !!await env.DL.head(`broker/relay/${token}`);
+    await cache.put(key, new Response(null, {
+      status: exists ? 204 : 404,
+      headers: { "cache-control": "max-age=300" },
+    }));
+    return exists;
+  } catch (_) {
+    return !!await env.DL.get(`broker/relay/${token}`);
+  }
+}
+
+function relayBootstrap(state) {
+  const directURL = JSON.stringify(String(state.directUrl || ""));
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Joining PartyParty</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;color-scheme:light dark}
+*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:32px;background:Canvas;color:CanvasText}
+main{width:min(100%,360px);text-align:center}.spinner{width:28px;height:28px;margin:0 auto 20px;border:3px solid color-mix(in srgb,CanvasText 18%,transparent);border-top-color:#ff2d6f;border-radius:50%;animation:spin .8s linear infinite}
+h1{font-size:22px;margin:0 0 8px}p{font-size:15px;line-height:1.45;margin:0;color:color-mix(in srgb,CanvasText 66%,transparent)}
+button{margin-top:22px;border:0;border-radius:999px;padding:12px 20px;background:#ff2d6f;color:white;font:inherit;font-weight:650}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body><main><div class="spinner" aria-hidden="true"></div><h1>Checking this Wi-Fi</h1><p id="detail">Finding the fastest connection to the DJ.</p><button id="retry" hidden>Try Again</button></main>
+<script>
+const directURL=${directURL};
+const detail=document.getElementById('detail');
+const retry=document.getElementById('retry');
+const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+async function state(){
+  const response=await fetch('/__pp/state',{cache:'no-store'});
+  if(!response.ok)throw new Error('state');
+  return response.json();
+}
+async function probe(){
+  if(!directURL)return false;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),4000);
+  try{
+    const target=new URL('/api/time?partyPartyProbe='+Date.now(),directURL);
+    const response=await fetch(target,{cache:'no-store',mode:'cors',signal:controller.signal});
+    if(!response.ok)return false;
+    const body=await response.json();
+    return Number(body.t)>0;
+  }catch(_){return false}finally{clearTimeout(timer)}
+}
+async function report(reachable){
+  await fetch('/__pp/probe',{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify({reachable}),
+    cache:'no-store'
+  });
+}
+async function waitForDecision(){
+  for(let attempt=0;attempt<30;attempt++){
+    const current=await state();
+    if(current.mode==='relay'){location.reload();return}
+    if(current.mode==='direct'&&current.directUrl){location.replace(current.directUrl);return}
+    await sleep(300);
+  }
+  throw new Error('decision');
+}
+async function run(){
+  retry.hidden=true;
+  detail.textContent='Finding the fastest connection to the DJ.';
+  try{
+    await report(await probe());
+    await waitForDecision();
+  }catch(_){
+    detail.textContent='The DJ connection is still being prepared.';
+    retry.hidden=false;
+  }
+}
+retry.addEventListener('click',run);
+run();
+</script></body></html>`;
+}
+
+function relayOfflinePage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>PartyParty</title><style>:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;color-scheme:light dark}body{min-height:100svh;margin:0;display:grid;place-items:center;padding:32px;background:Canvas;color:CanvasText;text-align:center}main{max-width:360px}h1{font-size:22px}p{opacity:.7;line-height:1.45}button{border:0;border-radius:999px;padding:12px 20px;background:#ff2d6f;color:#fff;font:inherit;font-weight:650}</style></head><body><main><h1>The DJ is reconnecting</h1><p>Keep this page open. PartyParty will continue as soon as the Mac is available.</p><button onclick="location.reload()">Try Again</button></main></body></html>`;
+}
+
+function relayImageExtension(value) {
+  return /\.(?:jpe?g|png|gif|heic|heif|webp)$/i.test(value);
+}
+
+function relayImageUpload(request, pathname) {
+  if (pathname !== "/api/upload") return false;
+  const name = request.headers.get("x-pp-name") || "";
+  if (!name) {
+    return String(request.headers.get("content-type") || "").toLowerCase().startsWith("image/");
+  }
+  try {
+    return relayImageExtension(decodeURIComponent(name));
+  } catch (_) {
+    return false;
+  }
+}
+
+function relayMediaUnavailable(request, pathname) {
+  if (pathname === "/api/upload") return !relayImageUpload(request, pathname);
+  if (!pathname.startsWith("/media/")) return false;
+  return !relayImageExtension(pathname);
+}
+
+function relayMediaUnavailableResponse() {
+  return jsonResp(409, {
+    error: "Videos are unavailable while this Wi-Fi uses internet relay mode. Photos continue at reduced priority so music stays first.",
+    code: "relay_video_unavailable",
+  }, { "cache-control": "no-store" });
+}
+
+function relayPhotoTooLarge(request, pathname) {
+  if (!relayImageUpload(request, pathname)) return false;
+  const size = Number(request.headers.get("content-length") || 0);
+  return size > RELAY_PHOTO_MAX_BYTES;
+}
+
+function relayHeadersForMac(request) {
+  const out = {};
+  for (const [name, value] of request.headers) {
+    const lower = name.toLowerCase();
+    if ([
+      "accept", "accept-encoding", "accept-language", "cache-control",
+      "content-type", "if-modified-since", "if-none-match", "range",
+      "user-agent", "x-pp-name",
+    ].includes(lower)) {
+      out[name] = [value];
+    }
+  }
+  return out;
+}
+
+function headersFromRelay(values) {
+  const headers = new Headers();
+  for (const [name, entries] of Object.entries(values || {})) {
+    const lower = name.toLowerCase();
+    if ([
+      "connection", "keep-alive", "proxy-authenticate",
+      "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade",
+    ].includes(lower)) continue;
+    for (const value of Array.isArray(entries) ? entries : [entries]) {
+      try { headers.append(name, String(value)); } catch (_) {}
+    }
+  }
+  return headers;
+}
+
+function relayBinaryFrame(id, chunk) {
+  const idBytes = new TextEncoder().encode(id);
+  const body = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+  const frame = new Uint8Array(RELAY_BINARY_ID_BYTES + body.byteLength);
+  frame.set(idBytes.slice(0, RELAY_BINARY_ID_BYTES));
+  frame.set(body, RELAY_BINARY_ID_BYTES);
+  return frame;
+}
+
+function relayBinaryParts(message) {
+  const bytes = message instanceof ArrayBuffer
+    ? new Uint8Array(message)
+    : new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
+  if (bytes.byteLength < RELAY_BINARY_ID_BYTES) return null;
+  return {
+    id: new TextDecoder().decode(bytes.slice(0, RELAY_BINARY_ID_BYTES)),
+    body: bytes.slice(RELAY_BINARY_ID_BYTES),
+  };
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export class RelayRoom {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.env = env;
+    this.pending = new Map();
+    this.roomState = {
+      mode: "checking",
+      directUrl: "",
+      networkKey: "",
+      version: "",
+      updatedAt: 0,
+    };
+    ctx.blockConcurrencyWhile(async () => {
+      const stored = await ctx.storage.get("roomState");
+      if (stored && typeof stored === "object") this.roomState = stored;
+    });
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/connect") return this.connect(request);
+    if (url.pathname === "/probe") return this.probe(request);
+    if (url.pathname === "/state") return jsonResp(200, {
+      mode: this.roomState.mode,
+      directUrl: this.roomState.directUrl,
+      online: !!this.origin(),
+    }, { "cache-control": "no-store" });
+    if (url.pathname.startsWith("/room")) {
+      const publicPath = url.pathname.slice(5) || "/";
+      const path = publicPath + url.search;
+      if (this.roomState.mode !== "relay") {
+        if (publicPath !== "/") {
+          return new Response("The room connection changed. Reload the page.", {
+            status: 409,
+            headers: { "cache-control": "no-store" },
+          });
+        }
+        return new Response(relayBootstrap(this.roomState), {
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+            "content-security-policy": "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self' https:",
+          },
+        });
+      }
+      if (relayMediaUnavailable(request, publicPath)) return relayMediaUnavailableResponse();
+      if (relayPhotoTooLarge(request, publicPath)) {
+        return jsonResp(413, {
+          error: "This photo is too large for internet relay mode. Choose a photo under 20 MB.",
+          code: "relay_photo_too_large",
+        }, { "cache-control": "no-store" });
+      }
+      return this.proxy(request, path);
+    }
+    return new Response("Not Found", { status: 404 });
+  }
+
+  connect(request) {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return new Response("Expected WebSocket", { status: 426 });
+    }
+    for (const socket of this.ctx.getWebSockets("origin")) {
+      try { socket.close(1012, "Mac reconnected"); } catch (_) {}
+    }
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    this.ctx.acceptWebSocket(server, ["origin"]);
+    server.serializeAttachment({ role: "origin" });
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  origin() {
+    return this.ctx.getWebSockets("origin").find((socket) => socket.readyState === 1) || null;
+  }
+
+  async probe(request) {
+    if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+    const body = await readJson(request, 1024);
+    if (!body || typeof body.reachable !== "boolean") return jsonResp(400, { error: "bad probe" });
+    const origin = this.origin();
+    if (!origin) return jsonResp(503, { error: "Mac unavailable" });
+    if (this.roomState.mode !== "relay") {
+      origin.send(JSON.stringify({
+        type: "probe",
+        reachable: body.reachable,
+        networkKey: this.roomState.networkKey,
+      }));
+    }
+    return jsonResp(202, { ok: true, mode: this.roomState.mode }, { "cache-control": "no-store" });
+  }
+
+  async proxy(request, path) {
+    const origin = this.origin();
+    if (!origin) {
+      if (request.method === "GET" && path === "/") {
+        return new Response(relayOfflinePage(), {
+          status: 503,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        });
+      }
+      return jsonResp(503, { error: "DJ Mac unavailable" }, { "cache-control": "no-store", "retry-after": "2" });
+    }
+
+    const id = crypto.randomUUID();
+    const hasBody = request.body !== null && !["GET", "HEAD"].includes(request.method);
+    let settle;
+    const responsePromise = new Promise((resolve, reject) => {
+      settle = { resolve, reject };
+    });
+    const timer = setTimeout(() => {
+      const pending = this.pending.get(id);
+      if (!pending) return;
+      this.pending.delete(id);
+      if (pending.controller) pending.controller.error(new Error("Mac response timed out"));
+      pending.reject(new Error("Mac response timed out"));
+      try { origin.send(JSON.stringify({ type: "request_cancel", id })); } catch (_) {}
+    }, hasBody ? 5 * 60 * 1000 : RELAY_RESPONSE_TIMEOUT_MS);
+    this.pending.set(id, {
+      ...settle,
+      timer,
+      controller: null,
+      started: false,
+      responseUnacked: 0,
+    });
+
+    origin.send(JSON.stringify({
+      type: "request",
+      id,
+      method: request.method,
+      path,
+      host: request.headers.get("x-pp-public-host") || "",
+      clientIp: request.headers.get("x-pp-client-ip") || "",
+      headers: relayHeadersForMac(request),
+      hasBody,
+    }));
+    const photoUpload = relayImageUpload(request, new URL(path, "https://relay.internal").pathname);
+    if (hasBody) this.pumpRequestBody(origin, id, request.body, photoUpload).catch((error) => this.failPending(id, error));
+
+    try {
+      return await responsePromise;
+    } catch (_) {
+      return jsonResp(502, { error: "The DJ Mac did not answer" }, {
+        "cache-control": "no-store",
+        "retry-after": "1",
+      });
+    }
+  }
+
+  async pumpRequestBody(origin, id, body, lowPriority) {
+    const reader = body.getReader();
+    const startedAt = Date.now();
+    let transferred = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+        for (let offset = 0; offset < bytes.byteLength; offset += RELAY_CHUNK_BYTES) {
+          while (origin.bufferedAmount > 1024 * 1024) await waitMs(5);
+          const chunk = bytes.slice(offset, offset + RELAY_CHUNK_BYTES);
+          transferred += chunk.byteLength;
+          if (lowPriority && transferred > RELAY_PHOTO_MAX_BYTES) {
+            throw new Error("relay photo exceeds size limit");
+          }
+          origin.send(relayBinaryFrame(id, chunk));
+          if (lowPriority) {
+            const targetElapsed = transferred * 1000 / RELAY_PHOTO_BYTES_PER_SECOND;
+            const remaining = targetElapsed - (Date.now() - startedAt);
+            if (remaining > 0) await waitMs(remaining);
+          }
+        }
+      }
+      origin.send(JSON.stringify({ type: "request_end", id }));
+    } catch (error) {
+      try { origin.send(JSON.stringify({ type: "request_cancel", id })); } catch (_) {}
+      throw error;
+    }
+  }
+
+  failPending(id, error) {
+    const pending = this.pending.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pending.delete(id);
+    if (pending.controller) pending.controller.error(error);
+    pending.reject(error);
+  }
+
+  async webSocketMessage(socket, message) {
+    if (typeof message !== "string") {
+      const parts = relayBinaryParts(message);
+      if (!parts) return;
+      const pending = this.pending.get(parts.id);
+      if (pending?.controller) {
+        pending.controller.enqueue(parts.body);
+        pending.responseUnacked += parts.body.byteLength;
+        if (pending.responseUnacked >= RELAY_RESPONSE_WINDOW_BYTES) {
+          const acknowledged = pending.responseUnacked;
+          pending.responseUnacked = 0;
+          socket.send(JSON.stringify({
+            type: "response_ack",
+            id: parts.id,
+            bytes: acknowledged,
+          }));
+        }
+      }
+      return;
+    }
+    let body;
+    try { body = JSON.parse(message); } catch (_) { return; }
+    if (body.type === "state") {
+      const mode = ["checking", "direct", "relay"].includes(body.mode) ? body.mode : "checking";
+      this.roomState = {
+        mode,
+        directUrl: /^https:\/\/[^/]+(?::\d+)?\/$/.test(String(body.directUrl || "")) ? body.directUrl : "",
+        networkKey: String(body.networkKey || "").slice(0, 128),
+        version: String(body.version || "").slice(0, 32),
+        updatedAt: Date.now(),
+      };
+      await this.ctx.storage.put("roomState", this.roomState);
+      socket.send(JSON.stringify({
+        type: "state_ack",
+        mode: this.roomState.mode,
+        networkKey: this.roomState.networkKey,
+      }));
+      return;
+    }
+    const id = String(body.id || "");
+    const pending = this.pending.get(id);
+    if (!pending) return;
+    if (body.type === "response") {
+      if (pending.started) return;
+      pending.started = true;
+      clearTimeout(pending.timer);
+      let controller;
+      const stream = new ReadableStream({
+        start(value) { controller = value; },
+        cancel: () => {
+          try { socket.send(JSON.stringify({ type: "request_cancel", id })); } catch (_) {}
+        },
+      });
+      pending.controller = controller;
+      const status = Number(body.status);
+      pending.resolve(new Response(stream, {
+        status: status >= 100 && status <= 599 ? status : 502,
+        headers: headersFromRelay(body.headers),
+      }));
+      return;
+    }
+    if (body.type === "response_end") {
+      clearTimeout(pending.timer);
+      this.pending.delete(id);
+      if (pending.controller) pending.controller.close();
+      else pending.reject(new Error("Mac response ended before headers"));
+      return;
+    }
+    if (body.type === "response_error") {
+      this.failPending(id, new Error(String(body.error || "Mac response failed")));
+    }
+  }
+
+  webSocketClose(socket) {
+    const attachment = socket.deserializeAttachment();
+    if (attachment?.role !== "origin") return;
+    for (const [id, pending] of this.pending) {
+      clearTimeout(pending.timer);
+      if (pending.controller) pending.controller.error(new Error("Mac disconnected"));
+      pending.reject(new Error("Mac disconnected"));
+      this.pending.delete(id);
+    }
+  }
+}
+
+async function relayConnect(request, env, token) {
+  if (!RELAY_TOKEN_RE.test(token)) return new Response("Not Found", { status: 404 });
+  const id = request.headers.get("x-partyparty-install") || "";
+  const secret = request.headers.get("x-partyparty-secret") || "";
+  const rec = await authInstall(env, id, secret);
+  if (!rec || rec.relayToken !== token) return new Response("Forbidden", { status: 403 });
+  const stub = env.RELAY_ROOMS.getByName(token);
+  const headers = new Headers(request.headers);
+  headers.delete("x-partyparty-install");
+  headers.delete("x-partyparty-secret");
+  return stub.fetch(new Request("https://relay.internal/connect", { method: "GET", headers }));
+}
+
+function relayCacheablePath(pathname) {
+  return /^\/live\/.+\.(?:aac|m4s|mp4|ts)$/i.test(pathname) ||
+    /^\/media\/.+\.(?:jpe?g|png|gif|heic|heif|webp)$/i.test(pathname);
+}
+
+async function relayPublicRequest(request, env, ctx, token) {
+  if (!await relayTokenExists(env, token)) return new Response("Not Found", { status: 404 });
+  const url = new URL(request.url);
+  if (relayMediaUnavailable(request, url.pathname)) return relayMediaUnavailableResponse();
+  if (relayPhotoTooLarge(request, url.pathname)) {
+    return jsonResp(413, {
+      error: "This photo is too large for internet relay mode. Choose a photo under 20 MB.",
+      code: "relay_photo_too_large",
+    }, { "cache-control": "no-store" });
+  }
+  const cacheable = request.method === "GET" &&
+    !request.headers.has("range") &&
+    relayCacheablePath(url.pathname);
+  const edgeCache = typeof caches !== "undefined" ? caches.default : null;
+  if (cacheable && edgeCache) {
+    const hit = await edgeCache.match(request);
+    if (hit) return hit;
+  }
+
+  const stub = env.RELAY_ROOMS.getByName(token);
+  let internalPath;
+  if (url.pathname === "/__pp/probe") internalPath = "/probe";
+  else if (url.pathname === "/__pp/state") internalPath = "/state";
+  else internalPath = "/room" + url.pathname;
+  const internalURL = new URL("https://relay.internal" + internalPath);
+  internalURL.search = url.search;
+  const headers = new Headers(request.headers);
+  headers.set("x-pp-public-host", url.host);
+  headers.set("x-pp-client-ip", request.headers.get("cf-connecting-ip") || "");
+  headers.delete("x-partyparty-install");
+  headers.delete("x-partyparty-secret");
+  const init = { method: request.method, headers, redirect: "manual" };
+  if (request.body && !["GET", "HEAD"].includes(request.method)) {
+    init.body = request.body;
+    init.duplex = "half";
+  }
+  let response = await stub.fetch(new Request(internalURL, init));
+  if (cacheable && edgeCache && response.status === 200) {
+    const cacheHeaders = new Headers(response.headers);
+    cacheHeaders.set("cache-control", "public, max-age=60");
+    response = new Response(response.body, { status: response.status, headers: cacheHeaders });
+    ctx.waitUntil(edgeCache.put(request, response.clone()));
+  }
+  return response;
+}
+
 var worker_default = {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
+    const relayToken = relayTokenFromHost(url.hostname, env);
+    if (relayToken) {
+      return relayPublicRequest(request, env, ctx, relayToken);
+    }
+    const relayConnectMatch = pathname.match(/^\/api\/broker\/relay\/connect\/([a-f0-9]{32})$/);
+    if (relayConnectMatch) {
+      return relayConnect(request, env, relayConnectMatch[1]);
+    }
     const standaloneFile = STANDALONE_FILES[pathname];
     if (standaloneFile) {
       if (request.method !== "GET" && request.method !== "HEAD") {

@@ -22,6 +22,7 @@ import (
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/event"
+	"partyparty/internal/relay"
 	"partyparty/internal/stats"
 )
 
@@ -129,6 +130,83 @@ func TestStatusKeepsPausedListenersWithTheirDJ(t *testing.T) {
 		playingListeners[0].(map[string]any)["name"] != "Alex" ||
 		playingListeners[1].(map[string]any)["name"] != "Sam" {
 		t.Fatalf("playing listeners = %#v", playingListeners)
+	}
+}
+
+func TestGuestRelayHandlerExposesOnlyGuestSurface(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.SetActivation("disco-party.party.partyparty.party")
+	guest := env.srv.GuestRelayHandler()
+
+	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	request.Header.Set("X-PartyParty-Relay", "1")
+	request.Header.Set("X-PartyParty-Client-IP", "203.0.113.44")
+	status := httptest.NewRecorder()
+	guest.ServeHTTP(status, request)
+	if status.Code != http.StatusOK {
+		t.Fatalf("relay guest status = %d, body %q", status.Code, status.Body.String())
+	}
+	body := decodeJSON(t, status)
+	if body["llhlsUrl"] != "/live/party/index.m3u8" {
+		t.Fatalf("relay HLS URL = %#v", body["llhlsUrl"])
+	}
+	connection := body["connection"].(map[string]any)
+	if connection["mode"] != "direct" {
+		t.Fatalf("fallback connection = %#v", connection)
+	}
+
+	console := httptest.NewRecorder()
+	guest.ServeHTTP(console, httptest.NewRequest(http.MethodGet, "/dj", nil))
+	if console.Code != http.StatusNotFound {
+		t.Fatalf("relay console = %d, want 404", console.Code)
+	}
+
+	start := httptest.NewRecorder()
+	guest.ServeHTTP(start, httptest.NewRequest(http.MethodPost, "/api/start?device=mac", nil))
+	if start.Code != http.StatusForbidden {
+		t.Fatalf("relay start = %d, want 403", start.Code)
+	}
+
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodPost, "/api/upload", strings.NewReader("large guest video")),
+		httptest.NewRequest(http.MethodGet, "/media/event-video.mp4", nil),
+	} {
+		response := httptest.NewRecorder()
+		guest.ServeHTTP(response, request)
+		if response.Code != http.StatusConflict {
+			t.Fatalf("relay video %s = %d, want 409", request.URL.Path, response.Code)
+		}
+		body := decodeJSON(t, response)
+		if body["code"] != "relay_video_unavailable" {
+			t.Fatalf("relay video body = %#v", body)
+		}
+	}
+
+	photo := httptest.NewRequest(http.MethodPost, "/api/upload", strings.NewReader("photo"))
+	photo.Header.Set("Content-Type", "image/jpeg")
+	photoResponse := httptest.NewRecorder()
+	guest.ServeHTTP(photoResponse, photo)
+	if photoResponse.Code == http.StatusConflict {
+		t.Fatalf("relay photo upload was blocked: %q", photoResponse.Body.String())
+	}
+}
+
+func TestStatusWaitsForFirstRelayStateBeforeAdvertisingJoinURL(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.Relay = relay.New(relay.Config{})
+	env.srv.SetActivation("disco-party.party.partyparty.party")
+
+	body := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", djAddr))
+	urls := body["urls"].(map[string]any)
+	if urls["primary"] != "https://disco-party.party.partyparty.party:8443/" {
+		t.Fatalf("direct URL = %#v", urls["primary"])
+	}
+	if _, exists := urls["join"]; exists {
+		t.Fatalf("checking status advertised join URL = %#v", urls["join"])
+	}
+	connection := body["connection"].(map[string]any)
+	if connection["mode"] != relay.ModeChecking {
+		t.Fatalf("connection = %#v", connection)
 	}
 }
 

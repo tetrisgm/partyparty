@@ -118,6 +118,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         listeners.isEnabled = false
         menu.addItem(listeners)
 
+        let connectionTitle: String
+        switch s.connectionMode {
+        case "direct":
+            connectionTitle = "Connection: Direct Wi-Fi"
+        case "relay":
+            connectionTitle = s.relayConnected
+                ? "Connection: Internet relay"
+                : "Connection: Reconnecting relay"
+        default:
+            connectionTitle = "Connection: Checking Wi-Fi"
+        }
+        let connection = NSMenuItem(title: connectionTitle, action: nil, keyEquivalent: "")
+        connection.isEnabled = false
+        menu.addItem(connection)
+
         let broadcasting = s.state == "live" || s.state == "starting"
         if broadcasting && s.captureBad {
             let capture = item("Audio capture: Problem - open console", #selector(showConsole))

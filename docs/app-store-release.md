@@ -8,7 +8,8 @@ The Store edition is the venue-Wi-Fi product:
   product account, profile, username, or separate license check.
 - The Mac serves the DJ console, guest page, party feed, uploads, and HTTPS
   LL-HLS.
-- Guests need no account and no internet after joining the venue Wi-Fi.
+- Guests need no account. Direct mode remains usable without internet after the
+  secure room identity has been provisioned.
 - iPhones use native HLS/AVPlayer so audio continues while Safari is backgrounded
   or the phone is locked.
 - The app never creates or selects Wi-Fi networks.
@@ -19,9 +20,10 @@ The Store edition is the venue-Wi-Fi product:
 - Store builds keep diagnostics on the Mac. They do not upload session status or
   logs.
 
-Do not add cloud listening, public event pages, replays, previous-event browsing,
-hotspots, Internet Sharing, captive portals, plain-HTTP guest links, alternate
-iPhone playback engines, or playback presets.
+Do not add public event pages, replays, previous-event browsing, hotspots,
+Internet Sharing, captive portals, plain-HTTP guest links, alternate iPhone
+playback engines, or playback presets. The only cloud live path is the
+Mac-controlled ephemeral relay for client-isolated venue Wi-Fi.
 
 ## Apple prerequisites
 
@@ -78,10 +80,14 @@ installation credential used to provision a secure LAN name is infrastructure
 authentication, is not associated with a user identity, and is used only for app
 functionality.
 
-Guest names, posts, uploads, listening status, audio, and session diagnostics
-remain on the Mac in the Store edition. App Store Connect privacy answers must
-match the bundled manifest and must not claim analytics or diagnostics
-collection for the Store build.
+Guest names, posts, uploads, listening status, and audio remain on the Mac in
+direct mode. In relay mode, audio, listening status, text posts, and reactions
+transit Cloudflare to reach that Mac. Guest photos use a capped, throttled
+secondary path. Videos are unavailable in relay mode and never enter the
+tunnel. Rolling HLS media parts and relayed still photos may be cached for up
+to 60 seconds. Session diagnostics remain on the Mac in the Store edition. App
+Store Connect privacy answers must match the bundled manifest and must not claim
+analytics or diagnostics collection for the Store build.
 
 ## Automated verification
 
@@ -122,17 +128,19 @@ Run this once on a clean macOS user account before uploading a candidate:
    prompt appears only when that source is used.
 8. Scan the displayed QR with at least two default-configured iPhones on the same
    Wi-Fi. Confirm the URL is HTTPS and both phones become audible.
-9. Lock both phones for five minutes. Confirm playback continues and lock-screen
+9. Repeat on client-isolated Wi-Fi. Confirm the Mac reports Internet relay mode
+   before exposing a failed local room and both phones use the relayed room.
+10. Lock both phones for five minutes. Confirm playback continues and lock-screen
    media controls remain available.
-10. Unlock both phones. Confirm playback remains smooth and neither phone is
+11. Unlock both phones. Confirm playback remains smooth and neither phone is
     grossly behind the room.
-11. Post text and a photo from a guest. Confirm they appear in the active room and
-    in the Mac's event folder, with no email field, media ZIP, previous-event
-    page, or cloud party page.
-12. Enable the optional login item, restart the user session, and confirm the app
+12. Post text and a still photo from a guest and confirm both appear in the
+    active room without interrupting playback. Confirm the picker excludes video
+    and a video request is rejected before its body enters the tunnel.
+13. Enable the optional login item, restart the user session, and confirm the app
     launches without requesting new privileges.
-13. Inspect Activity Monitor's Sandbox column for the app and bundled helpers.
-14. Quit the app and confirm all helpers terminate.
+14. Inspect Activity Monitor's Sandbox column for the app and bundled helpers.
+15. Quit the app and confirm all helpers terminate.
 
 Capture the app window and a live guest/QR state for App Store screenshots. In
 App Review notes, state that the reviewer needs two devices on the same Wi-Fi,

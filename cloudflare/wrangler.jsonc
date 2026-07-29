@@ -18,6 +18,19 @@
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],
 
+  "durable_objects": {
+    "bindings": [
+      { "name": "RELAY_ROOMS", "class_name": "RelayRoom" }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "relay-v1",
+      "new_sqlite_classes": ["RelayRoom"]
+    }
+  ],
+
   // Cert broker (the Plex pattern): anonymous installs get memorable hostnames under
   // BROKER_BASE; the broker writes DNS-01 TXT + DNS-only A records for them.
   // Needs the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN - Zone→DNS→Edit).

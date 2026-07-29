@@ -74,6 +74,53 @@ const (
 
 type Logf func(format string, args ...any)
 
+// RelayRegistration is the public join address and authenticated outbound
+// WebSocket assigned to this anonymous install. The relay carries requests only
+// while the Mac has selected relay mode. Direct mode keeps guest traffic on the
+// venue Wi-Fi.
+type RelayRegistration struct {
+	JoinURL    string `json:"joinUrl"`
+	ConnectURL string `json:"connectUrl"`
+	NetworkKey string `json:"networkKey"`
+}
+
+// RegisterRelay ensures this install has a stable, unguessable public join
+// address. The broker combines the venue's public address with the Mac's LAN
+// subnet into an opaque network key so the app can remember a proven direct or
+// isolated verdict without storing Wi-Fi names.
+func RegisterRelay(ctx context.Context, brokerURL, lanIP string, logf Logf) (RelayRegistration, error) {
+	parsedLANIP := net.ParseIP(strings.TrimSpace(lanIP))
+	if parsedLANIP == nil || parsedLANIP.To4() == nil || parsedLANIP.IsLoopback() || parsedLANIP.IsLinkLocalUnicast() {
+		return RelayRegistration{}, errors.New("no LAN IP yet")
+	}
+	dir, err := stateDir()
+	if err != nil {
+		return RelayRegistration{}, err
+	}
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
+	if err != nil {
+		return RelayRegistration{}, err
+	}
+	var out RelayRegistration
+	if err := b.post(ctx, "/api/broker/relay/register", map[string]any{
+		"id": b.id, "secret": b.secret, "lanIp": lanIP,
+	}, &out); err != nil {
+		return RelayRegistration{}, err
+	}
+	join, joinErr := url.Parse(out.JoinURL)
+	connect, connectErr := url.Parse(out.ConnectURL)
+	if joinErr != nil || connectErr != nil ||
+		join.Scheme != "https" || join.Host == "" ||
+		connect.Scheme != "wss" || connect.Host == "" ||
+		out.NetworkKey == "" {
+		return RelayRegistration{}, errors.New("relay registration: malformed response")
+	}
+	return out, nil
+}
+
 // TryBroker is the zero-config activation path (the Plex pattern): the install
 // registers with the partyparty.party cert broker once and gets a MEMORABLE
 // hostname (disco42.pp.example.net - no IP-encoded eyesores), issues an exact

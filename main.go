@@ -30,6 +30,7 @@ import (
 	"partyparty/internal/mediamtx"
 	"partyparty/internal/netinfo"
 	"partyparty/internal/peers"
+	"partyparty/internal/relay"
 	"partyparty/internal/server"
 	"partyparty/internal/stats"
 )
@@ -219,6 +220,24 @@ func main() {
 	var peerHost string
 	peerID, _ := activate.InstallCreds()
 
+	var relayManager *relay.Manager
+	var relayListener net.Listener
+	if listener, relayErr := net.Listen("tcp4", "127.0.0.1:0"); relayErr != nil {
+		log.Printf("relay: guest-only origin unavailable: %v", relayErr)
+	} else {
+		relayListener = listener
+		brokerURL := os.Getenv("PARTYPARTY_BROKER")
+		if brokerURL == "" {
+			brokerURL = "https://partyparty.party"
+		}
+		relayManager = relay.New(relay.Config{
+			BrokerURL: brokerURL,
+			OriginURL: "http://" + listener.Addr().String(),
+			Version:   appVersion,
+			Logf:      log.Printf,
+		})
+	}
+
 	handler := server.New(server.Deps{
 		Config:      cfg,
 		Broadcaster: bc,
@@ -228,10 +247,22 @@ func main() {
 		MTX:         mtx,
 		Peers:       peerDirectory,
 		PeerID:      peerID,
+		Relay:       relayManager,
 		Events:      events,
 		Diag:        diagLog,
 		Version:     appVersion,
 	})
+	relayCtx, stopRelay := context.WithCancel(context.Background())
+	var relayHTTP *http.Server
+	if relayManager != nil && relayListener != nil {
+		relayHTTP = &http.Server{Handler: handler.GuestRelayHandler()}
+		go func() {
+			if serveErr := relayHTTP.Serve(relayListener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+				log.Printf("relay: guest-only origin stopped: %v", serveErr)
+			}
+		}()
+		relayManager.Start(relayCtx)
+	}
 	startPeerDiscovery := func(host string) {
 		if host == "" || (peerDirectory != nil && peerHost == host) {
 			return
@@ -720,6 +751,7 @@ func main() {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	stopPeers()
+	stopRelay()
 	if peerDirectory != nil {
 		peerDirectory.Close()
 	}
@@ -733,6 +765,9 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+	if relayHTTP != nil {
+		_ = relayHTTP.Shutdown(ctx)
+	}
 	_ = httpSrv.Shutdown(ctx)
 }
 

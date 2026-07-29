@@ -10,6 +10,9 @@ struct ServerStatus {
     var note = ""           // the human explanation, for the menu-bar tooltip
     var appVersion = ""
     var guestURL = ""       // secure LAN room URL; empty until the QR is usable
+    var connectionMode = "checking"
+    var connectionMessage = ""
+    var relayConnected = false
 }
 
 /// Thin client for the local Go server (menu-bar status monitor).
@@ -36,11 +39,22 @@ final class APIClient {
                 s.struggling = (h["struggling"] as? NSNumber)?.intValue ?? 0
             }
             s.appVersion = o["appVersion"] as? String ?? ""
+            if let connection = o["connection"] as? [String: Any] {
+                s.connectionMode = connection["mode"] as? String ?? "checking"
+                s.connectionMessage = connection["message"] as? String ?? ""
+                s.relayConnected = connection["relayConnected"] as? Bool ?? false
+            }
             if (o["llhlsRealCert"] as? Bool) == true,
-               let urls = o["urls"] as? [String: Any],
-               let primary = urls["primary"] as? String,
-               primary.hasPrefix("https://") {
-                s.guestURL = primary
+               let urls = o["urls"] as? [String: Any] {
+                let guest: String?
+                if o["connection"] is [String: Any] {
+                    guest = urls["join"] as? String
+                } else {
+                    guest = (urls["join"] as? String) ?? (urls["primary"] as? String)
+                }
+                if let guest, guest.hasPrefix("https://") {
+                    s.guestURL = guest
+                }
             }
             DispatchQueue.main.async { done(s) }
         }.resume()

@@ -13,20 +13,8 @@
   "collectsData": true,
   "privacyDataTypes": [
     {
-      "type": "EMAIL_ADDRESS",
-      "linkedToUser": true,
-      "tracking": false,
-      "purposes": ["APP_FUNCTIONALITY"]
-    },
-    {
-      "type": "USER_ID",
-      "linkedToUser": true,
-      "tracking": false,
-      "purposes": ["APP_FUNCTIONALITY"]
-    },
-    {
       "type": "DEVICE_ID",
-      "linkedToUser": true,
+      "linkedToUser": false,
       "tracking": false,
       "purposes": ["APP_FUNCTIONALITY"]
     }

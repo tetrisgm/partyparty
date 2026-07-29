@@ -14,5 +14,14 @@
   target for three measurements gets one bounded fresh HLS attachment. Missing
   timing telemetry alone never interrupts audio. Nothing runs while Safari is
   hidden or the phone is locked.
-- Venue Wi-Fi is the only supported network topology. macOS Internet Sharing,
-  personal hotspots, captive portals, and cloud live relays are retired.
+- Venue Wi-Fi is the supported network topology. macOS Internet Sharing,
+  personal hotspots, captive portals, and DNS hijacking remain retired.
+- The Mac chooses one connection mode for the whole room. A public bootstrap
+  probes the real phone-to-Mac HTTPS path. A successful probe uses direct mode;
+  a failed probe uses the ephemeral reverse relay so client-isolated venue
+  networks still work. The audio encoding and native HLS playback path do not
+  change between modes.
+- Relay mode gives `/live/` traffic priority. Guest photos use a capped,
+  throttled secondary path, while videos do not enter the relay. Direct mode
+  retains the full local media experience. This is an intentional music-first
+  boundary.
