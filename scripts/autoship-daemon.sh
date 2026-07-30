@@ -7,12 +7,10 @@
 #
 #   1. Fetch the canonical repo's main into a DEDICATED clone. The canonical
 #      worktree belongs to whoever is editing it; this daemon never touches it.
-#   2. New commit? Wait one tick (debounce, so a burst of pushes builds once),
-#      then ship it with the standard ship script, wall-clock capped, stdin
-#      closed.
-#   3. Judge the outcome by the ship RECEIPT, not the log tail, and remember it.
-#      Three failures on the same commit holds that commit (a paid build per
-#      retry is money) until a new commit supersedes it.
+#   2. Wait until HEAD has been quiet for 15 minutes. Build only that settled
+#      tip, Developer ID sign it, and install it locally without notarization.
+#   3. At most once per day, notarize and publish the newest settled tip for
+#      other standalone-beta Macs. Apple Store/TestFlight delivery is separate.
 #
 # The ship script derives version and build from what is published, and a ship
 # no longer edits any source, so this clone stays clean and nothing needs
@@ -27,7 +25,10 @@ CLONE="$STATE_DIR/clone"
 LOG="$STATE_DIR/autoship.log"
 RUN_CAPPED="/Users/shokunin/dev/stack/bin/run-capped"
 SHIP_CAP_SECONDS=3600
-MAX_FAILURES=3
+LOCAL_CAP_SECONDS=1800
+MAX_FAILURES=1
+QUIET_SECONDS="${PP_AUTOSHIP_QUIET_SECONDS:-900}"
+PUBLIC_INTERVAL_SECONDS="${PP_AUTOSHIP_PUBLIC_INTERVAL_SECONDS:-86400}"
 
 # launchd environments are minimal by design; pin what the toolchain needs.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -74,27 +75,39 @@ fi
 
 git -C "$CLONE" fetch --quiet origin
 TARGET="$(git -C "$CLONE" rev-parse origin/main)"
-SHIPPED="$(state_get shipped)"
-if [ -z "$SHIPPED" ]; then
+LEGACY_SHIPPED="$(state_get shipped)"
+INSTALLED="$(state_get installed)"
+PUBLISHED="$(state_get published)"
+if [ -z "$INSTALLED" ] && [ -n "$LEGACY_SHIPPED" ]; then
+  state_set installed "$LEGACY_SHIPPED"
+  INSTALLED="$LEGACY_SHIPPED"
+fi
+if [ -z "$PUBLISHED" ] && [ -n "$LEGACY_SHIPPED" ]; then
+  state_set published "$LEGACY_SHIPPED"
+  state_set lastPublicAt "$(date +%s)"
+  PUBLISHED="$LEGACY_SHIPPED"
+fi
+if [ -z "$INSTALLED" ]; then
   # First run. What is on main right now is presumed already published (it was
   # shipped by whoever set this up); the daemon owns everything after.
-  state_set shipped "$TARGET"
+  state_set installed "$TARGET"
+  state_set published "$TARGET"
+  state_set lastPublicAt "$(date +%s)"
   log "initialized at $TARGET"
   exit 0
 fi
-[ "$TARGET" = "$SHIPPED" ] && exit 0
 
-# Debounce: ship a commit only after it has survived one full tick, so a burst
-# of pushes becomes one build of the final state instead of a build per push.
-CANDIDATE="$(state_get candidate)"
-if [ "$TARGET" != "$CANDIDATE" ]; then
-  state_set candidate "$TARGET"
-  log "candidate $TARGET; waiting one tick"
+# Debounce by commit age, not polling ticks. A burst of pushes produces one
+# build of the tip that survives the full quiet window.
+TARGET_EPOCH="$(git -C "$CLONE" show -s --format=%ct "$TARGET")"
+TARGET_AGE=$(( $(date +%s) - TARGET_EPOCH ))
+if [ "$TARGET_AGE" -lt "$QUIET_SECONDS" ]; then
+  log "debounce: $TARGET is ${TARGET_AGE}s old (< ${QUIET_SECONDS}s)"
   exit 0
 fi
 
-# Bounded retry: a commit that failed three paid builds is held, loudly, until a
-# new commit supersedes it. Retrying a deterministic failure forever is a bill.
+# A failed settled commit is held after one attempt until new source supersedes
+# it. Re-running the same expensive deterministic build is waste, not recovery.
 FAILED_SHA="$(state_get failedSha)"
 FAILURES="$(state_get failures)"; FAILURES="${FAILURES:-0}"
 if [ "$FAILED_SHA" = "$TARGET" ] && [ "$FAILURES" -ge "$MAX_FAILURES" ]; then
@@ -106,7 +119,6 @@ if [ "$FAILED_SHA" = "$TARGET" ] && [ "$FAILURES" -ge "$MAX_FAILURES" ]; then
   exit 0
 fi
 
-log "shipping $TARGET"
 git -C "$CLONE" reset --quiet --hard "$TARGET"
 git -C "$CLONE" clean --quiet -fdx -e app/.build -e cloudflare/node_modules -e dist
 
@@ -120,11 +132,55 @@ fi
 # fresh clone has none and the build dies at the copy step; the canonical repo
 # is the local source of truth for them. Mirrored on every pass so an upgraded
 # binary propagates, at local-disk cost only when something changed.
-rsync -a --delete --include="ffmpeg" --include="mediamtx" --include="ppcapture"   --exclude="*" "$CANONICAL/assets/" "$CLONE/assets/" >>"$LOG" 2>&1
+rsync -a --delete --include="ffmpeg" --include="mediamtx" --include="ppcapture" \
+  --exclude="*" "$CANONICAL/assets/" "$CLONE/assets/" >>"$LOG" 2>&1
+
+NEXT_VERSION="$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml |
+  sed -n 's|.*<sparkle:shortVersionString>\\([0-9.]*\\)</sparkle:shortVersionString>.*|\\1|p' |
+  tail -1)"
+NEXT_BUILD="$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml |
+  sed -n 's|.*<sparkle:version>\\([0-9][0-9]*\\)</sparkle:version>.*|\\1|p' |
+  tail -1)"
+[ -n "$NEXT_VERSION" ] && [ -n "$NEXT_BUILD" ] || {
+  log "cannot derive local version/build from the public appcast"
+  exit 75
+}
+NEXT_VERSION="$(python3 - "$NEXT_VERSION" <<'PY'
+import sys
+parts = [int(value) for value in sys.argv[1].split(".")]
+parts[-1] += 1
+print(".".join(map(str, parts)))
+PY
+)"
+NEXT_BUILD=$((NEXT_BUILD + 1))
+
+NOW="$(date +%s)"
+LAST_PUBLIC_AT="$(state_get lastPublicAt)"; LAST_PUBLIC_AT="${LAST_PUBLIC_AT:-0}"
+PUBLIC_ATTEMPT_SHA="$(state_get publicAttemptSha)"
+PUBLIC_ATTEMPT_AT="$(state_get publicAttemptAt)"; PUBLIC_ATTEMPT_AT="${PUBLIC_ATTEMPT_AT:-0}"
+PUBLIC_DUE=0
+if [ "$TARGET" != "$PUBLISHED" ] && [ $((NOW - LAST_PUBLIC_AT)) -ge "$PUBLIC_INTERVAL_SECONDS" ]; then
+  if [ "$PUBLIC_ATTEMPT_SHA" != "$TARGET" ] || [ $((NOW - PUBLIC_ATTEMPT_AT)) -ge "$PUBLIC_INTERVAL_SECONDS" ]; then
+    PUBLIC_DUE=1
+  fi
+fi
+
+if [ "$PUBLIC_DUE" = "0" ] && [ "$TARGET" = "$INSTALLED" ]; then exit 0; fi
 
 set +e
-"$RUN_CAPPED" --seconds "$SHIP_CAP_SECONDS" --label autoship -- \
-  "$CLONE/scripts/ship-standalone.sh" >>"$LOG" 2>&1 </dev/null
+if [ "$PUBLIC_DUE" = "1" ]; then
+  log "public ship $TARGET as $NEXT_VERSION $NEXT_BUILD"
+  state_set publicAttemptSha "$TARGET"
+  state_set publicAttemptAt "$NOW"
+  "$RUN_CAPPED" --seconds "$SHIP_CAP_SECONDS" --label autoship-public -- \
+    env PP_VERSION="$NEXT_VERSION" PP_BUILD="$NEXT_BUILD" \
+    "$CLONE/scripts/ship-standalone.sh" >>"$LOG" 2>&1 </dev/null
+else
+  log "local install $TARGET as $NEXT_VERSION $NEXT_BUILD"
+  "$RUN_CAPPED" --seconds "$LOCAL_CAP_SECONDS" --label autoship-local -- \
+    env PP_VERSION="$NEXT_VERSION" PP_BUILD="$NEXT_BUILD" \
+    "$CLONE/scripts/build-install-standalone-local.sh" >>"$LOG" 2>&1 </dev/null
+fi
 SHIP_EXIT=$?
 set -e
 
@@ -145,11 +201,23 @@ except Exception:
 STATUS="$(printf '%s' "$VERDICT" | sed -n 1p)"
 DETAIL="$(printf '%s' "$VERDICT" | sed -n 2p)"
 
-if [ "$STATUS" = "success" ]; then
+if [ "$PUBLIC_DUE" = "1" ] && [ "$STATUS" = "success" ]; then
+  state_set published "$TARGET"
   state_set shipped "$TARGET"
+  state_set lastPublicAt "$(date +%s)"
   state_set failedSha ""
   state_set failures 0
+  if "$CLONE/scripts/install-standalone-local.sh" "$CLONE/build/partyparty-beta.app" >>"$LOG" 2>&1; then
+    state_set installed "$TARGET"
+  else
+    log "public ship succeeded but local install failed for $TARGET"
+  fi
   log "shipped $TARGET as $DETAIL"
+elif [ "$PUBLIC_DUE" = "0" ] && [ "$SHIP_EXIT" = "0" ]; then
+  state_set installed "$TARGET"
+  state_set failedSha ""
+  state_set failures 0
+  log "installed $TARGET locally as $NEXT_VERSION $NEXT_BUILD"
 else
   if [ "$FAILED_SHA" = "$TARGET" ]; then FAILURES=$((FAILURES + 1)); else FAILURES=1; fi
   state_set failedSha "$TARGET"

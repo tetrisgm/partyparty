@@ -65,6 +65,12 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
    user-enabled login item.
 
 ## Rules
+- Expensive automatic work must wait until `HEAD` has been unchanged for at
+  least 15 minutes and then build only that settled tip. Native development
+  updates use a signed, verified local install without notarization or public
+  publishing. Standalone public releases run at most once per 24 hours and
+  publish only the newest settled tip. App Store and TestFlight delivery is
+  never automatic and runs only for an explicit Apple release.
 - On every App Store or TestFlight rejection, open the exact submission or build
   details in App Store Connect and read every Apple message before changing
   code, entitlements, signing, bundle identifiers, certificates, profiles,

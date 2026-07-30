@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ROOT="$PWD"
+SOURCE_APP="${1:-$ROOT/build/partyparty-beta.app}"
+DEST_DIR="${PP_LOCAL_INSTALL_DIR:-$HOME/Applications}"
+DEST_APP="$DEST_DIR/partyparty beta.app"
+STAGED_APP="$DEST_DIR/.partyparty-beta.new.$$"
+OLD_APP="$DEST_DIR/.partyparty-beta.old.$$"
+EXECUTABLE="$DEST_APP/Contents/MacOS/partyparty"
+
+[ -d "$SOURCE_APP" ] || {
+  echo "Standalone app not found: $SOURCE_APP" >&2
+  exit 1
+}
+PLIST="$SOURCE_APP/Contents/Info.plist"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
+BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
+"$ROOT/scripts/verify-standalone.sh" "$SOURCE_APP" "$VERSION" "$BUILD"
+
+mkdir -p "$DEST_DIR"
+rm -rf "$STAGED_APP" "$OLD_APP"
+ditto "$SOURCE_APP" "$STAGED_APP"
+"$ROOT/scripts/verify-standalone.sh" "$STAGED_APP" "$VERSION" "$BUILD"
+
+was_running=0
+if ps -axo command= | grep -Fqx "$EXECUTABLE"; then
+  was_running=1
+  osascript -e 'tell application id "fm.partyparty.beta" to quit' >/dev/null 2>&1 || true
+  for _ in {1..20}; do
+    ps -axo command= | grep -Fqx "$EXECUTABLE" || break
+    sleep 0.25
+  done
+  if ps -axo command= | grep -Fqx "$EXECUTABLE"; then
+    pid="$(ps -axo pid=,command= | awk -v exe="$EXECUTABLE" '$0 ~ exe "$" {print $1; exit}')"
+    [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+    sleep 1
+    if ps -axo command= | grep -Fqx "$EXECUTABLE"; then
+      pid="$(ps -axo pid=,command= | awk -v exe="$EXECUTABLE" '$0 ~ exe "$" {print $1; exit}')"
+      [ -z "$pid" ] || kill -9 "$pid" 2>/dev/null || true
+    fi
+  fi
+fi
+
+rollback() {
+  rm -rf "$STAGED_APP"
+  if [ -d "$OLD_APP" ] && [ ! -d "$DEST_APP" ]; then mv "$OLD_APP" "$DEST_APP"; fi
+  [ "$was_running" = "0" ] || open -g "$DEST_APP" >/dev/null 2>&1 || true
+}
+trap rollback EXIT
+
+[ ! -d "$DEST_APP" ] || mv "$DEST_APP" "$OLD_APP"
+mv "$STAGED_APP" "$DEST_APP"
+"$ROOT/scripts/verify-standalone.sh" "$DEST_APP" "$VERSION" "$BUILD"
+rm -rf "$OLD_APP"
+trap - EXIT
+
+[ "$was_running" = "0" ] || open -g "$DEST_APP"
+echo "installed $DEST_APP"

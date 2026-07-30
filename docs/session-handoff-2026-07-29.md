@@ -317,6 +317,13 @@ release with one-run concurrency and a 45-minute cap. Two attempted App Store
 runs on July 29 consumed no runner time because GitHub rejected them before
 allocation due to the account billing state.
 
+**Build economy correction:** standalone autoship no longer notarizes and
+publishes every commit after a two-minute polling tick. It waits for 15 minutes
+of quiet, builds only the settled tip, Developer ID signs and installs that app
+locally, and does not contact Apple's notary service. At most once per 24 hours,
+the newest settled tip is notarized and published to the standalone Sparkle
+channel for remote testers. Store/TestFlight delivery remains explicit only.
+
 ---
 
 ## 6. Repo state
