@@ -11,4 +11,11 @@ Review steps:
 
 The app does not create Wi-Fi networks, install privileged helpers, request an administrator password, or require Screen Recording. The Mac App Store build contains no Sparkle updater and uploads no session diagnostics. Relay mode transports live audio and lightweight room interaction without retaining posts, recordings, replays, or public event pages. Guest photos use a capped, throttled secondary path, and videos are disabled in relay mode so music remains the priority.
 
+PartyParty requires `com.apple.security.network.server` because the Mac app
+listens for inbound HTTPS connections from guest phones on the same Wi-Fi. It
+responds by serving the guest listener interface, room API endpoints, and live
+LL-HLS playlists and media segments. Guests connect to this server through the
+HTTPS QR code displayed in the Mac app. Removing the entitlement would prevent
+guest phones from connecting and would break the app's core functionality.
+
 Privacy policy and support links are available in the app's Settings sheet.
