@@ -19,7 +19,14 @@ rm -rf "$HELPERS/ppcapture.app"
 mkdir -p "$HELPERS/ppcapture.app/Contents/MacOS"
 cp "$ROOT/assets/ppcapture" "$HELPERS/ppcapture.app/Contents/MacOS/ppcapture"
 cp "$ROOT/app/ppcapture-Info.plist" "$HELPERS/ppcapture.app/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $PRODUCT_BUNDLE_IDENTIFIER" "$HELPERS/ppcapture.app/Contents/Info.plist"
+# The helper keeps the identity its Info.plist declares (fm.partyparty.capture).
+# This line used to overwrite it with the PARENT's bundle identifier, which put
+# two app bundles claiming fm.partyparty.app into one package, each with the
+# parent's provisioning profile embedded. altool validation does not notice;
+# Apple's install-data generation does: every TestFlight install attempt died
+# server-side with a 500 at ProcessingInstallInitiateResponse, on a machine
+# scrubbed of every other copy. Bundle identifiers are identities, and two
+# things cannot be the same thing.
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$HELPERS/ppcapture.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CURRENT_PROJECT_VERSION" "$HELPERS/ppcapture.app/Contents/Info.plist"
 chmod +x "$HELPERS/"*
@@ -38,16 +45,13 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
       "$HELPERS/$helper"
   done
   # ShazamKit cannot reach shazamd from a spawned inherited-sandbox helper.
-  # Give the capture bundle its own narrow sandbox and reviewed Mach exception.
-  capture_entitlements="$ROOT/app/partyparty-app-store-capture.entitlements"
-  if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
-    capture_entitlements="$TEMP_DIR/partyparty-capture.entitlements"
-    cp "$ROOT/app/partyparty-app-store-capture.entitlements" "$capture_entitlements"
-    prefix="${AppIdentifierPrefix:-${DEVELOPMENT_TEAM}.}"
-    /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string ${prefix}${PRODUCT_BUNDLE_IDENTIFIER}" "$capture_entitlements"
-    /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string ${DEVELOPMENT_TEAM}" "$capture_entitlements"
-  fi
+  # The helper therefore has its own narrow sandbox and the reviewed Mach
+  # exception for shazamd, under its OWN identity. It deliberately does NOT
+  # claim the parent's application-identifier: that claim is what forced the
+  # parent's provisioning profile into this nested bundle and broke install
+  # provisioning. TCC attribution still rolls up to the app that spawned it,
+  # so the user-facing permission prompt names partyparty either way.
   codesign "${sign_args[@]}" \
-    --entitlements "$capture_entitlements" \
+    --entitlements "$ROOT/app/partyparty-app-store-capture.entitlements" \
     "$HELPERS/ppcapture.app"
 fi

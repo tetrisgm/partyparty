@@ -91,7 +91,12 @@ done
 
 [ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.app-sandbox)" = "true" ] ||
   fail "ppcapture is not directly sandboxed"
-[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist")" = "$EXPECTED_BUNDLE_ID" ] ||
+# The helper is its own bundle and must say so. This check used to assert the
+# OPPOSITE, that the helper's identifier equals the parent's, which is the
+# exact defect that made every TestFlight install 500 server-side. A package
+# with two bundles claiming one identity is malformed no matter how many
+# signature checks it passes.
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist")" = "fm.partyparty.capture" ] ||
   fail "ppcapture does not use the Shazam-enabled app identifier"
 [ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.network.client)" = "true" ] ||
   fail "ppcapture has no network client access for ShazamKit"
@@ -136,3 +141,19 @@ if [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
 fi
 
 echo "App Store bundle verified: $VERSION build $BUILD ($EXPECTED_BUNDLE_ID)"
+
+# Nested bundles carry no provisioning profile: profiles bind an application
+# identifier, nested code has its own, and Apple's install pipeline is the
+# thing that noticed when this was wrong.
+if [ -e "$APP/Contents/Helpers/ppcapture.app/Contents/embedded.provisionprofile" ]; then
+  echo "ppcapture.app embeds a provisioning profile; it must not." >&2
+  exit 1
+fi
+
+# The bundled ffmpeg must be the LGPL build. The GPL one is a licensing defect
+# in every distribution lane, and the App Store terms make it a guaranteed
+# problem there.
+if strings -a "$APP/Contents/Helpers/ffmpeg" 2>/dev/null | grep -q -- "--enable-gpl"; then
+  echo "bundled ffmpeg is a GPL build; ship the LGPL build from scripts/build-ffmpeg-lgpl.sh" >&2
+  exit 1
+fi
