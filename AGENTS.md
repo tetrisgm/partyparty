@@ -65,6 +65,14 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
    user-enabled login item.
 
 ## Rules
+- On every App Store or TestFlight rejection, open the exact submission or build
+  details in App Store Connect and read every Apple message before changing
+  code, entitlements, signing, bundle identifiers, certificates, profiles,
+  builds, or portal configuration. Classify the failure from Apple's stated
+  evidence first. Do not infer that the app identity or build pipeline is broken
+  when the rejection asks for metadata, review notes, clarification, or another
+  narrower correction. Record the exact rejection and the chosen response in
+  the release handoff.
 - Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.
 - Push verified `main` once per coherent change. Native releases produce two
   independently verified artifacts from the same clean commit:
