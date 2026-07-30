@@ -136,10 +136,12 @@ rsync -a --delete --include="ffmpeg" --include="mediamtx" --include="ppcapture" 
   --exclude="*" "$CANONICAL/assets/" "$CLONE/assets/" >>"$LOG" 2>&1
 
 NEXT_VERSION="$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml |
-  sed -n 's|.*<sparkle:shortVersionString>\\([0-9.]*\\)</sparkle:shortVersionString>.*|\\1|p' |
+  grep -oE '<sparkle:shortVersionString>[0-9.]+</sparkle:shortVersionString>' |
+  grep -oE '[0-9.]+' |
   tail -1)"
 NEXT_BUILD="$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml |
-  sed -n 's|.*<sparkle:version>\\([0-9][0-9]*\\)</sparkle:version>.*|\\1|p' |
+  grep -oE '<sparkle:version>[0-9]+</sparkle:version>' |
+  grep -oE '[0-9]+' |
   tail -1)"
 [ -n "$NEXT_VERSION" ] && [ -n "$NEXT_BUILD" ] || {
   log "cannot derive local version/build from the public appcast"
