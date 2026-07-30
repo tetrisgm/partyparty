@@ -76,6 +76,12 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
 - Build Mac App Store packages only on an Apple-released macOS host. A prerelease
   host OS makes the binary ineligible even when the installed Xcode and SDK are
   accepted. The packaging script and CI lane must reject prerelease host builds.
+- Do not use GitHub Actions for routine CI in this repository. Local verification
+  is mandatory before every commit and push. The only hosted macOS workflow is
+  the manually dispatched App Store release, with exact version/build inputs,
+  single-run concurrency, and a bounded timeout. Inspect account billing and
+  runner availability before dispatching it, and never retry a pre-run billing
+  rejection without resolving that account state.
 - Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.
 - Push verified `main` once per coherent change. Native releases produce two
   independently verified artifacts from the same clean commit:

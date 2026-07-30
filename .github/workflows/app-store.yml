@@ -2,17 +2,49 @@ name: App Store
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Exact marketing version from the Xcode project
+        required: true
+        type: string
+      build:
+        description: Exact build number from the Xcode project
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: partyparty-app-store-release
+  cancel-in-progress: false
+
 jobs:
   package-and-upload:
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify requested release
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_BUILD: ${{ inputs.build }}
+        run: |
+          set -euo pipefail
+          project=app/partyparty.xcodeproj/project.pbxproj
+          versions="$(sed -n 's/.*MARKETING_VERSION = \\([^;]*\\);/\\1/p' "$project" | sort -u)"
+          builds="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \\([^;]*\\);/\\1/p' "$project" | sort -u)"
+          [ "$versions" = "$REQUESTED_VERSION" ] || {
+            echo "Requested version $REQUESTED_VERSION does not match project version $versions" >&2
+            exit 1
+          }
+          [ "$builds" = "$REQUESTED_BUILD" ] || {
+            echo "Requested build $REQUESTED_BUILD does not match project build $builds" >&2
+            exit 1
+          }
 
       - uses: actions/setup-go@v5
         with:
@@ -111,7 +143,7 @@ jobs:
       - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: partyparty-app-store-125.9-228
+          name: partyparty-app-store-${{ inputs.version }}-${{ inputs.build }}
           path: dist/partyparty-app-store.pkg
           if-no-files-found: error
           retention-days: 30

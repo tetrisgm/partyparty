@@ -308,6 +308,15 @@ SDK are accepted, so the host OS is the specific defect. App Store builds now
 run on GitHub's released `macos-15` image with Xcode 26, and the local packaging script refuses
 prerelease macOS hosts. The replacement is `125.9 (228)`.
 
+**GitHub Actions audit:** the old push-triggered private macOS CI launched 226
+jobs between June 30 and July 17. Their 137 minutes of wall time rounded to
+approximately 245 macOS runner minutes because every job is billed by the
+started minute. That workflow duplicated mandatory local verification and has
+been deleted. The only remaining workflow is a manual, version-matched App Store
+release with one-run concurrency and a 45-minute cap. Two attempted App Store
+runs on July 29 consumed no runner time because GitHub rejected them before
+allocation due to the account billing state.
+
 ---
 
 ## 6. Repo state
