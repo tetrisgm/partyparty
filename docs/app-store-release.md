@@ -91,6 +91,19 @@ analytics or diagnostics collection for the Store build.
 
 ## Automated verification
 
+Build, install, and launch the sandboxed Store edition locally with an Apple
+Development signature:
+
+```sh
+scripts/build-install-app-store-local.sh
+```
+
+This is the normal Store-development lane on the owner's Mac. It does not
+notarize, publish, upload to App Store Connect, or create an App Store release.
+It installs separately at
+`~/Applications/partyparty Store Development/partyparty.app`. The standalone
+beta is quit first because both editions own the same local server ports.
+
 Verify an App Store bundle with:
 
 ```sh

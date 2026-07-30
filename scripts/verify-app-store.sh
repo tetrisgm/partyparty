@@ -111,7 +111,8 @@ elif [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
 fi
 
 if [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
-  authority="$(/usr/bin/codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
+  authority="$(/usr/bin/codesign -dvv "$APP" 2>&1 |
+    /usr/bin/awk -F= '/^Authority=/ && !seen {print $2; seen=1}')"
   [[ "$authority" = Apple\ Distribution:* ]] || fail "app is not signed with Apple Distribution"
 fi
 

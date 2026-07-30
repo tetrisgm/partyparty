@@ -13,7 +13,8 @@ SERVER_EXEC="$APP/Contents/Helpers/partyparty-server"
 
 "$ROOT/scripts/verify-app-store.sh" "$APP"
 
-authority="$(/usr/bin/codesign -dvv "$APP" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
+authority="$(/usr/bin/codesign -dvv "$APP" 2>&1 |
+  /usr/bin/awk -F= '/^Authority=/ && !seen {print $2; seen=1}')"
 if [[ "$authority" = Apple\ Distribution:* ]]; then
   echo "Apple Distribution bundle verified; runtime launch is tested after App Store installation."
   exit 0
@@ -29,9 +30,9 @@ exact_pid() {
     {
       pid = $1
       sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "")
-      if ($0 == command) {
+      if ($0 == command && !found) {
         print pid
-        exit
+        found = 1
       }
     }
   '
