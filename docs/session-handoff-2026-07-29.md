@@ -289,6 +289,14 @@ reprovision app `6794880742` / numeric build `225731682` in the private
 install-data service. Do not upload more package variants without new
 server-side evidence.
 
+A stripped control then removed every PartyParty helper and independently
+packaged a 1.5 MB, single-app payload as `125.10 (226)`. It was correctly
+signed, uploaded with no warnings, processed as `VALID`, appeared in
+TestFlight, and failed at the identical install-initiate endpoint before any
+download URL was returned. Numeric build ID `225733993`, correlation key
+`MKQIR2EDGFM3CSLHV3TDHFS7SE`. This rules out the production package contents,
+helper graph, package size, local PartyParty copies, and release scripts.
+
 Also: the owner's Mac is on **macOS 27.0 seed `26A5388g`**, and every
 documented TestFlight-install regression found was on a macOS seed.
 

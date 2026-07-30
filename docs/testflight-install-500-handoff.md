@@ -157,9 +157,54 @@ so no local bundle, cache, signature, entitlement, installer, or quarantine
 state can cause this specific failure.
 
 Do not upload more package variants for this error without new evidence from
-Apple's server logs. Send DTS the final correlation key above and ask them to
-inspect or reprovision the install-data record for app `6794880742` and build
-ID `225731682`.
+Apple's server logs. Send DTS the stripped-control correlation key below and
+ask them to inspect or reprovision the install-data record for app
+`6794880742`, production build ID `225731682`, and control build ID
+`225733993`.
+
+### Stripped control experiment
+
+After the owner challenged the package conclusion, a genuinely discriminating
+control was run:
+
+- copied the validated root app from the archive;
+- removed `Contents/Helpers` completely;
+- retained only the native Swift shell, asset catalog, privacy manifest,
+  provisioning profile, and root signature;
+- signed the root with the exact application identifier and team identifier
+  required by the profile;
+- packaged it independently with `productbuild`;
+- uploaded it as `125.10 (226)`.
+
+The resulting package was 1.5 MB and contained exactly one app, no PartyParty
+server, no capture helper, no ffmpeg, no MediaMTX, no nested bundle, no
+quarantine attribute, and no PartyParty release-script output. Upload completed
+with no errors or warnings. App Store Connect processed it as `VALID`.
+
+TestFlight displayed build 226 and attempted to install numeric build
+`225733993`. It failed at the same endpoint and same phase before receiving any
+download URL:
+
+- HTTP status: `500`
+- response body size: 37 bytes
+- phase: `ProcessingInstallInitiateResponse`
+- server reason: `Error Downloading Install Data`
+- header correlation key: `MKQIR2EDGFM3CSLHV3TDHFS7SE`
+
+This control disproves the hypotheses that embedded PartyParty code, helper
+signatures, package size, nested bundles, local copies of PartyParty, or the
+production packaging script cause the install failure. The only state shared
+between production build 224 and stripped control build 226 is the App Store
+app record, bundle identifier, tester account, and Apple's TestFlight service.
+Other TestFlight apps install for the same tester on the same Mac, leaving app
+record `6794880742` in Apple's install-data service as the shared failing
+variable.
+
+Build 225 was an invalid first control attempt because its manual root
+re-signing omitted `com.apple.application-identifier`. Apple's uploader
+reported warning `90886` and explicitly marked it ineligible for TestFlight.
+It was not used as evidence. Build 226 corrected that mistake and uploaded
+without warnings.
 
 ## Remaining external discriminators
 
