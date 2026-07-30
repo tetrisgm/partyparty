@@ -107,18 +107,67 @@ considered installable by ASC.
    PREPARE_FOR_SUBMISSION` with the current build attached. No change to the
    install failure.
 
-## NOT ruled out — where to look next
+## 2026-07-29 18:35 update: developer-controlled state is ruled out
+
+Build `125.8 (224)`, App Store Connect build resource
+`848e6d5c-0423-4e7e-b516-121f78c7be0b`, was rebuilt using Apple's documented
+embedded-tool layout:
+
+- exactly one `.app` exists in the package;
+- `ppcapture` is a plain executable in `Contents/Helpers`;
+- every helper has only App Sandbox plus inherited sandbox entitlements;
+- the parent owns the Shazam Mach lookup exception;
+- `altool --validate-app` succeeded;
+- App Store Connect processed the build as `VALID` and
+  `APP_STORE_ELIGIBLE`.
+
+The following App Store Connect state was then repaired and verified through
+the API:
+
+1. The null build "What to Test" localization was populated.
+2. The beta license resource was read and then updated with explicit agreement
+   text.
+3. A beta app review submission was created successfully. Apple accepted it as
+   `WAITING_FOR_REVIEW`, which rules out the detached or missing beta-contract
+   failure reported by other developers.
+4. The macOS App Store version was advanced from stale `125.5` to `125.8`.
+5. Its build relationship was moved from build 222 to build 224.
+6. App availability is present and enabled for new territories.
+7. Internal tester and beta group membership remain active.
+
+After every repair, TestFlight was refreshed and the install was retried. The
+final controlled retry still failed before any asset URL was issued:
+
+- endpoint:
+  `https://testflight.apple.com/v2/accounts/9d44880c-595c-45b0-aac6-cf73e3c3c32f/apps/6794880742/builds/225731682/install`
+- HTTP status: `500`
+- phase: `ProcessingInstallInitiateResponse`
+- server reason: `Error Downloading Install Data`
+- correlation key: `SNBYNKQ42G3MMOCDBIFFTPON5Y`
+
+Earlier build-224 correlation keys include
+`XVJDBH2B4EHBMH64Q4QX7HJRWA`, `GSZLY4E6VX2QS3K5BAPYVTTJLQ`, and
+`BCHBMSVZEZ4WZWUEWXSZXANZLM`.
+
+This is now a demonstrated Apple install-data backend defect for app record
+`6794880742`, not a package validation, local installation, beta contract,
+tester assignment, availability, or App Store version relationship problem.
+The request fails on Apple's server before TestFlight receives a package URL,
+so no local bundle, cache, signature, entitlement, installer, or quarantine
+state can cause this specific failure.
+
+Do not upload more package variants for this error without new evidence from
+Apple's server logs. Send DTS the final correlation key above and ask them to
+inspect or reprovision the install-data record for app `6794880742` and build
+ID `225731682`.
+
+## Remaining external discriminators
 
 Ordered by how much they would discriminate, most valuable first.
 
-1. **Does *any* TestFlight app install on this Mac?** This is the single
-   highest-value untested experiment and it is cheap. The tester account also
-   has Roon ARC and Steam Link under "Currently Testing". If a third-party app
-   also fails with a 500 at install-initiate, the fault is the client/OS or
-   the Apple ID, and partyparty is irrelevant. If a third-party app installs
-   fine, the fault is specific to app record 6794880742. **I deliberately did
-   not run this** because it installs unrequested third-party software on the
-   owner's machine; get his go-ahead first, then remove the app after.
+1. **Third-party TestFlight install.** The owner confirmed that other
+   TestFlight apps install on this Mac. This rules out a general TestFlight,
+   Apple ID, network, or local client outage.
 2. **Prerelease OS.** macOS 27.0 build `26A5388g` is a seed. Apple's forums
    document multiple TestFlight-install regressions on macOS 26+ seeds, some
    fixed only in point releases (`ASDErrorDomain 710` invalid-hash;
@@ -128,16 +177,16 @@ Ordered by how much they would discriminate, most valuable first.
    release-build macOS.
 3. **App-record state in Apple's install-data service.** The app has **never
    had an approved App Store version**; its only version record was REJECTED
-   until today. Hypothesis: install-data generation for a Mac app depends on
-   app-record state that is malformed or absent for a never-approved app.
-   Untestable from outside; needs Apple's server logs for the correlation
-   keys.
+   until today. Every public App Store Connect relationship is now coherent,
+   but the private install-data record remains malformed or absent. Only Apple
+   can inspect or reprovision it.
 4. **The 37-byte JSON error body**, never captured. Only response *headers*
    were logged. Capturing that body would likely name the server-side error
    directly. Try a proxy (Charles/mitmproxy with the system trust store) on
    `testflight.apple.com`, or a more verbose `log stream` predicate that
    includes response bodies.
-5. **A different Apple ID / different Mac** as tester. Not tested.
+5. **A different Apple ID / different Mac** as tester. This can further
+   document impact, but it cannot repair a server 500 for this app record.
 
 ## Fixed defects found along the way (real, independent of the 500)
 
@@ -243,9 +292,9 @@ cd ~/dev/partyparty
 # 4. inspect the uploaded package structure
 pkgutil --expand-full dist/partyparty-app-store.pkg /tmp/pkg
 APP=/tmp/pkg/fm.partyparty.app.pkg/Payload/partyparty.app
-/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist"  # fm.partyparty.capture
-codesign -dv "$APP/Contents/Helpers/ppcapture.app"                                                                # Identifier=fm.partyparty.capture
-ls "$APP/Contents/Helpers/ppcapture.app/Contents/embedded.provisionprofile"                                       # must not exist
+test -x "$APP/Contents/Helpers/ppcapture"
+codesign -d --entitlements :- "$APP/Contents/Helpers/ppcapture"
+find "$APP" -type d -name '*.app'                                                                                 # exactly the root app
 strings -a "$APP/Contents/Helpers/ffmpeg" | grep -c -- --enable-gpl                                               # must be 0
 ```
 

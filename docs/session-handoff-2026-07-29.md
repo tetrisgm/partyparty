@@ -272,16 +272,22 @@ Full detail in **`docs/testflight-install-500-handoff.md`**. Summary:
   PREPARE_FOR_SUBMISSION` with build 222 attached.
 - `scripts/asc-api.py` — ASC API client for all of this.
 
-**Unresolved and probably not ours:** TestFlight install fails with **HTTP 500
-from Apple's own service** at `ProcessingInstallInitiateResponse`, across three
-builds, two package structures, and a machine scrubbed of all conflicting
-bundles. Apple DTS case **20000120924076** is open; a reply with a screen
-recording and the raw log evidence was sent 2026-07-29. **The identity
-collision was my leading hypothesis and build 222 disproved it.**
+**Unresolved and now isolated to Apple's install-data backend:** TestFlight
+install fails with **HTTP 500 from Apple's own service** at
+`ProcessingInstallInitiateResponse`, across four builds and three package
+structures. Build `125.8 (224)` uses Apple's documented plain inherited helper
+layout and is `VALID` and `APP_STORE_ELIGIBLE`. The owner confirmed other
+TestFlight apps install on this Mac. Through the App Store Connect API we
+populated the build localization, updated the beta license, successfully
+submitted beta review, aligned the macOS version to `125.8`, attached build
+224, and verified availability and tester state. The install endpoint still
+returns 500 before issuing a download URL. Final correlation key:
+`SNBYNKQ42G3MMOCDBIFFTPON5Y`.
 
-**Highest-value untested experiment:** install any *other* TestFlight app on
-this Mac. It discriminates client/OS from app record in one click. Not run
-because it installs unrequested third-party software; needs the owner's word.
+Apple DTS case **20000120924076** needs a follow-up asking Apple to inspect or
+reprovision app `6794880742` / numeric build `225731682` in the private
+install-data service. Do not upload more package variants without new
+server-side evidence.
 
 Also: the owner's Mac is on **macOS 27.0 seed `26A5388g`**, and every
 documented TestFlight-install regression found was on a macOS seed.
