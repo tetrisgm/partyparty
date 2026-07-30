@@ -374,5 +374,5 @@ Store Connect, so this error is about the build host, not the SDK, signing,
 entitlements, bundle identity, or provisioning profile.
 
 App Store packages must now be produced by `.github/workflows/app-store.yml` on
-GitHub's released `macos-26` image. `scripts/package-app-store.sh` independently
+GitHub's released `macos-15` image with Xcode 26. `scripts/package-app-store.sh` independently
 rejects prerelease macOS hosts. The replacement build is `125.9 (228)`.
