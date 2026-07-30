@@ -12,9 +12,8 @@ PLIST="$APP/Contents/Info.plist"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$PLIST")" = "https://partyparty.party/appcast.xml" ]
 [ -d "$APP/Contents/Frameworks/Sparkle.framework" ]
 codesign --verify --deep --strict --verbose=2 "$APP"
-CAPTURE="$APP/Contents/Helpers/ppcapture.app"
-[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$CAPTURE/Contents/Info.plist")" = "fm.partyparty.beta" ]
-otool -L "$CAPTURE/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'
+CAPTURE="$APP/Contents/Helpers/ppcapture"
+otool -L "$CAPTURE" | grep -q '/ShazamKit.framework/'
 capture_entitlements="$(codesign -d --entitlements :- "$CAPTURE" 2>/dev/null)"
 capture_keys="$(printf '%s' "$capture_entitlements" | plutil -convert json -o - - | /usr/bin/python3 -c \
   'import json,sys; print("\n".join(sorted(json.load(sys.stdin))))')"

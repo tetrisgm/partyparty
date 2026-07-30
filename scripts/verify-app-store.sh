@@ -54,9 +54,11 @@ PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 [ "$(/usr/bin/plutil -extract NSPrivacyTracking raw -o - "$PRIVACY")" = "false" ] ||
   fail "privacy manifest enables tracking"
 
-expected_helpers=$'ffmpeg\nmediamtx\npartyparty-server\nppcapture.app'
+expected_helpers=$'ffmpeg\nmediamtx\npartyparty-server\nppcapture'
 actual_helpers="$(find "$APP/Contents/Helpers" -mindepth 1 -maxdepth 1 -print | sed 's#.*/##' | sort)"
 [ "$actual_helpers" = "$expected_helpers" ] || fail "unexpected helper set: $actual_helpers"
+[ -z "$(find "$APP/Contents/Helpers" -type d -name '*.app' -print -quit)" ] ||
+  fail "helper directory contains a nested application"
 
 entitlements() {
   /usr/bin/codesign -d --entitlements :- "$1" 2>/dev/null
@@ -73,11 +75,15 @@ entitlement_value() {
 [ "$(entitlement_value "$APP" com.apple.security.device.audio-input)" = "true" ] || fail "audio input entitlement is missing"
 [ "$(entitlement_value "$APP" com.apple.security.files.user-selected.read-only)" = "true" ] ||
   fail "user-selected read-only file entitlement is missing"
+app_mach_services="$(entitlements "$APP" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
+  'import json,sys; print("\n".join(json.load(sys.stdin)["com.apple.security.temporary-exception.mach-lookup.global-name"]))')"
+[ "$app_mach_services" = "com.apple.shazamd" ] ||
+  fail "app has an unexpected temporary Mach service exception: $app_mach_services"
 if entitlement_value "$APP" com.apple.security.inherit >/dev/null 2>&1; then
   fail "main app must not inherit a sandbox"
 fi
 
-for helper in ffmpeg mediamtx partyparty-server; do
+for helper in ffmpeg mediamtx partyparty-server ppcapture; do
   path="$APP/Contents/Helpers/$helper"
   [ "$(entitlement_value "$path" com.apple.security.app-sandbox)" = "true" ] ||
     fail "$helper is not sandboxed"
@@ -89,38 +95,7 @@ for helper in ffmpeg mediamtx partyparty-server; do
     fail "$helper has unexpected entitlements: $keys"
 done
 
-[ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.app-sandbox)" = "true" ] ||
-  fail "ppcapture is not directly sandboxed"
-# The helper is its own bundle and must say so. This check used to assert the
-# OPPOSITE, that the helper's identifier equals the parent's, which is the
-# exact defect that made every TestFlight install 500 server-side. A package
-# with two bundles claiming one identity is malformed no matter how many
-# signature checks it passes.
-[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist")" = "fm.partyparty.capture" ] ||
-  fail "ppcapture does not use the Shazam-enabled app identifier"
-[ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.network.client)" = "true" ] ||
-  fail "ppcapture has no network client access for ShazamKit"
-[ "$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.device.audio-input)" = "true" ] ||
-  fail "ppcapture has no audio input access"
-if entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.security.inherit >/dev/null 2>&1; then
-  fail "ppcapture must not inherit the app sandbox because ShazamKit error 202 results"
-fi
-capture_keys="$(entitlements "$APP/Contents/Helpers/ppcapture.app" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
-  'import json,sys; print("\n".join(sorted(json.load(sys.stdin))))')"
-capture_expected=$'com.apple.security.app-sandbox\ncom.apple.security.device.audio-input\ncom.apple.security.network.client\ncom.apple.security.temporary-exception.mach-lookup.global-name'
-if [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
-  capture_expected=$'com.apple.application-identifier\ncom.apple.developer.team-identifier\ncom.apple.security.app-sandbox\ncom.apple.security.device.audio-input\ncom.apple.security.network.client\ncom.apple.security.temporary-exception.mach-lookup.global-name'
-  capture_app_id="$(entitlement_value "$APP/Contents/Helpers/ppcapture.app" com.apple.application-identifier)"
-  [[ "$capture_app_id" = *".$EXPECTED_BUNDLE_ID" ]] ||
-    fail "ppcapture application identifier is $capture_app_id"
-fi
-[ "$capture_keys" = "$capture_expected" ] || fail "ppcapture has unexpected entitlements: $capture_keys"
-capture_mach_services="$(entitlements "$APP/Contents/Helpers/ppcapture.app" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
-  'import json,sys; print("\n".join(json.load(sys.stdin)["com.apple.security.temporary-exception.mach-lookup.global-name"]))')"
-[ "$capture_mach_services" = "com.apple.shazamd" ] ||
-  fail "ppcapture has an unexpected temporary Mach service exception: $capture_mach_services"
-
-otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'
+otool -L "$APP/Contents/Helpers/ppcapture" | grep -q '/ShazamKit.framework/'
 
 if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
   work="$(mktemp -d)"
@@ -141,14 +116,6 @@ if [ "${REQUIRE_APP_STORE_DISTRIBUTION:-0}" = "1" ]; then
 fi
 
 echo "App Store bundle verified: $VERSION build $BUILD ($EXPECTED_BUNDLE_ID)"
-
-# Nested bundles carry no provisioning profile: profiles bind an application
-# identifier, nested code has its own, and Apple's install pipeline is the
-# thing that noticed when this was wrong.
-if [ -e "$APP/Contents/Helpers/ppcapture.app/Contents/embedded.provisionprofile" ]; then
-  echo "ppcapture.app embeds a provisioning profile; it must not." >&2
-  exit 1
-fi
 
 # The bundled ffmpeg must be the LGPL build. The GPL one is a licensing defect
 # in every distribution lane, and the App Store terms make it a guaranteed

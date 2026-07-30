@@ -30,7 +30,7 @@ apps=()
 while IFS= read -r -d '' payload; do
   while IFS= read -r -d '' app; do
     apps+=("$app")
-  done < <(find "$payload" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print0)
+  done < <(find "$payload" -type d -name '*.app' -print0)
 done < <(find "$work/package" -type d -name Payload -print0)
 [ "${#apps[@]}" -eq 1 ] || fail "expected one app payload, found ${#apps[@]}"
 [ "$(basename "${apps[0]}")" = "partyparty.app" ] ||
