@@ -358,3 +358,21 @@ strings -a "$APP/Contents/Helpers/ffmpeg" | grep -c -- --enable-gpl             
 
 - `9b47604` Make the App Store package tell the truth about identity and license
 - `15157a2` App Store lane current again, and relayed guests stop paying quadruple bytes
+
+## 2026-07-29 App Review invalid binary
+
+Apple rejected `125.8 (224)` with the exact error:
+
+```text
+ITMS-90301: This bundle is invalid - Apple is not currently accepting
+applications built with this version of the OS.
+```
+
+The uploaded app recorded `BuildMachineOSBuild=26A5388g`, matching the owner's
+macOS 27 prerelease seed. Xcode 26.6 and the macOS 26.5 SDK are accepted by App
+Store Connect, so this error is about the build host, not the SDK, signing,
+entitlements, bundle identity, or provisioning profile.
+
+App Store packages must now be produced by `.github/workflows/app-store.yml` on
+GitHub's released `macos-26` image. `scripts/package-app-store.sh` independently
+rejects prerelease macOS hosts. The replacement build is `125.9 (228)`.

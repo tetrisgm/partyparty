@@ -5,6 +5,14 @@ cd "$(dirname "$0")/.."
 : "${APP_STORE_PROVISIONING_PROFILE:?set APP_STORE_PROVISIONING_PROFILE to the Mac App Store profile}"
 : "${PP_SIGN_ID:?set PP_SIGN_ID to the Apple Distribution signing identity}"
 : "${APP_STORE_INSTALLER_ID:?set APP_STORE_INSTALLER_ID to the Mac Installer Distribution identity}"
+
+HOST_OS_VERSION="$(sw_vers -productVersion)"
+HOST_OS_BUILD="$(sw_vers -buildVersion)"
+if [[ "$HOST_OS_BUILD" =~ [[:alpha:]]$ ]]; then
+  echo "App Store packages cannot be built on prerelease macOS: $HOST_OS_VERSION ($HOST_OS_BUILD)" >&2
+  exit 1
+fi
+
 [ -f "$APP_STORE_PROVISIONING_PROFILE" ] || {
   echo "provisioning profile not found: $APP_STORE_PROVISIONING_PROFILE" >&2
   exit 1
@@ -49,6 +57,11 @@ xcodebuild \
 
 ARCHIVED_APP="$ARCHIVE/Products/Applications/partyparty.app"
 REQUIRE_APP_STORE_DISTRIBUTION=1 ./scripts/verify-app-store.sh "$ARCHIVED_APP"
+ARCHIVE_HOST_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :BuildMachineOSBuild' "$ARCHIVED_APP/Contents/Info.plist")"
+[ "$ARCHIVE_HOST_BUILD" = "$HOST_OS_BUILD" ] || {
+  echo "archive host build mismatch: expected $HOST_OS_BUILD, got $ARCHIVE_HOST_BUILD" >&2
+  exit 1
+}
 
 /usr/bin/plutil -create xml1 "$EXPORT_OPTIONS"
 /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$EXPORT_OPTIONS"

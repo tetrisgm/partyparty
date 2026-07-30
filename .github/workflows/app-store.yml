@@ -1,0 +1,117 @@
+name: App Store
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-and-upload:
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Select a released Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode_path="$(python3 - <<'PY'
+          import glob
+          import os
+          import re
+
+          paths = [
+              path for path in glob.glob("/Applications/Xcode_26*.app")
+              if not re.search(r"(beta|rc)", os.path.basename(path), re.IGNORECASE)
+          ]
+          print(sorted(paths)[-1] if paths else "")
+          PY
+          )"
+          if [ -z "$xcode_path" ]; then
+            xcode_path=/Applications/Xcode.app
+          fi
+          sudo xcode-select -s "$xcode_path/Contents/Developer"
+          sw_vers
+          xcodebuild -version
+          host_build="$(sw_vers -buildVersion)"
+          if [[ "$host_build" =~ [[:alpha:]]$ ]]; then
+            echo "Refusing prerelease macOS runner: $host_build" >&2
+            exit 1
+          fi
+
+      - name: Build release media helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/build-ffmpeg-lgpl.sh
+          brew install mediamtx
+          cp "$(command -v mediamtx)" assets/mediamtx
+          chmod 755 assets/mediamtx
+          make assets/ppcapture
+
+      - name: Install signing material
+        id: signing
+        shell: bash
+        env:
+          APPLE_DISTRIBUTION_P12_B64: ${{ secrets.APPLE_DISTRIBUTION_P12_B64 }}
+          APPLE_INSTALLER_P12_B64: ${{ secrets.APPLE_INSTALLER_P12_B64 }}
+          APPLE_SIGNING_PASSWORD: ${{ secrets.APPLE_SIGNING_PASSWORD }}
+          APP_STORE_PROFILE_B64: ${{ secrets.APP_STORE_PROFILE_B64 }}
+          APP_STORE_CONNECT_PRIVATE_KEY_B64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_B64 }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/partyparty-signing"
+          keychain="$work/app-store.keychain-db"
+          profile="$work/partyparty.provisionprofile"
+          mkdir -p "$work" "$HOME/.appstoreconnect/private_keys"
+          chmod 700 "$work" "$HOME/.appstoreconnect" "$HOME/.appstoreconnect/private_keys"
+
+          printf '%s' "$APPLE_DISTRIBUTION_P12_B64" | base64 -D > "$work/distribution.p12"
+          printf '%s' "$APPLE_INSTALLER_P12_B64" | base64 -D > "$work/installer.p12"
+          printf '%s' "$APP_STORE_PROFILE_B64" | base64 -D > "$profile"
+          printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY_B64" | base64 -D \
+            > "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          chmod 600 "$work"/* "$HOME/.appstoreconnect/private_keys/"*
+
+          security create-keychain -p "$APPLE_SIGNING_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$APPLE_SIGNING_PASSWORD" "$keychain"
+          security import "$work/distribution.p12" -k "$keychain" \
+            -P "$APPLE_SIGNING_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security import "$work/installer.p12" -k "$keychain" \
+            -P "$APPLE_SIGNING_PASSWORD" -T /usr/bin/productbuild -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$APPLE_SIGNING_PASSWORD" "$keychain"
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+
+      - name: Package, validate, and upload
+        shell: bash
+        env:
+          APP_STORE_PROVISIONING_PROFILE: ${{ steps.signing.outputs.profile }}
+          APP_STORE_KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+          PP_SIGN_ID: "Apple Distribution: Ramine Darabiha (52WM463HR2)"
+          APP_STORE_INSTALLER_ID: "3rd Party Mac Developer Installer: Ramine Darabiha (52WM463HR2)"
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_VALIDATE: "1"
+          APP_STORE_UPLOAD: "1"
+        run: ./scripts/package-app-store.sh
+
+      - name: Upload verified package
+        uses: actions/upload-artifact@v4
+        with:
+          name: partyparty-app-store-125.9-228
+          path: dist/partyparty-app-store.pkg
+          if-no-files-found: error
+          retention-days: 30

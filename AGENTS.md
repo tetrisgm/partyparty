@@ -73,6 +73,9 @@ Run the checks relevant to the files you touched. Only commit if they pass, and 
   when the rejection asks for metadata, review notes, clarification, or another
   narrower correction. Record the exact rejection and the chosen response in
   the release handoff.
+- Build Mac App Store packages only on an Apple-released macOS host. A prerelease
+  host OS makes the binary ineligible even when the installed Xcode and SDK are
+  accepted. The packaging script and CI lane must reject prerelease host builds.
 - Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.
 - Push verified `main` once per coherent change. Native releases produce two
   independently verified artifacts from the same clean commit:

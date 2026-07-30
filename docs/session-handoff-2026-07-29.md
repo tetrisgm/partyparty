@@ -300,6 +300,14 @@ helper graph, package size, local PartyParty copies, and release scripts.
 Also: the owner's Mac is on **macOS 27.0 seed `26A5388g`**, and every
 documented TestFlight-install regression found was on a macOS seed.
 
+**Later App Review diagnosis:** Apple invalidated `125.8 (224)` with
+`ITMS-90301: Apple is not currently accepting applications built with this
+version of the OS.` The package recorded `BuildMachineOSBuild=26A5388g`, proving
+that it was built on the owner's macOS 27 seed. Xcode 26.6 and its macOS 26.5
+SDK are accepted, so the host OS is the specific defect. App Store builds now
+run on GitHub's released `macos-26` image, and the local packaging script refuses
+prerelease macOS hosts. The replacement is `125.9 (228)`.
+
 ---
 
 ## 6. Repo state
