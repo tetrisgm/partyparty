@@ -34,7 +34,7 @@ packaging:
 2. An Apple Distribution certificate available in the login keychain.
 3. A Mac Installer Distribution certificate available in the login keychain.
 4. A Mac App Store distribution provisioning profile for `fm.partyparty.app`.
-5. An App Store Connect API key when command-line upload validation is desired.
+5. An App Store Connect API key registered with Workshop.
 
 The profile, app record, signing identities, and app bundle must all use team
 `52WM463HR2`.
@@ -57,8 +57,12 @@ APP_STORE_INSTALLER_ID='Mac Installer Distribution: ... (52WM463HR2)' \
 scripts/package-app-store.sh
 ```
 
-Add `APP_STORE_VALIDATE=1`, `APP_STORE_CONNECT_KEY_ID`, and
-`APP_STORE_CONNECT_ISSUER_ID` to run Apple's upload validation after packaging.
+Inspect authentication and the registered app before release:
+
+```sh
+workshop apple doctor partyparty
+workshop apple status partyparty
+```
 
 The packaging script creates a signed Xcode archive and exports it with
 `xcodebuild -exportArchive`. Do not replace this with a hand-assembled
@@ -72,6 +76,20 @@ LaunchDaemons, privileged helpers, extra helper binaries, missing sandbox/networ
 or audio entitlements, extra child entitlements, an incorrect provisioning
 profile, a non-distribution app signature, or a non-App-Store installer
 signature.
+
+Upload the verified package without submitting it for review:
+
+```sh
+workshop apple upload partyparty \
+  --pkg dist/partyparty-app-store.pkg \
+  --version <version> \
+  --build <build> \
+  --confirm
+```
+
+After processing, use `workshop apple validate partyparty --version <version>`
+and `workshop apple review partyparty --version <version>` to get a structured
+readiness report. Review submission remains a separate explicit owner request.
 
 ## Privacy
 

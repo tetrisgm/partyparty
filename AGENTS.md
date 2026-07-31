@@ -1,120 +1,64 @@
-# AGENTS.md - partyparty (for Codex / autonomous agents)
+# PartyParty.party agent contract
 
-partyparty is a macOS menu-bar app that turns a DJ's Mac into a party server.
-Guests scan a QR and use HTTPS LL-HLS plus the active-room feed.
+PartyParty is a macOS menu-bar app that turns a DJ's Mac into a live party
+server. Guests scan a secure QR code and use HTTPS LL-HLS plus the active-room
+feed.
 
-## Workshop
+Load the shared `workshop-delivery` skill. Use:
 
-Read `WORKSHOP.md` and `.workshop.json` before offloading work. `workshop quick`
-runs the shared Windows-portable preflight and writes a durable receipt to the
-NAS. Workshop never replaces Swift verification, Apple packaging, or this
-repository's release workflow.
+```sh
+workshop rules audit partyparty
+workshop delivery audit partyparty
+```
 
-Use the shared `workshop-delivery` skill and run
-`workshop delivery audit partyparty` before changing build, CI, release, or
-deployment automation. `net.ramine.partyparty.autoship` is the sole automatic
-delivery controller.
+`.workshop.json` owns portable Go and Worker checks. The registered standalone
+controller and explicit Apple lane are the only delivery paths.
 
-The Mac selects ONE room-wide mode from two facts, whether guests can reach it
-and whether the internet is reachable: DIRECT (venue Wi-Fi), LOCAL (no internet,
-same LAN data path), RELAY (the Wi-Fi isolates devices), or NO PATH (neither
-works, stated honestly rather than left checking). See `docs/relay-architecture.md`,
-which is the authority.
+## Architecture
 
-In RELAY the Mac PUSHES its own LL-HLS to a relay origin (`cmd/pporigin`) which
-fans it out, so the Mac sends one copy whether five or five hundred people
-listen. It forwards its own playlists byte for byte so PROGRAM-DATE-TIME, and
-with it the room schedule, survives. A Cloudflare Worker handles anonymous LAN
-hostname/certificate coordination, the bootstrap page, and the website. It is
-NEVER in the media path: no Durable Object, no socket, no per-request proxy. It
-never stores party history, recordings, or public event pages.
+The Mac chooses one room-wide mode from guest reachability and internet
+reachability: direct, local, relay, or no path. In relay mode the Mac pushes one
+copy of its LL-HLS stream to `cmd/pporigin`, which fans out the original
+playlists. The Cloudflare Worker handles bootstrap and anonymous LAN
+certificate coordination but never carries media. See
+`docs/relay-architecture.md`.
 
-## Layout
-- `main.go` + `internal/` - the Go server/binary (audio capture, LL-HLS, HTTPS).
-- `app/` - the Swift menu-bar shell (SwiftPM). Loads the Go server's console in a webview.
-- `web/` - served pages: `dj.html` (DJ console), `listener.html` / `wall.html` (**GUEST** pages). Embedded in the binary.
-- `cloudflare/worker.js` - website and anonymous LAN certificate/DNS broker.
-  Tests: `cloudflare/test/smoke.mjs`.
+## Product Invariants
 
-## Verify EVERY change before you commit
-- Go: `go build ./... && go vet ./... && gofmt -l .` (must print nothing) `&& go test ./...`
-- Worker: `cd cloudflare && node test/smoke.mjs` (all pass)
-- Swift: `cd app && swift build`
-Run the checks relevant to the files you touched. Only commit if they pass, and paste the output in your final report.
+1. Guests join, listen, and post on the LAN without accounts or internet.
+2. The paid App Store download is the purchase boundary. Do not add product
+   login, licensing, profiles, or network checks before Go Live.
+3. Guest playback is HTTPS LL-HLS only. Do not restore plain HTTP.
+4. Cloud relay state is ephemeral. Do not add public party pages, replays,
+   recordings, archives, or cloud feeds.
+5. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and
+   MediaMTX behavior.
+6. Do not add an authentication email service.
+7. Do not restore hotspots, Internet Sharing, captive portals, DNS hijacking,
+   or automatic network reconfiguration.
+8. Apple guests use native HLS/AVPlayer for background and lock-screen audio.
+9. Room delay never tracks listener count; correction is per device.
+10. Store and standalone builds are isolated. Store builds are sandboxed and
+    Apple-updated; standalone builds use a separate bundle ID and Sparkle.
 
-## SACRED - never break these
-1. **Guest offline join.** Guests join / listen / post on the LAN with NO account and NO internet. NEVER gate guest routes (`/`, `/wall`, `/hls/`, `/api/status`, `/api/heartbeat`, media/reaction posts) or `listener.html` / `wall.html` on auth, activation, or network.
-2. **Account-free DJ app.** The paid Mac App Store download is the purchase
-   boundary. Never add a PartyParty login, license server, account gate, profile,
-   username, or StoreKit network check to Go Live. Anonymous install credentials
-   exist only for LAN DNS/certificate provisioning.
-3. **HTTPS + LL-HLS only** for guests. Do NOT reintroduce a plain-HTTP guest fallback.
-4. **No stored cloud party product.** Direct and local modes serve live audio
-   and active-room posts from the Mac over venue Wi-Fi. Relay mode holds one
-   party's live window in memory on the origin and drops it when the room goes
-   quiet. Never add public event pages, replays, recordings, remote archives, or
-   cloud party feeds.
-5. **The audio core is OFF-LIMITS for autonomous work.** Do NOT modify `internal/broadcast/` (ffmpeg / tee / MediaMTX). Contribution reads the LL-HLS that package already produces rather than adding a leg to its tee, which is how the relay was built without touching it.
-6. **No authentication email service.** PartyParty has no product accounts or
-   magic links. Do not add an email API or SMTP-based authentication.
-7. **One venue topology and playback path.** The venue provides Wi-Fi. Do not
-   restore Internet Sharing, hotspots, captive portals, or DNS hijacking. The
-   Mac authoritatively selects the mode for the whole room. Apple guests always
-   use native HLS/AVPlayer so lock-screen playback remains intact.
+## Verify
 
-9. **The room delay never tracks listeners.** A slow device, or a hundred, must
-   never lengthen the delay for anyone else. `latencyTarget` deliberately
-   discards broadcast status and room health, and a regression test sweeps every
-   combination to keep it that way. Devices that fall behind are corrected
-   strictly per device.
-8. **Two isolated distribution channels.** Store builds stay sandboxed,
-   Sparkle-free, and updated only by Apple. The standalone beta is a separate
-   Developer ID signed and notarized build with a separate bundle identifier;
-   it may contain Sparkle and update from the signed PartyParty beta appcast.
-   Neither edition may require admin, privileged helpers, Screen Recording, or
-   automatic network reconfiguration. Both may request Local Network, System
-   Audio Recording, or Microphone only when needed, plus an optional
-   user-enabled login item.
+- Go: `go build ./...`, `go vet ./...`, `gofmt -l .`, and `go test ./...`.
+- Worker: `cd cloudflare && node test/smoke.mjs`.
+- Swift: `cd app && swift build`.
+- Run the checks relevant to the touched files. `gofmt -l .` must be empty.
 
-## Rules
-- Expensive automatic work must wait until `HEAD` has been unchanged for at
-  least 15 minutes and then build only that settled tip. Native development
-  updates use a signed, verified local install without notarization or public
-  publishing. Standalone public releases run at most once per 24 hours and
-  publish only the newest settled tip. App Store and TestFlight delivery is
-  never automatic and runs only for an explicit Apple release.
-- On every App Store or TestFlight rejection, open the exact submission or build
-  details in App Store Connect and read every Apple message before changing
-  code, entitlements, signing, bundle identifiers, certificates, profiles,
-  builds, or portal configuration. Classify the failure from Apple's stated
-  evidence first. Do not infer that the app identity or build pipeline is broken
-  when the rejection asks for metadata, review notes, clarification, or another
-  narrower correction. Record the exact rejection and the chosen response in
-  the release handoff.
-- Build Mac App Store packages only on an Apple-released macOS host. A prerelease
-  host OS makes the binary ineligible even when the installed Xcode and SDK are
-  accepted. The packaging script and CI lane must reject prerelease host builds.
-- Do not use GitHub Actions for routine CI in this repository. Local verification
-  is mandatory before every commit and push. The only hosted macOS workflow is
-  the manually dispatched App Store release, with exact version/build inputs,
-  single-run concurrency, and a bounded timeout. Inspect account billing and
-  runner availability before dispatching it, and never retry a pre-run billing
-  rejection without resolving that account state.
-- Preserve unrelated work and commit completed changes on the current working branch. Do not make branch merging or user review a prerequisite for delivering a verified build.
-- Push verified `main` once per coherent change. Native releases produce two
-  independently verified artifacts from the same clean commit:
-  `scripts/package-app-store.sh` for App Store Connect, and the standalone beta
-  ship workflow for the PartyParty website/update feed. Website/Worker changes
-  deploy through Wrangler after smoke tests.
-- Standalone distribution is a beta/testing channel. Its app, archive, appcast,
-  update signature, immutable download, and website link must agree on the exact
-  version/build and source commit. Never put Sparkle, its keys, its framework,
-  appcast metadata, Developer ID-only entitlements, or standalone update code in
-  the Mac App Store product.
-- Do not restore the retired shared direct-release daemon or any downloaded
-  web-payload system. A standalone release may publish only a complete signed
-  and notarized app artifact through its dedicated bounded ship workflow.
-- NEVER commit secrets (`*.pem`, `*.key`, `*.p8`, `*.seed`, API keys). Secrets live in `~/Library/Application Support/partyparty` and as Cloudflare Worker secrets.
-- Match the surrounding code style; keep changes tight and well-tested.
-- Commit messages end with: `Co-Authored-By: Codex <noreply@openai.com>`
-- The roadmap + your task queue are in `codex/`. Read `codex/PLAN.md`.
+## Apple
+
+- Build Store packages only on an Apple-released macOS host.
+- `scripts/package-app-store.sh` owns archive, export, and package verification.
+- Use `workshop apple doctor|status|builds|review|validate|upload` for App Store
+  Connect. Upload never implies review submission.
+- Before changing code after an Apple rejection, inspect the exact review
+  message and classify whether it concerns binary, metadata, review notes, or
+  account state.
+- Never mix Sparkle, Developer ID entitlements, or standalone update metadata
+  into the Store target.
+
+Current product work is listed in `PLAN.md`. Historical investigations are
+available in Git history, not binding handoff files.

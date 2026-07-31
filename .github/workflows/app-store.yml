@@ -83,7 +83,8 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/build-ffmpeg-lgpl.sh
-          brew install mediamtx
+          brew install mediamtx asc
+          asc version
           cp "$(command -v mediamtx)" assets/mediamtx
           chmod 755 assets/mediamtx
           make assets/ppcapture
@@ -134,11 +135,14 @@ jobs:
           APP_STORE_KEYCHAIN: ${{ steps.signing.outputs.keychain }}
           PP_SIGN_ID: "Apple Distribution: Ramine Darabiha (52WM463HR2)"
           APP_STORE_INSTALLER_ID: "3rd Party Mac Developer Installer: Ramine Darabiha (52WM463HR2)"
-          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APP_STORE_VALIDATE: "1"
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_STRICT_AUTH: "true"
+          ASC_TELEMETRY_DISABLED: "1"
           APP_STORE_UPLOAD: "1"
-        run: ./scripts/package-app-store.sh
+        run: |
+          export ASC_PRIVATE_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          ./scripts/package-app-store.sh
 
       - name: Upload verified package
         uses: actions/upload-artifact@v4

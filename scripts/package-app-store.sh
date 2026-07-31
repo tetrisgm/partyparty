@@ -91,28 +91,27 @@ cp "$EXPORTED_PKG" "$PWD/dist/partyparty-app-store.pkg"
 
 ./scripts/verify-app-store-package.sh "$PWD/dist/partyparty-app-store.pkg"
 
-if [ "${APP_STORE_VALIDATE:-0}" = "1" ]; then
-  : "${APP_STORE_CONNECT_KEY_ID:?set APP_STORE_CONNECT_KEY_ID for validation}"
-  : "${APP_STORE_CONNECT_ISSUER_ID:?set APP_STORE_CONNECT_ISSUER_ID for validation}"
-  xcrun altool --validate-app \
-    -f "$PWD/dist/partyparty-app-store.pkg" \
-    -t macos \
-    --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-    --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
-fi
-
 # Upload sends the build to App Store Connect, where it lands in TestFlight
 # processing. It does NOT submit anything for App Store review; that remains a
-# deliberate human step in the ASC UI. Guarded separately from validation so a
-# routine package run never uploads by accident.
+# separate explicit operation. A routine package run never uploads by accident.
 if [ "${APP_STORE_UPLOAD:-0}" = "1" ]; then
-  : "${APP_STORE_CONNECT_KEY_ID:?set APP_STORE_CONNECT_KEY_ID for upload}"
-  : "${APP_STORE_CONNECT_ISSUER_ID:?set APP_STORE_CONNECT_ISSUER_ID for upload}"
-  xcrun altool --upload-app \
-    -f "$PWD/dist/partyparty-app-store.pkg" \
-    -t macos \
-    --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-    --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+  command -v asc >/dev/null || {
+    echo "asc is required for App Store Connect upload (brew install asc)" >&2
+    exit 1
+  }
+  : "${APP_STORE_APP_ID:=6794880742}"
+  APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ARCHIVED_APP/Contents/Info.plist")"
+  APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ARCHIVED_APP/Contents/Info.plist")"
+  export ASC_TELEMETRY_DISABLED=1
+  export ASC_STRICT_AUTH=true
+  asc builds upload \
+    --app "$APP_STORE_APP_ID" \
+    --pkg "$PWD/dist/partyparty-app-store.pkg" \
+    --version "$APP_VERSION" \
+    --build-number "$APP_BUILD" \
+    --wait \
+    --checksum \
+    --output json
 fi
 
 echo "built dist/partyparty-app-store.pkg"
