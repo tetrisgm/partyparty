@@ -10,6 +10,11 @@ runs the shared Windows-portable preflight and writes a durable receipt to the
 NAS. Workshop never replaces Swift verification, Apple packaging, or this
 repository's release workflow.
 
+Use the shared `workshop-delivery` skill and run
+`workshop delivery audit partyparty` before changing build, CI, release, or
+deployment automation. `net.ramine.partyparty.autoship` is the sole automatic
+delivery controller.
+
 The Mac selects ONE room-wide mode from two facts, whether guests can reach it
 and whether the internet is reachable: DIRECT (venue Wi-Fi), LOCAL (no internet,
 same LAN data path), RELAY (the Wi-Fi isolates devices), or NO PATH (neither

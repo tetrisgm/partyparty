@@ -6,6 +6,9 @@ Use `workshop quick` for Go tests, stream-contract tests, and the Cloudflare
 Worker smoke test. Use `workshop full` for the broader Windows-portable Go
 gate.
 
+Use `workshop delivery status partyparty` and
+`workshop delivery audit partyparty` for delivery state and policy.
+
 The Windows worker cannot perform Swift builds, Apple signing, notarization,
 App Store packaging, or release publication. Run the required Mac-only checks
 and the repository's shipping workflow separately.

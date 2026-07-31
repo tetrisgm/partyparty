@@ -2,7 +2,7 @@
 # The autoship daemon: commits land on main, releases happen. No agent session
 # foregrounds a ship, watches one, or forgets one.
 #
-# Run by launchd (net.ramine.partyparty.autoship) every two minutes. Each pass
+# Run by launchd (net.ramine.partyparty.autoship) every five minutes. Each pass
 # is bounded, locked, and quiet when there is nothing to do:
 #
 #   1. Fetch the canonical repo's main into a DEDICATED clone. The canonical
@@ -96,6 +96,29 @@ if [ -z "$INSTALLED" ]; then
   log "initialized at $TARGET"
   exit 0
 fi
+
+# Controller and documentation changes do not alter product bytes. Advance each
+# lane independently so a tooling-only commit never spends a build,
+# notarization, upload, or deployment.
+PRODUCT_PATHS=(main.go go.mod go.sum app assets cloudflare cmd internal web)
+product_changed_since() {
+  local baseline="$1"
+  [ -z "$baseline" ] && return 0
+  git -C "$CLONE" merge-base --is-ancestor "$baseline" "$TARGET" 2>/dev/null ||
+    return 0
+  ! git -C "$CLONE" diff --quiet "$baseline" "$TARGET" -- "${PRODUCT_PATHS[@]}"
+}
+if [ "$TARGET" != "$INSTALLED" ] && ! product_changed_since "$INSTALLED"; then
+  state_set installed "$TARGET"
+  INSTALLED="$TARGET"
+  log "advanced local marker across tooling-only source $TARGET"
+fi
+if [ "$TARGET" != "$PUBLISHED" ] && ! product_changed_since "$PUBLISHED"; then
+  state_set published "$TARGET"
+  PUBLISHED="$TARGET"
+  log "advanced public marker across tooling-only source $TARGET"
+fi
+[ "$TARGET" = "$INSTALLED" ] && [ "$TARGET" = "$PUBLISHED" ] && exit 0
 
 # Debounce by commit age, not polling ticks. A burst of pushes produces one
 # build of the tip that survives the full quiet window.
