@@ -4,16 +4,6 @@ PartyParty is a macOS menu-bar app that turns a DJ's Mac into a live party
 server. Guests scan a secure QR code and use HTTPS LL-HLS plus the active-room
 feed.
 
-Load the shared `workshop-delivery` skill. Use:
-
-```sh
-workshop rules audit partyparty
-workshop delivery audit partyparty
-```
-
-`.workshop.json` owns portable Go and Worker checks. The registered standalone
-controller and explicit Apple lane are the only delivery paths.
-
 ## Architecture
 
 The Mac chooses one room-wide mode from guest reachability and internet
@@ -41,24 +31,12 @@ certificate coordination but never carries media. See
 10. Store and standalone builds are isolated. Store builds are sandboxed and
     Apple-updated; standalone builds use a separate bundle ID and Sparkle.
 
-## Verify
-
-- Go: `go build ./...`, `go vet ./...`, `gofmt -l .`, and `go test ./...`.
-- Worker: `cd cloudflare && node test/smoke.mjs`.
-- Swift: `cd app && swift build`.
-- Run the checks relevant to the touched files. `gofmt -l .` must be empty.
-
 ## Apple
 
 - Build Store packages only on an Apple-released macOS host.
 - `scripts/package-app-store.sh` owns archive, export, and package verification.
-- Use `workshop apple doctor|status|builds|review|validate|upload` for App Store
-  Connect. Upload never implies review submission.
 - Before changing code after an Apple rejection, inspect the exact review
   message and classify whether it concerns binary, metadata, review notes, or
   account state.
 - Never mix Sparkle, Developer ID entitlements, or standalone update metadata
   into the Store target.
-
-Current product work is listed in `PLAN.md`. Historical investigations are
-available in Git history, not binding handoff files.
