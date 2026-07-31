@@ -179,9 +179,9 @@ const (
 	checkingMessage = "Checking whether guests can connect directly on this Wi-Fi. Scan the QR code once to finish the check."
 	localMessage    = "No internet here, so guests are connecting straight to this Mac on this Wi-Fi."
 	directMessage   = "Guests are connecting directly to this Mac on the venue Wi-Fi."
-	relayMessage    = "This Wi-Fi limits connections between nearby devices. PartyParty is using an internet connection so guests can keep listening. This may increase the delay between the DJ and listeners."
+	relayMessage    = "The direct Wi-Fi connection is not available, so PartyParty is using an internet relay. This may increase the delay between the DJ and listeners."
 
-	noPathResolverMessage = "This Wi-Fi is not able to look up this Mac's address, and there is no internet to fall back on. Guests cannot reach the party here. On a router you control, point partyparty.party at this Mac, or use a network with internet."
+	noPathResolverMessage = "This Wi-Fi is not resolving the Mac's secure hostname, and there is no internet relay available. Guests can use the emergency local HTTP link, but locked-screen playback is not guaranteed. On a router you control, add a local DNS rule for the PartyParty hostname."
 	noPathRelayMessage    = "Internet relay is selected but there is no internet connection. Switch to Automatic, or connect this Mac to the internet."
 	noPathLinkMessage     = "The secure guest link is not ready and there is no internet to set it up. Connect this Mac to the internet once to finish setup."
 	noPathOriginMessage   = "This Wi-Fi keeps guests from connecting directly, and the internet relay service is not responding right now. Guests cannot connect until the relay recovers or you use a different Wi-Fi."

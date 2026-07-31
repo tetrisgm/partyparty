@@ -1167,7 +1167,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       : '';
     const guestUrl = statusUrl || INITIAL_GUEST_URL;
     const mode = s && s.connection && s.connection.mode || 'checking';
-    const linkReady = !!guestUrl && secure;
+    const lan = s && s.lan && typeof s.lan === 'object' ? s.lan : null;
+    const httpFallback = lan && lan.expectedIp && lan.guestPort && s && s.connection &&
+      !lan.dnsPublished && mode === 'no_path' && s.connection.reason === 'resolver_mismatch'
+      ? `http://${lan.expectedIp}:${lan.guestPort}/`
+      : '';
+    const link = secure && guestUrl ? guestUrl : httpFallback;
+    const linkReady = !!link;
     if (linkReady) {
       $('qr').hidden = false;
       $('qrPending').hidden = true;
@@ -1176,7 +1182,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       networkStatus.className = 'qr-network-status' +
         ((mode === 'direct' || mode === 'local') ? ' ready'
           : ((mode === 'relay' || mode === 'no_path') ? ' relay' : ''));
-      networkStatus.textContent = !s
+      networkStatus.textContent = httpFallback
+        ? 'Emergency local HTTP link. Locked-screen playback is not guaranteed.'
+        : (!s
         ? 'Secure link ready. Checking this Wi-Fi.'
         : (mode === 'relay'
           ? 'Internet relay active.'
@@ -1186,8 +1194,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
               ? 'Local Wi-Fi connection. No internet needed.'
               : (mode === 'no_path'
                 ? 'Guests cannot reach the party on this Wi-Fi.'
-                : 'Scan once to check this Wi-Fi.'))));
-      renderQR(guestUrl);
+                : 'Scan once to check this Wi-Fi.')))));
+      renderQR(link);
       return;
     }
     $('qr').hidden = true;

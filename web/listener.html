@@ -2605,6 +2605,18 @@
         }
         setConnectionMode(connection ? connection.mode : 'direct');
         localStreamURL = s.llhlsUrl || null;
+        // The offline emergency link is intentionally HTTP because the IP
+        // address cannot match the hostname certificate. Keep the stream on
+        // the same IP and port as the page in this degraded mode.
+        if (location.protocol === 'http:' && localStreamURL) {
+          try {
+            const streamURL = new URL(localStreamURL, location.href);
+            streamURL.protocol = 'http:';
+            streamURL.hostname = location.hostname;
+            streamURL.port = location.port;
+            localStreamURL = streamURL.href;
+          } catch (e) {}
+        }
         if (typeof s.latencyTarget === 'number' && s.latencyTarget > 0) localLatencyTarget = s.latencyTarget;
         const nextStartedAt = Number(s.broadcast && s.broadcast.since) || 0;
         const syncState = s.streamSync && typeof s.streamSync === 'object' ? s.streamSync : null;

@@ -230,6 +230,25 @@ func (s *srv) payloadConfig() json.RawMessage {
 // Srv is the exported handle: an http.Handler plus the async-activation hook.
 type Srv struct{ srv }
 
+// AllowHTTPFallback permits the explicit offline emergency link only when the
+// current LAN IP is known and the secure hostname cannot be resolved. Normal
+// HTTP requests continue to redirect to HTTPS, and an old IP never becomes a
+// second way into the room.
+func (s *Srv) AllowHTTPFallback(r *http.Request) bool {
+	if r == nil || r.TLS != nil {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		host = strings.TrimSpace(r.Host)
+	}
+	lan := s.lanStateSnapshot()
+	connection := s.connectionState()
+	return host != "" && host == lan.ExpectedIP && lan.ExpectedIP != "" &&
+		!lan.DNSPublished && connection.Mode == relay.ModeNoPath &&
+		connection.Reason == relay.ReasonResolverBad
+}
+
 // SetActivation records a completed low-latency activation (real cert +
 // resolvable domain). Guest/stream URLs and the console's LL-HLS gate flip
 // live on the next status poll.

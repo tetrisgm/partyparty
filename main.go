@@ -466,12 +466,15 @@ func main() {
 				return liveCert, nil
 			}},
 		}
-		// Plaintext hitting the HTTPS port (old QR, hand-typed http://) would get
-		// Go's ugly "Client sent an HTTP request to an HTTPS server" - redirect
-		// to https instead. We can't run http and https on one port with stock
-		// listeners, so sniff the first byte: 0x16 = TLS handshake → the TLS
-		// server; anything else → a 301-to-https server.
+		// Plaintext hitting the HTTPS port is normally redirected. The one
+		// exception is the explicitly advertised offline emergency link, which
+		// uses the current LAN IP because that IP cannot present the hostname
+		// certificate. We sniff the first byte: 0x16 is TLS, anything else is HTTP.
 		redirectSrv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if handler.AllowHTTPFallback(r) {
+				handler.ServeHTTP(w, r)
+				return
+			}
 			http.Redirect(w, r, "https://"+r.Host+r.URL.RequestURI(), http.StatusMovedPermanently)
 		})}
 		tlsCh := &chanListener{conns: make(chan net.Conn), addr: rawLn.Addr()}

@@ -20,8 +20,10 @@ the Mac's direct HTTPS address, then sends the guest to whichever path works:
   reports rather than assumes.
 - **Relay:** the Mac pushes its LL-HLS to a relay origin that fans it out to
   guests. Used only when a phone proves the venue isolates nearby devices.
-- **No path:** guests cannot reach the Mac and there is no internet. Nothing can
-  serve audio, and the console says so instead of waiting forever.
+- **No path:** the secure hostname cannot be resolved and there is no internet.
+  The console may offer an explicitly degraded HTTP link to the current LAN IP.
+  It does not provide the hostname certificate, and locked-screen playback is
+  not guaranteed.
 
 Successful direct network verdicts are keyed without storing the Wi-Fi name and
 expire after 24 hours. Failed probes are transient and are never remembered as
@@ -37,8 +39,10 @@ it is never in a guest's request path, so a large room costs it what a small one
 does.
 
 If the setup service is unavailable at launch but the cached certificate is
-valid, the QR uses the direct address. That preserves offline travel-router and
-venue operation.
+valid, the QR uses the configured local hostname. A travel router can make that
+work by providing a local DNS record for the hostname. If the hostname cannot be
+resolved, the QR instead offers the explicitly degraded HTTP IP fallback. The
+normal HTTPS path remains the supported path for reliable background playback.
 
 The console must distinguish:
 
