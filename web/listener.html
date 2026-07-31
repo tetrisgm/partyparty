@@ -3268,13 +3268,16 @@
           if (text || media.length) {
             postBtn.textContent = 'Posting…';
             await postMedia(media, text);
-            await pollFeed(true);
           }
           if (featureOn('comments')) ctext.value = '';
           cfiles.value = '';
           pendingFiles = [];
           renderPendingFiles();
           closeComposer(true);
+          // The post is complete once the server accepts it. A feed refresh can
+          // race with the normal long poll, but that must never leave accepted
+          // text in the composer and invite an accidental duplicate post.
+          try { await pollFeed(true); } catch (_) {}
         } catch (e) {
           attachN.textContent = e.message || 'failed - try again';
         } finally {
