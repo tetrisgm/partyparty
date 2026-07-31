@@ -353,13 +353,15 @@ func (m *Manager) applyRegistration(next registration) {
 	m.netTried = true
 	m.internetOK = true
 	if networkChanged {
-		// A cached verdict for this exact network stands in for a fresh probe so
-		// a returning venue does not re-run the whole check.
+		// A cached direct success for this exact network stands in for a fresh
+		// probe so a returning venue does not re-run the whole check. A timeout
+		// is weak evidence: the phone may have scanned while DNS, TLS, or the app
+		// was still settling. Never persist that as 24 hours of "isolation".
 		m.probe = nil
 		if cached, ok := m.verdicts[next.NetworkKey]; ok &&
 			time.Since(time.UnixMilli(cached.UpdatedAt)) <= verdictMaxAge &&
-			(cached.Mode == ModeDirect || cached.Mode == ModeRelay) {
-			reachable := cached.Mode == ModeDirect
+			cached.Mode == ModeDirect {
+			reachable := true
 			m.probe = &reachable
 		} else {
 			delete(m.verdicts, next.NetworkKey)
@@ -491,8 +493,13 @@ func (m *Manager) applyProbe(networkKey string, reachable bool) {
 	m.probe = &reachable
 	m.recomputeLocked()
 	mode := m.status.Mode
-	if mode == ModeDirect || mode == ModeRelay {
+	// Successful reachability is durable evidence. A failed browser fetch is
+	// not: startup timing, DNS convergence, and transient Wi-Fi loss all look
+	// identical to client isolation from JavaScript.
+	if mode == ModeDirect {
 		m.verdicts[networkKey] = verdict{Mode: mode, UpdatedAt: time.Now().UnixMilli()}
+	} else {
+		delete(m.verdicts, networkKey)
 	}
 	copyForSave := cloneVerdicts(m.verdicts)
 	m.mu.Unlock()
@@ -556,7 +563,7 @@ func loadVerdicts() map[string]verdict {
 	}
 	cutoff := time.Now().Add(-verdictMaxAge).UnixMilli()
 	for key, item := range file.Networks {
-		if key != "" && item.UpdatedAt >= cutoff && (item.Mode == ModeDirect || item.Mode == ModeRelay) {
+		if key != "" && item.UpdatedAt >= cutoff && item.Mode == ModeDirect {
 			out[key] = item
 		}
 	}

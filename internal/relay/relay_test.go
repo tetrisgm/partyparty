@@ -114,6 +114,51 @@ func TestExpiredRelayVerdictIsRechecked(t *testing.T) {
 	}
 }
 
+func TestRelayVerdictIsNeverReused(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	manager := New(Config{})
+	manager.mu.Lock()
+	manager.verdicts["network-1"] = verdict{
+		Mode:      ModeRelay,
+		UpdatedAt: time.Now().UnixMilli(),
+	}
+	manager.mu.Unlock()
+
+	manager.applyRegistration(registration{
+		RelayRegistration: activateRegistration(
+			"https://r-room.partyparty.party/",
+			"https://room.relay.partyparty.party",
+			"network-1",
+		),
+	})
+	status := manager.Snapshot()
+	if status.Mode != ModeChecking || status.KnownNetwork {
+		t.Fatalf("cached timeout incorrectly selected relay: %+v", status)
+	}
+}
+
+func TestFailedProbeIsNotPersisted(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	manager := New(Config{})
+	manager.mu.Lock()
+	manager.reg = registration{RelayRegistration: activateRegistration(
+		"https://r-room.partyparty.party/",
+		"https://room.relay.partyparty.party",
+		"network-1",
+	)}
+	manager.directURL = "https://disco.party.partyparty.party:8443/"
+	manager.netTried, manager.internetOK = true, true
+	manager.mu.Unlock()
+
+	manager.applyProbe("network-1", false)
+	if got := manager.Snapshot().Mode; got != ModeRelay {
+		t.Fatalf("current failed probe mode = %q, want relay", got)
+	}
+	if _, ok := manager.verdicts["network-1"]; ok {
+		t.Fatal("failed probe was persisted as network isolation")
+	}
+}
+
 func TestUsableLANIP(t *testing.T) {
 	for _, value := range []string{"192.168.1.4", "10.0.0.2", "172.16.8.9"} {
 		if !usableLANIP(value) {

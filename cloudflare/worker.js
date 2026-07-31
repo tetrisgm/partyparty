@@ -620,7 +620,11 @@ const retry=document.getElementById('retry');
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 async function probe(){
   if(!directURL)return false;
-  for(const timeout of [3000,5000]){
+  // A success proves direct reachability. A timeout does not prove isolation:
+  // the first scan can race DNS convergence, TLS startup, or a brief Wi-Fi
+  // transition. Keep the total check bounded, but require several independent
+  // failures before paying the permanent latency cost of relay mode.
+  for(const timeout of [2500,4000,6000]){
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),timeout);
     try{
@@ -632,7 +636,7 @@ async function probe(){
       }
     }catch(_){}
     finally{clearTimeout(timer)}
-    await sleep(250);
+    await sleep(500);
   }
   return false;
 }
