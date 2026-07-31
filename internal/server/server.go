@@ -68,6 +68,7 @@ type srv struct {
 	relayMu        sync.RWMutex
 	relayListeners int
 	relaySpreadMs  float64
+	relayGuests    []RelayGuest
 	relayAt        time.Time
 
 	// Async activation result (cert broker / BYO) - set after launch so the
@@ -894,6 +895,9 @@ func (s *srv) roomRoster(local any) (any, int) {
 	switch roster := local.(type) {
 	case []map[string]string:
 		out := append([]map[string]string(nil), roster...)
+		for _, guest := range s.RelayGuests() {
+			out = append(out, map[string]string{"name": guest.Name, "emoji": guest.Emoji})
+		}
 		for _, peer := range s.roomPeers() {
 			if peer.Room == nil {
 				continue
@@ -910,6 +914,11 @@ func (s *srv) roomRoster(local any) (any, int) {
 		out, _ := json.Marshal(local)
 		var rows []map[string]any
 		_ = json.Unmarshal(out, &rows)
+		for _, guest := range s.RelayGuests() {
+			rows = append(rows, map[string]any{
+				"name": guest.Name, "emoji": guest.Emoji, "remote": true,
+			})
+		}
 		for _, peer := range s.roomPeers() {
 			if peer.Room == nil {
 				continue
@@ -975,6 +984,9 @@ func (s *srv) listenerGroups(local []stats.Listener) []publicListenerGroup {
 		}
 	}
 	for _, listener := range local {
+		assign(listener.ID, listener.Name, listener.Emoji, listener.DJID, !listener.Paused)
+	}
+	for _, listener := range s.RelayGuests() {
 		assign(listener.ID, listener.Name, listener.Emoji, listener.DJID, !listener.Paused)
 	}
 	for _, peer := range roomPeers {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"partyparty/internal/origin"
+	"partyparty/internal/roomplane"
 )
 
 // The plane's two ends are tested against each other rather than against a stub,
@@ -80,19 +81,27 @@ func TestPlaneDrainsGuestActivity(t *testing.T) {
 
 	room, _ := store.Room("room1", false)
 	for i := 0; i < 200; i++ {
-		room.Plane().Beat(fmt.Sprintf("guest%d", i), 1200, true)
+		room.Plane().Beat(roomplane.Guest{
+			ID: fmt.Sprintf("guest%d", i), Name: "Guest", DJID: "dj-1",
+		}, 1200, true)
 	}
 	room.Plane().Enqueue("post", json.RawMessage(`{"text":"hi"}`))
 
 	var mu sync.Mutex
 	var listeners int
+	var roster []GuestPresence
 	var writes []string
 	m.planeCycle(ctx, PlaneHooks{
 		Snapshots: func() map[string]json.RawMessage {
 			return map[string]json.RawMessage{"status": json.RawMessage(`{}`)}
 		},
 		DelaySec: func() float64 { return 1.0 },
-		Presence: func(n int, _ float64) { mu.Lock(); listeners = n; mu.Unlock() },
+		Presence: func(p Presence) {
+			mu.Lock()
+			listeners = p.Listeners
+			roster = p.Roster
+			mu.Unlock()
+		},
 		ApplyWrite: func(path string, body json.RawMessage) {
 			mu.Lock()
 			writes = append(writes, path+":"+string(body))
@@ -104,6 +113,9 @@ func TestPlaneDrainsGuestActivity(t *testing.T) {
 	defer mu.Unlock()
 	if listeners != 200 {
 		t.Fatalf("presence reported %d listeners, want 200", listeners)
+	}
+	if len(roster) != 200 || roster[0].Name != "Guest" || roster[0].DJID != "dj-1" {
+		t.Fatalf("presence roster was not preserved: first=%+v count=%d", roster[0], len(roster))
 	}
 	if len(writes) != 1 || !strings.Contains(writes[0], `"text":"hi"`) {
 		t.Fatalf("writes = %v", writes)

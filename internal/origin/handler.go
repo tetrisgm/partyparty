@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"partyparty/internal/roomplane"
 )
 
 // Config is the origin service configuration.
@@ -244,6 +246,10 @@ func mapURIs(playlist []byte) []string {
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request, token, name string) {
 	room, ok := h.store.Room(token, false)
 	if !ok {
+		if name == "" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			relayWaitingPage(w, r)
+			return
+		}
 		http.Error(w, "room is not live", http.StatusNotFound)
 		return
 	}
@@ -286,6 +292,21 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, token, name stri
 		return
 	}
 	writeBody(w, r, obj.body)
+}
+
+func relayWaitingPage(w http.ResponseWriter, r *http.Request) {
+	noStore(w.Header())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = io.WriteString(w, `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark"><title>Joining PartyParty</title>
+<style>:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;color-scheme:light dark}*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:32px;background:Canvas;color:CanvasText}main{width:min(100%,360px);text-align:center}.spinner{width:28px;height:28px;margin:0 auto 20px;border:3px solid color-mix(in srgb,CanvasText 18%,transparent);border-top-color:#ff2d6f;border-radius:50%;animation:spin .8s linear infinite}h1{font-size:22px;margin:0 0 8px}p{font-size:15px;line-height:1.45;margin:0;color:color-mix(in srgb,CanvasText 66%,transparent)}@keyframes spin{to{transform:rotate(360deg)}}</style>
+</head><body><main><div class="spinner" aria-hidden="true"></div><h1>Connecting to the DJ</h1><p>The music will start as soon as the secure stream is ready.</p></main>
+<script>setTimeout(function(){location.reload()},1000)</script></body></html>`)
 }
 
 // planeParkMax bounds a parked room read. Under the Mac server's own 25s
@@ -338,7 +359,13 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 	case endpoint == "heartbeat" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		q := r.URL.Query()
 		lat, hasLat := parseFloat(first(q["lat"]))
-		plane.Beat(first(q["cid"]), lat, hasLat)
+		plane.Beat(roomplane.Guest{
+			ID:     first(q["cid"]),
+			Name:   first(q["name"]),
+			Emoji:  first(q["emoji"]),
+			DJID:   first(q["dj"]),
+			Paused: first(q["paused"]) == "1",
+		}, lat, hasLat)
 		w.WriteHeader(http.StatusNoContent)
 
 	case r.Method == http.MethodGet:

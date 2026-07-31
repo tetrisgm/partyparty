@@ -133,6 +133,26 @@ func TestStatusKeepsPausedListenersWithTheirDJ(t *testing.T) {
 	}
 }
 
+func TestStatusIncludesRelayedListeners(t *testing.T) {
+	env := newTestEnv(t, nil)
+	env.srv.SetRelayPresence(1, 0, []RelayGuest{{
+		ID: "relay-phone", Name: "Seth", Emoji: "headphones", Paused: true,
+	}})
+
+	body := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", "192.168.1.44:3333"))
+	if body["listeners"] != float64(1) {
+		t.Fatalf("listeners = %#v, want one relayed listener", body["listeners"])
+	}
+	groups, ok := body["listenerGroups"].([]any)
+	if !ok || len(groups) != 1 {
+		t.Fatalf("listener groups = %#v, want one DJ group", body["listenerGroups"])
+	}
+	listeners := groups[0].(map[string]any)["listeners"].([]any)
+	if len(listeners) != 1 || listeners[0].(map[string]any)["name"] != "Seth" {
+		t.Fatalf("relayed listeners = %#v", listeners)
+	}
+}
+
 // The QR is how CHECKING ends. A guest scans it, reaches the Mac or fails to,
 // and reports the verdict that picks the room mode. So a status response that
 // withholds the join URL while CHECKING cannot be waiting for anything: nothing

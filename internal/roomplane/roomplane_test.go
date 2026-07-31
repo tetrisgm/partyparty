@@ -63,7 +63,7 @@ func TestHeartbeatsAggregateIntoOneDigest(t *testing.T) {
 	r.Publish("status", json.RawMessage(`{}`), 1.0)
 
 	for i := 0; i < 500; i++ {
-		r.Beat(fmt.Sprintf("guest-%d", i), 1000+float64(i), true)
+		r.Beat(Guest{ID: fmt.Sprintf("guest-%d", i)}, 1000+float64(i), true)
 	}
 
 	d := r.Drain()
@@ -84,7 +84,7 @@ func TestHeartbeatsAggregateIntoOneDigest(t *testing.T) {
 func TestDeviationNeverGoesNegative(t *testing.T) {
 	r := New()
 	r.Publish("status", json.RawMessage(`{}`), 3.0)
-	r.Beat("a", 900, true)
+	r.Beat(Guest{ID: "a"}, 900, true)
 	if d := r.Drain(); d.DeviationMs != 0 {
 		t.Fatalf("deviation = %v, want 0", d.DeviationMs)
 	}
@@ -95,8 +95,8 @@ func TestDeviationNeverGoesNegative(t *testing.T) {
 func TestGuestsWithoutLatencyStillCount(t *testing.T) {
 	r := New()
 	r.Publish("status", json.RawMessage(`{}`), 1.0)
-	r.Beat("measuring", 1200, true)
-	r.Beat("silent", 0, false)
+	r.Beat(Guest{ID: "measuring"}, 1200, true)
+	r.Beat(Guest{ID: "silent"}, 0, false)
 
 	d := r.Drain()
 	if d.Listeners != 2 {
@@ -107,13 +107,26 @@ func TestGuestsWithoutLatencyStillCount(t *testing.T) {
 	}
 }
 
+func TestDigestPreservesLiveRoster(t *testing.T) {
+	r := New()
+	want := Guest{
+		ID: "phone-1", Name: "Seth", Emoji: "headphones",
+		DJID: "dj-2", Paused: true,
+	}
+	r.Beat(want, 1100, true)
+	d := r.Drain()
+	if len(d.Roster) != 1 || d.Roster[0] != want {
+		t.Fatalf("roster = %+v, want %+v", d.Roster, want)
+	}
+}
+
 // TestListenersExpire: a phone that walks out stops counting, without the Mac
 // having to be told.
 func TestListenersExpire(t *testing.T) {
 	r := New()
 	now := time.Now()
 	fixedClock(r, &now)
-	r.Beat("leaver", 1000, true)
+	r.Beat(Guest{ID: "leaver"}, 1000, true)
 	if d := r.Drain(); d.Listeners != 1 {
 		t.Fatalf("listeners = %d, want 1", d.Listeners)
 	}
@@ -152,7 +165,7 @@ func TestRotatingClientIDCannotGrowMemory(t *testing.T) {
 	now := time.Now()
 	fixedClock(r, &now)
 	for i := 0; i < maxTrackedListeners*2; i++ {
-		r.Beat(fmt.Sprintf("rotating-%d", i), 1000, true)
+		r.Beat(Guest{ID: fmt.Sprintf("rotating-%d", i)}, 1000, true)
 	}
 	if got := r.Drain().Listeners; got > maxTrackedListeners {
 		t.Fatalf("tracked %d listeners, past the %d cap", got, maxTrackedListeners)
@@ -165,7 +178,7 @@ func TestResetLeavesNothingBehind(t *testing.T) {
 	r := New()
 	r.Publish("status", json.RawMessage(`{"live":true}`), 1.0)
 	r.Publish("feed", json.RawMessage(`[{"text":"hi"}]`), 1.0)
-	r.Beat("a", 1000, true)
+	r.Beat(Guest{ID: "a"}, 1000, true)
 	r.Enqueue("/api/post", json.RawMessage(`{"text":"secret"}`))
 
 	r.Reset()

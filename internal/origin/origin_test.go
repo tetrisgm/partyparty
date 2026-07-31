@@ -216,6 +216,26 @@ func TestUnknownRoomAndAgedMediaAre404(t *testing.T) {
 	}
 }
 
+func TestUnknownRoomRootWaitsForPublication(t *testing.T) {
+	h, _ := testHandler()
+	w := get(t, h, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("unpublished room root = %d, want a retrying join page", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Connecting to the DJ") ||
+		!strings.Contains(body, "location.reload()") ||
+		strings.Contains(body, "room is not live") {
+		t.Fatalf("unexpected waiting page: %q", body)
+	}
+
+	put(t, h, "index.html", "<html>party ready</html>", "text/html", publishToken)
+	w = get(t, h, "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "party ready") {
+		t.Fatalf("published room root = %d %q", w.Code, w.Body.String())
+	}
+}
+
 // TestTraversalIsRefused: names arrive in URLs and are attacker controlled.
 func TestTraversalIsRefused(t *testing.T) {
 	h, _ := testHandler()
@@ -473,14 +493,19 @@ func TestHeartbeatArrivesTheWayThePageSendsIt(t *testing.T) {
 	room, _ := store.Room(roomToken, false)
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/r/"+roomToken+"/api/heartbeat?stalled=0&paused=0&cid=phone1&lat=1100", nil)
+		"/r/"+roomToken+"/api/heartbeat?stalled=0&paused=1&cid=phone1&lat=1100&name=Seth&emoji=headphones&dj=dj-2", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("GET heartbeat = %d; the page's real heartbeat is refused", w.Code)
 	}
-	if digest := room.Plane().Drain(); digest.Listeners != 1 {
+	digest := room.Plane().Drain()
+	if digest.Listeners != 1 {
 		t.Fatalf("a heartbeating phone counts as %d listeners", digest.Listeners)
+	}
+	if len(digest.Roster) != 1 || digest.Roster[0].Name != "Seth" ||
+		digest.Roster[0].DJID != "dj-2" || !digest.Roster[0].Paused {
+		t.Fatalf("heartbeat roster = %+v", digest.Roster)
 	}
 }
 

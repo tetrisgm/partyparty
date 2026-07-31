@@ -51,14 +51,29 @@ type PlaneHooks struct {
 
 	// Presence reports the aggregated listener count and spread, so the DJ
 	// console can show a relayed room honestly.
-	Presence func(listeners int, spreadMs float64)
+	Presence func(Presence)
+}
+
+type GuestPresence struct {
+	ID     string `json:"id"`
+	Name   string `json:"name,omitempty"`
+	Emoji  string `json:"emoji,omitempty"`
+	DJID   string `json:"djId,omitempty"`
+	Paused bool   `json:"paused,omitempty"`
+}
+
+type Presence struct {
+	Listeners int
+	SpreadMs  float64
+	Roster    []GuestPresence
 }
 
 // digest mirrors roomplane.Digest without importing it, so the origin's wire
 // format is the contract rather than a shared struct that invites coupling.
 type digest struct {
-	Listeners int     `json:"listeners"`
-	SpreadMs  float64 `json:"spreadMs"`
+	Listeners int             `json:"listeners"`
+	SpreadMs  float64         `json:"spreadMs"`
+	Roster    []GuestPresence `json:"roster,omitempty"`
 	Writes    []struct {
 		Path string          `json:"path"`
 		Body json.RawMessage `json:"body"`
@@ -106,7 +121,11 @@ func (m *Manager) planeCycle(ctx context.Context, hooks PlaneHooks) {
 		return
 	}
 	if hooks.Presence != nil {
-		hooks.Presence(d.Listeners, d.SpreadMs)
+		hooks.Presence(Presence{
+			Listeners: d.Listeners,
+			SpreadMs:  d.SpreadMs,
+			Roster:    d.Roster,
+		})
 	}
 	if hooks.ApplyWrite != nil {
 		for _, w := range d.Writes {

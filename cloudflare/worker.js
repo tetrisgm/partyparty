@@ -620,15 +620,21 @@ const retry=document.getElementById('retry');
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
 async function probe(){
   if(!directURL)return false;
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),4000);
-  try{
-    const target=new URL('/api/time?partyPartyProbe='+Date.now(),directURL);
-    const response=await fetch(target,{cache:'no-store',mode:'cors',signal:controller.signal});
-    if(!response.ok)return false;
-    const body=await response.json();
-    return Number(body.t)>0;
-  }catch(_){return false}finally{clearTimeout(timer)}
+  for(const timeout of [3000,5000]){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeout);
+    try{
+      const target=new URL('/api/time?partyPartyProbe='+Date.now(),directURL);
+      const response=await fetch(target,{cache:'no-store',mode:'cors',signal:controller.signal});
+      if(response.ok){
+        const body=await response.json();
+        if(Number(body.t)>0)return true;
+      }
+    }catch(_){}
+    finally{clearTimeout(timer)}
+    await sleep(250);
+  }
+  return false;
 }
 async function report(reachable){
   // keepalive, because this page navigates away immediately after calling this

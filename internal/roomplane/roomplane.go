@@ -68,13 +68,25 @@ type Digest struct {
 	SpreadMs    float64 `json:"spreadMs"`
 	MedianMs    float64 `json:"medianMs"`
 	DeviationMs float64 `json:"deviationMs"`
+	Roster      []Guest `json:"roster,omitempty"`
 	Writes      []Write `json:"writes,omitempty"`
+}
+
+// Guest is the live identity and channel assignment carried by a heartbeat.
+// It is kept only in this in-memory room and disappears with the room.
+type Guest struct {
+	ID     string `json:"id"`
+	Name   string `json:"name,omitempty"`
+	Emoji  string `json:"emoji,omitempty"`
+	DJID   string `json:"djId,omitempty"`
+	Paused bool   `json:"paused,omitempty"`
 }
 
 type listener struct {
 	latMs    float64
 	hasLat   bool
 	lastSeen time.Time
+	guest    Guest
 }
 
 // Room is one relayed party's origin-side state.
@@ -193,7 +205,8 @@ func (r *Room) WaitFor(kind string, since uint64, deadline time.Time) (json.RawM
 // anything: the Mac learns about presence from the periodic digest instead.
 // latMs is the guest's measured latency; pass hasLat false when it has none yet,
 // because a guest that cannot measure must not be counted as perfectly on time.
-func (r *Room) Beat(cid string, latMs float64, hasLat bool) {
+func (r *Room) Beat(guest Guest, latMs float64, hasLat bool) {
+	cid := guest.ID
 	if cid == "" {
 		return
 	}
@@ -212,6 +225,7 @@ func (r *Room) Beat(cid string, latMs float64, hasLat bool) {
 		r.listeners[cid] = existing
 	}
 	existing.lastSeen = now
+	existing.guest = guest
 	if hasLat {
 		existing.latMs = latMs
 		existing.hasLat = true
@@ -256,6 +270,13 @@ func (r *Room) Drain() Digest {
 		}
 	}
 	digest := Digest{Listeners: len(r.listeners)}
+	digest.Roster = make([]Guest, 0, len(r.listeners))
+	for _, l := range r.listeners {
+		digest.Roster = append(digest.Roster, l.guest)
+	}
+	sort.Slice(digest.Roster, func(i, j int) bool {
+		return digest.Roster[i].ID < digest.Roster[j].ID
+	})
 	if len(latencies) > 0 {
 		sort.Float64s(latencies)
 		digest.SpreadMs = latencies[len(latencies)-1] - latencies[0]

@@ -290,6 +290,10 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 					InstallID:         id,
 					Secret:            secret,
 				})
+				status := m.Snapshot()
+				if status.Mode == ModeChecking && status.Reason == ReasonAwaitingProbe {
+					nextDelay = 2 * time.Second
+				}
 			}
 		}
 

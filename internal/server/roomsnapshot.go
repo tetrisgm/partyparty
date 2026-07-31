@@ -125,13 +125,19 @@ func (s *Srv) GuestPage() []byte {
 	return body
 }
 
-// SetRelayPresence records what the origin reports about relayed guests, so the
-// DJ console can count a relayed room honestly instead of showing zero listeners
-// while five hundred people are dancing.
-func (s *Srv) SetRelayPresence(listeners int, spreadMs float64) {
+type RelayGuest struct {
+	ID     string
+	Name   string
+	Emoji  string
+	DJID   string
+	Paused bool
+}
+
+func (s *Srv) SetRelayPresence(listeners int, spreadMs float64, guests []RelayGuest) {
 	s.relayMu.Lock()
 	s.relayListeners = listeners
 	s.relaySpreadMs = spreadMs
+	s.relayGuests = append([]RelayGuest(nil), guests...)
 	s.relayAt = nowFunc()
 	s.relayMu.Unlock()
 }
@@ -146,6 +152,15 @@ func (s *srv) RelayPresence() (listeners int, spreadMs float64, fresh bool) {
 		return 0, 0, false
 	}
 	return s.relayListeners, s.relaySpreadMs, true
+}
+
+func (s *srv) RelayGuests() []RelayGuest {
+	s.relayMu.RLock()
+	defer s.relayMu.RUnlock()
+	if s.relayAt.IsZero() || nowFunc().Sub(s.relayAt) > relayPresenceTTL {
+		return nil
+	}
+	return append([]RelayGuest(nil), s.relayGuests...)
 }
 
 // relayPresenceState is the status payload's honest account of relayed guests.

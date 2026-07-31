@@ -299,7 +299,16 @@ func main() {
 				Snapshots:  handler.RoomSnapshots,
 				DelaySec:   func() float64 { return schedule.Delay },
 				ApplyWrite: handler.ApplyRelayWrite,
-				Presence:   handler.SetRelayPresence,
+				Presence: func(p contribute.Presence) {
+					guests := make([]server.RelayGuest, 0, len(p.Roster))
+					for _, guest := range p.Roster {
+						guests = append(guests, server.RelayGuest{
+							ID: guest.ID, Name: guest.Name, Emoji: guest.Emoji,
+							DJID: guest.DJID, Paused: guest.Paused,
+						})
+					}
+					handler.SetRelayPresence(p.Listeners, p.SpreadMs, guests)
+				},
 			})
 		}
 	}

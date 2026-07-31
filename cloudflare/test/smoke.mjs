@@ -261,6 +261,7 @@ test("the relay bootstrap is stateless and sends guests to the relay origin", as
   const html = await page.text();
   assert.ok(html.includes("disco.party.partyparty.party:8443"), "bootstrap must know the direct URL");
   assert.ok(html.includes(".relay.partyparty.party"), "bootstrap must know the relay origin");
+  assert.ok(html.includes("[3000,5000]"), "a transient first LAN probe must not force relay mode");
   assert.ok(!html.includes("__pp/state"), "the state endpoint died with the Durable Object");
 });
 
