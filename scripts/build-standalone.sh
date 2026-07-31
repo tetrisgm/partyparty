@@ -13,7 +13,7 @@ BUILD="${PP_BUILD:-0}"
 APP="$ROOT/build/partyparty-beta.app"
 SWIFT_BIN="$ROOT/app/.build/arm64-apple-macosx/release"
 SIGN_ID="${PP_SIGN_ID:-}"
-CAPTURE_ENT="$ROOT/app/partyparty-app-store-capture.entitlements"
+CAPTURE_ENT="$ROOT/app/partyparty-standalone.entitlements"
 
 if [ -z "$SIGN_ID" ]; then
   SIGN_ID="$(security find-identity -p codesigning -v 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')"
