@@ -799,7 +799,12 @@ async function relayBootstrapRequest(request, env, token) {
     await env.DL.put(`broker/relay-probe/${token}`, JSON.stringify({
       reachable, at: Date.now(),
     }));
-    return jsonResp(200, { ok: true }, { "cache-control": "no-store" });
+    return jsonResp(200, { ok: true }, {
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "content-type",
+    });
   }
 
   const record = await relayRoomRecord(env, token);

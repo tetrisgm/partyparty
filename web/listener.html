@@ -2536,6 +2536,37 @@
     }
 
     let lastPollOK = 0; // last successful /api/status - proves a reload could actually fetch the page
+    let relayRecoveryTimer = 0;
+    let relayRecoveryBusy = false;
+    async function probeDirectFromRelay(connection){
+      if (relayRecoveryBusy || !connection || connection.mode !== 'relay' || !connection.directUrl || !connection.joinUrl) return;
+      try {
+        const relayOrigin = new URL(connection.relayOrigin || '', location.href).origin;
+        if (!relayOrigin || relayOrigin !== location.origin) return;
+        relayRecoveryBusy = true;
+        const target = new URL('/api/time?partyPartyRelayRecovery=' + Date.now(), connection.directUrl);
+        const response = await fetch(target, { cache: 'no-store', mode: 'cors' });
+        if (!response.ok || !(Number((await response.json()).t) > 0)) return;
+        const reportURL = new URL('__pp/probe', connection.joinUrl);
+        await fetch(reportURL, {
+          method: 'POST',
+          headers: { 'content-type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify({ reachable: true }),
+          cache: 'no-store',
+        });
+        await new Promise(resolve => setTimeout(resolve, 2500));
+        location.replace(new URL(connection.directUrl, location.href).href);
+      } catch (e) {
+        // A failed recovery probe is expected on an isolated network.
+      } finally {
+        relayRecoveryBusy = false;
+      }
+    }
+    function scheduleRelayRecovery(connection){
+      if (relayRecoveryTimer || !connection || connection.mode !== 'relay') return;
+      relayRecoveryTimer = setInterval(() => { probeDirectFromRelay(connection); }, 5000);
+      probeDirectFromRelay(connection);
+    }
     async function poll(){
       try {
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
@@ -2549,6 +2580,7 @@
         // here, forever, killing audio on every poll. So the target is
         // relayOrigin, and we never move a guest that is already on it.
         if (connection && connection.mode === 'relay') {
+          scheduleRelayRecovery(connection);
           const target = connection.relayOrigin || '';
           if (target) {
             try {

@@ -23,8 +23,9 @@ the Mac's direct HTTPS address, then sends the guest to whichever path works:
 - **No path:** guests cannot reach the Mac and there is no internet. Nothing can
   serve audio, and the console says so instead of waiting forever.
 
-Network verdicts are keyed without storing the Wi-Fi name and expire after 24
-hours. A changed LAN address immediately returns the Mac to checking. This
+Successful direct network verdicts are keyed without storing the Wi-Fi name and
+expire after 24 hours. Failed probes are transient and are never remembered as
+isolation. A changed LAN address immediately returns the Mac to checking. This
 prevents an old venue result from silently controlling a new network.
 
 Relay mode does not store an event, replay, recording, post, or upload. The

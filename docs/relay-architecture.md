@@ -105,10 +105,12 @@ Deterministic, and it already mostly exists:
 3. **B true**: publish the A record, serve the bootstrap, and let the first
    guest's probe establish **A**. Reachable goes to DIRECT, unreachable goes to
    RELAY.
-4. The verdict is cached against the opaque network key, 24 hour expiry, with
-   no Wi-Fi names stored. A LAN IP change returns immediately to checking.
-   This is today's behavior (`internal/relay/relay.go:303-324`, `:947-976`) and
-   it is kept.
+4. A successful direct verdict is cached against the opaque network key for 24
+   hours, with no Wi-Fi names stored. A failed probe is treated as transient
+   evidence and is never cached as a day's worth of isolation. A LAN IP change
+   returns immediately to checking. A relayed guest also keeps probing the
+   direct URL and moves itself back to LAN when the direct path becomes
+   reachable.
 
 States the console and menu bar must be able to say: `checking`, `local`,
 `direct`, `relay`, `no path`.
