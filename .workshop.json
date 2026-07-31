@@ -1,0 +1,18 @@
+{
+  "schema": "workshop-project-v1",
+  "id": "partyparty",
+  "displayName": "PartyParty.party",
+  "defaultProfile": "quick",
+  "profiles": {
+    "quick": {
+      "description": "Portable Go, stream contract, and Worker smoke checks",
+      "command": "go test ./... && npm test && cd cloudflare && npm ci && node test/smoke.mjs",
+      "timeoutMinutes": 30
+    },
+    "full": {
+      "description": "Portable Go build and vet plus all non-Swift checks",
+      "command": "go build ./... && go vet ./... && go test ./... && npm test && cd cloudflare && npm ci && node test/smoke.mjs",
+      "timeoutMinutes": 60
+    }
+  }
+}

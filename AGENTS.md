@@ -3,6 +3,13 @@
 partyparty is a macOS menu-bar app that turns a DJ's Mac into a party server.
 Guests scan a QR and use HTTPS LL-HLS plus the active-room feed.
 
+## Workshop
+
+Read `WORKSHOP.md` and `.workshop.json` before offloading work. `workshop quick`
+runs the shared Windows-portable preflight and writes a durable receipt to the
+NAS. Workshop never replaces Swift verification, Apple packaging, or this
+repository's release workflow.
+
 The Mac selects ONE room-wide mode from two facts, whether guests can reach it
 and whether the internet is reachable: DIRECT (venue Wi-Fi), LOCAL (no internet,
 same LAN data path), RELAY (the Wi-Fi isolates devices), or NO PATH (neither
