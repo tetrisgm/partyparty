@@ -583,6 +583,34 @@ func main() {
 					broker = "https://partyparty.party"
 				}
 				res := activate.TryBroker(broker, netinfo.PrimaryLanIP(), log.Printf)
+				// A broker failure does not answer the local question. Recheck the
+				// cached hostname against this network before deciding between the
+				// offline domain path and the guarded IP fallback. This also prevents
+				// a previous venue's resolver result surviving a same-IP move.
+				if !res.ResolverObserved {
+					host := res.Host
+					if host == "" {
+						host = activationHost()
+					}
+					if cached, ok := activate.CachedCertReady(host); ok {
+						if res.CertReady {
+							cached.OK = res.OK
+							cached.DNSPublished = res.DNSPublished
+							cached.ReasonCode = res.ReasonCode
+							cached.Reason = res.Reason
+						} else if res.ReasonCode == "" {
+							cached.Reason = res.Reason
+						}
+						res = cached
+					}
+				}
+				if res.ExpectedIP == "" {
+					// Preserve the current LAN identity even when the broker is
+					// unreachable. The server uses an IP fallback only after its
+					// own state machine has also established that the network is
+					// offline and the secure hostname cannot resolve.
+					res.ExpectedIP = netinfo.PrimaryLanIP()
+				}
 				handler.SetActivationResult(res)
 				// OK now means the certificate is usable - apply it ONCE so the
 				// HTTPS listener + Go Live work everywhere, even where this Wi-Fi

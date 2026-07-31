@@ -33,10 +33,11 @@ const (
 // Status is the one authoritative room connection state exposed to the Mac
 // console and menu bar.
 type Status struct {
-	Mode     string `json:"mode"`
-	Reason   string `json:"reason,omitempty"` // stable machine code; see mode.go
-	Override string `json:"override,omitempty"`
-	JoinURL  string `json:"joinUrl,omitempty"`
+	Mode       string `json:"mode"`
+	Reason     string `json:"reason,omitempty"` // stable machine code; see mode.go
+	Override   string `json:"override,omitempty"`
+	InternetOK bool   `json:"internetOk"`
+	JoinURL    string `json:"joinUrl,omitempty"`
 	// RelayOrigin is where a relayed guest is served. The listener needs it to
 	// tell "I should move to the relay" from "I am already there": joinUrl is the
 	// bootstrap, so a guest comparing against that would navigate back to the
@@ -203,6 +204,7 @@ func (m *Manager) recomputeLocked() {
 	m.status.Mode = mode
 	m.status.Reason = reason
 	m.status.Override = normalizeOverride(m.override)
+	m.status.InternetOK = m.internetOK
 	m.status.DirectURL = m.directURL
 	m.status.RelayOrigin = m.reg.RelayURL
 	m.status.KnownNetwork = m.probe != nil
@@ -488,6 +490,16 @@ func (m *Manager) applyProbe(networkKey string, reachable bool) {
 	m.mu.Lock()
 	if networkKey == "" || networkKey != m.reg.NetworkKey {
 		m.mu.Unlock()
+		return
+	}
+	// Once a guest has proved this network can reach the Mac, a later failed
+	// bootstrap probe is not enough to move the whole room to relay. It may be a
+	// phone joining during TLS/DNS startup or a transient Wi-Fi loss. A network
+	// transition clears the successful probe and reopens this decision; until
+	// then, preserve the proven direct path for every listener.
+	if !reachable && m.status.Mode == ModeDirect && m.probe != nil && *m.probe {
+		m.mu.Unlock()
+		m.cfg.Logf("relay: ignoring a failed probe after direct reachability was proven")
 		return
 	}
 	m.probe = &reachable

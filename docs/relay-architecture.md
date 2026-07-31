@@ -107,7 +107,9 @@ Deterministic, and it already mostly exists:
    RELAY.
 4. A successful direct verdict is cached against the opaque network key for 24
    hours, with no Wi-Fi names stored. A failed probe is treated as transient
-   evidence and is never cached as a day's worth of isolation. A LAN IP change
+   evidence and is never cached as a day's worth of isolation. Once direct
+   reachability is proven, a later failed probe cannot demote the room; only a
+   LAN transition clears that proof and starts a fresh decision. A LAN IP change
    returns immediately to checking. A relayed guest also keeps probing the
    direct URL and moves itself back to LAN when the direct path becomes
    reachable.

@@ -159,6 +159,26 @@ func TestFailedProbeIsNotPersisted(t *testing.T) {
 	}
 }
 
+func TestFailedProbeCannotDemoteProvenDirectRoom(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	manager := New(Config{})
+	manager.mu.Lock()
+	manager.reg = registration{RelayRegistration: activateRegistration(
+		"https://r-room.partyparty.party/",
+		"https://room.relay.partyparty.party",
+		"network-1",
+	)}
+	manager.directURL = "https://disco.party.partyparty.party:8443/"
+	manager.netTried, manager.internetOK, manager.resolverOK = true, true, true
+	manager.mu.Unlock()
+
+	manager.applyProbe("network-1", true)
+	manager.applyProbe("network-1", false)
+	if got := manager.Snapshot().Mode; got != ModeDirect {
+		t.Fatalf("failed follow-up probe demoted direct room to %q", got)
+	}
+}
+
 func TestUsableLANIP(t *testing.T) {
 	for _, value := range []string{"192.168.1.4", "10.0.0.2", "172.16.8.9"} {
 		if !usableLANIP(value) {

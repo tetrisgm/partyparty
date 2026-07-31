@@ -1169,7 +1169,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const mode = s && s.connection && s.connection.mode || 'checking';
     const lan = s && s.lan && typeof s.lan === 'object' ? s.lan : null;
     const httpFallback = lan && lan.expectedIp && lan.guestPort && s && s.connection &&
-      !lan.dnsPublished && mode === 'no_path' && s.connection.reason === 'resolver_mismatch'
+      s.connection.internetOk === false && mode === 'no_path' && s.connection.reason === 'resolver_mismatch'
       ? `http://${lan.expectedIp}:${lan.guestPort}/`
       : '';
     const link = secure && guestUrl ? guestUrl : httpFallback;

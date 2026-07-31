@@ -11,6 +11,11 @@ two-party-word hostname and credential. Initial hostname and certificate
 provisioning need internet; the valid certificate is cached so later parties can
 run when the venue's internet uplink disappears.
 
+A bare IP address cannot be an HTTPS replacement because it cannot match the
+hostname certificate. When the app has no internet and the local hostname does
+not resolve, it may offer a separate HTTP emergency link to the current LAN IP.
+That link is deliberately degraded and does not promise locked-screen playback.
+
 On an online network, the QR opens an unguessable public bootstrap that probes
 the Mac's direct HTTPS address, then sends the guest to whichever path works:
 

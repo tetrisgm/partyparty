@@ -245,7 +245,7 @@ func (s *Srv) AllowHTTPFallback(r *http.Request) bool {
 	lan := s.lanStateSnapshot()
 	connection := s.connectionState()
 	return host != "" && host == lan.ExpectedIP && lan.ExpectedIP != "" &&
-		!lan.DNSPublished && connection.Mode == relay.ModeNoPath &&
+		!connection.InternetOK && connection.Mode == relay.ModeNoPath &&
 		connection.Reason == relay.ReasonResolverBad
 }
 
@@ -256,7 +256,21 @@ func (s *Srv) AllowHTTPFallback(r *http.Request) bool {
 // LAN IP) for lanStateSnapshot to read. It never switches network mode.
 func (s *Srv) SetActivationResult(res activate.Result) {
 	s.actMu.Lock()
-	s.actLast = res
+	// A failed online refresh is not evidence that the cached certificate or
+	// current LAN identity disappeared. Preserve the last usable activation so
+	// an offline party can still choose the hostname or the guarded IP fallback.
+	// Explicit certificate/DNS failures carry structured evidence and must not
+	// be hidden by this fail-soft path.
+	if !res.CertReady && res.ReasonCode == "" && s.actLastSet && s.actLast.CertReady {
+		if res.ExpectedIP != "" && res.ExpectedIP != s.actLast.ExpectedIP {
+			s.actLast.ExpectedIP = res.ExpectedIP
+			s.actLast.DNSPublished = false
+			s.actLast.ResolverMatches = false
+			s.actLast.ResolverObserved = false
+		}
+	} else {
+		s.actLast = res
+	}
 	s.actLastSet = true
 	s.actMu.Unlock()
 	// The resolver observation is the evidence that decides whether guests can
