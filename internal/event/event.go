@@ -987,6 +987,51 @@ func (s *Store) SaveMedia(origName string, r io.Reader) (Media, error) {
 	return Media{ID: id, Type: typ, Name: name, Size: n}, nil
 }
 
+// ImportMedia stores a relay-origin photo under its already-issued immutable
+// id, so feed metadata resolves identically after the Mac receives the bytes.
+func (s *Store) ImportMedia(id, origName string, r io.Reader) (Media, error) {
+	if !validMediaID(id) {
+		return Media{}, errors.New("invalid media id")
+	}
+	ext := strings.ToLower(filepath.Ext(id))
+	typ, ok := mediaExt[ext]
+	if !ok || typ != "image" {
+		return Media{}, errors.New("relay media must be an image")
+	}
+	mediaDir := filepath.Join(s.dir, "media")
+	dst := filepath.Join(mediaDir, id)
+	f, err := os.CreateTemp(mediaDir, ".relay-upload-*"+ext)
+	if err != nil {
+		return Media{}, err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	n, err := io.Copy(f, io.LimitReader(r, (8<<20)+1))
+	if err != nil {
+		f.Close()
+		return Media{}, err
+	}
+	if n > 8<<20 {
+		f.Close()
+		return Media{}, errors.New("relay photo is too large")
+	}
+	if err := f.Chmod(0o644); err != nil {
+		f.Close()
+		return Media{}, err
+	}
+	if err := f.Close(); err != nil {
+		return Media{}, err
+	}
+	if err := os.Link(tmp, dst); err != nil && !os.IsExist(err) {
+		return Media{}, err
+	}
+	name := filepath.Base(origName)
+	if len(name) > 120 {
+		name = name[len(name)-120:]
+	}
+	return Media{ID: id, Type: "image", Name: name, Size: n}, nil
+}
+
 // MediaPath resolves a media id to its file, refusing path escapes.
 func (s *Store) MediaPath(id string) (string, bool) {
 	if id == "" || id != filepath.Base(id) || strings.HasPrefix(id, ".") {

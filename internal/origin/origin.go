@@ -71,6 +71,7 @@ type Room struct {
 
 	playlistName string
 	playlist     []byte
+	photos       []string
 	// version increments on every playlist publish, so a blocked reader can tell
 	// "something changed" from a spurious wakeup.
 	version int64
@@ -131,6 +132,28 @@ func (r *Room) PutMedia(name string, body []byte, contentType string) {
 	}
 	r.media[name] = &object{body: body, contentType: contentType}
 	r.lastPublish = time.Now()
+}
+
+// PutPhoto keeps a small bounded set of guest photos outside rolling HLS
+// eviction. Photos are secondary to music, so the cap is deliberately small.
+func (r *Room) PutPhoto(name string, body []byte, contentType string) {
+	r.PutMedia(name, body, contentType)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pinned[name] = true
+	r.photos = append(r.photos, name)
+	for len(r.photos) > 32 {
+		oldest := r.photos[0]
+		r.photos = r.photos[1:]
+		delete(r.pinned, oldest)
+		delete(r.media, oldest)
+		for i, candidate := range r.order {
+			if candidate == oldest {
+				r.order = append(r.order[:i], r.order[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 // pinnedCount counts pinned names still present in order. Caller holds mu.

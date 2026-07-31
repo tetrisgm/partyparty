@@ -34,6 +34,10 @@ type testEnv struct {
 
 const djAddr = "127.0.0.1:1234"
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 // newTestEnv builds a Srv over a stub ffmpeg, a temp run dir, an in-memory web
 // FS, and no MediaMTX (MTX nil → LL-HLS unavailable).
 func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
@@ -151,6 +155,43 @@ func TestStatusIncludesRelayedListeners(t *testing.T) {
 	if len(listeners) != 1 || listeners[0].(map[string]any)["name"] != "Seth" {
 		t.Fatalf("relayed listeners = %#v", listeners)
 	}
+}
+
+func TestRelayPhotoIsImportedToTheMac(t *testing.T) {
+	env := newTestEnv(t, nil)
+	events, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.srv.Events = events
+	oldClient := relayPhotoHTTPClient
+	relayPhotoHTTPClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.String() != "https://room.relay.partyparty.party/media/0123456789abcdef.jpg" {
+			t.Fatalf("unexpected relay photo URL %q", r.URL)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("jpeg-bytes")),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	t.Cleanup(func() { relayPhotoHTTPClient = oldClient })
+
+	env.srv.ApplyRelayWrite("relay-upload", json.RawMessage(
+		`{"id":"0123456789abcdef.jpg","name":"party.jpg","source":"https://room.relay.partyparty.party/media/0123456789abcdef.jpg"}`,
+	))
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if path, ok := events.MediaPath("0123456789abcdef.jpg"); ok {
+			body, err := os.ReadFile(path)
+			if err != nil || string(body) != "jpeg-bytes" {
+				t.Fatalf("imported relay photo = %q err=%v", body, err)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("relay photo was not imported")
 }
 
 // The QR is how CHECKING ends. A guest scans it, reaches the Mac or fails to,

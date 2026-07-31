@@ -509,6 +509,47 @@ func TestHeartbeatArrivesTheWayThePageSendsIt(t *testing.T) {
 	}
 }
 
+func TestRelayPhotoUploadReturnsMediaAndQueuesMacTransfer(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+
+	req := httptest.NewRequest(http.MethodPost, "/r/"+roomToken+"/api/upload", strings.NewReader("jpeg-bytes"))
+	req.Host = roomToken + ".relay.partyparty.party"
+	req.Header.Set("Content-Type", "image/jpeg")
+	req.Header.Set("X-PP-Name", "party.jpg")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("photo upload = %d %q", w.Code, w.Body.String())
+	}
+	var media struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &media) != nil || media.ID == "" || media.Type != "image" {
+		t.Fatalf("photo response = %q", w.Body.String())
+	}
+	got := get(t, h, media.ID)
+	if got.Code != http.StatusOK || got.Body.String() != "jpeg-bytes" {
+		t.Fatalf("photo fetch = %d %q", got.Code, got.Body.String())
+	}
+	room, _ := store.Room(roomToken, false)
+	digest := room.Plane().Drain()
+	if len(digest.Writes) != 1 || digest.Writes[0].Path != "relay-upload" ||
+		!strings.Contains(string(digest.Writes[0].Body), "/media/"+media.ID) {
+		t.Fatalf("photo transfer action = %+v", digest.Writes)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/r/"+roomToken+"/api/upload", strings.NewReader("video"))
+	req.Header.Set("Content-Type", "video/mp4")
+	req.Header.Set("X-PP-Name", "party.mp4")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("relay video upload = %d, want conflict", w.Code)
+	}
+}
+
 // Relayed guests are exactly the ones on congested venue networks, and the
 // guest page is ~200KB of HTML. The Mac's own server has always gzipped it;
 // the origin must not make the constrained path pay four times the bytes.

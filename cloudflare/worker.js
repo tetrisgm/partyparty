@@ -562,7 +562,7 @@ async function broker(request, env, pathname) {
 
 const RELAY_TOKEN_RE = /^[a-f0-9]{32}$/;
 const RELAY_PHOTO_BYTES_PER_SECOND = 256 * 1024;
-const RELAY_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+const RELAY_PHOTO_MAX_BYTES = 8 * 1024 * 1024;
 
 function relayTokenFromHost(hostname, env) {
   const suffix = `.${String(env.BROKER_BASE || "").toLowerCase()}`;

@@ -2,10 +2,14 @@ package origin
 
 import (
 	"compress/gzip"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -368,6 +372,9 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 		}, lat, hasLat)
 		w.WriteHeader(http.StatusNoContent)
 
+	case endpoint == "upload" && r.Method == http.MethodPost:
+		h.relayPhotoUpload(w, r, room, plane)
+
 	case r.Method == http.MethodGet:
 		body, version, published := plane.ReadVersioned(endpoint)
 		// The listener page long-polls with wait=1 and is BUILT on the parked
@@ -412,6 +419,60 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+var relayPhotoExt = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
+	".heic": true, ".heif": true, ".webp": true,
+}
+
+func (h *Handler) relayPhotoUpload(w http.ResponseWriter, r *http.Request, room *Room, plane *roomplane.Room) {
+	name, err := url.QueryUnescape(strings.TrimSpace(r.Header.Get("X-PP-Name")))
+	if err != nil || strings.TrimSpace(name) == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid file name")
+		return
+	}
+	name = filepath.Base(name)
+	ext := strings.ToLower(filepath.Ext(name))
+	if !relayPhotoExt[ext] || !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "image/") {
+		writeJSONError(w, http.StatusConflict, "videos are unavailable in relay mode")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxUploadBytes+1))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "upload failed")
+		return
+	}
+	if len(body) > maxUploadBytes {
+		writeJSONError(w, http.StatusRequestEntityTooLarge, "photo is too large")
+		return
+	}
+	idBytes := make([]byte, 8)
+	if _, err := rand.Read(idBytes); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "upload failed")
+		return
+	}
+	id := hex.EncodeToString(idBytes) + ext
+	room.PutPhoto(id, body, r.Header.Get("Content-Type"))
+	source := "https://" + r.Host + "/media/" + url.PathEscape(id)
+	action, _ := json.Marshal(map[string]any{
+		"id": id, "name": name, "size": len(body), "source": source,
+	})
+	if !plane.Enqueue("relay-upload", action) {
+		writeJSONError(w, http.StatusServiceUnavailable, "room is busy")
+		return
+	}
+	noStore(w.Header())
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": id, "type": "image", "name": name, "size": len(body),
+	})
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 func (h *Handler) health(w http.ResponseWriter) {

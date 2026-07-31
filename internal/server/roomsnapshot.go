@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +16,7 @@ import (
 const relayPresenceTTL = 5 * time.Second
 
 var nowFunc = time.Now
+var relayPhotoHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // The room's interactive surface, for guests who reach us through the relay.
 //
@@ -100,6 +102,10 @@ func (s *Srv) RoomSnapshots() map[string]json.RawMessage {
 // that was never meant to be reachable this way.
 func (s *Srv) ApplyRelayWrite(path string, body json.RawMessage) {
 	name, query, _ := strings.Cut(strings.TrimPrefix(path, "/"), "?")
+	if name == "relay-upload" {
+		s.importRelayPhoto(body)
+		return
+	}
 	switch name {
 	case "post", "comment", "post-reaction", "reactions", "requests",
 		"track-id-request", "guest-profile", "heartbeat", "client-events":
@@ -113,6 +119,43 @@ func (s *Srv) ApplyRelayWrite(path string, body json.RawMessage) {
 		}
 	}
 	s.render(http.MethodPost, target, body)
+}
+
+func (s *srv) importRelayPhoto(body json.RawMessage) {
+	if s.Events == nil {
+		return
+	}
+	var upload struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Source string `json:"source"`
+	}
+	if json.Unmarshal(body, &upload) != nil {
+		return
+	}
+	source, err := url.Parse(upload.Source)
+	if err != nil || source.Scheme != "https" ||
+		!strings.HasSuffix(strings.ToLower(source.Hostname()), ".relay.partyparty.party") ||
+		!strings.HasPrefix(source.Path, "/media/") {
+		return
+	}
+	go func() {
+		resp, err := relayPhotoHTTPClient.Get(source.String())
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return
+		}
+		media, err := s.Events.ImportMedia(upload.ID, upload.Name, io.LimitReader(resp.Body, (8<<20)+1))
+		if err != nil {
+			return
+		}
+		if p, ok := s.Events.MediaPath(media.ID); ok {
+			s.Events.EnqueueThumb(media.ID, p, media.Type)
+		}
+	}()
 }
 
 // GuestPage renders the listener page for publication to the origin. Relayed
