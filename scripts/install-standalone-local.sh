@@ -10,6 +10,20 @@ STAGED_APP="$DEST_DIR/.partyparty-beta.new.$$"
 OLD_APP="$DEST_DIR/.partyparty-beta.old.$$"
 EXECUTABLE="$DEST_APP/Contents/MacOS/partyparty"
 
+app_pids() {
+  ps -axo pid=,command= | awk -v exe="$EXECUTABLE" '
+    {
+      pid=$1
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", $0)
+      if ($0 == exe) print pid
+    }
+  '
+}
+
+app_is_running() {
+  [ -n "$(app_pids)" ]
+}
+
 [ -d "$SOURCE_APP" ] || {
   echo "Standalone app not found: $SOURCE_APP" >&2
   exit 1
@@ -25,20 +39,18 @@ ditto "$SOURCE_APP" "$STAGED_APP"
 "$ROOT/scripts/verify-standalone.sh" "$STAGED_APP" "$VERSION" "$BUILD"
 
 was_running=0
-if ps -axo command= | grep -Fqx "$EXECUTABLE"; then
+if app_is_running; then
   was_running=1
   osascript -e 'tell application id "fm.partyparty.beta" to quit' >/dev/null 2>&1 || true
   for _ in {1..20}; do
-    ps -axo command= | grep -Fqx "$EXECUTABLE" || break
+    app_is_running || break
     sleep 0.25
   done
-  if ps -axo command= | grep -Fqx "$EXECUTABLE"; then
-    pid="$(ps -axo pid=,command= | awk -v exe="$EXECUTABLE" '$0 ~ exe "$" {print $1; exit}')"
-    [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+  if app_is_running; then
+    app_pids | xargs kill 2>/dev/null || true
     sleep 1
-    if ps -axo command= | grep -Fqx "$EXECUTABLE"; then
-      pid="$(ps -axo pid=,command= | awk -v exe="$EXECUTABLE" '$0 ~ exe "$" {print $1; exit}')"
-      [ -z "$pid" ] || kill -9 "$pid" 2>/dev/null || true
+    if app_is_running; then
+      app_pids | xargs kill -9 2>/dev/null || true
     fi
   fi
 fi
