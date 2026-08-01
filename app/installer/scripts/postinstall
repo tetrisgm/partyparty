@@ -1,8 +1,8 @@
 #!/bin/bash
 # Home-domain install runs as the user → launch the freshly-installed app so the
 # console opens automatically (pkgs don't auto-launch otherwise).
-APP="$HOME/Applications/partyparty.app"
-[ -d "$APP" ] || APP="/Applications/partyparty.app"
+APP="$HOME/Applications/PartyParty.app"
+[ -d "$APP" ] || APP="/Applications/PartyParty.app"
 # Installer scripts can run with TMPDIR pointing into a PKInstallSandbox path
 # that disappears as soon as installation completes. The app writes its runtime
 # MediaMTX config under os.TempDir(), so scrub the installer temp environment

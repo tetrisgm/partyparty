@@ -75,7 +75,7 @@ ssh_run "set -e
 
   sudo install -m 0644 /tmp/pporigin.service /etc/systemd/system/pporigin.service
 
-  # partyparty outranks the radio and the video encode under contention.
+  # PartyParty outranks the radio and the video encode under contention.
   # set-property applies the cgroup weights to the RUNNING units immediately and
   # persists them, so a live 24/7 radio is never restarted to pick this up.
   # Restarting it here would interrupt the very service we are trying to be a

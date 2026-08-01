@@ -1,6 +1,6 @@
 # Production playback architecture
 
-partyparty serves HTTPS LL-HLS from the Mac. A broker-managed hostname resolves
+PartyParty serves HTTPS LL-HLS from the Mac. A broker-managed hostname resolves
 to the Mac's private venue-Wi-Fi address and uses a publicly trusted certificate,
 so default iPhones can connect without installing a profile or accepting a
 certificate warning.
@@ -21,7 +21,7 @@ for smooth audio and lock-screen/background continuity. The same-origin playlist
 proxy passes MediaMTX's LL-HLS playlists through unchanged, so it adds no
 server-authored start delay or hold-back inflation.
 
-Healthy native playback is passive. partyparty never seeks or rate-steers
+Healthy native playback is passive. PartyParty never seeks or rate-steers
 AVPlayer. Program Date Time plus a small Mac/phone clock-offset estimate measures
 the phone's media position but does not control playback. A visible phone that
 remains at least 750 ms beyond the one-second target for three consecutive
@@ -40,7 +40,7 @@ when an individual open reaches two seconds, or when a simultaneous startup
 cohort or comparable steady-state health window reaches one second of
 phone-to-phone spread.
 
-The venue provides Wi-Fi. partyparty does not configure a hotspot, Internet
+The venue provides Wi-Fi. PartyParty does not configure a hotspot, Internet
 Sharing, DNS hijacking, or a captive portal. The Mac selects direct mode when
 the HTTPS LAN path works and relay mode when a phone proves that client
 isolation blocks it. Both modes expose the same MediaMTX playlist and audio

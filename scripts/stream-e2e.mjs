@@ -55,7 +55,7 @@ function helperPath(name) {
   const candidates = [
     process.env[envKey],
     path.join(ROOT, 'assets', name),
-    path.join(os.homedir(), 'Applications', 'partyparty.app', 'Contents', 'Helpers', name),
+    path.join(os.homedir(), 'Applications', 'PartyParty.app', 'Contents', 'Helpers', name),
     name,
   ].filter(Boolean);
   for (const c of candidates) {
@@ -290,7 +290,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
   const workDir = path.join(rootWork, 'real');
   await fs.mkdir(workDir, { recursive: true });
   const [httpPort, tlsPort, rtspPort, hlsPort] = await freePorts(4);
-  const appRoot = path.join(workDir, 'PartypartyE2E.app', 'Contents');
+  const appRoot = path.join(workDir, 'PartyPartyE2E.app', 'Contents');
   const macosDir = path.join(appRoot, 'MacOS');
   const helpersDir = path.join(appRoot, 'Helpers');
   const testHome = path.join(workDir, 'home');
@@ -320,7 +320,7 @@ async function startRealStack(rootWork, ffmpeg, mediamtx) {
     '--rtsp-port', String(rtspPort),
     '--hls-port', String(hlsPort),
     '--stream-path', 'party',
-    '--name', 'partyparty e2e',
+    '--name', 'PartyParty E2E',
   ], {
     cwd: ROOT,
     logPath: path.join(workDir, 'server.log'),
@@ -505,7 +505,7 @@ paths:
       const u = new URL(req.url || '/', `http://127.0.0.1:${webPort}`);
       if (u.pathname === '/api/status') {
         sendJSON(res, {
-          name: 'partyparty e2e',
+          name: 'PartyParty E2E',
           appVersion: 'e2e',
           broadcast: {
             state: mockLive ? 'live' : 'idle',
@@ -1105,7 +1105,7 @@ async function assertRoomSync(first, second, label = 'steady', { allowInjectedDr
   }
   // The product invariant: device-to-device spread stays below one second.
   // Gate clean-room startup separately from the deliberate synthetic-drift
-  // scenario. partyparty itself never seeks a healthy player.
+  // scenario. PartyParty itself never seeks a healthy player.
   if (!allowInjectedDrift && p90 >= 1.0) {
     fail(`room sync gap too wide: p90=${p90.toFixed(3)}s median=${median.toFixed(3)}s (must stay below 1.0s): ${JSON.stringify(samples)}`);
   }

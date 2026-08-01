@@ -1,11 +1,11 @@
-# partyparty × Apple - design system
+# PartyParty × Apple - design system
 
 **Rule: "Apple's SYSTEM, our CONTENT."** Adopt Apple's structure wholesale (SF type
 scale, 4/8-pt grid, semantic light+dark tokens, concentric squircle radii, ONE
 restrained accent, hairline separators, generous whitespace, a single Liquid-Glass
-layer on floating chrome only, short spring-out motion). Keep partyparty's nightlife
+layer on floating chrome only, short spring-out motion). Keep PartyParty's nightlife
 energy where energy belongs: the **photography, the copy, and one brand accent**
-(partyparty pink). Nothing else is tinted.
+(PartyParty pink). Nothing else is tinted.
 
 Three surfaces share these tokens:
 - **Landing page** (`site/index.html`) - product/download information only.

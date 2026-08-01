@@ -98,7 +98,7 @@ func runNetChecks(opts netCheckOptions) []netCheck {
 		struct {
 			name string
 			run  func() (string, error)
-		}{"Reach the partyparty service", func() (string, error) { return get(cl, brokerBase+"/api/broker/ping") }},
+		}{"Reach the PartyParty service", func() (string, error) { return get(cl, brokerBase+"/api/broker/ping") }},
 		struct {
 			name string
 			run  func() (string, error)

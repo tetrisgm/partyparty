@@ -3,12 +3,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-APP="${1:-$ROOT/build/partyparty-app-store.app}"
+APP="${1:-$ROOT/build/PartyParty-app-store.app}"
 if [[ "$APP" != /* ]]; then
   APP="$ROOT/$APP"
 fi
 STATUS_URL="http://127.0.0.1:8000/api/status"
-APP_EXEC="$APP/Contents/MacOS/partyparty"
+APP_EXEC="$APP/Contents/MacOS/PartyParty"
 SERVER_EXEC="$APP/Contents/Helpers/partyparty-server"
 
 "$ROOT/scripts/verify-app-store.sh" "$APP"
@@ -21,7 +21,7 @@ if [[ "$authority" = Apple\ Distribution:* ]]; then
 fi
 
 if curl -fsS --max-time 1 "$STATUS_URL" >/dev/null 2>&1; then
-  echo "Port 8000 is already in use. Quit the installed partyparty before running the Store launch test." >&2
+  echo "Port 8000 is already in use. Quit the installed PartyParty before running the Store launch test." >&2
   exit 1
 fi
 

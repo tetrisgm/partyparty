@@ -4,7 +4,7 @@ Browser telemetry (the `lat`/`spread` numbers in the session log) measures the
 **media clock**, which cannot see the speaker/DAC/Bluetooth output path - a
 Bluetooth speaker alone adds 150–300ms invisibly. The only ground truth for
 "are the phones actually in sync in the room" is a microphone. This kit plays a
-click track through partyparty, records the room with one mic, and reports the
+click track through PartyParty, records the room with one mic, and reports the
 device-to-device spread in milliseconds.
 
 ## Run it
@@ -13,8 +13,8 @@ device-to-device spread in milliseconds.
 # 1. Make the click track (60s: 1kHz impulse every 2s, triple-burst marker /10s)
 scripts/synctest/make-clicktrack.sh
 
-# 2. Go Live in partyparty, then play scripts/synctest/clicktrack.wav on the DJ Mac
-#    through the output partyparty captures (Mac output source). Join every test
+# 2. Go Live in PartyParty, then play scripts/synctest/clicktrack.wav on the DJ Mac
+#    through the output PartyParty captures (Mac output source). Join every test
 #    device on its BUILT-IN SPEAKER at matched volume, ~equidistant from one mic.
 
 # 3. Record the room (default 45s from the built-in mic; list devices with

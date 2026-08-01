@@ -4,7 +4,7 @@
 # The ONLY ground truth for room sync is a microphone: browser telemetry cannot
 # see the speaker/DAC output path (Bluetooth alone adds 150-300ms invisibly).
 # This track plays a sharp 1kHz impulse every 2s, with a distinctive triple-burst
-# every 10s as an unambiguous alignment marker. Play it on the DJ Mac so partyparty
+# every 10s as an unambiguous alignment marker. Play it on the DJ Mac so PartyParty
 # captures it and streams it to every device; record the room (record-room.sh) and
 # analyse (measure-sync.py).
 #
@@ -21,5 +21,5 @@ OUT="$ROOT/scripts/synctest/clicktrack.wav"
   -f lavfi -i "aevalsrc=sin(2*PI*1000*t)*lt(mod(t\,2)\,0.012):s=48000:d=$SECS" \
   -af "alimiter=limit=0.9" -ac 2 -ar 48000 "$OUT"
 echo ">> wrote $OUT (${SECS}s: 12ms 1kHz click every 2s)"
-echo ">> Play it on the DJ Mac (any player through the output partyparty captures),"
+echo ">> Play it on the DJ Mac (any player through the output PartyParty captures),"
 echo "   Go Live, join all test devices on SPEAKER at matched volume, then run record-room.sh."

@@ -10,11 +10,11 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runDir = join(root, "build", "multidj-lab");
 const cert = process.env.PP_LAB_CERT ||
-  join(process.env.HOME, "Library", "Application Support", "partyparty", "live-cert.pem");
+  join(process.env.HOME, "Library", "Application Support", "PartyParty", "live-cert.pem");
 const key = process.env.PP_LAB_KEY ||
-  join(process.env.HOME, "Library", "Application Support", "partyparty", "live-key.pem");
+  join(process.env.HOME, "Library", "Application Support", "PartyParty", "live-key.pem");
 const installRecord = JSON.parse(readFileSync(
-  join(process.env.HOME, "Library", "Application Support", "partyparty", "install.json"),
+  join(process.env.HOME, "Library", "Application Support", "PartyParty", "install.json"),
   "utf8",
 ));
 const installLabel = installRecord.HostLabel || installRecord.hostLabel || installRecord.Slug || installRecord.slug;

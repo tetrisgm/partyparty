@@ -594,7 +594,7 @@ func (s *Store) use(dir string) error {
 	if data, err := os.ReadFile(dataPath(dir, "meta.json")); err == nil {
 		_ = json.Unmarshal(data, &meta)
 	}
-	if strings.EqualFold(strings.TrimSpace(meta.Title), "partyparty") {
+	if strings.EqualFold(strings.TrimSpace(meta.Title), "PartyParty") {
 		meta.Title = ""
 	}
 	meta.Features = normalizeFeatures(meta.Features)

@@ -4,9 +4,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-APP="$ROOT/build/partyparty.app"
-ENT="$ROOT/app/partyparty-app-store.entitlements"
-CHILD_ENT="$ROOT/app/partyparty-app-store-child.entitlements"
+APP="$ROOT/build/PartyParty.app"
+ENT="$ROOT/app/PartyParty-app-store.entitlements"
+CHILD_ENT="$ROOT/app/PartyParty-app-store-child.entitlements"
 SIGN_ID="${PP_SIGN_ID:--}"
 SIGN_KEYCHAIN="${PP_KEYCHAIN:-}"
 
@@ -14,14 +14,14 @@ echo ">> Xcode app and bundled helpers (release)"
 make assets/ppcapture
 XCODE_BUILD="$ROOT/build/xcode-app-store"
 xcodebuild \
-  -project "$ROOT/app/partyparty.xcodeproj" \
-  -scheme partyparty \
+  -project "$ROOT/app/PartyParty.xcodeproj" \
+  -scheme PartyParty \
   -configuration Release \
   -sdk macosx \
   -derivedDataPath "$XCODE_BUILD" \
   CODE_SIGNING_ALLOWED=NO \
   build
-XCODE_APP="$XCODE_BUILD/Build/Products/Release/partyparty.app"
+XCODE_APP="$XCODE_BUILD/Build/Products/Release/PartyParty.app"
 
 echo ">> assembling $APP"
 rm -rf "$APP"
@@ -31,7 +31,7 @@ if [ -n "${APP_STORE_PROVISIONING_PROFILE:-}" ]; then
   cp "$APP_STORE_PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
   chmod 644 "$APP/Contents/embedded.provisionprofile"
 fi
-chmod +x "$APP/Contents/Helpers/"* "$APP/Contents/MacOS/partyparty"
+chmod +x "$APP/Contents/Helpers/"* "$APP/Contents/MacOS/PartyParty"
 chmod -R u+w "$APP"
 xattr -cr "$APP"
 
@@ -47,7 +47,7 @@ echo ">> codesigning inside-out ($SIGN_ID)"
 for helper in mediamtx ffmpeg partyparty-server ppcapture; do
   codesign_one "$APP/Contents/Helpers/$helper" "$CHILD_ENT"
 done
-codesign_one "$APP/Contents/MacOS/partyparty" "$ENT"
+codesign_one "$APP/Contents/MacOS/PartyParty" "$ENT"
 codesign_one "$APP" "$ENT"
 
 echo ">> verify"

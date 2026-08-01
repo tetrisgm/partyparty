@@ -1,8 +1,8 @@
 {
-  "name": "partyparty-site",
+  "name": "party-party-site",
   "private": true,
   "version": "0.0.0",
-  "description": "partyparty.party - website and anonymous LAN provisioning.",
+  "description": "PartyParty.party - website and anonymous LAN provisioning.",
   "type": "module",
   "scripts": {
     "check": "node --check worker.js",

@@ -78,8 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if s.captureBad && (s.state == "live" || s.state == "starting") {
             button.title = "🕺 🔴"
             button.toolTip = s.note.isEmpty
-                ? "partyparty - audio capture problem; open the app for details"
-                : "partyparty - \(s.note)"
+                ? "PartyParty - audio capture problem; open the app for details"
+                : "PartyParty - \(s.note)"
             return
         }
         button.toolTip = appName

@@ -19,8 +19,8 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FF="${FF:-$ROOT/assets/ffmpeg}"
 MTX="${MTX:-$ROOT/assets/mediamtx}"
-[ -x "$FF" ] || FF="$HOME/Applications/partyparty.app/Contents/Helpers/ffmpeg"
-[ -x "$MTX" ] || MTX="$HOME/Applications/partyparty.app/Contents/Helpers/mediamtx"
+[ -x "$FF" ] || FF="$HOME/Applications/PartyParty.app/Contents/Helpers/ffmpeg"
+[ -x "$MTX" ] || MTX="$HOME/Applications/PartyParty.app/Contents/Helpers/mediamtx"
 WORK="$(mktemp -d)"
 RTSP_PORT=18554
 HLS_PORT=18888

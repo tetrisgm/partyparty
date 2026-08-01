@@ -36,7 +36,7 @@ Verify from elsewhere: `nc -vz <box-ip> 443`.
 
 Rooms are served at `<token>.relay.partyparty.party`, so a wildcard is required,
 which means DNS-01. The Cloudflare token should be scoped to DNS:Edit on the
-partyparty.party zone only, so a compromise of this shared box cannot touch
+PartyParty.party zone only, so a compromise of this shared box cannot touch
 anything else.
 
 ```sh

@@ -22,7 +22,7 @@ final class ServerController {
             return p
         }
         let exe = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
-        // Contents/MacOS/partyparty -> Contents/Helpers/partyparty-server
+        // Contents/MacOS/PartyParty -> Contents/Helpers/partyparty-server
         let candidate = exe
             .deletingLastPathComponent()       // Contents/MacOS
             .deletingLastPathComponent()       // Contents
@@ -34,7 +34,7 @@ final class ServerController {
     func start() {
         guard process == nil else { return }
         guard let path = serverPath() else {
-            NSLog("partyparty: server binary not found (set PARTYPARTY_SERVER for dev)")
+            NSLog("PartyParty: server binary not found (set PARTYPARTY_SERVER for dev)")
             return
         }
         stopping = false
@@ -50,7 +50,7 @@ final class ServerController {
             process = p
             lastStart = Date()
         } catch {
-            NSLog("partyparty: failed to start server: \(error)")
+            NSLog("PartyParty: failed to start server: \(error)")
         }
     }
 
@@ -71,10 +71,10 @@ final class ServerController {
         if Date().timeIntervalSince(lastStart) > 60 { restartCount = 0 } // healthy run resets the budget
         restartCount += 1
         guard restartCount <= 5 else {
-            NSLog("partyparty: server keeps dying (status \(proc.terminationStatus)) - giving up")
+            NSLog("PartyParty: server keeps dying (status \(proc.terminationStatus)) - giving up")
             return
         }
-        NSLog("partyparty: server exited (status \(proc.terminationStatus)) - restarting \(restartCount)/5")
+        NSLog("PartyParty: server exited (status \(proc.terminationStatus)) - restarting \(restartCount)/5")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.start() }
     }
 

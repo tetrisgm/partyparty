@@ -1,7 +1,7 @@
-partyparty is a two-device, same-Wi-Fi product. The Mac is the DJ server; an iPhone is the guest player.
+PartyParty is a two-device, same-Wi-Fi product. The Mac is the DJ server; an iPhone is the guest player.
 
 Review steps:
-1. Launch partyparty. The app and guest room require no PartyParty account.
+1. Launch PartyParty. The app and guest room require no PartyParty account.
 2. Connect the Mac and a default-configured iPhone to the same Wi-Fi network.
 3. In the Mac app, choose "Mac output (everything)" or an available audio input and press Go Live.
 4. macOS asks for System Audio Recording only when Mac output is selected, or Microphone only when an input device is selected. Local Network access is used to serve the room.

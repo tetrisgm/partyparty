@@ -144,7 +144,8 @@ const playback = read('internal/server/playback.go');
 assert.match(playback, /const roomLatencyTarget = 1\.0/);
 
 const server = read('internal/server/server.go');
-assert.doesNotMatch(server, /EXT-X-START|rewriteLivePlaylist|PART-HOLD-BACK/);
+assert.match(server, /body = rewriteLivePlaylist\(body\)/);
+assert.doesNotMatch(server, /EXT-X-START|PART-HOLD-BACK/);
 assert.doesNotMatch(server, /case "\/api\/delivery"/);
 assert.doesNotMatch(server, /"delivery":\s*s\.Broadcaster/);
 assert.match(server, /Privacy_AudioCapture/);
@@ -155,13 +156,15 @@ const main = read('main.go');
 assert.match(main, /startPeerDiscovery\(res\.Host\)/);
 assert.match(main, /relay\.New\(relay\.Config/);
 
+const relayMode = read('internal/relay/mode.go');
+assert.match(relayMode, /ModeChecking = "checking"/);
+assert.match(relayMode, /ModeDirect\s+= "direct"/);
+assert.match(relayMode, /ModeRelay\s+= "relay"/);
+
 const relayManager = read('internal/relay/relay.go');
-assert.match(relayManager, /ModeChecking = "checking"/);
-assert.match(relayManager, /ModeDirect\s+= "direct"/);
-assert.match(relayManager, /ModeRelay\s+= "relay"/);
-assert.match(relayManager, /case "state_ack":/);
-assert.match(relayManager, /s\.manager\.applyProbe/);
-assert.match(relayManager, /websocket\.Dial/);
+assert.match(relayManager, /A guest's verdict rides the registration response/);
+assert.match(relayManager, /m\.applyProbe\(networkKey, \*next\.Probe\)/);
+assert.doesNotMatch(relayManager, /case "state_ack":|websocket\.Dial/);
 
 const config = read('internal/config/config.go');
 assert.match(config, /c\.Bitrate = "320k"/);

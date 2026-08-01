@@ -66,8 +66,8 @@ test("bounded JSON parsing remains strict", async () => {
 
 test("landing, legal pages, version, and signed standalone release files are served", async () => {
   const env = baseEnv();
-  await env.DL.put("standalone/partyparty-beta.zip", new Uint8Array([80, 75, 3, 4]));
-  await env.DL.put("standalone/partyparty-124.14-216.zip", new Uint8Array([80, 75, 3, 4]));
+  await env.DL.put("standalone/PartyParty-Beta.zip", new Uint8Array([80, 75, 3, 4]));
+  await env.DL.put("standalone/PartyParty-124.14-216.zip", new Uint8Array([80, 75, 3, 4]));
   await env.DL.put("standalone/appcast.xml", `<rss><channel><item>
     <sparkle:shortVersionString>125.90</sparkle:shortVersionString>
     <sparkle:version>990</sparkle:version>
@@ -77,7 +77,7 @@ test("landing, legal pages, version, and signed standalone release files are ser
   for (const path of ["/privacy", "/support"]) {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
     assert.equal(response.status, 200, path);
-    assert.match(await response.text(), /partyparty/);
+    assert.match(await response.text(), /PartyParty/);
   }
   const canary = await (await worker.fetch(new Request("https://partyparty.party/api/relay-canary"), env)).json();
   assert.equal(canary.healthy, null); // no check yet is reported honestly, never invented
@@ -89,27 +89,27 @@ test("landing, legal pages, version, and signed standalone release files are ser
   assert.equal(version.version, "125.90"); // derived from the appcast, never a constant
   assert.equal(version.date, "2026-07-29");
   assert.equal("standaloneBuild" in version, false);
-  assert.equal(version.standaloneDownload, "/partyparty-beta.zip");
-  const beta = await worker.fetch(new Request("https://partyparty.party/partyparty-beta.zip"), env);
+  assert.equal(version.standaloneDownload, "/PartyParty-Beta.zip");
+  const beta = await worker.fetch(new Request("https://partyparty.party/PartyParty-Beta.zip"), env);
   assert.equal(beta.status, 200);
   assert.equal(beta.headers.get("content-type"), "application/zip");
-  assert.equal(beta.headers.get("content-disposition"), 'attachment; filename="partyparty-beta.zip"');
+  assert.equal(beta.headers.get("content-disposition"), 'attachment; filename="PartyParty-Beta.zip"');
   assert.equal((await beta.arrayBuffer()).byteLength, 4);
-  const betaHead = await worker.fetch(new Request("https://partyparty.party/partyparty-beta.zip", { method: "HEAD" }), env);
+  const betaHead = await worker.fetch(new Request("https://partyparty.party/PartyParty-Beta.zip", { method: "HEAD" }), env);
   assert.equal(betaHead.status, 200);
   assert.equal(betaHead.headers.get("content-length"), "4");
   assert.equal((await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env)).status, 200);
-  const immutable = await worker.fetch(new Request("https://partyparty.party/downloads/partyparty-124.14-216.zip"), env);
+  const immutable = await worker.fetch(new Request("https://partyparty.party/downloads/PartyParty-124.14-216.zip"), env);
   assert.equal(immutable.status, 200);
   assert.equal(immutable.headers.get("cache-control"), "public, max-age=31536000, immutable");
-  assert.equal(immutable.headers.get("content-disposition"), 'attachment; filename="partyparty-124.14-216.zip"');
+  assert.equal(immutable.headers.get("content-disposition"), 'attachment; filename="PartyParty-124.14-216.zip"');
   // A release download resolves from the bucket by name, so there is no map to
   // forget: absent object is a plain 404, and nothing outside the strict
   // release shape ever reaches R2.
-  assert.equal((await worker.fetch(new Request("https://partyparty.party/downloads/partyparty-9.9-999.zip"), env)).status, 404);
-  assert.equal((await worker.fetch(new Request("https://partyparty.party/downloads/partyparty-..%2fsecret.zip"), env)).status, 404);
+  assert.equal((await worker.fetch(new Request("https://partyparty.party/downloads/PartyParty-9.9-999.zip"), env)).status, 404);
+  assert.equal((await worker.fetch(new Request("https://partyparty.party/downloads/PartyParty-..%2fsecret.zip"), env)).status, 404);
   assert.equal((await worker.fetch(new Request("https://partyparty.party/downloads/notparty-1.0-1.zip"), env)).status, 404);
-  for (const path of ["/private-beta/partyparty-123.88.zip", "/partyparty.pkg", "/partyparty.zip", "/content/manifest.json", "/content/state.json"]) {
+  for (const path of ["/private-beta/PartyParty-123.88.zip", "/PartyParty.pkg", "/PartyParty.zip", "/content/manifest.json", "/content/state.json"]) {
     assert.equal((await worker.fetch(new Request(`https://partyparty.party${path}`), env)).status, 404, path);
   }
 });

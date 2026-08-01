@@ -198,7 +198,7 @@ func (w *formatScanner) Write(p []byte) (int, error) {
 	if s := string(p); strings.Contains(s, "ppcapture: CAPTURE-") {
 		switch {
 		case strings.Contains(s, "CAPTURE-BLOCKED"):
-			w.b.setCaptureNote("Another app has taken EXCLUSIVE control of your Mac's audio output (e.g. Roon or Audirvana in Exclusive Mode) - partyparty can't capture it, so guests hear nothing. Turn OFF Exclusive/Hog Mode for this output in that app (or point it at a different device, or route it through BlackHole). It recovers on its own once released; if not, Stop and Go Live again.")
+			w.b.setCaptureNote("Another app has taken EXCLUSIVE control of your Mac's audio output (e.g. Roon or Audirvana in Exclusive Mode) - PartyParty can't capture it, so guests hear nothing. Turn OFF Exclusive/Hog Mode for this output in that app (or point it at a different device, or route it through BlackHole). It recovers on its own once released; if not, Stop and Go Live again.")
 		case strings.Contains(s, "CAPTURE-OK"):
 			w.b.captureRecovered()
 		case strings.Contains(s, "CAPTURE-UNHOGGED"):
@@ -270,7 +270,7 @@ func (b *Broadcaster) tryAutoRestart() bool {
 	if !live || !mac || throttled {
 		return false
 	}
-	b.pushLog("[partyparty] capture stalled (device yanked or exclusive-mode release) - rebuilding the tap")
+	b.pushLog("[PartyParty] capture stalled (device yanked or exclusive-mode release) - rebuilding the tap")
 	go b.startInternal(dev, name, opts, true)
 	return true
 }
@@ -515,7 +515,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 		b.state = "error"
 		b.lastError = "system-audio helper not built - run `make` to compile it"
 		b.mu.Unlock()
-		b.pushLog("[partyparty] " + b.lastError)
+		b.pushLog("[PartyParty] " + b.lastError)
 		return
 	}
 
@@ -541,7 +541,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 	}
 	b.mu.Unlock()
 
-	b.pushLog("[partyparty] starting capture: " + deviceName)
+	b.pushLog("[PartyParty] starting capture: " + deviceName)
 
 	// The helper starts FIRST and announces the tap's stream format (it
 	// follows the output device); ffmpeg's input args are built from it. The
@@ -579,10 +579,10 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 				b.captureUp = true // tap works - never blame permissions on a later ffmpeg death
 			}
 			b.mu.Unlock()
-			b.pushLog(fmt.Sprintf("[partyparty] capturing at %d Hz, %d channel(s)", inRate, inCh))
+			b.pushLog(fmt.Sprintf("[PartyParty] capturing at %d Hz, %d channel(s)", inRate, inCh))
 		case <-time.After(15 * time.Second):
 			formatAssumed = true
-			b.pushLog("[partyparty] helper never announced its format (permission prompt still up?) - assuming 48000/2 for now")
+			b.pushLog("[PartyParty] helper never announced its format (permission prompt still up?) - assuming 48000/2 for now")
 		}
 	}
 
@@ -658,7 +658,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 				if stale {
 					return
 				}
-				b.pushLog(fmt.Sprintf("[partyparty] capture is actually %d Hz / %dch - restarting with the right settings", f[0], f[1]))
+				b.pushLog(fmt.Sprintf("[PartyParty] capture is actually %d Hz / %dch - restarting with the right settings", f[0], f[1]))
 				b.Start(device, deviceName, opts)
 			case <-time.After(90 * time.Second):
 			}
@@ -678,7 +678,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 		}
 		if b.state == "stopping" {
 			b.state = "idle"
-			b.pushLog("[partyparty] broadcast stopped")
+			b.pushLog("[PartyParty] broadcast stopped")
 			b.cmd = nil
 			b.helper = nil
 			return
@@ -711,9 +711,9 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 		// - a later ffmpeg death is a transient encoder problem, not a permission
 		// one; don't send the DJ chasing a settings toggle that isn't the issue.
 		if b.device == "mac" && !b.captureUp {
-			b.lastError += " - allow System Audio Recording for partyparty, then Start again."
+			b.lastError += " - allow System Audio Recording for PartyParty, then Start again."
 		}
-		b.pushLog("[partyparty] " + b.lastError)
+		b.pushLog("[PartyParty] " + b.lastError)
 		b.cmd = nil
 		b.helper = nil
 	}(ff, helper, myGen)
@@ -732,7 +732,7 @@ func (b *Broadcaster) fail(gen uint64, msg string) {
 	b.cmd = nil
 	b.helper = nil
 	b.mu.Unlock()
-	b.pushLog("[partyparty] " + msg)
+	b.pushLog("[PartyParty] " + msg)
 }
 
 func (b *Broadcaster) Stop() {
@@ -841,7 +841,7 @@ func (b *Broadcaster) Status() Status {
 		case "test":
 			note = "No audio yet - ffmpeg is still starting."
 		case "mac":
-			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again - and make sure something is playing. If you denied it, open System Settings → Privacy & Security → System Audio Recording Only and allow partyparty."
+			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again - and make sure something is playing. If you denied it, open System Settings → Privacy & Security → System Audio Recording Only and allow PartyParty."
 		default:
 			note = "No audio yet. Grant microphone permission (System Settings → Privacy & Security → Microphone) and check that your source is routed to this device."
 		}

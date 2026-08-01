@@ -134,14 +134,14 @@ func New(d Deps) *Srv {
 }
 
 // audioProvenPath is the durable "Mac audio capture has worked here" marker -
-// ~/Library/Application Support/partyparty/audio-proven. Empty string disables
+// ~/Library/Application Support/PartyParty/audio-proven. Empty string disables
 // persistence (in-memory only) when the config dir is unavailable.
 func audioProvenPath() string {
-	base, err := os.UserConfigDir()
+	dir, err := activate.StateDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(base, "partyparty", "audio-proven")
+	return filepath.Join(dir, "audio-proven")
 }
 
 // markAudioProven records the observed proof, once, without blocking /api/status.

@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: partyparty-app-store-release
+  group: PartyParty-app-store-release
   cancel-in-progress: false
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
           REQUESTED_BUILD: ${{ inputs.build }}
         run: |
           set -euo pipefail
-          project=app/partyparty.xcodeproj/project.pbxproj
+          project=app/PartyParty.xcodeproj/project.pbxproj
           versions="$(sed -n 's/.*MARKETING_VERSION = \\([^;]*\\);/\\1/p' "$project" | sort -u)"
           builds="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \\([^;]*\\);/\\1/p' "$project" | sort -u)"
           [ "$versions" = "$REQUESTED_VERSION" ] || {
@@ -101,9 +101,9 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
         run: |
           set -euo pipefail
-          work="$RUNNER_TEMP/partyparty-signing"
+          work="$RUNNER_TEMP/PartyParty-signing"
           keychain="$work/app-store.keychain-db"
-          profile="$work/partyparty.provisionprofile"
+          profile="$work/PartyParty.provisionprofile"
           mkdir -p "$work" "$HOME/.appstoreconnect/private_keys"
           chmod 700 "$work" "$HOME/.appstoreconnect" "$HOME/.appstoreconnect/private_keys"
 
@@ -147,7 +147,7 @@ jobs:
       - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: partyparty-app-store-${{ inputs.version }}-${{ inputs.build }}
-          path: dist/partyparty-app-store.pkg
+          name: PartyParty-app-store-${{ inputs.version }}-${{ inputs.build }}
+          path: dist/PartyParty-app-store.pkg
           if-no-files-found: error
           retention-days: 30

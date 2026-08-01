@@ -9,7 +9,7 @@
 - Capture backpressure was eliminated by bounded capture buffering and
   non-blocking FFmpeg tee outputs. The audio core must not be changed without a
   supervised go-live test.
-- Healthy native playback is passive: partyparty never seeks or rate-steers it.
+- Healthy native playback is passive: PartyParty never seeks or rate-steers it.
   A visible phone that remains at least 750 ms beyond the one-second room
   target for three measurements gets one bounded fresh HLS attachment. Missing
   timing telemetry alone never interrupts audio. Nothing runs while Safari is

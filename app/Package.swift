@@ -9,18 +9,18 @@ import Foundation
 let standalone = ProcessInfo.processInfo.environment["PARTYPARTY_STANDALONE"] == "1"
 
 let package = Package(
-    name: "partyparty",
+    name: "PartyParty",
     platforms: [.macOS(.v14)],
     dependencies: standalone
         ? [.package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")]
         : [],
     targets: [
         .executableTarget(
-            name: "partyparty",
+            name: "PartyParty",
             dependencies: standalone
                 ? [.product(name: "Sparkle", package: "Sparkle")]
                 : [],
-            path: "Sources/partyparty"
+            path: "Sources/PartyParty"
         )
     ]
 )

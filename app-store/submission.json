@@ -1,6 +1,6 @@
 {
   "bundleId": "fm.partyparty.app",
-  "sku": "partyparty-mac-2026",
+  "sku": "PartyParty-mac-2026",
   "primaryLanguage": "en-US",
   "platform": "MAC_OS",
   "versionSource": "app/Info.plist",

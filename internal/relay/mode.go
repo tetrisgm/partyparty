@@ -174,7 +174,7 @@ func usesCloud(mode string) bool { return mode == ModeDirect || mode == ModeRela
 
 // Messages are DJ-facing. They state what is happening and, when something is
 // wrong, what would fix it. They never blame the venue and never imply
-// partyparty can change router settings.
+// PartyParty can change router settings.
 const (
 	checkingMessage = "Checking whether guests can connect directly on this Wi-Fi. Scan the QR code once to finish the check."
 	localMessage    = "No internet here, so guests are connecting straight to this Mac on this Wi-Fi."

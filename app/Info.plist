@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>partyparty</string>
+	<string>PartyParty</string>
 	<key>CFBundleExecutable</key>
-	<string>partyparty</string>
+	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIconName</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleIdentifier</key>
 	<string>fm.partyparty.app</string>
 	<key>CFBundleName</key>
-	<string>partyparty</string>
+	<string>PartyParty</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -40,18 +40,18 @@
 		</dict>
 	</dict>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>partyparty broadcasts the Mac’s audio to your guests’ phones.</string>
+	<string>PartyParty broadcasts the Mac’s audio to your guests’ phones.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>PartyParty</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>partyparty discovers other DJs and lets guests on the venue Wi-Fi connect to live audio streams.</string>
+	<string>PartyParty discovers other DJs and lets guests on the venue Wi-Fi connect to live audio streams.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_partyparty._tcp</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>partyparty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
+	<string>PartyParty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
 </dict>
 </plist>

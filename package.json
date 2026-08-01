@@ -1,8 +1,9 @@
 {
-  "name": "partyparty-stream-e2e",
+  "name": "party-party-stream-e2e",
   "private": true,
   "type": "module",
   "scripts": {
+    "pretest": "npm ci",
     "stream:e2e": "node scripts/stream-e2e.mjs",
     "test": "node scripts/test-stream-contract.mjs && node scripts/test-listener-render-stability.mjs"
   },

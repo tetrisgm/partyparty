@@ -1,5 +1,5 @@
 // ppcapture - captures macOS system audio via a Core Audio process tap and
-// writes raw interleaved Float32 PCM to stdout; partyparty pipes it into
+// writes raw interleaved Float32 PCM to stdout; PartyParty pipes it into
 // FFmpeg. macOS 26+ only - no ScreenCaptureKit, no screen-recording TCC.
 //
 // The "System Audio Recording" permission prompts INLINE (a one-click Allow
@@ -227,8 +227,8 @@ let ch = min(Int(asbd.mChannelsPerFrame), 2)
 
 // 3. Wrap the tap in a private aggregate device and read it with an IOProc.
 let aggDict: [String: Any] = [
-    kAudioAggregateDeviceNameKey as String: "partyparty tap",
-    kAudioAggregateDeviceUIDKey as String: "net.ramine.partyparty.tap." + desc.uuid.uuidString,
+    kAudioAggregateDeviceNameKey as String: "PartyParty tap",
+    kAudioAggregateDeviceUIDKey as String: "net.ramine.PartyParty.tap." + desc.uuid.uuidString,
     kAudioAggregateDeviceIsPrivateKey as String: true,
     kAudioAggregateDeviceTapAutoStartKey as String: true,
     kAudioAggregateDeviceTapListKey as String: [

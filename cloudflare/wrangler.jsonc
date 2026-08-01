@@ -1,7 +1,7 @@
 {
-  // partyparty.party - one Worker serves the static website and LAN broker.
+  // PartyParty.party - one Worker serves the static website and LAN broker.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "partyparty-site",
+  "name": "party-party-site",
   "main": "worker.js",
   "compatibility_date": "2026-07-07",
   "account_id": "4e958c1f2621ced0354e94826590e34f",
@@ -31,7 +31,7 @@
   // Needs the CF_DNS_TOKEN secret (wrangler secret put CF_DNS_TOKEN - Zone→DNS→Edit).
   "vars": {
     "BROKER_BASE": "partyparty.party",
-    // The partyparty.party zone - machine hostnames' grey A records and ACME
+    // The PartyParty.party zone - machine hostnames' grey A records and ACME
     // TXT challenges are written here.
     "CF_ZONE_ID": "f156a8f56d299f1d0451bbb9223c1f08"
   },

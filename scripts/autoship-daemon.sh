@@ -2,7 +2,7 @@
 # The autoship daemon: commits land on main, releases happen. No agent session
 # foregrounds a ship, watches one, or forgets one.
 #
-# Run by launchd (net.ramine.partyparty.autoship) every five minutes. Each pass
+# Run by launchd (net.ramine.PartyParty.autoship) every five minutes. Each pass
 # is bounded, locked, and quiet when there is nothing to do:
 #
 #   1. Fetch the canonical repo's main into a DEDICATED clone. The canonical
@@ -19,8 +19,8 @@
 # the point.
 set -euo pipefail
 
-CANONICAL="${PP_AUTOSHIP_SOURCE:-/Users/shokunin/dev/partyparty}"
-STATE_DIR="${PP_AUTOSHIP_STATE:-$HOME/Library/Application Support/partyparty-autoship}"
+CANONICAL="${PP_AUTOSHIP_SOURCE:-/Users/shokunin/dev/PartyParty}"
+STATE_DIR="${PP_AUTOSHIP_STATE:-$HOME/Library/Application Support/PartyParty-autoship}"
 CLONE="$STATE_DIR/clone"
 LOG="$STATE_DIR/autoship.log"
 RUN_CAPPED="/Users/shokunin/dev/stack/bin/run-capped"
@@ -137,7 +137,7 @@ if [ "$FAILED_SHA" = "$TARGET" ] && [ "$FAILURES" -ge "$MAX_FAILURES" ]; then
   if [ "$(state_get heldNotified)" != "$TARGET" ]; then
     state_set heldNotified "$TARGET"
     log "HOLD: $TARGET failed $FAILURES ships; waiting for a new commit"
-    osascript -e 'display notification "Autoship is holding a failing commit. See autoship.log." with title "partyparty autoship"' 2>/dev/null || true
+    osascript -e 'display notification "Autoship is holding a failing commit. See autoship.log." with title "PartyParty autoship"' 2>/dev/null || true
   fi
   exit 0
 fi
@@ -232,7 +232,7 @@ if [ "$PUBLIC_DUE" = "1" ] && [ "$STATUS" = "success" ]; then
   state_set lastPublicAt "$(date +%s)"
   state_set failedSha ""
   state_set failures 0
-  if "$CLONE/scripts/install-standalone-local.sh" "$CLONE/build/partyparty-beta.app" >>"$LOG" 2>&1; then
+  if "$CLONE/scripts/install-standalone-local.sh" "$CLONE/build/PartyParty-Beta.app" >>"$LOG" 2>&1; then
     state_set installed "$TARGET"
   else
     log "public ship succeeded but local install failed for $TARGET"

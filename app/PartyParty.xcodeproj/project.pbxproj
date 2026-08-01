@@ -30,7 +30,7 @@
 		200000000000000000000008 /* AppAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = AppAssets.xcassets; sourceTree = "<group>"; };
 		200000000000000000000009 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		20000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		20000000000000000000000B /* partyparty.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = partyparty.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		20000000000000000000000B /* PartyParty.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PartyParty.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000C /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -68,13 +68,13 @@
 				200000000000000000000007 /* main.swift */,
 				20000000000000000000000C /* Updater.swift */,
 			);
-			path = Sources/partyparty;
+			path = Sources/PartyParty;
 			sourceTree = "<group>";
 		};
 		400000000000000000000003 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				20000000000000000000000B /* partyparty.app */,
+				20000000000000000000000B /* PartyParty.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -82,9 +82,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		500000000000000000000001 /* partyparty */ = {
+		500000000000000000000001 /* PartyParty */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 900000000000000000000002 /* Build configuration list for PBXNativeTarget "partyparty" */;
+			buildConfigurationList = 900000000000000000000002 /* Build configuration list for PBXNativeTarget "PartyParty" */;
 			buildPhases = (
 				600000000000000000000001 /* Sources */,
 				300000000000000000000001 /* Frameworks */,
@@ -95,9 +95,9 @@
 			);
 			dependencies = (
 			);
-			name = partyparty;
-			productName = partyparty;
-			productReference = 20000000000000000000000B /* partyparty.app */;
+			name = PartyParty;
+			productName = PartyParty;
+			productReference = 20000000000000000000000B /* PartyParty.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -115,7 +115,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 900000000000000000000001 /* Build configuration list for PBXProject "partyparty" */;
+			buildConfigurationList = 900000000000000000000001 /* Build configuration list for PBXProject "PartyParty" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -128,7 +128,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				500000000000000000000001 /* partyparty */,
+				500000000000000000000001 /* PartyParty */,
 			);
 		};
 /* End PBXProject section */
@@ -213,7 +213,7 @@
 			buildSettings = {
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = "partyparty-app-store.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "PartyParty-app-store.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 233;
 				DEVELOPMENT_TEAM = 52WM463HR2;
@@ -223,7 +223,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 125.17;
 				PRODUCT_BUNDLE_IDENTIFIER = fm.partyparty.app;
-				PRODUCT_NAME = partyparty;
+				PRODUCT_NAME = PartyParty;
 				SKIP_INSTALL = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG APP_STORE";
 			};
@@ -234,7 +234,7 @@
 			buildSettings = {
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = "partyparty-app-store.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "PartyParty-app-store.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 233;
 				DEVELOPMENT_TEAM = 52WM463HR2;
@@ -244,7 +244,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
 				MARKETING_VERSION = 125.17;
 				PRODUCT_BUNDLE_IDENTIFIER = fm.partyparty.app;
-				PRODUCT_NAME = partyparty;
+				PRODUCT_NAME = PartyParty;
 				SKIP_INSTALL = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = APP_STORE;
 			};
@@ -253,7 +253,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		900000000000000000000001 /* Build configuration list for PBXProject "partyparty" */ = {
+		900000000000000000000001 /* Build configuration list for PBXProject "PartyParty" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				800000000000000000000001 /* Debug */,
@@ -262,7 +262,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		900000000000000000000002 /* Build configuration list for PBXNativeTarget "partyparty" */ = {
+		900000000000000000000002 /* Build configuration list for PBXNativeTarget "PartyParty" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				800000000000000000000003 /* Debug */,

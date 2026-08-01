@@ -4,12 +4,16 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestThumbWorkerProducesAndPersistsImageThumb(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a Unix shell stub for sips")
+	}
 	dir := t.TempDir()
 	sips := filepath.Join(dir, "sips")
 	if err := os.WriteFile(sips, []byte(`#!/bin/sh

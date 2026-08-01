@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-PKG="${1:-$PWD/dist/partyparty-app-store.pkg}"
+PKG="${1:-$PWD/dist/PartyParty-app-store.pkg}"
 
 fail() {
   echo "App Store package verification failed: $*" >&2
@@ -33,7 +33,7 @@ while IFS= read -r -d '' payload; do
   done < <(find "$payload" -type d -name '*.app' -print0)
 done < <(find "$work/package" -type d -name Payload -print0)
 [ "${#apps[@]}" -eq 1 ] || fail "expected one app payload, found ${#apps[@]}"
-[ "$(basename "${apps[0]}")" = "partyparty.app" ] ||
+[ "$(basename "${apps[0]}")" = "PartyParty.app" ] ||
   fail "unexpected app payload name: $(basename "${apps[0]}")"
 
 REQUIRE_APP_STORE_DISTRIBUTION=1 ./scripts/verify-app-store.sh "${apps[0]}"

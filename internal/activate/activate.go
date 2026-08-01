@@ -139,7 +139,7 @@ func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL string, logf
 }
 
 // TryBroker is the zero-config activation path (the Plex pattern): the install
-// registers with the partyparty.party cert broker once and gets a MEMORABLE
+// registers with the PartyParty.party cert broker once and gets a MEMORABLE
 // hostname (disco42.pp.example.net - no IP-encoded eyesores), issues an exact
 // cert for it locally (the private key never leaves this Mac; the broker only
 // publishes DNS records), and upserts the single A record to the current venue
@@ -495,12 +495,18 @@ func stateDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, "partyparty")
+	dir := filepath.Join(base, "PartyParty")
+	legacy := filepath.Join(base, "partyparty")
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+		if st, legacyErr := os.Stat(legacy); legacyErr == nil && st.IsDir() {
+			_ = os.Rename(legacy, dir)
+		}
+	}
 	return dir, os.MkdirAll(dir, 0o700)
 }
 
 // StateDir is the app's per-user state directory (certs, install creds, the OTA
-// payload cache) - ~/Library/Application Support/partyparty. Exported so other
+// payload cache) - ~/Library/Application Support/PartyParty. Exported so other
 // packages can cache alongside without re-deriving the path.
 func StateDir() (string, error) { return stateDir() }
 

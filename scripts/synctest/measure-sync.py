@@ -2,7 +2,7 @@
 """Measure device-to-device audio sync from a room recording of the click track.
 
 The click track (make-clicktrack.sh) plays a sharp 1kHz impulse every 2s through
-partyparty to every device. One mic (record-room.sh) hears the SUPERPOSITION of
+PartyParty to every device. One mic (record-room.sh) hears the SUPERPOSITION of
 all devices' clicks per event; the temporal spread of that burst IS the
 device-to-device spread - the one thing browser telemetry can never see (it
 includes the speaker/DAC/Bluetooth output path).

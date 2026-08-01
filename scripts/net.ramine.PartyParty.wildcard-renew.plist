@@ -2,11 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>net.ramine.partyparty.wildcard-renew</string>
+  <key>Label</key><string>net.ramine.PartyParty.wildcard-renew</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/shokunin/dev/partyparty/scripts/issue-wildcard.sh</string>
+    <string>/Users/shokunin/dev/PartyParty/scripts/issue-wildcard.sh</string>
   </array>
   <!-- launchd has a minimal PATH; pin homebrew (certbot/openssl) + nvm node (node/npx). -->
   <key>EnvironmentVariables</key>
@@ -20,8 +20,8 @@
     <dict><key>Day</key><integer>3</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>19</integer></dict>
     <dict><key>Day</key><integer>18</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>19</integer></dict>
   </array>
-  <key>StandardOutPath</key><string>/Users/shokunin/dev/partyparty/build/wildcard-renew.log</string>
-  <key>StandardErrorPath</key><string>/Users/shokunin/dev/partyparty/build/wildcard-renew.log</string>
+  <key>StandardOutPath</key><string>/Users/shokunin/dev/PartyParty/build/wildcard-renew.log</string>
+  <key>StandardErrorPath</key><string>/Users/shokunin/dev/PartyParty/build/wildcard-renew.log</string>
   <key>RunAtLoad</key><false/>
 </dict>
 </plist>

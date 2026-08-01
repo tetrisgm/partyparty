@@ -1,5 +1,5 @@
 [Unit]
-Description=partyparty relay origin (accepts pushed LL-HLS, serves guests)
+Description=PartyParty relay origin (accepts pushed LL-HLS, serves guests)
 After=network-online.target
 Wants=network-online.target
 

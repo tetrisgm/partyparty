@@ -3,12 +3,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-SOURCE_APP="${1:-$ROOT/build/partyparty-beta.app}"
+SOURCE_APP="${1:-$ROOT/build/PartyParty-Beta.app}"
 DEST_DIR="${PP_LOCAL_INSTALL_DIR:-$HOME/Applications}"
-DEST_APP="$DEST_DIR/partyparty beta.app"
-STAGED_APP="$DEST_DIR/.partyparty-beta.new.$$"
-OLD_APP="$DEST_DIR/.partyparty-beta.old.$$"
-EXECUTABLE="$DEST_APP/Contents/MacOS/partyparty"
+DEST_APP="$DEST_DIR/PartyParty Beta.app"
+STAGED_APP="$DEST_DIR/.PartyParty-Beta.new.$$"
+OLD_APP="$DEST_DIR/.PartyParty-Beta.old.$$"
+EXECUTABLE="$DEST_APP/Contents/MacOS/PartyParty"
 
 app_pids() {
   ps -axo pid=,command= | awk -v exe="$EXECUTABLE" '

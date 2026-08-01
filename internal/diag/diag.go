@@ -25,7 +25,7 @@ type Logger struct {
 	urgent  chan struct{} // nudges the uploader to ship NOW (a problem happened)
 }
 
-// Open creates ~/Library/Logs/partyparty/session-<ts>.log (Console.app finds
+// Open creates ~/Library/Logs/PartyParty/session-<ts>.log (Console.app finds
 // it there) and prunes logs older than 14 days.
 func Open(dir string) (*Logger, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {

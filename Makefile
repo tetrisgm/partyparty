@@ -1,4 +1,4 @@
-BINARY = partyparty
+BINARY = PartyParty
 GO ?= go
 SWIFT_SRC = swift/ppcapture.swift
 HELPER = assets/ppcapture
@@ -31,7 +31,7 @@ $(FFMPEG):
 helper: $(HELPER)
 
 build: $(HELPER) $(MEDIAMTX) $(FFMPEG)
-	$(GO) build -o $(BINARY) .
+	$(GO) build -tags embedhelpers -o $(BINARY) .
 
 run: build
 	./$(BINARY)

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-const delegate = read('app/Sources/partyparty/AppDelegate.swift');
+const delegate = read('app/Sources/PartyParty/AppDelegate.swift');
 for (const label of ['Open Guest QR', 'Open Console', 'Stop Set', 'Audio capture: Healthy']) {
   assert.ok(delegate.includes(label), `menu-bar contract is missing "${label}"`);
 }
@@ -23,14 +23,14 @@ for (const label of [
   assert.ok(delegate.includes(label), `menu-bar contract is missing "${label}"`);
 }
 
-const api = read('app/Sources/partyparty/APIClient.swift');
+const api = read('app/Sources/PartyParty/APIClient.swift');
 assert.match(api, /http:\/\/127\.0\.0\.1:\\\(port\)\/api\/stop/);
 assert.match(api, /req\.httpMethod = "POST"/);
 assert.doesNotMatch(api, /http:\/\/localhost:/);
 assert.match(api, /urls\["join"\] as\? String/);
 assert.match(api, /if o\["connection"\] is \[String: Any\]/);
 
-const consoleController = read('app/Sources/partyparty/AdminWindowController.swift');
+const consoleController = read('app/Sources/PartyParty/AdminWindowController.swift');
 assert.match(consoleController, /func showGuestQR\(\)/);
 assert.match(consoleController, /scrollIntoView/);
 

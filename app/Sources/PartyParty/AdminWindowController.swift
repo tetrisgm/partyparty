@@ -361,7 +361,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
                 if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
             }
         } catch {
-            NSLog("partyparty: login-item toggle failed: \(error)")
+            NSLog("PartyParty: login-item toggle failed: \(error)")
         }
     }
 

@@ -1,6 +1,6 @@
-# partyparty
+# PartyParty
 
-partyparty is a macOS menu-bar app that broadcasts a DJ set to phones on the
+PartyParty is a macOS menu-bar app that broadcasts a DJ set to phones on the
 same venue Wi-Fi. Guests scan the in-app QR code, open the HTTPS player, and
 keep listening when Safari is backgrounded or the phone is locked.
 
@@ -14,7 +14,7 @@ keep listening when Safari is backgrounded or the phone is locked.
 - The guest link is HTTPS and the stream is LL-HLS. There is no HTTP fallback.
 - iPhones use native HLS/AVPlayer. This is the only supported Apple playback
   engine because it is smooth and survives screen lock.
-- The venue provides Wi-Fi. partyparty does not create a hotspot, captive portal,
+- The venue provides Wi-Fi. PartyParty does not create a hotspot, captive portal,
   or Internet Sharing configuration.
 - The Mac selects one room-wide connection mode. Direct mode keeps traffic on
   venue Wi-Fi. If a phone proves that the Wi-Fi isolates nearby devices, relay

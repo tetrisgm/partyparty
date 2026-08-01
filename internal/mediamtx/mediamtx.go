@@ -47,7 +47,7 @@ func GenerateSelfSignedCert(certPath, keyPath string, ips, hosts []string) error
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "partyparty"},
+		Subject:               pkix.Name{CommonName: "PartyParty"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().AddDate(1, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

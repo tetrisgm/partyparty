@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#f5f5f7">
-<title>partyparty</title>
+<title>PartyParty</title>
 <style>
   /* Light, Apple-Snapshot/Apple-Music-web aesthetic: warm gray canvas, white
      cards with soft depth, one accent. Dark mode later - light first. */
@@ -727,7 +727,7 @@
     <button class="toptool" id="menuBtn" type="button" aria-label="Open menu" title="Menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
-    <div class="actiontitle" id="title">partyparty</div>
+    <div class="actiontitle" id="title">PartyParty</div>
     <div class="actionbar-tools">
       <button class="toptool" id="peopleBtn" type="button" aria-label="Show listeners" title="Listeners">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -1360,7 +1360,7 @@
     const pill = document.getElementById('pill');
     function setStatus(t){ setText(pilltext, t || ''); pill.style.display = (!t || t === 'live') ? 'none' : ''; }
     function setEventTitle(t){
-      const title = t || 'partyparty';
+      const title = t || 'PartyParty';
       setText(titleEl, title);
       updateMediaSessionMetadata();
     }
@@ -2310,7 +2310,7 @@
     player.addEventListener('seeking', () => {
       const audible = started && !player.muted && !userPaused && !yielded;
       if (audible) audibleSeeks++;
-      // partyparty never seeks a healthy native player. An audible seek comes
+      // PartyParty never seeks a healthy native player. An audible seek comes
       // from Safari, Control Center, or the guest and can move this phone away
       // from the room, so retain it as an important diagnostic.
       logEvent(audible ? 'external-seek' : 'seek',
@@ -2623,7 +2623,7 @@
         const nextGeneration = Number(syncState && syncState.generation) || nextStartedAt;
         const localStreamChanged = !!localStreamGeneration && !!nextGeneration && nextGeneration !== localStreamGeneration;
         localStreamGeneration = nextGeneration;
-        if (!document.body.dataset.eventTitle) setEventTitle(s.name || 'partyparty'); // feed owns the title once the event loads
+        if (!document.body.dataset.eventTitle) setEventTitle(s.name || 'PartyParty'); // feed owns the title once the event loads
         const wasLocalLive = localLive;
         const wasLocalStreamReady = localStreamReady;
         localLive = s.broadcast && s.broadcast.state === 'live';
@@ -2825,7 +2825,7 @@
     qrClose.addEventListener('click', () => qrOverlay.classList.remove('show'));
     qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) qrOverlay.classList.remove('show'); });
     if (nativeShareBtn) nativeShareBtn.addEventListener('click', async () => {
-      const shareData = { title: titleEl.textContent || 'partyparty', url: location.href };
+      const shareData = { title: titleEl.textContent || 'PartyParty', url: location.href };
       try {
         if (navigator.share) {
           await navigator.share(shareData);

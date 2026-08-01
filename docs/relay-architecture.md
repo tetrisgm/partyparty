@@ -346,7 +346,7 @@ Changes:
   on `/api/status`; add a persisted mode-override setting endpoint.
 - `web/dj.html`: copy for all five states, and the override control
   (Automatic, Prefer Direct, Prefer Relay, Local Only).
-- `app/Sources/partyparty/`: menu bar state text.
+- `app/Sources/PartyParty/`: menu bar state text.
 
 Tests: a table test over every (internet, resolver, probe, override)
 combination asserting mode and reason code; NO PATH is reached only when the
@@ -490,7 +490,7 @@ Running on the existing Oracle box in us-sanjose-1 that also serves
 chiptunes.app, at about 39 ms from the owner's Mac. Grey DNS for
 `relay.partyparty.party` and `*.relay.partyparty.party`, a wildcard certificate
 renewed by certbot and hot-reloaded without a restart, and systemd weights giving
-partyparty a roughly 25 to 1 CPU share under contention while leaving the radio
+PartyParty a roughly 25 to 1 CPU share under contention while leaving the radio
 untouched when no party is live.
 
 Verified in production: authenticated publish accepted, unauthenticated publish
@@ -550,7 +550,7 @@ the relayed stream from the origin, the DJ console reading "1 listening (1 via
 relay)", three feed requests in thirty-five seconds where there would have been
 two hundred thirty, and an offline server settling on LOCAL with the direct URL
 in its QR. Releases ship through a launchd daemon
-(net.ramine.partyparty.autoship) from a dedicated clone, gated on receipts,
+(net.ramine.PartyParty.autoship) from a dedicated clone, gated on receipts,
 with the Worker resolving release downloads from the bucket by name so a ship
 edits no source. The Worker cron probes the origin every minute and keeps
 outage transitions at /api/relay-canary. Every set writes its own report into

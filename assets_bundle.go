@@ -4,10 +4,10 @@ package main
 
 // Signed .app build (`go build -tags bundle`): the native helper binaries are NOT
 // embedded. They ship pre-signed (Developer ID + hardened runtime) inside
-// partyparty.app/Contents/Helpers/ and are run in place, so notarization covers
+// PartyParty.app/Contents/Helpers/ and are run in place, so notarization covers
 // them and the Screen-Recording/audio TCC grant stays anchored to a stable
 // on-disk identity across auto-updates. Resolved relative to the running
-// executable (Contents/MacOS/partyparty -> ../Helpers).
+// executable (Contents/MacOS/PartyParty -> ../Helpers).
 
 import (
 	"os"

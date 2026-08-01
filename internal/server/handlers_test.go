@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,6 +39,15 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+func isolateUserConfig(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("APPDATA", dir)
+	t.Setenv("LOCALAPPDATA", dir)
+}
+
 // newTestEnv builds a Srv over a stub ffmpeg, a temp run dir, an in-memory web
 // FS, and no MediaMTX (MTX nil → LL-HLS unavailable).
 func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
@@ -53,7 +63,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 		t.Fatal(err)
 	}
 	cfg := config.Config{
-		Port: 8000, TLSPort: 8443, Name: "partyparty",
+		Port: 8000, TLSPort: 8443, Name: "PartyParty",
 		Bitrate: "320k", Codec: "aac", Channels: 2, SampleRate: 48000,
 		HLSTime: 1, HLSList: 24, FFmpeg: stub,
 		Delivery: "llhls", RTSPPort: 8554, HLSPort: 8888, StreamPath: "party",
@@ -126,7 +136,7 @@ func TestStatusKeepsPausedListenersWithTheirDJ(t *testing.T) {
 		t.Fatalf("listener groups = %#v, want one DJ group", body["listenerGroups"])
 	}
 	playing := groups[0].(map[string]any)
-	if playing["dj"] != "partyparty" {
+	if playing["dj"] != "PartyParty" {
 		t.Fatalf("playing group DJ = %#v", playing["dj"])
 	}
 	playingListeners := playing["listeners"].([]any)
@@ -207,7 +217,7 @@ func TestStatusAdvertisesJoinURLWhileChecking(t *testing.T) {
 	// result depends on how the developer last used the app: setting the
 	// override to relay by hand made this test fail with mode "relay", which is
 	// a property of the machine rather than of the code under test.
-	t.Setenv("HOME", t.TempDir())
+	isolateUserConfig(t)
 	env := newTestEnv(t, nil)
 	env.srv.Relay = relay.New(relay.Config{})
 	env.srv.SetActivation("disco-party.party.partyparty.party")
@@ -240,7 +250,7 @@ func TestStatusWithNoRegistrationYetHasNoJoinURL(t *testing.T) {
 	// result depends on how the developer last used the app: setting the
 	// override to relay by hand made this test fail with mode "relay", which is
 	// a property of the machine rather than of the code under test.
-	t.Setenv("HOME", t.TempDir())
+	isolateUserConfig(t)
 	env := newTestEnv(t, nil)
 	env.srv.Relay = relay.New(relay.Config{})
 	env.srv.SetActivation("disco-party.party.partyparty.party")
@@ -335,7 +345,7 @@ func TestStatusEndpoint(t *testing.T) {
 		t.Fatalf("content-type = %q", ct)
 	}
 	body := decodeJSON(t, w)
-	if body["name"] != "partyparty" || body["appVersion"] != "test-1.2.3" {
+	if body["name"] != "PartyParty" || body["appVersion"] != "test-1.2.3" {
 		t.Errorf("name/appVersion wrong: %v / %v", body["name"], body["appVersion"])
 	}
 	bc, ok := body["broadcast"].(map[string]any)
@@ -1105,6 +1115,9 @@ func TestDJControlEndpointsRejectedFromLAN(t *testing.T) {
 }
 
 func TestStartValidationAndLifecycle(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a Unix shell ffmpeg stub")
+	}
 	env := newTestEnv(t, nil)
 
 	w := do(env.srv, "POST", "/api/start", djAddr)

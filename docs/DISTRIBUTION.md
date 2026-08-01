@@ -1,6 +1,6 @@
 # Distribution
 
-partyparty has two isolated macOS distribution channels built from the same
+PartyParty has two isolated macOS distribution channels built from the same
 clean `main` commit.
 
 ## Mac App Store

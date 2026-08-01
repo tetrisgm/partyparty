@@ -1,10 +1,10 @@
-//go:build !bundle
+//go:build !bundle && embedhelpers
 
 package main
 
-// Default (dev / `go run` / `make`) build: the native helper binaries are
-// embedded in the Go binary and extracted to the run dir at startup. This keeps
-// a single self-contained binary for development and testing.
+// `make build` build: the native helper binaries are embedded in the Go binary
+// and extracted to the run dir at startup. This keeps a single self-contained
+// binary for local development and testing after make has regenerated helpers.
 //
 // The signed .app build uses `-tags bundle` instead (see assets_bundle.go), where
 // the helpers ship pre-signed in Contents/Helpers/ so notarization covers them.

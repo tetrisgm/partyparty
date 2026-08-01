@@ -54,7 +54,7 @@ VERSION="${PP_VERSION:-$(derive_version)}"
 # plus one.
 derive_build() {
   local from_map from_feed
-  from_map=$(grep -oE 'partyparty-[0-9.]+-([0-9]+)\.zip' "$ROOT/cloudflare/worker.js" 2>/dev/null |
+  from_map=$(grep -oE 'PartyParty-[0-9.]+-([0-9]+)\.zip' "$ROOT/cloudflare/worker.js" 2>/dev/null |
     sed -E 's/.*-([0-9]+)\.zip/\1/' | sort -n | tail -1)
   from_feed=$(curl -fsS --max-time 20 https://partyparty.party/appcast.xml 2>/dev/null |
     grep -oE '<sparkle:version>[0-9]+</sparkle:version>' |
@@ -90,7 +90,7 @@ receipts, version, build, commit, stage, status, error = sys.argv[1:8]
 receipt = {
     "version": version, "build": int(build), "commit": commit,
     "status": status, "stage": stage, "finishedAt": int(time.time()),
-    "downloadUrl": f"https://partyparty.party/downloads/partyparty-{version}-{build}.zip",
+    "downloadUrl": f"https://partyparty.party/downloads/PartyParty-{version}-{build}.zip",
 }
 if error:
     receipt["error"] = error[-2000:]
@@ -116,9 +116,9 @@ on_exit() {
   fi
 }
 trap on_exit EXIT
-APP="$ROOT/build/partyparty-beta.app"
+APP="$ROOT/build/PartyParty-Beta.app"
 RELEASE_DIR="$ROOT/dist/standalone-$VERSION-$BUILD"
-ZIP_NAME="partyparty-$VERSION-$BUILD.zip"
+ZIP_NAME="PartyParty-$VERSION-$BUILD.zip"
 ZIP="$RELEASE_DIR/$ZIP_NAME"
 APPCAST="$RELEASE_DIR/appcast.xml"
 WRANGLER="$ROOT/cloudflare/node_modules/.bin/wrangler"
@@ -183,7 +183,7 @@ STAGE="publish"
   # updater 404ed) and then of a failed ship (the step crashed mid-publish), and
   # the class is closed by there being nothing to register.
   "$WRANGLER" r2 object put "partyparty-dl/standalone/$ZIP_NAME" --file "$ZIP" --content-type application/zip --remote
-  "$WRANGLER" r2 object put "partyparty-dl/standalone/partyparty-beta.zip" --file "$ZIP" --content-type application/zip --remote
+  "$WRANGLER" r2 object put "partyparty-dl/standalone/PartyParty-Beta.zip" --file "$ZIP" --content-type application/zip --remote
   "$WRANGLER" r2 object put "partyparty-dl/standalone/appcast.xml" --file "$APPCAST" --content-type application/xml --remote
 )
 

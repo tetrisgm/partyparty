@@ -6,4 +6,4 @@ cd "$(dirname "$0")/.."
 : "${PP_BUILD:?set PP_BUILD to the next standalone build}"
 
 ./scripts/build-standalone.sh
-./scripts/install-standalone-local.sh ./build/partyparty-beta.app
+./scripts/install-standalone-local.sh ./build/PartyParty-Beta.app

@@ -253,7 +253,7 @@ export function analyzeText(text, source = '<stdin>') {
 }
 
 function latestLog() {
-  const dir = path.join(os.homedir(), 'Library', 'Logs', 'partyparty');
+  const dir = path.join(os.homedir(), 'Library', 'Logs', 'PartyParty');
   try {
     return fs.readdirSync(dir)
       .filter((name) => /^session-.*\.log$/.test(name))
@@ -309,7 +309,7 @@ async function main(argv) {
   const files = argv.filter((arg) => !arg.startsWith('--'));
   const target = files[0] || latestLog();
   if (!target) {
-    console.error('No session log supplied and none found in ~/Library/Logs/partyparty.');
+    console.error('No session log supplied and none found in ~/Library/Logs/PartyParty.');
     process.exit(1);
   }
   const summary = analyzeText(fs.readFileSync(target, 'utf8'), target);

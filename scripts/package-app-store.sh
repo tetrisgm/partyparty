@@ -38,13 +38,13 @@ if [ "$APP_STORE_PROVISIONING_PROFILE" != "$INSTALLED_PROFILE" ]; then
   install -m 644 "$APP_STORE_PROVISIONING_PROFILE" "$INSTALLED_PROFILE"
 fi
 
-ARCHIVE="$PWD/build/partyparty.xcarchive"
+ARCHIVE="$PWD/build/PartyParty.xcarchive"
 EXPORT_DIR="$PWD/build/app-store-export"
 rm -rf "$ARCHIVE" "$EXPORT_DIR"
 
 xcodebuild \
-  -project "$PWD/app/partyparty.xcodeproj" \
-  -scheme partyparty \
+  -project "$PWD/app/PartyParty.xcodeproj" \
+  -scheme PartyParty \
   -configuration Release \
   -destination "generic/platform=macOS" \
   -archivePath "$ARCHIVE" \
@@ -55,7 +55,7 @@ xcodebuild \
   PP_SIGN_KEYCHAIN="${APP_STORE_KEYCHAIN:-}" \
   archive
 
-ARCHIVED_APP="$ARCHIVE/Products/Applications/partyparty.app"
+ARCHIVED_APP="$ARCHIVE/Products/Applications/PartyParty.app"
 REQUIRE_APP_STORE_DISTRIBUTION=1 ./scripts/verify-app-store.sh "$ARCHIVED_APP"
 ARCHIVE_HOST_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :BuildMachineOSBuild' "$ARCHIVED_APP/Contents/Info.plist")"
 [ "$ARCHIVE_HOST_BUILD" = "$HOST_OS_BUILD" ] || {
@@ -87,9 +87,9 @@ EXPORTED_PKG="$(find "$EXPORT_DIR" -maxdepth 1 -type f -name '*.pkg' -print -qui
   exit 1
 }
 mkdir -p dist
-cp "$EXPORTED_PKG" "$PWD/dist/partyparty-app-store.pkg"
+cp "$EXPORTED_PKG" "$PWD/dist/PartyParty-app-store.pkg"
 
-./scripts/verify-app-store-package.sh "$PWD/dist/partyparty-app-store.pkg"
+./scripts/verify-app-store-package.sh "$PWD/dist/PartyParty-app-store.pkg"
 
 # Upload sends the build to App Store Connect, where it lands in TestFlight
 # processing. It does NOT submit anything for App Store review; that remains a
@@ -106,7 +106,7 @@ if [ "${APP_STORE_UPLOAD:-0}" = "1" ]; then
   export ASC_STRICT_AUTH=true
   asc builds upload \
     --app "$APP_STORE_APP_ID" \
-    --pkg "$PWD/dist/partyparty-app-store.pkg" \
+    --pkg "$PWD/dist/PartyParty-app-store.pkg" \
     --version "$APP_VERSION" \
     --build-number "$APP_BUILD" \
     --wait \
@@ -114,4 +114,4 @@ if [ "${APP_STORE_UPLOAD:-0}" = "1" ]; then
     --output json
 fi
 
-echo "built dist/partyparty-app-store.pkg"
+echo "built dist/PartyParty-app-store.pkg"

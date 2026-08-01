@@ -10,10 +10,10 @@ VERSION="${PP_VERSION:-124.14}"
 # a number that cannot be delivered should look wrong immediately rather than
 # blend in.
 BUILD="${PP_BUILD:-0}"
-APP="$ROOT/build/partyparty-beta.app"
+APP="$ROOT/build/PartyParty-Beta.app"
 SWIFT_BIN="$ROOT/app/.build/arm64-apple-macosx/release"
 SIGN_ID="${PP_SIGN_ID:-}"
-CAPTURE_ENT="$ROOT/app/partyparty-standalone.entitlements"
+CAPTURE_ENT="$ROOT/app/PartyParty-standalone.entitlements"
 
 if [ -z "$SIGN_ID" ]; then
   SIGN_ID="$(security find-identity -p codesigning -v 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')"
@@ -34,16 +34,17 @@ go build -tags bundle -ldflags "-X main.appVersion=$VERSION" \
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
-cp "$SWIFT_BIN/partyparty" "$APP/Contents/MacOS/partyparty"
+cp "$SWIFT_BIN/PartyParty" "$APP/Contents/MacOS/PartyParty"
 cp "$ROOT/build/partyparty-server" "$ROOT/assets/ffmpeg" "$ROOT/assets/mediamtx" "$ROOT/assets/ppcapture" "$APP/Contents/Helpers/"
 cp -R "$SWIFT_BIN/Sparkle.framework" "$APP/Contents/Frameworks/"
-install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/partyparty" 2>/dev/null || true
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PartyParty" 2>/dev/null || true
 cp "$ROOT/app/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT/app/PrivacyInfo.xcprivacy" "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 cp "$ROOT/app/Info.plist" "$APP/Contents/Info.plist"
 
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName partyparty beta" "$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName partyparty beta" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PartyParty Beta" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable PartyParty" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName PartyParty Beta" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier fm.partyparty.beta" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Contents/Info.plist"
@@ -69,7 +70,7 @@ for helper in mediamtx ffmpeg partyparty-server; do
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/Helpers/$helper"
 done
 codesign --force --options runtime --timestamp --entitlements "$CAPTURE_ENT" --sign "$SIGN_ID" "$APP/Contents/Helpers/ppcapture"
-codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/partyparty"
+codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/PartyParty"
 codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
 
 "$ROOT/scripts/verify-standalone.sh" "$APP" "$VERSION" "$BUILD"

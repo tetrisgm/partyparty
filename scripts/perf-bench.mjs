@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// partyparty web perf bench - the stack `perf` skill's "measure first, never
-// guess" harness, adapted to partyparty's guest hot path (listener.html).
+// PartyParty web perf bench - the stack `perf` skill's "measure first, never
+// guess" harness, adapted to PartyParty's guest hot path (listener.html).
 //
 // The skill's one idea: perceived speed is intent -> visible feedback. For a
 // guest that means join -> first audio, and the biggest thing in the way is
@@ -132,7 +132,7 @@ async function measure(playwright, base, kind) {
   }
   server.close();
 
-  console.log('\n=== partyparty listener vendor-byte bench ===');
+  console.log('\n=== PartyParty listener vendor-byte bench ===');
   console.log('(vendor JS the guest downloads before first audio, by device path)\n');
   for (const r of rows) {
     console.log(`  ${r.kind.padEnd(7)}  on-load: ${(r.onLoad / 1024).toFixed(0).padStart(4)}KB  [${r.onLoadList}]`);

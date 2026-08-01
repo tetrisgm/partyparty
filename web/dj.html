@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>partyparty - DJ console</title>
+<title>PartyParty - DJ console</title>
 <style>
   /* The console reads as the event page first; DJ controls are explicit states. */
   :root{
@@ -488,7 +488,7 @@
      Go Live - lives up here. Below it, the page IS the event. -->
 <div id="actionbar">
   <div class="abinner">
-    <span class="brandmark">🕺 partyparty</span>
+    <span class="brandmark">🕺 PartyParty</span>
     <span class="abspacer"></span>
     <div class="source-picker">
       <div class="source-step">
@@ -513,7 +513,7 @@
   <div id="bcnote" class="warn" style="display:none">
     <div id="bcnoteText"></div>
     <button class="ghost" id="audioPermBtn" style="display:none;margin-top:10px;width:100%">Open System Audio Recording Only</button>
-    <div class="hint" id="capturePermHint" style="display:none;margin:6px 0 0">Turn on partyparty in the list.</div>
+    <div class="hint" id="capturePermHint" style="display:none;margin:6px 0 0">Turn on PartyParty in the list.</div>
   </div>
 
   <div class="eventtop">
@@ -695,11 +695,11 @@
         <button class="ghost" id="supportBtn" type="button">Support</button>
       </div>
       <div id="inapp" style="display:none;margin-top:14px">
-        <label class="inapp-check"><input type="checkbox" id="loginItem"> Start partyparty at login</label>
-        <div class="hint" style="margin:5px 0 0">Optional. partyparty stays off at login unless you enable this.</div>
+        <label class="inapp-check"><input type="checkbox" id="loginItem"> Start PartyParty at login</label>
+        <div class="hint" style="margin:5px 0 0">Optional. PartyParty stays off at login unless you enable this.</div>
       </div>
       <button class="ghost" id="permBtnAlways" style="display:none;margin-top:14px;width:100%;font-size:12px">Open audio privacy settings →</button>
-      <div class="hint" id="permBtnHint" style="display:none;margin:5px 0 0">Turn on partyparty in the list.</div>
+      <div class="hint" id="permBtnHint" style="display:none;margin:5px 0 0">Turn on PartyParty in the list.</div>
       <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session - hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
     </section>
 
@@ -995,9 +995,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const state = effectiveCapturePermissionState();
     if (state === 'denied') {
       if (capturePermission.kind === 'microphone') {
-        return 'Microphone access is off for partyparty. Open Microphone settings and turn on partyparty in the list.';
+        return 'Microphone access is off for PartyParty. Open Microphone settings and turn on PartyParty in the list.';
       }
-      return 'System Audio Recording is off for partyparty. Open System Audio Recording Only and turn on partyparty.';
+      return 'System Audio Recording is off for PartyParty. Open System Audio Recording Only and turn on PartyParty.';
     }
     return '';
   }
@@ -1069,7 +1069,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const room = spreadOf(roster);
     const secs = (ms) => (ms/1000).toFixed(2) + ' s';
     const L = [];
-    L.push('partyparty sync report');
+    L.push('PartyParty sync report');
     L.push(new Date().toLocaleString() + ' · app v' + (s.appVersion || '?'));
     L.push('');
     L.push('Listeners: ' + roster.length + ' · HTTPS LL-HLS');
@@ -1172,8 +1172,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       s.connection.internetOk === false && mode === 'no_path' && s.connection.reason === 'resolver_mismatch'
       ? `http://${lan.expectedIp}:${lan.guestPort}/`
       : '';
-    const link = secure && guestUrl ? guestUrl : httpFallback;
-    const linkReady = !!link;
+    const linkReady = !!guestUrl && secure;
     if (linkReady) {
       $('qr').hidden = false;
       $('qrPending').hidden = true;
@@ -1181,10 +1180,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       networkStatus.hidden = false;
       networkStatus.className = 'qr-network-status' +
         ((mode === 'direct' || mode === 'local') ? ' ready'
-          : ((mode === 'relay' || mode === 'no_path') ? ' relay' : ''));
-      networkStatus.textContent = httpFallback
-        ? 'Emergency local HTTP link. Locked-screen playback is not guaranteed.'
-        : (!s
+        : ((mode === 'relay' || mode === 'no_path') ? ' relay' : ''));
+      networkStatus.textContent = !s
         ? 'Secure link ready. Checking this Wi-Fi.'
         : (mode === 'relay'
           ? 'Internet relay active.'
@@ -1194,8 +1191,18 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
               ? 'Local Wi-Fi connection. No internet needed.'
               : (mode === 'no_path'
                 ? 'Guests cannot reach the party on this Wi-Fi.'
-                : 'Scan once to check this Wi-Fi.')))));
-      renderQR(link);
+                : 'Scan once to check this Wi-Fi.'))));
+      renderQR(guestUrl);
+      return;
+    }
+    if (httpFallback) {
+      $('qr').hidden = false;
+      $('qrPending').hidden = true;
+      const networkStatus = $('qrNetworkStatus');
+      networkStatus.hidden = false;
+      networkStatus.className = 'qr-network-status relay';
+      networkStatus.textContent = 'Emergency local HTTP link. Locked-screen playback is not guaranteed.';
+      renderQR(httpFallback);
       return;
     }
     $('qr').hidden = true;
@@ -1687,7 +1694,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const active = document.activeElement;
       if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm(eventEditField);
     }
-    document.title = (eventMeta.title ? eventMeta.title + ' - ' : '') + 'partyparty';
+    document.title = (eventMeta.title ? eventMeta.title + ' - ' : '') + 'PartyParty';
   }
 
   // ── The party wall (DJ view): render + post + comment + moderate + curate ──

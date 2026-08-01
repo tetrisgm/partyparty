@@ -1,10 +1,10 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var STANDALONE_DOWNLOAD = "/partyparty-beta.zip";
+var STANDALONE_DOWNLOAD = "/PartyParty-Beta.zip";
 var STANDALONE_FILES = {
   "/appcast.xml": { key: "standalone/appcast.xml", type: "application/xml; charset=utf-8", cache: "public, max-age=300" },
-  "/partyparty-beta.zip": { key: "standalone/partyparty-beta.zip", type: "application/zip", cache: "public, max-age=300", download: "partyparty-beta.zip" }
+  "/PartyParty-Beta.zip": { key: "standalone/PartyParty-Beta.zip", type: "application/zip", cache: "public, max-age=300", download: "PartyParty-Beta.zip" }
 };
 // Versioned release downloads are resolved from R2 BY NAME, never from a map in
 // this source. The map version of this shipped a release whose zip was uploaded
@@ -12,7 +12,7 @@ var STANDALONE_FILES = {
 // from a ship that passed all its gates. A name either exists in the bucket or
 // it does not; there is no registry to forget to update, and shipping a release
 // no longer edits or redeploys this Worker at all.
-var STANDALONE_RELEASE = /^\/downloads\/(partyparty-\d+(?:\.\d+)*-\d+\.zip)$/;
+var STANDALONE_RELEASE = /^\/downloads\/(PartyParty-\d+(?:\.\d+)*-\d+\.zip)$/;
 
 // The published appcast is the single source of truth for what version is out:
 // it is the artifact Sparkle updates from, uploaded as the LAST step of a ship.
@@ -102,7 +102,7 @@ footer{max-width:760px;margin:0 auto;padding:24px 20px 48px;color:var(--ink3);fo
 @media(max-width:560px){.sectionhead{display:grid}.navlinks .btn:first-child{display:none}}
 `;
 var SVGDEFS = "";
-var NAV = `<nav><a class="brand" href="/">partyparty</a><div class="navlinks"><span class="btn lt sm">Coming to the Mac App Store</span></div></nav>`;
+var NAV = `<nav><a class="brand" href="/">PartyParty</a><div class="navlinks"><span class="btn lt sm">Coming to the Mac App Store</span></div></nav>`;
 var TOAST_JS = "";
 function shell({ title, desc, ogImage, url, body }) {
   const pageUrl = absUrl(url || "/");
@@ -112,7 +112,7 @@ function shell({ title, desc, ogImage, url, body }) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
-<meta property="og:type" content="website"><meta property="og:url" content="${esc(pageUrl)}"><meta property="og:site_name" content="partyparty"><meta property="og:image" content="${esc(imageUrl)}">
+<meta property="og:type" content="website"><meta property="og:url" content="${esc(pageUrl)}"><meta property="og:site_name" content="PartyParty"><meta property="og:image" content="${esc(imageUrl)}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(imageUrl)}">
 <meta name="theme-color" content="#f5f5f7"><meta name="color-scheme" content="light">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u{1F57A}</text></svg>">
@@ -125,37 +125,37 @@ function legalResponse(pathname) {
     <div class="card">
       <h1>Privacy policy</h1>
       <p class="sub">Effective July 26, 2026</p>
-      <h2>What partyparty does</h2>
-      <p>On ordinary venue Wi-Fi, the Mac app serves live audio and the active party room directly to guests. If the Wi-Fi prevents nearby devices from connecting, the Mac can select relay mode so encrypted guest requests and live audio pass through partyparty's Cloudflare service while the room is active.</p>
+      <h2>What PartyParty does</h2>
+      <p>On ordinary venue Wi-Fi, the Mac app serves live audio and the active party room directly to guests. If the Wi-Fi prevents nearby devices from connecting, the Mac can select relay mode so encrypted guest requests and live audio pass through PartyParty's Cloudflare service while the room is active.</p>
       <h2>Relay mode</h2>
-      <p>Relay mode is a live transport, not cloud party storage. Live audio, listening status, text posts, reactions, and still photos pass through to the DJ's Mac and are not retained by partyparty. Photo transfer is capped and throttled so music stays first. Videos are unavailable in relay mode and do not enter the relay. Short rolling HLS media parts and still photos may be cached for up to 60 seconds to avoid repeatedly uploading identical bytes from the Mac. There are no cloud recordings, replays, or public event pages.</p>
+      <p>Relay mode is a live transport, not cloud party storage. Live audio, listening status, text posts, reactions, and still photos pass through to the DJ's Mac and are not retained by PartyParty. Photo transfer is capped and throttled so music stays first. Videos are unavailable in relay mode and do not enter the relay. Short rolling HLS media parts and still photos may be cached for up to 60 seconds to avoid repeatedly uploading identical bytes from the Mac. There are no cloud recordings, replays, or public event pages.</p>
       <h2>Secure room address</h2>
       <p>Each installation receives a random credential and a two-word hostname used only to provision its certificate-backed local room address. This infrastructure identifier is not connected to a PartyParty account or profile.</p>
       <h2>Diagnostics</h2>
       <p>The Mac App Store edition keeps diagnostics on the Mac and does not upload session logs or status telemetry. Cloudflare may process ordinary request metadata needed to operate and secure the website and certificate broker.</p>
       <h2>Sharing and tracking</h2>
-      <p>partyparty does not sell personal data, track people across apps or websites, or use infrastructure data for advertising.</p>
+      <p>PartyParty does not sell personal data, track people across apps or websites, or use infrastructure data for advertising.</p>
       <h2>Contact</h2>
-      <p>Questions or privacy requests: <a href="mailto:support@partyparty.party"><u>support@partyparty.party</u></a>.</p>
+      <p>Questions or privacy requests: <a href="mailto:support@partyparty.party"><u>support@PartyParty.party</u></a>.</p>
     </div>
   </div>` : `<div class="page">
     <div class="card">
       <h1>Support</h1>
-      <p class="sub">Help with partyparty for Mac.</p>
+      <p class="sub">Help with PartyParty for Mac.</p>
       <h2>Contact</h2>
-      <p>Email <a href="mailto:support@partyparty.party"><u>support@partyparty.party</u></a> with the app version, macOS version, and a short description of what happened.</p>
+      <p>Email <a href="mailto:support@partyparty.party"><u>support@PartyParty.party</u></a> with the app version, macOS version, and a short description of what happened.</p>
       <h2>Before a party</h2>
-      <p>Connect the Mac and guests to the venue Wi-Fi, open partyparty, select the audio source, and use the displayed HTTPS QR code. Guests need no account and can keep listening while their iPhone is locked.</p>
+      <p>Connect the Mac and guests to the venue Wi-Fi, open PartyParty, select the audio source, and use the displayed HTTPS QR code. Guests need no account and can keep listening while their iPhone is locked.</p>
       <h2>Privacy</h2>
       <p>Read the <a href="/privacy"><u>privacy policy</u></a>.</p>
     </div>
   </div>`;
   return new Response(shell({
-    title: `${privacy ? "Privacy" : "Support"} \xB7 partyparty`,
-    desc: privacy ? "How partyparty handles local party and infrastructure data." : "Support for partyparty on Mac.",
+    title: `${privacy ? "Privacy" : "Support"} \xB7 PartyParty`,
+    desc: privacy ? "How PartyParty handles local party and infrastructure data." : "Support for PartyParty on Mac.",
     ogImage: DEFAULT_OG_IMAGE,
     url: pathname,
-    body: body + `<footer><span>partyparty</span><span><a href="/privacy">Privacy</a> \xB7 <a href="/support">Support</a></span></footer>`
+    body: body + `<footer><span>PartyParty</span><span><a href="/privacy">Privacy</a> \xB7 <a href="/support">Support</a></span></footer>`
   }), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } });
 }
 var jsonResp = (status, obj, headers = void 0) => {

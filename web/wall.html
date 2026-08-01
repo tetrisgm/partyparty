@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#050509">
-<title>partyparty wall</title>
+<title>PartyParty wall</title>
 <style>
   :root{
     color-scheme:dark;
@@ -91,7 +91,7 @@
       <section class="join">
         <div class="eyebrow">Join</div>
         <div class="qrwrap"><div id="qr"></div></div>
-        <div class="joinline">Scan to join · <span id="joinName">partyparty</span></div>
+        <div class="joinline">Scan to join · <span id="joinName">PartyParty</span></div>
         <div class="url" id="joinUrl"></div>
       </section>
       <section class="statbox">
@@ -108,7 +108,7 @@
       <div class="head">
         <div class="title">
           <div class="host" id="hostLine">the DJ is hosting</div>
-          <h1 id="eventTitle">partyparty</h1>
+          <h1 id="eventTitle">PartyParty</h1>
         </div>
         <div class="livepill" id="livePill">Live</div>
       </div>
@@ -149,7 +149,7 @@
     function partyName(data){
       const title = data && data.title || '';
       const host = data && data.host || '';
-      return title || host || 'partyparty';
+      return title || host || 'PartyParty';
     }
     function setWallEnabled(on){
       wallOn = on;
@@ -206,12 +206,12 @@
       }
     }
     function updateIdentity(data){
-      const title = data.title || 'partyparty';
+      const title = data.title || 'PartyParty';
       const host = data.host || 'the DJ';
       $('eventTitle').textContent = title;
       $('joinName').textContent = title || host;
       $('hostLine').textContent = host + ' is hosting';
-      document.title = (title || 'partyparty') + ' wall';
+      document.title = (title || 'PartyParty') + ' wall';
     }
     function renderNowPlaying(data){
       const track = data && data.nowPlaying;

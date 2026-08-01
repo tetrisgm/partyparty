@@ -86,9 +86,9 @@ func main() {
 
 	var diagLog *diag.Logger
 
-	// Resolve the capture helper + ffmpeg. In the default build these extract from
-	// the embedded copies; in the signed .app build (-tags bundle) they resolve to
-	// the pre-signed binaries in Contents/Helpers/.
+	// Resolve the capture helper + ffmpeg. `make build` embeds generated helpers;
+	// clean dev builds copy local assets when present. The signed .app build
+	// (-tags bundle) resolves pre-signed binaries in Contents/Helpers/.
 	helperPath := helperPPCapture(runDir)
 	if cfg.FFmpeg == "ffmpeg" {
 		if p := helperFFmpeg(runDir); p != "" {
@@ -184,16 +184,16 @@ func main() {
 		log.Printf("mediamtx binary unavailable - LL-HLS cannot start")
 	}
 	// Session diagnostics (the Plex model): one verbose file per run in
-	// ~/Library/Logs/partyparty, teeing the stdlib logger AND the broadcast
+	// ~/Library/Logs/PartyParty, teeing the stdlib logger AND the broadcast
 	// log ring, plus structured events (hardware, activation, guest joins,
 	// room snapshots). Shipped to the cloud below so field problems can be
 	// diagnosed without asking anyone to screenshot a console.
 	if home, err := os.UserHomeDir(); err == nil {
-		if dl, err := diag.Open(filepath.Join(home, "Library", "Logs", "partyparty")); err == nil {
+		if dl, err := diag.Open(filepath.Join(home, "Library", "Logs", "PartyParty")); err == nil {
 			diagLog = dl
 			log.SetOutput(io.MultiWriter(os.Stderr, diagLog))
 			id, _ := activate.InstallCreds()
-			diagLog.Printf("partyparty v%s starting (%s)", appVersion, diagLog.Session())
+			diagLog.Printf("PartyParty v%s starting (%s)", appVersion, diagLog.Session())
 			diagLog.Printf("system: macOS %s · %s · %s", cmdOut("sw_vers", "-productVersion"), cmdOut("sysctl", "-n", "hw.model"), runtime.GOARCH)
 			diagLog.Printf("install: id=%s host_label=%s", id, activate.InstallHostLabel())
 			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
@@ -368,7 +368,7 @@ func main() {
 	}
 	if err != nil {
 		if errors.Is(err, syscall.EADDRINUSE) {
-			fmt.Printf("\n  Port %d is already in use. Try: partyparty --port 8001\n\n", cfg.Port)
+			fmt.Printf("\n  Port %d is already in use. Try: PartyParty --port 8001\n\n", cfg.Port)
 			os.Exit(1)
 		}
 		log.Fatal(err)
@@ -528,7 +528,7 @@ func main() {
 		}
 	} else {
 		log.Printf("tls listener failed on :%d: %v - the https guest link is unavailable", cfg.TLSPort, err)
-		handler.SetActivationPending(fmt.Sprintf("port %d is taken by another app - quit it and relaunch partyparty", cfg.TLSPort))
+		handler.SetActivationPending(fmt.Sprintf("port %d is taken by another app - quit it and relaunch PartyParty", cfg.TLSPort))
 	}
 
 	// Start serving the console only after synchronous cached activation and
@@ -544,7 +544,7 @@ func main() {
 	// Background low-latency activation (the Plex pattern) - the console is
 	// already serving; this never blocks startup. Two paths, both fail-soft:
 	// BYO (live-host + user's Cloudflare token) or the zero-config cert broker
-	// at partyparty.party (per-install hostname + DNS-01 cert).
+	// at PartyParty.party (per-install hostname + DNS-01 cert).
 	// Cached-cert activation above is local-only and does not wait for this loop.
 	// Online refresh keeps DNS and the cert current without changing stream mode.
 	if cfg.CertFile == "" && mtx != nil && applyActivation != nil {
@@ -646,7 +646,7 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Println("  partyparty is running")
+	fmt.Println("  PartyParty is running")
 	fmt.Println("  ───────────────────────────────────────────────")
 	fmt.Printf("  DJ console :  http://localhost:%d/dj\n", cfg.Port)
 	fmt.Println("  Guests     :  secure venue-Wi-Fi link shown in the console")
@@ -865,11 +865,11 @@ func humanizeActivation(reason string) string {
 	r := strings.ToLower(reason)
 	switch {
 	case strings.Contains(r, "link this mac") || strings.Contains(r, "account link"):
-		return "link this Mac to your partyparty account before secure low-latency setup can finish"
+		return "link this Mac to your PartyParty account before secure low-latency setup can finish"
 	case strings.Contains(r, "acme") || strings.Contains(r, "letsencrypt") || strings.Contains(r, "let's encrypt"):
 		return "the free certificate service (Let's Encrypt) isn't answering right now - retrying automatically, this usually clears in a few minutes"
 	case strings.Contains(r, "register") || strings.Contains(r, "broker") || strings.Contains(r, "partyparty.party"):
-		return "can't reach the partyparty setup service - check the internet connection; retrying automatically"
+		return "can't reach the PartyParty setup service - check the internet connection; retrying automatically"
 	case strings.Contains(r, "resolve") || strings.Contains(r, "dns"):
 		return "waiting for the new address to become reachable (DNS) - retrying automatically"
 	case strings.Contains(r, "no lan") || strings.Contains(r, "network"):

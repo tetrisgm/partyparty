@@ -5,18 +5,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 DERIVED="$ROOT/build/xcode-app-store-dev"
-BUILT_APP="$DERIVED/Build/Products/Debug/partyparty.app"
-DEST_DIR="${PP_LOCAL_STORE_INSTALL_DIR:-$HOME/Applications/partyparty Store Development}"
-DEST_APP="$DEST_DIR/partyparty.app"
+BUILT_APP="$DERIVED/Build/Products/Debug/PartyParty.app"
+DEST_DIR="${PP_LOCAL_STORE_INSTALL_DIR:-$HOME/Applications/PartyParty Store Development}"
+DEST_APP="$DEST_DIR/PartyParty.app"
 STAGED_DIR="$DEST_DIR/.staging.$$"
-STAGED_APP="$STAGED_DIR/partyparty.app"
-OLD_APP="$DEST_DIR/.partyparty.old.$$"
+STAGED_APP="$STAGED_DIR/PartyParty.app"
+OLD_APP="$DEST_DIR/.PartyParty.old.$$"
 
 if [ "${PP_REUSE_BUILD:-0}" != "1" ]; then
   make assets/ppcapture
   xcodebuild \
-    -project "$ROOT/app/partyparty.xcodeproj" \
-    -scheme partyparty \
+    -project "$ROOT/app/PartyParty.xcodeproj" \
+    -scheme PartyParty \
     -configuration Debug \
     -destination "platform=macOS,arch=arm64" \
     -derivedDataPath "$DERIVED" \

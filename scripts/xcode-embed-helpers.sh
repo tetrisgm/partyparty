@@ -30,7 +30,7 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
   [ -n "${PP_SIGN_KEYCHAIN:-}" ] && sign_args+=(--keychain "$PP_SIGN_KEYCHAIN")
   for helper in ffmpeg mediamtx partyparty-server ppcapture; do
     codesign "${sign_args[@]}" \
-      --entitlements "$ROOT/app/partyparty-app-store-child.entitlements" \
+      --entitlements "$ROOT/app/PartyParty-app-store-child.entitlements" \
       "$HELPERS/$helper"
   done
 fi

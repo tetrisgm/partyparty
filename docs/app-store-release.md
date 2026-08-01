@@ -81,7 +81,7 @@ Upload the verified package without submitting it for review:
 
 ```sh
 workshop apple upload partyparty \
-  --pkg dist/partyparty-app-store.pkg \
+  --pkg dist/PartyParty-app-store.pkg \
   --version <version> \
   --build <build> \
   --confirm
@@ -119,7 +119,7 @@ scripts/build-install-app-store-local.sh
 This is the normal Store-development lane on the owner's Mac. It does not
 notarize, publish, upload to App Store Connect, or create an App Store release.
 It installs separately at
-`~/Applications/partyparty Store Development/partyparty.app`. The standalone
+`~/Applications/PartyParty Store Development/PartyParty.app`. The standalone
 beta is quit first because both editions own the same local server ports.
 
 Verify an App Store bundle with:
@@ -131,7 +131,7 @@ scripts/test-app-store.sh
 Verify the exact package submitted to Apple with:
 
 ```sh
-scripts/verify-app-store-package.sh dist/partyparty-app-store.pkg
+scripts/verify-app-store-package.sh dist/PartyParty-app-store.pkg
 ```
 
 For an Apple Distribution candidate, this verifies the complete submission
