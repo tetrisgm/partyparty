@@ -99,7 +99,7 @@ func TestBrokerRegistrationMustBelongToCurrentBroker(t *testing.T) {
 	}{
 		{"https://partyparty.party", "party.partyparty.party", true},
 		{"https://partyparty.party", "partyparty.party", true},
-		{"https://partyparty.party", "party.ramine.net", false},
+		{"https://partyparty.party", "party.example.net", false},
 		{"https://partyparty.party", "notpartyparty.party", false},
 	} {
 		if got := brokerOwnsBase(tc.broker, tc.base); got != tc.want {

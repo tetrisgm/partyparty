@@ -1176,7 +1176,7 @@ func TestStartStopDoesNotCreateDJFeedPosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ev.SetMeta("Rooftop Ritual", "Ramine", "-"); err != nil {
+	if err := ev.SetMeta("Rooftop Ritual", "DJ", "-"); err != nil {
 		t.Fatal(err)
 	}
 	env.srv.Events = ev

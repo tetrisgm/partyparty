@@ -1104,7 +1104,7 @@ func (s *srv) llhlsURLFor(r *http.Request) string {
 	return s.llhlsURL()
 }
 
-// friendlyName prefers the device's real network name ("Ramine's iPhone",
+// friendlyName prefers the device's real network name ("Alex's iPhone",
 // resolved once via reverse DNS / mDNS off the LAN IP and cached) over the
 // generic UA label. macOS's resolver answers reverse mDNS for Apple devices, so
 // this often works on a home/party Wi-Fi; it fails gracefully to the UA label.
@@ -1135,7 +1135,7 @@ func (s *srv) friendlyName(ip, ua string) string {
 	return label
 }
 
-// cleanHostname turns "Ramines-iPhone.local." into "Ramines iPhone".
+// cleanHostname turns "Alexs-iPhone.local." into "Alexs iPhone".
 func cleanHostname(h string) string {
 	h = strings.TrimSuffix(h, ".")
 	for _, suf := range []string{".local", ".lan", ".home", ".home.arpa"} {

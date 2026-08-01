@@ -2,7 +2,7 @@
 # The autoship daemon: commits land on main, releases happen. No agent session
 # foregrounds a ship, watches one, or forgets one.
 #
-# Run by launchd (net.ramine.partyparty.autoship) every five minutes. Each pass
+# Run by launchd (party.partyparty.autoship) every five minutes. Each pass
 # is bounded, locked, and quiet when there is nothing to do:
 #
 #   1. Fetch the canonical repo's main into a DEDICATED clone. The canonical

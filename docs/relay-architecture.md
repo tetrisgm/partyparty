@@ -550,7 +550,7 @@ the relayed stream from the origin, the DJ console reading "1 listening (1 via
 relay)", three feed requests in thirty-five seconds where there would have been
 two hundred thirty, and an offline server settling on LOCAL with the direct URL
 in its QR. Releases ship through a launchd daemon
-(net.ramine.partyparty.autoship) from a dedicated clone, gated on receipts,
+(party.partyparty.autoship) from a dedicated clone, gated on receipts,
 with the Worker resolving release downloads from the bucket by name so a ship
 edits no source. The Worker cron probes the origin every minute and keeps
 outage transitions at /api/relay-canary. Every set writes its own report into

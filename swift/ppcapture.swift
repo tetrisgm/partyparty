@@ -228,7 +228,7 @@ let ch = min(Int(asbd.mChannelsPerFrame), 2)
 // 3. Wrap the tap in a private aggregate device and read it with an IOProc.
 let aggDict: [String: Any] = [
     kAudioAggregateDeviceNameKey as String: "PartyParty tap",
-    kAudioAggregateDeviceUIDKey as String: "net.ramine.PartyParty.tap." + desc.uuid.uuidString,
+    kAudioAggregateDeviceUIDKey as String: "party.partyparty.tap." + desc.uuid.uuidString,
     kAudioAggregateDeviceIsPrivateKey as String: true,
     kAudioAggregateDeviceTapAutoStartKey as String: true,
     kAudioAggregateDeviceTapListKey as String: [

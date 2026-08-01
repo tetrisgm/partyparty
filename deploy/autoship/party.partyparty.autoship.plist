@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>net.ramine.partyparty.autoship</string>
+	<string>party.partyparty.autoship</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>

@@ -34,8 +34,8 @@ func TestCleanHostname(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"Ramines-iPhone.local.", "Ramines iPhone"},
-		{"Ramines-iPhone.local", "Ramines iPhone"},
+		{"Alexs-iPhone.local.", "Alexs iPhone"},
+		{"Alexs-iPhone.local", "Alexs iPhone"},
 		{"my_device.lan", "my device"},
 		{"box.home.arpa", "box"},
 		{"plainhost", "plainhost"},

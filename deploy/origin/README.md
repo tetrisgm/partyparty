@@ -46,7 +46,7 @@ echo "dns_cloudflare_api_token = <scoped-token>" | sudo tee /etc/letsencrypt/clo
 sudo certbot certonly \
   --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
   -d '*.relay.partyparty.party' -d relay.partyparty.party \
-  --agree-tos -m ramine@ramine.net --non-interactive
+  --agree-tos -m support@partyparty.party --non-interactive
 ```
 
 Certbot installs its own renewal timer. The origin re-reads the certificate from

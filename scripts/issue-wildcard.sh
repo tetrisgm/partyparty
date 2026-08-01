@@ -4,7 +4,7 @@
 # it (see /api/broker/wildcard-cert + activate.fetchWildcard). This is the ONLY
 # cert path for broker installs - there is no per-Mac ACME fallback - so this
 # cert must never lapse. Run once to issue; a launchd job runs it ~monthly to
-# renew (net.ramine.partyparty.wildcard-renew).
+# renew (party.partyparty.wildcard-renew).
 #
 # Idempotent + safe: certbot only reissues when near expiry (--keep-until-
 # expiring), and we always re-upload the current cert so R2 matches disk. State
@@ -16,7 +16,7 @@ cd "$(dirname "$0")/.."
 
 DOMAIN='*.party.partyparty.party'
 CERTNAME='party.partyparty.party'          # certbot lineage name (stable)
-EMAIL='ramine@ramine.net'
+EMAIL='support@partyparty.party'
 CFG="$HOME/.config/stack/wildcard"          # persistent certbot state
 CF_ENV="$HOME/.config/stack/cloudflare.env" # CLOUDFLARE_API_TOKEN=...
 
