@@ -2,7 +2,7 @@
 # The autoship daemon: commits land on main, releases happen. No agent session
 # foregrounds a ship, watches one, or forgets one.
 #
-# Run by launchd (net.ramine.PartyParty.autoship) every five minutes. Each pass
+# Run by launchd (net.ramine.partyparty.autoship) every five minutes. Each pass
 # is bounded, locked, and quiet when there is nothing to do:
 #
 #   1. Fetch the canonical repo's main into a DEDICATED clone. The canonical
@@ -19,8 +19,8 @@
 # the point.
 set -euo pipefail
 
-CANONICAL="${PP_AUTOSHIP_SOURCE:-/Users/shokunin/dev/PartyParty}"
-STATE_DIR="${PP_AUTOSHIP_STATE:-$HOME/Library/Application Support/PartyParty-autoship}"
+CANONICAL="${PP_AUTOSHIP_SOURCE:-/Users/shokunin/dev/partyparty}"
+STATE_DIR="${PP_AUTOSHIP_STATE:-$HOME/Library/Application Support/partyparty-autoship}"
 CLONE="$STATE_DIR/clone"
 LOG="$STATE_DIR/autoship.log"
 RUN_CAPPED="/Users/shokunin/dev/stack/bin/run-capped"
