@@ -44,3 +44,39 @@ func TestSetRecorderSkipsSoundChecks(t *testing.T) {
 		t.Fatal("a 30-second sound check produced a report")
 	}
 }
+
+// A night ends when the DJ finishes and quits, or shuts the laptop. Writing the
+// report only on the live-to-idle transition meant that shape lost everything:
+// a real successful party produced no report at all. finish() must therefore be
+// willing to close a set that is still in progress, which is what both the
+// shutdown flush and the periodic checkpoint rely on.
+func TestSetReportSurvivesAnUnfinishedSet(t *testing.T) {
+	r := &setRecorder{}
+	start := time.Date(2026, 8, 2, 22, 0, 0, 0, time.UTC)
+	for i := 0; i <= 40; i++ { // 200s of a live set, never stopped
+		r.observe(setSample{
+			At:              start.Add(time.Duration(i) * 5 * time.Second),
+			DirectListeners: 12,
+			RelayListeners:  30,
+			SpreadMs:        250,
+			Mode:            "relay",
+			Reason:          "probe_isolated",
+		})
+	}
+	report, ok := r.finish()
+	if !ok {
+		t.Fatal("a set still in progress produced no report; quitting mid-set would lose the night")
+	}
+	if report.MaxListeners != 42 {
+		t.Fatalf("listener peak lost: %+v", report)
+	}
+	if report.Minutes < 3.2 || report.Minutes > 3.4 {
+		t.Fatalf("duration wrong for an unfinished set: %v", report.Minutes)
+	}
+
+	// Same recorder can be closed repeatedly: a checkpoint must not consume it.
+	again, ok := r.finish()
+	if !ok || again.MaxListeners != report.MaxListeners {
+		t.Fatal("checkpointing consumed the recorder; later samples would be lost")
+	}
+}

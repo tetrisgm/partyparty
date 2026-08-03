@@ -27,6 +27,10 @@ import (
 const (
 	setSampleInterval = 5 * time.Second
 
+	// setCheckpointInterval is how often a still-running set is written to disk,
+	// so an app that disappears mid-party still leaves the night's numbers.
+	setCheckpointInterval = time.Minute
+
 	// setReportMinimum is the shortest set worth a report. Going live for a
 	// sound check and stopping produces nothing, so a report always means a set.
 	setReportMinimum = 2 * time.Minute
@@ -152,13 +156,33 @@ func (s *srv) sampleNow(now time.Time) setSample {
 // RunSetReports samples while live and writes the report when the set ends.
 // Runs for the life of the process; costs one in-process read every five
 // seconds while live and nothing at all while idle.
+//
+// The report is CHECKPOINTED while the set is still running, and flushed again
+// when the process is asked to stop. Writing only on the live to idle
+// transition lost the whole night whenever the app went away while still live,
+// which is exactly how a night ends: the DJ finishes and quits, or shuts the
+// laptop. A real successful party produced no report at all for this reason.
+// The file is rewritten in place under the same name, so checkpointing costs a
+// few hundred bytes a minute and the set is never worth less than the last
+// checkpoint even on a hard kill.
 func (s *Srv) RunSetReports(ctx context.Context) {
 	ticker := time.NewTicker(setSampleInterval)
 	defer ticker.Stop()
 	var recorder *setRecorder
+	lastCheckpoint := time.Time{}
+	flush := func(r *setRecorder) {
+		if r == nil {
+			return
+		}
+		if report, ok := r.finish(); ok {
+			s.writeSetReport(report)
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
+			// Shutting down mid-set: keep what the night actually produced.
+			flush(recorder)
 			return
 		case now := <-ticker.C:
 			live := s.Broadcaster.Status().State == "live"
@@ -166,12 +190,15 @@ func (s *Srv) RunSetReports(ctx context.Context) {
 			case live:
 				if recorder == nil {
 					recorder = &setRecorder{}
+					lastCheckpoint = now
 				}
 				recorder.observe(s.sampleNow(now))
-			case recorder != nil:
-				if report, ok := recorder.finish(); ok {
-					s.writeSetReport(report)
+				if now.Sub(lastCheckpoint) >= setCheckpointInterval {
+					lastCheckpoint = now
+					flush(recorder)
 				}
+			case recorder != nil:
+				flush(recorder)
 				recorder = nil
 			}
 		}
