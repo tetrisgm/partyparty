@@ -33,6 +33,15 @@ certificate coordination but never carries media. See
 
 ## Apple
 
+- Uploading to TestFlight or App Store Connect happens ONLY when the owner asks
+  for it. Never as a debugging probe, never because a fix looks ready. Six
+  builds went up in five days that nobody requested; each one is permanent in
+  App Store Connect, spends beta-review capacity, and notifies real testers.
+  `APP_STORE_UPLOAD=1` and the manual workflow dispatch are the decision point,
+  not a formality.
+- No launchd job, cron, or watcher builds, publishes, deploys, or reinstalls
+  this project on its own. Automation that fires on a commit turns ordinary
+  development into unrequested releases. Releasing is a decision, not a trigger.
 - Build Store packages only on an Apple-released macOS host.
 - `scripts/package-app-store.sh` owns archive, export, and package verification.
 - Before changing code after an Apple rejection, inspect the exact review
