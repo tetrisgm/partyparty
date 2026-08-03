@@ -561,9 +561,6 @@ async function broker(request, env, pathname) {
 }
 
 const RELAY_TOKEN_RE = /^[a-f0-9]{32}$/;
-const RELAY_PHOTO_BYTES_PER_SECOND = 256 * 1024;
-const RELAY_PHOTO_MAX_BYTES = 8 * 1024 * 1024;
-
 function relayTokenFromHost(hostname, env) {
   const suffix = `.${String(env.BROKER_BASE || "").toLowerCase()}`;
   const host = String(hostname || "").toLowerCase();
@@ -687,101 +684,6 @@ retry.addEventListener('click',run);
 run();
 </script></body></html>`;
 }
-
-function relayOfflinePage() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>PartyParty</title><style>:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;color-scheme:light dark}body{min-height:100svh;margin:0;display:grid;place-items:center;padding:32px;background:Canvas;color:CanvasText;text-align:center}main{max-width:360px}h1{font-size:22px}p{opacity:.7;line-height:1.45}button{border:0;border-radius:999px;padding:12px 20px;background:#ff2d6f;color:#fff;font:inherit;font-weight:650}</style></head><body><main><h1>The DJ is reconnecting</h1><p>Keep this page open. PartyParty will continue as soon as the Mac is available.</p><button onclick="location.reload()">Try Again</button></main></body></html>`;
-}
-
-function relayImageExtension(value) {
-  return /\.(?:jpe?g|png|gif|heic|heif|webp)$/i.test(value);
-}
-
-function relayImageUpload(request, pathname) {
-  if (pathname !== "/api/upload") return false;
-  const name = request.headers.get("x-pp-name") || "";
-  if (!name) {
-    return String(request.headers.get("content-type") || "").toLowerCase().startsWith("image/");
-  }
-  try {
-    return relayImageExtension(decodeURIComponent(name));
-  } catch (_) {
-    return false;
-  }
-}
-
-function relayMediaUnavailable(request, pathname) {
-  if (pathname === "/api/upload") return !relayImageUpload(request, pathname);
-  if (!pathname.startsWith("/media/")) return false;
-  return !relayImageExtension(pathname);
-}
-
-function relayMediaUnavailableResponse() {
-  return jsonResp(409, {
-    error: "Videos are unavailable while this Wi-Fi uses internet relay mode. Photos continue at reduced priority so music stays first.",
-    code: "relay_video_unavailable",
-  }, { "cache-control": "no-store" });
-}
-
-function relayPhotoTooLarge(request, pathname) {
-  if (!relayImageUpload(request, pathname)) return false;
-  const size = Number(request.headers.get("content-length") || 0);
-  return size > RELAY_PHOTO_MAX_BYTES;
-}
-
-function relayHeadersForMac(request) {
-  const out = {};
-  for (const [name, value] of request.headers) {
-    const lower = name.toLowerCase();
-    if ([
-      "accept", "accept-language", "cache-control",
-      "content-type", "cookie", "if-modified-since", "if-none-match", "range",
-      "user-agent", "x-pp-name",
-    ].includes(lower)) {
-      out[name] = [value];
-    }
-  }
-  return out;
-}
-
-function headersFromRelay(values) {
-  const headers = new Headers();
-  for (const [name, entries] of Object.entries(values || {})) {
-    const lower = name.toLowerCase();
-    if ([
-      "connection", "keep-alive", "proxy-authenticate",
-      "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade",
-    ].includes(lower)) continue;
-    for (const value of Array.isArray(entries) ? entries : [entries]) {
-      try { headers.append(name, String(value)); } catch (_) {}
-    }
-  }
-  return headers;
-}
-
-function relayBinaryFrame(id, chunk) {
-  const idBytes = new TextEncoder().encode(id);
-  const body = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
-  const frame = new Uint8Array(RELAY_BINARY_ID_BYTES + body.byteLength);
-  frame.set(idBytes.slice(0, RELAY_BINARY_ID_BYTES));
-  frame.set(body, RELAY_BINARY_ID_BYTES);
-  return frame;
-}
-
-function relayBinaryParts(message) {
-  const bytes = message instanceof ArrayBuffer
-    ? new Uint8Array(message)
-    : new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
-  if (bytes.byteLength < RELAY_BINARY_ID_BYTES) return null;
-  return {
-    id: new TextDecoder().decode(bytes.slice(0, RELAY_BINARY_ID_BYTES)),
-    body: bytes.slice(RELAY_BINARY_ID_BYTES),
-  };
-}
-
-function waitMs(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 
 // The r-<token> hostname now serves ONE thing: the bootstrap page a guest lands
 // on after scanning the QR. It classifies the network and hands off. Media and

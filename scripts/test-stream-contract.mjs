@@ -37,7 +37,28 @@ assert.match(listener, /const OUTLIER_COOLDOWN_MS = 30000;/);
 assert.match(listener, /const OUTLIER_MAX_REATTACHES = 2;/);
 assert.match(listener, /logEvent\('outlier-reattach'/);
 assert.match(listener, /document\.visibilityState !== 'visible'/);
-assert.match(listener, /<div class="djpickerhead" id="djPickerHead">1 DJ now playing<\/div>[\s\S]*?<div class="feedhead" id="feedTitle">Party feed<\/div>/);
+// The DJ picker still opens the wall, but the "Party feed" heading above the
+// photos was redundant and is gone for good.
+assert.match(listener, /<div class="djpickerhead" id="djPickerHead">1 DJ now playing<\/div>[\s\S]*?<section class="album" id="albumSec"/);
+assert.doesNotMatch(listener, /id="feedTitle"/);
+// Who else is here belongs under the DJ card, not only behind a top-bar icon.
+assert.match(listener, /id="listenersRow"[\s\S]*?id="listenersAvatars"[\s\S]*?id="listenersNum"/);
+// The DJ strip is a snap reel: snapping moves focus, and the switch fires only
+// once it settles. Committing per card crossed would rebuild the HLS session
+// each time and put an audible gap in the music.
+assert.match(listener, /const REEL_SETTLE_MS = \d+;/);
+assert.match(listener, /scroll-snap-type:x mandatory/);
+assert.match(listener, /\.djlist\.reel \.djchoice\.focused/);
+// The event names itself on its own cover, with the city under it.
+assert.match(listener, /id="coverTitle"/);
+assert.match(listener, /id="coverPlace"/);
+assert.match(listener, /function setEventPlace\(place\)/);
+// The player bar must look expandable and must not promise lock-screen audio
+// a second time; the cover already says it.
+assert.match(listener, /class="expandchev"/);
+assert.doesNotMatch(listener, /Audio stays on with screen locked/);
+// Never dress the party cover up as the sleeve of a track we did not recognise.
+assert.match(listener, /miniArt\.hidden = !artwork;/);
 assert.match(listener, /function renderDJSelector\(djs, target\)/);
 assert.match(listener, /listeners \+ ' listening<\/small>/);
 assert.doesNotMatch(listener, /✓ Listening/);

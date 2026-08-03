@@ -44,7 +44,7 @@ The profile, app record, signing identities, and app bundle must all use team
 Local ad-hoc Store build:
 
 ```sh
-scripts/build-app-store.sh
+scripts/build-app.sh
 scripts/verify-app-store.sh
 ```
 

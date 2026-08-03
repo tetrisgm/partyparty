@@ -146,13 +146,6 @@ func lookup(host string) (string, error) {
 	return lookupWithResolver(host, &net.Resolver{PreferGo: true})
 }
 
-func lookupWithServer(host, server string) (string, error) {
-	return lookupWithResolver(host, &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, network, server)
-	}})
-}
-
 func lookupWithResolver(host string, r *net.Resolver) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()

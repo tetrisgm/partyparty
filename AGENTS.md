@@ -13,6 +13,28 @@ playlists. The Cloudflare Worker handles bootstrap and anonymous LAN
 certificate coordination but never carries media. See
 `docs/relay-architecture.md`.
 
+## Audio and playback
+
+Native HLS/AVPlayer is the proven iPhone engine: smooth, low latency, and it
+continues while the phone is locked. hls.js/ManagedMediaSource on iPhone caused
+repeated audible seek skips and is not a production option.
+
+The stable production geometry is 500 ms segments, 150 ms parts, and a
+48-segment window. Capture backpressure is held off by bounded capture buffering
+and non-blocking ffmpeg tee outputs; the audio core must not change without a
+supervised go-live test.
+
+Healthy native playback is passive — PartyParty never seeks or rate-steers it. A
+visible phone that stays at least 750 ms beyond the one-second room target for
+three measurements gets one bounded fresh HLS attachment. Missing timing
+telemetry alone never interrupts audio, and nothing runs while Safari is hidden
+or the phone is locked.
+
+Relay mode gives `/live/` traffic priority: guest photos take a capped,
+throttled secondary path and videos do not enter the relay at all. Direct mode
+keeps the full local media experience. This is an intentional music-first
+boundary.
+
 ## Product Invariants
 
 1. Guests join, listen, and post on the LAN without accounts or internet.

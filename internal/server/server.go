@@ -422,7 +422,7 @@ type urls struct {
 
 // AdvertisedGuestPort is the port guests use to reach this Mac: always the
 // direct TLS listener. An earlier build could advertise a bare :443 (hiding the
-// port behind the privileged pp-port443 redirect) whenever a TLS handshake
+// port) whenever a TLS handshake
 // succeeded there - but the handshake never proved the redirect actually
 // forwarded, so a half-broken helper (e.g. one that lost its approval in a macOS
 // reset) handed guests a dead port-less link in the QR while

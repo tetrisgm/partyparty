@@ -60,10 +60,10 @@ go vet ./...
 go test ./...
 cd app && swift build
 cd cloudflare && node test/smoke.mjs
-scripts/build-app-store.sh
+scripts/build-app.sh
 scripts/build-standalone.sh
 ```
 
-`scripts/build-app-store.sh` creates the sandboxed Mac App Store app.
+`scripts/build-app.sh` creates the sandboxed Mac App Store app.
 `scripts/build-standalone.sh` creates the separate Developer ID beta. See
 `docs/DISTRIBUTION.md`.

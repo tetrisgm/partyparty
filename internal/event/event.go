@@ -1362,30 +1362,6 @@ func (s *Store) Delete(id string) error {
 	return nil
 }
 
-func (s *Store) mediaFileLocked(id string) (string, bool) {
-	if !validMediaID(id) {
-		return "", false
-	}
-	p := filepath.Join(s.dir, "media", id)
-	rel, err := filepath.Rel(s.dir, p)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", false
-	}
-	return p, true
-}
-
-func (s *Store) thumbFileLocked(id string) (string, bool) {
-	if !validMediaID(id) {
-		return "", false
-	}
-	p := filepath.Join(s.dir, "media", "thumbs", thumbFileName(id))
-	rel, err := filepath.Rel(s.dir, p)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", false
-	}
-	return p, true
-}
-
 // SetGuestProfile stores the name and emoji selected on the guest's phone.
 func (s *Store) SetGuestProfile(cid, name, emoji string) error {
 	cid = clip(strings.TrimSpace(cid), 64)

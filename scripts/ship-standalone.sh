@@ -87,7 +87,7 @@ echo "shipping version $VERSION build $BUILD"
 # Every ship writes a machine-readable receipt, success or failure. Reading a
 # ship's outcome from its log tail has produced false reports twice (a buffered
 # tail read as a stall, a wrapper exit code read as the ship's), and a receipt
-# keyed to the commit is what the autoship daemon gates on. The receipt is
+# keyed to the commit is what a later run checks for. The receipt is
 # written by a trap so a failure at ANY stage still records where it stopped.
 RECEIPTS="$ROOT/dist/receipts"
 mkdir -p "$RECEIPTS"

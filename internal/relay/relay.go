@@ -545,12 +545,6 @@ func (m *Manager) Relay() (originURL, token string) {
 	return m.reg.RelayURL, m.reg.PublishToken
 }
 
-func (m *Manager) currentRegistration() registration {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.reg
-}
-
 func verdictPath() string {
 	dir, err := activate.StateDir()
 	if err != nil {

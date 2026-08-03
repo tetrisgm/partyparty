@@ -6,34 +6,8 @@
 <meta name="theme-color" content="#f5f5f7">
 <title>PartyParty</title>
 <style>
-  /* Light, Apple-Snapshot/Apple-Music-web aesthetic: warm gray canvas, white
-     cards with soft depth, one accent. Dark mode later - light first. */
-  :root{
-    color-scheme:light;
-    --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
-    --bg:#f5f5f7; --card:#ffffff;
-    --label:#1d1d1f; --label-secondary:#6e6e73; --label-tertiary:#86868b;
-    --separator:rgba(0,0,0,.08); --fill:rgba(120,120,128,.10);
-    --accent:#ff2d55; --success:#34c759;
-    --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
-  }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;letter-spacing:0!important}
   [hidden]{display:none!important}
-  html,body{min-height:100%;margin:0}
-  body{
-    font-family:var(--sans);
-    background:var(--bg);
-    color:var(--label);
-    min-height:100dvh;margin:0;text-align:center;
-    -webkit-font-smoothing:antialiased;font-synthesis:none;letter-spacing:-.01em;
-  }
-  /* The event hero fills the first screen; the party wall scrolls below.
-     SAFE centering: justify-content:center clips overflow off the TOP on
-     small phones (unreachable by scrolling - field bug: decapitated title,
-     vanished artwork). flex-start + an auto-margin pair centers when there's
-     room and flows from the top when there isn't. */
-  .hero{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:24px;position:relative}
-  .hero .artwork{margin-top:auto}
   .hero .statline{margin-bottom:auto}
   @media (max-height:760px), (max-width:430px){
     h1{font-size:26px}
@@ -43,40 +17,19 @@
   }
   .artwork{width:168px;height:168px;border-radius:36px;background:linear-gradient(135deg,#ffd7e2 0%,#ffe9d2 100%);
     display:flex;align-items:center;justify-content:center;font-size:84px;box-shadow:var(--shadow);margin-bottom:22px;user-select:none;flex:0 0 auto}
-  body.playing .artwork{animation:sway 3.2s ease-in-out infinite}
   @keyframes sway{0%,100%{transform:rotate(-1.6deg)}50%{transform:rotate(1.6deg)}}
-  .hosted{color:var(--label-secondary);font-size:14px;font-weight:600}
-  h1{font-weight:800;font-size:32px;margin:2px 0 4px;letter-spacing:-.025em}
-  .starts{color:var(--label-secondary);font-size:14px;margin-bottom:4px}
-  .btn{
-    margin-top:22px;min-width:220px;height:56px;border-radius:999px;border:none;cursor:pointer;
-    background:var(--accent);color:#fff;font-size:17px;font-weight:700;
-    display:flex;align-items:center;justify-content:center;gap:10px;padding:0 30px;
-    box-shadow:0 8px 24px rgba(255,45,85,.28);
-    transition:transform .15s ease,background .25s ease,box-shadow .25s ease;
-  }
   .btn:active{transform:scale(.97)}
   .btn.preparing{background:#e2e2e7;color:#515154;cursor:default;box-shadow:none;animation:breathe 1.6s ease-in-out infinite}
-  @keyframes breathe{0%,100%{opacity:.82}50%{opacity:1}} /* shallow trough - the label must stay legible in daylight */
-  body.playing .btn{background:var(--success);box-shadow:0 8px 24px rgba(52,199,89,.3);animation:pulse 2.2s infinite}
+  @keyframes breathe{0%,100%{opacity:.82}50%{opacity:1}}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,199,89,.35)}70%{box-shadow:0 0 0 22px rgba(52,199,89,0)}100%{box-shadow:0 0 0 0 rgba(52,199,89,0)}}
   .ico{font-size:20px;line-height:1}
-  .pill{margin-top:22px;font-size:14px;color:var(--label);min-height:20px}
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--label-tertiary);margin-right:6px;vertical-align:middle}
   body.playing .dot{background:var(--success)}
-  .eq{display:flex;gap:5px;height:26px;align-items:flex-end;justify-content:center;margin-top:14px;opacity:0;transition:opacity .3s}
-  body.playing .eq{opacity:1}
-  .eq i{width:5px;background:var(--accent);border-radius:3px;height:6px;animation:bounce 1s infinite ease-in-out}
-  .eq i:nth-child(2){animation-delay:.2s} .eq i:nth-child(3){animation-delay:.4s} .eq i:nth-child(4){animation-delay:.1s} .eq i:nth-child(5){animation-delay:.3s}
   @keyframes bounce{0%,100%{height:6px}50%{height:26px}}
-  .count{color:var(--label-secondary);font-size:13px;margin-top:8px;min-height:16px}
-  .reactions{width:min(370px,calc(100vw - 36px));margin-top:14px;display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
   .reactions[hidden]{display:none}
-  .reactbtn{height:44px;border:none;border-radius:999px;background:var(--card);color:var(--label);font-size:21px;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;padding:0}
   .reactbtn:active,.reactbtn.pulse{transform:scale(.94);background:#fff0f4}
   .reactbtn:disabled{opacity:.45}
   .reactambient{grid-column:1/-1;color:var(--label-secondary);font-size:12px;min-height:15px;text-align:center;font-variant-numeric:tabular-nums}
-  .trackrequest{width:min(370px,calc(100vw - 36px));margin-top:12px;background:var(--card);border:1px solid var(--separator);border-radius:16px;padding:12px;box-shadow:0 1px 5px rgba(0,0,0,.08);text-align:left}
   .trackrequest[hidden]{display:none}
   .reqtitle{font-size:13px;font-weight:800;margin:0 0 8px}
   .reqrow{display:flex;gap:8px}
@@ -89,50 +42,13 @@
   .vibechip{height:28px;border:none;border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:12px;font-weight:700;padding:0 10px;cursor:pointer}
   .vibechip.active{background:#fff0f4;color:var(--accent)}
   .reqstatus{min-height:16px;margin-top:7px;color:var(--label-secondary);font-size:12px}
-  .trackid{width:min(370px,calc(100vw - 36px));margin-top:12px;background:var(--card);border:1px solid var(--separator);border-radius:18px;padding:13px 14px;box-shadow:var(--shadow);text-align:left}
-  .trackid[hidden]{display:none}
-  .tracktop{display:flex;align-items:center;gap:10px}
-  .trackcopy{min-width:0;flex:1}
-  .tracklabel{color:var(--label-tertiary);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
-  .trackcurrent{color:var(--label);font-size:14px;font-weight:800;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .trackask{flex:0 0 auto;border:none;background:var(--accent);color:#fff;border-radius:999px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer}
-  .trackask:disabled{opacity:.55;cursor:default}
-  .trackstatus{min-height:15px;color:var(--label-secondary);font-size:12px;margin-top:7px}
-  .trackrecent{margin:8px 0 0;padding:8px 0 0;border-top:1px solid var(--separator);list-style:none;display:grid;gap:4px}
-  .trackrecent:empty{display:none}
-  .trackrecent li{color:var(--label-secondary);font-size:12px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .foot{color:var(--label-tertiary);font-size:12px;padding:0 20px;margin-top:30px}
   .downhint{position:absolute;bottom:12px;left:0;right:0;color:var(--label-secondary);font-size:13px;opacity:.9}
   .downhint .chev{display:block;font-size:16px;line-height:1;animation:nudge 2.4s ease-in-out infinite}
   @keyframes nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
-  /* ---- The party wall (event feed) ---- */
-  .feed{width:100%;max-width:560px;margin:0 auto;padding:8px 18px 90px;text-align:left}
-  .feedhead{font-size:22px;font-weight:800;letter-spacing:-.02em;margin:6px 2px 2px}
-  .feedsub{color:var(--label-tertiary);font-size:12px;margin:0 2px 12px}
-  .me{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
-  .mechip{display:inline-flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .mechip input{background:transparent;border:none;outline:none;color:var(--label);font:inherit;width:150px}
   .mechip select{border:none;background:transparent;font:inherit;font-size:18px;outline:none;width:38px;padding:0}
-  .mehint{color:var(--label-tertiary);font-size:11px}
-  .subscribe{margin:0 0 18px;padding:15px 0;border-top:1px solid var(--separator);border-bottom:1px solid var(--separator)}
-  .subscribe-copy b{display:block;font-size:16px;line-height:1.2}
-  .subscribe-copy span{display:block;color:var(--label-secondary);font-size:13px;line-height:1.35;margin-top:3px}
-  .subscribe-row{display:flex;align-items:center;gap:8px;margin-top:11px}
-  .subscribe-row input{min-width:0;flex:1;height:44px;border:1px solid var(--separator);border-radius:8px;background:rgba(255,255,255,.55);color:var(--label);font:inherit;font-size:15px;padding:0 12px;outline:none}
-  .subscribe-row input:focus{border-color:rgba(0,122,255,.55);box-shadow:0 0 0 3px rgba(0,122,255,.12)}
-  .subscribe-row button{height:44px;border:none;border-radius:8px;background:#007aff;color:#fff;font:inherit;font-size:14px;font-weight:800;padding:0 17px;cursor:pointer}
-  .subscribe-row button:disabled{opacity:.55}
-  .subscribe-status{min-height:16px;margin-top:6px;color:var(--label-secondary);font-size:12px}
-  .composer{position:fixed;left:10px;right:10px;bottom:calc(82px + env(safe-area-inset-bottom));z-index:19;max-width:440px;margin:0 auto;background:rgba(255,255,255,.9);border:1px solid var(--separator);border-radius:16px;padding:9px;box-shadow:0 14px 45px rgba(55,25,25,.22);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
   .composer[hidden]{display:none!important}
-  .composerline{display:flex;align-items:center;gap:7px}
-  .composerline input[type=text]{min-width:0;flex:1;height:42px;background:transparent;border:none;outline:none;color:var(--label);font:inherit;font-size:16px;padding:0 5px}
   .composerline input[type=text]::placeholder{color:var(--label-tertiary)}
-  .composericon{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;border:none;border-radius:50%;background:var(--fill);color:var(--label);cursor:pointer;padding:0}
-  .composericon svg,.trayicon svg{width:20px;height:20px;display:block}
-  .addphotos{height:48px;flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:none;border-radius:999px;background:var(--fill);color:var(--label);font:inherit;font-size:13px;font-weight:700;padding:0 14px 0 11px;cursor:pointer;white-space:nowrap}
-  .addphotos svg{width:19px;height:19px;flex:0 0 auto}
-  .addphotos[hidden]{display:none!important}
   .pendingpreviews{display:flex;gap:7px;overflow-x:auto;padding:7px 1px 1px;scrollbar-width:none}
   .pendingpreviews[hidden]{display:none}
   .pendingpreviews::-webkit-scrollbar{display:none}
@@ -145,24 +61,14 @@
   .pendingremove{position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.68);color:#fff;display:grid;place-items:center;font:700 13px/1 var(--sans);cursor:pointer;padding:0}
   .attachn{min-height:0;color:var(--label-secondary);font-size:12px;padding:5px 4px 0}
   .attachn:empty{display:none}
-  .postbtn{height:40px;flex:0 0 auto;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 15px;font-size:14px;font-weight:800;cursor:pointer}
   .postbtn:disabled{opacity:.45}
-  .post{background:var(--card);border:1px solid var(--separator);border-radius:18px;padding:14px 16px;margin:0 0 12px;box-shadow:var(--shadow)}
-  .phead{display:flex;align-items:baseline;gap:8px;font-size:13px}
   .pname{font-weight:700}
   .pdj{background:var(--accent);color:#fff;border-radius:6px;font-size:10px;font-weight:800;padding:1px 6px;letter-spacing:.03em}
-  .ptime{color:var(--label-tertiary);font-size:11px;margin-left:auto}
-  .ptext{font-size:15px;line-height:1.45;margin:6px 0 0;white-space:pre-wrap;word-break:break-word}
   .ptext.big{font-size:24px;font-weight:700;letter-spacing:-.02em;line-height:1.25;margin-top:8px}
-  .pmedia{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:10px}
-  .pmedia img,.pmedia video{width:100%;border-radius:12px;display:block;max-height:340px;object-fit:cover;background:#e8e8ed}
   .vthumb{position:relative;display:block}
   .vplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:999px;background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:18px;line-height:1}
   .pmedia audio{width:100%}
-  .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
-  .pdel:hover{color:#ff3b30}
   .post.pending{border-color:rgba(255,149,0,.26);background:rgba(255,149,0,.06)}
-  .pendingnote{color:var(--label-secondary);font-size:12px;font-weight:600;margin-top:8px}
   .cmt .pendingnote{display:inline;margin-left:6px;font-size:11px}
   .feedempty{color:var(--label-tertiary);font-size:13px;text-align:center;padding:22px 0}
   /* comments */
@@ -172,21 +78,13 @@
   .cmt .cdj{background:var(--accent);color:#fff;border-radius:5px;font-size:9px;font-weight:800;padding:0 4px;margin-left:2px}
   .cmore{background:none;border:none;color:var(--label-secondary);font-size:12px;font-weight:600;cursor:pointer;padding:2px 0}
   .cbox{display:flex;gap:8px;margin-top:8px}
-  .cbox input{flex:1;background:var(--fill);border:none;border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;color:var(--label);outline:none}
   .cbox button{background:none;border:none;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer}
-  /* Welcome gate: the one REQUIRED tap ("Let's party") doubles as the iOS
-     media-activation gesture - buffering starts the instant they're in. */
-  /* The welcome gate fills the screen like an invite, not a popup: the event
-     name breathes at the top, the picking happens in the middle. */
-  .welov{position:fixed;inset:0;background:var(--bg);display:none;justify-content:center;z-index:30;overflow:auto}
   .welov.show{display:flex}
-  .welcard{max-width:460px;width:100%;min-height:100dvh;padding:11dvh 26px 5dvh;text-align:center;display:flex;flex-direction:column}
   .welhost{color:var(--label-secondary);font-size:15px;font-weight:600;margin-bottom:2px}
   .weltitle{font-size:38px;font-weight:800;letter-spacing:-.025em;margin:0 0 6px;color:var(--label)}
   .welstarts{color:var(--label-secondary);font-size:14px;margin:0 0 7dvh}
   .wellabel{color:var(--label-secondary);font-size:13px;margin:16px 0 8px;text-align:left}
   .wellabel.gap{margin-top:5dvh}
-  .welopt{color:var(--label-tertiary)}
   .welname{display:flex;gap:8px;align-items:center}
   .welemoji{font-size:22px;background:var(--card);border:1px solid var(--separator);border-radius:12px;width:46px;height:46px;cursor:pointer;flex:0 0 auto;box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .welname input,.welcard input[type=email]{width:100%;background:var(--card);border:1px solid var(--separator);border-radius:12px;color:var(--label);font:inherit;font-size:16px;padding:12px 14px;outline:none;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.05)}
@@ -199,7 +97,7 @@
   .welgo{width:100%;margin-top:auto;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(255,45,85,.28)}
   .welgo:active{transform:scale(.98)}
   .welspace{flex:0 0 6dvh}
-  .djprofile{background:var(--card);border:1px solid var(--separator);border-radius:12px;padding:14px;margin:0 0 14px;box-shadow:0 2px 12px rgba(0,0,0,.05)}
+  .djprofile{border-radius:12px;padding:14px;margin:0 0 14px}
   .djprofile[hidden]{display:none}
   .djprofilename{font-size:16px;font-weight:850;color:var(--label)}
   .djprofilebio{margin-top:5px;color:var(--label-secondary);font-size:14px;line-height:1.45;white-space:pre-wrap}
@@ -212,15 +110,12 @@
   .djprofilelink .serviceicon{width:20px;height:20px;color:inherit}
   .djprofilelink span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djprofilelink::after{content:'›';color:var(--label-tertiary);font-size:22px;font-weight:400}
-  @media (prefers-reduced-motion:reduce){body.playing .btn,body.playing .artwork,.eq i{animation:none}}
-  .toptool{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--separator);color:var(--label);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  @media (prefers-reduced-motion:reduce){body.playing .btn,body.playing .artwork{animation:none}}
   .toptool:active{transform:scale(.95)}
-  .toptool svg{width:15px;height:15px}
   .modechip{
     display:inline-flex;align-items:center;gap:4px;font:800 11px/1 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;
     letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:999px;
-    background:#ff2d87;color:#fff;white-space:nowrap;vertical-align:middle;
-  }
+    background:#ff2d87;color:#fff;white-space:nowrap;vertical-align:middle}
   .modechip::before{content:"📶";font-size:10px}
   .modechip.relay::before{content:"↗"}
   .modechip.checking::before{content:"…"}
@@ -230,168 +125,56 @@
     background:rgba(255,255,255,.76);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
     color:var(--label-secondary);box-shadow:0 2px 10px rgba(0,0,0,.08);
     font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;
-    font-variant-numeric:tabular-nums;text-align:center;white-space:nowrap;pointer-events:none;
-  }
+    font-variant-numeric:tabular-nums;text-align:center;white-space:nowrap;pointer-events:none}
   .delaybadge.syncing{color:#a85b00;background:rgba(255,248,224,.88)}
   .delaybadge.warn{color:#b42318;background:rgba(255,235,232,.9)}
-  .statline{color:var(--label-tertiary);font-size:12px;margin-top:6px;font-variant-numeric:tabular-nums}
-  .qrov{position:fixed;inset:0;background:rgba(245,245,247,.88);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:20;padding:24px}
   .qrov.show{display:flex}
   .qrbox{background:#fff;padding:16px;border-radius:20px;line-height:0;box-shadow:var(--shadow)}
   .qrbox canvas,.qrbox img{display:block;width:232px;height:232px;max-width:70vw;max-height:70vw}
   .qrcap{color:var(--label);font-size:16px;font-weight:700}
   .qrurl{color:var(--label-secondary);font-size:13px;word-break:break-all;max-width:88%}
   .qrclose{background:var(--accent);color:#fff;border:none;border-radius:999px;padding:12px 30px;font-size:16px;font-weight:600;cursor:pointer}
-
-  /* Mobile event-page pass: keep the audio/feed logic intact, but make the
-     guest surface read like an event page instead of a bare player. */
-  :root{
-    --party-bg:#f9c3aa;
-    --party-bg-2:#ffd1c0;
-    --party-ink:#161315;
-    --party-muted:rgba(22,19,21,.64);
-    --party-soft:rgba(255,255,255,.38);
-    --party-card:rgba(255,255,255,.48);
-    --party-line:rgba(70,34,32,.13);
-  }
-  body{
-    background:
-      radial-gradient(circle at 14% 8%,rgba(255,255,255,.46),transparent 22rem),
-      radial-gradient(circle at 88% 4%,rgba(255,121,172,.24),transparent 20rem),
-      linear-gradient(180deg,var(--party-bg) 0%,var(--party-bg-2) 42%,#ffc4b6 100%);
-    color:var(--party-ink);
-    text-align:left;
-  }
-  body::before{
-    content:'';
-    position:fixed;inset:0;pointer-events:none;z-index:-1;
-    background:
-      linear-gradient(120deg,rgba(255,255,255,.18),transparent 24%,rgba(255,255,255,.12) 48%,transparent 72%),
-      radial-gradient(circle at 72% 24%,rgba(255,255,255,.42) 0 2px,transparent 3px),
-      radial-gradient(circle at 30% 42%,rgba(255,255,255,.28) 0 1px,transparent 2px);
-    background-size:auto,92px 92px,74px 74px;
-  }
-  .toptool{
-    top:calc(10px + env(safe-area-inset-top));right:12px;width:42px;height:42px;
+  .toptool{position:fixed;display:flex;align-items:center;gap:7px;color:var(--label);font-weight:600;cursor:pointer;z-index:5;top:calc(10px + env(safe-area-inset-top));right:12px;width:42px;height:42px;
     padding:0;border:none;border-radius:50%;justify-content:center;
     background:rgba(255,255,255,.46);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
-    box-shadow:0 4px 18px rgba(75,35,30,.13);font-size:0;
-  }
+    box-shadow:0 4px 18px rgba(75,35,30,.13);font-size:0}
   .toptool svg{width:18px;height:18px}
-  /* Top action bar: identity (emoji + name) at the far left, QR + share at the
-     far right. In normal flow, so it scrolls with the page. */
-  .actionbar{position:fixed;top:0;left:0;right:0;z-index:12;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;max-width:720px;margin:0 auto;padding:calc(9px + env(safe-area-inset-top)) 14px 6px;box-sizing:border-box;background:rgba(245,245,247,.82);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-bottom:1px solid rgba(0,0,0,.05)}
-  /* the fixed bar is out of flow - push page content below it */
-  body{padding-top:calc(58px + env(safe-area-inset-top))}
-  .actionbar-tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
   .actionbar .mechip{min-width:0;max-width:54vw}
   .actionbar .mechip b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .mechip[hidden]{display:none!important}
   .actionbar .diagnostics{position:static;inset:auto;padding:0;background:none;border:0;border-radius:0;z-index:auto;color:var(--party-muted)}
   .actionbar .pageversion{border-left-color:var(--party-line)}
-  .actionbar .toptool{position:static;inset:auto;flex:0 0 auto}
-  .hero{
-    width:min(100%,460px);min-height:auto;margin:0 auto;padding:calc(54px + env(safe-area-inset-top)) 20px 20px;
-    align-items:stretch;text-align:left;
-  }
-  .hero::before{content:none}
-  .hero .artwork{
-    order:2;width:100%;height:auto;aspect-ratio:1/1.18;margin:18px 0 18px;border-radius:20px;
-    position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:10px;background:
-      radial-gradient(circle at 62% 32%,rgba(255,255,255,.62),transparent 18%),
-      linear-gradient(150deg,#ffe1c7 0%,#ff9c8f 43%,#f02f6d 100%);
-    color:#fff;box-shadow:0 22px 56px rgba(112,44,48,.25);font-size:inherit;
-  }
-  .hero .artwork::after{
-    content:'';position:absolute;inset:12px;border:1px solid rgba(255,255,255,.38);border-radius:16px;pointer-events:none;
-  }
-  body.playing .artwork{animation:none}
-  .covereyebrow{
-    position:absolute;top:18px;left:18px;border-radius:999px;padding:7px 11px;
-    background:rgba(0,0,0,.18);color:#fff;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
-  }
-  .coveremoji{font-size:76px;line-height:1;filter:drop-shadow(0 10px 18px rgba(0,0,0,.2))}
-  .covertitle{max-width:82%;font-size:32px;line-height:1.04;font-weight:900;text-align:center;letter-spacing:-.02em;overflow-wrap:anywhere}
-  .hosted{order:1;color:var(--party-muted);font-size:14px;font-weight:700;text-align:center}
-  h1{
-    order:3;font-size:36px;line-height:1.02;margin:2px 0 12px;color:var(--party-ink);
-    letter-spacing:-.03em;text-align:center;overflow-wrap:anywhere;
-  }
-  .starts{
-    order:4;color:var(--party-ink);font-size:17px;line-height:1.35;font-weight:800;margin:0 0 10px;text-align:left;
-    padding:0 2px;
-  }
   .starts:not([hidden])::before{content:'🗓 ';font-weight:400}
-  .guestline{
-    order:5;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 12px;
-  }
   .djpicker{width:100%;margin:0 0 18px;padding:0}
   .djpicker[hidden]{display:none}
-  .djpickerhead{font-size:22px;font-weight:800;color:var(--label);margin:0 2px 10px}
-  .djlist{display:flex;gap:8px;overflow-x:auto;padding:1px 1px 8px;scrollbar-width:none}
   .djlist::-webkit-scrollbar{display:none}
-  .djchoice{flex:0 0 min(280px,82vw);min-height:58px;border:1px solid var(--separator);border-radius:8px;background:#fff;color:var(--label);padding:9px 12px;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.05)}
-  .djchoice.active{border-color:var(--dj-color,var(--accent));background:color-mix(in srgb,var(--dj-color,var(--accent)) 9%,#fff)}
   .djchoice:disabled{opacity:.45;cursor:default}
-  .djdot{width:9px;height:9px;border-radius:50%;background:var(--label-tertiary);flex:0 0 auto}
   .djchoice.live .djdot{background:var(--success)}
-  .djcopy{min-width:0;flex:1}
   .djcopy b,.djcopy small,.djcopy .djtrack{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .djcopy b{font-size:14px}.djcopy small{font-size:11px;color:var(--label-secondary);margin-top:1px}
   .djcopy .djtrack{font-size:12px;color:var(--label);font-weight:700;margin-top:3px}
   .avatars{display:flex;align-items:center;min-width:0}
   .avatar{
     width:35px;height:35px;border-radius:50%;display:grid;place-items:center;margin-left:-7px;
     border:2px solid rgba(255,236,228,.95);background:linear-gradient(135deg,#ff3b72,#ffb057);
-    color:#fff;font-size:12px;font-weight:900;box-shadow:0 2px 8px rgba(77,34,31,.12);
-  }
+    color:#fff;font-size:12px;font-weight:900;box-shadow:0 2px 8px rgba(77,34,31,.12)}
   .avatar:first-child{margin-left:0}
   .avatar.more{background:rgba(255,255,255,.48);color:var(--party-ink)}
   .guestcountbtn{
     border:none;border-radius:999px;background:rgba(255,255,255,.46);color:var(--party-ink);
-    padding:8px 12px;font:inherit;font-size:13px;font-weight:850;white-space:nowrap;
-  }
-  .count{order:6;color:var(--party-muted);font-size:13px;margin:0 0 4px;text-align:left}
-  .pill{order:7;margin:2px 0 0;color:var(--party-muted);font-size:13px;text-align:left}
-  .eq{order:8;margin:10px 0 0;height:32px;justify-content:flex-start;gap:7px}
-  .eq i{width:9%;max-width:34px;background:#f72a68}
-  .reactions,.trackid,.trackrequest{order:9;width:100%;max-width:none}
-  .reactions{margin:16px 0 0;grid-template-columns:repeat(7,minmax(0,1fr))}
-  .reactbtn{background:rgba(255,255,255,.42);box-shadow:none}
-  .trackid,.trackrequest{
-    background:rgba(255,255,255,.42);border-color:var(--party-line);box-shadow:0 10px 32px rgba(97,42,36,.12);
-  }
-  .foot{order:10;color:var(--party-muted);font-size:12px;line-height:1.35;margin:16px 0 0;padding:0;text-align:left}
-  .statline{order:11;color:rgba(22,19,21,.42);font-size:11px;margin-top:8px;text-align:left}
-  .downhint{display:none}
-  .listenbar{
-    position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:18;
-    display:grid;grid-template-columns:minmax(0,1fr) repeat(3,44px);gap:8px;align-items:center;
-    max-width:440px;margin:0 auto;padding:8px;border-radius:25px;background:rgba(255,246,241,.72);
-    -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:0 12px 44px rgba(78,36,31,.2);
-  }
-  .btn{
-    width:100%;min-width:0;height:50px;margin:0;padding:0 16px;justify-content:flex-start;gap:12px;
-    background:linear-gradient(135deg,#ff2d55,#ff6a3d);box-shadow:none;font-size:15px;
-  }
+    padding:8px 12px;font:inherit;font-size:13px;font-weight:850;white-space:nowrap}
+  .count{margin-top:8px;min-height:16px;order:6;color:var(--party-muted);font-size:13px;margin:0 0 4px;text-align:left}
+  .reactions{margin-top:14px;display:grid;gap:6px;margin:16px 0 0;grid-template-columns:repeat(7,minmax(0,1fr))}
+  .reactbtn{height:44px;border:none;border-radius:999px;color:var(--label);font-size:21px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;background:rgba(255,255,255,.42);box-shadow:none}
+  .trackrequest{margin-top:12px;border:1px solid var(--separator);border-radius:16px;padding:12px;text-align:left;background:rgba(255,255,255,.42);border-color:var(--party-line);box-shadow:0 10px 32px rgba(97,42,36,.12)}
+  .statline{font-variant-numeric:tabular-nums;order:11;color:rgba(22,19,21,.42);font-size:11px;margin-top:8px;text-align:left}
+  .btn{margin-top:22px;border-radius:999px;border:none;cursor:pointer;color:#fff;font-weight:700;
+    display:flex;align-items:center;
+    transition:transform .15s ease,background .25s ease,box-shadow .25s ease;width:100%;min-width:0;height:50px;margin:0;padding:0 16px;justify-content:flex-start;gap:12px;
+    background:linear-gradient(135deg,#ff2d55,#ff6a3d);box-shadow:none;font-size:15px}
   .btn .ico{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.22);font-size:15px;flex:0 0 auto}
-  .listen-copy{display:grid;text-align:left;line-height:1.15;min-width:0}
   .listen-copy b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .listen-copy small{font-size:11px;font-weight:650;opacity:.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   body.playing .btn{background:#1fcf65;animation:none;box-shadow:none}
-  .trayicon{
-    width:44px;height:44px;border:none;border-radius:50%;background:rgba(255,255,255,.6);color:var(--party-ink);
-    display:grid;place-items:center;font-size:18px;font-weight:850;cursor:pointer;
-  }
-  .feed{
-    max-width:460px;margin:0 auto;padding:4px 20px calc(118px + env(safe-area-inset-bottom));text-align:left;
-  }
-  .feedhead{font-size:22px;margin:20px 0 3px;color:var(--party-ink)}
-  .feedsub{font-size:13px;color:var(--party-muted);margin:0 0 14px}
-  .album,.onlinecard,.djprofile,.post{
-    background:var(--party-card);border:1px solid var(--party-line);box-shadow:0 10px 30px rgba(82,38,33,.1);
-  }
   .sectionrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
   .sectionrow h2{font-size:19px;line-height:1.1;margin:0;letter-spacing:-.02em}
   .sectionrow span{color:var(--party-muted);font-size:12px;font-weight:750;white-space:nowrap}
@@ -402,86 +185,75 @@
   .albumtile .vplay{width:32px;height:32px;font-size:14px}
   .albumempty{grid-column:1/-1;color:var(--party-muted);font-size:13px;padding:16px 4px;text-align:center}
   .relaymedianote{color:var(--party-muted);font-size:13px;line-height:1.45;padding:12px 4px 6px}
-  .albumadd{
-    width:100%;height:42px;margin-top:9px;border:none;border-radius:8px;background:#050505;color:#fff;
-    font:inherit;font-size:14px;font-weight:850;cursor:pointer;
-  }
-  .me{margin:0 0 12px}
-  .mechip{background:rgba(255,255,255,.44);box-shadow:none;border-color:var(--party-line)}
-  .subscribe{border-color:var(--party-line)}
-  .composer{background:rgba(255,246,241,.92);border-color:var(--party-line)}
-  .post{border-radius:20px}
-  .phead{align-items:center;font-size:14px}
+  .me{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+  .mechip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--separator);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer;background:rgba(255,255,255,.44);box-shadow:none;border-color:var(--party-line)}
+  .composer{position:fixed;left:10px;right:10px;bottom:calc(82px + env(safe-area-inset-bottom));z-index:19;max-width:440px;margin:0 auto;border:1px solid var(--separator);border-radius:16px;padding:9px;box-shadow:0 14px 45px rgba(55,25,25,.22);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);background:rgba(255,246,241,.92);border-color:var(--party-line)}
+  .phead{display:flex;gap:8px;align-items:center;font-size:14px}
   .phead > span:first-child{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.5);flex:0 0 auto}
-  .ptime{font-size:12px;color:var(--party-muted)}
-  .ptext{font-size:16px}
-  .pmedia{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .pmedia img,.pmedia video{border-radius:12px}
-  .cbox input{background:rgba(255,255,255,.42)}
-  .welov{background:linear-gradient(180deg,var(--party-bg),var(--party-bg-2));text-align:left}
-  .welcard{max-width:460px}
-  .qrov{background:rgba(249,195,170,.76)}
+  .ptime{margin-left:auto;font-size:12px;color:var(--party-muted)}
+  .ptext{line-height:1.45;margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font-size:16px}
+  .pmedia{display:grid;gap:6px;margin-top:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pmedia img,.pmedia video{width:100%;display:block;max-height:340px;object-fit:cover;background:#e8e8ed;border-radius:12px}
+  .cbox input{flex:1;border:none;border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;color:var(--label);outline:none;background:rgba(255,255,255,.42)}
+  /* Welcome gate: the one REQUIRED tap ("Let's party") doubles as the iOS
+     media-activation gesture - buffering starts the instant they're in. */
+  /* The welcome gate fills the screen like an invite, not a popup: the event
+     name breathes at the top, the picking happens in the middle. */
+  .welov{position:fixed;inset:0;display:none;justify-content:center;z-index:30;overflow:auto;background:linear-gradient(180deg,var(--party-bg),var(--party-bg-2));text-align:left}
+  .welcard{width:100%;min-height:100dvh;padding:11dvh 26px 5dvh;text-align:center;display:flex;flex-direction:column;max-width:460px}
+  .qrov{position:fixed;inset:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:20;padding:24px;background:rgba(249,195,170,.76)}
   @media (min-width:720px){
     .hero,.feed{max-width:600px}
     .hero .artwork{aspect-ratio:16/10}
     .albumstrip{grid-template-columns:repeat(5,1fr)}
   }
-
   /* Event page: one cover, one title, one timeline. */
-  html,body{background:#f5f5f7}
-  body{color:#1d1d1f}
-  body::before{display:none}
+  html,body{min-height:100%;margin:0;background:#f5f5f7}
+  body::before{content:'';
+    position:fixed;inset:0;pointer-events:none;z-index:-1;
+    background:
+      linear-gradient(120deg,rgba(255,255,255,.18),transparent 24%,rgba(255,255,255,.12) 48%,transparent 72%),
+      radial-gradient(circle at 72% 24%,rgba(255,255,255,.42) 0 2px,transparent 3px),
+      radial-gradient(circle at 30% 42%,rgba(255,255,255,.28) 0 1px,transparent 2px);
+    background-size:auto,92px 92px,74px 74px;display:none}
   .diagnostics{
     position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:8;
     display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;
     background:rgba(20,20,22,.72);color:#fff;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
-    font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
-  }
+    font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
   .diagnostics .delaybadge{position:static;min-width:0;padding:0;border:0;border-radius:0;background:none;color:inherit;box-shadow:none;backdrop-filter:none;pointer-events:none}
   .diagnostics .delaybadge.syncing{color:#ffd60a;background:none}
   .diagnostics .delaybadge.warn{color:#ff9f0a;background:none}
   .pageversion{padding-left:6px;border-left:1px solid rgba(255,255,255,.28)}
-  .toptools{position:fixed;top:calc(10px + env(safe-area-inset-top));right:10px;z-index:8;display:flex;gap:7px}
   .toptools .toptool{position:static;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:rgba(20,20,22,.72);color:#fff;box-shadow:none;backdrop-filter:blur(18px)}
   .toptools .toptool svg{width:18px;height:18px}
-  .hero{width:min(100%,720px);max-width:720px!important;margin:0 auto;padding:0 20px 26px;align-items:stretch;text-align:left}
-  .hero::before{display:none}
-  .hero .artwork{
-    order:1;width:calc(100% + 40px);max-width:900px;height:auto;aspect-ratio:16/9;margin:0 0 20px -20px;transform:none;
-    border-radius:0;background:#d9d9de;box-shadow:none;display:block;overflow:hidden;
-  }
-  .hero .artwork::after{display:none}
-  .hero .artwork img{width:100%;height:100%;display:block;object-fit:cover;object-position:center}
-  h1{order:2;margin:0 0 6px;font-size:44px;line-height:1.02;letter-spacing:0;text-align:left}
+  .hero::before{content:none;display:none}
+  .hero .artwork::after{content:'';position:absolute;inset:12px;border:1px solid rgba(255,255,255,.38);border-radius:16px;pointer-events:none;display:none}
+  h1{font-weight:800;color:var(--party-ink);overflow-wrap:anywhere;order:2;margin:0 0 6px;font-size:44px;line-height:1.02;letter-spacing:0;text-align:left}
   .hosted{order:2;margin:0 0 14px;color:var(--label-secondary);font-size:16px;font-weight:600;text-align:left}
-  .starts{order:3;margin:0 0 14px;padding:0;font-size:16px}
-  .guestline{order:4;margin:3px 0 14px}
-  .count{display:none}
-  .eq{order:6;display:none}
-  body.playing .eq{display:flex}
-  .pill{order:7}
-  .reactions,.trackid,.trackrequest{order:8}
-  .foot{order:9;margin:18px 0 0;padding:0}
-  .statline,.downhint{display:none!important}
-  .listenbar{
-    left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:700px;
-    display:grid;grid-template-columns:1fr;gap:9px;padding:10px;border-radius:22px;
-    background:rgba(255,255,255,.88);border:1px solid rgba(0,0,0,.08);box-shadow:0 14px 48px rgba(0,0,0,.18);
-  }
-  .listenbar .btn{height:58px;margin:0;border-radius:14px;justify-content:flex-start}
+  .starts{margin-bottom:4px;color:var(--party-ink);line-height:1.35;font-weight:800;text-align:left;order:3;margin:0 0 14px;padding:0;font-size:16px}
+  .guestline{align-items:center;justify-content:space-between;gap:12px;order:4;margin:3px 0 14px}
+  body.playing .eq{opacity:1;display:flex}
+  .pill{margin-top:22px;min-height:20px;margin:2px 0 0;color:var(--party-muted);font-size:13px;text-align:left;order:7}
+  .reactions,.trackrequest{width:100%;max-width:none;order:8}
+  .foot{margin-top:30px;color:var(--party-muted);font-size:12px;line-height:1.35;text-align:left;order:9;margin:18px 0 0;padding:0}
+  .listenbar{position:fixed;z-index:18;align-items:center;margin:0;
+    -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);left:0;right:0;bottom:0;max-width:none;
+    display:grid;grid-template-columns:1fr;gap:9px;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0;
+    background:rgba(255,255,255,.95);border:1px solid rgba(0,0,0,.08);border-bottom:0;
+    box-shadow:0 -6px 30px rgba(0,0,0,.13)}
+  .listenbar .btn{margin:0;justify-content:flex-start}
   .listenbar .composer{position:static;width:100%;min-width:0;max-width:none;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none}
-  .composerline{min-width:0;gap:6px}
+  .composerline{display:flex;align-items:center;min-width:0;gap:6px}
   .composerline .mechip{max-width:128px;min-width:0;height:40px;padding:0 10px;gap:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;box-shadow:none}
   .composerline .mechip b{overflow:hidden;text-overflow:ellipsis}
   .composerline .mechip input{width:86px;min-width:50px}
-  .composerline input[type=text]{height:48px;padding:0 12px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff;font-size:16px}
-  .composericon{background:#f0f0f3}
-  .postbtn{height:48px;border-radius:10px;padding:0 14px}
-  .feed{max-width:720px;margin:0 auto;padding:8px 20px calc(170px + env(safe-area-inset-bottom))}
-  .feedhead{font-size:26px;margin-top:14px}
-  .feedsub{margin-bottom:16px}
-  .album,.djprofile,.post{background:#fff;border-color:rgba(0,0,0,.08);box-shadow:0 2px 12px rgba(0,0,0,.05)}
-  .post{border-radius:14px}
+  .postbtn{flex:0 0 auto;background:var(--accent);color:#fff;border:none;font-size:14px;font-weight:800;cursor:pointer;height:48px;border-radius:10px;padding:0 14px}
+  /* ---- The party wall (event feed) ---- */
+  .feed{width:100%;text-align:left;max-width:720px;margin:0 auto;padding:8px 20px calc(170px + env(safe-area-inset-bottom))}
+  .album,.djprofile,.post{border:1px solid var(--party-line);background:#fff;border-color:rgba(0,0,0,.08);box-shadow:0 2px 12px rgba(0,0,0,.05)}
+  .post{padding:14px 16px;margin:0 0 12px;border-radius:14px}
   .pverb{color:var(--label-secondary);font-size:12px;font-weight:500}
   .postactions{position:relative;display:flex;align-items:center;gap:12px;margin-top:10px;padding-top:8px;border-top:1px solid var(--separator)}
   .postaction{border:0;background:none;color:var(--label-secondary);font:700 12px/1 var(--sans);padding:5px 0;cursor:pointer}
@@ -495,82 +267,116 @@
   .cbox[hidden]{display:none!important}
   @media (max-width:520px){
     .diagnostics{top:calc(8px + env(safe-area-inset-top));left:8px}
-    .toptools{top:calc(8px + env(safe-area-inset-top));right:8px}
-    .hero{padding-left:16px;padding-right:16px}
-    .hero .artwork{width:calc(100% + 32px);margin-left:-16px}
     .feed{padding-left:14px;padding-right:14px}
     .composerline .mechip{max-width:96px;padding:0 8px;font-size:12px}
     .postbtn{font-size:12px;padding:0 10px}
     h1{font-size:34px}
   }
-
   /* Guest mobile shell: the event image owns the top of the page and the
      controls float over it. Secondary identity and diagnostics live in trays. */
-  body{padding-top:0}
-  .actionbar{
-    position:absolute;top:0;left:0;right:0;z-index:18;display:grid;
+  body{font-family:var(--sans);
+    min-height:100dvh;margin:0;
+    -webkit-font-smoothing:antialiased;font-synthesis:none;letter-spacing:-.01em;text-align:left;color:#1d1d1f;padding-top:0}
+  /* Top action bar: identity (emoji + name) at the far left, QR + share at the
+     far right. In normal flow, so it scrolls with the page. */
+  .actionbar{justify-content:space-between;box-sizing:border-box;border-bottom:1px solid rgba(0,0,0,.05);position:absolute;top:0;left:0;right:0;z-index:18;display:grid;
     grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:8px;
     width:100%;max-width:720px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;
     background:linear-gradient(180deg,rgba(0,0,0,.58),rgba(0,0,0,.18) 72%,transparent);
-    border:0;-webkit-backdrop-filter:none;backdrop-filter:none;color:#fff;
-  }
-  .actiontitle{
-    min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    color:#fff;font-size:17px;font-weight:800;text-align:left;
-  }
-  .actionbar-tools{display:flex;align-items:center;gap:6px}
-  .actionbar .toptool{
-    position:static;width:40px;height:40px;display:grid;place-items:center;
+    border:0;-webkit-backdrop-filter:none;backdrop-filter:none;color:#fff}
+  .actionbar .toptool{inset:auto;flex:0 0 auto;position:static;width:40px;height:40px;display:grid;place-items:center;
     border:0;border-radius:50%;padding:0;background:rgba(18,18,20,.42);color:#fff;
-    box-shadow:none;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
-  }
+    box-shadow:none;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
   .actionbar .toptool svg{width:21px;height:21px}
   #peopleBtn{position:relative}
   .peoplebadge{
     position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;display:grid;place-items:center;
     padding:0 4px;border:2px solid rgba(20,20,22,.92);border-radius:999px;background:var(--accent);
-    color:#fff;font-size:10px;font-weight:900;line-height:1;box-sizing:border-box;
-  }
-  .hero{
-    min-height:0;width:100%;max-width:720px;margin:0 auto;padding:0;
-    display:flex;align-items:stretch;text-align:left;
-  }
-  .hero .artwork{
-    order:0;width:100%;height:auto;aspect-ratio:16/10;margin:0;border-radius:0;
-    box-shadow:none;background:#161315;overflow:hidden;position:relative;
-  }
-  .hero .artwork img{width:100%;height:100%;object-fit:cover;display:block}
+    color:#fff;font-size:10px;font-weight:900;line-height:1;box-sizing:border-box}
+  /* The event hero fills the first screen; the party wall scrolls below.
+     SAFE centering: justify-content:center clips overflow off the TOP on
+     small phones (unreachable by scrolling - field bug: decapitated title,
+     vanished artwork). flex-start + an auto-margin pair centers when there's
+     room and flows from the top when there isn't. */
+  .hero{flex-direction:column;justify-content:flex-start;position:relative;max-width:720px!important;min-height:0;width:100%;max-width:720px;margin:0 auto;padding:0;
+    display:flex;align-items:stretch;text-align:left}
+  .hero .artwork{margin-top:auto;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;
+    color:#fff;font-size:inherit;max-width:900px;transform:none;display:block;order:0;width:100%;height:auto;aspect-ratio:16/10;margin:0;border-radius:0;
+    box-shadow:none;background:#161315;overflow:hidden;position:relative}
+  .hero .artwork img{object-position:center;width:100%;height:100%;object-fit:cover;display:block}
   body.playing .artwork{animation:none}
-  .hosted,.starts,.pill,.guestline,.count,.eq,.statline,.downhint{display:none!important}
+  .hosted,.starts,.pill,.guestline,.count,.statline,.downhint{display:none!important}
   .hero .reactions,.hero .trackrequest,.hero .trackid{order:2;align-self:center}
   .hero .artwork .foot{
-    position:absolute;left:0;right:0;bottom:0;z-index:2;margin:0;padding:34px 16px 12px;
-    color:#fff;font-size:11px;line-height:1.35;text-align:left;
-    background:linear-gradient(180deg,transparent,rgba(0,0,0,.72));
-  }
-  .djpickerhead{font-size:22px;font-weight:800;margin:0 2px 11px}
+    position:static;margin:7px 0 0;padding:0;
+    color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;text-align:left;background:none}
+  /* Shows the bar opens; flips while the sheet is up. */
+  .expandchev{flex:0 0 auto;display:grid;place-items:center;width:22px;height:22px;color:var(--label-tertiary);transition:transform .2s ease}
+  .expandchev svg{width:16px;height:16px}
+  body.playersheetopen .expandchev{transform:rotate(180deg)}
+  .composericon svg{width:20px;height:20px;display:block;flex:0 0 auto}
+  .composerline input[type=text]{outline:none;color:var(--label);font:inherit;height:48px;padding:0 12px;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff;font-size:16px;flex:1 1 0;min-width:0}
+
+  .listenersrow{
+    width:100%;display:flex;align-items:center;gap:9px;margin:2px 0 14px;padding:9px 12px;
+    border:1px solid var(--separator);border-radius:12px;background:var(--card);
+    font:inherit;font-size:13px;color:var(--label);text-align:left;cursor:pointer}
+  .listenersrow[hidden]{display:none}
+  .listenersnum{flex:1 1 auto;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .listenersall{flex:0 0 auto;color:var(--accent);font-weight:750}
+  .listenersrow .avatars{flex:0 0 auto}
+  .listeneremoji{
+    width:26px;height:26px;margin-right:-7px;display:grid;place-items:center;
+    border:2px solid var(--card);border-radius:50%;background:var(--fill);font-size:13px}
+
+  .coverid{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:44px 16px 12px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78))}
+  .covername{color:#fff;font-size:27px;font-weight:900;line-height:1.06;letter-spacing:-.02em;text-align:left;overflow-wrap:anywhere;text-shadow:0 2px 12px rgba(0,0,0,.35)}
+  .covername:empty{display:none}
+  .coverplace{margin-top:4px;color:rgba(255,255,255,.86);font-size:13px;font-weight:700;text-align:left}
+  .coverplace[hidden]{display:none}
+
+  .toptool.labelled{width:auto;padding:0 11px;gap:6px;display:inline-flex;align-items:center}
+  .toollabel{font-size:12px;font-weight:750;white-space:nowrap}
+  /* The name is on the cover now. Pin the tools right: with the title cell
+     gone they would auto-place into the middle column. */
+  .actiontitle{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:#fff;font-size:17px;font-weight:800;text-align:left;display:none}
+  .actionbar-tools{flex:0 0 auto;display:flex;align-items:center;gap:6px;grid-column:3}
+  .djpickerhead{color:var(--label);font-size:22px;font-weight:800;margin:0 2px 11px}
   .djswitchnotice{margin:-4px 2px 9px;color:#b42318;font-size:12px;font-weight:700}
   .djswitchnotice[hidden]{display:none}
-  .djlist{gap:10px;padding:1px 1px 9px}
-  .djchoice{
-    position:relative;flex:0 0 132px;min-height:150px;padding:14px 10px 11px;
+  /* Snap reel. The side padding is what lets the first and last card reach
+     the centre, which is what makes the neighbours peek. */
+  .djlist{display:flex;overflow-x:auto;scrollbar-width:none;gap:10px;padding:1px 1px 9px;
+    scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain}
+  .djlist.reel{padding-left:calc(50% - 66px);padding-right:calc(50% - 66px)}
+  .djlist .djchoice{scroll-snap-align:center}
+  /* Transform only, so scrolling does not reflow the row. */
+  .djlist.reel .djchoice{
+    transform:scale(.86);opacity:.55;filter:saturate(.35);
+    transition:transform .22s ease,opacity .22s ease,filter .22s ease}
+  @media (prefers-reduced-motion:reduce){
+    .djlist{scroll-behavior:auto}
+    .djlist.reel .djchoice{transition:none}
+  }
+  .djlist.reel .djchoice.focused{transform:scale(1);opacity:1;filter:none;background:linear-gradient(160deg,#fff 0%,color-mix(in srgb,var(--dj-tint,var(--accent)) 42%,#fff) 100%);
+    box-shadow:0 10px 26px color-mix(in srgb,var(--dj-color,var(--accent)) 22%,transparent)}
+  .djdots{display:none;justify-content:center;gap:6px;margin:-2px 0 10px}
+  .djdots.on{display:flex}
+  .djdots i{width:5px;height:5px;border-radius:50%;background:var(--label-tertiary);opacity:.35;transition:opacity .2s ease,transform .2s ease}
+  .djdots i.on{opacity:1;transform:scale(1.5);background:var(--dj-color,var(--accent))}
+  .djchoice{color:var(--label);cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.05);position:relative;flex:0 0 132px;min-height:150px;padding:14px 10px 11px;
     display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;
-    border:1px solid var(--separator);border-radius:8px;background:#fff;text-align:center;
-  }
-  .djchoice.active{border:2px solid var(--dj-color,var(--accent));padding:13px 9px 10px;background:color-mix(in srgb,var(--dj-color,var(--accent)) 9%,#fff)}
-  .djava{
-    position:relative;width:66px;height:66px;display:grid;place-items:center;flex:0 0 66px;
-    border-radius:50%;background:linear-gradient(145deg,#323238,#666672);color:#fff;
-    font-size:20px;font-weight:900;overflow:hidden;
-  }
+    border:1px solid var(--separator);border-radius:8px;background:#fff;text-align:center}
+  .djchoice.active{border-color:var(--dj-color,var(--accent));border:2px solid var(--dj-color,var(--accent));padding:13px 9px 10px;background:color-mix(in srgb,var(--dj-color,var(--accent)) 9%,#fff)}
   .djava img{width:100%;height:100%;object-fit:cover}
-  .djeq{position:absolute;right:-3px;bottom:0;width:25px;height:25px;display:none;align-items:center;justify-content:center;gap:2px;border:2px solid #fff;border-radius:50%;background:var(--success)}
   .djchoice.active .djeq{display:flex}
   .djeq i{width:2px;height:5px;border-radius:2px;background:#fff}
   body.playing .djchoice.active .djeq i{animation:playbar .65s ease-in-out infinite alternate}
   body.playing .djchoice.active .djeq i:nth-child(2){animation-delay:-.3s}
   body.playing .djchoice.active .djeq i:nth-child(3){animation-delay:-.5s}
-  .djcopy{width:100%;min-width:0}
+  .djcopy{flex:1;width:100%;min-width:0}
   .djcopy b,.djcopy small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .djcopy b{font-size:14px}
   .djcopy small{margin-top:3px;color:var(--label-secondary);font-size:11px}
@@ -578,29 +384,25 @@
   .djselected{min-height:15px;color:var(--dj-color,var(--accent));font-size:10px;font-weight:900}
   .djchoice.connecting{border-color:#ff9f0a}
   .djchoice.failed{border-color:#ff3b30}
-  .playbars{display:flex;align-items:center;justify-content:flex-end;gap:3px;width:28px;height:24px;margin-left:auto}
   .playbars i{display:block;width:3px;height:5px;border-radius:2px;background:currentColor;opacity:.65}
   body.playing .playbars i{animation:playbar .8s ease-in-out infinite alternate}
   body.playing .playbars i:nth-child(2){animation-delay:-.35s}
   body.playing .playbars i:nth-child(3){animation-delay:-.6s}
   body.playing .playbars i:nth-child(4){animation-delay:-.2s}
   @keyframes playbar{from{height:5px}to{height:21px}}
-  .composericon{width:40px;height:40px;border-radius:50%;padding:0}
+  .composericon{place-items:center;border:none;color:var(--label);cursor:pointer;background:#f0f0f3;flex:0 0 auto;gap:7px;display:inline-flex;align-items:center;justify-content:center;font:inherit;font-size:13px;font-weight:700;width:auto;height:44px;border-radius:999px;padding:0 13px;white-space:nowrap}
 
   .traybackdrop{
     position:fixed;inset:0;z-index:24;background:rgba(0,0,0,.38);opacity:0;
-    pointer-events:none;transition:opacity .2s ease;
-  }
+    pointer-events:none;transition:opacity .2s ease}
   .traybackdrop.show{opacity:1;pointer-events:auto}
   .sidetray{
     position:fixed;top:0;bottom:0;z-index:25;width:min(88vw,380px);
     padding:calc(16px + env(safe-area-inset-top)) 18px calc(20px + env(safe-area-inset-bottom));
     background:rgba(250,250,252,.96);color:var(--label);overflow:auto;
     box-shadow:0 0 36px rgba(0,0,0,.22);transition:transform .22s ease;
-    -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
-  }
+    -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
   .menutray{left:0;transform:translateX(-105%)}
-  .peopletray{right:0;transform:translateX(105%)}
   .sidetray.open{transform:translateX(0)}
   .trayhead{height:44px;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;font-size:20px}
   .trayclose{width:36px;height:36px;border:0;border-radius:50%;background:var(--fill);color:var(--label);font-size:25px;line-height:1;cursor:pointer}
@@ -644,11 +446,26 @@
     --label-tertiary:#85858b;--separator:rgba(255,255,255,.10);--fill:rgba(255,255,255,.08);
     --party-bg:#141719;--party-bg-2:#141719;--party-ink:#f5f5f7;
     --party-muted:#a9a9ae;--party-card:#1b1f21;--party-line:rgba(255,255,255,.10);
-    --sheet-bg:#202427;
-  }
-  :root{--sheet-bg:#eceff2}
+    --sheet-bg:#202427}
+  /* Light, Apple-Snapshot/Apple-Music-web aesthetic: warm gray canvas, white
+     cards with soft depth, one accent. Dark mode later - light first. */
+  /* Mobile event-page pass: keep the audio/feed logic intact, but make the
+     guest surface read like an event page instead of a bare player. */
+  :root{color-scheme:light;
+    --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+    --bg:#f5f5f7; --card:#ffffff;
+    --label:#1d1d1f; --label-secondary:#6e6e73; --label-tertiary:#86868b;
+    --separator:rgba(0,0,0,.08); --fill:rgba(120,120,128,.10);
+    --accent:#ff2d55; --success:#34c759;
+    --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);--party-bg:#f9c3aa;
+    --party-bg-2:#ffd1c0;
+    --party-ink:#161315;
+    --party-muted:rgba(22,19,21,.64);
+    --party-soft:rgba(255,255,255,.38);
+    --party-card:rgba(255,255,255,.48);
+    --party-line:rgba(70,34,32,.13);--sheet-bg:#eceff2}
   :root[data-theme="dark"] body,:root[data-theme="dark"] html{background:#141719;color:var(--label)}
-  :root[data-theme="dark"] .feed,:root[data-theme="dark"] .djpickerhead,:root[data-theme="dark"] .feedhead{color:var(--label)}
+  :root[data-theme="dark"] .feed,:root[data-theme="dark"] .djpickerhead{color:var(--label)}
   :root[data-theme="dark"] .album,:root[data-theme="dark"] .djprofile,:root[data-theme="dark"] .post,
   :root[data-theme="dark"] .djchoice{background:#1b1f21;border-color:var(--separator);color:var(--label);box-shadow:none}
   :root[data-theme="dark"] .djchoice.active{background:var(--dj-tint,#173b27);border-color:var(--dj-color,var(--accent))}
@@ -663,29 +480,28 @@
   .themeseg{display:flex;padding:3px;border-radius:9px;background:var(--fill)}
   .themeseg button{width:40px;height:34px;border:0;border-radius:7px;background:transparent;color:var(--label-secondary);font-size:17px;cursor:pointer}
   .themeseg button.active{background:var(--card);color:var(--label);box-shadow:0 1px 4px rgba(0,0,0,.14)}
-
-  .djava{overflow:visible}
+  .djava{position:relative;width:66px;height:66px;display:grid;place-items:center;flex:0 0 66px;
+    border-radius:50%;background:linear-gradient(145deg,#323238,#666672);color:#fff;
+    font-size:20px;font-weight:900;overflow:visible}
   .djava > svg,.djava > img{width:100%;height:100%;display:block;border-radius:50%;overflow:hidden}
   .djava > svg{padding:16px;background:linear-gradient(145deg,#3b4045,#626870);stroke:#fff}
-  .djeq{right:-6px;bottom:-2px;z-index:2}
+  .djeq{position:absolute;width:25px;height:25px;display:none;align-items:center;justify-content:center;gap:2px;border:2px solid #fff;border-radius:50%;background:var(--success);right:-6px;bottom:-2px;z-index:2}
   body:not(.playing) .playbars{visibility:hidden}
 
   .listenbar .btn,.listenbar .btn.preparing,body.playing .listenbar .btn{
     width:34px;height:46px;min-width:34px;padding:0;border:0;border-radius:0;
     display:grid;place-items:center;flex:0 0 34px;background:transparent!important;
-    color:#fff;box-shadow:none!important;animation:none!important;
-  }
+    color:#fff;box-shadow:none!important;animation:none!important}
   .listenbar .btn .ico{width:auto;height:auto;background:transparent;font-size:20px}
   .playerbarrow{display:flex;align-items:center;gap:12px;min-width:0;padding:7px 11px;border-radius:14px;background:var(--selected-dj-color,#20c965);color:#fff;transition:background-color .18s ease}
   .playersummary{
     min-width:0;flex:1;height:52px;display:flex;align-items:center;gap:12px;padding:0;
-    border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;
-  }
+    border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
   .miniart{width:44px;height:44px;flex:0 0 44px;border-radius:7px;object-fit:cover;background:var(--fill)}
-  .listen-copy{min-width:0;flex:1}
+  .listen-copy{display:grid;text-align:left;line-height:1.15;min-width:0;flex:1}
   .listen-copy b,.listen-copy small{display:block}
   .listen-count{margin-top:2px;font-size:10px!important;opacity:.72}
-  .playbars{flex:0 0 28px}
+  .playbars{display:flex;align-items:center;justify-content:flex-end;gap:3px;width:28px;height:24px;margin-left:auto;flex:0 0 28px}
 
   .playersheetbackdrop{position:fixed;inset:0;z-index:29;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .22s}
   .playersheetbackdrop.show{opacity:1;pointer-events:auto}
@@ -693,12 +509,10 @@
     position:fixed;left:0;right:0;bottom:0;z-index:30;height:min(92dvh,860px);
     transform:translateY(105%);transition:transform .28s ease;
     border-radius:20px 20px 0 0;background:var(--sheet-bg);color:var(--label);
-    box-shadow:0 -16px 50px rgba(0,0,0,.24);overflow:hidden;
-  }
+    box-shadow:0 -16px 50px rgba(0,0,0,.24);overflow:hidden}
   .playersheet.open{transform:translateY(var(--sheet-drag,0px))}
   .playersheethead{position:absolute;inset:0 0 auto 0;z-index:3;display:flex;justify-content:flex-end;padding:12px;pointer-events:none;touch-action:none}
-  .sheetcollapse{width:36px;height:36px;border:0;border-radius:50%;background:var(--fill);color:var(--label);font-size:22px;line-height:1;cursor:pointer}
-  .sheetcollapse{pointer-events:auto;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+  .sheetcollapse{width:36px;height:36px;border:0;border-radius:50%;background:var(--fill);color:var(--label);font-size:22px;line-height:1;cursor:pointer;pointer-events:auto;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
   .playersheetscroll{height:100%;overflow:auto;padding:12px 20px calc(28px + env(safe-area-inset-bottom));overscroll-behavior:contain}
   .playersheetscroll > .sheetsectiontitle:first-child{min-height:36px;display:flex;align-items:center;margin:0 52px 10px 0}
   .playersheet .djprofile{background:var(--fill);box-shadow:none;margin:8px 0 22px}
@@ -720,6 +534,90 @@
   @media (prefers-reduced-motion:reduce){
     .playersheet,.playersheetbackdrop{transition:none}
   }
+
+  /* ---- Sizes other than a phone ----------------------------------------
+     Everything above is a phone shell capped at 720px, which left a wide
+     window showing a narrow strip of party floating in grey under an
+     edge-to-edge bar, and left a short window (iPad landscape, a folded
+     phone opened flat) showing almost nothing but cover art. These bands
+     carry it from a 280px folded phone to a wide desktop. */
+
+  /* Give the cover an explicit height rather than capping an aspect ratio.
+     `aspect-ratio` plus `max-height` makes the browser shrink the WIDTH to
+     keep the ratio, which left the banner covering two thirds of a wide
+     window. The <img> inside is object-fit:cover, so it fills whatever box
+     it is given. Short landscape windows are handled the same way. */
+  @media (max-height:620px){
+    .hero .artwork{aspect-ratio:auto;height:46vh;min-height:150px}
+  }
+
+  /* Folded phones and other very narrow windows: drop to icons in the top
+     bar, tighten the gutters, and shrink the reel so a card still centres. */
+  @media (max-width:370px){
+    .toollabel{display:none}
+    .toptool.labelled{width:44px;padding:0}
+    .actionbar{gap:6px;padding-left:10px;padding-right:10px}
+    .covername{font-size:23px}
+    .coverid{padding:34px 13px 11px}
+    .feed{padding-left:13px;padding-right:13px}
+    .djpickerhead{font-size:19px}
+    .djchoice{flex:0 0 116px;min-height:136px}
+    .djlist.reel{padding-left:calc(50% - 58px);padding-right:calc(50% - 58px)}
+    .djava{width:56px;height:56px;flex:0 0 56px}
+    .listenbar{padding-left:10px;padding-right:10px}
+    /* Input, "Add photos" and Post cannot share one row this narrow without
+       squeezing the comment field down to a couple of words, so give the
+       field its own row and put the two buttons under it. */
+    .composerline{gap:6px;flex-wrap:wrap}
+    .composerline input[type=text]{flex:1 1 100%}
+    .composericon{flex:1 1 auto;padding:0 9px;font-size:12px}
+    .postbtn{flex:0 0 auto;padding:0 16px}
+  }
+
+  /* Tablets, unfolded phones, and up: every full-bleed band lines its
+     contents up on one shared measure, so the bar that runs edge to edge
+     still agrees with the column above it. */
+  @media (min-width:600px){
+    :root{--measure:760px}
+    .hero{max-width:none!important;width:100%;padding:0}
+    /* max-width:900px survives from an earlier layout era and would keep the
+       banner off the right edge of a wide window. */
+    .hero .artwork{aspect-ratio:auto;height:clamp(240px,40vh,420px);width:100%;max-width:none;margin:0;border-radius:0}
+    .coverid{padding:56px calc(max(20px,(100% - var(--measure))/2)) 20px}
+    .covername{font-size:clamp(28px,3.2vw,46px)}
+    .actionbar{
+      max-width:none;
+      padding-left:calc(max(20px,(100% - var(--measure))/2));
+      padding-right:calc(max(20px,(100% - var(--measure))/2));
+    }
+    .feed{max-width:var(--measure);padding-left:20px;padding-right:20px}
+    .listenbar{
+      padding-left:calc(max(14px,(100% - var(--measure))/2));
+      padding-right:calc(max(14px,(100% - var(--measure))/2));
+    }
+  }
+
+  /* With room for every DJ there is nothing to swipe, so the reel becomes a
+     plain row: no centring padding, no depth cues, no dots. The card is still
+     the control  - it has always been clickable. */
+  @media (min-width:760px){
+    .djlist.reel{padding-left:1px;padding-right:1px;scroll-snap-type:none}
+    .djlist.reel .djchoice{transform:none;opacity:1;filter:none}
+    /* Nothing is centred here, so "nearest the middle" means nothing: the
+       selected DJ is the only card that should read as chosen. */
+    .djlist.reel .djchoice.focused{background:#fff;box-shadow:none}
+    .djlist.reel .djchoice.focused.active{background:color-mix(in srgb,var(--dj-color,var(--accent)) 9%,#fff)}
+    .djdots,.djdots.on{display:none}
+    .albumstrip{grid-template-columns:repeat(5,1fr)}
+  }
+
+  @media (min-width:1024px){
+    :root{--measure:1120px}
+    .coverid{padding-top:64px;padding-bottom:24px}
+    .djchoice{flex:0 0 152px;min-height:166px}
+    .djava{width:74px;height:74px;flex:0 0 74px}
+    .albumstrip{grid-template-columns:repeat(6,1fr)}
+  }
 </style>
 </head>
 <body>
@@ -733,11 +631,13 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="peoplebadge" id="peopleBadge">1</span>
       </button>
-      <button class="toptool" id="qrBtn" type="button" aria-label="Show QR code" title="Show QR code">
+      <button class="toptool labelled" id="qrBtn" type="button" aria-label="Show QR code" title="Show QR code">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
+        <span class="toollabel">QR code</span>
       </button>
-      <button class="toptool" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
+      <button class="toptool labelled" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+        <span class="toollabel">Share</span>
       </button>
     </div>
   </div>
@@ -769,7 +669,11 @@
   <div class="hero">
     <div class="artwork">
       <img id="coverImage" src="/covers/hero.jpg" alt="Event cover">
-      <div class="foot">Keep this browser tab open. Audio keeps playing with your screen locked, even on Silent.</div>
+      <div class="coverid">
+        <div class="covername" id="coverTitle"></div>
+        <div class="coverplace" id="coverPlace" hidden></div>
+        <div class="foot">Keep this browser tab open. Audio keeps playing with your screen locked, even on Silent.</div>
+      </div>
     </div>
     <div class="hosted" id="hostedLine" hidden></div>
     <div class="starts" id="startsLine" hidden></div>
@@ -821,6 +725,9 @@
           <small id="btnhint">Low-latency party audio</small>
           <small class="listen-count" id="listenCount">0 listening</small>
         </span>
+        <span class="expandchev" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
+        </span>
       </button>
       <span class="playbars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     </div>
@@ -829,6 +736,7 @@
         <input id="ctext" type="text" maxlength="2000" autocomplete="off" placeholder="Leave a comment…">
         <button class="composericon" id="attachBtn" type="button" aria-label="Add photos or videos" title="Add photos or videos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="14" height="14" rx="2"/><circle cx="8" cy="10" r="1.5"/><path d="m4 17 4-4 3 3 2-2 4 4"/><path d="M20 4v7M16.5 7.5h7"/></svg>
+          <span>Add photos</span>
         </button>
         <button class="postbtn" id="postBtn" type="button">Post</button>
       </div>
@@ -868,13 +776,18 @@
       <div class="djpickerhead" id="djPickerHead">1 DJ now playing</div>
       <div class="djswitchnotice" id="djSwitchNotice" role="status" aria-live="polite" hidden></div>
       <div class="djlist" id="djList"></div>
+      <div class="djdots" id="djDots" aria-hidden="true"></div>
+      <button class="listenersrow" id="listenersRow" type="button" hidden>
+        <span class="avatars" id="listenersAvatars" aria-hidden="true"></span>
+        <span class="listenersnum" id="listenersNum">0 people listening</span>
+        <span class="listenersall">View all</span>
+      </button>
     </section>
     <section class="djprofile" id="djProfile" hidden>
       <div class="djprofilename" id="djProfileName"></div>
       <div class="djprofilebio" id="djProfileBio"></div>
       <div class="djprofilelinks" id="djProfileLinks"></div>
     </section>
-    <div class="feedhead" id="feedTitle">Party feed</div>
     <section class="album" id="albumSec" hidden>
       <div class="sectionrow">
         <h2>Photos &amp; videos</h2>
@@ -941,6 +854,12 @@
     const djPicker = document.getElementById('djPicker');
     const djList = document.getElementById('djList');
     const djPickerHead = document.getElementById('djPickerHead');
+    const djDots = document.getElementById('djDots');
+    const listenersRow = document.getElementById('listenersRow');
+    const listenersAvatars = document.getElementById('listenersAvatars');
+    const listenersNum = document.getElementById('listenersNum');
+    const coverTitle = document.getElementById('coverTitle');
+    const coverPlace = document.getElementById('coverPlace');
     const djSwitchNotice = document.getElementById('djSwitchNotice');
     const delayBadge = document.getElementById('delayBadge');
     const modeChip = document.getElementById('modeChip');
@@ -1362,7 +1281,13 @@
     function setEventTitle(t){
       const title = t || 'PartyParty';
       setText(titleEl, title);
+      setText(coverTitle, t ? title : '');
       updateMediaSessionMetadata();
+    }
+    function setEventPlace(place){
+      const text = String(place || '').trim();
+      setText(coverPlace, text);
+      coverPlace.hidden = !text;
     }
     let currentCoverSrc = '';
     function setEventCover(src){
@@ -1482,7 +1407,22 @@
       peopleBadge.hidden = peopleCount === 0;
       peopleBtn.setAttribute('aria-label', 'Show ' + peopleCount + (peopleCount === 1 ? ' person' : ' people'));
       renderListenerGroups(sheetListenerGroups, rows);
+      paintListenersRow(rows, peopleCount);
       updatePlayerDetails();
+    }
+    function paintListenersRow(rows, peopleCount){
+      const faces = [];
+      rows.forEach((group) => {
+        (Array.isArray(group.listeners) ? group.listeners : []).forEach((listener) => {
+          if (faces.length < 5) faces.push(String(listener.emoji || '') || initials(listener.name, 'G'));
+        });
+      });
+      listenersRow.hidden = peopleCount <= 0;
+      setText(listenersNum, peopleCount + (peopleCount === 1 ? ' person listening' : ' people listening'));
+      renderIfChanged(listenersAvatars, faces.join(','), () => {
+        listenersAvatars.innerHTML = faces
+          .map((face) => '<span class="listeneremoji">' + escapeHTML(face) + '</span>').join('');
+      });
     }
     function profileIcon(){
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
@@ -1529,10 +1469,110 @@
             dj.listeners + ' listening</small></span><span class="djselected">' +
             (dj.connecting ? 'Connecting…' : (dj.failed ? 'Try again' : '')) +
             '</span>';
+          button.setAttribute('data-dj-id', dj.id);
           button.addEventListener('click', () => selectDJ(dj.id));
           target.appendChild(button);
         });
       });
+      syncReel(target, model, target === djList ? djDots : null);
+    }
+    // Swipe to centre a DJ, and the centred DJ becomes the one you hear.
+    // Snapping only moves focus: selectDJ() rebuilds the HLS session, so
+    // committing per card crossed would mean an audible gap each time. The
+    // switch fires once the reel has been still for REEL_SETTLE_MS.
+    const REEL_SETTLE_MS = 620;
+    const reelState = new WeakMap();
+    function reelFocusIndex(list){
+      const mid = list.scrollLeft + list.clientWidth / 2;
+      let best = -1, bestGap = Infinity;
+      for (let i = 0; i < list.children.length; i++) {
+        const card = list.children[i];
+        const gap = Math.abs((card.offsetLeft + card.offsetWidth / 2) - mid);
+        if (gap < bestGap) { bestGap = gap; best = i; }
+      }
+      return best;
+    }
+    function paintReel(list){
+      const state = reelState.get(list);
+      if (!state || !list.classList.contains('reel')) return;
+      const focus = reelFocusIndex(list);
+      for (let i = 0; i < list.children.length; i++) {
+        list.children[i].classList.toggle('focused', i === focus);
+      }
+      if (!state.dots) return;
+      for (let i = 0; i < state.dots.children.length; i++) {
+        state.dots.children[i].classList.toggle('on', i === focus);
+      }
+      const focused = list.children[focus];
+      if (focused) state.dots.style.setProperty('--dj-color', focused.style.getPropertyValue('--dj-color'));
+    }
+    function centreReel(list, index, smooth){
+      const card = list.children[index];
+      if (!card) return;
+      const state = reelState.get(list);
+      const left = card.offsetLeft + card.offsetWidth / 2 - list.clientWidth / 2;
+      if (Math.abs(left - list.scrollLeft) < 2) { paintReel(list); return; }
+      if (state) {
+        // Our own scroll must not read as a choice. Clear the flag on a timer
+        // rather than on the next scroll event: a programmatic scroll that
+        // lands where it already was emits no event, and an event-cleared flag
+        // would stay latched and swallow the guest's next flick.
+        state.quiet = true;
+        clearTimeout(state.quietTimer);
+        state.quietTimer = setTimeout(() => { state.quiet = false; }, 500);
+      }
+      list.scrollTo({ left, behavior: smooth ? 'smooth' : 'auto' });
+      paintReel(list);
+    }
+    function wireReel(list, dots){
+      if (reelState.has(list)) return reelState.get(list);
+      const state = { dots, quiet: false, settle: 0, quietTimer: 0, want: 0 };
+      reelState.set(list, state);
+      // The picker is rendered inside a section that is display:none until the
+      // guest joins, so the first centring runs at zero width and does nothing.
+      // Re-centre when the strip actually gains a size, or the reel opens on
+      // the wrong card.
+      if (typeof ResizeObserver === 'function') {
+        let lastWidth = 0;
+        new ResizeObserver(() => {
+          const width = list.clientWidth;
+          if (!width || width === lastWidth) return;
+          lastWidth = width;
+          centreReel(list, state.want, false);
+        }).observe(list);
+      }
+      list.addEventListener('scroll', () => {
+        paintReel(list);
+        clearTimeout(state.settle);
+        if (state.quiet) return;
+        state.settle = setTimeout(() => {
+          const card = list.children[reelFocusIndex(list)];
+          if (!card || card.disabled) return;
+          const id = card.getAttribute('data-dj-id');
+          if (id === null || id === selectedDJId || switchingTo !== null) return;
+          selectDJ(id);
+        }, REEL_SETTLE_MS);
+      }, { passive: true });
+      return state;
+    }
+    function syncReel(list, model, dots){
+      // One DJ is not a reel: leave it as a plain card so nothing invites a
+      // swipe that cannot go anywhere.
+      const on = model.length > 1;
+      list.classList.toggle('reel', on);
+      if (dots) {
+        dots.classList.toggle('on', on);
+        if (dots.childElementCount !== model.length) {
+          dots.textContent = '';
+          model.forEach(() => dots.appendChild(document.createElement('i')));
+        }
+      }
+      if (!on) return;
+      const state = wireReel(list, dots || null);
+      let want = model.findIndex((dj) => dj.selected);
+      if (want < 0) want = 0;
+      state.want = want;
+      centreReel(list, want, false);
     }
     function paintDJs(peers){
       discoveredPeers = Array.isArray(peers) ? peers : [];
@@ -1692,7 +1732,7 @@
           if (url.protocol === 'https:' || url.origin === location.origin) return url.href;
         } catch (e) {}
       }
-      return absoluteResourceURL(currentCoverSrc || '/art-512.png');
+      return '';
     }
     function serviceIconMarkup(type){
       const icons = {
@@ -1813,8 +1853,12 @@
       const listeners = selectedListenerCount();
       const listenerText = listeners + ' listening';
       const artwork = artworkSource(track);
-      setImageSource(miniArt, artwork);
-      setImageSource(sheetArt, artwork);
+      miniArt.hidden = !artwork;
+      sheetArt.hidden = !artwork;
+      if (artwork) {
+        setImageSource(miniArt, artwork);
+        setImageSource(sheetArt, artwork);
+      }
       setText(sheetTrackTitle, track && track.title ? track.title : 'Live party audio');
       setText(sheetTrackArtist, track && track.artist ? track.artist : djName);
       setText(listenCount, listenerText);
@@ -1854,7 +1898,7 @@
         return;
       }
       setText(btnlabel, on ? 'Playing' : (started ? 'Resume' : (live ? 'Tap to listen' : 'Waiting for DJ')));
-      setText(btnHint, on ? (npHintText || 'Audio stays on with screen locked')
+      setText(btnHint, on ? npHintText
                           : (live ? (npHintText || 'Low-latency party audio') : 'The DJ has not started yet'));
     }
 
@@ -1881,6 +1925,7 @@
     }
     playerSummary.addEventListener('click', () => openPlayerSheet());
     peopleBtn.addEventListener('click', () => openPlayerSheet('listeners'));
+    listenersRow.addEventListener('click', () => openPlayerSheet('listeners'));
     sheetCollapse.addEventListener('click', closePlayerSheet);
     playerSheetBackdrop.addEventListener('click', closePlayerSheet);
     sheetPlay.addEventListener('click', () => btn.click());
@@ -2478,7 +2523,8 @@
         const metadata = {
           title: (track && track.title) || titleEl.textContent || 'Live party audio',
           artist: (track && track.artist) || selectedDJName(),
-          artwork: [{ src: artworkSource(track) }]
+          // The cover fills the lock-screen slot; the in-page sleeve stays blank.
+          artwork: [{ src: artworkSource(track) || absoluteResourceURL(currentCoverSrc || '/art-512.png') }]
         };
         const signature = JSON.stringify(metadata);
         if (signature === mediaSessionMetadataSignature) return;
@@ -3571,6 +3617,7 @@
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }
+          setEventPlace(data.place);
           setEventCover(data.cover || '/covers/hero.jpg');
           if (data.host) {
             const hl = $id('hostedLine'); setText(hl, 'hosted by ' + data.host); hl.hidden = false;
