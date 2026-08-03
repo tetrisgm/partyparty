@@ -1,5 +1,12 @@
 # Distribution
 
+> **Status (2026-08-03): the standalone Sparkle channel is DORMANT.** The active
+> lane is the Mac App Store and TestFlight. Everything for the standalone
+> channel is kept intact and working so it can be revived when wanted:
+> `scripts/ship-standalone.sh`, the Sparkle appcast, and the R2 download
+> plumbing in `cloudflare/worker.js`. Nothing triggers it automatically; it runs
+> only when a person runs it.
+
 PartyParty has two isolated macOS distribution channels built from the same
 clean `main` commit.
 

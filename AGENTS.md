@@ -42,6 +42,11 @@ certificate coordination but never carries media. See
 - No launchd job, cron, or watcher builds, publishes, deploys, or reinstalls
   this project on its own. Automation that fires on a commit turns ordinary
   development into unrequested releases. Releasing is a decision, not a trigger.
+- The Mac App Store and TestFlight are the active distribution lane. The
+  standalone Sparkle channel is DORMANT, not retired: `scripts/ship-standalone.sh`,
+  the appcast, and the R2 download plumbing stay intact and working so the option
+  can be taken up again. Do not delete them, and do not run them without being
+  asked.
 - Build Store packages only on an Apple-released macOS host.
 - `scripts/package-app-store.sh` owns archive, export, and package verification.
 - Before changing code after an Apple rejection, inspect the exact review

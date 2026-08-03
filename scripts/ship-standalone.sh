@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# ---------------------------------------------------------------------------
+# DORMANT LANE (2026-08-03). The active distribution path is the Mac App Store
+# and TestFlight. This standalone Sparkle channel is deliberately KEPT so it can
+# be picked up again later; it is not deleted and not deprecated.
+#
+# Nothing invokes this script automatically any more. The launchd daemon that
+# used to run it on every commit is gone: it made five notarize-and-publish
+# attempts in one day off ordinary development commits. Running this is a
+# deliberate act, by a person, on request.
+# ---------------------------------------------------------------------------
+
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"

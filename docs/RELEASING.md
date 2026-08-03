@@ -1,5 +1,12 @@
 # Releasing
 
+> **Status (2026-08-03): the standalone Sparkle channel is DORMANT.** The active
+> lane is the Mac App Store and TestFlight. Everything for the standalone
+> channel is kept intact and working so it can be revived when wanted:
+> `scripts/ship-standalone.sh`, the Sparkle appcast, and the R2 download
+> plumbing in `cloudflare/worker.js`. Nothing triggers it automatically; it runs
+> only when a person runs it.
+
 Verified product work lands on clean `main` and is pushed once. Native releases
 may target the Mac App Store, the standalone beta channel, or both. Each channel
 has a separate package and verifier; neither may reuse the other's artifact.
