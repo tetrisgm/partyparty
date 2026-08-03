@@ -101,12 +101,38 @@ else
   echo "export: no App Store Connect key available; relying on the Xcode session"
 fi
 
+# Bounded, and loud when it stalls. Export has twice gone silent immediately
+# after starting and burned the whole job timeout, which reads as a slow build
+# and is a hang. A bare cap would still tell us nothing, so on a cap this dumps
+# the .xcdistributionlogs bundle Xcode writes, which holds the real reason and
+# is otherwise discarded with the runner. macOS ships no timeout(1), so the
+# watchdog is a plain background sleep.
+EXPORT_TIMEOUT="${PP_EXPORT_TIMEOUT:-900}"
+export_rc=0
 xcodebuild \
   -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$EXPORT_OPTIONS" \
-  "${EXPORT_AUTH[@]}"
+  "${EXPORT_AUTH[@]}" &
+export_pid=$!
+( sleep "$EXPORT_TIMEOUT"; kill -TERM "$export_pid" 2>/dev/null ) &
+watchdog_pid=$!
+wait "$export_pid" || export_rc=$?
+kill "$watchdog_pid" 2>/dev/null || true
+
+if [ "$export_rc" -ne 0 ]; then
+  echo "export failed or timed out after ${EXPORT_TIMEOUT}s (rc=$export_rc)" >&2
+  find "${TMPDIR:-/tmp}" /var/folders -maxdepth 6 -type d -name 'PartyParty_*.xcdistributionlogs' 2>/dev/null |
+  while read -r bundle; do
+    echo "=== $bundle ===" >&2
+    find "$bundle" -type f 2>/dev/null | while read -r logfile; do
+      echo "--- $logfile ---" >&2
+      tail -200 "$logfile" >&2 2>/dev/null || true
+    done
+  done
+  exit "$export_rc"
+fi
 
 EXPORTED_PKG="$(find "$EXPORT_DIR" -maxdepth 1 -type f -name '*.pkg' -print -quit)"
 [ -n "$EXPORTED_PKG" ] || {
