@@ -47,6 +47,18 @@ certificate coordination but never carries media. See
   the appcast, and the R2 download plumbing stay intact and working so the option
   can be taken up again. Do not delete them, and do not run them without being
   asked.
+- `asc` (App Store Connect CLI, `brew install asc`) is the tool for every App
+  Store and TestFlight operation: `asc review doctor` before anything, then
+  `asc review status`, `asc versions`, `asc builds`, `asc testflight`. It reads
+  ASC_KEY_ID, ASC_ISSUER_ID and ASC_PRIVATE_KEY_PATH. Do not hand-roll API
+  clients; `asc review doctor` names blockers directly and is the first thing to
+  run when a submission will not go through.
+- What App Review asks for outranks everything else. Read the reviewer's
+  feedback on the App Review page FIRST and fix exactly that. Packaging,
+  tooling and CI work are downstream of it and must never be done instead of it.
+- Never flood App Store Connect. Every submission is permanent and visible;
+  two of the three submissions on this app's record were made by an API key
+  without anyone asking. A submission is a deliberate act by the owner.
 - Build Store packages only on an Apple-released macOS host.
 - `scripts/package-app-store.sh` owns archive, export, and package verification.
 - Before changing code after an Apple rejection, inspect the exact review

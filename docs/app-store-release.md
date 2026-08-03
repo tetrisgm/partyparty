@@ -185,3 +185,26 @@ from Apple. A separately identified Developer ID signed standalone beta may be
 distributed for testing, but its Sparkle framework, updater code, appcast,
 entitlements, and release metadata must never enter this Store target or package.
 Downloaded web payloads and privileged installers remain retired.
+
+## Tooling: `asc`
+
+Every App Store and TestFlight operation goes through the App Store Connect CLI
+(`brew install asc`). It is the sanctioned tool; do not hand-roll an API client.
+
+```sh
+set -a; source ~/Library/Application\ Support/partyparty/app-store-connect/release.env; set +a
+export ASC_KEY_ID="$APP_STORE_CONNECT_KEY_ID"
+export ASC_ISSUER_ID="$APP_STORE_CONNECT_ISSUER_ID"
+export ASC_PRIVATE_KEY_PATH="$HOME/Library/Application Support/partyparty/app-store-connect/AuthKey_${ASC_KEY_ID}.p8"
+
+asc review doctor --app 6794880742   # blockers and next action, always run first
+asc review status --app 6794880742   # submission state
+asc submit status --id <SUBMISSION_ID>
+asc testflight groups list
+```
+
+`asc review doctor` is the first command for any "why will this not submit"
+question. It found, in one call, that a stale rejected submission was locking
+the version, which was also why `whatsNew` kept returning STATE_ERROR.
+
+Submitting (`asc publish appstore --submit`) happens only when the owner asks.
