@@ -117,12 +117,25 @@ jobs:
           security create-keychain -p "$APPLE_SIGNING_PASSWORD" "$keychain"
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "$APPLE_SIGNING_PASSWORD" "$keychain"
+          # -A, and a partition list that names productbuild explicitly.
+          #
+          # productbuild signs the installer package during export. With the key
+          # reachable but not pre-authorised, macOS asks the user for permission,
+          # and on a headless runner there is nobody to ask, so it waits forever:
+          # export went silent immediately after starting and burned the whole job
+          # timeout twice, and the giveaway was the runner reporting "Terminate
+          # orphan process: productbuild" during cleanup. A hang, not a slow build.
+          #
+          # This keychain is created fresh on an ephemeral runner and destroyed
+          # with it, so allowing any tool to use these keys costs nothing and
+          # removes an entire class of silent stall.
           security import "$work/distribution.p12" -k "$keychain" \
-            -P "$APPLE_SIGNING_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+            -P "$APPLE_SIGNING_PASSWORD" -A
           security import "$work/installer.p12" -k "$keychain" \
-            -P "$APPLE_SIGNING_PASSWORD" -T /usr/bin/productbuild -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$APPLE_SIGNING_PASSWORD" "$keychain"
+            -P "$APPLE_SIGNING_PASSWORD" -A
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign:,productbuild: \
+            -s -k "$APPLE_SIGNING_PASSWORD" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
 
           echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
