@@ -95,5 +95,10 @@ printf '%s' "$ENCODERS" | grep -qE " png | mjpeg " || { echo "missing image enco
 ./ffmpeg -hide_banner -f lavfi -i "sine=frequency=440:duration=1" -c:a aac_at -f mp4 -y /tmp/pp-lgpl-selftest.mp4 >/dev/null 2>&1 \
   || { echo "aac_at end-to-end encode failed" >&2; exit 1; }
 
+# assets/ holds only untracked build products, so a fresh clone has no such
+# directory and install fails with a bare "No such file or directory" naming a
+# temp file, which reads like a permissions problem and is not one. It failed
+# the first App Store CI run that got as far as compiling ffmpeg.
+mkdir -p "$ROOT/assets"
 install -m 755 ffmpeg "$ROOT/assets/ffmpeg"
 echo "installed LGPL ffmpeg $FFMPEG_VERSION -> assets/ffmpeg ($(du -h "$ROOT/assets/ffmpeg" | cut -f1))"
