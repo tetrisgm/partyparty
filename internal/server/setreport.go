@@ -161,10 +161,9 @@ func (s *srv) sampleNow(now time.Time) setSample {
 // when the process is asked to stop. Writing only on the live to idle
 // transition lost the whole night whenever the app went away while still live,
 // which is exactly how a night ends: the DJ finishes and quits, or shuts the
-// laptop. A real successful party produced no report at all for this reason.
-// The file is rewritten in place under the same name, so checkpointing costs a
-// few hundred bytes a minute and the set is never worth less than the last
-// checkpoint even on a hard kill.
+// laptop. The file is rewritten in place under the same name, so checkpointing
+// costs a few hundred bytes a minute and the set is never worth less than its
+// last checkpoint even on a hard kill.
 func (s *Srv) RunSetReports(ctx context.Context) {
 	ticker := time.NewTicker(setSampleInterval)
 	defer ticker.Stop()
