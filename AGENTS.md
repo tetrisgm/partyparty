@@ -18,7 +18,17 @@ certificate coordination but never carries media. See
 1. Guests join, listen, and post on the LAN without accounts or internet.
 2. The paid App Store download is the purchase boundary. Do not add product
    login, licensing, profiles, or network checks before Go Live.
-3. Guest playback is HTTPS LL-HLS only. Do not restore plain HTTP.
+3. Guest playback is HTTPS LL-HLS. The single exception is the OFFLINE
+   EMERGENCY LINK, which is intended and supported: when a party has no
+   internet and this Wi-Fi's resolver will not answer for the secure hostname,
+   there is no way to obtain or validate a certificate, so the QR offers a
+   plain-HTTP link to the Mac's LAN IP. It is narrowly gated in
+   `Srv.AllowHTTPFallback`: the request must be non-TLS, the Host must equal the
+   CURRENT LAN IP exactly, DNS must not be published, the internet must be
+   unreachable, and the room mode must be NO PATH for reason resolver_bad. Every
+   other plaintext request still redirects to HTTPS, and a stale IP never
+   becomes a second way into the room. Do not widen these conditions, and do not
+   restore plain HTTP for any online path.
 4. Cloud relay state is ephemeral. Do not add public party pages, replays,
    recordings, archives, or cloud feeds.
 5. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and

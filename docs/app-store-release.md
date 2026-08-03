@@ -21,7 +21,7 @@ The Store edition is the venue-Wi-Fi product:
   logs.
 
 Do not add public event pages, replays, previous-event browsing, hotspots,
-Internet Sharing, captive portals, plain-HTTP guest links, alternate iPhone
+Internet Sharing, captive portals, plain-HTTP guest links for any online path (the narrowly gated offline emergency link in invariant 3 is intended and supported), alternate iPhone
 playback engines, or playback presets. The only cloud live path is the
 Mac-controlled ephemeral relay for client-isolated venue Wi-Fi.
 
