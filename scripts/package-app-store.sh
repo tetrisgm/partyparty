@@ -75,11 +75,38 @@ ARCHIVE_HOST_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :BuildMachineOSBuild' "$
 /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTIONS"
 /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:fm.partyparty.app string $PROFILE_NAME" "$EXPORT_OPTIONS"
 
+# Export talks to Apple to settle provisioning. With no way to authenticate and
+# no UI to prompt in, it blocks forever rather than failing: on the CI runner it
+# sat silent for forty minutes after ARCHIVE SUCCEEDED and was killed by the job
+# timeout, which reads like a slow build and is a hang. Handing it the App Store
+# Connect API key it already has makes the call non-interactive. Locally, where
+# a signed-in Xcode settles this from the session, the key is usually absent and
+# the flags are simply omitted.
+EXPORT_AUTH=()
+# CI supplies ASC_KEY_ID/ASC_ISSUER_ID/ASC_PRIVATE_KEY_PATH; a local release.env
+# supplies APP_STORE_CONNECT_*. Accept either rather than making one lane's
+# naming the condition for the other lane working.
+ASC_ID="${ASC_KEY_ID:-${APP_STORE_CONNECT_KEY_ID:-}}"
+ASC_ISS="${ASC_ISSUER_ID:-${APP_STORE_CONNECT_ISSUER_ID:-}}"
+ASC_KEY_FILE="${ASC_PRIVATE_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_ID}.p8}"
+if [ -n "$ASC_ID" ] && [ -n "$ASC_ISS" ] && [ -f "$ASC_KEY_FILE" ]; then
+  EXPORT_AUTH=(
+    -allowProvisioningUpdates
+    -authenticationKeyPath "$ASC_KEY_FILE"
+    -authenticationKeyID "$ASC_ID"
+    -authenticationKeyIssuerID "$ASC_ISS"
+  )
+  echo "export: authenticating to App Store Connect with key $ASC_ID"
+else
+  echo "export: no App Store Connect key available; relying on the Xcode session"
+fi
+
 xcodebuild \
   -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportPath "$EXPORT_DIR" \
-  -exportOptionsPlist "$EXPORT_OPTIONS"
+  -exportOptionsPlist "$EXPORT_OPTIONS" \
+  "${EXPORT_AUTH[@]}"
 
 EXPORTED_PKG="$(find "$EXPORT_DIR" -maxdepth 1 -type f -name '*.pkg' -print -quit)"
 [ -n "$EXPORTED_PKG" ] || {
