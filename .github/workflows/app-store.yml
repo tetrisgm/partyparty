@@ -35,8 +35,8 @@ jobs:
         run: |
           set -euo pipefail
           project=app/PartyParty.xcodeproj/project.pbxproj
-          versions="$(sed -n 's/.*MARKETING_VERSION = \\([^;]*\\);/\\1/p' "$project" | sort -u)"
-          builds="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \\([^;]*\\);/\\1/p' "$project" | sort -u)"
+          versions="$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);/\1/p' "$project" | sort -u)"
+          builds="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([^;]*\);/\1/p' "$project" | sort -u)"
           [ "$versions" = "$REQUESTED_VERSION" ] || {
             echo "Requested version $REQUESTED_VERSION does not match project version $versions" >&2
             exit 1
