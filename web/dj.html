@@ -651,8 +651,9 @@
   .gocapture .source-picker{flex:0 0 auto;width:min(330px,100%)}
   .golabel{display:flex;align-items:center;gap:var(--s-2);
     font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
-  .golabel .iconbtn{width:20px;height:20px;border-radius:50%;font-size:11px;
+  .golabel .iconbtn,.linkeditor-head .iconbtn{width:20px;height:20px;border-radius:50%;font-size:11px;
     background:rgba(255,255,255,.08);color:var(--label-secondary);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .linkeditor-head .iconbtn{margin-left:8px}
   .goaction{display:flex;align-items:center;gap:var(--s-4)}
   .golive.biggo,.golive.go.biggo{
     height:64px!important;min-width:260px!important;padding:0 44px!important;
@@ -851,6 +852,12 @@
     border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:var(--r-sm);
     padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
   .coverbtn:hover{background:rgba(18,18,22,.68)}
+  .coverx{position:absolute;top:var(--s-4);right:var(--s-4);z-index:3;
+    width:28px;height:28px;border-radius:50%;display:none;place-items:center;padding:0;border:0;
+    background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:13px;cursor:pointer}
+  .poster:has(.coverwrap.has-cover) .coverx{display:grid}
+  .coverx:hover{background:rgba(18,18,22,.68)}
   .coverstatus{position:absolute;right:var(--s-4);bottom:calc(var(--s-4) + 38px);z-index:3;
     display:none;font-size:12px;color:rgba(255,255,255,.85)}
   .coverstatus.error{color:#ff7a7a}
@@ -927,6 +934,7 @@
         <button class="coverbtn" id="pubCoverChangeBtn" type="button">Shuffle image</button>
         <button class="coverbtn" id="pubCoverBtn" type="button">Upload image</button>
       </div>
+      <button class="coverx" id="coverRemoveBtn" type="button" aria-label="Remove cover image" title="Remove cover image">✕</button>
       <span class="coverstatus" id="pubCoverResult" role="status"></span>
       <input id="pubCoverFile" type="file" accept="image/*" hidden>
       <div class="posterbody">
@@ -976,7 +984,7 @@
   </div>
 
   <div class="card joincard" id="joinCard" aria-label="Share">
-    <div class="linkeditor-head"><b>How to join</b></div>
+    <div class="linkeditor-head"><b>How to listen</b><button class="iconbtn source-help" id="joinGuideBtn" type="button" aria-label="How listening works" title="How listening works">?</button></div>
     <div class="event-share">
       <div class="event-qr" id="shareCard">
         <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
@@ -1117,6 +1125,23 @@
           <button class="linkact" id="copyFailsafeBtn" type="button">Copy</button>
         </div>
       </details>
+    </div>
+  </div>
+</div>
+
+<!-- "How listening works" - what the QR page is and what guests get. -->
+<div class="softaskov" id="joinGuideSheet" role="presentation">
+  <div class="softask sourceguide" role="dialog" aria-modal="true" aria-labelledby="joinGuideTitle">
+    <button class="cardx" id="joinGuideCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
+    <h2 id="joinGuideTitle">How listening works</h2>
+    <div class="sourceguide-body">
+      <p>Guests point their camera at the QR code (or open the link) and the party opens in their browser. No app, no account.</p>
+      <h3>The music</h3>
+      <p>Your live stream plays on their phone about a second behind the booth, and keeps playing while the screen is locked.</p>
+      <h3>The connection</h3>
+      <p>On this Wi-Fi, phones connect straight to this Mac. If the venue's Wi-Fi keeps devices apart, guests take the internet relay automatically - same link, nothing to set up.</p>
+      <h3>The party feed</h3>
+      <p>While listening, guests can post photos and comments everyone sees. It is all live only - nothing is stored in the cloud.</p>
     </div>
   </div>
 </div>
@@ -1399,6 +1424,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (gov) {
       gov.addEventListener('click', (e) => { if (e.target === gov) closeSourceGuide(); });
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSourceGuide(); });
+    }
+  }
+  {
+    const jov = $('joinGuideSheet');
+    if ($('joinGuideBtn')) $('joinGuideBtn').onclick = () => { if (jov) jov.classList.toggle('show'); };
+    if ($('joinGuideCloseBtn')) $('joinGuideCloseBtn').onclick = () => { if (jov) jov.classList.remove('show'); };
+    if (jov) {
+      jov.addEventListener('click', (e) => { if (e.target === jov) jov.classList.remove('show'); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') jov.classList.remove('show'); });
     }
   }
 
@@ -2103,6 +2137,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.error) throw new Error(d.error || 'cover save failed');
     eventMeta.cover = d.cover || ref;
+    if (ref) localStorage.removeItem('pp.coverNone');
+  }
+  function clearCoverUI(){
+    if (coverPreviewURL) { URL.revokeObjectURL(coverPreviewURL); coverPreviewURL = ''; }
+    if (eventCoverImg) eventCoverImg.src = '';
+    if (eventCover) eventCover.classList.remove('has-cover');
+    currentCover = { kind:'none', index:-1, src:'', file:null };
   }
   function setCoverImage(src){
     if (!eventCover || !eventCoverImg || !src) return;
@@ -2127,6 +2168,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
   function syncEventCover(ref){
     ref = String(ref || '');
+    if (!ref && localStorage.getItem('pp.coverNone')) {
+      // The DJ removed the cover on purpose: the empty gradient IS the choice.
+      coverMetaSeen = true;
+      clearCoverUI();
+      return;
+    }
     if (!ref) {
       if (!coverMetaSeen && currentCover.src) {
         coverMetaSeen = true;
@@ -2188,7 +2235,17 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       setCoverBusy(false);
     }
   }
-  selectCuratedCover(savedCoverIndex(), { persist:false });
+  if (!localStorage.getItem('pp.coverNone')) selectCuratedCover(savedCoverIndex(), { persist:false });
+  if ($('coverRemoveBtn')) $('coverRemoveBtn').addEventListener('click', async () => {
+    try {
+      await persistCoverRef('');
+      localStorage.setItem('pp.coverNone', '1');
+      clearCoverUI();
+      setCoverStatus('', '');
+    } catch (e) {
+      setCoverStatus('Couldn’t remove cover: ' + (e.message || e), 'error');
+    }
+  });
   if (pubCoverBtn) pubCoverBtn.addEventListener('click', pickCover);
   if (pubCoverChangeBtn) pubCoverChangeBtn.addEventListener('click', shuffleCoverImage);
   if (pubCoverFile) pubCoverFile.addEventListener('change', () => uploadCoverFile(pubCoverFile.files && pubCoverFile.files[0]));

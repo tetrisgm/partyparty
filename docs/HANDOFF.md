@@ -2,9 +2,9 @@
 
 ## Current position
 
-Join-card copy trim + rail polish per owner, verified in the running app: "Guests scan this to join the party." removed; "Scan the QR once with a phone to check this Wi-Fi." removed (an undecided network shows nothing under the QR; decided-mode lines stay); section renamed "Guests join here" -> "How to join"; the big button reads "Go live" (stop stays "Stop broadcast"; ? modal copy follows); "No listeners yet." removed - an empty group is just the DJ row. Confirmed server-side that paused page-visitors already group under their selected DJ (the active flag only resolves duplicate assignments), matching the owner's model; groups exist only per DJ. Contract pins assert the removals and new strings. Suites pass; rebuilt+installed+running; screenshot shows PARTICIPANTS / SHOKUNIN — 1 / photo+DJ row, HOW TO JOIN with bare QR+link+Copy/Share, pink Go live.
+Done and verified in the running app: "How to listen" heading with a ? opening the new "How listening works" modal (browser page, no app/account; ~1s behind the booth, keeps playing locked; direct Wi-Fi with automatic relay fallback; party feed; live only, nothing stored). Cover-remove X at the poster's top-right: clicked it live - cover cleared to the default gradient, event.cover persisted as "" server-side, the X hides itself when no cover is set (:has), Shuffle/Upload remain and clear the local pp.coverNone marker so a fresh pick sticks; the marker keeps the removal across console reloads (boot seed + meta auto-seed both respect it). Suites pass; rebuilt+installed+running; contract pins assert How to listen + How listening works.
 
-Workshop checkpoint: `1785868850079-c7eaff12` (product).
+Workshop checkpoint: `1785869217058-22bc3a36` (product).
 
 ## Next concrete step
 
