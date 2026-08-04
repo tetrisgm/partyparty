@@ -2,13 +2,13 @@
 
 ## Current position
 
-Title bar removed per owner ("is anything besides Settings in the action bar?" -> "do it"). A fixed invisible drag strip (top-left, min(40%,420px) x 30px, -webkit-app-region:drag) keeps the window movable and stays clear of the poster's always-visible Shuffle/Upload cluster; the Settings gear floats top-right as a translucent circular button (same id, JS untouched); the poster tucks under the traffic lights with a small page top pad. All titlebar CSS removed (#actionbar both eras, .abinner, .tbdrag, .titlebar variants); reduced-transparency/contrast/supports rules retargeted; .startstage kept (lives in the go card). Contract test pins the barless chrome (no id="actionbar", dragstrip drag region, floating gear). Bonus fix: a successful avatar load clears the stale "profile photo failed to load" note that pinned itself under a visibly loaded photo. Verified: JS syntax, both web suites, rebuilt+installed+running, desktop screenshot (poster to the top edge, gear floating), Shuffle clicked through the strip zone, zero console errors.
+Owner chrome follow-ups done and verified in the running app: drag strip removed (owner does not want window-drag plumbing; only the floating gear remains of the old bar), scrollbar quieted (8px, transparent track, low-alpha pill thumb + hover step - was the default bright WebKit slab), and the poster's Shuffle/Upload cluster moved to the bottom-right of the artwork with the status note stacking above it. Contract pins updated: no dragstrip anywhere, thin scrollbar present, gear pinned. Both web suites pass; app rebuilt/installed/running; screenshot confirms bottom-right cluster, thin bar, quiet rail.
 
-Workshop checkpoint: `1785867306027-22134a7b` (product).
+Workshop checkpoint: `1785867626264-4a8ef3df` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (scripts/test-stream-contract.mjs + web/dj.html). Remaining from before: owner-triggered beta-review submission for build 248 if Seth is external; owner re-uploads profile photo; next real phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (scripts/test-stream-contract.mjs + web/dj.html). Standing items: owner-triggered beta-review submission for TestFlight 248 if Seth is in the external group; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

@@ -163,11 +163,13 @@ assert.match(dj, /class="ename"/);
 // One measure down the column, and it stretches with the window: a fixed
 // column parked between two empty rails is not responsive.
 assert.match(dj, /--measure:min\(\d+px,100%\)/);
-// The title bar is gone by owner decision: a fixed drag strip keeps the window
-// movable and the settings gear floats in the corner.
+// The title bar is gone by owner decision, and so is the drag strip that
+// briefly replaced it ("I don't need it"). Only the settings gear floats in
+// the corner, and the scrollbar stays thin and quiet on the dark window.
 assert.doesNotMatch(dj, /id="actionbar"/);
-assert.match(dj, /\.dragstrip\{position:fixed[^}]*-webkit-app-region:drag/);
+assert.doesNotMatch(dj, /dragstrip/);
 assert.match(dj, /class="iconbtn gearfloat" id="settingsBtn"/);
+assert.match(dj, /::-webkit-scrollbar\{width:8px/);
 assert.match(dj, /\.page\{[^}]*max-width:var\(--measure\)/);
 assert.match(dj, /\.eventcover\{[^}]*margin-inline:0/);
 // The version is a footer, not a sticker floating over the page.
