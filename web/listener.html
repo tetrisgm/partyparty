@@ -2380,9 +2380,10 @@
     function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
     const OUTLIER_LATE_BY = 0.75;
     const OUTLIER_CONFIRMATIONS = 3;
-    const OUTLIER_COOLDOWN_MS = 30000;
-    const OUTLIER_MAX_REATTACHES = 2;
+    const OUTLIER_COOLDOWN_MS = 15000;     // mechanical minimum: let an attachment land and re-measure
+    const OUTLIER_COOLDOWN_MAX_MS = 60000; // reached only while corrections fail to stick
     let outlierBeats = 0, outlierCoolingUntil = 0, outlierReattaches = 0;
+    let outlierCooldownMs = OUTLIER_COOLDOWN_MS;
     let originCandidate = null, originRepeats = 0;
     function audibleActive(){
       return started && !player.muted && !userPaused && !yielded && live && streamReady;
@@ -2426,9 +2427,17 @@
       }
     }
     // Native AVPlayer owns normal LL-HLS playout. The page never seeks or
-    // continuously steers a healthy player. A sustained, measured gross
-    // outlier gets one bounded fresh native attachment; an unavailable
-    // timeline is diagnostic only and must never interrupt audible playback.
+    // continuously steers a healthy player. Excess delay is NOT tolerated:
+    // every confirmed drift past the room target gets a fresh native
+    // attachment, every time, for the whole set. The room stays in sync or
+    // the phone is actively being pulled back to it. The cooldown is only
+    // the mechanical minimum for an attachment to land and re-measure (15s);
+    // it stretches toward 60s only while corrections demonstrably fail to
+    // stick, and snaps back the moment one lands. The 125.33-era code had a
+    // 2-per-session lifetime cap here; after two real stalls the aligner
+    // went permanently dead and phones drifted unbounded (16.7s observed at
+    // a live test on 2026-08-04). An unavailable timeline is diagnostic only
+    // and must never interrupt audible playback.
     function considerNativeOutlier(lat, stalled){
       if (!useNative || document.visibilityState !== 'visible' || stalled || player.readyState < 3) {
         outlierBeats = 0;
@@ -2442,13 +2451,15 @@
       const lateBy = lat - roomTarget();
       if (lateBy < OUTLIER_LATE_BY) {
         outlierBeats = 0;
+        outlierCooldownMs = OUTLIER_COOLDOWN_MS; // on target: the last correction landed, restore full credit
         return;
       }
       if (++outlierBeats < OUTLIER_CONFIRMATIONS) return;
       outlierBeats = 0;
       const now = Date.now();
-      if (now < outlierCoolingUntil || outlierReattaches >= OUTLIER_MAX_REATTACHES) return;
-      outlierCoolingUntil = now + OUTLIER_COOLDOWN_MS;
+      if (now < outlierCoolingUntil) return;
+      outlierCoolingUntil = now + outlierCooldownMs;
+      outlierCooldownMs = Math.min(outlierCooldownMs * 2, OUTLIER_COOLDOWN_MAX_MS);
       outlierReattaches++;
       sumRecovers++;
       logEvent('outlier-reattach', {
@@ -2588,6 +2599,7 @@
       outlierBeats = 0;
       outlierCoolingUntil = 0;
       outlierReattaches = 0;
+      outlierCooldownMs = OUTLIER_COOLDOWN_MS;
     }
     function stopPlayback(){
       resumeWanted = started && !userPaused && !yielded; // a yielded tab must not auto-resume into audio

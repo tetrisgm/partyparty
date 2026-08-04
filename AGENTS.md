@@ -24,11 +24,15 @@ The stable production geometry is 500 ms segments, 150 ms parts, and a
 and non-blocking ffmpeg tee outputs; the audio core must not change without a
 supervised go-live test.
 
-Healthy native playback is passive — PartyParty never seeks or rate-steers it. A
-visible phone that stays at least 750 ms beyond the one-second room target for
-three measurements gets one bounded fresh HLS attachment. Missing timing
-telemetry alone never interrupts audio, and nothing runs while Safari is hidden
-or the phone is locked.
+Healthy native playback is passive — PartyParty never seeks or rate-steers it.
+Excess delay is not tolerated: a visible phone that stays at least 750 ms beyond
+the one-second room target for three measurements gets a fresh HLS attachment,
+and corrections stay available for the whole set — spacing between them is only
+the mechanical minimum for an attachment to land and re-measure, stretching
+briefly only while corrections fail to stick. Never a per-session cap: one
+shipped once and left a phone 16.7 s behind at a live test (2026-08-04). Missing
+timing telemetry alone never interrupts audio, and nothing runs while Safari is
+hidden or the phone is locked.
 
 Relay mode gives `/live/` traffic priority: guest photos take a capped,
 throttled secondary path and videos do not enter the relay at all. Direct mode

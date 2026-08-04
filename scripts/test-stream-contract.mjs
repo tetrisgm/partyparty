@@ -66,8 +66,14 @@ assert.match(listener, /const ROOM_TARGET_FALLBACK = 1\.0;/);
 assert.match(listener, /const useNative = nativeHLS && \(isAppleUA \|\| iosShellBrowser\);/);
 assert.match(listener, /const OUTLIER_LATE_BY = 0\.75;/);
 assert.match(listener, /const OUTLIER_CONFIRMATIONS = 3;/);
-assert.match(listener, /const OUTLIER_COOLDOWN_MS = 30000;/);
-assert.match(listener, /const OUTLIER_MAX_REATTACHES = 2;/);
+assert.match(listener, /const OUTLIER_COOLDOWN_MS = 15000;/);
+assert.match(listener, /const OUTLIER_COOLDOWN_MAX_MS = 60000;/);
+// No delay tolerance: the aligner must never cap out for the session. A
+// 2-per-lifetime cap shipped once and left phones 16.7s behind at a live
+// test (2026-08-04); corrections must stay available forever, with credit
+// restored whenever one lands the phone back on target.
+assert.doesNotMatch(listener, /OUTLIER_MAX_REATTACHES/);
+assert.match(listener, /outlierCooldownMs = OUTLIER_COOLDOWN_MS; \/\/ on target/);
 assert.match(listener, /logEvent\('outlier-reattach'/);
 assert.match(listener, /document\.visibilityState !== 'visible'/);
 // The DJ picker still opens the wall, but the "Party feed" heading above the
