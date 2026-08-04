@@ -2,13 +2,13 @@
 
 ## Current position
 
-Done and verified in the running app: "How to listen" heading with a ? opening the new "How listening works" modal (browser page, no app/account; ~1s behind the booth, keeps playing locked; direct Wi-Fi with automatic relay fallback; party feed; live only, nothing stored). Cover-remove X at the poster's top-right: clicked it live - cover cleared to the default gradient, event.cover persisted as "" server-side, the X hides itself when no cover is set (:has), Shuffle/Upload remain and clear the local pp.coverNone marker so a fresh pick sticks; the marker keeps the removal across console reloads (boot seed + meta auto-seed both respect it). Suites pass; rebuilt+installed+running; contract pins assert How to listen + How listening works.
+About You is one two-line block, verified in the running app with computed-style probes: 132px photo spanning both lines (display:contents flattens .profileeditor into the linkeditor grid), line 1 = name + description side by side in one grouped enclosure (vertical divider, input-height description), line 2 = uniform chips (auto-fill 220px cells - measured all chips exactly 220px - with compact 118px right-aligned fields). Owner follow-ups applied in-flight: line gap tightened (26px measured), chip fields shortened, and the separators under the chips removed (linkeditor + eventManagePanel border-bottoms measured 0px; the culprit was the flat-era rule list including .linkeditor). The chip restyle lives in the !important flat-era block that wins the cascade - editing the earlier rule silently lost (chips collapsed to 24px until the winning block was changed). Party feed shows in every phase again (verified visible pre-live with composer + Open event folder). Suites pass; rebuilt+installed+running.
 
-Workshop checkpoint: `1785869217058-22bc3a36` (product).
+Workshop checkpoint: `1785870014815-7b4f242b` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html + scripts/test-stream-contract.mjs). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

@@ -418,8 +418,15 @@
     background:var(--fill);color:var(--label-tertiary);
     font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
   .linkeditor{border:1px solid var(--separator);padding:20px 22px;background:var(--bg-elevated);margin:0}
-  .profileeditor{display:grid;border-bottom:1px solid var(--separator);grid-template-columns:96px minmax(0,1fr);gap:18px;margin-bottom:18px;padding-bottom:18px}
-  .profileimagewrap,.profilephoto{width:96px;height:96px}
+  .linkeditor{display:grid;grid-template-columns:132px minmax(0,1fr);gap:var(--s-3) var(--s-5);align-items:start}
+  .profilephoto-actions .profilebuttons{margin:0;min-height:0}
+  .profilephoto-actions{gap:6px}
+  .linkeditor > .linkeditor-head{grid-column:1/-1}
+  .linkeditor > .linkactions{grid-column:1/-1}
+  .profileeditor{display:contents}
+  .profileeditor .profileimagewrap{grid-column:1;grid-row:2 / span 2}
+  .profileeditor .profilephoto-actions{grid-column:2;grid-row:2}
+  .profileimagewrap,.profilephoto{width:132px;height:132px}
   .profilephoto-actions{display:grid;align-content:start;gap:10px}
   .profilephoto-actions textarea{width:100%;resize:vertical;background:var(--fill);border:1px solid var(--separator);padding:9px 10px;color:var(--label);font:inherit;min-height:86px;border-radius:var(--r-sm)}
   .profilebuttons,.linkactions{justify-content:flex-end;padding-top:4px}
@@ -436,8 +443,6 @@
      the service name and the handle all live inside one pill, so the field is
      part of the object instead of a separate box stretched across the window.
      They wrap, so as many fit per line as the width honestly allows. */
-  .linkrows{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s-3);max-width:1020px}
-  @media (max-width:980px){.linkrows{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .linkrow{
     display:flex;align-items:center;gap:var(--s-2);min-width:0;
     height:42px;padding:0 var(--s-4) 0 var(--s-3);
@@ -645,6 +650,8 @@
   /* ---- capture + start: the one big action on the page ---- */
   .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-6)!important;padding-bottom:var(--s-6)!important}
   .workspace > .page .card.gocard{border-bottom:0!important} /* no separator between this and Guests join here */
+  .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
+  .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
   .gocapture{display:flex;flex-direction:column;gap:var(--s-2);min-width:0}
   /* .source-picker's flex-basis is a WIDTH in the titlebar row it was born in;
      inside this column it would become a 330px HEIGHT. */
@@ -744,9 +751,10 @@
     border-radius:var(--r-md);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);
     overflow:hidden;
+    display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);
   }
-  .grouped > *{border-top:1px solid rgba(255,255,255,.08)}
-  .grouped > *:first-child{border-top:0}
+  .grouped > *{border-left:1px solid rgba(255,255,255,.08)}
+  .grouped > *:first-child{border-left:0}
   .profilefield{
     display:grid!important;grid-template-columns:minmax(0,1fr);
     align-items:center;padding:var(--s-2) var(--s-3);margin:0!important;
@@ -757,7 +765,7 @@
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 2px rgba(0,0,0,.28);
     color:var(--label);font:inherit;font-size:13px;padding:5px var(--s-2);width:100%;
   }
-  .profilefield textarea{min-height:58px;resize:vertical}
+  .profilefield textarea{min-height:40px;height:40px;resize:none}
   .profilefield input:focus,.profilefield textarea:focus{
     outline:none;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 24%,transparent);
   }
@@ -797,11 +805,13 @@
      are six short optional entries, not a settings list, and the chip is what
      makes that legible at a glance. */
   .linkrows{
-    display:flex!important;flex-wrap:wrap;gap:var(--s-2);max-width:880px;
+    display:grid!important;grid-column:2;grid-row:3;
+    grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s-3);
+    align-content:start;max-width:none;
     background:transparent!important;box-shadow:none!important;border-radius:0!important;
   }
   .linkrows .linkrow{
-    display:inline-flex!important;align-items:center;gap:var(--s-2);
+    display:flex!important;align-items:center;gap:var(--s-2);width:100%;
     height:34px;padding:0 var(--s-3)!important;border-top:0!important;
     border-radius:var(--r-pill)!important;
     background:rgba(255,255,255,.06)!important;
@@ -815,7 +825,7 @@
   .linkrows .linkrow.filled{background:rgba(255,255,255,.12)!important}
   .linkrows .linkname{font-size:12px!important;font-weight:500!important;color:var(--label-secondary)!important}
   .linkrows .linkrow input{
-    width:124px!important;height:22px;flex:0 0 auto;padding:0 0 0 var(--s-2)!important;
+    width:118px!important;height:22px;flex:0 0 118px;min-width:0;margin-left:auto;padding:0 0 0 var(--s-2)!important;
     background:transparent!important;border:0!important;border-radius:0!important;
     border-left:1px solid rgba(255,255,255,.12)!important;
     box-shadow:none!important;color:var(--label);font-size:12px;
@@ -895,8 +905,6 @@
   .ready[data-state="bad"] .readydot{background:#ff453a}
   body[data-phase="live"] .readiness{display:none}
 
-  /* The feed is not a feature until there is a party. */
-  body:not([data-phase="live"]) .party-grid{display:none}
 
   /* Named when it happens, silent otherwise. */
   .isolationnote{
