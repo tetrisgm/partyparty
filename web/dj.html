@@ -418,15 +418,21 @@
     background:var(--fill);color:var(--label-tertiary);
     font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
   .linkeditor{border:1px solid var(--separator);padding:20px 22px;background:var(--bg-elevated);margin:0}
-  .linkeditor{display:grid;grid-template-columns:132px minmax(0,1fr);gap:var(--s-3) var(--s-5);align-items:start}
-  .profilephoto-actions .profilebuttons{margin:0;min-height:0}
-  .profilephoto-actions{gap:6px}
+  .linkeditor{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px var(--s-5);align-items:start}
+  .profilephoto-actions{gap:0}
+  /* Status rows exist for errors only; empty ones must not reserve a line. */
+  .profilephoto-actions .profilebuttons{display:none;margin:0;min-height:0}
+  .profilephoto-actions .profilebuttons:has(.profilestatus:not(:empty)){display:block;margin-top:6px}
+  .linkeditor > .linkactions{display:none}
+  .linkeditor > .linkactions:has(.linkstatus:not(:empty)){display:flex;margin:0}
+  /* The link row centers against the QR so the card carries no dead corner. */
+  .joincard .event-share{align-items:center}
   .linkeditor > .linkeditor-head{grid-column:1/-1}
   .linkeditor > .linkactions{grid-column:1/-1}
   .profileeditor{display:contents}
   .profileeditor .profileimagewrap{grid-column:1;grid-row:2 / span 2}
   .profileeditor .profilephoto-actions{grid-column:2;grid-row:2}
-  .profileimagewrap,.profilephoto{width:132px;height:132px}
+  .profileimagewrap,.profilephoto{width:100px;height:100px}
   .profilephoto-actions{display:grid;align-content:start;gap:10px}
   .profilephoto-actions textarea{width:100%;resize:vertical;background:var(--fill);border:1px solid var(--separator);padding:9px 10px;color:var(--label);font:inherit;min-height:86px;border-radius:var(--r-sm)}
   .profilebuttons,.linkactions{justify-content:flex-end;padding-top:4px}
@@ -437,7 +443,7 @@
      "Guests" heading would say it a third time. */
   .inspector .guesthead h2{display:none}
   .inspector .guesthead{justify-content:flex-end}
-  .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:30px;margin:0 0 18px;padding:0}
+  .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:0;margin:0 0 12px;padding:0}
   .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:18px;line-height:1.25;font-weight:700}
   /* Social links as chips, the way an "about me" page does it: the brand mark,
      the service name and the handle all live inside one pill, so the field is
@@ -520,7 +526,7 @@
   .eventedit[data-field="title"] [data-edit-group="title"],
   .eventedit[data-field="host"] [data-edit-group="host"],
   .eventedit[data-field="schedule"] [data-edit-group="schedule"]{display:grid}
-  .party-grid{display:grid;align-items:stretch;gap:var(--s-4);margin-top:var(--s-4);grid-template-columns:minmax(0,1fr)}
+  .party-grid{display:grid;align-items:stretch;gap:var(--s-4);margin-top:0;grid-template-columns:minmax(0,1fr)}
   .guesthead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .guesthead h2{margin:0!important}
   .detailsbtn{height:28px;padding:0;background:none;color:var(--accent);font-size:12px;font-weight:700}
@@ -658,7 +664,7 @@
   .joincard .linkfield input{flex:0 1 auto;width:34ch;min-width:180px}
 
   /* ---- capture + start: the one big action on the page ---- */
-  .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-6)!important;padding-bottom:var(--s-6)!important}
+  .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-5)!important;padding-bottom:var(--s-5)!important}
   .workspace > .page .card.gocard{border-bottom:0!important} /* no separator between this and Guests join here */
   .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
   .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
@@ -736,7 +742,7 @@
     border:0!important;
     border-bottom:1px solid rgba(255,255,255,.1)!important;
     border-radius:0!important;
-    padding:var(--s-5) 0!important;
+    padding:var(--s-4) 0!important;
     margin:0!important;
   }
   .workspace > .page > *:last-child,
@@ -841,7 +847,7 @@
   body[data-phase]{--poster-accent:#6f7bff}
   .poster{
     position:relative;overflow:hidden;isolation:isolate;
-    border-radius:var(--r-poster);padding:var(--s-7) var(--s-6);margin:0 0 var(--s-5);
+    border-radius:var(--r-poster);padding:var(--s-7) var(--s-6);margin:0 0 var(--s-4);
     background:
       radial-gradient(120% 140% at 12% 0%,color-mix(in srgb,var(--poster-accent) 34%,transparent),transparent 62%),
       radial-gradient(90% 120% at 92% 108%,color-mix(in srgb,var(--poster-accent) 22%,transparent),transparent 60%),

@@ -2,13 +2,13 @@
 
 ## Current position
 
-Mixcloud and Resident Advisor removed as link types product-wide: console picker/placeholders/brand-mark SVGs/URL builders and the RA username special-case (web/dj.html), the wall's label table (web/wall.html), and the Go link-type table (internal/event/event.go, gofmt'd). Four services remain: Instagram, SoundCloud, Bandcamp, Website - the chips grid now shows one row of four. Zero references left anywhere in web/, internal/, or the test scripts. go build + event/server tests + both web suites pass; rebuilt+installed+running.
+Whitespace tidy done and measured in the running app: page rhythm evened (flat sections s-4, gocard s-5, poster margin s-4, section heads 12px, party-grid flush); profile photo sized to exactly its two content lines (100px - the taller photo was stretching the grid rows and opening the void the owner flagged); empty status rows collapse via :has so error-only rows reserve no height - the fields-to-chips gap measures exactly the 10px grid gap now (was 24); the join card's link row centers vertically against the QR (measured centered), killing the dead corner. Both web suites pass; rebuilt+installed+running; screenshots confirm the tightened top half and the balanced join row.
 
-Workshop checkpoint: `1785870483687-a48d3a0b` (product).
+Workshop checkpoint: `1785870722256-276ba03d` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (internal/event/event.go, web/dj.html, web/wall.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 
