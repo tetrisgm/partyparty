@@ -2,13 +2,13 @@
 
 ## Current position
 
-One-slot Store install shipped and already executed on this Mac: build-install-app-store-local.sh now defaults DEST_DIR to /Applications (same path TestFlight installs to), stages under DERIVED instead of inside the dest dir, removes the legacy ~/Applications/PartyParty Store Development location after a successful install, and quits the running editions BEFORE the launch test (the old order needed port 8000 free after the test had already demanded it — masked until now because the outer loop always quit first). Migration performed with PP_REUSE_BUILD=1: app now runs from /Applications/PartyParty.app (verified pgrep + /api/status idle 125.32), legacy dir gone. Effect: a TestFlight download replaces the WIP build and the next dev-loop run replaces it back; same bundle id keeps the container, so party data survives the swap. Separately (no repo change): owner added to the empty Internal testing TestFlight group via asc, so 249 is installable by him; Seth's dead TestFlight traced to the Jul-30 group recreation plus both external-group builds (224, 234) having been manually expired Aug 3 — restoring Seth needs an owner-explicit beta-review submission of a current build to Party testing.
+Seth is on the 249 track, on the owner's explicit order ("GET HIM ON THE SAME THING AS ME"): build 125.33 (249, id 046ab5af-88c6-4fe9-b827-e750e32ad990) attached to the external "Party testing" group and submitted for beta app review via asc — externalBuildState WAITING_FOR_BETA_REVIEW, internalBuildState IN_BETA_TESTING (owner installs now via Internal testing). Seth's membership and accepted invite are intact (invite resend rejected as already-accepted, which is fine); autoNotify is on, so TestFlight notifies him the moment Apple approves, typically within hours. He must use TestFlight on his Mac — the iPhone entry always shows incompatible for this Mac-only app. asc review doctor's one blocker (App Store version 125.26 has no build attached) concerns the dormant store-version lane, not TestFlight.
 
-Workshop checkpoint: `1785882794791-cfb536b8` (apple).
+Workshop checkpoint: `1785883132705-da67f05b` (apple).
 
 ## Next concrete step
 
-Verify through Workshop, then finish. Seth's external path stays parked until the owner explicitly asks for the beta-review submission.
+Nothing in flight. On next contact: check externalBuildState for 249 (expect READY_FOR_BETA_TESTING) and whether Seth's TestFlight revived.
 
 ## Blockers
 
