@@ -81,6 +81,39 @@ func TestNetworkTransitionReturnsToChecking(t *testing.T) {
 	}
 }
 
+func TestOneLaunchFailureDoesNotScareTheRoom(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	manager := New(Config{})
+	manager.SetDirectURL("https://disco.party.partyparty.party:8443/")
+
+	// The first registration attempt races the network stack at launch. A single
+	// failure is a blip, not a verdict: the room must stay CHECKING instead of
+	// flashing the amber NO PATH warning at a DJ whose Wi-Fi is fine.
+	if settled := manager.noteRegistrationFailure(); settled {
+		t.Fatalf("one failure settled the verdict")
+	}
+	if status := manager.Snapshot(); status.Mode != ModeChecking {
+		t.Fatalf("after one failure mode = %q, want checking", status.Mode)
+	}
+
+	// The second consecutive failure is real evidence, and with no resolver
+	// answer the honest verdict for this network is NO PATH.
+	if settled := manager.noteRegistrationFailure(); !settled {
+		t.Fatalf("two consecutive failures did not settle the verdict")
+	}
+	if status := manager.Snapshot(); status.Mode != ModeNoPath {
+		t.Fatalf("after two failures mode = %q, want no_path", status.Mode)
+	}
+
+	// A success wipes the streak: the next single failure after it must again
+	// flip the verdict immediately (the stack is long since up), not re-enter
+	// the two-strikes grace.
+	manager.ApplyRegistrationForTest("https://r-room.partyparty.party/", "network-1")
+	if settled := manager.noteRegistrationFailure(); !settled {
+		t.Fatalf("failure after an established session must settle immediately")
+	}
+}
+
 func TestDirectURLDoesNotBypassInitialCheck(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	manager := New(Config{})

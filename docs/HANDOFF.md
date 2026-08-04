@@ -2,13 +2,13 @@
 
 ## Current position
 
-Seth is on the 249 track, on the owner's explicit order ("GET HIM ON THE SAME THING AS ME"): build 125.33 (249, id 046ab5af-88c6-4fe9-b827-e750e32ad990) attached to the external "Party testing" group and submitted for beta app review via asc — externalBuildState WAITING_FOR_BETA_REVIEW, internalBuildState IN_BETA_TESTING (owner installs now via Internal testing). Seth's membership and accepted invite are intact (invite resend rejected as already-accepted, which is fine); autoNotify is on, so TestFlight notifies him the moment Apple approves, typically within hours. He must use TestFlight on his Mac — the iPhone entry always shows incompatible for this Mac-only app. asc review doctor's one blocker (App Store version 125.26 has no build attached) concerns the dormant store-version lane, not TestFlight.
+Two owner reports fixed and verified live. (1) Launch scare: the amber NO PATH warning + emergency HTTP link flashed for ~a minute on a healthy open Wi-Fi because the FIRST broker registration attempt (racing the network stack at launch) set netTried on failure and one failed sample swung decide() to the harshest verdict, with the correcting retry 15s out. Now the never-settled verdict settles only on TWO consecutive failures (netFailStreak in relay.Manager; noteRegistrationFailure returns settled), the loop retries in 2s while unsettled, and an established session still flips immediately on its first failure (mid-party outages are never hidden). AllowHTTPFallback untouched - the emergency link now appears only after a settled verdict, strictly narrower. Verified on a real relaunch: starting -> awaiting_probe in 3s, no no_path at any point. New TestOneLaunchFailureDoesNotScareTheRoom pins settle-at-two + streak-reset-on-success. (2) Title edit: Enter/click-away now truly ends the edit - WebKit keeps the caret in a blurred contenteditable until selection ranges are dropped, and a click on a plain div never moves focus, so deactivate() blurs + removeAllRanges and a document pointerdown listener ends the edit from outside clicks. Verified in the live console: after Enter and after click-away, activeElement leaves the field and rangeCount is 0, title text untouched. Also: installer quit-wait raised to a hard 30s gate (teardown of mediamtx children can exceed the old 5s cap, which tripped the launch test).
 
-Workshop checkpoint: `1785883132705-da67f05b` (apple).
+Workshop checkpoint: `1785883742162-f62c55ec` (product).
 
 ## Next concrete step
 
-Nothing in flight. On next contact: check externalBuildState for 249 (expect READY_FOR_BETA_TESTING) and whether Seth's TestFlight revived.
+Verify through Workshop, then finish.
 
 ## Blockers
 

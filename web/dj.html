@@ -3368,10 +3368,21 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       window.__ppTitleHold = Date.now() + 4000;
       toast('Name kept - still trying to save it');
     };
+    // Ending the edit must actually end it. WebKit keeps the caret blinking in
+    // a blurred contenteditable until the selection is dropped, and a click on
+    // a plain div never moves focus at all, so blur alone never fires there.
+    const deactivate = () => {
+      el.blur();
+      const sel = window.getSelection && window.getSelection();
+      if (sel && sel.removeAllRanges) sel.removeAllRanges();
+    };
     el.addEventListener('blur', commit);
     el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
-      if (e.key === 'Escape') { el.textContent = eventMeta.title || ''; el.blur(); }
+      if (e.key === 'Enter') { e.preventDefault(); deactivate(); }
+      if (e.key === 'Escape') { el.textContent = eventMeta.title || ''; deactivate(); }
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (document.activeElement === el && !el.contains(e.target)) deactivate();
     });
   })();
 </script>

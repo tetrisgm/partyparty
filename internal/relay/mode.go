@@ -61,7 +61,7 @@ const (
 // Evidence is everything the mode decision depends on. Keeping it a plain value
 // makes decide a pure function, so the whole state machine is table-testable.
 type Evidence struct {
-	NetTried      bool   // at least one broker registration attempt has completed
+	NetTried      bool   // the internet verdict is settled: a registration succeeded, or two consecutive attempts failed
 	InternetOK    bool   // broker registration is currently succeeding
 	ResolverOK    bool   // this network's resolver returns our LAN IP for our host
 	HaveDirectURL bool   // a certificate-backed LAN URL exists (cached cert is enough)
@@ -93,9 +93,10 @@ func (e Evidence) canServeLocally() bool { return e.HaveDirectURL && e.ResolverO
 
 // decide maps evidence to one room mode plus a stable reason code.
 func decide(e Evidence) (mode string, reason string) {
-	// Until we have actually tried to reach the broker, "no internet" is unknown
-	// rather than false. Claiming NO PATH here would tell a DJ their network is
-	// hopeless while startup is still in flight.
+	// Until the internet verdict settles (one success, or two consecutive
+	// failures), "no internet" is unknown rather than false. Claiming NO PATH
+	// here would tell a DJ their network is hopeless while startup is still in
+	// flight - and the first attempt races the network stack at launch.
 	if !e.NetTried {
 		return ModeChecking, ReasonStarting
 	}

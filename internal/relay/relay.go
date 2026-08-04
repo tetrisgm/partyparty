@@ -91,13 +91,14 @@ type Manager struct {
 	directURL string
 
 	// Evidence behind the mode decision (see mode.go). Guarded by mu.
-	netTried    bool
-	originDown  bool
-	internetOK  bool
-	pendingMode string
-	resolverOK  bool
-	probe       *bool
-	override    string
+	netTried      bool
+	netFailStreak int // consecutive registration failures; the verdict settles at two
+	originDown    bool
+	internetOK    bool
+	pendingMode   string
+	resolverOK    bool
+	probe         *bool
+	override      string
 
 	regChanged   chan struct{}
 	stateChanged chan struct{}
@@ -278,9 +279,14 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 		}
 		nextDelay := registrationRefreshInterval
 		if err != nil {
-			m.noteRegistrationFailure()
+			settled := m.noteRegistrationFailure()
 			m.cfg.Logf("relay: registration unavailable: %v", err)
 			nextDelay = registrationRetryInterval
+			if !settled {
+				// One failure has not settled the verdict; retry in seconds so a
+				// launch-time blip resolves quietly instead of at the refresh pace.
+				nextDelay = 2 * time.Second
+			}
 		} else {
 			id, secret := activate.InstallCreds()
 			if id == "" || secret == "" {
@@ -353,6 +359,7 @@ func (m *Manager) applyRegistration(next registration) {
 	networkChanged := m.reg.NetworkKey != next.NetworkKey
 	m.reg = next
 	m.netTried = true
+	m.netFailStreak = 0
 	m.internetOK = true
 	if networkChanged {
 		// A cached direct success for this exact network stands in for a fresh
@@ -440,18 +447,33 @@ func probeOrigin(ctx context.Context, originURL string) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// noteRegistrationFailure records that the broker is unreachable. It no longer
+// noteRegistrationFailure records that a broker attempt failed. It no longer
 // pretends the room is DIRECT: with no internet the mode is LOCAL when this
 // network can resolve us and NO PATH when it cannot, which is the difference
 // between a working forest party and a silent one.
-func (m *Manager) noteRegistrationFailure() {
+//
+// One failed attempt is not that evidence, though. The first try races the
+// network stack right at launch, and that single blip used to swing the room
+// to its harshest verdict - amber warning, emergency HTTP link - on a
+// perfectly good Wi-Fi, until a leisurely retry corrected it a minute later.
+// A never-settled verdict therefore settles only on the SECOND consecutive
+// failure; until then the room honestly stays CHECKING. Once any registration
+// has succeeded, a later failure is real evidence (the stack is long since up)
+// and flips the verdict immediately, so a mid-party outage is never hidden.
+// Reports whether the verdict is settled so the caller can pace retries.
+func (m *Manager) noteRegistrationFailure() (settled bool) {
 	m.mu.Lock()
-	m.netTried = true
+	m.netFailStreak++
+	if m.netFailStreak >= 2 {
+		m.netTried = true
+	}
 	m.internetOK = false
+	settled = m.netTried
 	m.recomputeLocked()
 	m.mu.Unlock()
 	m.flushModeChange()
 	m.signal(m.stateChanged)
+	return settled
 }
 
 // joinURLLocked picks what the QR encodes, from the mode alone.

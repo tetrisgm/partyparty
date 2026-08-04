@@ -34,13 +34,20 @@ fi
 }
 
 # Both editions own the same local server ports, so only one can run at a time,
-# and the launch test below needs port 8000 free.
+# and the launch test below needs port 8000 free. Quit is asynchronous and the
+# server tears down mediamtx/ffmpeg children, which can take well over five
+# seconds; wait generously and fail plainly rather than letting the launch test
+# trip over a port that is still draining.
 osascript -e 'tell application id "fm.partyparty.beta" to quit' >/dev/null 2>&1 || true
 osascript -e 'tell application id "fm.partyparty.app" to quit' >/dev/null 2>&1 || true
-for _ in $(seq 1 20); do
+for _ in $(seq 1 120); do
   curl -fsS --max-time 1 http://127.0.0.1:8000/api/status >/dev/null 2>&1 || break
   sleep 0.25
 done
+if curl -fsS --max-time 1 http://127.0.0.1:8000/api/status >/dev/null 2>&1; then
+  echo "Port 8000 is still in use 30s after asking PartyParty to quit." >&2
+  exit 1
+fi
 
 "$ROOT/scripts/test-app-store.sh" "$BUILT_APP"
 
