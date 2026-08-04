@@ -829,7 +829,9 @@
       radial-gradient(90% 120% at 92% 108%,color-mix(in srgb,var(--poster-accent) 22%,transparent),transparent 60%),
       #0b0b0d;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);
-    min-height:190px;display:flex;align-items:flex-end;
+    /* The artwork is the header: tall enough to read as a hero, about
+       two-thirds of the pre-redesign full-bleed cover. */
+    min-height:clamp(200px,21vw,300px);display:flex;align-items:flex-end;
   }
   .posterart{position:absolute;inset:0;z-index:-1;opacity:.5}
   .coverwrap{position:absolute;inset:0;border-radius:inherit;overflow:hidden}

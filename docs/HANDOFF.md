@@ -2,17 +2,17 @@
 
 ## Current position
 
-2026-08-03 live-test failures all root-caused and fixed, verified end-to-end on the real relay. (1) ppcapture silence keepalive: silent Mac now goes live in 1.2s (was 34.5s-or-forever); pushSilence never advances totalPushed so stall/hog detection is unchanged; supervised go-live ran and passed. (2) Contribute media plane: media-playlist name cached (was master-fetch per 50ms = MediaMTX session churn flooding the log ring); failed cycle drops cache and re-masters (heals cert-hotswap session invalidation in one cycle); 3 failures reset jar+sent+page+assets; heal_test.go pins both. (3) Relay guests get page assets: dj-avatar, event cover, both Geist fonts pushed pinned (X-PP-Pin sticky pins on origin, survive playlist Pin replacement + eviction, tested); re-push on PageAssetsRev change. (4) Honesty: contribute.Snapshot in /api/status relay map (pushing/pushFailures/pushError); console readiness + live-phase stage line show relay push failure; presence proved able to stay fresh for hours while media push was dead. (5) Origin release 20260804-082602 deployed (waiting page for pre-live/unknown index.html + sticky pins). (6) diagPath in /api/status; session-log 'missing' was a TCC mirage (Claude shell lists container dirs as empty; logs existed all along). (7) Console: DJ profile unfolded per owner (no disclosure/headings). All local verification green: gofmt/vet/build, 11 Go pkgs incl. real-MediaMTX integration, both web suites, console zero JS errors, full relay chain live (page 204KB, status JSON, avatar 194KB, cover, fonts, stream.m3u8 from a silent Mac). App rebuilt/installed; owner had closed the app, state restored to quit. No Apple upload.
+Poster hero height restored: the cover restore had made the artwork an absolutely-positioned background of a content-sized box (min-height:190px strip). Now clamp(200px,21vw,300px) - two-thirds of the pre-redesign full-bleed cover, sized per the owner's live feedback ("50% too high" on the first clamp(300px,32vw,460px) attempt). Title stays anchored bottom-left over the scrim. HANDOFF updated with the landed state of the previous round (46c8bfed) plus TestFlight 125.32(248) VALID and internal-ready. Verified through Workshop (full suite green); app rebuilt/installed/running with the new height; owner confirmed direction visually.
 
-Workshop checkpoint: `1785811321983-8d2922c3` (investigation).
+Workshop checkpoint: `1785866822444-17c4601f` (product).
 
 ## Next concrete step
 
-Owner: re-upload profile photo (current on-disk avatar is the Jul-28 diagnostic fixture). Next real go-live with a phone confirms relay guests see photo/header/fonts and that ShazamKit surfaces a track once real music plays. Then fix the Windows worker's elevated SSH token (key in administrators_authorized_keys) so workshop_verify_task can run, and land the ~16-file uncommitted change-set through guarded integration.
+Finish through Workshop (commit web/dj.html + docs/HANDOFF.md). Then remaining: external "Party testing" group needs an owner-triggered beta-review submission for build 248 if Seth is external; owner re-uploads profile photo; next real go-live with a phone confirms relay guests see photo/header/fonts and ShazamKit track ID with real music.
 
 ## Blockers
 
-- Windows build worker rejects all jobs: Invoke-PcBuild.ps1 throws 'Workshop builds must not run with Administrator authority' - SSH key sits in administrators_authorized_keys giving an elevated token; owner-side fix required
+None recorded.
 
 ## Ruled out
 
@@ -33,6 +33,26 @@ Owner: re-upload profile photo (current on-disk avatar is the Jul-28 diagnostic 
 - Presence freshness as relay health: RunPlane and the media cycle are separate planes; presence stayed fresh for hours while the media push was dead
 - Judging room health via the r-<token> URL with curl: the Worker serves its relayBootstrap for every path on r- hosts; judge at <token>.relay… or /__pp/health on the box
 - Concluding files are missing from ls of ~/Library/Containers/...: TCC shows those dirs as empty to a no-FDA shell; prove absence by file read
+
+## Current position (2026-08-04, after the console-layout round)
+
+Everything above LANDED as `46c8bfed` on main through Workshop guarded integration (the
+Windows worker is fixed and verified the set: full Go suite + web suites + 8 worker smokes).
+On top of the incident fixes, the owner's console-layout round shipped in the same commit:
+
+- Console: titlebar is drag + gear only. Capture block ("What to capture" + picker + ? +
+  a big pink Start broadcast / Stop broadcast) sits under the poster where the join card
+  was; Guests join here follows (no separator above, compact link field); About You lost
+  its Name/About labels (placeholders carry it), chips are a real 3-col grid; the party
+  feed head holds Open event folder; guests list lives in the right rail (DJ group header
+  only when >1 DJ); readiness strip + isolation note live in Settings as "Status"; the ?
+  modal copy is current and carries the HTTP failsafe at its bottom. Cover restored on
+  the poster with always-visible Shuffle/Upload (full pipeline verified incl. persistence).
+- Pretty join URLs: the Worker mints a party-word join name per install
+  (broker/join/<name> -> relayToken; r-<token> hosts stay valid), relay/register returns
+  it as joinUrl, QR/link show e.g. happy-dance.partyparty.party (verified live).
+  wrangler.jsonc name aligned to the deployed worker (partyparty-site).
+- TestFlight: workflow run 30896604591 dispatched for 125.32 build 248 (owner-requested).
 
 ## Owed
 
