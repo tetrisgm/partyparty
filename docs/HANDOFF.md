@@ -2,13 +2,13 @@
 
 ## Current position
 
-Stamped MARKETING_VERSION 125.33 / CURRENT_PROJECT_VERSION 249 across all four pbxproj sites (the workflow's Verify step requires the stamps to match its inputs exactly). This build carries the whole 2026-08-04 console day on top of 248: bottom transport bar with centered 🕺 Go live, menu-bar QR popover + equalizer bars icon, Instagram-anatomy feed with post reactions on the Mac, confetti on go-live (Reduce Motion softened), the truthful confirm-twice self-clearing go-live health warning, offline-first optimistic party name, toast-borne start stage, seamless dark title bar, wide-window margins, Invite guests rail, address-as-copy-control, and 51 shuffle covers. Owner explicitly requested this TestFlight build ("once you have everything done, do a build for Testflight") - the dispatch of app-store.yml with version=125.33 build=249 follows the finish.
+HANDOFF.md updated to record the closed release unit: TestFlight 125.33 (249) uploaded via workflow run 30953437019 (green in 6m52s), asc confirms processingState VALID (build id 046ab5af-88c6-4fe9-b827-e750e32ad990, uploaded 2026-08-04T14:47:41-07:00). Next-concrete-step now reads nothing-in-flight with owner-side visual checks owed on 249. Doc-only change.
 
-Workshop checkpoint: `1785879516987-8cfa5b1c` (apple).
+Workshop checkpoint: `1785880477516-cc1ffae5` (apple).
 
 ## Next concrete step
 
-Finish through Workshop, then gh workflow run app-store.yml -f version=125.33 -f build=249 and watch the run to upload confirmation.
+Verify through Workshop, then finish with a doc-only commit.
 
 ## Blockers
 
