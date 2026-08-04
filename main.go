@@ -743,35 +743,49 @@ func main() {
 					time.Sleep(2 * time.Second)
 					live := bc.Status().State == "live"
 					if live && !lastLive {
+						// The warning contract: never scare falsely. One sample
+						// proved able to brand a healthy set dead (a stream that
+						// came up moments after the old one-shot check fired
+						// stayed accused). So: confirm a bad verdict on TWO
+						// consecutive checks before showing anything, keep
+						// checking while live, and the instant a check comes
+						// back healthy the warning clears itself.
 						time.Sleep(5 * time.Second) // let LL-HLS parts+segments accumulate
-						if bc.Status().State != "live" {
-							lastLive = live
-							continue
-						}
-						before, _ := bc.ProgressSnapshot()
-						time.Sleep(2 * time.Second)
-						after, size := bc.ProgressSnapshot()
-						capFlowing := after > before && after > 2_000_000 // out_time advancing, >2s encoded
-						pub, code, body := mediamtx.PathPublishing(cfg.HLSPort, cfg.StreamPath)
-						verdict := "HEALTHY"
-						switch {
-						case !capFlowing:
-							verdict = "CAPTURE-DEAD"
-						case !pub:
-							verdict = "DEAD-STREAM"
-						}
-						diagLog.Printf("go-live health: verdict=%s capture=%s(out_time_us=%d size=%d) mtx=%s(http=%d body=%q) guests=%d path=%s port=%d",
-							verdict, word(capFlowing, "flowing", "STALLED"), after, size,
-							word(pub, "publishing", "NO-PUBLISHER"), code, body, len(ls.Roster()), cfg.StreamPath, cfg.HLSPort)
-						switch verdict {
-						case "HEALTHY":
-							handler.SetStreamHealth("")
-						case "DEAD-STREAM":
-							diagLog.MarkUrgent()
-							handler.SetStreamHealth("You’re Live, but no audio is reaching guests - the low-latency engine never received the stream. Stop and Go Live again.")
-						case "CAPTURE-DEAD":
-							diagLog.MarkUrgent()
-							handler.SetStreamHealth("You’re Live, but no audio is being captured - make sure something is playing and the right source is selected, then Stop and Go Live again.")
+						badStreak, warned := 0, false
+						for attempt := 0; attempt < 40 && bc.Status().State == "live"; attempt++ {
+							before, _ := bc.ProgressSnapshot()
+							time.Sleep(2 * time.Second)
+							if bc.Status().State != "live" {
+								break
+							}
+							after, size := bc.ProgressSnapshot()
+							capFlowing := after > before && after > 2_000_000 // out_time advancing, >2s encoded
+							pub, code, body := mediamtx.PathPublishing(cfg.HLSPort, cfg.StreamPath)
+							verdict := "HEALTHY"
+							switch {
+							case !capFlowing:
+								verdict = "CAPTURE-DEAD"
+							case !pub:
+								verdict = "DEAD-STREAM"
+							}
+							diagLog.Printf("go-live health: attempt=%d verdict=%s capture=%s(out_time_us=%d size=%d) mtx=%s(http=%d body=%q) guests=%d path=%s port=%d",
+								attempt, verdict, word(capFlowing, "flowing", "STALLED"), after, size,
+								word(pub, "publishing", "NO-PUBLISHER"), code, body, len(ls.Roster()), cfg.StreamPath, cfg.HLSPort)
+							if verdict == "HEALTHY" {
+								handler.SetStreamHealth("")
+								break // proven audible; the part-cadence heartbeat watches from here
+							}
+							badStreak++
+							if badStreak >= 2 && !warned {
+								warned = true
+								diagLog.MarkUrgent()
+								if verdict == "CAPTURE-DEAD" {
+									handler.SetStreamHealth("Guests can’t hear anything - no audio is being captured. Check that music is playing and the right source is selected, or Stop and Go Live again.")
+								} else {
+									handler.SetStreamHealth("Guests can’t hear anything - the audio engine isn’t receiving the stream. Stop and Go Live again.")
+								}
+							}
+							time.Sleep(4 * time.Second)
 						}
 					}
 					lastLive = live

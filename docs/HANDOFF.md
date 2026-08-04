@@ -2,13 +2,13 @@
 
 ## Current position
 
-The scary banner mystery is solved with hard evidence and the stale half is fixed. Evidence: /api/status carries a readable log ring (the TCC-proof observability channel this session lacked) - it shows the owner's 14:20:46 go-live was HEALTHY end to end (RTSP session publishing to path party, HLS muxer converting, sessions reading) and torn down cleanly at 14:20:53, yet the console still showed the DEAD-STREAM banner, and status confirmed streamHealth non-empty while broadcast.state=idle. Root cause: SetStreamHealth was only ever cleared by a LATER healthy verdict; nothing cleared it on stop or on a fresh start, so one bad verdict haunted every later view. Fix: /api/start and /api/stop now clear streamHealthNote under healthMu. The original DEAD-STREAM firings earlier today were most likely REAL one-offs caused by this session's rebuild churn quitting the app mid-set under the owner's tests (the alarm is the 2026-07-08 honest-liveness cure working as designed). Verified: rebuilt, installed, status shows streamHealth empty. Title-revert postscript recorded: server title stayed test @ flux because the owner's failed renames predate the 14:14 commit fix; every rebuild relaunch redrew server truth, reading as came-back-on-Go-Live; the fixed path is proven by two server round-trips; owner should rename once on the current build to confirm.
+The owner called the health warning a lie and he was right twice over: the log ring proved his set healthy while the banner accused it, and beyond the sticky-note bug (fixed previous commit) the ONE-SHOT verdict itself could false-positive - a single 7-second sample branded a late-blooming stream dead with no re-check ever. The check is now a verification loop in main.go's health goroutine: after the 5s settle it samples capture progress + PathPublishing repeatedly (up to 40 attempts while live); a warning appears only after TWO consecutive bad verdicts; ANY healthy verdict clears the note instantly and hands watch-duty to the part-cadence heartbeat; every attempt logs with its index so the ring shows the whole story. Copy rewritten from the accusatory "You're Live, but no audio is reaching guests" to the direct "Guests can't hear anything - the audio engine isn't receiving the stream. Stop and Go Live again" (and the capture variant names the actual check to make). Combined contract: the banner can only render while it is CURRENTLY true - confirmed twice before showing, self-clearing on recovery, voided on stop and on every fresh start. gofmt/build/vet/full go test green; rebuilt and installed.
 
-Workshop checkpoint: `1785878931735-0f79565a` (delivery).
+Workshop checkpoint: `1785879169576-9244daca` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (internal/server/server.go). Standing: owner renames once to confirm the title sticks; owner eyeballs menu popover/bars/confetti on next go-live; TestFlight 248 beta-review decision.
+Verify then finish through Workshop (main.go only). Standing: owner renames the party once to confirm the title sticks; next go-live shows confetti and, if anything is genuinely wrong, a warning that is actually true.
 
 ## Blockers
 
