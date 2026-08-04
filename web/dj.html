@@ -971,12 +971,12 @@
     </div>
     <div class="goaction">
       <span class="startstage" id="startStage" hidden><span class="spin16" aria-hidden="true"></span><span id="startStageText"></span></span>
-      <button class="golive go biggo" id="liveBtn" type="button">Start broadcast</button>
+      <button class="golive go biggo" id="liveBtn" type="button">Go live</button>
     </div>
   </div>
 
   <div class="card joincard" id="joinCard" aria-label="Share">
-    <div class="linkeditor-head"><b>Guests join here</b></div>
+    <div class="linkeditor-head"><b>How to join</b></div>
     <div class="event-share">
       <div class="event-qr" id="shareCard">
         <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
@@ -991,7 +991,6 @@
         </div>
       </div>
       <div class="qrmsg">
-        <p class="sharelede" id="shareHint">Guests scan this to join the party.</p>
         <div class="linkfield">
           <input id="joinLinkField" type="text" readonly aria-label="Party link" value="">
           <button class="linkact" id="copyLinkBtn" type="button" aria-label="Copy party link">Copy</button>
@@ -1106,7 +1105,7 @@
     <h2 id="sourceGuideTitle">What should I pick?</h2>
     <div class="sourceguide-body">
       <h3>① Capture everything on the Mac (easiest)</h3>
-      <p>Pick <b>🖥️ Capture the Mac’s output</b> and press <b>Start broadcast</b>. The first time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+      <p>Pick <b>🖥️ Capture the Mac’s output</b> and press <b>Go live</b>. The first time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
       <h3>② Hardware controller / mixer</h3>
       <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
       <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
@@ -1168,7 +1167,7 @@
         <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Source guide</summary>
         <div id="helpNote" style="display:block">
           <h3>① Capture everything on the Mac (easiest)</h3>
-          <p>Pick <b>🖥️ Capture the Mac’s output</b> and press <b>Start broadcast</b>. The first time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+          <p>Pick <b>🖥️ Capture the Mac’s output</b> and press <b>Go live</b>. The first time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
           <h3>② Hardware controller / mixer</h3>
           <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
           <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
@@ -1639,21 +1638,16 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('qr').hidden = false;
       $('qrPending').hidden = true;
       const networkStatus = $('qrNetworkStatus');
-      networkStatus.hidden = false;
+      const modeCopy = mode === 'relay' ? 'Internet relay active.'
+        : mode === 'direct' ? 'Direct Wi-Fi connection.'
+        : mode === 'local' ? 'Local Wi-Fi connection. No internet needed.'
+        : mode === 'no_path' ? 'Guests cannot reach the party on this Wi-Fi.'
+        : '';
+      networkStatus.hidden = !modeCopy;
       networkStatus.className = 'qr-network-status' +
         ((mode === 'direct' || mode === 'local') ? ' ready'
         : ((mode === 'relay' || mode === 'no_path') ? ' relay' : ''));
-      networkStatus.textContent = !s
-        ? 'Scan the QR once with a phone to check this Wi-Fi.'
-        : (mode === 'relay'
-          ? 'Internet relay active.'
-          : (mode === 'direct'
-            ? 'Direct Wi-Fi connection.'
-            : (mode === 'local'
-              ? 'Local Wi-Fi connection. No internet needed.'
-              : (mode === 'no_path'
-                ? 'Guests cannot reach the party on this Wi-Fi.'
-                : 'Scan the QR once with a phone to check this Wi-Fi.'))));
+      networkStatus.textContent = modeCopy;
       renderQR(guestUrl);
       return;
     }
@@ -1821,7 +1815,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         lb.className = 'golive go biggo';
         lb.disabled = true;
       } else {
-        lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop broadcast' : 'Start broadcast');
+        lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop broadcast' : 'Go live');
         lb.className = 'golive biggo ' + (live ? 'stop' : 'go');
         lb.disabled = false;
       }
@@ -1893,7 +1887,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
             extra = '<div class="ldetail">' + latency + (detail.paused ? ' · paused' : '') + '</div>';
           }
           return '<div class="listener"><span class="lemoji">' + emoji + '</span><div class="lbody"><span class="lname">' + name + '</span>' + extra + '</div></div>';
-        }).join('') : '<div class="muted" style="padding:8px 0">No listeners yet.</div>';
+        }).join('') : '';
         // Every DJ heads their own group and is ALSO a member row - photo,
         // name, DJ tag - because DJs are users too. Listeners follow under the
         // same header. The local group has no id; only it can use this Mac's

@@ -259,7 +259,9 @@ assert.match(dj, /This Wi-Fi may separate devices/);
 // One line, not three. The lede says what the QR is for; the status line says
 // only what the status is; the banner appears only for a problem to act on.
 assert.doesNotMatch(dj, /Scan once to check this Wi-Fi/);
-assert.match(dj, /Guests scan this to join the party\./);
+assert.doesNotMatch(dj, /Guests scan this to join the party\./);
+assert.doesNotMatch(dj, /Scan the QR once with a phone/);
+assert.match(dj, /How to join/);
 assert.match(dj, /Internet relay active\./);
 assert.match(dj, /Direct Wi-Fi connection\./);
 assert.match(dj, /function renderConnectionState\(connection\)/);
@@ -271,7 +273,7 @@ assert.doesNotMatch(dj, /const dnsPublished =/);
 // and overshoot go and the short opacity/colour changes stay.
 assert.match(dj, /@media \(prefers-reduced-motion:reduce\)\{[\s\S]*?transition-property:opacity/);
 assert.doesNotMatch(dj, /animation:pp-spin[^}]*!important/);
-assert.match(dj, /Start broadcast/);
+assert.match(dj, /Go live/);
 assert.match(dj, /Stop broadcast/);
 assert.doesNotMatch(dj, /id="badge"/);
 assert.doesNotMatch(dj, /captureSoftAsk|screenPermBtn|permission has not been confirmed/);

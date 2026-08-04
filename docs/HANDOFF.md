@@ -2,13 +2,13 @@
 
 ## Current position
 
-Three owner refinements verified in the running app: (1) the title pencil scales with the text - em-based inside the h1 (1.1em button, .68em glyph) so it tracks the title size; (2) the DJ is a real member row under their group header - profile photo (local group only, cache-busted eventMeta.avatar; peer groups fall back to the headphone circle), name, small "DJ" subtitle - listeners follow under the same header and the header count includes the DJ (DJNAME — 1+N); (3) the rail label reads "Participants" instead of "Guests". Suites pass; rebuilt+installed+running; screenshot shows SHOKUNIN — 1 with the photo row and DJ subtitle.
+Join-card copy trim + rail polish per owner, verified in the running app: "Guests scan this to join the party." removed; "Scan the QR once with a phone to check this Wi-Fi." removed (an undecided network shows nothing under the QR; decided-mode lines stay); section renamed "Guests join here" -> "How to join"; the big button reads "Go live" (stop stays "Stop broadcast"; ? modal copy follows); "No listeners yet." removed - an empty group is just the DJ row. Confirmed server-side that paused page-visitors already group under their selected DJ (the active flag only resolves duplicate assignments), matching the owner's model; groups exist only per DJ. Contract pins assert the removals and new strings. Suites pass; rebuilt+installed+running; screenshot shows PARTICIPANTS / SHOKUNIN — 1 / photo+DJ row, HOW TO JOIN with bare QR+link+Copy/Share, pink Go live.
 
-Workshop checkpoint: `1785868621831-5620d180` (product).
+Workshop checkpoint: `1785868850079-c7eaff12` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html + scripts/test-stream-contract.mjs). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 
