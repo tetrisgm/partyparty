@@ -3196,13 +3196,19 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // progress. Stages come from observable facts only: broadcast state, the
   // relay serving, and the server's startup trace.
   let toastTimer = 0;
-  function toast(msg){
+  function toast(msg, opts){
     const t = $('ppToast');
     t.textContent = msg;
     t.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+    // Sticky: stays up until replaced or hidden - progress, not a receipt.
+    if (!(opts && opts.sticky)) toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
   }
+  function toastHide(){
+    clearTimeout(toastTimer);
+    $('ppToast').classList.remove('show');
+  }
+  let stageToastOn = false;
 
   function renderStartStage(s){
     const el = $('startStage'), txt = $('startStageText');
@@ -3231,8 +3237,17 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // has to say so here, next to the live control, or it says so nowhere.
       msg = 'Internet relay is failing - reconnecting';
     }
-    el.hidden = !msg;
-    if (msg) txt.textContent = msg;
+    // The stage speaks through the toast now, not a bar slot: same corner as
+    // every other piece of feedback. A short receipt toast (Saved/Copied) may
+    // cover it for a beat; the next poll simply re-raises the stage.
+    el.hidden = true;
+    if (msg) {
+      stageToastOn = true;
+      toast(msg, { sticky: true });
+    } else if (stageToastOn) {
+      stageToastOn = false;
+      toastHide();
+    }
   }
   function tickClock(){
     if (document.body.dataset.phase !== 'live' || !liveSince) return;
@@ -3332,21 +3347,26 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (name === (eventMeta.title || '')) return;
       // An empty blur never erases the party name; put the real one back.
       if (!name) { el.textContent = eventMeta.title || ''; return; }
-      // Save DIRECTLY: the old path pressed the edit-panel's save button,
-      // whose handler no-ops unless that panel is open - an inline rename
-      // never reached the server, so the next poll restored the old name.
-      // The hold also keeps a stale in-flight status from echoing it back.
-      window.__ppTitleHold = Date.now() + 2500;
-      try {
-        const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: name }) });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || d.error) throw new Error(d.error || 'save failed');
-        eventMeta.title = name;
-        document.title = name + ' - PartyParty';
-        toast('Saved');
-      } catch (err) {
-        el.textContent = eventMeta.title || '';
+      // Offline-first and optimistic: the DJ's words become the truth
+      // immediately, and the save (to the LOCAL server on this Mac - no
+      // internet involved) follows with retries. The name is never taken
+      // back from under the DJ.
+      eventMeta.title = name;
+      document.title = name + ' - PartyParty';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        window.__ppTitleHold = Date.now() + 4000;
+        try {
+          const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: name }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.error) throw new Error(d.error || 'save failed');
+          toast('Saved');
+          return;
+        } catch (err) {
+          await new Promise((res) => setTimeout(res, 1200));
+        }
       }
+      window.__ppTitleHold = Date.now() + 4000;
+      toast('Name kept - still trying to save it');
     };
     el.addEventListener('blur', commit);
     el.addEventListener('keydown', (e) => {

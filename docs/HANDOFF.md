@@ -2,13 +2,13 @@
 
 ## Current position
 
-The owner called the health warning a lie and he was right twice over: the log ring proved his set healthy while the banner accused it, and beyond the sticky-note bug (fixed previous commit) the ONE-SHOT verdict itself could false-positive - a single 7-second sample branded a late-blooming stream dead with no re-check ever. The check is now a verification loop in main.go's health goroutine: after the 5s settle it samples capture progress + PathPublishing repeatedly (up to 40 attempts while live); a warning appears only after TWO consecutive bad verdicts; ANY healthy verdict clears the note instantly and hands watch-duty to the part-cadence heartbeat; every attempt logs with its index so the ring shows the whole story. Copy rewritten from the accusatory "You're Live, but no audio is reaching guests" to the direct "Guests can't hear anything - the audio engine isn't receiving the stream. Stop and Go Live again" (and the capture variant names the actual check to make). Combined contract: the banner can only render while it is CURRENTLY true - confirmed twice before showing, self-clearing on recovery, voided on stop and on every fresh start. gofmt/build/vet/full go test green; rebuilt and installed.
+Both directives shipped and verified in the running app. (1) The go-live stage speaks through the toast: toast() gained a sticky mode (no auto-hide until replaced or toastHide()), renderStartStage retires the transport-bar slot (element stays for contract refs, permanently hidden) and raises/hides the sticky toast on stage changes; proven live - Starting audio capture appeared as the toast, persisted past the 1.8s receipt window, and cleared when the stage emptied. A receipt toast covering the stage self-heals on the next poll re-raise. (2) The party name is offline-first and optimistic: eventMeta.title and document.title update the instant the DJ commits, the save posts to the LOCAL server (no internet in this path - the owner's earlier failures were the no-op panel bug, not connectivity) with three retries, and on persistent failure the name is KEPT with an honest "Name kept - still trying to save it" toast, never reverted. Field proof of the underlying fix: the owner renamed his party to "Shoku's Party @ Home" through the real UI and it persisted server-side. Incident note: my verification blur then overwrote his fresh rename with a test string - caught it within seconds and restored his exact title via the same API; lesson recorded to never run write-path probes against live owner data once the owner is actively using the surface.
 
-Workshop checkpoint: `1785879169576-9244daca` (product).
+Workshop checkpoint: `1785879413634-ed9895fc` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (main.go only). Standing: owner renames the party once to confirm the title sticks; next go-live shows confetti and, if anything is genuinely wrong, a warning that is actually true.
+Verify then finish through Workshop (web/dj.html). Then the owner-requested TestFlight build: stamp next version/build, land the stamp, dispatch app-store.yml, watch to upload confirmation.
 
 ## Blockers
 
