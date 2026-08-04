@@ -13,6 +13,7 @@ struct ServerStatus {
     var connectionMode = "checking"
     var connectionMessage = ""
     var relayConnected = false
+    var eventTitle = ""     // the party name; Go live is gated on it, like the console button
 }
 
 /// Thin client for the local Go server (menu-bar status monitor).
@@ -39,6 +40,9 @@ final class APIClient {
                 s.struggling = (h["struggling"] as? NSNumber)?.intValue ?? 0
             }
             s.appVersion = o["appVersion"] as? String ?? ""
+            if let event = o["event"] as? [String: Any] {
+                s.eventTitle = event["title"] as? String ?? ""
+            }
             if let connection = o["connection"] as? [String: Any] {
                 s.connectionMode = connection["mode"] as? String ?? "checking"
                 s.connectionMessage = connection["message"] as? String ?? ""
@@ -57,6 +61,29 @@ final class APIClient {
                 }
             }
             DispatchQueue.main.async { done(s) }
+        }.resume()
+    }
+
+    /// Start with the default capture (Mac output) - the same /api/start the
+    /// console button posts. A DJ using an audio interface starts from the
+    /// console, where the picker is; the server rejects if the cert isn't ready.
+    func startBroadcast(_ done: @escaping (Bool, String) -> Void) {
+        var comps = URLComponents(string: "http://127.0.0.1:\(port)/api/start")!
+        comps.queryItems = [
+            URLQueryItem(name: "device", value: "mac"),
+            URLQueryItem(name: "name", value: "Mac output (everything)"),
+        ]
+        guard let u = comps.url else { done(false, ""); return }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        URLSession.shared.dataTask(with: req) { data, response, _ in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            var message = ""
+            if let data,
+               let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                message = o["error"] as? String ?? ""
+            }
+            DispatchQueue.main.async { done((200..<300).contains(status), message) }
         }.resume()
     }
 

@@ -223,6 +223,12 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         revealGuestQR()
     }
 
+    /// The menu-bar Go live hits the same nameless-party gate as the console
+    /// button: open the title editor so the DJ names it first.
+    func openTitleEditor() {
+        webView.evaluateJavaScript("window.ppOpenTitleEditor && window.ppOpenTitleEditor()")
+    }
+
     private func revealGuestQR() {
         let js = """
         (function () {

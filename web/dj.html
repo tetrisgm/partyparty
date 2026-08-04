@@ -679,9 +679,12 @@
   /* ---- transport: the broadcast bar --------------------------------------
      One row docked at the bottom of the window: what's captured on the left,
      the live switch and Settings on the right, like every live studio. */
+  /* The bar must read as the deck, not as more page: a raised surface, a
+     brighter rule, and a shadow lifting it off the scrolling content. */
   .transport{flex:0 0 auto;display:flex;align-items:center;gap:var(--s-4);
-    padding:10px var(--s-4);border-top:1px solid var(--hairline);
-    background:color-mix(in srgb,#000 30%,var(--bg))}
+    padding:12px var(--s-4);border-top:1px solid rgba(255,255,255,.12);
+    background:color-mix(in srgb,#fff 5%,var(--bg));
+    box-shadow:0 -12px 32px rgba(0,0,0,.5)}
   .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
   .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
   .gocapture{display:flex;align-items:center;gap:var(--s-3);min-width:0;flex:1 1 auto}
@@ -2060,6 +2063,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     $('eventEditHeading').textContent = 'Edit ' + (labels[field] || 'event');
     setFormStatus('eventEditStatus', '', '');
   }
+  // The Mac shell calls this when the menu-bar Go live hits the nameless-party
+  // gate - same behavior as the console button, explicit so script scoping can
+  // never strand it off window.
+  window.ppOpenTitleEditor = () => setEventEditOpen('title');
   function setEventEditOpen(field){
     eventEditField = field || '';
     const panel = $('eventEditPanel');

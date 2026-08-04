@@ -5,7 +5,7 @@ import ServiceManagement
 /// Regular app (Dock icon + full window/menu bar). The menu-bar monitor exposes
 /// the live controls a DJ needs without keeping the console window visible.
 /// Supervises the Go server child.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private let server = ServerController()
     private var api: APIClient!
     private var poller: StatusPoller!
@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var localNetworkBrowser: NWBrowser?
     private var wasBroadcasting = false
     private var lastUpdateCheck = Date.distantPast
+    private let popover = NSPopover()
+    private let popoverContent = StatusPopoverController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         requestLocalNetworkAccess()
@@ -31,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         poller.onChange = { [weak self] s in
             guard let self else { return }
             self.updateIcon(s)
+            if self.popover.isShown { self.popoverContent.render(s) }
             let broadcasting = s.state == "live" || s.state == "starting"
             if self.wasBroadcasting && !broadcasting {
                 self.updater.broadcastDidEnd()
@@ -63,20 +66,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem.button {
             button.title = "🕺"
             button.toolTip = appName
+            button.target = self
+            button.action = #selector(statusItemClicked)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-        let menu = NSMenu()
-        menu.delegate = self                  // rebuilt on open so status is fresh
-        statusItem.menu = menu
+        popover.behavior = .transient
+        popover.contentViewController = popoverContent
+        popoverContent.onToggleBroadcast = { [weak self] in self?.toggleBroadcast() }
+        popoverContent.onOpenApp = { [weak self] in
+            self?.popover.performClose(nil)
+            self?.showConsole()
+        }
+        popoverContent.onQuit = { NSApp.terminate(nil) }
     }
 
-    /// Glanceable state in the menu bar: 🕺 idle · 🕺 ● N live · 🕺 ⚠ N strained ·
-    /// 🕺 ⚠ error · 🕺 🔴 capture broken (red = guests hear nothing right now).
+    /// Left click: the little QR window. Right click: the safety menu (Open,
+    /// Quit) so the app is never uncloseable if the popover misbehaves.
+    @objc private func statusItemClicked() {
+        guard let button = statusItem.button else { return }
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            let menu = NSMenu()
+            menu.addItem(item("Open \(appName)", #selector(showConsoleFromMenu)))
+#if STANDALONE
+            menu.addItem(item("Check for Updates…", #selector(checkForUpdates)))
+#endif
+            menu.addItem(.separator())
+            menu.addItem(item("Quit \(appName)", #selector(quit)))
+            statusItem.menu = menu            // let the system run the menu loop
+            button.performClick(nil)
+            statusItem.menu = nil             // back to popover on plain clicks
+            return
+        }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popoverContent.render(poller.status)
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    /// The same behavior as the console's Go live button: stop immediately when
+    /// broadcasting; refuse to start a nameless party and open the title editor
+    /// instead; otherwise start and surface any server error in the console.
+    private func toggleBroadcast() {
+        let s = poller.status
+        if s.state == "live" || s.state == "starting" {
+            stopSet()
+            return
+        }
+        if s.eventTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+            popover.performClose(nil)
+            showConsole()
+            console?.openTitleEditor()
+            return
+        }
+        api.startBroadcast { [weak self] ok, message in
+            guard let self else { return }
+            self.poller.refresh()
+            if !ok {
+                self.popover.performClose(nil)
+                self.showConsole()
+                let alert = NSAlert()
+                alert.messageText = "Couldn’t go live"
+                alert.informativeText = message.isEmpty ? "Open the console and try Go live there." : message
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+        }
+    }
+
+    @objc private func showConsoleFromMenu() { showConsole() }
+
+    /// Glanceable state in the menu bar: 🕺 idle · 🕺 ●N live (pink dot) ·
+    /// 🕺 ⚠ N strained · 🕺 ⚠ error · 🕺 🔴 capture broken (red = guests hear
+    /// nothing right now).
     private func updateIcon(_ s: ServerStatus) {
         guard let button = statusItem.button else { return }
         // A dead capture (hogged/stalled output) is the loudest alarm: guests
         // are getting silence while the DJ thinks it's fine.
         if s.captureBad && (s.state == "live" || s.state == "starting") {
-            button.title = "🕺 🔴"
+            button.attributedTitle = NSAttributedString(string: "🕺 🔴")
             button.toolTip = s.note.isEmpty
                 ? "PartyParty - audio capture problem; open the app for details"
                 : "PartyParty - \(s.note)"
@@ -85,97 +155,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.toolTip = appName
         switch s.state {
         case "live":
-            let strained = (s.health == "strain" || s.health == "congested")
-            button.title = strained ? "🕺 ⚠ \(s.listeners)" : "🕺 ● \(s.listeners)"
-        case "starting": button.title = "🕺 …"
-        case "error":    button.title = "🕺 ⚠"
-        default:         button.title = "🕺"
+            if s.health == "strain" || s.health == "congested" {
+                button.attributedTitle = NSAttributedString(string: "🕺 ⚠ \(s.listeners)")
+            } else {
+                button.attributedTitle = Self.liveTitle(listeners: s.listeners)
+            }
+        case "starting": button.attributedTitle = NSAttributedString(string: "🕺 …")
+        case "error":    button.attributedTitle = NSAttributedString(string: "🕺 ⚠")
+        default:         button.attributedTitle = NSAttributedString(string: "🕺")
         }
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        let s = poller.status
-
-        let header: String
-        switch s.state {
-        case "live":
-            var t = "Live"
-            if s.struggling > 0 { t += " · \(s.struggling) buffering" }
-            header = t
-        case "starting": header = "Starting…"
-        case "error":    header = "Broadcast error - open console"
-        default:         header = "Not broadcasting"
-        }
-        let bundleVer = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let ver = s.appVersion.isEmpty ? bundleVer : s.appVersion
-        let h = NSMenuItem(title: header + "  ·  v" + ver, action: nil, keyEquivalent: "")
-        h.isEnabled = false
-        menu.addItem(h)
-
-        let listenerLabel = s.listeners == 1 ? "1 listener" : "\(s.listeners) listeners"
-        let listeners = NSMenuItem(title: listenerLabel, action: nil, keyEquivalent: "")
-        listeners.isEnabled = false
-        menu.addItem(listeners)
-
-        let connectionTitle: String
-        switch s.connectionMode {
-        case "direct":
-            connectionTitle = "Connection: Direct Wi-Fi"
-        case "local":
-            // A working room that simply has no internet. Not a fault.
-            connectionTitle = "Connection: Local Wi-Fi"
-        case "relay":
-            connectionTitle = s.relayConnected
-                ? "Connection: Internet relay"
-                : "Connection: Reconnecting relay"
-        case "no_path":
-            // Guests cannot reach this Mac and there is no internet to relay
-            // through. Say so, so the DJ stops waiting for it to resolve itself.
-            connectionTitle = "Connection: Guests cannot connect here"
-        default:
-            connectionTitle = "Connection: Checking Wi-Fi"
-        }
-        let connection = NSMenuItem(title: connectionTitle, action: nil, keyEquivalent: "")
-        connection.isEnabled = false
-        menu.addItem(connection)
-
-        let broadcasting = s.state == "live" || s.state == "starting"
-        if broadcasting && s.captureBad {
-            let capture = item("Audio capture: Problem - open console", #selector(showConsole))
-            menu.addItem(capture)
-        } else {
-            let condition = broadcasting ? "Audio capture: Healthy" : "Audio capture: Not active"
-            let capture = NSMenuItem(title: condition, action: nil, keyEquivalent: "")
-            capture.isEnabled = false
-            menu.addItem(capture)
-        }
-        if broadcasting && s.captureBad && !s.note.isEmpty {
-            let detail = NSMenuItem(title: firstSentence(s.note), action: nil, keyEquivalent: "")
-            detail.isEnabled = false
-            menu.addItem(detail)
-        }
-        menu.addItem(.separator())
-
-        let qr = item("Open Guest QR", #selector(showGuestQR))
-        qr.isEnabled = !s.guestURL.isEmpty
-        menu.addItem(qr)
-        menu.addItem(item("Open Console", #selector(showConsole)))
-#if STANDALONE
-        menu.addItem(item("Check for Updates…", #selector(checkForUpdates)))
-#endif
-        let stop = item("Stop Set", #selector(stopSet))
-        stop.isEnabled = broadcasting
-        menu.addItem(stop)
-        menu.addItem(.separator())
-        menu.addItem(item("Quit \(appName)", #selector(quit)))
-    }
-
-    /// First sentence of a note, capped, for the compact menu detail line.
-    private func firstSentence(_ s: String) -> String {
-        let cut = s.components(separatedBy: " - ").first ?? s
-        let t = cut.trimmingCharacters(in: .whitespaces)
-        return t.count > 90 ? String(t.prefix(88)) + "…" : t
+    /// "🕺 ●3" with the dot in brand pink: the streaming indicator beside the
+    /// dancer, so live vs idle reads at a glance.
+    private static func liveTitle(listeners: Int) -> NSAttributedString {
+        let t = NSMutableAttributedString(string: "🕺 ")
+        t.append(NSAttributedString(string: "●", attributes: [
+            .foregroundColor: NSColor(srgbRed: 1.0, green: 0.176, blue: 0.435, alpha: 1),
+        ]))
+        t.append(NSAttributedString(string: " \(listeners)"))
+        return t
     }
 
     private func item(_ title: String, _ sel: Selector) -> NSMenuItem {
@@ -195,14 +194,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         console?.showWindow(nil)
         console?.window?.makeKeyAndOrderFront(nil)
-    }
-
-    @objc private func showGuestQR() {
-        if console == nil {
-            console = AdminWindowController(port: server.port)
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        console?.showGuestQR()
     }
 
     @objc private func stopSet() {
