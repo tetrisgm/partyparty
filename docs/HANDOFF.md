@@ -2,13 +2,13 @@
 
 ## Current position
 
-Three owner-reported bugs fixed and proven end-to-end in the running app: (1) TITLE REVERT root-caused - the inline rename's blur-commit pressed the hidden edit-panel save button, whose handler early-returns unless that panel is open, so an inline rename NEVER reached the server and the next poll restored the old name (exactly the owner's "keeps coming back, sometimes after I've saved"); commit now posts /api/event-config directly, an empty blur restores rather than erases, window.__ppTitleHold (2.5s) keeps stale in-flight polls off the field, and syncHeader never rewrites it while focused. Proven: rename to "test @ flux v2" through the real blur path landed on the server, survived polls, and renamed back clean. (2) TITLE/SHUFFLE ALIGNMENT by construction: coveractions moved into the posterbody flex row (align-items:flex-end, pointer-events restored via the posterbody allowlist, .posterhost:empty collapsed) - no more corner math. (3) CONFETTI was invisible because the owner's Mac runs Reduce Motion and the accessibility guard skipped the effect entirely (probed matchMedia in the WKWebView: true); the guard now softens (60 pieces/1.7s vs 150/2.8s), the burst fires immediately on a successful Go live press with the poll-transition trigger kept for menu-bar starts, and a 5s cooldown dedupes racing triggers. Suites green; rebuilt/installed; server title verified back at the owner's original.
+20 new cover photos shipped into the shuffle, every one personally eyeballed before inclusion: disco-ceiling, turntable, amber-festival, pedalboard, brass-section, phone-glow, led-canopy, arena-beams, dj-booth, band-stage, dj-close, open-air-blue, midnight-stage, blue-wash, haze-screens, golden-crowd, crowd-surfer, streamers, emerald-crowd, lanterns. Sourced CC0 through the Openverse API from Wikimedia-hosted files (~90 candidates reviewed; rejected memorial photos, historical artworks, storefronts, branded stages and a recognizable politician). Converted to the house 1500x1000 center-crop as q80 webp via ffmpeg-to-PNG + cwebp (system ffmpeg lacks libwebp; StockSnap's CDN hotlink-blocks; Wikimedia requires a descriptive User-Agent or serves 403 HTML). COVER_PILE extended 31->51; web/covers/SOURCES.md added with per-file openverse id + source URL (the original 31 had no provenance manifest). All 20 verified serving 200 from the rebuilt embedded binary; covers dir 5.2MB->7.2MB. Suites green.
 
-Workshop checkpoint: `1785878164110-bd95a18a` (product).
+Workshop checkpoint: `1785878452536-b0b7647a` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html only). Then the 20 cover photos: 48 CC0 candidates (Wikimedia full-res) downloaded to scratchpad with previews - eyeball, curate 20, convert 1500x1000 webp, SOURCES manifest, extend the dj.html shuffle list. Standing: owner beta-review decision for 248; owner clicks the menu-bar 🕺.
+Verify then finish through Workshop (web/covers/* + web/dj.html). Standing: owner eyeballs menu popover/bars/confetti on next go-live; TestFlight 248 beta-review decision.
 
 ## Blockers
 
