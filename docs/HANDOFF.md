@@ -2,13 +2,13 @@
 
 ## Current position
 
-Whitespace tidy done and measured in the running app: page rhythm evened (flat sections s-4, gocard s-5, poster margin s-4, section heads 12px, party-grid flush); profile photo sized to exactly its two content lines (100px - the taller photo was stretching the grid rows and opening the void the owner flagged); empty status rows collapse via :has so error-only rows reserve no height - the fields-to-chips gap measures exactly the 10px grid gap now (was 24); the join card's link row centers vertically against the QR (measured centered), killing the dead corner. Both web suites pass; rebuilt+installed+running; screenshots confirm the tightened top half and the balanced join row.
+Owner round shipped and measured in the running app: (1) About You sits directly below the cover — page order is poster, About You, What to capture + Go live, How to listen, Party feed. (2) One shared Apple-style section head everywhere: 20px/700 sentence case in --label, replacing the 11px small-caps trio and the Party feed one-off (#eventCard .cardhead h2 special-case removed; measured identical 20px/700/none on all four heads). (3) Rhythm tightened: flat sections and the gocard drop to s-3 padding — the chips-to-next-head gap measures 24px, was 32. (4) The bio textarea is now the same 38px box as the name input with padding centering its single line (was 40px top-aligned — the owner's screenshot complaint). (5) Chip-blur flash fixed at both layers: the save handlers no longer write 'Saving…' into the inline status (toast is the success signal, inline is error-only, so the :has row never un-collapses), and renderLinkEditor never rebuilds while focus is inside the rows — the post-save rebuild was destroying the input the user had just clicked, forcing the second click. Proven functionally: type in chip A, click chip B, focus stays on B through the save and the status row stays display:none. (6) Feed composer's Add photo/video and Post are accent pink (measured rgb(255,45,111)). Both web suites pass; rebuilt, installed, verified by screenshot + computed-style probes; console clean.
 
-Workshop checkpoint: `1785870722256-276ba03d` (product).
+Workshop checkpoint: `1785871493491-156cb115` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html only). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

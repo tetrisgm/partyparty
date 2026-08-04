@@ -171,7 +171,7 @@
   body.show-adv .adv{display:block}
   .inapp-check{display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer}
   .inapp-check input{accent-color:var(--accent)}
-  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px}
+  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
   .cardhead h2{margin:0}
   .iconbtn{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);background:var(--fill);color:var(--label-secondary);font-size:15px;font-weight:600;line-height:1;cursor:pointer}
   .iconbtn:hover{background:var(--fill-hover);color:var(--label)}
@@ -444,7 +444,7 @@
   .inspector .guesthead h2{display:none}
   .inspector .guesthead{justify-content:flex-end}
   .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:0;margin:0 0 12px;padding:0}
-  .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:18px;line-height:1.25;font-weight:700}
+  .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:20px;line-height:1.25;font-weight:700}
   /* Social links as chips, the way an "about me" page does it: the brand mark,
      the service name and the handle all live inside one pill, so the field is
      part of the object instead of a separate box stretched across the window.
@@ -484,8 +484,6 @@
   body:not(.event-manage-open) .guest-sidebar #copySync{display:none!important}
   body.event-manage-open .eventhead .eventedit{display:block}
   #eventCard{padding:20px 22px;margin-top:0!important}
-  #eventCard .cardhead{margin-bottom:16px}
-  #eventCard .cardhead h2{font-size:20px}
   #eventCard > .composer{background:var(--fill)!important;border:1px solid var(--separator)!important;border-radius:var(--r-sm)!important;padding:14px!important;margin-bottom:14px!important}
   #eventCard > .composer.dropping{border-color:var(--accent)!important;background:rgba(255,45,111,.12)!important;box-shadow:0 0 0 3px rgba(255,45,111,.16)}
   #eventCard textarea{font-size:16px!important}
@@ -664,7 +662,7 @@
   .joincard .linkfield input{flex:0 1 auto;width:34ch;min-width:180px}
 
   /* ---- capture + start: the one big action on the page ---- */
-  .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-5)!important;padding-bottom:var(--s-5)!important}
+  .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-3)!important;padding-bottom:var(--s-3)!important}
   .workspace > .page .card.gocard{border-bottom:0!important} /* no separator between this and Guests join here */
   .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
   .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
@@ -673,7 +671,7 @@
      inside this column it would become a 330px HEIGHT. */
   .gocapture .source-picker{flex:0 0 auto;width:min(330px,100%)}
   .golabel{display:flex;align-items:center;gap:var(--s-2);
-    font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
+    font-size:20px;font-weight:700;letter-spacing:-.02em;color:var(--label)}
   .golabel .iconbtn,.linkeditor-head .iconbtn{width:20px;height:20px;border-radius:50%;font-size:11px;
     background:rgba(255,255,255,.08);color:var(--label-secondary);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
   .linkeditor-head .iconbtn{margin-left:8px}
@@ -742,19 +740,20 @@
     border:0!important;
     border-bottom:1px solid rgba(255,255,255,.1)!important;
     border-radius:0!important;
-    padding:var(--s-4) 0!important;
+    padding:var(--s-3) 0!important;
     margin:0!important;
   }
   .workspace > .page > *:last-child,
   .workspace > .page .card:last-child{border-bottom:0!important}
   .workspace > .page{padding:var(--s-2) var(--s-6) var(--s-7)}
 
-  /* Section headings sit on the window, quiet and small-caps like a Mac list. */
+  /* Section headings: bold sentence-case titles, the way Apple heads content
+     sections (Music's "Recently Played"), one shared style everywhere. */
   .workspace > .page h2,
   .workspace > .page .linkeditor-head b,
   .workspace > .page .sectiontitle{
-    font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
-    color:var(--label-tertiary);margin:0 0 var(--s-3);padding:0;
+    font-size:20px;font-weight:700;letter-spacing:-.02em;text-transform:none;
+    color:var(--label);margin:0 0 var(--s-3);padding:0;
   }
   .ename{font-size:26px;font-weight:700;letter-spacing:-.02em}
 
@@ -773,7 +772,9 @@
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 2px rgba(0,0,0,.28);
     color:var(--label);font:inherit;font-size:13px;padding:5px var(--s-2);width:100%;
   }
-  .profilefield textarea{min-height:40px;height:40px;resize:none}
+  /* The bio is one visual line beside the name: same 38px box as the input,
+     padding centers a single line while a longer bio still wraps and scrolls. */
+  .profilefield textarea{min-height:38px;height:38px;resize:none;padding-top:10px;padding-bottom:10px}
   .profilefield input:focus,.profilefield textarea:focus{
     outline:none;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 24%,transparent);
   }
@@ -798,6 +799,9 @@
     background:rgba(255,255,255,.1);color:var(--label);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);border-radius:var(--r-sm);
   }
+  /* Except the feed composer's two actions: they carry the accent. */
+  #djAttachBtn,#djPostBtn{background:var(--accent)!important;color:#fff!important;box-shadow:none!important}
+  #djAttachBtn:hover,#djPostBtn:hover{background:color-mix(in srgb,var(--accent) 86%,#000)!important}
   .workspace > .page button.go:hover{background:rgba(255,255,255,.16)}
 
   /* The add-photo badge was the last neon left in the main area. */
@@ -983,6 +987,44 @@
   </div>
 
 
+  <div class="card event-admin-tools" id="eventManagePanel">
+    <div class="linkeditor" id="linkEditor">
+      <div class="linkeditor-head"><b>About You</b></div>
+      <div class="profileeditor">
+        <div class="profileimagewrap">
+          <img class="profilephoto" id="profilePhoto" src="" alt="DJ profile photo" hidden>
+          <span class="profileempty" id="profileEmpty" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="9" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+          </span>
+          <button class="profilephotopick" id="profilePhotoBtn" type="button" aria-label="Change profile photo" title="Change profile photo"><span class="pickword">Change</span></button>
+          <span class="profileplus" id="profilePlus" aria-hidden="true">+</span>
+          <button class="profileremove" id="profilePhotoRemoveBtn" type="button" aria-label="Remove profile photo" title="Remove profile photo" hidden>×</button>
+        </div>
+        <div class="profilephoto-actions">
+          <div class="grouped">
+          <label class="profilefield"><input id="profileName" type="text" maxlength="40" autocomplete="name" placeholder="Your DJ name"></label>
+          <label class="profilefield"><textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea></label>
+          </div>
+          <div class="profilebuttons">
+            <button id="saveProfileBtn" type="button" hidden></button>
+            <span class="profilestatus" id="profileStatus"></span>
+          </div>
+          <input id="profilePhotoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        </div>
+      </div>
+      <div class="linkrows" id="linkRows"></div>
+      <div class="linkactions">
+        <button id="saveLinksBtn" type="button" hidden></button>
+        <span class="linkstatus" id="linkStatus"></span>
+      </div>
+    </div>
+    <div class="reactionpanel" id="djReactions" hidden>
+      <div class="reactiongrid" id="djReactionGrid"></div>
+      <div class="spikeline" id="djReactionSpike"></div>
+    </div>
+    <div id="modQueue" hidden><div id="modList"></div></div>
+  </div>
+
   <div class="card gocard" id="goCard">
     <div class="gocapture">
       <div class="golabel"><span id="sourceStepLabel">What to capture</span><button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button></div>
@@ -1027,44 +1069,6 @@
         <div id="lanState" hidden></div>
       </div>
     </div>
-  </div>
-
-  <div class="card event-admin-tools" id="eventManagePanel">
-    <div class="linkeditor" id="linkEditor">
-      <div class="linkeditor-head"><b>About You</b></div>
-      <div class="profileeditor">
-        <div class="profileimagewrap">
-          <img class="profilephoto" id="profilePhoto" src="" alt="DJ profile photo" hidden>
-          <span class="profileempty" id="profileEmpty" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="9" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
-          </span>
-          <button class="profilephotopick" id="profilePhotoBtn" type="button" aria-label="Change profile photo" title="Change profile photo"><span class="pickword">Change</span></button>
-          <span class="profileplus" id="profilePlus" aria-hidden="true">+</span>
-          <button class="profileremove" id="profilePhotoRemoveBtn" type="button" aria-label="Remove profile photo" title="Remove profile photo" hidden>×</button>
-        </div>
-        <div class="profilephoto-actions">
-          <div class="grouped">
-          <label class="profilefield"><input id="profileName" type="text" maxlength="40" autocomplete="name" placeholder="Your DJ name"></label>
-          <label class="profilefield"><textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea></label>
-          </div>
-          <div class="profilebuttons">
-            <button id="saveProfileBtn" type="button" hidden></button>
-            <span class="profilestatus" id="profileStatus"></span>
-          </div>
-          <input id="profilePhotoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-        </div>
-      </div>
-      <div class="linkrows" id="linkRows"></div>
-      <div class="linkactions">
-        <button id="saveLinksBtn" type="button" hidden></button>
-        <span class="linkstatus" id="linkStatus"></span>
-      </div>
-    </div>
-    <div class="reactionpanel" id="djReactions" hidden>
-      <div class="reactiongrid" id="djReactionGrid"></div>
-      <div class="spikeline" id="djReactionSpike"></div>
-    </div>
-    <div id="modQueue" hidden><div id="modList"></div></div>
   </div>
 
   <div class="party-grid">
@@ -2422,7 +2426,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const rows = $('linkRows');
       const clean = editorRows(links);
       const sig = JSON.stringify(clean);
-      if (document.activeElement && rows.contains(document.activeElement) && sig === linkSig) return;
+      // Never rebuild under the caret: a post-save render here used to steal
+      // focus from the chip the user had just clicked. A later idle render
+      // syncs once nothing inside the rows is focused.
+      if (document.activeElement && rows.contains(document.activeElement)) return;
       if (sig === linkSig && rows.children.length) return;
       linkSig = sig;
       rows.textContent = '';
@@ -2507,7 +2514,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     $('saveLinksBtn').addEventListener('click', async () => {
       const status = $('linkStatus');
       $('saveLinksBtn').disabled = true;
-      status.textContent = 'Saving…';
       try {
         const links = collectLinks();
         const r = await fetch('/api/event-links', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ links }) });
@@ -2574,7 +2580,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     $('saveProfileBtn').addEventListener('click', async () => {
       const status = $('profileStatus');
       $('saveProfileBtn').disabled = true;
-      status.textContent = 'Saving…';
       try {
         const r = await fetch('/api/dj-profile', { method:'POST', headers:{'Content-Type':'application/json'},
           body:JSON.stringify({ name:$('profileName').value.trim(), bio:$('profileBio').value.trim() }) });
