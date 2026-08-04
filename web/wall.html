@@ -191,7 +191,6 @@
       a.href = href; a.target = '_blank'; a.rel = 'noopener';
       a.textContent = link.type === 'instagram' ? 'Instagram' :
         link.type === 'soundcloud' ? 'SoundCloud' :
-        link.type === 'bandcamp' ? 'Bandcamp' :
         'DJ link';
       prompt.appendChild(a);
       if (typeof QRCode !== 'undefined') {

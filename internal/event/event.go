@@ -147,7 +147,6 @@ const (
 var linkTypeLabels = map[string]string{
 	"instagram":  "Instagram",
 	"soundcloud": "SoundCloud",
-	"bandcamp":   "Bandcamp",
 	"website":    "Website",
 	"newsletter": "Newsletter",
 	"other":      "Link",

@@ -45,10 +45,12 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         win.center()
         win.setFrameAutosaveName("ConsoleWindow")
         win.minSize = NSSize(width: 860, height: 560)
-        // The console pages are light-first: match the chrome so the window
-        // never flashes/frames dark around them (follows the page, not the OS
-        // theme, until the pages grow a dark mode).
-        win.backgroundColor = NSColor(srgbRed: 0.961, green: 0.961, blue: 0.969, alpha: 1)
+        // No standard title bar: the bar keeps its height (so the traffic
+        // lights sit in a real, draggable strip) but goes transparent over the
+        // console's own dark - one surface from the top edge down.
+        win.titlebarAppearsTransparent = true
+        win.titleVisibility = .hidden
+        win.backgroundColor = NSColor(srgbRed: 0.055, green: 0.055, blue: 0.063, alpha: 1) // --bg #0e0e10
         super.init(window: win)
         win.delegate = self
 

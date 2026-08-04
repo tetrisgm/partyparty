@@ -370,7 +370,9 @@
   }
   .profileimagewrap.has-photo .profileplus{display:none}
   .profilephotopick{
-    position:absolute;inset:0;display:grid;place-items:center;border:0;padding:0;
+    /* Explicit size: the base button height would otherwise win over inset
+       and leave a 32px strip instead of covering the circle. */
+    position:absolute;inset:0;width:100%;height:100%;display:grid;place-items:center;border:0;padding:0;
     border-radius:50%;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;
     font:inherit;font-size:12px;font-weight:600;opacity:0;
     transition:opacity var(--fast) var(--curve);
@@ -532,8 +534,8 @@
   .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
   .fieldedit:hover{background:var(--fill-hover);color:var(--label)}
   .fieldedit svg{width:14px;height:14px;display:block}
-  .ename .fieldedit{vertical-align:middle;width:1.1em;height:1.1em;margin-left:.3em}
-  .ename .fieldedit svg{width:.68em;height:.68em}
+  .ename .fieldedit{vertical-align:middle;width:34px;height:34px;margin-left:10px;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+  .ename .fieldedit svg{width:15px;height:15px}
   .posterbody .fieldedit{color:rgba(255,255,255,.72)}
   .posterbody .fieldedit:hover{background:rgba(255,255,255,.18);color:#fff}
   .eventform-field select{height:36px}
@@ -705,7 +707,10 @@
     box-shadow:0 -12px 32px rgba(0,0,0,.5)}
   .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
   .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
-  .gocapture{display:flex;align-items:center;gap:var(--s-3);min-width:0;flex:1 1 auto}
+  /* Three zones with equal wings, so Go live sits on the bar's center line
+     instead of tucked in a corner: capture left, the switch centered, gear right. */
+  .gocapture{display:flex;align-items:center;gap:var(--s-3);min-width:0;flex:1 1 0}
+  .goend{display:flex;align-items:center;justify-content:flex-end;flex:1 1 0}
   .gocapture .source-picker{flex:0 1 330px;min-width:150px;width:auto;max-width:330px}
   .golabel{display:flex;align-items:center;gap:var(--s-2);flex:0 0 auto;
     font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
@@ -713,7 +718,20 @@
     background:rgba(255,255,255,.08);color:var(--label-secondary);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
   .linkeditor-head .iconbtn{margin-left:8px}
   @media (max-width:700px){.transport .golabel span{display:none}}
-  .goaction{display:flex;align-items:center;gap:var(--s-4);margin-left:auto;flex:0 0 auto}
+  .goaction{display:flex;align-items:center;gap:var(--s-4);flex:0 0 auto}
+  /* One control system in the bar: the hero switch at 44, every other control
+     36 tall on the same radius, one text size. */
+  .transport .source-row select{height:36px;border-radius:var(--r-md)}
+  .transport .device-display{left:12px;right:12px;font-size:13px;font-weight:600}
+  .transport .gearbtn{width:36px;height:36px;border-radius:var(--r-md)}
+  /* Confetti rides above everything, catches no clicks, and removes itself. */
+  .confetti{position:fixed;inset:0;z-index:200;pointer-events:none}
+  /* Post reactions: the listener page's palette, as quiet pills that light up. */
+  .wreact{height:26px;padding:0 9px;border:0;border-radius:var(--r-pill);cursor:pointer;
+    background:var(--fill);color:var(--label-secondary);font:inherit;font-size:13px;
+    display:inline-flex;align-items:center;gap:4px}
+  .wreact:hover{background:var(--fill-hover);color:var(--label)}
+  .wreact b{font-size:11px;font-weight:700}
   .golive.biggo,.golive.go.biggo{
     height:44px!important;min-width:200px!important;padding:0 32px!important;
     border-radius:var(--r-md)!important;font-size:16px!important;font-weight:800!important;letter-spacing:-.01em!important;
@@ -788,7 +806,10 @@
   }
   .workspace > .page > *:last-child,
   .workspace > .page .card:last-child{border-bottom:0!important}
-  .workspace > .page{padding:var(--s-2) var(--s-6) var(--s-7)}
+  /* Side margins grow with the window, the way Apple's layout guidance keeps
+     full-width content off the edges: 32px on a laptop split, up to 96px
+     maximized, without ever capping the poster's presence. */
+  .workspace > .page{padding:var(--s-2) clamp(var(--s-6), 6vw, 96px) var(--s-7)}
 
   /* Section headings: bold sentence-case titles, the way Apple heads content
      sections (Music's "Recently Played"), one shared style everywhere. */
@@ -886,7 +907,9 @@
   .linkrows .linkrow.filled{background:rgba(255,255,255,.12)!important}
   .linkrows .linkname{font-size:12px!important;font-weight:500!important;color:var(--label-secondary)!important}
   .linkrows .linkrow input{
-    width:118px!important;height:22px;flex:0 0 118px;min-width:0;margin-left:auto;padding:0 0 0 var(--s-2)!important;
+    /* The field starts right after the label's divider - no dead middle - and
+       stretches to the chip's edge, so every chip fills the same. */
+    width:auto!important;height:22px;flex:1 1 auto;min-width:0;margin-left:6px;padding:0 0 0 var(--s-2)!important;
     background:transparent!important;border:0!important;border-radius:0!important;
     border-left:1px solid rgba(255,255,255,.12)!important;
     box-shadow:none!important;color:var(--label);font-size:12px;
@@ -900,7 +923,7 @@
   body[data-phase]{--poster-accent:#6f7bff}
   .poster{
     position:relative;overflow:hidden;isolation:isolate;
-    border-radius:var(--r-poster);padding:var(--s-7) var(--s-6);margin:0 0 var(--s-4);
+    border-radius:var(--r-poster);padding:var(--s-7) var(--s-6) var(--s-5);margin:0 0 var(--s-4);
     background:
       radial-gradient(120% 140% at 12% 0%,color-mix(in srgb,var(--poster-accent) 34%,transparent),transparent 62%),
       radial-gradient(90% 120% at 92% 108%,color-mix(in srgb,var(--poster-accent) 22%,transparent),transparent 60%),
@@ -924,9 +947,9 @@
     padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
   .coverbtn:hover{background:rgba(18,18,22,.68)}
   .coverx{position:absolute;top:var(--s-4);right:var(--s-4);z-index:3;
-    width:28px;height:28px;border-radius:50%;display:none;place-items:center;padding:0;border:0;
+    width:34px;height:34px;border-radius:50%;display:none;place-items:center;padding:0;border:0;
     background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:13px;cursor:pointer}
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
   .poster:has(.coverwrap.has-cover) .coverx{display:grid}
   .coverx:hover{background:rgba(18,18,22,.68)}
   .coverstatus{position:absolute;right:var(--s-4);bottom:calc(var(--s-4) + 38px);z-index:3;
@@ -1163,7 +1186,7 @@
      Settings - docked at the bottom of the window like every live studio. -->
 <div class="transport" id="goCard">
   <div class="gocapture">
-    <div class="golabel"><span id="sourceStepLabel">What to capture</span><button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button></div>
+    <div class="golabel"><span id="sourceStepLabel">What to broadcast</span><button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button></div>
     <div class="source-picker">
       <div class="source-row">
         <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
@@ -1173,7 +1196,9 @@
   </div>
   <div class="goaction">
     <span class="startstage" id="startStage" hidden><span class="spin16" aria-hidden="true"></span><span id="startStageText"></span></span>
-    <button class="golive go biggo" id="liveBtn" type="button">Go live</button>
+    <button class="golive go biggo" id="liveBtn" type="button">🕺 Go live</button>
+  </div>
+  <div class="goend">
     <button class="iconbtn gearbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </div>
 </div>
@@ -1394,7 +1419,38 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   const $ = id => document.getElementById(id);
   const escT = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const INITIAL_GUEST_URL = __PP_INITIAL_GUEST_URL_JSON__;
-  let qrText = null, lastState = 'idle';
+  let qrText = null, lastState = 'idle', statusSeen = false;
+  function fireConfetti(){
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'confetti';
+    canvas.width = innerWidth * devicePixelRatio;
+    canvas.height = innerHeight * devicePixelRatio;
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    const colors = ['#ff2d6f', '#ffd166', '#9b5de5', '#00f5d4', '#ffffff'];
+    const pieces = Array.from({ length: 150 }, () => ({
+      x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.3,
+      w: 5 + Math.random() * 6, h: 8 + Math.random() * 8,
+      vx: (Math.random() - 0.5) * 160, vy: 220 + Math.random() * 260,
+      rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 10,
+      color: colors[(Math.random() * colors.length) | 0],
+    }));
+    let last = performance.now();
+    const until = last + 2800;
+    (function frame(now){
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      ctx.globalAlpha = Math.max(0, Math.min(1, (until - now) / 600));
+      for (const p of pieces) {
+        p.vy += 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+      }
+      if (now < until) requestAnimationFrame(frame); else canvas.remove();
+    })(last);
+  }
   let lastRefreshError = '';
 
   let refreshTimer = null;
@@ -1907,6 +1963,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       renderStartStage(s);
       const st = s.broadcast.state;
       if (st !== lastState) djLog('bstate', { from: lastState, to: st, dev: s.broadcast.deviceName || '', bad: !!s.broadcast.captureBad });
+      // Going live is a moment: confetti on the transition, but never on a
+      // console that merely (re)opened mid-set.
+      if (statusSeen && st === 'live' && lastState !== 'live') fireConfetti();
+      statusSeen = true;
       lastState = st;
       // Version pin (bottom-left) + self-refresh when the server updates
       // beneath an open console - only while idle (never mid-broadcast).
@@ -1927,7 +1987,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         lb.className = 'golive go biggo';
         lb.disabled = true;
       } else {
-        lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop broadcast' : 'Go live');
+        lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop broadcast' : '🕺 Go live');
         lb.className = 'golive biggo ' + (live ? 'stop' : 'go');
         lb.disabled = false;
       }
@@ -2386,7 +2446,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const replying = new Set();
     let newestAct = 0, on = false;
     const linkTypes = [
-      ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['website', 'Website']
+      ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['website', 'Website']
     ];
     const linkTypeLabels = new Map(linkTypes);
     // Every service gets a row up front. Making the DJ press "Add another
@@ -2394,13 +2454,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // nothing; an empty row simply is not published.
     const defaultLinkTypes = linkTypes.map(([type]) => type);
     const linkPlaceholders = new Map([
-      ['instagram','@username'], ['soundcloud','@username'], ['bandcamp','@username'],
+      ['instagram','@username'], ['soundcloud','@username'],
       ['website','yoursite.com'],
     ]);
     const linkMarks = new Map([
       ['instagram','#E4405F|M12 2.2c3.2 0 3.6 0 4.9.07 3.3.15 4.8 1.7 5 5 .06 1.3.07 1.7.07 4.9s0 3.6-.07 4.9c-.15 3.3-1.7 4.8-5 5-1.3.06-1.7.07-4.9.07s-3.6 0-4.9-.07c-3.3-.15-4.8-1.7-5-5C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.9c.15-3.3 1.7-4.8 5-5C8.4 2.2 8.8 2.2 12 2.2Zm0 3.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm0 10.9a4.3 4.3 0 1 1 0-8.6 4.3 4.3 0 0 1 0 8.6Zm6.9-11.1a1.55 1.55 0 1 1-3.1 0 1.55 1.55 0 0 1 3.1 0Z'],
       ['soundcloud','#FF5500|M2 14.2c0-1 .3-1.9.9-2.6.2 1.7.2 3.5 0 5.2-.6-.7-.9-1.6-.9-2.6Zm2.3-3.6c.4 2.4.4 4.9 0 7.3h.9c.4-2.5.4-5 0-7.4h-.9Zm2.2-1.1c.5 2.9.5 5.9 0 8.8h.9c.5-3 .5-6 0-8.9h-.9Zm2.2-.9c.5 3.2.5 6.5 0 9.7h1c.5-3.2.5-6.5 0-9.8h-1Zm2.3-.5c.5 3.4.5 6.9 0 10.3h1V8.1h-1Zm2.4 10.3h7c1.6 0 2.9-1.3 2.9-2.9s-1.3-2.9-2.9-2.9c-.4 0-.8.1-1.1.2A5.5 5.5 0 0 0 13.4 8v10.4Z'],
-      ['bandcamp','#629AA9|M3 17.5 8.6 6.5H21L15.4 17.5H3Z'],
       ['website','#8E8E93|M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 9h-3a15 15 0 0 0-1.2-5.4A8 8 0 0 1 18.9 11ZM12 4.1c.8 1.1 1.6 3.3 1.8 6.9h-3.6c.2-3.6 1-5.8 1.8-6.9ZM5.1 11a8 8 0 0 1 4.2-5.4A15 15 0 0 0 8.1 11h-3Zm0 2h3a15 15 0 0 0 1.2 5.4A8 8 0 0 1 5.1 13Zm5 0h3.8c-.2 3.6-1 5.8-1.9 6.9-.8-1.1-1.6-3.3-1.9-6.9Zm4.6 5.4A15 15 0 0 0 15.9 13h3a8 8 0 0 1-4.2 5.4Z'],
     ]);
     function linkMark(type){
@@ -2409,6 +2468,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const i = raw.indexOf('|');
       return '<svg class="linkmark" viewBox="0 0 24 24" fill="' + raw.slice(0,i) + '" aria-hidden="true"><path d="' + raw.slice(i+1) + '"/></svg>';
     }
+    // The same palette the guest page offers, so counts mean one thing.
+    const postReactionChoices = ['❤️', '🔥', '😂', '🎉', '🪩'];
     const reactionDefs = [
       ['fire', '🔥 fire'], ['heart', '❤️ heart'], ['louder', '🔊 louder'], ['quieter', '🔉 quieter'],
       ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
@@ -2761,6 +2822,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         (p.text ? '<div class="wcaption"><b>' + escT(p.author || 'someone') + '</b>' + escT(p.text) + '</div>' : '') +
         cmts +
         '<div class="wpostactions"><button class="wreplybtn" data-reply="' + escT(p.id) + '" type="button">Reply</button>' +
+        postReactionChoices.map((emoji) => {
+          const n = Number((p.reactions || {})[emoji] || 0);
+          return '<button class="wreact" data-react="' + escT(p.id) + '" data-emoji="' + emoji + '" type="button">' + emoji + (n ? '<b>' + n + '</b>' : '') + '</button>';
+        }).join('') +
         '<span class="wtime">' + time + '</span></div>' +
         '<div class="wreply"' + (replying.has(p.id) ? '' : ' hidden') + '><input maxlength="1000" placeholder="Write a reply…" data-cpost="' + escT(p.id) + '">' +
         '<button data-csend="' + escT(p.id) + '" type="button">Post</button></div>';
@@ -2834,6 +2899,18 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     async function handleWallClick(e){
       const d = e.target && e.target.dataset || {};
       if (d.cancelDelete) { cancelDelete(e.target); return; }
+      // closest(): the count <b> inside the pill must react like the pill.
+      const reactBtn = e.target && e.target.closest && e.target.closest('.wreact');
+      if (reactBtn) {
+        reactBtn.disabled = true;
+        try {
+          const r = await fetch('/api/post-reaction', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ cid:'dj', post:reactBtn.dataset.react, reaction:reactBtn.dataset.emoji || '' }) });
+          if (r.ok) await poll();
+        } catch (err) {}
+        reactBtn.disabled = false;
+        return;
+      }
       if (d.reply) {
         replying.add(d.reply);
         const form = e.target.closest('.wpost') && e.target.closest('.wpost').querySelector('.wreply');
