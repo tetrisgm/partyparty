@@ -2,13 +2,13 @@
 
 ## Current position
 
-Pink Saved toast + bare fields, verified in the running app: #ppToast is a fixed bottom-right brand-pink pill (static markup because the contract test verifies every $('id') exists; pointer-events none; --curve motion with a reduced-motion opacity-only variant) and profile, links, and event-details saves all route through toast('Saved') - the inline status spans no longer print success, so the layout never gains a surprise row (they keep error duty). The name+description container box is gone: .grouped is a plain two-column grid with a 10px gap and the fields stand on their own surfaces (computed: transparent background, no shadow). Screenshot confirms the pink Saved pill bottom-right and boxless fields. Two contract pins tripped and were satisfied properly: the missing-element check (static toast element) and the no-"Ns ease" motion pin (curve token in the reduce block). Suites pass; rebuilt+installed+running.
+Mixcloud and Resident Advisor removed as link types product-wide: console picker/placeholders/brand-mark SVGs/URL builders and the RA username special-case (web/dj.html), the wall's label table (web/wall.html), and the Go link-type table (internal/event/event.go, gofmt'd). Four services remain: Instagram, SoundCloud, Bandcamp, Website - the chips grid now shows one row of four. Zero references left anywhere in web/, internal/, or the test scripts. go build + event/server tests + both web suites pass; rebuilt+installed+running.
 
-Workshop checkpoint: `1785870360829-f9cfe0fe` (product).
+Workshop checkpoint: `1785870483687-a48d3a0b` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (internal/event/event.go, web/dj.html, web/wall.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

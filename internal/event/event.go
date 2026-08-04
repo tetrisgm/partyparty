@@ -145,14 +145,12 @@ const (
 )
 
 var linkTypeLabels = map[string]string{
-	"instagram":        "Instagram",
-	"soundcloud":       "SoundCloud",
-	"bandcamp":         "Bandcamp",
-	"mixcloud":         "Mixcloud",
-	"resident_advisor": "Resident Advisor",
-	"website":          "Website",
-	"newsletter":       "Newsletter",
-	"other":            "Link",
+	"instagram":  "Instagram",
+	"soundcloud": "SoundCloud",
+	"bandcamp":   "Bandcamp",
+	"website":    "Website",
+	"newsletter": "Newsletter",
+	"other":      "Link",
 }
 
 func normalizeState(state string) string {

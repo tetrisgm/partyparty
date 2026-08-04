@@ -2314,8 +2314,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const replying = new Set();
     let newestAct = 0, on = false;
     const linkTypes = [
-      ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['mixcloud', 'Mixcloud'],
-      ['resident_advisor', 'Resident Advisor'], ['website', 'Website']
+      ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['website', 'Website']
     ];
     const linkTypeLabels = new Map(linkTypes);
     // Every service gets a row up front. Making the DJ press "Add another
@@ -2324,14 +2323,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const defaultLinkTypes = linkTypes.map(([type]) => type);
     const linkPlaceholders = new Map([
       ['instagram','@username'], ['soundcloud','@username'], ['bandcamp','@username'],
-      ['mixcloud','@username'], ['resident_advisor','@username'], ['website','yoursite.com'],
+      ['website','yoursite.com'],
     ]);
     const linkMarks = new Map([
       ['instagram','#E4405F|M12 2.2c3.2 0 3.6 0 4.9.07 3.3.15 4.8 1.7 5 5 .06 1.3.07 1.7.07 4.9s0 3.6-.07 4.9c-.15 3.3-1.7 4.8-5 5-1.3.06-1.7.07-4.9.07s-3.6 0-4.9-.07c-3.3-.15-4.8-1.7-5-5C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.9c.15-3.3 1.7-4.8 5-5C8.4 2.2 8.8 2.2 12 2.2Zm0 3.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm0 10.9a4.3 4.3 0 1 1 0-8.6 4.3 4.3 0 0 1 0 8.6Zm6.9-11.1a1.55 1.55 0 1 1-3.1 0 1.55 1.55 0 0 1 3.1 0Z'],
       ['soundcloud','#FF5500|M2 14.2c0-1 .3-1.9.9-2.6.2 1.7.2 3.5 0 5.2-.6-.7-.9-1.6-.9-2.6Zm2.3-3.6c.4 2.4.4 4.9 0 7.3h.9c.4-2.5.4-5 0-7.4h-.9Zm2.2-1.1c.5 2.9.5 5.9 0 8.8h.9c.5-3 .5-6 0-8.9h-.9Zm2.2-.9c.5 3.2.5 6.5 0 9.7h1c.5-3.2.5-6.5 0-9.8h-1Zm2.3-.5c.5 3.4.5 6.9 0 10.3h1V8.1h-1Zm2.4 10.3h7c1.6 0 2.9-1.3 2.9-2.9s-1.3-2.9-2.9-2.9c-.4 0-.8.1-1.1.2A5.5 5.5 0 0 0 13.4 8v10.4Z'],
       ['bandcamp','#629AA9|M3 17.5 8.6 6.5H21L15.4 17.5H3Z'],
-      ['mixcloud','#5000FF|M2 14.5c0-1.4 1-2.5 2.4-2.5.5 0 1 .2 1.4.5A4.6 4.6 0 0 1 10.3 8c2 0 3.7 1.3 4.3 3.1.3-.1.6-.2 1-.2 1.3 0 2.4 1 2.6 2.3.5-.3 1-.4 1.5-.4 1.3 0 2.3 1 2.3 2.4s-1 2.4-2.3 2.4H4.4C3 17.6 2 16.5 2 14.5Z'],
-      ['resident_advisor','#FF3B30|M3 6h7.5c2.6 0 4.4 1.6 4.4 3.9 0 1.7-1 3-2.6 3.5L15.6 18h-3.3l-2.7-4.2H6.1V18H3V6Zm3.1 2.5v2.9h4c1 0 1.7-.6 1.7-1.5s-.7-1.4-1.7-1.4h-4ZM17 6h4v12h-4V6Z'],
       ['website','#8E8E93|M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 9h-3a15 15 0 0 0-1.2-5.4A8 8 0 0 1 18.9 11ZM12 4.1c.8 1.1 1.6 3.3 1.8 6.9h-3.6c.2-3.6 1-5.8 1.8-6.9ZM5.1 11a8 8 0 0 1 4.2-5.4A15 15 0 0 0 8.1 11h-3Zm0 2h3a15 15 0 0 0 1.2 5.4A8 8 0 0 1 5.1 13Zm5 0h3.8c-.2 3.6-1 5.8-1.9 6.9-.8-1.1-1.6-3.3-1.9-6.9Zm4.6 5.4A15 15 0 0 0 15.9 13h3a8 8 0 0 1-4.2 5.4Z'],
     ]);
     function linkMark(type){
@@ -2363,8 +2360,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         case 'instagram': return 'https://www.instagram.com/' + encoded + '/';
         case 'soundcloud': return 'https://soundcloud.com/' + encoded;
         case 'bandcamp': return 'https://' + username.toLowerCase() + '.bandcamp.com/';
-        case 'mixcloud': return 'https://www.mixcloud.com/' + encoded + '/';
-        case 'resident_advisor': return 'https://ra.co/dj/' + encoded;
         default: return '';
       }
     }
@@ -2378,11 +2373,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (link.type === 'bandcamp' && u.hostname.toLowerCase().endsWith('.bandcamp.com')) {
           return cleanUsername(u.hostname.slice(0, -'.bandcamp.com'.length));
         }
-        if (link.type === 'resident_advisor') {
-          const i = parts.indexOf('dj');
-          return cleanUsername(i >= 0 ? parts[i + 1] : parts[parts.length - 1]);
-        }
-
         return cleanUsername(parts[parts.length - 1]);
       } catch (e) {
         return cleanUsername(link.url);
