@@ -2,13 +2,13 @@
 
 ## Current position
 
-The address is now the copy control (owner picked option 1 of the three strategies): one full-width .linkact button carries the party name as its label — scheme and trailing slash stripped for display (happy-dance.partyparty.party), ellipsized when it runs long (owner's explicit ask) — with a copy glyph at its right; Share is icon-only beside it. Implementation kept all three JS call sites untouched by moving the joinLinkField id onto the label span: .value rides the span as a plain JS property (the full https URL for copy/share), and setShareLinks gained one line to set the display text. The existing flash() already skips the text swap for svg-bearing buttons, so the click gives the green done flash without nuking the label. Verified in the running app: .value = full URL, shown text stripped, ellipsis active at rail width, click flashes, page polls clean (the four console fetch errors were from the rebuild window while the app was down — not a code error). Rail head renamed How to listen -> Invite guests (pairs with Participants as action -> result); contract pin updated in scripts/test-stream-contract.mjs; the ? modal keeps its accurate How listening works title.
+Copy actions now raise the pink toast the owner expected: copyText gained an optional third argument (toast message) and both callers pass one — the party-link button toasts "Copied party link", the failsafe copy toasts "Copied direct address". The green button flash stays as the at-the-cursor echo. Scope checked before wiring: toast() (line ~3068) and copyText (~1762) sit at the same top level of the one big script element, so the hoisted declaration is callable — no outer/inner scope trap. Verified in the running app: clicking the address button shows the fixed bottom-right toast reading "Copied party link" with class show. Web suites pass; rebuilt and installed.
 
-Workshop checkpoint: `1785873267553-44ac43df` (product).
+Workshop checkpoint: `1785873581135-2c66722a` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html + scripts/test-stream-contract.mjs). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html only). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

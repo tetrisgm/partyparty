@@ -1767,7 +1767,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (label) label.textContent = original;
     }, 1400);
   }
-  async function copyText(text, btn){
+  async function copyText(text, btn, toastMsg){
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -1778,6 +1778,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       field.remove();
     }
     flash(btn, 'Copied');
+    if (toastMsg) toast(toastMsg);
   }
   function setShareLinks(joinURL, lan){
     // joinLinkField is the label inside the copy button: .value carries the
@@ -1796,8 +1797,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (usable) $('failsafeField').value = 'http://' + ip + ':' + port + '/';
     }
   }
-  $('copyLinkBtn').addEventListener('click', () => copyText($('joinLinkField').value, $('copyLinkBtn')));
-  $('copyFailsafeBtn').addEventListener('click', () => copyText($('failsafeField').value, $('copyFailsafeBtn')));
+  $('copyLinkBtn').addEventListener('click', () => copyText($('joinLinkField').value, $('copyLinkBtn'), 'Copied party link'));
+  $('copyFailsafeBtn').addEventListener('click', () => copyText($('failsafeField').value, $('copyFailsafeBtn'), 'Copied direct address'));
   $('shareLinkBtn').addEventListener('click', async () => {
     const url = $('joinLinkField').value;
     if (!url) return;
