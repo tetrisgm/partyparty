@@ -2,13 +2,13 @@
 
 ## Current position
 
-HANDOFF.md updated to record the closed release unit: TestFlight 125.33 (249) uploaded via workflow run 30953437019 (green in 6m52s), asc confirms processingState VALID (build id 046ab5af-88c6-4fe9-b827-e750e32ad990, uploaded 2026-08-04T14:47:41-07:00). Next-concrete-step now reads nothing-in-flight with owner-side visual checks owed on 249. Doc-only change.
+One-slot Store install shipped and already executed on this Mac: build-install-app-store-local.sh now defaults DEST_DIR to /Applications (same path TestFlight installs to), stages under DERIVED instead of inside the dest dir, removes the legacy ~/Applications/PartyParty Store Development location after a successful install, and quits the running editions BEFORE the launch test (the old order needed port 8000 free after the test had already demanded it — masked until now because the outer loop always quit first). Migration performed with PP_REUSE_BUILD=1: app now runs from /Applications/PartyParty.app (verified pgrep + /api/status idle 125.32), legacy dir gone. Effect: a TestFlight download replaces the WIP build and the next dev-loop run replaces it back; same bundle id keeps the container, so party data survives the swap. Separately (no repo change): owner added to the empty Internal testing TestFlight group via asc, so 249 is installable by him; Seth's dead TestFlight traced to the Jul-30 group recreation plus both external-group builds (224, 234) having been manually expired Aug 3 — restoring Seth needs an owner-explicit beta-review submission of a current build to Party testing.
 
-Workshop checkpoint: `1785880477516-cc1ffae5` (apple).
+Workshop checkpoint: `1785882794791-cfb536b8` (apple).
 
 ## Next concrete step
 
-Verify through Workshop, then finish with a doc-only commit.
+Verify through Workshop, then finish. Seth's external path stays parked until the owner explicitly asks for the beta-review submission.
 
 ## Blockers
 

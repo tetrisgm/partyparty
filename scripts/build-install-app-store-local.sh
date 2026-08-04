@@ -6,11 +6,15 @@ cd "$(dirname "$0")/.."
 ROOT="$PWD"
 DERIVED="$ROOT/build/xcode-app-store-dev"
 BUILT_APP="$DERIVED/Build/Products/Debug/PartyParty.app"
-DEST_DIR="${PP_LOCAL_STORE_INSTALL_DIR:-$HOME/Applications/PartyParty Store Development}"
+# One install slot: TestFlight and the App Store install to /Applications/PartyParty.app,
+# so putting the dev build there means each lane replaces the other instead of
+# accumulating copies that fight over port 8000 and the menu bar.
+DEST_DIR="${PP_LOCAL_STORE_INSTALL_DIR:-/Applications}"
 DEST_APP="$DEST_DIR/PartyParty.app"
-STAGED_DIR="$DEST_DIR/.staging.$$"
+STAGED_DIR="$DERIVED/.install-staging.$$"
 STAGED_APP="$STAGED_DIR/PartyParty.app"
 OLD_APP="$DEST_DIR/.PartyParty.old.$$"
+LEGACY_DIR="$HOME/Applications/PartyParty Store Development"
 
 if [ "${PP_REUSE_BUILD:-0}" != "1" ]; then
   make assets/ppcapture
@@ -28,15 +32,17 @@ fi
   echo "Store development build not found: $BUILT_APP" >&2
   exit 1
 }
-"$ROOT/scripts/test-app-store.sh" "$BUILT_APP"
 
-# Both editions own the same local server ports, so only one can run at a time.
+# Both editions own the same local server ports, so only one can run at a time,
+# and the launch test below needs port 8000 free.
 osascript -e 'tell application id "fm.partyparty.beta" to quit' >/dev/null 2>&1 || true
 osascript -e 'tell application id "fm.partyparty.app" to quit' >/dev/null 2>&1 || true
 for _ in $(seq 1 20); do
   curl -fsS --max-time 1 http://127.0.0.1:8000/api/status >/dev/null 2>&1 || break
   sleep 0.25
 done
+
+"$ROOT/scripts/test-app-store.sh" "$BUILT_APP"
 
 mkdir -p "$DEST_DIR"
 rm -rf "$STAGED_DIR" "$OLD_APP"
@@ -58,6 +64,9 @@ rm -rf "$STAGED_DIR"
 "$ROOT/scripts/verify-app-store.sh" "$DEST_APP"
 rm -rf "$OLD_APP"
 trap - EXIT
+
+# Retire the pre-one-slot install location so two copies never coexist.
+[ ! -d "$LEGACY_DIR" ] || rm -rf "$LEGACY_DIR"
 
 open -g "$DEST_APP"
 echo "installed and launched $DEST_APP"
