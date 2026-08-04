@@ -656,7 +656,7 @@
     color:var(--label-tertiary);font-size:11px;font-weight:600;
     letter-spacing:.04em;text-transform:uppercase;margin-bottom:var(--s-3)}
   .sharelede{font-size:12px;font-weight:500;color:var(--label-secondary);line-height:1.4;margin:0}
-  /* How to listen lives at the top of the rail: the instruction block a DJ
+  /* Invite guests lives at the top of the rail: the instruction block a DJ
      points at. Everything stacks to the rail's width - QR, then the link
      with Copy/Share wrapping below it. */
   .joinrail{margin-bottom:var(--s-5)}
@@ -671,8 +671,15 @@
   .joinrail #qr{display:block;width:auto;height:auto;padding:10px;border:0}
   .joinrail #qr canvas,.joinrail #qr img{display:block;width:100%;height:auto;image-rendering:pixelated}
   .joinrail .qr-pending{width:100%}
-  .joinrail .linkfield{flex-wrap:wrap;margin-top:0}
-  .joinrail .linkfield input{flex:1 1 100%;width:100%;min-width:0;font-size:11px}
+  .joinrail .linkfield{margin-top:0}
+  /* The address itself is the copy control: one full-width button, the party
+     name ellipsized when it runs long, the copy glyph at its right. Share is
+     icon-only beside it. */
+  .linkurl{flex:1 1 auto;min-width:0;justify-content:space-between}
+  .linkurl .linktext{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-family:var(--mono);font-size:12px;font-weight:500}
+  .linkurl svg{opacity:.65}
+  .joinrail #shareLinkBtn{width:38px;padding:0;justify-content:center}
 
   /* ---- capture + start: the one big action on the page ---- */
   .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-3)!important;padding-bottom:var(--s-3)!important}
@@ -1105,7 +1112,7 @@
 </div>
   <aside class="inspector" aria-label="Guests">
     <div class="joinrail" id="joinCard" aria-label="Share">
-      <div class="inspectorhead">How to listen<button class="iconbtn source-help" id="joinGuideBtn" type="button" aria-label="How listening works" title="How listening works">?</button></div>
+      <div class="inspectorhead">Invite guests<button class="iconbtn source-help" id="joinGuideBtn" type="button" aria-label="How listening works" title="How listening works">?</button></div>
       <div class="event-share">
         <div class="event-qr" id="shareCard">
           <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
@@ -1121,11 +1128,12 @@
         </div>
         <div class="qrmsg">
           <div class="linkfield">
-            <input id="joinLinkField" type="text" readonly aria-label="Party link" value="">
-            <button class="linkact" id="copyLinkBtn" type="button" aria-label="Copy party link">Copy</button>
-            <button class="linkact" id="shareLinkBtn" type="button" aria-label="Share party link">
+            <button class="linkact linkurl" id="copyLinkBtn" type="button" aria-label="Copy party link" title="Copy party link">
+              <span class="linktext" id="joinLinkField">-</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+            <button class="linkact" id="shareLinkBtn" type="button" aria-label="Share party link" title="Share party link">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
-              Share
             </button>
           </div>
           <div class="qr-network-status" id="qrNetworkStatus" hidden></div>
@@ -1772,8 +1780,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     flash(btn, 'Copied');
   }
   function setShareLinks(joinURL, lan){
+    // joinLinkField is the label inside the copy button: .value carries the
+    // full URL for copy/share, the visible text drops the scheme and slash.
     const join = $('joinLinkField');
-    if (join && joinURL && join.value !== joinURL) join.value = joinURL;
+    if (join && joinURL && join.value !== joinURL) {
+      join.value = joinURL;
+      join.textContent = joinURL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    }
     const box = $('failsafe');
     const ip = lan && lan.expectedIp;
     const port = (lan && lan.guestPort) || 8443;
