@@ -2,13 +2,13 @@
 
 ## Current position
 
-Owner chrome follow-ups done and verified in the running app: drag strip removed (owner does not want window-drag plumbing; only the floating gear remains of the old bar), scrollbar quieted (8px, transparent track, low-alpha pill thumb + hover step - was the default bright WebKit slab), and the poster's Shuffle/Upload cluster moved to the bottom-right of the artwork with the status note stacking above it. Contract pins updated: no dragstrip anywhere, thin scrollbar present, gear pinned. Both web suites pass; app rebuilt/installed/running; screenshot confirms bottom-right cluster, thin bar, quiet rail.
+Rail is now Discord-style per the owner's reference screenshot, and the DJ is ALWAYS present, broadcasting or not. Groups render as small-caps headers "DJNAME — N" (no headphone glyph, no pill), listener rows are member rows (32px avatar circle, 14px medium name, quiet subtitle, hover wash, no hairline dividers), the rail card chrome is stripped so the rail IS the list, and the redundant inner "Guests" heading is hidden (rail label + group headers name it). Pre-live hiding removed along with the placeholder note - the server always emits the local DJ as the first listenerGroup so "SHOKUNIN — 0 / No listeners yet." shows while idle. Plus this round's earlier pieces: #titlePencil next to the party name (focus+select in-place edit) and the always-DJ-grouped renderer. Verified: suites pass, rebuilt+installed, idle screenshot shows the DJ group with the pencil visible, zero page errors.
 
-Workshop checkpoint: `1785867626264-4a8ef3df` (product).
+Workshop checkpoint: `1785867977752-59cb2331` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (scripts/test-stream-contract.mjs + web/dj.html). Standing items: owner-triggered beta-review submission for TestFlight 248 if Seth is in the external group; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

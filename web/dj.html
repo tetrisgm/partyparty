@@ -135,13 +135,14 @@
   button:disabled{opacity:.4;cursor:default}
   .url{font-size:22px;font-weight:700;color:var(--label);word-break:break-all;margin:2px 0;letter-spacing:-.01em}
   .muted{color:var(--label-secondary);font-size:13px}
-  .listener{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--separator);font-size:13px}
+  .listener{display:flex;align-items:center;gap:10px;padding:5px 6px;border-radius:var(--r-sm);font-size:13px}
+  .listener:hover{background:rgba(255,255,255,.05)}
   .listener:last-child{border-bottom:none}
   .listener.det{align-items:flex-start}
   .listener .lstat{width:18px;text-align:center}
   .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
-  .listener .lemoji{width:22px;text-align:center;font-size:18px;line-height:1;flex:0 0 auto}
-  .listener .lname{flex:1;color:var(--label)}
+  .listener .lemoji{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);display:grid;place-items:center;font-size:16px;line-height:1;flex:0 0 32px}
+  .listener .lname{flex:1;color:var(--label);font-size:14px;font-weight:500}
   .listener.host .lname{font-weight:700}
   .listener .lbody{flex:1;min-width:0}
   .listener .lbody .lname{display:block}
@@ -381,10 +382,11 @@
   .profilefield input{height:38px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 10px;color:var(--label);font:inherit;font-size:14px}
   .profilebuttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .profilestatus{font-size:12px;color:var(--label-secondary)}
-  .rostergroup{padding:10px 0;border-bottom:1px solid var(--separator)}
-  .rostergroup:last-child{border-bottom:0}
-  .rostergrouphead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800}
-  .rostergrouphead small{color:var(--label-secondary);font-weight:600}
+  .rostergroup{padding:0 0 var(--s-3)}
+  .rostergrouphead{display:flex;align-items:baseline;gap:6px;margin:var(--s-4) 0 var(--s-2);
+    font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
+  .rostergroup:first-child .rostergrouphead{margin-top:0}
+  .rostergrouphead small{font-size:11px;color:var(--label-tertiary);font-weight:600}
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   /* macOS-style hierarchy: quiet grouped surfaces, aligned fields, one clear
      action row per section. */
@@ -422,6 +424,11 @@
   .profilebuttons,.linkactions{justify-content:flex-end;padding-top:4px}
   .party-grid .card{padding:20px}
   .guest-sidebar .card{margin-top:0;display:flex;flex-direction:column}
+  .inspector .guest-sidebar .card{background:transparent;box-shadow:none;border:0;padding:0}
+  /* The rail label and the per-DJ headers name the list; the card's own
+     "Guests" heading would say it a third time. */
+  .inspector .guesthead h2{display:none}
+  .inspector .guesthead{justify-content:flex-end}
   .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:30px;margin:0 0 18px;padding:0}
   .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:18px;line-height:1.25;font-weight:700}
   /* Social links as chips, the way an "about me" page does it: the brand mark,
@@ -499,6 +506,8 @@
   .fieldedit:hover{background:var(--fill-hover);color:var(--label)}
   .fieldedit svg{width:14px;height:14px;display:block}
   .ename .fieldedit{vertical-align:8px}
+  .posterbody .fieldedit{color:rgba(255,255,255,.72)}
+  .posterbody .fieldedit:hover{background:rgba(255,255,255,.18);color:#fff}
   .eventform-field select{height:36px}
   .eventedit [data-edit-group]{display:none}
   .eventedit[data-field="title"] [data-edit-group="title"],
@@ -670,9 +679,7 @@
     .coveractions,.startstage,.readydot{transition:none!important}
     *{scroll-behavior:auto!important}
   }
-  .railnote{margin:0;font-size:12px;color:var(--label-tertiary);line-height:1.5}
-  body[data-phase="live"] .railnote{display:none}
-  body:not([data-phase="live"]) .inspector .guest-sidebar{display:none}
+
 
   /* Grouped-list surfaces: one rounded container, hairline-separated rows. */
   .card{background:color-mix(in srgb,#fff 4%,var(--bg));border-radius:var(--r-md);
@@ -922,7 +929,7 @@
       <input id="pubCoverFile" type="file" accept="image/*" hidden>
       <div class="posterbody">
         <h1 class="ename"><span id="titleEdit" contenteditable="plaintext-only" role="textbox"
-            aria-label="Event name" data-placeholder="Name this party"></span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name" hidden></button></h1>
+            aria-label="Event name" data-placeholder="Name this party"></span><button class="fieldedit" type="button" id="titlePencil" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button></h1>
         <div class="posterhost" id="posterHost"></div>
         <div class="livestat" id="liveStat">
           <span class="livedot" aria-hidden="true"></span>
@@ -1075,7 +1082,6 @@
 </div>
   <aside class="inspector" aria-label="Guests">
     <div class="inspectorhead">Guests</div>
-    <p class="railnote" id="guestRailNote">Guests appear here once the party starts.</p>
   <div id="ptab-people" class="guest-sidebar">
     <div class="card">
       <div class="guesthead"><h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
@@ -1885,14 +1891,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
             extra = '<div class="ldetail">' + latency + (detail.paused ? ' · paused' : '') + '</div>';
           }
           return '<div class="listener"><span class="lemoji">' + emoji + '</span><div class="lbody"><span class="lname">' + name + '</span>' + extra + '</div></div>';
-        }).join('') : '<div class="muted" style="padding:8px 0">No listeners right now.</div>';
-        // One DJ is the normal night; a header naming that one DJ above their own
-        // guest list is noise. The header earns its place only when two or more
-        // DJs are splitting the room.
-        const head = groups.length > 1
-          ? '<div class="rostergrouphead"><span>🎧 ' + esc(group.dj || 'DJ') +
-            '</span><small>' + listeners.length + (listeners.length === 1 ? ' listener' : ' listeners') + '</small></div>'
-          : '';
+        }).join('') : '<div class="muted" style="padding:8px 0">No listeners yet.</div>';
+        // Every DJ heads their own group - including this Mac's DJ, alone or
+        // not - and their listeners sit under them. The owner reads this as
+        // "who is playing, and who is with them".
+        const head = '<div class="rostergrouphead"><span>' + esc(group.dj || 'DJ') +
+          '</span><small>&mdash; ' + listeners.length + '</small></div>';
         return '<section class="rostergroup">' + head + rows + '</section>';
       }).join('');
       const h = s.health || {};
@@ -1981,6 +1985,17 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   document.querySelectorAll('[data-event-field]').forEach(btn => {
     btn.addEventListener('click', () => setEventEditOpen(eventEditField === btn.dataset.eventField ? '' : btn.dataset.eventField));
   });
+  // The pencil exists to say "this is editable"; clicking it starts the same
+  // in-place edit a click on the words does, with everything selected.
+  if ($('titlePencil')) $('titlePencil').onclick = () => {
+    const t = $('titleEdit');
+    t.focus();
+    const range = document.createRange();
+    range.selectNodeContents(t);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
   if ($('eventEditCancelBtn')) $('eventEditCancelBtn').onclick = () => setEventEditOpen('');
   async function saveEventDetails(){
     if (!eventEditField) return;
