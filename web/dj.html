@@ -940,7 +940,7 @@
   /* Scrim so the title stays legible on any artwork. */
   .coverwrap.has-cover::after{content:'';position:absolute;inset:0;
     background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
-  .coveractions{position:absolute;bottom:var(--s-4);right:var(--s-4);z-index:3;display:flex;gap:var(--s-2)}
+  .coveractions{display:flex;gap:var(--s-2);flex:0 0 auto}
   .coverbtn{
     background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
     border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:var(--r-sm);
@@ -955,11 +955,14 @@
   .coverstatus{position:absolute;right:var(--s-4);bottom:calc(var(--s-4) + 38px);z-index:3;
     display:none;font-size:12px;color:rgba(255,255,255,.85)}
   .coverstatus.error{color:#ff7a7a}
-  .posterbody{position:relative;z-index:1;width:100%}
+  .posterbody{position:relative;z-index:1;width:100%;
+    display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s-4)}
+  .postertext{min-width:0}
+  .posterhost:empty{display:none}
   /* Empty poster space belongs to the cover, so a dragged image can land
      anywhere on the artwork; only the real controls keep the pointer. */
   .posterbody{pointer-events:none}
-  .posterbody #titleEdit,.posterbody .fieldedit,.posterbody .livestat{pointer-events:auto}
+  .posterbody #titleEdit,.posterbody .fieldedit,.posterbody .livestat,.posterbody .coveractions{pointer-events:auto}
   /* The title is the field. Click the words, type. No pencil to hunt for. */
   .ename{font-size:clamp(28px,3.4vw,44px);font-weight:700;letter-spacing:-.028em;line-height:1.05;margin:0}
   #titleEdit{outline:none;display:inline-block;min-width:2ch;border-radius:var(--r-sm);padding:0 2px}
@@ -1022,14 +1025,11 @@
       <div class="coverwrap" id="eventCover">
         <img id="eventCoverImg" alt="">
       </div>
-      <div class="coveractions">
-        <button class="coverbtn" id="pubCoverChangeBtn" type="button">Shuffle image</button>
-        <button class="coverbtn" id="pubCoverBtn" type="button">Upload image</button>
-      </div>
       <button class="coverx" id="coverRemoveBtn" type="button" aria-label="Remove cover image" title="Remove cover image">✕</button>
       <span class="coverstatus" id="pubCoverResult" role="status"></span>
       <input id="pubCoverFile" type="file" accept="image/*" hidden>
       <div class="posterbody">
+        <div class="postertext">
         <h1 class="ename"><span id="titleEdit" contenteditable="plaintext-only" role="textbox"
             aria-label="Event name" data-placeholder="Name this party"></span><button class="fieldedit" type="button" id="titlePencil" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button></h1>
         <div class="posterhost" id="posterHost"></div>
@@ -1038,6 +1038,11 @@
           <span class="livelabel">Live</span>
           <span class="liveclock" id="liveClock">0:00</span>
           <span class="livecount" id="liveCount">0 listening</span>
+        </div>
+        </div>
+        <div class="coveractions">
+          <button class="coverbtn" id="pubCoverChangeBtn" type="button">Shuffle image</button>
+          <button class="coverbtn" id="pubCoverBtn" type="button">Upload image</button>
         </div>
       </div>
     </header>
@@ -1420,8 +1425,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   const escT = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const INITIAL_GUEST_URL = __PP_INITIAL_GUEST_URL_JSON__;
   let qrText = null, lastState = 'idle', statusSeen = false;
+  let confettiCooldown = 0;
   function fireConfetti(){
-    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Two triggers can race (the click and the live transition); one show.
+    if (Date.now() < confettiCooldown) return;
+    confettiCooldown = Date.now() + 5000;
+    // Reduce Motion softens the party rather than cancelling it - the DJ
+    // asked for this moment by name.
+    const gentle = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const canvas = document.createElement('canvas');
     canvas.className = 'confetti';
     canvas.width = innerWidth * devicePixelRatio;
@@ -1430,7 +1441,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const ctx = canvas.getContext('2d');
     ctx.scale(devicePixelRatio, devicePixelRatio);
     const colors = ['#ff2d6f', '#ffd166', '#9b5de5', '#00f5d4', '#ffffff'];
-    const pieces = Array.from({ length: 150 }, () => ({
+    const pieces = Array.from({ length: gentle ? 60 : 150 }, () => ({
       x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.3,
       w: 5 + Math.random() * 6, h: 8 + Math.random() * 8,
       vx: (Math.random() - 0.5) * 160, vy: 220 + Math.random() * 260,
@@ -1438,7 +1449,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       color: colors[(Math.random() * colors.length) | 0],
     }));
     let last = performance.now();
-    const until = last + 2800;
+    const until = last + (gentle ? 1700 : 2800);
     (function frame(now){
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       ctx.clearRect(0, 0, innerWidth, innerHeight);
@@ -1750,6 +1761,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       } else {
         startError = '';
         ok = true;
+        fireConfetti(); // celebrate at the press, not a poll later
       }
     } catch (e) {
       startError = 'Could not reach the app - is it still running?';
@@ -2427,7 +2439,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (typeof clock === 'string') eventMeta.time = clock;
     if (typeof place === 'string') eventMeta.place = place;
     if (typeof cover === 'string') eventMeta.cover = cover;
-    $('titleEdit').textContent = eventMeta.title || 'Name your event';
+    const titleEl = $('titleEdit');
+    const titleHeld = document.activeElement === titleEl || Date.now() < (window.__ppTitleHold || 0);
+    if (!titleHeld) titleEl.textContent = eventMeta.title || 'Name your event';
     syncEventCover(eventMeta.cover);
     if (eventEditField) {
       const active = document.activeElement;
@@ -3293,13 +3307,26 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   (function(){
     const el = $('titleEdit');
     if (!el) return;
-    const commit = () => {
+    const commit = async () => {
       const name = el.textContent.trim().slice(0, 80);
       if (name === (eventMeta.title || '')) return;
-      const input = $('eventTitleInput');
-      if (input) input.value = name;
-      const save = $('eventEditSaveBtn');
-      if (save && !save.disabled) save.click();
+      // An empty blur never erases the party name; put the real one back.
+      if (!name) { el.textContent = eventMeta.title || ''; return; }
+      // Save DIRECTLY: the old path pressed the edit-panel's save button,
+      // whose handler no-ops unless that panel is open - an inline rename
+      // never reached the server, so the next poll restored the old name.
+      // The hold also keeps a stale in-flight status from echoing it back.
+      window.__ppTitleHold = Date.now() + 2500;
+      try {
+        const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: name }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'save failed');
+        eventMeta.title = name;
+        document.title = name + ' - PartyParty';
+        toast('Saved');
+      } catch (err) {
+        el.textContent = eventMeta.title || '';
+      }
     };
     el.addEventListener('blur', commit);
     el.addEventListener('keydown', (e) => {
