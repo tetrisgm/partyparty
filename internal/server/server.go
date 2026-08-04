@@ -874,6 +874,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.startMu.Lock()
 		s.startMTXReady = time.Now()
 		s.startMu.Unlock()
+		// A fresh start voids the previous set's health verdict: the warning
+		// otherwise haunts the console until the next verdict lands ~7s in.
+		s.healthMu.Lock()
+		s.streamHealthNote = ""
+		s.healthMu.Unlock()
 		s.Broadcaster.Start(device, q.Get("name"), broadcast.Options{})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/stop":
@@ -885,6 +890,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.Broadcaster.Stop()
+		// Stopped means the warning's moment is over; a stale scare must not
+		// outlive the set it described.
+		s.healthMu.Lock()
+		s.streamHealthNote = ""
+		s.healthMu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/shutdown":
 		// Loopback-only orphan reaper: a force-quit app skips child cleanup and

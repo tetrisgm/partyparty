@@ -2,13 +2,13 @@
 
 ## Current position
 
-20 new cover photos shipped into the shuffle, every one personally eyeballed before inclusion: disco-ceiling, turntable, amber-festival, pedalboard, brass-section, phone-glow, led-canopy, arena-beams, dj-booth, band-stage, dj-close, open-air-blue, midnight-stage, blue-wash, haze-screens, golden-crowd, crowd-surfer, streamers, emerald-crowd, lanterns. Sourced CC0 through the Openverse API from Wikimedia-hosted files (~90 candidates reviewed; rejected memorial photos, historical artworks, storefronts, branded stages and a recognizable politician). Converted to the house 1500x1000 center-crop as q80 webp via ffmpeg-to-PNG + cwebp (system ffmpeg lacks libwebp; StockSnap's CDN hotlink-blocks; Wikimedia requires a descriptive User-Agent or serves 403 HTML). COVER_PILE extended 31->51; web/covers/SOURCES.md added with per-file openverse id + source URL (the original 31 had no provenance manifest). All 20 verified serving 200 from the rebuilt embedded binary; covers dir 5.2MB->7.2MB. Suites green.
+The scary banner mystery is solved with hard evidence and the stale half is fixed. Evidence: /api/status carries a readable log ring (the TCC-proof observability channel this session lacked) - it shows the owner's 14:20:46 go-live was HEALTHY end to end (RTSP session publishing to path party, HLS muxer converting, sessions reading) and torn down cleanly at 14:20:53, yet the console still showed the DEAD-STREAM banner, and status confirmed streamHealth non-empty while broadcast.state=idle. Root cause: SetStreamHealth was only ever cleared by a LATER healthy verdict; nothing cleared it on stop or on a fresh start, so one bad verdict haunted every later view. Fix: /api/start and /api/stop now clear streamHealthNote under healthMu. The original DEAD-STREAM firings earlier today were most likely REAL one-offs caused by this session's rebuild churn quitting the app mid-set under the owner's tests (the alarm is the 2026-07-08 honest-liveness cure working as designed). Verified: rebuilt, installed, status shows streamHealth empty. Title-revert postscript recorded: server title stayed test @ flux because the owner's failed renames predate the 14:14 commit fix; every rebuild relaunch redrew server truth, reading as came-back-on-Go-Live; the fixed path is proven by two server round-trips; owner should rename once on the current build to confirm.
 
-Workshop checkpoint: `1785878452536-b0b7647a` (product).
+Workshop checkpoint: `1785878931735-0f79565a` (delivery).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/covers/* + web/dj.html). Standing: owner eyeballs menu popover/bars/confetti on next go-live; TestFlight 248 beta-review decision.
+Verify then finish through Workshop (internal/server/server.go). Standing: owner renames once to confirm the title sticks; owner eyeballs menu popover/bars/confetti on next go-live; TestFlight 248 beta-review decision.
 
 ## Blockers
 
