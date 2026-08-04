@@ -168,7 +168,7 @@ assert.match(dj, /--measure:min\(\d+px,100%\)/);
 // the corner, and the scrollbar stays thin and quiet on the dark window.
 assert.doesNotMatch(dj, /id="actionbar"/);
 assert.doesNotMatch(dj, /dragstrip/);
-assert.match(dj, /class="iconbtn gearfloat" id="settingsBtn"/);
+assert.match(dj, /class="iconbtn gearbtn" id="settingsBtn"/);
 assert.match(dj, /::-webkit-scrollbar\{width:8px/);
 assert.match(dj, /\.page\{[^}]*max-width:var\(--measure\)/);
 assert.match(dj, /\.eventcover\{[^}]*margin-inline:0/);

@@ -2,13 +2,13 @@
 
 ## Current position
 
-Copy actions now raise the pink toast the owner expected: copyText gained an optional third argument (toast message) and both callers pass one — the party-link button toasts "Copied party link", the failsafe copy toasts "Copied direct address". The green button flash stays as the at-the-cursor echo. Scope checked before wiring: toast() (line ~3068) and copyText (~1762) sit at the same top level of the one big script element, so the hoisted declaration is callable — no outer/inner scope trap. Verified in the running app: clicking the address button shows the fixed bottom-right toast reading "Copied party link" with class show. Web suites pass; rebuilt and installed.
+The broadcast controls moved into a bottom transport bar — the owner asked which edge fits the Twitch/YouTube-streamer archetype, and bottom won the evaluation (OBS, Streamlabs, StreamYard and Zoom all dock source controls + Start/Stop + Settings in a bottom strip; YouTube's top-right Go Live is the outlier; the poster owns the top of this page and the rail is aligned to it). Implementation: the gocard markup moved verbatim (all ids intact — sourceStepLabel, sourceGuideBtn, deviceDisplay, device, startStage, liveBtn) into a .transport div placed after .workspace inside #appChrome, which is already a flex column, so the bar is a real layout row — both scroll columns end above it, no fixed-position overlay or padding compensation. Left: WHAT TO CAPTURE small-caps label + ? + source picker (flex 0 1 330px, min 150px; label text hides under 700px). Right: startStage spinner, Go live rescaled to bar metrics (44px tall, min 200px, r-md — was the 64px mid-page billboard), and the Settings gear moved INTO the bar (gearfloat markup + fixed-position CSS deleted; now .gearbtn, a 34px bar button; contract pin updated to match). No JS changed and none referenced goCard by id. Verified in the running app: bar spans the full window width flush to the bottom, settings and the ? guide open from the bar, page reads poster / About You / Party feed. Both web suites pass.
 
-Workshop checkpoint: `1785873581135-2c66722a` (product).
+Workshop checkpoint: `1785874182062-e604e5fc` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html only). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html + scripts/test-stream-contract.mjs). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

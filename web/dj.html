@@ -591,17 +591,12 @@
   html,body{height:100%;overflow:hidden}
   #appChrome{height:100dvh;display:flex;flex-direction:column;min-height:0;padding:0}
 
-  /* No title bar. The gear floats in the corner and the poster tucks under
-     the traffic lights. */
-  .gearfloat{
-    position:fixed;top:10px;right:12px;z-index:var(--z-sticky);
-    width:30px;height:30px;display:grid;place-items:center;border-radius:50%;border:0;padding:0;
-    background:rgba(255,255,255,.08);color:var(--label-secondary);cursor:pointer;
-    -webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
-    -webkit-app-region:no-drag;
-  }
-  .gearfloat:hover{background:rgba(255,255,255,.14);color:var(--label)}
+  /* No title bar. The poster tucks under the traffic lights; the gear lives
+     in the transport bar. */
+  .gearbtn{width:34px;height:34px;border-radius:var(--r-sm);
+    background:rgba(255,255,255,.08);color:var(--label-secondary);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .gearbtn:hover{background:rgba(255,255,255,.14);color:var(--label)}
   .pptoast{
     position:fixed;right:16px;bottom:16px;z-index:var(--z-sticky);
     background:#ff2d6f;color:#fff;font-size:13px;font-weight:700;
@@ -681,24 +676,26 @@
   .linkurl svg{opacity:.65}
   .joinrail #shareLinkBtn{width:38px;padding:0;justify-content:center}
 
-  /* ---- capture + start: the one big action on the page ---- */
-  .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-3)!important;padding-bottom:var(--s-3)!important}
-  .workspace > .page .card.gocard{border-bottom:0!important} /* the big heads carry the structure; no line before the feed */
+  /* ---- transport: the broadcast bar --------------------------------------
+     One row docked at the bottom of the window: what's captured on the left,
+     the live switch and Settings on the right, like every live studio. */
+  .transport{flex:0 0 auto;display:flex;align-items:center;gap:var(--s-4);
+    padding:10px var(--s-4);border-top:1px solid var(--hairline);
+    background:color-mix(in srgb,#000 30%,var(--bg))}
   .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
   .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
-  .gocapture{display:flex;flex-direction:column;gap:var(--s-3);min-width:0}
-  /* .source-picker's flex-basis is a WIDTH in the titlebar row it was born in;
-     inside this column it would become a 330px HEIGHT. */
-  .gocapture .source-picker{flex:0 0 auto;width:min(330px,100%)}
-  .golabel{display:flex;align-items:center;gap:var(--s-2);
-    font-size:20px;font-weight:700;letter-spacing:-.02em;color:var(--label)}
+  .gocapture{display:flex;align-items:center;gap:var(--s-3);min-width:0;flex:1 1 auto}
+  .gocapture .source-picker{flex:0 1 330px;min-width:150px;width:auto;max-width:330px}
+  .golabel{display:flex;align-items:center;gap:var(--s-2);flex:0 0 auto;
+    font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
   .golabel .iconbtn,.linkeditor-head .iconbtn{width:20px;height:20px;border-radius:50%;font-size:11px;
     background:rgba(255,255,255,.08);color:var(--label-secondary);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
   .linkeditor-head .iconbtn{margin-left:8px}
-  .goaction{display:flex;align-items:center;gap:var(--s-4)}
+  @media (max-width:700px){.transport .golabel span{display:none}}
+  .goaction{display:flex;align-items:center;gap:var(--s-4);margin-left:auto;flex:0 0 auto}
   .golive.biggo,.golive.go.biggo{
-    height:64px!important;min-width:260px!important;padding:0 44px!important;
-    border-radius:var(--r-lg)!important;font-size:18px!important;font-weight:800!important;letter-spacing:-.01em!important;
+    height:44px!important;min-width:200px!important;padding:0 32px!important;
+    border-radius:var(--r-md)!important;font-size:16px!important;font-weight:800!important;letter-spacing:-.01em!important;
   }
   .golive.go.biggo{
     background:#ff2d6f!important;color:#fff!important;
@@ -964,7 +961,7 @@
 <div id="appChrome">
 <!-- ADMIN ACTION BAR: everything the DJ operates - source, sharing, settings,
      Go Live - lives up here. Below it, the page IS the event. -->
-<button class="iconbtn gearfloat" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+
 
 <div class="workspace">
 
@@ -1056,22 +1053,6 @@
     <div id="modQueue" hidden><div id="modList"></div></div>
   </div>
 
-  <div class="card gocard" id="goCard">
-    <div class="gocapture">
-      <div class="golabel"><span id="sourceStepLabel">What to capture</span><button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button></div>
-      <div class="source-picker">
-        <div class="source-row">
-          <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
-          <select id="device" aria-labelledby="sourceStepLabel" title="Choose Mac output or a connected audio interface."></select>
-        </div>
-      </div>
-    </div>
-    <div class="goaction">
-      <span class="startstage" id="startStage" hidden><span class="spin16" aria-hidden="true"></span><span id="startStageText"></span></span>
-      <button class="golive go biggo" id="liveBtn" type="button">Go live</button>
-    </div>
-  </div>
-
   <div class="party-grid">
     <main class="party-feed-col">
   <section id="ptab-wall">
@@ -1155,6 +1136,25 @@
     </div>
   </div>
   </aside>
+</div>
+
+<!-- TRANSPORT: the broadcast bar. What's captured, the live switch, and
+     Settings - docked at the bottom of the window like every live studio. -->
+<div class="transport" id="goCard">
+  <div class="gocapture">
+    <div class="golabel"><span id="sourceStepLabel">What to capture</span><button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button></div>
+    <div class="source-picker">
+      <div class="source-row">
+        <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
+        <select id="device" aria-labelledby="sourceStepLabel" title="Choose Mac output or a connected audio interface."></select>
+      </div>
+    </div>
+  </div>
+  <div class="goaction">
+    <span class="startstage" id="startStage" hidden><span class="spin16" aria-hidden="true"></span><span id="startStageText"></span></span>
+    <button class="golive go biggo" id="liveBtn" type="button">Go live</button>
+    <button class="iconbtn gearbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+  </div>
 </div>
 
 <!-- "What should I pick?" - a focused guide popover (not the whole Settings sheet). -->
