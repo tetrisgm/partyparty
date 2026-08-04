@@ -2,9 +2,9 @@
 
 ## Current position
 
-Owner round shipped and measured in the running app: (1) About You sits directly below the cover — page order is poster, About You, What to capture + Go live, How to listen, Party feed. (2) One shared Apple-style section head everywhere: 20px/700 sentence case in --label, replacing the 11px small-caps trio and the Party feed one-off (#eventCard .cardhead h2 special-case removed; measured identical 20px/700/none on all four heads). (3) Rhythm tightened: flat sections and the gocard drop to s-3 padding — the chips-to-next-head gap measures 24px, was 32. (4) The bio textarea is now the same 38px box as the name input with padding centering its single line (was 40px top-aligned — the owner's screenshot complaint). (5) Chip-blur flash fixed at both layers: the save handlers no longer write 'Saving…' into the inline status (toast is the success signal, inline is error-only, so the :has row never un-collapses), and renderLinkEditor never rebuilds while focus is inside the rows — the post-save rebuild was destroying the input the user had just clicked, forcing the second click. Proven functionally: type in chip A, click chip B, focus stays on B through the save and the status row stays display:none. (6) Feed composer's Add photo/video and Post are accent pink (measured rgb(255,45,111)). Both web suites pass; rebuilt, installed, verified by screenshot + computed-style probes; console clean.
+Below-title space evened and measured: every section (About You, What to capture, How to listen, Party feed) now sits exactly 12px from title to first content — before it was 34/8/24/25. The double-spacing came from three different owners stacking per section (inner title margin + head-row margin + grid gap). Now one owner per section: titles inside a flex head row (.linkeditor-head b, .cardhead h2) carry no margin; the About head's spacing is the linkeditor grid gap alone (its head-row margin is zeroed, grid gap 10->12 so fields-to-chips also reads 12); the gocapture column gap moves 8->12. Also cleaned the 'testhandle' Instagram value my earlier focus test had persisted (links verified empty via /api/status). Web suites pass; rebuilt, installed, measured in the running app.
 
-Workshop checkpoint: `1785871493491-156cb115` (product).
+Workshop checkpoint: `1785871933740-53f1cd0b` (product).
 
 ## Next concrete step
 

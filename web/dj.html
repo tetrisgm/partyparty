@@ -418,7 +418,7 @@
     background:var(--fill);color:var(--label-tertiary);
     font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
   .linkeditor{border:1px solid var(--separator);padding:20px 22px;background:var(--bg-elevated);margin:0}
-  .linkeditor{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px var(--s-5);align-items:start}
+  .linkeditor{display:grid;grid-template-columns:100px minmax(0,1fr);gap:var(--s-3) var(--s-5);align-items:start}
   .profilephoto-actions{gap:0}
   /* Status rows exist for errors only; empty ones must not reserve a line. */
   .profilephoto-actions .profilebuttons{display:none;margin:0;min-height:0}
@@ -666,7 +666,7 @@
   .workspace > .page .card.gocard{border-bottom:0!important} /* no separator between this and Guests join here */
   .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
   .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
-  .gocapture{display:flex;flex-direction:column;gap:var(--s-2);min-width:0}
+  .gocapture{display:flex;flex-direction:column;gap:var(--s-3);min-width:0}
   /* .source-picker's flex-basis is a WIDTH in the titlebar row it was born in;
      inside this column it would become a 330px HEIGHT. */
   .gocapture .source-picker{flex:0 0 auto;width:min(330px,100%)}
@@ -755,6 +755,12 @@
     font-size:20px;font-weight:700;letter-spacing:-.02em;text-transform:none;
     color:var(--label);margin:0 0 var(--s-3);padding:0;
   }
+  /* Below-head space has ONE owner per section. Titles inside a flex head row
+     carry no margin of their own - the row (or the grid gap) provides the 12px,
+     so every section measures the same distance from title to content. */
+  .workspace > .page .linkeditor-head b,
+  .workspace > .page .cardhead h2{margin:0}
+  .workspace > .page #eventManagePanel .linkeditor-head{margin:0} /* grid gap is the 12px */
   .ename{font-size:26px;font-weight:700;letter-spacing:-.02em}
 
   /* ---- grouped list ---------------------------------------------------
