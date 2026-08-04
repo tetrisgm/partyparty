@@ -3,11 +3,17 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"partyparty/internal/contribute"
 )
 
 // relayPresenceTTL is how long a presence report from the origin is believed.
@@ -168,6 +174,97 @@ func (s *Srv) GuestPage() []byte {
 	return body
 }
 
+// PageAssets returns the static files the published guest page references by
+// absolute path - the DJ avatar, the event cover, the fonts. A relayed guest
+// resolves those URLs against the ORIGIN, so the page is only whole if these
+// travel with it: without them the DJ photo is a broken image and the event
+// header sits on a blank artwork block, which is exactly how this gap showed
+// up at a real party. Names match the page's references minus the leading
+// slash.
+func (s *Srv) PageAssets() []contribute.Asset {
+	var out []contribute.Asset
+	add := func(name string, body []byte, contentType string) {
+		if name != "" && len(body) > 0 {
+			out = append(out, contribute.Asset{Name: name, Body: body, ContentType: contentType})
+		}
+	}
+	fromWeb := func(name, contentType string) {
+		if s.Web == nil {
+			return
+		}
+		if body, err := fs.ReadFile(s.Web, name); err == nil {
+			add(name, body, contentType)
+		}
+	}
+	fromWeb("fonts/Geist-Variable.woff2", "font/woff2")
+	fromWeb("fonts/GeistMono-Variable.woff2", "font/woff2")
+	if s.Events != nil {
+		if avatar, ok := s.Events.AvatarPath(); ok {
+			if body, err := os.ReadFile(avatar); err == nil {
+				add("dj-avatar", body, mimeByExt(avatar))
+			}
+		}
+		cover := s.Events.Meta().Cover
+		switch {
+		case strings.HasPrefix(cover, "/covers/"):
+			fromWeb(strings.TrimPrefix(cover, "/"), mimeByExt(cover))
+		case cover == "/event-cover":
+			if path, ok := s.Events.CoverPath(); ok {
+				if body, err := os.ReadFile(path); err == nil {
+					add("event-cover", body, mimeByExt(path))
+				}
+			}
+		}
+	}
+	return out
+}
+
+// PageAssetsRev is a cheap fingerprint of PageAssets, evaluated every push
+// cycle: assets are re-uploaded only when it changes, so an avatar swapped
+// mid-set reaches relayed guests within a cycle without the cycle ever
+// rebuilding file bytes just to compare them. Fonts ship with the binary, so
+// the version stamp covers them.
+func (s *Srv) PageAssetsRev() string {
+	var b strings.Builder
+	b.WriteString(s.Version)
+	if s.Events == nil {
+		return b.String()
+	}
+	stamp := func(path string) {
+		if st, err := os.Stat(path); err == nil {
+			fmt.Fprintf(&b, "|%s:%d:%d", path, st.Size(), st.ModTime().UnixNano())
+		}
+	}
+	if avatar, ok := s.Events.AvatarPath(); ok {
+		stamp(avatar)
+	}
+	cover := s.Events.Meta().Cover
+	b.WriteString("|" + cover)
+	if cover == "/event-cover" {
+		if path, ok := s.Events.CoverPath(); ok {
+			stamp(path)
+		}
+	}
+	return b.String()
+}
+
+func mimeByExt(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".webp":
+		return "image/webp"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".woff2":
+		return "font/woff2"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 type RelayGuest struct {
 	ID     string
 	Name   string
@@ -212,5 +309,17 @@ func (s *srv) RelayGuests() []RelayGuest {
 // the origin, and was stored by SetRelayPresence, and nothing ever read it.
 func (s *srv) relayPresenceState() map[string]any {
 	listeners, spreadMs, fresh := s.RelayPresence()
-	return map[string]any{"listeners": listeners, "spreadMs": spreadMs, "fresh": fresh}
+	out := map[string]any{"listeners": listeners, "spreadMs": spreadMs, "fresh": fresh}
+	// Media push health rides along, because presence alone has proven itself a
+	// liar: the presence plane kept reporting fresh for hours while the media
+	// push failed every cycle and relayed guests had nothing to hear.
+	if s.Contribute != nil {
+		c := s.Contribute.Snapshot()
+		out["pushing"] = c.Running
+		out["pushFailures"] = c.Failures
+		if c.LastError != "" {
+			out["pushError"] = c.LastError
+		}
+	}
+	return out
 }

@@ -152,6 +152,12 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request, token, name str
 		room.Pin(append(mapURIs(body), "index.html"))
 		room.PutPlaylist(name, body)
 	} else {
+		if r.Header.Get("X-PP-Pin") == "1" {
+			// Page assets (avatar, cover, fonts): pushed once per revision, not
+			// named by any playlist, and referenced by the guest page for the
+			// whole set - live-window eviction must never take them.
+			room.PinSticky(name)
+		}
 		room.PutMedia(name, body, r.Header.Get("Content-Type"))
 	}
 	noStore(w.Header())
@@ -282,6 +288,15 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, token, name stri
 
 	obj, found := room.Media(name)
 	if !found {
+		if name == "index.html" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			// The room is registered but the Mac has not gone live, so the guest
+			// page has not been published yet. This used to fall through to the
+			// raw 404 below, which put the words "not in the live window" on a
+			// guest's phone as the entire page. Wait politely instead; the page
+			// retries itself until the set starts.
+			relayWaitingPage(w, r)
+			return
+		}
 		// Either not published yet, or aged out of the live window. Both mean the
 		// guest should reattach rather than retry this exact file forever.
 		http.Error(w, "not in the live window", http.StatusNotFound)

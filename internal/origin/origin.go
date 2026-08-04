@@ -60,8 +60,11 @@ type Room struct {
 	// epoch is set once at creation and never changes; see Epoch.
 	epoch int64
 
-	// pinned names are exempt from live-window eviction; see Pin.
+	// pinned names are exempt from live-window eviction; see Pin. sticky names
+	// are pinned for the life of the room and survive Pin's set replacement;
+	// see PinSticky.
 	pinned map[string]bool
+	sticky map[string]bool
 
 	mu   sync.Mutex
 	cond *sync.Cond
@@ -170,16 +173,39 @@ func (r *Room) pinnedCount() int {
 // Pin marks names that must survive live-window eviction: the fixed-name
 // assets a set uploads once. Replaces the previous pin set, so a regenerated
 // stream with a new init segment name does not grow it forever. Names are
-// pinned whether or not they have arrived yet.
+// pinned whether or not they have arrived yet. Sticky pins survive the
+// replacement.
 func (r *Room) Pin(names []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pinned = make(map[string]bool, len(names))
+	next := make(map[string]bool, len(names)+len(r.sticky))
+	for name := range r.sticky {
+		next[name] = true
+	}
 	for _, name := range names {
 		if name != "" {
-			r.pinned[name] = true
+			next[name] = true
 		}
 	}
+	r.pinned = next
+}
+
+// PinSticky pins one name permanently for the life of the room. Page assets
+// (avatar, cover, fonts) are pushed once per revision, not named by any
+// playlist, and must never be evicted with the rolling live window - and the
+// playlist-driven Pin above replaces its whole set on every playlist PUT, so
+// they need a set of their own that replacement folds back in.
+func (r *Room) PinSticky(name string) {
+	if name == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sticky == nil {
+		r.sticky = make(map[string]bool)
+	}
+	r.sticky[name] = true
+	r.pinned[name] = true
 }
 
 // PutPlaylist stores the playlist and wakes every blocked reader.

@@ -212,9 +212,32 @@ async function newHostLabel(env, id) {
     const first = BROKER_HOST_FIRST_WORDS[Math.floor(Math.random() * BROKER_HOST_FIRST_WORDS.length)];
     const second = BROKER_HOST_SECOND_WORDS[Math.floor(Math.random() * BROKER_HOST_SECOND_WORDS.length)];
     const cand = `${first}-${second}`;
-    if (!await env.DL.get(`broker/host/${cand}`) && !await env.DL.get(`broker/slug/${cand}`)) return cand;
+    if (!await env.DL.get(`broker/host/${cand}`) && !await env.DL.get(`broker/slug/${cand}`) && !await env.DL.get(`broker/join/${cand}`)) return cand;
   }
   return `party-${id.slice(0, 6)}`;
+}
+
+// The join name a guest actually reads: two party words, minted once per
+// install and mapped to its relay token. r-<32hex> stays valid forever (old
+// QRs and printed links), but nobody should have to look at it.
+const JOIN_NAME_RE = /^[a-z]+-[a-z]+(-\d{1,2})?$/;
+async function newJoinName(env) {
+  for (let tries = 0; tries < 20; tries++) {
+    const first = BROKER_HOST_FIRST_WORDS[Math.floor(Math.random() * BROKER_HOST_FIRST_WORDS.length)];
+    const second = BROKER_HOST_SECOND_WORDS[Math.floor(Math.random() * BROKER_HOST_SECOND_WORDS.length)];
+    const cand = tries < 10 ? `${first}-${second}` : `${first}-${second}-${Math.floor(Math.random() * 90) + 10}`;
+    if (!await env.DL.get(`broker/join/${cand}`) && !await env.DL.get(`broker/host/${cand}`) && !await env.DL.get(`broker/slug/${cand}`)) return cand;
+  }
+  return "";
+}
+
+function joinNameFromHost(hostname, env) {
+  const suffix = `.${String(env.BROKER_BASE || "").toLowerCase()}`;
+  const host = String(hostname || "").toLowerCase();
+  if (!host.endsWith(suffix)) return "";
+  const label = host.slice(0, -suffix.length);
+  if (label.includes(".") || label.startsWith("r-")) return "";
+  return JOIN_NAME_RE.test(label) ? label : "";
 }
 async function ensureHostLabel(env, id, rec) {
   if (!rec.hostLabel && rec.slug) {
@@ -530,9 +553,22 @@ async function broker(request, env, pathname) {
       await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
     }
 
+    // Pretty join name, minted once and kept for the install's lifetime. The
+    // QR encodes this; the raw r-<token> host keeps working for old links.
+    if (!rec.relayJoinName || !JOIN_NAME_RE.test(rec.relayJoinName)) {
+      const name = await newJoinName(env);
+      if (name) {
+        rec.relayJoinName = name;
+        await env.DL.put(`broker/join/${name}`, rec.relayToken);
+        await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+      }
+    } else if (!await env.DL.head(`broker/join/${rec.relayJoinName}`)) {
+      await env.DL.put(`broker/join/${rec.relayJoinName}`, rec.relayToken);
+    }
+
     const publicIP = request.headers.get("cf-connecting-ip") || "";
     const networkKey = await sha256Hex(`network-v1:${publicIP}:${subnet}`);
-    const host = relayHost(env, rec.relayToken);
+    const host = rec.relayJoinName ? `${rec.relayJoinName}.${env.BROKER_BASE}` : relayHost(env, rec.relayToken);
 
     // A guest's verdict, if one has been reported since the last poll. This is
     // how the Mac learns whether the venue isolates devices now that there is no
@@ -743,6 +779,17 @@ var worker_default = {
     const relayToken = relayTokenFromHost(url.hostname, env);
     if (relayToken) {
       return relayBootstrapRequest(request, env, relayToken);
+    }
+    const joinName = joinNameFromHost(url.hostname, env);
+    if (joinName) {
+      const mapped = await env.DL.get(`broker/join/${joinName}`);
+      if (mapped) {
+        const token = (await mapped.text()).trim();
+        if (/^[a-f0-9]{32}$/.test(token)) {
+          return relayBootstrapRequest(request, env, token);
+        }
+      }
+      // No mapping: fall through - an unmapped word-word host is just the site.
     }
     let standaloneFile = STANDALONE_FILES[pathname];
     const release = pathname.match(STANDALONE_RELEASE);

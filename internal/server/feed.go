@@ -770,7 +770,7 @@ func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		http.ServeFile(w, r, p)
+		serveDiskFile(w, r, p)
 		return
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/media/")
@@ -780,7 +780,7 @@ func (s *srv) handleMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	http.ServeFile(w, r, p)
+	serveDiskFile(w, r, p)
 }
 
 const roomPostSeparator = "~"

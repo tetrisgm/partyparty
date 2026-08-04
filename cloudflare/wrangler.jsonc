@@ -1,7 +1,7 @@
 {
   // PartyParty.party - one Worker serves the static website and LAN broker.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "party-party-site",
+  "name": "partyparty-site",
   "main": "worker.js",
   "compatibility_date": "2026-07-07",
   "account_id": "4e958c1f2621ced0354e94826590e34f",

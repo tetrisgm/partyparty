@@ -20,6 +20,8 @@ import (
 	"testing/fstest"
 	"time"
 
+	"image"
+	"image/png"
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/event"
@@ -295,6 +297,14 @@ func doBody(s *Srv, method, target, remoteAddr, contentType string, body *bytes.
 
 func multipartUpload(t *testing.T, name, contentType string) (*bytes.Buffer, string) {
 	t.Helper()
+	return multipartUploadBytes(t, name, contentType, []byte("media bytes"))
+}
+
+// multipartUploadBytes exists because avatars now have to decode: the shared
+// "media bytes" fixture is fine for media endpoints and is rightly rejected as
+// a profile photo.
+func multipartUploadBytes(t *testing.T, name, contentType string, payload []byte) (*bytes.Buffer, string) {
+	t.Helper()
 	body := &bytes.Buffer{}
 	mw := multipart.NewWriter(body)
 	h := make(textproto.MIMEHeader)
@@ -304,7 +314,7 @@ func multipartUpload(t *testing.T, name, contentType string) (*bytes.Buffer, str
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := part.Write([]byte("media bytes")); err != nil {
+	if _, err := part.Write(payload); err != nil {
 		t.Fatal(err)
 	}
 	if err := mw.Close(); err != nil {
@@ -664,7 +674,7 @@ func TestEventLinksEndpointValidationAndExposure(t *testing.T) {
 	if w := postLinks("127.0.0.1:1234", `{"links":[{"type":"website","url":"javascript:alert(1)","label":"bad"}]}`); w.Code != http.StatusBadRequest {
 		t.Fatalf("javascript link status = %d, body %q; want 400", w.Code, w.Body.String())
 	}
-	w := postLinks("127.0.0.1:1234", `{"links":[{"type":"instagram","url":"https://instagram.com/dj","label":"DJ <main>"},{"type":"paypal","url":"https://paypal.me/dj","label":""}]}`)
+	w := postLinks("127.0.0.1:1234", `{"links":[{"type":"instagram","url":"https://instagram.com/dj","label":"DJ <main>"},{"type":"website","url":"https://dj.example","label":""}]}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("DJ event-links status = %d, body %q", w.Code, w.Body.String())
 	}
@@ -681,8 +691,8 @@ func TestEventLinksEndpointValidationAndExposure(t *testing.T) {
 		t.Fatalf("first endpoint link = %#v", first)
 	}
 	second := links[1].(map[string]any)
-	if second["label"] != "PayPal" {
-		t.Fatalf("second endpoint link = %#v, want default PayPal label", second)
+	if second["label"] != "Website" {
+		t.Fatalf("second endpoint link = %#v, want default Website label", second)
 	}
 
 	feed := decodeJSON(t, do(s, http.MethodGet, "/api/feed", "192.168.1.44:3333"))
@@ -712,7 +722,11 @@ func TestDJProfileEndpointsAndPublicExposure(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("DJ profile status = %d, body %q", w.Code, w.Body.String())
 	}
-	body, contentType := multipartUpload(t, "dj.png", "image/png")
+	var avatarPNG bytes.Buffer
+	if err := png.Encode(&avatarPNG, image.NewRGBA(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	body, contentType := multipartUploadBytes(t, "dj.png", "image/png", avatarPNG.Bytes())
 	w = doBody(s, http.MethodPost, "/api/dj-avatar-local", djAddr, contentType, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("DJ avatar status = %d, body %q", w.Code, w.Body.String())
@@ -723,7 +737,7 @@ func TestDJProfileEndpointsAndPublicExposure(t *testing.T) {
 		t.Fatalf("public profile = host %#v bio %#v avatar %#v", feed["host"], feed["bio"], feed["avatar"])
 	}
 	w = do(s, http.MethodGet, "/dj-avatar", "192.168.1.44:3333")
-	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), []byte("media bytes")) {
+	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), avatarPNG.Bytes()) {
 		t.Fatalf("avatar response status=%d body=%q", w.Code, w.Body.String())
 	}
 	w = do(s, http.MethodDelete, "/api/dj-avatar-local", djAddr)

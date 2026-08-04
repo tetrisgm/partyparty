@@ -54,7 +54,7 @@ const feedBody = {
   links: [
     { type: 'instagram', label: 'Instagram', url: 'https://www.instagram.com/djluna' },
     { type: 'soundcloud', label: 'SoundCloud', url: 'https://soundcloud.com/djluna' },
-    { type: 'venmo', label: 'Venmo', url: 'https://account.venmo.com/u/djluna' },
+    { type: 'website', label: 'Website', url: 'https://djluna.example' },
   ],
   nowPlaying: {
     title: 'Night Drive',
@@ -226,14 +226,11 @@ try {
   assert.equal(initialMetadata.title, 'Night Drive', 'Media Session must receive the current track title');
   assert.equal(initialMetadata.artist, 'DJ Luna', 'Media Session must receive the current track artist');
 
-  const venmoLink = await page.locator('#djProfileLinks .djprofilelink').filter({ hasText: 'Venmo' }).evaluate((link) => ({
+  // Venmo is gone from the product; a plain web link is what a profile carries.
+  const siteLink = await page.locator('#djProfileLinks .djprofilelink').filter({ hasText: 'Website' }).evaluate((link) => ({
     href: link.getAttribute('href'),
-    fallback: link.dataset.webFallback,
-    target: link.getAttribute('target'),
   }));
-  assert.equal(venmoLink.href, 'venmo://paycharge?txn=pay&recipients=djluna');
-  assert.equal(venmoLink.fallback, 'https://account.venmo.com/u/djluna');
-  assert.equal(venmoLink.target, null, 'Venmo app links must remain in the user gesture navigation');
+  assert.equal(siteLink.href, 'https://djluna.example/');
 
   feedBody.nowPlaying = {
     title: 'Sunrise',

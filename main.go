@@ -78,6 +78,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Serving the console and guest page from disk makes UI work iterable: the
+	// alternative is a full rebuild to look at a CSS change. Opt-in only, so a
+	// shipped app always serves the embedded copy it was signed with.
+	if dir := os.Getenv("PP_WEB_DIR"); dir != "" {
+		web = os.DirFS(dir)
+		log.Printf("serving web assets from %s (PP_WEB_DIR)", dir)
+	}
 
 	runDir := filepath.Join(os.TempDir(), "partyparty-run")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
@@ -194,6 +201,7 @@ func main() {
 			log.SetOutput(io.MultiWriter(os.Stderr, diagLog))
 			id, _ := activate.InstallCreds()
 			diagLog.Printf("PartyParty v%s starting (%s)", appVersion, diagLog.Session())
+			diagLog.Printf("diagnostics: %s", diagLog.Path())
 			diagLog.Printf("system: macOS %s · %s · %s", cmdOut("sw_vers", "-productVersion"), cmdOut("sysctl", "-n", "hw.model"), runtime.GOARCH)
 			diagLog.Printf("install: id=%s host_label=%s", id, activate.InstallHostLabel())
 			diagLog.Printf("network: lan=%s interfaces=%+v", ip, netinfo.LanInterfaces())
@@ -253,7 +261,11 @@ func main() {
 			// the page matching the app they are listening to and a web change ships
 			// with the app rather than needing the origin redeployed.
 			Page: func() []byte { return handler.GuestPage() },
-			Logf: log.Printf,
+			// The page's static dependencies (avatar, cover, fonts) travel with
+			// it: a relayed guest resolves those URLs against the origin.
+			Assets:    func() []contribute.Asset { return handler.PageAssets() },
+			AssetsRev: func() string { return handler.PageAssetsRev() },
+			Logf:      log.Printf,
 		})
 		relayManager = relay.New(relay.Config{
 			BrokerURL: brokerURL,
@@ -279,6 +291,7 @@ func main() {
 		Peers:       peerDirectory,
 		PeerID:      peerID,
 		Relay:       relayManager,
+		Contribute:  contributor,
 		Events:      events,
 		Diag:        diagLog,
 		Version:     appVersion,

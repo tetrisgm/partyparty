@@ -4,10 +4,14 @@ package event
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/url"
 	"os"
@@ -146,9 +150,6 @@ var linkTypeLabels = map[string]string{
 	"bandcamp":         "Bandcamp",
 	"mixcloud":         "Mixcloud",
 	"resident_advisor": "Resident Advisor",
-	"venmo":            "Venmo",
-	"cashapp":          "Cash App",
-	"paypal":           "PayPal",
 	"website":          "Website",
 	"newsletter":       "Newsletter",
 	"other":            "Link",
@@ -301,10 +302,6 @@ func normalizeLinks(in []Link) ([]Link, error) {
 			return nil, errors.New("link URL must use http or https")
 		}
 		u.Scheme = scheme
-		if typ == "venmo" && (strings.EqualFold(u.Hostname(), "venmo.com") || strings.EqualFold(u.Hostname(), "www.venmo.com") || strings.EqualFold(u.Hostname(), "account.venmo.com")) {
-			u.Scheme = "https"
-			u.Host = "account.venmo.com"
-		}
 		out = append(out, Link{Label: defaultLinkLabel(typ), URL: u.String(), Type: typ})
 	}
 	if out == nil {
@@ -838,6 +835,13 @@ func (s *Store) SaveAvatar(origName string, r io.Reader) (string, error) {
 	if err := tmp.Close(); err != nil {
 		return "", err
 	}
+	// Never publish an image that does not fully decode. A truncated upload -
+	// an interrupted POST, a process killed mid-transfer - otherwise gets
+	// renamed into place with valid-looking headers, and every surface renders
+	// a broken glyph until the DJ notices. It happened.
+	if err := validateAvatarFile(tmpPath, ext); err != nil {
+		return "", err
+	}
 	dst := dataPath(dir, "profile"+ext)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -859,6 +863,40 @@ func (s *Store) SaveAvatar(origName string, r io.Reader) (string, error) {
 	}
 	s.changed()
 	return dst, nil
+}
+
+// validateAvatarFile fully decodes JPEG/PNG (a truncated progressive JPEG
+// keeps a plausible header and only fails on a complete decode) and checks the
+// RIFF envelope on WebP, where the declared payload size must match the file.
+func validateAvatarFile(path, ext string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	damaged := errors.New("that image looks damaged - try uploading it again")
+	switch ext {
+	case ".jpg", ".jpeg", ".png":
+		if _, _, err := image.Decode(f); err != nil {
+			return damaged
+		}
+	case ".webp":
+		var hdr [12]byte
+		if _, err := io.ReadFull(f, hdr[:]); err != nil {
+			return damaged
+		}
+		if string(hdr[0:4]) != "RIFF" || string(hdr[8:12]) != "WEBP" {
+			return damaged
+		}
+		st, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		if st.Size() != int64(binary.LittleEndian.Uint32(hdr[4:8]))+8 {
+			return damaged
+		}
+	}
+	return nil
 }
 
 // AvatarPath returns the current event-local DJ profile image.

@@ -6,6 +6,19 @@
 <meta name="theme-color" content="#f5f5f7">
 <title>PartyParty</title>
 <style>
+  /* Geist, bundled not fetched: the app must work with no internet at all, so
+     a CDN is not an option. One variable file covers 100-900. `swap` keeps the
+     guest join path unblocked - text paints in the system font immediately and
+     restyles when the face arrives. SIL OFL 1.1, see web/fonts/OFL.txt. */
+  @font-face{
+    font-family:Geist;src:url(/fonts/Geist-Variable.woff2) format('woff2-variations');
+    font-weight:100 900;font-style:normal;font-display:swap;
+  }
+  @font-face{
+    font-family:"Geist Mono";src:url(/fonts/GeistMono-Variable.woff2) format('woff2-variations');
+    font-weight:100 900;font-style:normal;font-display:swap;
+  }
+
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;letter-spacing:0!important}
   [hidden]{display:none!important}
   .hero .statline{margin-bottom:auto}
@@ -311,6 +324,26 @@
   .hero .artwork .foot{
     position:static;margin:7px 0 0;padding:0;
     color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;text-align:left;background:none}
+  /* A card must answer the press itself. Hover is mouse-only and says nothing
+     to a thumb; the guest gets no confirmation until the stream switch starts,
+     which is far too late to feel connected to the tap. */
+  .djchoice:active{transform:scale(.97)}
+  .djlist.reel .djchoice:active{transform:scale(.84)}
+  .djlist.reel .djchoice.focused:active{transform:scale(.97)}
+  .listenersrow:active,.composericon:active,.postbtn:active,
+  .toptool:active,.playersummary:active{transform:scale(.97)}
+
+  /* Frost the translucent chrome when the guest asks for less transparency,
+     and go near-solid with a defined edge when they ask for more contrast. */
+  @media (prefers-reduced-transparency:reduce){
+    .listenbar,.actionbar{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--card,#fff)}
+    :root[data-theme="dark"] .listenbar,:root[data-theme="dark"] .actionbar{background:#16181a}
+  }
+  @media (prefers-contrast:more){
+    .listenbar,.actionbar,.listenersrow,.djchoice{
+      -webkit-backdrop-filter:none;backdrop-filter:none;border:1px solid currentColor}
+  }
+
   /* Shows the bar opens; flips while the sheet is up. */
   .expandchev{flex:0 0 auto;display:grid;place-items:center;width:22px;height:22px;color:var(--label-tertiary);transition:transform .2s ease}
   .expandchev svg{width:16px;height:16px}
@@ -331,7 +364,7 @@
     border:2px solid var(--card);border-radius:50%;background:var(--fill);font-size:13px}
 
   .coverid{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:44px 16px 12px;background:linear-gradient(180deg,transparent,rgba(0,0,0,.78))}
-  .covername{color:#fff;font-size:27px;font-weight:900;line-height:1.06;letter-spacing:-.02em;text-align:left;overflow-wrap:anywhere;text-shadow:0 2px 12px rgba(0,0,0,.35)}
+  .covername{color:#fff;font-size:27px;font-weight:800;font-optical-sizing:auto;line-height:1.06;letter-spacing:-.02em;text-align:left;overflow-wrap:anywhere;text-shadow:0 2px 12px rgba(0,0,0,.35)}
   .covername:empty{display:none}
   .coverplace{margin-top:4px;color:rgba(255,255,255,.86);font-size:13px;font-weight:700;text-align:left}
   .coverplace[hidden]{display:none}
@@ -452,7 +485,7 @@
   /* Mobile event-page pass: keep the audio/feed logic intact, but make the
      guest surface read like an event page instead of a bare player. */
   :root{color-scheme:light;
-    --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+    --sans:Geist,-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
     --bg:#f5f5f7; --card:#ffffff;
     --label:#1d1d1f; --label-secondary:#6e6e73; --label-tertiary:#86868b;
     --separator:rgba(0,0,0,.08); --fill:rgba(120,120,128,.10);
@@ -1745,11 +1778,6 @@
           path: 'M23.999 14.165c-.052 1.796-1.612 3.169-3.4 3.169h-8.18a.68.68 0 0 1-.675-.683V7.862a.747.747 0 0 1 .452-.724s.75-.513 2.333-.513a5.364 5.364 0 0 1 2.763.755 5.433 5.433 0 0 1 2.57 3.54c.282-.08.574-.121.868-.12.884 0 1.73.358 2.347.992s.948 1.49.922 2.373ZM10.721 8.421c.247 2.98.427 5.697 0 8.672a.264.264 0 0 1-.53 0c-.395-2.946-.22-5.718 0-8.672a.264.264 0 0 1 .53 0ZM9.072 9.448c.285 2.659.37 4.986-.006 7.655a.277.277 0 0 1-.55 0c-.331-2.63-.256-5.02 0-7.655a.277.277 0 0 1 .556 0Zm-1.663-.257c.27 2.726.39 5.171 0 7.904a.266.266 0 0 1-.532 0c-.38-2.69-.257-5.21 0-7.904a.266.266 0 0 1 .532 0Zm-1.647.77a26.108 26.108 0 0 1-.008 7.147.272.272 0 0 1-.542 0 27.955 27.955 0 0 1 0-7.147.275.275 0 0 1 .55 0Zm-1.67 1.769c.421 1.865.228 3.5-.029 5.388a.257.257 0 0 1-.514 0c-.21-1.858-.398-3.549 0-5.389a.272.272 0 0 1 .543 0Zm-1.655-.273c.388 1.897.26 3.508-.01 5.412-.026.28-.514.283-.54 0-.244-1.878-.347-3.54-.01-5.412a.283.283 0 0 1 .56 0Zm-1.668.911c.4 1.268.257 2.292-.026 3.572a.257.257 0 0 1-.514 0c-.241-1.262-.354-2.312-.023-3.572a.283.283 0 0 1 .563 0Z',
         },
       };
-      if (type === 'venmo') {
-        return '<svg class="serviceicon" viewBox="0 0 24 24" aria-hidden="true">' +
-          '<rect width="24" height="24" rx="5" fill="#008CFF"/>' +
-          '<path d="M6 5h4.2l1.2 8.4C13.2 11 14.5 8.3 14.8 5H19c-.4 5.5-3 11-7.2 14H7.7L6 5Z" fill="#fff"/></svg>';
-      }
       const icon = icons[type];
       if (icon) {
         return '<svg class="serviceicon" viewBox="0 0 24 24" fill="' + icon.color +
@@ -1759,19 +1787,6 @@
         'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         '<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/>' +
         '<path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>';
-    }
-    function venmoAppURL(profileURL){
-      try {
-        const url = new URL(profileURL);
-        if (!/^(?:www\.|account\.)?venmo\.com$/i.test(url.hostname)) return '';
-        const match = url.pathname.match(/^\/u\/([^/]+)\/?$/i);
-        if (!match) return '';
-        const username = decodeURIComponent(match[1]).replace(/^@/, '').trim();
-        if (!/^[A-Za-z0-9_-]+$/.test(username)) return '';
-        return 'venmo://paycharge?txn=pay&recipients=' + encodeURIComponent(username);
-      } catch (e) {
-        return '';
-      }
     }
     function openAppLink(event, appURL, fallbackURL){
       event.preventDefault();
@@ -1806,7 +1821,7 @@
           const type = String(link && link.type || '').toLowerCase();
           model.push({
             url: url.href,
-            appURL: type === 'venmo' ? venmoAppURL(url.href) : '',
+            appURL: '',
             type,
             label: String(link && (link.label || link.type) || 'Link'),
           });

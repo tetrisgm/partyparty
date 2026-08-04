@@ -3,6 +3,8 @@ package event
 import (
 	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -83,7 +85,7 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	}
 	if err := st.SetLinks([]Link{
 		{Type: "instagram", URL: "https://instagram.com/dj", Label: "DJ <main>"},
-		{Type: "venmo", URL: "HTTP://venmo.com/u/dj", Label: ""},
+		{Type: "website", URL: "HTTP://DJ.example/Home", Label: ""},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,8 +107,9 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	if meta.Links[0].Label != "Instagram" || meta.Links[0].URL != "https://instagram.com/dj" || meta.Links[0].Type != "instagram" {
 		t.Fatalf("first persisted link = %#v", meta.Links[0])
 	}
-	if meta.Links[1].Label != "Venmo" || meta.Links[1].URL != "https://account.venmo.com/u/dj" {
-		t.Fatalf("second persisted link = %#v, want default Venmo label and canonical profile URL", meta.Links[1])
+	// The scheme is lowercased; the rest of the URL is left alone.
+	if meta.Links[1].Label != "Website" || meta.Links[1].URL != "http://DJ.example/Home" {
+		t.Fatalf("second persisted link = %#v, want default Website label and a lowercased scheme", meta.Links[1])
 	}
 
 	reloaded, err := Open(filepath.Dir(st.Dir()))
@@ -126,7 +129,12 @@ func TestProfilePersistsInsideDataDirectory(t *testing.T) {
 	if err := st.SetProfile("  DJ Luna  ", "  Dance floor specialist  "); err != nil {
 		t.Fatal(err)
 	}
-	wantAvatar := []byte("profile image")
+	// A real image: uploads that do not decode are rejected before publish.
+	var avatarBuf bytes.Buffer
+	if err := png.Encode(&avatarBuf, image.NewRGBA(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	wantAvatar := avatarBuf.Bytes()
 	if _, err := st.SaveAvatar("dj.png", bytes.NewReader(wantAvatar)); err != nil {
 		t.Fatal(err)
 	}

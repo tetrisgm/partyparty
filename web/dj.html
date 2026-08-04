@@ -5,27 +5,75 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PartyParty - DJ console</title>
 <style>
+
   /* The console reads as the event page first; DJ controls are explicit states. */
   :root{
     color-scheme:dark;
-    --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
     --bg:#0e0e10; --bg-elevated:#1a1a1d; --bg-elevated-2:#202024;
     --label:#f2f2f4; --label-secondary:#a3a3ac; --label-tertiary:#77777f;
     --separator:rgba(255,255,255,.09); --fill:rgba(255,255,255,.07); --fill-hover:rgba(255,255,255,.12);
-    --link:#4da3ff; --accent:#ff2d6f;
+     --accent:#ff2d6f;
     --success:#34c759; --warn:#ff9500; --danger:#ff3b30;
     --glass-bg:rgba(14,14,16,.78);
     --shadow:0 18px 50px rgba(0,0,0,.24), 0 1px 0 rgba(255,255,255,.04) inset;
-    --r-sm:10px; --r-md:14px; --r-pill:980px}
+    --r-sm:10px; --r-md:14px; --r-pill:980px
+    /* ---- Design system -------------------------------------------------
+       The console had ten unrelated corner radii, six ad-hoc shadows (one of
+       them invisible on this background) and a single `ease` curve. None of
+       that is a system, and the absence is what read as dated. These are the
+       only radius, elevation, spacing and motion values allowed below. */
+
+    /* Concentric radii: an inner core nested in a tray must use the outer
+       radius minus the tray thickness, or the curves fight each other. */
+    --tray:4px;
+    --r-xs:5px;
+    --r-sm:6px;
+    --r-md:10px;
+    --r-lg:14px;
+    /* the poster is the one generous radius in the app */
+    --r-poster:20px;
+    --r-inner:calc(var(--r-lg) - var(--tray));
+    --r-pill:980px;
+
+    /* Elevation: wide and diffused, never a small hard drop. Each level
+       carries a top inner highlight so the surface catches light like a
+       real material. */
+    --hairline:rgba(255,255,255,.08);
+    --sheen:inset 0 1px 0 rgba(255,255,255,.06);
+    --elev-1:0 1px 2px rgba(6,6,10,.45), 0 8px 24px -12px rgba(6,6,10,.6);
+    --elev-2:0 2px 6px rgba(6,6,10,.4), 0 24px 60px -28px rgba(6,6,10,.75);
+    --elev-3:0 4px 12px rgba(6,6,10,.45), 0 48px 100px -40px rgba(6,6,10,.85);
+
+    /* Spacing: a 4px-based scale, so no padding is ever hand-picked again. */
+    --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px;
+    --s-5:24px; --s-6:32px; --s-7:48px; --s-8:64px;
+
+    /* Motion: one decisive curve with mass behind it. `ease` is the browser
+       default and reads as nothing at all. */
+    --curve:cubic-bezier(.32,.72,0,1);
+
+    /* One measure for the whole console. It stretches with the window instead
+       of parking a fixed column between two empty rails. */
+    --measure:min(1560px,100%);
+    --page-pad:clamp(14px,2.4vw,32px);
+
+    /* Layers, named. Ad-hoc 1/3/4/5/20/40/90 gave no way to reason about
+       what sits above what. The crash overlay keeps the max int on purpose:
+       it must outrank anything the page can produce, including itself. */
+    --z-base:1; --z-raised:5; --z-sticky:20; --z-chrome:40;
+    --z-overlay:90; --z-crash:2147483647;
+    --fast:140ms; --base:260ms; --slow:420ms;
+}
   *{box-sizing:border-box;letter-spacing:0!important}
   body{margin:0;padding-bottom:40px;overflow-x:hidden;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
   [hidden]{display:none!important}
-  .authbanner-actions .go{height:32px;padding:0 16px;border-radius:999px;font-size:13px}
-  .authbanner-actions .ghost{height:32px;padding:0 12px;border-radius:999px;font-size:13px}
-  .auth-actions .go{height:40px;padding:0 22px;border-radius:999px}
-  .auth-actions .ghost{height:40px;border-radius:999px}
+  .authbanner-actions .go{height:32px;padding:0 16px;border-radius:var(--r-pill);font-size:13px}
+  .authbanner-actions .ghost{height:32px;padding:0 12px;border-radius:var(--r-pill);font-size:13px}
+  .auth-actions .go{height:40px;padding:0 22px;border-radius:var(--r-pill)}
+  .auth-actions .ghost{height:40px;border-radius:var(--r-pill)}
   .auth-status.error{color:var(--danger)}
   .auth-status.ok{color:#1d883d}
   .setwrap-in .go{white-space:nowrap}
@@ -34,8 +82,8 @@
   .settings-section{border-top:1px solid var(--separator);padding-top:16px;margin-top:16px}
   .settings-section:first-of-type{border-top:none;padding-top:0;margin-top:0}
   .support-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .event-actions .ghost{height:30px;border-radius:999px;white-space:nowrap}
-  .eventedit{display:none;margin-top:14px;border:1px solid var(--separator);background:var(--bg-elevated);border-radius:var(--r-md);padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.03)}
+  .event-actions .ghost{height:30px;border-radius:var(--r-pill);white-space:nowrap}
+  .eventedit{display:none;margin-top:14px;border:1px solid var(--separator);background:var(--bg-elevated);border-radius:var(--r-md);padding:14px;box-shadow:var(--elev-1)}
   .eventedit.show{display:block}
   .eventedit h2{font-size:15px;line-height:1.25;margin:0 0 10px;color:var(--label)}
   .eventform-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -54,7 +102,21 @@
   .badge.live{background:rgba(52,199,89,.15);color:#1d883d}
   .badge.error{background:rgba(255,59,48,.12);color:#c1281e} /* darkened for light-mode contrast, like its siblings */
   .badge.starting{background:rgba(255,149,0,.14);color:#b36b00}
-  .card{background:var(--bg-elevated);border:1px solid var(--separator);padding:20px}
+  /* A card is a core seated in a tray, not a panel lying on the page. The
+     tray ring plus the inner sheen is what makes it read as machined rather
+     than drawn; it costs no DOM and no extra element. */
+  .card{
+    background:var(--bg-elevated);border:0;padding:var(--s-5);
+    border-radius:var(--r-lg);
+    box-shadow:
+      0 0 0 1px var(--hairline),
+      0 0 0 calc(var(--tray) + 1px) rgba(255,255,255,.028),
+      var(--sheen), var(--elev-2);
+  }
+  .card > :first-child{margin-top:0}
+  .card > :last-child{margin-bottom:0}
+  .cardx{border-radius:var(--r-inner)}
+
   .card + .card{margin-top:16px}
   .card h2{font-size:17px;font-weight:700;margin:0 0 14px;letter-spacing:-.01em;color:var(--label)}
   label{display:block;font-size:12px;color:var(--label-secondary);margin:0 0 6px}
@@ -80,7 +142,7 @@
   .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
   .listener .lemoji{width:22px;text-align:center;font-size:18px;line-height:1;flex:0 0 auto}
   .listener .lname{flex:1;color:var(--label)}
-  .listener.host .lname{font-weight:750}
+  .listener.host .lname{font-weight:700}
   .listener .lbody{flex:1;min-width:0}
   .listener .lbody .lname{display:block}
   .ldetail{color:var(--label-secondary);font-size:11px;font-variant-numeric:tabular-nums;margin-top:2px}
@@ -95,7 +157,7 @@
   #helpNote h3{font-size:13px;font-weight:700;color:var(--label);margin:14px 0 4px}
   #helpNote h3:first-child{margin-top:0}
   #helpNote p{font-size:12px;color:var(--label-secondary);line-height:1.6}
-  code{background:var(--fill);border:1px solid var(--separator);border-radius:5px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--label)}
+  code{background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-xs);padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--label)}
   .advcheck{display:flex;align-items:center;gap:8px;color:var(--label-secondary);font-size:13px;cursor:pointer;margin:18px 2px 6px;user-select:none}
   .advcheck input{accent-color:var(--accent)}
   span.advcheck{color:var(--accent);font-weight:500}
@@ -121,16 +183,16 @@
   .wtext.big{font-size:20px;font-weight:700;letter-spacing:-.02em}
   .wverb{color:var(--label-secondary);font-size:11px;font-weight:500}
   .wpostactions{display:flex;align-items:center;gap:10px;margin-top:9px}
-  .wreplybtn{height:28px;padding:0;background:none;color:var(--link);font-size:12px;font-weight:700}
+  .wreplybtn{height:28px;padding:0;background:none;color:var(--accent);font-size:12px;font-weight:700}
   .wreplybtn:hover{text-decoration:underline}
   .wreply[hidden]{display:none}
   .wreply{display:flex;gap:8px;margin-top:7px}
-  .wreply input{flex:1;background:var(--fill);border:none;border-radius:999px;padding:6px 12px;font:inherit;font-size:12px;color:var(--label);outline:none}
+  .wreply input{flex:1;background:var(--fill);border:none;border-radius:var(--r-pill);padding:6px 12px;font:inherit;font-size:12px;color:var(--label);outline:none}
   .wreply button{background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
   .wcmt{font-size:12px;line-height:1.5;margin:3px 0 0 2px;color:var(--label)}
   .wcmt b{font-weight:700}
   .wthumb{position:relative;display:inline-block}
-  .wplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:999px;background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
+  .wplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:var(--r-pill);background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
   .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
   .statebadge.pending{background:rgba(255,149,0,.16);color:#a15b00}
   .statebadge.hidden{background:rgba(255,59,48,.12);color:var(--danger)}
@@ -142,7 +204,7 @@
   .reactionpanel{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
   .reactionpanel[hidden]{display:none}
   .reactiongrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px}
-  .djreact{background:var(--fill);border-radius:9px;padding:7px 8px;font-size:12px;font-weight:700;color:var(--label);display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
+  .djreact{background:var(--fill);border-radius:var(--r-sm);padding:7px 8px;font-size:12px;font-weight:700;color:var(--label);display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
   .djreact.zero{color:var(--label-tertiary);font-weight:600}
   .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
   .trackcard.off{opacity:.7}
@@ -155,74 +217,111 @@
   .requesttime{margin-left:auto;color:var(--label-tertiary);font-size:11px;font-variant-numeric:tabular-nums;flex:0 0 auto}
   .requestnote{color:var(--label-secondary);font-size:12px;line-height:1.45;margin-top:4px;white-space:pre-wrap;word-break:break-word}
   .requestmeta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
-  .vibebadge{border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:11px;font-weight:800;padding:2px 8px}
-  .reqstate{border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px}
+  .vibebadge{border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);font-size:11px;font-weight:800;padding:2px 8px}
+  .reqstate{border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px}
   .reqstate.starred{background:rgba(255,149,0,.18);color:#a15b00}
   .reqstate.done{background:rgba(52,199,89,.14);color:#1d883d}
   .reqstate.dismissed{background:rgba(255,59,48,.10);color:var(--danger)}
   .requestactions{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
-  .requestactions button{height:24px;padding:0 8px;font-size:11px;border-radius:7px;background:var(--fill);color:var(--label-secondary)}
+  .requestactions button{height:24px;padding:0 8px;font-size:11px;border-radius:var(--r-xs);background:var(--fill);color:var(--label-secondary)}
   .requestactions button:hover{background:var(--fill-hover);color:var(--label)}
   .requestactions .danger{color:var(--danger)}
   .requestempty{color:var(--label-tertiary);font-size:12px;padding:4px 0}
   /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
-  #actionbar{position:absolute;top:0;left:0;right:0;z-index:20;background:linear-gradient(rgba(0,0,0,.64),rgba(0,0,0,0));border:0}
-  .abinner{max-width:none;margin:0;padding:10px 20px;display:flex;align-items:center;gap:10px}
+  #actionbar{position:absolute;top:0;left:0;right:0;z-index:var(--z-sticky);background:linear-gradient(rgba(0,0,0,.64),rgba(0,0,0,0));border:0}
+  /* The bar's glass runs edge to edge, but its controls sit on the same
+     measure as every card below it. */
+  .abinner{max-width:var(--measure);margin:0 auto;width:100%;padding:10px var(--page-pad);display:flex;align-items:center;gap:10px}
   .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:0}
   .source-picker{display:flex;align-items:center;gap:8px;min-width:230px;max-width:330px;flex:0 1 330px}
   .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
   .source-step label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .source-row{position:relative;display:flex;align-items:center;gap:6px;min-width:0;flex:1}
-  .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:999px;height:42px;font-weight:700;background-color:rgba(18,18,20,.78);color:transparent;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+  .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:var(--r-pill);height:42px;font-weight:700;background-color:rgba(18,18,20,.78);color:transparent;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
   .source-row select option{color:var(--label);background:var(--bg-elevated)}
-  .device-display{position:absolute;left:16px;right:16px;z-index:1;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
-  .abinner .iconbtn{width:34px;height:34px;border-radius:999px}
-  .source-help{font-size:15px;font-weight:850}
+  .device-display{position:absolute;left:16px;right:16px;z-index:var(--z-base);pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
+  .abinner .iconbtn{width:34px;height:34px;border-radius:var(--r-pill)}
+  .source-help{font-size:15px;font-weight:800}
   .abspacer{flex:1;min-width:20px}
-  .golive{height:52px;min-width:148px;padding:0 34px;border-radius:999px;font-size:17px;font-weight:850}
+  .golive{height:52px;min-width:148px;padding:0 34px;border-radius:var(--r-pill);font-size:17px;font-weight:800}
   .golive.go{background:var(--success);color:#fff;box-shadow:0 8px 22px rgba(52,199,89,.33)}
   .golive.go:hover{filter:brightness(1.04)}
   .golive.stop{background:transparent;color:var(--accent);border:1px solid var(--accent);box-shadow:none}
   .eventtop > .card + .card{margin-top:0}
   .herocard{min-height:0}
   .statuspill.live{background:var(--accent);color:#fff}
-  .event-copy{min-width:0;display:flex;flex-direction:column;justify-content:center}
+  /* The QR column is ~310px tall; centring a 38px title against it left
+     ~145px of dead space above and below the event's own name. Sit the copy
+     at the top and let the column be as tall as it needs to be. */
+  .event-copy{min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:var(--s-3)}
   .titlerow{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
-  .hostlinks .ll.add{border-style:dashed;color:var(--link);background:transparent}
-  .eventcover{position:relative;width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);overflow:hidden;border:0;border-radius:0;padding:0;box-shadow:none;height:clamp(300px,34vw,460px);display:block;text-align:center;background:#101012;color:var(--label-secondary)}
+  .hostlinks .ll.add{border-style:dashed;color:var(--accent);background:transparent}
+  .eventcover{border-radius:var(--r-lg);position:relative;width:auto;margin-inline:0;overflow:hidden;border:0;border-radius:0;padding:0;box-shadow:none;height:clamp(170px,20vw,300px);display:block;text-align:center;background:#101012;color:var(--label-secondary)}
   .cover-media{position:absolute;inset:0;display:block;overflow:hidden;background:#101012}
   .cover-media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:none}
   .eventcover.has-cover .cover-media img{display:block}
-  .cover-empty{position:absolute;inset:0;display:grid;place-items:center;padding:28px;transition:opacity .16s ease}
+  .cover-empty{position:absolute;inset:0;display:grid;place-items:center;padding:28px;transition:opacity .16s var(--curve)}
   .eventcover.has-cover .cover-empty{opacity:0;pointer-events:none}
   .eventcover .cam{font-size:36px;margin-bottom:12px;opacity:.62}
   .cover-empty b{display:block;color:var(--label);font-size:17px;margin-bottom:4px}
   .cover-empty .muted{display:block;max-width:320px;margin:0 auto;color:var(--label-secondary);font-size:13px;line-height:1.45}
-  .cover-toolbar{position:absolute;left:50%;bottom:16px;z-index:4;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:calc(100% - 32px);padding:5px;border-radius:999px;background:rgba(20,20,24,.46);box-shadow:0 16px 40px -26px rgba(0,0,0,.5);opacity:1;pointer-events:auto;transform:translateX(-50%);transition:opacity .16s ease;-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%)}
+  .cover-toolbar{position:absolute;left:50%;bottom:16px;z-index:var(--z-raised);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:calc(100% - 32px);padding:5px;border-radius:var(--r-pill);background:rgba(20,20,24,.46);box-shadow:var(--elev-2);opacity:1;pointer-events:auto;transform:translateX(-50%);transition:opacity .16s var(--curve);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%)}
   .eventcover:not(.has-cover) .cover-toolbar,.eventcover:hover .cover-toolbar,.eventcover:focus-within .cover-toolbar,.eventcover.dragging .cover-toolbar,body.event-manage-open .eventcover .cover-toolbar{opacity:1;pointer-events:auto}
-  .cover-action{min-height:32px;border:0;border-radius:999px;padding:0 12px;background:rgba(255,255,255,.18);color:#fff;font:650 12px/1 var(--sans);cursor:pointer}
+  .cover-action{min-height:32px;border:0;border-radius:var(--r-pill);padding:0 12px;background:rgba(255,255,255,.18);color:#fff;font:650 12px/1 var(--sans);cursor:pointer}
   .cover-action:hover,.cover-action:focus-visible{background:rgba(255,255,255,.28)}
   .cover-action:disabled{cursor:default;opacity:.55}
   .cover-action.change{display:none}
   .eventcover.has-cover .cover-action.change{display:inline-flex;align-items:center}
-  .cover-drop-hint{position:absolute;inset:0;z-index:3;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.28);color:#fff;font-size:14px;font-weight:750;opacity:0;pointer-events:none;transition:opacity .16s ease}
+  .cover-drop-hint{position:absolute;inset:0;z-index:var(--z-raised);display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.28);color:#fff;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .16s var(--curve)}
   .eventcover.dragging .cover-drop-hint{opacity:1}
-  .cover-status{position:absolute;left:50%;top:16px;z-index:4;display:none;max-width:calc(100% - 32px);padding:7px 12px;border-radius:999px;background:rgba(20,20,24,.48);color:#fff;font-size:12px;font-weight:700;transform:translateX(-50%);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+  .cover-status{position:absolute;left:50%;top:16px;z-index:var(--z-raised);display:none;max-width:calc(100% - 32px);padding:7px 12px;border-radius:var(--r-pill);background:rgba(20,20,24,.48);color:#fff;font-size:12px;font-weight:700;transform:translateX(-50%);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
   .cover-status.error{background:rgba(255,69,58,.78)}
   @keyframes bar{0%,100%{height:25%}50%{height:92%}}
-  .listening{font-size:14px;font-weight:650;color:var(--label-secondary);white-space:nowrap}
-  .listening b{font-size:25px;color:var(--label);font-weight:850}
+  .listening{font-size:14px;font-weight:600;color:var(--label-secondary);white-space:nowrap}
+  .listening b{font-size:25px;color:var(--label);font-weight:800}
   .event-qr{display:grid;place-items:center;align-self:stretch;min-width:0}
-  .event-qr .party-qr-panel{width:100%;height:100%;display:grid;place-items:center}
-  #qr{display:flex;justify-content:center;padding:12px;border:1px solid var(--separator);width:200px;height:200px;margin:0;overflow:hidden;border-radius:12px;background:#fff}
+  .event-qr .party-qr-panel{width:100%;display:grid;place-items:center;gap:var(--s-3);
+    padding:var(--tray);border-radius:var(--r-lg);
+    background:rgba(255,255,255,.03);box-shadow:0 0 0 1px var(--hairline),var(--sheen)}
+  .party-qr-panel #qr{border-radius:var(--r-inner);overflow:hidden;background:#fff}
+  #qr{display:flex;justify-content:center;padding:12px;border:1px solid var(--separator);width:200px;height:200px;margin:0;overflow:hidden;border-radius:var(--r-md);background:#fff}
   #qr[hidden]{display:none}
   #qr canvas,#qr img{display:block;max-width:100%;max-height:100%}
-  .qr-pending{width:200px;min-height:200px;border:1px solid var(--separator);border-radius:12px;background:var(--bg-elevated-2);padding:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+  .qr-pending{width:200px;min-height:200px;border:1px solid var(--separator);border-radius:var(--r-md);background:var(--bg-elevated-2);padding:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
   .qr-pending[hidden]{display:none}
   .qr-pending strong{font-size:15px;line-height:1.25;color:var(--label)}
   .qr-pending span{font-size:12px;line-height:1.45;color:var(--label-secondary)}
   .qr-pending small{font-size:11px;line-height:1.3;color:var(--label-tertiary)}
-  .qr-network-status{max-width:200px;margin-top:8px;font-size:11px;line-height:1.35;color:var(--label-secondary);text-align:center}
+  /* These sit beside the QR now, not under it: full measure, left aligned. */
+  .qr-network-status{max-width:none;margin:0;font-size:12px;line-height:1.45;color:var(--label-secondary);text-align:left}
+  .sharelede{margin:0;font-size:15px;line-height:1.4;color:var(--label);font-weight:600}
+  .linkfield{display:flex;align-items:center;gap:var(--s-2);margin-top:var(--s-3)}
+  .linkfield input{
+    flex:1 1 auto;min-width:0;height:38px;padding:0 var(--s-3);
+    border:0;border-radius:var(--r-sm);background:var(--fill);color:var(--label);
+    font:inherit;font-size:13px;font-family:var(--mono);
+    box-shadow:inset 0 0 0 1px var(--hairline);
+  }
+  .linkact{
+    flex:0 0 auto;height:38px;display:inline-flex;align-items:center;gap:6px;
+    padding:0 var(--s-3);border:0;border-radius:var(--r-sm);cursor:pointer;
+    background:var(--fill);color:var(--label);font:inherit;font-size:13px;font-weight:600;
+    box-shadow:inset 0 0 0 1px var(--hairline);
+    transition:background var(--fast) var(--curve),color var(--fast) var(--curve);
+  }
+  .linkact:hover{background:var(--fill-hover)}
+  .linkact:active{transform:scale(.97)}
+  .linkact svg{width:15px;height:15px}
+  .linkact.done{background:var(--success);color:#fff;box-shadow:none}
+  /* The offline link is a last resort, so it stays folded away until asked
+     for. It is plain HTTP and narrowly gated on the server. */
+  .failsafe{margin-top:var(--s-4);font-size:12px;color:var(--label-secondary)}
+  .failsafe summary{cursor:pointer;color:var(--label-secondary);font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
+  .failsafe summary::-webkit-details-marker{display:none}
+  .failsafe summary::before{content:'';width:0;height:0;border:4px solid transparent;border-left-color:currentColor;transition:transform var(--fast) var(--curve)}
+  .failsafe[open] summary::before{transform:rotate(90deg)}
+  .failsafe p{margin:var(--s-2) 0 0;line-height:1.5;color:var(--label-tertiary)}
+  .qrmsg #lanState{margin:0}
   .qr-network-status.ready{color:var(--success)}
   .qr-network-status.relay{color:var(--warning)}
   .offline-status.relay{background:rgba(255,149,0,.11);border-color:rgba(255,149,0,.34);color:#9a5700}
@@ -235,20 +334,54 @@
   @keyframes pp-blink{50%{opacity:0}}
   .cardx{position:absolute;top:12px;right:12px;width:26px;height:26px;padding:0;border-radius:50%;background:var(--fill);color:var(--label-secondary);font-size:12px;line-height:1}
   .cardx:hover{background:var(--fill-hover);color:var(--label)}
-  .ptab{height:40px;padding:0 24px;border-radius:999px;background:transparent;color:var(--label-secondary);font-weight:750}
-  .ptab.active{background:var(--bg-elevated);color:var(--label);box-shadow:0 1px 4px rgba(0,0,0,.16)}
-  .pcount{margin-left:6px;background:var(--fill);border-radius:999px;padding:1px 7px;font-size:11px;color:var(--label-secondary)}
+  .ptab{height:40px;padding:0 24px;border-radius:var(--r-pill);background:transparent;color:var(--label-secondary);font-weight:700}
+  .ptab.active{background:var(--bg-elevated);color:var(--label);box-shadow:var(--elev-1)}
+  .pcount{margin-left:6px;background:var(--fill);border-radius:var(--r-pill);padding:1px 7px;font-size:11px;color:var(--label-secondary)}
   .pcount:empty{display:none}
   .ptab.active .pcount{background:var(--fill)}
-  .party-feed-col{min-width:0}
-  .guest-sidebar{position:sticky;top:72px;display:grid;gap:16px;min-width:0;align-self:stretch}
+  /* The two columns must end level. The card is not a direct child of the
+     column - a #ptab-* panel wraps it - so the stretch has to be passed down
+     the whole chain or the column grows and the card inside it does not. */
+  .party-feed-col{min-width:0;display:flex;flex-direction:column}
+  .party-feed-col > [id^="ptab-"]{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+  .party-feed-col > [id^="ptab-"] > .card{flex:1 1 auto}
+  .party-feed-col > .card{flex:1 1 auto}
+  .guest-sidebar{display:grid;gap:16px;min-width:0;align-self:stretch}
   #roster{flex:1}
-  .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600}
-  .profileimagewrap{position:relative}
+  .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:var(--r-pill);padding:7px 13px;font-size:13px;font-weight:600}
+  /* The photo is the control: hover reveals "Change", the X removes it.
+     A separate "Choose profile photo" button restated what the image already
+     affords and pushed Save profile out of reach. */
+  /* The empty state has to look like a profile photo, or nothing tells you
+     that is what the circle is for. The + says it is addable; the whole
+     circle is the target. */
+  .profileimagewrap{position:relative;border-radius:50%;cursor:pointer}
+  .profileempty{
+    position:absolute;inset:0;display:grid;place-items:center;border-radius:50%;
+    background:var(--bg-elevated-2);color:var(--label-tertiary);
+    box-shadow:inset 0 0 0 1px var(--hairline);
+  }
+  .profileempty svg{width:52%;height:52%}
+  .profileimagewrap.has-photo .profileempty{display:none}
+  .profileplus{
+    position:absolute;right:-2px;bottom:-2px;width:28px;height:28px;
+    display:grid;place-items:center;border-radius:50%;
+    background:var(--accent);color:#fff;font-size:19px;font-weight:600;line-height:1;
+    border:3px solid var(--bg-elevated);pointer-events:none;
+  }
+  .profileimagewrap.has-photo .profileplus{display:none}
+  .profilephotopick{
+    position:absolute;inset:0;display:grid;place-items:center;border:0;padding:0;
+    border-radius:50%;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;
+    font:inherit;font-size:12px;font-weight:600;opacity:0;
+    transition:opacity var(--fast) var(--curve);
+  }
+  .profileimagewrap:hover .profilephotopick,
+  .profilephotopick:focus-visible{opacity:1}
   .profilephoto{border-radius:50%;object-fit:cover;background:var(--fill);border:1px solid var(--separator)}
   .profileremove{position:absolute;top:-5px;right:-5px;width:24px;height:24px;display:grid;place-items:center;padding:0;border:2px solid var(--bg-elevated);border-radius:50%;background:#55565c;color:#fff;font:700 15px/1 var(--sans);cursor:pointer}
-  .profilefield{display:grid;gap:6px;color:var(--label-secondary);font-size:12px;font-weight:650}
-  .profilefield input{height:38px;background:var(--fill);border:1px solid var(--separator);border-radius:8px;padding:0 10px;color:var(--label);font:inherit;font-size:14px}
+  .profilefield{display:grid;gap:6px;color:var(--label-secondary);font-size:12px;font-weight:600}
+  .profilefield input{height:38px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 10px;color:var(--label);font:inherit;font-size:14px}
   .profilebuttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .profilestatus{font-size:12px;color:var(--label-secondary)}
   .rostergroup{padding:10px 0;border-bottom:1px solid var(--separator)}
@@ -258,30 +391,74 @@
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   /* macOS-style hierarchy: quiet grouped surfaces, aligned fields, one clear
      action row per section. */
-  .page{margin:0 auto;max-width:1120px;padding:0 24px 64px}
+  .appfooter{
+    margin:0 auto;width:100%;max-width:var(--measure);
+    padding:var(--s-5) var(--page-pad) var(--s-6);
+    color:var(--label-tertiary);font-size:11px;text-align:left;
+    border-top:1px solid var(--hairline);
+  }
+  .page{margin:0 auto;width:100%;max-width:var(--measure);padding:0 var(--page-pad) 96px}
   .eventtop{display:grid;grid-template-columns:1fr;align-items:stretch;gap:14px}
-  .card,.linkeditor{border-radius:8px;box-shadow:none}
+  .card,.linkeditor{border-radius:var(--r-sm);box-shadow:none}
   header.eventhead{margin:0 auto;display:block;width:100%;max-width:none;padding:22px 24px;background:var(--bg-elevated)}
-  .eventhead-grid{display:grid;align-items:stretch;grid-template-columns:minmax(0,1fr) 180px;gap:24px;min-height:180px}
-  .ename{margin:0;color:var(--label);font-weight:850;letter-spacing:-.025em;overflow-wrap:anywhere;font-size:34px;line-height:1.12}
+  /* The name owns the top of the card; the QR sits under it on the left with
+     its explanation running alongside, instead of a tall right-hand rail that
+     stretched the row and stranded the title in whitespace. */
+  .eventhead-grid{display:grid;align-items:start;grid-template-columns:1fr;gap:var(--s-4);min-height:0}
+  .event-share{display:grid;grid-template-columns:200px minmax(0,1fr);gap:var(--s-5);align-items:start}
+  .event-share .event-qr{width:200px}
+  .event-share .qrmsg{display:flex;flex-direction:column;gap:var(--s-2);min-width:0;padding-top:var(--s-1)}
+  @media (max-width:720px){.event-share{grid-template-columns:1fr}.event-share .event-qr{width:100%;max-width:240px}}
+  /* Display type: size-specific negative tracking, tight leading. */
+  .ename{margin:0;color:var(--label);font-weight:800;letter-spacing:-.03em;overflow-wrap:anywhere;
+    font-size:clamp(34px,3.4vw,46px);line-height:1.04;font-optical-sizing:auto}
+  /* An eyebrow names the section in a whisper instead of a shout. */
+  .eyebrow{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;
+    padding:4px var(--s-3);border-radius:var(--r-pill);
+    background:var(--fill);color:var(--label-tertiary);
+    font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
   .linkeditor{border:1px solid var(--separator);padding:20px 22px;background:var(--bg-elevated);margin:0}
-  .linkeditor-head{padding-bottom:12px}
   .profileeditor{display:grid;border-bottom:1px solid var(--separator);grid-template-columns:96px minmax(0,1fr);gap:18px;margin-bottom:18px;padding-bottom:18px}
   .profileimagewrap,.profilephoto{width:96px;height:96px}
   .profilephoto-actions{display:grid;align-content:start;gap:10px}
-  .profilephoto-actions textarea{width:100%;resize:vertical;background:var(--fill);border:1px solid var(--separator);padding:9px 10px;color:var(--label);font:inherit;min-height:86px;border-radius:8px}
+  .profilephoto-actions textarea{width:100%;resize:vertical;background:var(--fill);border:1px solid var(--separator);padding:9px 10px;color:var(--label);font:inherit;min-height:86px;border-radius:var(--r-sm)}
   .profilebuttons,.linkactions{justify-content:flex-end;padding-top:4px}
   .party-grid .card{padding:20px}
-  .guest-sidebar .card{margin-top:0;height:100%;display:flex;flex-direction:column;min-height:240px}
-  .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:30px;margin:0 0 18px;padding:0 0 12px;border-bottom:1px solid var(--separator)}
-  .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:18px;line-height:1.25;font-weight:750}
-  .linkrows{display:grid;gap:10px}
-  .linkrow{display:grid;grid-template-columns:145px minmax(0,1fr) 30px;gap:10px;align-items:center}
-  .linkrow select,.linkrow input{height:40px}
-  .linkrow input{min-width:0;background:var(--fill);border:1px solid var(--separator);border-radius:8px;padding:0 12px;color:var(--label);font:inherit;font-size:13px;outline:none}
-  .linkrow input:focus{border-color:var(--accent)}
-  .linkrow .bad{border-color:rgba(255,59,48,.65)}
-  .linkdel{width:28px;height:28px;padding:0;border-radius:999px;background:var(--fill);color:var(--label-secondary)}
+  .guest-sidebar .card{margin-top:0;display:flex;flex-direction:column}
+  .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:30px;margin:0 0 18px;padding:0}
+  .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:18px;line-height:1.25;font-weight:700}
+  /* Social links as chips, the way an "about me" page does it: the brand mark,
+     the service name and the handle all live inside one pill, so the field is
+     part of the object instead of a separate box stretched across the window.
+     They wrap, so as many fit per line as the width honestly allows. */
+  .linkrows{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s-3);max-width:1020px}
+  @media (max-width:980px){.linkrows{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .linkrow{
+    display:flex;align-items:center;gap:var(--s-2);min-width:0;
+    height:42px;padding:0 var(--s-4) 0 var(--s-3);
+    border-radius:var(--r-pill);background:var(--fill);
+    box-shadow:inset 0 0 0 1px var(--hairline);
+    transition:box-shadow var(--fast) var(--curve),background var(--fast) var(--curve);
+  }
+  .linkrow:hover{background:var(--fill-hover)}
+  .linkrow:focus-within{box-shadow:inset 0 0 0 1px var(--accent);background:var(--bg-elevated-2)}
+  .linkbrand{display:grid;place-items:center;width:20px;height:20px;flex:0 0 20px}
+  .linkmark{width:18px;height:18px;display:block}
+  .linkname{font-size:13px;font-weight:600;color:var(--label-secondary);white-space:nowrap}
+  .linkrow input{
+    height:26px;min-width:0;flex:1 1 auto;
+    border:0;background:transparent;box-shadow:none;padding:0;
+    color:var(--label);font:inherit;font-size:13px;
+    border-left:1px solid var(--hairline);padding-left:var(--s-2);
+  }
+  .linkrow input::placeholder{color:var(--label-tertiary)}
+  .linkrow input:focus{outline:none}
+  .linkrow.filled{background:var(--bg-elevated-2)}
+  .linkrow input.bad{color:var(--danger)}
+  .linkrow:has(input.bad){box-shadow:inset 0 0 0 1px var(--danger)}
+
+
+  .linkdel{width:28px;height:28px;padding:0;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary)}
   .linkactions{display:flex;align-items:center;gap:8px;margin-top:14px}
   .linkstatus{font-size:12px;color:var(--label-secondary);min-height:16px}
   body.event-manage-open .event-admin-tools{display:block}
@@ -293,20 +470,20 @@
   #eventCard{padding:20px 22px;margin-top:0!important}
   #eventCard .cardhead{margin-bottom:16px}
   #eventCard .cardhead h2{font-size:20px}
-  #eventCard > .composer{background:var(--fill)!important;border:1px solid var(--separator)!important;border-radius:8px!important;padding:14px!important;margin-bottom:14px!important}
+  #eventCard > .composer{background:var(--fill)!important;border:1px solid var(--separator)!important;border-radius:var(--r-sm)!important;padding:14px!important;margin-bottom:14px!important}
   #eventCard > .composer.dropping{border-color:var(--accent)!important;background:rgba(255,45,111,.12)!important;box-shadow:0 0 0 3px rgba(255,45,111,.16)}
   #eventCard textarea{font-size:16px!important}
   #djFeed{display:grid;gap:12px}
-  #djFeed .wpost{border:1px solid var(--separator);border-radius:8px;background:rgba(255,255,255,.035);padding:18px}
+  #djFeed .wpost{border:1px solid var(--separator);border-radius:var(--r-sm);background:rgba(255,255,255,.035);padding:18px}
   #requestCard{display:none!important;margin-bottom:16px}
   /* settings sheet */
-  .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:40;overflow:auto}
+  .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:var(--z-chrome);overflow:auto}
   .sheetov.show{display:flex}
-  .sheet{position:relative;background:var(--bg-elevated);border-radius:18px;max-width:560px;width:100%;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.22)}
+  .sheet{position:relative;background:var(--bg-elevated);border-radius:var(--r-lg);max-width:560px;width:100%;padding:22px;box-shadow:var(--elev-3)}
   .sheet h3{color:var(--label)}
   .softaskov{position:fixed;inset:0;background:rgba(0,0,0,.26);display:none;align-items:center;justify-content:center;padding:22px;z-index:90}
   .softaskov.show{display:flex}
-  .softask{position:relative;background:var(--bg-elevated);border:1px solid var(--separator);border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.22);max-width:420px;width:100%;padding:24px}
+  .softask{position:relative;background:var(--bg-elevated);border:1px solid var(--separator);border-radius:var(--r-lg);box-shadow:var(--elev-3);max-width:420px;width:100%;padding:24px}
   .softask h2{font-size:21px;line-height:1.18;margin:0 0 8px;color:var(--label)}
   .softask p{font-size:14px;line-height:1.5;color:var(--label-secondary);margin:0}
   /* "What should I pick?" - a focused guide popover, NOT the full Settings sheet. */
@@ -314,8 +491,11 @@
   .sourceguide-body h3{font-size:13.5px;font-weight:700;margin:16px 0 4px;color:var(--label)}
   .sourceguide-body h3:first-child{margin-top:2px}
   .sourceguide-body p{font-size:13px;line-height:1.5;color:var(--label-secondary);margin:0}
-  .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:5px}
-  button.action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border-radius:999px;padding:0 15px;background:var(--accent);color:#fff}
+  .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:var(--r-xs)}
+  button.action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
+    border-radius:var(--r-pill);padding:0 15px;background:var(--fill);color:var(--label-secondary);
+    box-shadow:inset 0 0 0 1px var(--hairline)}
+  button.action-folder:hover{background:var(--fill-hover);color:var(--label)}
   button.action-folder:hover{background:#ff477f;color:#fff}
   .action-folder svg{width:16px;height:16px;display:block}
   .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
@@ -327,28 +507,391 @@
   .eventedit[data-field="title"] [data-edit-group="title"],
   .eventedit[data-field="host"] [data-edit-group="host"],
   .eventedit[data-field="schedule"] [data-edit-group="schedule"]{display:grid}
-  #shareHint{display:none!important}
-  .party-grid{display:grid;align-items:stretch;gap:14px;margin-top:14px;grid-template-columns:minmax(0,1fr) 360px}
+  .party-grid{display:grid;align-items:stretch;gap:var(--s-4);margin-top:var(--s-4);grid-template-columns:minmax(0,1fr)}
   .guesthead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .guesthead h2{margin:0!important}
-  .detailsbtn{height:28px;padding:0;background:none;color:var(--link);font-size:12px;font-weight:700}
+  .detailsbtn{height:28px;padding:0;background:none;color:var(--accent);font-size:12px;font-weight:700}
   .detailsbtn:hover{text-decoration:underline}
   .guest-sidebar #detailsToggle{display:inline-block!important;align-self:flex-start}
   .guest-sidebar .metrics{display:flex!important}
-  .event-admin-tools{margin-top:14px;box-shadow:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:16px;padding:14px;margin:18px 0 0;display:block}
+  .event-admin-tools{margin-top:14px;box-shadow:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:var(--r-md);padding:14px;margin:18px 0 0;display:block}
   .confirm-cancel{background:none;color:var(--label-secondary);height:24px;padding:0 5px;font-size:11px}
   .confirm-delete{color:var(--danger)!important;font-weight:800!important}
     /* accessibility + capability fallbacks (kept from the dark theme) */
+  /* Headings should never drop a single orphaned word onto its own line. */
+  h1,h2,h3,.ename,.sectiontitle{text-wrap:balance}
+  p,.muted,small{text-wrap:pretty}
+
+  /* A visible keyboard focus ring is an accessibility requirement, not a
+     nicety; the console had exactly one. Ride the accent so it reads as
+     part of the system rather than a browser default. */
+  button:focus-visible,a:focus-visible,select:focus-visible,
+  input:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{
+    outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-xs)}
+
+  /* Every control answers the press itself, on pointer-down. The console had
+     14 hover rules and no active state: hover only says "this is a target",
+     and says nothing at all to a trackpad tap. Transform is compositor-only,
+     so this costs nothing on the input path. */
+  button.go:active,button.ghost:active,.golive.go:active,.iconbtn:active,
+  .cover-action:active,.cardx:active,button.action-folder:active,
+  .fieldedit:active,.detailsbtn:active,.wreplybtn:active,.pdel:active,
+  .requestactions button:active{transform:scale(.97);transition-duration:60ms}
+
   @media (prefers-reduced-motion:reduce){
-    *{animation:none!important;transition:none!important}
-    .spin16{animation:pp-spin 1.4s linear infinite!important}
+    /* Reduced motion means a gentler equivalent, not silence. Drop travel and
+       overshoot, keep the short opacity/colour changes that confirm a press
+       and a state change. The old rule killed those and then forced the
+       spinner back on, which is the one loop this setting exists to stop. */
+    *{animation:none!important}
+    *{transition-property:opacity,background-color,border-color,color!important;
+      transition-duration:120ms!important}
+    *:active{transform:none!important}
   }
-  @media (prefers-reduced-transparency:reduce){#actionbar{background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}}
+  /* Frost every translucent surface, not just the action bar. */
+  @media (prefers-reduced-transparency:reduce){
+    #actionbar,.cover-toolbar,.cover-status,.source-row select{
+      background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}
+  }
+  /* Near-solid with a defined edge when the user asks for more contrast. */
+  @media (prefers-contrast:more){
+    #actionbar,.cover-toolbar,.cover-status,.source-row select,.card{
+      background:#08080a;border:1px solid #6a6a72;
+      -webkit-backdrop-filter:none;backdrop-filter:none}
+  }
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
   @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
-  @media (max-width:720px){.linkrow{grid-template-columns:1fr}.linkdel{justify-self:end}}
+  @media (max-width:720px){.linkrow input{width:112px}.linkdel{justify-self:end}}
   @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.titlerow{flex-direction:column}}
-  @media (max-width:900px){.party-grid{grid-template-columns:1fr}.guest-sidebar{position:static;order:-1}.guest-sidebar .card{height:auto;min-height:0}}
+
+
+  /* ---- Native macOS shell -------------------------------------------
+     Three panes: a source list, the content, and an inspector that keeps the
+     QR on screen at all times so a guest can walk up and scan without the DJ
+     touching anything. Panes are separated by hairlines and material, not by
+     stacking dark cards on a dark background.
+     These come last on purpose: they have to outrank the page-scroll layout
+     the console used before, which positioned the bar absolutely and centred
+     the content on its own measure. */
+  html,body{height:100%;overflow:hidden}
+  #appChrome{height:100dvh;display:flex;flex-direction:column;min-height:0;padding:0}
+
+  #actionbar.titlebar{
+    position:relative!important;inset:auto!important;flex:0 0 auto;height:52px;
+    display:flex;align-items:center;max-width:none;
+    background:color-mix(in srgb,var(--bg) 80%,transparent);
+    -webkit-backdrop-filter:saturate(180%) blur(30px);backdrop-filter:saturate(180%) blur(30px);
+    border-bottom:1px solid var(--hairline);
+  }
+  .titlebar .abinner{max-width:none;margin:0;padding:0 var(--s-4) 0 88px;gap:var(--s-2);-webkit-app-region:drag}
+  .titlebar button,.titlebar select,.titlebar .source-picker{-webkit-app-region:no-drag}
+  .tbdrag{flex:1 1 auto;height:100%}
+  .startstage{display:inline-flex;align-items:center;gap:7px;color:var(--label-secondary);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .startstage[hidden]{display:none}
+
+  .workspace{flex:1 1 auto;display:grid;grid-template-columns:212px minmax(0,1fr) 300px;min-height:0}
+
+  .sidebar{
+    min-height:0;overflow-y:auto;padding:var(--s-4) var(--s-2);
+    background:color-mix(in srgb,#000 30%,var(--bg));
+    border-right:1px solid var(--hairline);
+    display:flex;flex-direction:column;gap:var(--s-5);
+  }
+  .sidebargroup{display:flex;flex-direction:column;gap:1px}
+  .sidebarhead{padding:0 var(--s-3) var(--s-2);color:var(--label-tertiary);
+    font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+  .sidebaritem{
+    display:flex;align-items:center;gap:var(--s-2);width:100%;
+    padding:0 var(--s-3);height:30px;border:0;border-radius:var(--r-sm);
+    background:transparent;color:var(--label-secondary);
+    font:inherit;font-size:13px;font-weight:500;text-align:left;cursor:pointer;
+    transition:background var(--fast) var(--curve),color var(--fast) var(--curve);
+  }
+  .sidebaritem svg{width:16px;height:16px;flex:0 0 16px;opacity:.85}
+  .sidebaritem:hover{background:rgba(255,255,255,.05);color:var(--label)}
+  .sidebaritem.active{background:var(--accent);color:#fff}
+
+  .workspace > .page{
+    min-height:0;overflow-y:auto;
+    max-width:none!important;width:auto;margin:0;padding:var(--s-6) var(--s-6) var(--s-8);
+  }
+
+  .inspector{
+    min-height:0;overflow-y:auto;padding:var(--s-5) var(--s-4);
+    background:color-mix(in srgb,#000 22%,var(--bg));
+    border-left:1px solid var(--hairline);
+  }
+  .inspectorhead{color:var(--label-tertiary);font-size:11px;font-weight:600;
+    letter-spacing:.04em;text-transform:uppercase;margin-bottom:var(--s-3)}
+  /* The join card reuses the base .event-share grid (QR column + explanation)
+     exactly as it laid out before the rail era; only the lede is styled here. */
+  .sharelede{font-size:12px;font-weight:500;color:var(--label-secondary);line-height:1.4;margin:0}
+  /* A short link needs a short field: size to the address, not the column. */
+  .joincard .linkfield input{flex:0 1 auto;width:34ch;min-width:180px}
+
+  /* ---- capture + start: the one big action on the page ---- */
+  .gocard{display:flex;align-items:center;gap:var(--s-6);justify-content:space-between;flex-wrap:wrap;padding-top:var(--s-6)!important;padding-bottom:var(--s-6)!important}
+  .workspace > .page .card.gocard{border-bottom:0!important} /* no separator between this and Guests join here */
+  .gocapture{display:flex;flex-direction:column;gap:var(--s-2);min-width:0}
+  /* .source-picker's flex-basis is a WIDTH in the titlebar row it was born in;
+     inside this column it would become a 330px HEIGHT. */
+  .gocapture .source-picker{flex:0 0 auto;width:min(330px,100%)}
+  .golabel{display:flex;align-items:center;gap:var(--s-2);
+    font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
+  .golabel .iconbtn{width:20px;height:20px;border-radius:50%;font-size:11px;
+    background:rgba(255,255,255,.08);color:var(--label-secondary);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .goaction{display:flex;align-items:center;gap:var(--s-4)}
+  .golive.biggo,.golive.go.biggo{
+    height:64px!important;min-width:260px!important;padding:0 44px!important;
+    border-radius:var(--r-lg)!important;font-size:18px!important;font-weight:800!important;letter-spacing:-.01em!important;
+  }
+  .golive.go.biggo{
+    background:#ff2d6f!important;color:#fff!important;
+    box-shadow:0 10px 30px rgba(255,45,111,.32),inset 0 1px 0 rgba(255,255,255,.22)!important;
+  }
+  .golive.go.biggo:hover{background:#ff4780!important}
+  .golive.go.biggo:disabled{background:rgba(255,255,255,.1)!important;color:var(--label-secondary)!important;box-shadow:none!important}
+  .golive.stop.biggo{
+    background:rgba(255,255,255,.08)!important;color:var(--label)!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)!important;
+  }
+  .golive.stop.biggo:hover{background:rgba(255,255,255,.14)!important}
+  body.live .golive.go.biggo{background:#ff2d6f!important}
+  /* Press physics: feedback lives on the press, and it's instant. */
+  .golive.biggo:active,.coverbtn:active,.linkact:active{transform:scale(.97)}
+  .golive.biggo,.coverbtn,.linkact{transition:transform .12s var(--curve),background var(--fast) var(--curve)}
+  /* Numbers that sit in rows read in columns. */
+  .liveclock,.livecount,.metrics b{font-variant-numeric:tabular-nums}
+  /* Reduced motion: keep every state change, drop the travel. */
+  @media (prefers-reduced-motion: reduce){
+    .golive.biggo:active,.coverbtn:active,.linkact:active{transform:none}
+    .coveractions,.startstage,.readydot{transition:none!important}
+    *{scroll-behavior:auto!important}
+  }
+  .railnote{margin:0;font-size:12px;color:var(--label-tertiary);line-height:1.5}
+  body[data-phase="live"] .railnote{display:none}
+  body:not([data-phase="live"]) .inspector .guest-sidebar{display:none}
+
+  /* Grouped-list surfaces: one rounded container, hairline-separated rows. */
+  .card{background:color-mix(in srgb,#fff 4%,var(--bg));border-radius:var(--r-md);
+    box-shadow:0 0 0 1px var(--hairline)}
+  /* Inputs read as editable: lighter than the window, hairline, inner shadow. */
+  .card input[type=text],.card textarea,.linkeditor input[type=text],.linkeditor textarea{
+    background:rgba(255,255,255,.06);border:0;border-radius:var(--r-sm);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 2px rgba(0,0,0,.28);
+    color:var(--label);font:inherit;font-size:13px;
+  }
+  .card input[type=text]:focus,.card textarea:focus{
+    outline:none;
+    box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 26%,transparent);
+  }
+
+  @media (max-width:1100px){.workspace{grid-template-columns:190px minmax(0,1fr) 264px}}
+  @media (max-width:880px){.workspace{grid-template-columns:minmax(0,1fr) 264px}.sidebar{display:none}}
+
+  /* ---- Native macOS surface ------------------------------------------
+     Two columns. The main area is the window: no card wrappers, no rounded
+     grey rectangles on grey. Sections are separated by a hairline, the way
+     System Settings separates groups. Last block in the sheet so it wins. */
+  .workspace{grid-template-columns:minmax(0,1fr) 300px!important}
+  @media (max-width:1100px){.workspace{grid-template-columns:minmax(0,1fr) 264px!important}}
+  @media (max-width:820px){.workspace{grid-template-columns:minmax(0,1fr)!important}.inspector{display:none}}
+
+  /* Kill the cards. A section is content on the window with a rule under it. */
+  .workspace > .page .card,
+  .workspace > .page .linkeditor,
+  .workspace > .page .eventhead,
+  .workspace > .page #eventManagePanel{
+    background:transparent!important;
+    box-shadow:none!important;
+    border:0!important;
+    border-bottom:1px solid rgba(255,255,255,.1)!important;
+    border-radius:0!important;
+    padding:var(--s-5) 0!important;
+    margin:0!important;
+  }
+  .workspace > .page > *:last-child,
+  .workspace > .page .card:last-child{border-bottom:0!important}
+  .workspace > .page{padding:0 var(--s-6) var(--s-7)}
+
+  /* Section headings sit on the window, quiet and small-caps like a Mac list. */
+  .workspace > .page h2,
+  .workspace > .page .linkeditor-head b,
+  .workspace > .page .sectiontitle{
+    font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--label-tertiary);margin:0 0 var(--s-3);padding:0;
+  }
+  .ename{font-size:26px;font-weight:700;letter-spacing:-.02em}
+
+  /* ---- grouped list ---------------------------------------------------
+     One rounded container, hairline between rows, label left / control right.
+     This is the only rounded box in the main area, and it holds rows - it is
+     not a card wrapped around another card. */
+  .grouped{
+    background:rgba(255,255,255,.045);
+    border-radius:var(--r-md);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);
+    overflow:hidden;
+  }
+  .grouped > *{border-top:1px solid rgba(255,255,255,.08)}
+  .grouped > *:first-child{border-top:0}
+  .profilefield{
+    display:grid!important;grid-template-columns:minmax(0,1fr);
+    align-items:center;padding:var(--s-2) var(--s-3);margin:0!important;
+  }
+  .profilefield > span{color:var(--label-secondary);font-size:13px;font-weight:400}
+  .profilefield input,.profilefield textarea{
+    background:rgba(255,255,255,.06);border:0;border-radius:var(--r-sm);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 2px rgba(0,0,0,.28);
+    color:var(--label);font:inherit;font-size:13px;padding:5px var(--s-2);width:100%;
+  }
+  .profilefield textarea{min-height:58px;resize:vertical}
+  .profilefield input:focus,.profilefield textarea:focus{
+    outline:none;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 24%,transparent);
+  }
+
+  /* ---- no neon --------------------------------------------------------
+     A pro tool does not glow. Go Live is the primary action and reads as one
+     through weight and a hairline, not a coloured halo. */
+  .titlebar{height:56px}
+  .golive.go,.golive{
+    height:26px;min-width:0;padding:0 var(--s-3);
+    background:rgba(255,255,255,.1)!important;
+    color:var(--label)!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)!important;
+    border-radius:var(--r-sm);font-size:13px;font-weight:600;letter-spacing:0;
+  }
+  .golive.go:hover{background:rgba(255,255,255,.16)!important}
+  body.live .golive.go{
+    background:color-mix(in srgb,var(--success) 88%,#000)!important;color:#fff!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)!important;
+  }
+  .titlebar .iconbtn,.titlebar .action-folder{
+    height:26px;background:rgba(255,255,255,.08);color:var(--label-secondary);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);border-radius:var(--r-sm);font-size:12px;
+  }
+  .titlebar .action-folder:hover,.titlebar .iconbtn:hover{background:rgba(255,255,255,.14);color:var(--label)}
+  /* Buttons in the content area are quiet too. */
+  .workspace > .page button.go{
+    background:rgba(255,255,255,.1);color:var(--label);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);border-radius:var(--r-sm);
+  }
+  .workspace > .page button.go:hover{background:rgba(255,255,255,.16)}
+
+  /* The add-photo badge was the last neon left in the main area. */
+  .profileplus{
+    background:rgba(255,255,255,.16)!important;color:var(--label)!important;
+    border-color:var(--bg)!important;font-size:16px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
+  }
+
+
+  /* Social links stay chips: the brand mark, the service and the handle in one
+     pill. It is a different idiom from the Name/About group on purpose - these
+     are six short optional entries, not a settings list, and the chip is what
+     makes that legible at a glance. */
+  .linkrows{
+    display:flex!important;flex-wrap:wrap;gap:var(--s-2);max-width:880px;
+    background:transparent!important;box-shadow:none!important;border-radius:0!important;
+  }
+  .linkrows .linkrow{
+    display:inline-flex!important;align-items:center;gap:var(--s-2);
+    height:34px;padding:0 var(--s-3)!important;border-top:0!important;
+    border-radius:var(--r-pill)!important;
+    background:rgba(255,255,255,.06)!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;
+  }
+  .linkrows .linkrow:hover{background:rgba(255,255,255,.1)!important}
+  .linkrows .linkrow:focus-within{
+    background:rgba(255,255,255,.09)!important;
+    box-shadow:inset 0 0 0 1px var(--accent)!important;
+  }
+  .linkrows .linkrow.filled{background:rgba(255,255,255,.12)!important}
+  .linkrows .linkname{font-size:12px!important;font-weight:500!important;color:var(--label-secondary)!important}
+  .linkrows .linkrow input{
+    width:124px!important;height:22px;flex:0 0 auto;padding:0 0 0 var(--s-2)!important;
+    background:transparent!important;border:0!important;border-radius:0!important;
+    border-left:1px solid rgba(255,255,255,.12)!important;
+    box-shadow:none!important;color:var(--label);font-size:12px;
+  }
+  .linkrows .linkrow input:focus{outline:none;box-shadow:none!important}
+
+  /* ---- Prepare / Live / Recap ----------------------------------------
+     One composition that changes character, not three screens. The poster is
+     the product object: it carries the event identity in the window, and the
+     same identity is what a guest sees. */
+  body[data-phase]{--poster-accent:#6f7bff}
+  .poster{
+    position:relative;overflow:hidden;isolation:isolate;
+    border-radius:var(--r-poster);padding:var(--s-7) var(--s-6);margin:0 0 var(--s-5);
+    background:
+      radial-gradient(120% 140% at 12% 0%,color-mix(in srgb,var(--poster-accent) 34%,transparent),transparent 62%),
+      radial-gradient(90% 120% at 92% 108%,color-mix(in srgb,var(--poster-accent) 22%,transparent),transparent 60%),
+      #0b0b0d;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);
+    min-height:190px;display:flex;align-items:flex-end;
+  }
+  .posterart{position:absolute;inset:0;z-index:-1;opacity:.5}
+  .coverwrap{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
+  .coverwrap img{width:100%;height:100%;object-fit:cover;display:none}
+  .coverwrap.has-cover img{display:block}
+  /* Scrim so the title stays legible on any artwork. */
+  .coverwrap.has-cover::after{content:'';position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
+  .coveractions{position:absolute;top:var(--s-4);right:var(--s-4);z-index:3;display:flex;gap:var(--s-2)}
+  .coverbtn{
+    background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
+    border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:var(--r-sm);
+    padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+  .coverbtn:hover{background:rgba(18,18,22,.68)}
+  .coverstatus{position:absolute;right:var(--s-4);top:calc(var(--s-4) + 38px);z-index:3;
+    display:none;font-size:12px;color:rgba(255,255,255,.85)}
+  .coverstatus.error{color:#ff7a7a}
+  .posterbody{position:relative;z-index:1;width:100%}
+  /* Empty poster space belongs to the cover, so a dragged image can land
+     anywhere on the artwork; only the real controls keep the pointer. */
+  .posterbody{pointer-events:none}
+  .posterbody #titleEdit,.posterbody .fieldedit,.posterbody .livestat{pointer-events:auto}
+  /* The title is the field. Click the words, type. No pencil to hunt for. */
+  .ename{font-size:clamp(28px,3.4vw,44px);font-weight:700;letter-spacing:-.028em;line-height:1.05;margin:0}
+  #titleEdit{outline:none;display:inline-block;min-width:2ch;border-radius:var(--r-sm);padding:0 2px}
+  #titleEdit:empty::before{content:attr(data-placeholder);color:rgba(255,255,255,.34)}
+  #titleEdit:hover{background:rgba(255,255,255,.06)}
+  #titleEdit:focus{background:rgba(255,255,255,.1);box-shadow:0 0 0 3px color-mix(in srgb,var(--poster-accent) 40%,transparent)}
+  .posterhost{margin-top:var(--s-2);color:rgba(255,255,255,.62);font-size:14px}
+
+  /* Live status lives on the poster, next to the identity - not at the bottom
+     of the window under the guest list. */
+  .livestat{display:none;align-items:center;gap:var(--s-3);margin-top:var(--s-4)}
+  body[data-phase="live"] .livestat{display:flex}
+  .livedot{width:8px;height:8px;border-radius:50%;background:#ff453a;box-shadow:0 0 0 0 rgba(255,69,58,.6);animation:pulse 2s var(--curve) infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(255,69,58,0)}100%{box-shadow:0 0 0 0 rgba(255,69,58,0)}}
+  .livelabel{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+  .liveclock,.livecount{font-size:13px;color:rgba(255,255,255,.66);font-variant-numeric:tabular-nums}
+
+  /* Preflight: is this thing ready, in one glance. */
+  .readiness{display:flex;gap:var(--s-5);padding:0 0 var(--s-5);margin:0 0 var(--s-5);
+    border-bottom:1px solid rgba(255,255,255,.1)}
+  .ready{display:flex;align-items:center;gap:var(--s-2);font-size:13px}
+  .ready b{font-weight:500;color:var(--label)}
+  .ready small{color:var(--label-tertiary);font-size:12px}
+  .readydot{width:7px;height:7px;border-radius:50%;background:var(--label-tertiary);flex:0 0 7px}
+  .ready[data-state="ok"] .readydot{background:#32d74b}
+  .ready[data-state="warn"] .readydot{background:#ff9f0a}
+  .ready[data-state="bad"] .readydot{background:#ff453a}
+  body[data-phase="live"] .readiness{display:none}
+
+  /* The feed is not a feature until there is a party. */
+  body:not([data-phase="live"]) .party-grid{display:none}
+
+  /* Named when it happens, silent otherwise. */
+  .isolationnote{
+    margin:calc(var(--s-5) * -1) 0 var(--s-5);padding:var(--s-3) var(--s-4);
+    border-radius:var(--r-md);background:rgba(255,159,10,.1);
+    box-shadow:inset 0 0 0 1px rgba(255,159,10,.24);
+    color:var(--label-secondary);font-size:12px;line-height:1.5;max-width:70ch;
+  }
+  .isolationnote[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -356,30 +899,16 @@
 <div id="appChrome">
 <!-- ADMIN ACTION BAR: everything the DJ operates - source, sharing, settings,
      Go Live - lives up here. Below it, the page IS the event. -->
-<div id="actionbar">
+<div id="actionbar" class="titlebar">
   <div class="abinner">
-    <span class="brandmark">🕺 PartyParty</span>
-    <span class="abspacer"></span>
-    <div class="source-picker">
-      <div class="source-step">
-        <label id="sourceStepLabel" for="device">Audio source</label>
-      </div>
-      <div class="source-row">
-        <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
-        <select id="device" aria-labelledby="sourceStepLabel" title="Choose Mac output or a connected audio interface."></select>
-      </div>
-    </div>
-    <button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button>
+    <span class="tbdrag" aria-hidden="true"></span>
     <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-    <button class="ghost action-folder" id="actionOpenFolderBtn" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/></svg>
-      Open event folder
-    </button>
-    <button class="golive go" id="liveBtn" type="button">Go Live</button>
   </div>
 </div>
 
-<div class="page">
+<div class="workspace">
+
+  <div class="page">
   <div id="bcnote" class="warn" style="display:none">
     <div id="bcnoteText"></div>
     <button class="ghost" id="audioPermBtn" style="display:none;margin-top:10px;width:100%">Open System Audio Recording Only</button>
@@ -387,49 +916,30 @@
   </div>
 
   <div class="eventtop">
-    <div class="card eventcover" id="eventCover">
-      <input id="pubCoverFile" type="file" accept="image/*" hidden>
-      <div class="cover-media" aria-hidden="true">
+    <header class="poster" id="eventHead">
+      <div class="posterart" id="posterArt" aria-hidden="true"></div>
+      <div class="coverwrap" id="eventCover">
         <img id="eventCoverImg" alt="">
-        <div class="cover-empty">
-          <div>
-            <div class="cam">🖼️</div>
-            <b>Drop an image</b>
-            <span class="muted">Or shuffle a starting image and keep the one that fits.</span>
-          </div>
+      </div>
+      <div class="coveractions">
+        <button class="coverbtn" id="pubCoverChangeBtn" type="button">Shuffle image</button>
+        <button class="coverbtn" id="pubCoverBtn" type="button">Upload image</button>
+      </div>
+      <span class="coverstatus" id="pubCoverResult" role="status"></span>
+      <input id="pubCoverFile" type="file" accept="image/*" hidden>
+      <div class="posterbody">
+        <h1 class="ename"><span id="titleEdit" contenteditable="plaintext-only" role="textbox"
+            aria-label="Event name" data-placeholder="Name this party"></span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name" hidden></button></h1>
+        <div class="posterhost" id="posterHost"></div>
+        <div class="livestat" id="liveStat">
+          <span class="livedot" aria-hidden="true"></span>
+          <span class="livelabel">Live</span>
+          <span class="liveclock" id="liveClock">0:00</span>
+          <span class="livecount" id="liveCount">0 listening</span>
         </div>
       </div>
-      <div class="cover-drop-hint" aria-hidden="true">Drop to replace image</div>
-      <div class="cover-toolbar">
-        <button class="cover-action change" id="pubCoverChangeBtn" type="button">Shuffle image</button>
-        <button class="cover-action" id="pubCoverBtn" type="button">Upload image</button>
-      </div>
-      <span id="pubCoverResult" class="cover-status" role="status"></span>
-    </div>
-    <header class="card eventhead herocard" id="eventHead">
-    <div class="sectiontitle"><h2>Event Details</h2></div>
-    <div class="eventhead-grid">
-      <div class="event-copy">
-        <div class="titlerow">
-          <h1 class="ename"><span id="titleEdit">Name your event</span><button class="fieldedit" type="button" data-event-field="title" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
-        </div>
-      </div>
-      <div class="event-qr" id="shareCard">
-        <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
-          <div id="qr" role="img" aria-label="Party Wi-Fi link QR code" hidden></div>
-          <div class="qr-pending" id="qrPending" role="status" aria-live="polite">
-            <span class="spin16" aria-hidden="true"></span>
-            <strong>Creating secure guest link</strong>
-            <span id="pendingReason">Connecting this Mac to the current Wi-Fi.</span>
-            <small>Retrying automatically</small>
-          </div>
-          <div class="visually-hidden" id="url">-</div>
-          <div class="qr-network-status" id="qrNetworkStatus" hidden></div>
-          <div class="hint" id="shareHint">Guests scan this with their phone camera.</div>
-          <div id="lanState" hidden></div>
-        </div>
-      </div>
-    </div>
+    </header>
+
     <div class="eventedit" id="eventEditPanel" aria-label="Edit event details">
       <h2 id="eventEditHeading">Edit event</h2>
       <div class="eventform-grid">
@@ -444,7 +954,54 @@
         <button class="go" id="eventEditSaveBtn" type="button">Save event</button>
       </div>
     </div>
-    </header>
+  </div>
+
+
+  <div class="card gocard" id="goCard">
+    <div class="gocapture">
+      <div class="golabel"><span id="sourceStepLabel">What to capture</span><button class="iconbtn source-help" id="sourceGuideBtn" type="button" aria-label="What should I pick?" title="What should I pick?">?</button></div>
+      <div class="source-picker">
+        <div class="source-row">
+          <span class="device-display" id="deviceDisplay">Mac output (everything)</span>
+          <select id="device" aria-labelledby="sourceStepLabel" title="Choose Mac output or a connected audio interface."></select>
+        </div>
+      </div>
+    </div>
+    <div class="goaction">
+      <span class="startstage" id="startStage" hidden><span class="spin16" aria-hidden="true"></span><span id="startStageText"></span></span>
+      <button class="golive go biggo" id="liveBtn" type="button">Start broadcast</button>
+    </div>
+  </div>
+
+  <div class="card joincard" id="joinCard" aria-label="Share">
+    <div class="linkeditor-head"><b>Guests join here</b></div>
+    <div class="event-share">
+      <div class="event-qr" id="shareCard">
+        <div class="guest-qr-panel party-qr-panel" id="partyQrPanel">
+          <div id="qr" role="img" aria-label="Party Wi-Fi link QR code" hidden></div>
+          <div class="qr-pending" id="qrPending" role="status" aria-live="polite">
+            <span class="spin16" aria-hidden="true"></span>
+            <strong>Creating secure guest link</strong>
+            <span id="pendingReason">Connecting this Mac to the current Wi-Fi.</span>
+            <small>Retrying automatically</small>
+          </div>
+          <div class="visually-hidden" id="url">-</div>
+        </div>
+      </div>
+      <div class="qrmsg">
+        <p class="sharelede" id="shareHint">Guests scan this to join the party.</p>
+        <div class="linkfield">
+          <input id="joinLinkField" type="text" readonly aria-label="Party link" value="">
+          <button class="linkact" id="copyLinkBtn" type="button" aria-label="Copy party link">Copy</button>
+          <button class="linkact" id="shareLinkBtn" type="button" aria-label="Share party link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+            Share
+          </button>
+        </div>
+        <div class="qr-network-status" id="qrNetworkStatus" hidden></div>
+        <div id="lanState" hidden></div>
+      </div>
+    </div>
   </div>
 
   <div class="card event-admin-tools" id="eventManagePanel">
@@ -452,15 +1009,21 @@
       <div class="linkeditor-head"><b>About You</b></div>
       <div class="profileeditor">
         <div class="profileimagewrap">
-          <img class="profilephoto" id="profilePhoto" src="/art-512.png" alt="DJ profile photo">
+          <img class="profilephoto" id="profilePhoto" src="" alt="DJ profile photo" hidden>
+          <span class="profileempty" id="profileEmpty" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="9" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+          </span>
+          <button class="profilephotopick" id="profilePhotoBtn" type="button" aria-label="Change profile photo" title="Change profile photo"><span class="pickword">Change</span></button>
+          <span class="profileplus" id="profilePlus" aria-hidden="true">+</span>
           <button class="profileremove" id="profilePhotoRemoveBtn" type="button" aria-label="Remove profile photo" title="Remove profile photo" hidden>×</button>
         </div>
         <div class="profilephoto-actions">
-          <label class="profilefield"><span>Name</span><input id="profileName" type="text" maxlength="40" autocomplete="name" placeholder="Your DJ name"></label>
-          <label class="profilefield"><span>About</span><textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea></label>
+          <div class="grouped">
+          <label class="profilefield"><input id="profileName" type="text" maxlength="40" autocomplete="name" placeholder="Your DJ name"></label>
+          <label class="profilefield"><textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea></label>
+          </div>
           <div class="profilebuttons">
-            <button class="ghost" id="profilePhotoBtn" type="button">Choose profile photo</button>
-            <button class="go" id="saveProfileBtn" type="button">Save profile</button>
+            <button id="saveProfileBtn" type="button" hidden></button>
             <span class="profilestatus" id="profileStatus"></span>
           </div>
           <input id="profilePhotoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden>
@@ -468,8 +1031,7 @@
       </div>
       <div class="linkrows" id="linkRows"></div>
       <div class="linkactions">
-        <button class="ghost" id="addLinkBtn" type="button">＋ Add another link</button>
-        <button class="go" id="saveLinksBtn" type="button">Save links</button>
+        <button id="saveLinksBtn" type="button" hidden></button>
         <span class="linkstatus" id="linkStatus"></span>
       </div>
     </div>
@@ -495,7 +1057,10 @@
     <div class="card" id="eventCard" style="display:none">
       <div class="cardhead">
         <h2 id="eventTitle">Party feed</h2>
-        <span class="muted" id="eventCounts"></span>
+        <button class="ghost action-folder" id="actionOpenFolderBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/></svg>
+          Open event folder
+        </button>
       </div>
       <div class="composer" id="djComposer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
         <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post, or drop photos/videos here..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
@@ -511,7 +1076,14 @@
   </section>
     </main>
 
-  <aside id="ptab-people" class="guest-sidebar">
+
+  <div id="wallAuthors" hidden></div>
+  </div>
+</div>
+  <aside class="inspector" aria-label="Guests">
+    <div class="inspectorhead">Guests</div>
+    <p class="railnote" id="guestRailNote">Guests appear here once the party starts.</p>
+  <div id="ptab-people" class="guest-sidebar">
     <div class="card">
       <div class="guesthead"><h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
       <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
@@ -522,9 +1094,8 @@
       <div id="roster"></div>
       <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
-  </aside>
-  <div id="wallAuthors" hidden></div>
   </div>
+  </aside>
 </div>
 
 <!-- "What should I pick?" - a focused guide popover (not the whole Settings sheet). -->
@@ -534,10 +1105,18 @@
     <h2 id="sourceGuideTitle">What should I pick?</h2>
     <div class="sourceguide-body">
       <h3>① Capture everything on the Mac (easiest)</h3>
-      <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+      <p>Pick <b>🖥️ Capture the Mac’s output</b> and press <b>Start broadcast</b>. The first time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
       <h3>② Hardware controller / mixer</h3>
       <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
       <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
+      <details class="failsafe" id="failsafe">
+        <summary>If a guest still cannot connect</summary>
+        <p>On a Wi-Fi with no working name lookup, guests can reach this Mac at its address directly. This link is plain HTTP and only works on this network.</p>
+        <div class="linkfield">
+          <input id="failsafeField" type="text" readonly aria-label="Direct address" value="">
+          <button class="linkact" id="copyFailsafeBtn" type="button">Copy</button>
+        </div>
+      </details>
     </div>
   </div>
 </div>
@@ -547,6 +1126,16 @@
   <div class="sheet">
     <button class="cardx" id="settingsCloseBtn" type="button" aria-label="Close" title="Close">✕</button>
     <h2 style="margin:0 0 14px">Settings</h2>
+
+    <section class="settings-section">
+      <label>Status</label>
+      <div class="readiness" id="readiness">
+        <div class="ready" data-ready="audio"><span class="readydot"></span><b>Audio</b><small id="readyAudio">Checking</small></div>
+        <div class="ready" data-ready="network"><span class="readydot"></span><b>Network</b><small id="readyNetwork">Checking</small></div>
+        <div class="ready" data-ready="guest"><span class="readydot"></span><b>Guest page</b><small id="readyGuest">Checking</small></div>
+      </div>
+      <p class="isolationnote" id="isolationNote" hidden></p>
+    </section>
 
     <section class="settings-section">
       <label for="connectionMode">How guests connect</label>
@@ -578,7 +1167,7 @@
         <summary style="cursor:pointer;font-size:13px;color:var(--label-secondary)">Source guide</summary>
         <div id="helpNote" style="display:block">
           <h3>① Capture everything on the Mac (easiest)</h3>
-          <p>Pick <b>🖥️ Capture the Mac’s output</b> and Go Live. First time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
+          <p>Pick <b>🖥️ Capture the Mac’s output</b> and press <b>Start broadcast</b>. The first time, macOS asks to record system audio - click <b>Allow</b>, that’s it. No driver, no routing - it grabs whatever is playing (RekordBox, Spotify, etc.). Turn on Do Not Disturb so notification dings don’t go out.</p>
           <h3>② Hardware controller / mixer</h3>
           <p>Route the controller’s <b>REC / USB record</b> output to the Mac and select that device. (Pioneer: set a USB out to MIX/REC OUT.) Or run its REC/booth out into an audio interface input and pick the interface.</p>
           <p style="margin-top:8px">Keep everything at <b>48 kHz</b> to avoid clicks.</p>
@@ -645,7 +1234,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     try {
       var d = document.createElement('div');
       d.id = '__ppBootFallback';
-      d.setAttribute('style', 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;' +
+      d.setAttribute('style', 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:var(--z-crash,2147483647);' +
         'display:flex;align-items:center;justify-content:center;background:#f5f5f7;' +
         'font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#1d1d1f');
       d.innerHTML = '<div style="max-width:340px;text-align:center;padding:28px 24px">' +
@@ -654,7 +1243,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         '<div style="font-size:13px;line-height:1.45;color:#6e6e73;margin-bottom:20px">Something got stuck ' +
         'while loading. Resetting clears saved settings on this Mac and reloads - your party ' +
         'stay intact.</div>' +
-        '<button id="__ppBootReset" type="button" style="font:inherit;font-size:14px;font-weight:590;' +
+        '<button id="__ppBootReset" type="button" style="font:inherit;font-size:14px;font-weight:600;' +
         'background:#0071e3;color:#fff;border:0;border-radius:980px;padding:10px 22px;cursor:pointer">' +
         'Reset &amp; Reload</button>' +
         '<div style="margin-top:12px"><a href="#" id="__ppBootRetry" ' +
@@ -1031,6 +1620,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     new QRCode($('qr'), { text, width:200, height:200, correctLevel: QRCode.CorrectLevel.M });
   }
   function renderGuestLink(s){
+    // keep the copyable link and the offline address in step with the status
+    if (s) setShareLinks((s.urls && s.urls.join) || (s.connection && s.connection.joinUrl) || '', s.lan);
     const secure = s ? s.llhlsRealCert === true : !!INITIAL_GUEST_URL;
     const statusUrl = s && typeof s.urls?.join === 'string' && s.urls.join.indexOf('https://') === 0
       ? s.urls.join
@@ -1052,7 +1643,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         ((mode === 'direct' || mode === 'local') ? ' ready'
         : ((mode === 'relay' || mode === 'no_path') ? ' relay' : ''));
       networkStatus.textContent = !s
-        ? 'Secure link ready. Checking this Wi-Fi.'
+        ? 'Scan the QR once with a phone to check this Wi-Fi.'
         : (mode === 'relay'
           ? 'Internet relay active.'
           : (mode === 'direct'
@@ -1061,7 +1652,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
               ? 'Local Wi-Fi connection. No internet needed.'
               : (mode === 'no_path'
                 ? 'Guests cannot reach the party on this Wi-Fi.'
-                : 'Scan once to check this Wi-Fi.'))));
+                : 'Scan the QR once with a phone to check this Wi-Fi.'))));
       renderQR(guestUrl);
       return;
     }
@@ -1082,9 +1673,59 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       (s && s.activation && s.activation.reason) ||
       'Waiting for the secure guest link to match this Mac on the current Wi-Fi.';
   }
+  // ---- the party link, copyable and shareable -----------------------
+  // A QR is only useful to someone already in the room. The link itself has to
+  // be liftable so the DJ can put it in a group chat.
+  function flash(btn, word){
+    const original = btn.dataset.label || btn.textContent.trim();
+    btn.dataset.label = original;
+    btn.classList.add('done');
+    const label = btn.querySelector('svg') ? null : btn;
+    if (label) label.textContent = word;
+    setTimeout(() => {
+      btn.classList.remove('done');
+      if (label) label.textContent = original;
+    }, 1400);
+  }
+  async function copyText(text, btn){
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      const field = document.createElement('textarea');
+      field.value = text; document.body.appendChild(field);
+      field.select(); try { document.execCommand('copy'); } catch (_) {}
+      field.remove();
+    }
+    flash(btn, 'Copied');
+  }
+  function setShareLinks(joinURL, lan){
+    const join = $('joinLinkField');
+    if (join && joinURL && join.value !== joinURL) join.value = joinURL;
+    const box = $('failsafe');
+    const ip = lan && lan.expectedIp;
+    const port = (lan && lan.guestPort) || 8443;
+    if (box) {
+      const usable = !!ip;
+      box.hidden = !usable;
+      if (usable) $('failsafeField').value = 'http://' + ip + ':' + port + '/';
+    }
+  }
+  $('copyLinkBtn').addEventListener('click', () => copyText($('joinLinkField').value, $('copyLinkBtn')));
+  $('copyFailsafeBtn').addEventListener('click', () => copyText($('failsafeField').value, $('copyFailsafeBtn')));
+  $('shareLinkBtn').addEventListener('click', async () => {
+    const url = $('joinLinkField').value;
+    if (!url) return;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Join the party', url }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    copyText(url, $('shareLinkBtn'));
+  });
+
   // Cached installs paint the QR during the first script pass. Status polling
   // enriches this state later but is not required to escape the spinner.
   renderGuestLink(null);
+  setShareLinks(INITIAL_GUEST_URL, null);
 
   // Connection-mode override. Server-authoritative and persisted, so a venue
   // that always needs the same choice is set once.
@@ -1126,7 +1767,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // DIRECT is the expected case and needs no banner. LOCAL is also a healthy
     // room, so it gets a quiet line rather than a warning: no internet is a fact
     // about the venue, not a fault.
-    if (connection.mode === 'direct') {
+    // The status line above already carries the mode. This banner is for a
+    // problem the DJ has to act on, not a second phrasing of a healthy room.
+    if (connection.mode === 'direct' || connection.mode === 'local' ||
+        connection.mode === 'checking' || !connection.mode) {
+      el.hidden = true;
+      return;
+    }
+    if (connection.mode === 'relay' && connection.relayConnected) {
       el.hidden = true;
       return;
     }
@@ -1146,6 +1794,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // QR readiness is the first and isolated status update. Unrelated console
       // rendering below cannot strand a ready link behind the initial spinner.
       renderGuestLink(s);
+      setPhase(s);
+      renderReadiness(s);
+      renderCounts(s);
+      renderStartStage(s);
       const st = s.broadcast.state;
       if (st !== lastState) djLog('bstate', { from: lastState, to: st, dev: s.broadcast.deviceName || '', bad: !!s.broadcast.captureBad });
       lastState = st;
@@ -1165,11 +1817,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const canStart = secureReady;
       if (!live && !canStart) {
         lb.textContent = '🔒 Setting up secure link…';
-        lb.className = 'golive go';
+        lb.className = 'golive go biggo';
         lb.disabled = true;
       } else {
-        lb.textContent = (st === 'starting') ? 'Starting Audio' : (live ? 'Stop Broadcasting' : 'Go Live');
-        lb.className = 'golive ' + (live ? 'stop' : 'go');
+        lb.textContent = (st === 'starting') ? 'Starting…' : (live ? 'Stop broadcast' : 'Start broadcast');
+        lb.className = 'golive biggo ' + (live ? 'stop' : 'go');
         lb.disabled = false;
       }
       // One HTTPS LL-HLS room target keeps every guest on the same timeline.
@@ -1241,9 +1893,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           }
           return '<div class="listener"><span class="lemoji">' + emoji + '</span><div class="lbody"><span class="lname">' + name + '</span>' + extra + '</div></div>';
         }).join('') : '<div class="muted" style="padding:8px 0">No listeners right now.</div>';
-        return '<section class="rostergroup"><div class="rostergrouphead"><span>🎧 ' + esc(group.dj || 'DJ') +
-          '</span><small>' + listeners.length + (listeners.length === 1 ? ' listener' : ' listeners') +
-          '</small></div>' + rows + '</section>';
+        // One DJ is the normal night; a header naming that one DJ above their own
+        // guest list is noise. The header earns its place only when two or more
+        // DJs are splitting the room.
+        const head = groups.length > 1
+          ? '<div class="rostergrouphead"><span>🎧 ' + esc(group.dj || 'DJ') +
+            '</span><small>' + listeners.length + (listeners.length === 1 ? ' listener' : ' listeners') + '</small></div>'
+          : '';
+        return '<section class="rostergroup">' + head + rows + '</section>';
       }).join('');
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
@@ -1578,10 +2235,31 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     let newestAct = 0, on = false;
     const linkTypes = [
       ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['bandcamp', 'Bandcamp'], ['mixcloud', 'Mixcloud'],
-      ['resident_advisor', 'Resident Advisor'], ['venmo', 'Venmo'], ['cashapp', 'Cash App'], ['paypal', 'PayPal']
+      ['resident_advisor', 'Resident Advisor'], ['website', 'Website']
     ];
     const linkTypeLabels = new Map(linkTypes);
-    const defaultLinkTypes = ['instagram', 'soundcloud', 'venmo'];
+    // Every service gets a row up front. Making the DJ press "Add another
+    // link" before they can type an Instagram handle is a step that buys
+    // nothing; an empty row simply is not published.
+    const defaultLinkTypes = linkTypes.map(([type]) => type);
+    const linkPlaceholders = new Map([
+      ['instagram','@username'], ['soundcloud','@username'], ['bandcamp','@username'],
+      ['mixcloud','@username'], ['resident_advisor','@username'], ['website','yoursite.com'],
+    ]);
+    const linkMarks = new Map([
+      ['instagram','#E4405F|M12 2.2c3.2 0 3.6 0 4.9.07 3.3.15 4.8 1.7 5 5 .06 1.3.07 1.7.07 4.9s0 3.6-.07 4.9c-.15 3.3-1.7 4.8-5 5-1.3.06-1.7.07-4.9.07s-3.6 0-4.9-.07c-3.3-.15-4.8-1.7-5-5C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.9c.15-3.3 1.7-4.8 5-5C8.4 2.2 8.8 2.2 12 2.2Zm0 3.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm0 10.9a4.3 4.3 0 1 1 0-8.6 4.3 4.3 0 0 1 0 8.6Zm6.9-11.1a1.55 1.55 0 1 1-3.1 0 1.55 1.55 0 0 1 3.1 0Z'],
+      ['soundcloud','#FF5500|M2 14.2c0-1 .3-1.9.9-2.6.2 1.7.2 3.5 0 5.2-.6-.7-.9-1.6-.9-2.6Zm2.3-3.6c.4 2.4.4 4.9 0 7.3h.9c.4-2.5.4-5 0-7.4h-.9Zm2.2-1.1c.5 2.9.5 5.9 0 8.8h.9c.5-3 .5-6 0-8.9h-.9Zm2.2-.9c.5 3.2.5 6.5 0 9.7h1c.5-3.2.5-6.5 0-9.8h-1Zm2.3-.5c.5 3.4.5 6.9 0 10.3h1V8.1h-1Zm2.4 10.3h7c1.6 0 2.9-1.3 2.9-2.9s-1.3-2.9-2.9-2.9c-.4 0-.8.1-1.1.2A5.5 5.5 0 0 0 13.4 8v10.4Z'],
+      ['bandcamp','#629AA9|M3 17.5 8.6 6.5H21L15.4 17.5H3Z'],
+      ['mixcloud','#5000FF|M2 14.5c0-1.4 1-2.5 2.4-2.5.5 0 1 .2 1.4.5A4.6 4.6 0 0 1 10.3 8c2 0 3.7 1.3 4.3 3.1.3-.1.6-.2 1-.2 1.3 0 2.4 1 2.6 2.3.5-.3 1-.4 1.5-.4 1.3 0 2.3 1 2.3 2.4s-1 2.4-2.3 2.4H4.4C3 17.6 2 16.5 2 14.5Z'],
+      ['resident_advisor','#FF3B30|M3 6h7.5c2.6 0 4.4 1.6 4.4 3.9 0 1.7-1 3-2.6 3.5L15.6 18h-3.3l-2.7-4.2H6.1V18H3V6Zm3.1 2.5v2.9h4c1 0 1.7-.6 1.7-1.5s-.7-1.4-1.7-1.4h-4ZM17 6h4v12h-4V6Z'],
+      ['website','#8E8E93|M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 9h-3a15 15 0 0 0-1.2-5.4A8 8 0 0 1 18.9 11ZM12 4.1c.8 1.1 1.6 3.3 1.8 6.9h-3.6c.2-3.6 1-5.8 1.8-6.9ZM5.1 11a8 8 0 0 1 4.2-5.4A15 15 0 0 0 8.1 11h-3Zm0 2h3a15 15 0 0 0 1.2 5.4A8 8 0 0 1 5.1 13Zm5 0h3.8c-.2 3.6-1 5.8-1.9 6.9-.8-1.1-1.6-3.3-1.9-6.9Zm4.6 5.4A15 15 0 0 0 15.9 13h3a8 8 0 0 1-4.2 5.4Z'],
+    ]);
+    function linkMark(type){
+      const raw = linkMarks.get(type);
+      if (!raw) return '';
+      const i = raw.indexOf('|');
+      return '<svg class="linkmark" viewBox="0 0 24 24" fill="' + raw.slice(0,i) + '" aria-hidden="true"><path d="' + raw.slice(i+1) + '"/></svg>';
+    }
     const reactionDefs = [
       ['fire', '🔥 fire'], ['heart', '❤️ heart'], ['louder', '🔊 louder'], ['quieter', '🔉 quieter'],
       ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
@@ -1592,6 +2270,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       return /^[a-z0-9][a-z0-9._-]{0,79}$/i.test(username) ? username : '';
     }
     function usernameURL(type, raw){
+      // A website is a whole address, not a handle: cleanUsername would strip
+      // the dots and slashes that make it an address at all.
+      if (type === 'website') {
+        const host = String(raw || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+        return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/.*)?$/i.test(host) ? 'https://' + host : '';
+      }
       const username = cleanUsername(raw);
       if (!username) return '';
       const encoded = encodeURIComponent(username);
@@ -1601,9 +2285,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         case 'bandcamp': return 'https://' + username.toLowerCase() + '.bandcamp.com/';
         case 'mixcloud': return 'https://www.mixcloud.com/' + encoded + '/';
         case 'resident_advisor': return 'https://ra.co/dj/' + encoded;
-        case 'venmo': return 'https://account.venmo.com/u/' + encoded;
-        case 'cashapp': return 'https://cash.app/$' + encoded;
-        case 'paypal': return 'https://paypal.me/' + encoded;
         default: return '';
       }
     }
@@ -1621,10 +2302,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           const i = parts.indexOf('dj');
           return cleanUsername(i >= 0 ? parts[i + 1] : parts[parts.length - 1]);
         }
-        if (link.type === 'venmo') {
-          const i = parts.indexOf('u');
-          return cleanUsername(i >= 0 ? parts[i + 1] : parts[parts.length - 1]);
-        }
+
         return cleanUsername(parts[parts.length - 1]);
       } catch (e) {
         return cleanUsername(link.url);
@@ -1643,22 +2321,25 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       return defaultLinkTypes.map(type => picked.get(type) || { type, url:'' }).concat(rest);
     }
     function linkRow(link){
+      const type = linkTypeLabels.has(link && link.type) ? link.type : 'instagram';
       const row = document.createElement('div');
       row.className = 'linkrow';
-      const sel = document.createElement('select');
-      sel.dataset.field = 'type';
-      for (const [value, label] of linkTypes) {
-        const opt = document.createElement('option');
-        opt.value = value; opt.textContent = label;
-        sel.appendChild(opt);
-      }
-      sel.value = linkTypeLabels.has(link && link.type) ? link.type : 'instagram';
+      row.dataset.type = type;
+      const mark = document.createElement('span');
+      mark.className = 'linkbrand';
+      mark.innerHTML = linkMark(type);
+      const name = document.createElement('span');
+      name.className = 'linkname';
+      name.textContent = linkTypeLabels.get(type);
       const username = document.createElement('input');
-      username.dataset.field = 'username'; username.type = 'text'; username.inputMode = 'text'; username.placeholder = '@username';
+      username.dataset.field = 'username'; username.type = 'text'; username.inputMode = 'text';
       username.autocapitalize = 'off'; username.autocomplete = 'off'; username.spellcheck = false; username.maxLength = 80; username.value = usernameFromLink(link);
-      const del = document.createElement('button');
-      del.type = 'button'; del.className = 'linkdel'; del.title = 'Remove link'; del.setAttribute('aria-label', 'Remove link'); del.textContent = '×';
-      row.appendChild(sel); row.appendChild(username); row.appendChild(del);
+      username.placeholder = linkPlaceholders.get(type) || '@username';
+      // A chip with a handle in it reads as set; an empty one reads as an offer.
+      const sync = () => row.classList.toggle('filled', !!username.value.trim());
+      username.addEventListener('input', sync);
+      sync();
+      row.appendChild(mark); row.appendChild(name); row.appendChild(username);
       return row;
     }
     function renderLinkEditor(links){
@@ -1680,14 +2361,21 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const bioInput = $('profileBio');
       if (bioInput && document.activeElement !== bioInput) bioInput.value = eventMeta.bio;
       const photo = $('profilePhoto');
-      if (photo) photo.src = eventMeta.avatar ? eventMeta.avatar + '?v=' + encodeURIComponent(eventMeta.avatar) : '/art-512.png';
-      $('profilePhotoRemoveBtn').hidden = !eventMeta.avatar;
+      const has = !!eventMeta.avatar;
+      if (photo) {
+        photo.hidden = !has;
+        if (has) photo.src = eventMeta.avatar + '?v=' + encodeURIComponent(eventMeta.avatar);
+      }
+      // The wrapper carries the state so the silhouette, the + and the remove
+      // control all follow from one class instead of three separate toggles.
+      document.querySelector('.profileimagewrap').classList.toggle('has-photo', has);
+      $('profilePhotoRemoveBtn').hidden = !has;
     }
     function collectLinks(){
       const links = [];
       let bad = false;
       for (const row of $('linkRows').querySelectorAll('.linkrow')) {
-        const type = row.querySelector('[data-field="type"]').value;
+        const type = row.dataset.type;
         const input = row.querySelector('[data-field="username"]');
         const raw = input.value.trim();
         input.classList.remove('bad');
@@ -1733,12 +2421,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const def = reactionDefs.find(([key]) => key === top.key);
       $('djReactionSpike').textContent = (def ? def[1] : top.key) + ' ×' + top.n + ' just now';
     }
-    $('addLinkBtn').addEventListener('click', () => {
-      $('linkRows').appendChild(linkRow({ type:'instagram', url:'' }));
-      const rows = $('linkRows').querySelectorAll('.linkrow');
-      const last = rows[rows.length - 1];
-      if (last) last.querySelector('[data-field="username"]').focus();
-    });
     $('linkRows').addEventListener('click', (e) => {
       const btn = e.target && e.target.closest && e.target.closest('.linkdel');
       if (!btn) return;
@@ -1764,7 +2446,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         $('saveLinksBtn').disabled = false;
       }
     });
-    $('profilePhotoBtn').addEventListener('click', () => $('profilePhotoFile').click());
+    document.querySelector('.profileimagewrap').addEventListener('click', (event) => {
+      // the X is inside the circle; it must not also open the file picker
+      if (event.target.closest('#profilePhotoRemoveBtn')) return;
+      $('profilePhotoFile').click();
+    });
     $('profilePhotoFile').addEventListener('change', async () => {
       const file = $('profilePhotoFile').files && $('profilePhotoFile').files[0];
       if (!file) return;
@@ -1782,6 +2468,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       } catch (error) {
         status.textContent = error.message || 'upload failed';
       }
+    });
+    $('profilePhoto').addEventListener('error', () => {
+      const wrap = document.querySelector('.profileimagewrap');
+      if (wrap) wrap.classList.remove('has-photo');
+      $('profilePhoto').hidden = true;
+      $('profileStatus').textContent = 'The profile photo failed to load - upload it again.';
     });
     $('profilePhotoRemoveBtn').addEventListener('click', async () => {
       const status = $('profileStatus');
@@ -1894,10 +2586,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const media = (p.media || []).map(m => {
         const src = m.url || ('/media/' + encodeURIComponent(m.id));
         const thumb = m.thumb || src;
-        if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(thumb) + '" data-fallback-src="' + src + '" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:8px" alt=""></a>';
+        if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(thumb) + '" data-fallback-src="' + src + '" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:var(--r-sm)" alt=""></a>';
         if (m.type === 'video') {
-          if (m.thumb) return '<a class="wthumb" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(m.thumb) + '" data-fallback-video="' + src + '" loading="lazy" style="width:180px;height:110px;object-fit:cover;border-radius:8px;background:var(--fill)" alt=""><span class="wplay">▶</span></a>';
-          return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:8px"></video>';
+          if (m.thumb) return '<a class="wthumb" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(m.thumb) + '" data-fallback-video="' + src + '" loading="lazy" style="width:180px;height:110px;object-fit:cover;border-radius:var(--r-sm);background:var(--fill)" alt=""><span class="wplay">▶</span></a>';
+          return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:var(--r-sm)"></video>';
         }
         return '<audio src="' + src + '" controls preload="none" style="width:220px"></audio>';
       }).join(' ');
@@ -1914,7 +2606,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       el.dataset.id = p.id; el.dataset.ts = p.ts;
       el.innerHTML = '<div style="display:flex;gap:7px;align-items:baseline">' +
         '<span>' + escT(p.emoji) + '</span><b>' + escT(p.author || 'someone') + '</b>' +
-        (p.dj ? '<span style="background:var(--accent);color:#fff;border-radius:5px;font-size:9px;font-weight:800;padding:1px 5px">DJ</span>' : '') +
+        (p.dj ? '<span style="background:var(--accent);color:#fff;border-radius:var(--r-xs);font-size:9px;font-weight:800;padding:1px 5px">DJ</span>' : '') +
         '<span class="wverb">' + postVerb(p) + '</span><span class="muted" style="font-size:11px">' + time + '</span>' +
         stateBadge(stateOf(p)) +
         '<span style="margin-left:auto;display:flex;gap:6px;align-items:center">' +
@@ -2074,13 +2766,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
         if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
-        const countParts = [
-          (data.total || 0) + (data.total === 1 ? ' post' : ' posts'),
-          (data.photos || 0) + (data.photos === 1 ? ' photo' : ' photos'),
-          (data.videos || 0) + (data.videos === 1 ? ' video' : ' videos')
-        ];
-        if (data.audio) countParts.push(data.audio + (data.audio === 1 ? ' audio file' : ' audio files'));
-        $('eventCounts').textContent = countParts.join(' · ');
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderLinkEditor(data.links || []);
@@ -2216,7 +2901,181 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     $('loginItem').onchange = () => window.webkit?.messageHandlers?.pp?.postMessage({ action:'setLoginItem', on: $('loginItem').checked });
     window.webkit?.messageHandlers?.pp?.postMessage({ action:'ready', device: selectedCaptureDevice() });
   }
+
+  // ---- autosave -------------------------------------------------------
+  // A Mac app does not ask you to press Save. The existing handlers are the
+  // save path; they stay, the buttons just stop being something to press.
+  (function(){
+    const debounce = (fn, ms) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
+    const commit = (id) => debounce(() => { const b = $(id); if (b && !b.disabled) b.click(); }, 700);
+    const saveProfile = commit('saveProfileBtn');
+    const saveLinks = commit('saveLinksBtn');
+    ['profileName','profileBio'].forEach((id) => {
+      const el = $(id); if (!el) return;
+      el.addEventListener('input', saveProfile);
+      el.addEventListener('blur', () => { const b = $('saveProfileBtn'); if (b && !b.disabled) b.click(); });
+    });
+    const rows = $('linkRows');
+    if (rows) {
+      rows.addEventListener('input', saveLinks);
+      rows.addEventListener('focusout', () => { const b = $('saveLinksBtn'); if (b && !b.disabled) b.click(); });
+    }
+  })();
+
+  // ---- lifecycle: prepare -> live -> recap ---------------------------
+  // One composition that changes character. The phase is derived from the
+  // broadcast state, never set by hand, so the window cannot disagree with
+  // what the Mac is actually doing.
+  let liveSince = 0;
+  function setPhase(status){
+    const state = status && status.broadcast && status.broadcast.state;
+    const live = state === 'live';
+    const phase = live ? 'live' : (liveSince && !live ? 'recap' : 'prepare');
+    if (live && !liveSince) liveSince = Date.now();
+    document.body.dataset.phase = phase;
+  }
+  // While a start is under way, say WHICH stage it is in and how long it has
+  // been - "Starting Audio" alone sat for many seconds with no sign of
+  // progress. Stages come from observable facts only: broadcast state, the
+  // relay serving, and the server's startup trace.
+  function renderStartStage(s){
+    const el = $('startStage'), txt = $('startStageText');
+    if (!el || !txt) return;
+    const b = (s && s.broadcast) || {};
+    const c = (s && s.connection) || {};
+    const rl = (s && s.relay) || {};
+    const t = (s && s.startup) || null;
+    const since = t && t.requestedMs ? Math.max(0, Math.round((Date.now() - t.requestedMs) / 1000)) : 0;
+    const secs = since >= 4 ? ' ' + since + 's' : '';
+    let msg = '';
+    if (b.state === 'starting') {
+      // A silent Mac delivers no frames, and the engine refuses to claim live
+      // while delivering nothing - so a long 'starting' means exactly one
+      // thing: nothing is playing yet. Say that, because the DJ's natural flow
+      // is start-the-channel-first, press-play-second.
+      if (since >= 6 && t && t.engineMs) {
+        msg = 'Waiting for sound from the Mac - press play';
+      } else {
+        msg = (t && !t.engineMs ? 'Preparing the audio engine' : 'Starting audio capture') + secs;
+      }
+    } else if (b.state === 'live' && c.mode === 'relay' && !rl.fresh) {
+      msg = 'Connecting to the internet relay' + secs;
+    } else if (b.state === 'live' && c.mode === 'relay' && rl.pushing === false && (rl.pushFailures || 0) >= 3) {
+      // The readiness strip hides during the live phase, so the push failing
+      // has to say so here, next to the live control, or it says so nowhere.
+      msg = 'Internet relay is failing - reconnecting';
+    }
+    el.hidden = !msg;
+    if (msg) txt.textContent = msg;
+  }
+  function tickClock(){
+    if (document.body.dataset.phase !== 'live' || !liveSince) return;
+    const secs = Math.floor((Date.now() - liveSince) / 1000);
+    const h = Math.floor(secs/3600), m = Math.floor(secs%3600/60), sec = secs%60;
+    const pad = (n) => String(n).padStart(2,'0');
+    const el = $('liveClock');
+    if (el) el.textContent = h ? h + ':' + pad(m) + ':' + pad(sec) : m + ':' + pad(sec);
+  }
+  setInterval(tickClock, 1000);
+
+  // Readiness: the four preflight facts, stated plainly.
+  function setReady(id, state, text){
+    const el = $(id); if (!el) return;
+    el.textContent = text;
+    el.closest('.ready').dataset.state = state;
+  }
+  function renderReadiness(s){
+    const b = (s && s.broadcast) || {};
+    const capturing = b.state === 'live' || b.state === 'starting';
+    setReady('readyAudio', b.captureBad ? 'bad' : (capturing ? 'ok' : 'idle'),
+      b.captureBad ? 'No signal' : (capturing ? (b.deviceName || 'Receiving') : 'Ready'));
+    const c = (s && s.connection) || {};
+    const lanNow = (s && s.lan) || {};
+    const relayNow = (s && s.relay) || {};
+    const netOk = c.mode === 'direct' || c.mode === 'local';
+    // Client/AP isolation: the venue's Wi-Fi refuses to let two devices on it
+    // reach each other. The probe records `probe_isolated` when the real
+    // phone-to-Mac path fails while this Mac's own side is healthy. Guests
+    // listening over the relay with none on the LAN is the same fact proven
+    // rather than suspected, so it earns the stronger wording.
+    const relayListeners = relayNow.fresh ? (relayNow.listeners || 0) : 0;
+    const isolationProven = relayListeners > 0 && (lanNow.lanListeners || 0) === 0;
+    const isolationLikely = c.reason === 'probe_isolated' ||
+      (c.mode === 'relay' && c.internetOk !== false && lanNow.state === 'ready');
+    // Bonjour early warning, before any guest has scanned: other devices are
+    // advertising on this Wi-Fi but none of their advertised ports answer -
+    // their multicast leaks through while unicast is blocked.
+    const iso = lanNow.isolation || {};
+    const isolationEarly = !isolationProven && !isolationLikely && iso.state === 'suspect';
+    // Relay media push health. Presence and the media push are separate planes
+    // that fail separately: a set once ran for hours with presence "fresh"
+    // while the push failed every cycle and relayed guests had a dead page.
+    // The push failing IS the party failing for every internet guest, so it
+    // outranks every other network wording while it lasts.
+    const pushBroken = c.mode === 'relay' && relayNow.pushing === false && (relayNow.pushFailures || 0) >= 3;
+    setReady('readyNetwork', pushBroken ? 'bad' : netOk ? 'ok' : (c.mode === 'no_path' ? 'bad' : 'warn'),
+      pushBroken ? 'Internet relay is failing'
+      : c.mode === 'direct' ? 'Direct on this Wi-Fi'
+      : c.mode === 'local' ? 'Local, no internet needed'
+      : isolationProven ? 'This Wi-Fi separates devices'
+      : isolationLikely ? 'Guests join over the internet'
+      : isolationEarly ? 'This Wi-Fi may separate devices'
+      : c.mode === 'relay' ? 'Via internet relay'
+      : c.mode === 'no_path' ? 'Guests cannot reach this Mac'
+      : c.reason === 'awaiting_probe' ? 'Scan the QR once to check' : 'Checking');
+    // The detail names what was observed and both causes, because a failed
+    // probe cannot tell AP isolation apart from the macOS firewall blocking
+    // incoming connections - the evidence is identical.
+    const note = $('isolationNote');
+    if (note) {
+      const show = pushBroken || isolationProven || isolationLikely || isolationEarly;
+      note.hidden = !show;
+      if (show) {
+        note.textContent = pushBroken
+          ? 'This Mac cannot push the stream to the internet relay right now' + (relayNow.pushError ? ' (' + relayNow.pushError + ')' : '') + '. It retries continuously - if this persists, check this network’s internet connection.'
+          : isolationProven
+          ? 'Guests are listening, but none of them directly on this Wi-Fi, so the network is keeping devices apart. Everyone is joining over the internet instead. Music is unaffected; guest photos are slower and videos are off.'
+          : isolationLikely
+          ? 'Guests could not reach this Mac directly on this Wi-Fi. Either the network separates devices from each other, or macOS is blocking incoming connections - check System Settings > Network > Firewall. Guests will join over the internet meanwhile.'
+          : 'Other devices on this Wi-Fi are announcing themselves, but none of them can be reached, which usually means the network keeps devices apart. If so, guests will join over the internet automatically when they scan.';
+      }
+    }
+    const lan = (s && s.lan) || {};
+    setReady('readyGuest', lan.state === 'confirmed' || lan.state === 'ready' ? 'ok' : 'warn',
+      lan.state === 'confirmed' ? 'A guest has connected'
+      : lan.state === 'ready' ? 'Reachable' : 'Checking');
+  }
+
+  // The host is not a guest. Listener count is listeners.
+  function renderCounts(s){
+    const roster = (s && s.roster) || [];
+    const relay = (s && s.relay) || {};
+    const listening = roster.length + (relay.fresh ? (relay.listeners || 0) : 0);
+    const el = $('liveCount');
+    if (el) el.textContent = listening + (listening === 1 ? ' listening' : ' listening');
+    const host = $('posterHost');
+    if (host && window.eventMeta) host.textContent = eventMeta.host && eventMeta.host !== 'the DJ' ? eventMeta.host : '';
+  }
+
+  // The title is the field. Click the words and type; commit on blur or Enter.
+  (function(){
+    const el = $('titleEdit');
+    if (!el) return;
+    const commit = () => {
+      const name = el.textContent.trim().slice(0, 80);
+      if (name === (eventMeta.title || '')) return;
+      const input = $('eventTitleInput');
+      if (input) input.value = name;
+      const save = $('eventEditSaveBtn');
+      if (save && !save.disabled) save.click();
+    };
+    el.addEventListener('blur', commit);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+      if (e.key === 'Escape') { el.textContent = eventMeta.title || ''; el.blur(); }
+    });
+  })();
 </script>
-<div id="appver" style="position:fixed;left:12px;bottom:8px;font-size:11px;color:var(--label-tertiary);z-index:5"></div>
+<footer class="appfooter"><span id="appver"></span></footer>
 </body>
 </html>

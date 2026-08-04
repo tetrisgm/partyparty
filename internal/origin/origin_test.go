@@ -578,3 +578,62 @@ func TestOriginGzipsThePageButNeverMedia(t *testing.T) {
 		t.Fatal("media must never be recompressed on the serving path")
 	}
 }
+
+// A guest who scans before the DJ goes live reaches a registered room whose
+// index.html has not been published yet. That request must produce the
+// waiting page, not the raw words "not in the live window" as the entire
+// response - which is exactly what a real guest saw.
+func TestPreLiveRootServesWaitingPage(t *testing.T) {
+	h, store := testHandler()
+	store.Room(roomToken, true) // registered, nothing published
+
+	w := get(t, h, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("pre-live root status = %d, want 200", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "Connecting to the DJ") {
+		t.Fatalf("pre-live root body = %q, want the waiting page", body[:min(len(body), 80)])
+	}
+	// Media requests keep the honest 404 - the listener handles those itself.
+	if w := get(t, h, "part42.mp4"); w.Code != http.StatusNotFound {
+		t.Fatalf("missing media status = %d, want 404", w.Code)
+	}
+}
+
+// TestStickyPinsSurviveWindowAndPlaylistPins: page assets (avatar, cover,
+// fonts) are uploaded once with X-PP-Pin and referenced by the guest page for
+// the whole set. They must survive both the rolling live-window eviction AND
+// the playlist PUT, whose Pin() call replaces the playlist-driven pin set on
+// every publish - which would otherwise unpin them within one cycle.
+func TestStickyPinsSurviveWindowAndPlaylistPins(t *testing.T) {
+	h, store := testHandler()
+
+	req := httptest.NewRequest(http.MethodPut, "/r/"+roomToken+"/dj-avatar", strings.NewReader("jpeg-bytes"))
+	req.Header.Set("Content-Type", "image/jpeg")
+	req.Header.Set("X-PP-Pin", "1")
+	req.Header.Set("Authorization", "Bearer "+publishToken)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("pinned asset PUT: %d", w.Code)
+	}
+
+	// A whole night of playlist publishes and rolling media.
+	for i := 0; i < maxMediaPerRoom+50; i++ {
+		put(t, h, "part"+itoa(i)+".mp4", "x", "video/mp4", publishToken)
+		if i%64 == 0 {
+			put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+		}
+	}
+
+	if w := get(t, h, "dj-avatar"); w.Code != http.StatusOK || w.Body.String() != "jpeg-bytes" {
+		t.Fatalf("sticky asset evicted or corrupted: code=%d", w.Code)
+	}
+	room, _ := store.Room(roomToken, false)
+	room.mu.Lock()
+	stillPinned := room.pinned["dj-avatar"]
+	room.mu.Unlock()
+	if !stillPinned {
+		t.Fatal("playlist Pin() replaced the sticky pin")
+	}
+}

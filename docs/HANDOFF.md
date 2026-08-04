@@ -1,27 +1,18 @@
-# partyparty handoff
+# PartyParty.party handoff
 
 ## Current position
 
-Guest page: DJ snap-reel plus a layout that works on every screen, and a repo-wide dead-code pass.
+2026-08-03 live-test failures all root-caused and fixed, verified end-to-end on the real relay. (1) ppcapture silence keepalive: silent Mac now goes live in 1.2s (was 34.5s-or-forever); pushSilence never advances totalPushed so stall/hog detection is unchanged; supervised go-live ran and passed. (2) Contribute media plane: media-playlist name cached (was master-fetch per 50ms = MediaMTX session churn flooding the log ring); failed cycle drops cache and re-masters (heals cert-hotswap session invalidation in one cycle); 3 failures reset jar+sent+page+assets; heal_test.go pins both. (3) Relay guests get page assets: dj-avatar, event cover, both Geist fonts pushed pinned (X-PP-Pin sticky pins on origin, survive playlist Pin replacement + eviction, tested); re-push on PageAssetsRev change. (4) Honesty: contribute.Snapshot in /api/status relay map (pushing/pushFailures/pushError); console readiness + live-phase stage line show relay push failure; presence proved able to stay fresh for hours while media push was dead. (5) Origin release 20260804-082602 deployed (waiting page for pre-live/unknown index.html + sticky pins). (6) diagPath in /api/status; session-log 'missing' was a TCC mirage (Claude shell lists container dirs as empty; logs existed all along). (7) Console: DJ profile unfolded per owner (no disclosure/headings). All local verification green: gofmt/vet/build, 11 Go pkgs incl. real-MediaMTX integration, both web suites, console zero JS errors, full relay chain live (page 204KB, status JSON, avatar 194KB, cover, fonts, stream.m3u8 from a silent Mac). App rebuilt/installed; owner had closed the app, state restored to quit. No Apple upload.
 
-UI (web/listener.html): DJ cards are a snap reel where snapping moves focus and the switch fires only once the reel settles (REEL_SETTLE_MS=620) — committing per card crossed would rebuild the HLS session and gap the music each time. Removed the "Party feed" heading; the attach control now reads "Add photos"; dropped the duplicate "Audio stays on with screen locked" line from the player bar; artworkSource() no longer substitutes the party cover for an unrecognised track (the in-page sleeve hides, the lock screen keeps the cover); added an expand chevron; the bottom bar is edge-to-edge and flush; an "X people listening" row with avatars and View all sits under the DJ card; the event name and city moved onto the cover and the QR/Share controls are labelled.
-
-Responsive: the page was a phone shell capped at 720px, so a wide window showed a narrow strip under a full-width bar, and a short window (iPad landscape, Fold open) showed almost nothing but cover art. Added bands at <=370px, >=600px, >=760px and >=1024px sharing one --measure so every full-bleed band lines up; the cover takes an explicit height rather than a capped aspect-ratio (aspect-ratio + max-height shrinks the WIDTH, which had the banner covering two thirds of a wide window) and its stale max-width:900px is overridden; the touch reel drops its centring padding, depth cues and dots from 760px up; the composer stacks on very narrow screens so the comment field keeps its width. Measured at 13 sizes from 280x653 to 1920x1080: cover full-width everywhere at 25-47% of viewport height, bar full-width, Post always fits, no horizontal scroll.
-
-Cleanup: dead CSS removed and same-context rules merged (listener 500->359 live rules, dj 438->311 including the auth-*/authgate cluster orphaned when the account system was removed), plus wall.html and site/index.html; 98 lines of the superseded WebSocket-tunnel relay removed from cloudflare/worker.js by cascading elimination; 4 unreferenced Go functions; PLAN.md and FINDINGS.md folded into AGENTS.md; docs/RELEASING.md and the scripts/build-app-store.sh shim deleted; DISTRIBUTION.md de-duplicated; HANDOFF.md rewritten. Every CSS removal proven inert by computed-style diffing against the pristine files at nine breakpoints: zero differences. scripts/test-stream-contract.mjs now locks in the new UI so it cannot silently regress.
-
-Also carries the prior session's relay, set-report and Apple-lane work. Workshop full lane green on the build worker (exit 0).
-
-Workshop checkpoint: `1785782540403-854bb93d` (product).
+Workshop checkpoint: `1785811321983-8d2922c3` (investigation).
 
 ## Next concrete step
 
-Finish through Workshop. Nothing is installable on TestFlight (all 22 builds expired by the Aug 3 cleanup), so getting Seth or anyone else a build needs a new upload, which is an explicit owner decision and was not taken here.
+Owner: re-upload profile photo (current on-disk avatar is the Jul-28 diagnostic fixture). Next real go-live with a phone confirms relay guests see photo/header/fonts and that ShazamKit surfaces a track once real music plays. Then fix the Windows worker's elevated SSH token (key in administrators_authorized_keys) so workshop_verify_task can run, and land the ~16-file uncommitted change-set through guarded integration.
 
 ## Blockers
 
-- scripts/package-app-store.sh refuses to build on prerelease macOS and this Mac is on macOS 27.0 seed 26A5388g, so Store packages must go through the app-store.yml workflow on the macos-15 runner.
-- TestFlight Internal testing has zero testers, so every round waits on Apple's external beta review. Seth Finkin (seth.finkin@gmail.com) is an ACCEPTED tester in the external Party testing group.
+- Windows build worker rejects all jobs: Invoke-PcBuild.ps1 throws 'Workshop builds must not run with Administrator authority' - SSH key sits in administrators_authorized_keys giving an elevated token; owner-side fix required
 
 ## Ruled out
 
@@ -32,6 +23,16 @@ Finish through Workshop. Nothing is installable on TestFlight (all 22 builds exp
 - Commit-on-snap for the DJ reel: selectDJ() rebuilds the HLS session, so a flick past four DJs would mean four rebuilds and four audible gaps. Snap moves focus; the switch fires on settle.
 - Capping the cover with aspect-ratio + max-height: the browser shrinks the WIDTH to keep the ratio, which left the banner covering two thirds of a wide window. Use an explicit height with object-fit:cover on the img.
 - Splitting a CSS selector list on commas without first excluding comments: a comma inside a comment stranded the closing */ in a fragment that was dropped as dead, turning the rest of the stylesheet into one runaway comment and silently killing ~21 rules.
+- React + Tailwind for the console: the app is a single vanilla HTML file embedded in the Go binary and rendered in a WKWebView, with no bundler and no internet at runtime. Emitting React/Tailwind would be a framework migration plus an offline-vendored build step, and would discard ~1,400 lines of working JS driving the QR, status polling, capture permissions and the feed.
+- A human-readable join address like party.local/sunset: guest playback is HTTPS and the certificate must validate for the hostname, and an mDNS .local name can never hold a public cert. The readable address already exists as the direct hostname; only relay mode shows the opaque r-<token> URL.
+- A start/end chime: capture is Mac system output, so any UI sound plays through that output and lands in the guests' stream. 'Subtle sound' and 'never enters program audio' are mutually exclusive under system-output capture.
+- "The container is empty" as evidence: a shell without Full Disk Access LISTS ~/Library/Containers/<id>/Data directories as empty and reads files as "Operation not permitted" (TCC). The 2026-08-03 session logs were "missing" all night while sitting exactly where diag.Open put them. Prove absence with a file read, never with ls; /api/status.diagPath now names the live path.
+- Probing the r-<token>.partyparty.party URL with curl to judge room health: the Worker serves its relayBootstrap (a probe-then-redirect page) for EVERY path on r- hosts, so curl sees 4.4KB of HTML regardless of room state. The room lives at <token>.relay.partyparty.party; judge health there.
+- Treating relay presence as proof the relay works: presence (RunPlane) and media push (Run) are separate planes with separate failure modes. Fresh presence proves only that snapshots flow.
+- Counting HTML tags to prove structure: balanced totals do not prove nesting. </details></div> where </div></details> was meant balances perfectly and silently force-closes an ancestor, landing whole panes inside unrelated elements with no syntax error. The contract test now walks the stack in document order instead.
+- Presence freshness as relay health: RunPlane and the media cycle are separate planes; presence stayed fresh for hours while the media push was dead
+- Judging room health via the r-<token> URL with curl: the Worker serves its relayBootstrap for every path on r- hosts; judge at <token>.relay… or /__pp/health on the box
+- Concluding files are missing from ls of ~/Library/Containers/...: TCC shows those dirs as empty to a no-FDA shell; prove absence by file read
 
 ## Owed
 

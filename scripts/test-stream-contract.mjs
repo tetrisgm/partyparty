@@ -24,6 +24,39 @@ function checkInlineScripts(relative) {
   });
 }
 
+// Nesting, not just counts. Balanced totals prove nothing: `</details></div>`
+// where `</div></details>` was meant still balances, and the browser silently
+// force-closes the ancestor - whole panes then land inside unrelated elements
+// with no syntax error anywhere. Walk the stack in document order instead.
+const VOID = new Set(['input','img','br','hr','meta','link','source','path','circle','rect',
+  'svg','use','area','col','embed','track','wbr','polygon','line','ellipse','defs','stop','g']);
+function checkNesting(relative) {
+  const blank = (m) => [...m].map((c) => (c === '\n' ? '\n' : ' ')).join('');
+  const html = read(relative)
+    .replace(/<script[\s\S]*?<\/script>/gi, blank)
+    .replace(/<style[\s\S]*?<\/style>/gi, blank)
+    .replace(/<!--[\s\S]*?-->/g, blank);
+  const stack = [];
+  const tag = /<(\/?)([a-zA-Z][\w-]*)([^>]*?)(\/?)>/g;
+  let m;
+  while ((m = tag.exec(html))) {
+    const [, close, rawName, , selfClose] = m;
+    const name = rawName.toLowerCase();
+    if (VOID.has(name) || selfClose) continue;
+    const line = html.slice(0, m.index).split('\n').length;
+    if (!close) { stack.push({ name, line }); continue; }
+    const top = stack.pop();
+    assert.ok(top, `${relative}:${line} stray </${name}>`);
+    assert.equal(top.name, name,
+      `${relative}:${line} </${name}> closes out of order - innermost open is <${top.name}> from line ${top.line}`);
+  }
+  assert.deepEqual(stack.map((t) => `${t.name}@${t.line}`), [], `${relative}: tags left unclosed`);
+}
+
+checkNesting('web/listener.html');
+checkNesting('web/dj.html');
+checkNesting('web/wall.html');
+
 checkInlineScripts('web/listener.html');
 checkInlineScripts('web/dj.html');
 
@@ -107,7 +140,8 @@ assert.match(listener, /navigator\.mediaSession\.setActionHandler\('play',[\s\S]
 assert.match(listener, /navigator\.mediaSession\.setActionHandler\('pause',[\s\S]*?pauseGuest\(\)/);
 assert.match(listener, /function updateMediaSessionMetadata\(\)/);
 assert.match(listener, /mediaSessionMetadataSignature/);
-assert.match(listener, /venmo:\/\/paycharge\?txn=pay&recipients=/);
+// Venmo is gone from the product; monetisation will be its own thing.
+assert.doesNotMatch(listener, /venmo/i);
 assert.match(listener, /data-web-fallback|dataset\.webFallback/);
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
@@ -120,9 +154,60 @@ assert.deepEqual(
   'DJ console JavaScript references an element that is no longer in the page',
 );
 assert.match(dj, />About You</);
-assert.match(dj, />Event Details</);
-assert.match(dj, /Add another link/);
-assert.match(dj, /https:\/\/account\.venmo\.com\/u\//);
+// The event's own name is the headline, with nothing above it: "Event Details"
+// was a generic label outranking the one thing that identifies the party, and
+// a "Your event" chip over the name said the same thing twice.
+assert.doesNotMatch(dj, />Event Details</);
+assert.doesNotMatch(dj, /class="eyebrow"/);
+assert.match(dj, /class="ename"/);
+// One measure down the column, and it stretches with the window: a fixed
+// column parked between two empty rails is not responsive.
+assert.match(dj, /--measure:min\(\d+px,100%\)/);
+assert.match(dj, /\.abinner\{max-width:var\(--measure\)/);
+assert.match(dj, /\.page\{[^}]*max-width:var\(--measure\)/);
+assert.match(dj, /\.eventcover\{[^}]*margin-inline:0/);
+// The version is a footer, not a sticker floating over the page.
+assert.match(dj, /<footer class="appfooter">/);
+assert.doesNotMatch(dj, /id="appver" style="position:fixed/);
+// The QR sits under the name with its explanation beside it, not in a tall
+// right-hand rail that stranded the title in whitespace.
+assert.match(dj, /class="event-share"/);
+assert.match(dj, /\.event-share\{[^}]*grid-template-columns:200px/);
+// The photo is the control; a separate "Choose profile photo" button restated
+// what the image already affords.
+assert.match(dj, /class="profilephotopick"/);
+assert.doesNotMatch(dj, />Choose profile photo</);
+// No tally of posts/photos/videos over the composer, and Venmo is not offered.
+assert.doesNotMatch(dj, /id="eventCounts"/);
+// Venmo is no longer offered in the picker; links a DJ already saved still
+// render, because silently breaking those is a worse change than removing it.
+assert.doesNotMatch(dj, /venmo/i);
+assert.doesNotMatch(dj, /cashapp|paypal/i);
+assert.match(dj, /\['website', 'Website'\]/);
+// The console has one radius scale, one elevation scale and one motion curve.
+// Raw px radii and the browser-default `ease` are what made it read as dated.
+assert.match(dj, /--curve:cubic-bezier/);
+const djCSS = dj.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+assert.doesNotMatch(djCSS.replace(/--r-pill:\d+px/, ''), /border-radius:\d+px/);
+assert.doesNotMatch(djCSS, /\d+m?s\s+ease[;}\s]/);
+// Every control answers the press itself, not just hover.
+assert.match(dj, /:active\{transform:scale\(\.97\)/);
+// Linktree's shape: one row per service with its brand mark, every service
+// present up front. Making the DJ press "Add another link" before typing a
+// handle was a step that bought nothing.
+assert.doesNotMatch(dj, /Add another link/);
+assert.match(dj, /mark\.className = 'linkbrand'/);
+assert.match(dj, /\.linkbrand\{/);
+assert.match(dj, /const defaultLinkTypes = linkTypes\.map/);
+// The party link is liftable, and the offline address stays folded away.
+assert.match(dj, /id="joinLinkField"/);
+assert.match(dj, /id="copyLinkBtn"/);
+assert.match(dj, /id="shareLinkBtn"/);
+assert.match(dj, /<details class="failsafe"/);
+// An empty avatar has to read as a profile photo, and the whole circle is the
+// target for setting one.
+assert.match(dj, /id="profileEmpty"/);
+assert.match(dj, /class="profileplus"/);
 assert.match(dj, /id="profileName"/);
 assert.match(dj, /id="profilePhotoRemoveBtn"/);
 assert.doesNotMatch(dj, /Guests connected to the LAN room/);
@@ -148,15 +233,40 @@ assert.doesNotMatch(dj, /id="setupCard"/);
 assert.match(dj, /typeof s\.urls\?\.join === 'string'/);
 assert.match(dj, /const mode = s && s\.connection && s\.connection\.mode \|\| 'checking';/);
 assert.match(dj, /const linkReady = !!guestUrl && secure;/);
-assert.match(dj, /Scan once to check this Wi-Fi\./);
+// Client/AP isolation is named when it happens. The server already records
+// `probe_isolated`; relay listeners with zero LAN listeners is the same fact
+// proven rather than suspected. Relay mode ALONE is not isolation - if guests
+// are also reaching the Mac directly the network is fine and the app must not
+// accuse it.
+assert.match(dj, /const isolationProven = relayListeners > 0 && \(lanNow\.lanListeners \|\| 0\) === 0;/);
+assert.match(dj, /c\.reason === 'probe_isolated'/);
+assert.match(dj, /This Wi-Fi separates devices/);
+assert.match(dj, /id="isolationNote"/);
+// A failed probe cannot tell AP isolation from the macOS firewall; the copy
+// must name both rather than assert one.
+assert.match(dj, /macOS is blocking incoming connections/);
+// The Bonjour early warning fires only on the multicast-leaks signature, and
+// never once the probe or listener split has given a real answer.
+assert.match(dj, /const isolationEarly = !isolationProven && !isolationLikely && iso\.state === 'suspect';/);
+assert.match(dj, /This Wi-Fi may separate devices/);
+
+// One line, not three. The lede says what the QR is for; the status line says
+// only what the status is; the banner appears only for a problem to act on.
+assert.doesNotMatch(dj, /Scan once to check this Wi-Fi/);
+assert.match(dj, /Guests scan this to join the party\./);
 assert.match(dj, /Internet relay active\./);
 assert.match(dj, /Direct Wi-Fi connection\./);
 assert.match(dj, /function renderConnectionState\(connection\)/);
 assert.match(dj, /Reconnecting the internet relay now\./);
 assert.doesNotMatch(dj, /const dnsPublished =/);
-assert.match(dj, /\.spin16\{animation:pp-spin 1\.4s linear infinite!important\}/);
-assert.match(dj, /Starting Audio/);
-assert.match(dj, /Stop Broadcasting/);
+// Reduced motion is a gentler equivalent, not silence. The old block killed
+// every transition and then forced the spinner loop back on with !important,
+// which is precisely the motion that setting exists to stop. Now the travel
+// and overshoot go and the short opacity/colour changes stay.
+assert.match(dj, /@media \(prefers-reduced-motion:reduce\)\{[\s\S]*?transition-property:opacity/);
+assert.doesNotMatch(dj, /animation:pp-spin[^}]*!important/);
+assert.match(dj, /Start broadcast/);
+assert.match(dj, /Stop broadcast/);
 assert.doesNotMatch(dj, /id="badge"/);
 assert.doesNotMatch(dj, /captureSoftAsk|screenPermBtn|permission has not been confirmed/);
 assert.ok(!dj.includes(forbiddenDash));

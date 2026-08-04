@@ -25,6 +25,7 @@ import (
 	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
+	"partyparty/internal/contribute"
 	"partyparty/internal/devices"
 	"partyparty/internal/diag"
 	"partyparty/internal/event"
@@ -45,6 +46,13 @@ type Deps struct {
 	PeerID      string
 	Relay       *relay.Manager // nil only in tests or explicit local development
 
+	// Contribute reports whether this Mac's push to the relay origin is
+	// actually succeeding. Presence (relay.fresh) and media push are separate
+	// planes that fail separately - a set ran for hours with presence healthy
+	// while the media push 401ed on every cycle and relayed guests got a dead
+	// page, and the console had no way to know. nil in tests.
+	Contribute interface{ Snapshot() contribute.Status }
+
 	// Events is the party's active-room social layer.
 	// nil disables the feed endpoints.
 	Events *event.Store
@@ -60,9 +68,18 @@ type Deps struct {
 
 type srv struct {
 	Deps
-	vendor    http.Handler
-	liveProxy http.Handler
-	limits    *limiter
+	isolation isolationProbe
+	// go-live trace: observed OUTSIDE the audio core, so the console can show
+	// which stage a slow start is in and the log can say afterwards where the
+	// time went. The engine itself stays untouched.
+	startMu        sync.Mutex
+	startRequested time.Time
+	startMTXReady  time.Time
+	startLiveAt    time.Time
+	startRelayAt   time.Time
+	vendor         http.Handler
+	liveProxy      http.Handler
+	limits         *limiter
 
 	// What the origin last reported about relayed guests. Guarded by relayMu.
 	relayMu        sync.RWMutex
@@ -131,6 +148,18 @@ func New(d Deps) *Srv {
 		go s.watchRecognizedTracks()
 	}
 	return s
+}
+
+// diagPath reports where this run's session log is being written, or "" when
+// diagnostics are off. The 2026-08-03 party produced no session log anywhere
+// and nothing surfaced that fact, which turned a debuggable failure into
+// archaeology - so the path rides /api/status where it can be checked in one
+// request.
+func (s *srv) diagPath() string {
+	if s.Diag == nil {
+		return ""
+	}
+	return s.Diag.Path()
 }
 
 // audioProvenPath is the durable "Mac audio capture has worked here" marker -
@@ -381,7 +410,7 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeFile(w, r, cover)
+		serveDiskFile(w, r, cover)
 	case p == "/dj-avatar":
 		if s.Events == nil {
 			http.NotFound(w, r)
@@ -393,7 +422,7 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		http.ServeFile(w, r, avatar)
+		serveDiskFile(w, r, avatar)
 	case strings.HasPrefix(p, "/covers/"):
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		s.vendor.ServeHTTP(w, r)
@@ -401,6 +430,11 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Through serveWeb (not the FileServer) so text assets gzip - hls.js is
 		// 404KB plain, ~130KB gzipped, fetched by every non-Apple guest.
 		s.serveWeb(w, r, strings.TrimPrefix(p, "/"), "public, max-age=3600")
+	case strings.HasPrefix(p, "/fonts/"):
+		// The bundled typeface. It is immutable for a given build, so it may be
+		// cached hard; the guest page declares font-display:swap so a cold fetch
+		// never holds up the join.
+		s.serveWeb(w, r, strings.TrimPrefix(p, "/"), "public, max-age=31536000, immutable")
 	case strings.HasPrefix(p, "/live/"):
 		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
@@ -489,6 +523,28 @@ func (s *srv) connectionState() relay.Status {
 		KnownNetwork: false,
 		Message:      "Guests are connecting directly to this Mac on the venue Wi-Fi.",
 	}
+}
+
+// serveDiskFile serves a real file while defeating http.ServeFile's sendfile
+// fast path. Inside the App Sandbox on macOS 27 (seed 26A5388g), sendfile(2)
+// silently truncates the response to the first 512 bytes: a plain GET of a
+// 194KB avatar delivered exactly 512 bytes while Range reads of the same file
+// returned every byte - ranges flow through io.CopyN, which hides the
+// *os.File from the fast path. Wrapping the file the same way keeps
+// ServeContent's Range and modtime semantics with a buffered copy.
+func serveDiskFile(w http.ResponseWriter, r *http.Request, path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || st.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeContent(w, r, filepath.Base(path), st.ModTime(), struct{ io.ReadSeeker }{f})
 }
 
 func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache string) {
@@ -607,6 +663,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"latencyTarget":  latencyTarget,
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
 			"log":            lastN(s.Broadcaster.Log(), 60),
+			"diagPath":       s.diagPath(), // "" = session log unavailable; a whole night once ran with no log and no way to notice
+			"startup":        s.startupTrace(bc.State),
 			"latency":        s.Listeners.LatencySpread(),
 			"relay":          s.relayPresenceState(),
 			"schedule":       s.scheduleState(),
@@ -797,6 +855,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		// bouncing) - but a start must still revive a silently-dead MediaMTX,
 		// or ffmpeg pushes into the void and guests see a "live" broadcast
 		// nobody can hear. If a stale orphan owns the ports, reap and retry.
+		s.startMu.Lock()
+		s.startRequested = time.Now()
+		s.startMTXReady, s.startLiveAt, s.startRelayAt = time.Time{}, time.Time{}, time.Time{}
+		s.startMu.Unlock()
 		if s.MTX != nil && !s.MTX.Running() {
 			err := s.MTX.EnsureReady(s.Config.RTSPPort, s.Config.HLSPort, 6*time.Second)
 			if err != nil {
@@ -809,6 +871,9 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		s.startMu.Lock()
+		s.startMTXReady = time.Now()
+		s.startMu.Unlock()
 		s.Broadcaster.Start(device, q.Get("name"), broadcast.Options{})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/stop":
@@ -1051,6 +1116,39 @@ func (s *srv) listenerGroups(local []stats.Listener) []publicListenerGroup {
 	return groups
 }
 
+// startupTrace reports where a go-live spent its time, from transitions this
+// process observes without touching the audio core: the API request, the
+// low-latency engine ready, capture reporting live, the relay serving. Zero
+// means "not reached yet". The console stages its "starting" copy off these
+// facts, and the numbers stay readable here afterwards.
+func (s *srv) startupTrace(state string) map[string]any {
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+	if s.startRequested.IsZero() {
+		return nil
+	}
+	if state == "live" && s.startLiveAt.IsZero() {
+		s.startLiveAt = time.Now()
+	}
+	if s.startRelayAt.IsZero() {
+		if rp := s.relayPresenceState(); rp["fresh"] == true {
+			s.startRelayAt = time.Now()
+		}
+	}
+	ms := func(t time.Time) int64 {
+		if t.IsZero() {
+			return 0
+		}
+		return t.UnixMilli()
+	}
+	return map[string]any{
+		"requestedMs": ms(s.startRequested),
+		"engineMs":    ms(s.startMTXReady),
+		"liveMs":      ms(s.startLiveAt),
+		"relayMs":     ms(s.startRelayAt),
+	}
+}
+
 func (s *srv) roomPeers() []peers.Peer {
 	s.peersMu.RLock()
 	directory := s.Peers
@@ -1204,6 +1302,8 @@ func mimeFor(name string) string {
 		return "text/css; charset=utf-8"
 	case strings.HasSuffix(name, ".png"):
 		return "image/png"
+	case strings.HasSuffix(name, ".woff2"):
+		return "font/woff2"
 	default:
 		return "application/octet-stream"
 	}

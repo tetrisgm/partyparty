@@ -129,7 +129,25 @@ type Config struct {
 	// so every install gets its own and a Mac can only publish to its own room.
 	// Returning an empty origin disables contribution.
 	Target func() (originURL, token string)
-	Logf   func(format string, args ...any)
+	// Assets returns the static files the published page references by absolute
+	// path: the DJ avatar, the event cover, the fonts. A relayed guest resolves
+	// those URLs against the ORIGIN, so a page pushed without its assets renders
+	// with a broken photo and a blank header - which is exactly how the gap was
+	// found. Nil publishes none.
+	Assets func() []Asset
+	// AssetsRev is a cheap fingerprint of what Assets would return. Assets are
+	// re-pushed only when it changes (avatar swapped mid-set, cover changed),
+	// so the 50ms cycle never rebuilds file bytes just to compare them.
+	AssetsRev func() string
+	Logf      func(format string, args ...any)
+}
+
+// Asset is one static file the guest page needs, named exactly as the page
+// references it (no leading slash): "dj-avatar", "covers/decks.webp".
+type Asset struct {
+	Name        string
+	Body        []byte
+	ContentType string
 }
 
 // target reads the current destination, tolerating an unset resolver.
@@ -155,15 +173,39 @@ type Manager struct {
 	wake    chan struct{}
 
 	// pageSent records that the guest page is on the origin's current
-	// incarnation; originEpoch is which incarnation that is.
+	// incarnation; originEpoch is which incarnation that is. assetsRev is the
+	// fingerprint of the page assets last pushed, empty when they need pushing.
 	pageSent    bool
 	originEpoch string
+	assetsRev   string
 
 	// sent tracks media already uploaded so each file is pushed exactly once.
 	// Pruned against the live playlist every cycle, so a long set cannot grow it
 	// without bound.
 	sent map[string]bool
+
+	// variant is the media playlist name cached from the multivariant playlist.
+	// Fetching the master is what creates a MediaMTX session, and doing that
+	// every 50ms cycle created a new session per fetch - hundreds a minute -
+	// which flooded the log ring so completely that real failures scrolled away
+	// in seconds. The master is fetched once, and again only after a failure.
+	variant string
+
+	// failStreak counts consecutive failed cycles. MediaMTX closes its HLS
+	// muxer on a config reload (a certificate hot-swap does this mid-set), and
+	// that invalidates the session cookie this client holds: every media
+	// playlist fetch after it is a 401, forever, while the origin room starves
+	// and relayed guests get a dead page. Nothing retried the SESSION - only
+	// the fetch. After failResetAfter consecutive failures the cookie jar and
+	// sent-state are discarded so the next cycle rebuilds the conversation
+	// from the master playlist up.
+	failStreak int
 }
+
+// failResetAfter is how many consecutive failed cycles trigger a full session
+// reset. Two tolerates one blip mid-cycle; three in a row at 2s spacing means
+// the conversation itself is broken, not the network.
+const failResetAfter = 3
 
 func New(cfg Config) *Manager {
 	if cfg.Logf == nil {
@@ -208,6 +250,9 @@ func (m *Manager) SetEnabled(on bool) {
 		m.status.Running = false
 		m.sent = make(map[string]bool) // a fresh session re-pushes what the origin needs
 		m.pageSent = false
+		m.assetsRev = ""
+		m.variant = ""
+		m.failStreak = 0
 	}
 	m.mu.Unlock()
 	m.signal()
@@ -250,21 +295,7 @@ func (m *Manager) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-
-		m.mu.Lock()
-		if err != nil {
-			m.status.Running = false
-			m.status.Failures++
-			m.status.LastError = err.Error()
-		} else {
-			m.status.Running = true
-			m.status.Failures = 0
-			m.status.LastError = ""
-			base, _ := m.cfg.target()
-			m.status.Target = redact(base)
-		}
-		failures := m.status.Failures
-		m.mu.Unlock()
+		failures := m.noteCycle(err)
 
 		delay := pollInterval
 		if err != nil {
@@ -279,6 +310,65 @@ func (m *Manager) Run(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// noteCycle records one cycle's outcome and returns the consecutive-failure
+// count. On a failure the cached variant is dropped (the local conversation is
+// suspect), and failResetAfter consecutive failures trigger a full session
+// reset.
+func (m *Manager) noteCycle(err error) int {
+	m.mu.Lock()
+	if err != nil {
+		m.status.Running = false
+		m.status.Failures++
+		m.status.LastError = err.Error()
+		m.failStreak++
+		// Whatever was cached about the local conversation is now suspect:
+		// re-learn the media playlist name from the master next cycle.
+		m.variant = ""
+	} else {
+		m.status.Running = true
+		m.status.Failures = 0
+		m.status.LastError = ""
+		m.failStreak = 0
+		base, _ := m.cfg.target()
+		m.status.Target = redact(base)
+	}
+	failures := m.status.Failures
+	needsReset := m.failStreak >= failResetAfter
+	m.mu.Unlock()
+
+	if needsReset {
+		m.resetSession(err)
+	}
+	return failures
+}
+
+// httpClient returns the current client. It is swapped by resetSession, and
+// the plane goroutine shares it, so all use goes through this accessor.
+func (m *Manager) httpClient() *http.Client {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.client
+}
+
+// resetSession discards the cookie jar and everything believed already sent,
+// so the next cycle rebuilds the MediaMTX conversation from the master
+// playlist and re-pushes the fixed-name files. This is the self-heal for a
+// mid-set MediaMTX reload (certificate hot-swap) invalidating the session the
+// jar holds: without it, contribution 401s forever while the console still
+// looks healthy.
+func (m *Manager) resetSession(cause error) {
+	jar, _ := cookiejar.New(nil)
+	m.mu.Lock()
+	m.client = &http.Client{Jar: jar, Timeout: m.client.Timeout, Transport: m.client.Transport}
+	m.variant = ""
+	m.sent = make(map[string]bool)
+	m.pageSent = false
+	m.assetsRev = ""
+	m.failStreak = 0
+	m.mu.Unlock()
+	m.cfg.Logf("contribute: resetting session after %d consecutive failures: %v", failResetAfter, cause)
 }
 
 func (m *Manager) wait(ctx context.Context, d time.Duration) bool {
@@ -304,13 +394,29 @@ func (m *Manager) wait(ctx context.Context, d time.Duration) bool {
 func (m *Manager) cycle(ctx context.Context) error {
 	// Step one: the multivariant playlist. This names the media playlist and, on
 	// the same request, establishes the session the media playlist requires.
-	master, err := m.fetch(ctx, m.cfg.SourceURL, maxPlaylistBytes)
-	if err != nil {
-		return fmt.Errorf("read local multivariant playlist: %w", err)
-	}
-	variant, ok := firstVariant(master)
-	if !ok {
-		return errors.New("local multivariant playlist names no stream yet")
+	//
+	// Fetched once and cached, not per cycle: every master fetch mints a fresh
+	// MediaMTX session, and at a 50ms cycle that was hundreds of sessions a
+	// minute - log-ring flooding, wasted muxer state, and zero benefit, because
+	// the variant name never changes while the muxer runs. A failed cycle
+	// clears the cache, so recovery re-establishes the session the same way a
+	// player would.
+	m.mu.RLock()
+	variant := m.variant
+	m.mu.RUnlock()
+	if variant == "" {
+		master, err := m.fetch(ctx, m.cfg.SourceURL, maxPlaylistBytes)
+		if err != nil {
+			return fmt.Errorf("read local multivariant playlist: %w", err)
+		}
+		found, ok := firstVariant(master)
+		if !ok {
+			return errors.New("local multivariant playlist names no stream yet")
+		}
+		variant = found
+		m.mu.Lock()
+		m.variant = variant
+		m.mu.Unlock()
 	}
 
 	// Step two: the media playlist, then the schedule. Relayed guests must run on
@@ -370,6 +476,32 @@ func (m *Manager) cycle(ctx context.Context) error {
 		}
 	}
 
+	// The page's static dependencies: avatar, cover, fonts. Same reasoning as
+	// the page itself - a relayed guest resolves "/dj-avatar" against the
+	// origin, so without this the page renders with a broken DJ photo and a
+	// blank event header. Pushed pinned (they must outlive the rolling live
+	// window) and only when the revision changes, so an avatar swapped mid-set
+	// reaches relayed guests within a cycle.
+	if m.cfg.Assets != nil && m.cfg.AssetsRev != nil {
+		rev := m.cfg.AssetsRev()
+		m.mu.RLock()
+		have := m.assetsRev
+		m.mu.RUnlock()
+		if rev != have {
+			for _, a := range m.cfg.Assets() {
+				if a.Name == "" || len(a.Body) == 0 {
+					continue
+				}
+				if err := m.uploadPinned(ctx, a.Name, a.Body, a.ContentType); err != nil {
+					return fmt.Errorf("upload asset %s: %w", a.Name, err)
+				}
+			}
+			m.mu.Lock()
+			m.assetsRev = rev
+			m.mu.Unlock()
+		}
+	}
+
 	// Forward the playlist otherwise untouched. This is what carries
 	// PROGRAM-DATE-TIME, and therefore the room's schedule, to relayed guests.
 	if err := m.upload(ctx, PublishedPlaylist, playlist, "application/vnd.apple.mpegurl"); err != nil {
@@ -400,7 +532,7 @@ func (m *Manager) fetch(ctx context.Context, rawURL string, limit int64) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	resp, err := m.client.Do(req)
+	resp, err := m.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -412,6 +544,16 @@ func (m *Manager) fetch(ctx context.Context, rawURL string, limit int64) ([]byte
 }
 
 func (m *Manager) upload(ctx context.Context, name string, body []byte, contentType string) error {
+	return m.put(ctx, name, body, contentType, false)
+}
+
+// uploadPinned marks the file as sticky on the origin: live-window eviction
+// must never delete it, because its age says nothing about its relevance.
+func (m *Manager) uploadPinned(ctx context.Context, name string, body []byte, contentType string) error {
+	return m.put(ctx, name, body, contentType, true)
+}
+
+func (m *Manager) put(ctx context.Context, name string, body []byte, contentType string, pin bool) error {
 	base, token := m.cfg.target()
 	if base == "" {
 		return errors.New("no relay origin yet")
@@ -425,10 +567,13 @@ func (m *Manager) upload(ctx context.Context, name string, body []byte, contentT
 		return err
 	}
 	req.Header.Set("Content-Type", contentType)
+	if pin {
+		req.Header.Set("X-PP-Pin", "1")
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := m.client.Do(req)
+	resp, err := m.httpClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -631,5 +776,6 @@ func (m *Manager) observeEpoch(header string) {
 	}
 	m.sent = make(map[string]bool)
 	m.pageSent = false
+	m.assetsRev = ""
 	m.cfg.Logf("contribute: origin restarted (epoch %s); re-sending fixed-name assets", header)
 }

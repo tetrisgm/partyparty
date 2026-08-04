@@ -61,6 +61,26 @@ final class PCMRing {
         cond.unlock()
     }
 
+    /// pushSilence appends zero samples WITHOUT advancing totalPushed: the
+    /// stall/hog monitor keys on that counter to mean "real frames from the
+    /// device", and synthesized silence must never mask a wedged tap. On a
+    /// full ring it simply skips - if the pipe is congested, padding is the
+    /// last thing it needs.
+    func pushSilence(_ n: Int) {
+        cond.lock()
+        if n <= 0 || used + n > cap {
+            cond.unlock()
+            return
+        }
+        for i in 0..<n {
+            buf[(tail + i) % cap] = 0
+        }
+        tail = (tail + n) % cap
+        used += n
+        cond.signal()
+        cond.unlock()
+    }
+
     func writerLoop(onChunk: (([Float32]) -> Void)? = nil) {
         var out = [Float32](repeating: 0, count: 16384)
         while true {
@@ -288,6 +308,47 @@ elog("ppcapture: FORMAT \(rate) \(ch)")
 elog("ppcapture: capturing system audio via Core Audio tap (\(rate) Hz, \(ch) ch, f32le)")
 Thread.detachNewThread {
     ring.writerLoop { samples in trackRecognizer?.enqueue(samples) }
+}
+
+// Silence keepalive. A silent Mac produces NO tap callbacks, and nothing
+// downstream declares the channel live until samples flow - so Go Live used to
+// sit in "Starting audio" until the DJ pressed play (34.5s measured at a real
+// party; indefinitely on a Mac playing nothing). DJs start the channel first
+// and play when ready, so the channel must come up on its own: when real
+// frames stop for a beat, feed the pipeline actual silence at the device rate.
+// Synthesized silence is indistinguishable from real silence in raw f32le, so
+// ffmpeg encodes continuously, the room is live in seconds, and guests hear
+// quiet until the music starts - a radio station between words, not a stall.
+// The stall/hog monitor keys on totalPushed, which pushSilence does not
+// advance, so wedge detection still sees a silent Mac as "no real frames".
+Thread.detachNewThread {
+    let tick = 0.05
+    let quietAfter = 0.12 // one missed HAL cycle is normal; two is silence
+    var lastCount = ring.pushedCount()
+    var lastReal = Date()
+    var filledTo = Date()
+    while true {
+        Thread.sleep(forTimeInterval: tick)
+        let now = Date()
+        let count = ring.pushedCount()
+        if count != lastCount {
+            // Real audio is flowing; stand down and re-anchor.
+            lastCount = count
+            lastReal = now
+            filledTo = now
+            continue
+        }
+        if now.timeIntervalSince(lastReal) < quietAfter { continue }
+        // Fill up to wall clock in bounded steps. The cap keeps a stretched
+        // sleep (timer coalescing, a debugger pause) from bursting minutes of
+        // zeros into a 0.5s ring.
+        if filledTo < now.addingTimeInterval(-0.5) { filledTo = now.addingTimeInterval(-0.5) }
+        let owe = now.timeIntervalSince(filledTo)
+        let frames = Int(owe * Double(rate))
+        if frames <= 0 { continue }
+        ring.pushSilence(frames * ch)
+        filledTo = filledTo.addingTimeInterval(Double(frames) / Double(rate))
+    }
 }
 
 // Capture-health monitor. A Core Audio tap may produce no callbacks while the

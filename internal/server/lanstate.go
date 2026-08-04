@@ -33,6 +33,8 @@ type lanState struct {
 	ResolverMatches bool   `json:"resolverMatches"`
 	LanListeners    int    `json:"lanListeners"`
 	CheckedAtMs     int64  `json:"checkedAtMs,omitempty"`
+	// Bonjour-based early warning; nil while the first browse is in flight.
+	Isolation *isolationVerdict `json:"isolation,omitempty"`
 }
 
 // reduceLanState maps observed evidence to exactly one state, most-informative
@@ -87,5 +89,10 @@ func (s *srv) lanStateSnapshot() lanState {
 	})
 	st.GuestPort = s.Config.TLSPort
 	st.CheckedAtMs = time.Now().UnixMilli()
+	// A real guest on the LAN settles the isolation question; only sense it
+	// while nobody has proved it either way.
+	if lan == 0 {
+		st.Isolation = s.isolation.snapshot()
+	}
 	return st
 }
