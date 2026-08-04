@@ -2,13 +2,13 @@
 
 ## Current position
 
-Party feed rebuilt to Instagram anatomy and verified on the owner's real post: the card header is a 32px round avatar (the DJ's actual profile photo via /dj-avatar cache-busted on eventMeta.avatar; guests get their emoji in a fill circle) + bold name + pink DJ chip, with mod controls and Remove quiet at the right; media goes full-bleed to the card edge (stacked, 420px cover cap, videos and audio included); the caption is the IG bold-name-inline form; comments follow; the foot is Reply left and uppercase 10px time right. The "posted / shared a photo" verb line and the 20px big-text treatment are deleted (postVerb removed). Cards are hairline-bordered r-md surfaces with zero internal padding (sections pad themselves); the composer matches the card chrome. The focused-input comment-swap path (.wcmts replaceWith) was preserved untouched. Measured in the running app: avatarIsImg true with /dj-avatar src, name Shokunin + DJ chip, caption "Shokunin Let's go!", foot 13:15; screenshot confirms the IG read; no console errors beyond rebuild-window fetch transients. Web suites pass.
+The menu-bar icon is now the equalizer the owner described: while streaming, four brand-pink rounded bars dance beside the 🕺 (an NSImage redrawn every 0.14s by a per-bar random walk clamped 3.5-13px - organic bounce, honestly not a VU meter since no level telemetry rides /api/status), with the listener count in the title; when idle the same bars sit low and quiet (heights 3.5/5/4/3 - mostly flat but visibly bars, per the owner's wording) as a static template image the system tints for either menu-bar appearance, with no timer running. Starting animates too. The alarm states keep priority and clear the bars: strain/congested ⚠ + count, error ⚠, captureBad 🔴 with the note tooltip. Timer lifecycle is tied to state transitions (startBars guards double-start; stopBars on every non-animated branch). Replaces the pink-dot attributed title from the previous round. Store bundle compiled, installed, launched; server up. Visual check remains with the owner (screen permission denied earlier) - the idle bars are visible right now next to the dancer.
 
-Workshop checkpoint: `1785875442245-b8124d2c` (product).
+Workshop checkpoint: `1785875793144-738248ef` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html only). Standing: owner eyeballs the new menu-bar popover (screen permission was denied); TestFlight 248 beta-review if Seth is external; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (app/Sources/PartyParty/AppDelegate.swift only). Standing: owner eyeballs the menu-bar popover + the new bars (idle now, animated on next go-live); TestFlight 248 beta-review if Seth is external; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

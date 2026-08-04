@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastUpdateCheck = Date.distantPast
     private let popover = NSPopover()
     private let popoverContent = StatusPopoverController()
+    private var barsTimer: Timer?
+    private var barHeights: [CGFloat] = [5, 10, 7, 12]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         requestLocalNetworkAccess()
@@ -64,11 +66,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.title = "🕺"
+            button.title = "🕺 "
             button.toolTip = appName
             button.target = self
             button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.imagePosition = .imageTrailing
+            button.image = Self.barsImage(heights: Self.quietHeights, color: .labelColor, template: true)
         }
         popover.behavior = .transient
         popover.contentViewController = popoverContent
@@ -138,15 +142,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showConsoleFromMenu() { showConsole() }
 
-    /// Glanceable state in the menu bar: 🕺 idle · 🕺 ●N live (pink dot) ·
-    /// 🕺 ⚠ N strained · 🕺 ⚠ error · 🕺 🔴 capture broken (red = guests hear
-    /// nothing right now).
+    /// Glanceable state in the menu bar: the dancer plus equalizer bars that
+    /// dance in brand pink while streaming and sit low and quiet when idle -
+    /// still bars, so the shape reads, just resting. Alarms override the bars:
+    /// 🕺 ⚠ N strained · 🕺 ⚠ error · 🕺 🔴 capture broken (guests hear nothing).
     private func updateIcon(_ s: ServerStatus) {
         guard let button = statusItem.button else { return }
         // A dead capture (hogged/stalled output) is the loudest alarm: guests
         // are getting silence while the DJ thinks it's fine.
         if s.captureBad && (s.state == "live" || s.state == "starting") {
-            button.attributedTitle = NSAttributedString(string: "🕺 🔴")
+            stopBars()
+            button.image = nil
+            button.title = "🕺 🔴"
             button.toolTip = s.note.isEmpty
                 ? "PartyParty - audio capture problem; open the app for details"
                 : "PartyParty - \(s.note)"
@@ -156,25 +163,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch s.state {
         case "live":
             if s.health == "strain" || s.health == "congested" {
-                button.attributedTitle = NSAttributedString(string: "🕺 ⚠ \(s.listeners)")
+                stopBars()
+                button.image = nil
+                button.title = "🕺 ⚠ \(s.listeners)"
             } else {
-                button.attributedTitle = Self.liveTitle(listeners: s.listeners)
+                button.title = "🕺 \(s.listeners) "
+                startBars()
             }
-        case "starting": button.attributedTitle = NSAttributedString(string: "🕺 …")
-        case "error":    button.attributedTitle = NSAttributedString(string: "🕺 ⚠")
-        default:         button.attributedTitle = NSAttributedString(string: "🕺")
+        case "starting":
+            button.title = "🕺 "
+            startBars()
+        case "error":
+            stopBars()
+            button.image = nil
+            button.title = "🕺 ⚠"
+        default:
+            stopBars()
+            button.title = "🕺 "
+            button.image = Self.barsImage(heights: Self.quietHeights, color: .labelColor, template: true)
         }
     }
 
-    /// "🕺 ●3" with the dot in brand pink: the streaming indicator beside the
-    /// dancer, so live vs idle reads at a glance.
-    private static func liveTitle(listeners: Int) -> NSAttributedString {
-        let t = NSMutableAttributedString(string: "🕺 ")
-        t.append(NSAttributedString(string: "●", attributes: [
-            .foregroundColor: NSColor(srgbRed: 1.0, green: 0.176, blue: 0.435, alpha: 1),
-        ]))
-        t.append(NSAttributedString(string: " \(listeners)"))
-        return t
+    // MARK: Equalizer bars
+
+    /// Idle: low but visibly bars. Template, so the system tints them for the
+    /// menu bar's light or dark appearance.
+    private static let quietHeights: [CGFloat] = [3.5, 5, 4, 3]
+    private static let barPink = NSColor(srgbRed: 1.0, green: 0.176, blue: 0.435, alpha: 1)
+
+    private func startBars() {
+        guard barsTimer == nil else { return }
+        tickBars()
+        barsTimer = Timer.scheduledTimer(withTimeInterval: 0.14, repeats: true) { [weak self] _ in
+            self?.tickBars()
+        }
+    }
+
+    private func stopBars() {
+        barsTimer?.invalidate()
+        barsTimer = nil
+    }
+
+    /// A small random walk per bar: organic bounce without pretending to be a
+    /// real VU meter. Levels stay in a band that always reads as motion.
+    private func tickBars() {
+        for i in barHeights.indices {
+            let step = CGFloat.random(in: -3.5...3.5)
+            barHeights[i] = min(13, max(3.5, barHeights[i] + step))
+        }
+        statusItem.button?.image = Self.barsImage(heights: barHeights, color: Self.barPink, template: false)
+    }
+
+    private static func barsImage(heights: [CGFloat], color: NSColor, template: Bool) -> NSImage {
+        let barWidth: CGFloat = 2.4, gap: CGFloat = 1.5
+        let size = NSSize(width: CGFloat(heights.count) * barWidth + CGFloat(heights.count - 1) * gap,
+                          height: 15)
+        let image = NSImage(size: size, flipped: false) { _ in
+            color.setFill()
+            for (i, h) in heights.enumerated() {
+                let x = CGFloat(i) * (barWidth + gap)
+                let rect = NSRect(x: x, y: 1, width: barWidth, height: max(2.5, h))
+                NSBezierPath(roundedRect: rect, xRadius: 1.2, yRadius: 1.2).fill()
+            }
+            return true
+        }
+        image.isTemplate = template
+        return image
     }
 
     private func item(_ title: String, _ sel: Selector) -> NSMenuItem {
