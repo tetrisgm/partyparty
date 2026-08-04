@@ -2,13 +2,13 @@
 
 ## Current position
 
-Below-title space evened and measured: every section (About You, What to capture, How to listen, Party feed) now sits exactly 12px from title to first content — before it was 34/8/24/25. The double-spacing came from three different owners stacking per section (inner title margin + head-row margin + grid gap). Now one owner per section: titles inside a flex head row (.linkeditor-head b, .cardhead h2) carry no margin; the About head's spacing is the linkeditor grid gap alone (its head-row margin is zeroed, grid gap 10->12 so fields-to-chips also reads 12); the gocapture column gap moves 8->12. Also cleaned the 'testhandle' Instagram value my earlier focus test had persisted (links verified empty via /api/status). Web suites pass; rebuilt, installed, measured in the running app.
+How to listen now lives at the top of the right rail, above Participants — the rail reads as instructions-then-people. The block stacks to the rail's width: trayless QR (the tray panel is stripped in rail scope; the QR is a plain block chain with its own 10px white padding as the scanner quiet zone, measured 200px wide, unclipped), then the join link (11px mono, full URL fits) with Copy and Share below. The rail's first line aligns with the top of the cover (measured 0-1px). The narrow-window rule changed from hiding the inspector to dropping it below the page (border-top, max-height 45vh) because the join QR must never vanish. Two traps recorded: (1) the base .event-qr grid's place-items:center makes width:100% circular inside a rail-width column — the aspect-ratio:1 variant filled the box but CLIPPED the code edges (owner screenshot); plain display:block down the chain with img width:100% is the stable shape; (2) measurements taken in the hidden browser pane are garbage — innerWidth is 0 there, everything collapses, and 20px rects mean the pane is hidden, not that the layout broke; front the pane before measuring. Owner feedback still open (not yet acted on): the visible URL field feels redundant next to Copy/Share — strategies to be proposed, not yet implemented. Web suites pass; rebuilt, installed, verified by screenshot + probes at 1280x720.
 
-Workshop checkpoint: `1785871933740-53f1cd0b` (product).
+Workshop checkpoint: `1785872831038-e4ae2667` (product).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html only). Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
+Verify then finish through Workshop (web/dj.html only). Then propose link-field strategies to the owner (kill the field / make the address itself the copy control / demote to caption) and implement the pick. Standing: owner beta-review submission for TestFlight 248 if Seth is external; owner re-uploads profile photo; next phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 
