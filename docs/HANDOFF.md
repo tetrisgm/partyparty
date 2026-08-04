@@ -2,9 +2,9 @@
 
 ## Current position
 
-Rail is now Discord-style per the owner's reference screenshot, and the DJ is ALWAYS present, broadcasting or not. Groups render as small-caps headers "DJNAME — N" (no headphone glyph, no pill), listener rows are member rows (32px avatar circle, 14px medium name, quiet subtitle, hover wash, no hairline dividers), the rail card chrome is stripped so the rail IS the list, and the redundant inner "Guests" heading is hidden (rail label + group headers name it). Pre-live hiding removed along with the placeholder note - the server always emits the local DJ as the first listenerGroup so "SHOKUNIN — 0 / No listeners yet." shows while idle. Plus this round's earlier pieces: #titlePencil next to the party name (focus+select in-place edit) and the always-DJ-grouped renderer. Verified: suites pass, rebuilt+installed, idle screenshot shows the DJ group with the pencil visible, zero page errors.
+Three owner refinements verified in the running app: (1) the title pencil scales with the text - em-based inside the h1 (1.1em button, .68em glyph) so it tracks the title size; (2) the DJ is a real member row under their group header - profile photo (local group only, cache-busted eventMeta.avatar; peer groups fall back to the headphone circle), name, small "DJ" subtitle - listeners follow under the same header and the header count includes the DJ (DJNAME — 1+N); (3) the rail label reads "Participants" instead of "Guests". Suites pass; rebuilt+installed+running; screenshot shows SHOKUNIN — 1 with the photo row and DJ subtitle.
 
-Workshop checkpoint: `1785867977752-59cb2331` (product).
+Workshop checkpoint: `1785868621831-5620d180` (product).
 
 ## Next concrete step
 

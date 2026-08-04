@@ -141,7 +141,8 @@
   .listener.det{align-items:flex-start}
   .listener .lstat{width:18px;text-align:center}
   .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
-  .listener .lemoji{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);display:grid;place-items:center;font-size:16px;line-height:1;flex:0 0 32px}
+  .listener .lemoji{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);display:grid;place-items:center;font-size:16px;line-height:1;flex:0 0 32px;overflow:hidden}
+  .listener .lemoji.lphoto img{width:100%;height:100%;object-fit:cover;display:block}
   .listener .lname{flex:1;color:var(--label);font-size:14px;font-weight:500}
   .listener.host .lname{font-weight:700}
   .listener .lbody{flex:1;min-width:0}
@@ -505,7 +506,8 @@
   .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
   .fieldedit:hover{background:var(--fill-hover);color:var(--label)}
   .fieldedit svg{width:14px;height:14px;display:block}
-  .ename .fieldedit{vertical-align:8px}
+  .ename .fieldedit{vertical-align:middle;width:1.1em;height:1.1em;margin-left:.3em}
+  .ename .fieldedit svg{width:.68em;height:.68em}
   .posterbody .fieldedit{color:rgba(255,255,255,.72)}
   .posterbody .fieldedit:hover{background:rgba(255,255,255,.18);color:#fff}
   .eventform-field select{height:36px}
@@ -1081,7 +1083,7 @@
   </div>
 </div>
   <aside class="inspector" aria-label="Guests">
-    <div class="inspectorhead">Guests</div>
+    <div class="inspectorhead">Participants</div>
   <div id="ptab-people" class="guest-sidebar">
     <div class="card">
       <div class="guesthead"><h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
@@ -1892,12 +1894,20 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           }
           return '<div class="listener"><span class="lemoji">' + emoji + '</span><div class="lbody"><span class="lname">' + name + '</span>' + extra + '</div></div>';
         }).join('') : '<div class="muted" style="padding:8px 0">No listeners yet.</div>';
-        // Every DJ heads their own group - including this Mac's DJ, alone or
-        // not - and their listeners sit under them. The owner reads this as
-        // "who is playing, and who is with them".
+        // Every DJ heads their own group and is ALSO a member row - photo,
+        // name, DJ tag - because DJs are users too. Listeners follow under the
+        // same header. The local group has no id; only it can use this Mac's
+        // own profile photo.
+        const isLocalGroup = !group.id;
+        const avatarSrc = isLocalGroup && eventMeta.avatar ? eventMeta.avatar + '?v=' + encodeURIComponent(eventMeta.avatar) : '';
+        const djFace = avatarSrc
+          ? '<span class="lemoji lphoto"><img src="' + esc(avatarSrc) + '" alt=""></span>'
+          : '<span class="lemoji">🎧</span>';
+        const djRow = '<div class="listener djrow">' + djFace +
+          '<div class="lbody"><span class="lname">' + esc(group.dj || 'DJ') + '</span><div class="ldetail">DJ</div></div></div>';
         const head = '<div class="rostergrouphead"><span>' + esc(group.dj || 'DJ') +
-          '</span><small>&mdash; ' + listeners.length + '</small></div>';
-        return '<section class="rostergroup">' + head + rows + '</section>';
+          '</span><small>&mdash; ' + (1 + listeners.length) + '</small></div>';
+        return '<section class="rostergroup">' + head + djRow + rows + '</section>';
       }).join('');
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
