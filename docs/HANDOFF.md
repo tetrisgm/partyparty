@@ -2,13 +2,13 @@
 
 ## Current position
 
-Both directives shipped and verified in the running app. (1) The go-live stage speaks through the toast: toast() gained a sticky mode (no auto-hide until replaced or toastHide()), renderStartStage retires the transport-bar slot (element stays for contract refs, permanently hidden) and raises/hides the sticky toast on stage changes; proven live - Starting audio capture appeared as the toast, persisted past the 1.8s receipt window, and cleared when the stage emptied. A receipt toast covering the stage self-heals on the next poll re-raise. (2) The party name is offline-first and optimistic: eventMeta.title and document.title update the instant the DJ commits, the save posts to the LOCAL server (no internet in this path - the owner's earlier failures were the no-op panel bug, not connectivity) with three retries, and on persistent failure the name is KEPT with an honest "Name kept - still trying to save it" toast, never reverted. Field proof of the underlying fix: the owner renamed his party to "Shoku's Party @ Home" through the real UI and it persisted server-side. Incident note: my verification blur then overwrote his fresh rename with a test string - caught it within seconds and restored his exact title via the same API; lesson recorded to never run write-path probes against live owner data once the owner is actively using the surface.
+Stamped MARKETING_VERSION 125.33 / CURRENT_PROJECT_VERSION 249 across all four pbxproj sites (the workflow's Verify step requires the stamps to match its inputs exactly). This build carries the whole 2026-08-04 console day on top of 248: bottom transport bar with centered 🕺 Go live, menu-bar QR popover + equalizer bars icon, Instagram-anatomy feed with post reactions on the Mac, confetti on go-live (Reduce Motion softened), the truthful confirm-twice self-clearing go-live health warning, offline-first optimistic party name, toast-borne start stage, seamless dark title bar, wide-window margins, Invite guests rail, address-as-copy-control, and 51 shuffle covers. Owner explicitly requested this TestFlight build ("once you have everything done, do a build for Testflight") - the dispatch of app-store.yml with version=125.33 build=249 follows the finish.
 
-Workshop checkpoint: `1785879413634-ed9895fc` (product).
+Workshop checkpoint: `1785879516987-8cfa5b1c` (apple).
 
 ## Next concrete step
 
-Verify then finish through Workshop (web/dj.html). Then the owner-requested TestFlight build: stamp next version/build, land the stamp, dispatch app-store.yml, watch to upload confirmation.
+Finish through Workshop, then gh workflow run app-store.yml -f version=125.33 -f build=249 and watch the run to upload confirmation.
 
 ## Blockers
 
