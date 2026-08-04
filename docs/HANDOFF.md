@@ -2,9 +2,9 @@
 
 ## Current position
 
-About You is one two-line block, verified in the running app with computed-style probes: 132px photo spanning both lines (display:contents flattens .profileeditor into the linkeditor grid), line 1 = name + description side by side in one grouped enclosure (vertical divider, input-height description), line 2 = uniform chips (auto-fill 220px cells - measured all chips exactly 220px - with compact 118px right-aligned fields). Owner follow-ups applied in-flight: line gap tightened (26px measured), chip fields shortened, and the separators under the chips removed (linkeditor + eventManagePanel border-bottoms measured 0px; the culprit was the flat-era rule list including .linkeditor). The chip restyle lives in the !important flat-era block that wins the cascade - editing the earlier rule silently lost (chips collapsed to 24px until the winning block was changed). Party feed shows in every phase again (verified visible pre-live with composer + Open event folder). Suites pass; rebuilt+installed+running.
+Pink Saved toast + bare fields, verified in the running app: #ppToast is a fixed bottom-right brand-pink pill (static markup because the contract test verifies every $('id') exists; pointer-events none; --curve motion with a reduced-motion opacity-only variant) and profile, links, and event-details saves all route through toast('Saved') - the inline status spans no longer print success, so the layout never gains a surprise row (they keep error duty). The name+description container box is gone: .grouped is a plain two-column grid with a 10px gap and the fields stand on their own surfaces (computed: transparent background, no shadow). Screenshot confirms the pink Saved pill bottom-right and boxless fields. Two contract pins tripped and were satisfied properly: the missing-element check (static toast element) and the no-"Ns ease" motion pin (curve token in the reduce block). Suites pass; rebuilt+installed+running.
 
-Workshop checkpoint: `1785870014815-7b4f242b` (product).
+Workshop checkpoint: `1785870360829-f9cfe0fe` (product).
 
 ## Next concrete step
 

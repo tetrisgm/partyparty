@@ -599,6 +599,16 @@
     -webkit-app-region:no-drag;
   }
   .gearfloat:hover{background:rgba(255,255,255,.14);color:var(--label)}
+  .pptoast{
+    position:fixed;right:16px;bottom:16px;z-index:var(--z-sticky);
+    background:#ff2d6f;color:#fff;font-size:13px;font-weight:700;
+    padding:10px 16px;border-radius:var(--r-pill);
+    box-shadow:0 8px 24px rgba(255,45,111,.35);
+    opacity:0;transform:translateY(8px);pointer-events:none;
+    transition:opacity .18s var(--curve),transform .18s var(--curve);
+  }
+  .pptoast.show{opacity:1;transform:translateY(0)}
+  @media (prefers-reduced-motion:reduce){.pptoast{transform:none;transition:opacity .18s var(--curve)}}
   ::-webkit-scrollbar{width:8px;height:8px}
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-corner{background:transparent}
@@ -746,18 +756,10 @@
      One rounded container, hairline between rows, label left / control right.
      This is the only rounded box in the main area, and it holds rows - it is
      not a card wrapped around another card. */
-  .grouped{
-    background:rgba(255,255,255,.045);
-    border-radius:var(--r-md);
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);
-    overflow:hidden;
-    display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);
-  }
-  .grouped > *{border-left:1px solid rgba(255,255,255,.08)}
-  .grouped > *:first-child{border-left:0}
+  .grouped{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:10px}
   .profilefield{
     display:grid!important;grid-template-columns:minmax(0,1fr);
-    align-items:center;padding:var(--s-2) var(--s-3);margin:0!important;
+    align-items:center;padding:0;margin:0!important;
   }
   .profilefield > span{color:var(--label-secondary);font-size:13px;font-weight:400}
   .profilefield input,.profilefield textarea{
@@ -2061,7 +2063,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (!r.ok || d.error) throw new Error(d.error || 'save failed');
       Object.assign(eventMeta, body);
       syncHeader(eventMeta.title, eventMeta.host, eventMeta.starts, eventMeta.slug, eventMeta.date, eventMeta.time, eventMeta.place, eventMeta.cover);
-      setFormStatus('eventEditStatus', 'Saved.', 'ok');
+      setFormStatus('eventEditStatus', '', 'ok');
+      toast('Saved');
       setTimeout(() => setEventEditOpen(''), 250);
     } catch (e) {
       setFormStatus('eventEditStatus', 'Couldn’t save: ' + (e.message || e), 'error');
@@ -2516,7 +2519,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (!r.ok || d.error) throw new Error(d.error || 'link save failed');
         linkSig = '';
         renderLinkEditor(d.links || []);
-        status.textContent = 'Saved';
+        status.textContent = '';
+        toast('Saved');
       } catch (err) {
         status.textContent = err.message || 'link save failed';
       } finally {
@@ -2581,7 +2585,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         const data = await r.json().catch(() => ({}));
         if (!r.ok || data.error) throw new Error(data.error || 'save failed');
         renderProfile(data.name, data.bio, data.avatar);
-        status.textContent = 'Saved';
+        status.textContent = '';
+        toast('Saved');
       } catch (error) {
         status.textContent = error.message || 'save failed';
       } finally {
@@ -3022,6 +3027,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // been - "Starting Audio" alone sat for many seconds with no sign of
   // progress. Stages come from observable facts only: broadcast state, the
   // relay serving, and the server's startup trace.
+  let toastTimer = 0;
+  function toast(msg){
+    const t = $('ppToast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
   function renderStartStage(s){
     const el = $('startStage'), txt = $('startStageText');
     if (!el || !txt) return;
@@ -3160,6 +3174,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     });
   })();
 </script>
+<div id="ppToast" class="pptoast" role="status" aria-live="polite"></div>
 <footer class="appfooter"><span id="appver"></span></footer>
 </body>
 </html>
