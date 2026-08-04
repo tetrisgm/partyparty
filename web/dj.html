@@ -483,11 +483,29 @@
   body:not(.event-manage-open) .guest-sidebar #copySync{display:none!important}
   body.event-manage-open .eventhead .eventedit{display:block}
   #eventCard{padding:20px 22px;margin-top:0!important}
-  #eventCard > .composer{background:var(--fill)!important;border:1px solid var(--separator)!important;border-radius:var(--r-sm)!important;padding:14px!important;margin-bottom:14px!important}
+  #eventCard > .composer{background:rgba(255,255,255,.03)!important;border:1px solid var(--separator)!important;border-radius:var(--r-md)!important;padding:12px 14px!important;margin-bottom:14px!important}
   #eventCard > .composer.dropping{border-color:var(--accent)!important;background:rgba(255,45,111,.12)!important;box-shadow:0 0 0 3px rgba(255,45,111,.16)}
   #eventCard textarea{font-size:16px!important}
-  #djFeed{display:grid;gap:12px}
-  #djFeed .wpost{border:1px solid var(--separator);border-radius:var(--r-sm);background:rgba(255,255,255,.035);padding:18px}
+  /* Party feed: Instagram-anatomy cards. Avatar + bold name header, media
+     full-bleed to the card edge, bold-name caption, quiet uppercase time. */
+  #djFeed{display:grid;gap:14px}
+  #djFeed .wpost{border:1px solid var(--separator);border-radius:var(--r-md);background:rgba(255,255,255,.03);padding:0;overflow:hidden}
+  .whead{display:flex;align-items:center;gap:10px;padding:10px 14px}
+  .wavatar{width:32px;height:32px;border-radius:50%;flex:0 0 auto;object-fit:cover;
+    display:flex;align-items:center;justify-content:center;background:var(--fill);font-size:16px}
+  .wname{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;min-width:0}
+  .wdj{background:var(--accent);color:#fff;border-radius:var(--r-xs);font-size:9px;font-weight:800;padding:1px 5px}
+  .wheadactions{margin-left:auto;display:flex;gap:6px;align-items:center;flex:0 0 auto}
+  .wmedia{display:flex;flex-direction:column;gap:2px}
+  .wmedia .wshot{display:block;width:100%;position:relative}
+  .wmedia .wshot img,.wmedia video.wshot{width:100%;max-height:420px;object-fit:cover;display:block}
+  .wcaption{padding:10px 14px 0;font-size:13px;line-height:1.45;color:var(--label);white-space:pre-wrap;word-break:break-word}
+  .wcaption b{font-weight:700;margin-right:5px}
+  #djFeed .wpostactions{display:flex;align-items:center;gap:10px;margin:0;padding:8px 14px 12px}
+  .wpostactions .wtime{margin-left:auto;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--label-tertiary)}
+  #djFeed .wcmts{padding:0 14px}
+  #djFeed .wreply{margin:0;padding:0 14px 12px}
+  #djFeed .wpost .whead + .wpostactions{padding-top:0} /* text-free post: no dead band */
   #requestCard{display:none!important;margin-bottom:16px}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:var(--z-chrome);overflow:auto}
@@ -2703,30 +2721,19 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       v.style.width = '180px'; v.style.borderRadius = '8px';
       return v;
     }
-    function postVerb(p){
-      const files = Array.isArray(p.media) ? p.media : [];
-      const photos = files.filter(m => m && m.type === 'image').length;
-      const videos = files.filter(m => m && m.type === 'video').length;
-      if (photos && videos) return 'shared photos and videos';
-      if (photos === 1) return 'shared a photo';
-      if (photos > 1) return 'shared ' + photos + ' photos';
-      if (videos === 1) return 'shared a video';
-      if (videos > 1) return 'shared ' + videos + ' videos';
-      return 'posted';
-    }
     function render(p){
       const t = new Date(p.ts);
       const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
       const media = (p.media || []).map(m => {
         const src = m.url || ('/media/' + encodeURIComponent(m.id));
         const thumb = m.thumb || src;
-        if (m.type === 'image') return '<a href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(thumb) + '" data-fallback-src="' + src + '" loading="lazy" style="width:110px;height:110px;object-fit:cover;border-radius:var(--r-sm)" alt=""></a>';
+        if (m.type === 'image') return '<a class="wshot" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(thumb) + '" data-fallback-src="' + src + '" loading="lazy" alt=""></a>';
         if (m.type === 'video') {
-          if (m.thumb) return '<a class="wthumb" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(m.thumb) + '" data-fallback-video="' + src + '" loading="lazy" style="width:180px;height:110px;object-fit:cover;border-radius:var(--r-sm);background:var(--fill)" alt=""><span class="wplay">▶</span></a>';
-          return '<video src="' + src + '" controls preload="metadata" style="width:180px;border-radius:var(--r-sm)"></video>';
+          if (m.thumb) return '<a class="wshot wthumb" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(m.thumb) + '" data-fallback-video="' + src + '" loading="lazy" alt=""><span class="wplay">▶</span></a>';
+          return '<video class="wshot" src="' + src + '" controls preload="metadata"></video>';
         }
-        return '<audio src="' + src + '" controls preload="none" style="width:220px"></audio>';
-      }).join(' ');
+        return '<audio src="' + src + '" controls preload="none" style="width:100%"></audio>';
+      }).join('');
       const cmtRows = (p.comments || []).map(c =>
         '<div class="wcmt"><span style="display:flex;gap:6px;align-items:baseline"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' +
         stateBadge(stateOf(c)) + '<span style="margin-left:auto;display:flex;gap:4px;align-items:center">' +
@@ -2734,22 +2741,27 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         '<button class="modbtn remove" data-cdel="' + escT(p.id) + '" data-comment="' + escT(c.id) + '">Remove</button></span></span>' +
         '<span>' + escT(c.text) + '</span></div>').join('');
       const cmts = cmtRows ? '<div class="wcmts">' + cmtRows + '</div>' : '';
-      const big = p.text && p.text.length <= 48 && !media ? ' big' : '';
+      // Instagram anatomy: avatar + bold name header (quiet controls right),
+      // full-bleed media, bold-name caption, comments, then a quiet foot with
+      // Reply and the time.
+      const avatar = p.dj && eventMeta.avatar
+        ? '<img class="wavatar" src="/dj-avatar?v=' + encodeURIComponent(eventMeta.avatar) + '" alt="">'
+        : '<span class="wavatar wemoji">' + escT(p.emoji || '🙂') + '</span>';
       const el = document.createElement('div');
       el.className = 'wpost';
       el.dataset.id = p.id; el.dataset.ts = p.ts;
-      el.innerHTML = '<div style="display:flex;gap:7px;align-items:baseline">' +
-        '<span>' + escT(p.emoji) + '</span><b>' + escT(p.author || 'someone') + '</b>' +
-        (p.dj ? '<span style="background:var(--accent);color:#fff;border-radius:var(--r-xs);font-size:9px;font-weight:800;padding:1px 5px">DJ</span>' : '') +
-        '<span class="wverb">' + postVerb(p) + '</span><span class="muted" style="font-size:11px">' + time + '</span>' +
+      el.innerHTML = '<div class="whead">' + avatar +
+        '<b class="wname">' + escT(p.author || 'someone') +
+        (p.dj ? '<span class="wdj">DJ</span>' : '') + '</b>' +
         stateBadge(stateOf(p)) +
-        '<span style="margin-left:auto;display:flex;gap:6px;align-items:center">' +
+        '<span class="wheadactions">' +
         modButtons(p.id, '', stateOf(p)) +
         '<button class="pdel" data-del="' + escT(p.id) + '">Remove</button></span></div>' +
-        (p.text ? '<div class="wtext' + big + '">' + escT(p.text) + '</div>' : '') +
-        (media ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">' + media + '</div>' : '') +
+        (media ? '<div class="wmedia">' + media + '</div>' : '') +
+        (p.text ? '<div class="wcaption"><b>' + escT(p.author || 'someone') + '</b>' + escT(p.text) + '</div>' : '') +
         cmts +
-        '<div class="wpostactions"><button class="wreplybtn" data-reply="' + escT(p.id) + '" type="button">Reply</button></div>' +
+        '<div class="wpostactions"><button class="wreplybtn" data-reply="' + escT(p.id) + '" type="button">Reply</button>' +
+        '<span class="wtime">' + time + '</span></div>' +
         '<div class="wreply"' + (replying.has(p.id) ? '' : ' hidden') + '><input maxlength="1000" placeholder="Write a reply…" data-cpost="' + escT(p.id) + '">' +
         '<button data-csend="' + escT(p.id) + '" type="button">Post</button></div>';
       return el;
