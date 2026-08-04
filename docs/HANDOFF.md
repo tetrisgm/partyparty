@@ -2,13 +2,13 @@
 
 ## Current position
 
-Poster hero height restored: the cover restore had made the artwork an absolutely-positioned background of a content-sized box (min-height:190px strip). Now clamp(200px,21vw,300px) - two-thirds of the pre-redesign full-bleed cover, sized per the owner's live feedback ("50% too high" on the first clamp(300px,32vw,460px) attempt). Title stays anchored bottom-left over the scrim. HANDOFF updated with the landed state of the previous round (46c8bfed) plus TestFlight 125.32(248) VALID and internal-ready. Verified through Workshop (full suite green); app rebuilt/installed/running with the new height; owner confirmed direction visually.
+Title bar removed per owner ("is anything besides Settings in the action bar?" -> "do it"). A fixed invisible drag strip (top-left, min(40%,420px) x 30px, -webkit-app-region:drag) keeps the window movable and stays clear of the poster's always-visible Shuffle/Upload cluster; the Settings gear floats top-right as a translucent circular button (same id, JS untouched); the poster tucks under the traffic lights with a small page top pad. All titlebar CSS removed (#actionbar both eras, .abinner, .tbdrag, .titlebar variants); reduced-transparency/contrast/supports rules retargeted; .startstage kept (lives in the go card). Contract test pins the barless chrome (no id="actionbar", dragstrip drag region, floating gear). Bonus fix: a successful avatar load clears the stale "profile photo failed to load" note that pinned itself under a visibly loaded photo. Verified: JS syntax, both web suites, rebuilt+installed+running, desktop screenshot (poster to the top edge, gear floating), Shuffle clicked through the strip zone, zero console errors.
 
-Workshop checkpoint: `1785866822444-17c4601f` (product).
+Workshop checkpoint: `1785867306027-22134a7b` (product).
 
 ## Next concrete step
 
-Finish through Workshop (commit web/dj.html + docs/HANDOFF.md). Then remaining: external "Party testing" group needs an owner-triggered beta-review submission for build 248 if Seth is external; owner re-uploads profile photo; next real go-live with a phone confirms relay guests see photo/header/fonts and ShazamKit track ID with real music.
+Verify then finish through Workshop (scripts/test-stream-contract.mjs + web/dj.html). Remaining from before: owner-triggered beta-review submission for build 248 if Seth is external; owner re-uploads profile photo; next real phone go-live confirms relay assets + ShazamKit.
 
 ## Blockers
 

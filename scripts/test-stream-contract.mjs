@@ -163,7 +163,11 @@ assert.match(dj, /class="ename"/);
 // One measure down the column, and it stretches with the window: a fixed
 // column parked between two empty rails is not responsive.
 assert.match(dj, /--measure:min\(\d+px,100%\)/);
-assert.match(dj, /\.abinner\{max-width:var\(--measure\)/);
+// The title bar is gone by owner decision: a fixed drag strip keeps the window
+// movable and the settings gear floats in the corner.
+assert.doesNotMatch(dj, /id="actionbar"/);
+assert.match(dj, /\.dragstrip\{position:fixed[^}]*-webkit-app-region:drag/);
+assert.match(dj, /class="iconbtn gearfloat" id="settingsBtn"/);
 assert.match(dj, /\.page\{[^}]*max-width:var\(--measure\)/);
 assert.match(dj, /\.eventcover\{[^}]*margin-inline:0/);
 // The version is a footer, not a sticker floating over the page.

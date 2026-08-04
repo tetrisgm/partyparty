@@ -228,10 +228,8 @@
   .requestactions .danger{color:var(--danger)}
   .requestempty{color:var(--label-tertiary);font-size:12px;padding:4px 0}
   /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
-  #actionbar{position:absolute;top:0;left:0;right:0;z-index:var(--z-sticky);background:linear-gradient(rgba(0,0,0,.64),rgba(0,0,0,0));border:0}
   /* The bar's glass runs edge to edge, but its controls sit on the same
      measure as every card below it. */
-  .abinner{max-width:var(--measure);margin:0 auto;width:100%;padding:10px var(--page-pad);display:flex;align-items:center;gap:10px}
   .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:0}
   .source-picker{display:flex;align-items:center;gap:8px;min-width:230px;max-width:330px;flex:0 1 330px}
   .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
@@ -240,7 +238,6 @@
   .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:var(--r-pill);height:42px;font-weight:700;background-color:rgba(18,18,20,.78);color:transparent;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
   .source-row select option{color:var(--label);background:var(--bg-elevated)}
   .device-display{position:absolute;left:16px;right:16px;z-index:var(--z-base);pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
-  .abinner .iconbtn{width:34px;height:34px;border-radius:var(--r-pill)}
   .source-help{font-size:15px;font-weight:800}
   .abspacer{flex:1;min-width:20px}
   .golive{height:52px;min-width:148px;padding:0 34px;border-radius:var(--r-pill);font-size:17px;font-weight:800}
@@ -550,19 +547,18 @@
   }
   /* Frost every translucent surface, not just the action bar. */
   @media (prefers-reduced-transparency:reduce){
-    #actionbar,.cover-toolbar,.cover-status,.source-row select{
+    .cover-toolbar,.cover-status,.source-row select{
       background:#0e0e10;-webkit-backdrop-filter:none;backdrop-filter:none}
   }
   /* Near-solid with a defined edge when the user asks for more contrast. */
   @media (prefers-contrast:more){
-    #actionbar,.cover-toolbar,.cover-status,.source-row select,.card{
+    .cover-toolbar,.cover-status,.source-row select,.card{
       background:#08080a;border:1px solid #6a6a72;
       -webkit-backdrop-filter:none;backdrop-filter:none}
   }
-  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#actionbar{background:#0e0e10}}
   @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
   @media (max-width:720px){.linkrow input{width:112px}.linkdel{justify-self:end}}
-  @media (max-width:760px){.abinner{align-items:flex-start;flex-wrap:wrap}.abspacer{display:none}.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.titlerow{flex-direction:column}}
+  @media (max-width:760px){.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.titlerow{flex-direction:column}}
 
 
   /* ---- Native macOS shell -------------------------------------------
@@ -576,16 +572,19 @@
   html,body{height:100%;overflow:hidden}
   #appChrome{height:100dvh;display:flex;flex-direction:column;min-height:0;padding:0}
 
-  #actionbar.titlebar{
-    position:relative!important;inset:auto!important;flex:0 0 auto;height:52px;
-    display:flex;align-items:center;max-width:none;
-    background:color-mix(in srgb,var(--bg) 80%,transparent);
-    -webkit-backdrop-filter:saturate(180%) blur(30px);backdrop-filter:saturate(180%) blur(30px);
-    border-bottom:1px solid var(--hairline);
+  /* No title bar. A hidden strip keeps the window draggable from the top-left
+     (clear of the poster's Shuffle/Upload cluster on the right), and the gear
+     floats in the corner. The poster tucks under the traffic lights. */
+  .dragstrip{position:fixed;top:0;left:0;width:min(40%,420px);height:30px;z-index:var(--z-sticky);-webkit-app-region:drag}
+  .gearfloat{
+    position:fixed;top:10px;right:12px;z-index:var(--z-sticky);
+    width:30px;height:30px;display:grid;place-items:center;border-radius:50%;border:0;padding:0;
+    background:rgba(255,255,255,.08);color:var(--label-secondary);cursor:pointer;
+    -webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+    -webkit-app-region:no-drag;
   }
-  .titlebar .abinner{max-width:none;margin:0;padding:0 var(--s-4) 0 88px;gap:var(--s-2);-webkit-app-region:drag}
-  .titlebar button,.titlebar select,.titlebar .source-picker{-webkit-app-region:no-drag}
-  .tbdrag{flex:1 1 auto;height:100%}
+  .gearfloat:hover{background:rgba(255,255,255,.14);color:var(--label)}
   .startstage{display:inline-flex;align-items:center;gap:7px;color:var(--label-secondary);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
   .startstage[hidden]{display:none}
 
@@ -712,7 +711,7 @@
   }
   .workspace > .page > *:last-child,
   .workspace > .page .card:last-child{border-bottom:0!important}
-  .workspace > .page{padding:0 var(--s-6) var(--s-7)}
+  .workspace > .page{padding:var(--s-2) var(--s-6) var(--s-7)}
 
   /* Section headings sit on the window, quiet and small-caps like a Mac list. */
   .workspace > .page h2,
@@ -753,7 +752,6 @@
   /* ---- no neon --------------------------------------------------------
      A pro tool does not glow. Go Live is the primary action and reads as one
      through weight and a hairline, not a coloured halo. */
-  .titlebar{height:56px}
   .golive.go,.golive{
     height:26px;min-width:0;padding:0 var(--s-3);
     background:rgba(255,255,255,.1)!important;
@@ -766,11 +764,6 @@
     background:color-mix(in srgb,var(--success) 88%,#000)!important;color:#fff!important;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)!important;
   }
-  .titlebar .iconbtn,.titlebar .action-folder{
-    height:26px;background:rgba(255,255,255,.08);color:var(--label-secondary);
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);border-radius:var(--r-sm);font-size:12px;
-  }
-  .titlebar .action-folder:hover,.titlebar .iconbtn:hover{background:rgba(255,255,255,.14);color:var(--label)}
   /* Buttons in the content area are quiet too. */
   .workspace > .page button.go{
     background:rgba(255,255,255,.1);color:var(--label);
@@ -901,12 +894,8 @@
 <div id="appChrome">
 <!-- ADMIN ACTION BAR: everything the DJ operates - source, sharing, settings,
      Go Live - lives up here. Below it, the page IS the event. -->
-<div id="actionbar" class="titlebar">
-  <div class="abinner">
-    <span class="tbdrag" aria-hidden="true"></span>
-    <button class="iconbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-  </div>
-</div>
+<span class="dragstrip" aria-hidden="true"></span>
+<button class="iconbtn gearfloat" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 
 <div class="workspace">
 
@@ -2476,6 +2465,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (wrap) wrap.classList.remove('has-photo');
       $('profilePhoto').hidden = true;
       $('profileStatus').textContent = 'The profile photo failed to load - upload it again.';
+    });
+    // A later successful load must clear the failure note, or one transient
+    // miss (an app restart mid-request) leaves "upload it again" pinned under
+    // a photo that is plainly visible.
+    $('profilePhoto').addEventListener('load', () => {
+      const status = $('profileStatus');
+      if (status.textContent.startsWith('The profile photo failed to load')) status.textContent = '';
     });
     $('profilePhotoRemoveBtn').addEventListener('click', async () => {
       const status = $('profileStatus');
