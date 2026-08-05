@@ -41,5 +41,5 @@ func helper(name string) string {
 func helperPPCapture(string) string {
 	return filepath.Join(helper("ppcapture.app"), "Contents", "MacOS", "ppcapture")
 }
-func helperMediaMTX(string) string  { return helper("mediamtx") }
-func helperFFmpeg(string) string    { return helper("ffmpeg") }
+func helperMediaMTX(string) string { return helper("mediamtx") }
+func helperFFmpeg(string) string   { return helper("ffmpeg") }

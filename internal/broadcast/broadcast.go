@@ -841,7 +841,7 @@ func (b *Broadcaster) Status() Status {
 		case "test":
 			note = "No audio yet - ffmpeg is still starting."
 		case "mac":
-			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again - and make sure something is playing. If you denied it, open System Settings → Privacy & Security → System Audio Recording Only and allow PartyParty."
+			note = "No audio yet. If macOS asked to record system audio, click Allow, then Stop and Start again. If there was no prompt, open System Settings → Privacy & Security → System Audio Recording Only and allow PartyParty."
 		default:
 			note = "No audio yet. Grant microphone permission (System Settings → Privacy & Security → Microphone) and check that your source is routed to this device."
 		}

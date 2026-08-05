@@ -58,13 +58,17 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
       --entitlements "$ROOT/app/PartyParty-app-store-child.entitlements" \
       "$HELPERS/$helper"
   done
-  # ppcapture carries its own sandbox profile: ShazamKit needs the
-  # com.apple.shazamd mach-lookup exception plus network.client, which the
-  # inherit-only child file cannot express. The product rename silently
-  # re-signed it with the child file and recognition failed with error 202 on
-  # every attempt from 2026-07-31 until 2026-08-05; verify-app-store.sh now
-  # asserts the exception so this cannot regress quietly again.
+  # ppcapture INHERITS the app sandbox like every other helper. An own-profile
+  # sandboxed child cannot be posix_spawn'd from a sandboxed parent: it dies in
+  # _libsecinit_appsandbox with SIGTRAP before main() - six identical crashes,
+  # one per Go Live, on TestFlight 251-253 (2026-08-05), with no TCC request
+  # ever reaching tccd. Under inherit, the audio tap's TCC identity is the app
+  # itself ("PartyParty", whose Info.plist carries the usage strings), and the
+  # app's own entitlements (audio-input, network.client, shazamd mach-lookup)
+  # flow to the child through the inherited profile. The bundle keeps its own
+  # name and bundle id purely for LaunchServices hygiene - sharing the app's id
+  # is what minted the "PartyParty 2" ghost.
   codesign "${sign_args[@]}" \
-    --entitlements "$ROOT/app/PartyParty-app-store-capture.entitlements" \
+    --entitlements "$ROOT/app/PartyParty-app-store-child.entitlements" \
     "$HELPERS/ppcapture.app"
 fi

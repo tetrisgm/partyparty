@@ -97,37 +97,23 @@ for helper in ffmpeg mediamtx partyparty-server; do
     fail "$helper has unexpected entitlements: $keys"
 done
 
-# ppcapture is the one helper with its OWN sandbox profile: ShazamKit runs in
-# this process and needs the com.apple.shazamd mach-lookup exception plus
-# network.client, which an inherit-only child cannot carry. This loop used to
-# force ppcapture into the inherit shape, which silently killed recognition
-# (error 202 on every attempt, 2026-07-31 to 2026-08-05).
+# ppcapture MUST inherit the app sandbox exactly like the other helpers. An
+# own-profile sandboxed child posix_spawn'd from a sandboxed parent dies in
+# _libsecinit_appsandbox with SIGTRAP before main() - proven by six identical
+# crash reports across TestFlight 251-253 Go Live attempts (2026-08-05), while
+# the same binary ran fine under an unsandboxed parent. Its TCC identity is
+# therefore the app's, and the app's entitlements (audio-input, network.client,
+# the shazamd mach-lookup exception, asserted above) reach it via inheritance.
 capture="$APP/Contents/Helpers/ppcapture.app"
-# The helper carries its OWN identity. Sharing the app's bundle id made
+# The helper still carries its OWN bundle id: sharing the app's id made
 # LaunchServices register two "PartyParty" apps (the "PartyParty 2" ghost)
 # and made TestFlight refuse to launch build 251.
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$capture/Contents/Info.plist")" = "fm.partyparty.capture" ] ||
   fail "ppcapture must keep its own bundle id (fm.partyparty.capture), never the app's"
-[ "$(entitlement_value "$capture" com.apple.security.app-sandbox)" = "true" ] ||
-  fail "ppcapture is not sandboxed"
-[ "$(entitlement_value "$capture" com.apple.security.network.client)" = "true" ] ||
-  fail "ppcapture network client entitlement is missing (ShazamKit needs it)"
-[ "$(entitlement_value "$capture" com.apple.security.device.audio-input)" = "true" ] ||
-  fail "ppcapture audio input entitlement is missing"
-if entitlement_value "$capture" com.apple.security.inherit >/dev/null 2>&1; then
-  fail "ppcapture must not inherit: its own profile carries the shazamd exception"
-fi
-capture_mach="$(entitlements "$capture" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
-  'import json,sys; print("\n".join(json.load(sys.stdin).get("com.apple.security.temporary-exception.mach-lookup.global-name", [])))')"
-[ "$capture_mach" = "com.apple.shazamd" ] ||
-  fail "ppcapture lost the shazamd mach-lookup exception (recognition dies with error 202): got '$capture_mach'"
-# ppcapture is the TCC client for the system-audio tap and the mic. A client
-# whose Info.plist lacks the usage description is DENIED SILENTLY: no prompt,
-# no row in Privacy & Security, capture just dies (build 252, 2026-08-05).
-for key in NSAudioCaptureUsageDescription NSMicrophoneUsageDescription; do
-  /usr/libexec/PlistBuddy -c "Print :$key" "$capture/Contents/Info.plist" >/dev/null 2>&1 ||
-    fail "ppcapture Info.plist is missing $key (TCC denies the capture silently without it)"
-done
+capture_keys="$(entitlements "$capture" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
+  'import json,sys; print("\n".join(sorted(json.load(sys.stdin))))')"
+[ "$capture_keys" = $'com.apple.security.app-sandbox\ncom.apple.security.inherit' ] ||
+  fail "ppcapture must carry exactly app-sandbox + inherit (an own profile SIGTRAPs at spawn): got $capture_keys"
 
 otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'
 

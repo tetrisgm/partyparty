@@ -786,7 +786,10 @@ func main() {
 								warned = true
 								diagLog.MarkUrgent()
 								if verdict == "CAPTURE-DEAD" {
-									handler.SetStreamHealth("Guests can’t hear anything - no audio is being captured. Check that music is playing and the right source is selected, or Stop and Go Live again.")
+									// Never command the DJ to play music: at Shack15-era
+									// incidents the music WAS playing and the fault was
+									// ours. Condition on it instead.
+									handler.SetStreamHealth("Guests can’t hear anything - the capture isn’t delivering audio. If music is playing on this Mac right now, Stop and Go Live again.")
 								} else {
 									handler.SetStreamHealth("Guests can’t hear anything - the audio engine isn’t receiving the stream. Stop and Go Live again.")
 								}
