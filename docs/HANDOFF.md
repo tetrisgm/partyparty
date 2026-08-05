@@ -1,31 +1,48 @@
 # PartyParty.party handoff
 
-## Current position (2026-08-05): TestFlight 125.34 build 252 is live
+## Current position (2026-08-05 afternoon): TestFlight 125.35 build 255
 
-Built locally (PP_TESTFLIGHT_ONLY=1, prerelease host allowed for
-TestFlight-only), uploaded, VALID in App Store Connect, and the ONLY live
-build (248-251 expired; 251 refused to launch, cause below). External "Party
-testing" group attached and submitted for beta review; internal group sees
-every build automatically; What to Test notes set. In it: the proper-name fix
-(251's launch refusal: ppcapture.app briefly shared the app's bundle id, which
-minted the "PartyParty 2" LaunchServices ghost — the capture helper is
-fm.partyparty.capture forever, verify-app-store.sh asserts it), the two-clock
-capture fix, launch-banner honesty (netTried settles only after two failures),
-title-edit save, the mobile guest-page round, and dev builds stamped
-MARKETING_VERSION-dev.<gitshort> so a desk install can never wear a TestFlight
-number again.
+The sandboxed-capture saga is SOLVED, in three layers, each proven on this
+Mac before shipping:
 
-Owner-side proofs still pending: install 252 from TestFlight and see it
-launch; play a mainstream track (first provisioned build where ShazamKit CAN
-work); a Shack15 re-test watching for zero "stream gaps:" diag lines.
+1. TOPOLOGY (the crash): an own-profile sandboxed child cannot be
+   posix_spawn'd from a sandboxed parent — libsecinit SIGTRAPs before main()
+   (crash reports land in ~/Library/Logs/DiagnosticReports and are whisked
+   into Retired/ within a second). Builds 251-253 killed ppcapture this way
+   on EVERY Go Live; the desk dev loop never showed it because its parent
+   chain is unsandboxed. ppcapture is now app-sandbox + inherit exactly like
+   the other helpers (verify-app-store.sh enforces it), keeps its own bundle
+   id for LaunchServices hygiene, and its TCC identity is the app's.
+2. PROMPT (the silence): a sandboxed process's tap NEVER raises the System
+   Audio Recording prompt — fresh TCC state, tap runs with zero device
+   cycles, no AUTHREQ ever reaches tccd, room goes "live" streaming filler
+   silence. Go Live on Mac output now sends primeSystemAudio over the shell
+   bridge first: the APP creates a momentary CATap in its own name (the shape
+   macOS prompts for), the grant covers the helper via process
+   responsibility, and a denied prime stops Go Live with the honest Settings
+   path. Proven end to end on the sandboxed store-dev build: prompt appeared,
+   Allow, guests' segment measured -5.8 dB mean (real music).
+3. HONESTY (the gaslighting): capture-failure copy no longer tells the DJ to
+   play music or flip permissions when the fault is ours.
 
-Seth is DONE on our side: his address is leadman.seth.finkin@gmail.com (NOT
-seth.finkin@gmail.com — a stale NOT_INVITED tester record under that wrong
-address still exists in ASC; owner's call whether to delete it). He accepted
-the team invite (Marketing role) and sits in the internal group
-(44b3bbe2-07c2-491e-a22d-3747cfe1dfd3) in INVITED state: internal testing
-needs NO beta review, so 252 is his the moment he taps the TestFlight invite
-email.
+125.35 (255) carries all of it; versions now MOVE for every build a Mac can
+receive (the owner had 125.34-as-253-and-254 side by side and could not tell
+them apart — never reuse a visible version across lanes again).
+
+Shazam: 202 on dev builds is EXPECTED forever (no provisioning). 255 is the
+first fair test of recognition under the inherit design; if it still 202s
+there, the inherited profile isn't carrying the shazamd lookup for ShazamKit
+and recognition needs its own home (likely the app process) — a designed
+follow-up, not a hotfix.
+
+Menu bar decoder: 🕺 ⚠ N = live but health "strain"/"congested" (real alarm,
+not noise); 🕺 🔴 = capture dead. Xcode builds on the DJ Mac while
+broadcasting CAUSE strain and audible cutoffs — never compile during a set.
+
+Seth: leadman.seth.finkin@gmail.com (the bare seth.finkin record was deleted
+from ASC on owner's order). Team member (Marketing), internal group, tester
+state INSTALLED — but what he installed today was a broken-capture build;
+he needs the 125.35 (255) update for anything to work.
 
 ## Workflow + build lane facts (2026-08-05)
 
@@ -50,6 +67,15 @@ email.
   (internal/mediamtx tests fixed); (2) Playwright browsers are provisioned
   once on the runner as root (npx playwright install --with-deps chromium;
   cache /root/.cache/ms-playwright survives across runner builds).
+- Debugging gotchas that each cost real time today: `log` is a zsh BUILTIN —
+  unified-log reads silently do nothing unless you call /usr/bin/log; tccd
+  redacts identities as <private> (grep for AUTHREQ/service names, or dump a
+  tight window unfiltered); the broadcast log ring (ppcapture/ffmpeg/mediamtx
+  output) is served as the `log` field of /api/status — no FDA needed, the
+  fastest capture-debug channel there is; inherit-entitled helper binaries
+  SIGTRAP when run standalone from a shell (rc=133, not a build defect — use
+  the unsigned copies in assets/ for desk experiments); the standing worktree
+  needs assets/ffmpeg + assets/mediamtx copied in once from canonical.
 
 ## The Shack15 cutoff fix (reference)
 
