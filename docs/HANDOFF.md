@@ -19,11 +19,13 @@ Owner-side proofs still pending: install 252 from TestFlight and see it
 launch; play a mainstream track (first provisioned build where ShazamKit CAN
 work); a Shack15 re-test watching for zero "stream gaps:" diag lines.
 
-Seth: his App Store Connect invitation (Marketing role) is pending, expires
-Aug 8. The moment he accepts:
-`asc testflight groups add-testers --group 44b3bbe2-07c2-491e-a22d-3747cfe1dfd3
---email seth.finkin@gmail.com` -> instant internal access to 252. External
-invites become possible once beta review approves 252.
+Seth is DONE on our side: his address is leadman.seth.finkin@gmail.com (NOT
+seth.finkin@gmail.com — a stale NOT_INVITED tester record under that wrong
+address still exists in ASC; owner's call whether to delete it). He accepted
+the team invite (Marketing role) and sits in the internal group
+(44b3bbe2-07c2-491e-a22d-3747cfe1dfd3) in INVITED state: internal testing
+needs NO beta review, so 252 is his the moment he taps the TestFlight invite
+email.
 
 ## Workflow + build lane facts (2026-08-05)
 
