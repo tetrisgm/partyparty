@@ -103,8 +103,11 @@ done
 # force ppcapture into the inherit shape, which silently killed recognition
 # (error 202 on every attempt, 2026-07-31 to 2026-08-05).
 capture="$APP/Contents/Helpers/ppcapture.app"
-[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$capture/Contents/Info.plist")" = "$EXPECTED_BUNDLE_ID" ] ||
-  fail "ppcapture bundle id must match the app so TCC attributes capture to PartyParty"
+# The helper carries its OWN identity. Sharing the app's bundle id made
+# LaunchServices register two "PartyParty" apps (the "PartyParty 2" ghost)
+# and made TestFlight refuse to launch build 251.
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$capture/Contents/Info.plist")" = "fm.partyparty.capture" ] ||
+  fail "ppcapture must keep its own bundle id (fm.partyparty.capture), never the app's"
 [ "$(entitlement_value "$capture" com.apple.security.app-sandbox)" = "true" ] ||
   fail "ppcapture is not sandboxed"
 [ "$(entitlement_value "$capture" com.apple.security.network.client)" = "true" ] ||
