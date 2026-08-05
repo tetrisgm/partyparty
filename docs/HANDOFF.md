@@ -1,6 +1,18 @@
 # PartyParty.party handoff
 
-## Current position (2026-08-05 afternoon): TestFlight 125.35 build 255
+## Current position (2026-08-05 evening): TestFlight 125.36 build 256
+
+125.36 (256) is the only live build: recognition moved into the APP process
+(the one ShazamKit-authenticatable identity - proven working live at Shack15
+with real matches and artwork), match switching requires a 15s-apart repeat
+so sound-alikes can't flap mid-song, plus the player polish round (waves
+before chevron; sheet: no heading, no solo-DJ card, 128px cover row,
+"N listening" pill by the play button). Shack15 re-test verdict: two 15-min
+telemetry windows with ZERO stream gaps - the cutoff era is closed; the only
+audible events were the permission-toggle rebuild and one phone-side Wi-Fi
+rebuffer. Below, the 255-era record:
+
+## Previous position: TestFlight 125.35 build 255
 
 The sandboxed-capture saga is SOLVED, in three layers, each proven on this
 Mac before shipping:
