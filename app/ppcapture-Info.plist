@@ -20,5 +20,9 @@
 	<string>1</string>
 	<key>LSBackgroundOnly</key>
 	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>PartyParty broadcasts the Mac’s audio to your guests’ phones.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PartyParty captures your selected audio input (a mic, controller, or interface) to broadcast it to guests on your network.</string>
 </dict>
 </plist>

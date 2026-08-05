@@ -121,6 +121,13 @@ capture_mach="$(entitlements "$capture" | /usr/bin/plutil -convert json -o - - |
   'import json,sys; print("\n".join(json.load(sys.stdin).get("com.apple.security.temporary-exception.mach-lookup.global-name", [])))')"
 [ "$capture_mach" = "com.apple.shazamd" ] ||
   fail "ppcapture lost the shazamd mach-lookup exception (recognition dies with error 202): got '$capture_mach'"
+# ppcapture is the TCC client for the system-audio tap and the mic. A client
+# whose Info.plist lacks the usage description is DENIED SILENTLY: no prompt,
+# no row in Privacy & Security, capture just dies (build 252, 2026-08-05).
+for key in NSAudioCaptureUsageDescription NSMicrophoneUsageDescription; do
+  /usr/libexec/PlistBuddy -c "Print :$key" "$capture/Contents/Info.plist" >/dev/null 2>&1 ||
+    fail "ppcapture Info.plist is missing $key (TCC denies the capture silently without it)"
+done
 
 otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'
 
