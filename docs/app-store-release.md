@@ -33,8 +33,11 @@ packaging:
 1. A macOS App Store record with bundle ID `fm.partyparty.app`.
 2. An Apple Distribution certificate available in the login keychain.
 3. A Mac Installer Distribution certificate available in the login keychain.
-4. A Mac App Store distribution provisioning profile for `fm.partyparty.app`.
-5. An App Store Connect API key registered with Workshop.
+4. A Mac App Store distribution provisioning profile for `fm.partyparty.app`
+   (re-download anytime: `asc profiles view --id W6PS27X4YK` returns the
+   base64 `profileContent`).
+5. An App Store Connect API key for `asc` (key file and `release.env` live in
+   `~/Library/Application Support/partyparty/app-store-connect/`).
 
 The profile, app record, signing identities, and app bundle must all use team
 `52WM463HR2`.
@@ -48,20 +51,25 @@ scripts/build-app.sh
 scripts/verify-app-store.sh
 ```
 
-Distribution package:
+Distribution package (the owner-run lane; all signing identities live in the
+login keychain — never recreate a custom build keychain):
 
 ```sh
 APP_STORE_PROVISIONING_PROFILE=/absolute/path/profile.provisionprofile \
 PP_SIGN_ID='Apple Distribution: ... (52WM463HR2)' \
-APP_STORE_INSTALLER_ID='Mac Installer Distribution: ... (52WM463HR2)' \
+APP_STORE_INSTALLER_ID='3rd Party Mac Developer Installer: ... (52WM463HR2)' \
 scripts/package-app-store.sh
 ```
 
-Inspect authentication and the registered app before release:
+`PP_TESTFLIGHT_ONLY=1` allows packaging on a prerelease macOS host for
+TestFlight-only builds; App Store release packages still require a released
+macOS.
+
+Inspect authentication and the app record before release:
 
 ```sh
-workshop apple doctor partyparty
-workshop apple status partyparty
+asc review doctor --app 6794880742
+asc builds list --app 6794880742 --limit 5
 ```
 
 The packaging script creates a signed Xcode archive and exports it with
@@ -77,19 +85,24 @@ or audio entitlements, extra child entitlements, an incorrect provisioning
 profile, a non-distribution app signature, or a non-App-Store installer
 signature.
 
-Upload the verified package without submitting it for review:
+Upload the verified package without submitting it for review (only when the
+owner asks):
 
 ```sh
-workshop apple upload partyparty \
+asc builds upload \
+  --app 6794880742 \
   --pkg dist/PartyParty-app-store.pkg \
   --version <version> \
-  --build <build> \
-  --confirm
+  --build-number <build> \
+  --wait
 ```
 
-After processing, use `workshop apple validate partyparty --version <version>`
-and `workshop apple review partyparty --version <version>` to get a structured
-readiness report. Review submission remains a separate explicit owner request.
+`--wait` blocks until the build is processed (state VALID). TestFlight
+distribution from there: `asc builds add-groups --app 6794880742 --latest
+--group <GROUP_ID>` (add `--submit --confirm` for an external group's beta
+review), and `asc builds test-notes create` for What to Test. Internal groups
+with all-builds access see every processed build automatically. Review
+submission remains a separate explicit owner request.
 
 ## Privacy
 

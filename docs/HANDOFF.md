@@ -33,8 +33,10 @@ email.
   (~/dev/stack/runbooks/workflow.md); a pre-commit hook blocks canonical-main
   commits. Standing worktree: ~/dev/partyparty--work (merge-gate --keep).
 - GitHub Actions is dead fleet-wide (workflow file + all eight repo secrets
-  deleted). Local login keychain holds both distribution identities; the old
-  partyparty-app-store keychain is an unrecoverable CI leftover — leave it.
+  deleted). The login keychain holds both distribution identities and is the
+  ONLY signing home; the CI-era stash (custom partyparty-app-store keychain,
+  p12s, raw key) was archived to NAS /volume3/backups/ci-era-signing-20260805/
+  and deleted from this Mac (infra session, 2026-08-05). Never recreate it.
 - Local TestFlight packaging: scripts/package-app-store.sh with
   APP_STORE_PROVISIONING_PROFILE (build/partyparty-mas.provisionprofile, or
   re-download: asc profiles view --id W6PS27X4YK), PP_SIGN_ID "Apple
