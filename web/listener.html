@@ -553,11 +553,12 @@
   .playersheetscroll{height:100%;overflow:auto;padding:12px 20px calc(28px + env(safe-area-inset-bottom));overscroll-behavior:contain}
   .playersheetscroll > .sheetsectiontitle:first-child{min-height:36px;display:flex;align-items:center;margin:0 52px 10px 0}
   .playersheet .djprofile{background:var(--fill);box-shadow:none;margin:8px 0 22px}
-  .sheettrack{max-width:430px;margin:0 auto 24px;text-align:center}
-  .sheetart{display:block;width:min(76vw,360px);aspect-ratio:1;margin:0 auto 20px;border-radius:10px;object-fit:cover;background:var(--fill);box-shadow:0 14px 38px rgba(0,0,0,.18)}
-  .sheettitle{font-size:25px;font-weight:850;line-height:1.12;overflow-wrap:anywhere}
-  .sheetartist{margin-top:6px;color:var(--label-secondary);font-size:17px}
-  .sheetcontrols{display:flex;align-items:center;justify-content:center;margin:18px 0 8px}
+  .sheettrack{display:grid;grid-template-columns:128px minmax(0,1fr);gap:16px;align-items:center;max-width:430px;margin:6px auto 22px;text-align:left}
+  .sheetart{display:block;width:128px;aspect-ratio:1;margin:0;border-radius:10px;object-fit:cover;background:var(--fill);box-shadow:0 8px 22px rgba(0,0,0,.16)}
+  .sheettitle{font-size:20px;font-weight:850;line-height:1.15;overflow-wrap:anywhere}
+  .sheetartist{margin-top:4px;color:var(--label-secondary);font-size:15px}
+  .sheetcontrols{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:12px;margin:12px 0 0}
+  .sheetlistenpill{padding:7px 13px;border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:13px;font-weight:650;white-space:nowrap}
   .sheetplay{width:58px;height:58px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:var(--selected-dj-color,#20c965);color:#fff;cursor:pointer}
   .sheetplay svg{display:block;width:24px;height:24px;fill:currentColor}
   .sheetsectiontitle{font-size:20px;font-weight:850;margin:24px 0 10px}
@@ -762,11 +763,11 @@
           <b id="btnlabel">Tap to listen</b>
           <small id="btnhint">Low-latency party audio</small>
         </span>
+        <span class="playbars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
         <span class="expandchev" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
         </span>
       </button>
-      <span class="playbars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     </div>
     <div class="composer" id="composer" hidden>
       <div class="composerline">
@@ -789,7 +790,6 @@
       <button class="sheetcollapse" id="sheetCollapse" type="button" aria-label="Close player" title="Close">×</button>
     </div>
     <div class="playersheetscroll">
-      <div class="sheetsectiontitle" id="sheetDJHeading">1 DJ now playing</div>
       <div class="djlist" id="sheetDJList"></div>
       <section class="djprofile" id="sheetProfile" hidden>
         <div class="djprofilename" id="sheetProfileName"></div>
@@ -798,9 +798,14 @@
       </section>
       <div class="sheettrack">
         <img class="sheetart" id="sheetArt" src="/art-512.png" alt="">
-        <div class="sheettitle" id="sheetTrackTitle">Live party audio</div>
-        <div class="sheetartist" id="sheetTrackArtist"></div>
-        <div class="sheetcontrols"><button class="sheetplay" id="sheetPlay" type="button" aria-label="Play"></button></div>
+        <div class="sheettrackmeta">
+          <div class="sheettitle" id="sheetTrackTitle">Live party audio</div>
+          <div class="sheetartist" id="sheetTrackArtist"></div>
+        </div>
+        <div class="sheetcontrols">
+          <button class="sheetplay" id="sheetPlay" type="button" aria-label="Play"></button>
+          <span class="sheetlistenpill" id="sheetListenPill" hidden>0 listening</span>
+        </div>
       </div>
       <div class="sheetsectiontitle" id="sheetListenersHeading">Listeners</div>
       <div class="listenergroups" id="sheetListenerGroups"></div>
@@ -907,7 +912,7 @@
     const peopleBadge = document.getElementById('peopleBadge');
     const sheetListenerGroups = document.getElementById('sheetListenerGroups');
     const sheetDJList = document.getElementById('sheetDJList');
-    const sheetDJHeading = document.getElementById('sheetDJHeading');
+    const sheetListenPill = document.getElementById('sheetListenPill');
     const playerSummary = document.getElementById('playerSummary');
     const miniArt = document.getElementById('miniArt');
     const playerSheet = document.getElementById('playerSheet');
@@ -1455,6 +1460,8 @@
       });
       listenersRow.hidden = peopleCount <= 0;
       setText(listenersNum, peopleCount + (peopleCount === 1 ? ' person listening' : ' people listening'));
+      sheetListenPill.hidden = peopleCount <= 0;
+      setText(sheetListenPill, peopleCount + ' listening');
       renderIfChanged(listenersAvatars, faces.join(','), () => {
         listenersAvatars.innerHTML = faces
           .map((face) => '<span class="listeneremoji">' + escapeHTML(face) + '</span>').join('');
@@ -1467,7 +1474,9 @@
       const activeCount = djs.filter((dj) => dj.live).length;
       const heading = activeCount + ' ' + (activeCount === 1 ? 'DJ' : 'DJs') + ' now playing';
       setText(djPickerHead, heading);
-      setText(sheetDJHeading, heading);
+      // The sheet skips the heading and, with a single DJ, the card too: the
+      // reel only earns its space when there is a choice to make.
+      if (target === sheetDJList) target.hidden = djs.length < 2;
       const model = djs.map((dj, index) => {
         const id = String(dj.id || '');
         return {

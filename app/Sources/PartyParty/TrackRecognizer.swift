@@ -37,6 +37,13 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
     private var lastErrorAt = Date.distantPast
     private var lastLoudAt = Date()
     private var silenceAnnounced = false
+    // A DIFFERENT match must confirm itself before it replaces the current
+    // track: continuous streaming keeps re-matching catalog sound-alikes of
+    // the section under the needle (a Metroid track flapped through lookalike
+    // songs mid-play, Shack15 2026-08-05). The first match after start or
+    // after silence still lands instantly.
+    private var candidateID = ""
+    private var candidateFirstAt = Date.distantPast
 
     init(api: APIClient) {
         self.api = api
@@ -158,6 +165,7 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
         state.lock()
         pending = 0
         lastID = ""
+        candidateID = ""
         lastLoudAt = Date()
         silenceAnnounced = false
         state.unlock()
@@ -233,7 +241,23 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
             state.unlock()
             return
         }
+        if !lastID.isEmpty {
+            // Switching away from an accepted track needs the same new id
+            // seen again at least 15s later; a one-off sound-alike never
+            // survives that.
+            if matchID != candidateID {
+                candidateID = matchID
+                candidateFirstAt = Date()
+                state.unlock()
+                return
+            }
+            if Date().timeIntervalSince(candidateFirstAt) < 15 {
+                state.unlock()
+                return
+            }
+        }
         lastID = matchID
+        candidateID = ""
         state.unlock()
         var payload: [String: Any] = ["id": matchID, "title": title, "artist": artist]
         if let artworkURL = item.artworkURL?.absoluteString {
@@ -248,6 +272,7 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
         if shouldAnnounce {
             silenceAnnounced = true
             lastID = ""
+            candidateID = ""
         }
         state.unlock()
         if shouldAnnounce {
