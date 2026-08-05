@@ -83,7 +83,7 @@ if entitlement_value "$APP" com.apple.security.inherit >/dev/null 2>&1; then
   fail "main app must not inherit a sandbox"
 fi
 
-for helper in ffmpeg mediamtx partyparty-server ppcapture; do
+for helper in ffmpeg mediamtx partyparty-server; do
   path="$APP/Contents/Helpers/$helper"
   [ "$(entitlement_value "$path" com.apple.security.app-sandbox)" = "true" ] ||
     fail "$helper is not sandboxed"
@@ -94,6 +94,26 @@ for helper in ffmpeg mediamtx partyparty-server ppcapture; do
   [ "$keys" = $'com.apple.security.app-sandbox\ncom.apple.security.inherit' ] ||
     fail "$helper has unexpected entitlements: $keys"
 done
+
+# ppcapture is the one helper with its OWN sandbox profile: ShazamKit runs in
+# this process and needs the com.apple.shazamd mach-lookup exception plus
+# network.client, which an inherit-only child cannot carry. This loop used to
+# force ppcapture into the inherit shape, which silently killed recognition
+# (error 202 on every attempt, 2026-07-31 to 2026-08-05).
+capture="$APP/Contents/Helpers/ppcapture"
+[ "$(entitlement_value "$capture" com.apple.security.app-sandbox)" = "true" ] ||
+  fail "ppcapture is not sandboxed"
+[ "$(entitlement_value "$capture" com.apple.security.network.client)" = "true" ] ||
+  fail "ppcapture network client entitlement is missing (ShazamKit needs it)"
+[ "$(entitlement_value "$capture" com.apple.security.device.audio-input)" = "true" ] ||
+  fail "ppcapture audio input entitlement is missing"
+if entitlement_value "$capture" com.apple.security.inherit >/dev/null 2>&1; then
+  fail "ppcapture must not inherit: its own profile carries the shazamd exception"
+fi
+capture_mach="$(entitlements "$capture" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
+  'import json,sys; print("\n".join(json.load(sys.stdin).get("com.apple.security.temporary-exception.mach-lookup.global-name", [])))')"
+[ "$capture_mach" = "com.apple.shazamd" ] ||
+  fail "ppcapture lost the shazamd mach-lookup exception (recognition dies with error 202): got '$capture_mach'"
 
 otool -L "$APP/Contents/Helpers/ppcapture" | grep -q '/ShazamKit.framework/'
 

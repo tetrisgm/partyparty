@@ -41,9 +41,18 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
   }
   sign_args=(--force --options runtime --sign "$identity")
   [ -n "${PP_SIGN_KEYCHAIN:-}" ] && sign_args+=(--keychain "$PP_SIGN_KEYCHAIN")
-  for helper in ffmpeg mediamtx partyparty-server ppcapture; do
+  for helper in ffmpeg mediamtx partyparty-server; do
     codesign "${sign_args[@]}" \
       --entitlements "$ROOT/app/PartyParty-app-store-child.entitlements" \
       "$HELPERS/$helper"
   done
+  # ppcapture carries its own sandbox profile: ShazamKit needs the
+  # com.apple.shazamd mach-lookup exception plus network.client, which the
+  # inherit-only child file cannot express. The product rename silently
+  # re-signed it with the child file and recognition failed with error 202 on
+  # every attempt from 2026-07-31 until 2026-08-05; verify-app-store.sh now
+  # asserts the exception so this cannot regress quietly again.
+  codesign "${sign_args[@]}" \
+    --entitlements "$ROOT/app/PartyParty-app-store-capture.entitlements" \
+    "$HELPERS/ppcapture"
 fi
