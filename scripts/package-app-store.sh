@@ -122,7 +122,7 @@ xcodebuild \
   -archivePath "$ARCHIVE" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$EXPORT_OPTIONS" \
-  "${EXPORT_AUTH[@]}" &
+  ${EXPORT_AUTH[@]+"${EXPORT_AUTH[@]}"} &
 export_pid=$!
 ( sleep "$EXPORT_TIMEOUT"; kill -TERM "$export_pid" 2>/dev/null ) &
 watchdog_pid=$!
