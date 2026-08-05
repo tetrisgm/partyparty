@@ -1,15 +1,53 @@
 # PartyParty.party handoff
 
-## WORKSHOP IS SUSPENDED (owner, 2026-08-05 ~01:42)
+## Current position (2026-08-05): TestFlight 125.34 build 252 is live
 
-The owner is reworking the agent/Workshop infrastructure and wiped its state
-(registry + task root + mirror) himself. Until he restores it: do NOT open
-Workshop tasks (the supervisor errors with a misleading "another client"
-message); verified work is committed and pushed directly per the user-wide
-contract's unregistered-project rule. This section comes out when Workshop is
-back.
+Built locally (PP_TESTFLIGHT_ONLY=1, prerelease host allowed for
+TestFlight-only), uploaded, VALID in App Store Connect, and the ONLY live
+build (248-251 expired; 251 refused to launch, cause below). External "Party
+testing" group attached and submitted for beta review; internal group sees
+every build automatically; What to Test notes set. In it: the proper-name fix
+(251's launch refusal: ppcapture.app briefly shared the app's bundle id, which
+minted the "PartyParty 2" LaunchServices ghost — the capture helper is
+fm.partyparty.capture forever, verify-app-store.sh asserts it), the two-clock
+capture fix, launch-banner honesty (netTried settles only after two failures),
+title-edit save, the mobile guest-page round, and dev builds stamped
+MARKETING_VERSION-dev.<gitshort> so a desk install can never wear a TestFlight
+number again.
 
-## Current position
+Owner-side proofs still pending: install 252 from TestFlight and see it
+launch; play a mainstream track (first provisioned build where ShazamKit CAN
+work); a Shack15 re-test watching for zero "stream gaps:" diag lines.
+
+Seth: his App Store Connect invitation (Marketing role) is pending, expires
+Aug 8. The moment he accepts:
+`asc testflight groups add-testers --group 44b3bbe2-07c2-491e-a22d-3747cfe1dfd3
+--email seth.finkin@gmail.com` -> instant internal access to 252. External
+invites become possible once beta review approves 252.
+
+## Workflow + build lane facts (2026-08-05)
+
+- This repo now lands ONLY via worktree + branch + merge-gate
+  (~/dev/stack/runbooks/workflow.md); a pre-commit hook blocks canonical-main
+  commits. Standing worktree: ~/dev/partyparty--work (merge-gate --keep).
+- GitHub Actions is dead fleet-wide (workflow file + all eight repo secrets
+  deleted). Local login keychain holds both distribution identities; the old
+  partyparty-app-store keychain is an unrecoverable CI leftover — leave it.
+- Local TestFlight packaging: scripts/package-app-store.sh with
+  APP_STORE_PROVISIONING_PROFILE (build/partyparty-mas.provisionprofile, or
+  re-download: asc profiles view --id W6PS27X4YK), PP_SIGN_ID "Apple
+  Distribution: Ramine Darabiha (52WM463HR2)", APP_STORE_INSTALLER_ID "3rd
+  Party Mac Developer Installer: ...", PP_TESTFLIGHT_ONLY=1. Upload:
+  asc builds upload --app 6794880742 --pkg dist/PartyParty-app-store.pkg
+  --version <v> --build-number <n> --wait.
+- First merge-gate runs on this repo surfaced two runner facts: (1) the WSL
+  runner's network stack can ACCEPT on a "closed" loopback port, so readiness
+  timeout tests must dial a TEST-NET-1 blackhole, never a freed local port
+  (internal/mediamtx tests fixed); (2) Playwright browsers are provisioned
+  once on the runner as root (npx playwright install --with-deps chromium;
+  cache /root/.cache/ms-playwright survives across runner builds).
+
+## The Shack15 cutoff fix (reference)
 
 THE SHACK15 CUTOFF CAUSE IS FIXED AND PROVEN. The 2026-08-04 silence keepalive
 in swift/ppcapture.swift fired 120ms after the last real frame - inside normal
@@ -44,15 +82,6 @@ this branch merged) is the verification vehicle. Desk-build recognition would
 need a Mac Development profile embedded (app + capture bundle) - optional
 follow-up, not a gate.
 
-## Next concrete step
-
-The capture fixes live on branch `silence-two-clocks` (a new main-protection
-hook now requires branch + merge-gate; the checkout STAYS on this branch so
-dev-loop rebuilds keep the fix in the running app). Owner merges via his gate
-when ready. Then: the venue re-test at Shack15 is the closing proof for the
-cutoffs (zero "stream gaps:" lines during a set), and the next TestFlight
-build is the proof vehicle for recognition.
-
 ## Blockers
 
 None recorded.
@@ -76,26 +105,6 @@ None recorded.
 - Presence freshness as relay health: RunPlane and the media cycle are separate planes; presence stayed fresh for hours while the media push was dead
 - Judging room health via the r-<token> URL with curl: the Worker serves its relayBootstrap for every path on r- hosts; judge at <token>.relay… or /__pp/health on the box
 - Concluding files are missing from ls of ~/Library/Containers/...: TCC shows those dirs as empty to a no-FDA shell; prove absence by file read
-
-## Current position (2026-08-04, after the console-layout round)
-
-Everything above LANDED as `46c8bfed` on main through Workshop guarded integration (the
-Windows worker is fixed and verified the set: full Go suite + web suites + 8 worker smokes).
-On top of the incident fixes, the owner's console-layout round shipped in the same commit:
-
-- Console: titlebar is drag + gear only. Capture block ("What to capture" + picker + ? +
-  a big pink Start broadcast / Stop broadcast) sits under the poster where the join card
-  was; Guests join here follows (no separator above, compact link field); About You lost
-  its Name/About labels (placeholders carry it), chips are a real 3-col grid; the party
-  feed head holds Open event folder; guests list lives in the right rail (DJ group header
-  only when >1 DJ); readiness strip + isolation note live in Settings as "Status"; the ?
-  modal copy is current and carries the HTTP failsafe at its bottom. Cover restored on
-  the poster with always-visible Shuffle/Upload (full pipeline verified incl. persistence).
-- Pretty join URLs: the Worker mints a party-word join name per install
-  (broker/join/<name> -> relayToken; r-<token> hosts stay valid), relay/register returns
-  it as joinUrl, QR/link show e.g. happy-dance.partyparty.party (verified live).
-  wrangler.jsonc name aligned to the deployed worker (partyparty-site).
-- TestFlight: workflow run 30896604591 dispatched for 125.32 build 248 (owner-requested).
 
 ## Owed
 
