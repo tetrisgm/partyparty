@@ -65,6 +65,10 @@ func waitFor(t *testing.T, d time.Duration, msg string, cond func() bool) {
 	t.Fatalf("condition not met within %v: %s", d, msg)
 }
 
+// blackholeAddr sits in TEST-NET-1 (RFC 5737): reserved, never routed, so a
+// dial there can only run out its timeout.
+const blackholeAddr = "192.0.2.1:9"
+
 func freePort(t *testing.T) int {
 	t.Helper()
 	ln := listenLocalTCP(t)
@@ -241,8 +245,12 @@ func TestWaitReady(t *testing.T) {
 			t.Fatalf("WaitReady: %v", err)
 		}
 	})
-	t.Run("times out against a closed port", func(t *testing.T) {
-		addr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	t.Run("times out when nothing answers", func(t *testing.T) {
+		// TEST-NET-1 is reserved documentation space, so nothing can ever
+		// accept there. A "closed" loopback port is not hermetic: the WSL
+		// merge-gate runner shares its network stack with Windows, where a
+		// service accepted the freshly-freed port and WaitReady returned nil.
+		addr := blackholeAddr
 		begin := time.Now()
 		err := WaitReady(addr, 400*time.Millisecond)
 		if err == nil {
@@ -282,8 +290,8 @@ func TestWaitHTTPSReady(t *testing.T) {
 			t.Fatalf("WaitHTTPSReady: %v", err)
 		}
 	})
-	t.Run("times out against a closed port", func(t *testing.T) {
-		addr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+	t.Run("times out when nothing answers", func(t *testing.T) {
+		addr := blackholeAddr
 		err := WaitHTTPSReady(addr, 400*time.Millisecond)
 		if err == nil {
 			t.Fatal("expected timeout error")
