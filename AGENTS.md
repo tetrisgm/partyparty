@@ -102,3 +102,5 @@ boundary.
   account state.
 - Never mix Sparkle, Developer ID entitlements, or standalone update metadata
   into the Store target.
+
+- GitHub Actions is never used in this repo: no workflow files, secrets, or runners. Verification is merge-gate on the PC Linux lane (stack/runbooks/workflow.md); GitHub is a git host only.
