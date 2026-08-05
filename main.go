@@ -177,7 +177,13 @@ func main() {
 		if n := mediamtx.ReapOrphans(cfg.RTSPPort, cfg.HLSPort); n > 0 {
 			log.Printf("reaped %d orphaned mediamtx process(es) from a previous run", n)
 		}
-		mtx = mediamtx.NewServer(mtxBinPath, cfgPath, bc.ExternalWriter())
+		// MediaMTX mints an HLS session per playlist reader and logs each
+		// create/close at INFO. Guests arrive via the loopback proxy and the
+		// server's own inspector reads the muxer too, so these lines are pure
+		// churn that once flooded the 60-line ring down to ~28 seconds of
+		// history and blinded a live-set investigation (Shack15, 2026-08-04).
+		// Warnings and errors still pass.
+		mtx = mediamtx.NewServer(mtxBinPath, cfgPath, dropHLSSessionChurn(bc.ExternalWriter()))
 		// One fixed LL timing profile. Async activation swaps in the real cert
 		// without changing the playback or encoding mode.
 		applyActivation = func(certFile, keyFile string) error {
@@ -873,6 +879,26 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)
+}
+
+// dropHLSSessionChurn filters MediaMTX's per-session INFO lines out of the log
+// ring. One line arrives per playlist reader created or reaped; with the proxy
+// and the readiness inspector both reading over loopback that is a line a
+// second, which once shrank the ring to ~28s of history mid-incident. Anything
+// that is not an INFO session create/close passes through untouched.
+func dropHLSSessionChurn(w io.Writer) io.Writer {
+	return churnFilterWriter{w}
+}
+
+type churnFilterWriter struct{ w io.Writer }
+
+func (f churnFilterWriter) Write(p []byte) (int, error) {
+	line := string(p)
+	if strings.Contains(line, "INF [HLS] [session ") &&
+		(strings.Contains(line, "created by") || strings.Contains(line, "closed: inactive")) {
+		return len(p), nil
+	}
+	return f.w.Write(p)
 }
 
 // cmdOut runs a tiny probe command for the diagnostics header ("" on failure).

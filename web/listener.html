@@ -2377,7 +2377,11 @@
         { pos: rnd3(player.currentTime), lat: rnd3(measureLatency()), app: false });
     });
     player.addEventListener('seeked', sampleProgress);
-    function stale(){ return started && lastProgress && Date.now() - lastProgress > 12000; }
+    // 4s of zero progress is a starving player, not a buffering one. The old
+    // 12s threshold let a phone freeze for 12-20s while its latency ratcheted
+    // (the 2026-08-04 Shack15 set); a quick rebuild is a short blip that also
+    // lands with the room's full cushion.
+    function stale(){ return started && lastProgress && Date.now() - lastProgress > 4000; }
     const OUTLIER_LATE_BY = 0.75;
     const OUTLIER_CONFIRMATIONS = 3;
     const OUTLIER_COOLDOWN_MS = 15000;     // mechanical minimum: let an attachment land and re-measure

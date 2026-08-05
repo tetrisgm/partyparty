@@ -114,13 +114,19 @@ type srv struct {
 
 	// streamSync caches one lightweight playlist inspection per live generation.
 	// It prevents native HLS clients from attaching while MediaMTX's required
-	// initial GAP segments are the only history at the room target.
-	streamSyncMu         sync.Mutex
-	streamSyncGeneration int64
-	streamSyncReadiness  mediamtx.HLSReadiness
-	streamSyncCheckedAt  time.Time
-	streamSyncChecking   bool
-	streamSyncReady      bool
+	// initial GAP segments are the only history at the room target. After the
+	// ready latch it keeps a slow pulse purely for gap telemetry: fresh GAP
+	// parts at the live edge mean the INGEST starved (capture-side stall) and
+	// deserve a timestamped diag line while the set is still running.
+	streamSyncMu           sync.Mutex
+	streamSyncGeneration   int64
+	streamSyncReadiness    mediamtx.HLSReadiness
+	streamSyncCheckedAt    time.Time
+	streamSyncChecking     bool
+	streamSyncReady        bool
+	streamSyncChecks       int
+	streamSyncLastGap      float64
+	streamSyncGapBaselined bool
 
 	// audioProven: Mac-audio capture has gone live at least once on this
 	// install, so the system-audio permission is provably granted. macOS has no
@@ -1429,10 +1435,27 @@ func (s *srv) streamSyncState(bc broadcast.Status, target float64) map[string]an
 		s.streamSyncCheckedAt = time.Time{}
 		s.streamSyncChecking = false
 		s.streamSyncReady = false
+		s.streamSyncChecks = 0
+		s.streamSyncLastGap = 0
+		s.streamSyncGapBaselined = false
 	}
-	if !s.streamSyncReady && !s.streamSyncChecking && now.Sub(s.streamSyncCheckedAt) >= time.Second {
+	interval := time.Second
+	switch {
+	case s.streamSyncReady:
+		// Latched. The slow pulse below exists only so source-side stalls keep
+		// landing in the diag log with timestamps.
+		interval = 10 * time.Second
+	case s.streamSyncChecks >= 30:
+		// Not latching after ~30 checks is a fact about the stream (GAP parts
+		// keep reaching the live edge), not a reason to open a muxer session
+		// every second for a whole set - which is exactly what the Shack15
+		// 2026-08-04 set did, flooding the ring while proving nothing new.
+		interval = 5 * time.Second
+	}
+	if !s.streamSyncChecking && now.Sub(s.streamSyncCheckedAt) >= interval {
 		s.streamSyncChecking = true
 		s.streamSyncCheckedAt = now
+		s.streamSyncChecks++
 		go s.refreshStreamSync(generation, target)
 	}
 	state := s.streamSyncReadiness
@@ -1468,8 +1491,18 @@ func (s *srv) refreshStreamSync(generation int64, target float64) {
 	if ready {
 		s.streamSyncReady = true
 	}
+	// Fresh GAP parts after the baseline mean the ingest starved mid-set: the
+	// muxer had nothing real to serve for that stretch, and every listener hit
+	// the same hole at the same moment. This line is what turns "the cutoffs
+	// were back" from an anecdote into a timestamp.
+	gapGrew := s.streamSyncGapBaselined && state.GapHistory > s.streamSyncLastGap+0.01
+	s.streamSyncLastGap = state.GapHistory
+	s.streamSyncGapBaselined = true
 	s.streamSyncMu.Unlock()
 
+	if gapGrew && s.Diag != nil {
+		s.Diag.Printf("stream gaps: %.2fs of GAP parts in the live window - the ingest starved (capture-side stall)", state.GapHistory)
+	}
 	if ready && !wasReady && s.Diag != nil {
 		s.Diag.Printf("stream sync ready: generation=%d real=%.3fs gaps=%.3fs holdback=%.3fs part=%.3fs target=%.3fs playlist=%s",
 			generation, state.RealHistory, state.GapHistory, state.PartHoldBack, state.PartTarget, target, state.Generation)
