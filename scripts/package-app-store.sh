@@ -9,8 +9,16 @@ cd "$(dirname "$0")/.."
 HOST_OS_VERSION="$(sw_vers -productVersion)"
 HOST_OS_BUILD="$(sw_vers -buildVersion)"
 if [[ "$HOST_OS_BUILD" =~ [[:alpha:]]$ ]]; then
-  echo "App Store packages cannot be built on prerelease macOS: $HOST_OS_VERSION ($HOST_OS_BUILD)" >&2
-  exit 1
+  # A prerelease host is acceptable for TestFlight-only builds (internal
+  # testers, owner's call 2026-08-05: "we are not making an App Store version
+  # yet"). App Store RELEASE packages still hard-require a released macOS.
+  if [ "${PP_TESTFLIGHT_ONLY:-0}" = "1" ]; then
+    echo "prerelease macOS $HOST_OS_VERSION ($HOST_OS_BUILD) allowed: TestFlight-only build" >&2
+  else
+    echo "App Store packages cannot be built on prerelease macOS: $HOST_OS_VERSION ($HOST_OS_BUILD)" >&2
+    echo "(TestFlight-only builds may set PP_TESTFLIGHT_ONLY=1)" >&2
+    exit 1
+  fi
 fi
 
 [ -f "$APP_STORE_PROVISIONING_PROFILE" ] || {
