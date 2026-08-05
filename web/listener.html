@@ -262,7 +262,7 @@
   .composerline .mechip{max-width:128px;min-width:0;height:40px;padding:0 10px;gap:5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;box-shadow:none}
   .composerline .mechip b{overflow:hidden;text-overflow:ellipsis}
   .composerline .mechip input{width:86px;min-width:50px}
-  .postbtn{flex:0 0 auto;background:var(--accent);color:#fff;border:none;font-size:14px;font-weight:800;cursor:pointer;height:48px;border-radius:10px;padding:0 14px}
+  .postbtn{flex:0 0 auto;background:#ff2d6f;color:#fff;border:none;font-size:14px;font-weight:800;cursor:pointer;height:48px;border-radius:10px;padding:0 14px} /* the desktop console's pink, so Post matches across surfaces */
   /* ---- The party wall (event feed) ---- */
   .feed{width:100%;text-align:left;max-width:720px;margin:0 auto;padding:8px 20px calc(170px + env(safe-area-inset-bottom))}
   .album,.djprofile,.post{border:1px solid var(--party-line);background:#fff;border-color:rgba(0,0,0,.08);box-shadow:0 2px 12px rgba(0,0,0,.05)}
@@ -383,6 +383,10 @@
      the centre, which is what makes the neighbours peek. */
   .djlist{display:flex;overflow-x:auto;scrollbar-width:none;gap:10px;padding:1px 1px 9px;
     scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain}
+  /* Auto edge margins centre the row while it fits and collapse to zero the
+     moment it overflows, so more cards than the row can hold simply scroll. */
+  .djlist:not(.reel) .djchoice:first-child{margin-left:auto}
+  .djlist:not(.reel) .djchoice:last-child{margin-right:auto}
   .djlist.reel{padding-left:calc(50% - 66px);padding-right:calc(50% - 66px)}
   .djlist .djchoice{scroll-snap-align:center}
   /* Transform only, so scrolling does not reflow the row. */
@@ -636,6 +640,8 @@
   @media (min-width:760px){
     .djlist.reel{padding-left:1px;padding-right:1px;scroll-snap-type:none}
     .djlist.reel .djchoice{transform:none;opacity:1;filter:none}
+    .djlist.reel .djchoice:first-child{margin-left:auto}
+    .djlist.reel .djchoice:last-child{margin-right:auto}
     /* Nothing is centred here, so "nearest the middle" means nothing: the
        selected DJ is the only card that should read as chosen. */
     .djlist.reel .djchoice.focused{background:#fff;box-shadow:none}
@@ -668,9 +674,8 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M20 20v.01M17 20v.01"/></svg>
         <span class="toollabel">QR code</span>
       </button>
-      <button class="toptool labelled" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
+      <button class="toptool" id="nativeShareBtn" type="button" aria-label="Share event link" title="Share event link">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
-        <span class="toollabel">Share</span>
       </button>
     </div>
   </div>
@@ -756,7 +761,6 @@
         <span class="listen-copy">
           <b id="btnlabel">Tap to listen</b>
           <small id="btnhint">Low-latency party audio</small>
-          <small class="listen-count" id="listenCount">0 listening</small>
         </span>
         <span class="expandchev" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>
@@ -906,7 +910,6 @@
     const sheetDJHeading = document.getElementById('sheetDJHeading');
     const playerSummary = document.getElementById('playerSummary');
     const miniArt = document.getElementById('miniArt');
-    const listenCount = document.getElementById('listenCount');
     const playerSheet = document.getElementById('playerSheet');
     const playerSheetBackdrop = document.getElementById('playerSheetBackdrop');
     const sheetCollapse = document.getElementById('sheetCollapse');
@@ -1865,8 +1868,6 @@
     function updatePlayerDetails(){
       const track = selectedTrack();
       const djName = selectedDJName();
-      const listeners = selectedListenerCount();
-      const listenerText = listeners + ' listening';
       const artwork = artworkSource(track);
       miniArt.hidden = !artwork;
       sheetArt.hidden = !artwork;
@@ -1876,7 +1877,6 @@
       }
       setText(sheetTrackTitle, track && track.title ? track.title : 'Live party audio');
       setText(sheetTrackArtist, track && track.artist ? track.artist : djName);
-      setText(listenCount, listenerText);
       const palette = djPaletteAt(selectedDJIndex());
       if (document.documentElement.style.getPropertyValue('--selected-dj-color') !== palette[0]) {
         document.documentElement.style.setProperty('--selected-dj-color', palette[0]);
