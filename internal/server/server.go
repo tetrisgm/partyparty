@@ -150,9 +150,6 @@ func New(d Deps) *Srv {
 	if _, err := os.Stat(audioProvenPath()); err == nil {
 		s.audioProven.Store(true)
 	}
-	if d.Broadcaster != nil && d.Events != nil {
-		go s.watchRecognizedTracks()
-	}
 	return s
 }
 
@@ -684,6 +681,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	case "/api/peer":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 		writeJSON(w, http.StatusOK, s.peerState(since))
+	case "/api/track":
+		s.handleTrackPost(w, r)
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate. Expose the
 		// server receive/transmit pair so clients can use the full four-timestamp

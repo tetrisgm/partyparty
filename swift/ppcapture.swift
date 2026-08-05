@@ -14,7 +14,6 @@
 import Foundation
 import CoreAudio
 import AVFoundation
-import ShazamKit
 
 let errOut = FileHandle.standardError
 func elog(_ s: String) { errOut.write((s + "\n").data(using: .utf8)!) }
@@ -81,120 +80,6 @@ final class PCMRing {
     }
 }
 
-/// ShazamKit receives a copy after PCM has already been written downstream.
-/// Its serial queue is strictly bounded, so recognition can never hold up or
-/// accumulate latency in the live audio path.
-final class TrackRecognizer: NSObject, SHSessionDelegate {
-    private let session = SHSession()
-    private let format: AVAudioFormat
-    private let channels: Int
-    private let queue = DispatchQueue(label: "fm.partyparty.track-recognition", qos: .utility)
-    private let state = NSLock()
-    private var pending = 0
-    private var lastID = ""
-    private var lastErrorAt = Date.distantPast
-    private var lastLoudAt = Date()
-    private var silenceAnnounced = false
-
-    init?(sampleRate: Int, channels: Int) {
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: Double(sampleRate),
-            channels: AVAudioChannelCount(channels),
-            interleaved: false
-        ) else { return nil }
-        self.format = format
-        self.channels = channels
-        super.init()
-        session.delegate = self
-    }
-
-    func enqueue(_ interleaved: [Float32]) {
-        var energy: Float = 0
-        for sample in interleaved {
-            energy += sample * sample
-        }
-        let rms = interleaved.isEmpty ? 0 : sqrt(energy / Float(interleaved.count))
-        state.lock()
-        if rms >= 0.002 {
-            lastLoudAt = Date()
-            silenceAnnounced = false
-        } else {
-            state.unlock()
-            announceSilenceIfNeeded()
-            return
-        }
-        guard pending < 3 else {
-            state.unlock()
-            return
-        }
-        pending += 1
-        state.unlock()
-        queue.async { [self] in
-            defer {
-                state.lock()
-                pending -= 1
-                state.unlock()
-            }
-            let frames = interleaved.count / channels
-            guard frames > 0,
-                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
-                  let dst = buffer.floatChannelData else { return }
-            buffer.frameLength = AVAudioFrameCount(frames)
-            for frame in 0..<frames {
-                for channel in 0..<channels {
-                    dst[channel][frame] = interleaved[frame * channels + channel]
-                }
-            }
-            session.matchStreamingBuffer(buffer, at: nil)
-        }
-    }
-
-    func session(_ session: SHSession, didFind match: SHMatch) {
-        guard let item = match.mediaItems.first,
-              let title = item.title?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !title.isEmpty else { return }
-        let artist = item.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let matchID = item.shazamID ?? "\(artist)\u{0}\(title)"
-        state.lock()
-        guard Date().timeIntervalSince(lastLoudAt) < 6, matchID != lastID else {
-            state.unlock()
-            return
-        }
-        lastID = matchID
-        state.unlock()
-        var payload: [String: String] = ["id": matchID, "title": title, "artist": artist]
-        if let artworkURL = item.artworkURL?.absoluteString {
-            payload["artworkUrl"] = artworkURL
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              !data.isEmpty else { return }
-        elog("ppcapture: TRACK " + data.base64EncodedString())
-    }
-
-    func announceSilenceIfNeeded() {
-        state.lock()
-        let shouldAnnounce = !silenceAnnounced && Date().timeIntervalSince(lastLoudAt) >= 10
-        if shouldAnnounce {
-            silenceAnnounced = true
-            lastID = ""
-        }
-        state.unlock()
-        if shouldAnnounce {
-            elog("ppcapture: TRACK-SILENT \(Int(Date().timeIntervalSince1970 * 1000))")
-        }
-    }
-
-    func session(_ session: SHSession, didNotFindMatchFor signature: SHSignature, error: Error?) {
-        guard let error else { return }
-        state.lock()
-        let shouldLog = Date().timeIntervalSince(lastErrorAt) >= 60
-        if shouldLog { lastErrorAt = Date() }
-        state.unlock()
-        if shouldLog { elog("ppcapture: track recognition unavailable (\(error.localizedDescription))") }
-    }
-}
-
 func fail(_ msg: String, code: Int32) -> Never {
     elog("ppcapture: " + msg)
     exit(code)
@@ -250,7 +135,6 @@ guard err == noErr, aggID != kAudioObjectUnknown else {
 // cost a short bounded gap + instant resync instead. Drop path already exists in
 // PCMRing.push().
 let ring = PCMRing(capacitySamples: rate * ch / 2)
-let trackRecognizer = TrackRecognizer(sampleRate: rate, channels: ch)
 
 // The device clock is the only clock. Every IO cycle yields samples: the tap's
 // real data when something is rendering, zeros when the Mac is quiet. Silence
@@ -348,7 +232,7 @@ signal(SIGTERM) { _ in exit(0) }
 elog("ppcapture: FORMAT \(rate) \(ch)")
 elog("ppcapture: capturing system audio via Core Audio tap (\(rate) Hz, \(ch) ch, f32le)")
 Thread.detachNewThread {
-    ring.writerLoop { samples in trackRecognizer?.enqueue(samples) }
+    ring.writerLoop()
 }
 
 // One-time clock report. Empirical fact this design rests on (measured
@@ -438,7 +322,6 @@ Thread.detachNewThread {
     var wasHogged = false
     while true {
         Thread.sleep(forTimeInterval: 2)
-        trackRecognizer?.announceSilenceIfNeeded()
         let now = realMeter.realCount()
         let advancing = now != last
         last = now

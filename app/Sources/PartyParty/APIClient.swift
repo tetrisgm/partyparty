@@ -3,6 +3,7 @@ import Foundation
 /// Minimal snapshot of /api/status for the menu-bar monitor.
 struct ServerStatus {
     var state = "idle"      // idle | starting | live | error
+    var device = ""         // broadcast source: "mac", "test", or a mic index
     var listeners = 0
     var health = "idle"     // good | strain | congested | idle
     var struggling = 0
@@ -31,6 +32,7 @@ final class APIClient {
             var s = ServerStatus()
             if let b = o["broadcast"] as? [String: Any] {
                 s.state = b["state"] as? String ?? "idle"
+                s.device = b["device"] as? String ?? ""
                 s.captureBad = (b["captureBad"] as? Bool) ?? false
                 s.note = b["note"] as? String ?? ""
             }
@@ -98,6 +100,19 @@ final class APIClient {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             DispatchQueue.main.async { done((200..<300).contains(status)) }
         }.resume()
+    }
+
+    /// Recognition results from the in-app recognizer. Loopback is the DJ, so
+    /// no credential is involved; the server applies the same dedupe/state
+    /// rules regardless of caller.
+    func postTrack(_ payload: [String: Any]) {
+        guard let u = URL(string: "http://127.0.0.1:\(port)/api/track"),
+              let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+        URLSession.shared.dataTask(with: req).resume()
     }
 
 }

@@ -16,6 +16,7 @@
 		100000000000000000000007 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* main.swift */; };
 		10000000000000000000000A /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* Updater.swift */; };
 		10000000000000000000000B /* StatusPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* StatusPopover.swift */; };
+		10000000000000000000000C /* TrackRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* TrackRecognizer.swift */; };
 		100000000000000000000008 /* AppAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* AppAssets.xcassets */; };
 		100000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -34,6 +35,7 @@
 		20000000000000000000000B /* PartyParty.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PartyParty.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000C /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 		20000000000000000000000D /* StatusPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPopover.swift; sourceTree = "<group>"; };
+		20000000000000000000000E /* TrackRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRecognizer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +70,7 @@
 				200000000000000000000005 /* ServerController.swift */,
 				200000000000000000000006 /* StatusPoller.swift */,
 				20000000000000000000000D /* StatusPopover.swift */,
+				20000000000000000000000E /* TrackRecognizer.swift */,
 				200000000000000000000007 /* main.swift */,
 				20000000000000000000000C /* Updater.swift */,
 			);
@@ -182,6 +185,7 @@
 				100000000000000000000005 /* ServerController.swift in Sources */,
 				100000000000000000000006 /* StatusPoller.swift in Sources */,
 				10000000000000000000000B /* StatusPopover.swift in Sources */,
+				10000000000000000000000C /* TrackRecognizer.swift in Sources */,
 				100000000000000000000007 /* main.swift in Sources */,
 				10000000000000000000000A /* Updater.swift in Sources */,
 			);
@@ -219,13 +223,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "PartyParty-app-store.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 255;
+				CURRENT_PROJECT_VERSION = 256;
 				DEVELOPMENT_TEAM = 52WM463HR2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 125.35;
+				MARKETING_VERSION = 125.36;
 				PRODUCT_BUNDLE_IDENTIFIER = fm.partyparty.app;
 				PRODUCT_NAME = PartyParty;
 				SKIP_INSTALL = NO;
@@ -240,13 +244,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "PartyParty-app-store.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 255;
+				CURRENT_PROJECT_VERSION = 256;
 				DEVELOPMENT_TEAM = 52WM463HR2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 125.35;
+				MARKETING_VERSION = 125.36;
 				PRODUCT_BUNDLE_IDENTIFIER = fm.partyparty.app;
 				PRODUCT_NAME = PartyParty;
 				SKIP_INSTALL = NO;

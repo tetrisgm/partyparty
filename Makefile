@@ -6,7 +6,7 @@ MEDIAMTX = assets/mediamtx
 FFMPEG = assets/ffmpeg
 FFMPEG_URL = https://www.osxexperts.net/ffmpeg81arm.zip
 SWIFTFLAGS = -O -swift-version 5 -target arm64-apple-macos26.0 \
-  -framework CoreAudio -framework AVFoundation -framework ShazamKit
+  -framework CoreAudio -framework AVFoundation
 
 # Core Audio system-audio helper (embedded into the Go binary).
 $(HELPER): $(SWIFT_SRC)

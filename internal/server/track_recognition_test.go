@@ -1,17 +1,44 @@
 package server
 
 import (
-	"encoding/base64"
+	"bytes"
+	"net/http"
 	"testing"
+
+	"partyparty/internal/event"
 )
 
-func TestParseRecognizedTrack(t *testing.T) {
-	payload := base64.StdEncoding.EncodeToString([]byte(`{"id":"123","title":"Song","artist":"Artist","artworkUrl":"https://example.com/art.jpg"}`))
-	got, ok := parseRecognizedTrack("12:00:00  ppcapture: TRACK " + payload)
-	if !ok || got.ID != "123" || got.Title != "Song" || got.Artist != "Artist" || got.ArtworkURL != "https://example.com/art.jpg" {
-		t.Fatalf("parseRecognizedTrack = %#v, %v", got, ok)
+func TestTrackEndpoint(t *testing.T) {
+	env := newTestEnv(t, nil)
+	events, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := parseRecognizedTrack("ppcapture: TRACK not-base64"); ok {
-		t.Fatal("invalid payload parsed")
+	env.srv.Events = events
+
+	post := func(addr, payload string) int {
+		w := doBody(env.srv, http.MethodPost, "/api/track", addr, "application/json",
+			bytes.NewBufferString(payload))
+		return w.Code
+	}
+
+	if code := post("10.0.0.7:5000", `{"title":"Song"}`); code != http.StatusForbidden {
+		t.Fatalf("guest post = %d, want 403 (loopback is the DJ)", code)
+	}
+	if w := do(env.srv, http.MethodGet, "/api/track", djAddr); w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET = %d, want 405", w.Code)
+	}
+	if code := post(djAddr, `{"artist":"No Title"}`); code != http.StatusBadRequest {
+		t.Fatalf("title-less post = %d, want 400", code)
+	}
+	if code := post(djAddr, `{"id":"m1","title":"Song","artist":"Artist","artworkUrl":"https://example.com/a.jpg"}`); code != http.StatusOK {
+		t.Fatalf("match post = %d, want 200", code)
+	}
+	// Repeats of the same catalog item are idempotent, not errors.
+	if code := post(djAddr, `{"id":"m1","title":"Song","artist":"Artist"}`); code != http.StatusOK {
+		t.Fatalf("repeat post = %d, want 200", code)
+	}
+	if code := post(djAddr, `{"silent":true}`); code != http.StatusOK {
+		t.Fatalf("silent post = %d, want 200", code)
 	}
 }

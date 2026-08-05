@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let server = ServerController()
     private var api: APIClient!
     private var poller: StatusPoller!
+    private var trackRecognizer: AppTrackRecognizer!
     private var statusItem: NSStatusItem!
     private var console: AdminWindowController?
     private var updater: Updater!
@@ -32,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         setupStatusItem()
         poller = StatusPoller(api: api)
+        trackRecognizer = AppTrackRecognizer(api: api)
         poller.onChange = { [weak self] s in
             guard let self else { return }
             self.updateIcon(s)
@@ -41,6 +43,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.updater.broadcastDidEnd()
             }
             self.wasBroadcasting = broadcasting
+            // Recognition follows the Mac-output broadcast: the app is the only
+            // identity ShazamKit will authenticate, so the recognizer lives
+            // here, on its own tap, and never touches the live audio path.
+            if broadcasting && s.device == "mac" {
+                self.trackRecognizer.start()
+            } else {
+                self.trackRecognizer.stop()
+            }
         }
         poller.start()
         showConsole()                         // open the window on launch (regular-app behavior)

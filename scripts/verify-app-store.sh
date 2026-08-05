@@ -115,7 +115,13 @@ capture_keys="$(entitlements "$capture" | /usr/bin/plutil -convert json -o - - |
 [ "$capture_keys" = $'com.apple.security.app-sandbox\ncom.apple.security.inherit' ] ||
   fail "ppcapture must carry exactly app-sandbox + inherit (an own profile SIGTRAPs at spawn): got $capture_keys"
 
-otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'
+# Recognition lives in the APP (the only ShazamKit-authenticatable identity);
+# the capture helper must stay free of it.
+otool -L "$APP/Contents/MacOS/PartyParty" | grep -q '/ShazamKit.framework/' ||
+  fail "the app binary does not link ShazamKit (recognition would be silently absent)"
+if otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'; then
+  fail "ppcapture links ShazamKit again (recognition there can never authenticate - error 202)"
+fi
 
 if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
   work="$(mktemp -d)"
