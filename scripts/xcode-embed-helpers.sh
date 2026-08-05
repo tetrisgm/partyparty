@@ -28,9 +28,22 @@ for helper in ffmpeg mediamtx; do
   rm -f "$HELPERS/$helper"
   cp "$ROOT/assets/$helper" "$HELPERS/$helper"
 done
+# ppcapture ships as a real bundle: TCC needs a bundle identity for a helper
+# that carries its OWN sandbox (the shazamd exception cannot ride an
+# inherit-only child), and stamping it with the app's bundle id makes the
+# system attribute audio capture to PartyParty itself - one grant, no
+# "PartyParty 2" ghost rows. The rename-era build flattened this to a bare
+# binary; recognition died on 2026-07-31 and, once the bare binary was signed
+# with its own profile, capture itself was refused by TCC on 2026-08-05.
 rm -rf "$HELPERS/ppcapture.app"
 rm -f "$HELPERS/ppcapture"
-cp "$ROOT/assets/ppcapture" "$HELPERS/ppcapture"
+mkdir -p "$HELPERS/ppcapture.app/Contents/MacOS"
+cp "$ROOT/assets/ppcapture" "$HELPERS/ppcapture.app/Contents/MacOS/ppcapture"
+cp "$ROOT/app/ppcapture-Info.plist" "$HELPERS/ppcapture.app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $PRODUCT_BUNDLE_IDENTIFIER" "$HELPERS/ppcapture.app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$HELPERS/ppcapture.app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CURRENT_PROJECT_VERSION" "$HELPERS/ppcapture.app/Contents/Info.plist"
+chmod +x "$HELPERS/ppcapture.app/Contents/MacOS/ppcapture"
 chmod +x "$HELPERS/"*
 
 if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
@@ -54,5 +67,5 @@ if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
   # asserts the exception so this cannot regress quietly again.
   codesign "${sign_args[@]}" \
     --entitlements "$ROOT/app/PartyParty-app-store-capture.entitlements" \
-    "$HELPERS/ppcapture"
+    "$HELPERS/ppcapture.app"
 fi

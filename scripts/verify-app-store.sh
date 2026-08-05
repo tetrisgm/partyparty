@@ -54,11 +54,13 @@ PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 [ "$(/usr/bin/plutil -extract NSPrivacyTracking raw -o - "$PRIVACY")" = "false" ] ||
   fail "privacy manifest enables tracking"
 
-expected_helpers=$'ffmpeg\nmediamtx\npartyparty-server\nppcapture'
+expected_helpers=$'ffmpeg\nmediamtx\npartyparty-server\nppcapture.app'
 actual_helpers="$(find "$APP/Contents/Helpers" -mindepth 1 -maxdepth 1 -print | sed 's#.*/##' | sort)"
 [ "$actual_helpers" = "$expected_helpers" ] || fail "unexpected helper set: $actual_helpers"
-[ -z "$(find "$APP/Contents/Helpers" -type d -name '*.app' -print -quit)" ] ||
-  fail "helper directory contains a nested application"
+# ppcapture.app is the ONE sanctioned nested bundle: TCC needs a bundle
+# identity for the capture helper's standalone sandbox profile.
+[ -z "$(find "$APP/Contents/Helpers" -type d -name 'ppcapture.app' -prune -o -type d -name '*.app' -print -quit)" ] ||
+  fail "helper directory contains an unexpected nested application"
 
 entitlements() {
   /usr/bin/codesign -d --entitlements :- "$1" 2>/dev/null
@@ -100,7 +102,9 @@ done
 # network.client, which an inherit-only child cannot carry. This loop used to
 # force ppcapture into the inherit shape, which silently killed recognition
 # (error 202 on every attempt, 2026-07-31 to 2026-08-05).
-capture="$APP/Contents/Helpers/ppcapture"
+capture="$APP/Contents/Helpers/ppcapture.app"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$capture/Contents/Info.plist")" = "$EXPECTED_BUNDLE_ID" ] ||
+  fail "ppcapture bundle id must match the app so TCC attributes capture to PartyParty"
 [ "$(entitlement_value "$capture" com.apple.security.app-sandbox)" = "true" ] ||
   fail "ppcapture is not sandboxed"
 [ "$(entitlement_value "$capture" com.apple.security.network.client)" = "true" ] ||
@@ -115,7 +119,7 @@ capture_mach="$(entitlements "$capture" | /usr/bin/plutil -convert json -o - - |
 [ "$capture_mach" = "com.apple.shazamd" ] ||
   fail "ppcapture lost the shazamd mach-lookup exception (recognition dies with error 202): got '$capture_mach'"
 
-otool -L "$APP/Contents/Helpers/ppcapture" | grep -q '/ShazamKit.framework/'
+otool -L "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture" | grep -q '/ShazamKit.framework/'
 
 if [ -f "$APP/Contents/embedded.provisionprofile" ]; then
   work="$(mktemp -d)"

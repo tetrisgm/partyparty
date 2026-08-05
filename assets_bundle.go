@@ -35,6 +35,11 @@ func helper(name string) string {
 	return filepath.Join(d, name)
 }
 
-func helperPPCapture(string) string { return helper("ppcapture") }
+// ppcapture lives in Helpers as a real .app bundle: TCC needs a bundle
+// identity for a helper that carries its own sandbox profile (the shazamd
+// mach exception cannot ride an inherit-only child signature).
+func helperPPCapture(string) string {
+	return filepath.Join(helper("ppcapture.app"), "Contents", "MacOS", "ppcapture")
+}
 func helperMediaMTX(string) string  { return helper("mediamtx") }
 func helperFFmpeg(string) string    { return helper("ffmpeg") }
