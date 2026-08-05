@@ -61,26 +61,6 @@ final class PCMRing {
         cond.unlock()
     }
 
-    /// pushSilence appends zero samples WITHOUT advancing totalPushed: the
-    /// stall/hog monitor keys on that counter to mean "real frames from the
-    /// device", and synthesized silence must never mask a wedged tap. On a
-    /// full ring it simply skips - if the pipe is congested, padding is the
-    /// last thing it needs.
-    func pushSilence(_ n: Int) {
-        cond.lock()
-        if n <= 0 || used + n > cap {
-            cond.unlock()
-            return
-        }
-        for i in 0..<n {
-            buf[(tail + i) % cap] = 0
-        }
-        tail = (tail + n) % cap
-        used += n
-        cond.signal()
-        cond.unlock()
-    }
-
     func writerLoop(onChunk: (([Float32]) -> Void)? = nil) {
         var out = [Float32](repeating: 0, count: 16384)
         while true {
@@ -271,27 +251,88 @@ guard err == noErr, aggID != kAudioObjectUnknown else {
 // PCMRing.push().
 let ring = PCMRing(capacitySamples: rate * ch / 2)
 let trackRecognizer = TrackRecognizer(sampleRate: rate, channels: ch)
+
+// The device clock is the only clock. Every IO cycle yields samples: the tap's
+// real data when something is rendering, zeros when the Mac is quiet. Silence
+// is ordinary audio - downstream never distinguishes a quiet Mac from a
+// playing one, the channel is live from the first cycle, and nothing else may
+// ever synthesize audio. (A wall-clock keepalive shipped 2026-08-04 and raced
+// late HAL callbacks: any callback later than 120ms got zeros spliced into
+// PLAYING audio - simultaneous dropouts for every listener at a venue that
+// same day. The realMeter below is how a truly wedged tap still gets caught:
+// zeros advance the ring but never the meter.)
+final class RealMeter {
+    private let lock = NSLock()
+    private var real = 0
+    private var cycles = 0
+    private var empty = 0
+    func count(realSamples: Int) {
+        lock.lock()
+        cycles += 1
+        if realSamples > 0 { real += realSamples } else { empty += 1 }
+        lock.unlock()
+    }
+    func realCount() -> Int { lock.lock(); defer { lock.unlock() }; return real }
+    func report() -> (cycles: Int, real: Int, empty: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (cycles, real, empty)
+    }
+}
+let realMeter = RealMeter()
+// Zeros are cut to the cycle's exact device-clock length (mSampleTime delta),
+// never a guessed buffer size: a fixed guess that ran long would inflate the
+// stream clock a few frames per cycle and turn a long quiet stretch into
+// minutes of accumulated delay. maxFill bounds a resumed/jumped clock.
+let maxFillFrames = 4096
+let zeroChunk = [Float32](repeating: 0, count: 9600 * ch) // 0.2s at 48k, shared by both fillers
+var lastSampleTime: Float64 = -1 // HAL IO thread only; no lock needed
+// Set by the wall-clock filler while it is filling; the next REAL frames get a
+// 5ms fade-in so the silence->music splice never clicks. Benign race: a missed
+// fade is a click at worst, never corruption.
+var fadePending = false
 var procID: AudioDeviceIOProcID?
-err = AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { _, inInputData, _, _, _ in
+err = AudioDeviceCreateIOProcIDWithBlock(&procID, aggID, nil) { inNow, inInputData, _, _, _ in
+    let nowST = inNow.pointee.mSampleTime
+    let elapsed = lastSampleTime < 0 ? 0 : Int(nowST - lastSampleTime)
+    lastSampleTime = nowST
     let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inInputData))
+    var realSamples = 0
     if abl.count >= 2, abl[0].mNumberChannels == 1 {
         // planar L/R -> interleave
         let lBuf = abl[0], rBuf = abl[1]
         let frames = Int(lBuf.mDataByteSize) / MemoryLayout<Float32>.size
-        guard frames > 0, let lp = lBuf.mData, let rp = rBuf.mData else { return }
-        let l = lp.assumingMemoryBound(to: Float32.self)
-        let r = rp.assumingMemoryBound(to: Float32.self)
-        var inter = [Float32](repeating: 0, count: frames * 2)
-        for i in 0..<frames {
-            inter[2 * i] = l[i]
-            inter[2 * i + 1] = r[i]
+        if frames > 0, let lp = lBuf.mData, let rp = rBuf.mData {
+            let l = lp.assumingMemoryBound(to: Float32.self)
+            let r = rp.assumingMemoryBound(to: Float32.self)
+            var inter = [Float32](repeating: 0, count: frames * 2)
+            for i in 0..<frames {
+                inter[2 * i] = l[i]
+                inter[2 * i + 1] = r[i]
+            }
+            if fadePending {
+                fadePending = false
+                let rampFrames = min(240, frames) // 5ms at 48k
+                for i in 0..<rampFrames {
+                    let g = Float32(i) / Float32(rampFrames)
+                    inter[2 * i] *= g
+                    inter[2 * i + 1] *= g
+                }
+            }
+            inter.withUnsafeBufferPointer { ring.push($0.baseAddress!, frames * 2) }
+            realSamples = frames * 2
         }
-        inter.withUnsafeBufferPointer { ring.push($0.baseAddress!, frames * 2) }
     } else if let first = abl.first, let p = first.mData {
         let n = Int(first.mDataByteSize) / MemoryLayout<Float32>.size
-        guard n > 0 else { return }
-        ring.push(p.assumingMemoryBound(to: Float32.self), n)
+        if n > 0 {
+            ring.push(p.assumingMemoryBound(to: Float32.self), n)
+            realSamples = n
+        }
     }
+    if realSamples == 0, elapsed > 0, elapsed <= maxFillFrames {
+        zeroChunk.withUnsafeBufferPointer { ring.push($0.baseAddress!, elapsed * ch) }
+    }
+    realMeter.count(realSamples: realSamples)
 }
 guard err == noErr, let pid = procID else {
     fail("IOProc failed (err \(err))", code: 4)
@@ -310,51 +351,67 @@ Thread.detachNewThread {
     ring.writerLoop { samples in trackRecognizer?.enqueue(samples) }
 }
 
-// Silence keepalive. A silent Mac produces NO tap callbacks, and nothing
-// downstream declares the channel live until samples flow - so Go Live used to
-// sit in "Starting audio" until the DJ pressed play (34.5s measured at a real
-// party; indefinitely on a Mac playing nothing). DJs start the channel first
-// and play when ready, so the channel must come up on its own: when real
-// frames stop for a beat, feed the pipeline actual silence at the device rate.
-// Synthesized silence is indistinguishable from real silence in raw f32le, so
-// ffmpeg encodes continuously, the room is live in seconds, and guests hear
-// quiet until the music starts - a radio station between words, not a stall.
-// The stall/hog monitor keys on totalPushed, which pushSilence does not
-// advance, so wedge detection still sees a silent Mac as "no real frames".
+// One-time clock report. Empirical fact this design rests on (measured
+// 2026-08-05, cycles=0 over 10 silent seconds): when the Mac is silent the
+// aggregate's IO cycle stops COMPLETELY - no callbacks, no device clock - so
+// dead air cannot be device-clocked and the wall-clock filler below is not
+// optional. This line re-proves it on every launch.
 Thread.detachNewThread {
-    let tick = 0.05
-    let quietAfter = 0.12 // one missed HAL cycle is normal; two is silence
-    var lastCount = ring.pushedCount()
-    var lastReal = Date()
+    Thread.sleep(forTimeInterval: 10)
+    let r = realMeter.report()
+    elog("ppcapture: clock report 10s cycles=\(r.cycles) realSamples=\(r.real) emptyCycles=\(r.empty)")
+}
+
+// Wall-clock silence filler - the last resort, provably incapable of touching
+// playing audio. The 2026-08-04 version fired 120ms after the last frame,
+// which is INSIDE normal HAL callback jitter: any late callback got zeros
+// spliced into playing music, and every listener heard the same hole at the
+// same moment (the Shack15 cutoffs). The gate now is quietAfter=1.5s -
+// strictly beyond what the 0.5s ring plus the 0.9s player hold-back can
+// absorb - so by the time it fires, listeners were starving no matter what:
+// it can only ever fill air that was already dead. It stands down the instant
+// real frames flow, never advances the real-frames meter (a wedged tap still
+// looks wedged to the health monitor), and arms the 5ms fade-in so music
+// returning after dead air never clicks.
+Thread.detachNewThread {
+    let tick = 0.1
+    let quietAfter = 1.5
+    var lastReal = realMeter.realCount()
+    var lastRealAt = Date()
     var filledTo = Date()
+    var filling = false
     while true {
         Thread.sleep(forTimeInterval: tick)
         let now = Date()
-        let count = ring.pushedCount()
-        if count != lastCount {
-            // Real audio is flowing; stand down and re-anchor.
-            lastCount = count
-            lastReal = now
-            filledTo = now
+        let real = realMeter.realCount()
+        if real != lastReal {
+            lastReal = real
+            lastRealAt = now
+            filling = false
             continue
         }
-        if now.timeIntervalSince(lastReal) < quietAfter { continue }
-        // Fill up to wall clock in bounded steps. The cap keeps a stretched
-        // sleep (timer coalescing, a debugger pause) from bursting minutes of
-        // zeros into a 0.5s ring.
-        if filledTo < now.addingTimeInterval(-0.5) { filledTo = now.addingTimeInterval(-0.5) }
-        let owe = now.timeIntervalSince(filledTo)
-        let frames = Int(owe * Double(rate))
+        if now.timeIntervalSince(lastRealAt) < quietAfter { continue }
+        if !filling {
+            filling = true
+            filledTo = now
+            fadePending = true
+        }
+        // Fill wall-clock owed in bounded steps; the clamp keeps a stretched
+        // sleep from bursting a backlog of zeros into a 0.5s ring.
+        if filledTo < now.addingTimeInterval(-0.4) { filledTo = now.addingTimeInterval(-0.4) }
+        let oweFrames = Int(now.timeIntervalSince(filledTo) * Double(rate))
+        let frames = min(oweFrames, zeroChunk.count / ch)
         if frames <= 0 { continue }
-        ring.pushSilence(frames * ch)
+        zeroChunk.withUnsafeBufferPointer { ring.push($0.baseAddress!, frames * ch) }
         filledTo = filledTo.addingTimeInterval(Double(frames) / Double(rate))
     }
 }
 
-// Capture-health monitor. A Core Audio tap may produce no callbacks while the
-// Mac output is silent, so absence of frames alone is not a failure signal.
-// Exclusive/HOG ownership is authoritative: surface it, then rebuild once the
-// owner releases the device. Default-device changes are handled separately.
+// Capture-health monitor. A quiet Mac produces empty cycles (zeros in the
+// ring, nothing on the real-frames meter), so absence of REAL frames alone is
+// not a failure signal. Exclusive/HOG ownership is authoritative: surface it,
+// then rebuild once the owner releases the device. Default-device changes are
+// handled separately.
 func defaultOutputDevice() -> AudioObjectID {
     var dev = AudioObjectID(0)
     var addr = AudioObjectPropertyAddress(
@@ -375,14 +432,14 @@ func hogOwner(_ dev: AudioObjectID) -> pid_t {
 }
 Thread.detachNewThread {
     let me = getpid()
-    var last = ring.pushedCount()
+    var last = realMeter.realCount()
     var quietFor = 0
     var flagged = false
     var wasHogged = false
     while true {
         Thread.sleep(forTimeInterval: 2)
         trackRecognizer?.announceSilenceIfNeeded()
-        let now = ring.pushedCount()
+        let now = realMeter.realCount()
         let advancing = now != last
         last = now
         if advancing {

@@ -1,14 +1,41 @@
 # PartyParty.party handoff
 
+## WORKSHOP IS SUSPENDED (owner, 2026-08-05 ~01:42)
+
+The owner is reworking the agent/Workshop infrastructure and wiped its state
+(registry + task root + mirror) himself. Until he restores it: do NOT open
+Workshop tasks (the supervisor errors with a misleading "another client"
+message); verified work is committed and pushed directly per the user-wide
+contract's unregistered-project rule. This section comes out when Workshop is
+back.
+
 ## Current position
 
-Owner called out that his Mac ran newer code under the TestFlight build's exact number ("that's on you" - correct). Fix: scripts/xcode-embed-helpers.sh now stamps Debug builds as MARKETING_VERSION-dev.<gitshort>[+dirty] via the existing -X main.appVersion ldflag; Release stamping is untouched so the store lane's Verify still matches exactly. From the next desk install onward, /api/status and every UI shows e.g. 125.33-dev.712cfeb and a dev build can never masquerade as a release. Not installed yet - the owner is LIVE streaming right now (home set, clean gapHistory=0); takes effect on the next build-install. bash -n clean.
-
-Workshop checkpoint: `1785917449255-3f18be2f` (apple).
+THE SHACK15 CUTOFF CAUSE IS FIXED AND PROVEN. The 2026-08-04 silence keepalive
+in swift/ppcapture.swift fired 120ms after the last real frame - inside normal
+HAL callback jitter - so on a loaded venue Mac it repeatedly spliced zeros into
+PLAYING audio and every listener heard the same hole at the same instant. The
+replacement is a two-clock design: real audio rides the device clock
+exclusively (per-cycle mSampleTime accounting; a real-frames meter separates
+real from synthesized so a wedged/hogged tap still looks wedged to the health
+monitor), and dead air is wall-clock-filled only after 1.5s of no real frames -
+strictly beyond what the 0.5s ring + 0.9s hold-back absorb, so the filler is
+structurally incapable of touching playing audio - with a 5ms fade-in when
+music returns. Empirical facts baked into an every-launch "clock report" diag
+line: on a silent Mac the aggregate's IO cycle stops COMPLETELY (cycles=0 over
+10s, measured 2026-08-05), so device-clocked silence is impossible on this API
+and the wall-clock filler is not optional. Verified live on this Mac: silent
+go-live in 4s (was 34.5s/forever), silence->music transition with zero
+gapHistory growth. Installed and running (125.33-dev stamp).
 
 ## Next concrete step
 
-Verify + finish through Workshop. Install lands with the next build (owner is live; never rebuild under a live set).
+The ppcapture fix lives on branch `silence-two-clocks` (a new main-protection
+hook now requires branch + merge-gate; the checkout STAYS on this branch so
+dev-loop rebuilds keep the fix in the running app). Owner merges via his gate
+when ready. Then: the venue re-test at Shack15 with this build is the closing
+proof - watch for zero "stream gaps:" diag lines during a set with phones
+listening.
 
 ## Blockers
 
