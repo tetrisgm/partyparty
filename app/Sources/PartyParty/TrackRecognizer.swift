@@ -17,6 +17,11 @@ import ShazamKit
 final class AppTrackRecognizer: NSObject, SHSessionDelegate {
     private let api: APIClient
     private let queue = DispatchQueue(label: "fm.partyparty.app.track-recognition", qos: .utility)
+    // All CoreAudio setup/teardown runs here, never on main: creating a tap
+    // can BLOCK on the TCC permission machinery, and a blocked main thread is
+    // a beachballing app (proven immediately: the first build froze at Go
+    // Live and got SIGTERMed by the owner's dock utility, 2026-08-05).
+    private let control = DispatchQueue(label: "fm.partyparty.app.track-recognition.control", qos: .userInitiated)
     private let state = NSLock()
 
     private var session: SHSession?
@@ -38,9 +43,17 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
         super.init()
     }
 
-    // MARK: lifecycle (main thread)
+    // MARK: lifecycle (callable from anywhere; work happens on `control`)
 
     func start() {
+        control.async { [self] in startLocked() }
+    }
+
+    func stop() {
+        control.async { [self] in stopLocked() }
+    }
+
+    private func startLocked() {
         guard !running else { return }
         let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         desc.uuid = UUID()
@@ -152,7 +165,7 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
         NSLog("PartyParty: track recognition running in-app (\(rate) Hz, \(ch) ch)")
     }
 
-    func stop() {
+    private func stopLocked() {
         guard running else { return }
         if let procID { AudioDeviceStop(aggID, procID); AudioDeviceDestroyIOProcID(aggID, procID) }
         if aggID != kAudioObjectUnknown { AudioHardwareDestroyAggregateDevice(aggID) }
