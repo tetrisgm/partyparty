@@ -28,14 +28,30 @@ and the wall-clock filler is not optional. Verified live on this Mac: silent
 go-live in 4s (was 34.5s/forever), silence->music transition with zero
 gapHistory growth. Installed and running (125.33-dev stamp).
 
+## Shazam verdict (2026-08-05 02:30)
+
+Track recognition died 2026-07-31 for TWO stacked reasons, both now resolved
+as far as code can: (1) the rename flattened ppcapture to a bare inherit-
+signed binary, losing the shazamd mach exception AND the bundle identity TCC
+needs - restored on the branch (ppcapture.app, app's bundle id, capture
+entitlements, verify-app-store.sh asserts all of it). (2) With that fixed, a
+clean-room probe proved the remainder: ShazamKit 202 = "Missing entitlements"
+wrapping HTTP 401 from api.shazam.apple.com - catalog matching requires
+signing/provisioning that carries the App ID's ShazamKit service. Desk builds
+embed no profile and are refused by Apple's server, always. Recognition is
+therefore PROVEN only in provisioned builds: the next TestFlight build (with
+this branch merged) is the verification vehicle. Desk-build recognition would
+need a Mac Development profile embedded (app + capture bundle) - optional
+follow-up, not a gate.
+
 ## Next concrete step
 
-The ppcapture fix lives on branch `silence-two-clocks` (a new main-protection
+The capture fixes live on branch `silence-two-clocks` (a new main-protection
 hook now requires branch + merge-gate; the checkout STAYS on this branch so
 dev-loop rebuilds keep the fix in the running app). Owner merges via his gate
-when ready. Then: the venue re-test at Shack15 with this build is the closing
-proof - watch for zero "stream gaps:" diag lines during a set with phones
-listening.
+when ready. Then: the venue re-test at Shack15 is the closing proof for the
+cutoffs (zero "stream gaps:" lines during a set), and the next TestFlight
+build is the proof vehicle for recognition.
 
 ## Blockers
 
