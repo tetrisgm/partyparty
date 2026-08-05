@@ -1746,12 +1746,35 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     localStorage.setItem('pp.adv', $('advToggle').checked ? '1' : '0');
   };
 
+  function primeSystemAudioViaShell() {
+    // The sandboxed capture helper cannot raise the System Audio Recording
+    // prompt itself - without a grant its tap silently captures nothing - so
+    // the shell app taps once in its own name first and the prompt appears as
+    // "PartyParty" before capture starts. No shell bridge = nothing to prime.
+    if (!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pp)) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
+      window.ppSystemAudioPrimed = done;
+      setTimeout(() => done(true), 180000); // an unanswered prompt must not hold Go Live hostage forever
+      try { window.webkit.messageHandlers.pp.postMessage({ action: 'primeSystemAudio' }); }
+      catch (e) { done(true); }
+    });
+  }
+
   async function startBroadcast() {
     const sel = $('device');
     const device = sel.value;
     const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
     localStorage.setItem('pp.device', device); // device choice IS deliberate; a/v settings persist only via their own onchange
     let ok = false;
+    if (device === 'mac' && !(await primeSystemAudioViaShell())) {
+      startError = 'System Audio Recording is off for PartyParty. Open System Audio Recording Only, turn on PartyParty, then Go Live again.';
+      refresh();
+      return false;
+    }
     try {
       const r = await fetch('/api/start?device=' + encodeURIComponent(device) + '&name=' + encodeURIComponent(name), { method:'POST' });
       if (!r.ok) {

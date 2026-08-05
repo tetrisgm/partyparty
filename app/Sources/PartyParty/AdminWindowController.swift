@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreAudio
 import WebKit
 import ServiceManagement
 import CoreGraphics
@@ -344,6 +345,8 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             NSWorkspace.shared.open(url)
         case "captureSourceChanged":
             setCaptureSource(body["device"] as? String)
+        case "primeSystemAudio":
+            primeSystemAudio()
         case "resetConsole":
             resetConsole()
         case "jslog":
@@ -397,10 +400,36 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
                 return .undetermined
             }
         case .systemAudio:
-            // Core Audio process taps prompt when the tap is created, but the SDK
-            // exposes no status-only authorization API equivalent to AVFoundation's
-            // microphone preflight. Do not claim success until capture proves it.
-            return .undetermined
+            // The SDK exposes no status-only authorization API for system audio,
+            // and a SANDBOXED process's tap never raises the prompt on its own -
+            // it silently delivers nothing (proven 2026-08-05: fresh TCC state,
+            // helper tap ran with zero device cycles, no AUTHREQ ever reached
+            // tccd). The only signal we own is the outcome of our explicit
+            // priming request at Go Live.
+            return systemAudioPrimeState
+        }
+    }
+
+    // primeSystemAudio: the app itself creates a momentary process tap so the
+    // System Audio Recording prompt appears attributed to "PartyParty" BEFORE
+    // the capture helper starts. The helper's own tap cannot prompt (sandboxed,
+    // silent no-op without a grant), so without this a fresh Mac goes live and
+    // streams silence with no dialog ever shown.
+    private var systemAudioPrimeState: CapturePermissionState = .undetermined
+    private func primeSystemAudio() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var tapID = AudioObjectID(kAudioObjectUnknown)
+            let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+            let err = AudioHardwareCreateProcessTap(desc, &tapID)
+            if tapID != AudioObjectID(kAudioObjectUnknown) {
+                AudioHardwareDestroyProcessTap(tapID)
+            }
+            DispatchQueue.main.async {
+                self?.systemAudioPrimeState = (err == noErr) ? .granted : .denied
+                self?.pushCapturePermission()
+                self?.webView.evaluateJavaScript(
+                    "window.ppSystemAudioPrimed && window.ppSystemAudioPrimed(\(err == noErr))")
+            }
         }
     }
 
