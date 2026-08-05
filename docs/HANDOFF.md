@@ -2,13 +2,13 @@
 
 ## Current position
 
-Post-set investigation closed with a design verdict, three landed-ready fixes, and a prime regression suspect. VERDICT: the owner refuses room-level drift - the product is RADIO: one small fixed cushion, no adaptive delay. A full adaptive room-delay system (schedule.Controller levels 1.0/2.0/3.5, coincidence-gated epoch retunes, per-network venue memory) was built, tested green, and then DELIBERATELY STRUCK before landing on the owner's direction; the fixed schedule and its restored doc stand. WHAT LANDS: (1) listener stale() 12s->4s - a starving player rebuilds in seconds instead of freezing 12-20s and ratcheting (Chris hit 16.9s behind through exactly this). (2) streamSync inspector: 1s re-arm was unbounded while ready never latched - at Shack15 it opened a muxer session EVERY SECOND ALL SET; now backs off to 5s after 30 checks, and after the latch keeps a 10s pulse purely for gap telemetry, logging a timestamped diag line whenever GapHistory grows (fresh GAP parts = the ingest starved = every phone cut at the same moment). (3) main.go wraps the MediaMTX log pipe to drop per-session INFO churn from the ring (it had blinded the ring to ~28s mid-incident). EVIDENCE CHAIN for the venue cutoffs: churn all set means ready never latched means GAP parts kept reaching the live edge means CONTINUOUS SOURCE-SIDE INGEST GAPS at Shack15 (matches owner-confirmed simultaneous cuts + flat 0.96 Mbps); at home, ready latches in <2s (proven with a device=test start). PRIME SUSPECT for the regression since the stable era: ShazamKit track recognition (post-dates stable era, needs internet, error-202ed every 60s at the venue, shares the ppcapture tap) - audio-core adjacent, NOT touched; needs an owner-supervised test (e.g. real capture with Shazam endpoints blocked). Ping evidence at the venue: Mac->phone same room p50 100ms p90 272ms p99 680ms, 35 timeouts/1600 - the venue also has genuinely hostile airtime; both things are true.
+Owner called out that his Mac ran newer code under the TestFlight build's exact number ("that's on you" - correct). Fix: scripts/xcode-embed-helpers.sh now stamps Debug builds as MARKETING_VERSION-dev.<gitshort>[+dirty] via the existing -X main.appVersion ldflag; Release stamping is untouched so the store lane's Verify still matches exactly. From the next desk install onward, /api/status and every UI shows e.g. 125.33-dev.712cfeb and a dev build can never masquerade as a release. Not installed yet - the owner is LIVE streaming right now (home set, clean gapHistory=0); takes effect on the next build-install. bash -n clean.
 
-Workshop checkpoint: `1785915462826-c9180cd0` (investigation).
+Workshop checkpoint: `1785917449255-3f18be2f` (apple).
 
 ## Next concrete step
 
-Verify + finish through Workshop, then full build-install (set is over), then a device=test start to confirm ready-latch + clean ring on the installed build, then the owner report. The ShazamKit-under-bad-internet supervised experiment is proposed to the owner, not scheduled.
+Verify + finish through Workshop. Install lands with the next build (owner is live; never rebuild under a live set).
 
 ## Blockers
 

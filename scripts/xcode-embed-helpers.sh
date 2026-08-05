@@ -7,8 +7,21 @@ GO="${GO:-go}"
 
 mkdir -p "$HELPERS"
 
+# A Debug build is a desk build, not a release. Stamping it with the commit it
+# was built from means "what version is running on my Mac" always has one
+# honest answer - a dev install once wore a TestFlight build's exact number and
+# the owner had no way to tell them apart. Release keeps the bare marketing
+# version the store lane verifies.
+VERSION="$MARKETING_VERSION"
+if [ "${CONFIGURATION:-}" = "Debug" ]; then
+  short="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  dirty=""
+  [ -z "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ] || dirty="+dirty"
+  VERSION="$MARKETING_VERSION-dev.$short$dirty"
+fi
+
 "$GO" build -tags bundle \
-  -ldflags "-X main.appVersion=$MARKETING_VERSION" \
+  -ldflags "-X main.appVersion=$VERSION" \
   -o "$HELPERS/partyparty-server" "$ROOT"
 
 for helper in ffmpeg mediamtx; do
