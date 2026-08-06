@@ -49,13 +49,27 @@ import (
 // EXT-X-START, which is purely advisory and may be silently ignored.
 //
 // It is a constant of the design, not a tuning knob, and specifically not a
-// function of anybody's network. Its SIZE is the stability decision
-// (2026-08-05, owner): the room is radio, and the cushion is sized so that
-// ordinary venue Wi-Fi stalls pass silently instead of reaching ears. At the
-// Shack15 re-test, phones riding ~1s heard every burst while a phone at ~2.6s
-// heard none of the same afternoon (largest observed stall ~2.6s); the edge
-// was the knife, and nobody needs to live on it.
-const PartHoldBack = 2.9
+// function of anybody's network. It must also stay INSIDE the region where
+// parts exist (the spec sizes it around 3x the part duration): raising it to
+// 2.9 to deepen the room asked players to hold a part-based position where
+// only whole segments live, and AVPlayer coped briefly, then snapped to the
+// oldest edge of the window - a listener rolled back to 24.8s behind, live,
+// 2026-08-05. Depth comes from Start below; this stays the modest floor.
+const PartHoldBack = 0.9
+
+// Start is the declared attachment point: EXT-X-START:TIME-OFFSET=-Delay.
+// The spec calls the tag advisory, but AVPlayer honors it in practice, and it
+// is the only lever that can place a player deeper than the parts region -
+// exactly what the stability target requires. A player that ignores it joins
+// nearer the edge and simply gets corrected to target by the per-device
+// governor; nothing starves either way, because hold-back stays honest.
+//
+// The SIZE of the delay is the stability decision (2026-08-05, owner): the
+// room is radio, and the cushion is sized so ordinary venue Wi-Fi stalls pass
+// silently instead of reaching ears. At the Shack15 re-test, phones riding
+// ~1s heard every burst while a phone at ~2.6s heard none of the same
+// afternoon (largest observed stall ~2.6s); the edge was the knife, and
+// nobody needs to live on it.
 
 // Delay is the room's published D: what a guest should expect between a sound
 // leaving the DJ and reaching a listener. It is the declared hold-back plus the
@@ -63,10 +77,11 @@ const PartHoldBack = 2.9
 // the path rather than of the venue.
 const Delay = 3.0
 
-// RewritePlaylist authors the schedule into a media playlist by declaring
-// PART-HOLD-BACK. Everything else about the playlist is passed through
-// unmodified: media bytes, timestamps, segment and part URIs, and
-// PROGRAM-DATE-TIME, which is the stamp the whole schedule is built on.
+// RewritePlaylist authors the schedule into a media playlist: it declares
+// PART-HOLD-BACK and pins the attachment point with EXT-X-START at -Delay.
+// Everything else about the playlist is passed through unmodified: media
+// bytes, timestamps, segment and part URIs, and PROGRAM-DATE-TIME, which is
+// the stamp the whole schedule is built on.
 //
 // Only the media playlist carries EXT-X-SERVER-CONTROL, so a multivariant
 // playlist is returned untouched.
@@ -76,19 +91,24 @@ func RewritePlaylist(body []byte) []byte {
 		return body
 	}
 	lines := strings.Split(text, "\n")
-	changed := false
+	startLine := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.5f", Delay)
+	kept := lines[:0]
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#EXT-X-START:") {
+			continue // ours is authoritative; drop any upstream declaration
+		}
+		kept = append(kept, line)
+	}
+	lines = kept
 	for i, line := range lines {
 		if !strings.HasPrefix(line, "#EXT-X-SERVER-CONTROL:") {
 			continue
 		}
-		rewritten, ok := setPartHoldBack(line, PartHoldBack)
-		if ok {
+		if rewritten, ok := setPartHoldBack(line, PartHoldBack); ok {
 			lines[i] = rewritten
-			changed = true
 		}
-	}
-	if !changed {
-		return body
+		lines = append(lines[:i+1], append([]string{startLine}, lines[i+1:]...)...)
+		break
 	}
 	return []byte(strings.Join(lines, "\n"))
 }

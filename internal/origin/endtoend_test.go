@@ -160,7 +160,7 @@ func TestRelayPathEndToEnd(t *testing.T) {
 	// The declared hold-back, not the muxer's raw one. A relayed guest that ran on
 	// the raw value would sit at a different point in the stream from every direct
 	// guest, and the two would only disagree when someone stood between them.
-	if !strings.Contains(body, "PART-HOLD-BACK=2.90000") {
+	if !strings.Contains(body, "PART-HOLD-BACK=0.90000") {
 		t.Fatalf("relayed guests are not on the room's declared schedule:\n%s", body)
 	}
 

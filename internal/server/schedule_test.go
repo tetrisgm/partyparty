@@ -123,9 +123,9 @@ func TestScheduleLeavesOtherPlaylistsAlone(t *testing.T) {
 	if got := string(rewriteLivePlaylist([]byte(multivariant))); got != multivariant {
 		t.Fatalf("multivariant playlist was modified:\n%s", got)
 	}
-	// An EXT-X-START pin is advisory and is deliberately NOT how the schedule is
-	// authored, so we neither add nor require one.
+	// EXT-X-START pins the attachment point in MEDIA playlists only; a
+	// multivariant playlist must never grow one.
 	if strings.Contains(string(rewriteLivePlaylist([]byte(multivariant))), "#EXT-X-START:") {
-		t.Fatal("schedule must not depend on the advisory EXT-X-START tag")
+		t.Fatal("multivariant playlist must not carry EXT-X-START")
 	}
 }

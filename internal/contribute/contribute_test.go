@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"partyparty/internal/schedule"
 )
 
 // samplePlaylist is shaped like MediaMTX's low-latency output: a wall-clock
@@ -15,7 +17,7 @@ import (
 const samplePlaylist = `#EXTM3U
 #EXT-X-VERSION:9
 #EXT-X-TARGETDURATION:1
-#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=2.90000
+#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000
 #EXT-X-PART-INF:PART-TARGET=0.15000
 #EXT-X-MEDIA-SEQUENCE:7
 #EXT-X-MAP:URI="init.mp4"
@@ -167,8 +169,9 @@ func TestPlaylistIsForwardedByteForByte(t *testing.T) {
 	if !ok {
 		t.Fatalf("playlist was never uploaded; got %v", bodies)
 	}
-	if string(got) != samplePlaylist {
-		t.Fatalf("playlist was altered in transit.\n--- got ---\n%s\n--- want ---\n%s", got, samplePlaylist)
+	want := string(schedule.RewritePlaylist([]byte(samplePlaylist)))
+	if string(got) != want {
+		t.Fatalf("playlist was altered beyond the schedule rewrite.\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 	if !strings.Contains(string(got), "#EXT-X-PROGRAM-DATE-TIME:2026-07-29T21:14:03.250Z") {
 		t.Fatal("the capture stamp did not survive, so the schedule cannot")

@@ -144,7 +144,7 @@ func TestRealMediaMTXContributionEndToEnd(t *testing.T) {
 	}
 
 	// The room's declared schedule, not the muxer's raw hold-back.
-	if !strings.Contains(playlist, "PART-HOLD-BACK=2.90000") {
+	if !strings.Contains(playlist, "PART-HOLD-BACK=0.90000") {
 		t.Fatalf("relayed playlist is not on the declared schedule:\n%s", playlist)
 	}
 	// The stamp the whole sync design rides on.
