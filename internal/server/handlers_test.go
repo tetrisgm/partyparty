@@ -1343,7 +1343,7 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 		t.Fatalf("proxied redirect = %d location %q", w.Code, w.Header().Get("Location"))
 	}
 	w = do(env.srv, http.MethodGet, "/live/party/index.m3u8?cookieCheck=1&_HLS_msn=12&_HLS_part=3", "192.168.1.25:5000")
-	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "#EXT-X-START:") {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES") {
 		t.Fatalf("proxied playlist = %d %q", w.Code, w.Body.String())
 	}
 	if gotPath != "/party/index.m3u8" || gotQuery != "cookieCheck=1&_HLS_msn=12&_HLS_part=3" {
@@ -1357,8 +1357,8 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 	if compressed.Code != http.StatusOK || compressed.Header().Get("Content-Encoding") != "" {
 		t.Fatalf("gzip playlist = %d encoding %q", compressed.Code, compressed.Header().Get("Content-Encoding"))
 	}
-	if strings.Contains(compressed.Body.String(), "#EXT-X-START:") {
-		t.Fatalf("playlist was unexpectedly delayed:\n%s", compressed.Body.String())
+	if !strings.Contains(compressed.Body.String(), "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES") {
+		t.Fatalf("playlist lost the room's attachment pin:\n%s", compressed.Body.String())
 	}
 }
 

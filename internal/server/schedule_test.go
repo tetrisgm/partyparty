@@ -116,16 +116,17 @@ func TestScheduleNeverShortensUpstreamHoldBack(t *testing.T) {
 	}
 }
 
-// TestScheduleLeavesOtherPlaylistsAlone: the multivariant playlist carries no
-// server-control line, and media segments are bytes we must never touch.
+// TestScheduleLeavesOtherPlaylistsAlone: the multivariant playlist gains
+// exactly the attachment pin - EXT-X-START after EXT-X-VERSION, the soaked
+// form - and nothing else changes. Media segments are bytes we never touch.
 func TestScheduleLeavesOtherPlaylistsAlone(t *testing.T) {
 	multivariant := "#EXTM3U\n#EXT-X-VERSION:9\n#EXT-X-STREAM-INF:BANDWIDTH=320000\nstream.m3u8\n"
-	if got := string(rewriteLivePlaylist([]byte(multivariant))); got != multivariant {
-		t.Fatalf("multivariant playlist was modified:\n%s", got)
+	want := "#EXTM3U\n#EXT-X-VERSION:9\n#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES\n#EXT-X-STREAM-INF:BANDWIDTH=320000\nstream.m3u8\n"
+	if got := string(rewriteLivePlaylist([]byte(multivariant))); got != want {
+		t.Fatalf("multivariant rewrite = %q, want %q", got, want)
 	}
-	// EXT-X-START pins the attachment point in MEDIA playlists only; a
-	// multivariant playlist must never grow one.
-	if strings.Contains(string(rewriteLivePlaylist([]byte(multivariant))), "#EXT-X-START:") {
-		t.Fatal("multivariant playlist must not carry EXT-X-START")
+	// Idempotent: a second pass must not double the pin.
+	if got := string(rewriteLivePlaylist([]byte(want))); got != want {
+		t.Fatalf("multivariant rewrite is not idempotent: %q", got)
 	}
 }

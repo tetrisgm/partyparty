@@ -24,15 +24,17 @@ The stable production geometry is 500 ms segments, 150 ms parts, and a
 and non-blocking ffmpeg tee outputs; the audio core must not change without a
 supervised go-live test.
 
-The room target is one second (schedule.Delay; PART-HOLD-BACK 0.9) - the
-edge geometry with weeks of live proof. The owner's standing decision
-(2026-08-05) is to move the room to a FIXED three-second cushion - stability
-over immediacy - but BOTH attempted implementations failed live within
-minutes and were reverted the same evening: PART-HOLD-BACK=2.9 pointed
-outside the parts region and AVPlayer snapped a listener to the window's
-oldest edge; EXT-X-START:-3 left a phone 27 s behind. The 3 s redesign
-happens on the bench and returns only behind the soak below. The target is
-one declared number for every phone on every path - never adaptive, never
+The room target is a FIXED three seconds (schedule.Delay), delivered as
+EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES in the MULTIVARIANT playlist with
+PART-HOLD-BACK at the modest 0.9 floor - the exact form the July D=3 era ran
+live (commit affebd3), re-proven on the soak harness at 3.11s flat before
+upload. Stability over immediacy (owner decision, 2026-08-05): the cushion is
+sized so ordinary Wi-Fi stalls pass silently instead of reaching ears. The
+two failed forms are never-again: PART-HOLD-BACK stretched to 2.9 (points
+outside the parts region; AVPlayer snapped a listener to the window's oldest
+edge), and EXT-X-START in the MEDIA playlist without PRECISE (measured 25.00s
+from the edge - the offset applied from the wrong end). The target is one
+declared number for every phone on every path - never adaptive, never
 per-phone, never tracking listener conditions.
 
 Any change to playlist geometry or playback positioning (hold-back,

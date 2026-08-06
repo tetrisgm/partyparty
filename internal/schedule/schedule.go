@@ -52,32 +52,36 @@ import (
 // function of anybody's network. It must also stay INSIDE the region where
 // parts exist (the spec sizes it around 3x the part duration).
 //
-// STABILITY TARGET STATUS (2026-08-05): the owner's decision to move the room
-// to a fixed 3s cushion stands as intent, but BOTH shipped implementations
-// failed live within minutes and were reverted the same evening:
-// PART-HOLD-BACK=2.9 pointed outside the parts region and AVPlayer snapped a
-// listener to the window's oldest edge (24.8s), and EXT-X-START:-3 left a
-// phone 27s behind. Green unit tests cannot hear AVPlayer. The 3s redesign
-// happens on the bench and returns ONLY behind a passing pre-upload soak
-// (scratchpad soak.swift -> scripts/): a muted real AVPlayer watched for ten
-// minutes with zero backward movement and a stable ~3s position.
+// STABILITY DELIVERY (2026-08-05, third attempt, BENCHED FIRST): the owner's
+// fixed 3s cushion ships as EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES in the
+// MULTIVARIANT playlist - the exact form the July D=3 era ran live for weeks
+// (commit affebd3), recovered by reading that code instead of paraphrasing
+// it. Both details matter: the tag lives in the multivariant playlist, and
+// PRECISE=YES. The two failed forms are never-again: PART-HOLD-BACK=2.9
+// points outside the parts region (AVPlayer snapped a listener to the
+// window's oldest edge), and the tag in the MEDIA playlist without PRECISE
+// measured 25.00s from the edge on the soak harness - AVPlayer applied the
+// offset from the wrong end. The shipped form measured 3.11s flat on a muted
+// real AVPlayer against the live stream (scratchpad soak-july-form.log)
+// BEFORE upload, per the contract's soak rule.
 const PartHoldBack = 0.9
 
 // Delay is the room's published D: what a guest should expect between a sound
 // leaving the DJ and reaching a listener. It is the declared hold-back plus the
 // fixed pipeline floor (capture, AAC encode, packaging), which is a property of
 // the path rather than of the venue.
-const Delay = 1.0
+const Delay = 3.0
 
-// RewritePlaylist authors the schedule into a media playlist by declaring
-// PART-HOLD-BACK. Everything else about the playlist is passed through
-// unmodified: media bytes, timestamps, segment and part URIs, and
+// RewritePlaylist authors the schedule into whichever playlist tier it is
+// given. A multivariant playlist gains the EXT-X-START attachment pin; a
+// media playlist gets the declared PART-HOLD-BACK. Everything else passes
+// through unmodified: media bytes, timestamps, segment and part URIs, and
 // PROGRAM-DATE-TIME, which is the stamp the whole schedule is built on.
-//
-// Only the media playlist carries EXT-X-SERVER-CONTROL, so a multivariant
-// playlist is returned untouched.
 func RewritePlaylist(body []byte) []byte {
 	text := string(body)
+	if strings.Contains(text, "#EXT-X-STREAM-INF") {
+		return rewriteMultivariant(text)
+	}
 	if !strings.Contains(text, "#EXT-X-SERVER-CONTROL:") {
 		return body
 	}
@@ -97,6 +101,42 @@ func RewritePlaylist(body []byte) []byte {
 		return body
 	}
 	return []byte(strings.Join(lines, "\n"))
+}
+
+// rewriteMultivariant pins the room's attachment point. Ours is
+// authoritative: any upstream EXT-X-START is dropped, and the pin lands
+// directly after EXT-X-VERSION so it reads as part of the header.
+func rewriteMultivariant(text string) []byte {
+	startLine := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.3f,PRECISE=YES", Delay)
+	lines := strings.Split(text, "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#EXT-X-START:") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	lines = kept
+	insertAfter := func(match func(string) bool) ([]byte, bool) {
+		for i, line := range lines {
+			if match(line) {
+				out := append([]string{}, lines[:i+1]...)
+				out = append(out, startLine)
+				out = append(out, lines[i+1:]...)
+				return []byte(strings.Join(out, "\n")), true
+			}
+		}
+		return nil, false
+	}
+	// After EXT-X-VERSION, matching the soaked form exactly; EXTM3U is the
+	// fallback for a version-less playlist.
+	if out, ok := insertAfter(func(l string) bool { return strings.HasPrefix(l, "#EXT-X-VERSION:") }); ok {
+		return out
+	}
+	if out, ok := insertAfter(func(l string) bool { return l == "#EXTM3U" }); ok {
+		return out
+	}
+	return []byte(strings.Join(append([]string{startLine}, lines...), "\n"))
 }
 
 // setPartHoldBack replaces the PART-HOLD-BACK attribute on an
