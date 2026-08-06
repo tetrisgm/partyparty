@@ -522,7 +522,7 @@ paths:
           llhlsUrl: streamUrl,
           llhlsAvailable: true,
           llhlsRealCert: true,
-          latencyTarget: 3,
+          latencyTarget: 1,
           streamSync: {
             generation: mockStartedAt,
             ready: mockLive && mockReady,

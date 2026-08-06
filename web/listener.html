@@ -992,7 +992,7 @@
     // LOW-LATENCY ONLY. Loading the guest page already proved DNS + TLS work,
     // and every player receives the same HTTPS LL-HLS stream.
     let LLSTREAM = null, localStreamURL = null;
-    const ROOM_TARGET_FALLBACK = 3.0;
+    const ROOM_TARGET_FALLBACK = 1.0;
     let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let localLatencyTarget = 0, localStreamGeneration = 0, localStreamReady = false, localLive = false;
     let connectionMode = /^r-[a-f0-9]{32}\.partyparty\.party$/i.test(location.hostname) ? 'relay' : 'checking';

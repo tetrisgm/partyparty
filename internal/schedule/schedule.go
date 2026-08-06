@@ -50,38 +50,29 @@ import (
 //
 // It is a constant of the design, not a tuning knob, and specifically not a
 // function of anybody's network. It must also stay INSIDE the region where
-// parts exist (the spec sizes it around 3x the part duration): raising it to
-// 2.9 to deepen the room asked players to hold a part-based position where
-// only whole segments live, and AVPlayer coped briefly, then snapped to the
-// oldest edge of the window - a listener rolled back to 24.8s behind, live,
-// 2026-08-05. Depth comes from Start below; this stays the modest floor.
-const PartHoldBack = 0.9
-
-// Start is the declared attachment point: EXT-X-START:TIME-OFFSET=-Delay.
-// The spec calls the tag advisory, but AVPlayer honors it in practice, and it
-// is the only lever that can place a player deeper than the parts region -
-// exactly what the stability target requires. A player that ignores it joins
-// nearer the edge and simply gets corrected to target by the per-device
-// governor; nothing starves either way, because hold-back stays honest.
+// parts exist (the spec sizes it around 3x the part duration).
 //
-// The SIZE of the delay is the stability decision (2026-08-05, owner): the
-// room is radio, and the cushion is sized so ordinary venue Wi-Fi stalls pass
-// silently instead of reaching ears. At the Shack15 re-test, phones riding
-// ~1s heard every burst while a phone at ~2.6s heard none of the same
-// afternoon (largest observed stall ~2.6s); the edge was the knife, and
-// nobody needs to live on it.
+// STABILITY TARGET STATUS (2026-08-05): the owner's decision to move the room
+// to a fixed 3s cushion stands as intent, but BOTH shipped implementations
+// failed live within minutes and were reverted the same evening:
+// PART-HOLD-BACK=2.9 pointed outside the parts region and AVPlayer snapped a
+// listener to the window's oldest edge (24.8s), and EXT-X-START:-3 left a
+// phone 27s behind. Green unit tests cannot hear AVPlayer. The 3s redesign
+// happens on the bench and returns ONLY behind a passing pre-upload soak
+// (scratchpad soak.swift -> scripts/): a muted real AVPlayer watched for ten
+// minutes with zero backward movement and a stable ~3s position.
+const PartHoldBack = 0.9
 
 // Delay is the room's published D: what a guest should expect between a sound
 // leaving the DJ and reaching a listener. It is the declared hold-back plus the
 // fixed pipeline floor (capture, AAC encode, packaging), which is a property of
 // the path rather than of the venue.
-const Delay = 3.0
+const Delay = 1.0
 
-// RewritePlaylist authors the schedule into a media playlist: it declares
-// PART-HOLD-BACK and pins the attachment point with EXT-X-START at -Delay.
-// Everything else about the playlist is passed through unmodified: media
-// bytes, timestamps, segment and part URIs, and PROGRAM-DATE-TIME, which is
-// the stamp the whole schedule is built on.
+// RewritePlaylist authors the schedule into a media playlist by declaring
+// PART-HOLD-BACK. Everything else about the playlist is passed through
+// unmodified: media bytes, timestamps, segment and part URIs, and
+// PROGRAM-DATE-TIME, which is the stamp the whole schedule is built on.
 //
 // Only the media playlist carries EXT-X-SERVER-CONTROL, so a multivariant
 // playlist is returned untouched.
@@ -91,24 +82,19 @@ func RewritePlaylist(body []byte) []byte {
 		return body
 	}
 	lines := strings.Split(text, "\n")
-	startLine := fmt.Sprintf("#EXT-X-START:TIME-OFFSET=-%.5f", Delay)
-	kept := lines[:0]
-	for _, line := range lines {
-		if strings.HasPrefix(line, "#EXT-X-START:") {
-			continue // ours is authoritative; drop any upstream declaration
-		}
-		kept = append(kept, line)
-	}
-	lines = kept
+	changed := false
 	for i, line := range lines {
 		if !strings.HasPrefix(line, "#EXT-X-SERVER-CONTROL:") {
 			continue
 		}
-		if rewritten, ok := setPartHoldBack(line, PartHoldBack); ok {
+		rewritten, ok := setPartHoldBack(line, PartHoldBack)
+		if ok {
 			lines[i] = rewritten
+			changed = true
 		}
-		lines = append(lines[:i+1], append([]string{startLine}, lines[i+1:]...)...)
-		break
+	}
+	if !changed {
+		return body
 	}
 	return []byte(strings.Join(lines, "\n"))
 }

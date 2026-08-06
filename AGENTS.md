@@ -22,25 +22,28 @@ repeated audible seek skips and is not a production option.
 The stable production geometry is 500 ms segments, 150 ms parts, and a
 48-segment window. Capture backpressure is held off by bounded capture buffering
 and non-blocking ffmpeg tee outputs; the audio core must not change without a
-supervised go-live test. Any change to playlist geometry or playback
-positioning (hold-back, EXT-X-START, the room delay, segment/part shape)
-additionally requires a real-AVPlayer soak BEFORE it reaches TestFlight: a
-desktop Safari listener attached to the live stream, its playback position
-watched against the live edge for at least ten minutes, with zero backward
-movement. Unit and contract tests cannot hear AVPlayer: 125.37 shipped a
-green-tested playlist whose PART-HOLD-BACK pointed outside the parts region,
-and AVPlayer audibly rolled a live listener back within minutes (2026-08-05).
-Playback moving backward is never acceptable.
+supervised go-live test.
 
-The room target is a FIXED three seconds (schedule.Delay; PART-HOLD-BACK
-2.9 s), chosen for stability over immediacy (owner decision, 2026-08-05): the
-cushion is sized so ordinary venue Wi-Fi stalls pass silently instead of
-reaching ears. At the Shack15 re-test the published feed was gapless all
-afternoon while phones riding ~1 s heard every radio burst and a phone at
-~2.6 s heard none of them; the knife edge was the product's only remaining
-audible failure, so the product left the knife edge. The target is one
-declared number for every phone on every path — never adaptive, never
+The room target is one second (schedule.Delay; PART-HOLD-BACK 0.9) - the
+edge geometry with weeks of live proof. The owner's standing decision
+(2026-08-05) is to move the room to a FIXED three-second cushion - stability
+over immediacy - but BOTH attempted implementations failed live within
+minutes and were reverted the same evening: PART-HOLD-BACK=2.9 pointed
+outside the parts region and AVPlayer snapped a listener to the window's
+oldest edge; EXT-X-START:-3 left a phone 27 s behind. The 3 s redesign
+happens on the bench and returns only behind the soak below. The target is
+one declared number for every phone on every path - never adaptive, never
 per-phone, never tracking listener conditions.
+
+Any change to playlist geometry or playback positioning (hold-back,
+EXT-X-START, the room delay, segment/part shape) requires a real-AVPlayer
+soak that PASSES BEFORE THE BUILD IS UPLOADED anywhere: a muted headless
+AVPlayer (or desktop Safari) attached to the live stream, its position
+watched against the live edge for at least ten minutes, zero backward
+movement, position stable at the declared target, with the soak log kept as
+the receipt. A soak run after upload is theater. Unit and contract tests
+cannot hear AVPlayer: two green-tested geometry builds failed on real phones
+within minutes on 2026-08-05. Playback moving backward is never acceptable.
 
 Healthy native playback is passive — PartyParty never seeks or rate-steers it.
 Unbounded drift is still not tolerated: a visible phone that stays at least
