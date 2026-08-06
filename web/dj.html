@@ -1838,8 +1838,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const size = canvas.width;
-    const dia = Math.round(size * 0.22);
-    const pad = Math.round(size * 0.03);
+    const dia = Math.round(size * 0.24);
+    const pad = Math.max(3, Math.round(size * 0.012));
     const c = size / 2;
     const finish = () => { if (shown) shown.src = canvas.toDataURL('image/png'); };
     const drawSilhouette = () => {

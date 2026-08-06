@@ -142,8 +142,8 @@ final class StatusPopoverController: NSViewController {
         // otherwise - matching the console and guest-page QRs. Correction
         // level H absorbs the covered modules.
         let size: CGFloat = 200
-        let dia = size * 0.22
-        let pad = size * 0.03
+        let dia = size * 0.24
+        let pad = size * 0.012
         let composed = NSImage(size: NSSize(width: size, height: size))
         composed.lockFocus()
         image.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
