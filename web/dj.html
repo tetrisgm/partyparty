@@ -1833,25 +1833,40 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // Brand-pink modules; correction level H because the centered avatar
     // badge covers a slice of the symbol and H absorbs up to 30% damage.
     new QRCode(host, { text, width:400, height:400, colorDark:'#ff2d6f', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.H });
-    if (!avatar) return;
     const canvas = host.querySelector('canvas');
     const shown = host.querySelector('img');
     if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width;
+    const dia = Math.round(size * 0.22);
+    const pad = Math.round(size * 0.03);
+    const c = size / 2;
+    const finish = () => { if (shown) shown.src = canvas.toDataURL('image/png'); };
+    const drawSilhouette = () => {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(c, c, dia / 2 + pad, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#e3e3e8';
+      ctx.beginPath(); ctx.arc(c, c, dia / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(c, c, dia / 2, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = '#a9a9b2';
+      ctx.beginPath(); ctx.arc(c, c - dia * 0.12, dia * 0.16, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(c, c + dia * 0.42, dia * 0.30, Math.PI, 0); ctx.fill();
+      ctx.restore();
+      finish();
+    };
+    if (!avatar) { drawSilhouette(); return; }
     const badge = new Image();
     badge.onload = () => {
-      const ctx = canvas.getContext('2d');
-      const size = canvas.width;
-      const dia = Math.round(size * 0.22);
-      const pad = Math.round(size * 0.03);
-      const c = size / 2;
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.arc(c, c, dia / 2 + pad, 0, Math.PI * 2); ctx.fill();
       ctx.save();
       ctx.beginPath(); ctx.arc(c, c, dia / 2, 0, Math.PI * 2); ctx.clip();
       ctx.drawImage(badge, c - dia / 2, c - dia / 2, dia, dia);
       ctx.restore();
-      if (shown) shown.src = canvas.toDataURL('image/png');
+      finish();
     };
+    badge.onerror = drawSilhouette;
     badge.src = avatar + '?v=' + encodeURIComponent(avatar);
   }
   function renderGuestLink(s){

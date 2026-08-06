@@ -99,7 +99,7 @@ assert.doesNotMatch(listener, /Audio stays on with screen locked/);
 // Never dress the party cover up as the sleeve of a track we did not recognise.
 assert.match(listener, /miniArt\.hidden = !artwork;/);
 assert.match(listener, /function renderDJSelector\(djs, target\)/);
-assert.match(listener, /listeners \+ ' listening<\/small>/);
+assert.match(listener, /1 \? ' listener' : ' listeners'/);
 assert.doesNotMatch(listener, /✓ Listening/);
 assert.match(listener, /const djPalette = \[/);
 assert.match(listener, /--selected-dj-color/);

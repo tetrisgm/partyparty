@@ -369,7 +369,7 @@
   .coverplace{margin-top:4px;color:rgba(255,255,255,.86);font-size:13px;font-weight:700;text-align:left}
   .coverplace[hidden]{display:none}
 
-  .toptool.labelled{width:auto;padding:0 11px;gap:6px;display:inline-flex;align-items:center}
+  .toptool.labelled{width:auto;padding:0 11px;gap:6px;display:inline-flex;align-items:center;border-radius:12px}
   .toollabel{font-size:12px;font-weight:750;white-space:nowrap}
   /* The name is on the cover now. Pin the tools right: with the title cell
      gone they would auto-place into the middle column. */
@@ -1443,12 +1443,13 @@
           listenerCountsByDJ.set(group.id || '', listeners.length);
         }
       });
-      const peopleCount = djCount + listenerCount;
-      setText(peopleBadge, peopleCount > 99 ? '99+' : String(peopleCount));
-      peopleBadge.hidden = peopleCount === 0;
-      peopleBtn.setAttribute('aria-label', 'Show ' + peopleCount + (peopleCount === 1 ? ' person' : ' people'));
+      // Every count is guests-only: the DJ is not their own listener, on the
+      // badge, the pill, or the row (owner decision, 2026-08-05).
+      setText(peopleBadge, listenerCount > 99 ? '99+' : String(listenerCount));
+      peopleBadge.hidden = listenerCount === 0;
+      peopleBtn.setAttribute('aria-label', 'Show ' + listenerCount + (listenerCount === 1 ? ' listener' : ' listeners'));
       renderListenerGroups(sheetListenerGroups, rows);
-      paintListenersRow(rows, peopleCount);
+      paintListenersRow(rows, listenerCount);
       updatePlayerDetails();
     }
     function paintListenersRow(rows, peopleCount){
@@ -1471,6 +1472,10 @@
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
     }
     function renderDJSelector(djs, target){
+      try {
+        const pick = djs.find((dj) => String(dj.id || '') === selectedDJId) || djs.find((dj) => dj.live) || djs[0];
+        qrBadgeAvatar = (pick && String(pick.avatar || '')) || '';
+      } catch (_) {}
       const activeCount = djs.filter((dj) => dj.live).length;
       const heading = activeCount + ' ' + (activeCount === 1 ? 'DJ' : 'DJs') + ' now playing';
       setText(djPickerHead, heading);
@@ -1503,7 +1508,7 @@
           button.style.setProperty('--dj-tint', dj.palette[1]);
           button.disabled = switchingTo !== null || !dj.live || !dj.ready;
           button.setAttribute('aria-pressed', dj.selected ? 'true' : 'false');
-          button.setAttribute('aria-label', dj.name + ', ' + dj.listeners + ' listening, ' +
+          button.setAttribute('aria-label', dj.name + ', ' + dj.listeners + (dj.listeners === 1 ? ' listener, ' : ' listeners, ') +
             (dj.selected ? 'currently selected' : (dj.ready ? 'tap to switch' : 'unavailable')));
           const avatarHTML = dj.avatar
             ? '<img src="' + escapeHTML(dj.avatar) + '" alt="">'
@@ -1511,7 +1516,7 @@
           button.innerHTML = '<span class="djava">' + avatarHTML +
             '<span class="djeq" aria-hidden="true"><i></i><i></i><i></i></span></span>' +
             '<span class="djcopy"><b>' + escapeHTML(dj.name) + '</b><small>' +
-            dj.listeners + ' listening</small></span><span class="djselected">' +
+            dj.listeners + (dj.listeners === 1 ? ' listener' : ' listeners') + '</small></span><span class="djselected">' +
             (dj.connecting ? 'Connecting…' : (dj.failed ? 'Try again' : '')) +
             '</span>';
           button.setAttribute('data-dj-id', dj.id);
@@ -2884,6 +2889,44 @@
     setInterval(updateDelayBadge, 500);
 
     // Share: show a QR of THIS page so a guest can pass the party to a friend.
+    // The active DJ's avatar rides the share QR; renderDJSelector keeps it fresh.
+    function paintQRBadge(host, avatarUrl){
+      const canvas = host.querySelector('canvas');
+      const shown = host.querySelector('img');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const size = canvas.width;
+      const dia = Math.round(size * 0.22);
+      const pad = Math.round(size * 0.03);
+      const c = size / 2;
+      const finish = () => { if (shown) shown.src = canvas.toDataURL('image/png'); };
+      const drawSilhouette = () => {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(c, c, dia / 2 + pad, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e3e3e8';
+        ctx.beginPath(); ctx.arc(c, c, dia / 2, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.beginPath(); ctx.arc(c, c, dia / 2, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = '#a9a9b2';
+        ctx.beginPath(); ctx.arc(c, c - dia * 0.12, dia * 0.16, 0, Math.PI * 2); ctx.fill(); // head
+        ctx.beginPath(); ctx.arc(c, c + dia * 0.42, dia * 0.30, Math.PI, 0); ctx.fill();    // shoulders
+        ctx.restore();
+        finish();
+      };
+      if (!avatarUrl) { drawSilhouette(); return; }
+      const badge = new Image();
+      badge.onload = () => {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(c, c, dia / 2 + pad, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.beginPath(); ctx.arc(c, c, dia / 2, 0, Math.PI * 2); ctx.clip();
+        ctx.drawImage(badge, c - dia / 2, c - dia / 2, dia, dia);
+        ctx.restore();
+        finish();
+      };
+      badge.onerror = drawSilhouette;
+      badge.src = avatarUrl;
+    }
     const qrBtn = document.getElementById('qrBtn'),
           nativeShareBtn = document.getElementById('nativeShareBtn'),
           qrOverlay = document.getElementById('qrOverlay'),
@@ -2891,6 +2934,7 @@
           qrUrl = document.getElementById('qrUrl'),
           qrClose = document.getElementById('qrClose');
     let qrDrawn = false;
+    let qrBadgeAvatar = '';
     qrBtn.addEventListener('click', async () => {
       qrUrl.textContent = location.href;
       qrOverlay.classList.add('show');           // open instantly; QR paints when its script lands
@@ -2899,7 +2943,9 @@
         const ok = await loadQR();
         if (!ok) { qrShare.textContent = 'QR unavailable'; return; }
         try {
-          new QRCode(qrShare, { text: location.href, width: 232, height: 232, correctLevel: QRCode.CorrectLevel.M });
+          // Brand pink + correction level H: the centered DJ badge covers a
+          // slice of the symbol and H absorbs up to 30% damage.
+          new QRCode(qrShare, { text: location.href, width: 400, height: 400, colorDark: '#ff2d6f', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
           qrDrawn = !!qrShare.querySelector('canvas,img');
           if (!qrDrawn) qrShare.textContent = 'QR unavailable';
         } catch (e) {
@@ -2907,6 +2953,7 @@
           reportErr('qr-failed', e && e.message);
         }
       }
+      if (qrDrawn) paintQRBadge(qrShare, qrBadgeAvatar);
     });
     qrClose.addEventListener('click', () => qrOverlay.classList.remove('show'));
     qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) qrOverlay.classList.remove('show'); });
