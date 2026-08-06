@@ -342,18 +342,6 @@ func TestOTAEncodeOverridesAppliedOnStart(t *testing.T) {
 	waitForState(t, b, "idle", 3*time.Second)
 }
 
-func TestSegmentedRecordPath(t *testing.T) {
-	if got := segmentedRecordPath("/e/set.aac", 1); got != "/e/set-2.aac" {
-		t.Fatalf("first rebuild segment = %q, want /e/set-2.aac", got)
-	}
-	if got := segmentedRecordPath("/e/set.aac", 2); got != "/e/set-3.aac" {
-		t.Fatalf("second rebuild segment = %q, want /e/set-3.aac", got)
-	}
-	if got := segmentedRecordPath("", 1); got != "" {
-		t.Fatalf("no recording -> empty, got %q", got)
-	}
-}
-
 func TestOptionsOverridesAndDefaults(t *testing.T) {
 	b, _, _ := newTestBroadcaster(t)
 
@@ -413,14 +401,6 @@ func TestBuildArgsMirrorLeg(t *testing.T) {
 		t.Fatalf("mirror-off tee must not contain an HLS leg: %q", off)
 	}
 
-	// Mirror OFF + record: RTSP leg then the ADTS record leg, still no HLS leg.
-	rec := base
-	rec.recordPath = "/tmp/set.aac"
-	offRec := teeArg(t, b.buildArgs("test", 48000, 2, rec))
-	if offRec != rtspLeg+"|[f=adts:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]/tmp/set.aac" {
-		t.Fatalf("mirror-off record tee = %q", offRec)
-	}
-
 	// Mirror ON: RTSP leg UNCHANGED, plus the isolated HLS leg → <dir>/live.m3u8.
 	on := base
 	on.mirrorDir = "/scratch/livemirror"
@@ -433,13 +413,11 @@ func TestBuildArgsMirrorLeg(t *testing.T) {
 		t.Fatalf("mirror-on tee must keep the RTSP leg first and unchanged: %q", got)
 	}
 
-	// Mirror ON + record: legs stay in order rtsp | adts | hls.
-	both := rec
-	both.mirrorDir = "/scratch/livemirror"
-	gotBoth := teeArg(t, b.buildArgs("test", 48000, 2, both))
-	wantBoth := rtspLeg + "|[f=adts:onfail=ignore:use_fifo=1:fifo_options=drop_pkts_on_overflow=1]/tmp/set.aac|" + wantHLS
-	if gotBoth != wantBoth {
-		t.Fatalf("mirror-on+record tee = %q, want %q", gotBoth, wantBoth)
+	// Set recording is gone (2026-08-06): the tee has exactly two shapes now,
+	// RTSP alone or RTSP plus the isolated mirror leg. An ADTS leg reappearing
+	// would mean the app started keeping a copy of the music again.
+	if strings.Contains(got, "f=adts") {
+		t.Fatalf("tee grew a recording leg: %q", got)
 	}
 }
 

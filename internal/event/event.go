@@ -1,5 +1,7 @@
-// Package event stores the active room's feed, media, and set recording on the
-// Mac. Optional guest contact information remains private.
+// Package event stores one party per folder: the photos and videos guests
+// uploaded, an index.html of the wall, and a hidden .state directory with the
+// journal that produces it. Optional guest contact information remains
+// private and never leaves the Mac.
 package event
 
 import (
@@ -24,7 +26,7 @@ import (
 
 // Media is one uploaded file attached to a post.
 type Media struct {
-	ID    string `json:"id"`   // stored filename inside media/ (uuid + ext)
+	ID    string `json:"id"`   // stored filename in the party folder (uuid + ext)
 	Type  string `json:"type"` // image | video | audio
 	Name  string `json:"name"` // original filename, sanitized (display only)
 	Size  int64  `json:"size"`
@@ -311,7 +313,9 @@ func normalizeLinks(in []Link) ([]Link, error) {
 type Store struct {
 	mu            sync.Mutex
 	dir           string
-	base          string // events root; the DJ identity lives beside it
+	base          string // parties root; the DJ identity lives beside it
+	recapMu       sync.Mutex
+	recapPending  bool
 	meta          Meta
 	posts         []*Post
 	byID          map[string]*Post
@@ -379,18 +383,28 @@ func Open(baseDir string) (*Store, error) {
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(baseDir, time.Now().Format("2006-01-02"))
+	// Pre-party event folders become parties, keeping every byte.
+	if err := migrateEventsRoot(baseDir); err != nil {
+		return nil, err
+	}
+	id := chooseParty(baseDir, time.Now())
+	dir := filepath.Join(baseDir, id)
 	s := &Store{notify: make(chan struct{}), base: baseDir}
 	if err := s.use(dir); err != nil {
 		return nil, err
 	}
-	// Events rotate per day; the DJ's identity must not rotate with them.
+	writeCurrent(baseDir, id)
+	// A party is one night; the DJ outlives it.
 	s.seedFromIdentity()
+	s.writeRecap()
 	return s, nil
 }
 
+// dataDir is the hidden machinery of a party: journal, guest names, setlist,
+// thumbnails, cover and profile images. The party folder itself holds only
+// what a DJ wants to find in it - the uploads and index.html.
 func dataDir(dir string) string {
-	return filepath.Join(dir, "data")
+	return filepath.Join(dir, ".state")
 }
 
 func dataPath(dir, name string) string {
@@ -428,6 +442,7 @@ func migrateEventData(dir string) error {
 
 // changed wakes every parked long-poll (close-and-replace broadcast).
 func (s *Store) changed() {
+	s.scheduleRecap()
 	s.notifyMu.Lock()
 	close(s.notify)
 	s.notify = make(chan struct{})
@@ -443,7 +458,7 @@ func (s *Store) Wait() <-chan struct{} {
 
 // use switches the store to dir, creating the layout and replaying the journal.
 func (s *Store) use(dir string) error {
-	for _, sub := range []string{"", "data", "media", filepath.Join("media", "thumbs"), "recordings"} {
+	for _, sub := range []string{"", ".state", filepath.Join(".state", "thumbs")} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 			return err
 		}
@@ -974,13 +989,6 @@ func (s *Store) Dir() string {
 	return s.dir
 }
 
-// RecordingPath returns a fresh timestamped recording target for a set.
-func (s *Store) RecordingPath() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return filepath.Join(s.dir, "recordings", "set-"+time.Now().Format("20060102-150405")+".aac")
-}
-
 func newID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
@@ -1006,7 +1014,7 @@ func (s *Store) SaveMedia(origName string, r io.Reader) (Media, error) {
 	}
 	id := newID() + ext
 	s.mu.Lock()
-	mediaDir := filepath.Join(s.dir, "media")
+	mediaDir := s.dir
 	dst := filepath.Join(mediaDir, id)
 	s.mu.Unlock()
 	f, err := os.CreateTemp(mediaDir, ".upload-*"+ext)
@@ -1050,7 +1058,7 @@ func (s *Store) ImportMedia(id, origName string, r io.Reader) (Media, error) {
 	if !ok || typ != "image" {
 		return Media{}, errors.New("relay media must be an image")
 	}
-	mediaDir := filepath.Join(s.dir, "media")
+	mediaDir := s.dir
 	dst := filepath.Join(mediaDir, id)
 	f, err := os.CreateTemp(mediaDir, ".relay-upload-*"+ext)
 	if err != nil {
@@ -1086,11 +1094,14 @@ func (s *Store) ImportMedia(id, origName string, r io.Reader) (Media, error) {
 
 // MediaPath resolves a media id to its file, refusing path escapes.
 func (s *Store) MediaPath(id string) (string, bool) {
-	if id == "" || id != filepath.Base(id) || strings.HasPrefix(id, ".") {
+	// Uploads share the party folder with .state and the recap page, so this
+	// guard is what keeps the media route to actual uploads: no separators, no
+	// dotfiles, and not the recap itself.
+	if id == "" || id != filepath.Base(id) || strings.HasPrefix(id, ".") || id == recapFile {
 		return "", false
 	}
 	s.mu.Lock()
-	p := filepath.Join(s.dir, "media", id)
+	p := filepath.Join(s.dir, id)
 	s.mu.Unlock()
 	if st, err := os.Stat(p); err != nil || st.IsDir() {
 		return "", false
@@ -1111,7 +1122,7 @@ func (s *Store) thumbTargetPath(id string) (string, bool) {
 		return "", false
 	}
 	s.mu.Lock()
-	p := filepath.Join(s.dir, "media", "thumbs", thumbFileName(id))
+	p := filepath.Join(dataDir(s.dir), "thumbs", thumbFileName(id))
 	s.mu.Unlock()
 	return p, true
 }

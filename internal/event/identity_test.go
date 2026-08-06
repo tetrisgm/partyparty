@@ -65,7 +65,7 @@ func TestIdentitySurvivesEventRotation(t *testing.T) {
 // the identity a DJ already set up, not start blank.
 func TestIdentityRecoveredFromPastEvent(t *testing.T) {
 	base := t.TempDir()
-	old := filepath.Join(base, "2026-08-01", "data")
+	old := filepath.Join(base, "2026-08-01", ".state")
 	if err := os.MkdirAll(old, 0o755); err != nil {
 		t.Fatal(err)
 	}

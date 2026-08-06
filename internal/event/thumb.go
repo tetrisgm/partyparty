@@ -86,10 +86,9 @@ func (s *Store) makeThumb(tools thumbTools, job thumbJob) error {
 	if st, err := os.Stat(job.path); err != nil || st.IsDir() {
 		return errors.New("missing media")
 	}
-	if filepath.Base(filepath.Dir(job.path)) != "media" {
-		return errors.New("media outside event media dir")
-	}
-	thumbDir := filepath.Join(filepath.Dir(job.path), "thumbs")
+	// Uploads live at the party's top level now; thumbnails are derived, so
+	// they belong with the rest of the machinery in .state.
+	thumbDir := filepath.Join(dataDir(filepath.Dir(job.path)), "thumbs")
 	if err := os.MkdirAll(thumbDir, 0o755); err != nil {
 		return err
 	}

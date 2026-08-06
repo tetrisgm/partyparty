@@ -223,7 +223,7 @@ func main() {
 	// during the party without granting broad Music-folder access.
 	var events *event.Store
 	if stateDir, err := activate.StateDir(); err == nil {
-		if st, err := event.Open(filepath.Join(stateDir, "events")); err == nil {
+		if st, err := event.Open(filepath.Join(stateDir, "parties")); err == nil {
 			events = st
 			events.StartThumbWorker(cfg.FFmpeg)
 		} else {

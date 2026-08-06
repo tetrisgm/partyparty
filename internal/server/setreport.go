@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -20,7 +19,7 @@ import (
 //
 // So the room writes its own report. While a set is live, a sampler folds the
 // telemetry into running maxima and a mode timeline; when the set ends, one
-// JSON file lands in the event folder next to the recordings, and the session
+// JSON file lands in the party's hidden .state directory, and the session
 // log gets a one-line summary. Nothing here feeds back into playback, the
 // schedule, or anything else: it is a record, not a control loop.
 
@@ -208,16 +207,17 @@ func (s *srv) writeSetReport(report setReport) {
 	if s.Events == nil {
 		return
 	}
-	dir := s.Events.Dir()
-	if dir == "" {
-		return
-	}
 	data, err := json.MarshalIndent(report, "", " ")
 	if err != nil {
 		return
 	}
 	name := fmt.Sprintf("set-report-%s.json", report.StartedAt.Format("20060102-150405"))
-	path := filepath.Join(dir, name)
+	// Hidden: the party folder holds the night's media and its index.html, not
+	// our diagnostics.
+	path := s.Events.StatePath(name)
+	if path == "" {
+		return
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
 		if s.Diag != nil {
 			s.Diag.Printf("set report: %v", err)

@@ -83,6 +83,12 @@ boundary.
    restore plain HTTP for any online path.
 4. Cloud relay state is ephemeral. Do not add public party pages, replays,
    recordings, archives, or cloud feeds.
+11. A party is one night, not one calendar day: storage is
+    `parties/<id>/`, resumed while it is current and started fresh once it
+    has gone idle. The folder is a keepsake, not a database - guest uploads
+    and one index.html of the wall, with the journal hidden in `.state`. The
+    app does not record the music: the set-recording tee was removed
+    2026-08-06 at the owner's request and must not come back without one.
 5. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and
    MediaMTX behavior.
 6. Do not add an authentication email service.

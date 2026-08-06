@@ -37,7 +37,7 @@ func TestFeatureDefaultsFilledOnLoad(t *testing.T) {
 	if _, err := os.Stat(legacyMeta); !os.IsNotExist(err) {
 		t.Fatalf("legacy meta still exists: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(reloaded.Dir(), "data", "meta.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(reloaded.Dir(), ".state", "meta.json")); err != nil {
 		t.Fatalf("migrated meta missing: %v", err)
 	}
 }
@@ -58,7 +58,7 @@ func TestSetFeaturePersists(t *testing.T) {
 	}
 
 	var meta Meta
-	data, err := os.ReadFile(filepath.Join(st.Dir(), "data", "meta.json"))
+	data, err := os.ReadFile(filepath.Join(st.Dir(), ".state", "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	}
 
 	var meta Meta
-	data, err := os.ReadFile(filepath.Join(st.Dir(), "data", "meta.json"))
+	data, err := os.ReadFile(filepath.Join(st.Dir(), ".state", "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestSetLinksPersistsAndValidates(t *testing.T) {
 	}
 }
 
-func TestProfilePersistsInsideDataDirectory(t *testing.T) {
+func TestProfilePersistsInsideStateDirectory(t *testing.T) {
 	st, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +175,7 @@ func TestProfilePersistsInsideDataDirectory(t *testing.T) {
 		t.Fatalf("saved avatar = %q, want %q", gotAvatar, wantAvatar)
 	}
 	for _, name := range []string{"meta.json", "profile.png"} {
-		if _, err := os.Stat(filepath.Join(st.Dir(), "data", name)); err != nil {
+		if _, err := os.Stat(filepath.Join(st.Dir(), ".state", name)); err != nil {
 			t.Fatalf("data/%s missing: %v", name, err)
 		}
 		if _, err := os.Stat(filepath.Join(st.Dir(), name)); !os.IsNotExist(err) {

@@ -419,7 +419,7 @@ func TestMediaThumbRouteServesGuardedThumb(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	thumbDir := filepath.Join(ev.Dir(), "media", "thumbs")
+	thumbDir := filepath.Join(ev.Dir(), ".state", "thumbs")
 	if err := os.WriteFile(filepath.Join(thumbDir, m.ID+".jpg"), []byte("thumb"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func TestGuestProfilePersistsWithoutKeepsakeClaim(t *testing.T) {
 	if _, exists := decodeJSON(t, w)["claimUrl"]; exists {
 		t.Fatalf("post response still issued a keepsake claim: %q", w.Body.String())
 	}
-	data, err := os.ReadFile(filepath.Join(ev.Dir(), "data", "guests.json"))
+	data, err := os.ReadFile(filepath.Join(ev.Dir(), ".state", "guests.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -35,10 +35,9 @@ type Options struct {
 	Bitrate  string  // e.g. "256k"; "" = config default
 	Channels int     // 1 = mono, 2 = stereo; 0 = config default
 	HLSTime  float64 // segment length in seconds; 0 = config default
-	// RecordPath: also write the encoded set to this file (ADTS/AAC - raw and
-	// unkillable: no finalization step, so a crash mid-set loses nothing).
-	// "" = no recording. llhls delivery only (it rides the tee).
-	RecordPath string
+	// Set recording was removed 2026-08-06 (owner: the app should not keep a
+	// copy of the music). Nothing had set RecordPath since the LL-HLS rewrite,
+	// so this deleted a dead option, not a live tee leg.
 }
 
 // Broadcaster manages the capture pipeline: an FFmpeg process writing a live
@@ -76,8 +75,6 @@ type Broadcaster struct {
 	lastOpts        Options
 	lastAutoRestart time.Time
 	overridesFn     func() config.Overrides // OTA encode overrides, re-read on each Start (nil = none)
-	recordBase      string                  // the user-requested recording path; rebuilds record to fresh segments off this so a device-yank never truncates it
-	recordSeg       int                     // recording segment counter, bumped per auto-restart
 
 	logMu       sync.Mutex
 	logLines    []string
@@ -275,18 +272,6 @@ func (b *Broadcaster) tryAutoRestart() bool {
 	return true
 }
 
-// segmentedRecordPath inserts "-<n+1>" before the extension so each rebuild's
-// recording lands in its own file ("set.aac" -> "set-2.aac"), never truncating
-// the prior one. A mid-set device yank then costs at most a brief audio gap, not
-// the whole recording.
-func segmentedRecordPath(base string, n int) string {
-	if base == "" {
-		return ""
-	}
-	ext := filepath.Ext(base)
-	return strings.TrimSuffix(base, ext) + "-" + strconv.Itoa(n+1) + ext
-}
-
 // captureRecovered clears an exclusive-output warning when frames resume.
 func (b *Broadcaster) captureRecovered() {
 	b.setCaptureNote("")
@@ -340,7 +325,6 @@ type argSnap struct {
 	channels   int
 	hlsTime    float64
 	delivery   string
-	recordPath string
 	mirrorDir  string // cloud-mirror scratch dir; "" = no third tee leg
 }
 
@@ -412,9 +396,6 @@ func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) [
 	// threshold for every leg anyway.)
 	const dropFifo = ":use_fifo=1:fifo_options=drop_pkts_on_overflow=1"
 	tee := "[f=rtsp:rtsp_transport=tcp:onfail=ignore" + dropFifo + "]" + b.ingestURL
-	if snap.recordPath != "" {
-		tee += "|[f=adts:onfail=ignore" + dropFifo + "]" + snap.recordPath
-	}
 	// Optional THIRD leg - the cloud mirror for remote guests. Stream-copies the
 	// SAME already-encoded AAC (no second encode) into a plain-HLS playlist in a
 	// scratch dir that internal/livemirror ships to R2. With drop-on-overflow it is
@@ -478,18 +459,6 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 	if opts.HLSTime <= 0 {
 		opts.HLSTime = float64(b.cfg.HLSTime)
 	}
-	// Recording continuity: a fresh (user) Start owns the base path; a rebuild
-	// records to a NEW segment file off that base so it never truncates what was
-	// captured before the device got yanked out from under the tap.
-	if opts.RecordPath != "" {
-		if rebuild {
-			b.recordSeg++
-			opts.RecordPath = segmentedRecordPath(b.recordBase, b.recordSeg)
-		} else {
-			b.recordBase = opts.RecordPath
-			b.recordSeg = 0
-		}
-	}
 	b.bitrate = opts.Bitrate
 	b.channels = opts.Channels
 	b.hlsTime = opts.HLSTime
@@ -521,7 +490,7 @@ func (b *Broadcaster) startInternal(device, deviceName string, opts Options, reb
 
 	// Snapshot the mutable encode settings while we still hold the lock -
 	// buildArgs runs later, outside it, and must not race SetDelivery/Start.
-	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery, recordPath: opts.RecordPath, mirrorDir: b.mirrorDir}
+	snap := argSnap{bitrate: b.bitrate, channels: b.channels, hlsTime: b.hlsTime, delivery: b.delivery, mirrorDir: b.mirrorDir}
 
 	var helper *exec.Cmd
 	var pr, pw *os.File

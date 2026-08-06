@@ -68,7 +68,7 @@ func TestCurrentTrackRotatesRecentAndPersists(t *testing.T) {
 	if len(recent) != 2 || recent[0].Title != "Second Tune" || recent[1].Title != "First Tune" {
 		t.Fatalf("reopened cleared recent = %#v, want Second then First", recent)
 	}
-	setlist, err := os.ReadFile(filepath.Join(reopened.Dir(), "data", "setlist.txt"))
+	setlist, err := os.ReadFile(filepath.Join(reopened.Dir(), ".state", "setlist.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
