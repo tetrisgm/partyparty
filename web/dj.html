@@ -770,6 +770,8 @@
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 2px rgba(0,0,0,.28);
     color:var(--label);font:inherit;font-size:13px;
   }
+  /* Two lines: enough to see a thought, small enough to stay a toolbar. */
+  #djPostText{height:34px;min-height:34px}
   .card input[type=text]:focus,.card textarea:focus{
     outline:none;
     box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 26%,transparent);
@@ -962,7 +964,7 @@
   /* Empty poster space belongs to the cover, so a dragged image can land
      anywhere on the artwork; only the real controls keep the pointer. */
   .posterbody{pointer-events:none}
-  .posterbody #titleEdit,.posterbody .fieldedit,.posterbody .livestat,.posterbody .coveractions{pointer-events:auto}
+  .posterbody #titleEdit,.posterbody .fieldedit,.posterbody .coveractions{pointer-events:auto}
   /* The title is the field. Click the words, type. No pencil to hunt for. */
   .ename{font-size:clamp(28px,3.4vw,44px);font-weight:700;letter-spacing:-.028em;line-height:1.05;margin:0}
   #titleEdit{outline:none;display:inline-block;min-width:2ch;border-radius:var(--r-sm);padding:0 2px}
@@ -973,7 +975,7 @@
 
   /* Live status lives on the poster, next to the identity - not at the bottom
      of the window under the guest list. */
-  .livestat{display:none;align-items:center;gap:var(--s-3);margin-top:var(--s-4)}
+  .livestat{display:none;align-items:center;gap:var(--s-3)}
   body[data-phase="live"] .livestat{display:flex}
   .livedot{width:8px;height:8px;border-radius:50%;background:#ff453a;box-shadow:0 0 0 0 rgba(255,69,58,.6);animation:pulse 2s var(--curve) infinite}
   @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(255,69,58,0)}100%{box-shadow:0 0 0 0 rgba(255,69,58,0)}}
@@ -1033,12 +1035,6 @@
         <h1 class="ename"><span id="titleEdit" contenteditable="plaintext-only" role="textbox"
             aria-label="Event name" data-placeholder="Name this party"></span><button class="fieldedit" type="button" id="titlePencil" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button></h1>
         <div class="posterhost" id="posterHost"></div>
-        <div class="livestat" id="liveStat">
-          <span class="livedot" aria-hidden="true"></span>
-          <span class="livelabel">Live</span>
-          <span class="liveclock" id="liveClock">0:00</span>
-          <span class="livecount" id="liveCount">0 listening</span>
-        </div>
         </div>
         <div class="coveractions">
           <button class="coverbtn" id="pubCoverChangeBtn" type="button">Shuffle image</button>
@@ -1202,6 +1198,12 @@
   <div class="goaction">
     <span class="startstage" id="startStage" hidden><span class="spin16" aria-hidden="true"></span><span id="startStageText"></span></span>
     <button class="golive go biggo" id="liveBtn" type="button">🕺 Go live</button>
+    <!-- Live state belongs with the control that causes it, not over the art. -->
+    <div class="livestat" id="liveStat">
+      <span class="livedot" aria-hidden="true"></span>
+      <span class="livelabel">Live</span>
+      <span class="liveclock" id="liveClock">0:00</span>
+    </div>
   </div>
   <div class="goend">
     <button class="iconbtn gearbtn" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
@@ -2701,11 +2703,18 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
     // Auto-saves post whatever the inputs hold; before the first server render
     // the inputs hold nothing, and an early save (autofill poke, stray blur)
-    // was overwriting stored truth with an empty screen. Saves stay disarmed
+    // would overwrite stored truth with an empty screen. Saves stay disarmed
     // until hydration has landed once.
-    let profileHydrated = false;
+    //
+    // The flag lives on window ON PURPOSE: the autosave wiring sits in a later
+    // IIFE, outside this scope. A plain `let` here, read from there, is an
+    // undeclared identifier, and the ReferenceError it throws inside an event
+    // handler is silent - which is exactly how 125.41 shipped a console where
+    // NO profile or link edit was ever saved (2026-08-06). Covered by
+    // scripts/test-dj-console-saves.mjs, which types like a DJ.
+    window.ppProfileHydrated = false;
     function renderProfile(name, bio, avatar){
-      profileHydrated = true;
+      window.ppProfileHydrated = true;
       eventMeta.host = String(name || eventMeta.host || 'the DJ');
       eventMeta.bio = String(bio || '');
       eventMeta.avatar = String(avatar || '');
@@ -3122,9 +3131,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       }
     });
     list.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
+      // Enter sends a reply; Cmd/Ctrl+Enter does too, so the habit learned in
+      // the post composer works here without thinking about it.
+      if (e.key !== 'Enter' || e.isComposing) return;
       const pid = e.target && e.target.dataset && e.target.dataset.cpost;
       if (!pid) return;
+      e.preventDefault();
       const btn = list.querySelector('button[data-csend="' + pid + '"]');
       if (btn) btn.click();
     });
@@ -3230,6 +3242,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       e.preventDefault();
       setDJFiles(files, true);
     });
+    // Cmd/Ctrl+Enter posts, matching every message field on a Mac. Plain
+    // Enter stays a line break here: a post is allowed to have paragraphs.
+    $('djPostText').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.isComposing) return;
+      e.preventDefault();
+      const b = $('djPostBtn');
+      if (b && !b.disabled) b.click();
+    });
     $('djPostBtn').onclick = async () => {
       const files = djPendingFiles.slice();
       const text = $('djPostText').value.trim();
@@ -3279,18 +3299,33 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // save path; they stay, the buttons just stop being something to press.
   (function(){
     const debounce = (fn, ms) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
-    const commit = (id) => debounce(() => { const b = $(id); if (b && !b.disabled && profileHydrated) b.click(); }, 700);
+    const commit = (id) => debounce(() => { const b = $(id); if (b && !b.disabled && window.ppProfileHydrated) b.click(); }, 700);
     const saveProfile = commit('saveProfileBtn');
     const saveLinks = commit('saveLinksBtn');
+    // Enter commits the field. In the bio textarea that means NO line break -
+    // Shift+Enter is the deliberate way to add one.
+    const enterCommits = (el) => el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      el.blur(); // blur is the existing save path
+    });
     ['profileName','profileBio'].forEach((id) => {
       const el = $(id); if (!el) return;
+      enterCommits(el);
       el.addEventListener('input', saveProfile);
-      el.addEventListener('blur', () => { const b = $('saveProfileBtn'); if (b && !b.disabled && profileHydrated) b.click(); });
+      el.addEventListener('blur', () => { const b = $('saveProfileBtn'); if (b && !b.disabled && window.ppProfileHydrated) b.click(); });
     });
     const rows = $('linkRows');
     if (rows) {
       rows.addEventListener('input', saveLinks);
       rows.addEventListener('focusout', () => { const b = $('saveLinksBtn'); if (b && !b.disabled) b.click(); });
+      rows.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+        const el = e.target;
+        if (!el || !el.matches || !el.matches('input,textarea')) return;
+        e.preventDefault();
+        el.blur();
+      });
     }
   })();
 
@@ -3444,11 +3479,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 
   // The host is not a guest. Listener count is listeners.
   function renderCounts(s){
-    const roster = (s && s.roster) || [];
-    const relay = (s && s.relay) || {};
-    const listening = roster.length + (relay.fresh ? (relay.listeners || 0) : 0);
-    const el = $('liveCount');
-    if (el) el.textContent = listening + (listening === 1 ? ' listening' : ' listening');
     const host = $('posterHost');
     if (host && window.eventMeta) host.textContent = eventMeta.host && eventMeta.host !== 'the DJ' ? eventMeta.host : '';
   }

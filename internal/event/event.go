@@ -311,6 +311,7 @@ func normalizeLinks(in []Link) ([]Link, error) {
 type Store struct {
 	mu            sync.Mutex
 	dir           string
+	base          string // events root; the DJ identity lives beside it
 	meta          Meta
 	posts         []*Post
 	byID          map[string]*Post
@@ -379,10 +380,12 @@ func Open(baseDir string) (*Store, error) {
 		return nil, err
 	}
 	dir := filepath.Join(baseDir, time.Now().Format("2006-01-02"))
-	s := &Store{notify: make(chan struct{})}
+	s := &Store{notify: make(chan struct{}), base: baseDir}
 	if err := s.use(dir); err != nil {
 		return nil, err
 	}
+	// Events rotate per day; the DJ's identity must not rotate with them.
+	s.seedFromIdentity()
 	return s, nil
 }
 
@@ -635,6 +638,7 @@ func (s *Store) SetMeta(title, host, starts string) error {
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
+	s.saveIdentityLocked()
 	s.changed() // title/host edits reach parked long-polls too
 	return nil
 }
@@ -681,6 +685,7 @@ func (s *Store) SetCover(ref string) error {
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
+	s.saveIdentityLocked()
 	s.changed()
 	return nil
 }
@@ -788,6 +793,7 @@ func (s *Store) SetProfile(name, bio *string) error {
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
+	s.saveIdentityLocked()
 	s.changed()
 	return nil
 }
@@ -808,6 +814,7 @@ func (s *Store) RemoveAvatar() error {
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
+	s.saveIdentityLocked()
 	s.changed()
 	return nil
 }
@@ -952,6 +959,7 @@ func (s *Store) SetLinks(links []Link) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.meta.Links = clean
+	s.saveIdentityLocked()
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}
