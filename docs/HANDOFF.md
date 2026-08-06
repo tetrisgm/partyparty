@@ -1,5 +1,33 @@
 # PartyParty.party handoff
 
+## Current position (2026-08-05 night): TestFlight 125.39 build 259 - proven geometry restored
+
+The evening's 3s-cushion attempt is REVERTED. Sequence: the owner decided
+stability over immediacy (a fixed 3s room instead of the ~1s knife edge,
+justified by the Shack15 A/B - a phone at ~2.6s heard none of the venue
+bursts a ~1s phone heard). Implementation One (125.37, PART-HOLD-BACK=2.9)
+was self-contradictory - parts only exist ~1.4s from the edge - and AVPlayer
+audibly ROLLED A LISTENER BACKWARD, then parked it 24.8s deep. Implementation
+Two (125.38, EXT-X-START:-3) left the owner's phone 27s behind; its exact
+mechanism is UNDIAGNOSED (the muted-AVPlayer soak harness produced no output
+before the phone found the bug - the harness itself needs a shakedown).
+125.39 restores hold-back 0.9 / D=1.0 exactly as the successful afternoon
+ran. Root failure, named in the reflection the owner demanded: geometry
+changes shipped at app-fix tempo on green unit tests, which cannot hear
+AVPlayer - the same lesson the sandbox/TCC/Shazam sagas taught earlier the
+SAME DAY. AGENTS.md now requires a PASSING pre-upload soak (muted headless
+AVPlayer, >=10 min, zero backward movement, stable at target, log kept) for
+any playlist-geometry or positioning change; a soak after upload is theater.
+
+The 3s decision STANDS as owner intent. Bench work owed: shake down
+scratchpad/soak.swift (compile + attach never verified), read the JULY D=3
+implementation as it actually shipped instead of paraphrasing it from
+memory, find the mechanism AVPlayer respects for deep attachment, pass the
+soak, then ONE build. Also parked: per-phone stall counters into /api/status
+(proposed, owner receptive) - would have made tonight's phone-vs-stream
+attribution instant.
+
+
 ## Current position (2026-08-05 evening): TestFlight 125.36 build 256
 
 125.36 (256) is the only live build: recognition moved into the APP process
