@@ -126,7 +126,27 @@ func TestProfilePersistsInsideDataDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetProfile("  DJ Luna  ", "  Dance floor specialist  "); err != nil {
+	name, bio := "  DJ Luna  ", "  Dance floor specialist  "
+	if err := st.SetProfile(&name, &bio); err != nil {
+		t.Fatal(err)
+	}
+	// nil means "leave alone": a save fired from an unhydrated console must
+	// not wipe stored truth (entered bios kept resetting exactly this way).
+	if err := st.SetProfile(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Meta(); got.Host != "DJ Luna" || got.Bio != "Dance floor specialist" {
+		t.Fatalf("nil-field save clobbered the profile: %#v", got)
+	}
+	// An explicit empty string still clears deliberately.
+	empty := ""
+	if err := st.SetProfile(nil, &empty); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Meta(); got.Bio != "" {
+		t.Fatalf("explicit clear did not clear bio: %q", got.Bio)
+	}
+	if err := st.SetProfile(&name, &bio); err != nil {
 		t.Fatal(err)
 	}
 	// A real image: uploads that do not decode are rejected before publish.

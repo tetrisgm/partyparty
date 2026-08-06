@@ -410,8 +410,8 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		var body struct {
-			Name string `json:"name"`
-			Bio  string `json:"bio"`
+			Name *string `json:"name"`
+			Bio  *string `json:"bio"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})

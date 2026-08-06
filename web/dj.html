@@ -2615,7 +2615,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       rows.textContent = '';
       for (const link of clean) rows.appendChild(linkRow(link));
     }
+    // Auto-saves post whatever the inputs hold; before the first server render
+    // the inputs hold nothing, and an early save (autofill poke, stray blur)
+    // was overwriting stored truth with an empty screen. Saves stay disarmed
+    // until hydration has landed once.
+    let profileHydrated = false;
     function renderProfile(name, bio, avatar){
+      profileHydrated = true;
       eventMeta.host = String(name || eventMeta.host || 'the DJ');
       eventMeta.bio = String(bio || '');
       eventMeta.avatar = String(avatar || '');
@@ -3187,13 +3193,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // save path; they stay, the buttons just stop being something to press.
   (function(){
     const debounce = (fn, ms) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
-    const commit = (id) => debounce(() => { const b = $(id); if (b && !b.disabled) b.click(); }, 700);
+    const commit = (id) => debounce(() => { const b = $(id); if (b && !b.disabled && profileHydrated) b.click(); }, 700);
     const saveProfile = commit('saveProfileBtn');
     const saveLinks = commit('saveLinksBtn');
     ['profileName','profileBio'].forEach((id) => {
       const el = $(id); if (!el) return;
       el.addEventListener('input', saveProfile);
-      el.addEventListener('blur', () => { const b = $('saveProfileBtn'); if (b && !b.disabled) b.click(); });
+      el.addEventListener('blur', () => { const b = $('saveProfileBtn'); if (b && !b.disabled && profileHydrated) b.click(); });
     });
     const rows = $('linkRows');
     if (rows) {

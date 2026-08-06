@@ -769,13 +769,22 @@ func (s *Store) saveMetaLocked() error {
 
 // SetProfile stores the public DJ name and biography. The avatar is uploaded
 // separately so a text edit never rewrites image data.
-func (s *Store) SetProfile(name, bio string) error {
+// SetProfile updates the DJ identity. nil means "leave alone": the console
+// auto-saves on input events, and a save that fires before the inputs have
+// hydrated must not overwrite stored truth with an empty screen - entered
+// bios and names kept resetting exactly that way. Clearing a field is still
+// possible by sending an explicit empty string.
+func (s *Store) SetProfile(name, bio *string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if name = clip(strings.TrimSpace(name), 40); name != "" {
-		s.meta.Host = name
+	if name != nil {
+		if n := clip(strings.TrimSpace(*name), 40); n != "" {
+			s.meta.Host = n
+		}
 	}
-	s.meta.Bio = clip(strings.TrimSpace(bio), 600)
+	if bio != nil {
+		s.meta.Bio = clip(strings.TrimSpace(*bio), 600)
+	}
 	if err := s.saveMetaLocked(); err != nil {
 		return err
 	}

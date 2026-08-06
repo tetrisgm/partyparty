@@ -37,13 +37,18 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
     private var lastErrorAt = Date.distantPast
     private var lastLoudAt = Date()
     private var silenceAnnounced = false
-    // A DIFFERENT match must confirm itself before it replaces the current
-    // track: continuous streaming keeps re-matching catalog sound-alikes of
-    // the section under the needle (a Metroid track flapped through lookalike
-    // songs mid-play, Shack15 2026-08-05). The first match after start or
-    // after silence still lands instantly.
+    // A DIFFERENT match replaces the current track only after being seen
+    // TWICE with no incumbent re-confirmation in between (incumbent veto).
+    // Continuous streaming keeps re-matching catalog sound-alikes of the
+    // section under the needle (a Metroid track flapped through lookalikes,
+    // Shack15 2026-08-05) - but the REAL track keeps re-matching too, and
+    // each re-match kills the pretender's candidacy. On a genuine transition
+    // the incumbent stops matching entirely, so the new track promotes on
+    // its second sighting (~15-20s) instead of the old fixed 15s dwell that
+    // stretched changes to ~40s. During a crossfade both tracks are audible
+    // and the incumbent correctly holds until it actually fades. First match
+    // after start or after silence still lands instantly.
     private var candidateID = ""
-    private var candidateFirstAt = Date.distantPast
 
     init(api: APIClient) {
         self.api = api
@@ -237,24 +242,19 @@ final class AppTrackRecognizer: NSObject, SHSessionDelegate {
         let artist = item.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let matchID = item.shazamID ?? "\(artist)\u{0}\(title)"
         state.lock()
-        guard Date().timeIntervalSince(lastLoudAt) < 6, matchID != lastID else {
+        guard Date().timeIntervalSince(lastLoudAt) < 6 else {
             state.unlock()
             return
         }
-        if !lastID.isEmpty {
-            // Switching away from an accepted track needs the same new id
-            // seen again at least 15s later; a one-off sound-alike never
-            // survives that.
-            if matchID != candidateID {
-                candidateID = matchID
-                candidateFirstAt = Date()
-                state.unlock()
-                return
-            }
-            if Date().timeIntervalSince(candidateFirstAt) < 15 {
-                state.unlock()
-                return
-            }
+        if matchID == lastID {
+            candidateID = "" // incumbent re-confirmed; pretenders start over
+            state.unlock()
+            return
+        }
+        if !lastID.isEmpty, matchID != candidateID {
+            candidateID = matchID // first sighting: needs a second, unvetoed
+            state.unlock()
+            return
         }
         lastID = matchID
         candidateID = ""
