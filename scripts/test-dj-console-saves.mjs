@@ -151,10 +151,19 @@ try {
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.waitForTimeout(1200); // past the autosave debounce
 
+  // Wait for the SAVE to arrive rather than snapshotting the last one: the
+  // autosave debounce can fire between the two fills on a slow machine, so the
+  // most recent POST may legitimately carry only the name.
+  const savedBoth = async () => {
+    for (let i = 0; i < 40; i++) {
+      if (stored.host === 'DJ Luna' && stored.bio === 'House music and bright rooms.') return true;
+      await page.waitForTimeout(250);
+    }
+    return false;
+  };
   assert.ok(posts.profile.length > 0, 'typing in the profile fields never reached /api/dj-profile');
-  const saved = posts.profile[posts.profile.length - 1];
-  assert.equal(saved.name, 'DJ Luna', `saved name = ${JSON.stringify(saved.name)}`);
-  assert.equal(saved.bio, 'House music and bright rooms.', `saved bio = ${JSON.stringify(saved.bio)}`);
+  assert.ok(await savedBoth(),
+    `the server never received both fields: ${JSON.stringify(posts.profile)}`);
 
   // The poll must not then wipe what was just saved.
   await page.waitForTimeout(1500);
