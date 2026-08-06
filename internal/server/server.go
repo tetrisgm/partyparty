@@ -469,6 +469,20 @@ func (s *srv) AdvertisedGuestPort() int {
 	return s.Config.TLSPort
 }
 
+// partyJoinURL is the link this party hands out. For the Mac that started the
+// party it is its own; for a Mac that joined, it is the host's - a second DJ's
+// QR is the first DJ's, because guests are at one party.
+func (s *srv) partyJoinURL() string {
+	if s.Events == nil {
+		return ""
+	}
+	id := s.Events.Identity()
+	if id.Host {
+		return ""
+	}
+	return strings.TrimSpace(id.Join)
+}
+
 func (s *srv) urls() urls {
 	// The Plex model: the ONLY advertised link is https:// on the activated
 	// domain. The page itself requires working DNS + TLS - exactly the gate
@@ -494,7 +508,16 @@ func (s *srv) urls() urls {
 				join = connection.JoinURL
 			}
 		}
+		// A Mac that joined an existing party hands out that party's link.
+		if adopted := s.partyJoinURL(); adopted != "" {
+			join = adopted
+		}
 		return urls{Primary: direct, Join: join}
+	}
+	if adopted := s.partyJoinURL(); adopted != "" {
+		// Still setting up our own secure link, but the party we joined already
+		// has one - guests can be invited immediately.
+		return urls{Join: adopted}
 	}
 	return urls{}
 }
@@ -880,6 +903,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		// bouncing) - but a start must still revive a silently-dead MediaMTX,
 		// or ffmpeg pushes into the void and guests see a "live" broadcast
 		// nobody can hear. If a stale orphan owns the ports, reap and retry.
+		// One party per Wi-Fi: if a DJ is already playing here, this Mac joins
+		// their party - same id, same wall, same link - instead of starting a
+		// rival one that splits the guests in half.
+		s.joinLivePartyOnThisNetwork()
 		s.startMu.Lock()
 		s.startRequested = time.Now()
 		s.startMTXReady, s.startLiveAt, s.startRelayAt = time.Time{}, time.Time{}, time.Time{}
@@ -987,7 +1014,23 @@ func (s *srv) peerState(since int64) peers.Peer {
 	if ids == nil {
 		ids = []string{}
 	}
+	party := event.PartyIdentity{}
+	if s.Events != nil {
+		party = s.Events.Identity()
+		// The host publishes the link the whole party hands out, so a Mac that
+		// joins can advertise it too instead of its own machine name.
+		if party.Host {
+			if join := s.urls().Join; join != "" && join != party.Join {
+				s.Events.SetJoinURL(join)
+				party.Join = join
+			}
+		}
+	}
 	return peers.Peer{
+		PartyID:       party.ID,
+		PartyName:     party.Name,
+		PartyCover:    party.Cover,
+		PartyJoin:     party.Join,
 		ID:            peerID,
 		Name:          name,
 		Bio:           bio,
@@ -1002,6 +1045,40 @@ func (s *srv) peerState(since int64) peers.Peer {
 		Links:         links,
 		Room:          &peers.Room{Roster: publicRoster, Posts: posts, IDs: ids, Cursor: cursor},
 	}
+}
+
+// joinLivePartyOnThisNetwork adopts the party of a live peer, if there is one.
+// Only an empty party is given up: a wall with posts on it is never abandoned.
+func (s *srv) joinLivePartyOnThisNetwork() {
+	if s.Events == nil {
+		return
+	}
+	for _, peer := range s.peerList() {
+		if !peer.Live || peer.PartyID == "" || peer.PartyID == s.Events.PartyID() {
+			continue
+		}
+		joined, err := s.Events.JoinParty(event.PartyIdentity{
+			ID: peer.PartyID, Name: peer.PartyName, Cover: peer.PartyCover,
+			Join: firstNonEmpty(peer.PartyJoin, peer.RoomURL),
+		})
+		if err != nil && s.Diag != nil {
+			s.Diag.Printf("party: joining %s failed: %v", peer.PartyID, err)
+			return
+		}
+		if joined && s.Diag != nil {
+			s.Diag.Printf("party: joined %s (%s) hosted by %s", peer.PartyID, peer.PartyName, peer.Name)
+		}
+		return
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (s *srv) peerList() []peers.Peer {

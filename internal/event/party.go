@@ -230,3 +230,108 @@ func moveInto(src, dst string) error {
 	}
 	return nil
 }
+
+// partyFile records the shared identity of the party this Mac is in: the id
+// every member agrees on, the link they all hand out, and who minted it. A
+// joiner writes the host's values here so its console shows the party's link
+// rather than its own machine name.
+const partyFile = "party.json"
+
+// PartyIdentity is what one Mac tells another about the party it is in.
+type PartyIdentity struct {
+	ID    string `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Cover string `json:"cover,omitempty"`
+	Join  string `json:"join,omitempty"` // the join link every member advertises
+	Host  bool   `json:"host,omitempty"` // this Mac minted the party
+}
+
+// Identity returns the party as this Mac understands it.
+func (s *Store) Identity() PartyIdentity {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := PartyIdentity{ID: filepath.Base(s.dir), Name: s.meta.Title, Cover: s.meta.Cover, Host: true}
+	data, err := os.ReadFile(dataPath(s.dir, partyFile))
+	if err != nil {
+		return id
+	}
+	var stored PartyIdentity
+	if json.Unmarshal(data, &stored) != nil || stored.ID == "" {
+		return id
+	}
+	stored.Name, stored.Cover = s.meta.Title, s.meta.Cover // live values win
+	return stored
+}
+
+// SetJoinURL records the link this party hands out. The host publishes its own;
+// a joiner keeps the host's, which is why a second DJ's QR is the first DJ's.
+func (s *Store) SetJoinURL(join string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := PartyIdentity{ID: filepath.Base(s.dir), Join: join, Host: true}
+	if data, err := os.ReadFile(dataPath(s.dir, partyFile)); err == nil {
+		var stored PartyIdentity
+		if json.Unmarshal(data, &stored) == nil && stored.ID != "" {
+			if !stored.Host {
+				return // a joiner never overwrites the party's link with its own
+			}
+			id = stored
+			id.Join = join
+		}
+	}
+	s.writeIdentityFileLocked(id)
+}
+
+func (s *Store) writeIdentityFileLocked(id PartyIdentity) {
+	data, err := json.MarshalIndent(id, "", " ")
+	if err != nil {
+		return
+	}
+	path := dataPath(s.dir, partyFile)
+	tmp := path + ".tmp"
+	if os.WriteFile(tmp, append(data, '\n'), 0o644) == nil {
+		_ = os.Rename(tmp, path)
+	}
+}
+
+// JoinParty switches this Mac into an existing party: same id, same name,
+// cover and link, its own replica of the folder. It refuses when this Mac has
+// a party of its own with something in it - a wall with posts in it is never
+// abandoned to join someone else.
+func (s *Store) JoinParty(id PartyIdentity) (bool, error) {
+	if id.ID == "" {
+		return false, nil
+	}
+	s.mu.Lock()
+	current := filepath.Base(s.dir)
+	base, dir := s.base, s.dir
+	s.mu.Unlock()
+	if current == id.ID {
+		return false, nil // already in it
+	}
+	if base == "" || !partyIsEmpty(dir) {
+		return false, nil
+	}
+
+	target := filepath.Join(base, id.ID)
+	if err := s.use(target); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	if strings.TrimSpace(id.Name) != "" {
+		s.meta.Title = id.Name
+	}
+	if strings.TrimSpace(id.Cover) != "" {
+		s.meta.Cover = id.Cover
+	}
+	joined := id
+	joined.Host = false
+	s.writeIdentityFileLocked(joined)
+	_ = s.saveMetaLocked()
+	s.mu.Unlock()
+	writeCurrent(base, id.ID)
+	s.seedFromIdentity() // the DJ's own name and photo, not the host's
+	s.writeRecap()
+	s.changed()
+	return true, nil
+}

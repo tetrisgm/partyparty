@@ -321,11 +321,11 @@ func (b *Broadcaster) cleanRunDir() {
 // argSnap freezes the mutable encode settings for one Start - buildArgs runs
 // outside the lock and must not read live fields.
 type argSnap struct {
-	bitrate    string
-	channels   int
-	hlsTime    float64
-	delivery   string
-	mirrorDir  string // cloud-mirror scratch dir; "" = no third tee leg
+	bitrate   string
+	channels  int
+	hlsTime   float64
+	delivery  string
+	mirrorDir string // cloud-mirror scratch dir; "" = no third tee leg
 }
 
 func (b *Broadcaster) buildArgs(device string, inRate, inCh int, snap argSnap) []string {

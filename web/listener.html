@@ -2662,6 +2662,7 @@
       try {
         const s = await (await fetch('/api/status', { cache: 'no-store' })).json();
         lastPollOK = Date.now();
+        pollFailures = 0;
         considerReload(s.appVersion);
         const connection = s.connection && typeof s.connection === 'object' ? s.connection : null;
         // Moving a guest to the relay, without bouncing one that is already there.
@@ -2791,7 +2792,42 @@
         else if (started && live && streamReady && !userPaused && !yielded && (player.paused || stale())) {
           recoverPlayback();
         }
-      } catch (e) { if (!started) setStatus('offline'); }
+      } catch (e) {
+        if (!started) setStatus('offline');
+        considerRehome();
+      }
+    }
+
+    // A party can outlive the Mac that served this page: the host closes their
+    // laptop and every guest on it is stranded, even though the other DJs are
+    // still playing and hold the same wall. The reel already told us where they
+    // are, so after a run of failures we move to one of them rather than
+    // spinning. Audio keeps playing from whichever DJ was chosen; only the page
+    // changes home.
+    let pollFailures = 0, rehoming = false;
+    async function considerRehome(){
+      pollFailures++;
+      if (rehoming || pollFailures < 4) return;          // ~20s of silence
+      const here = location.origin;
+      const options = discoveredPeers
+        .map((peer) => String((peer && peer.roomUrl) || ''))
+        .filter((url) => url && url.indexOf('https://') === 0 && url.indexOf(here) !== 0);
+      if (!options.length) return;
+      rehoming = true;
+      for (const target of options) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => { try { controller.abort(); } catch (e) {} }, 3000);
+          const response = await fetch(new URL('/api/time', target).href,
+            { cache: 'no-store', mode: 'cors', signal: controller.signal });
+          clearTimeout(timer);
+          if (!response.ok) continue;
+          reportErr('rehome', target);
+          location.replace(target);
+          return;
+        } catch (e) {}
+      }
+      rehoming = false;
     }
     poll(); setInterval(poll, 3000);
     syncClock(); setInterval(syncClock, 30000);

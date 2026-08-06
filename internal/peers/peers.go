@@ -38,7 +38,17 @@ type Peer struct {
 	LatencyTarget float64             `json:"latencyTarget,omitempty"`
 	NowPlaying    *event.CurrentTrack `json:"nowPlaying,omitempty"`
 	Links         []event.Link        `json:"links,omitempty"`
-	Room          *Room               `json:"room,omitempty"`
+
+	// The party this DJ is in. A Mac going live on a LAN where one is already
+	// happening joins it rather than starting a rival: guests scanned one code
+	// and believe they are in one place, so the room, the wall and the link
+	// are the party's, not the Mac's.
+	PartyID    string `json:"partyId,omitempty"`
+	PartyName  string `json:"partyName,omitempty"`
+	PartyCover string `json:"partyCover,omitempty"`
+	PartyJoin  string `json:"partyJoin,omitempty"` // the link every member hands out
+
+	Room *Room `json:"room,omitempty"`
 }
 
 // Room is the compact public social snapshot shared between Macs at one venue.

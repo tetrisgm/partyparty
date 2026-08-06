@@ -172,3 +172,66 @@ func itoa(n int64) string {
 	}
 	return string(b)
 }
+
+// TestJoiningAPartyAdoptsItsIdentity: a second DJ going live joins the party
+// already happening - same id, same name, same link handed to guests - while
+// keeping their own name and photo.
+func TestJoiningAPartyAdoptsItsIdentity(t *testing.T) {
+	base := t.TempDir()
+	guest, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	me := "DJ Two"
+	if err := guest.SetProfile(&me, nil); err != nil {
+		t.Fatal(err)
+	}
+	host := PartyIdentity{
+		ID: "2026-08-06-2213-aaaa", Name: "Shoku @ home",
+		Cover: "/covers/warehouse.webp", Join: "https://happy-dance.partyparty.party/",
+	}
+	joined, err := guest.JoinParty(host)
+	if err != nil || !joined {
+		t.Fatalf("JoinParty = %v, %v", joined, err)
+	}
+	if guest.PartyID() != host.ID {
+		t.Fatalf("party id = %q, want %q", guest.PartyID(), host.ID)
+	}
+	got := guest.Meta()
+	if got.Title != host.Name || got.Cover != host.Cover {
+		t.Fatalf("party presentation not adopted: %#v", got)
+	}
+	if got.Host != "DJ Two" {
+		t.Fatalf("the joiner lost their own DJ name: %q", got.Host)
+	}
+	id := guest.Identity()
+	if id.Join != host.Join || id.Host {
+		t.Fatalf("joiner identity = %#v, want the host's link and Host=false", id)
+	}
+	// A joiner must never republish its own machine link as the party's.
+	guest.SetJoinURL("https://my-own-mac.party.partyparty.party:8443/")
+	if guest.Identity().Join != host.Join {
+		t.Fatal("a joiner overwrote the party's link")
+	}
+}
+
+// TestAPartyWithAWallIsNeverAbandoned: joining is for a Mac that has not
+// started anything, never a way to strand posts already on the wall.
+func TestAPartyWithAWallIsNeverAbandoned(t *testing.T) {
+	base := t.TempDir()
+	st, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddPost("cid", "Neon Fox", "🦊", "already here", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	mine := st.PartyID()
+	joined, err := st.JoinParty(PartyIdentity{ID: "2026-08-06-2213-bbbb", Name: "Someone else"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined || st.PartyID() != mine {
+		t.Fatalf("a party with posts was abandoned: joined=%v id=%q", joined, st.PartyID())
+	}
+}

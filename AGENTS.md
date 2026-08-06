@@ -83,12 +83,6 @@ boundary.
    restore plain HTTP for any online path.
 4. Cloud relay state is ephemeral. Do not add public party pages, replays,
    recordings, archives, or cloud feeds.
-11. A party is one night, not one calendar day: storage is
-    `parties/<id>/`, resumed while it is current and started fresh once it
-    has gone idle. The folder is a keepsake, not a database - guest uploads
-    and one index.html of the wall, with the journal hidden in `.state`. The
-    app does not record the music: the set-recording tee was removed
-    2026-08-06 at the owner's request and must not come back without one.
 5. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and
    MediaMTX behavior.
 6. Do not add an authentication email service.
@@ -98,6 +92,16 @@ boundary.
 9. Room delay never tracks listener count; correction is per device.
 10. Store and standalone builds are isolated. Store builds are sandboxed and
     Apple-updated; standalone builds use a separate bundle ID and Sparkle.
+11. A party is one night, not one calendar day: storage is `parties/<id>/`,
+    resumed while it is current and started fresh once it has gone idle. The
+    folder is a keepsake, not a database - guest uploads and one index.html of
+    the wall, with the journal hidden in `.state`. The app does not record the
+    music: the set-recording tee was removed 2026-08-06 at the owner's request
+    and must not come back without one.
+12. One party per Wi-Fi: a Mac going live where a DJ is already playing JOINS
+    that party - same id, same wall, same link handed to guests - rather than
+    starting a rival that splits the room. A party with posts on it is never
+    abandoned to join another.
 
 ## Apple
 
