@@ -39,11 +39,14 @@ per-phone, never tracking listener conditions.
 
 Any change to playlist geometry or playback positioning (hold-back,
 EXT-X-START, the room delay, segment/part shape) requires a real-AVPlayer
-soak that PASSES BEFORE THE BUILD IS UPLOADED anywhere: a muted headless
-AVPlayer (or desktop Safari) attached to the live stream, its position
-watched against the live edge for at least ten minutes, zero backward
-movement, position stable at the declared target, with the soak log kept as
-the receipt. A soak run after upload is theater. Unit and contract tests
+soak that PASSES BEFORE THE BUILD IS UPLOADED anywhere:
+`scripts/soak-playback.sh` attaches a muted headless AVPlayer to the live
+stream for ten minutes and PASSES ONLY IF it proves it attached, advanced,
+sat at the declared target, and never moved backward - the first version of
+that harness reported PASS for a run where the player never connected, which
+is the same theater in a smaller box. To soak a candidate manifest without
+shipping it, serve it through `scripts/bench-playlist-proxy.py` and soak
+that. Keep the log as the receipt. A soak run after upload is theater. Unit and contract tests
 cannot hear AVPlayer: two green-tested geometry builds failed on real phones
 within minutes on 2026-08-05. Playback moving backward is never acceptable.
 
