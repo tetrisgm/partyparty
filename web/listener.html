@@ -43,18 +43,6 @@
   .reactbtn:active,.reactbtn.pulse{transform:scale(.94);background:#fff0f4}
   .reactbtn:disabled{opacity:.45}
   .reactambient{grid-column:1/-1;color:var(--label-secondary);font-size:12px;min-height:15px;text-align:center;font-variant-numeric:tabular-nums}
-  .trackrequest[hidden]{display:none}
-  .reqtitle{font-size:13px;font-weight:800;margin:0 0 8px}
-  .reqrow{display:flex;gap:8px}
-  .reqrow input,.trackrequest textarea{width:100%;background:var(--fill);border:none;border-radius:12px;color:var(--label);font:inherit;font-size:13px;outline:none}
-  .reqrow input{height:40px;padding:0 12px;flex:1;min-width:0}
-  .trackrequest textarea{margin-top:8px;min-height:38px;max-height:72px;resize:vertical;padding:9px 12px}
-  .reqsend{width:40px;height:40px;border:none;border-radius:50%;background:var(--accent);color:#fff;font-size:16px;font-weight:800;cursor:pointer;flex:0 0 auto;padding:0}
-  .reqsend:disabled{opacity:.45}
-  .vibes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-  .vibechip{height:28px;border:none;border-radius:999px;background:var(--fill);color:var(--label-secondary);font-size:12px;font-weight:700;padding:0 10px;cursor:pointer}
-  .vibechip.active{background:#fff0f4;color:var(--accent)}
-  .reqstatus{min-height:16px;margin-top:7px;color:var(--label-secondary);font-size:12px}
   .downhint{position:absolute;bottom:12px;left:0;right:0;color:var(--label-secondary);font-size:13px;opacity:.9}
   .downhint .chev{display:block;font-size:16px;line-height:1;animation:nudge 2.4s ease-in-out infinite}
   @keyframes nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
@@ -178,7 +166,6 @@
   .count{margin-top:8px;min-height:16px;order:6;color:var(--party-muted);font-size:13px;margin:0 0 4px;text-align:left}
   .reactions{margin-top:14px;display:grid;gap:6px;margin:16px 0 0;grid-template-columns:repeat(7,minmax(0,1fr))}
   .reactbtn{height:44px;border:none;border-radius:999px;color:var(--label);font-size:21px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;background:rgba(255,255,255,.42);box-shadow:none}
-  .trackrequest{margin-top:12px;border:1px solid var(--separator);border-radius:16px;padding:12px;text-align:left;background:rgba(255,255,255,.42);border-color:var(--party-line);box-shadow:0 10px 32px rgba(97,42,36,.12)}
   .statline{font-variant-numeric:tabular-nums;order:11;color:rgba(22,19,21,.42);font-size:11px;margin-top:8px;text-align:left}
   .btn{margin-top:22px;border-radius:999px;border:none;cursor:pointer;color:#fff;font-weight:700;
     display:flex;align-items:center;
@@ -248,7 +235,7 @@
   .guestline{align-items:center;justify-content:space-between;gap:12px;order:4;margin:3px 0 14px}
   body.playing .eq{opacity:1;display:flex}
   .pill{margin-top:22px;min-height:20px;margin:2px 0 0;color:var(--party-muted);font-size:13px;text-align:left;order:7}
-  .reactions,.trackrequest{width:100%;max-width:none;order:8}
+  .reactions{width:100%;max-width:none;order:8}
   .foot{margin-top:30px;color:var(--party-muted);font-size:12px;line-height:1.35;text-align:left;order:9;margin:18px 0 0;padding:0}
   .listenbar{position:fixed;z-index:18;align-items:center;margin:0;
     -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);left:0;right:0;bottom:0;max-width:none;
@@ -320,7 +307,7 @@
   .hero .artwork img{object-position:center;width:100%;height:100%;object-fit:cover;display:block}
   body.playing .artwork{animation:none}
   .hosted,.starts,.pill,.guestline,.count,.statline,.downhint{display:none!important}
-  .hero .reactions,.hero .trackrequest,.hero .trackid{order:2;align-self:center}
+  .hero .reactions,.hero .trackid{order:2;align-self:center}
   .hero .artwork .foot{
     position:static;margin:7px 0 0;padding:0;
     color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;text-align:left;background:none}
@@ -733,23 +720,6 @@
       <button class="reactbtn" type="button" data-react="more" aria-label="More like this" title="More like this">✨</button>
       <div class="reactambient" id="reactionAmbient"></div>
     </div>
-    <form class="trackrequest" id="requestBox" hidden>
-      <div class="reqtitle">Request a track</div>
-      <div class="reqrow">
-        <input id="requestText" maxlength="200" autocomplete="off" placeholder="Song / artist">
-        <button class="reqsend" id="requestSend" type="submit" aria-label="Send request">↗</button>
-      </div>
-      <textarea id="requestNote" maxlength="240" placeholder="Note for the DJ (optional)"></textarea>
-      <div class="vibes" id="requestVibes" aria-label="Vibe">
-        <button class="vibechip" type="button" data-vibe="harder">harder</button>
-        <button class="vibechip" type="button" data-vibe="softer">softer</button>
-        <button class="vibechip" type="button" data-vibe="faster">faster</button>
-        <button class="vibechip" type="button" data-vibe="slower">slower</button>
-        <button class="vibechip" type="button" data-vibe="more_like_this">more like this</button>
-      </div>
-      <div class="reqstatus" id="requestStatus"></div>
-    </form>
-
     <div class="statline" id="statline" hidden></div>
     <div class="downhint" id="downhint" hidden>the party wall<span class="chev">⌄</span></div>
   </div>
@@ -3020,13 +2990,11 @@
       const reactionBar = $id('reactionBar'), reactionAmbient = $id('reactionAmbient');
       const featureDefaults = {
         uploads: true, videoUploads: true, comments: true, reactions: false,
-        requests: false, trackId: true, wallMode: true
+        trackId: true, wallMode: true
       };
       const reactionDefs = [
         ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'], ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
       ];
-      const requestBox = $id('requestBox'), requestText = $id('requestText'), requestNote = $id('requestNote'), requestVibes = $id('requestVibes'), requestSend = $id('requestSend'), requestStatus = $id('requestStatus');
-      let requestVibe = '';
       let reactionCounts = {};
       let currentTrack = null;
       let nextReactionAt = 0;
@@ -3110,39 +3078,7 @@
           if (r.status === 429) nextReactionAt = Date.now() + 1200;
         } catch (err) {}
       });
-      requestVibes.addEventListener('click', (e) => {
-        const btn = e.target && e.target.closest && e.target.closest('button[data-vibe]');
-        if (!btn) return;
-        requestVibe = requestVibe === btn.dataset.vibe ? '' : btn.dataset.vibe;
-        for (const b of requestVibes.querySelectorAll('button[data-vibe]')) b.classList.toggle('active', b.dataset.vibe === requestVibe);
-      });
-      requestBox.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (!featureOn('requests')) return;
-        const text = requestText.value.trim();
-        if (!text) { requestText.focus(); return; }
-        requestSend.disabled = true;
-        requestStatus.textContent = 'sending…';
-        try {
-          const r = await fetch('/api/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cid, text, note: requestNote.value.trim(), vibe: requestVibe }) });
-          const res = await r.json().catch(() => ({}));
-          if (r.ok) {
-            requestText.value = '';
-            requestNote.value = '';
-            requestVibe = '';
-            for (const b of requestVibes.querySelectorAll('button[data-vibe]')) b.classList.remove('active');
-            requestStatus.textContent = 'sent to the DJ ✓';
-          } else {
-            if (r.status === 403) setFeatures(Object.assign({}, currentFeatures, { requests: false }));
-            requestStatus.textContent = res.error || (r.status === 429 ? 'try again in a moment' : 'request failed');
-          }
-        } catch (err) {
-          requestStatus.textContent = 'request failed';
-        } finally {
-          requestSend.disabled = false;
-        }
-      });
+
 
       // Guests type their own name (no auto-generated handles). We pick an emoji
       // FOR them - deterministic from cid so it's stable and varies person to
@@ -3358,7 +3294,6 @@
         const uploadsOn = wallOn && featureOn('uploads');
         updateReactionUI(reactionCounts);
         renderTrackID(currentTrack, []);
-        requestBox.hidden = !featureOn('requests');
         renderDJLinks(currentLinks);
         renderAlbum(0);
         if (feedOn) {

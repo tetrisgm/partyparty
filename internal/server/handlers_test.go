@@ -634,11 +634,11 @@ func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	}
 	s := New(Deps{Events: ev})
 
-	w := do(s, http.MethodPost, "/api/event-features?name=requests&on=1", "192.168.1.44:3333")
+	w := do(s, http.MethodPost, "/api/event-features?name=reactions&on=1", "192.168.1.44:3333")
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("guest event-features status = %d, want 403", w.Code)
 	}
-	w = do(s, http.MethodPost, "/api/event-features?name=requests&on=1", "127.0.0.1:1234")
+	w = do(s, http.MethodPost, "/api/event-features?name=reactions&on=1", "127.0.0.1:1234")
 	if w.Code != http.StatusOK {
 		t.Fatalf("DJ event-features status = %d, body %q", w.Code, w.Body.String())
 	}
@@ -651,7 +651,7 @@ func TestEventFeaturesEndpointAndFeedExposure(t *testing.T) {
 	if !ok {
 		t.Fatalf("features missing/not object: %#v", body["features"])
 	}
-	if features["requests"] != true || features["videoUploads"] != true || features["uploads"] != true {
+	if features["reactions"] != true || features["videoUploads"] != true || features["uploads"] != true {
 		t.Fatalf("feed features = %#v", features)
 	}
 }
@@ -913,94 +913,6 @@ func TestTrackIDAskGateDoesNotHideRecognizedTracks(t *testing.T) {
 	prev, ok := recent[0].(map[string]any)
 	if !ok || prev["title"] != "Hidden Tune" {
 		t.Fatalf("previous track = %#v, want Hidden Tune", recent[0])
-	}
-}
-
-func TestRequestsGateLimitPrivateAndDJList(t *testing.T) {
-	ev, err := event.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := New(Deps{Events: ev})
-	now := time.Now()
-	s.limits.now = func() time.Time { return now }
-	guest := "192.168.1.44:3333"
-	postReq := func(cid, text, note, vibe string) *httptest.ResponseRecorder {
-		t.Helper()
-		data, err := json.Marshal(map[string]string{"cid": cid, "text": text, "note": note, "vibe": vibe})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return doBody(s, http.MethodPost, "/api/requests", guest, "application/json", bytes.NewBuffer(data))
-	}
-
-	w := postReq("cid-1", "Song nobody else should see", "", "")
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("requests off status = %d, body %q; want 403", w.Code, w.Body.String())
-	}
-	if err := ev.SetFeature("requests", true); err != nil {
-		t.Fatal(err)
-	}
-	w = postReq("cid-1", "Song nobody else should see", "when it fits", "faster")
-	if w.Code != http.StatusOK {
-		t.Fatalf("request status = %d, body %q", w.Code, w.Body.String())
-	}
-	w = postReq("cid-1", "Too soon", "", "")
-	if w.Code != http.StatusTooManyRequests {
-		t.Fatalf("rate status = %d, body %q; want 429", w.Code, w.Body.String())
-	}
-	now = now.Add(requestLimitInterval)
-	w = postReq("cid-1", "Bad vibe", "", "louder")
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("bad vibe status = %d, body %q; want 400", w.Code, w.Body.String())
-	}
-
-	w = do(s, http.MethodGet, "/api/feed?cid=cid-2", guest)
-	if w.Code != http.StatusOK {
-		t.Fatalf("guest feed status = %d, body %q", w.Code, w.Body.String())
-	}
-	if strings.Contains(w.Body.String(), "Song nobody else should see") || strings.Contains(w.Body.String(), "when it fits") {
-		t.Fatalf("guest feed exposed request: %s", w.Body.String())
-	}
-
-	w = do(s, http.MethodGet, "/api/requests", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest request list status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodGet, "/api/requests", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("DJ request list status = %d, body %q", w.Code, w.Body.String())
-	}
-	body := decodeJSON(t, w)
-	reqs, ok := body["requests"].([]any)
-	if !ok || len(reqs) != 1 {
-		t.Fatalf("requests payload = %#v", body["requests"])
-	}
-	req, ok := reqs[0].(map[string]any)
-	if !ok {
-		t.Fatalf("request item = %#v", reqs[0])
-	}
-	if req["text"] != "Song nobody else should see" || req["note"] != "when it fits" || req["vibe"] != "faster" || req["state"] != "new" {
-		t.Fatalf("DJ request = %#v", req)
-	}
-	if _, exposed := req["cid"]; exposed {
-		t.Fatalf("DJ request exposed cid: %#v", req)
-	}
-	id, _ := req["id"].(string)
-	w = do(s, http.MethodPost, "/api/requests/state?id="+id+"&state=starred", guest)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("guest state status = %d, want 403", w.Code)
-	}
-	w = do(s, http.MethodPost, "/api/requests/state?id="+id+"&state=starred", "127.0.0.1:1234")
-	if w.Code != http.StatusOK {
-		t.Fatalf("DJ state status = %d, body %q", w.Code, w.Body.String())
-	}
-	w = do(s, http.MethodGet, "/api/requests", "127.0.0.1:1234")
-	body = decodeJSON(t, w)
-	reqs = body["requests"].([]any)
-	req = reqs[0].(map[string]any)
-	if req["state"] != "starred" {
-		t.Fatalf("state after update = %#v", req)
 	}
 }
 

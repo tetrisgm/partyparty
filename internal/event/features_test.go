@@ -47,7 +47,7 @@ func TestSetFeaturePersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetFeature("requests", true); err != nil {
+	if err := st.SetFeature("reactions", true); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.SetFeature("videoUploads", true); err != nil {
@@ -65,15 +65,15 @@ func TestSetFeaturePersists(t *testing.T) {
 	if err := json.Unmarshal(data, &meta); err != nil {
 		t.Fatal(err)
 	}
-	if !meta.Features["requests"] || !meta.Features["videoUploads"] {
-		t.Fatalf("persisted features = %#v, want requests/videoUploads on", meta.Features)
+	if !meta.Features["reactions"] || !meta.Features["videoUploads"] {
+		t.Fatalf("persisted features = %#v, want reactions/videoUploads on", meta.Features)
 	}
 
 	reloaded, err := Open(filepath.Dir(st.Dir()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := reloaded.Meta().Features; !got["requests"] || !got["videoUploads"] || !got["uploads"] || !got["comments"] {
+	if got := reloaded.Meta().Features; !got["reactions"] || !got["videoUploads"] || !got["uploads"] || !got["comments"] {
 		t.Fatalf("reloaded features = %#v", got)
 	}
 }

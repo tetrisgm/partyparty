@@ -66,18 +66,6 @@ type Post struct {
 	Deleted   bool           `json:"-"`
 }
 
-// Request is one private guest song request for the DJ. CID stays server-side;
-// requests are never included in the public/guest feed.
-type Request struct {
-	ID    string `json:"id"`
-	CID   string `json:"-"`
-	TS    int64  `json:"ts"`
-	Text  string `json:"text"`
-	Note  string `json:"note,omitempty"`
-	Vibe  string `json:"vibe,omitempty"`
-	State string `json:"state"`
-}
-
 // CurrentTrack is the DJ-shared "now playing" state. It is deliberately
 // manual for the MVP; future integrations can feed the same store method.
 type CurrentTrack struct {
@@ -89,17 +77,16 @@ type CurrentTrack struct {
 	SetAt      int64  `json:"setAt"`
 }
 
-// line is the on-disk journal record: a post, comment, request, track update,
+// line is the on-disk journal record: a post, comment, track update,
 // tombstone, or flag.
 type line struct {
-	Op        string        `json:"op"` // "post" | "delete" | "comment" | "request" | "request-state" | ...
+	Op        string        `json:"op"` // "post" | "delete" | "comment" | "track-current" | ...
 	ID        string        `json:"id,omitempty"`
 	CommentID string        `json:"commentId,omitempty"`
 	Reaction  string        `json:"reaction,omitempty"`
 	CID       string        `json:"cid,omitempty"`
 	Post      *Post         `json:"post,omitempty"`
 	Comment   *Comment      `json:"comment,omitempty"`
-	Request   *Request      `json:"request,omitempty"`
 	Track     *CurrentTrack `json:"track,omitempty"`
 	State     string        `json:"state,omitempty"`
 	MediaID   string        `json:"mediaId,omitempty"`
@@ -139,11 +126,6 @@ type Link struct {
 const (
 	StateApproved = "approved"
 	StateHidden   = "hidden"
-
-	RequestStateNew       = "new"
-	RequestStateDone      = "done"
-	RequestStateDismissed = "dismissed"
-	RequestStateStarred   = "starred"
 )
 
 var linkTypeLabels = map[string]string{
@@ -165,28 +147,6 @@ func normalizeState(state string) string {
 
 func validState(state string) bool {
 	return state == StateApproved || state == StateHidden
-}
-
-func normalizeRequestState(state string) string {
-	switch state {
-	case RequestStateDone, RequestStateDismissed, RequestStateStarred:
-		return state
-	default:
-		return RequestStateNew
-	}
-}
-
-func validRequestState(state string) bool {
-	return state == RequestStateNew || state == RequestStateDone || state == RequestStateDismissed || state == RequestStateStarred
-}
-
-func ValidRequestVibe(vibe string) bool {
-	switch vibe {
-	case "", "harder", "softer", "faster", "slower", "more_like_this":
-		return true
-	default:
-		return false
-	}
 }
 
 var postReactionTypes = map[string]bool{
@@ -231,7 +191,6 @@ var featureDefaults = map[string]bool{
 	"videoUploads": true,
 	"comments":     true,
 	"reactions":    false,
-	"requests":     false,
 	"trackId":      true,
 	"wallMode":     true,
 }
@@ -319,14 +278,12 @@ type Store struct {
 	meta          Meta
 	posts         []*Post
 	byID          map[string]*Post
-	requests      []*Request
-	byReqID       map[string]*Request
 	guests        map[string]*Guest // cid -> guest - PRIVATE, never in feed responses
 	reactions     map[string]*reactionCounter
 	currentTrack  *CurrentTrack
 	recentTracks  []CurrentTrack
-	setlistTracks []CurrentTrack
 	trackAsks     []int64
+	setlistTracks []CurrentTrack
 	thumbQ        chan thumbJob
 	thumbOnce     sync.Once
 
@@ -467,7 +424,6 @@ func (s *Store) use(dir string) error {
 		return err
 	}
 	posts, byID := []*Post{}, map[string]*Post{}
-	requests, byReqID := []*Request{}, map[string]*Request{}
 	var currentTrack *CurrentTrack
 	recentTracks := []CurrentTrack{}
 	setlistTracks := []CurrentTrack{}
@@ -545,24 +501,9 @@ func (s *Store) use(dir string) error {
 						p.Act = l.TS
 					}
 				}
-			case l.Op == "request" && l.Request != nil:
-				req := *l.Request
-				req.CID = l.CID
-				req.Text = clip(strings.TrimSpace(req.Text), 200)
-				req.Note = clip(strings.TrimSpace(req.Note), 240)
-				if !ValidRequestVibe(req.Vibe) {
-					req.Vibe = ""
-				}
-				req.State = normalizeRequestState(req.State)
-				if req.ID == "" {
-					req.ID = l.ID
-				}
-				requests = append(requests, &req)
-				byReqID[req.ID] = &req
-			case l.Op == "request-state" && validRequestState(l.State):
-				if req, ok := byReqID[l.ID]; ok {
-					req.State = l.State
-				}
+			// "request"/"request-state" lines from before song requests were
+			// removed (2026-08-06) fall through and are ignored: an old journal
+			// still loads, it just has nothing to say about requests.
 			case l.Op == "track-current" && l.Track != nil:
 				if currentTrack != nil && currentTrack.Title != "" {
 					recentTracks = append([]CurrentTrack{*currentTrack}, recentTracks...)
@@ -613,7 +554,7 @@ func (s *Store) use(dir string) error {
 	meta.Links, _ = normalizeLinks(meta.Links)
 	meta.Cover = normalizeCoverRef(meta.Cover)
 	s.mu.Lock()
-	s.dir, s.posts, s.byID, s.requests, s.byReqID, s.guests, s.meta, s.reactions = dir, posts, byID, requests, byReqID, guests, meta, newReactionCounters()
+	s.dir, s.posts, s.byID, s.guests, s.meta, s.reactions = dir, posts, byID, guests, meta, newReactionCounters()
 	s.currentTrack, s.recentTracks, s.setlistTracks, s.trackAsks = currentTrack, recentTracks, setlistTracks, nil
 	_ = s.writeSetlistLocked()
 	s.mu.Unlock()
@@ -1445,78 +1386,6 @@ func (s *Store) SetGuestProfile(cid, name, emoji string) error {
 	return s.saveGuestsLocked()
 }
 
-// AddRequest stores one private song request for the DJ.
-func (s *Store) AddRequest(cid, text, note, vibe string) (*Request, error) {
-	text = clip(strings.TrimSpace(text), 200)
-	note = clip(strings.TrimSpace(note), 240)
-	vibe = strings.TrimSpace(vibe)
-	if text == "" {
-		return nil, errors.New("empty request")
-	}
-	if !ValidRequestVibe(vibe) {
-		return nil, errors.New("unknown vibe")
-	}
-	req := &Request{
-		ID: newID(), CID: cid, Text: text, Note: note, Vibe: vibe, State: RequestStateNew,
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	req.TS = time.Now().UnixMilli()
-	if err := s.appendLine(line{Op: "request", ID: req.ID, CID: cid, Request: req}); err != nil {
-		return nil, err
-	}
-	s.requests = append(s.requests, req)
-	if s.byReqID == nil {
-		s.byReqID = map[string]*Request{}
-	}
-	s.byReqID[req.ID] = req
-	s.changed()
-	return req, nil
-}
-
-// SetRequestState changes a DJ-only request queue item.
-func (s *Store) SetRequestState(id, state string) error {
-	if !validRequestState(state) {
-		return errors.New("unknown request state")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	req, ok := s.byReqID[id]
-	if !ok {
-		return errors.New("no such request")
-	}
-	if err := s.appendLine(line{Op: "request-state", ID: id, State: state, TS: time.Now().UnixMilli()}); err != nil {
-		return err
-	}
-	req.State = state
-	s.changed()
-	return nil
-}
-
-// ListRequests returns the DJ-only request queue, with starred items first and
-// newest first within each group.
-func (s *Store) ListRequests() []Request {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]Request, 0, len(s.requests))
-	for _, req := range s.requests {
-		if req == nil {
-			continue
-		}
-		cp := *req
-		cp.State = normalizeRequestState(cp.State)
-		out = append(out, cp)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		is, js := out[i].State == RequestStateStarred, out[j].State == RequestStateStarred
-		if is != js {
-			return is
-		}
-		return out[i].TS > out[j].TS
-	})
-	return out
-}
-
 // SetCurrentTrack stores the DJ's manually shared now-playing track and rotates
 // the previous current track into the recent history.
 func (s *Store) SetCurrentTrack(title, artist, note string) (CurrentTrack, error) {
@@ -1661,6 +1530,17 @@ func (s *Store) saveGuestsLocked() error {
 	return os.WriteFile(dataPath(s.dir, "guests.json"), data, 0o600)
 }
 
+// TrackAskCount reports recent "what's this track?" taps.
+func (s *Store) TrackAskCount() int {
+	now := time.Now().UnixMilli()
+	cutoff := now - trackAskWindow.Milliseconds()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.trackAsks = pruneReactionHits(s.trackAsks, cutoff)
+	return len(s.trackAsks)
+}
+
 // AddTrackAsk records one guest "what's this track?" tap in a rolling window.
 func (s *Store) AddTrackAsk() {
 	now := time.Now().UnixMilli()
@@ -1671,17 +1551,6 @@ func (s *Store) AddTrackAsk() {
 	s.mu.Unlock()
 
 	s.changed()
-}
-
-// TrackAskCount returns the current rolling "what's this track?" count.
-func (s *Store) TrackAskCount() int {
-	now := time.Now().UnixMilli()
-	cutoff := now - trackAskWindow.Milliseconds()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.trackAsks = pruneReactionHits(s.trackAsks, cutoff)
-	return len(s.trackAsks)
 }
 
 // AddReaction records one anonymous crowd-telemetry tap in memory. Reactions

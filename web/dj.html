@@ -210,25 +210,6 @@
   .djreact.zero{color:var(--label-tertiary);font-weight:600}
   .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
   .trackcard.off{opacity:.7}
-  .requestlist{display:grid;gap:8px}
-  .requestitem{border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;background:var(--bg-elevated-2)}
-  .requestitem.starred{border-color:rgba(255,149,0,.45);background:rgba(255,149,0,.08)}
-  .requestitem.done,.requestitem.dismissed{opacity:.62}
-  .requesttop{display:flex;align-items:baseline;gap:8px;min-width:0}
-  .requesttext{font-size:14px;font-weight:800;color:var(--label);word-break:break-word}
-  .requesttime{margin-left:auto;color:var(--label-tertiary);font-size:11px;font-variant-numeric:tabular-nums;flex:0 0 auto}
-  .requestnote{color:var(--label-secondary);font-size:12px;line-height:1.45;margin-top:4px;white-space:pre-wrap;word-break:break-word}
-  .requestmeta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
-  .vibebadge{border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);font-size:11px;font-weight:800;padding:2px 8px}
-  .reqstate{border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px}
-  .reqstate.starred{background:rgba(255,149,0,.18);color:#a15b00}
-  .reqstate.done{background:rgba(52,199,89,.14);color:#1d883d}
-  .reqstate.dismissed{background:rgba(255,59,48,.10);color:var(--danger)}
-  .requestactions{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
-  .requestactions button{height:24px;padding:0 8px;font-size:11px;border-radius:var(--r-xs);background:var(--fill);color:var(--label-secondary)}
-  .requestactions button:hover{background:var(--fill-hover);color:var(--label)}
-  .requestactions .danger{color:var(--danger)}
-  .requestempty{color:var(--label-tertiary);font-size:12px;padding:4px 0}
   /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
   /* The bar's glass runs edge to edge, but its controls sit on the same
      measure as every card below it. */
@@ -508,7 +489,6 @@
   #djFeed .wcmts{padding:0 14px}
   #djFeed .wreply{margin:0;padding:0 14px 12px}
   #djFeed .wpost .whead + .wpostactions{padding-top:0} /* text-free post: no dead band */
-  #requestCard{display:none!important;margin-bottom:16px}
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:var(--z-chrome);overflow:auto}
   .sheetov.show{display:flex}
@@ -572,7 +552,6 @@
   button.go:active,button.ghost:active,.golive.go:active,.iconbtn:active,
   .cover-action:active,.cardx:active,button.action-folder:active,
   .fieldedit:active,.detailsbtn:active,.wreplybtn:active,.pdel:active,
-  .requestactions button:active{transform:scale(.97);transition-duration:60ms}
 
   @media (prefers-reduced-motion:reduce){
     /* Reduced motion means a gentler equivalent, not silence. Drop travel and
@@ -1108,15 +1087,6 @@
   <div class="party-grid">
     <main class="party-feed-col">
   <section id="ptab-wall">
-    <div class="card" id="requestCard" style="display:none">
-      <div class="cardhead">
-        <h2>Song requests</h2>
-        <span class="muted" id="requestCounts"></span>
-      </div>
-      <div class="hint" style="margin:0 0 12px">Requests provide signal to the DJ. They do not control the set.</div>
-      <div class="requestlist" id="requestList"><div class="requestempty">No requests yet.</div></div>
-    </div>
-
     <div class="card" id="eventCard" style="display:none">
       <div class="cardhead">
         <h2 id="eventTitle">Party feed</h2>
@@ -2922,54 +2892,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       $('modQueue').hidden = true;
       $('modList').textContent = '';
     }
-    const requestVibeLabels = {
-      harder: 'harder', softer: 'softer', faster: 'faster', slower: 'slower', more_like_this: 'more like this'
-    };
-    function requestStateBadge(state){
-      state = (state === 'done' || state === 'dismissed' || state === 'starred') ? state : 'new';
-      return '<span class="reqstate ' + state + '">' + escT(state) + '</span>';
-    }
-    function requestButtons(req){
-      const id = escT(req.id || '');
-      const state = req.state === 'done' || req.state === 'dismissed' || req.state === 'starred' ? req.state : 'new';
-      let html = '';
-      if (state !== 'done') html += '<button data-req="' + id + '" data-state="done">Done</button>';
-      if (state !== 'dismissed') html += '<button class="danger" data-req="' + id + '" data-state="dismissed">Dismiss</button>';
-      html += state === 'starred'
-        ? '<button data-req="' + id + '" data-state="new">Unstar</button>'
-        : '<button data-req="' + id + '" data-state="starred">Star</button>';
-      if (state !== 'new' && state !== 'starred') html += '<button data-req="' + id + '" data-state="new">New</button>';
-      return html;
-    }
-    function renderRequests(requests){
-      const card = $('requestCard'), listEl = $('requestList');
-      card.style.display = 'block';
-      requests = Array.isArray(requests) ? requests : [];
-      $('requestCounts').textContent = requests.length ? requests.length + (requests.length === 1 ? ' request' : ' requests') : '';
-      if (!requests.length) {
-        listEl.innerHTML = '<div class="requestempty">No requests yet.</div>';
-        return;
-      }
-      listEl.innerHTML = requests.map(req => {
-        const state = req.state === 'done' || req.state === 'dismissed' || req.state === 'starred' ? req.state : 'new';
-        const t = new Date(req.ts || Date.now());
-        const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
-        const vibe = requestVibeLabels[req.vibe] ? '<span class="vibebadge">' + escT(requestVibeLabels[req.vibe]) + '</span>' : '';
-        return '<div class="requestitem ' + state + '">' +
-          '<div class="requesttop"><span class="requesttext">' + escT(req.text || '') + '</span><span class="requesttime">' + time + '</span></div>' +
-          (req.note ? '<div class="requestnote">' + escT(req.note) + '</div>' : '') +
-          '<div class="requestmeta">' + vibe + requestStateBadge(state) + '<span class="requestactions">' + requestButtons(req) + '</span></div>' +
-          '</div>';
-      }).join('');
-    }
-    async function pollRequests(){
-      try {
-        const r = await fetch('/api/requests', { cache:'no-store' });
-        if (!r.ok) return;
-        const data = await r.json();
-        renderRequests(data.requests || []);
-      } catch (e) {}
-    }
     function fallbackVideo(src){
       const v = document.createElement('video');
       v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
@@ -3155,17 +3077,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     }
     list.addEventListener('click', handleWallClick);
     $('modQueue').addEventListener('click', handleWallClick);
-    $('requestList').addEventListener('click', async (e) => {
-      const d = e.target && e.target.dataset || {};
-      if (!d.req || !d.state) return;
-      e.target.disabled = true;
-      try {
-        await fetch('/api/requests/state?id=' + encodeURIComponent(d.req) + '&state=' + encodeURIComponent(d.state), { method:'POST' });
-        await pollRequests();
-      } finally {
-        e.target.disabled = false;
-      }
-    });
     list.addEventListener('keydown', (e) => {
       // Enter sends a reply; Cmd/Ctrl+Enter does too, so the habit learned in
       // the post composer works here without thinking about it.
@@ -3190,7 +3101,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderLinkEditor(data.links || []);
         renderProfile(data.host, data.bio, data.avatar);
-        pollRequests();
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {
