@@ -277,11 +277,13 @@ func main() {
 			BrokerURL: brokerURL,
 			Version:   appVersion,
 			Logf:      log.Printf,
-			OnMode: func(mode string) {
-				// Only RELAY needs a copy of the stream on the internet. Pushing in
-				// LOCAL or DIRECT would spend the DJ's uplink for nothing.
+			OnPush: func(enabled bool) {
+				// Relay mode always pushes. A Wi-Fi + cloud room ALSO pushes
+				// whenever the internet is up, so a phone on 5G or an isolated
+				// venue always has a stream; a Wi-Fi-only room never spends
+				// the DJ's uplink.
 				if contributor != nil {
-					contributor.SetEnabled(mode == relay.ModeRelay)
+					contributor.SetEnabled(enabled)
 				}
 			},
 		})

@@ -701,23 +701,47 @@ async function report(reachable){
 //
 // The report still goes out because the Mac needs the verdict to set the room's
 // mode and cache it for this network, but nothing here waits on it.
+async function relayLive(){
+  // A registration is a name, not a stream. Handing a guest to a relay that is
+  // not actually serving parked phones on a dead page that said "connecting to
+  // the DJ" forever. Only a live health check earns the handoff.
+  if(!relayURL)return false;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),3000);
+  try{
+    const response=await fetch(relayURL+'/__pp/health?t='+Date.now(),{cache:'no-store',signal:controller.signal});
+    return response.ok;
+  }catch(_){return false}
+  finally{clearTimeout(timer)}
+}
+let running=false;
 async function run(){
+  if(running)return;
+  running=true;
   retry.hidden=true;
   detail.textContent='Finding the fastest connection to the DJ.';
   const reachable=await probe();
   report(reachable).catch(function(){});
   if(reachable&&directURL){location.replace(directURL);return}
-  if(relayURL){
-    // Isolated Wi-Fi: the relay origin serves this room directly. Guests fetch
-    // audio and the room API from there, never back through this page.
+  if(await relayLive()){
+    // Isolated Wi-Fi or a remote guest: the relay origin serves this room
+    // directly. Guests fetch audio and the room API from there, never back
+    // through this page.
     location.replace(relayURL+'/');
     return;
   }
-  detail.textContent='This Wi-Fi will not let guests reach the DJ, and there is no internet connection to fall back on.';
+  detail.textContent=relayURL
+    ?'This party is playing on its own Wi-Fi right now. Join that Wi-Fi to listen - this page keeps checking and connects you the moment a path opens.'
+    :'This Wi-Fi will not let guests reach the DJ, and there is no internet connection to fall back on. This page keeps checking.';
   retry.hidden=false;
+  running=false;
 }
 retry.addEventListener('click',run);
-run();
+// A stuck phone must converge on its own: a guest who joins the party Wi-Fi
+// mid-spinner, or whose 5G blips back, should not need to know to refresh.
+addEventListener('online',run);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)run()});
+(async()=>{for(;;){await run();await sleep(8000)}})();
 </script></body></html>`;
 }
 

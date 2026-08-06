@@ -11,6 +11,7 @@ import (
 func TestManagerOwnsOneModeForTheNetwork(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	manager := New(Config{})
+	manager.SetReach(ReachCloud) // the relay rescue under test requires the cloud opt-in
 	manager.mu.Lock()
 	manager.reg = registration{RelayRegistration: activateRegistration(
 		"https://r-room.partyparty.party/",
@@ -173,6 +174,7 @@ func TestRelayVerdictIsNeverReused(t *testing.T) {
 func TestFailedProbeIsNotPersisted(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	manager := New(Config{})
+	manager.SetReach(ReachCloud) // the relay rescue under test requires the cloud opt-in
 	manager.mu.Lock()
 	manager.reg = registration{RelayRegistration: activateRegistration(
 		"https://r-room.partyparty.party/",

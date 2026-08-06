@@ -209,6 +209,7 @@ func TestModeObserverFiresOnlyOnChange(t *testing.T) {
 
 	var seen []string
 	m := New(Config{OnMode: func(mode string) { seen = append(seen, mode) }})
+	m.SetReach(ReachCloud) // the relay rescue under test requires the cloud opt-in
 
 	// Startup: a secure link appears, but nothing is decided yet.
 	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
@@ -278,6 +279,7 @@ func TestModeObserverMayCallBackIntoTheManager(t *testing.T) {
 func TestRelayGuestIsNotBouncedBetweenOriginAndBootstrap(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m := New(Config{})
+	m.SetReach(ReachCloud) // the relay path under test requires the cloud opt-in
 	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
 	m.mu.Lock()
 	m.reg = registration{RelayRegistration: activateRegistration(
@@ -347,5 +349,63 @@ func TestCheckingWithoutABootstrapAdvertisesNothing(t *testing.T) {
 	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
 	if got := m.Snapshot(); got.JoinURL != "" {
 		t.Fatalf("an unproven direct URL was advertised during checking: %+v", got)
+	}
+}
+
+// TestWiFiOnlyNeverRelays: the DJ's Wi-Fi-only choice outranks the automatic
+// relay rescue - an isolated venue reads as an honest NO PATH, never a cloud
+// stream the DJ said not to send.
+func TestWiFiOnlyNeverRelays(t *testing.T) {
+	mode, reason := decide(Evidence{NetTried: true, InternetOK: true, HaveDirectURL: true,
+		Probe: boolPtr(false), WiFiOnly: true})
+	if mode != ModeNoPath || reason != ReasonWiFiOnly {
+		t.Fatalf("wifi-only isolation = %s/%s, want %s/%s", mode, reason, ModeNoPath, ReasonWiFiOnly)
+	}
+	if messageFor(mode, reason) == "" {
+		t.Fatal("wifi-only NO PATH has no DJ-facing message")
+	}
+	// The default (cloud) keeps the rescue.
+	mode, reason = decide(Evidence{NetTried: true, InternetOK: true, HaveDirectURL: true,
+		Probe: boolPtr(false)})
+	if mode != ModeRelay || reason != ReasonProbeIsolated {
+		t.Fatalf("cloud isolation = %s/%s, want relay rescue", mode, reason)
+	}
+}
+
+// TestPushObserverCoversHybridReach: relay mode always pushes; a Wi-Fi + cloud
+// room ALSO pushes while the internet is up even though the mode stays DIRECT,
+// so remote phones always have a stream; Wi-Fi only stops the push.
+func TestPushObserverCoversHybridReach(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var pushes []bool
+	m := New(Config{OnPush: func(enabled bool) { pushes = append(pushes, enabled) }})
+	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
+
+	m.mu.Lock()
+	m.reg = registration{RelayRegistration: activateRegistration(
+		"https://r-room.partyparty.party/", "wss://partyparty.party/connect", "net-1")}
+	m.netTried, m.internetOK, m.resolverOK = true, true, true
+	m.mu.Unlock()
+	m.applyProbe("net-1", true) // guests reach the Mac: DIRECT
+
+	// Default is Wi-Fi only: nothing pushes until the DJ opts in.
+	if len(pushes) == 0 || pushes[len(pushes)-1] != false {
+		t.Fatalf("wifi-only default must not push: %v", pushes)
+	}
+	if got := m.Snapshot(); got.Reach != ReachWiFi || got.PushWanted {
+		t.Fatalf("snapshot = reach %q pushWanted %v", got.Reach, got.PushWanted)
+	}
+
+	m.SetReach(ReachCloud)
+	if pushes[len(pushes)-1] != true {
+		t.Fatalf("cloud reach must push for remote guests even in DIRECT: %v", pushes)
+	}
+
+	// Persisted: a fresh manager in the same HOME keeps the choice.
+	m.SetReach(ReachWiFi)
+	m2 := New(Config{})
+	if m2.Reach() != ReachWiFi {
+		t.Fatalf("reach did not persist: %q", m2.Reach())
 	}
 }

@@ -1265,6 +1265,15 @@
     </section>
 
     <section class="settings-section">
+      <label for="partyReach">Party reach</label>
+      <select id="partyReach">
+        <option value="wifi" selected>Wi-Fi only &mdash; the party stays on this network</option>
+        <option value="cloud">Wi-Fi + cloud &mdash; friends anywhere can listen</option>
+      </select>
+      <div class="hint" id="partyReachHint" style="margin:5px 0 0">Guests must be on this Wi-Fi to listen; remote friends see an honest "join the Wi-Fi" page. Wi-Fi + cloud also streams over the internet while you're live, for remote friends and venue Wi-Fi that blocks guests.</div>
+    </section>
+
+    <section class="settings-section">
       <label for="connectionMode">How guests connect</label>
       <select id="connectionMode">
         <option value="auto" selected>Automatic (recommended)</option>
@@ -1810,11 +1819,40 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   $('audioPermBtn').onclick = openCapturePermissionSettings;
   $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
+  let qrAvatarShown = null;
   function renderQR(text){
-    if (text === qrText) return;
+    // eventMeta is declared further down; the first QR render runs before it
+    // exists and a bare reference would throw (let TDZ, not caught by typeof).
+    let avatar = '';
+    try { avatar = eventMeta.avatar || ''; } catch (_) {}
+    if (text === qrText && qrAvatarShown === avatar) return;
     qrText = text;
-    $('qr').innerHTML = '';
-    new QRCode($('qr'), { text, width:200, height:200, correctLevel: QRCode.CorrectLevel.M });
+    qrAvatarShown = avatar;
+    const host = $('qr');
+    host.innerHTML = '';
+    // Brand-pink modules; correction level H because the centered avatar
+    // badge covers a slice of the symbol and H absorbs up to 30% damage.
+    new QRCode(host, { text, width:400, height:400, colorDark:'#ff2d6f', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.H });
+    if (!avatar) return;
+    const canvas = host.querySelector('canvas');
+    const shown = host.querySelector('img');
+    if (!canvas) return;
+    const badge = new Image();
+    badge.onload = () => {
+      const ctx = canvas.getContext('2d');
+      const size = canvas.width;
+      const dia = Math.round(size * 0.22);
+      const pad = Math.round(size * 0.03);
+      const c = size / 2;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(c, c, dia / 2 + pad, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(c, c, dia / 2, 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(badge, c - dia / 2, c - dia / 2, dia, dia);
+      ctx.restore();
+      if (shown) shown.src = canvas.toDataURL('image/png');
+    };
+    badge.src = avatar + '?v=' + encodeURIComponent(avatar);
   }
   function renderGuestLink(s){
     // keep the copyable link and the offline address in step with the status
@@ -1951,6 +1989,37 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ override: select.value }),
+      }).then(r => r.json()).then(show).catch(() => {});
+    };
+  })();
+
+  // Party reach: Wi-Fi only vs Wi-Fi + cloud. Server-authoritative and
+  // persisted; the cloud leg is what lets remote friends and isolated-Wi-Fi
+  // guests hear the room.
+  (function(){
+    const select = $('partyReach'), hint = $('partyReachHint');
+    if (!select) return;
+    const baseHint = hint ? hint.textContent : '';
+    const show = (payload) => {
+      if (!hint) return;
+      if (payload && payload.available === false) {
+        hint.textContent = 'Party reach is unavailable in this build.';
+        select.disabled = true;
+        return;
+      }
+      hint.textContent = (payload && payload.reach === 'cloud')
+        ? 'While you are live, a copy streams over the internet so remote friends can listen and blocked venue Wi-Fi still works.'
+        : baseHint;
+    };
+    fetch('/api/reach', { cache:'no-store' })
+      .then(r => r.json())
+      .then(j => { if (j && j.reach) select.value = j.reach; show(j); })
+      .catch(() => {});
+    select.onchange = () => {
+      fetch('/api/reach', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reach: select.value }),
       }).then(r => r.json()).then(show).catch(() => {});
     };
   })();
@@ -2639,6 +2708,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // control all follow from one class instead of three separate toggles.
       document.querySelector('.profileimagewrap').classList.toggle('has-photo', has);
       $('profilePhotoRemoveBtn').hidden = !has;
+      // The QR carries the avatar badge; a changed photo re-renders it.
+      if (typeof qrText === 'string' && qrText) renderQR(qrText);
     }
     function collectLinks(){
       const links = [];

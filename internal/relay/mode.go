@@ -38,7 +38,16 @@ const (
 // fallback, never forced dead ends. Asking for relay without internet reports
 // NO PATH rather than pretending.
 const (
-	OverrideAuto   = "auto"
+	OverrideAuto = "auto"
+
+	// Reach is the DJ's streaming-reach choice: a Wi-Fi-only party never
+	// sends media to the cloud; Wi-Fi + cloud pushes the relay whenever the
+	// room is live with internet, so remote guests and isolated-Wi-Fi guests
+	// always have a stream. The default is Wi-Fi only (owner decision,
+	// 2026-08-05): nothing leaves the room until the DJ deliberately turns on
+	// the cloud leg in Settings.
+	ReachWiFi      = "wifi"
+	ReachCloud     = "cloud"
 	OverrideDirect = "direct" // never relay
 	OverrideRelay  = "relay"  // relay whenever it is possible
 	OverrideLocal  = "local"  // never touch the cloud at all, not even the bootstrap
@@ -50,6 +59,7 @@ const (
 	ReasonAwaitingProbe = "awaiting_probe"
 	ReasonProbeDirect   = "probe_direct"
 	ReasonProbeIsolated = "probe_isolated"
+	ReasonWiFiOnly      = "wifi_only"
 	ReasonOfflineLocal  = "offline_local"
 	ReasonNoSecureLink  = "no_secure_link"
 	ReasonResolverBad   = "resolver_mismatch"
@@ -68,6 +78,7 @@ type Evidence struct {
 	Probe         *bool  // guest reachability report; nil until a guest reports
 	OriginDown    bool   // the relay origin's health endpoint is failing
 	Override      string // one of the Override constants; "" means auto
+	WiFiOnly      bool   // the party is set to Wi-Fi only (ReachWiFi); zero value = cloud
 }
 
 // normalizeOverride maps an unset or unknown value to auto.
@@ -152,6 +163,11 @@ func decide(e Evidence) (mode string, reason string) {
 			// prove the Mac's side of the path and simply assume the relay's.
 			return ModeNoPath, ReasonOriginDown
 		default:
+			if e.WiFiOnly {
+				// The venue isolates guests and the DJ chose Wi-Fi only:
+				// relaying would defy the choice, so say what is true instead.
+				return ModeNoPath, ReasonWiFiOnly
+			}
 			return ModeRelay, ReasonProbeIsolated
 		}
 	}
@@ -186,6 +202,7 @@ const (
 	noPathRelayMessage    = "Internet relay is selected but there is no internet connection. Switch to Automatic, or connect this Mac to the internet."
 	noPathLinkMessage     = "The secure guest link is not ready and there is no internet to set it up. Connect this Mac to the internet once to finish setup."
 	noPathOriginMessage   = "This Wi-Fi keeps guests from connecting directly, and the internet relay service is not responding right now. Guests cannot connect until the relay recovers or you use a different Wi-Fi."
+	noPathWiFiOnlyMessage = "This Wi-Fi keeps guests from connecting directly, and this party is set to Wi-Fi only. Switch the party to Wi-Fi + cloud in Settings, or use a different Wi-Fi."
 )
 
 func messageFor(mode, reason string) string {
@@ -204,6 +221,8 @@ func messageFor(mode, reason string) string {
 			return noPathLinkMessage
 		case ReasonOriginDown:
 			return noPathOriginMessage
+		case ReasonWiFiOnly:
+			return noPathWiFiOnlyMessage
 		default:
 			return noPathResolverMessage
 		}
@@ -245,11 +264,48 @@ func loadOverride() string {
 }
 
 func saveOverride(value string) {
-	path := overridePath()
-	if path == "" || !validOverride(value) {
+	if !validOverride(value) {
 		return
 	}
-	data, err := json.Marshal(map[string]string{"override": value})
+	savePrefs(value, loadReach())
+}
+
+func validReach(v string) bool { return v == ReachWiFi || v == ReachCloud }
+
+// loadReach reads the DJ's streaming-reach choice from the same file as the
+// override. Absent or unknown means Wi-Fi only: nothing leaves the room until
+// the DJ deliberately turns on the cloud leg.
+func loadReach() string {
+	path := overridePath()
+	if path == "" {
+		return ReachWiFi
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ReachWiFi
+	}
+	var p struct {
+		Reach string `json:"reach"`
+	}
+	if json.Unmarshal(data, &p) != nil || !validReach(p.Reach) {
+		return ReachWiFi
+	}
+	return p.Reach
+}
+
+func saveReach(value string) {
+	if !validReach(value) {
+		return
+	}
+	savePrefs(loadOverride(), value)
+}
+
+func savePrefs(override, reach string) {
+	path := overridePath()
+	if path == "" {
+		return
+	}
+	data, err := json.Marshal(map[string]string{"override": override, "reach": reach})
 	if err != nil {
 		return
 	}

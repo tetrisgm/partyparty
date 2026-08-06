@@ -102,8 +102,14 @@ final class StatusPopoverController: NSViewController {
     private static func qrImage(for text: String) -> NSImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)
-        filter.correctionLevel = "M"
-        guard let output = filter.outputImage else { return nil }
+        filter.correctionLevel = "H"
+        guard let raw = filter.outputImage else { return nil }
+        // Brand pink modules, matching the console QR.
+        let colored = CIFilter.falseColor()
+        colored.inputImage = raw
+        colored.color0 = CIColor(red: 1.0, green: 0.176, blue: 0.435)
+        colored.color1 = CIColor(red: 1, green: 1, blue: 1)
+        guard let output = colored.outputImage else { return nil }
         let scale = (200.0 * 2.0) / output.extent.width // 2x backing for Retina
         let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let context = CIContext()

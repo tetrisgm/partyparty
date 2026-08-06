@@ -36,6 +36,8 @@ type Status struct {
 	Mode       string `json:"mode"`
 	Reason     string `json:"reason,omitempty"` // stable machine code; see mode.go
 	Override   string `json:"override,omitempty"`
+	Reach      string `json:"reach"`
+	PushWanted bool   `json:"pushWanted"`
 	InternetOK bool   `json:"internetOk"`
 	JoinURL    string `json:"joinUrl,omitempty"`
 	// RelayOrigin is where a relayed guest is served. The listener needs it to
@@ -62,6 +64,10 @@ type Config struct {
 	// uplink for nothing. Called without the manager's lock held, so it is safe
 	// to call back into this package.
 	OnMode func(mode string)
+	// OnPush fires when the media-push decision changes: relay mode always
+	// pushes; a Wi-Fi + cloud room also pushes whenever the internet is up,
+	// so remote guests and isolated-Wi-Fi guests always have a stream.
+	OnPush func(enabled bool)
 }
 
 type registration struct {
@@ -96,9 +102,12 @@ type Manager struct {
 	originDown    bool
 	internetOK    bool
 	pendingMode   string
+	pendingPush   *bool
+	pushSignaled  bool
 	resolverOK    bool
 	probe         *bool
 	override      string
+	reach         string
 
 	regChanged   chan struct{}
 	stateChanged chan struct{}
@@ -116,6 +125,7 @@ func New(cfg Config) *Manager {
 		regChanged:   make(chan struct{}, 1),
 		stateChanged: make(chan struct{}, 1),
 		override:     loadOverride(),
+		reach:        loadReach(),
 		status: Status{
 			Mode:    ModeChecking,
 			Reason:  ReasonStarting,
@@ -188,6 +198,34 @@ func (m *Manager) Override() string {
 	return normalizeOverride(m.override)
 }
 
+// SetReach records the DJ's streaming-reach choice and persists it.
+func (m *Manager) SetReach(value string) {
+	if !validReach(value) {
+		return
+	}
+	m.mu.Lock()
+	if m.reach == value {
+		m.mu.Unlock()
+		return
+	}
+	m.reach = value
+	m.recomputeLocked()
+	m.mu.Unlock()
+	saveReach(value)
+	m.flushModeChange()
+	m.signal(m.stateChanged)
+}
+
+// Reach returns the current streaming-reach choice.
+func (m *Manager) Reach() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if validReach(m.reach) {
+		return m.reach
+	}
+	return ReachWiFi
+}
+
 // recomputeLocked re-derives the room mode from current evidence. It is the ONE
 // place mode is decided, so no code path can set a mode that the evidence does
 // not support. Caller holds mu.
@@ -201,6 +239,7 @@ func (m *Manager) recomputeLocked() {
 		Probe:         m.probe,
 		OriginDown:    m.originDown,
 		Override:      m.override,
+		WiFiOnly:      m.reach == ReachWiFi,
 	})
 	m.status.Mode = mode
 	m.status.Reason = reason
@@ -211,6 +250,17 @@ func (m *Manager) recomputeLocked() {
 	m.status.KnownNetwork = m.probe != nil
 	m.status.Message = messageFor(mode, reason)
 	m.status.JoinURL = m.joinURLLocked(mode)
+	m.status.Reach = m.reach
+	if !validReach(m.status.Reach) {
+		m.status.Reach = ReachWiFi
+	}
+	pushWanted := mode == ModeRelay ||
+		(m.reach != ReachWiFi && m.netTried && m.internetOK && !m.originDown)
+	if pushWanted != m.status.PushWanted || !m.pushSignaled {
+		m.status.PushWanted = pushWanted
+		m.pushSignaled = true
+		m.pendingPush = &pushWanted
+	}
 	if mode != previous && m.cfg.OnMode != nil {
 		// Deferred past the lock: an observer that touches this manager would
 		// otherwise deadlock, and that is an easy mistake for a caller to make.
@@ -224,9 +274,14 @@ func (m *Manager) flushModeChange() {
 	m.mu.Lock()
 	mode := m.pendingMode
 	m.pendingMode = ""
+	push := m.pendingPush
+	m.pendingPush = nil
 	m.mu.Unlock()
 	if mode != "" && m.cfg.OnMode != nil {
 		m.cfg.OnMode(mode)
+	}
+	if push != nil && m.cfg.OnPush != nil {
+		m.cfg.OnPush(*push)
 	}
 }
 

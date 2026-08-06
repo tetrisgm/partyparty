@@ -683,6 +683,22 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.peerState(since))
 	case "/api/track":
 		s.handleTrackPost(w, r)
+	case "/api/reach":
+		if !s.requireDJ(w, r) {
+			return
+		}
+		if s.Relay == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"reach": relay.ReachWiFi, "available": false})
+			return
+		}
+		if r.Method == http.MethodPost {
+			var body struct {
+				Reach string `json:"reach"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			s.Relay.SetReach(strings.TrimSpace(body.Reach))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"reach": s.Relay.Reach(), "available": true})
 	case "/api/time":
 		// Master clock for the listeners' NTP-style offset estimate. Expose the
 		// server receive/transmit pair so clients can use the full four-timestamp
