@@ -1,5 +1,23 @@
 # PartyParty.party handoff
 
+## Current position (2026-08-05, end of night): 125.40 build 260 - the buffer, benched
+
+The 3s cushion SHIPPED on the third attempt, done the way the contract now
+demands. The July D=3 implementation was read as it actually shipped (commit
+affebd3): EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES in the MULTIVARIANT
+playlist, PART-HOLD-BACK at the honest 0.9 floor - both details load-bearing
+(the same tag in the MEDIA playlist without PRECISE measures 25.00s from the
+edge; AVPlayer applies the offset from the wrong end). Proven BEFORE upload
+with the bench that is now the standard for any geometry change: a local
+rewriting proxy (scratchpad/benchproxy.py) serves the candidate manifest
+from the LIVE stream to a muted headless AVPlayer (scratchpad/soak.swift -
+note the setvbuf: Swift print buffers into pipes, which hid the 258 verdict
+once); ten minutes, 120 samples, 3.11s flat, zero backward movement; receipt
+at build/soak-125.40-260.log. TestFlight: 260 is the only live build,
+internal active, external submitted. Owner-side: update, one permission
+prompt, and every phone should join at 3s and hold - venue blips inaudible.
+
+
 ## Current position (2026-08-05 night): TestFlight 125.39 build 259 - proven geometry restored
 
 The evening's 3s-cushion attempt is REVERTED. Sequence: the owner decided
