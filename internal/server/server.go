@@ -838,6 +838,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("pane") {
 		case "mic":
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone").Start()
+		case "network":
+			// Local Network has no status API at all, so the pane is the only
+			// thing an app can offer: no check, just a way there.
+			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork").Start()
 		default: // "audio" / anything → the audio-recording pane
 			_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture").Start()
 		}

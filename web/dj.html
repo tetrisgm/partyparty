@@ -772,6 +772,13 @@
   }
   /* Two lines: enough to see a thought, small enough to stay a toolbar. */
   #djPostText{height:34px;min-height:34px}
+  .permrows{display:grid;gap:6px}
+  .permrow{display:flex;align-items:center;gap:8px}
+  .permname{flex:0 0 118px;font-size:12px;font-weight:600}
+  .permstate{flex:1;min-width:0;font-size:12px;color:var(--label-secondary)}
+  .permstate[data-state="granted"]{color:#34c759}
+  .permstate[data-state="denied"]{color:#ff453a}
+  .permbtn{font-size:11px;padding:4px 10px;flex:0 0 auto}
   .card input[type=text]:focus,.card textarea:focus{
     outline:none;
     box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 26%,transparent);
@@ -1287,6 +1294,29 @@
     </section>
 
     <section class="settings-section">
+      <label>Permissions</label>
+      <div class="permrows" id="permRows">
+        <div class="permrow" data-perm="systemAudio">
+          <span class="permname">System audio</span>
+          <span class="permstate" id="permStateSystemAudio">Checking</span>
+          <button class="ghost permbtn" data-permcheck="systemAudio" type="button">Check</button>
+          <button class="ghost permbtn" data-permpane="audio" type="button">Open</button>
+        </div>
+        <div class="permrow" data-perm="microphone">
+          <span class="permname">Microphone</span>
+          <span class="permstate" id="permStateMicrophone">Checking</span>
+          <button class="ghost permbtn" data-permpane="mic" type="button">Open</button>
+        </div>
+        <div class="permrow" data-perm="localNetwork">
+          <span class="permname">Local network</span>
+          <span class="permstate" id="permStateLocalNetwork">Needed to find other DJs</span>
+          <button class="ghost permbtn" data-permpane="network" type="button">Open</button>
+        </div>
+      </div>
+      <div class="hint" style="margin:6px 0 0">Microphone is only used if you pick a mic or interface as the source. macOS gives apps no way to read the system-audio or local-network settings, so Check asks macOS directly.</div>
+    </section>
+
+    <section class="settings-section">
       <div class="support-actions">
         <button class="ghost" id="privacyBtn" type="button">Privacy policy</button>
         <button class="ghost" id="supportBtn" type="button">Support</button>
@@ -1768,7 +1798,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     return new Promise((resolve) => {
       let settled = false;
       const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
-      window.ppSystemAudioPrimed = done;
+      window.__ppPrimeWaiter = done; // the permissions block owns ppSystemAudioPrimed
       setTimeout(() => done(true), 180000); // an unanswered prompt must not hold Go Live hostage forever
       try { window.webkit.messageHandlers.pp.postMessage({ action: 'primeSystemAudio' }); }
       catch (e) { done(true); }
@@ -2132,7 +2162,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // just be noise. It comes back if an error note ever shows. The server
       // remembers durably (audioProven survives origin changes and web-state
       // resets); localStorage stays as a same-session fast path.
-      if (s.audioProven) serverAudioProven = true;
+      if (s.audioProven) { serverAudioProven = true; window.ppAudioProven = true; }
       if (st === 'live' && s.broadcast.device === 'mac') {
         serverAudioProven = true;
         try { localStorage.setItem('pp.audioOK', '1'); } catch (e) {}
@@ -3277,6 +3307,61 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       return fetch('/api/open-media', { method:'POST' });
     }
     if ($('actionOpenFolderBtn')) $('actionOpenFolderBtn').onclick = openCurrentEventFolder;
+  })();
+
+  // ---- permissions block ------------------------------------------------
+  // Honest by construction: microphone has a real status API, system audio has
+  // none (so proof comes from capture having worked, or from an explicit tap
+  // attempt), and local network has neither - only a way to the pane.
+  (function(){
+    const rows = $('permRows');
+    if (!rows) return;
+    const label = {
+      granted: 'Allowed',
+      denied: 'Not allowed - open and turn PartyParty on',
+      undetermined: 'Not asked yet',
+    };
+    window.ppPermissionState = { systemAudio: 'undetermined', microphone: 'undetermined' };
+    function paint(){
+      const st = window.ppPermissionState || {};
+      const audio = (window.ppAudioProven || st.systemAudio === 'granted') ? 'granted' : (st.systemAudio || 'undetermined');
+      const set = (id, state, text) => {
+        const el = $(id);
+        if (!el) return;
+        el.dataset.state = state;
+        el.textContent = text;
+      };
+      set('permStateSystemAudio', audio, label[audio] || 'Not asked yet');
+      const mic = st.microphone || 'undetermined';
+      set('permStateMicrophone', mic, label[mic] || 'Not asked yet');
+      set('permStateLocalNetwork', 'unknown', 'Needed to find other DJs');
+    }
+    window.ppSetPermissions = (payload) => {
+      window.ppPermissionState = Object.assign({}, window.ppPermissionState, payload || {});
+      paint();
+    };
+    window.ppSystemAudioPrimed = (ok) => {
+      window.ppPermissionState.systemAudio = ok ? 'granted' : 'denied';
+      paint();
+      const waiter = window.__ppPrimeWaiter; // a Go Live start may be blocked on this
+      window.__ppPrimeWaiter = null;
+      if (waiter) waiter(ok);
+    };
+    rows.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest && e.target.closest('button');
+      if (!btn) return;
+      if (btn.dataset.permpane) {
+        fetch('/api/open-settings?pane=' + encodeURIComponent(btn.dataset.permpane), { method:'POST' });
+        return;
+      }
+      if (btn.dataset.permcheck === 'systemAudio') {
+        // The only honest check macOS offers: attempt a tap. It prompts when
+        // undetermined and answers instantly when already decided.
+        window.webkit?.messageHandlers?.pp?.postMessage({ action:'primeSystemAudio' });
+      }
+    });
+    window.webkit?.messageHandlers?.pp?.postMessage({ action:'permissions' });
+    paint();
   })();
 
   // In-app controls - only when running inside the native menu-bar app.

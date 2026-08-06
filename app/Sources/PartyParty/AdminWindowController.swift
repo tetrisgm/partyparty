@@ -347,6 +347,8 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             setCaptureSource(body["device"] as? String)
         case "primeSystemAudio":
             primeSystemAudio()
+        case "permissions":
+            pushPermissions()
         case "resetConsole":
             resetConsole()
         case "jslog":
@@ -354,6 +356,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             diag(level == "error" ? "error" : "console", ["lvl": level, "msg": body["msg"] as? String ?? ""])
         case "ready":
             pushLoginState()
+            pushPermissions()
             if let device = body["device"] as? String {
                 setCaptureSource(device)
             } else {
@@ -427,10 +430,34 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             DispatchQueue.main.async {
                 self?.systemAudioPrimeState = (err == noErr) ? .granted : .denied
                 self?.pushCapturePermission()
+                self?.pushPermissions()
                 self?.webView.evaluateJavaScript(
                     "window.ppSystemAudioPrimed && window.ppSystemAudioPrimed(\(err == noErr))")
             }
         }
+    }
+
+    /// The Settings permissions block. Each row must be honest about what macOS
+    /// actually lets an app know:
+    ///  - microphone: a real status API.
+    ///  - system audio: NO status API. Truth comes from observation (capture has
+    ///    worked here) or from an explicit tap attempt, which is why the row
+    ///    offers a Check that prompts rather than a status that guesses.
+    ///  - local network: no API and no probe. The pane is all we can offer.
+    private func pushPermissions() {
+        let mic: String
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: mic = "granted"
+        case .denied, .restricted: mic = "denied"
+        default: mic = "undetermined"
+        }
+        let payload: [String: Any] = [
+            "microphone": mic,
+            "systemAudio": systemAudioPrimeState.rawValue,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.ppSetPermissions && window.ppSetPermissions(\(json))")
     }
 
     private func pushCapturePermission() {
