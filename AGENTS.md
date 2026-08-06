@@ -22,7 +22,15 @@ repeated audible seek skips and is not a production option.
 The stable production geometry is 500 ms segments, 150 ms parts, and a
 48-segment window. Capture backpressure is held off by bounded capture buffering
 and non-blocking ffmpeg tee outputs; the audio core must not change without a
-supervised go-live test.
+supervised go-live test. Any change to playlist geometry or playback
+positioning (hold-back, EXT-X-START, the room delay, segment/part shape)
+additionally requires a real-AVPlayer soak BEFORE it reaches TestFlight: a
+desktop Safari listener attached to the live stream, its playback position
+watched against the live edge for at least ten minutes, with zero backward
+movement. Unit and contract tests cannot hear AVPlayer: 125.37 shipped a
+green-tested playlist whose PART-HOLD-BACK pointed outside the parts region,
+and AVPlayer audibly rolled a live listener back within minutes (2026-08-05).
+Playback moving backward is never acceptable.
 
 The room target is a FIXED three seconds (schedule.Delay; PART-HOLD-BACK
 2.9 s), chosen for stability over immediacy (owner decision, 2026-08-05): the
