@@ -1,5 +1,50 @@
 # PartyParty.party handoff
 
+## Current position (2026-08-06): parties replace event folders; 125.47 (267)
+
+The event model is gone. A PARTY is one night: `parties/<id>/`, resumed while
+current, new after eight idle hours, empty ones reused so launching twice
+leaves no litter. Its folder is a keepsake - guest uploads plus a static
+`index.html` of the wall (posts, comments, media, setlist), with the journal,
+guest names, thumbs and set reports hidden in `.state`. Old `events/<date>/`
+folders migrate in with every byte kept. Set recording is REMOVED (owner:
+the app should not keep a copy of the music); nothing had set RecordPath since
+the LL-HLS rewrite, so it was dead capability, and a test now fails if an ADTS
+tee leg reappears.
+
+ONE PARTY PER WI-FI: peers advertise their party (id, name, cover, join link)
+over the existing Bonjour + /api/peer probe, and a Mac going live adopts a live
+peer's party instead of starting a rival - taking its id, folder, name and
+cover, keeping its own DJ name and photo, and showing the HOST'S join link, so
+the second DJ's QR is the first DJ's. A party with posts is never abandoned to
+join another. The shared wall needed nothing: mergeRoomFeed already merged peer
+posts and rewrote media URLs to the owning Mac.
+
+Guests are no longer stranded when a Mac leaves: after ~20s of failed polls the
+page re-homes to another member from the DJ reel it already holds.
+
+Telemetry: every listener carries its own stall count and worst latency for the
+set, shown in the console - "my phone or the stream?" is now answered by the
+screen. Settings also shows the three permissions honestly (microphone has a
+real API; system audio has none, so it offers Check, which attempts a tap; local
+network has neither, so it offers only the pane).
+
+NEW TEST GUARDS (both in `npm test`): `test-dj-console-saves.mjs` types into the
+console and fails if a save never reaches the server;
+`test-guest-page-taps.mjs` taps play, the sheets, the QR, a comment and a poll
+outage on the guest page and fails on any console error. Both were verified
+against the real bug before landing. Note for whoever writes the next one: the
+stub's `appVersion` MUST match the served page or the page reloads itself
+mid-test (its own stale-page refresh), which reads as a mystery timeout.
+
+DELIBERATELY NOT DONE: the broker publishing an A record per live member so the
+party link survives the host leaving. It rewrites production DNS for the live
+domain, and getting it wrong points guests at the wrong Mac - it needs its own
+pass with the Worker smoke test extended, not the tail of a long batch. Until
+then a host who leaves keeps serving nobody new; guests already in are covered
+by re-homing.
+
+
 ## Current position (2026-08-05, close): TestFlight 125.42 build 262
 
 On top of the benched 3s buffer (below): 261 made the DJ profile stick
