@@ -12,11 +12,17 @@ type client struct {
 	firstSeen time.Time // for stable roster ordering
 	lastSeen  time.Time
 	lastStall time.Time
-	lat       float64 // last reported latency behind live, ms
-	hasLat    bool
-	paused    bool
-	platform  string // "native" (iOS Safari) or "hls" (Android/desktop)
-	djID      string // selected LAN DJ; empty means this Mac
+	// Stall history for the whole set. "Was that my phone or the stream?" came
+	// up three times in one night at Shack15 and each answer took an hour of
+	// log reading; a per-phone count settles it at a glance. worstLat is the
+	// deepest this phone ever fell behind.
+	stalls   int
+	worstLat float64
+	lat      float64 // last reported latency behind live, ms
+	hasLat   bool
+	paused   bool
+	platform string // "native" (iOS Safari) or "hls" (Android/desktop)
+	djID     string // selected LAN DJ; empty means this Mac
 
 	// Controller debug telemetry: playback rate and buffered seconds ahead.
 	rate float64
@@ -78,6 +84,9 @@ func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, h
 	c.lastSeen = now
 	c.paused = paused
 	if stalled {
+		if now.Sub(c.lastStall) > 3*time.Second {
+			c.stalls++ // one event, not one per heartbeat inside the same stall
+		}
 		c.lastStall = now
 	}
 	// Authoritative each beat: a device that stops reporting a valid latency
@@ -86,6 +95,9 @@ func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, h
 	c.hasLat = hasLat
 	if hasLat {
 		c.lat = latMs
+		if latMs > c.worstLat {
+			c.worstLat = latMs
+		}
 	}
 	if platform != "" {
 		c.platform = platform
@@ -245,8 +257,14 @@ type Listener struct {
 	Rate       float64 `json:"rate,omitempty"`
 	BufS       float64 `json:"bufS,omitempty"`
 	Stalled    bool    `json:"stalled"`
-	Paused     bool    `json:"paused"`
-	DJID       string  `json:"djId,omitempty"`
+	// Stalls is how many times this phone dropped out during the set, and
+	// WorstLatencyMs how far behind it ever fell. The room's stream can be
+	// provably clean while one phone on bad Wi-Fi hears gaps; these two numbers
+	// say which is happening without an hour of log reading.
+	Stalls         int     `json:"stalls,omitempty"`
+	WorstLatencyMs float64 `json:"worstLatencyMs,omitempty"`
+	Paused         bool    `json:"paused"`
+	DJID           string  `json:"djId,omitempty"`
 }
 
 // Roster returns the currently-active listeners, stable-ordered by join time.
@@ -269,19 +287,21 @@ func (l *Listeners) Roster() []Listener {
 	for _, activeClient := range active {
 		key, c := activeClient.key, activeClient.c
 		out = append(out, Listener{
-			ID:         key,
-			Platform:   c.platform,
-			Name:       c.name,
-			Emoji:      c.emoji,
-			Device:     c.device,
-			IP:         c.ip,
-			LatencyMs:  c.lat,
-			HasLatency: c.hasLat,
-			Rate:       c.rate,
-			BufS:       c.bufS,
-			Stalled:    !c.lastStall.IsZero() && now.Sub(c.lastStall) < 12*time.Second,
-			Paused:     c.paused,
-			DJID:       c.djID,
+			ID:             key,
+			Platform:       c.platform,
+			Name:           c.name,
+			Emoji:          c.emoji,
+			Device:         c.device,
+			IP:             c.ip,
+			LatencyMs:      c.lat,
+			HasLatency:     c.hasLat,
+			Rate:           c.rate,
+			BufS:           c.bufS,
+			Stalled:        !c.lastStall.IsZero() && now.Sub(c.lastStall) < 12*time.Second,
+			Stalls:         c.stalls,
+			WorstLatencyMs: c.worstLat,
+			Paused:         c.paused,
+			DJID:           c.djID,
 		})
 	}
 	return out

@@ -1761,7 +1761,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         (r.hasLatency ? secs(r.latencyMs) + ' delay' : 'measuring'),
         'buf ' + (r.bufS||0).toFixed(0) + 's',
         (r.rate && Math.abs(r.rate-1)>0.001 ? r.rate.toFixed(2)+'x' : ''),
-        (r.stalled ? 'STALLED' : ''), (r.paused ? 'paused' : '')
+        (r.stalled ? 'STALLED' : ''), (r.paused ? 'paused' : ''),
+        // Whole-set history: which phone actually had a bad night.
+        (r.stalls ? r.stalls + (r.stalls === 1 ? ' stall' : ' stalls') : ''),
+        (r.worstLatencyMs > 4000 ? 'worst ' + secs(r.worstLatencyMs) : '')
       ].filter(Boolean).join(' · ');
       L.push('  ' + (i+1) + '. ' + (r.name || 'Guest') + '  [' + (r.device || 'device') + ' · ' + (r.ip||'?') + ']  ' + bits);
     });
@@ -2207,7 +2210,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           let extra = '';
           if (details && detail) {
             const latency = detail.hasLatency ? (detail.latencyMs / 1000).toFixed(1) + ' s delay' : 'measuring';
-            extra = '<div class="ldetail">' + latency + (detail.paused ? ' · paused' : '') + '</div>';
+            // A phone's own history, so "was that me or the room?" is answered
+            // by the roster instead of by argument.
+            const stalls = detail.stalls ? ' · ' + detail.stalls + (detail.stalls === 1 ? ' stall' : ' stalls') : '';
+            extra = '<div class="ldetail">' + latency + (detail.paused ? ' · paused' : '') + stalls + '</div>';
           }
           return '<div class="listener"><span class="lemoji">' + emoji + '</span><div class="lbody"><span class="lname">' + name + '</span>' + extra + '</div></div>';
         }).join('') : '';
