@@ -24,15 +24,25 @@ The stable production geometry is 500 ms segments, 150 ms parts, and a
 and non-blocking ffmpeg tee outputs; the audio core must not change without a
 supervised go-live test.
 
+The room target is a FIXED three seconds (schedule.Delay; PART-HOLD-BACK
+2.9 s), chosen for stability over immediacy (owner decision, 2026-08-05): the
+cushion is sized so ordinary venue Wi-Fi stalls pass silently instead of
+reaching ears. At the Shack15 re-test the published feed was gapless all
+afternoon while phones riding ~1 s heard every radio burst and a phone at
+~2.6 s heard none of them; the knife edge was the product's only remaining
+audible failure, so the product left the knife edge. The target is one
+declared number for every phone on every path — never adaptive, never
+per-phone, never tracking listener conditions.
+
 Healthy native playback is passive — PartyParty never seeks or rate-steers it.
-Excess delay is not tolerated: a visible phone that stays at least 750 ms beyond
-the one-second room target for three measurements gets a fresh HLS attachment,
-and corrections stay available for the whole set — spacing between them is only
-the mechanical minimum for an attachment to land and re-measure, stretching
-briefly only while corrections fail to stick. Never a per-session cap: one
-shipped once and left a phone 16.7 s behind at a live test (2026-08-04). Missing
-timing telemetry alone never interrupts audio, and nothing runs while Safari is
-hidden or the phone is locked.
+Unbounded drift is still not tolerated: a visible phone that stays at least
+750 ms beyond the room target for three measurements gets a fresh HLS
+attachment, and corrections stay available for the whole set — spacing between
+them is only the mechanical minimum for an attachment to land and re-measure,
+stretching briefly only while corrections fail to stick. Never a per-session
+cap: one shipped once and left a phone 16.7 s behind at a live test
+(2026-08-04). Missing timing telemetry alone never interrupts audio, and
+nothing runs while Safari is hidden or the phone is locked.
 
 Relay mode gives `/live/` traffic priority: guest photos take a capped,
 throttled secondary path and videos do not enter the relay at all. Direct mode

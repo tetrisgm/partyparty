@@ -1,10 +1,12 @@
 package server
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"partyparty/internal/broadcast"
+	"partyparty/internal/schedule"
 )
 
 // TestRoomDelayNeverRespondsToConditions is the load-bearing test of the whole
@@ -81,7 +83,7 @@ func TestScheduleDeclaresHoldBack(t *testing.T) {
 
 	out := string(rewriteLivePlaylist([]byte(in)))
 
-	if !strings.Contains(out, "PART-HOLD-BACK=0.90000") {
+	if !strings.Contains(out, fmt.Sprintf("PART-HOLD-BACK=%.5f", schedule.PartHoldBack)) {
 		t.Fatalf("declared hold-back missing:\n%s", out)
 	}
 	// Everything that carries the audio or its timeline must survive untouched.

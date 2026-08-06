@@ -26,6 +26,7 @@ import (
 	"partyparty/internal/config"
 	"partyparty/internal/event"
 	"partyparty/internal/relay"
+	"partyparty/internal/schedule"
 	"partyparty/internal/stats"
 )
 
@@ -383,8 +384,8 @@ func TestStatusEndpoint(t *testing.T) {
 	if _, ok := body["delivery"]; ok {
 		t.Errorf("obsolete delivery selector leaked into status: %v", body["delivery"])
 	}
-	if body["latencyTarget"] != 1.0 {
-		t.Errorf("latencyTarget = %v, want 1", body["latencyTarget"])
+	if body["latencyTarget"] != schedule.Delay {
+		t.Errorf("latencyTarget = %v, want %v", body["latencyTarget"], schedule.Delay)
 	}
 	streamSync, ok := body["streamSync"].(map[string]any)
 	if !ok || streamSync["ready"] != false || streamSync["generation"] != 0.0 {

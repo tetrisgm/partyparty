@@ -62,7 +62,7 @@ checkInlineScripts('web/dj.html');
 
 const listener = read('web/listener.html');
 const forbiddenDash = String.fromCodePoint(0x2014);
-assert.match(listener, /const ROOM_TARGET_FALLBACK = 1\.0;/);
+assert.match(listener, /const ROOM_TARGET_FALLBACK = 3\.0;/);
 assert.match(listener, /const useNative = nativeHLS && \(isAppleUA \|\| iosShellBrowser\);/);
 assert.match(listener, /const OUTLIER_LATE_BY = 0\.75;/);
 assert.match(listener, /const OUTLIER_CONFIRMATIONS = 3;/);
@@ -287,7 +287,7 @@ assert.doesNotMatch(dj, /captureSoftAsk|screenPermBtn|permission has not been co
 assert.ok(!dj.includes(forbiddenDash));
 
 const playback = read('internal/server/playback.go');
-assert.match(playback, /const roomLatencyTarget = 1\.0/);
+assert.match(playback, /const roomLatencyTarget = schedule\.Delay/);
 
 const server = read('internal/server/server.go');
 assert.match(server, /body = rewriteLivePlaylist\(body\)/);
@@ -331,8 +331,8 @@ const e2e = read('scripts/stream-e2e.mjs');
 assert.match(e2e, /hlsSegmentCount: 48/);
 assert.match(e2e, /hlsSegmentDuration: 500ms/);
 assert.match(e2e, /hlsPartDuration: 150ms/);
-assert.match(e2e, /latencyTarget: 1,/);
-assert.doesNotMatch(e2e, /latencyTarget:\s*3/);
+assert.match(e2e, /latencyTarget: 3,/);
+assert.doesNotMatch(e2e, /latencyTarget:\s*1,/);
 assert.doesNotMatch(e2e, /--delivery|--latency-target|--part-duration|--seg-duration|--seg-count/);
 
 console.log('PASS fixed streaming contract');

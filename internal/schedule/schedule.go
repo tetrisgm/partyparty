@@ -49,14 +49,19 @@ import (
 // EXT-X-START, which is purely advisory and may be silently ignored.
 //
 // It is a constant of the design, not a tuning knob, and specifically not a
-// function of anybody's network.
-const PartHoldBack = 0.9
+// function of anybody's network. Its SIZE is the stability decision
+// (2026-08-05, owner): the room is radio, and the cushion is sized so that
+// ordinary venue Wi-Fi stalls pass silently instead of reaching ears. At the
+// Shack15 re-test, phones riding ~1s heard every burst while a phone at ~2.6s
+// heard none of the same afternoon (largest observed stall ~2.6s); the edge
+// was the knife, and nobody needs to live on it.
+const PartHoldBack = 2.9
 
 // Delay is the room's published D: what a guest should expect between a sound
 // leaving the DJ and reaching a listener. It is the declared hold-back plus the
 // fixed pipeline floor (capture, AAC encode, packaging), which is a property of
 // the path rather than of the venue.
-const Delay = 1.0
+const Delay = 3.0
 
 // RewritePlaylist authors the schedule into a media playlist by declaring
 // PART-HOLD-BACK. Everything else about the playlist is passed through

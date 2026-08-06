@@ -1,7 +1,10 @@
 package server
 
-// roomLatencyTarget is the single client-side playout target. The server does
-// not add delay to MediaMTX's LL-HLS playlists; native AVPlayer joins the live
-// edge and the visible-only governor corrects sustained drift toward this
-// target without touching locked/background playback.
-const roomLatencyTarget = 1.0
+import "partyparty/internal/schedule"
+
+// roomLatencyTarget is the single client-side playout target and is the
+// schedule's published D by definition - one number, declared once. Native
+// AVPlayer joins at the declared hold-back and the visible-only governor
+// corrects sustained drift toward this target without touching
+// locked/background playback.
+const roomLatencyTarget = schedule.Delay
