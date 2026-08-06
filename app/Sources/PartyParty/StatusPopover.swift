@@ -17,6 +17,10 @@ final class StatusPopoverController: NSViewController {
     private let openButton = NSButton(title: "Open PartyParty", target: nil, action: nil)
     private let quitButton = NSButton(title: "Quit", target: nil, action: nil)
     private var lastQRURL = ""
+    /// Set by the app so the popover can fetch the DJ avatar for the QR badge.
+    var serverPort = 8000
+    private var avatarImage: NSImage?
+    private var avatarFetchedAt = Date.distantPast
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 248, height: 0))
@@ -71,23 +75,42 @@ final class StatusPopoverController: NSViewController {
         view = root
     }
 
+    /// The DJ photo (or nothing, drawing the neutral silhouette) rides the QR
+    /// center. Fetched from the local server, refreshed lazily; a change
+    /// re-renders the QR on the next pass.
+    private func refreshAvatarIfStale() {
+        guard Date().timeIntervalSince(avatarFetchedAt) > 60 else { return }
+        avatarFetchedAt = Date()
+        guard let url = URL(string: "http://127.0.0.1:\(serverPort)/dj-avatar") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, _ in
+            let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            let image = ok ? data.flatMap(NSImage.init(data:)) : nil
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.avatarImage = image
+                self.lastQRURL = "" // re-badge on the next render
+            }
+        }.resume()
+    }
+
     @objc private func toggleTapped() { onToggleBroadcast() }
     @objc private func openTapped() { onOpenApp() }
     @objc private func quitTapped() { onQuit() }
 
     func render(_ s: ServerStatus) {
+        refreshAvatarIfStale()
         let hasQR = !s.guestURL.isEmpty
         qrView.isHidden = !hasQR
         qrPending.isHidden = hasQR
         if hasQR && s.guestURL != lastQRURL {
             lastQRURL = s.guestURL
-            qrView.image = Self.qrImage(for: s.guestURL)
+            qrView.image = Self.qrImage(for: s.guestURL, badge: avatarImage)
         }
 
         switch s.listeners {
         case 0:  listenersLabel.stringValue = "Nobody listening yet"
-        case 1:  listenersLabel.stringValue = "1 listening"
-        default: listenersLabel.stringValue = "\(s.listeners) listening"
+        case 1:  listenersLabel.stringValue = "1 listener"
+        default: listenersLabel.stringValue = "\(s.listeners) listeners"
         }
 
         let broadcasting = s.state == "live" || s.state == "starting"
@@ -99,7 +122,7 @@ final class StatusPopoverController: NSViewController {
     /// Crisp QR at 200pt: render the CIQRCodeGenerator output at its tiny module
     /// size, then scale with nearest-neighbor so modules stay square. The
     /// generator includes the standard quiet zone; the white layer rounds it.
-    private static func qrImage(for text: String) -> NSImage? {
+    private static func qrImage(for text: String, badge: NSImage?) -> NSImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)
         filter.correctionLevel = "H"
@@ -115,6 +138,41 @@ final class StatusPopoverController: NSViewController {
         let context = CIContext()
         guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return nil }
         let image = NSImage(cgImage: cg, size: NSSize(width: 200, height: 200))
-        return image
+        // Center badge: the DJ photo when set, the neutral silhouette
+        // otherwise - matching the console and guest-page QRs. Correction
+        // level H absorbs the covered modules.
+        let size: CGFloat = 200
+        let dia = size * 0.22
+        let pad = size * 0.03
+        let composed = NSImage(size: NSSize(width: size, height: size))
+        composed.lockFocus()
+        image.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+        let center = NSPoint(x: size / 2, y: size / 2)
+        let padRect = NSRect(x: center.x - dia / 2 - pad, y: center.y - dia / 2 - pad,
+                             width: dia + pad * 2, height: dia + pad * 2)
+        NSColor.white.setFill()
+        NSBezierPath(ovalIn: padRect).fill()
+        let holeRect = NSRect(x: center.x - dia / 2, y: center.y - dia / 2, width: dia, height: dia)
+        let clip = NSBezierPath(ovalIn: holeRect)
+        NSGraphicsContext.saveGraphicsState()
+        clip.addClip()
+        if let badge {
+            badge.draw(in: holeRect, from: .zero, operation: .sourceOver, fraction: 1)
+        } else {
+            NSColor(srgbRed: 0.89, green: 0.89, blue: 0.91, alpha: 1).setFill()
+            NSBezierPath(ovalIn: holeRect).fill()
+            NSColor(srgbRed: 0.66, green: 0.66, blue: 0.70, alpha: 1).setFill()
+            let headD = dia * 0.32
+            NSBezierPath(ovalIn: NSRect(x: center.x - headD / 2, y: center.y + dia * 0.02,
+                                        width: headD, height: headD)).fill()
+            let shoulders = NSBezierPath()
+            shoulders.appendArc(withCenter: NSPoint(x: center.x, y: center.y - dia * 0.42),
+                                radius: dia * 0.30, startAngle: 0, endAngle: 180)
+            shoulders.close()
+            shoulders.fill()
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        composed.unlockFocus()
+        return composed
     }
 }

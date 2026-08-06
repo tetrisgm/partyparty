@@ -86,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         popover.behavior = .transient
         popover.contentViewController = popoverContent
+        popoverContent.serverPort = server.port
         popoverContent.onToggleBroadcast = { [weak self] in self?.toggleBroadcast() }
         popoverContent.onOpenApp = { [weak self] in
             self?.popover.performClose(nil)
