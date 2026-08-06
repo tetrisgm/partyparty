@@ -702,15 +702,18 @@ async function report(reachable){
 // The report still goes out because the Mac needs the verdict to set the room's
 // mode and cache it for this network, but nothing here waits on it.
 async function relayLive(){
-  // A registration is a name, not a stream. Handing a guest to a relay that is
-  // not actually serving parked phones on a dead page that said "connecting to
-  // the DJ" forever. Only a live health check earns the handoff.
+  // A registration is a name, not a stream: only a live health check earns the
+  // handoff. The check goes through this page's own origin - the Worker probes
+  // the relay server-side - because a direct fetch to the relay origin is
+  // cross-origin, carries no CORS headers, and the browser blocks it silently.
   if(!relayURL)return false;
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),3000);
+  const timer=setTimeout(()=>controller.abort(),4000);
   try{
-    const response=await fetch(relayURL+'/__pp/health?t='+Date.now(),{cache:'no-store',signal:controller.signal});
-    return response.ok;
+    const response=await fetch('/__pp/relay-live?t='+Date.now(),{cache:'no-store',signal:controller.signal});
+    if(!response.ok)return false;
+    const body=await response.json();
+    return body.live===true;
   }catch(_){return false}
   finally{clearTimeout(timer)}
 }
@@ -767,6 +770,30 @@ async function relayBootstrapRequest(request, env, token) {
       "access-control-allow-methods": "POST, OPTIONS",
       "access-control-allow-headers": "content-type",
     });
+  }
+
+  // Same-origin relay liveness for the bootstrap page. The page cannot check
+  // the relay origin's health itself: that fetch is cross-origin, the health
+  // endpoint sends no CORS headers, and the browser silently blocks it - which
+  // parked every remote guest on "try again" while the relay was streaming
+  // fine (2026-08-05). The Worker checks server-side, where CORS does not
+  // exist.
+  if (url.pathname === "/__pp/relay-live") {
+    const origin = relayOriginFor(env, token);
+    let live = false;
+    if (origin) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 2500);
+        const response = await fetch(origin + "/__pp/health", {
+          signal: controller.signal,
+          cf: { cacheTtl: 0 },
+        });
+        clearTimeout(timer);
+        live = response.ok;
+      } catch (e) {}
+    }
+    return jsonResp(200, { live }, { "cache-control": "no-store" });
   }
 
   const record = await relayRoomRecord(env, token);
