@@ -1,5 +1,24 @@
 # PartyParty.party handoff
 
+## Current position (2026-08-05, close): TestFlight 125.42 build 262
+
+On top of the benched 3s buffer (below): 261 made the DJ profile stick
+(auto-saves disarmed until hydration; /api/dj-profile is nil-means-keep) and
+made track changes latch in ~15-20s via incumbent-veto matching. 262 adds
+PARTY REACH in Settings - Wi-Fi only is the DEFAULT (owner decision: nothing
+leaves the room until deliberately switched); Wi-Fi + cloud pushes the relay
+whenever live+internet (relay.Manager Config.OnPush drives
+contribute.SetEnabled; mode stays DIRECT for LAN guests), and an isolated
+venue under Wi-Fi only reads NO PATH reason wifi_only instead of relaying
+against the DJ's choice. The join bootstrap (Cloudflare Worker, DEPLOYED
+ed831a0c) now health-checks the relay before handoff, shows an honest
+"join the Wi-Fi" page, and re-probes every 8s + on online/visibility - a
+phone that regains Wi-Fi converges alone. The QR is brand pink on both
+renders with the DJ avatar badged center on the console (correction H).
+Remote-listen test protocol: Settings -> Party reach -> Wi-Fi + cloud, go
+live, open the join link on 5G.
+
+
 ## Current position (2026-08-05, end of night): 125.40 build 260 - the buffer, benched
 
 The 3s cushion SHIPPED on the third attempt, done the way the contract now
