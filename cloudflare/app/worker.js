@@ -313,10 +313,9 @@ export function icsFor(group, events, base) {
 // ------------------------------------------------------------------- pages
 
 const STYLE = `
-/* The same surface as the app. These are the tokens web/listener.html actually
-   ships - Geist, #ff2d55, a warm grey canvas with white cards and soft depth -
-   not a re-derivation from the design doc, which the product has moved past.
-   Geist is OFL, so self-hosting it on the public web is allowed; SF is not. */
+/* The values and the SHAPES that web/listener.html ships: Geist, #ff2d55, the
+   warm party gradient behind a hero, floating round chrome over it, heavy
+   weights, and one big action bar. Copied from the page, not from a document. */
 @font-face{font-family:Geist;src:url(/fonts/Geist-Variable.woff2) format('woff2-variations');
 font-weight:100 900;font-display:swap}
 :root{
@@ -327,6 +326,8 @@ font-weight:100 900;font-display:swap}
   --separator:rgba(0,0,0,.08); --fill:rgba(120,120,128,.10);
   --accent:#ff2d55; --success:#34c759;
   --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
+  --party-bg:#f9c3aa; --party-bg-2:#ffd1c0; --party-ink:#161315;
+  --party-muted:rgba(22,19,21,.64); --party-line:rgba(70,34,32,.13);
 }
 @media (prefers-color-scheme:dark){
   :root{
@@ -335,89 +336,142 @@ font-weight:100 900;font-display:swap}
     --label:#f5f5f7; --label-secondary:#b6b6ba; --label-tertiary:#85858b;
     --separator:rgba(255,255,255,.10); --fill:rgba(255,255,255,.08);
     --shadow:none;
+    --party-bg:#141719; --party-bg-2:#141719; --party-ink:#f5f5f7;
+    --party-muted:#a9a9ae; --party-line:rgba(255,255,255,.10);
   }
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--label);
 font-family:var(--sans);font-size:16px;line-height:1.45;font-synthesis:none}
-main{max-width:640px;margin:0 auto;padding:32px 20px 96px}
 
-h1{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1;
-margin:0 0 4px;text-wrap:balance}
-h2{font-size:19px;font-weight:750;letter-spacing:-.01em;margin:36px 0 12px}
+/* The hero: full-bleed, the party gradient or the group's own picture, with the
+   name sitting on it. This is the shape the guest page opens with. */
+.hero{position:relative;padding:64px 20px 22px;
+background:linear-gradient(180deg,var(--party-bg),var(--party-bg-2));
+background-size:cover;background-position:center}
+.hero.photo::after{content:'';position:absolute;inset:0;
+background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.62) 100%)}
+.hero>*{position:relative;z-index:1;max-width:640px;margin-left:auto;margin-right:auto}
+.hero h1{font-size:40px;font-weight:800;line-height:1.02;letter-spacing:0;
+color:var(--party-ink);margin:0 0 6px;overflow-wrap:anywhere}
+.hero .sub{color:var(--party-muted);font-weight:800;font-size:16px;margin:0}
+.hero.photo h1{color:#fff}
+.hero.photo .sub{color:rgba(255,255,255,.82)}
+
+/* Floating round chrome over the hero, the way the guest page's tools sit. */
+.toptools{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:2}
+.toptools a{display:grid;place-items:center;min-width:38px;height:38px;padding:0 12px;
+border-radius:999px;background:rgba(20,20,22,.72);color:#fff;font-size:13px;
+font-weight:700;text-decoration:none;-webkit-backdrop-filter:blur(18px);
+backdrop-filter:blur(18px)}
+.toptools a:hover{text-decoration:none;background:rgba(20,20,22,.85)}
+
+main{max-width:640px;margin:0 auto;padding:24px 20px 96px}
+h1{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin:0 0 4px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;margin:32px 0 12px}
 p{margin:0 0 12px}
 a{color:var(--accent);text-decoration:none;font-weight:600}
 a:hover{text-decoration:underline}
 .muted{color:var(--label-secondary);font-size:14px;font-weight:400}
 a.muted{color:var(--label-secondary)}
 
-/* White cards with soft depth on a warm grey canvas - the guest page's shape. */
 .card{display:block;background:var(--card);border:1px solid var(--separator);
-border-radius:12px;padding:16px;margin:0 0 12px;color:inherit;
-text-decoration:none;box-shadow:var(--shadow)}
-a.card:hover{text-decoration:none;transform:translateY(-1px)}
+border-radius:16px;padding:16px;margin:0 0 12px;color:inherit;text-decoration:none;
+box-shadow:var(--shadow)}
 a.card{transition:transform .15s cubic-bezier(.25,.1,.25,1)}
-.when{font-size:13px;color:var(--label-secondary);font-variant-numeric:tabular-nums}
-.card strong{display:block;font-size:17px;font-weight:750;letter-spacing:-.01em;margin:2px 0}
+a.card:hover{text-decoration:none;transform:translateY(-1px)}
+.when{font-size:13px;color:var(--label-secondary);font-variant-numeric:tabular-nums;
+font-weight:600}
+.card strong{display:block;font-size:17px;font-weight:800;letter-spacing:-.01em;margin:2px 0}
 
-/* One accent, on the action. Pill, heavy, with the pink lift the app uses. */
-.btn{display:inline-flex;align-items:center;justify-content:center;
-min-height:48px;padding:14px 24px;border:none;border-radius:999px;
-background:var(--accent);color:#fff;font:inherit;font-size:17px;font-weight:800;
-cursor:pointer;box-shadow:0 8px 24px rgba(255,45,85,.28);
+/* The one big action, shaped like the listen bar: a coloured slab with a tile
+   in it, not a small button hiding in a paragraph. */
+.actionbar{display:flex;align-items:center;gap:14px;width:100%;
+background:var(--accent);color:#fff;border:none;border-radius:18px;
+padding:16px 18px;margin:20px 0 10px;font:inherit;font-size:17px;font-weight:800;
+cursor:pointer;text-decoration:none;box-shadow:0 8px 24px rgba(255,45,85,.28);
+transition:transform .15s cubic-bezier(.25,.1,.25,1),filter .15s}
+.actionbar:hover{text-decoration:none;transform:translateY(-1px);filter:brightness(1.03)}
+.actionbar .tile{display:grid;place-items:center;width:46px;height:46px;flex:0 0 46px;
+border-radius:14px;background:rgba(255,255,255,.22);font-size:22px}
+.actionbar .lines{display:grid;gap:2px;text-align:left;min-width:0}
+.actionbar .lines small{font-weight:600;font-size:13px;opacity:.9}
+.actionbar.quiet{background:var(--card);color:var(--label);
+border:1px solid var(--separator);box-shadow:var(--shadow)}
+.actionbar.quiet .tile{background:var(--fill)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;
+padding:14px 24px;border:none;border-radius:999px;background:var(--accent);color:#fff;
+font:inherit;font-size:17px;font-weight:800;cursor:pointer;
+box-shadow:0 8px 24px rgba(255,45,85,.28);
 transition:transform .15s cubic-bezier(.25,.1,.25,1),filter .15s}
 .btn:hover{text-decoration:none;transform:translateY(-1px);filter:brightness(1.03)}
-.btn:active{transform:none}
-.btn.plain{background:var(--card);color:var(--label);
-border:1px solid var(--separator);box-shadow:0 1px 3px rgba(0,0,0,.05);font-weight:700}
+.btn.plain{background:var(--card);color:var(--label);border:1px solid var(--separator);
+box-shadow:0 1px 3px rgba(0,0,0,.05);font-weight:700}
 .btn.small{min-height:40px;padding:10px 18px;font-size:15px;box-shadow:none}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 input[type=email],input[type=text]{width:100%;min-height:48px;padding:12px 14px;
-border-radius:12px;border:1px solid var(--separator);background:var(--card);
+border-radius:14px;border:1px solid var(--separator);background:var(--card);
 color:var(--label);font:inherit;font-size:16px;outline:none;
 box-shadow:0 1px 3px rgba(0,0,0,.05)}
 input::placeholder{color:var(--label-tertiary)}
 input:focus{border-color:var(--accent)}
-form.join{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 8px}
+form.join{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 8px}
 form.join input{flex:1 1 200px;min-width:0;width:auto}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
-.post{background:var(--card);border:1px solid var(--separator);border-radius:12px;
+.post{background:var(--card);border:1px solid var(--separator);border-radius:16px;
 padding:14px;margin:0 0 10px;box-shadow:var(--shadow)}
-.post .who{font-weight:750;font-size:15px}
-footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--separator);
-font-size:14px}
+.post .who{font-weight:800;font-size:15px}
+footer{max-width:640px;margin:56px auto 0;padding:20px;
+border-top:1px solid var(--separator);font-size:14px}
 
-form.newnight{display:grid;gap:10px;margin:20px 0 28px;padding:16px;
-background:var(--card);border:1px solid var(--separator);border-radius:12px;
+form.newnight{display:grid;gap:10px;margin:16px 0 28px;padding:16px;
+background:var(--card);border:1px solid var(--separator);border-radius:16px;
 box-shadow:var(--shadow)}
 form.newnight .row input{flex:1 1 140px;width:auto}
 form.newnight .btn{justify-self:start}
 
 .linkrow{display:flex;gap:8px;align-items:center;margin:12px 0 10px}
-.linkbox{flex:1 1 auto;min-width:0;font-size:13px;padding:10px 12px;
-min-height:0;color:var(--label-secondary);
+.linkbox{flex:1 1 auto;min-width:0;font-size:13px;padding:10px 12px;min-height:0;
+color:var(--label-secondary);border-radius:12px;
 font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
 
 details.settings{margin-top:48px;border-top:1px solid var(--separator)}
-details.settings summary{cursor:pointer;padding:16px 0;
-color:var(--label-secondary);font-weight:700;list-style:none}
+details.settings summary{cursor:pointer;padding:16px 0;color:var(--label-secondary);
+font-weight:700;list-style:none}
 details.settings summary::-webkit-details-marker{display:none}
 details.settings summary::before{content:"› ";display:inline-block;transition:transform .15s}
 details.settings[open] summary::before{transform:rotate(90deg)}
 details.settings h2{font-size:17px;margin:24px 0 6px}
 
+@media (max-width:520px){
+  .hero{padding:56px 18px 20px}
+  .hero h1{font-size:34px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 `;
 
-function page(title, body) {
+function page(title, body, heroHtml) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><style>${STYLE}</style></head>
-<body><main>${body}
-<footer><a href="/home">PartyParty</a></footer></main></body></html>`;
+<body>${heroHtml || ""}<main>${body}</main>
+<footer><a href="/home">PartyParty</a></footer></body></html>`;
+}
+
+// The hero the guest page opens with: the group's own picture if it has one,
+// the warm party gradient if it does not, with the name sitting on it and the
+// round floating chrome the app uses for secondary actions.
+function hero(title, sub, cover, tools) {
+  const photo = cover ? ` photo" style="background-image:url('${esc(cover)}')` : "";
+  return `<header class="hero${photo}">
+    ${tools ? `<div class="toptools">${tools}</div>` : ""}
+    <h1>${esc(title)}</h1>
+    ${sub ? `<p class="sub">${esc(sub)}</p>` : ""}
+  </header>`;
 }
 
 function whenText(event) {
@@ -442,26 +496,29 @@ function groupPage(group, events, base, posts, viewer) {
   // page is the kind of thing that makes a product feel like it does not know
   // you - and it is exactly what this page did.
   const follow = viewer && viewer.runsThisGroup
-    ? `<p class="row" style="margin:20px 0 8px">
-         <a class="btn" href="/@${esc(group.handle)}/manage">Manage this group</a>
-       </p>
-       <p class="muted">This is your group's public page - what everyone else sees.</p>`
+    ? `<a class="actionbar quiet" href="/@${esc(group.handle)}/manage">
+         <span class="tile">\u2699\uFE0F</span>
+         <span class="lines">Manage this group<small>This is your public page</small></span>
+       </a>`
     : viewer && viewer.follows
-      ? `<p class="row" style="margin:20px 0 8px">
-           <span class="btn plain">Following</span>
-           <a class="muted" href="/m/${esc(viewer.manageToken || "")}">Change how much you hear</a>
-         </p>`
-      : `<form class="join" method="post" action="/@${esc(group.handle)}/join">
-           <input type="email" name="email" placeholder="your email" required>
-           <input type="text" name="name" placeholder="your name">
-           <button class="btn" type="submit">Follow</button>
+      ? `<div class="actionbar quiet">
+           <span class="tile">\u2713</span>
+           <span class="lines">Following<small>Their nights reach you</small></span>
+         </div>`
+      : `<form method="post" action="/@${esc(group.handle)}/join">
+           <div class="row" style="margin-top:18px">
+             <input type="email" name="email" placeholder="your email" required>
+             <input type="text" name="name" placeholder="your name">
+           </div>
+           <button class="actionbar" type="submit">
+             <span class="tile">\u2605</span>
+             <span class="lines">Follow<small>Hear about their nights</small></span>
+           </button>
          </form>
-         <p class="muted">Following means you hear about their nights. One email to
-         confirm, no account, and you can stop from any message we send.</p>`;
+         <p class="muted">One email to confirm. No account, and you can stop from any
+         message we send.</p>`;
 
   return page(group.name || group.handle, `
-    <h1>${esc(group.name || group.handle)}</h1>
-    <p class="muted">@${esc(group.handle)}</p>
     ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
     ${follow}
     ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
@@ -473,13 +530,12 @@ function groupPage(group, events, base, posts, viewer) {
     <p><a class="btn plain small" href="webcal://${esc(new URL(base).host)}/@${esc(group.handle)}.ics">Add these to your calendar</a></p>
     <h2>Talk</h2>
     ${postList(posts || [])}
-  `);
+  `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
+      `<a href="/home">Home</a>`));
 }
 
 function eventPage(group, event, going, base, takeRate) {
   return page(`${event.title || "A night"} - ${group.name || group.handle}`, `
-    <p class="muted"><a class="muted" href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a></p>
-    <h1>${esc(event.title || "A night")}</h1>
     <p class="when">${esc(whenText(event))}</p>
     ${event.place ? `<p>${esc(event.place)}${event.address ? `<br><span class="muted">${esc(event.address)}</span>` : ""}</p>` : ""}
     ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
@@ -498,8 +554,9 @@ function eventPage(group, event, going, base, takeRate) {
     ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
-    join the group to hear about their other nights.</p>
-  `);
+    follow them to hear about their other nights.</p>
+  `, hero(event.title || "A night", group.name || group.handle, event.cover_key,
+      `<a href="/@${esc(group.handle)}">The group</a>`));
 }
 
 function notice(title, message) {

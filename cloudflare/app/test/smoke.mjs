@@ -636,12 +636,13 @@ test("a full night says so instead of quietly taking one more", async () => {
 
   assert.equal((await post(env, "/@sundaze/small/going", { email: "first@example.com" })).status, 200);
   const full = await post(env, "/@sundaze/small/going", { email: "second@example.com" });
-  assert.match(await full.text(), /full/i);
+  assert.match(await full.text(), /<h1>This one is full<\/h1>/,
+    "match the message, not any occurrence of the word in the whole document");
   assert.equal(rows(env, `SELECT * FROM signups`).length, 1);
 
   // Someone already coming can re-confirm without being told it is full.
   const again = await post(env, "/@sundaze/small/going", { email: "first@example.com" });
-  assert.ok(!(await again.text()).match(/full/i));
+  assert.ok(!/<h1>This one is full<\/h1>/.test(await again.text()));
 });
 
 test("the door works with no signal, and only for a DJ who runs the group", async () => {
@@ -1005,7 +1006,7 @@ test("your own group page offers management, not a form asking your name", async
   // A stranger still gets the follow form, and it says what following means.
   const stranger = await (await get(env, "/@sundaze")).text();
   assert.match(stranger, /placeholder="your name"/);
-  assert.match(stranger, /Following means you hear about their nights/);
+  assert.match(stranger, /Hear about their nights/, "the action says what following does");
 });
 
 test("your settings are yours: name, and who you follow", async () => {
