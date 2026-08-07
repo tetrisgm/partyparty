@@ -6,7 +6,8 @@ import worker, { handleProblem, icsFor, normalizeEmail, sha256Hex, ulid } from "
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
 // either work twice or corrupt a row.
-const schema = readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8");
+const schema = ["0001_init.sql", "0002_installs.sql"]
+  .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8")).join("\n");
 
 class Stmt {
   constructor(db, sql) { this.db = db; this.sql = sql; this.args = []; }
@@ -490,6 +491,114 @@ test("the group has a thread, and the volume on it belongs to the reader", async
   assert.deepEqual(rows(env, `SELECT to_email FROM outbox`).map((r) => r.to_email),
     ["quiet@example.com"], "turning it up is what makes a post arrive");
   assert.ok(groupId);
+});
+
+const macEnv = (env, id = "aabbccddeeff", secret = "s3cret") => {
+  const store = new Map([[`broker/${id}.json`, JSON.stringify({ secret, hostLabel: "disco-one" })]]);
+  env.DL = {
+    get: async (key) => (store.has(key) ? { text: async () => store.get(key) } : null),
+    head: async (key) => (store.has(key) ? {} : null),
+    put: async (key, value) => { store.set(key, value); },
+  };
+  return { id, secret };
+};
+
+const api = (env, path, body) => worker.fetch(new Request("https://partyparty.party" + path, {
+  method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" },
+}), env);
+
+test("a Mac pairs to a group with a code the DJ can read off the screen", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const mac = macEnv(env);
+  const djId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
+    .run(djId, "dj@example.com", "DJ", Date.now());
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
+    .run(groupId, djId, Date.now());
+  const secret = "e".repeat(48);
+  env.raw.prepare(`INSERT INTO sessions (id, hash, dj_id, created_ms, expires_ms) VALUES (?, ?, ?, ?, ?)`)
+    .run(ulid(), await sha256Hex(secret), djId, Date.now(), Date.now() + 60000);
+
+  assert.equal((await api(env, "/api/v1/install/code", { id: mac.id, secret: "wrong" })).status, 403);
+  const asked = await (await api(env, "/api/v1/install/code", mac)).json();
+  assert.equal(asked.linked, false);
+  assert.match(asked.code, /^[ACDEFGHJKLMNPQRTUVWXY3479]{6}$/);
+
+  const body = new FormData();
+  body.append("pair", asked.code.toLowerCase()); // typed in lowercase, still works
+  await get(env, "/@sundaze/manage", { method: "POST", body, headers: { cookie: `pp_s=${secret}` } });
+  assert.equal(one(env, `SELECT group_id FROM install_groups`).group_id, groupId);
+
+  // A code is single use, so a screenshot in a group chat is not a key.
+  const again = new FormData();
+  again.append("pair", asked.code);
+  const reused = await get(env, "/@sundaze/manage", {
+    method: "POST", body: again, headers: { cookie: `pp_s=${secret}` },
+  });
+  assert.match(await reused.text(), /expired/i);
+
+  const linked = await (await api(env, "/api/v1/install/code", mac)).json();
+  assert.equal(linked.linked, true, "a paired Mac is told so rather than handed another code");
+});
+
+test("a party finds tonight's night by itself, and never steals another one", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const mac = macEnv(env);
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)`)
+    .run(mac.id, groupId, Date.now());
+  const partyId = "2026-08-06-2200-ab12";
+
+  const nothing = await (await api(env, "/api/v1/party/bind", { ...mac, partyId })).json();
+  assert.equal(nothing.bound, false, "no night on means no binding, not a guess");
+
+  const tonight = seedEvent(env, groupId, { slug: "tonight", starts_ms: Date.now() + 3600000 });
+  const bound = await (await api(env, "/api/v1/party/bind", { ...mac, partyId })).json();
+  assert.equal(bound.bound, true);
+  assert.equal(bound.slug, "tonight");
+  assert.equal(one(env, `SELECT state FROM events WHERE id = ?`, tonight).state, "live");
+
+  // Another Mac, another party, same night: two rooms merging walls by
+  // accident is worse than one wall staying local.
+  const other = macEnv(env, "112233445566", "other");
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)`)
+    .run(other.id, groupId, Date.now());
+  const refused = await (await api(env, "/api/v1/party/bind", { ...other, partyId: "2026-08-06-2300-cd34" })).json();
+  assert.equal(refused.bound, false);
+});
+
+test("the wall on the venue Wi-Fi and the page three days later are one timeline", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const mac = macEnv(env);
+  const partyId = "2026-08-06-2200-ab12";
+  const eventId = seedEvent(env, groupId, { slug: "tonight", starts_ms: Date.now() + 3600000 });
+  env.raw.prepare(`UPDATE events SET party_id = ? WHERE id = ?`).run(partyId, eventId);
+
+  const lanPost = { id: "a".repeat(32), author: "Guest", body: "on the dancefloor", createdMs: Date.now() };
+  const first = await (await api(env, "/api/v1/party/posts", { ...mac, partyId, posts: [lanPost] })).json();
+  assert.equal(first.bound, true);
+  assert.equal(first.stored, 1);
+  assert.equal(one(env, `SELECT origin FROM posts`).origin, "lan");
+
+  // Pushing the same post again is a retry after a dropped connection, not a
+  // second photo.
+  const retry = await (await api(env, "/api/v1/party/posts", { ...mac, partyId, posts: [lanPost] })).json();
+  assert.equal(rows(env, `SELECT id FROM posts`).length, 1);
+  assert.equal(retry.posts.length, 0, "the Mac must not be handed back its own posts");
+
+  // Someone posts from the web three days later; the Mac picks it up.
+  env.raw.prepare(
+    `INSERT INTO posts (id, group_id, event_id, author, body, origin, created_ms) VALUES (?, ?, ?, ?, ?, 'web', ?)`
+  ).run(ulid(), groupId, eventId, "Later", "here are my photos", Date.now() + 1000);
+  const pulled = await (await api(env, "/api/v1/party/posts", { ...mac, partyId, since: 0 })).json();
+  assert.equal(pulled.posts.length, 1);
+  assert.equal(pulled.posts[0].body, "here are my photos");
+
+  // A party with no night attached is normal, not an error.
+  const loose = await (await api(env, "/api/v1/party/posts", { ...mac, partyId: "2026-08-06-2300-cd34" })).json();
+  assert.equal(loose.bound, false);
 });
 
 for (const [name, fn] of tests) {

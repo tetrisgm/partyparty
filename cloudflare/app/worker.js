@@ -16,6 +16,10 @@ import {
 const HANDLE_RE = /^[a-z0-9]{5,30}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,60}$/;
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Minted by the Mac, in the shape the broker validates.
+const PARTY_ID_RE = /^\d{4}-\d{2}-\d{2}-\d{4}-[a-f0-9]{4}$/;
+// Read off a screen, so no letters that argue with each other at a distance.
+const CODE_ALPHABET = "ACDEFGHJKLMNPQRTUVWXY3479";
 
 // Names that must never become a group, either because a path already means
 // something or because a machine name could collide with them.
@@ -135,6 +139,26 @@ async function readToken(env, secret, purposes, now) {
   if (row.expires_ms < now) return null;
   if (!purposes.includes(row.purpose)) return null;
   return row;
+}
+
+// A Mac proves itself with the credential the broker minted for it at
+// registration, read straight from the broker's own record. A second
+// credential would be a second thing to leak for no extra safety.
+async function installAuth(env, id, secret) {
+  if (!env.DL || !/^[a-f0-9]{12}$/.test(String(id || ""))) return null;
+  const raw = await env.DL.get(`broker/${id}.json`);
+  if (!raw) return null;
+  try {
+    const record = JSON.parse(await raw.text());
+    return record.secret && record.secret === String(secret || "") ? record : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function pairingCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
 
 // ----------------------------------------------------------------- sessions
@@ -597,6 +621,114 @@ export default {
 
     if (path === "/__pp/app-health") return json(200, { ok: true });
 
+    if (path === "/api/v1/install/code" && request.method === "POST") {
+      const body = await readJson(request, 4096);
+      if (!body) return json(400, { error: "bad json" });
+      if (!await installAuth(env, body.id, body.secret)) return json(403, { error: "bad install auth" });
+      const existing = await env.DB.prepare(
+        `SELECT group_id FROM install_groups WHERE install_id = ?`
+      ).bind(String(body.id)).first();
+      if (existing) {
+        const group = await env.DB.prepare(`SELECT handle, name FROM groups WHERE id = ?`)
+          .bind(existing.group_id).first();
+        return json(200, { linked: true, handle: group && group.handle, name: group && group.name });
+      }
+      const code = pairingCode();
+      await env.DB.prepare(
+        `INSERT INTO install_codes (code, install_id, created_ms, expires_ms) VALUES (?, ?, ?, ?)`
+      ).bind(code, String(body.id), now, now + 15 * 60 * 1000).run();
+      return json(200, { linked: false, code, expiresMs: now + 15 * 60 * 1000 });
+    }
+
+    // ---- the party's own timeline -----------------------------------------
+    // One link means the wall on the venue Wi-Fi and the page people open three
+    // days later are the same timeline. The Mac pushes what it collected and
+    // pulls what was written on the web; posts carry ULIDs minted by whoever
+    // wrote them, so a Mac with no internet still makes ids that never collide.
+    //
+    // The Mac proves itself with the credential the broker already gave it at
+    // registration. Inventing a second one would mean a second thing to leak.
+    if (path === "/api/v1/party/posts" && request.method === "POST") {
+      const body = await readJson(request, 262144);
+      if (!body) return json(400, { error: "bad json" });
+      const install = await installAuth(env, body.id, body.secret);
+      if (!install) return json(403, { error: "bad install auth" });
+      if (!PARTY_ID_RE.test(String(body.partyId || ""))) return json(400, { error: "bad party id" });
+
+      const event = await env.DB.prepare(
+        `SELECT e.*, g.handle FROM events e JOIN groups g ON g.id = e.group_id WHERE e.party_id = ?`
+      ).bind(String(body.partyId)).first();
+      // A party with no night attached is not an error: plenty of parties are
+      // just a Mac in a room. It keeps its wall locally and syncs nothing.
+      if (!event) return json(200, { bound: false, posts: [] });
+
+      let stored = 0;
+      for (const post of (Array.isArray(body.posts) ? body.posts : []).slice(0, 200)) {
+        const id = String(post.id || "");
+        if (!/^[a-f0-9]{32}$/.test(id)) continue;
+        const result = await env.DB.prepare(
+          `INSERT INTO posts (id, group_id, event_id, author, body, media_key, media_type, origin, created_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'lan', ?)
+           ON CONFLICT(id) DO NOTHING`
+        ).bind(id, event.group_id, event.id, String(post.author || "").slice(0, 60),
+          String(post.body || "").slice(0, 2000), post.mediaKey || null, post.mediaType || null,
+          Number(post.createdMs) || now).run();
+        if (result) stored++;
+      }
+
+      // Only what the web added. Sending the Mac its own posts back would have
+      // it merge duplicates of everything it just pushed.
+      const since = Number(body.since) || 0;
+      const { results } = await env.DB.prepare(
+        `SELECT id, author, body, media_key, media_type, created_ms FROM posts
+          WHERE event_id = ? AND origin = 'web' AND deleted_ms IS NULL AND created_ms > ?
+          ORDER BY created_ms LIMIT 200`
+      ).bind(event.id, since).all();
+      return json(200, {
+        bound: true,
+        event: { slug: event.slug, handle: event.handle, title: event.title },
+        stored,
+        posts: results || [],
+      });
+    }
+
+    // The Mac asks which night it is playing. Answered from the group the
+    // install belongs to and the clock, so a DJ never has to pair anything: if
+    // one of their nights is happening now, this is that night.
+    if (path === "/api/v1/party/bind" && request.method === "POST") {
+      const body = await readJson(request, 4096);
+      if (!body) return json(400, { error: "bad json" });
+      const install = await installAuth(env, body.id, body.secret);
+      if (!install) return json(403, { error: "bad install auth" });
+      if (!PARTY_ID_RE.test(String(body.partyId || ""))) return json(400, { error: "bad party id" });
+
+      const link = await env.DB.prepare(
+        `SELECT group_id FROM install_groups WHERE install_id = ?`
+      ).bind(String(body.id)).first();
+      if (!link) return json(200, { bound: false, reason: "this Mac is not linked to a group" });
+
+      const window = 12 * 60 * 60 * 1000;
+      const night = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND state = 'announced'
+           AND starts_ms IS NOT NULL AND starts_ms > ? AND starts_ms < ?
+         ORDER BY ABS(starts_ms - ?) LIMIT 1`
+      ).bind(link.group_id, now - window, now + window, now).first();
+      if (!night) return json(200, { bound: false, reason: "no night on now" });
+
+      // First Mac to claim it wins, and a night already tied to another party
+      // is left alone: two rooms merging their walls by accident is worse than
+      // one wall staying local.
+      if (night.party_id && night.party_id !== String(body.partyId)) {
+        return json(200, { bound: false, reason: "another party is already on this night" });
+      }
+      if (!night.party_id) {
+        await env.DB.prepare(`UPDATE events SET party_id = ?, state = 'live', updated_ms = ? WHERE id = ?`)
+          .bind(String(body.partyId), now, night.id).run();
+      }
+      const group = await env.DB.prepare(`SELECT handle FROM groups WHERE id = ?`).bind(link.group_id).first();
+      return json(200, { bound: true, slug: night.slug, handle: group && group.handle, title: night.title });
+    }
+
     // The mail sender on the origin box, which holds the MXroute credentials.
     // Workers are a poor place to speak SMTP and a worse place to keep the
     // password for a mailbox, so the Worker only ever writes rows and the box
@@ -770,6 +902,19 @@ export default {
             ? `${sent} ${sent === 1 ? "person" : "people"} will hear about it.`
             : "Everyone in the group has already had this one.");
         }
+        const pair = String((form && form.get("pair")) || "").trim().toUpperCase();
+        if (pair) {
+          const code = await env.DB.prepare(
+            `SELECT * FROM install_codes WHERE code = ? AND used_ms IS NULL AND expires_ms > ?`
+          ).bind(pair, now).first();
+          if (!code) return notice("That code has expired", "The Mac shows a fresh one every few minutes.");
+          await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`).bind(now, pair).run();
+          await env.DB.prepare(
+            `INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)
+             ON CONFLICT(install_id) DO UPDATE SET group_id = excluded.group_id, linked_ms = excluded.linked_ms`
+          ).bind(code.install_id, group.id, now).run();
+          return notice("That Mac is yours", `Its parties will find ${group.name || group.handle}'s nights.`);
+        }
         const say = String((form && form.get("say")) || "");
         if (say) {
           const mailed = await addPost(env, { group, dj, body: say, base, now });
@@ -803,6 +948,11 @@ export default {
             <button class="btn plain" type="submit">Tell the group</button>
           </form></div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
+        <h2>Pair a Mac</h2>
+        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+          <input type="text" name="pair" placeholder="Code from the Mac" required>
+          <button class="btn plain" type="submit">Pair</button>
+        </form>
         <h2>Say something</h2>
         <form class="join" method="post" action="/@${esc(group.handle)}/manage">
           <input type="text" name="say" placeholder="Tell the group" required>
