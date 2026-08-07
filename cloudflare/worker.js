@@ -918,6 +918,15 @@ var worker_default = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
+    // HTTPS only on the product domain. The r-<token> join hosts are handled
+    // below and are equally https; a plaintext request here is either a typo or
+    // somebody listening.
+    if (url.protocol !== "https:") {
+      const secure = new URL(url);
+      secure.protocol = "https:";
+      return new Response(null, { status: 301, headers: { location: secure.toString() } });
+    }
+
     const relayToken = relayTokenFromHost(url.hostname, env);
     if (relayToken) {
       return relayBootstrapRequest(request, env, relayToken);

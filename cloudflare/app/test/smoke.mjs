@@ -1036,6 +1036,22 @@ test("your settings are yours: name, and who you follow", async () => {
     "signed out, it is not your settings to see");
 });
 
+test("plaintext is redirected before a token in the path can leak", async () => {
+  const env = makeEnv();
+  // Every emailed link carries its credential in the URL. Answering one over
+  // http hands it to anything on the wire, and it is also why subscribing to a
+  // calendar warned: webcal:// resolves to http://.
+  for (const path of ["/signin", "/home", "/m/" + "a".repeat(48), "/@sundaze.ics"]) {
+    const response = await worker.fetch(new Request("http://partyparty.party" + path), env);
+    assert.equal(response.status, 301, path);
+    assert.equal(response.headers.get("location"), "https://partyparty.party" + path);
+  }
+  const secure = await get(env, "/signin");
+  assert.match(secure.headers.get("strict-transport-security") || "", /max-age=\d+/);
+  assert.ok(!/includeSubDomains/.test(secure.headers.get("strict-transport-security") || ""),
+    "the machine hostnames under this zone are the Mac's, and one is deliberately plain HTTP");
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();

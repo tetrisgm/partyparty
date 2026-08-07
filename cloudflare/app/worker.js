@@ -100,14 +100,22 @@ function esc(text) {
 function json(status, body, headers) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", "cache-control": "no-store", ...(headers || {}) },
+    headers: {
+      "content-type": "application/json", "cache-control": "no-store",
+      "strict-transport-security": HSTS, ...(headers || {}),
+    },
   });
 }
+
+const HSTS = "max-age=31536000";
 
 function html(status, body, headers) {
   return new Response(body, {
     status,
-    headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store", ...(headers || {}) },
+    headers: {
+      "content-type": "text/html;charset=utf-8", "cache-control": "no-store",
+      "strict-transport-security": HSTS, ...(headers || {}),
+    },
   });
 }
 
@@ -841,6 +849,18 @@ export default {
     const base = String(env.PUBLIC_BASE || "").replace(/\/$/, "") || `${url.protocol}//${url.host}`;
     const now = Date.now();
     const path = decodeURIComponent(url.pathname);
+
+    // HTTPS only. Every emailed link carries a single-use token IN THE PATH, so
+    // a plaintext request hands that token to anything on the wire - and the
+    // webcal:// scheme resolves to http://, which is why subscribing to a
+    // calendar warned about an insecure connection. Redirect first, then HSTS
+    // so a browser never tries plaintext here again. No includeSubDomains: the
+    // machine hostnames under this zone are the Mac's business, and one of them
+    // is deliberately plain HTTP when a venue has no way to validate a cert.
+    if (url.protocol !== "https:") {
+      url.protocol = "https:";
+      return new Response(null, { status: 301, headers: { location: url.toString() } });
+    }
 
     if (path === "/__pp/app-health") return json(200, { ok: true });
 
