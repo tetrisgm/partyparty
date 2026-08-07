@@ -14,15 +14,17 @@ bad()  { printf '  FAIL  %s\n' "$1"; fail=1; }
 
 echo "==> $BASE"
 
-# 1. The domain proof. Apple fetches this exact path before it will let the
-#    Services ID use this domain.
+# 1. The domain proof. NOT required for Sign in with Apple web auth - I assumed
+#    it was, and Apple never asked: the Services ID's domain list is registered
+#    directly, and the sender domain was verified by SPF when it was added as an
+#    email source. The route stays because Apple Pay and other flows do use it,
+#    so this reports rather than fails.
 proof="$BASE/.well-known/apple-developer-domain-association.txt"
 code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 "$proof" || echo 000)
 if [ "$code" = "200" ]; then
-  ok "domain association served"
+  ok "domain association served (not required for sign-in)"
 else
-  bad "domain association missing ($code) - upload it to R2 as apple/domain-association.txt:
-        wrangler r2 object put partyparty-dl/apple/domain-association.txt --file=<the file Apple gave you>"
+  printf '  note  no domain association file - not needed for Sign in with Apple\n'
 fi
 
 # 2. The route Apple will send the browser back to. It must exist and must not

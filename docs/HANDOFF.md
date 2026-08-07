@@ -33,6 +33,22 @@ WHAT IS NOT BUILT, and why:
   wall: the file lives in the cloud and this Mac cannot serve it to a guest on
   the venue network. It is on the event page.
 
+SIGN IN WITH APPLE IS CONFIGURED (2026-08-07). Services ID fm.partyparty.web
+against primary App ID fm.partyparty.app, domain partyparty.party, return URL
+/auth/apple/callback; key 9DLLL4UAR8, whose .p8 the owner holds and Apple will
+not reissue. Two things were missing that would each have failed silently: the
+App ID had no APPLE_ID_AUTH capability, so PartyParty was not even offered as a
+primary app; and no email source was registered, which means mail to a member
+who hides their address behind Apple's relay would have bounced with nothing to
+see. partyparty.party is now a registered source, verified by SPF. The key was
+proven by signing a real client secret through the Worker's own
+appleClientSecret path - ES256, correct kid, iss, sub and aud.
+
+A correction to an earlier assumption of mine: the
+.well-known/apple-developer-domain-association.txt file is NOT required for
+Sign in with Apple web auth. The route is harmless and stays for other Apple
+flows, and the check script now reports its absence rather than failing.
+
 NOTHING IS DEPLOYED. No D1 database exists, `database_id` is blank on purpose,
 no secrets are set, ppmail has no unit, and no Stripe account is connected.
 Bringing it up is the owner's call and needs, in order: `wrangler d1 create`,
