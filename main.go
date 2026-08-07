@@ -277,6 +277,12 @@ func main() {
 			BrokerURL: brokerURL,
 			Version:   appVersion,
 			Logf:      log.Printf,
+			PartyID: func() string {
+				if events == nil {
+					return ""
+				}
+				return events.Identity().ID
+			},
 			OnPush: func(enabled bool) {
 				// Relay mode always pushes. A Wi-Fi + cloud room ALSO pushes
 				// whenever the internet is up, so a phone on 5G or an isolated

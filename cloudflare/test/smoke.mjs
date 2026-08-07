@@ -280,4 +280,57 @@ test("a guest can report reachability exactly once per join", async () => {
   assert.equal(JSON.parse(await stored.text()).reachable, false);
 });
 
+test("a party link outlives the Mac that minted it", async () => {
+  const env = baseEnv();
+  const token = "c".repeat(32);
+  const party = "2026-08-06-2130-ab12";
+  const host = "https://host.party.partyparty.party:8443/";
+  const second = "https://second.party.partyparty.party:8443/";
+  await env.DL.put("broker/relay/" + token, "install-host");
+  await env.DL.put("broker/install-host.json", JSON.stringify({
+    secret: "s", hostLabel: "host", relayToken: token, directUrl: host, partyId: party,
+  }));
+
+  // Both Macs playing: the scanned Mac is tried first, the other is the backup.
+  await env.DL.put(`broker/party/${party}/install-host`, JSON.stringify({ directUrl: host, at: Date.now() }));
+  await env.DL.put(`broker/party/${party}/install-second`, JSON.stringify({ directUrl: second, at: Date.now() - 5000 }));
+  let html = await (await worker.fetch(new Request("https://r-" + token + ".partyparty.party/"), env)).text();
+  assert.match(html, /const candidates=\["https:\/\/host[^"]*","https:\/\/second[^"]*"\]/,
+    "both live Macs must be offered, the scanned one first");
+
+  // The host packs up and stops registering. The link must still land a guest
+  // on the Mac that is still playing rather than on nobody.
+  await env.DL.put(`broker/party/${party}/install-host`, JSON.stringify({ directUrl: host, at: Date.now() - 120000 }));
+  html = await (await worker.fetch(new Request("https://r-" + token + ".partyparty.party/"), env)).text();
+  assert.match(html, /const candidates=\["https:\/\/second[^"]*"\]/,
+    "a departed host must not be offered while another Mac is playing");
+
+  // Nobody left: fall back to the link's own Mac rather than an empty list, so
+  // the page still probes and can recover when that Mac comes back.
+  await env.DL.put(`broker/party/${party}/install-second`, JSON.stringify({ directUrl: second, at: Date.now() - 120000 }));
+  html = await (await worker.fetch(new Request("https://r-" + token + ".partyparty.party/"), env)).text();
+  assert.match(html, /const candidates=\["https:\/\/host[^"]*"\]/);
+});
+
+test("registering records party membership, and only a well-formed party id", async () => {
+  const env = baseEnv();
+  const register = (partyId) => worker.fetch(new Request("https://partyparty.party/api/broker/relay/register", {
+    method: "POST",
+    body: JSON.stringify({
+      id: "aaaaaaaaaaaa", secret: "sec", lanIp: "192.168.1.40",
+      directUrl: "https://host.party.partyparty.party:8443/", partyId,
+    }),
+  }), env);
+  await env.DL.put("broker/aaaaaaaaaaaa.json", JSON.stringify({ secret: "sec", hostLabel: "host" }));
+
+  assert.equal((await register("2026-08-06-2130-ab12")).status, 200);
+  const member = await env.DL.get("broker/party/2026-08-06-2130-ab12/aaaaaaaaaaaa");
+  assert.ok(member, "a live Mac must be findable by its party");
+  assert.equal(JSON.parse(await member.text()).directUrl, "https://host.party.partyparty.party:8443/");
+
+  assert.equal((await register("../../etc/passwd")).status, 200);
+  const junk = await env.DL.list({ prefix: "broker/party/" });
+  assert.equal(junk.objects.length, 1, "a malformed party id must never create a key");
+});
+
 console.log(`PASS ${tests.length} worker smoke tests`);

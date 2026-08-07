@@ -68,6 +68,14 @@ type Config struct {
 	// pushes; a Wi-Fi + cloud room also pushes whenever the internet is up,
 	// so remote guests and isolated-Wi-Fi guests always have a stream.
 	OnPush func(enabled bool)
+
+	// PartyID reports the party this Mac is currently playing, so the broker can
+	// tell which live Macs are the SAME party. It is read at each registration
+	// rather than pushed, because the party can change under us - a Mac that
+	// goes live where a DJ is already playing adopts that party's id - and a
+	// stale value here sends new guests to a room nobody is in. Nil is fine; the
+	// party then has one member as before.
+	PartyID func() string
 }
 
 type registration struct {
@@ -316,7 +324,7 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 		}
 
 		attemptCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
-		registered, err := activate.RegisterRelay(attemptCtx, m.brokerURL(), lanIP, m.currentDirectURL(), m.cfg.Logf)
+		registered, err := activate.RegisterRelay(attemptCtx, m.brokerURL(), lanIP, m.currentDirectURL(), m.currentPartyID(), m.cfg.Logf)
 		cancel()
 		if currentIP := netinfo.PrimaryLanIP(); currentIP != lanIP {
 			lanIP = currentIP
@@ -612,6 +620,15 @@ func (m *Manager) currentDirectURL() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.directURL
+}
+
+// currentPartyID asks for the party at the moment of registration. The callback
+// runs without the manager's lock so it may reach back into the app.
+func (m *Manager) currentPartyID() string {
+	if m.cfg.PartyID == nil {
+		return ""
+	}
+	return strings.TrimSpace(m.cfg.PartyID())
 }
 
 // Relay returns this install's own relay room and publish credential, minted by

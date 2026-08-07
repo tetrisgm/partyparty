@@ -566,6 +566,19 @@ async function broker(request, env, pathname) {
       await env.DL.put(`broker/join/${rec.relayJoinName}`, rec.relayToken);
     }
 
+    // Party membership, so a join link outlives the Mac that minted it. Every
+    // live member writes its own presence under the party, and the join page
+    // reads them all. Registration refreshes every 30s, so a member that stops
+    // writing has left; nothing is deleted here, because a Mac that is closing
+    // is exactly the Mac that will not get to tell us.
+    if (PARTY_ID_RE.test(String(body.partyId || ""))) {
+      rec.partyId = String(body.partyId);
+      await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+      await env.DL.put(partyMemberKey(rec.partyId, id), JSON.stringify({
+        directUrl: String(rec.directUrl || ""), at: Date.now(),
+      }));
+    }
+
     const publicIP = request.headers.get("cf-connecting-ip") || "";
     const networkKey = await sha256Hex(`network-v1:${publicIP}:${subnet}`);
     const host = rec.relayJoinName ? `${rec.relayJoinName}.${env.BROKER_BASE}` : relayHost(env, rec.relayToken);
@@ -627,6 +640,10 @@ async function relayTokenExists(env, token) {
 
 function relayBootstrap(state) {
   const directURL = JSON.stringify(String(state.directUrl || ""));
+  const known = Array.isArray(state.directUrls) && state.directUrls.length
+    ? state.directUrls
+    : [String(state.directUrl || "")];
+  const directURLs = JSON.stringify(known.filter(Boolean).map(String));
   const relayURL = JSON.stringify(String(state.relayUrl || ""));
   return `<!doctype html>
 <html lang="en">
@@ -647,31 +664,45 @@ button{margin-top:22px;border:0;border-radius:999px;padding:12px 20px;background
 <body><main><div class="spinner" aria-hidden="true"></div><h1>Checking this Wi-Fi</h1><p id="detail">Finding the fastest connection to the DJ.</p><button id="retry" hidden>Try Again</button></main>
 <script>
 const directURL=${directURL};
+// Every Mac currently playing this party, freshest first. The link's own Mac
+// leads while it is alive; the others are why the link still works after the
+// host packs up.
+const candidates=${directURLs};
 const relayURL=${relayURL};
 const detail=document.getElementById('detail');
 const retry=document.getElementById('retry');
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+async function reach(url,timeout){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeout);
+  try{
+    const target=new URL('/api/time?partyPartyProbe='+Date.now(),url);
+    const response=await fetch(target,{cache:'no-store',mode:'cors',signal:controller.signal});
+    if(response.ok){
+      const body=await response.json();
+      if(Number(body.t)>0)return true;
+    }
+  }catch(_){}
+  finally{clearTimeout(timer)}
+  return false;
+}
+// Returns the address that answered, or '' - the party may be several Macs and
+// the one that minted this link is not always the one still playing.
 async function probe(){
-  if(!directURL)return false;
+  if(!candidates.length)return '';
   // A success proves direct reachability. A timeout does not prove isolation:
   // the first scan can race DNS convergence, TLS startup, or a brief Wi-Fi
   // transition. Keep the total check bounded, but require several independent
-  // failures before paying the permanent latency cost of relay mode.
+  // failures before paying the permanent latency cost of relay mode. Each pass
+  // tries the whole party before the next, longer one, so a slow-but-present
+  // host still wins over a faster Mac that has already left.
   for(const timeout of [2500,4000,6000]){
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),timeout);
-    try{
-      const target=new URL('/api/time?partyPartyProbe='+Date.now(),directURL);
-      const response=await fetch(target,{cache:'no-store',mode:'cors',signal:controller.signal});
-      if(response.ok){
-        const body=await response.json();
-        if(Number(body.t)>0)return true;
-      }
-    }catch(_){}
-    finally{clearTimeout(timer)}
+    for(const url of candidates){
+      if(await reach(url,timeout))return url;
+    }
     await sleep(500);
   }
-  return false;
+  return '';
 }
 async function report(reachable){
   // keepalive, because this page navigates away immediately after calling this
@@ -723,9 +754,9 @@ async function run(){
   running=true;
   retry.hidden=true;
   detail.textContent='Finding the fastest connection to the DJ.';
-  const reachable=await probe();
-  report(reachable).catch(function(){});
-  if(reachable&&directURL){location.replace(directURL);return}
+  const answered=await probe();
+  report(!!answered).catch(function(){});
+  if(answered){location.replace(answered);return}
   if(await relayLive()){
     // Isolated Wi-Fi or a remote guest: the relay origin serves this room
     // directly. Guests fetch audio and the room API from there, never back
@@ -803,20 +834,77 @@ async function relayBootstrapRequest(request, env, token) {
 }
 
 // relayRoomRecord is what the bootstrap needs to decide where to send a guest:
-// the Mac's direct URL, written at registration, and this room's relay origin.
+// every live Mac in this party, freshest first, and this room's relay origin.
+//
+// More than one address, because a party can be several Macs and the one that
+// minted the link is not always the one still playing. When a host packs up,
+// their address keeps resolving to a Mac that has gone - guests already inside
+// re-home, but anyone arriving after that used to find nothing. The page now
+// tries the whole party.
 async function relayRoomRecord(env, token) {
   const relayUrl = relayOriginFor(env, token);
   const pointer = await env.DL.get(`broker/relay/${token}`);
-  if (!pointer) return { directUrl: "", relayUrl };
+  if (!pointer) return { directUrl: "", directUrls: [], relayUrl };
   try {
     const id = (await pointer.text()).trim();
     const raw = await env.DL.get(`broker/${id}.json`);
-    if (!raw) return { directUrl: "", relayUrl };
+    if (!raw) return { directUrl: "", directUrls: [], relayUrl };
     const rec = JSON.parse(await raw.text());
-    return { directUrl: String(rec.directUrl || ""), relayUrl };
+    const own = String(rec.directUrl || "");
+    const directUrls = await partyDirectUrls(env, rec.partyId, own);
+    return { directUrl: own, directUrls, relayUrl };
   } catch (e) {
-    return { directUrl: "", relayUrl };
+    return { directUrl: "", directUrls: [], relayUrl };
   }
+}
+
+// A party id is minted by the Mac as <date>-<time>-<4 hex>; anything else is
+// not written, so a bad value can never create a namespace of junk keys.
+const PARTY_ID_RE = /^\d{4}-\d{2}-\d{2}-\d{4}-[a-f0-9]{4}$/;
+// Two missed registrations of slack. The Mac re-registers every 30s, so a
+// member last seen within 90s is still playing.
+const PARTY_MEMBER_TTL_MS = 90 * 1000;
+function partyMemberKey(partyId, installId) {
+  return `broker/party/${partyId}/${installId}`;
+}
+
+// Every live member's direct URL, freshest first, with the link's own Mac kept
+// at the front while it is alive - a guest should reach the Mac they scanned
+// whenever it is there, and only then try the rest of the party.
+async function partyDirectUrls(env, partyId, ownUrl) {
+  const urls = [];
+  const push = (url) => {
+    const clean = String(url || "").trim();
+    if (clean && !urls.includes(clean)) urls.push(clean);
+  };
+  if (!PARTY_ID_RE.test(String(partyId || ""))) {
+    push(ownUrl);
+    return urls;
+  }
+  let members = [];
+  try {
+    const listed = await env.DL.list({ prefix: `broker/party/${partyId}/`, limit: 40 });
+    const now = Date.now();
+    for (const object of listed.objects || []) {
+      const raw = await env.DL.get(object.key);
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(await raw.text());
+        const at = Number(parsed.at || 0);
+        if (!at || now - at > PARTY_MEMBER_TTL_MS) continue;
+        members.push({ at, directUrl: String(parsed.directUrl || "") });
+      } catch (e) {}
+    }
+  } catch (e) {
+    push(ownUrl);
+    return urls;
+  }
+  members.sort((a, b) => b.at - a.at);
+  const ownIsLive = members.some((m) => m.directUrl === String(ownUrl || "").trim());
+  if (ownIsLive) push(ownUrl);
+  for (const member of members) push(member.directUrl);
+  if (!urls.length) push(ownUrl);
+  return urls;
 }
 
 function relayOriginFor(env, token) {

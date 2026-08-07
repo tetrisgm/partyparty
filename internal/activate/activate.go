@@ -108,7 +108,7 @@ type RelayRegistration struct {
 // address. The broker combines the venue's public address with the Mac's LAN
 // subnet into an opaque network key so the app can remember a proven direct or
 // isolated verdict without storing Wi-Fi names.
-func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL string, logf Logf) (RelayRegistration, error) {
+func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL, partyID string, logf Logf) (RelayRegistration, error) {
 	parsedLANIP := net.ParseIP(strings.TrimSpace(lanIP))
 	if parsedLANIP == nil || parsedLANIP.To4() == nil || parsedLANIP.IsLoopback() || parsedLANIP.IsLinkLocalUnicast() {
 		return RelayRegistration{}, errors.New("no LAN IP yet")
@@ -127,6 +127,9 @@ func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL string, logf
 	var out RelayRegistration
 	if err := b.post(ctx, "/api/broker/relay/register", map[string]any{
 		"id": b.id, "secret": b.secret, "lanIp": lanIP, "directUrl": directURL,
+		// Which party this Mac is playing, so the join page can fall back to
+		// another Mac in the SAME party when this one leaves.
+		"partyId": partyID,
 	}, &out); err != nil {
 		return RelayRegistration{}, err
 	}
