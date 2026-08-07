@@ -274,25 +274,34 @@ never comes back.
 Pro contains: no platform fee, and the custom party link name. More can earn
 its way in later; it does not need to launch full.
 
-**DECISION: the price.** Ko-fi Gold is $12/month. Proposed here: **$12/month or
-$99/year** — the annual keeps the number already anchored and gives the usual
-discount. A DJ who plays once a quarter will subscribe the month of the party
-and cancel, and that is fine; Ko-fi lives with the same pattern.
+**Price: $12/month or $99/year** (owner, 2026-08-06). Ko-fi Gold is $12/month;
+the annual keeps the number already anchored. A DJ who plays once a quarter
+will subscribe the month of the party and cancel — that is fine, and Ko-fi
+lives with the same pattern.
 
 ### The Apple boundary
 
 Guests pay in their browser and the app never touches it — real-world services,
 outside in-app purchase, and the guest is not using our app at all.
 
-Pro is a digital subscription sold to the DJ, and two things follow:
+Pro is a digital subscription sold to the DJ, **both in the app and on the
+web** (owner, 2026-08-06). Four things follow:
 
 - **The existing IAP is the wrong product type.**
   `fm.partyparty.app.pro.lifetime` is a $99 non-consumable. A subscription
-  needs an auto-renewable product. The lifetime product is now dead — leave it
-  unused or delete it, and never ship it.
-- Sold inside the app it must be IAP and Apple takes its share; sold on the web
-  it is ours. Whether the app may link out to the web purchase depends on rules
-  that have moved recently — check them at the time rather than assuming.
+  needs an auto-renewable product in a subscription group. The lifetime product
+  is dead — delete it when the real one is created, and never ship it.
+- **One entitlement, two sources.** A DJ who subscribes on the web must have
+  Pro in the app, and one who subscribes through the App Store must have it on
+  the web. That means binding the IAP transaction to the DJ's account at
+  purchase (`appAccountToken`) and verifying it against the App Store Server
+  API, plus revoking on both sides when either lapses. Without it, DJs pay
+  twice or lose what they bought.
+- **Price parity.** Same $12/$99 on both surfaces. Undercutting the App Store
+  price on the web is the kind of thing that draws attention we do not need for
+  a difference of a few dollars.
+- **Apple's share.** 30% by default, 15% under the App Store Small Business
+  Program. Check enrolment before the first sale, not after.
 
 The Mac app may show a total. It must never take a payment that isn't IAP.
 
@@ -341,13 +350,15 @@ through their own processor.
 
 **7. Merch.** A link out, on the group page and the party page.
 
-**8. Pro and the Store.** The subscription, web first. Then submission once
-macOS 27 is released and a Store package can be built on a released host.
+**8. Pro and the Store.** The subscription on the web, then the auto-renewable
+IAP and the entitlement bridge between them. Then submission, once macOS 27 is
+released and a Store package can be built on a released host.
 
 ---
 
 ## Open decisions
 
 1. Sign in with Apple only, or Apple plus Google for members?
-2. Pro's price — $12/month and $99/year proposed.
-3. Whether Pro is sold in the app (IAP, Apple's share) or on the web only.
+
+Everything else is decided. Part 1.1 (the party link surviving the host's
+departure) needs nothing from anyone and is the next thing to build.
