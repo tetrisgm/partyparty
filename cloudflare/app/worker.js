@@ -285,11 +285,13 @@ export function icsFor(group, events, base) {
     // to somebody - not on a feed people subscribe to, and Google rejects the
     // combination outright ("unable to add calendar").
     `X-WR-CALNAME:${icsEscape(group.name || group.handle)}`,
-    // How often a subscriber should come back. Without it clients pick their
-    // own interval, which for some of them is once a day - long enough for a
-    // night announced this afternoon to be missed entirely.
-    "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
-    "X-PUBLISHED-TTL:PT1H",
+    // How often a subscriber should come back. Daily (owner). It is only a
+    // hint: Google fetches on its own schedule and Apple lets the subscriber
+    // choose per calendar, so this reaches the minority of clients that honour
+    // it - which is reason enough to say something true rather than nothing.
+    // Nights announced today reach people by email, not by this.
+    "REFRESH-INTERVAL;VALUE=DURATION:P1D",
+    "X-PUBLISHED-TTL:P1D",
   ];
   for (const event of events) {
     if (!event.starts_ms) continue;
@@ -319,13 +321,18 @@ export function icsFor(group, events, base) {
   // disappears the moment there is a real night.
   if (!lines.some((line) => line === "BEGIN:VEVENT")) {
     lines.push("BEGIN:VEVENT");
-    lines.push(`UID:placeholder-${group.handle}@partyparty.party`);
+    lines.push(`UID:beta-launch-${group.handle}@partyparty.party`);
     lines.push("SEQUENCE:0");
-    lines.push(`DTSTAMP:${icsTime(Date.parse("2026-01-01T00:00:00Z"))}`);
-    lines.push("DTSTART;VALUE=DATE:20260101");
-    lines.push("DTEND;VALUE=DATE:20260102");
-    lines.push(icsFold(`SUMMARY:${icsEscape(group.name || group.handle)} - nothing announced yet`));
-    lines.push("STATUS:CANCELLED");
+    lines.push(`DTSTAMP:${icsTime(Date.parse("2026-08-01T00:00:00Z"))}`);
+    lines.push("DTSTART;VALUE=DATE:20260801");
+    lines.push("DTEND;VALUE=DATE:20260802");
+    lines.push("SUMMARY:PartyParty beta launch");
+    lines.push(icsFold(`DESCRIPTION:${icsEscape(group.name || group.handle)} has not announced a night yet. New ones appear here.`));
+    // CONFIRMED, not CANCELLED. A calendar whose only event is cancelled has
+    // zero usable events, which is the same thing an empty feed looks like to a
+    // client deciding whether this URL is a calendar at all - Apple accepted it,
+    // Google did not. TRANSPARENT so it still occupies nobody's day.
+    lines.push("STATUS:CONFIRMED");
     lines.push("TRANSP:TRANSPARENT");
     lines.push("END:VEVENT");
   }

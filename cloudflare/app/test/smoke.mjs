@@ -212,7 +212,7 @@ test("a draft night is not a public night, and its calendar is not published", a
   // empty, which it never is now: an empty calendar is one Google refuses.
   assert.ok(!/Sundaze at the Lido/.test(feed), "a draft must not appear in a subscribed calendar");
   assert.ok(!/secret/.test(feed));
-  assert.match(feed, /nothing announced yet/, "so the group reads as having nothing on");
+  assert.match(feed, /PartyParty beta launch/, "so the group reads as having nothing on");
 });
 
 test("the group page and its calendar are served", async () => {
@@ -1070,10 +1070,14 @@ test("a calendar feed is one clients will actually accept", async () => {
   // is what Google answers with "unable to add calendar. check the URL."
   const empty = await (await get(env, "/calendar/sundaze.ics")).text();
   assert.match(empty, /BEGIN:VEVENT/, "never a component-less calendar");
-  assert.match(empty, /STATUS:CANCELLED/, "the placeholder does not occupy anyone's day");
+  assert.match(empty, /SUMMARY:PartyParty beta launch/);
+  assert.match(empty, /DTSTART;VALUE=DATE:20260801/);
+  assert.match(empty, /TRANSP:TRANSPARENT/, "the placeholder does not occupy anyone's day");
+  assert.ok(!/STATUS:CANCELLED/.test(empty),
+    "a calendar whose only event is cancelled has zero usable events - Google refuses it");
   assert.ok(!/METHOD:/.test(empty),
     "METHOD belongs on an invitation, not a subscription feed - Google rejects it");
-  assert.match(empty, /REFRESH-INTERVAL;VALUE=DURATION:PT1H/);
+  assert.match(empty, /REFRESH-INTERVAL;VALUE=DURATION:P1D/);
 
   // Both paths serve it: the pretty one, and one with no @ to be mangled.
   assert.equal((await get(env, "/@sundaze.ics")).status, 200);
@@ -1082,7 +1086,7 @@ test("a calendar feed is one clients will actually accept", async () => {
   seedEvent(env, groupId);
   const real = await (await get(env, "/calendar/sundaze.ics")).text();
   assert.match(real, /SUMMARY:Sundaze at the Lido/);
-  assert.ok(!/nothing announced yet/.test(real));
+  assert.ok(!/beta launch/.test(real), "a real night replaces the placeholder");
 });
 
 for (const [name, fn] of tests) {
