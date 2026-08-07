@@ -1,41 +1,43 @@
 # PartyParty.party handoff
 
-## Current position (2026-08-06, later): the platform exists
+## Current position (2026-08-06, end): every step of the plan has code
 
-`docs/plan.md` is the single plan, rewritten from the person throwing the party
-rather than from the system. The short version: the durable object is the
-GROUP, a night is one event inside it, and the silent disco is optional.
+`docs/plan.md` is the single plan, written from the person throwing the party.
+Every numbered step in it now exists behind tests in the merge gate: 30 platform
+tests, 10 broker tests, the Go suites and the Playwright pages.
 
-BUILT AND LANDED TODAY, all of it behind tests in the merge gate:
+- **1. The join link follows the party** (574fca3). Presence per live member
+  under `broker/party/<id>/<install>`; the join page probes them all. No new
+  DNS - live Macs already publish their own machine records.
+- **3 and 3b. The platform** (a0306aa, 4556365, 8249c79, dcdd3c0): groups,
+  nights, two-level membership, Apple and Google sign-in, invitations, the
+  day-of reminder, the group thread with per-member volume, and calendars.
+- **4. One link** (c8344b3, 8cc4908, f41c1a3): a party binds itself to
+  tonight's night, and the wall and the event page are one timeline.
+- **5. Tips** (259ddb4, f3ac560): the DJ's own link, and Stripe behind it.
+- **6. The door** (7d917e3): capacity, entry codes, a list that needs no signal.
+- **7. Merch** (652aeff). **8. Pro** (fdc8bca).
+- **ppmail** (c7084b3) drains the outbox through MXroute from the origin box.
 
-- **The join link follows the party, not the Mac that minted it** (574fca3).
-  Every registration writes presence under `broker/party/<id>/<install>`; the
-  join page gets every member seen in 90s, freshest first, and probes them all
-  before relay. No new DNS - the recorded A-record-per-member design was not
-  needed, because live Macs already publish their own machine records.
-- **The platform Worker** under `cloudflare/app` (a0306aa, 4556365, 8249c79,
-  dcdd3c0, c8344b3): groups, nights, two-level membership, sign-in with Apple
-  and Google, invitations, the day-of reminder, the group thread, calendars,
-  and the party timeline API. 20 tests, real SQLite behind the D1 shape.
-- **ppmail** (c7084b3): drains the outbox through MXroute from the origin box.
-- **cloudsync** (8cc4908): the Mac's half of one link.
+WHAT IS NOT BUILT, and why:
 
-NOT DONE, in order:
+- **Step 2, the field tests.** A real iPhone on a wildcard cert, and a venue
+  whose Wi-Fi cannot carry the room. Needs a venue and real phones.
+- **The App Store half of Pro.** StoreKit in the Mac app and an auto-renewable
+  product in App Store Connect. The entitlement row it will write, and the union
+  that reads it, are done and tested. The existing
+  `fm.partyparty.app.pro.lifetime` is the WRONG product type and must never
+  ship.
+- **Media on merged posts.** A web post carrying a photo is not put on the LAN
+  wall: the file lives in the cloud and this Mac cannot serve it to a guest on
+  the venue network. It is on the event page.
 
-1. Wire `internal/cloudsync` into the event store's post flow - the loop that
-   binds a live party to tonight's night and merges web posts into the wall.
-   Needs a way to insert a post with a given id, which `AddPost` does not do.
-2. Tips: the DJ's own payment link first (no rails, no cut), Stripe Connect
-   Standard behind it.
-3. Tickets, then merch as a link out, then Pro as a subscription.
-4. Field tests that need a venue: a real iPhone on a wildcard cert, and a venue
-   whose Wi-Fi cannot carry the room falling back cleanly.
-
-NOTHING IS DEPLOYED. No D1 database exists yet, `wrangler.jsonc` has a blank
-database_id on purpose, no secrets are set, and ppmail has no systemd unit.
-Creating those is the owner's call. What the owner owes when they want it live:
-a Sign in with Apple Services ID and key, a Google OAuth web client, and
-`wrangler secret put` for both.
+NOTHING IS DEPLOYED. No D1 database exists, `database_id` is blank on purpose,
+no secrets are set, ppmail has no unit, and no Stripe account is connected.
+Bringing it up is the owner's call and needs, in order: `wrangler d1 create`,
+the five migrations, a Sign in with Apple Services ID and key, a Google OAuth
+web client, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, `OUTBOX_KEY`, and
+a systemd unit for ppmail.
 
 A LIVE BUG WAS FIXED ON THE WAY (8d4564d): every profile save in the DJ console
 went through `button.click()`, and the click handler disabled the button for the
