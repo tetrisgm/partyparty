@@ -343,188 +343,165 @@ export function icsFor(group, events, base) {
 // ------------------------------------------------------------------- pages
 
 const STYLE = `
-/* The values and the SHAPES that web/listener.html ships: Geist, #ff2d55, the
-   warm party gradient behind a hero, floating round chrome over it, heavy
-   weights, and one big action bar. Copied from the page, not from a document. */
+/* The console's palette and shapes, copied from web/dj.html: dark #0e0e10,
+   elevated panels, accent #ff2d6f, uppercase rail labels, and a rounded
+   image card for the header. The product is dark; these pages were not. */
 @font-face{font-family:Geist;src:url(/fonts/Geist-Variable.woff2) format('woff2-variations');
 font-weight:100 900;font-display:swap}
 :root{
-  color-scheme:light;
-  --sans:Geist,-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
-  --bg:#f5f5f7; --card:#ffffff;
-  --label:#1d1d1f; --label-secondary:#6e6e73; --label-tertiary:#86868b;
-  --separator:rgba(0,0,0,.08); --fill:rgba(120,120,128,.10);
-  --accent:#ff2d55; --success:#34c759;
-  --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
-  --party-bg:#f9c3aa; --party-bg-2:#ffd1c0; --party-ink:#161315;
-  --party-muted:rgba(22,19,21,.64); --party-line:rgba(70,34,32,.13);
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    color-scheme:dark;
-    --bg:#141719; --card:#1b1f21;
-    --label:#f5f5f7; --label-secondary:#b6b6ba; --label-tertiary:#85858b;
-    --separator:rgba(255,255,255,.10); --fill:rgba(255,255,255,.08);
-    --shadow:none;
-    --party-bg:#141719; --party-bg-2:#141719; --party-ink:#f5f5f7;
-    --party-muted:#a9a9ae; --party-line:rgba(255,255,255,.10);
-  }
+  color-scheme:dark;
+  --sans:Geist,-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --bg:#0e0e10; --bg-elevated:#1a1a1d; --bg-elevated-2:#202024;
+  --label:#f2f2f4; --label-secondary:#a3a3ac; --label-tertiary:#77777f;
+  --separator:rgba(255,255,255,.09); --fill:rgba(255,255,255,.07);
+  --fill-hover:rgba(255,255,255,.12);
+  --accent:#ff2d6f; --success:#34c759; --danger:#ff3b30;
+  --shadow:0 18px 50px rgba(0,0,0,.24), 0 1px 0 rgba(255,255,255,.04) inset;
+  --r-sm:10px; --r-md:14px; --r-lg:20px; --r-pill:980px;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--label);
-font-family:var(--sans);font-size:16px;line-height:1.45;font-synthesis:none}
+body{margin:0;background:var(--bg);color:var(--label);font-family:var(--sans);
+font-size:15px;line-height:1.45;font-synthesis:none}
 
-/* The hero: full-bleed, the party gradient or the group's own picture, with the
-   name sitting on it. This is the shape the guest page opens with. */
-.hero{position:relative;padding:64px 20px 22px;
-background:linear-gradient(180deg,var(--party-bg),var(--party-bg-2));
-background-size:cover;background-position:center}
-.hero.photo::after{content:'';position:absolute;inset:0;
-background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.62) 100%)}
-.hero>*{position:relative;z-index:1;max-width:640px;margin-left:auto;margin-right:auto}
-.hero h1{font-size:40px;font-weight:800;line-height:1.02;letter-spacing:0;
-color:var(--party-ink);margin:0 0 6px;overflow-wrap:anywhere}
-.hero .sub{color:var(--party-muted);font-weight:800;font-size:16px;margin:0}
-.hero.photo h1{color:#fff}
-.hero.photo .sub{color:rgba(255,255,255,.82)}
+/* The header is a card, not a band: an image with the name on it, inset from
+   the edges and rounded, the way the console's cover sits. */
+.hero{position:relative;max-width:1180px;margin:20px auto 0;padding:0 20px}
+.hero .cover{position:relative;min-height:230px;display:flex;align-items:flex-end;
+padding:26px;border-radius:var(--r-lg);overflow:hidden;
+background:linear-gradient(135deg,#3a1f2a,#1d1a22);background-size:cover;
+background-position:center;box-shadow:var(--shadow)}
+.hero .cover::after{content:'';position:absolute;inset:0;
+background:linear-gradient(180deg,rgba(0,0,0,.05) 30%,rgba(0,0,0,.72) 100%)}
+.hero .titles{position:relative;z-index:1}
+.hero h1{font-size:42px;font-weight:800;line-height:1.02;letter-spacing:-.02em;
+color:#fff;margin:0 0 4px;overflow-wrap:anywhere}
+.hero .sub{margin:0;color:rgba(255,255,255,.72);font-weight:700;font-size:15px}
+.toptools{position:absolute;top:26px;right:46px;display:flex;gap:8px;z-index:2}
+.toptools a{display:grid;place-items:center;min-width:38px;height:38px;padding:0 14px;
+border-radius:var(--r-pill);background:rgba(0,0,0,.45);color:#fff;font-size:13px;
+font-weight:650;text-decoration:none;-webkit-backdrop-filter:blur(18px);
+backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.14)}
+.toptools a:hover{text-decoration:none;background:rgba(0,0,0,.62)}
 
-/* Floating round chrome over the hero, the way the guest page's tools sit. */
-.toptools{position:absolute;top:12px;right:12px;display:flex;gap:8px;z-index:2}
-.toptools a{display:grid;place-items:center;min-width:38px;height:38px;padding:0 12px;
-border-radius:999px;background:rgba(20,20,22,.72);color:#fff;font-size:13px;
-font-weight:700;text-decoration:none;-webkit-backdrop-filter:blur(18px);
-backdrop-filter:blur(18px)}
-.toptools a:hover{text-decoration:none;background:rgba(20,20,22,.85)}
+main{max-width:680px;margin:0 auto;padding:28px 20px 96px}
+.withrail{max-width:1180px;margin:0 auto;padding:28px 20px 96px;
+display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:40px;align-items:start}
+.rail{position:sticky;top:24px;display:grid;gap:26px}
 
-main{max-width:640px;margin:0 auto;padding:24px 20px 96px}
-h1{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin:0 0 4px}
-h2{font-size:19px;font-weight:800;letter-spacing:-.01em;margin:32px 0 12px}
+h1{font-size:26px;font-weight:800;letter-spacing:-.015em;margin:0 0 4px}
+h2{font-size:17px;font-weight:700;letter-spacing:-.01em;margin:32px 0 12px}
+/* Rail headings are the console's eyebrows, not headlines. */
+.rail h2{margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:.05em;
+text-transform:uppercase;color:var(--label-tertiary)}
 p{margin:0 0 12px}
 a{color:var(--accent);text-decoration:none;font-weight:600}
 a:hover{text-decoration:underline}
-.muted{color:var(--label-secondary);font-size:14px;font-weight:400}
+.muted{color:var(--label-secondary);font-size:13px;font-weight:400}
 a.muted{color:var(--label-secondary)}
 
-.card{display:block;background:var(--card);border:1px solid var(--separator);
-border-radius:16px;padding:16px;margin:0 0 12px;color:inherit;text-decoration:none;
-box-shadow:var(--shadow)}
-a.card{transition:transform .15s cubic-bezier(.25,.1,.25,1)}
-a.card:hover{text-decoration:none;transform:translateY(-1px)}
-.when{font-size:13px;color:var(--label-secondary);font-variant-numeric:tabular-nums;
-font-weight:600}
-.card strong{display:block;font-size:17px;font-weight:800;letter-spacing:-.01em;margin:2px 0}
+.card{display:block;background:var(--bg-elevated);border:1px solid var(--separator);
+border-radius:var(--r-md);padding:16px;margin:0 0 12px;color:inherit;text-decoration:none}
+a.card:hover{text-decoration:none;background:var(--bg-elevated-2)}
+.when{font-size:12px;color:var(--label-tertiary);font-variant-numeric:tabular-nums;
+font-weight:650;letter-spacing:.02em}
+.card strong{display:block;font-size:16px;font-weight:700;margin:2px 0}
 
-/* The one big action, shaped like the listen bar: a coloured slab with a tile
-   in it, not a small button hiding in a paragraph. */
 .actionbar{display:flex;align-items:center;gap:14px;width:100%;
-background:var(--accent);color:#fff;border:none;border-radius:18px;
-padding:16px 18px;margin:20px 0 10px;font:inherit;font-size:17px;font-weight:800;
-cursor:pointer;text-decoration:none;box-shadow:0 8px 24px rgba(255,45,85,.28);
-transition:transform .15s cubic-bezier(.25,.1,.25,1),filter .15s}
-.actionbar:hover{text-decoration:none;transform:translateY(-1px);filter:brightness(1.03)}
-.actionbar .tile{display:grid;place-items:center;width:46px;height:46px;flex:0 0 46px;
-border-radius:14px;background:rgba(255,255,255,.22);font-size:22px}
-.actionbar .lines{display:grid;gap:2px;text-align:left;min-width:0}
-.actionbar .lines small{font-weight:600;font-size:13px;opacity:.9}
-.actionbar.quiet{background:var(--card);color:var(--label);
-border:1px solid var(--separator);box-shadow:var(--shadow)}
+background:var(--accent);color:#fff;border:none;border-radius:var(--r-md);
+padding:15px 18px;margin:18px 0 10px;font:inherit;font-size:16px;font-weight:750;
+cursor:pointer;text-decoration:none;transition:filter .15s}
+.actionbar:hover{text-decoration:none;filter:brightness(1.06)}
+.actionbar .tile{display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;
+border-radius:12px;background:rgba(255,255,255,.2);font-size:20px}
+.actionbar .lines{display:grid;gap:1px;text-align:left;min-width:0}
+.actionbar .lines small{font-weight:550;font-size:12px;opacity:.88}
+.actionbar.quiet{background:var(--bg-elevated);color:var(--label);
+border:1px solid var(--separator)}
 .actionbar.quiet .tile{background:var(--fill)}
 
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;
-padding:14px 24px;border:none;border-radius:999px;background:var(--accent);color:#fff;
-font:inherit;font-size:17px;font-weight:800;cursor:pointer;
-box-shadow:0 8px 24px rgba(255,45,85,.28);
-transition:transform .15s cubic-bezier(.25,.1,.25,1),filter .15s}
-.btn:hover{text-decoration:none;transform:translateY(-1px);filter:brightness(1.03)}
-.btn.plain{background:var(--card);color:var(--label);border:1px solid var(--separator);
-box-shadow:0 1px 3px rgba(0,0,0,.05);font-weight:700}
-.btn.small{min-height:40px;padding:10px 18px;font-size:15px;box-shadow:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;
+padding:11px 20px;border:none;border-radius:var(--r-pill);background:var(--accent);
+color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;
+transition:filter .15s}
+.btn:hover{text-decoration:none;filter:brightness(1.06)}
+.btn.plain{background:var(--fill);color:var(--label);border:1px solid var(--separator)}
+.btn.plain:hover{background:var(--fill-hover)}
+.btn.small{min-height:34px;padding:8px 14px;font-size:13px}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-input[type=email],input[type=text]{width:100%;min-height:48px;padding:12px 14px;
-border-radius:14px;border:1px solid var(--separator);background:var(--card);
-color:var(--label);font:inherit;font-size:16px;outline:none;
-box-shadow:0 1px 3px rgba(0,0,0,.05)}
+input[type=email],input[type=text]{width:100%;min-height:44px;padding:11px 14px;
+border-radius:var(--r-sm);border:1px solid var(--separator);background:var(--bg-elevated);
+color:var(--label);font:inherit;font-size:15px;outline:none}
 input::placeholder{color:var(--label-tertiary)}
 input:focus{border-color:var(--accent)}
 form.join{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 8px}
 form.join input{flex:1 1 200px;min-width:0;width:auto}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
-.post{background:var(--card);border:1px solid var(--separator);border-radius:16px;
-padding:14px;margin:0 0 10px;box-shadow:var(--shadow)}
-.post .who{font-weight:800;font-size:15px}
-footer{max-width:640px;margin:56px auto 0;padding:20px;
-border-top:1px solid var(--separator);font-size:14px}
+.post{background:var(--bg-elevated);border:1px solid var(--separator);
+border-radius:var(--r-md);padding:14px;margin:0 0 10px}
+.post .who{font-weight:700;font-size:14px}
+footer{max-width:1180px;margin:48px auto 0;padding:20px;
+border-top:1px solid var(--separator);font-size:13px}
 
 form.newnight{display:grid;gap:10px;margin:16px 0 28px;padding:16px;
-background:var(--card);border:1px solid var(--separator);border-radius:16px;
-box-shadow:var(--shadow)}
+background:var(--bg-elevated);border:1px solid var(--separator);border-radius:var(--r-md)}
 form.newnight .row input{flex:1 1 140px;width:auto}
 form.newnight .btn{justify-self:start}
 
-.linkrow{display:flex;gap:8px;align-items:center;margin:12px 0 10px}
-.linkbox{flex:1 1 auto;min-width:0;font-size:13px;padding:10px 12px;min-height:0;
-color:var(--label-secondary);border-radius:12px;
-font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+.linkrow{display:flex;gap:8px;align-items:center;margin:10px 0}
+.linkbox{flex:1 1 auto;min-width:0;font-size:12px;padding:9px 12px;min-height:0;
+color:var(--label-secondary);border-radius:var(--r-sm);font-family:var(--mono)}
 
-details.settings{margin-top:48px;border-top:1px solid var(--separator)}
-details.settings summary{cursor:pointer;padding:16px 0;color:var(--label-secondary);
-font-weight:700;list-style:none}
-details.settings summary::-webkit-details-marker{display:none}
-details.settings summary::before{content:"› ";display:inline-block;transition:transform .15s}
-details.settings[open] summary::before{transform:rotate(90deg)}
-details.settings h2{font-size:17px;margin:24px 0 6px}
-
-/* Main column plus a rail, the way the party page keeps its people beside the
-   room rather than buried under it. Stacks on a phone. */
-.withrail{max-width:960px;margin:0 auto;padding:24px 20px 96px;
-display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:36px;align-items:start}
-.rail{position:sticky;top:24px;display:grid;gap:10px}
-.rail h2{margin:0 0 4px;font-size:15px;letter-spacing:.02em;text-transform:uppercase;
-color:var(--label-tertiary)}
-.rail .linkrow{flex-wrap:wrap;margin:8px 0}
-.rail .linkbox{flex:1 1 100%;font-size:12px}
-.rail .row{gap:6px}
-.rail .btn.small{padding:8px 12px;font-size:14px}
-.rail .muted{font-size:13px}
-details.tinyhelp summary{cursor:pointer;font-size:13px;font-weight:600;
-color:var(--label-secondary);margin-top:8px}
-details.tinyhelp p{margin:8px 0 0}
-
-/* The group's people, as the app draws them: overlapping gradient discs. */
-.avatars{display:flex;align-items:center;flex-wrap:wrap;min-width:0;margin:2px 0 10px}
-.avatar{width:35px;height:35px;border-radius:50%;display:grid;place-items:center;
-margin-left:-7px;border:2px solid var(--card);
-background:linear-gradient(135deg,#ff3b72,#ffb057);color:#fff;font-size:12px;
-font-weight:900;box-shadow:0 2px 8px rgba(77,34,31,.12)}
+/* Participants, as the console lists them: a disc, a name, what they are. */
+.avatars{display:flex;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+margin-left:-7px;border:2px solid var(--bg-elevated);
+background:linear-gradient(135deg,#ff2d6f,#ff8a4c);color:#fff;font-size:12px;
+font-weight:800}
 .avatar:first-child{margin-left:0}
 .avatar.more{background:var(--fill);color:var(--label-secondary)}
-.who-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
-.who-list li{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600}
-.who-list .avatar{width:28px;height:28px;font-size:11px;margin:0}
+.who-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.who-list li{display:flex;align-items:center;gap:10px}
+.who-list .avatar{width:32px;height:32px;font-size:12px;margin:0;flex:0 0 32px}
+.who-list b{display:block;font-size:14px;font-weight:650}
+.who-list small{display:block;font-size:11px;color:var(--label-tertiary);
+letter-spacing:.04em;text-transform:uppercase}
 
-/* Nights as a timeline: one rule, a marker per night, dates in tabular figures
-   so they line up the way a schedule should. */
+/* Nights as a schedule. */
 .timeline{position:relative;margin:8px 0 4px;padding-left:22px}
-.timeline::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;
-width:2px;background:var(--separator);border-radius:2px}
+.timeline::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;width:2px;
+background:var(--separator);border-radius:2px}
 .tl{position:relative;display:block;padding:0 0 18px;color:inherit;text-decoration:none}
 .tl::before{content:'';position:absolute;left:-21px;top:6px;width:12px;height:12px;
 border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
 .tl.past::before{background:var(--label-tertiary)}
 .tl:hover{text-decoration:none}
 .tl:hover .tlname{text-decoration:underline}
-.tlname{display:block;font-size:17px;font-weight:800;letter-spacing:-.01em}
+.tlname{display:block;font-size:16px;font-weight:700}
 
-@media (max-width:860px){
+details.settings{margin-top:44px;border-top:1px solid var(--separator)}
+details.settings summary{cursor:pointer;padding:16px 0;color:var(--label-secondary);
+font-weight:650;list-style:none}
+details.settings summary::-webkit-details-marker{display:none}
+details.settings summary::before{content:"› ";display:inline-block;transition:transform .15s}
+details.settings[open] summary::before{transform:rotate(90deg)}
+details.settings h2{font-size:15px;margin:24px 0 6px}
+details.tinyhelp summary{cursor:pointer;font-size:12px;font-weight:600;
+color:var(--label-tertiary);margin-top:6px}
+details.tinyhelp p{margin:8px 0 0}
+
+@media (max-width:900px){
   .withrail{grid-template-columns:minmax(0,1fr);gap:8px}
   .rail{position:static}
 }
 @media (max-width:520px){
-  .hero{padding:56px 18px 20px}
-  .hero h1{font-size:34px}
+  .hero{padding:0 12px}
+  .hero .cover{min-height:180px;padding:18px}
+  .hero h1{font-size:32px}
+  .toptools{top:18px;right:26px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 `;
@@ -544,11 +521,15 @@ function page(title, body, heroHtml, rail) {
 // the warm party gradient if it does not, with the name sitting on it and the
 // round floating chrome the app uses for secondary actions.
 function hero(title, sub, cover, tools) {
-  const photo = cover ? ` photo" style="background-image:url('${esc(cover)}')` : "";
-  return `<header class="hero${photo}">
+  const image = cover ? ` style="background-image:url('${esc(cover)}')"` : "";
+  return `<header class="hero">
     ${tools ? `<div class="toptools">${tools}</div>` : ""}
-    <h1>${esc(title)}</h1>
-    ${sub ? `<p class="sub">${esc(sub)}</p>` : ""}
+    <div class="cover"${image}>
+      <div class="titles">
+        <h1>${esc(title)}</h1>
+        ${sub ? `<p class="sub">${esc(sub)}</p>` : ""}
+      </div>
+    </div>
   </header>`;
 }
 
@@ -609,13 +590,14 @@ function groupPage(group, events, base, posts, viewer, people, past) {
   // the page rather than wedged between the schedule and the conversation.
   const rail = `<aside class="rail">
       <div class="card">
-        <h2>${people.length} ${people.length === 1 ? "person" : "people"}</h2>
+        <h2>Participants${people.length ? ` \u2014 ${people.length}` : ""}</h2>
         ${people.length ? `<div class="avatars">
             ${shown.map((m) => `<span class="avatar" title="${esc(m.name || "Someone")}">${esc(initials(m.name))}</span>`).join("")}
             ${people.length > shown.length ? `<span class="avatar more">+${people.length - shown.length}</span>` : ""}
           </div>
           <ul class="who-list">${shown.map((m) => `<li>
-            <span class="avatar">${esc(initials(m.name))}</span>${esc(m.name || "Someone")}</li>`).join("")}</ul>`
+            <span class="avatar">${esc(initials(m.name))}</span>
+            <span><b>${esc(m.name || "Someone")}</b><small>Following</small></span></li>`).join("")}</ul>`
           : `<p class="muted">Nobody yet. The first person to follow shows up here.</p>`}
       </div>
       <div class="card">

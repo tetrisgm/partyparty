@@ -1108,7 +1108,7 @@ test("the group page is a party page: timeline, posts, and who is in it", async 
 
   // The people, in the rail, as initials on the app's gradient discs.
   assert.match(body, /class="rail"/);
-  assert.match(body, /2 people/);
+  assert.match(body, /Participants \u2014 2/, "the console labels the rail this way");
   assert.match(body, /class="avatar"[^>]*>AL</, "initials from the name they gave");
   assert.match(body, /Ada Lovelace/);
   // Their addresses are the group's, not the public page's.
