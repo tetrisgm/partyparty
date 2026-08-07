@@ -12,6 +12,11 @@
 import {
   appleNameFrom, authorizeURL, configured, exchangeCode, PROVIDERS, readState, signState,
 } from "./auth.js";
+import { accountLink, checkout, stripeConfigured, totalForBuyer, verifyWebhook } from "./stripe.js";
+
+// Our cut of a ticket. Nothing on tips: a fixed 30c on a five dollar tip is
+// already 6% before anybody else takes a share.
+const TICKET_TAKE = 0.05;
 
 const HANDLE_RE = /^[a-z0-9]{5,30}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,60}$/;
@@ -380,11 +385,15 @@ function eventPage(group, event, going, base) {
     ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
     ${event.description ? `<p>${esc(event.description)}</p>` : ""}
     <p class="muted">${going} going</p>
-    <form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/going">
+    ${event.ticket_cents ? `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/buy">
+      <input type="email" name="email" placeholder="your email" required>
+      <button class="btn" type="submit">Buy a ticket -
+        ${esc((totalForBuyer(event.ticket_cents, 0.05).total / 100).toFixed(2))}</button>
+    </form>` : `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/going">
       <input type="email" name="email" placeholder="your email" required>
       <input type="text" name="name" placeholder="your name">
       <button class="btn" type="submit">I'm coming</button>
-    </form>
+    </form>`}
     <p><a class="btn plain" href="/@${esc(group.handle)}/${esc(event.slug)}.ics">Add to calendar</a></p>
     ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
@@ -990,6 +999,24 @@ export default {
             ? `${sent} ${sent === 1 ? "person" : "people"} will hear about it.`
             : "Everyone in the group has already had this one.");
         }
+        if (form && form.get("connectStripe")) {
+          if (!stripeConfigured(env)) return notice("Not available yet", "Card payments are not configured.");
+          try {
+            const link = await accountLink(env, {
+              account: group.stripe_acct || "",
+              refreshUrl: `${base}/@${group.handle}/manage`,
+              returnUrl: `${base}/@${group.handle}/manage`,
+              fetchImpl: env.FETCH || undefined,
+            });
+            if (link.account !== group.stripe_acct) {
+              await env.DB.prepare(`UPDATE groups SET stripe_acct = ?, updated_ms = ? WHERE id = ?`)
+                .bind(link.account, now, group.id).run();
+            }
+            return new Response(null, { status: 302, headers: { location: link.url } });
+          } catch (e) {
+            return notice("Stripe said no", String(e.message || e));
+          }
+        }
         if (form && form.has("merchLink")) {
           const link = String(form.get("merchLink") || "").trim();
           const problem = payLinkProblem(link);
@@ -1055,6 +1082,14 @@ export default {
           <p><a class="muted" href="/@${esc(group.handle)}/${esc(e.slug)}/door">At the door</a></p>
           </div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
+        <h2>Card payments</h2>
+        <p class="muted">${group.stripe_acct
+          ? "Connected. Money goes to your own Stripe account; we never hold it."
+          : "Optional. Your own Stripe account - we take 5% of a ticket and nothing of a tip."}</p>
+        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+          <input type="hidden" name="connectStripe" value="1">
+          <button class="btn plain" type="submit">${group.stripe_acct ? "Manage" : "Connect Stripe"}</button>
+        </form>
         <h2>Merch</h2>
         <form class="join" method="post" action="/@${esc(group.handle)}/manage">
           <input type="text" name="merchLink" placeholder="Link to your store"
@@ -1278,6 +1313,66 @@ export default {
         now,
       });
       return notice("See you there", "We emailed you the details and a calendar link.");
+    }
+
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/buy$/);
+    if (match && request.method === "POST") {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ? AND state != 'draft'`
+      ).bind(group.id, match[2]).first();
+      if (!event || !event.ticket_cents) return new Response("Not Found", { status: 404 });
+      if (!group.stripe_acct || !stripeConfigured(env)) {
+        return notice("Tickets are not on sale", "The DJ has not connected a payment account.");
+      }
+      if (await spaceLeft(env, event) <= 0) return notice("This one is full", "Ask the DJ.");
+      const formData = await request.formData().catch(() => null);
+      const emailNorm = normalizeEmail(formData && formData.get("email"));
+      if (!emailNorm) return notice("That address did not look right", "Go back and try again.");
+      const member = await upsertMember(env, emailNorm, "", now);
+      const price = totalForBuyer(event.ticket_cents, TICKET_TAKE);
+      try {
+        const session = await checkout(env, {
+          account: group.stripe_acct,
+          amountCents: price.total,
+          feeCents: price.ours,
+          name: `${event.title || group.name || group.handle}`,
+          successUrl: `${base}/@${group.handle}/${event.slug}`,
+          cancelUrl: `${base}/@${group.handle}/${event.slug}`,
+          metadata: { eventId: event.id, memberId: member.id },
+          fetchImpl: env.FETCH || undefined,
+        });
+        return new Response(null, { status: 302, headers: { location: session.url } });
+      } catch (e) {
+        return notice("That did not go through", String(e.message || e));
+      }
+    }
+
+    // Stripe telling us a ticket was paid for. Unverified, this route is a POST
+    // from anybody claiming exactly that.
+    if (path === "/api/v1/stripe/webhook" && request.method === "POST") {
+      const payload = await request.text();
+      const ok = await verifyWebhook(env.STRIPE_WEBHOOK_SECRET, request.headers.get("stripe-signature"), payload, now);
+      if (!ok) return json(403, { error: "signature" });
+      let body = {};
+      try { body = JSON.parse(payload); } catch (e) { return json(400, { error: "bad json" }); }
+      if (body.type !== "checkout.session.completed") return json(200, { ignored: true });
+      const session = (body.data && body.data.object) || {};
+      const meta = session.metadata || {};
+      if (!meta.eventId || !meta.memberId) return json(200, { ignored: true });
+      await env.DB.prepare(
+        `INSERT INTO signups (event_id, member_id, state, created_ms, updated_ms)
+         VALUES (?, ?, 'going', ?, ?)
+         ON CONFLICT(event_id, member_id) DO UPDATE SET state = 'going', updated_ms = ?`
+      ).bind(meta.eventId, meta.memberId, now, now, now).run();
+      await env.DB.prepare(
+        `INSERT INTO tickets (id, event_id, member_id, code, amount, stripe_payment, state)
+         VALUES (?, ?, ?, ?, ?, ?, 'paid') ON CONFLICT(id) DO NOTHING`
+      ).bind(String(session.id || ulid(now)).slice(0, 80), meta.eventId, meta.memberId,
+        await entryCode(meta.eventId, meta.memberId), Number(session.amount_total || 0),
+        String(session.payment_intent || "")).run();
+      return json(200, { ok: true });
     }
 
     // A night.

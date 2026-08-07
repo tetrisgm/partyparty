@@ -4,11 +4,12 @@ import { DatabaseSync } from "node:sqlite";
 import worker, {
   entryCode, handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
 } from "../worker.js";
+import { totalForBuyer, verifyWebhook } from "../stripe.js";
 
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
 // either work twice or corrupt a row.
-const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql"]
+const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql"]
   .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8")).join("\n");
 
 class Stmt {
@@ -715,6 +716,82 @@ test("merch is a link to the store the DJ already has", async () => {
   assert.match(page, /https:\/\/shop\.example\/sundaze/);
   assert.match(page, /Shirts/);
   assert.match(page, /rel="noopener noreferrer nofollow"/, "an outbound store link is not an endorsement");
+});
+
+test("the buyer pays face value plus our cut plus processing, grossed up", () => {
+  // A $20 ticket at a 5% cut. The processing fee is taken from the FINAL total,
+  // so adding it before the division leaves the DJ short of the price they set.
+  const priced = totalForBuyer(2000, 0.05);
+  assert.equal(priced.ours, 100);
+  assert.equal(priced.total, 2194, "$21.94 - Posh charges $22.99 for the same ticket");
+  assert.equal(priced.total - priced.ours - priced.processing, 2000, "the DJ receives exactly the face value");
+
+  // Stripe's own share really is covered rather than approximated.
+  const stripeTakes = Math.round(priced.total * 0.029) + 30;
+  assert.ok(priced.processing >= stripeTakes, `processing ${priced.processing} < stripe ${stripeTakes}`);
+
+  // Pro removes our cut and the buyer sees it.
+  assert.equal(totalForBuyer(2000, 0).total, 2091);
+});
+
+test("an unsigned webhook is just a POST from anybody", async () => {
+  const secret = "whsec_test";
+  const payload = JSON.stringify({ type: "checkout.session.completed" });
+  const nowMs = 1754500000000;
+  const stamp = Math.floor(nowMs / 1000);
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${stamp}.${payload}`));
+  const signature = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  assert.equal(await verifyWebhook(secret, `t=${stamp},v1=${signature}`, payload, nowMs), true);
+  assert.equal(await verifyWebhook(secret, `t=${stamp},v1=${signature}`, payload + " ", nowMs), false);
+  assert.equal(await verifyWebhook(secret, `t=${stamp},v1=deadbeef`, payload, nowMs), false);
+  assert.equal(await verifyWebhook("", `t=${stamp},v1=${signature}`, payload, nowMs), false);
+  // A replay from an hour ago is not news.
+  assert.equal(await verifyWebhook(secret, `t=${stamp},v1=${signature}`, payload, nowMs + 3600000), false);
+});
+
+test("a paid ticket becomes a signup and a code, once", async () => {
+  const env = makeEnv();
+  env.STRIPE_WEBHOOK_SECRET = "whsec_test";
+  const groupId = seedGroup(env);
+  const eventId = seedEvent(env, groupId, { slug: "paid" });
+  await post(env, "/@sundaze/join", { email: "buyer@example.com" });
+  const memberId = one(env, `SELECT id FROM members`).id;
+
+  const send = async (sessionId) => {
+    const payload = JSON.stringify({
+      type: "checkout.session.completed",
+      data: { object: { id: sessionId, amount_total: 2194, payment_intent: "pi_1",
+        metadata: { eventId, memberId } } },
+    });
+    const stamp = Math.floor(Date.now() / 1000);
+    const key = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode("whsec_test"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${stamp}.${payload}`));
+    const signature = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return worker.fetch(new Request("https://partyparty.party/api/v1/stripe/webhook", {
+      method: "POST", body: payload, headers: { "stripe-signature": `t=${stamp},v1=${signature}` },
+    }), env);
+  };
+
+  assert.equal((await send("cs_1")).status, 200);
+  assert.equal(one(env, `SELECT state FROM signups`).state, "going");
+  const ticket = one(env, `SELECT * FROM tickets`);
+  assert.equal(ticket.state, "paid");
+  assert.equal(ticket.code, await entryCode(eventId, memberId), "the door and the buyer see the same code");
+
+  // Stripe retries webhooks. A retry must not sell the same seat twice.
+  await send("cs_1");
+  assert.equal(rows(env, `SELECT id FROM tickets`).length, 1);
+  assert.equal(rows(env, `SELECT * FROM signups`).length, 1);
+
+  const forged = await worker.fetch(new Request("https://partyparty.party/api/v1/stripe/webhook", {
+    method: "POST", body: JSON.stringify({ type: "checkout.session.completed" }),
+    headers: { "stripe-signature": "t=1,v1=00" },
+  }), env);
+  assert.equal(forged.status, 403);
 });
 
 for (const [name, fn] of tests) {
