@@ -8,7 +8,7 @@ import worker, {
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
 // either work twice or corrupt a row.
-const schema = ["0001_init.sql", "0002_installs.sql"]
+const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql"]
   .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8")).join("\n");
 
 class Stmt {
@@ -697,6 +697,24 @@ test("entry codes are per person per night and readable aloud", async () => {
   assert.notEqual(a, await entryCode("ev1", "m2"));
   assert.notEqual(a, await entryCode("ev2", "m1"));
   assert.match(a, /^[ACDEFGHJKLMNPQRTUVWXY3479]{6}$/, "no characters that argue with each other at a door");
+});
+
+test("merch is a link to the store the DJ already has", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const dj = await signedInDJ(env, groupId);
+  const save = (link, label) => {
+    const body = new FormData();
+    body.append("merchLink", link);
+    body.append("merchLabel", label);
+    return get(env, "/@sundaze/manage", { method: "POST", body, headers: { cookie: dj.cookie } });
+  };
+  assert.match(await (await save("http://shop.example", "Shirts")).text(), /https/);
+  await save("https://shop.example/sundaze", "Shirts");
+  const page = await (await get(env, "/@sundaze")).text();
+  assert.match(page, /https:\/\/shop\.example\/sundaze/);
+  assert.match(page, /Shirts/);
+  assert.match(page, /rel="noopener noreferrer nofollow"/, "an outbound store link is not an endorsement");
 });
 
 for (const [name, fn] of tests) {

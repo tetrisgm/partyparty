@@ -361,6 +361,8 @@ function groupPage(group, events, base, posts) {
     leave from any message we send.</p>
     ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
+    ${group.merch_link ? `<p><a class="btn plain" href="${esc(group.merch_link)}"
+      rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
     <h2>Nights</h2>
     ${list}
     <h2>Talk</h2>
@@ -988,6 +990,14 @@ export default {
             ? `${sent} ${sent === 1 ? "person" : "people"} will hear about it.`
             : "Everyone in the group has already had this one.");
         }
+        if (form && form.has("merchLink")) {
+          const link = String(form.get("merchLink") || "").trim();
+          const problem = payLinkProblem(link);
+          if (problem) return notice("That link will not work", problem);
+          await env.DB.prepare(`UPDATE groups SET merch_link = ?, merch_label = ?, updated_ms = ? WHERE id = ?`)
+            .bind(link, String(form.get("merchLabel") || "").slice(0, 40), now, group.id).run();
+          return notice("Saved", link ? "Your store is linked." : "The store link is off.");
+        }
         if (form && form.has("payLink")) {
           const link = String(form.get("payLink") || "").trim();
           const problem = payLinkProblem(link);
@@ -1045,6 +1055,14 @@ export default {
           <p><a class="muted" href="/@${esc(group.handle)}/${esc(e.slug)}/door">At the door</a></p>
           </div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
+        <h2>Merch</h2>
+        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+          <input type="text" name="merchLink" placeholder="Link to your store"
+            value="${esc(group.merch_link || "")}">
+          <input type="text" name="merchLabel" placeholder="Label, e.g. Shirts"
+            value="${esc(group.merch_label || "")}">
+          <button class="btn plain" type="submit">Save</button>
+        </form>
         <h2>Tips</h2>
         <form class="join" method="post" action="/@${esc(group.handle)}/manage">
           <input type="text" name="payLink" placeholder="Your Venmo, Revolut or PayPal link"
