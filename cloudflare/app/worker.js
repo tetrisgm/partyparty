@@ -330,6 +330,32 @@ border:1px solid var(--line);background:transparent;color:inherit;font:inherit}
 .post{border-top:1px solid var(--line);padding:14px 0}
 .post .who{font-weight:620}
 footer{margin-top:48px;color:var(--muted);font-size:13px}
+
+/* Adding a night is the job, so it is the first thing and it looks like it. */
+form.newnight{display:grid;gap:8px;margin:20px 0 28px;padding:16px;
+border:1px solid var(--line);border-radius:14px}
+form.newnight input{width:100%}
+form.newnight .row input{flex:1 1 140px}
+form.newnight .btn{justify-self:start}
+
+/* The link is what gets sent, so it is readable and one tap from the clipboard
+   rather than something to select by hand. */
+.linkrow{display:flex;gap:8px;align-items:center;margin:12px 0 10px}
+.linkbox{flex:1 1 auto;min-width:0;font-size:14px;padding:9px 12px;
+border:1px solid var(--line);border-radius:10px;background:transparent;
+color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.card .row{gap:8px}
+.card .btn{padding:9px 16px;font-size:14px}
+
+/* Everything a DJ sets once. Real, but not why they opened the page. */
+details.settings{margin-top:40px;border-top:1px solid var(--line);padding-top:8px}
+details.settings summary{cursor:pointer;padding:12px 0;color:var(--muted);
+font-weight:620;list-style:none}
+details.settings summary::-webkit-details-marker{display:none}
+details.settings summary::before{content:"› ";display:inline-block;
+transition:transform .15s}
+details.settings[open] summary::before{transform:rotate(90deg)}
+details.settings h2{font-size:16px;margin:24px 0 6px}
 `;
 
 function page(title, body) {
@@ -997,6 +1023,10 @@ export default {
     if (path === "/signin") return html(200, signInPage(env));
 
     // ---- the DJ's own pages -----------------------------------------------
+    // /manage is a ROUTER, not a destination. A list of your groups is a list
+    // of one thing for almost everybody, which is a redirect with extra steps.
+    // No group: make one, which is also the onboarding. One group: land inside
+    // it, where the work is. Several: only then is choosing a real job.
     if (path === "/manage") {
       const dj = await currentDJ(env, request, now);
       if (!dj) return html(200, signInPage(env));
@@ -1010,19 +1040,30 @@ export default {
       const { results } = await env.DB.prepare(
         `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id WHERE d.dj_id = ? ORDER BY g.created_ms`
       ).bind(dj.id).all();
-      const mine = (results || []).map((g) => `<a class="card" href="/@${esc(g.handle)}/manage">
-        <strong>${esc(g.name || g.handle)}</strong><div class="muted">@${esc(g.handle)}</div></a>`).join("");
-      return html(200, page("Your groups", `
-        <h1>Your groups</h1>
-        ${mine || `<p class="muted">Nothing yet. A group is you and the people who come to your nights.</p>`}
-        <h2>Start one</h2>
+      const mine = results || [];
+      if (mine.length === 1) {
+        return new Response(null, { status: 302, headers: { location: `/@${mine[0].handle}/manage` } });
+      }
+      if (mine.length > 1) {
+        return html(200, page("Which one", `
+          <h1>Which one?</h1>
+          ${mine.map((g) => `<a class="card" href="/@${esc(g.handle)}/manage">
+            <strong>${esc(g.name || g.handle)}</strong>
+            <div class="muted">@${esc(g.handle)}</div></a>`).join("")}
+          <p><a class="muted" href="/auth/signout">Sign out</a></p>
+        `));
+      }
+      return html(200, page("Start your group", `
+        <h1>Start your group</h1>
+        <p>A group is you and the people who come to your nights. You announce a
+        night, they get the link, and next time they are already there.</p>
         <form class="join" method="post" action="/manage">
-          <input type="text" name="name" placeholder="Name, e.g. Sundaze" required>
+          <input type="text" name="name" placeholder="What is it called?" required>
           <input type="text" name="handle" placeholder="handle" required>
           <button class="btn" type="submit">Create</button>
         </form>
-        <p class="muted">The handle is the address: partyparty.party/@yourhandle. Five
-        characters or more, letters and numbers.</p>
+        <p class="muted">The handle is your address: partyparty.party/@yourhandle.
+        Five characters or more, letters and numbers.</p>
         <p><a class="muted" href="/auth/signout">Sign out</a></p>
       `));
     }
@@ -1180,69 +1221,109 @@ export default {
       const members = await env.DB.prepare(
         `SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND state = 'joined'`
       ).bind(group.id).first();
-      return html(200, page(`Manage ${group.name || group.handle}`, `
-        <h1>${esc(group.name || group.handle)}</h1>
-        <p class="muted">${Number((members && members.n) || 0)} members ·
-          <a class="muted" href="/@${esc(group.handle)}">public page</a></p>
-        <h2>Nights</h2>
-        ${events.map((e) => `<div class="card"><div class="when">${esc(whenText(e))}</div>
+      const night = (e) => {
+        const link = `${base}/@${group.handle}/${e.slug}`;
+        return `<div class="card">
+          <div class="when">${esc(whenText(e))}</div>
           <strong>${esc(e.title || "Untitled")}</strong>
-          <form method="post" action="/@${esc(group.handle)}/manage" class="row" style="margin-top:10px">
-            <input type="hidden" name="invite" value="${esc(e.id)}">
-            <button class="btn plain" type="submit">Tell the group</button>
+          ${e.place ? `<div class="muted">${esc(e.place)}</div>` : ""}
+          <div class="linkrow">
+            <input class="linkbox" type="text" readonly value="${esc(link)}"
+              onclick="this.select()" aria-label="Link to this night">
+            <button class="btn plain copy" type="button" data-copy="${esc(link)}">Copy</button>
+          </div>
+          <div class="row">
+            <form method="post" action="/@${esc(group.handle)}/manage">
+              <input type="hidden" name="invite" value="${esc(e.id)}">
+              <button class="btn plain" type="submit">Email the group</button>
+            </form>
+            <a class="btn plain" href="/@${esc(group.handle)}/${esc(e.slug)}/door">At the door</a>
+          </div>
+        </div>`;
+      };
+
+      // One job on the surface: add a night, get its link, send it. Everything
+      // else a DJ configures once - money, merch, a paired Mac - is real but is
+      // not what they came here to do, so it waits behind one summary.
+      return html(200, page(group.name || group.handle, `
+        <p class="muted"><a class="muted" href="/@${esc(group.handle)}">partyparty.party/@${esc(group.handle)}</a>
+          · ${Number((members && members.n) || 0)} ${Number((members && members.n) || 0) === 1 ? "member" : "members"}</p>
+        <h1>${esc(group.name || group.handle)}</h1>
+
+        <form class="newnight" method="post" action="/@${esc(group.handle)}/manage">
+          <input type="text" name="title" placeholder="What is the night called?" required>
+          <div class="row">
+            <input type="text" name="starts" placeholder="2026-09-12T21:00">
+            <input type="text" name="place" placeholder="Where?">
+            <input type="text" name="capacity" placeholder="Capacity">
+          </div>
+          <button class="btn" type="submit">Add a night</button>
+        </form>
+
+        ${events.length ? events.map(night).join("") : `<p class="muted">No nights yet.
+          Add one above and you will get a link to send.</p>`}
+
+        <details class="settings">
+          <summary>Settings</summary>
+          <h2>Pair a Mac</h2>
+          <p class="muted">Type the code the Mac shows, and its parties find your nights.</p>
+          <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+            <input type="text" name="pair" placeholder="Code from the Mac" required>
+            <button class="btn plain" type="submit">Pair</button>
           </form>
-          <p><a class="muted" href="/@${esc(group.handle)}/${esc(e.slug)}/door">At the door</a></p>
-          </div>`).join("")
-          || `<p class="muted">No nights yet.</p>`}
-        <h2>Pro</h2>
-        <p class="muted">${pro
-          ? "On. We take nothing from your tickets."
-          : "$12 a month or $99 a year, and we stop taking 5% of your tickets."}</p>
-        ${pro ? "" : `<form class="join" method="post" action="/@${esc(group.handle)}/manage">
-          <button class="btn plain" type="submit" name="pro" value="month">$12 a month</button>
-          <button class="btn plain" type="submit" name="pro" value="year">$99 a year</button>
-        </form>`}
-        <h2>Card payments</h2>
-        <p class="muted">${group.stripe_acct
-          ? "Connected. Money goes to your own Stripe account; we never hold it."
-          : "Optional. Your own Stripe account - we take 5% of a ticket and nothing of a tip."}</p>
-        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
-          <input type="hidden" name="connectStripe" value="1">
-          <button class="btn plain" type="submit">${group.stripe_acct ? "Manage" : "Connect Stripe"}</button>
-        </form>
-        <h2>Merch</h2>
-        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
-          <input type="text" name="merchLink" placeholder="Link to your store"
-            value="${esc(group.merch_link || "")}">
-          <input type="text" name="merchLabel" placeholder="Label, e.g. Shirts"
-            value="${esc(group.merch_label || "")}">
-          <button class="btn plain" type="submit">Save</button>
-        </form>
-        <h2>Tips</h2>
-        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
-          <input type="text" name="payLink" placeholder="Your Venmo, Revolut or PayPal link"
-            value="${esc(group.pay_link || "")}">
-          <button class="btn plain" type="submit">Save</button>
-        </form>
-        <p class="muted">It goes straight to you. We take nothing and never hold it.</p>
-        <h2>Pair a Mac</h2>
-        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
-          <input type="text" name="pair" placeholder="Code from the Mac" required>
-          <button class="btn plain" type="submit">Pair</button>
-        </form>
-        <h2>Say something</h2>
-        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
-          <input type="text" name="say" placeholder="Tell the group" required>
-          <button class="btn" type="submit">Post</button>
-        </form>
-        <h2>Add one</h2>
-        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
-          <input type="text" name="title" placeholder="What is it called?" required>
-          <input type="text" name="starts" placeholder="2026-09-12T21:00">
-          <input type="text" name="place" placeholder="Where?">
-          <input type="text" name="capacity" placeholder="Capacity (optional)">
-          <button class="btn" type="submit">Announce</button>
-        </form>
+
+          <h2>Tips</h2>
+          <p class="muted">Your own link. It goes straight to you; we take nothing.</p>
+          <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+            <input type="text" name="payLink" placeholder="Your Venmo, Revolut or PayPal link"
+              value="${esc(group.pay_link || "")}">
+            <button class="btn plain" type="submit">Save</button>
+          </form>
+
+          <h2>Merch</h2>
+          <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+            <input type="text" name="merchLink" placeholder="Link to your store"
+              value="${esc(group.merch_link || "")}">
+            <input type="text" name="merchLabel" placeholder="Label, e.g. Shirts"
+              value="${esc(group.merch_label || "")}">
+            <button class="btn plain" type="submit">Save</button>
+          </form>
+
+          <h2>Selling tickets</h2>
+          <p class="muted">${group.stripe_acct
+            ? "Connected. Money goes to your own Stripe account; we never hold it."
+            : "Optional, and only if you charge. Your own Stripe account."}</p>
+          <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+            <input type="hidden" name="connectStripe" value="1">
+            <button class="btn plain" type="submit">${group.stripe_acct ? "Manage" : "Connect Stripe"}</button>
+          </form>
+
+          <h2>Pro</h2>
+          <p class="muted">${pro
+            ? "On. We take nothing from your tickets."
+            : "$12 a month or $99 a year, and we stop taking 5% of your tickets."}</p>
+          ${pro ? "" : `<form class="join" method="post" action="/@${esc(group.handle)}/manage">
+            <button class="btn plain" type="submit" name="pro" value="month">$12 a month</button>
+            <button class="btn plain" type="submit" name="pro" value="year">$99 a year</button>
+          </form>`}
+
+          <p><a class="muted" href="/auth/signout">Sign out</a></p>
+        </details>
+        <script>
+        // Copying the link is the whole point of the page, so it says it worked.
+        for (const button of document.querySelectorAll('.copy')) {
+          button.addEventListener('click', async () => {
+            try {
+              await navigator.clipboard.writeText(button.dataset.copy);
+              const was = button.textContent;
+              button.textContent = 'Copied';
+              setTimeout(() => { button.textContent = was; }, 1500);
+            } catch (e) {
+              button.previousElementSibling.select();
+            }
+          });
+        }
+        </script>
       `));
     }
 

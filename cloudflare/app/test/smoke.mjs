@@ -873,6 +873,63 @@ test("the flush endpoint is guarded by the key", async () => {
   assert.equal((await allowed.json()).reason, "no mail server configured");
 });
 
+test("/manage routes rather than being a page: none, one, several", async () => {
+  const env = await withGoogle(makeEnv());
+  const { session } = await signIn(env);
+  const cookie = { headers: { cookie: `pp_s=${session[1]}` } };
+
+  // No group: the page IS the onboarding, not a list with a form under it.
+  const empty = await (await get(env, "/manage", cookie)).text();
+  assert.match(empty, /Start your group/);
+  assert.ok(!/Your groups/.test(empty));
+
+  const make = (name, handle) => {
+    const body = new FormData();
+    body.append("name", name); body.append("handle", handle);
+    return get(env, "/manage", { method: "POST", body, headers: cookie.headers });
+  };
+  await make("Sundaze", "sundaze");
+
+  // One group: land inside it. A list of one thing is a redirect with steps.
+  const single = await get(env, "/manage", cookie);
+  assert.equal(single.status, 302);
+  assert.equal(single.headers.get("location"), "/@sundaze/manage");
+
+  // Several: only now is choosing a real job.
+  await make("Lates", "latenight");
+  const many = await get(env, "/manage", cookie);
+  assert.equal(many.status, 200);
+  const body = await many.text();
+  assert.match(body, /Which one/);
+  assert.match(body, /@sundaze/);
+  assert.match(body, /@latenight/);
+});
+
+test("the group page leads with adding a night and its sendable link", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  seedEvent(env, groupId, { slug: "june-14" });
+  const dj = await signedInDJ(env, groupId);
+  const body = await (await get(env, "/@sundaze/manage", { headers: { cookie: dj.cookie } })).text();
+
+  // The job: add a night, get the link, send it.
+  assert.match(body, /Add a night/);
+  assert.match(body, /value="https:\/\/partyparty\.party\/@sundaze\/june-14"/,
+    "the link has to be there to be copied, not derived by the DJ");
+  assert.match(body, /Copy<\/button>/);
+  assert.match(body, /Email the group/);
+
+  // Everything set once is present but behind the fold, not competing with it.
+  const settings = body.indexOf("<details");
+  assert.ok(settings > 0, "settings must exist");
+  assert.ok(body.indexOf("Add a night") < settings, "adding a night comes first");
+  // Headings, not bare words: "Pro" alone matches "SF Pro Text" in the font
+  // stack, which is the sort of false pass that makes a layout test worthless.
+  for (const later of ["<h2>Pair a Mac", "<h2>Tips", "<h2>Merch", "<h2>Pro", "Sign out"]) {
+    assert.ok(body.indexOf(later) > settings, `${later} belongs behind settings`);
+  }
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();
