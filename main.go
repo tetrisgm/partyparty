@@ -24,6 +24,7 @@ import (
 
 	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
+	"partyparty/internal/cloudsync"
 	"partyparty/internal/config"
 	"partyparty/internal/contribute"
 	"partyparty/internal/diag"
@@ -293,6 +294,36 @@ func main() {
 				}
 			},
 		})
+	}
+
+	// The party's wall and its event page are one timeline. This is the only
+	// thing that reaches the platform from the Mac, it runs only while a party
+	// is live, and it is silent when there is no group, no night, or no
+	// internet - which is most parties, and not a fault.
+	if events != nil {
+		platform := os.Getenv("PARTYPARTY_BROKER")
+		if platform == "" {
+			platform = "https://partyparty.party"
+		}
+		if installID, installSecret := activate.InstallCreds(); installID != "" {
+			sync := cloudsync.New(platform, installID, installSecret)
+			go sync.Run(peerCtx, cloudsync.Hooks{
+				PartyID: func() string { return events.Identity().ID },
+				Live:    func() bool { return bc != nil && bc.Status().State == "live" },
+				Outgoing: func(limit int) []cloudsync.Post {
+					local := events.OutgoingPosts(limit)
+					out := make([]cloudsync.Post, 0, len(local))
+					for _, post := range local {
+						out = append(out, cloudsync.Post{
+							ID: post.ID, Author: post.Author, Body: post.Body, CreatedMs: post.CreatedMs,
+						})
+					}
+					return out
+				},
+				Merge: events.MergeRemotePost,
+				Logf:  log.Printf,
+			}, 20*time.Second)
+		}
 	}
 
 	handler = server.New(server.Deps{

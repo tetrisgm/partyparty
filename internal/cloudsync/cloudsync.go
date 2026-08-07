@@ -175,3 +175,75 @@ func (c *Client) Resume(since int64) {
 	}
 	c.mu.Unlock()
 }
+
+// Hooks are the party, supplied as functions so this package never imports the
+// event store and the store never learns how it reaches the cloud.
+type Hooks struct {
+	PartyID  func() string
+	Live     func() bool
+	Outgoing func(limit int) []Post
+	Merge    func(id, author, body string, createdMs int64) (bool, error)
+	Bound    func(url string)
+	Logf     func(format string, args ...any)
+}
+
+// Run keeps the timeline in step for as long as a party is playing. It is
+// quiet by construction: no party, no internet, no group, or no night on
+// tonight all mean it does nothing at all and says nothing about it. A party
+// must never look broken because the cloud is.
+func (c *Client) Run(ctx context.Context, h Hooks, every time.Duration) {
+	if every <= 0 {
+		every = 20 * time.Second
+	}
+	logf := h.Logf
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	var boundParty string
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(every):
+		}
+		if !c.ready() || h.PartyID == nil || (h.Live != nil && !h.Live()) {
+			continue
+		}
+		partyID := h.PartyID()
+		if partyID == "" {
+			continue
+		}
+		// Ask once per party which night this is. Asking every tick would
+		// rewrite the binding of a night another Mac has since claimed.
+		if partyID != boundParty {
+			binding, err := c.Bind(ctx, partyID)
+			if err != nil {
+				continue
+			}
+			boundParty = partyID
+			if binding.Bound {
+				logf("cloudsync: this party is %s", binding.URL(c.Base))
+				if h.Bound != nil {
+					h.Bound(binding.URL(c.Base))
+				}
+			}
+		}
+		var outgoing []Post
+		if h.Outgoing != nil {
+			outgoing = h.Outgoing(100)
+		}
+		incoming, err := c.Sync(ctx, partyID, outgoing)
+		if err != nil {
+			logf("cloudsync: %v", err)
+			continue
+		}
+		for _, post := range incoming {
+			if h.Merge == nil {
+				break
+			}
+			if _, err := h.Merge(post.ID, post.Author, post.Body, post.CreatedMs); err != nil {
+				logf("cloudsync: could not merge %s: %v", post.ID, err)
+			}
+		}
+	}
+}

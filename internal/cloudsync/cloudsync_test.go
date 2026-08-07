@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 type request struct {
@@ -130,5 +131,94 @@ func TestServerErrorsSurfaceRatherThanLoseTheCursor(t *testing.T) {
 	}
 	if client.Since() != 900 {
 		t.Fatalf("a failed sync must not move the cursor: %d", client.Since())
+	}
+}
+
+func TestRunBindsOncePerPartyAndMergesWhatComesBack(t *testing.T) {
+	var binds, syncs int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/party/bind" {
+			binds++
+			_ = json.NewEncoder(w).Encode(Binding{Bound: true, Slug: "tonight", Handle: "sundaze"})
+			return
+		}
+		syncs++
+		reply := syncResponse{Bound: true}
+		if syncs == 1 {
+			reply.Posts = []Post{{ID: "w1", Author: "Web", Body: "photos", CreatedMs: 10}}
+		}
+		_ = json.NewEncoder(w).Encode(reply)
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "aabbccddeeff", "s3cret")
+	client.HTTP = server.Client()
+
+	var merged []string
+	var boundURL string
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		client.Run(ctx, Hooks{
+			PartyID:  func() string { return "2026-08-06-2200-ab12" },
+			Live:     func() bool { return true },
+			Outgoing: func(int) []Post { return nil },
+			Merge: func(id, author, body string, createdMs int64) (bool, error) {
+				merged = append(merged, id)
+				return true, nil
+			},
+			Bound: func(url string) { boundURL = url },
+		}, time.Millisecond)
+	}()
+
+	deadline := time.After(3 * time.Second)
+	for {
+		if syncs >= 3 {
+			break
+		}
+		select {
+		case <-deadline:
+			cancel()
+			<-done
+			t.Fatalf("sync did not run: binds=%d syncs=%d", binds, syncs)
+		case <-time.After(2 * time.Millisecond):
+		}
+	}
+	cancel()
+	<-done
+
+	// Binding is asked once for a party. Asking every tick would rewrite the
+	// binding of a night another Mac has since claimed.
+	if binds != 1 {
+		t.Fatalf("bound %d times, want 1", binds)
+	}
+	if boundURL != server.URL+"/@sundaze/tonight" {
+		t.Fatalf("bound url = %q", boundURL)
+	}
+	if len(merged) != 1 || merged[0] != "w1" {
+		t.Fatalf("merged = %v", merged)
+	}
+}
+
+func TestRunStaysSilentWhenThereIsNoParty(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_ = json.NewEncoder(w).Encode(syncResponse{Bound: false})
+	}))
+	defer server.Close()
+	client := New(server.URL, "aabbccddeeff", "s3cret")
+	client.HTTP = server.Client()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	// A Mac that is not playing must not talk to the cloud at all.
+	client.Run(ctx, Hooks{
+		PartyID: func() string { return "2026-08-06-2200-ab12" },
+		Live:    func() bool { return false },
+	}, time.Millisecond)
+	if calls != 0 {
+		t.Fatalf("made %d requests while not live", calls)
 	}
 }
