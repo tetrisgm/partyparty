@@ -17,6 +17,10 @@ import { accountLink, checkout, stripeConfigured, totalForBuyer, verifyWebhook }
 // Our cut of a ticket. Nothing on tips: a fixed 30c on a five dollar tip is
 // already 6% before anybody else takes a share.
 const TICKET_TAKE = 0.05;
+// $12 a month or $99 a year, the same on both surfaces. Undercutting the App
+// Store price on the web invites attention worth more than the few dollars.
+const PRO_MONTHLY_CENTS = 1200;
+const PRO_YEARLY_CENTS = 9900;
 
 const HANDLE_RE = /^[a-z0-9]{5,30}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,60}$/;
@@ -376,7 +380,7 @@ function groupPage(group, events, base, posts) {
   `);
 }
 
-function eventPage(group, event, going, base) {
+function eventPage(group, event, going, base, takeRate) {
   return page(`${event.title || "A night"} - ${group.name || group.handle}`, `
     <p class="muted"><a class="muted" href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a></p>
     <h1>${esc(event.title || "A night")}</h1>
@@ -388,7 +392,7 @@ function eventPage(group, event, going, base) {
     ${event.ticket_cents ? `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/buy">
       <input type="email" name="email" placeholder="your email" required>
       <button class="btn" type="submit">Buy a ticket -
-        ${esc((totalForBuyer(event.ticket_cents, 0.05).total / 100).toFixed(2))}</button>
+        ${esc((totalForBuyer(event.ticket_cents, takeRate).total / 100).toFixed(2))}</button>
     </form>` : `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/going">
       <input type="email" name="email" placeholder="your email" required>
       <input type="text" name="name" placeholder="your name">
@@ -490,6 +494,19 @@ async function createGroup(env, dj, handle, name, now) {
     `INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`
   ).bind(id, dj.id, now).run();
   return { id, handle };
+}
+
+// Pro is on when EITHER store says so. Asking one of them alone is how a DJ
+// who paid on the web ends up being charged a fee in the app.
+async function isPro(env, groupId) {
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM entitlements WHERE group_id = ? AND state = 'active' LIMIT 1`
+  ).bind(groupId).first();
+  return !!row;
+}
+
+async function takeRateFor(env, groupId) {
+  return await isPro(env, groupId) ? 0 : TICKET_TAKE;
 }
 
 async function djRunsGroup(env, dj, groupId) {
@@ -999,6 +1016,25 @@ export default {
             ? `${sent} ${sent === 1 ? "person" : "people"} will hear about it.`
             : "Everyone in the group has already had this one.");
         }
+        if (form && form.get("pro")) {
+          if (!stripeConfigured(env)) return notice("Not available yet", "Subscriptions are not configured.");
+          const yearly = String(form.get("pro")) === "year";
+          try {
+            const session = await checkout(env, {
+              account: "",
+              amountCents: yearly ? PRO_YEARLY_CENTS : PRO_MONTHLY_CENTS,
+              feeCents: 0,
+              name: yearly ? "PartyParty Pro, one year" : "PartyParty Pro, one month",
+              successUrl: `${base}/@${group.handle}/manage`,
+              cancelUrl: `${base}/@${group.handle}/manage`,
+              metadata: { proGroupId: group.id, period: yearly ? "year" : "month" },
+              fetchImpl: env.FETCH || undefined,
+            });
+            return new Response(null, { status: 302, headers: { location: session.url } });
+          } catch (e) {
+            return notice("That did not go through", String(e.message || e));
+          }
+        }
         if (form && form.get("connectStripe")) {
           if (!stripeConfigured(env)) return notice("Not available yet", "Card payments are not configured.");
           try {
@@ -1065,6 +1101,7 @@ export default {
         return new Response(null, { status: 302, headers: { location: `/@${group.handle}/manage` } });
       }
       const events = await upcomingEvents(env, group.id, 0);
+      const pro = await isPro(env, group.id);
       const members = await env.DB.prepare(
         `SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND state = 'joined'`
       ).bind(group.id).first();
@@ -1082,6 +1119,14 @@ export default {
           <p><a class="muted" href="/@${esc(group.handle)}/${esc(e.slug)}/door">At the door</a></p>
           </div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
+        <h2>Pro</h2>
+        <p class="muted">${pro
+          ? "On. We take nothing from your tickets."
+          : "$12 a month or $99 a year, and we stop taking 5% of your tickets."}</p>
+        ${pro ? "" : `<form class="join" method="post" action="/@${esc(group.handle)}/manage">
+          <button class="btn plain" type="submit" name="pro" value="month">$12 a month</button>
+          <button class="btn plain" type="submit" name="pro" value="year">$99 a year</button>
+        </form>`}
         <h2>Card payments</h2>
         <p class="muted">${group.stripe_acct
           ? "Connected. Money goes to your own Stripe account; we never hold it."
@@ -1331,7 +1376,7 @@ export default {
       const emailNorm = normalizeEmail(formData && formData.get("email"));
       if (!emailNorm) return notice("That address did not look right", "Go back and try again.");
       const member = await upsertMember(env, emailNorm, "", now);
-      const price = totalForBuyer(event.ticket_cents, TICKET_TAKE);
+      const price = totalForBuyer(event.ticket_cents, await takeRateFor(env, group.id));
       try {
         const session = await checkout(env, {
           account: group.stripe_acct,
@@ -1357,9 +1402,29 @@ export default {
       if (!ok) return json(403, { error: "signature" });
       let body = {};
       try { body = JSON.parse(payload); } catch (e) { return json(400, { error: "bad json" }); }
+      const object = (body.data && body.data.object) || {};
+      // A subscription that lapses has to switch the fee back on, or Pro is
+      // permanent for anyone who cancels.
+      if (body.type === "customer.subscription.deleted") {
+        await env.DB.prepare(
+          `UPDATE entitlements SET state = 'lapsed', updated_ms = ? WHERE source = 'web' AND reference = ?`
+        ).bind(now, String(object.id || "")).run();
+        return json(200, { ok: true });
+      }
       if (body.type !== "checkout.session.completed") return json(200, { ignored: true });
-      const session = (body.data && body.data.object) || {};
+      const session = object;
       const meta = session.metadata || {};
+      if (meta.proGroupId) {
+        const period = meta.period === "year" ? 365 : 31;
+        await env.DB.prepare(
+          `INSERT INTO entitlements (group_id, source, state, reference, renews_ms, updated_ms)
+           VALUES (?, 'web', 'active', ?, ?, ?)
+           ON CONFLICT(group_id, source) DO UPDATE SET state = 'active',
+             reference = excluded.reference, renews_ms = excluded.renews_ms, updated_ms = excluded.updated_ms`
+        ).bind(meta.proGroupId, String(session.subscription || session.id || ""),
+          now + period * 24 * 60 * 60 * 1000, now).run();
+        return json(200, { ok: true });
+      }
       if (!meta.eventId || !meta.memberId) return json(200, { ignored: true });
       await env.DB.prepare(
         `INSERT INTO signups (event_id, member_id, state, created_ms, updated_ms)
@@ -1384,7 +1449,8 @@ export default {
         `SELECT * FROM events WHERE group_id = ? AND slug = ? AND state != 'draft'`
       ).bind(group.id, match[2]).first();
       if (!event) return new Response("Not Found", { status: 404 });
-      return html(200, eventPage(group, event, await goingCount(env, event.id), base));
+      return html(200, eventPage(group, event, await goingCount(env, event.id), base,
+        await takeRateFor(env, group.id)));
     }
 
     // A group.

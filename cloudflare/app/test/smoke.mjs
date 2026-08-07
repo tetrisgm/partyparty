@@ -9,7 +9,7 @@ import { totalForBuyer, verifyWebhook } from "../stripe.js";
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
 // either work twice or corrupt a row.
-const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql"]
+const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql", "0005_pro.sql"]
   .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8")).join("\n");
 
 class Stmt {
@@ -792,6 +792,56 @@ test("a paid ticket becomes a signup and a code, once", async () => {
     headers: { "stripe-signature": "t=1,v1=00" },
   }), env);
   assert.equal(forged.status, 403);
+});
+
+const stripeWebhook = async (env, body) => {
+  const payload = JSON.stringify(body);
+  const stamp = Math.floor(Date.now() / 1000);
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode("whsec_test"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${stamp}.${payload}`));
+  const signature = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return worker.fetch(new Request("https://partyparty.party/api/v1/stripe/webhook", {
+    method: "POST", body: payload, headers: { "stripe-signature": `t=${stamp},v1=${signature}` },
+  }), env);
+};
+
+test("Pro removes our cut, and losing it puts the cut back", async () => {
+  const env = makeEnv();
+  env.STRIPE_WEBHOOK_SECRET = "whsec_test";
+  const groupId = seedGroup(env);
+  const eventId = seedEvent(env, groupId, { slug: "paid" });
+  env.raw.prepare(`UPDATE events SET ticket_cents = 2000 WHERE id = ?`).run(eventId);
+
+  // Before: the buyer sees the price with our 5% in it.
+  assert.match(await (await get(env, "/@sundaze/paid")).text(), /21\.94/);
+
+  await stripeWebhook(env, {
+    type: "checkout.session.completed",
+    data: { object: { id: "cs_pro", subscription: "sub_1", metadata: { proGroupId: groupId, period: "month" } } },
+  });
+  assert.equal(one(env, `SELECT state FROM entitlements`).state, "active");
+  assert.match(await (await get(env, "/@sundaze/paid")).text(), /20\.91/, "Pro shows in the buyer's price");
+
+  // Cancelling has to switch the fee back on, or Pro is permanent for anyone
+  // who stops paying for it.
+  await stripeWebhook(env, { type: "customer.subscription.deleted", data: { object: { id: "sub_1" } } });
+  assert.equal(one(env, `SELECT state FROM entitlements`).state, "lapsed");
+  assert.match(await (await get(env, "/@sundaze/paid")).text(), /21\.94/);
+});
+
+test("Pro is on when either store says so", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  // The App Store half writes the same row with its own source. Whichever
+  // arrives, the group is Pro; asking one store alone is how a DJ who paid on
+  // the web gets charged a fee in the app.
+  env.raw.prepare(
+    `INSERT INTO entitlements (group_id, source, state, reference, updated_ms) VALUES (?, 'appstore', 'active', 't1', ?)`
+  ).run(groupId, Date.now());
+  const eventId = seedEvent(env, groupId, { slug: "paid" });
+  env.raw.prepare(`UPDATE events SET ticket_cents = 2000 WHERE id = ?`).run(eventId);
+  assert.match(await (await get(env, "/@sundaze/paid")).text(), /20\.91/);
 });
 
 for (const [name, fn] of tests) {
