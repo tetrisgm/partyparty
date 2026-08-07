@@ -305,57 +305,112 @@ export function icsFor(group, events, base) {
 // ------------------------------------------------------------------- pages
 
 const STYLE = `
-:root{color-scheme:light dark;--ink:CanvasText;--bg:Canvas;--accent:#ff2d6f;
---muted:color-mix(in srgb,CanvasText 60%,transparent);
---line:color-mix(in srgb,CanvasText 14%,transparent)}
+/* docs/design-system.md - "Apple's SYSTEM, our CONTENT". These are the same
+   tokens the console and the guest page use; the ladder here is the public web
+   one (17px body), not the console's 13px. Accent is the primary action only:
+   links are system blue, and nothing else is tinted. */
+:root{
+  color-scheme:light dark;
+  --bg:#fff; --bg-secondary:#f5f5f7; --bg-tertiary:#fbfbfd;
+  --label:#1d1d1f; --label-secondary:#6e6e73; --label-tertiary:#86868b;
+  --separator:#d2d2d7; --fill:rgba(120,120,128,.12);
+  --link:#0066cc; --accent:#ff2d6f; --accent-hover:#f5215f;
+  --success:#34c759; --danger:#ff3b30;
+  --r-xs:8px; --r-sm:10px; --r-md:12px; --r-lg:18px; --r-pill:980px;
+  --ease-out:cubic-bezier(.25,.1,.25,1);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000; --bg-secondary:#1c1c1e; --bg-tertiary:#2c2c2e;
+    --label:#f5f5f7; --label-secondary:#86868b; --label-tertiary:#6e6e73;
+    --separator:rgba(255,255,255,.10); --fill:rgba(120,120,128,.24);
+    --link:#2997ff; --accent:#ff3b7f;
+  }
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-main{max-width:640px;margin:0 auto;padding:32px 20px 64px}
-h1{font-size:28px;margin:0 0 4px;text-wrap:balance}
-h2{font-size:18px;margin:32px 0 12px}
-p{margin:0 0 12px}
-.muted{color:var(--muted)}
-.card{border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 12px;display:block;
-color:inherit;text-decoration:none}
-.card:hover{border-color:var(--accent)}
-.when{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px}
-.btn{display:inline-block;border:0;border-radius:999px;padding:12px 20px;background:var(--accent);
-color:#fff;font:inherit;font-weight:650;text-decoration:none;cursor:pointer}
-.btn.plain{background:transparent;color:var(--ink);border:1px solid var(--line)}
-form.join{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
-input[type=email],input[type=text]{flex:1 1 220px;padding:12px 14px;border-radius:12px;
-border:1px solid var(--line);background:transparent;color:inherit;font:inherit}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.post{border-top:1px solid var(--line);padding:14px 0}
-.post .who{font-weight:620}
-footer{margin-top:48px;color:var(--muted);font-size:13px}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--label);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",
+    "Inter","Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+  font-synthesis:none;
+  font-size:1.0625rem;line-height:1.47;letter-spacing:-.011em;
+}
+main{max-width:680px;margin:0 auto;padding:40px 24px 96px}
 
-/* Adding a night is the job, so it is the first thing and it looks like it. */
-form.newnight{display:grid;gap:8px;margin:20px 0 28px;padding:16px;
-border:1px solid var(--line);border-radius:14px}
+/* Headlines are always 600 with negative tracking that grows with size. */
+h1{font-size:clamp(28px,4vw,40px);font-weight:600;letter-spacing:-.02em;
+line-height:1.1;margin:0 0 4px;text-wrap:balance}
+h2{font-size:1.3125rem;font-weight:600;letter-spacing:-.01em;margin:40px 0 12px}
+p{margin:0 0 12px}
+a{color:var(--link);text-decoration:none}
+a:hover{text-decoration:underline}
+.muted{color:var(--label-secondary);font-size:.875rem;letter-spacing:-.016em}
+.eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.06em;
+text-transform:uppercase;color:var(--label-tertiary);margin:0 0 8px}
+
+/* Tiles: flat secondary fill, hairline, 12px squircle, no shadow. */
+.card{display:block;background:var(--bg-secondary);border:1px solid var(--separator);
+border-radius:var(--r-md);padding:20px;margin:0 0 12px;color:inherit;text-decoration:none}
+a.card:hover{text-decoration:none;border-color:var(--label-tertiary)}
+.when{font-size:.875rem;color:var(--label-secondary);
+font-variant-numeric:tabular-nums;letter-spacing:-.016em}
+.card strong{display:block;font-size:1.0625rem;font-weight:600;letter-spacing:-.01em;
+margin:2px 0}
+
+/* One accent, on the primary action only. Public pages get pills. */
+.btn{display:inline-flex;align-items:center;justify-content:center;
+min-height:44px;padding:12px 22px;border:1px solid transparent;
+border-radius:var(--r-pill);background:var(--accent);color:#fff;
+font:inherit;font-size:1.0625rem;font-weight:600;letter-spacing:-.011em;
+cursor:pointer;transition:transform .15s var(--ease-out),filter .15s var(--ease-out)}
+.btn:hover{text-decoration:none;transform:translateY(-1px);filter:brightness(1.03)}
+.btn:active{transform:none}
+.btn.plain{background:transparent;color:var(--label);border-color:var(--separator)}
+.btn.small{min-height:36px;padding:8px 16px;font-size:.9375rem}
+:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+
+input[type=email],input[type=text]{
+  min-height:44px;padding:11px 14px;border-radius:var(--r-sm);
+  border:1px solid var(--separator);background:var(--bg);color:inherit;
+  font:inherit;font-size:1.0625rem}
+input::placeholder{color:var(--label-tertiary)}
+form.join{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 8px}
+form.join input{flex:1 1 200px;min-width:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+.post{border-top:1px solid var(--separator);padding:16px 0}
+.post .who{font-weight:600;letter-spacing:-.01em}
+footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--separator);
+color:var(--label-tertiary);font-size:.875rem}
+
+/* Adding a night is the job, so it is first and it looks like it. */
+form.newnight{display:grid;gap:10px;margin:24px 0 32px;padding:20px;
+background:var(--bg-secondary);border:1px solid var(--separator);
+border-radius:var(--r-md)}
 form.newnight input{width:100%}
 form.newnight .row input{flex:1 1 140px}
 form.newnight .btn{justify-self:start}
 
-/* The link is what gets sent, so it is readable and one tap from the clipboard
-   rather than something to select by hand. */
-.linkrow{display:flex;gap:8px;align-items:center;margin:12px 0 10px}
-.linkbox{flex:1 1 auto;min-width:0;font-size:14px;padding:9px 12px;
-border:1px solid var(--line);border-radius:10px;background:transparent;
-color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.card .row{gap:8px}
-.card .btn{padding:9px 16px;font-size:14px}
+/* The link is what gets sent: readable, and one tap from the clipboard. */
+.linkrow{display:flex;gap:8px;align-items:center;margin:14px 0 12px}
+.linkbox{flex:1 1 auto;min-width:0;font-size:.875rem;padding:10px 12px;
+border:1px solid var(--separator);border-radius:var(--r-sm);
+background:var(--bg);color:var(--label-secondary);
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.card .btn{min-height:36px;padding:8px 16px;font-size:.9375rem}
 
 /* Everything a DJ sets once. Real, but not why they opened the page. */
-details.settings{margin-top:40px;border-top:1px solid var(--line);padding-top:8px}
-details.settings summary{cursor:pointer;padding:12px 0;color:var(--muted);
-font-weight:620;list-style:none}
+details.settings{margin-top:56px;border-top:1px solid var(--separator)}
+details.settings summary{cursor:pointer;padding:16px 0;
+color:var(--label-secondary);font-weight:600;list-style:none}
 details.settings summary::-webkit-details-marker{display:none}
 details.settings summary::before{content:"› ";display:inline-block;
-transition:transform .15s}
+transition:transform .15s var(--ease-out)}
 details.settings[open] summary::before{transform:rotate(90deg)}
-details.settings h2{font-size:16px;margin:24px 0 6px}
+details.settings h2{font-size:1.0625rem;margin:28px 0 6px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
 `;
 
 function page(title, body) {
@@ -363,7 +418,7 @@ function page(title, body) {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><style>${STYLE}</style></head>
 <body><main>${body}
-<footer><a class="muted" href="/">PartyParty</a></footer></main></body></html>`;
+<footer><a href="/home">PartyParty</a></footer></main></body></html>`;
 }
 
 function whenText(event) {
@@ -375,7 +430,7 @@ function whenText(event) {
   });
 }
 
-function groupPage(group, events, base, posts) {
+function groupPage(group, events, base, posts, viewer) {
   const list = events.length
     ? events.map((event) => `<a class="card" href="/@${esc(group.handle)}/${esc(event.slug)}">
         <div class="when">${esc(whenText(event))}</div>
@@ -383,26 +438,42 @@ function groupPage(group, events, base, posts) {
         ${event.place ? `<div class="muted">${esc(event.place)}</div>` : ""}
       </a>`).join("")
     : `<p class="muted">No nights announced yet.</p>`;
+
+  // Who is looking. Showing a DJ a form asking for their own name on their own
+  // page is the kind of thing that makes a product feel like it does not know
+  // you - and it is exactly what this page did.
+  const follow = viewer && viewer.runsThisGroup
+    ? `<p class="row" style="margin:20px 0 8px">
+         <a class="btn" href="/@${esc(group.handle)}/manage">Manage this group</a>
+       </p>
+       <p class="muted">This is your group's public page - what everyone else sees.</p>`
+    : viewer && viewer.follows
+      ? `<p class="row" style="margin:20px 0 8px">
+           <span class="btn plain">Following</span>
+           <a class="muted" href="/m/${esc(viewer.manageToken || "")}">Change how much you hear</a>
+         </p>`
+      : `<form class="join" method="post" action="/@${esc(group.handle)}/join">
+           <input type="email" name="email" placeholder="your email" required>
+           <input type="text" name="name" placeholder="your name">
+           <button class="btn" type="submit">Follow</button>
+         </form>
+         <p class="muted">Following means you hear about their nights. One email to
+         confirm, no account, and you can stop from any message we send.</p>`;
+
   return page(group.name || group.handle, `
     <h1>${esc(group.name || group.handle)}</h1>
     <p class="muted">@${esc(group.handle)}</p>
     ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
-    <form class="join" method="post" action="/@${esc(group.handle)}/join">
-      <input type="email" name="email" placeholder="your email" required>
-      <input type="text" name="name" placeholder="your name">
-      <button class="btn" type="submit">Join</button>
-    </form>
-    <p class="muted">You will get one email to confirm. No account, and you can
-    leave from any message we send.</p>
+    ${follow}
     ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     ${group.merch_link ? `<p><a class="btn plain" href="${esc(group.merch_link)}"
       rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
     <h2>Nights</h2>
     ${list}
+    <p><a class="btn plain small" href="webcal://${esc(new URL(base).host)}/@${esc(group.handle)}.ics">Add these to your calendar</a></p>
     <h2>Talk</h2>
     ${postList(posts || [])}
-    <p><a class="btn plain" href="webcal://${esc(new URL(base).host)}/@${esc(group.handle)}.ics">Subscribe in your calendar</a></p>
   `);
 }
 
@@ -438,8 +509,14 @@ function notice(title, message) {
 
 // ------------------------------------------------------------------ queries
 
+// Current name first, then anything this group used to be called. An old
+// address stays reachable forever; the page it serves is simply the group's.
 async function groupByHandle(env, handle) {
-  return env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(handle).first();
+  const direct = await env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(handle).first();
+  if (direct) return direct;
+  return env.DB.prepare(
+    `SELECT g.* FROM groups g JOIN group_handles h ON h.group_id = g.id WHERE h.handle = ?`
+  ).bind(handle).first();
 }
 
 async function upcomingEvents(env, groupId, now) {
@@ -517,6 +594,9 @@ async function createGroup(env, dj, handle, name, now) {
   }
   await reserveHandle(env, handle);
   await env.DB.prepare(
+    `INSERT OR IGNORE INTO group_handles (handle, group_id, created_ms) VALUES (?, ?, ?)`
+  ).bind(handle, id, now).run();
+  await env.DB.prepare(
     `INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`
   ).bind(id, dj.id, now).run();
   return { id, handle };
@@ -533,6 +613,22 @@ async function isPro(env, groupId) {
 
 async function takeRateFor(env, groupId) {
   return await isPro(env, groupId) ? 0 : TICKET_TAKE;
+}
+
+// What this visitor is to this group. Cheap, and it is what stops the page
+// asking a DJ for their own name.
+async function viewerOf(env, request, group, now) {
+  const dj = await currentDJ(env, request, now);
+  if (!dj) return null;
+  const runs = await env.DB.prepare(
+    `SELECT 1 AS ok FROM group_djs WHERE group_id = ? AND dj_id = ?`
+  ).bind(group.id, dj.id).first();
+  if (runs) return { dj, runsThisGroup: true };
+  const follows = await env.DB.prepare(
+    `SELECT 1 AS ok FROM group_members gm JOIN members m ON m.id = gm.member_id
+      WHERE gm.group_id = ? AND m.email_norm = ? AND gm.state = 'joined'`
+  ).bind(group.id, dj.email_norm).first();
+  return { dj, runsThisGroup: false, follows: !!follows };
 }
 
 async function djRunsGroup(env, dj, groupId) {
@@ -933,7 +1029,7 @@ export default {
       const nonce = randomHex(16);
       const state = await signState(env, {
         p: provider, n: nonce, exp: now + 10 * 60 * 1000,
-        to: url.searchParams.get("to") || "/manage",
+        to: url.searchParams.get("to") || "/home",
       });
       // SameSite=None because Apple posts the result back cross-site; a Lax
       // cookie is simply not sent and every sign-in fails on state mismatch.
@@ -1002,7 +1098,7 @@ export default {
       return new Response(null, {
         status: 302,
         headers: {
-          location: String(state.to || "/manage"),
+          location: String(state.to || "/home"),
           "set-cookie": cookie,
         },
       });
@@ -1023,6 +1119,63 @@ export default {
     if (path === "/signin") return html(200, signInPage(env));
 
     // ---- the DJ's own pages -----------------------------------------------
+    // Home for someone signed in: what is coming up, across the groups they run
+    // and the groups they follow. Signed out it is the sign-in page, because
+    // there is nothing here that is about nobody in particular.
+    if (path === "/home") {
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return html(200, signInPage(env));
+
+      const { results: mine } = await env.DB.prepare(
+        `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id WHERE d.dj_id = ?`
+      ).bind(dj.id).all();
+      const { results: following } = await env.DB.prepare(
+        `SELECT g.* FROM groups g
+           JOIN group_members gm ON gm.group_id = g.id
+           JOIN members m ON m.id = gm.member_id
+          WHERE m.email_norm = ? AND gm.state = 'joined'`
+      ).bind(dj.email_norm).all();
+
+      const ids = [...(mine || []), ...(following || [])].map((g) => g.id);
+      let upcoming = [];
+      if (ids.length) {
+        const { results } = await env.DB.prepare(
+          `SELECT e.*, g.handle, g.name AS group_name FROM events e JOIN groups g ON g.id = e.group_id
+            WHERE e.group_id IN (${ids.map(() => "?").join(",")})
+              AND e.state IN ('announced','live')
+              AND (e.starts_ms IS NULL OR e.starts_ms > ?)
+            ORDER BY e.starts_ms LIMIT 30`
+        ).bind(...ids, now - 12 * 60 * 60 * 1000).all();
+        upcoming = results || [];
+      }
+
+      const groupRow = (g, note) => `<a class="card" href="/@${esc(g.handle)}">
+        <strong>${esc(g.name || g.handle)}</strong>
+        <div class="muted">@${esc(g.handle)}${note ? " · " + esc(note) : ""}</div></a>`;
+
+      return html(200, page("PartyParty", `
+        <h1>What's on</h1>
+        ${upcoming.length ? upcoming.map((e) => `<a class="card" href="/@${esc(e.handle)}/${esc(e.slug)}">
+            <div class="when">${esc(whenText(e))}</div>
+            <strong>${esc(e.title || "A night")}</strong>
+            <div class="muted">${esc(e.group_name || e.handle)}${e.place ? " · " + esc(e.place) : ""}</div>
+          </a>`).join("")
+          : `<p class="muted">Nothing coming up yet - from your own groups or the ones
+             you follow.</p>`}
+
+        ${(mine || []).length ? `<h2>Yours</h2>
+          ${mine.map((g) => groupRow(g, "you run this")).join("")}` : ""}
+
+        ${(following || []).length ? `<h2>Following</h2>
+          ${following.map((g) => groupRow(g)).join("")}`
+          : `<h2>Following</h2><p class="muted">Nobody yet. Open someone's page and
+             follow them, and their nights show up here.</p>`}
+
+        <p class="muted" style="margin-top:40px">
+          <a href="/manage">Run a group</a> · <a href="/auth/signout">Sign out</a></p>
+      `));
+    }
+
     // /manage is a ROUTER, not a destination. A list of your groups is a list
     // of one thing for almost everybody, which is a redirect with extra steps.
     // No group: make one, which is also the onboarding. One group: land inside
@@ -1185,6 +1338,39 @@ export default {
             .bind(link, now, group.id).run();
           return notice("Saved", link ? "Guests can tip you now." : "Tipping is off.");
         }
+        if (form && form.has("groupName")) {
+          const newHandle = normalizeHandle(form.get("handle"));
+          if (newHandle && newHandle !== group.handle) {
+            const problem = handleProblem(newHandle);
+            if (problem) return notice("That handle will not work", problem);
+            if (!await claimHandle(env, newHandle)) return notice("That handle is taken", "Pick another.");
+            try {
+              await env.DB.prepare(`UPDATE groups SET handle = ? WHERE id = ?`)
+                .bind(newHandle, group.id).run();
+            } catch (e) {
+              return notice("That handle is taken", "Pick another.");
+            }
+            await reserveHandle(env, newHandle);
+            // The old handle is NOT released, and it keeps resolving here.
+            // Links to it are already in people's messages and calendars, and
+            // handing it to someone else would point them at a stranger's night.
+            await env.DB.prepare(
+              `INSERT OR IGNORE INTO group_handles (handle, group_id, created_ms) VALUES (?, ?, ?)`
+            ).bind(newHandle, group.id, now).run();
+          }
+          await env.DB.prepare(`UPDATE groups SET name = ?, bio = ?, updated_ms = ? WHERE id = ?`)
+            .bind(String(form.get("groupName") || "").slice(0, 80),
+              String(form.get("bio") || "").slice(0, 500), now, group.id).run();
+          return new Response(null, {
+            status: 302,
+            headers: { location: `/@${newHandle || group.handle}/manage` },
+          });
+        }
+        if (form && form.has("djName")) {
+          await env.DB.prepare(`UPDATE djs SET name = ? WHERE id = ?`)
+            .bind(String(form.get("djName") || "").slice(0, 60), dj.id).run();
+          return new Response(null, { status: 302, headers: { location: `/@${group.handle}/manage` } });
+        }
         const pair = String((form && form.get("pair")) || "").trim().toUpperCase();
         if (pair) {
           const code = await env.DB.prepare(
@@ -1265,6 +1451,23 @@ export default {
 
         <details class="settings">
           <summary>Settings</summary>
+          <h2>You</h2>
+          <p class="muted">From ${esc(dj.email_norm)}, which is how you sign in.</p>
+          <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+            <input type="text" name="djName" placeholder="Your name" value="${esc(dj.name || "")}">
+            <button class="btn plain" type="submit">Save</button>
+          </form>
+
+          <h2>This group</h2>
+          <form class="newnight" method="post" action="/@${esc(group.handle)}/manage">
+            <input type="text" name="groupName" placeholder="Name" value="${esc(group.name || "")}" required>
+            <input type="text" name="handle" placeholder="handle" value="${esc(group.handle)}">
+            <input type="text" name="bio" placeholder="A line about your nights" value="${esc(group.bio || "")}">
+            <button class="btn plain" type="submit">Save</button>
+          </form>
+          <p class="muted">Changing the handle changes your address. The old one keeps
+          working - links to it are already in people's messages.</p>
+
           <h2>Pair a Mac</h2>
           <p class="muted">Type the code the Mac shows, and its parties find your nights.</p>
           <form class="join" method="post" action="/@${esc(group.handle)}/manage">
@@ -1615,7 +1818,7 @@ export default {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base,
-        await recentPosts(env, group.id)));
+        await recentPosts(env, group.id), await viewerOf(env, request, group, now)));
     }
 
     return new Response("Not Found", { status: 404 });

@@ -9,7 +9,7 @@ import { totalForBuyer, verifyWebhook } from "../stripe.js";
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
 // either work twice or corrupt a row.
-const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql", "0005_pro.sql"]
+const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql", "0005_pro.sql", "0006_handle_aliases.sql"]
   .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8")).join("\n");
 
 class Stmt {
@@ -283,7 +283,8 @@ test("a DJ signs in with a verified token, and a forged one is refused", async (
   const env = await withGoogle(makeEnv());
   const { done, session } = await signIn(env);
   assert.equal(done.status, 302);
-  assert.equal(done.headers.get("location"), "/manage");
+  assert.equal(done.headers.get("location"), "/home",
+    "signing in lands on what is on, not on a management screen");
   assert.ok(session, "a session cookie is set");
   assert.equal(one(env, `SELECT email_norm FROM djs`).email_norm, "dj@example.com");
 
@@ -928,6 +929,84 @@ test("the group page leads with adding a night and its sendable link", async () 
   for (const later of ["<h2>Pair a Mac", "<h2>Tips", "<h2>Merch", "<h2>Pro", "Sign out"]) {
     assert.ok(body.indexOf(later) > settings, `${later} belongs behind settings`);
   }
+});
+
+test("renaming a group keeps the old address alive", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  env.raw.prepare(`INSERT INTO group_handles (handle, group_id, created_ms) VALUES ('sundaze', ?, ?)`)
+    .run(groupId, Date.now());
+  const dj = await signedInDJ(env, groupId);
+  env.DL = new Map();
+  env.DL.head = async (k) => (env.DL.has(k) ? {} : null);
+  env.DL.put = async (k, v) => { env.DL.set(k, v); };
+
+  const body = new FormData();
+  body.append("groupName", "Sundaze");
+  body.append("handle", "slowsunday");
+  const saved = await get(env, "/@sundaze/manage", {
+    method: "POST", body, headers: { cookie: dj.cookie },
+  });
+  assert.equal(saved.status, 302);
+  assert.equal(one(env, `SELECT handle FROM groups`).handle, "slowsunday");
+
+  // The new address works, and so does the one already in someone's calendar.
+  assert.equal((await get(env, "/@slowsunday")).status, 200);
+  assert.equal((await get(env, "/@sundaze")).status, 200,
+    "an address people already have must not become a 404");
+  assert.equal((await get(env, "/@sundaze.ics")).status, 200);
+});
+
+test("home shows what is on across groups you run and groups you follow", async () => {
+  const env = await withGoogle(makeEnv());
+  const { session } = await signIn(env);
+  const cookie = { headers: { cookie: `pp_s=${session[1]}` } };
+
+  const empty = await (await get(env, "/home", cookie)).text();
+  assert.match(empty, /Nothing coming up yet/);
+  assert.match(empty, /Nobody yet/);
+
+  // A group they run.
+  const mineId = seedGroup(env, "sundaze");
+  const dj = one(env, `SELECT id FROM djs`).id;
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
+    .run(mineId, dj, Date.now());
+  seedEvent(env, mineId, { slug: "mine", title: "My night", starts_ms: Date.now() + 86400000 });
+
+  // A group they follow, matched by the address they signed in with.
+  const theirsId = seedGroup(env, "latenight");
+  env.raw.prepare(`UPDATE groups SET name = 'Late Night' WHERE id = ?`).run(theirsId);
+  const memberId = ulid();
+  env.raw.prepare(`INSERT INTO members (id, email_norm, name, created_ms) VALUES (?, 'dj@example.com', 'DJ', ?)`)
+    .run(memberId, Date.now());
+  env.raw.prepare(`INSERT INTO group_members (group_id, member_id, state, volume, source, joined_ms)
+    VALUES (?, ?, 'joined', 'events', 'link', ?)`).run(theirsId, memberId, Date.now());
+  seedEvent(env, theirsId, { slug: "theirs", title: "Their night", starts_ms: Date.now() + 172800000 });
+
+  const body = await (await get(env, "/home", cookie)).text();
+  assert.match(body, /My night/, "a night from a group you run");
+  assert.match(body, /Their night/, "a night from a group you follow - the point of following");
+  assert.match(body, /Late Night/);
+  assert.match(body, /you run this/);
+});
+
+test("your own group page offers management, not a form asking your name", async () => {
+  const env = await withGoogle(makeEnv());
+  const { session } = await signIn(env);
+  const groupId = seedGroup(env);
+  const dj = one(env, `SELECT id FROM djs`).id;
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
+    .run(groupId, dj, Date.now());
+
+  const mine = await (await get(env, "/@sundaze", { headers: { cookie: `pp_s=${session[1]}` } })).text();
+  assert.match(mine, /Manage this group/);
+  assert.ok(!/placeholder="your name"/.test(mine),
+    "it must not ask its owner to introduce themselves");
+
+  // A stranger still gets the follow form, and it says what following means.
+  const stranger = await (await get(env, "/@sundaze")).text();
+  assert.match(stranger, /placeholder="your name"/);
+  assert.match(stranger, /Following means you hear about their nights/);
 });
 
 for (const [name, fn] of tests) {
