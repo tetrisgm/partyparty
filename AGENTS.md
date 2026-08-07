@@ -141,6 +141,11 @@ boundary.
   the appcast, and the R2 download plumbing stay intact and working so the option
   can be taken up again. Do not delete them, and do not run them without being
   asked.
+- Pro is a SUBSCRIPTION. There is no lifetime unlock and no non-consumable: an
+  unlock that zeroes our cut forever is bought by exactly the DJs selling the
+  most tickets. The non-consumable `fm.partyparty.app.pro.lifetime` was deleted
+  from App Store Connect on 2026-08-07 at the owner's request; do not recreate
+  it, and do not add a one-off purchase in its place.
 - `asc` (App Store Connect CLI, `brew install asc`) is the tool for every App
   Store and TestFlight operation: `asc review doctor` before anything, then
   `asc review status`, `asc versions`, `asc builds`, `asc testflight`. It reads

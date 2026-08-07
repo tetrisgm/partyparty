@@ -24,10 +24,11 @@ WHAT IS NOT BUILT, and why:
 - **Step 2, the field tests.** A real iPhone on a wildcard cert, and a venue
   whose Wi-Fi cannot carry the room. Needs a venue and real phones.
 - **The App Store half of Pro.** StoreKit in the Mac app and an auto-renewable
-  product in App Store Connect. The entitlement row it will write, and the union
-  that reads it, are done and tested. The existing
-  `fm.partyparty.app.pro.lifetime` is the WRONG product type and must never
-  ship.
+  subscription in App Store Connect - there is now NO in-app purchase product
+  on the app at all: the non-consumable one was deleted on 2026-08-07 (owner),
+  because Pro is a subscription and a lifetime unlock is not coming back. The
+  entitlement row the App Store will write, and the union that reads it, are
+  done and tested.
 - **Media on merged posts.** A web post carrying a photo is not put on the LAN
   wall: the file lives in the cloud and this Mac cannot serve it to a guest on
   the venue network. It is on the event page.
