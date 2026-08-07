@@ -603,8 +603,12 @@ function calendarBlock(base, handle) {
   // it, may or may not survive - and when it does not, the error is "check the
   // URL" with nothing to check.
   const icsUrl = `${base}/calendar/${handle}.ics`;
-  const google = "https://calendar.google.com/calendar/r?cid=" + encodeURIComponent(icsUrl);
   const apple = icsUrl.replace(/^https:/, "webcal:");
+  // render?cid= with the webcal form. The r?cid= route with an https URL is the
+  // one that answers "unable to add calendar - check the URL" while the feed is
+  // perfectly good, which cost an afternoon to pin on the link rather than the
+  // calendar. Google rewrites webcal to https itself.
+  const google = "https://calendar.google.com/calendar/render?cid=" + encodeURIComponent(apple);
   return `<div class="linkrow">
       <input class="linkbox" type="text" readonly value="${esc(icsUrl)}"
         onclick="this.select()" aria-label="Calendar link">
@@ -614,10 +618,11 @@ function calendarBlock(base, handle) {
       <a class="btn plain small" href="${esc(apple)}">Apple Calendar</a>
       <a class="btn plain small" href="${esc(google)}" rel="noopener">Google Calendar</a>
     </div>
-    <p class="muted">New nights appear on their own. Apple asks to confirm an
-      "insecure connection" first - that is its webcal: link opening over http
-      before it upgrades, and it is safe to continue. Pasting the link above into
-      New Calendar Subscription avoids the prompt entirely.</p>
+    <p class="muted">New nights appear on their own. If a button does not take,
+      paste the link above instead: in Google Calendar under Other calendars →
+      + → From URL, or in Apple Calendar under File → New Calendar Subscription.
+      Apple's button asks about an "insecure connection" first - that is the
+      webcal: link opening over http before it upgrades, and it is safe.</p>
     <script>
     for (const button of document.querySelectorAll('.copy')) {
       button.addEventListener('click', async () => {

@@ -224,7 +224,8 @@ test("the group page and its calendar are served", async () => {
   assert.match(page, /Sundaze/);
   assert.match(page, /value="https:\/\/partyparty\.party\/calendar\/sundaze\.ics"/,
     "no @ in a URL that gets pasted into a calendar client");
-  assert.match(page, /calendar\.google\.com\/calendar\/r\?cid=/, "one click for Google");
+  assert.match(page, /calendar\.google\.com\/calendar\/render\?cid=webcal/,
+    "r?cid= with an https url is the form Google refuses");
   assert.match(page, /webcal:\/\/partyparty\.party\/calendar\/sundaze\.ics/, "one click for Apple");
 
   const feed = await get(env, "/@sundaze.ics");
