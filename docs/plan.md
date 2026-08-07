@@ -1,187 +1,134 @@
-# PartyParty: the plan
+# Throwing a party should be one thing
 
-A DJ's Mac becomes the party: guests scan a QR, hear the set at three seconds
-on a locked phone, and post to the wall — with no internet in the building.
-That part ships today (125.47, build 267).
+## What it's like now
 
-What it is missing is everything either side of the night. A DJ plays to sixty
-people and keeps none of them; the next party starts from zero. So the durable
-object is not the party, it is the **group** — a DJ or several, the people who
-come to their nights, and the events they run. The party is one evening inside
-a group, and the music is optional: a group can run events and never stream a
-note.
+You want to throw a party. So you make a flyer somewhere, an invite on
+Partiful, post it to a WhatsApp group, chase the people who didn't see it,
+answer "what's the address?" thirty times, put someone on the door with a list
+on their phone, plug a laptop into whatever speaker is there, and afterwards
+beg everyone for the photos that ended up scattered across forty camera rolls.
 
-## What already exists
+Five tools. None of them know about each other. You have no idea who actually
+came. And the next time, you build the whole thing again from scratch — because
+Partiful forgets you, and the group chat is the wrong shape for the people who
+came but weren't in it.
 
-**Shipping:** capture and its permission prompt, in-app ShazamKit, the 3s
-buffer, party folders as one-night keepsakes, one-party-per-Wi-Fi adoption
-between DJs, guest re-homing when a Mac leaves, per-phone telemetry, the LAN
-state reducer, and Wi-Fi-only as the default reach.
+That is the thing to fix. Not invites — those are solved and given away free.
+The mess *between* the tools.
 
-**In git, not in the tree:** most of this platform was built once and removed
-in `f44e796` ("Remove PartyParty account system"). `f44e796^` still has
-`cloudflare/schema.sql`, eleven migrations and `docs/auth.md` — `users`,
-`auth_sessions`, `auth_provider_tokens`, `dj_profiles` with handles,
-`device_installs` and `install_link_tokens` for binding a Mac to an account,
-`follows`, `event_guests`, and `live_installs`. Read it before writing
-anything; most of the shape is right and the mistakes are informative.
+## What it should be
 
-Three judgements about that code:
+**You make the party.** Name, when, where, a picture. One screen. You get a
+link.
 
-- **Recover:** the auth tables, the device-link flow, follows, event guests,
-  and `live_installs` — a heartbeat with a 90-second expiry and a
-  `live_started_ms` tiebreak, which is exactly the mechanism 1.1 needs.
-- **Change:** it was built around `dj_profiles`, one profile per DJ, with
-  users bolted on afterwards by `ALTER`. Groups are the root object now, with
-  several DJs, so this is a rebuild on recovered parts rather than a revert.
-- **Never:** `event_sets` and the `/e/<slug>` replay page. The whole 0001
-  schema exists to publish set recordings. We do not record the music.
+**You invite the people you already have.** Not the first time — the first time
+you paste some emails and drop the link in the group chat. Every time after
+that, the list is already there, because it is made of the people who actually
+turned up, not the people who once clicked going.
 
-## The model
+**They say yes without becoming a user.** No app, no account, no password. A
+link in an email or a message, one tap, done. Anyone who *wants* an account can
+have one; nobody needs one.
 
-**Group** — handle, name, picture, description, links. One or more DJs. Owns
-its members and its events. `partyparty.party/@handle`.
+**The day arrives and you stop being an information desk.** Everyone going gets
+the address and a nudge, automatically. You are not answering messages, you are
+getting ready.
 
-**Member** — someone who joined a group. An email and a name. May sign in with
-Apple or Google, never has to; sign-in merges onto the existing member by
-verified email, so someone who joined three groups by link keeps all three.
+**At the party, the same link is the party.** People scan the QR and the music
+is on their phones — locked screens, headphones, the kitchen, the smoking area
+— with no Bluetooth speaker fight and nothing to install. They post photos and
+they land on the wall, not in a void.
 
-**Event** — belongs to a group. Date, place, description, cover, optionally
-ticketed, optionally code-gated, optionally attached to a live party.
+**The next morning the photos are already yours.** All of them, in one place,
+because they were posted to the party and not to a camera roll. Yours to keep,
+yours to share if you feel like it, nobody else's to see.
 
-**Signup** — going, or not. A ticket is a signup that was paid for.
+**And you know who came.** Not who RSVP'd — who was in the room. That list is
+the thing that makes the next party one button instead of an evening's work.
 
-A guest at a party still needs nothing: no account, no email, no internet.
+**Press the button. Same people, new date.**
 
-### One link
+If you also want to sell tickets or take tips, that is a toggle on the first
+screen, and the money goes to you.
 
-`partyparty.party/@handle/<event>` is posted once and serves the whole life of
-the night. Before: details, who is going, tickets, and a timeline already
-running. During: in the room it becomes the room — stream, wall, posting; away
-from it, the timeline and no player, because the music is for the people who
-are there. After: the timeline stays and people keep uploading for days.
+## What that means we build
 
-The event page is public — it is the invite. The timeline is for members and
-attendees. Photos are never public and never mailed out except by the DJ's own
-act.
+The party engine already exists and ships: guests scan, hear the set at three
+seconds on locked phones, post to a wall, all with no internet in the building.
+Everything above is what surrounds it.
 
-The cost, named once: the timeline needs a cloud source of truth that the LAN
-wall reconciles into. That is the hardest engineering here.
+**Three objects, and no more.** A **group** is you and the people who come to
+your nights — one handle, one page, `partyparty.party/@handle`. An **event** is
+one night in it. A **member** is an email and a name; sign-in with Apple or
+Google is offered and never required. That is the entire model, and the group
+is what makes the second party easier than the first.
 
-## Money
+**One link for the whole night.** `@handle/<event>` is the invite before, the
+room during, and the photos after. Away from the venue it shows the timeline
+and no player — the music is for the people who are there. A second link would
+split the night's memory in half and double what you have to explain.
 
-Ko-fi's structure. Tips and tickets route through the DJ's **own** PayPal or
-Stripe; we are the page, not the processor. No holding, no payouts, no
-escrow, no merchant-of-record posture, and refunds and disputes belong to the
-DJ because it is their party. Onboarding is "connect your PayPal".
+**Don't reinvent it.** Most of this was built once and removed in `f44e796`.
+`f44e796^` still has the schema, eleven migrations and `docs/auth.md`: users,
+sessions, provider tokens, profiles with handles, the device-link flow that
+binds a Mac to an account, follows, event guests, and `live_installs` with its
+heartbeat and expiry. Recover that. Change one thing: it was built around a
+single DJ profile with accounts bolted on afterwards, and the group is the root
+object now. Never bring back `event_sets` — that whole schema exists to publish
+set recordings, and we do not record the music.
 
-| | Free | Pro |
-| --- | --- | --- |
-| Tips | 0% | 0% |
-| Tickets | 5% | 0% |
-| Processing (theirs) | 2.9% + 30¢ | 2.9% + 30¢ |
-
-Fees are added on top and shown to the buyer as one number. A $20 ticket costs
-their guest $21.94 free, $20.91 on Pro; Posh charges $22.99.
-
-**Pro is $12/month or $99/year**, sold both in the app and on the web. No
-lifetime: an unlock that zeroes our cut forever is bought by exactly the DJs
-selling the most. Both surfaces means one entitlement with two sources — the
-App Store transaction binds to the DJ's account via `appAccountToken`, App
-Store Server Notifications keep it current, and a lapse on either side revokes
-both. Same price on both. Apple takes 30%, or 15% under the Small Business
-Program — check enrolment before the first sale.
-
-The existing IAP `fm.partyparty.app.pro.lifetime` is the wrong product type.
-Delete it when the subscription is created.
-
-## The build
-
-**A second Worker.** `partyparty-site` keeps the landing page, certificate
-broker, DNS and relay registration untouched. The platform is
-`partyparty-app` on the same zone — `/@*`, `/auth/*`, `/api/v1/*` — with its
-own D1 and media bucket. Certificate issuance is live-party-critical; a
-platform deploy must not be able to end a party in progress.
-
-**Handles must join the broker's collision guard.** It checks `broker/host/`,
-`broker/join/` and `broker/slug/` before minting a two-word name; a handle
-reserved outside that set will eventually be handed to two owners. Add
-`broker/handle/` to `newHostLabel()` and `newJoinName()` — the broker's only
-change. Handles are `^[a-z0-9]{5,30}$` with a reserved and profanity list.
-The Pro custom link reuses the handle as the join name, so `@sundaze` gives
-both the page and `sundaze.partyparty.party`; that needs `JOIN_NAME_RE`
-widened, since `^[a-z]+-[a-z]+(-\d{1,2})?$` rejects a one-word name and
-`joinNameFromHost()` would resolve it to nothing.
-
-**Auth.** Apple and Google (OIDC) on the web; session cookie over a D1 row.
-The Mac uses `ASWebAuthenticationSession` against the same flow and stores a
-device token — the `install_link_tokens` pattern, recovered. The broker's
-install `id`/`secret` keeps its own job and the two never mix. Member email
-links are single-use, 30-day, scoped to one action.
-
-**The party joins the cloud.** A live Mac heartbeats into `live_installs`
-(recovered) with its party id, direct URL and expiry. Posts and media queue in
-`.state/outbox.jsonl` and drain when there is internet: media by signed PUT,
-then the row. Inbound posts merge through `mergeRoomFeed`, which already
-merges peer posts and rewrites media URLs — a second source, not a new
-mechanism. ULIDs so an offline Mac mints ids that never collide. Photos always
-sync; video only after the night over the DJ's own connection, because video
-never enters the relay and the timeline should not quietly cross that line.
-
-**Email** is MXroute, sent from the origin box rather than from Workers: the
-Worker writes an outbox row, the box polls, sends, and marks it. SMTP
-credentials stay off Cloudflare and every send leaves a receipt. Five
-messages — confirm, invite, day-of reminder, ticket, and an after-note the DJ
-writes. One-click unsubscribe on all of them against a global suppression
-table. SPF, DKIM and MX are already live.
-
-**Abuse and privacy.** Turnstile on the join form; an open email-collection
-endpoint on a public page is a harvesting target. Rate limits per IP and per
-group. Member export and deletion, group export of its own list, and
-`/privacy` rewritten for accounts, email and payments before any of it is
-public.
-
-**Verification.** A smoke suite for the new Worker beside the existing eight;
-Playwright over group page, event page, join and confirm; a Go contract test
-for the sync including offline-then-drain. Nothing here touches playback, so
-the soak rule is unaffected. A phase is done when its proof happened, not when
-its tests pass.
+**The money is yours.** Tips and tickets run through the thrower's own PayPal
+or Stripe. We never hold it, never pay it out, never sit between you and it —
+so there is nothing to onboard beyond connecting an account you already have,
+and refunds are yours because the party is yours. We take 0% of tips and 5% of
+tickets; **Pro at $12/month or $99/year** takes nothing at all. On a $20 ticket
+your guest pays $21.94, or $20.91 on Pro. Posh charges them $22.99.
 
 ## The order
 
-**1. The party link survives the host leaving.** Today the join bootstrap
-holds one `directUrl`, written by the host install at registration; when that
-Mac goes, nobody new gets in. Guests already inside are covered by re-homing.
-The fix needs no new DNS: live members already publish their own machine A
-records, so the bootstrap should hand the page every live member of the party,
-freshest first, and let it probe them in order before falling back to relay.
-*Proof: the host leaves mid-party and a new guest still joins.*
+1. **The party link keeps working when a DJ leaves.** Today the join page holds
+   one Mac's address; when that Mac goes, nobody new gets in. Live Macs already
+   publish their own addresses, so the page should get all of them and try each.
+   No new DNS. *Proof: the host leaves mid-party and a new guest still joins.*
 
-**2. Field tests.** A real iPhone joining on a wildcard cert, and a venue whose
-Wi-Fi cannot carry the room getting its guests onto the fallback path. Needs a
-venue and real phones.
+2. **Field tests.** A real iPhone on a wildcard cert, and a venue whose Wi-Fi
+   can't carry the room falling back cleanly. Needs a venue and real phones.
 
-**3. Groups, events, signups, email.** The platform standing on its own, no
-party attached — which is the whole product for anyone replacing Partiful or
-Secretparty. *Proof: a real group gets a real invite and real people sign up.*
+3. **The group, the event, the yes, the reminder.** The whole thing above,
+   standing without a party attached — which is already a complete replacement
+   for the five-tool mess. *Proof: a real group gets a real invite and real
+   people say they're coming.*
 
-**4. One link.** The event page becomes the room while the party is live, and
-the timeline reconciles both ways. *Proof: a photo posted on venue Wi-Fi and
-one posted the next morning sit in the same timeline.*
+4. **The link becomes the room.** The event page turns into the party while it
+   is live, and photos posted on venue Wi-Fi and photos posted three days later
+   land in the same place. *Proof: exactly that.*
 
-**5. Tips**, then **6. tickets**, then **7. merch** as a link out.
-*Proof of 5: money lands in a DJ's own account without passing through one of
-ours.*
+5. **Tips**, then **6. tickets**, then **7. merch** as a link out. *Proof of 5:
+   money reaches someone's own bank account without passing through ours.*
 
-**8. Pro and the Store.** The subscription on the web, then the IAP and the
-bridge between them. Submission waits for released macOS — a Store package
-cannot be built on a prerelease SDK. Not blocked: metadata, screenshots, review
-notes. Owed separately: correcting Apple DTS, which was told the host is macOS
-26.0 when it is 27.0 build `26A5388g`.
+8. **Pro, then the Store.** Subscription on the web, then in the app with one
+   entitlement across both. Submission waits for released macOS; a Store package
+   can't be built on a prerelease SDK.
 
-## Needed from the owner
+## How it's actually made
 
-The field tests in 2, and Apple and Google credentials: a Services ID with Sign
-in with Apple, its key, and a Google OAuth web client. Secrets go in by
+A second Worker (`partyparty-app`) so a platform deploy can never break a live
+party — the existing Worker keeps certificates, DNS and relay untouched. Group
+handles must be reserved in the broker's existing collision guard
+(`broker/host/`, `broker/join/`, `broker/slug/`) or two owners eventually get
+the same name, and a one-word custom link needs `JOIN_NAME_RE` widened. Email
+is MXroute, sent from the origin box rather than from Workers, with one-click
+unsubscribe. Turnstile on the join form, because an open email box on a public
+page gets harvested. Posts carry ULIDs so an offline Mac mints ids that never
+collide, and sync drains through the outbox when there's internet. Photos
+always sync; video only afterwards, over the DJ's own connection.
+
+Verified by a smoke suite for the new Worker, Playwright over the pages, and a
+Go contract test for offline-then-drain. A step is done when its proof happened.
+
+## Needed from you
+
+The field tests, and Apple and Google credentials — a Services ID with Sign in
+with Apple plus its key, and a Google OAuth web client. Secrets go in with
 `wrangler secret put`, typed by you. Everything else can start now, beginning
-with 1, which depends on nobody.
+with step 1, which depends on nobody.
