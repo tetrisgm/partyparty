@@ -316,7 +316,7 @@ function whenText(event) {
   });
 }
 
-function groupPage(group, events, base) {
+function groupPage(group, events, base, posts) {
   const list = events.length
     ? events.map((event) => `<a class="card" href="/@${esc(group.handle)}/${esc(event.slug)}">
         <div class="when">${esc(whenText(event))}</div>
@@ -337,6 +337,8 @@ function groupPage(group, events, base) {
     leave from any message we send.</p>
     <h2>Nights</h2>
     ${list}
+    <h2>Talk</h2>
+    ${postList(posts || [])}
     <p><a class="btn plain" href="webcal://${esc(new URL(base).host)}/@${esc(group.handle)}.ics">Subscribe in your calendar</a></p>
   `);
 }
@@ -520,6 +522,56 @@ async function sendInvites(env, group, event, dj, base, now) {
     if (queued) sent++;
   }
   return sent;
+}
+
+// The group's own thread. Whoever writes it is identified by the link they
+// already hold - a member by their settings token, a DJ by their session - so
+// taking part still needs no account.
+async function addPost(env, { group, dj, member, body, base, now }) {
+  const text = String(body || "").trim().slice(0, 2000);
+  if (!text) return 0;
+  const author = dj ? (dj.name || "The DJ") : (member && member.name) || "Someone";
+  await env.DB.prepare(
+    `INSERT INTO posts (id, group_id, member_id, dj_id, author, body, origin, created_ms)
+     VALUES (?, ?, ?, ?, ?, ?, 'web', ?)`
+  ).bind(ulid(now), group.id, member ? member.id : null, dj ? dj.id : null, author, text, now).run();
+
+  // Only the people who asked for every post. This is the whole difference
+  // between a group here and a group chat: the volume is theirs, not the
+  // poster's, so a busy thread cannot colonise anybody's phone.
+  const audience = await audienceFor(env, group, dj && dj.id, ["all"]);
+  let mailed = 0;
+  for (const person of audience) {
+    if (member && person.id === member.id) continue;
+    const manage = await mintToken(env, { memberId: person.id, groupId: group.id, purpose: "manage", now });
+    const queued = await queueMail(env, {
+      to: person.email_norm,
+      subject: `${group.name || group.handle}: ${author} posted`,
+      text: `${text}\n\n${base}/@${group.handle}\n\nFewer emails: ${base}/m/${manage}`,
+      kind: "note",
+      groupId: group.id,
+      unsubscribe: `${base}/m/${manage}?stop=1`,
+      now,
+    });
+    if (queued) mailed++;
+  }
+  return mailed;
+}
+
+async function recentPosts(env, groupId) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM posts WHERE group_id = ? AND event_id IS NULL AND deleted_ms IS NULL
+      ORDER BY created_ms DESC LIMIT 30`
+  ).bind(groupId).all();
+  return results || [];
+}
+
+function postList(posts) {
+  if (!posts.length) return `<p class="muted">Nothing said yet.</p>`;
+  return posts.map((post) => `<div class="post">
+    <div class="who">${esc(post.author)}</div>
+    <div>${esc(post.body).replace(/\n/g, "<br>")}</div>
+  </div>`).join("");
 }
 
 function signInPage(env) {
@@ -718,6 +770,13 @@ export default {
             ? `${sent} ${sent === 1 ? "person" : "people"} will hear about it.`
             : "Everyone in the group has already had this one.");
         }
+        const say = String((form && form.get("say")) || "");
+        if (say) {
+          const mailed = await addPost(env, { group, dj, body: say, base, now });
+          return notice("Posted", mailed
+            ? `${mailed} ${mailed === 1 ? "person" : "people"} asked to hear every post.`
+            : "It is on the group's page.");
+        }
         const title = String((form && form.get("title")) || "").slice(0, 120);
         const startsRaw = String((form && form.get("starts")) || "");
         const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
@@ -744,6 +803,11 @@ export default {
             <button class="btn plain" type="submit">Tell the group</button>
           </form></div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
+        <h2>Say something</h2>
+        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+          <input type="text" name="say" placeholder="Tell the group" required>
+          <button class="btn" type="submit">Post</button>
+        </form>
         <h2>Add one</h2>
         <form class="join" method="post" action="/@${esc(group.handle)}/manage">
           <input type="text" name="title" placeholder="What is it called?" required>
@@ -846,9 +910,20 @@ export default {
         return notice("Blocked", "You will not get invitations from them. You are still in the group.");
       }
 
+      if (request.method === "POST" && group) {
+        const form = await request.formData().catch(() => null);
+        const member = await env.DB.prepare(`SELECT * FROM members WHERE id = ?`).bind(token.member_id).first();
+        await addPost(env, { group, member, body: form && form.get("say"), base, now });
+        return new Response(null, { status: 302, headers: { location: `/@${group.handle}` } });
+      }
       const link = (q, label) => `<p><a class="btn plain" href="/m/${match[1]}?do=${q}">${esc(label)}</a></p>`;
       return html(200, page("Your settings", `
         <h1>Your settings</h1>
+        ${group ? `<h2>Say something to ${esc(group.name || group.handle)}</h2>
+        <form class="join" method="post" action="/m/${match[1]}">
+          <input type="text" name="say" placeholder="Anything" required>
+          <button class="btn" type="submit">Post</button>
+        </form>` : ""}
         ${group ? `<p class="muted">For ${esc(group.name || group.handle)}</p>` : ""}
         <h2>How much you hear</h2>
         ${link("all", "Every post")}
@@ -940,7 +1015,8 @@ export default {
     if (match) {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
-      return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base));
+      return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base,
+        await recentPosts(env, group.id)));
     }
 
     return new Response("Not Found", { status: 404 });

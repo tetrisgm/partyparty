@@ -458,6 +458,40 @@ test("the sender takes messages and marks them done", async () => {
   assert.equal(empty.messages.length, 0);
 });
 
+test("the group has a thread, and the volume on it belongs to the reader", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  await post(env, "/@sundaze/join", { email: "loud@example.com", name: "Loud" });
+  const manage = /\/m\/([a-f0-9]{48})/.exec(one(env, `SELECT body_text FROM outbox`).body_text)[1];
+  env.raw.prepare(`UPDATE group_members SET volume = 'all'`).run();
+  await post(env, "/@sundaze/join", { email: "quiet@example.com" });
+  env.raw.prepare(`UPDATE group_members SET volume = 'events' WHERE member_id =
+    (SELECT id FROM members WHERE email_norm = 'quiet@example.com')`).run();
+  env.raw.prepare(`DELETE FROM outbox`).run();
+
+  const body = new FormData();
+  body.append("say", "Doors at ten, bring a coat");
+  const said = await get(env, `/m/${manage}`, { method: "POST", body });
+  assert.equal(said.status, 302);
+
+  const wall = await (await get(env, "/@sundaze")).text();
+  assert.match(wall, /Doors at ten, bring a coat/, "the thread is on the group's page");
+
+  // The poster is not mailed their own post, and "only nights" means only
+  // nights - a busy thread must not reach someone who asked for quiet.
+  const mailed = rows(env, `SELECT to_email FROM outbox`).map((r) => r.to_email);
+  assert.deepEqual(mailed, [], "nobody else asked for every post");
+
+  env.raw.prepare(`UPDATE group_members SET volume = 'all' WHERE member_id =
+    (SELECT id FROM members WHERE email_norm = 'quiet@example.com')`).run();
+  const again = new FormData();
+  again.append("say", "One more thing");
+  await get(env, `/m/${manage}`, { method: "POST", body: again });
+  assert.deepEqual(rows(env, `SELECT to_email FROM outbox`).map((r) => r.to_email),
+    ["quiet@example.com"], "turning it up is what makes a post arrive");
+  assert.ok(groupId);
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();
