@@ -172,7 +172,10 @@ app and the dashboard. Members may sign in, and never have to: joining is an
 email and a confirmation, and every action after that works from a link in an
 email. A guest at a party still needs nothing at all.
 
-**DECISION:** Apple only, or Apple plus Google for members who want an account?
+**Apple and Google, both** (owner, 2026-08-06), for DJs and for members who
+want an account. Members who sign in are matched to an existing member row by
+verified email, so a person who joined three groups by link and later signs in
+keeps all three.
 
 ### Email
 
@@ -318,6 +321,169 @@ of ours on either tier, and the money always belongs to the DJ.
 
 ---
 
+## Part 4 — The build
+
+How each piece is actually made, against the tree as it stands.
+
+### 4.1 Where the platform lives: a second Worker
+
+`partyparty-site` (the existing 979-line Worker) keeps the landing page, the
+certificate broker, DNS, relay registration and the canary. It is not touched
+beyond one three-line change in 4.2.
+
+The platform is a **new Worker**, `partyparty-app`, on the same zone, routed on
+`partyparty.party/@*`, `/app/*`, `/auth/*` and `/api/v1/*`. It binds a new D1
+database, the same `DL` R2 bucket (for name reservations only), and a new R2
+bucket for member-uploaded media.
+
+The reason is blunt: certificate issuance and relay registration are
+live-party-critical. A DJ mid-set must not be able to lose their room because a
+platform deploy went out. Two Workers means a bad platform deploy takes down
+sign-ups, not parties.
+
+### 4.2 Names, and not fighting the broker
+
+The broker mints two-word labels and guards three keyspaces —
+`broker/host/`, `broker/join/`, `broker/slug/` — before handing out a name.
+Group handles must join that guard or the two systems will eventually hand the
+same word to two owners.
+
+- **Group handle** — `^[a-z0-9]{5,30}$`, at `partyparty.party/@handle`. On
+  creation, write `broker/handle/<h>` in R2 and refuse if any of the four keys
+  exists.
+- **The broker's only change:** `newHostLabel()` and `newJoinName()` gain
+  `broker/handle/` to their existing collision checks.
+- **The Pro custom party link** is the same handle used as the join name, so
+  `@sundaze` gives both `partyparty.party/@sundaze` and
+  `sundaze.partyparty.party`. That needs `JOIN_NAME_RE` widened: today it is
+  `^[a-z]+-[a-z]+(-\d{1,2})?$`, which a single-word custom name fails, and
+  `joinNameFromHost()` rejects anything that does not match.
+- **Reserved:** `www`, `api`, `app`, `mail`, `admin`, `help`, `support`,
+  `privacy`, `party`, `live`, `relay`, `r`, single letters, anything starting
+  `r-`, plus a standard profanity list. Minimum five characters, as decided.
+
+### 4.3 Identity and sessions
+
+- **DJ, on the web:** Sign in with Apple or Google (OIDC). Session is an
+  HttpOnly, Secure, SameSite=Lax cookie holding a signed session id; the row
+  lives in D1 and can be revoked.
+- **DJ, in the Mac app:** `ASWebAuthenticationSession` against the same web
+  flow, returning a device token bound to the DJ and the install. Kept in the
+  keychain. This is *additional* to the broker's install `id`/`secret`, which
+  keeps doing its own job — the two credentials never mix.
+- **Member:** an email link is the primary path and always works. Signing in
+  with Apple or Google is optional and merges onto the existing member row by
+  verified email.
+- **Email links:** single use, 30-day expiry, scoped to one member and one
+  action, and invalidated when used.
+
+### 4.4 Data
+
+One D1 migration to start (`0001_init.sql`) with the tables sketched in Part 2,
+plus `session`, `email_token`, `outbox`, `suppression`, and `entitlement`.
+Indices on `group.handle`, `event(group_id, starts)`, `follow(group_id)`,
+`member.email`, and `post(event_id, created)`.
+
+### 4.5 Phase 1 surface
+
+```
+GET  /@handle                     group page
+GET  /@handle/<event>             event page
+GET  /@handle/manage              dashboard (DJ session required)
+POST /api/v1/groups/:h/join       join a group (Turnstile) -> confirm email
+GET  /j/<token>                   confirm membership
+GET  /e/<token>                   going / not going, from an emailed link
+POST /api/v1/events               create, update, cancel (DJ session)
+POST /api/v1/events/:id/invite    send the invite to the group
+GET  /u/<token>                   member preferences, leave, unsubscribe
+POST /auth/{apple,google}         start; /auth/*/callback finishes
+```
+
+### 4.6 Email plumbing
+
+MXroute SMTP, and Workers are a bad place to speak SMTP. So: the Worker writes
+to an `outbox` table; the origin box — already deployed, already ours, already
+watched by the relay canary — polls an authenticated endpoint, sends through
+MXroute with a normal Go SMTP client, and marks each row sent. Credentials stay
+off Cloudflare, retries are ordinary, and every send leaves a receipt.
+
+SPF, DKIM and MX for `partyparty.party` are already live. Every message carries
+`List-Unsubscribe` and `List-Unsubscribe-Post`; the one-click endpoint writes to
+a global `suppression` table checked before any send.
+
+Rate limits: per group per day, and one invite per member per event.
+
+### 4.7 Phase 2: the timeline across one link
+
+The cloud is the source of truth. Post ids are ULIDs minted by whoever creates
+the post, so a Mac with no internet can create real ids that never collide.
+
+- **Outbound from the Mac:** posts and media queue in `.state/outbox.jsonl`.
+  When there is internet, media goes to R2 through a signed PUT issued by the
+  app Worker, then the post row goes up. A party with no internet behaves
+  exactly as it does now and drains later.
+- **Inbound to the Mac:** poll `/api/v1/events/:id/posts?since=` and merge into
+  the room feed. `mergeRoomFeed` already merges peer posts and rewrites media
+  URLs, so this is a second source, not a new mechanism.
+- **Media policy:** photos always sync. Video syncs only after the night and
+  only over the DJ's own connection — video never enters the relay, and that
+  boundary should not be quietly crossed by the timeline.
+- **Deletes:** the DJ can remove anything; deletion is a tombstone that
+  propagates both ways.
+- **Attribution:** a LAN guest posts under their party name; a member posts
+  under their member identity. Both render as a name, and the two are never
+  silently merged.
+- **The join:** when a party goes live the Mac sets `event.party_id`, and the
+  event page shows the live room while the party is live.
+
+### 4.8 Phases 3–5: the money surface
+
+- **Onboarding:** a Stripe Connect **Standard** account link, or PayPal's
+  equivalent. The DJ is the merchant; we hold nothing (invariant 6).
+- **Checkout:** Stripe Checkout in the guest's browser, created on the
+  connected account with `application_fee_amount` — 5% on tickets, zero on tips
+  and zero for Pro.
+- **Webhooks:** `checkout.session.completed` writes the ticket or tip row and
+  triggers the ticket email.
+- **Tickets:** capacity checked at creation time, a code per ticket, and a door
+  view for the DJ. The door view needs to work on a phone with bad signal — it
+  should load the whole list once and check codes locally.
+- **Refunds and disputes** are handled by the DJ in their own Stripe or PayPal
+  dashboard. The ticket copy says so before purchase.
+
+### 4.9 Pro across two stores
+
+Web sales use our own Stripe. App sales use an auto-renewable IAP in a
+subscription group, with `appAccountToken` binding the transaction to the DJ's
+account and App Store Server Notifications v2 keeping the `entitlement` table
+current. Pro is on when either source says so, and off when both have lapsed.
+The old `fm.partyparty.app.pro.lifetime` non-consumable is deleted at that
+point.
+
+### 4.10 Abuse, privacy, limits
+
+Turnstile on the join form — an open email-collection endpoint on a public page
+is a harvesting target. Rate limits per IP and per group on join. Member export
+and deletion on request; group export of its own member list. The `/privacy`
+page needs rewriting for accounts, email and payments before any of this is
+public.
+
+### 4.11 How each phase is verified
+
+The audio soak rule is untouched because nothing here goes near playback.
+Everything else:
+
+- A second smoke suite for `partyparty-app`, alongside the existing eight
+  worker smoke tests, run by merge-gate.
+- Playwright coverage for the group page, the event page, joining and
+  confirming — the repo already runs Playwright on the lane.
+- A Go contract test for the Mac↔cloud sync against a local stub, including the
+  offline-then-drain path.
+- One manual proof per phase, as listed in the sequencing below. A phase is not
+  done because its tests pass; it is done when its proof happened.
+
+---
+
 ## Sequencing
 
 Ordered across everything, with what proves each step.
@@ -358,7 +524,9 @@ released and a Store package can be built on a released host.
 
 ## Open decisions
 
-1. Sign in with Apple only, or Apple plus Google for members?
+None. Every question this plan raised has an answer in it.
 
-Everything else is decided. Part 1.1 (the party link surviving the host's
-departure) needs nothing from anyone and is the next thing to build.
+Two things need the owner rather than a decision: the field tests in 1.2, which
+need a venue and real phones, and the Apple and Google developer credentials
+for sign-in. Everything else can start now, beginning with 1.1 — the party link
+surviving the host's departure — which depends on nobody.
