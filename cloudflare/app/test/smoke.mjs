@@ -1090,6 +1090,31 @@ test("a calendar feed is one clients will actually accept", async () => {
   assert.ok(!/beta launch/.test(real), "a real night replaces the placeholder");
 });
 
+test("the group page is a party page: timeline, posts, and who is in it", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  seedEvent(env, groupId, { slug: "june-14", title: "At the Lido" });
+  seedEvent(env, groupId, { slug: "old", title: "Last month", starts_ms: Date.now() - 86400000 });
+  for (const [email, name] of [["ada@example.com", "Ada Lovelace"], ["bo@example.com", "Bo"]]) {
+    await post(env, "/@sundaze/join", { email, name });
+  }
+
+  const body = await (await get(env, "/@sundaze")).text();
+
+  // Nights read as a schedule, and one that has been is marked as past.
+  assert.match(body, /class="timeline"/);
+  assert.match(body, /At the Lido/);
+  assert.match(body, /class="tl past"/, "a night that has happened is not still upcoming");
+
+  // The people, in the rail, as initials on the app's gradient discs.
+  assert.match(body, /class="rail"/);
+  assert.match(body, /2 people/);
+  assert.match(body, /class="avatar"[^>]*>AL</, "initials from the name they gave");
+  assert.match(body, /Ada Lovelace/);
+  // Their addresses are the group's, not the public page's.
+  assert.ok(!/ada@example\.com/.test(body), "an address never appears on a public page");
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();

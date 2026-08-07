@@ -477,6 +477,51 @@ details.settings summary::before{content:"› ";display:inline-block;transition:
 details.settings[open] summary::before{transform:rotate(90deg)}
 details.settings h2{font-size:17px;margin:24px 0 6px}
 
+/* Main column plus a rail, the way the party page keeps its people beside the
+   room rather than buried under it. Stacks on a phone. */
+.withrail{max-width:960px;margin:0 auto;padding:24px 20px 96px;
+display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:36px;align-items:start}
+.rail{position:sticky;top:24px;display:grid;gap:10px}
+.rail h2{margin:0 0 4px;font-size:15px;letter-spacing:.02em;text-transform:uppercase;
+color:var(--label-tertiary)}
+.rail .linkrow{flex-wrap:wrap;margin:8px 0}
+.rail .linkbox{flex:1 1 100%;font-size:12px}
+.rail .row{gap:6px}
+.rail .btn.small{padding:8px 12px;font-size:14px}
+.rail .muted{font-size:13px}
+details.tinyhelp summary{cursor:pointer;font-size:13px;font-weight:600;
+color:var(--label-secondary);margin-top:8px}
+details.tinyhelp p{margin:8px 0 0}
+
+/* The group's people, as the app draws them: overlapping gradient discs. */
+.avatars{display:flex;align-items:center;flex-wrap:wrap;min-width:0;margin:2px 0 10px}
+.avatar{width:35px;height:35px;border-radius:50%;display:grid;place-items:center;
+margin-left:-7px;border:2px solid var(--card);
+background:linear-gradient(135deg,#ff3b72,#ffb057);color:#fff;font-size:12px;
+font-weight:900;box-shadow:0 2px 8px rgba(77,34,31,.12)}
+.avatar:first-child{margin-left:0}
+.avatar.more{background:var(--fill);color:var(--label-secondary)}
+.who-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.who-list li{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600}
+.who-list .avatar{width:28px;height:28px;font-size:11px;margin:0}
+
+/* Nights as a timeline: one rule, a marker per night, dates in tabular figures
+   so they line up the way a schedule should. */
+.timeline{position:relative;margin:8px 0 4px;padding-left:22px}
+.timeline::before{content:'';position:absolute;left:5px;top:6px;bottom:6px;
+width:2px;background:var(--separator);border-radius:2px}
+.tl{position:relative;display:block;padding:0 0 18px;color:inherit;text-decoration:none}
+.tl::before{content:'';position:absolute;left:-21px;top:6px;width:12px;height:12px;
+border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.tl.past::before{background:var(--label-tertiary)}
+.tl:hover{text-decoration:none}
+.tl:hover .tlname{text-decoration:underline}
+.tlname{display:block;font-size:17px;font-weight:800;letter-spacing:-.01em}
+
+@media (max-width:860px){
+  .withrail{grid-template-columns:minmax(0,1fr);gap:8px}
+  .rail{position:static}
+}
 @media (max-width:520px){
   .hero{padding:56px 18px 20px}
   .hero h1{font-size:34px}
@@ -484,11 +529,14 @@ details.settings h2{font-size:17px;margin:24px 0 6px}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 `;
 
-function page(title, body, heroHtml) {
+function page(title, body, heroHtml, rail) {
+  const shell = rail
+    ? `<div class="withrail"><div>${body}</div>${rail}</div>`
+    : `<main>${body}</main>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><style>${STYLE}</style></head>
-<body>${heroHtml || ""}<main>${body}</main>
+<body>${heroHtml || ""}${shell}
 <footer><a href="/home">PartyParty</a></footer></body></html>`;
 }
 
@@ -513,13 +561,16 @@ function whenText(event) {
   });
 }
 
-function groupPage(group, events, base, posts, viewer) {
-  const list = events.length
-    ? events.map((event) => `<a class="card" href="/@${esc(group.handle)}/${esc(event.slug)}">
-        <div class="when">${esc(whenText(event))}</div>
-        <div><strong>${esc(event.title || "Untitled night")}</strong></div>
-        ${event.place ? `<div class="muted">${esc(event.place)}</div>` : ""}
-      </a>`).join("")
+function groupPage(group, events, base, posts, viewer, people, past) {
+  const night = (event, past) => `
+    <a class="tl${past ? " past" : ""}" href="/@${esc(group.handle)}/${esc(event.slug)}">
+      <span class="when">${esc(whenText(event))}</span>
+      <span class="tlname">${esc(event.title || "Untitled night")}</span>
+      ${event.place ? `<span class="muted">${esc(event.place)}</span>` : ""}
+    </a>`;
+  const list = (events.length || (past || []).length)
+    ? `<div class="timeline">${events.map((e) => night(e, false)).join("")}${
+        (past || []).map((e) => night(e, true)).join("")}</div>`
     : `<p class="muted">No nights announced yet.</p>`;
 
   // Who is looking. Showing a DJ a form asking for their own name on their own
@@ -548,6 +599,31 @@ function groupPage(group, events, base, posts, viewer) {
          <p class="muted">One email to confirm. No account, and you can stop from any
          message we send.</p>`;
 
+  const initials = (name) => {
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "\u00b7";
+    return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
+  };
+  const shown = (people || []).slice(0, 12);
+  // Side matter: who is here, and how to keep their nights. Both belong beside
+  // the page rather than wedged between the schedule and the conversation.
+  const rail = `<aside class="rail">
+      <div class="card">
+        <h2>${people.length} ${people.length === 1 ? "person" : "people"}</h2>
+        ${people.length ? `<div class="avatars">
+            ${shown.map((m) => `<span class="avatar" title="${esc(m.name || "Someone")}">${esc(initials(m.name))}</span>`).join("")}
+            ${people.length > shown.length ? `<span class="avatar more">+${people.length - shown.length}</span>` : ""}
+          </div>
+          <ul class="who-list">${shown.map((m) => `<li>
+            <span class="avatar">${esc(initials(m.name))}</span>${esc(m.name || "Someone")}</li>`).join("")}</ul>`
+          : `<p class="muted">Nobody yet. The first person to follow shows up here.</p>`}
+      </div>
+      <div class="card">
+        <h2>Their calendar</h2>
+        ${calendarBlock(base, group.handle)}
+      </div>
+    </aside>`;
+
   return page(group.name || group.handle, `
     ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
     ${follow}
@@ -557,11 +633,10 @@ function groupPage(group, events, base, posts, viewer) {
       rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
     <h2>Nights</h2>
     ${list}
-    ${calendarBlock(base, group.handle)}
     <h2>Talk</h2>
     ${postList(posts || [])}
   `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
-      `<a href="/home">Home</a>`));
+      `<a href="/home">Home</a>`), rail);
 }
 
 function eventPage(group, event, going, base, takeRate) {
@@ -615,14 +690,15 @@ function calendarBlock(base, handle) {
       <button class="btn plain small copy" type="button" data-copy="${esc(icsUrl)}">Copy</button>
     </div>
     <div class="row">
-      <a class="btn plain small" href="${esc(apple)}">Apple Calendar</a>
-      <a class="btn plain small" href="${esc(google)}" rel="noopener">Google Calendar</a>
+      <a class="btn plain small" href="${esc(apple)}">Apple</a>
+      <a class="btn plain small" href="${esc(google)}" rel="noopener">Google</a>
     </div>
-    <p class="muted">New nights appear on their own. If a button does not take,
-      paste the link above instead: in Google Calendar under Other calendars →
-      + → From URL, or in Apple Calendar under File → New Calendar Subscription.
-      Apple's button asks about an "insecure connection" first - that is the
-      webcal: link opening over http before it upgrades, and it is safe.</p>
+    <details class="tinyhelp"><summary>If a button does not take</summary>
+      <p class="muted">Paste the link above: Google Calendar → Other calendars →
+        + → From URL, or Apple Calendar → File → New Calendar Subscription.
+        Apple's button warns about an "insecure connection" first - that is its
+        webcal: link opening over http before it upgrades, and it is safe.</p>
+    </details>
     <script>
     for (const button of document.querySelectorAll('.copy')) {
       button.addEventListener('click', async () => {
@@ -651,6 +727,18 @@ async function upcomingEvents(env, groupId, now) {
   const { results } = await env.DB.prepare(
     `SELECT * FROM events WHERE group_id = ? AND state != 'draft'
        AND (starts_ms IS NULL OR starts_ms > ?) ORDER BY starts_ms ASC LIMIT 50`
+  ).bind(groupId, now - 12 * 60 * 60 * 1000).all();
+  return results || [];
+}
+
+// Nights that have already happened. A group's page is its story, not just its
+// diary: someone deciding whether to follow wants to see that there have been
+// twelve of these, not an empty "nothing coming up".
+async function pastEvents(env, groupId, now) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM events WHERE group_id = ? AND state != 'draft'
+       AND starts_ms IS NOT NULL AND starts_ms <= ?
+     ORDER BY starts_ms DESC LIMIT 12`
   ).bind(groupId, now - 12 * 60 * 60 * 1000).all();
   return results || [];
 }
@@ -859,6 +947,16 @@ async function addPost(env, { group, dj, member, body, base, now }) {
     if (queued) mailed++;
   }
   return mailed;
+}
+
+// The people in the group, for the rail. Names only - an address is theirs and
+// belongs to the group's own export, not on a public page.
+async function groupPeople(env, groupId) {
+  const { results } = await env.DB.prepare(
+    `SELECT m.name FROM group_members gm JOIN members m ON m.id = gm.member_id
+      WHERE gm.group_id = ? AND gm.state = 'joined' ORDER BY gm.joined_ms DESC LIMIT 60`
+  ).bind(groupId).all();
+  return results || [];
 }
 
 async function recentPosts(env, groupId) {
@@ -1996,7 +2094,8 @@ export default {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base,
-        await recentPosts(env, group.id), await viewerOf(env, request, group, now)));
+        await recentPosts(env, group.id), await viewerOf(env, request, group, now),
+        await groupPeople(env, group.id), await pastEvents(env, group.id, now)));
     }
 
     return new Response("Not Found", { status: 404 });
