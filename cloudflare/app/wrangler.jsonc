@@ -1,0 +1,38 @@
+{
+  // PartyParty platform - groups, nights, and the people who come to them.
+  //
+  // A SECOND Worker on purpose. partyparty-site carries the certificate broker,
+  // DNS and relay registration, which a party in progress depends on minute to
+  // minute. Deploying this must never be able to take those down.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "partyparty-app",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-07",
+  "account_id": "4e958c1f2621ced0354e94826590e34f",
+
+  // Groups, members, events, signups, tokens and the mail outbox.
+  // Create once:  wrangler d1 create partyparty-app
+  // Apply schema: wrangler d1 execute partyparty-app --remote --file=migrations/0001_init.sql
+  "d1_databases": [
+    { "binding": "DB", "database_name": "partyparty-app", "database_id": "" }
+  ],
+
+  // The broker's keyspace, read and written only to reserve handles so a group
+  // name can never collide with a machine or join name minted for a Mac.
+  "r2_buckets": [
+    { "binding": "DL", "bucket_name": "partyparty-dl" }
+  ],
+
+  // Only the platform paths. Everything else on the zone stays with
+  // partyparty-site, including the apex, the machine namespace and r-<token>.
+  "routes": [
+    { "pattern": "partyparty.party/@*", "zone_name": "partyparty.party" },
+    { "pattern": "partyparty.party/j/*", "zone_name": "partyparty.party" },
+    { "pattern": "partyparty.party/m/*", "zone_name": "partyparty.party" },
+    { "pattern": "partyparty.party/g/*", "zone_name": "partyparty.party" },
+    { "pattern": "partyparty.party/api/v1/*", "zone_name": "partyparty.party" },
+    { "pattern": "partyparty.party/auth/*", "zone_name": "partyparty.party" }
+  ],
+
+  "observability": { "enabled": true }
+}
