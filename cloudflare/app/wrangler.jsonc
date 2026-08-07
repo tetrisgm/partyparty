@@ -52,5 +52,19 @@
     { "pattern": "partyparty.party/signin", "zone_name": "partyparty.party" }
   ],
 
+  // Sign in with Apple. None of these are secrets - they identify the
+  // configuration, they do not authorise anything. The key itself is
+  // APPLE_SIWA_KEY, set with `wrangler secret put` and never written here.
+  //
+  //   Services ID  fm.partyparty.web   (Sign In with Apple, primary
+  //                fm.partyparty.app, domain partyparty.party, return URL
+  //                https://partyparty.party/auth/apple/callback)
+  //   Key          "PartyParty Sign In", created 2026-08-07
+  "vars": {
+    "APPLE_CLIENT_ID": "fm.partyparty.web",
+    "APPLE_TEAM_ID": "52WM463HR2",
+    "APPLE_KEY_ID": "9DLLL4UAR8"
+  },
+
   "observability": { "enabled": true }
 }
