@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import worker, { handleProblem, icsFor, normalizeEmail, sha256Hex, ulid } from "../worker.js";
+import worker, {
+  handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
+} from "../worker.js";
 
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
@@ -599,6 +601,43 @@ test("the wall on the venue Wi-Fi and the page three days later are one timeline
   // A party with no night attached is normal, not an error.
   const loose = await (await api(env, "/api/v1/party/posts", { ...mac, partyId: "2026-08-06-2300-cd34" })).json();
   assert.equal(loose.bound, false);
+});
+
+test("a tip goes straight to the DJ, and only over https", async () => {
+  assert.equal(payLinkProblem(""), "", "no link is a valid answer: tipping is off");
+  assert.equal(payLinkProblem("https://revolut.me/someone"), "");
+  assert.ok(payLinkProblem("http://revolut.me/someone"), "plain http on a tap-through page");
+  assert.ok(payLinkProblem("javascript:alert(1)"));
+  assert.ok(payLinkProblem("revolut.me/someone"), "a bare host is not a link");
+
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  seedEvent(env, groupId);
+  const djId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
+    .run(djId, "dj@example.com", "DJ", Date.now());
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
+    .run(groupId, djId, Date.now());
+  const secret = "d".repeat(48);
+  env.raw.prepare(`INSERT INTO sessions (id, hash, dj_id, created_ms, expires_ms) VALUES (?, ?, ?, ?, ?)`)
+    .run(ulid(), await sha256Hex(secret), djId, Date.now(), Date.now() + 60000);
+
+  const save = (value) => {
+    const body = new FormData();
+    body.append("payLink", value);
+    return get(env, "/@sundaze/manage", { method: "POST", body, headers: { cookie: `pp_s=${secret}` } });
+  };
+  assert.match(await (await save("http://insecure.example")).text(), /https/);
+  assert.equal(one(env, `SELECT pay_link FROM groups`).pay_link, "");
+
+  await save("https://revolut.me/someone");
+  assert.equal(one(env, `SELECT pay_link FROM groups`).pay_link, "https://revolut.me/someone");
+  assert.match(await (await get(env, "/@sundaze")).text(), /Tip the DJ/);
+  assert.match(await (await get(env, "/@sundaze/june-14")).text(), /Tip the DJ/);
+
+  // Turning it off removes it from the page rather than leaving a dead button.
+  await save("");
+  assert.ok(!(await (await get(env, "/@sundaze")).text()).includes("Tip the DJ"));
 });
 
 for (const [name, fn] of tests) {

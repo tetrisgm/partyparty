@@ -359,6 +359,8 @@ function groupPage(group, events, base, posts) {
     </form>
     <p class="muted">You will get one email to confirm. No account, and you can
     leave from any message we send.</p>
+    ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
+      rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     <h2>Nights</h2>
     ${list}
     <h2>Talk</h2>
@@ -382,6 +384,8 @@ function eventPage(group, event, going, base) {
       <button class="btn" type="submit">I'm coming</button>
     </form>
     <p><a class="btn plain" href="/@${esc(group.handle)}/${esc(event.slug)}.ics">Add to calendar</a></p>
+    ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
+      rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
     join the group to hear about their other nights.</p>
   `);
@@ -596,6 +600,24 @@ function postList(posts) {
     <div class="who">${esc(post.author)}</div>
     <div>${esc(post.body).replace(/\n/g, "<br>")}</div>
   </div>`).join("");
+}
+
+// A tip link is the DJ's own Venmo, Revolut, PayPal or whatever they already
+// use. We display it and take nothing: no onboarding, no processor, no holding
+// anybody's money. Only https, because the alternatives on a page people tap
+// through at a party are all bad.
+export function payLinkProblem(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch (e) {
+    return "that does not look like a link";
+  }
+  if (parsed.protocol !== "https:") return "the link has to start with https";
+  if (value.length > 300) return "that link is too long";
+  return "";
 }
 
 function signInPage(env) {
@@ -902,6 +924,14 @@ export default {
             ? `${sent} ${sent === 1 ? "person" : "people"} will hear about it.`
             : "Everyone in the group has already had this one.");
         }
+        if (form && form.has("payLink")) {
+          const link = String(form.get("payLink") || "").trim();
+          const problem = payLinkProblem(link);
+          if (problem) return notice("That link will not work", problem);
+          await env.DB.prepare(`UPDATE groups SET pay_link = ?, updated_ms = ? WHERE id = ?`)
+            .bind(link, now, group.id).run();
+          return notice("Saved", link ? "Guests can tip you now." : "Tipping is off.");
+        }
         const pair = String((form && form.get("pair")) || "").trim().toUpperCase();
         if (pair) {
           const code = await env.DB.prepare(
@@ -948,6 +978,13 @@ export default {
             <button class="btn plain" type="submit">Tell the group</button>
           </form></div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
+        <h2>Tips</h2>
+        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+          <input type="text" name="payLink" placeholder="Your Venmo, Revolut or PayPal link"
+            value="${esc(group.pay_link || "")}">
+          <button class="btn plain" type="submit">Save</button>
+        </form>
+        <p class="muted">It goes straight to you. We take nothing and never hold it.</p>
         <h2>Pair a Mac</h2>
         <form class="join" method="post" action="/@${esc(group.handle)}/manage">
           <input type="text" name="pair" placeholder="Code from the Mac" required>
