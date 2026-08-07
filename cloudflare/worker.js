@@ -964,6 +964,17 @@ var worker_default = {
     // same person asking twice is one entry, and read back only with the admin
     // key. It is a list to invite from later and nothing else: no group owns
     // it and nothing is ever sent from it automatically.
+    // Apple hands out a file to prove we own this domain before Sign in with
+    // Apple will work on it. Served from R2 so putting it in place is an
+    // upload, not a deploy - the file arrives from Apple long after this code
+    // does, and nobody should have to ship a Worker to paste it.
+    if (pathname === "/.well-known/apple-developer-domain-association.txt") {
+      const object = await env.DL.get("apple/domain-association.txt");
+      if (!object) return new Response("Not Found", { status: 404 });
+      return new Response(await object.text(), {
+        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" },
+      });
+    }
     if (pathname === "/api/waitlist") {
       if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
       const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);

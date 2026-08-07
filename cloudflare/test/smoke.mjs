@@ -357,4 +357,17 @@ test("an address for a later invite is kept once, and read back only by an admin
   assert.equal(dump.people[0].email, "someone@example.com", "stored lowercased");
 });
 
+test("Apple's domain proof is served from the bucket, not from a deploy", async () => {
+  const env = baseEnv();
+  const path = "https://partyparty.party/.well-known/apple-developer-domain-association.txt";
+  assert.equal((await worker.fetch(new Request(path), env)).status, 404,
+    "absent until Apple issues one - never a fabricated body");
+
+  await env.DL.put("apple/domain-association.txt", "apple-proof-contents");
+  const served = await worker.fetch(new Request(path), env);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get("content-type"), "text/plain; charset=utf-8");
+  assert.equal(await served.text(), "apple-proof-contents");
+});
+
 console.log(`PASS ${tests.length} worker smoke tests`);
