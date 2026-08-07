@@ -281,8 +281,15 @@ export function icsFor(group, events, base) {
     "VERSION:2.0",
     "PRODID:-//PartyParty//EN",
     "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
+    // No METHOD. METHOD:PUBLISH belongs on an iTIP message - an invitation sent
+    // to somebody - not on a feed people subscribe to, and Google rejects the
+    // combination outright ("unable to add calendar").
     `X-WR-CALNAME:${icsEscape(group.name || group.handle)}`,
+    // How often a subscriber should come back. Without it clients pick their
+    // own interval, which for some of them is once a day - long enough for a
+    // night announced this afternoon to be missed entirely.
+    "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    "X-PUBLISHED-TTL:PT1H",
   ];
   for (const event of events) {
     if (!event.starts_ms) continue;
@@ -304,6 +311,22 @@ export function icsFor(group, events, base) {
     // Cancelled nights are published as cancelled rather than deleted: a
     // deletion is invisible to a calendar that already has the event.
     lines.push(`STATUS:${event.state === "cancelled" ? "CANCELLED" : "CONFIRMED"}`);
+    lines.push("END:VEVENT");
+  }
+  // A calendar with no components is valid iCalendar and is treated as a broken
+  // feed by several clients, Google among them. A group with nothing announced
+  // yet is the normal first state, so it gets one placeholder that says so and
+  // disappears the moment there is a real night.
+  if (!lines.some((line) => line === "BEGIN:VEVENT")) {
+    lines.push("BEGIN:VEVENT");
+    lines.push(`UID:placeholder-${group.handle}@partyparty.party`);
+    lines.push("SEQUENCE:0");
+    lines.push(`DTSTAMP:${icsTime(Date.parse("2026-01-01T00:00:00Z"))}`);
+    lines.push("DTSTART;VALUE=DATE:20260101");
+    lines.push("DTEND;VALUE=DATE:20260102");
+    lines.push(icsFold(`SUMMARY:${icsEscape(group.name || group.handle)} - nothing announced yet`));
+    lines.push("STATUS:CANCELLED");
+    lines.push("TRANSP:TRANSPARENT");
     lines.push("END:VEVENT");
   }
   lines.push("END:VCALENDAR");
@@ -527,7 +550,7 @@ function groupPage(group, events, base, posts, viewer) {
       rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
     <h2>Nights</h2>
     ${list}
-    ${calendarBlock(`${base}/@${esc(group.handle)}.ics`)}
+    ${calendarBlock(base, group.handle)}
     <h2>Talk</h2>
     ${postList(posts || [])}
   `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
@@ -567,16 +590,27 @@ function eventPage(group, event, going, base, takeRate) {
 // So we hand out the https URL instead. Google takes it in one click; Apple
 // takes it pasted into New Calendar Subscription, which is two steps and no
 // alarming dialog about the thing you were about to trust.
-function calendarBlock(icsUrl) {
+function calendarBlock(base, handle) {
+  // No @ in the subscription URL. It is legal in a path and it is also the kind
+  // of character that a calendar client's URL field, or whatever pastes into
+  // it, may or may not survive - and when it does not, the error is "check the
+  // URL" with nothing to check.
+  const icsUrl = `${base}/calendar/${handle}.ics`;
   const google = "https://calendar.google.com/calendar/r?cid=" + encodeURIComponent(icsUrl);
+  const apple = icsUrl.replace(/^https:/, "webcal:");
   return `<div class="linkrow">
       <input class="linkbox" type="text" readonly value="${esc(icsUrl)}"
         onclick="this.select()" aria-label="Calendar link">
       <button class="btn plain small copy" type="button" data-copy="${esc(icsUrl)}">Copy</button>
     </div>
-    <p class="muted">Paste that into Apple Calendar (File → New Calendar Subscription),
-      or <a href="${esc(google)}" rel="noopener">add it to Google Calendar</a>. New nights
-      appear on their own.</p>
+    <div class="row">
+      <a class="btn plain small" href="${esc(apple)}">Apple Calendar</a>
+      <a class="btn plain small" href="${esc(google)}" rel="noopener">Google Calendar</a>
+    </div>
+    <p class="muted">New nights appear on their own. Apple asks to confirm an
+      "insecure connection" first - that is its webcal: link opening over http
+      before it upgrades, and it is safe to continue. Pasting the link above into
+      New Calendar Subscription avoids the prompt entirely.</p>
     <script>
     for (const button of document.querySelectorAll('.copy')) {
       button.addEventListener('click', async () => {
@@ -1664,7 +1698,7 @@ export default {
 
     // A group's calendar. Subscribed once, correct forever after - which is why
     // it is a first-class URL and not a download.
-    match = path.match(/^\/@([a-z0-9]+)\.ics$/);
+    match = path.match(/^\/(?:@|calendar\/)([a-z0-9]+)\.ics$/);
     if (match) {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });

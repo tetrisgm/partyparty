@@ -114,7 +114,6 @@ test("joining a group creates a membership and exactly one confirmable email", a
   // https, not webcal: Apple Calendar resolves webcal:// to http:// and warns
   // about an insecure connection before it fetches anything.
   assert.match(mail[0].body_text, /https:\/\/partyparty\.party\/@sundaze\.ics/);
-  assert.ok(!/webcal:/.test(mail[0].body_text));
 
   // Joining twice is a person tapping the button again, not an error.
   await post(env, "/@sundaze/join", { email: "guest@example.com", name: "Guest" });
@@ -209,7 +208,11 @@ test("a draft night is not a public night, and its calendar is not published", a
   seedEvent(env, groupId, { slug: "secret", state: "draft" });
   assert.equal((await get(env, "/@sundaze/secret")).status, 404);
   const feed = await (await get(env, "/@sundaze.ics")).text();
-  assert.ok(!feed.includes("BEGIN:VEVENT"), "a draft must not appear in a subscribed calendar");
+  // What matters is that the draft's details do not leak - not that the feed is
+  // empty, which it never is now: an empty calendar is one Google refuses.
+  assert.ok(!/Sundaze at the Lido/.test(feed), "a draft must not appear in a subscribed calendar");
+  assert.ok(!/secret/.test(feed));
+  assert.match(feed, /nothing announced yet/, "so the group reads as having nothing on");
 });
 
 test("the group page and its calendar are served", async () => {
@@ -219,9 +222,10 @@ test("the group page and its calendar are served", async () => {
 
   const page = await (await get(env, "/@sundaze")).text();
   assert.match(page, /Sundaze/);
-  assert.match(page, /value="https:\/\/partyparty\.party\/@sundaze\.ics"/);
+  assert.match(page, /value="https:\/\/partyparty\.party\/calendar\/sundaze\.ics"/,
+    "no @ in a URL that gets pasted into a calendar client");
   assert.match(page, /calendar\.google\.com\/calendar\/r\?cid=/, "one click for Google");
-  assert.ok(!/webcal:/.test(page), "webcal always warns; it is not offered");
+  assert.match(page, /webcal:\/\/partyparty\.party\/calendar\/sundaze\.ics/, "one click for Apple");
 
   const feed = await get(env, "/@sundaze.ics");
   assert.equal(feed.headers.get("content-type"), "text/calendar;charset=utf-8");
@@ -1056,6 +1060,29 @@ test("plaintext is redirected before a token in the path can leak", async () => 
   assert.match(secure.headers.get("strict-transport-security") || "", /max-age=\d+/);
   assert.ok(!/includeSubDomains/.test(secure.headers.get("strict-transport-security") || ""),
     "the machine hostnames under this zone are the Mac's, and one is deliberately plain HTTP");
+});
+
+test("a calendar feed is one clients will actually accept", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+
+  // A brand new group has nothing announced, and a calendar with no components
+  // is what Google answers with "unable to add calendar. check the URL."
+  const empty = await (await get(env, "/calendar/sundaze.ics")).text();
+  assert.match(empty, /BEGIN:VEVENT/, "never a component-less calendar");
+  assert.match(empty, /STATUS:CANCELLED/, "the placeholder does not occupy anyone's day");
+  assert.ok(!/METHOD:/.test(empty),
+    "METHOD belongs on an invitation, not a subscription feed - Google rejects it");
+  assert.match(empty, /REFRESH-INTERVAL;VALUE=DURATION:PT1H/);
+
+  // Both paths serve it: the pretty one, and one with no @ to be mangled.
+  assert.equal((await get(env, "/@sundaze.ics")).status, 200);
+
+  // With a real night, the placeholder gets out of the way.
+  seedEvent(env, groupId);
+  const real = await (await get(env, "/calendar/sundaze.ics")).text();
+  assert.match(real, /SUMMARY:Sundaze at the Lido/);
+  assert.ok(!/nothing announced yet/.test(real));
 });
 
 for (const [name, fn] of tests) {
