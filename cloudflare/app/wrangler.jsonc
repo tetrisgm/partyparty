@@ -12,16 +12,14 @@
 
   // Groups, members, events, signups, tokens and the mail outbox.
   //
-  // The id below is a PLACEHOLDER so `wrangler dev --local` works with a file
-  // on disk. It is not a real database and a deploy with it still set would
-  // fail. Creating the real one is a deliberate act:
-  //   wrangler d1 create partyparty-app        (paste the id it prints here)
-  //   for f in migrations/*.sql; do wrangler d1 execute partyparty-app --remote --file=$f; done
+  // Created 2026-08-07. Migrations are applied with
+  //   wrangler d1 migrations apply partyparty-app --remote
+  // which records what has run; applying twice is a no-op.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "partyparty-app",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "d539f4c0-da91-43ce-b14a-8ba271349dab",
       // wrangler tracks which of these have run in a d1_migrations table, so
       // applying twice is a no-op. Running the files by hand is not: an
       // ALTER TABLE ADD COLUMN fails the second time and takes the rest of the
