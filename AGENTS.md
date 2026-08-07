@@ -100,7 +100,11 @@ boundary.
    anyone's money. Refunds and disputes belong to the DJ. Do not build a
    balance, a payout, or a platform wallet.
 7. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and
-   MediaMTX behavior.
+   MediaMTX behavior. The streaming path as a whole - capture,
+   `internal/schedule`, and the player in `web/listener.html` - is FINISHED
+   WORK (owner, 2026-08-06): platform and product work is built around it,
+   never through it. Guest-page features may be added beside the player; the
+   player's own code path is not where they land.
 8. Email is MXroute SMTP. A member's address belongs to the group that
    collected it, is exportable by that group, and is never mailed for our own
    purposes. Every send carries a one-click unsubscribe honored platform-wide.

@@ -51,6 +51,25 @@ the thing that makes the next party one button instead of an evening's work.
 If you also want to sell tickets or take tips, that is a toggle on the first
 screen, and the money goes to you.
 
+## What this does not touch
+
+The music is finished work and this plan is built around it, never through it.
+Nothing here changes how audio is captured, segmented, scheduled or played —
+not `internal/broadcast/`, not `internal/schedule/`, not the capture helper,
+not the player in `web/listener.html`.
+
+Two steps get close, so the line is worth stating:
+
+- **Step 1** changes which address the join page tries before a guest is in the
+  room. It never touches how audio is fetched once they are.
+- **Steps 4 and 5** put a timeline and a tip button on the guest page — the same
+  page as the player. They go *around* it: no change to the player's code path,
+  and the guest-page tap test fails on any console error, which is how a stray
+  edit gets caught.
+
+If anything here starts to look like it needs a change to the streaming path,
+that is the signal to stop and ask. It is not a thing to work around quietly.
+
 ## What that means we build
 
 The party engine already exists and ships: guests scan, hear the set at three
