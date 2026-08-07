@@ -212,81 +212,89 @@ one link possible.
 
 ## Part 3 — Money
 
-### Two tiers, as Partiful ships them
+### The money is the DJ's, and we never hold it
 
-Checked 2026-08-06. The only zero-setup path anywhere is "pay the host's own
-handle", and it is exactly the path where the platform verifies nothing and
-takes nothing. Luma, Eventbrite, Posh and DICE all run Stripe and all ask the
-organizer who they are.
+Ko-fi's structure, adopted whole. Tips and tickets route through the DJ's
+**own** PayPal or Stripe account. We are the page, not the processor; the DJ is
+the merchant.
 
-- **Chip in** — the DJ's own Venmo, Revolut or PayPal handle, displayed. No
-  onboarding, no liability, no cut.
-- **Tips and tickets** — Apple Pay in the browser, our cut, Stripe behind it.
+What that deletes from this plan, and it is most of the hard part: holding
+funds until after the night, payout scheduling, an unclaimed-money policy,
+chargeback exposure, and any merchant-of-record or money-transmission posture.
+Gone, all of it. Refunds and disputes belong to the DJ, which is correct — it
+is their party.
 
-Most DJs start on the first and move to the second the night someone tips them
-$60 and it stops being theoretical.
+What it costs: we can guarantee a buyer nothing. If a DJ cancels and refuses to
+refund, the buyer's recourse is their card issuer and the DJ's processor, not
+us. That belongs in the ticket copy, not in a support thread six months from
+now.
 
-### Onboarding is deferred to cash-out
+Onboarding is "connect your PayPal or Stripe" — one click for anyone who
+already has an account. Mechanically this is Stripe Connect **Standard**, where
+the connected account is the merchant and owns its own disputes and the
+platform takes an application fee, or PayPal's equivalent.
 
-Stripe supports charging before a connected account is verified and
-transferring once it is. So the DJ turns tips on and does nothing else: guests
-pay, our cut comes off, the balance builds under their name, and the identity
-form appears the first time they tap cash out — with money already waiting.
+### The fee table
 
-The floor underneath is not a product choice: paying a human being requires
-their name, date of birth and a destination. That is KYC law. We control only
-when they are asked.
+| | Free | Pro |
+| --- | --- | --- |
+| Tips | 0% | 0% |
+| Tickets | 5% | 0% |
+| Processing (Stripe/PayPal) | 2.9% + 30¢ | 2.9% + 30¢ |
 
-### Holding and payout
+Ko-fi's own shape, with tickets sitting where their shop and memberships sit.
+Tips at zero also fixes the arithmetic that made them embarrassing: a $5 tip
+carries the processor's fee and nothing of ours.
 
-Funds are **held until after the night**, as Eventbrite, Posh and Partiful all
-do, to cover refunds and chargebacks. Only Luma pays as sales land, and Luma
-is not selling club nights.
+### Fees are added, not deducted
 
-Unclaimed money: hold 90 days with reminders, then refund the guests.
+The DJ receives the face value. Our cut and the processing fee are added on top
+and shown to the buyer as one number, as Posh and DICE do.
 
-### The fee model: all-in, buyer pays
-
-The DJ receives the face value. Everything — our cut and the processing fee —
-is added on top and shown to the buyer as one number, which is how Posh and
-DICE do it.
-
-Worked, on a $20 ticket with our cut at 5% and Stripe at 2.9% + 30¢:
+A $20 ticket:
 
 ```
-DJ receives          $20.00
-our cut (5%)          $1.00
-Stripe                $0.94
-buyer pays           $21.94   (9.7% on top)
+free tier                       Pro                     Posh
+DJ receives   $20.00            $20.00                  $20.00
+our cut        $1.00 (5%)        $0.00                   $2.99 (10% + 99c)
+processing     $0.94             $0.91                   included
+buyer pays    $21.94            $20.91                  $22.99
 ```
 
-**This is the number to argue about.** At 5% we land at 9.7% all-in, which is
-Posh's 10% — cheaper, but not visibly. At 3% the buyer pays $21.52 (7.6%); at
-2%, $21.31 (6.6%). Being obviously the cheap one is a positioning choice, not
-an accident.
+A Pro DJ's guests pay $2 a ticket less than they would on Posh. That is the
+line, and it is worth more than any feature we could list.
 
-Tips are worse, because the 30¢ is fixed: a $5 tip at 5% costs the guest $5.71,
-which is 14% on top. Either the suggested amounts start higher, or tips carry
-a smaller cut, or the DJ absorbs it.
+### Pro is a subscription
 
-**DECISION:** our percentage on tickets, and on tips.
+Owner decision, 2026-08-06: fee-free is recurring and **there is no lifetime**.
+A lifetime unlock that zeroes our cut forever is adversely selected — the DJs
+who buy it are precisely the ones selling the most tickets, and the revenue
+never comes back.
+
+Pro contains: no platform fee, and the custom party link name. More can earn
+its way in later; it does not need to launch full.
+
+**DECISION: the price.** Ko-fi Gold is $12/month. Proposed here: **$12/month or
+$99/year** — the annual keeps the number already anchored and gives the usual
+discount. A DJ who plays once a quarter will subscribe the month of the party
+and cancel, and that is fine; Ko-fi lives with the same pattern.
 
 ### The Apple boundary
 
-Two rails, deliberately separate. Anything sold to a **guest** — tips, tickets,
-merch — happens in the guest's browser: real-world services, outside in-app
-purchase, and the guest is not using our app at all. Anything sold to the **DJ**
-as a feature of the app is IAP: `fm.partyparty.app.pro.lifetime`,
-non-consumable, $99, already created and sitting in `MISSING_METADATA` until a
-purchase screen exists to screenshot.
+Guests pay in their browser and the app never touches it — real-world services,
+outside in-app purchase, and the guest is not using our app at all.
+
+Pro is a digital subscription sold to the DJ, and two things follow:
+
+- **The existing IAP is the wrong product type.**
+  `fm.partyparty.app.pro.lifetime` is a $99 non-consumable. A subscription
+  needs an auto-renewable product. The lifetime product is now dead — leave it
+  unused or delete it, and never ship it.
+- Sold inside the app it must be IAP and Apple takes its share; sold on the web
+  it is ours. Whether the app may link out to the web purchase depends on rules
+  that have moved recently — check them at the time rather than assuming.
 
 The Mac app may show a total. It must never take a payment that isn't IAP.
-
-**DECISION: does Pro exist at all?** Branding is dropped and remote listening
-is not a feature, which leaves the custom party link name as its only content —
-thin for $99. The alternative is cleaner: no Pro, no IAP, and the business is
-purely a cut of the money DJs make. The IAP is already created and can sit
-unused in `MISSING_METADATA` indefinitely without harm.
 
 ---
 
@@ -296,8 +304,8 @@ Free, permanently, no caps: the party, the group, the members, the events, the
 signups. No member limit, no event limit. A cap on the thing that fills the
 room would cost more in trust than it earns.
 
-Paid is money: our cut of tickets and tips. The Pro unlock is now questionable
-enough to be a decision rather than a plan — see Part 3.
+Paid is Pro: a subscription that removes our 5% on tickets. Tips carry no fee
+of ours on either tier, and the money always belongs to the DJ.
 
 ---
 
@@ -324,20 +332,22 @@ gains "join the group". *Proof: a photo posted on venue Wi-Fi and one posted
 the next morning sit in the same timeline, and a follow taken at the party
 appears in the member list.*
 
-**5. Tips.** Chip-in on day one; Stripe with deferred onboarding behind it.
-*Proof: money reaches a DJ's bank account.*
+**5. Tips.** Connect the DJ's own PayPal or Stripe; a tip button on the party
+page and the group page; nothing of ours taken. *Proof: money lands in a DJ's
+own account without ever passing through one of ours.*
 
-**6. Tickets.** Price, capacity, codes, the door view, refunds.
+**6. Tickets.** Price, capacity, codes, the door view. Refunds are the DJ's,
+through their own processor.
 
 **7. Merch.** A link out, on the group page and the party page.
 
-**8. The Store.** Submission once macOS 27 is released and a Store package can
-be built on a released host. Pro only if it survives its decision.
+**8. Pro and the Store.** The subscription, web first. Then submission once
+macOS 27 is released and a Store package can be built on a released host.
 
 ---
 
 ## Open decisions
 
 1. Sign in with Apple only, or Apple plus Google for members?
-2. Our percentage on tickets, and on tips.
-3. Whether Pro exists at all, now that its content is down to one name field.
+2. Pro's price — $12/month and $99/year proposed.
+3. Whether Pro is sold in the app (IAP, Apple's share) or on the web only.
