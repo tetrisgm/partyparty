@@ -65,6 +65,15 @@ throttled secondary path and videos do not enter the relay at all. Direct mode
 keeps the full local media experience. This is an intentional music-first
 boundary.
 
+## Look
+
+There is no design document, and the one that existed was deleted on
+2026-08-07: it described an aspiration nobody built, and following it produced
+pages that did not match the product. `web/listener.html` is the reference -
+Geist, `#ff2d55`, a warm grey canvas with white cards and soft depth, pill
+buttons at weight 800. Read the CSS that ships, copy the values, and if the
+look should change, change it there first.
+
 ## Product Invariants
 
 1. Guests join, listen, and post on the LAN without accounts or internet.
