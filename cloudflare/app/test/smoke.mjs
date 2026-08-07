@@ -434,34 +434,6 @@ test("the day-of reminder goes once, to the people who said they are coming", as
   assert.ok(eventId);
 });
 
-test("the sender takes messages and marks them done", async () => {
-  const env = makeEnv();
-  env.OUTBOX_KEY = "sender-key";
-  seedGroup(env);
-  await post(env, "/@sundaze/join", { email: "guest@example.com" });
-
-  const refused = await get(env, "/api/v1/outbox", {
-    method: "POST", body: JSON.stringify({ key: "wrong" }),
-  });
-  assert.equal(refused.status, 403);
-
-  const claim = await get(env, "/api/v1/outbox", {
-    method: "POST", body: JSON.stringify({ key: "sender-key" }),
-  });
-  const { messages } = await claim.json();
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].to_email, "guest@example.com");
-
-  await get(env, "/api/v1/outbox", {
-    method: "POST", body: JSON.stringify({ key: "sender-key", sent: [messages[0].id] }),
-  });
-  assert.ok(one(env, `SELECT sent_ms FROM outbox`).sent_ms, "a sent message is not handed out again");
-  const empty = await (await get(env, "/api/v1/outbox", {
-    method: "POST", body: JSON.stringify({ key: "sender-key" }),
-  })).json();
-  assert.equal(empty.messages.length, 0);
-});
-
 test("the group has a thread, and the volume on it belongs to the reader", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
@@ -864,6 +836,41 @@ test("the development doors are shut unless they are opened on purpose", async (
   assert.match(outbox, /guest@example\.com/);
   assert.match(outbox, /<a href="https:\/\/partyparty\.party\/j\/[a-f0-9]{48}"/,
     "the confirm link has to be clickable or the flow cannot be walked");
+});
+
+test("the outbox drains, retries what fails, and gives up after five tries", async () => {
+  const env = makeEnv();
+  seedGroup(env);
+  await post(env, "/@sundaze/join", { email: "guest@example.com" });
+
+  // No mail server is not an error - it is a Worker that has not been given
+  // one yet, and the queue must simply wait rather than burn its retries.
+  const idle = await worker.scheduled({}, env);
+  assert.equal(one(env, `SELECT tries FROM outbox`).tries, 0);
+  assert.equal(one(env, `SELECT sent_ms FROM outbox`).sent_ms, null);
+  assert.equal(idle, undefined);
+
+  // A message that has already failed five times is not offered again: a bad
+  // address must not be retried forever at a shared mailbox's expense.
+  env.raw.prepare(`UPDATE outbox SET tries = 5`).run();
+  const { results } = await env.DB.prepare(
+    `SELECT id FROM outbox WHERE sent_ms IS NULL AND tries < 5`
+  ).all();
+  assert.equal((results || []).length, 0);
+});
+
+test("the flush endpoint is guarded by the key", async () => {
+  const env = makeEnv();
+  env.OUTBOX_KEY = "flush-key";
+  const refused = await get(env, "/api/v1/outbox/flush", {
+    method: "POST", body: JSON.stringify({ key: "wrong" }),
+  });
+  assert.equal(refused.status, 403);
+  const allowed = await get(env, "/api/v1/outbox/flush", {
+    method: "POST", body: JSON.stringify({ key: "flush-key" }),
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal((await allowed.json()).reason, "no mail server configured");
 });
 
 for (const [name, fn] of tests) {

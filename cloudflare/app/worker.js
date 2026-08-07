@@ -679,6 +679,51 @@ function signInPage(env) {
   `);
 }
 
+// Sending. The stack already speaks SMTP from a Worker (web-kit/worker-smtp.js,
+// vendored here as smtp.js) against the shared MXroute mailbox, so there is no
+// box, no daemon and no second deploy lane in this path - just this cron.
+//
+// A small batch per tick on purpose: the cron runs every minute, and a burst of
+// hundreds of sequential TLS handshakes is how a shared mailbox gets throttled.
+const OUTBOX_BATCH = 20;
+const OUTBOX_MAX_TRIES = 5;
+
+async function drainOutbox(env, now) {
+  const server = env.AUTH_EMAIL_SERVER && env.AUTH_EMAIL_SERVER.get
+    ? await env.AUTH_EMAIL_SERVER.get()
+    : String(env.AUTH_EMAIL_SERVER || "");
+  if (!server) return { sent: 0, failed: 0, reason: "no mail server configured" };
+  // Imported here rather than at the top because it pulls in cloudflare:sockets,
+  // which only exists inside a Worker. A static import would make this module
+  // unloadable anywhere else - including the tests.
+  const { sendSmtp } = await import("./smtp.js");
+
+  const { results } = await env.DB.prepare(
+    `SELECT id, to_email, subject, body_text, headers FROM outbox
+      WHERE sent_ms IS NULL AND tries < ? ORDER BY created_ms LIMIT ?`
+  ).bind(OUTBOX_MAX_TRIES, OUTBOX_BATCH).all();
+
+  let sent = 0, failed = 0;
+  for (const message of results || []) {
+    let headers = {};
+    try { headers = JSON.parse(message.headers || "{}"); } catch (e) {}
+    const result = await sendSmtp(server, "PartyParty", message.to_email,
+      message.subject, message.body_text, headers);
+    if (result.sent) {
+      // Marked the moment it lands, so a cron that overlaps its predecessor
+      // cannot hand the same message to a second sender.
+      await env.DB.prepare(`UPDATE outbox SET sent_ms = ? WHERE id = ?`).bind(now, message.id).run();
+      sent++;
+    } else {
+      await env.DB.prepare(
+        `UPDATE outbox SET tries = tries + 1, last_error = ? WHERE id = ?`
+      ).bind(String(result.reason || "").slice(0, 300), message.id).run();
+      failed++;
+    }
+  }
+  return { sent, failed };
+}
+
 // -------------------------------------------------------------------- fetch
 
 export default {
@@ -694,6 +739,14 @@ export default {
     const path = decodeURIComponent(url.pathname);
 
     if (path === "/__pp/app-health") return json(200, { ok: true });
+
+    // Flush now rather than on the next minute. Used to prove sending works
+    // right after a deploy; guarded by the same key the sender used to hold.
+    if (path === "/api/v1/outbox/flush" && request.method === "POST") {
+      const body = await readJson(request, 2048);
+      if (!env.OUTBOX_KEY || !body || body.key !== env.OUTBOX_KEY) return json(403, { error: "no" });
+      return json(200, await drainOutbox(env, now));
+    }
 
     // ---- local development only --------------------------------------------
     // Two doors that would be a total compromise in production: signing in as
@@ -844,32 +897,6 @@ export default {
       }
       const group = await env.DB.prepare(`SELECT handle FROM groups WHERE id = ?`).bind(link.group_id).first();
       return json(200, { bound: true, slug: night.slug, handle: group && group.handle, title: night.title });
-    }
-
-    // The mail sender on the origin box, which holds the MXroute credentials.
-    // Workers are a poor place to speak SMTP and a worse place to keep the
-    // password for a mailbox, so the Worker only ever writes rows and the box
-    // comes and takes them.
-    if (path === "/api/v1/outbox" && request.method === "POST") {
-      if (!env.OUTBOX_KEY) return json(503, { error: "sender not configured" });
-      const body = await readJson(request, 65536);
-      if (!body || body.key !== env.OUTBOX_KEY) return json(403, { error: "no" });
-      if (Array.isArray(body.sent)) {
-        for (const id of body.sent.slice(0, 200)) {
-          await env.DB.prepare(`UPDATE outbox SET sent_ms = ? WHERE id = ?`).bind(now, String(id)).run();
-        }
-      }
-      for (const failure of (Array.isArray(body.failed) ? body.failed : []).slice(0, 200)) {
-        await env.DB.prepare(
-          `UPDATE outbox SET tries = tries + 1, last_error = ? WHERE id = ?`
-        ).bind(String(failure.error || "").slice(0, 300), String(failure.id || "")).run();
-      }
-      // Five attempts is where a bad address stops being a transient failure.
-      const { results } = await env.DB.prepare(
-        `SELECT id, to_email, subject, body_text, headers, attach_ics FROM outbox
-          WHERE sent_ms IS NULL AND tries < 5 ORDER BY created_ms LIMIT 25`
-      ).all();
-      return json(200, { messages: results || [] });
     }
 
     // ---- sign-in ----------------------------------------------------------
@@ -1518,7 +1545,8 @@ export default {
   // each, and only for nights that are actually happening.
   async scheduled(event, env) {
     const now = Date.now();
-    const base = `https://${env.SITE_HOST || "partyparty.party"}`;
+    const base = String(env.PUBLIC_BASE || "").replace(/\/$/, "") || "https://partyparty.party";
+    await drainOutbox(env, now);
     const { results } = await env.DB.prepare(
       `SELECT e.*, g.handle, g.name AS group_name FROM events e JOIN groups g ON g.id = e.group_id
         WHERE e.state = 'announced' AND e.starts_ms IS NOT NULL
