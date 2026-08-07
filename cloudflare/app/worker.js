@@ -527,7 +527,7 @@ function groupPage(group, events, base, posts, viewer) {
       rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
     <h2>Nights</h2>
     ${list}
-    <p><a class="btn plain small" href="webcal://${esc(new URL(base).host)}/@${esc(group.handle)}.ics">Add these to your calendar</a></p>
+    ${calendarBlock(`${base}/@${esc(group.handle)}.ics`)}
     <h2>Talk</h2>
     ${postList(posts || [])}
   `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
@@ -550,13 +550,45 @@ function eventPage(group, event, going, base, takeRate) {
       <input type="text" name="name" placeholder="your name">
       <button class="btn" type="submit">I'm coming</button>
     </form>`}
-    <p><a class="btn plain" href="/@${esc(group.handle)}/${esc(event.slug)}.ics">Add to calendar</a></p>
+    <p><a class="btn plain small" href="/@${esc(group.handle)}/${esc(event.slug)}.ics">Add this night to your calendar</a></p>
     ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
     follow them to hear about their other nights.</p>
   `, hero(event.title || "A night", group.name || group.handle, event.cover_key,
       `<a href="/@${esc(group.handle)}">The group</a>`));
+}
+
+// Subscribing to a calendar, without the security warning.
+//
+// webcal:// is the one-click scheme, and Apple Calendar resolves it to http://
+// - so it asks "the connection is not secure" before it fetches anything, and
+// no redirect on our side can prevent that: the first hop is already cleartext.
+// So we hand out the https URL instead. Google takes it in one click; Apple
+// takes it pasted into New Calendar Subscription, which is two steps and no
+// alarming dialog about the thing you were about to trust.
+function calendarBlock(icsUrl) {
+  const google = "https://calendar.google.com/calendar/r?cid=" + encodeURIComponent(icsUrl);
+  return `<div class="linkrow">
+      <input class="linkbox" type="text" readonly value="${esc(icsUrl)}"
+        onclick="this.select()" aria-label="Calendar link">
+      <button class="btn plain small copy" type="button" data-copy="${esc(icsUrl)}">Copy</button>
+    </div>
+    <p class="muted">Paste that into Apple Calendar (File → New Calendar Subscription),
+      or <a href="${esc(google)}" rel="noopener">add it to Google Calendar</a>. New nights
+      appear on their own.</p>
+    <script>
+    for (const button of document.querySelectorAll('.copy')) {
+      button.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy);
+          const was = button.textContent;
+          button.textContent = 'Copied';
+          setTimeout(() => { button.textContent = was; }, 1500);
+        } catch (e) { button.previousElementSibling.select(); }
+      });
+    }
+    </script>`;
 }
 
 function notice(title, message) {
@@ -601,7 +633,7 @@ async function joinGroup(env, group, emailNorm, name, source, base, now) {
     subject: `Confirm you want to hear from ${group.name || group.handle}`,
     text: `Tap to confirm: ${base}/j/${confirm}\n\n`
       + `Their nights: ${base}/@${group.handle}\n`
-      + `Subscribe in your calendar: webcal://${new URL(base).host}/@${group.handle}.ics\n\n`
+      + `Their nights in your calendar: ${base}/@${group.handle}.ics\n\n`
       + `Not you, or changed your mind? ${base}/m/${manage}`,
     kind: "confirm",
     groupId: group.id,

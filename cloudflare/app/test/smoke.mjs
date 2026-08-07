@@ -111,7 +111,10 @@ test("joining a group creates a membership and exactly one confirmable email", a
   const headers = JSON.parse(mail[0].headers);
   assert.match(headers["List-Unsubscribe"], /\/m\/[a-f0-9]{48}\?stop=1/);
   assert.equal(headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
-  assert.match(mail[0].body_text, /webcal:\/\/partyparty\.party\/@sundaze\.ics/);
+  // https, not webcal: Apple Calendar resolves webcal:// to http:// and warns
+  // about an insecure connection before it fetches anything.
+  assert.match(mail[0].body_text, /https:\/\/partyparty\.party\/@sundaze\.ics/);
+  assert.ok(!/webcal:/.test(mail[0].body_text));
 
   // Joining twice is a person tapping the button again, not an error.
   await post(env, "/@sundaze/join", { email: "guest@example.com", name: "Guest" });
@@ -216,7 +219,9 @@ test("the group page and its calendar are served", async () => {
 
   const page = await (await get(env, "/@sundaze")).text();
   assert.match(page, /Sundaze/);
-  assert.match(page, /webcal:\/\/partyparty\.party\/@sundaze\.ics/);
+  assert.match(page, /value="https:\/\/partyparty\.party\/@sundaze\.ics"/);
+  assert.match(page, /calendar\.google\.com\/calendar\/r\?cid=/, "one click for Google");
+  assert.ok(!/webcal:/.test(page), "webcal always warns; it is not offered");
 
   const feed = await get(env, "/@sundaze.ics");
   assert.equal(feed.headers.get("content-type"), "text/calendar;charset=utf-8");
