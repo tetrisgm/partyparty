@@ -1,7 +1,7 @@
-# The platform: communities, events, and the party inside them
+# The platform: groups, events, and the party inside them
 
-Status: plan, not built. Owner decisions are marked **DECISION**. Nothing here
-ships until the sequencing at the end is agreed.
+Status: plan, not built. Owner decisions still open are marked **DECISION**.
+Nothing here ships until the sequencing at the end is agreed.
 
 ## The thesis
 
@@ -14,10 +14,10 @@ Eventbrite have a follow button but were never in the room. Secretparty gets
 closest, and it does it with email — the invite lands, there may be a code,
 you come.
 
-The durable object is not the party. It is the **community**: a DJ or a group
-of DJs, the people who come to their nights, and the events they run. The
-party is one evening inside a community, and the silent-disco stream is
-optional — a community can run events and never stream a note.
+The durable object is not the party. It is the **group**: a DJ or several, the
+people who come to their nights, and the events they run. The party is one
+evening inside a group, and the silent-disco stream is optional — a group can
+run events and never stream a note.
 
 That last point is what makes this worth building. It works before the app
 does anything, on a phone, with no Mac in the room.
@@ -42,23 +42,50 @@ email pipeline, any payments. The account system was deliberately removed on
 
 Four objects. Everything else hangs off them.
 
-**Community** — a name, a handle, a picture, a description, links. Has one or
-more DJs. Owns its members and its events. `partyparty.party/@handle`.
+**Group** — a name, a handle, a picture, a description, links. Has one or more
+DJs. Owns its members and its events. `partyparty.party/@handle`.
 
-**Member** — a person who joined a community. An email address and a display
-name. No account, no password, no app.
+**Member** — a person who joined a group. An email address and a display name.
+May sign in, but never has to.
 
-**Event** — belongs to a community. Date, time, place, description, cover.
+**Event** — belongs to a group. Date, time, place, description, cover.
 Optionally ticketed, optionally gated by a code, optionally attached to a live
 party. `partyparty.party/@handle/<event>`.
 
-**Signup** — a member said they are coming to an event. Going, or not going.
-A ticket is a signup that was paid for.
+**Signup** — a member said they are coming. Going, or not. A ticket is a signup
+that was paid for.
 
 The party — the Mac, the stream, the wall — attaches to an event when there is
-one, and stands alone when there isn't. A DJ who has never opened the Mac app
-can run a community, and a DJ who never makes an event can still go live. The
-two halves do not depend on each other.
+one and stands alone when there isn't. A DJ who has never opened the Mac app
+can run a group; a DJ who never makes an event can still go live.
+
+## One link, for the whole life of the event
+
+`partyparty.party/@handle/<event>` is a single URL the DJ posts once. Settled,
+because of what people actually do with a Partiful link: they open it before to
+see who's coming, and they come back after to dump their photos and videos.
+
+- **Before** — details, who's going, tickets, and the timeline already running:
+  the hype, the questions, the lineup.
+- **During** — the same page hands you into the party. On the venue Wi-Fi it is
+  the live room: the stream, the wall, posting. Off the Wi-Fi it is the same
+  timeline without the player, or with the relay stream when the DJ allows it.
+- **After** — the timeline stays. People upload their photos for days. The
+  music does not: no replay, no recording, no archive of the set.
+
+A second link for the party would cut the night's memory in half — the phone
+photos on one page and everything before and after on another. It also doubles
+what the DJ has to post and explain.
+
+**The cost, stated plainly.** The timeline needs a cloud source of truth that
+the LAN wall syncs into. At the party the Mac still serves posts locally, so a
+party with no internet still works exactly as it does now; it reconciles
+upward when it has a connection. That reconciliation is the real engineering
+in this plan, and it lands in Phase 2.
+
+**Visibility.** The event page is public — it is the invite. The timeline is
+for members and attendees. Photos are never public and never mailed out
+except by the DJ's own act.
 
 ## The pages
 
@@ -66,9 +93,9 @@ two halves do not depend on each other.
 
 | Page | URL | Who |
 | --- | --- | --- |
-| Community | `/@handle` | anyone — who this is, next event, join button |
-| Event | `/@handle/<event>` | anyone — details, signup, tickets |
-| Join confirmation | emailed link | new member confirming their address |
+| Group | `/@handle` | anyone — who this is, next event, join button |
+| Event | `/@handle/<event>` | anyone — details, signup, tickets, timeline |
+| Join confirmation | emailed link | a new member confirming their address |
 | Ticket | emailed link | a buyer — their code, their entry |
 | Member preferences | emailed link | a member — stop emails, leave |
 | Dashboard | `/@handle/manage` | the DJs — events, members, money |
@@ -76,181 +103,192 @@ two halves do not depend on each other.
 ### The party (served by the Mac, LAN first)
 
 The existing guest page, with two additions: **tip the DJ** and **join the
-community**. Its social links already exist. It stays exactly as it is
-otherwise — no accounts, no internet required, no change to the audio path.
-
-### One link for the whole lifecycle
-
-`partyparty.party/@handle/<event>` is a single URL the DJ posts once:
-
-- **Before** — the event page. Details, signup, tickets.
-- **During** — hands the visitor into the live party (LAN when they are in the
-  room, relay when they are remote and the DJ allows it).
-- **After** — the night is over. No replay, no recording, no archive. It offers
-  the community and the next date.
-
-That is the answer to "you always have to recreate everything from scratch."
+group**. Its social links already exist. Otherwise unchanged — no accounts, no
+internet required, no change to the audio path.
 
 ## Identity
 
-**DJs sign in with Apple.** It is native on macOS and on the web, it needs no
-password, and — the reason it matters here — it means we never build an
-authentication email service, which the project's doctrine forbids. A DJ signs
-in once on the Mac and once on the web and the same identity holds.
+**DJs sign in with Apple.** Native on macOS and on the web, no password, and
+one identity across the Mac app and the dashboard.
 
-**Members never sign in.** Joining a community is giving an email address and
-confirming it. Every action after that arrives by a link in an email: signing
-up, changing your mind, getting your ticket, leaving. A ticket link is a
-credential, not an account.
+**Members may sign in, and never have to.** Joining a group is an email
+address and a confirmation. Every action after that works from a link in an
+email: signing up, changing your mind, your ticket, leaving. A member who
+wants one identity across several groups can sign in and get it; the link path
+keeps working either way.
 
-This preserves the rule that matters most: a guest at a party still needs
-nothing — no account, no internet, no email — to open the page and listen.
+A guest at a party still needs nothing at all.
 
-**DECISION:** Sign in with Apple only, or Apple plus Google for DJs who are not
-on a Mac? Apple-only is simpler and covers every DJ running the app.
+**DECISION:** Apple only, or Apple plus Google? Apple-only is simpler and
+covers every DJ running the app; Google mainly matters for members who choose
+to sign in.
 
 ## Email
 
-MXroute SMTP, as with every project here. Five messages, no more:
+MXroute SMTP. Five messages, no more:
 
-1. **Confirm** — you asked to join a community; click to confirm. Double
-   opt-in, so the list is clean from day one.
-2. **Invite** — a new event, from the community, to its members.
+1. **Confirm** — you asked to join; click to confirm. Double opt-in, so the
+   list is clean from day one.
+2. **Invite** — a new event, from the group, to its members.
 3. **Reminder** — the day of, with the link and the code.
 4. **Ticket** — the receipt and the entry code.
-5. **After** — a short note from the DJ, sent only when the DJ writes one.
+5. **After** — a note from the DJ, sent only when the DJ writes one.
 
-Every message carries a one-click unsubscribe. Unsubscribes are honored across
-the whole platform, not per community.
-
-**The list belongs to the community.** It is exportable. We send on the DJ's
-behalf and never mail their members for our own reasons.
+One-click unsubscribe on every message, honored platform-wide. The list belongs
+to the group, is exportable, and is never mailed for our own purposes.
 
 **Honest risk:** MXroute is shared hosting with rate limits and a shared
-reputation. It is right for the first hundred sends and wrong for fifty
-thousand. When volume grows this needs a dedicated sending domain, SPF/DKIM on
-that domain, and a warmup — not a different vendor.
+reputation. Right for the first hundred sends, wrong for fifty thousand. When
+volume grows this needs a dedicated sending domain with its own SPF/DKIM and a
+warmup — not a different vendor.
 
 ## Money
 
-**Stripe Connect.** Each community onboards its own Stripe account; Stripe
-handles the identity checks and holds the liability for payouts. Guests pay by
-Apple Pay in the browser. We take a percentage.
+### There is no Apple-only path
 
-- **Tips** — first. A tip button on the party page and the community page.
-  Small amounts, no refunds to speak of, no capacity, no scanning. The rails
-  get proven on the cheapest possible case.
-- **Tickets** — second. Priced entry, a code in the email, capacity, a door
-  view for the DJ, refunds. Real work; worth doing once tips are running.
-- **Merch** — third, and a link out to the store the DJ already has. Holding
-  inventory or handling returns is a different company.
+Apple Pay is a payment *method*, not a payments platform. Taking money on the
+web with it still requires a processor and a merchant of record. Apple provides
+no way to collect from a guest and pay out to an arbitrary DJ. So the real
+question is not Stripe or Apple — it is who carries the liability.
 
-**Why this is safe with Apple.** Two separate rails, and the split is clean:
+- **Each DJ has their own Stripe account (Connect Express).** Stripe runs the
+  identity checks and carries the payout liability. We take a percentage
+  cleanly. Cost: the DJ does a hosted onboarding form — name, date of birth,
+  address, bank details. Three to five minutes on a phone.
+- **We are the merchant of record.** Less friction for the DJ up front, but we
+  then hold chargebacks, refunds, tax exposure, and the awkward position of
+  selling tickets to events we do not run. In the US that posture drifts toward
+  money transmission. Not worth it.
 
-- Anything sold to a *guest* — tips, tickets, merch — happens on a web page in
-  the guest's browser. Our app never presents it, never links to it, never
-  processes it. Tickets and tips are real-world services, outside in-app
-  purchase, and the guest is not using our app at all.
-- Anything sold to the *DJ* as a feature of the app — the Pro unlock — is
-  in-app purchase. That product already exists:
-  `fm.partyparty.app.pro.lifetime`, non-consumable, $99.
+**The friction fix: defer the onboarding.** The DJ creates the event and starts
+selling immediately; Stripe holds the funds; onboarding is only required to be
+*paid out*. The form lands at the moment the DJ is most motivated to fill it
+in — when there is money waiting.
 
-The Mac app may *show* a total. It must never take a payment that isn't IAP.
+**And for tips alone there is a zero-rails option:** the DJ pastes their own
+Revolut, PayPal or Cash App link and we display it. No onboarding, no
+liability, no processor — and no cut for us. Worth shipping on day one
+regardless, because it costs nothing and some DJs will never want more.
+
+### What the market charges
+
+Checked 2026-08-06. The party-native platforms are the expensive ones:
+
+| Platform | Fee |
+| --- | --- |
+| Posh | 10% + $0.99, shown all-in |
+| DICE | ~10–12% booking fee to the fan, negotiated |
+| Eventbrite | ~3.7% + $1.79, plus ~2.9% processing |
+| Luma | ~5% on paid tickets, free events free |
+| Ticket Tailor | flat ~$0.75/ticket, ~$0.30 prepaid — no percentage |
+
+So a DJ selling a $20 ticket pays Posh about $3.00 and Ticket Tailor about
+$0.75. There is a lot of room between those two.
+
+**DECISION:** our take on tickets and on tips. My read: 5% plus Stripe's
+2.9% + 30¢, passed to the buyer, undercuts Posh by half while staying
+sustainable. Note that small tips are fee-hostile — Stripe alone eats 7% of a
+$5 tip — so tips want either a suggested floor or our percentage at zero.
+
+### The Apple boundary
+
+Two rails, deliberately separate:
+
+- Anything sold to a **guest** — tips, tickets, merch — happens on a web page
+  in the guest's browser. Real-world services, outside in-app purchase, and
+  the guest is not using our app at all.
+- Anything sold to the **DJ** as a feature of the app — the Pro unlock — is
+  in-app purchase: `fm.partyparty.app.pro.lifetime`, non-consumable, $99.
+
+The Mac app may show a total. It must never take a payment that isn't IAP.
 
 ## Free and paid
 
-Free, permanently, no cap: the party. Going live, guests joining, listening,
-the wall. Also free: having a community, having members, running events, and
-people signing up. A capped free tier on the thing that fills the room would
-cost more in trust than it earns.
+Free, permanently, no caps: the party, the group, the members, the events, the
+signups. No member limit, no event limit. A cap on the thing that fills the
+room would cost more in trust than it earns.
 
 Paid is money and scale:
 
-- **Our cut** of tips and tickets. This is the business.
+- **Our cut** of tickets, and possibly tips. This is the business.
 - **Pro, $99 lifetime (IAP)** — **DECISION on the payload.** With branding
-  dropped, the candidates are: a custom party link name, remote listening
-  (guests outside the venue), and an unlimited community (free caps at, say,
-  250 members and 4 events a year). Remote listening is the only item that
-  costs us bandwidth on every use, which argues against it being lifetime.
+  dropped the candidates are a custom party link name and remote listening
+  (guests outside the venue). Remote listening is the only item that costs us
+  bandwidth on every use, which argues against selling it once, forever.
 
 ## Data
 
 A D1 database on the existing Worker. R2 keeps images. Sketch:
 
 ```
-community   id, handle, name, bio, avatar, cover, links, stripe_account, created
+group       id, handle, name, bio, avatar, cover, links, stripe_account, created
 dj          id, apple_sub, email, name, created
-membership  community_id, dj_id, role (owner|host)
-member      id, email, name, confirmed_at, unsubscribed_at
-follow      community_id, member_id, joined_at, source (party|link|invite)
-event       id, community_id, slug, title, starts, place, description, cover,
+membership  group_id, dj_id, role (owner|host)
+member      id, email, name, confirmed_at, unsubscribed_at, apple_sub?
+follow      group_id, member_id, joined_at, source (party|link|invite)
+event       id, group_id, slug, title, starts, place, description, cover,
             ticket_price, capacity, code, party_id, state
 signup      event_id, member_id, state (going|not), created
 ticket      id, event_id, member_id, code, amount, stripe_payment, state
-tip         id, community_id, event_id, amount, stripe_payment, created
-send        id, community_id, event_id, kind, count, created
+post        id, event_id, member_id, kind, body, media, created, origin (lan|web)
+tip         id, group_id, event_id, amount, stripe_payment, created
+send        id, group_id, event_id, kind, count, created
 ```
 
 `follow.source` matters: it tells a DJ how many of their crowd came from being
-physically at a party versus a posted link. That is the number that proves the
-whole thesis.
+physically at a party versus a posted link. That number is the whole thesis,
+measured.
+
+`post.origin` is what makes one link possible: the same timeline holds what was
+written on the venue Wi-Fi and what was written from a couch three days later.
 
 ## What does not change
 
-- The LAN party works with no internet, no account, and no platform. Every
-  invariant about offline parties stands.
-- The audio core is untouched. No phase of this work goes near
-  `internal/broadcast/`, the playlist geometry, or the room delay.
-- Photos stay the DJ's. The wall is theirs; nothing is sent to guests, and
-  nothing becomes public, unless the DJ chooses to send it.
-- No replays, no recordings, no archives, no public feed of past nights.
+- The LAN party works with no internet, no account, and no platform.
+- The audio core is untouched. No phase goes near `internal/broadcast/`, the
+  playlist geometry, or the room delay.
+- Photos stay the DJ's. Nothing is public, nothing is mailed to guests, unless
+  the DJ does it.
+- No replays, no recordings, no archives of the music.
 
-## Doctrine changes required
+## Doctrine
 
-These are real changes to `AGENTS.md` and should be made deliberately, in one
-commit, before any code:
-
-- **Invariant 1** (guests join without accounts or internet) — **unchanged**,
-  and the identity model above exists to keep it that way.
-- **Invariant 2** (no product login before Go Live) — **rewrite.** DJs get an
-  account. Guests still don't, and Go Live is still not gated on anything.
-- **Invariant 4** (cloud state is ephemeral; no public party pages) —
-  **rewrite.** Communities and events are durable public pages. The part worth
-  keeping is the ban on replays, recordings, and archives of the night itself.
-- **Invariant 6** (no authentication email service) — **keep**, and Sign in
-  with Apple is how. Announcement email to members is a different thing and is
-  allowed explicitly.
+Done in this branch. `AGENTS.md` invariants 2, 4 and 6 were rewritten:
+accounts are for DJs and optional for members; groups and events are durable
+public pages while the music of a night still is not; email is MXroute and a
+member's address belongs to the group that collected it. Invariant 1 stands —
+a guest at a party needs nothing.
 
 ## Sequencing
 
-Phase 1 needs no Mac work at all, which is why it goes first: it can move at
-web speed without risking the audio core.
+Phase 1 needs no Mac work, which is why it goes first: it moves at web speed
+and cannot hurt the audio core.
 
-**Phase 1 — communities, events, signups, email.** D1, Sign in with Apple, the
-community page, the event page, join and confirm, going/not going, and the
-invite and reminder emails. At the end of this phase the product is a working
-replacement for Partiful and Secretparty, with no party attached.
-*Proof: a real community with real members gets a real invite and people sign up.*
+**Phase 1 — groups, events, signups, email.** D1, Sign in with Apple, the group
+page, the event page, join and confirm, going/not going, invite and reminder
+email. At the end of this phase the product replaces Partiful and Secretparty
+with no party attached.
+*Proof: a real group with real members gets a real invite and people sign up.*
 
-**Phase 2 — the party joins the platform.** The event page hands visitors into
-the live party. The guest page gets "join the community", with the follow
-source recorded. The Mac app links its party to an event.
-*Proof: a follow taken at a live party appears in the community's member list.*
+**Phase 2 — one link.** The event page becomes the party when the party is
+live, and the timeline reconciles between the Mac's LAN wall and the cloud. The
+guest page gets "join the group", recording the follow source.
+*Proof: a photo posted on the venue Wi-Fi and a photo posted the next morning
+sit in the same timeline, and a follow taken at the party appears in the member
+list.*
 
-**Phase 3 — tips.** Stripe Connect onboarding, a tip button on the party page
-and the community page, payouts, and the DJ's total.
+**Phase 3 — tips.** The DJ's own payment link on day one; Stripe Connect with
+deferred onboarding behind it.
 *Proof: money reaches a DJ's bank account.*
 
 **Phase 4 — tickets.** Price, capacity, codes, the door view, refunds.
 
-**Phase 5 — merch.** A link out, on the community page and the party page.
+**Phase 5 — merch.** A link out, on the group page and the party page.
 
 **Pro** lands whenever its payload is decided; it is independent of the above.
 
 ## Open decisions
 
-1. The word. "Community" is a placeholder — crew, club, collective, scene?
-2. Sign in with Apple only, or Apple plus Google?
-3. The Pro payload, given branding is dropped.
-4. Our percentage on tips and on tickets.
-5. Free caps on members and events — any, or none?
+1. Sign in with Apple only, or Apple plus Google for members?
+2. The Pro payload, given branding is dropped.
+3. Our percentage on tickets, and whether tips are 0%.

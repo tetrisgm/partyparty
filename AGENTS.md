@@ -68,8 +68,10 @@ boundary.
 ## Product Invariants
 
 1. Guests join, listen, and post on the LAN without accounts or internet.
-2. The paid App Store download is the purchase boundary. Do not add product
-   login, licensing, profiles, or network checks before Go Live.
+2. Accounts belong to DJs, never to guests at a party. A DJ signs in to run a
+   group; a member may sign in if they want one identity across groups, but
+   every member action also works from a link in an email. Go Live is never
+   gated on sign-in, a purchase, or a network check.
 3. Guest playback is HTTPS LL-HLS. The single exception is the OFFLINE
    EMERGENCY LINK, which is intended and supported: when a party has no
    internet and this Wi-Fi's resolver will not answer for the secure hostname,
@@ -81,11 +83,16 @@ boundary.
    other plaintext request still redirects to HTTPS, and a stale IP never
    becomes a second way into the room. Do not widen these conditions, and do not
    restore plain HTTP for any online path.
-4. Cloud relay state is ephemeral. Do not add public party pages, replays,
-   recordings, archives, or cloud feeds.
+4. Groups and events are durable public pages and their timelines persist -
+   that is the platform. The MUSIC of a night is not: no replays, no
+   recordings, no set archives, and relay state stays ephemeral. Photos and
+   posts belong to the group that collected them and are never made public or
+   mailed out except by the DJ's own act.
 5. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and
    MediaMTX behavior.
-6. Do not add an authentication email service.
+6. Email is MXroute SMTP. A member's address belongs to the group that
+   collected it, is exportable by that group, and is never mailed for our own
+   purposes. Every send carries a one-click unsubscribe honored platform-wide.
 7. Do not restore hotspots, Internet Sharing, captive portals, DNS hijacking,
    or automatic network reconfiguration.
 8. Apple guests use native HLS/AVPlayer for background and lock-screen audio.
