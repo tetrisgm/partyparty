@@ -51,6 +51,25 @@ the thing that makes the next party one button instead of an evening's work.
 If you also want to sell tickets or take tips, that is a toggle on the first
 screen, and the money goes to you.
 
+### And from the other side
+
+You got a link. You go, you have a good night, and on the way out you see who
+threw it — a group, with its next dates on it. You join the group, and from
+then on you hear about their nights without anyone having to remember to invite
+you.
+
+You are in that group the way you are in a Facebook group, not the way you are
+in a WhatsApp thread: you can read it, post in it, mute it, or leave it, and
+none of that is a favour anyone has to do for you. If one person's invitations
+are too much, you block those without leaving. Every one of those is a link in
+an email — no account, no app, no asking.
+
+And their calendar is a calendar. Subscribe once and every night they announce
+appears in Apple or Google Calendar; say you are going to one and it lands in
+your own calendar with the address. That is the part WhatsApp can never do, and
+it is why this can sit *next to* the group chat instead of trying to replace
+it.
+
 ## What this does not touch
 
 The music is finished work and this plan is built around it, never through it.
@@ -81,6 +100,26 @@ your nights — one handle, one page, `partyparty.party/@handle`. An **event** i
 one night in it. A **member** is an email and a name; sign-in with Apple or
 Google is offered and never required. That is the entire model, and the group
 is what makes the second party easier than the first.
+
+**Membership is two-level and belongs to the member.** You can be in a group
+and in an event, and they are separate: join an event without the group, join
+the group from the event, leave either without leaving the other. Every one of
+those actions works from a link in an email — leave the group, stop going,
+block invitations from one person while staying in, or mute the group without
+leaving it. None of it requires an account, and none of it requires asking the
+DJ.
+
+**The group is a place, not a mailing list.** DJs post to it and members reply,
+because the alternative is a WhatsApp group that colonises everyone's phone.
+This has to be quieter than that by construction, so each member chooses their
+own volume: every post, only events, or nothing at all. It sits beside the
+group chat rather than trying to win against it.
+
+**The calendar is a real calendar.** Every group publishes a subscribable feed
+— `webcal://partyparty.party/@handle.ics` — so their nights appear in Apple or
+Google Calendar and stay current as dates change. Every event has its own
+`.ics`, offered when someone says they are going and attached to the invite
+email. This is the one thing WhatsApp structurally cannot do.
 
 **One link for the whole night.** `@handle/<event>` is the invite before, the
 room during, and the photos after. Away from the venue it shows the timeline
@@ -118,6 +157,13 @@ your guest pays $21.94, or $20.91 on Pro. Posh charges them $22.99.
    for the five-tool mess. *Proof: a real group gets a real invite and real
    people say they're coming.*
 
+3b. **The member's own controls, the group's discussion, and the calendar.**
+   Join and leave at both levels, mute, block one person's invitations, all
+   from emailed links. The group feed with per-member volume. The subscribable
+   `.ics` and per-event downloads. *Proof: a subscribed group's next date
+   appears in Apple Calendar, and someone leaves the group from an email
+   without anyone's help.*
+
 4. **The link becomes the room.** The event page turns into the party while it
    is live, and photos posted on venue Wi-Fi and photos posted three days later
    land in the same place. *Proof: exactly that.*
@@ -135,7 +181,12 @@ A second Worker (`partyparty-app`) so a platform deploy can never break a live
 party — the existing Worker keeps certificates, DNS and relay untouched. Group
 handles must be reserved in the broker's existing collision guard
 (`broker/host/`, `broker/join/`, `broker/slug/`) or two owners eventually get
-the same name, and a one-word custom link needs `JOIN_NAME_RE` widened. Email
+the same name, and a one-word custom link needs `JOIN_NAME_RE` widened. Membership carries its own
+state and volume per member, blocks are their own table keyed by the person
+blocked, and group posts are event posts with no event. The `.ics` needs stable
+per-event `UID`s and a `SEQUENCE` that increments on every change, or
+subscribed calendars quietly keep showing the old date; a cancelled event is
+`STATUS:CANCELLED`, not a deletion, for the same reason. Email
 is MXroute, sent from the origin box rather than from Workers, with one-click
 unsubscribe. Turnstile on the join form, because an open email box on a public
 page gets harvested. Posts carry ULIDs so an offline Mac mints ids that never
