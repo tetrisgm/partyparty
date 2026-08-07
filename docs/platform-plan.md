@@ -160,15 +160,37 @@ question is not Stripe or Apple — it is who carries the liability.
   selling tickets to events we do not run. In the US that posture drifts toward
   money transmission. Not worth it.
 
-**The friction fix: defer the onboarding.** The DJ creates the event and starts
-selling immediately; Stripe holds the funds; onboarding is only required to be
-*paid out*. The form lands at the moment the DJ is most motivated to fill it
-in — when there is money waiting.
+**The friction fix: defer the onboarding.** Stripe supports charging before a
+connected account is verified and transferring the money once it is. So the DJ
+turns tips on and nothing else: guests pay, our cut comes off, the balance
+builds under their name, and the identity form appears the first time they tap
+cash out — with money already waiting, which is the only moment it is
+justified.
 
-**And for tips alone there is a zero-rails option:** the DJ pastes their own
-Revolut, PayPal or Cash App link and we display it. No onboarding, no
-liability, no processor — and no cut for us. Worth shipping on day one
-regardless, because it costs nothing and some DJs will never want more.
+The floor underneath that is not a product choice. Paying a human being
+requires their name, date of birth and a destination; that is KYC law. What we
+control is *when* they are asked.
+
+**Two tiers, as Partiful ships them.** Checked 2026-08-06, and the pattern is
+universal: the only zero-setup path anywhere is "pay the host's own handle",
+and it is exactly the path where the platform verifies nothing and takes
+nothing.
+
+- **Chip in** — the DJ's own Venmo, Revolut or PayPal handle, displayed. No
+  onboarding, no liability, no processor, no cut.
+- **Tips and tickets** — Apple Pay in the browser, our cut, Stripe behind it
+  with onboarding deferred to cash-out.
+
+Most DJs start on the first and move to the second the night someone tips them
+$60 and it stops being theoretical.
+
+**Payout timing.** Eventbrite, Posh and Partiful all hold funds until after the
+event, to cover refunds and chargebacks. Only Luma pays out as sales land.
+**DECISION:** hold tips until after the night, or pay as they arrive?
+
+**Unclaimed money.** A DJ who takes tips and never cashes out leaves us holding
+someone else's money. Proposed: hold 90 days with reminders, then refund the
+guests.
 
 ### What the market charges
 
