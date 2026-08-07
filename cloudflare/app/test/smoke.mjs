@@ -844,6 +844,28 @@ test("Pro is on when either store says so", async () => {
   assert.match(await (await get(env, "/@sundaze/paid")).text(), /20\.91/);
 });
 
+test("the development doors are shut unless they are opened on purpose", async () => {
+  const env = makeEnv();
+  // Signing in as anybody and reading everyone's mail. In production either one
+  // is a total compromise, so the default must be closed, not merely unlinked.
+  assert.equal((await get(env, "/dev/signin?email=someone@example.com")).status, 404);
+  assert.equal((await get(env, "/dev/outbox")).status, 404);
+  assert.equal(rows(env, `SELECT * FROM djs`).length, 0);
+
+  env.DEV_LOGIN = "1";
+  const signedIn = await get(env, "/dev/signin?email=dj@example.com");
+  assert.equal(signedIn.status, 302);
+  assert.match(signedIn.headers.get("set-cookie") || "", /pp_s=[a-f0-9]{48}/);
+  assert.equal(one(env, `SELECT email_norm FROM djs`).email_norm, "dj@example.com");
+
+  seedGroup(env);
+  await post(env, "/@sundaze/join", { email: "guest@example.com" });
+  const outbox = await (await get(env, "/dev/outbox")).text();
+  assert.match(outbox, /guest@example\.com/);
+  assert.match(outbox, /<a href="https:\/\/partyparty\.party\/j\/[a-f0-9]{48}"/,
+    "the confirm link has to be clickable or the flow cannot be walked");
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();

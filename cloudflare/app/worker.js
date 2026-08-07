@@ -684,11 +684,59 @@ function signInPage(env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const base = `${url.protocol}//${url.host}`;
+    // Where links in emails point. Taken from the request unless PUBLIC_BASE
+    // says otherwise, which matters twice: locally, where wrangler rewrites the
+    // host to match the configured route and every link would otherwise aim at
+    // production; and in production, where pinning it means a request arriving
+    // on an unexpected host cannot mint links to that host.
+    const base = String(env.PUBLIC_BASE || "").replace(/\/$/, "") || `${url.protocol}//${url.host}`;
     const now = Date.now();
     const path = decodeURIComponent(url.pathname);
 
     if (path === "/__pp/app-health") return json(200, { ok: true });
+
+    // ---- local development only --------------------------------------------
+    // Two doors that would be a total compromise in production: signing in as
+    // anybody, and reading everyone's mail. Both are shut unless DEV_LOGIN is
+    // set, which only ever happens in .dev.vars - a file wrangler reads for
+    // `wrangler dev` and never uploads. There is no way to set it by accident
+    // on a deploy, and the tests assert both routes 404 without it.
+    if (path === "/dev/signin" && env.DEV_LOGIN === "1") {
+      const emailNorm = normalizeEmail(url.searchParams.get("email") || "dj@example.com");
+      if (!emailNorm) return notice("Bad address", "Pass ?email=you@example.com");
+      let dj = await env.DB.prepare(`SELECT * FROM djs WHERE email_norm = ?`).bind(emailNorm).first();
+      if (!dj) {
+        await env.DB.prepare(
+          `INSERT INTO djs (id, email_norm, name, created_ms, last_seen_ms) VALUES (?, ?, ?, ?, ?)`
+        ).bind(ulid(now), emailNorm, url.searchParams.get("name") || "Test DJ", now, now).run();
+        dj = await env.DB.prepare(`SELECT * FROM djs WHERE email_norm = ?`).bind(emailNorm).first();
+      }
+      return new Response(null, {
+        status: 302,
+        headers: { location: "/manage", "set-cookie": await startSession(env, { djId: dj.id, now }) },
+      });
+    }
+
+    // Every message the platform would have sent, with its links live. Nothing
+    // is delivered in development, so without this the join, confirm, invite
+    // and settings flows cannot be walked at all.
+    if (path === "/dev/outbox" && env.DEV_LOGIN === "1") {
+      const { results } = await env.DB.prepare(
+        `SELECT * FROM outbox ORDER BY created_ms DESC LIMIT 50`
+      ).all();
+      const linkify = (text) => esc(text).replace(
+        /(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
+      return html(200, page("Outbox", `
+        <h1>Outbox</h1>
+        <p class="muted">${(results || []).length} messages. Nothing is sent in development -
+          the links below are the real ones.</p>
+        ${(results || []).map((m) => `<div class="card">
+          <div class="muted">${esc(m.kind)} - ${esc(m.to_email)}${m.sent_ms ? " (sent)" : ""}</div>
+          <strong>${esc(m.subject)}</strong>
+          <pre style="white-space:pre-wrap;font:inherit;margin:8px 0 0">${linkify(m.body_text)}</pre>
+        </div>`).join("") || `<p class="muted">Nothing yet.</p>`}
+      `));
+    }
 
     if (path === "/api/v1/install/code" && request.method === "POST") {
       const body = await readJson(request, 4096);

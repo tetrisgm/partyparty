@@ -11,10 +11,23 @@
   "account_id": "4e958c1f2621ced0354e94826590e34f",
 
   // Groups, members, events, signups, tokens and the mail outbox.
-  // Create once:  wrangler d1 create partyparty-app
-  // Apply schema: wrangler d1 execute partyparty-app --remote --file=migrations/0001_init.sql
+  //
+  // The id below is a PLACEHOLDER so `wrangler dev --local` works with a file
+  // on disk. It is not a real database and a deploy with it still set would
+  // fail. Creating the real one is a deliberate act:
+  //   wrangler d1 create partyparty-app        (paste the id it prints here)
+  //   for f in migrations/*.sql; do wrangler d1 execute partyparty-app --remote --file=$f; done
   "d1_databases": [
-    { "binding": "DB", "database_name": "partyparty-app", "database_id": "" }
+    {
+      "binding": "DB",
+      "database_name": "partyparty-app",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      // wrangler tracks which of these have run in a d1_migrations table, so
+      // applying twice is a no-op. Running the files by hand is not: an
+      // ALTER TABLE ADD COLUMN fails the second time and takes the rest of the
+      // batch with it.
+      "migrations_dir": "migrations"
+    }
   ],
 
   // The broker's keyspace, read and written only to reserve handles so a group
@@ -31,7 +44,12 @@
     { "pattern": "partyparty.party/m/*", "zone_name": "partyparty.party" },
     { "pattern": "partyparty.party/g/*", "zone_name": "partyparty.party" },
     { "pattern": "partyparty.party/api/v1/*", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/auth/*", "zone_name": "partyparty.party" }
+    { "pattern": "partyparty.party/auth/*", "zone_name": "partyparty.party" },
+    // The DJ's own pages. Missing these sends /manage and /signin to the site
+    // Worker, which knows nothing about them - the platform would look broken
+    // on the real domain while working perfectly on localhost.
+    { "pattern": "partyparty.party/manage", "zone_name": "partyparty.party" },
+    { "pattern": "partyparty.party/signin", "zone_name": "partyparty.party" }
   ],
 
   "observability": { "enabled": true }
