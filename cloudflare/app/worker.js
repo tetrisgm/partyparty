@@ -9,6 +9,10 @@
 // account. Every action a person can take on their own membership arrives as a
 // single-use token in a message, and works on a phone with no app.
 
+import {
+  appleNameFrom, authorizeURL, configured, exchangeCode, PROVIDERS, readState, signState,
+} from "./auth.js";
+
 const HANDLE_RE = /^[a-z0-9]{5,30}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,60}$/;
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -131,6 +135,37 @@ async function readToken(env, secret, purposes, now) {
   if (row.expires_ms < now) return null;
   if (!purposes.includes(row.purpose)) return null;
   return row;
+}
+
+// ----------------------------------------------------------------- sessions
+
+const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+function cookies(request) {
+  const jar = {};
+  for (const part of String(request.headers.get("cookie") || "").split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name) jar[name] = rest.join("=");
+  }
+  return jar;
+}
+
+async function startSession(env, { djId, memberId, now }) {
+  const secret = randomHex(24);
+  await env.DB.prepare(
+    `INSERT INTO sessions (id, hash, dj_id, member_id, created_ms, expires_ms) VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(ulid(now), await sha256Hex(secret), djId || null, memberId || null, now, now + SESSION_TTL_MS).run();
+  return `pp_s=${secret}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`;
+}
+
+async function currentDJ(env, request, now) {
+  const secret = cookies(request).pp_s;
+  if (!/^[a-f0-9]{48}$/.test(String(secret || ""))) return null;
+  const session = await env.DB.prepare(
+    `SELECT * FROM sessions WHERE hash = ?`
+  ).bind(await sha256Hex(secret)).first();
+  if (!session || session.revoked_ms || session.expires_ms < now || !session.dj_id) return null;
+  return env.DB.prepare(`SELECT * FROM djs WHERE id = ?`).bind(session.dj_id).first();
 }
 
 // ------------------------------------------------------------------ members
@@ -378,6 +413,70 @@ async function joinGroup(env, group, emailNorm, name, source, base, now) {
   return member;
 }
 
+// A handle is claimed in the broker's keyspace as well as this database. The
+// broker mints two-word names for Macs out of the same namespace and checks
+// those keys before handing one out; a group reserved only here would
+// eventually be given away to a machine.
+async function claimHandle(env, handle) {
+  if (env.DL) {
+    for (const key of ["handle", "host", "join", "slug"]) {
+      if (await env.DL.head(`broker/${key}/${handle}`)) return false;
+    }
+  }
+  return true;
+}
+
+async function reserveHandle(env, handle) {
+  if (env.DL) await env.DL.put(`broker/handle/${handle}`, "group");
+}
+
+async function createGroup(env, dj, handle, name, now) {
+  const problem = handleProblem(handle);
+  if (problem) return { error: problem };
+  if (!await claimHandle(env, handle)) return { error: "that name is taken" };
+  const id = ulid(now);
+  try {
+    await env.DB.prepare(
+      `INSERT INTO groups (id, handle, name, created_ms, updated_ms) VALUES (?, ?, ?, ?, ?)`
+    ).bind(id, handle, String(name || "").slice(0, 80), now, now).run();
+  } catch (e) {
+    // The UNIQUE index is the real arbiter, so two people claiming the same
+    // name at the same moment resolve here rather than both being told yes.
+    return { error: "that name is taken" };
+  }
+  await reserveHandle(env, handle);
+  await env.DB.prepare(
+    `INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`
+  ).bind(id, dj.id, now).run();
+  return { id, handle };
+}
+
+async function djRunsGroup(env, dj, groupId) {
+  if (!dj) return false;
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM group_djs WHERE group_id = ? AND dj_id = ?`
+  ).bind(groupId, dj.id).first();
+  return !!row;
+}
+
+function slugify(title, now) {
+  const base = String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "").slice(0, 40);
+  return SLUG_RE.test(base) ? base : `night-${new Date(now).toISOString().slice(0, 10)}`;
+}
+
+function signInPage(env) {
+  const button = (provider, label) => (configured(env, provider)
+    ? `<p><a class="btn" href="/auth/${provider}">${esc(label)}</a></p>`
+    : `<p class="muted">${esc(label)} is not configured yet.</p>`);
+  return page("Sign in", `
+    <h1>Sign in</h1>
+    <p class="muted">Only DJs need an account. Guests never do.</p>
+    ${button("apple", "Continue with Apple")}
+    ${button("google", "Continue with Google")}
+  `);
+}
+
 // -------------------------------------------------------------------- fetch
 
 export default {
@@ -389,9 +488,177 @@ export default {
 
     if (path === "/__pp/app-health") return json(200, { ok: true });
 
+    // ---- sign-in ----------------------------------------------------------
+    let match = path.match(/^\/auth\/(apple|google)$/);
+    if (match) {
+      const provider = match[1];
+      if (!configured(env, provider)) return notice("Not available yet", "That sign-in is not configured.");
+      const nonce = randomHex(16);
+      const state = await signState(env, {
+        p: provider, n: nonce, exp: now + 10 * 60 * 1000,
+        to: url.searchParams.get("to") || "/manage",
+      });
+      // SameSite=None because Apple posts the result back cross-site; a Lax
+      // cookie is simply not sent and every sign-in fails on state mismatch.
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: authorizeURL(env, provider, {
+            redirectUri: `${base}/auth/${provider}/callback`, state, nonce,
+          }),
+          "set-cookie": `pp_auth=${state}; Path=/auth; HttpOnly; Secure; SameSite=None; Max-Age=600`,
+        },
+      });
+    }
+
+    match = path.match(/^\/auth\/(apple|google)\/callback$/);
+    if (match) {
+      const provider = match[1];
+      const form = PROVIDERS[provider].formPost && request.method === "POST"
+        ? await request.formData().catch(() => null)
+        : null;
+      const code = String((form && form.get("code")) || url.searchParams.get("code") || "");
+      const returned = String((form && form.get("state")) || url.searchParams.get("state") || "");
+      const stored = cookies(request).pp_auth || "";
+      if (!code || !returned || returned !== stored) {
+        return notice("That sign-in did not complete", "Start again from the sign-in page.");
+      }
+      const state = await readState(env, returned, now);
+      if (!state || state.p !== provider) {
+        return notice("That sign-in did not complete", "Start again from the sign-in page.");
+      }
+      let claims;
+      try {
+        claims = await exchangeCode(env, provider, {
+          code, redirectUri: `${base}/auth/${provider}/callback`, now,
+          fetchImpl: env.FETCH || undefined,
+        });
+      } catch (e) {
+        return notice("That sign-in did not complete", String(e.message || e));
+      }
+      if (claims.nonce && claims.nonce !== state.n) {
+        return notice("That sign-in did not complete", "The reply did not match the request.");
+      }
+      const emailNorm = normalizeEmail(claims.email);
+      if (!emailNorm) return notice("No email address", "We need an address to reach you about your nights.");
+
+      // Apple hands the name over exactly once, in a form field, on the first
+      // authorization. Take it or the DJ has no name for good.
+      const name = appleNameFrom(form) || String(claims.name || "").slice(0, 60);
+      let dj = await env.DB.prepare(`SELECT * FROM djs WHERE email_norm = ?`).bind(emailNorm).first();
+      if (!dj) {
+        await env.DB.prepare(
+          `INSERT INTO djs (id, email_norm, name, created_ms, last_seen_ms) VALUES (?, ?, ?, ?, ?)`
+        ).bind(ulid(now), emailNorm, name, now, now).run();
+        dj = await env.DB.prepare(`SELECT * FROM djs WHERE email_norm = ?`).bind(emailNorm).first();
+      } else {
+        await env.DB.prepare(`UPDATE djs SET last_seen_ms = ? WHERE id = ?`).bind(now, dj.id).run();
+      }
+      // A member who signs in with the same verified address is the same
+      // person: they keep every group they joined from a link.
+      await env.DB.prepare(
+        `UPDATE members SET ${provider === "apple" ? "apple_sub" : "google_sub"} = ?, confirmed_ms = COALESCE(confirmed_ms, ?)
+         WHERE email_norm = ?`
+      ).bind(String(claims.sub || ""), now, emailNorm).run();
+
+      const cookie = await startSession(env, { djId: dj.id, now });
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: String(state.to || "/manage"),
+          "set-cookie": cookie,
+        },
+      });
+    }
+
+    if (path === "/auth/signout") {
+      const secret = cookies(request).pp_s;
+      if (/^[a-f0-9]{48}$/.test(String(secret || ""))) {
+        await env.DB.prepare(`UPDATE sessions SET revoked_ms = ? WHERE hash = ?`)
+          .bind(now, await sha256Hex(secret)).run();
+      }
+      return new Response(null, {
+        status: 302,
+        headers: { location: "/", "set-cookie": "pp_s=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0" },
+      });
+    }
+
+    if (path === "/signin") return html(200, signInPage(env));
+
+    // ---- the DJ's own pages -----------------------------------------------
+    if (path === "/manage") {
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return html(200, signInPage(env));
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        const handle = normalizeHandle(form && form.get("handle"));
+        const made = await createGroup(env, dj, handle, form && form.get("name"), now);
+        if (made.error) return notice("That name will not work", made.error);
+        return new Response(null, { status: 302, headers: { location: `/@${made.handle}/manage` } });
+      }
+      const { results } = await env.DB.prepare(
+        `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id WHERE d.dj_id = ? ORDER BY g.created_ms`
+      ).bind(dj.id).all();
+      const mine = (results || []).map((g) => `<a class="card" href="/@${esc(g.handle)}/manage">
+        <strong>${esc(g.name || g.handle)}</strong><div class="muted">@${esc(g.handle)}</div></a>`).join("");
+      return html(200, page("Your groups", `
+        <h1>Your groups</h1>
+        ${mine || `<p class="muted">Nothing yet. A group is you and the people who come to your nights.</p>`}
+        <h2>Start one</h2>
+        <form class="join" method="post" action="/manage">
+          <input type="text" name="name" placeholder="Name, e.g. Sundaze" required>
+          <input type="text" name="handle" placeholder="handle" required>
+          <button class="btn" type="submit">Create</button>
+        </form>
+        <p class="muted">The handle is the address: partyparty.party/@yourhandle. Five
+        characters or more, letters and numbers.</p>
+        <p><a class="muted" href="/auth/signout">Sign out</a></p>
+      `));
+    }
+
+    match = path.match(/^\/@([a-z0-9]+)\/manage$/);
+    if (match) {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const dj = await currentDJ(env, request, now);
+      if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        const title = String((form && form.get("title")) || "").slice(0, 120);
+        const startsRaw = String((form && form.get("starts")) || "");
+        const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
+        await env.DB.prepare(
+          `INSERT INTO events (id, group_id, slug, title, starts_ms, place, state, created_ms, updated_ms)
+           VALUES (?, ?, ?, ?, ?, ?, 'announced', ?, ?)`
+        ).bind(ulid(now), group.id, slugify(title, now), title, Number.isFinite(starts) ? starts : null,
+          String((form && form.get("place")) || "").slice(0, 120), now, now).run();
+        return new Response(null, { status: 302, headers: { location: `/@${group.handle}/manage` } });
+      }
+      const events = await upcomingEvents(env, group.id, 0);
+      const members = await env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND state = 'joined'`
+      ).bind(group.id).first();
+      return html(200, page(`Manage ${group.name || group.handle}`, `
+        <h1>${esc(group.name || group.handle)}</h1>
+        <p class="muted">${Number((members && members.n) || 0)} members ·
+          <a class="muted" href="/@${esc(group.handle)}">public page</a></p>
+        <h2>Nights</h2>
+        ${events.map((e) => `<div class="card"><div class="when">${esc(whenText(e))}</div>
+          <strong>${esc(e.title || "Untitled")}</strong></div>`).join("")
+          || `<p class="muted">No nights yet.</p>`}
+        <h2>Add one</h2>
+        <form class="join" method="post" action="/@${esc(group.handle)}/manage">
+          <input type="text" name="title" placeholder="What is it called?" required>
+          <input type="text" name="starts" placeholder="2026-09-12T21:00">
+          <input type="text" name="place" placeholder="Where?">
+          <button class="btn" type="submit">Announce</button>
+        </form>
+      `));
+    }
+
     // A group's calendar. Subscribed once, correct forever after - which is why
     // it is a first-class URL and not a download.
-    let match = path.match(/^\/@([a-z0-9]+)\.ics$/);
+    match = path.match(/^\/@([a-z0-9]+)\.ics$/);
     if (match) {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });

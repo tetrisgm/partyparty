@@ -221,6 +221,146 @@ test("the group page and its calendar are served", async () => {
   assert.equal((await get(env, "/@nobody")).status, 404);
 });
 
+// A real RSA key pair, so the sign-in tests exercise the actual signature
+// check. A stubbed "trust me" verifier would pass while accepting a token
+// anybody could mint claiming any address they liked.
+const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
+let kidSeq = 0;
+const idTokenFor = async (keys, kid, claims) => {
+  const header = b64url(new TextEncoder().encode(JSON.stringify({ alg: "RS256", kid })));
+  const body = b64url(new TextEncoder().encode(JSON.stringify(claims)));
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5", keys.privateKey, new TextEncoder().encode(`${header}.${body}`));
+  return `${header}.${body}.${b64url(new Uint8Array(signature))}`;
+};
+
+const withGoogle = async (env, claimsOver = {}) => {
+  const keys = await crypto.subtle.generateKey(
+    { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true, ["sign", "verify"]);
+  const jwk = await crypto.subtle.exportKey("jwk", keys.publicKey);
+  // A fresh key id per pair, as a real provider does. Reusing one id for two
+  // different keys is the one thing a signature cache is entitled to trust.
+  const kid = `test-key-${++kidSeq}`;
+  env.GOOGLE_CLIENT_ID = "client.example";
+  env.GOOGLE_CLIENT_SECRET = "secret";
+  env.STATE_SECRET = "test-state";
+  env.__token = async (nonce) => idTokenFor(keys, kid, {
+    iss: "https://accounts.google.com", aud: "client.example", sub: "google-sub-1",
+    email: "dj@example.com", nonce, exp: Math.floor(Date.now() / 1000) + 600,
+    iat: Math.floor(Date.now() / 1000), ...claimsOver,
+  });
+  env.FETCH = async (input) => {
+    const target = String(input && input.url ? input.url : input);
+    if (target.includes("oauth2/v3/certs")) {
+      return new Response(JSON.stringify({ keys: [{ ...jwk, kid }] }), { status: 200 });
+    }
+    if (target.includes("oauth2.googleapis.com/token")) {
+      return new Response(JSON.stringify({ id_token: env.__pendingToken }), { status: 200 });
+    }
+    return new Response("no", { status: 404 });
+  };
+  return env;
+};
+
+const signIn = async (env) => {
+  const start = await get(env, "/auth/google");
+  assert.equal(start.status, 302);
+  const state = /pp_auth=([^;]+)/.exec(start.headers.get("set-cookie"))[1];
+  const nonce = JSON.parse(Buffer.from(state.split(".")[0], "base64url").toString()).n;
+  env.__pendingToken = await env.__token(nonce);
+  const done = await get(env, `/auth/google/callback?code=abc&state=${encodeURIComponent(state)}`, {
+    headers: { cookie: `pp_auth=${state}` },
+  });
+  return { done, session: /pp_s=([a-f0-9]{48})/.exec(done.headers.get("set-cookie") || "") };
+};
+
+test("a DJ signs in with a verified token, and a forged one is refused", async () => {
+  const env = await withGoogle(makeEnv());
+  const { done, session } = await signIn(env);
+  assert.equal(done.status, 302);
+  assert.equal(done.headers.get("location"), "/manage");
+  assert.ok(session, "a session cookie is set");
+  assert.equal(one(env, `SELECT email_norm FROM djs`).email_norm, "dj@example.com");
+
+  // Same flow, but the payload is rewritten after signing.
+  const forged = await withGoogle(makeEnv());
+  const start = await get(forged, "/auth/google");
+  const state = /pp_auth=([^;]+)/.exec(start.headers.get("set-cookie"))[1];
+  const nonce = JSON.parse(Buffer.from(state.split(".")[0], "base64url").toString()).n;
+  const real = await forged.__token(nonce);
+  const [header, , signature] = real.split(".");
+  const tampered = JSON.parse(Buffer.from(real.split(".")[1], "base64url").toString());
+  tampered.email = "someone.else@example.com";
+  forged.__pendingToken = `${header}.${Buffer.from(JSON.stringify(tampered)).toString("base64url")}.${signature}`;
+  const refused = await get(forged, `/auth/google/callback?code=abc&state=${encodeURIComponent(state)}`, {
+    headers: { cookie: `pp_auth=${state}` },
+  });
+  assert.equal(refused.status, 200);
+  assert.match(await refused.text(), /did not verify|did not complete/i);
+  assert.equal(rows(forged, `SELECT * FROM djs`).length, 0, "no account from a forged token");
+});
+
+test("a callback without the matching state cookie is refused", async () => {
+  const env = await withGoogle(makeEnv());
+  const start = await get(env, "/auth/google");
+  const state = /pp_auth=([^;]+)/.exec(start.headers.get("set-cookie"))[1];
+  env.__pendingToken = await env.__token("whatever");
+  const noCookie = await get(env, `/auth/google/callback?code=abc&state=${encodeURIComponent(state)}`);
+  assert.match(await noCookie.text(), /did not complete/i);
+  assert.equal(rows(env, `SELECT * FROM djs`).length, 0);
+});
+
+test("a signed-in DJ makes a group, and the name is reserved against the broker", async () => {
+  const env = await withGoogle(makeEnv());
+  env.DL = new Map();
+  env.DL.head = async (key) => (env.DL.has(key) ? {} : null);
+  env.DL.put = async (key, value) => { env.DL.set(key, value); };
+  const { session } = await signIn(env);
+  const cookie = { headers: { cookie: `pp_s=${session[1]}` } };
+
+  const form = (fields) => {
+    const body = new FormData();
+    for (const [k, v] of Object.entries(fields)) body.append(k, v);
+    return { method: "POST", body, headers: cookie.headers };
+  };
+
+  // Typed with a capital, stored canonical: the form normalises before it
+  // validates, so what is saved is exactly what a URL will later match.
+  const ok = await get(env, "/manage", form({ name: "Sundaze", handle: " Sundaze " }));
+  assert.equal(ok.status, 302);
+  assert.equal(one(env, `SELECT handle FROM groups`).handle, "sundaze");
+  assert.equal((await get(env, "/@sundaze")).status, 200);
+  assert.equal(one(env, `SELECT role FROM group_djs`).role, "owner");
+  assert.ok(env.DL.has("broker/handle/sundaze"),
+    "the broker mints machine names from this keyspace and must see the claim");
+
+  // A name the broker already gave to a Mac cannot become a group.
+  env.DL.set("broker/join/discotaken", "r-token");
+  const clash = await get(env, "/manage", form({ name: "Nope", handle: "discotaken" }));
+  assert.match(await clash.text(), /taken/i);
+  assert.equal(rows(env, `SELECT * FROM groups`).length, 1);
+
+  // And an unauthenticated visitor gets the sign-in page, not a group.
+  const anon = await post(env, "/manage", { name: "Sneaky", handle: "sneaky" });
+  assert.match(await anon.text(), /Sign in/);
+  assert.equal(rows(env, `SELECT * FROM groups`).length, 1);
+});
+
+test("only a DJ who runs the group can announce its nights", async () => {
+  const env = await withGoogle(makeEnv());
+  const groupId = seedGroup(env);
+  const outsider = await signIn(env);
+  const body = new FormData();
+  body.append("title", "Not yours");
+  const refused = await get(env, "/@sundaze/manage", {
+    method: "POST", body, headers: { cookie: `pp_s=${outsider.session[1]}` },
+  });
+  assert.equal(refused.status, 403);
+  assert.equal(rows(env, `SELECT * FROM events`).length, 0);
+  assert.ok(groupId);
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();

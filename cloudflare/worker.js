@@ -212,7 +212,7 @@ async function newHostLabel(env, id) {
     const first = BROKER_HOST_FIRST_WORDS[Math.floor(Math.random() * BROKER_HOST_FIRST_WORDS.length)];
     const second = BROKER_HOST_SECOND_WORDS[Math.floor(Math.random() * BROKER_HOST_SECOND_WORDS.length)];
     const cand = `${first}-${second}`;
-    if (!await env.DL.get(`broker/host/${cand}`) && !await env.DL.get(`broker/slug/${cand}`) && !await env.DL.get(`broker/join/${cand}`)) return cand;
+    if (!await env.DL.get(`broker/host/${cand}`) && !await env.DL.get(`broker/slug/${cand}`) && !await env.DL.get(`broker/join/${cand}`) && !await env.DL.get(`broker/handle/${cand}`)) return cand;
   }
   return `party-${id.slice(0, 6)}`;
 }
@@ -226,7 +226,7 @@ async function newJoinName(env) {
     const first = BROKER_HOST_FIRST_WORDS[Math.floor(Math.random() * BROKER_HOST_FIRST_WORDS.length)];
     const second = BROKER_HOST_SECOND_WORDS[Math.floor(Math.random() * BROKER_HOST_SECOND_WORDS.length)];
     const cand = tries < 10 ? `${first}-${second}` : `${first}-${second}-${Math.floor(Math.random() * 90) + 10}`;
-    if (!await env.DL.get(`broker/join/${cand}`) && !await env.DL.get(`broker/host/${cand}`) && !await env.DL.get(`broker/slug/${cand}`)) return cand;
+    if (!await env.DL.get(`broker/join/${cand}`) && !await env.DL.get(`broker/host/${cand}`) && !await env.DL.get(`broker/slug/${cand}`) && !await env.DL.get(`broker/handle/${cand}`)) return cand;
   }
   return "";
 }
