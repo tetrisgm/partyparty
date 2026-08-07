@@ -48,7 +48,8 @@
     // on the real domain while working perfectly on localhost.
     { "pattern": "partyparty.party/manage", "zone_name": "partyparty.party" },
     { "pattern": "partyparty.party/signin", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/home", "zone_name": "partyparty.party" }
+    { "pattern": "partyparty.party/home", "zone_name": "partyparty.party" },
+    { "pattern": "partyparty.party/settings", "zone_name": "partyparty.party" }
   ],
 
   // Sign in with Apple. None of these are secrets - they identify the

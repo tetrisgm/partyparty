@@ -305,110 +305,101 @@ export function icsFor(group, events, base) {
 // ------------------------------------------------------------------- pages
 
 const STYLE = `
-/* docs/design-system.md - "Apple's SYSTEM, our CONTENT". These are the same
-   tokens the console and the guest page use; the ladder here is the public web
-   one (17px body), not the console's 13px. Accent is the primary action only:
-   links are system blue, and nothing else is tinted. */
+/* The same surface as the app. These are the tokens web/listener.html actually
+   ships - Geist, #ff2d55, a warm grey canvas with white cards and soft depth -
+   not a re-derivation from the design doc, which the product has moved past.
+   Geist is OFL, so self-hosting it on the public web is allowed; SF is not. */
+@font-face{font-family:Geist;src:url(/fonts/Geist-Variable.woff2) format('woff2-variations');
+font-weight:100 900;font-display:swap}
 :root{
-  color-scheme:light dark;
-  --bg:#fff; --bg-secondary:#f5f5f7; --bg-tertiary:#fbfbfd;
+  color-scheme:light;
+  --sans:Geist,-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",sans-serif;
+  --bg:#f5f5f7; --card:#ffffff;
   --label:#1d1d1f; --label-secondary:#6e6e73; --label-tertiary:#86868b;
-  --separator:#d2d2d7; --fill:rgba(120,120,128,.12);
-  --link:#0066cc; --accent:#ff2d6f; --accent-hover:#f5215f;
-  --success:#34c759; --danger:#ff3b30;
-  --r-xs:8px; --r-sm:10px; --r-md:12px; --r-lg:18px; --r-pill:980px;
-  --ease-out:cubic-bezier(.25,.1,.25,1);
+  --separator:rgba(0,0,0,.08); --fill:rgba(120,120,128,.10);
+  --accent:#ff2d55; --success:#34c759;
+  --shadow:0 4px 20px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
 }
 @media (prefers-color-scheme:dark){
   :root{
-    --bg:#000; --bg-secondary:#1c1c1e; --bg-tertiary:#2c2c2e;
-    --label:#f5f5f7; --label-secondary:#86868b; --label-tertiary:#6e6e73;
-    --separator:rgba(255,255,255,.10); --fill:rgba(120,120,128,.24);
-    --link:#2997ff; --accent:#ff3b7f;
+    color-scheme:dark;
+    --bg:#141719; --card:#1b1f21;
+    --label:#f5f5f7; --label-secondary:#b6b6ba; --label-tertiary:#85858b;
+    --separator:rgba(255,255,255,.10); --fill:rgba(255,255,255,.08);
+    --shadow:none;
   }
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{
-  margin:0;background:var(--bg);color:var(--label);
-  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",
-    "Inter","Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
-  font-synthesis:none;
-  font-size:1.0625rem;line-height:1.47;letter-spacing:-.011em;
-}
-main{max-width:680px;margin:0 auto;padding:40px 24px 96px}
+body{margin:0;background:var(--bg);color:var(--label);
+font-family:var(--sans);font-size:16px;line-height:1.45;font-synthesis:none}
+main{max-width:640px;margin:0 auto;padding:32px 20px 96px}
 
-/* Headlines are always 600 with negative tracking that grows with size. */
-h1{font-size:clamp(28px,4vw,40px);font-weight:600;letter-spacing:-.02em;
-line-height:1.1;margin:0 0 4px;text-wrap:balance}
-h2{font-size:1.3125rem;font-weight:600;letter-spacing:-.01em;margin:40px 0 12px}
+h1{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.1;
+margin:0 0 4px;text-wrap:balance}
+h2{font-size:19px;font-weight:750;letter-spacing:-.01em;margin:36px 0 12px}
 p{margin:0 0 12px}
-a{color:var(--link);text-decoration:none}
+a{color:var(--accent);text-decoration:none;font-weight:600}
 a:hover{text-decoration:underline}
-.muted{color:var(--label-secondary);font-size:.875rem;letter-spacing:-.016em}
-.eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.06em;
-text-transform:uppercase;color:var(--label-tertiary);margin:0 0 8px}
+.muted{color:var(--label-secondary);font-size:14px;font-weight:400}
+a.muted{color:var(--label-secondary)}
 
-/* Tiles: flat secondary fill, hairline, 12px squircle, no shadow. */
-.card{display:block;background:var(--bg-secondary);border:1px solid var(--separator);
-border-radius:var(--r-md);padding:20px;margin:0 0 12px;color:inherit;text-decoration:none}
-a.card:hover{text-decoration:none;border-color:var(--label-tertiary)}
-.when{font-size:.875rem;color:var(--label-secondary);
-font-variant-numeric:tabular-nums;letter-spacing:-.016em}
-.card strong{display:block;font-size:1.0625rem;font-weight:600;letter-spacing:-.01em;
-margin:2px 0}
+/* White cards with soft depth on a warm grey canvas - the guest page's shape. */
+.card{display:block;background:var(--card);border:1px solid var(--separator);
+border-radius:12px;padding:16px;margin:0 0 12px;color:inherit;
+text-decoration:none;box-shadow:var(--shadow)}
+a.card:hover{text-decoration:none;transform:translateY(-1px)}
+a.card{transition:transform .15s cubic-bezier(.25,.1,.25,1)}
+.when{font-size:13px;color:var(--label-secondary);font-variant-numeric:tabular-nums}
+.card strong{display:block;font-size:17px;font-weight:750;letter-spacing:-.01em;margin:2px 0}
 
-/* One accent, on the primary action only. Public pages get pills. */
+/* One accent, on the action. Pill, heavy, with the pink lift the app uses. */
 .btn{display:inline-flex;align-items:center;justify-content:center;
-min-height:44px;padding:12px 22px;border:1px solid transparent;
-border-radius:var(--r-pill);background:var(--accent);color:#fff;
-font:inherit;font-size:1.0625rem;font-weight:600;letter-spacing:-.011em;
-cursor:pointer;transition:transform .15s var(--ease-out),filter .15s var(--ease-out)}
+min-height:48px;padding:14px 24px;border:none;border-radius:999px;
+background:var(--accent);color:#fff;font:inherit;font-size:17px;font-weight:800;
+cursor:pointer;box-shadow:0 8px 24px rgba(255,45,85,.28);
+transition:transform .15s cubic-bezier(.25,.1,.25,1),filter .15s}
 .btn:hover{text-decoration:none;transform:translateY(-1px);filter:brightness(1.03)}
 .btn:active{transform:none}
-.btn.plain{background:transparent;color:var(--label);border-color:var(--separator)}
-.btn.small{min-height:36px;padding:8px 16px;font-size:.9375rem}
-:focus-visible{outline:2px solid var(--link);outline-offset:2px}
+.btn.plain{background:var(--card);color:var(--label);
+border:1px solid var(--separator);box-shadow:0 1px 3px rgba(0,0,0,.05);font-weight:700}
+.btn.small{min-height:40px;padding:10px 18px;font-size:15px;box-shadow:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-input[type=email],input[type=text]{
-  min-height:44px;padding:11px 14px;border-radius:var(--r-sm);
-  border:1px solid var(--separator);background:var(--bg);color:inherit;
-  font:inherit;font-size:1.0625rem}
+input[type=email],input[type=text]{width:100%;min-height:48px;padding:12px 14px;
+border-radius:12px;border:1px solid var(--separator);background:var(--card);
+color:var(--label);font:inherit;font-size:16px;outline:none;
+box-shadow:0 1px 3px rgba(0,0,0,.05)}
 input::placeholder{color:var(--label-tertiary)}
+input:focus{border-color:var(--accent)}
 form.join{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 8px}
-form.join input{flex:1 1 200px;min-width:0}
+form.join input{flex:1 1 200px;min-width:0;width:auto}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
-.post{border-top:1px solid var(--separator);padding:16px 0}
-.post .who{font-weight:600;letter-spacing:-.01em}
-footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--separator);
-color:var(--label-tertiary);font-size:.875rem}
+.post{background:var(--card);border:1px solid var(--separator);border-radius:12px;
+padding:14px;margin:0 0 10px;box-shadow:var(--shadow)}
+.post .who{font-weight:750;font-size:15px}
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--separator);
+font-size:14px}
 
-/* Adding a night is the job, so it is first and it looks like it. */
-form.newnight{display:grid;gap:10px;margin:24px 0 32px;padding:20px;
-background:var(--bg-secondary);border:1px solid var(--separator);
-border-radius:var(--r-md)}
-form.newnight input{width:100%}
-form.newnight .row input{flex:1 1 140px}
+form.newnight{display:grid;gap:10px;margin:20px 0 28px;padding:16px;
+background:var(--card);border:1px solid var(--separator);border-radius:12px;
+box-shadow:var(--shadow)}
+form.newnight .row input{flex:1 1 140px;width:auto}
 form.newnight .btn{justify-self:start}
 
-/* The link is what gets sent: readable, and one tap from the clipboard. */
-.linkrow{display:flex;gap:8px;align-items:center;margin:14px 0 12px}
-.linkbox{flex:1 1 auto;min-width:0;font-size:.875rem;padding:10px 12px;
-border:1px solid var(--separator);border-radius:var(--r-sm);
-background:var(--bg);color:var(--label-secondary);
-font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.card .btn{min-height:36px;padding:8px 16px;font-size:.9375rem}
+.linkrow{display:flex;gap:8px;align-items:center;margin:12px 0 10px}
+.linkbox{flex:1 1 auto;min-width:0;font-size:13px;padding:10px 12px;
+min-height:0;color:var(--label-secondary);
+font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
 
-/* Everything a DJ sets once. Real, but not why they opened the page. */
-details.settings{margin-top:56px;border-top:1px solid var(--separator)}
+details.settings{margin-top:48px;border-top:1px solid var(--separator)}
 details.settings summary{cursor:pointer;padding:16px 0;
-color:var(--label-secondary);font-weight:600;list-style:none}
+color:var(--label-secondary);font-weight:700;list-style:none}
 details.settings summary::-webkit-details-marker{display:none}
-details.settings summary::before{content:"› ";display:inline-block;
-transition:transform .15s var(--ease-out)}
+details.settings summary::before{content:"› ";display:inline-block;transition:transform .15s}
 details.settings[open] summary::before{transform:rotate(90deg)}
-details.settings h2{font-size:1.0625rem;margin:28px 0 6px}
+details.settings h2{font-size:17px;margin:24px 0 6px}
 
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 `;
@@ -1110,6 +1101,56 @@ export default {
     if (path === "/signin") return html(200, signInPage(env));
 
     // ---- the DJ's own pages -----------------------------------------------
+    // You, not one of your groups. Your name and how you sign in are yours and
+    // follow you across every group you run or follow, so they do not belong
+    // folded inside one group's page.
+    if (path === "/settings") {
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return html(200, signInPage(env));
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        await env.DB.prepare(`UPDATE djs SET name = ? WHERE id = ?`)
+          .bind(String((form && form.get("name")) || "").slice(0, 60), dj.id).run();
+        // The same person, as a member of other people's groups.
+        await env.DB.prepare(`UPDATE members SET name = ? WHERE email_norm = ?`)
+          .bind(String((form && form.get("name")) || "").slice(0, 60), dj.email_norm).run();
+        return new Response(null, { status: 302, headers: { location: "/settings" } });
+      }
+      const { results: following } = await env.DB.prepare(
+        `SELECT g.handle, g.name, gm.volume FROM groups g
+           JOIN group_members gm ON gm.group_id = g.id
+           JOIN members m ON m.id = gm.member_id
+          WHERE m.email_norm = ? AND gm.state = 'joined' ORDER BY gm.joined_ms DESC`
+      ).bind(dj.email_norm).all();
+
+      const volumeWord = { all: "every post", events: "nights only", none: "nothing" };
+      return html(200, page("Your settings", `
+        <h1>You</h1>
+        <p class="muted">Signed in as ${esc(dj.email_norm)}. That address came from
+        ${esc(dj.apple_sub ? "Apple" : "your sign-in")} and cannot be changed here -
+        sign in with a different one and you are a different person to us.</p>
+        <form class="join" method="post" action="/settings">
+          <input type="text" name="name" placeholder="Your name" value="${esc(dj.name || "")}">
+          <button class="btn plain" type="submit">Save</button>
+        </form>
+
+        <h2>Following</h2>
+        ${(following || []).length
+          ? (following).map((g) => `<div class="card">
+              <strong>${esc(g.name || g.handle)}</strong>
+              <div class="muted">You hear ${esc(volumeWord[g.volume] || g.volume)} ·
+                <a class="muted" href="/@${esc(g.handle)}">their page</a></div>
+            </div>`).join("")
+          : `<p class="muted">Nobody yet. Following someone puts their nights on your
+             home page.</p>`}
+        <p class="muted">How much you hear from each one is set from any message they
+        send you - that link works without signing in, which is the point.</p>
+
+        <p style="margin-top:40px"><a class="muted" href="/home">Home</a> ·
+          <a class="muted" href="/auth/signout">Sign out</a></p>
+      `));
+    }
+
     // Home for someone signed in: what is coming up, across the groups they run
     // and the groups they follow. Signed out it is the sign-in page, because
     // there is nothing here that is about nobody in particular.
@@ -1163,7 +1204,8 @@ export default {
              follow them, and their nights show up here.</p>`}
 
         <p class="muted" style="margin-top:40px">
-          <a href="/manage">Run a group</a> · <a href="/auth/signout">Sign out</a></p>
+          <a href="/manage">Run a group</a> · <a href="/settings">Settings</a> ·
+          <a href="/auth/signout">Sign out</a></p>
       `));
     }
 
@@ -1439,13 +1481,6 @@ export default {
 
         <details class="settings">
           <summary>Settings</summary>
-          <h2>You</h2>
-          <p class="muted">From ${esc(dj.email_norm)}, which is how you sign in.</p>
-          <form class="join" method="post" action="/@${esc(group.handle)}/manage">
-            <input type="text" name="djName" placeholder="Your name" value="${esc(dj.name || "")}">
-            <button class="btn plain" type="submit">Save</button>
-          </form>
-
           <h2>This group</h2>
           <form class="newnight" method="post" action="/@${esc(group.handle)}/manage">
             <input type="text" name="groupName" placeholder="Name" value="${esc(group.name || "")}" required>
@@ -1498,7 +1533,7 @@ export default {
             <button class="btn plain" type="submit" name="pro" value="year">$99 a year</button>
           </form>`}
 
-          <p><a class="muted" href="/auth/signout">Sign out</a></p>
+          <p class="muted"><a class="muted" href="/settings">Your own settings</a></p>
         </details>
         <script>
         // Copying the link is the whole point of the page, so it says it worked.

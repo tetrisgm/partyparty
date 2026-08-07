@@ -926,9 +926,12 @@ test("the group page leads with adding a night and its sendable link", async () 
   assert.ok(body.indexOf("Add a night") < settings, "adding a night comes first");
   // Headings, not bare words: "Pro" alone matches "SF Pro Text" in the font
   // stack, which is the sort of false pass that makes a layout test worthless.
-  for (const later of ["<h2>Pair a Mac", "<h2>Tips", "<h2>Merch", "<h2>Pro", "Sign out"]) {
+  for (const later of ["<h2>Pair a Mac", "<h2>Tips", "<h2>Merch", "<h2>Pro"]) {
     assert.ok(body.indexOf(later) > settings, `${later} belongs behind settings`);
   }
+  // Your own name and signing out are yours, not this group's.
+  assert.ok(!/Sign out/.test(body), "signing out is a you thing, not a group thing");
+  assert.match(body, /href="\/settings"/);
 });
 
 test("renaming a group moves its address, and the old one stops", async () => {
@@ -1003,6 +1006,34 @@ test("your own group page offers management, not a form asking your name", async
   const stranger = await (await get(env, "/@sundaze")).text();
   assert.match(stranger, /placeholder="your name"/);
   assert.match(stranger, /Following means you hear about their nights/);
+});
+
+test("your settings are yours: name, and who you follow", async () => {
+  const env = await withGoogle(makeEnv());
+  const { session } = await signIn(env);
+  const cookie = { headers: { cookie: `pp_s=${session[1]}` } };
+
+  const groupId = seedGroup(env, "latenight");
+  const memberId = ulid();
+  env.raw.prepare(`INSERT INTO members (id, email_norm, name, created_ms) VALUES (?, 'dj@example.com', '', ?)`)
+    .run(memberId, Date.now());
+  env.raw.prepare(`INSERT INTO group_members (group_id, member_id, state, volume, source, joined_ms)
+    VALUES (?, ?, 'joined', 'all', 'link', ?)`).run(groupId, memberId, Date.now());
+
+  const body = await (await get(env, "/settings", cookie)).text();
+  assert.match(body, /dj@example\.com/);
+  assert.match(body, /every post/, "it says how much you hear, in words");
+  assert.match(body, /Sundaze/);
+
+  const form = new FormData();
+  form.append("name", "Ramine");
+  await get(env, "/settings", { method: "POST", body: form, headers: cookie.headers });
+  assert.equal(one(env, `SELECT name FROM djs`).name, "Ramine");
+  // The same person as a member of other people's groups, not two records.
+  assert.equal(one(env, `SELECT name FROM members`).name, "Ramine");
+
+  assert.match(await (await get(env, "/settings")).text(), /Sign in/,
+    "signed out, it is not your settings to see");
 });
 
 for (const [name, fn] of tests) {
