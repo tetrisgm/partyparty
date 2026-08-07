@@ -1,5 +1,52 @@
 # PartyParty.party handoff
 
+## Current position (2026-08-06, later): the platform exists
+
+`docs/plan.md` is the single plan, rewritten from the person throwing the party
+rather than from the system. The short version: the durable object is the
+GROUP, a night is one event inside it, and the silent disco is optional.
+
+BUILT AND LANDED TODAY, all of it behind tests in the merge gate:
+
+- **The join link follows the party, not the Mac that minted it** (574fca3).
+  Every registration writes presence under `broker/party/<id>/<install>`; the
+  join page gets every member seen in 90s, freshest first, and probes them all
+  before relay. No new DNS - the recorded A-record-per-member design was not
+  needed, because live Macs already publish their own machine records.
+- **The platform Worker** under `cloudflare/app` (a0306aa, 4556365, 8249c79,
+  dcdd3c0, c8344b3): groups, nights, two-level membership, sign-in with Apple
+  and Google, invitations, the day-of reminder, the group thread, calendars,
+  and the party timeline API. 20 tests, real SQLite behind the D1 shape.
+- **ppmail** (c7084b3): drains the outbox through MXroute from the origin box.
+- **cloudsync** (8cc4908): the Mac's half of one link.
+
+NOT DONE, in order:
+
+1. Wire `internal/cloudsync` into the event store's post flow - the loop that
+   binds a live party to tonight's night and merges web posts into the wall.
+   Needs a way to insert a post with a given id, which `AddPost` does not do.
+2. Tips: the DJ's own payment link first (no rails, no cut), Stripe Connect
+   Standard behind it.
+3. Tickets, then merch as a link out, then Pro as a subscription.
+4. Field tests that need a venue: a real iPhone on a wildcard cert, and a venue
+   whose Wi-Fi cannot carry the room falling back cleanly.
+
+NOTHING IS DEPLOYED. No D1 database exists yet, `wrangler.jsonc` has a blank
+database_id on purpose, no secrets are set, and ppmail has no systemd unit.
+Creating those is the owner's call. What the owner owes when they want it live:
+a Sign in with Apple Services ID and key, a Google OAuth web client, and
+`wrangler secret put` for both.
+
+A LIVE BUG WAS FIXED ON THE WAY (8d4564d): every profile save in the DJ console
+went through `button.click()`, and the click handler disabled the button for the
+length of the fetch - so moving from the name field to the bio fired a save
+carrying only the name, the bio's own save found the button disabled and was
+DROPPED, and then the first save's reply overwrote the bio on screen. Type a
+name, tab, type a bio, click away: gone, and never sent. Saves now serialize
+through one queueing function, and hydration leaves alone any field whose value
+has moved away from what the server last wrote. It surfaced as a "flaky" test on
+the build runner; the runner was just slow enough to land in the window.
+
 ## Current position (2026-08-06): parties replace event folders; 125.47 (267)
 
 The event model is gone. A PARTY is one night: `parties/<id>/`, resumed while
