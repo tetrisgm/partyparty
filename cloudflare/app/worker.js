@@ -465,6 +465,63 @@ function slugify(title, now) {
   return SLUG_RE.test(base) ? base : `night-${new Date(now).toISOString().slice(0, 10)}`;
 }
 
+// Who should hear about this night, and who should not. Three separate ways a
+// person can be spared, all of them theirs rather than the DJ's: they left,
+// they turned the volume down, or they blocked this particular person. A fourth
+// is platform-wide and lives in queueMail.
+async function audienceFor(env, group, djId, wantVolumes) {
+  const { results } = await env.DB.prepare(
+    `SELECT m.id, m.email_norm FROM group_members gm
+       JOIN members m ON m.id = gm.member_id
+      WHERE gm.group_id = ? AND gm.state = 'joined'
+        AND gm.volume IN (${wantVolumes.map(() => "?").join(",")})
+        AND m.suppressed_ms IS NULL
+        AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.member_id = m.id AND b.dj_id = ?)`
+  ).bind(group.id, ...wantVolumes, djId || "").all();
+  return results || [];
+}
+
+// One send per member per event, ever. The ledger is the outbox itself: a
+// reminder that runs twice because a cron overlapped is the fastest way to
+// teach people to unsubscribe.
+async function alreadySent(env, kind, eventId, email) {
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM outbox WHERE kind = ? AND event_id = ? AND to_email = ?`
+  ).bind(kind, eventId, email).first();
+  return !!row;
+}
+
+async function sendInvites(env, group, event, dj, base, now) {
+  const audience = await audienceFor(env, group, dj && dj.id, ["all", "events"]);
+  let sent = 0;
+  for (const member of audience) {
+    if (await alreadySent(env, "invite", event.id, member.email_norm)) continue;
+    const going = await mintToken(env, {
+      memberId: member.id, groupId: group.id, eventId: event.id, purpose: "going", now,
+    });
+    const manage = await mintToken(env, { memberId: member.id, groupId: group.id, purpose: "manage", now });
+    const queued = await queueMail(env, {
+      to: member.email_norm,
+      subject: `${group.name || group.handle}: ${event.title || "a night"}`,
+      text: `${whenText(event)}\n${[event.place, event.address].filter(Boolean).join("\n")}\n\n`
+        + `${event.description ? event.description + "\n\n" : ""}`
+        + `Coming? ${base}/g/${going}\n`
+        + `Can't make it: ${base}/g/${going}?no=1\n\n`
+        + `The night: ${base}/@${group.handle}/${event.slug}\n`
+        + `Add to your calendar: ${base}/@${group.handle}/${event.slug}.ics\n\n`
+        + `Fewer emails, or leave: ${base}/m/${manage}`,
+      kind: "invite",
+      groupId: group.id,
+      eventId: event.id,
+      ics: `${base}/@${group.handle}/${event.slug}.ics`,
+      unsubscribe: `${base}/m/${manage}?stop=1`,
+      now,
+    });
+    if (queued) sent++;
+  }
+  return sent;
+}
+
 function signInPage(env) {
   const button = (provider, label) => (configured(env, provider)
     ? `<p><a class="btn" href="/auth/${provider}">${esc(label)}</a></p>`
@@ -487,6 +544,32 @@ export default {
     const path = decodeURIComponent(url.pathname);
 
     if (path === "/__pp/app-health") return json(200, { ok: true });
+
+    // The mail sender on the origin box, which holds the MXroute credentials.
+    // Workers are a poor place to speak SMTP and a worse place to keep the
+    // password for a mailbox, so the Worker only ever writes rows and the box
+    // comes and takes them.
+    if (path === "/api/v1/outbox" && request.method === "POST") {
+      if (!env.OUTBOX_KEY) return json(503, { error: "sender not configured" });
+      const body = await readJson(request, 65536);
+      if (!body || body.key !== env.OUTBOX_KEY) return json(403, { error: "no" });
+      if (Array.isArray(body.sent)) {
+        for (const id of body.sent.slice(0, 200)) {
+          await env.DB.prepare(`UPDATE outbox SET sent_ms = ? WHERE id = ?`).bind(now, String(id)).run();
+        }
+      }
+      for (const failure of (Array.isArray(body.failed) ? body.failed : []).slice(0, 200)) {
+        await env.DB.prepare(
+          `UPDATE outbox SET tries = tries + 1, last_error = ? WHERE id = ?`
+        ).bind(String(failure.error || "").slice(0, 300), String(failure.id || "")).run();
+      }
+      // Five attempts is where a bad address stops being a transient failure.
+      const { results } = await env.DB.prepare(
+        `SELECT id, to_email, subject, body_text, headers, attach_ics FROM outbox
+          WHERE sent_ms IS NULL AND tries < 5 ORDER BY created_ms LIMIT 25`
+      ).all();
+      return json(200, { messages: results || [] });
+    }
 
     // ---- sign-in ----------------------------------------------------------
     let match = path.match(/^\/auth\/(apple|google)$/);
@@ -624,6 +707,17 @@ export default {
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
       if (request.method === "POST") {
         const form = await request.formData().catch(() => null);
+        const invite = String((form && form.get("invite")) || "");
+        if (invite) {
+          const event = await env.DB.prepare(
+            `SELECT * FROM events WHERE id = ? AND group_id = ?`
+          ).bind(invite, group.id).first();
+          if (!event) return notice("No such night", "It may have been removed.");
+          const sent = await sendInvites(env, group, event, dj, base, now);
+          return notice("Invitations queued", sent
+            ? `${sent} ${sent === 1 ? "person" : "people"} will hear about it.`
+            : "Everyone in the group has already had this one.");
+        }
         const title = String((form && form.get("title")) || "").slice(0, 120);
         const startsRaw = String((form && form.get("starts")) || "");
         const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
@@ -644,7 +738,11 @@ export default {
           <a class="muted" href="/@${esc(group.handle)}">public page</a></p>
         <h2>Nights</h2>
         ${events.map((e) => `<div class="card"><div class="when">${esc(whenText(e))}</div>
-          <strong>${esc(e.title || "Untitled")}</strong></div>`).join("")
+          <strong>${esc(e.title || "Untitled")}</strong>
+          <form method="post" action="/@${esc(group.handle)}/manage" class="row" style="margin-top:10px">
+            <input type="hidden" name="invite" value="${esc(e.id)}">
+            <button class="btn plain" type="submit">Tell the group</button>
+          </form></div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
         <h2>Add one</h2>
         <form class="join" method="post" action="/@${esc(group.handle)}/manage">
@@ -846,5 +944,42 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
+  },
+
+  // The day-of nudge, so nobody has to remember to send it and the DJ stops
+  // being an information desk. Only people who said they are coming, only once
+  // each, and only for nights that are actually happening.
+  async scheduled(event, env) {
+    const now = Date.now();
+    const base = `https://${env.SITE_HOST || "partyparty.party"}`;
+    const { results } = await env.DB.prepare(
+      `SELECT e.*, g.handle, g.name AS group_name FROM events e JOIN groups g ON g.id = e.group_id
+        WHERE e.state = 'announced' AND e.starts_ms IS NOT NULL
+          AND e.starts_ms > ? AND e.starts_ms < ?`
+    ).bind(now, now + 24 * 60 * 60 * 1000).all();
+
+    for (const night of results || []) {
+      const { results: coming } = await env.DB.prepare(
+        `SELECT m.id, m.email_norm FROM signups s JOIN members m ON m.id = s.member_id
+          WHERE s.event_id = ? AND s.state = 'going' AND m.suppressed_ms IS NULL`
+      ).bind(night.id).all();
+      for (const member of coming || []) {
+        if (await alreadySent(env, "reminder", night.id, member.email_norm)) continue;
+        const manage = await mintToken(env, {
+          memberId: member.id, groupId: night.group_id, purpose: "manage", now,
+        });
+        await queueMail(env, {
+          to: member.email_norm,
+          subject: `Tonight: ${night.title || night.group_name || night.handle}`,
+          text: `${whenText(night)}\n${[night.place, night.address].filter(Boolean).join("\n")}\n\n`
+            + `${base}/@${night.handle}/${night.slug}\n\nSettings: ${base}/m/${manage}`,
+          kind: "reminder",
+          groupId: night.group_id,
+          eventId: night.id,
+          unsubscribe: `${base}/m/${manage}?stop=1`,
+          now,
+        });
+      }
+    }
   },
 };

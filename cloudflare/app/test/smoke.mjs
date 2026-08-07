@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import worker, { handleProblem, icsFor, normalizeEmail, ulid } from "../worker.js";
+import worker, { handleProblem, icsFor, normalizeEmail, sha256Hex, ulid } from "../worker.js";
 
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
@@ -359,6 +359,103 @@ test("only a DJ who runs the group can announce its nights", async () => {
   assert.equal(refused.status, 403);
   assert.equal(rows(env, `SELECT * FROM events`).length, 0);
   assert.ok(groupId);
+});
+
+const joinAs = async (env, email, volume) => {
+  await post(env, "/@sundaze/join", { email });
+  if (volume) {
+    env.raw.prepare(`UPDATE group_members SET volume = ? WHERE member_id = (SELECT id FROM members WHERE email_norm = ?)`)
+      .run(volume, email);
+  }
+  env.raw.prepare(`DELETE FROM outbox`).run();
+};
+
+test("an invitation reaches the group, and skips everyone entitled to be skipped", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const eventId = seedEvent(env, groupId);
+  const djId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
+    .run(djId, "dj@example.com", "The DJ", Date.now());
+
+  await joinAs(env, "everything@example.com", "all");
+  await joinAs(env, "nights@example.com", "events");
+  await joinAs(env, "muted@example.com", "none");
+  await joinAs(env, "gone@example.com");
+  await joinAs(env, "blocker@example.com");
+  await joinAs(env, "stopped@example.com");
+  env.raw.prepare(`UPDATE group_members SET state = 'left' WHERE member_id = (SELECT id FROM members WHERE email_norm = 'gone@example.com')`).run();
+  env.raw.prepare(`INSERT INTO blocks (member_id, dj_id, created_ms) SELECT id, ?, ? FROM members WHERE email_norm = 'blocker@example.com'`).run(djId, Date.now());
+  env.raw.prepare(`UPDATE members SET suppressed_ms = ? WHERE email_norm = 'stopped@example.com'`).run(Date.now());
+
+  // Driven the way a DJ does it: the button on their own page.
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
+    .run(groupId, djId, Date.now());
+  const secret = "f".repeat(48);
+  env.raw.prepare(`INSERT INTO sessions (id, hash, dj_id, created_ms, expires_ms) VALUES (?, ?, ?, ?, ?)`)
+    .run(ulid(), await sha256Hex(secret), djId, Date.now(), Date.now() + 60000);
+
+  const body = new FormData();
+  body.append("invite", eventId);
+  const response = await get(env, "/@sundaze/manage", {
+    method: "POST", body, headers: { cookie: `pp_s=${secret}` },
+  });
+  assert.match(await response.text(), /2 people/, "only the two who asked to hear should be counted");
+
+  const to = rows(env, `SELECT to_email FROM outbox WHERE kind = 'invite'`).map((r) => r.to_email).sort();
+  assert.deepEqual(to, ["everything@example.com", "nights@example.com"]);
+
+  // Pressing it twice is a DJ being unsure, not a reason to mail twice.
+  const again = new FormData();
+  again.append("invite", eventId);
+  await get(env, "/@sundaze/manage", { method: "POST", body: again, headers: { cookie: `pp_s=${secret}` } });
+  assert.equal(rows(env, `SELECT id FROM outbox WHERE kind = 'invite'`).length, 2);
+});
+
+test("the day-of reminder goes once, to the people who said they are coming", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const soon = Date.now() + 6 * 60 * 60 * 1000;
+  const eventId = seedEvent(env, groupId, { slug: "tonight", starts_ms: soon });
+  await post(env, "/@sundaze/tonight/going", { email: "coming@example.com" });
+  await post(env, "/@sundaze/join", { email: "notcoming@example.com" });
+  env.raw.prepare(`DELETE FROM outbox`).run();
+
+  await worker.scheduled({}, env);
+  await worker.scheduled({}, env);
+
+  const reminders = rows(env, `SELECT to_email FROM outbox WHERE kind = 'reminder'`);
+  assert.deepEqual(reminders.map((r) => r.to_email), ["coming@example.com"],
+    "a reminder is for people who are coming, and a second run must not repeat it");
+  assert.ok(eventId);
+});
+
+test("the sender takes messages and marks them done", async () => {
+  const env = makeEnv();
+  env.OUTBOX_KEY = "sender-key";
+  seedGroup(env);
+  await post(env, "/@sundaze/join", { email: "guest@example.com" });
+
+  const refused = await get(env, "/api/v1/outbox", {
+    method: "POST", body: JSON.stringify({ key: "wrong" }),
+  });
+  assert.equal(refused.status, 403);
+
+  const claim = await get(env, "/api/v1/outbox", {
+    method: "POST", body: JSON.stringify({ key: "sender-key" }),
+  });
+  const { messages } = await claim.json();
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to_email, "guest@example.com");
+
+  await get(env, "/api/v1/outbox", {
+    method: "POST", body: JSON.stringify({ key: "sender-key", sent: [messages[0].id] }),
+  });
+  assert.ok(one(env, `SELECT sent_ms FROM outbox`).sent_ms, "a sent message is not handed out again");
+  const empty = await (await get(env, "/api/v1/outbox", {
+    method: "POST", body: JSON.stringify({ key: "sender-key" }),
+  })).json();
+  assert.equal(empty.messages.length, 0);
 });
 
 for (const [name, fn] of tests) {
