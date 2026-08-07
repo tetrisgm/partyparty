@@ -1,10 +1,13 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-var STANDALONE_DOWNLOAD = "/PartyParty-Beta.zip";
+// There is no public download any more: the app reaches people through
+// TestFlight, by invitation (owner, 2026-08-07). What remains is the UPDATE
+// path for Macs already carrying a standalone build - removing that would
+// strand them on whatever version they have, silently. The advertised entry
+// point, /PartyParty-Beta.zip, is gone.
 var STANDALONE_FILES = {
-  "/appcast.xml": { key: "standalone/appcast.xml", type: "application/xml; charset=utf-8", cache: "public, max-age=300" },
-  "/PartyParty-Beta.zip": { key: "standalone/PartyParty-Beta.zip", type: "application/zip", cache: "public, max-age=300", download: "PartyParty-Beta.zip" }
+  "/appcast.xml": { key: "standalone/appcast.xml", type: "application/xml; charset=utf-8", cache: "public, max-age=300" }
 };
 // Versioned release downloads are resolved from R2 BY NAME, never from a map in
 // this source. The map version of this shipped a release whose zip was uploaded
@@ -957,6 +960,42 @@ var worker_default = {
       if (object.httpEtag) headers.set("etag", object.httpEtag);
       return new Response(request.method === "HEAD" ? null : object.body, { headers });
     }
+    // People asking for an invite. Stored under a hash of the address, so the
+    // same person asking twice is one entry, and read back only with the admin
+    // key. It is a list to invite from later and nothing else: no group owns
+    // it and nothing is ever sent from it automatically.
+    if (pathname === "/api/waitlist") {
+      if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+      const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+      if (await discoverRateLimited(ipHash, "waitlist", 10)) {
+        return jsonResp(429, { error: "slow down" }, { "retry-after": "10" });
+      }
+      const body = await readJson(request, 2048);
+      const email = String((body && body.email) || "").trim().toLowerCase();
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return jsonResp(400, { error: "that address did not look right" });
+      }
+      const key = `waitlist/${await sha256Hex("waitlist:" + email)}.json`;
+      if (!await env.DL.head(key)) {
+        await env.DL.put(key, JSON.stringify({ email, at: Date.now() }));
+      }
+      return jsonResp(200, { ok: true });
+    }
+    if (pathname === "/api/waitlist/list" && request.method === "POST") {
+      const body = await readJson(request, 2048);
+      if (!env.ADMIN_KEY || !body || body.admin !== env.ADMIN_KEY) {
+        return jsonResp(403, { error: "admin only" });
+      }
+      const listed = await env.DL.list({ prefix: "waitlist/", limit: 1000 });
+      const people = [];
+      for (const object of listed.objects || []) {
+        const raw = await env.DL.get(object.key);
+        if (!raw) continue;
+        try { people.push(JSON.parse(await raw.text())); } catch (e) {}
+      }
+      people.sort((a, b) => (a.at || 0) - (b.at || 0));
+      return jsonResp(200, { count: people.length, people });
+    }
     if (pathname === "/api/relay-canary") {
       const raw = await env.DL.get("canary/relay.json");
       if (!raw) return jsonResp(200, { healthy: null, note: "no check has run yet" }, { "cache-control": "no-store" });
@@ -977,7 +1016,6 @@ var worker_default = {
       return jsonResp(200, {
         version: current.version,
         date: current.date,
-        standaloneDownload: STANDALONE_DOWNLOAD
       }, headers);
     }
     if (pathname === "/privacy" || pathname === "/support") {

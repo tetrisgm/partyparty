@@ -64,7 +64,7 @@ test("bounded JSON parsing remains strict", async () => {
   assert.equal(await readJson(new Request("https://x/", { method: "POST", body: '{"too":"large"}' }), 2), null);
 });
 
-test("landing, legal pages, version, and signed standalone release files are served", async () => {
+test("landing, legal pages, version, and the update feed - but no public download", async () => {
   const env = baseEnv();
   await env.DL.put("standalone/PartyParty-Beta.zip", new Uint8Array([80, 75, 3, 4]));
   await env.DL.put("standalone/PartyParty-124.14-216.zip", new Uint8Array([80, 75, 3, 4]));
@@ -89,16 +89,14 @@ test("landing, legal pages, version, and signed standalone release files are ser
   assert.equal(version.version, "125.90"); // derived from the appcast, never a constant
   assert.equal(version.date, "2026-07-29");
   assert.equal("standaloneBuild" in version, false);
-  assert.equal(version.standaloneDownload, "/PartyParty-Beta.zip");
+  assert.equal("standaloneDownload" in version, false, "there is no public download to advertise");
+  // The advertised download is gone: the app goes out through TestFlight by
+  // invitation. The appcast stays, so a Mac already carrying a standalone
+  // build keeps updating instead of being stranded silently.
   const beta = await worker.fetch(new Request("https://partyparty.party/PartyParty-Beta.zip"), env);
-  assert.equal(beta.status, 200);
-  assert.equal(beta.headers.get("content-type"), "application/zip");
-  assert.equal(beta.headers.get("content-disposition"), 'attachment; filename="PartyParty-Beta.zip"');
-  assert.equal((await beta.arrayBuffer()).byteLength, 4);
-  const betaHead = await worker.fetch(new Request("https://partyparty.party/PartyParty-Beta.zip", { method: "HEAD" }), env);
-  assert.equal(betaHead.status, 200);
-  assert.equal(betaHead.headers.get("content-length"), "4");
-  assert.equal((await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env)).status, 200);
+  assert.equal(beta.status, 404, "the public download must not be served");
+  const appcast = await worker.fetch(new Request("https://partyparty.party/appcast.xml"), env);
+  assert.equal(appcast.status, 200, "existing installs still need their update feed");
   const immutable = await worker.fetch(new Request("https://partyparty.party/downloads/PartyParty-124.14-216.zip"), env);
   assert.equal(immutable.status, 200);
   assert.equal(immutable.headers.get("cache-control"), "public, max-age=31536000, immutable");
@@ -331,6 +329,32 @@ test("registering records party membership, and only a well-formed party id", as
   assert.equal((await register("../../etc/passwd")).status, 200);
   const junk = await env.DL.list({ prefix: "broker/party/" });
   assert.equal(junk.objects.length, 1, "a malformed party id must never create a key");
+});
+
+test("an address for a later invite is kept once, and read back only by an admin", async () => {
+  const env = baseEnv();
+  env.ADMIN_KEY = "admin-key";
+  const ask = (email) => worker.fetch(new Request("https://partyparty.party/api/waitlist", {
+    method: "POST", body: JSON.stringify({ email }),
+  }), env);
+
+  assert.equal((await ask("Someone@Example.com")).status, 200);
+  assert.equal((await ask("someone@example.com")).status, 200, "asking twice is one person");
+  assert.equal((await ask("not-an-address")).status, 400);
+
+  const listed = await env.DL.list({ prefix: "waitlist/" });
+  assert.equal(listed.objects.length, 1);
+
+  const refused = await worker.fetch(new Request("https://partyparty.party/api/waitlist/list", {
+    method: "POST", body: JSON.stringify({ admin: "wrong" }),
+  }), env);
+  assert.equal(refused.status, 403, "the list of who wants in is not public");
+
+  const dump = await (await worker.fetch(new Request("https://partyparty.party/api/waitlist/list", {
+    method: "POST", body: JSON.stringify({ admin: "admin-key" }),
+  }), env)).json();
+  assert.equal(dump.count, 1);
+  assert.equal(dump.people[0].email, "someone@example.com", "stored lowercased");
 });
 
 console.log(`PASS ${tests.length} worker smoke tests`);

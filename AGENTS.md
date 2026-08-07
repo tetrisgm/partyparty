@@ -136,11 +136,15 @@ boundary.
 - No launchd job, cron, or watcher builds, publishes, deploys, or reinstalls
   this project on its own. Automation that fires on a commit turns ordinary
   development into unrequested releases. Releasing is a decision, not a trigger.
-- The Mac App Store and TestFlight are the active distribution lane. The
-  standalone Sparkle channel is DORMANT, not retired: `scripts/ship-standalone.sh`,
-  the appcast, and the R2 download plumbing stay intact and working so the option
-  can be taken up again. Do not delete them, and do not run them without being
-  asked.
+- TestFlight is how the app reaches people, BY INVITATION (owner, 2026-08-07).
+  There is no public download: partyparty.party collects addresses to invite
+  from later (`/api/waitlist`, read back with the admin key) and offers no file.
+  The Mac App Store is the other active lane. The standalone Sparkle channel is
+  DORMANT, not retired - `scripts/ship-standalone.sh`, the appcast and the
+  versioned R2 downloads stay intact and served, because a Mac already carrying
+  a standalone build would otherwise be stranded on its current version with no
+  sign that anything was wrong. Do not delete them, and do not run them without
+  being asked.
 - Pro is a SUBSCRIPTION. There is no lifetime unlock and no non-consumable: an
   unlock that zeroes our cut forever is bought by exactly the DJs selling the
   most tickets. The non-consumable `fm.partyparty.app.pro.lifetime` was deleted
