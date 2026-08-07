@@ -620,6 +620,25 @@ export function payLinkProblem(url) {
   return "";
 }
 
+// An entry code is short because it gets read aloud at a door, and derived
+// from the signup rather than stored so it cannot drift from it.
+export async function entryCode(eventId, memberId) {
+  const digest = await sha256Hex(`pp-entry:${eventId}:${memberId}`);
+  let code = "";
+  for (let i = 0; i < 6; i++) code += CODE_ALPHABET[parseInt(digest.slice(i * 2, i * 2 + 2), 16) % CODE_ALPHABET.length];
+  return code;
+}
+
+// Capacity is checked at the moment of signing up, and a night that is full
+// says so rather than quietly taking one more.
+async function spaceLeft(env, event) {
+  if (!event.capacity) return Infinity;
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM signups WHERE event_id = ? AND state = 'going'`
+  ).bind(event.id).first();
+  return Math.max(0, event.capacity - Number((row && row.n) || 0));
+}
+
 function signInPage(env) {
   const button = (provider, label) => (configured(env, provider)
     ? `<p><a class="btn" href="/auth/${provider}">${esc(label)}</a></p>`
@@ -905,6 +924,51 @@ export default {
       `));
     }
 
+    // The door. It loads the whole list once and checks codes in the page,
+    // because the one place a venue reliably has no signal is the door.
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/door$/);
+    if (match) {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const dj = await currentDJ(env, request, now);
+      if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
+      const { results } = await env.DB.prepare(
+        `SELECT m.id, m.name, m.email_norm FROM signups s JOIN members m ON m.id = s.member_id
+          WHERE s.event_id = ? AND s.state = 'going' ORDER BY m.name, m.email_norm`
+      ).bind(event.id).all();
+      const list = [];
+      for (const person of results || []) {
+        list.push({ name: person.name || person.email_norm, code: await entryCode(event.id, person.id) });
+      }
+      return html(200, page(`Door: ${event.title || group.handle}`, `
+        <h1>At the door</h1>
+        <p class="muted">${list.length} coming${event.capacity ? ` of ${event.capacity}` : ""}</p>
+        <input type="text" id="q" placeholder="Name or code" autocomplete="off"
+          style="width:100%;padding:14px;font-size:18px;margin:12px 0">
+        <div id="list"></div>
+        <script>
+        // Everything is in the page already. No request is made after this
+        // loads, so a dead signal at the door changes nothing.
+        const people = ${JSON.stringify(list)};
+        const box = document.getElementById('list');
+        const draw = (term) => {
+          const t = term.trim().toLowerCase();
+          box.innerHTML = people
+            .filter((p) => !t || p.name.toLowerCase().includes(t) || p.code.toLowerCase().startsWith(t))
+            .map((p) => '<div class="post"><span class="who">' + p.name +
+              '</span> <span class="muted">' + p.code + '</span></div>').join('') ||
+            '<p class="muted">Nobody by that name.</p>';
+        };
+        document.getElementById('q').addEventListener('input', (e) => draw(e.target.value));
+        draw('');
+        </script>
+      `));
+    }
+
     match = path.match(/^\/@([a-z0-9]+)\/manage$/);
     if (match) {
       const group = await groupByHandle(env, match[1]);
@@ -955,11 +1019,12 @@ export default {
         const title = String((form && form.get("title")) || "").slice(0, 120);
         const startsRaw = String((form && form.get("starts")) || "");
         const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
+        const capacity = Math.max(0, Math.min(100000, parseInt(String((form && form.get("capacity")) || "0"), 10) || 0));
         await env.DB.prepare(
-          `INSERT INTO events (id, group_id, slug, title, starts_ms, place, state, created_ms, updated_ms)
-           VALUES (?, ?, ?, ?, ?, ?, 'announced', ?, ?)`
+          `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity, state, created_ms, updated_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?)`
         ).bind(ulid(now), group.id, slugify(title, now), title, Number.isFinite(starts) ? starts : null,
-          String((form && form.get("place")) || "").slice(0, 120), now, now).run();
+          String((form && form.get("place")) || "").slice(0, 120), capacity, now, now).run();
         return new Response(null, { status: 302, headers: { location: `/@${group.handle}/manage` } });
       }
       const events = await upcomingEvents(env, group.id, 0);
@@ -976,7 +1041,9 @@ export default {
           <form method="post" action="/@${esc(group.handle)}/manage" class="row" style="margin-top:10px">
             <input type="hidden" name="invite" value="${esc(e.id)}">
             <button class="btn plain" type="submit">Tell the group</button>
-          </form></div>`).join("")
+          </form>
+          <p><a class="muted" href="/@${esc(group.handle)}/${esc(e.slug)}/door">At the door</a></p>
+          </div>`).join("")
           || `<p class="muted">No nights yet.</p>`}
         <h2>Tips</h2>
         <form class="join" method="post" action="/@${esc(group.handle)}/manage">
@@ -1000,6 +1067,7 @@ export default {
           <input type="text" name="title" placeholder="What is it called?" required>
           <input type="text" name="starts" placeholder="2026-09-12T21:00">
           <input type="text" name="place" placeholder="Where?">
+          <input type="text" name="capacity" placeholder="Capacity (optional)">
           <button class="btn" type="submit">Announce</button>
         </form>
       `));
@@ -1162,6 +1230,14 @@ export default {
       const emailNorm = normalizeEmail(form && form.get("email"));
       if (!emailNorm) return notice("That address did not look right", "Go back and try again.");
       const member = await upsertMember(env, emailNorm, String((form && form.get("name")) || "").slice(0, 60), now);
+      const already = await env.DB.prepare(
+        `SELECT state FROM signups WHERE event_id = ? AND member_id = ?`
+      ).bind(event.id, member.id).first();
+      if (!already || already.state !== "going") {
+        if (await spaceLeft(env, event) <= 0) {
+          return notice("This one is full", "Nothing more we can do here - ask the DJ.");
+        }
+      }
       await env.DB.prepare(
         `INSERT INTO signups (event_id, member_id, state, created_ms, updated_ms)
          VALUES (?, ?, 'going', ?, ?)
@@ -1172,6 +1248,7 @@ export default {
         to: emailNorm,
         subject: `You're coming to ${event.title || group.name || group.handle}`,
         text: `${whenText(event)}\n${[event.place, event.address].filter(Boolean).join("\n")}\n\n`
+          + `Your code at the door: ${await entryCode(event.id, member.id)}\n\n`
           + `The night: ${base}/@${group.handle}/${event.slug}\n`
           + `Add to your calendar: ${base}/@${group.handle}/${event.slug}.ics\n\n`
           + `Settings: ${base}/m/${manage}`,

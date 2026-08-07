@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import worker, {
-  handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
+  entryCode, handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
 } from "../worker.js";
 
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
@@ -638,6 +638,65 @@ test("a tip goes straight to the DJ, and only over https", async () => {
   // Turning it off removes it from the page rather than leaving a dead button.
   await save("");
   assert.ok(!(await (await get(env, "/@sundaze")).text()).includes("Tip the DJ"));
+});
+
+const signedInDJ = async (env, groupId) => {
+  const djId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
+    .run(djId, `dj-${djId}@example.com`, "DJ", Date.now());
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
+    .run(groupId, djId, Date.now());
+  const secret = randomSecret();
+  env.raw.prepare(`INSERT INTO sessions (id, hash, dj_id, created_ms, expires_ms) VALUES (?, ?, ?, ?, ?)`)
+    .run(ulid(), await sha256Hex(secret), djId, Date.now(), Date.now() + 60000);
+  return { djId, cookie: `pp_s=${secret}` };
+};
+let secretSeq = 0;
+const randomSecret = () => String(++secretSeq).padStart(48, "b");
+
+test("a full night says so instead of quietly taking one more", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const eventId = seedEvent(env, groupId, { slug: "small" });
+  env.raw.prepare(`UPDATE events SET capacity = 1 WHERE id = ?`).run(eventId);
+
+  assert.equal((await post(env, "/@sundaze/small/going", { email: "first@example.com" })).status, 200);
+  const full = await post(env, "/@sundaze/small/going", { email: "second@example.com" });
+  assert.match(await full.text(), /full/i);
+  assert.equal(rows(env, `SELECT * FROM signups`).length, 1);
+
+  // Someone already coming can re-confirm without being told it is full.
+  const again = await post(env, "/@sundaze/small/going", { email: "first@example.com" });
+  assert.ok(!(await again.text()).match(/full/i));
+});
+
+test("the door works with no signal, and only for a DJ who runs the group", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const eventId = seedEvent(env, groupId, { slug: "tonight" });
+  await post(env, "/@sundaze/tonight/going", { email: "guest@example.com", name: "Ada" });
+  const memberId = one(env, `SELECT id FROM members`).id;
+  const code = await entryCode(eventId, memberId);
+
+  assert.equal((await get(env, "/@sundaze/tonight/door")).status, 403);
+
+  const dj = await signedInDJ(env, groupId);
+  const door = await get(env, "/@sundaze/tonight/door", { headers: { cookie: dj.cookie } });
+  const body = await door.text();
+  assert.match(body, /Ada/);
+  assert.match(body, new RegExp(code));
+  assert.ok(!body.includes("fetch("), "the door must not need the network once it has loaded");
+
+  // The same code reaches the guest, or it is no use at a door.
+  assert.match(one(env, `SELECT body_text FROM outbox WHERE kind = 'ticket'`).body_text, new RegExp(code));
+});
+
+test("entry codes are per person per night and readable aloud", async () => {
+  const a = await entryCode("ev1", "m1");
+  assert.equal(a, await entryCode("ev1", "m1"), "the same signup must always give the same code");
+  assert.notEqual(a, await entryCode("ev1", "m2"));
+  assert.notEqual(a, await entryCode("ev2", "m1"));
+  assert.match(a, /^[ACDEFGHJKLMNPQRTUVWXY3479]{6}$/, "no characters that argue with each other at a door");
 });
 
 for (const [name, fn] of tests) {
