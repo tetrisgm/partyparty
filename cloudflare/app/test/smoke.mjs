@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import worker, {
   entryCode, handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
@@ -9,8 +9,13 @@ import { totalForBuyer, verifyWebhook } from "../stripe.js";
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
 // either work twice or corrupt a row.
-const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql", "0005_pro.sql"]
-  .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8")).join("\n");
+// Read the directory rather than listing the files. A hardcoded list is a
+// second place to remember, and it had already fallen three migrations behind -
+// which means the tests were passing against a schema production does not have.
+const migrations = new URL("../migrations/", import.meta.url);
+const schema = readdirSync(migrations)
+  .filter((name) => name.endsWith(".sql")).sort()
+  .map((name) => readFileSync(new URL(name, migrations), "utf8")).join("\n");
 
 class Stmt {
   constructor(db, sql) { this.db = db; this.sql = sql; this.args = []; }
@@ -20,10 +25,32 @@ class Stmt {
   async run() { this.db.prepare(this.sql).run(...this.args); return { success: true }; }
 }
 
+// R2, as far as this worker uses it: reserved handles and stored pictures.
+// In memory, so an upload can be asserted on rather than assumed.
+const makeBucket = () => {
+  const objects = new Map();
+  return {
+    objects,
+    async head(key) { return objects.has(key) ? { key } : null; },
+    async get(key) {
+      const stored = objects.get(key);
+      if (!stored) return null;
+      return {
+        body: stored.body,
+        httpMetadata: stored.httpMetadata,
+        async text() { return String(stored.body); },
+      };
+    },
+    async put(key, body, options) {
+      objects.set(key, { body, httpMetadata: (options && options.httpMetadata) || {} });
+    },
+  };
+};
+
 const makeEnv = () => {
   const db = new DatabaseSync(":memory:");
   db.exec(schema);
-  return { DB: { prepare: (sql) => new Stmt(db, sql), _db: db }, raw: db };
+  return { DB: { prepare: (sql) => new Stmt(db, sql), _db: db }, DL: makeBucket(), raw: db };
 };
 
 const rows = (env, sql, ...args) => env.raw.prepare(sql).all(...args);
@@ -1113,6 +1140,254 @@ test("the group page is a party page: timeline, posts, and who is in it", async 
   assert.match(body, /Ada Lovelace/);
   // Their addresses are the group's, not the public page's.
   assert.ok(!/ada@example\.com/.test(body), "an address never appears on a public page");
+});
+
+// ------------------------------------------------------------------ profiles
+
+// A picture, as a browser posts one. The bytes are a real PNG header so a
+// content sniffer would agree with the declared type.
+const pngBytes = () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+const pngFile = (name = "me.png") => new File([pngBytes()], name, { type: "image/png" });
+
+// Signed in the way a real person is: the provider hands over a name, which
+// is the case the welcome screen has to survive.
+const signedIn = async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const { session } = await signIn(env);
+  const cookie = { cookie: `pp_s=${session[1]}` };
+  const send = (path, fields) => {
+    const body = new FormData();
+    for (const [k, v] of Object.entries(fields)) body.append(k, v);
+    return worker.fetch(new Request("https://partyparty.party" + path,
+      { method: "POST", body, headers: cookie }), env);
+  };
+  const read = (path) => get(env, path, { headers: cookie });
+  return { env, cookie, send, read };
+};
+
+test("signing in mints an @name that is already valid and can be changed", async () => {
+  const { env, read } = await signedIn();
+
+  const home = await read("/home");
+  const body = await home.text();
+  const minted = one(env, `SELECT handle FROM profiles`).handle;
+  assert.ok(minted, "somebody with no profile still has an address");
+  assert.equal(handleProblem(minted), "", "the minted name passes the same gate a typed one does");
+  assert.match(body, /You, if you want to be/, "the first visit offers the profile");
+  assert.match(body, new RegExp(`value="${minted}"`), "and shows the name it chose, editable");
+  assert.ok(env.DL.objects.has(`broker/handle/${minted}`),
+    "a person's name is reserved against the broker exactly like a group's");
+
+  // Google gave us a name. That must NOT count as having filled the profile
+  // in: if it did, the welcome would never appear for anybody real.
+  assert.equal(one(env, `SELECT name FROM profiles`).name, "DJ Example");
+  assert.equal(one(env, `SELECT saved_ms FROM profiles`).saved_ms, null);
+  assert.match(body, /value="DJ Example"/, "and it is prefilled, not thrown away");
+});
+
+test("the welcome takes no for an answer", async () => {
+  const { env, send, read } = await signedIn();
+  const dismissed = await send("/home", { dismiss: "1" });
+  assert.equal(dismissed.status, 302);
+  assert.ok(one(env, `SELECT saved_ms FROM profiles`).saved_ms, "settled");
+  assert.equal(one(env, `SELECT name FROM profiles`).name, "DJ Example",
+    "and nothing was overwritten on the way past");
+  const home = await (await read("/home")).text();
+  assert.ok(!/You, if you want to be/.test(home), "it does not ask again");
+});
+
+test("a profile is one record, whichever page edits it", async () => {
+  const { env, send, read } = await signedIn();
+
+  const saved = await send("/home", {
+    name: "Ada Lovelace", bio: "Sunday rooms.", handle: "adalove",
+    instagram: "https://instagram.com/adalove/", soundcloud: "@adasets", website: "ada.example",
+    avatar: pngFile(),
+  });
+  assert.equal(saved.status, 302);
+
+  const row = one(env, `SELECT * FROM profiles`);
+  assert.equal(row.handle, "adalove");
+  assert.equal(row.name, "Ada Lovelace");
+  assert.deepEqual(JSON.parse(row.links), {
+    instagram: "adalove", soundcloud: "adasets", website: "https://ada.example",
+  }, "a pasted URL and a typed @name both end up as the name");
+  assert.ok(row.avatar_key, "the picture is stored");
+  assert.ok(env.DL.objects.has(`media/${row.avatar_key}`), "in the bucket, under media/");
+
+  // The name follows the person into every table that records who acted.
+  assert.equal(one(env, `SELECT name FROM djs`).name, "Ada Lovelace");
+
+  // Settings shows the same record, and saving there writes the same row.
+  const settings = await (await read("/settings")).text();
+  assert.match(settings, /value="Ada Lovelace"/);
+  assert.match(settings, /value="adalove"/);
+  assert.match(settings, /value="adasets"/);
+  await send("/settings", { name: "Ada", bio: "", handle: "adalove" });
+  assert.equal(one(env, `SELECT name FROM profiles`).name, "Ada");
+  assert.equal(rows(env, `SELECT * FROM profiles`).length, 1, "still one profile, not two");
+
+  // Home stops asking once there is anything there.
+  const home = await (await read("/home")).text();
+  assert.ok(!/You, if you want to be/.test(home), "the welcome form does not come back");
+  assert.match(home, /@adalove/);
+});
+
+test("a person's @name cannot take a group's, and the picture can be removed", async () => {
+  const { env, send, read } = await signedIn();
+  seedGroup(env, "sundaze");
+
+  const clash = await send("/settings", { handle: "sundaze" });
+  assert.match(await clash.text(), /taken/i);
+  assert.notEqual(one(env, `SELECT handle FROM profiles`).handle, "sundaze");
+
+  const banned = await send("/settings", { handle: "admin" });
+  assert.match(await banned.text(), /reserved/i);
+
+  await send("/settings", { name: "Ada", avatar: pngFile() });
+  assert.ok(one(env, `SELECT avatar_key FROM profiles`).avatar_key);
+  await send("/settings", { name: "Ada", clearAvatar: "1" });
+  assert.equal(one(env, `SELECT avatar_key FROM profiles`).avatar_key, null);
+
+  // The @name that is nobody's group is that person's page.
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+  const page = await read(`/@${handle}`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Ada/);
+});
+
+test("pictures are served back, and only from inside the media prefix", async () => {
+  const { env, send } = await signedIn();
+  await send("/home", { name: "Ada", avatar: pngFile() });
+  const key = one(env, `SELECT avatar_key FROM profiles`).avatar_key;
+
+  const served = await get(env, `/media/${key}`);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get("content-type"), "image/png");
+  assert.match(served.headers.get("cache-control"), /immutable/,
+    "every key is fresh, so this can be cached hard");
+
+  // Percent-encoded, so the URL parser does not quietly normalise the
+  // traversal away before the guard has been asked anything.
+  assert.equal((await get(env, "/media/%2e%2e%2fbroker%2fhandle%2fsundaze")).status, 404);
+  assert.equal((await get(env, "/media/")).status, 404);
+  assert.equal((await get(env, "/media/nothing-here")).status, 404);
+
+  // The bytes decide, not the label. A script that claims to be a PNG is
+  // refused; a real picture mislabelled by whatever uploaded it is kept, and
+  // is served back as what it actually is.
+  const lying = await send("/settings", {
+    avatar: new File(["#!/bin/sh\nrm -rf /\n"], "x.png", { type: "image/png" }),
+  });
+  assert.match(await lying.text(), /not a picture/i);
+
+  const mislabelled = await send("/settings", {
+    avatar: new File([pngBytes()], "photo", { type: "application/octet-stream" }),
+  });
+  assert.equal(mislabelled.status, 302, "a real picture is not refused over its label");
+  const sniffed = one(env, `SELECT avatar_key FROM profiles`).avatar_key;
+  assert.equal((await get(env, `/media/${sniffed}`)).headers.get("content-type"), "image/png");
+
+  // Video belongs on a post, never on a face.
+  const video = await send("/settings", {
+    avatar: new File([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3, 4])], "v.webm",
+      { type: "video/webm" }),
+  });
+  assert.match(await video.text(), /has to be a picture|needs to be a picture/i);
+});
+
+test("the rail shows the people, with their faces and their @names", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
+  await send("/home", { name: "Ada Lovelace", handle: "adalove", avatar: pngFile() });
+
+  const groupId = one(env, `SELECT id FROM groups`).id;
+  const memberId = ulid();
+  env.raw.prepare(`INSERT INTO members (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
+    .run(memberId, "grace@example.com", "Grace Hopper", Date.now());
+  env.raw.prepare(
+    `INSERT INTO group_members (group_id, member_id, state, volume, source, joined_ms)
+     VALUES (?, ?, 'joined', 'events', 'link', ?)`
+  ).run(groupId, memberId, Date.now());
+
+  const body = await (await read("/@sundaze")).text();
+  assert.match(body, /Participants — 2/);
+  assert.match(body, /Ada Lovelace/);
+  assert.match(body, /@adalove/, "a person with a name is reachable at it");
+  assert.match(body, /<img src="\/media\/avatars\//, "their photo, not their initials");
+  assert.match(body, /Grace Hopper/);
+  assert.match(body, /class="avatar"[^>]*>GH</, "initials for somebody with no photo");
+  assert.match(body, />DJ</, "the person running it is labelled, as the console does");
+  assert.ok(!/grace@example\.com/.test(body), "an address never appears on a public page");
+});
+
+test("a group has a cover, changed the same two ways a night's is", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
+
+  // Shuffle, from the bundled pile, and never the one already showing.
+  const first = await send("/@sundaze/manage", { shuffleCover: "1" });
+  assert.equal(first.status, 302);
+  const one1 = one(env, `SELECT cover_key FROM groups`).cover_key;
+  assert.match(one1, /^\/media\/covers\/[a-z-]+\.webp$/);
+  await send("/@sundaze/manage", { shuffleCover: "1" });
+  assert.notEqual(one(env, `SELECT cover_key FROM groups`).cover_key, one1,
+    "a shuffle that shows the same picture reads as a broken button");
+
+  // Upload, which stores the bytes and points the cover at them.
+  await send("/@sundaze/manage", { cover: pngFile("cover.png") });
+  const uploaded = one(env, `SELECT cover_key FROM groups`).cover_key;
+  assert.match(uploaded, /^covers\//);
+  assert.ok(env.DL.objects.has(`media/${uploaded}`));
+
+  const page = await (await read("/@sundaze")).text();
+  assert.match(page, new RegExp(`background-image:url\\('/media/${uploaded}'\\)`));
+  assert.match(page, /Shuffle image/, "the DJ gets the console's two buttons on the picture");
+  assert.match(page, /Upload image/);
+
+  // A night's cover works identically, through its own route.
+  seedEvent(env, one(env, `SELECT id FROM groups`).id);
+  await send("/@sundaze/june-14/cover", { shuffleCover: "1" });
+  assert.match(one(env, `SELECT cover_key FROM events`).cover_key, /^\/media\/covers\//);
+
+  // And a stranger, with no session, cannot touch either.
+  const body = new FormData();
+  body.append("shuffleCover", "1");
+  const refused = await worker.fetch(
+    new Request("https://partyparty.party/@sundaze/manage", { method: "POST", body }), env);
+  assert.equal(refused.status, 403);
+  assert.equal(one(env, `SELECT cover_key FROM groups`).cover_key, uploaded, "and changed nothing");
+});
+
+test("the group's feed takes a photo, and shows who posted it", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
+  await send("/home", { name: "Ada Lovelace", handle: "adalove", avatar: pngFile() });
+
+  const posted = await send("/@sundaze/say", { say: "Doors at nine", media: pngFile("wall.png") });
+  assert.equal(posted.status, 302);
+  const post = one(env, `SELECT * FROM posts`);
+  assert.equal(post.body, "Doors at nine");
+  assert.match(post.media_key, /^posts\//);
+  assert.ok(env.DL.objects.has(`media/${post.media_key}`));
+
+  const body = await (await read("/@sundaze")).text();
+  assert.match(body, /Doors at nine/);
+  assert.match(body, new RegExp(`<img class="postmedia" src="/media/${post.media_key}"`));
+  assert.match(body, /class="posthead"/, "the feed shows the person, not just a name");
+  assert.match(body, /Ada Lovelace/);
+
+  // A picture with nothing written on it is still a post.
+  await send("/@sundaze/say", { say: "", media: pngFile("two.png") });
+  assert.equal(rows(env, `SELECT * FROM posts`).length, 2);
+
+  // Somebody who neither runs nor follows the group cannot post to it.
+  const body2 = new FormData();
+  body2.append("say", "hello");
+  const refused = await worker.fetch(
+    new Request("https://partyparty.party/@sundaze/say", { method: "POST", body: body2 }), env);
+  assert.match(await refused.text(), /Follow the group first/);
+  assert.equal(rows(env, `SELECT * FROM posts`).length, 2);
 });
 
 for (const [name, fn] of tests) {

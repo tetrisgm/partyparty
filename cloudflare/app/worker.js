@@ -386,6 +386,7 @@ backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.14)}
 .toptools a:hover{text-decoration:none;background:rgba(0,0,0,.62)}
 
 main{max-width:680px;margin:0 auto;padding:28px 20px 96px}
+main.wide{max-width:940px}
 .withrail{max-width:1180px;margin:0 auto;padding:28px 20px 96px;
 display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:40px;align-items:start}
 .rail{position:sticky;top:24px;display:grid;gap:26px}
@@ -443,6 +444,27 @@ form.join input{flex:1 1 200px;min-width:0;width:auto}
 .post{background:var(--bg-elevated);border:1px solid var(--separator);
 border-radius:var(--r-md);padding:14px;margin:0 0 10px}
 .post .who{font-weight:700;font-size:14px}
+.post .who a{color:inherit;font-weight:inherit}
+.posthead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.posthead .avatar{width:34px;height:34px;flex:0 0 34px;font-size:13px;margin:0}
+.posthead .grow{min-width:0}
+.postmedia{display:block;width:100%;max-height:520px;object-fit:cover;margin-top:10px;
+border-radius:var(--r-sm);background:var(--bg-elevated-2)}
+
+/* Saying something, with or without a picture, the way the console's party
+   feed does it: one box, the camera on the left, Post on the right. */
+form.say{background:var(--bg-elevated);border:1px solid var(--separator);
+border-radius:var(--r-md);padding:14px;margin:0 0 14px;display:grid;gap:10px}
+form.say textarea{width:100%;min-height:64px;padding:11px 14px;border-radius:var(--r-sm);
+border:1px solid var(--separator);background:var(--bg-elevated-2);color:var(--label);
+font:inherit;font-size:15px;outline:none;resize:vertical}
+form.say textarea:focus{border-color:var(--accent)}
+form.say .sayrow{display:flex;gap:10px;align-items:center;justify-content:space-between}
+form.say .pickfile{display:inline-flex;align-items:center;gap:8px;min-height:40px;
+padding:0 16px;border-radius:var(--r-pill);background:var(--accent);color:#fff;
+font-size:14px;font-weight:700;cursor:pointer}
+form.say .pickfile input{display:none}
+form.say .picked{font-size:12px;color:var(--label-secondary)}
 footer{max-width:1180px;margin:48px auto 0;padding:20px;
 border-top:1px solid var(--separator);font-size:13px}
 
@@ -463,12 +485,70 @@ background:linear-gradient(135deg,#ff2d6f,#ff8a4c);color:#fff;font-size:12px;
 font-weight:800}
 .avatar:first-child{margin-left:0}
 .avatar.more{background:var(--fill);color:var(--label-secondary)}
+.avatar{overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.avatar.big{width:52px;height:52px;flex:0 0 52px;font-size:18px;margin:0}
 .who-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
 .who-list li{display:flex;align-items:center;gap:10px}
 .who-list .avatar{width:32px;height:32px;font-size:12px;margin:0;flex:0 0 32px}
 .who-list b{display:block;font-size:14px;font-weight:650}
+.who-list b a{color:inherit;font-weight:inherit}
 .who-list small{display:block;font-size:11px;color:var(--label-tertiary);
 letter-spacing:.04em;text-transform:uppercase}
+.who-list small.at{text-transform:none;letter-spacing:0;font-size:12px;
+font-family:var(--mono)}
+
+/* "About You", as the console draws it: a round picture you can replace, your
+   name and a line about you side by side, and the three link pills under them.
+   Optional throughout - a profile with nothing filled in is a finished one. */
+.you{background:var(--bg-elevated);border:1px solid var(--separator);
+border-radius:var(--r-md);padding:18px;margin:0 0 14px}
+.yourow{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.yourow .grow{flex:1 1 260px;min-width:0;display:grid;gap:10px}
+.twoup{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.avatarpick{position:relative;flex:0 0 76px;width:76px;height:76px;cursor:pointer;
+display:block}
+.avatarpick .disc{width:76px;height:76px;border-radius:50%;overflow:hidden;
+display:grid;place-items:center;background:linear-gradient(135deg,#ff2d6f,#ff8a4c);
+color:#fff;font-size:26px;font-weight:800;border:1px solid var(--separator)}
+.avatarpick .disc img{width:100%;height:100%;object-fit:cover;display:block}
+.avatarpick input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.avatarpick .hintline{display:block;margin-top:6px;text-align:center;font-size:11px;
+color:var(--label-tertiary)}
+.dropx{position:absolute;top:-4px;right:-4px;width:24px;height:24px;border-radius:50%;
+display:grid;place-items:center;background:rgba(0,0,0,.72);color:#fff;border:0;
+font-size:12px;cursor:pointer;z-index:2}
+/* Three across, as the console has them. The minimum is what one pill needs
+   for its label plus a readable field, not what looks comfortable alone -
+   set any higher and the third wraps onto a row of its own. */
+.socials{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px}
+.pill{display:flex;align-items:center;gap:0;background:var(--bg-elevated-2);
+border:1px solid var(--separator);border-radius:var(--r-pill);padding:0 6px 0 14px;
+min-height:44px;overflow:hidden}
+.pill span{flex:0 0 auto;font-size:14px;font-weight:650;color:var(--label-secondary);
+padding-right:10px;margin-right:10px;border-right:1px solid var(--separator)}
+.pill input{border:0;background:transparent;min-height:40px;padding:0;
+border-radius:0;font-size:14px}
+.pill input:focus{border:0}
+.youbar{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.youbar .muted{margin:0}
+.handlepill{display:inline-flex;align-items:center;background:var(--bg-elevated-2);
+border:1px solid var(--separator);border-radius:var(--r-pill);padding:0 14px;
+min-height:44px;font-weight:700}
+.handlepill span{color:var(--label-tertiary);padding-right:2px}
+.handlepill input{border:0;background:transparent;min-height:42px;padding:0;
+font-weight:700;width:auto;flex:1 1 auto}
+.handlepill input:focus{border:0}
+
+/* Changing the picture on a cover, the way the console does it: the buttons
+   sit on the image itself rather than in a settings drawer below it. */
+.coveractions{position:absolute;right:26px;bottom:26px;display:flex;gap:8px;z-index:2}
+.coveractions button{min-height:38px;padding:0 16px;border-radius:var(--r-pill);
+background:rgba(0,0,0,.45);color:#fff;font:inherit;font-size:13px;font-weight:650;
+cursor:pointer;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+border:1px solid rgba(255,255,255,.14)}
+.coveractions button:hover{background:rgba(0,0,0,.62)}
+.coveractions input{display:none}
 
 /* Nights as a schedule. */
 .timeline{position:relative;margin:8px 0 4px;padding-left:22px}
@@ -506,10 +586,13 @@ details.tinyhelp p{margin:8px 0 0}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 `;
 
-function page(title, body, heroHtml, rail) {
+// `wide` is for the pages that are a form rather than something to read. 680px
+// is the right measure for prose and too narrow for the profile row, where it
+// clips three link fields down to "@use".
+function page(title, body, heroHtml, rail, wide) {
   const shell = rail
     ? `<div class="withrail"><div>${body}</div>${rail}</div>`
-    : `<main>${body}</main>`;
+    : `<main${wide ? ` class="wide"` : ""}>${body}</main>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><style>${STYLE}</style></head>
@@ -520,8 +603,9 @@ function page(title, body, heroHtml, rail) {
 // The hero the guest page opens with: the group's own picture if it has one,
 // the warm party gradient if it does not, with the name sitting on it and the
 // round floating chrome the app uses for secondary actions.
-function hero(title, sub, cover, tools) {
-  const image = cover ? ` style="background-image:url('${esc(cover)}')"` : "";
+function hero(title, sub, cover, tools, coverForm) {
+  const url = mediaUrl(cover);
+  const image = url ? ` style="background-image:url('${esc(url)}')"` : "";
   return `<header class="hero">
     ${tools ? `<div class="toptools">${tools}</div>` : ""}
     <div class="cover"${image}>
@@ -529,8 +613,42 @@ function hero(title, sub, cover, tools) {
         <h1>${esc(title)}</h1>
         ${sub ? `<p class="sub">${esc(sub)}</p>` : ""}
       </div>
+      ${coverForm || ""}
     </div>
   </header>`;
+}
+
+// Shuffle and Upload, sitting on the picture itself - the console's two
+// buttons, in the same corner, doing the same two things. Shuffle is a plain
+// submit so it works with no JavaScript at all; Upload is a file input dressed
+// as a button that submits the moment a picture is chosen.
+function coverTools(action, fromPublic) {
+  return `<form class="coveractions" method="post" action="${esc(action)}"
+      enctype="multipart/form-data">
+    ${fromPublic ? `<input type="hidden" name="fromPublic" value="1">` : ""}
+    <button type="submit" name="shuffleCover" value="1">Shuffle image</button>
+    <button type="button" onclick="this.nextElementSibling.click()">Upload image</button>
+    <input type="file" name="cover" accept="image/*"
+      onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+  </form>`;
+}
+
+// The cover half of a form post, shared by groups and nights so the two cannot
+// drift apart. Returns undefined when the post was not about the cover.
+async function coverFromForm(env, form, current) {
+  if (form.get("shuffleCover")) {
+    // Never the one it is already showing: a shuffle that appears to do
+    // nothing is indistinguishable from a broken button.
+    const options = COVER_PILE.map(coverPileUrl).filter((url) => url !== current);
+    return { key: options[crypto.getRandomValues(new Uint32Array(1))[0] % options.length] };
+  }
+  if (form.get("clearCover")) return { key: null };
+  const file = form.get("cover");
+  if (file && typeof file.arrayBuffer === "function" && Number(file.size) > 0) {
+    const stored = await storeMedia(env, file, "covers", MAX_COVER);
+    return stored.error ? { error: stored.error } : { key: stored.key };
+  }
+  return null;
 }
 
 function whenText(event) {
@@ -540,6 +658,136 @@ function whenText(event) {
     weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
     timeZone: event.timezone || "UTC",
   });
+}
+
+function initials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "·";
+  return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
+}
+
+// One person, one disc. Their picture if they set one, their initials if they
+// did not - never an empty circle, and never a stranger's placeholder face.
+function personDisc(person, extraClass) {
+  const url = mediaUrl(person && person.avatar_key);
+  const label = (person && (person.name || person.handle)) || "Someone";
+  return `<span class="avatar${extraClass ? " " + extraClass : ""}" title="${esc(label)}">${
+    url ? `<img src="${esc(url)}" alt="" loading="lazy">` : esc(initials(label))}</span>`;
+}
+
+// The profile form. One component, because the whole promise is that the thing
+// you edit on first sight is the same thing you edit later - a settings page
+// with different fields to the welcome page is two profiles wearing one name.
+function profileEditor(profile, { action, heading, note, dismiss }) {
+  const links = (profile && profile.linksObj) || {};
+  const avatar = mediaUrl(profile && profile.avatar_key);
+  return `<form class="you" method="post" action="${esc(action)}" enctype="multipart/form-data">
+    ${heading ? `<h2 style="margin:0 0 14px">${esc(heading)}</h2>` : ""}
+    <div class="yourow">
+      <label class="avatarpick" title="Choose a picture">
+        <span class="disc">${avatar
+          ? `<img src="${esc(avatar)}" alt="">`
+          : esc(initials(profile && profile.name))}</span>
+        <input type="file" name="avatar" accept="image/*">
+        <small class="hintline">${avatar ? "Change" : "Add a photo"}</small>
+      </label>
+      <div class="grow">
+        <div class="twoup">
+          <input type="text" name="name" maxlength="60" placeholder="Your name"
+            value="${esc((profile && profile.name) || "")}" autocomplete="name">
+          <input type="text" name="bio" maxlength="200" placeholder="A line about you"
+            value="${esc((profile && profile.bio) || "")}">
+        </div>
+        <div class="socials">
+          ${SOCIAL_FIELDS.map((field) => `<label class="pill">
+            <span>${esc(field.label)}</span>
+            <input type="text" name="${esc(field.key)}" placeholder="${esc(field.place)}"
+              value="${esc(links[field.key] || "")}" autocomplete="off" spellcheck="false">
+          </label>`).join("")}
+        </div>
+      </div>
+    </div>
+    <div class="youbar">
+      <label class="handlepill" title="Your address here">
+        <span>@</span>
+        <input type="text" name="handle" maxlength="30" spellcheck="false"
+          autocapitalize="none" autocomplete="off"
+          value="${esc((profile && profile.handle) || "")}"
+          size="${Math.max(8, ((profile && profile.handle) || "").length)}">
+      </label>
+      <button class="btn" type="submit">Save</button>
+      ${dismiss
+        ? `<button class="btn plain" type="submit" name="dismiss" value="1"
+            formnovalidate>${esc(dismiss)}</button>`
+        : ""}
+      ${profile && profile.avatar_key
+        ? `<button class="btn plain small" type="submit" name="clearAvatar" value="1">Remove photo</button>`
+        : ""}
+      ${note ? `<p class="muted">${note}</p>` : ""}
+    </div>
+  </form>`;
+}
+
+// Reading the profile form back. Every field is optional and a blank one means
+// blank, so this writes what it is given rather than merging - except the
+// handle, which is refused rather than cleared: a person with no address is not
+// a state this has any use for.
+async function saveProfileForm(env, emailNorm, form, now) {
+  const profile = await profileFor(env, emailNorm, now);
+  if (!profile) return { error: "no profile" };
+
+  // "Not now" is a real answer. It settles the welcome without pretending the
+  // person filled anything in, and Settings is still there when they want it.
+  if (form.get("dismiss")) {
+    await env.DB.prepare(`UPDATE profiles SET saved_ms = ? WHERE email_norm = ?`)
+      .bind(now, emailNorm).run();
+    return { ok: true };
+  }
+
+  const wanted = normalizeHandle(form.get("handle"));
+  let handle = profile.handle;
+  if (wanted && wanted !== profile.handle) {
+    const problem = handleProblem(wanted);
+    if (problem) return { error: `That @name is ${problem}.`, profile };
+    if (!await handleFree(env, wanted)) return { error: "That @name is taken.", profile };
+    handle = wanted;
+    await reserveHandle(env, wanted);
+  }
+
+  let avatarKey = profile.avatar_key;
+  if (form.get("clearAvatar")) {
+    avatarKey = null;
+  } else {
+    const file = form.get("avatar");
+    if (file && typeof file.arrayBuffer === "function" && Number(file.size) > 0) {
+      const stored = await storeMedia(env, file, "avatars", MAX_AVATAR);
+      if (stored.error) return { error: stored.error, profile };
+      avatarKey = stored.key;
+    }
+  }
+
+  const links = {};
+  for (const field of SOCIAL_FIELDS) {
+    const value = field.key === "website"
+      ? websiteUrl(form.get(field.key))
+      : socialName(form.get(field.key));
+    if (value) links[field.key] = value;
+  }
+  const name = String(form.get("name") || "").slice(0, 60).trim();
+  const bio = String(form.get("bio") || "").slice(0, 200).trim();
+
+  await env.DB.prepare(
+    `UPDATE profiles SET handle = ?, name = ?, bio = ?, avatar_key = ?, links = ?,
+       saved_ms = ?, updated_ms = ? WHERE email_norm = ?`
+  ).bind(handle, name, bio, avatarKey, JSON.stringify(links), now, now, emailNorm).run();
+
+  // The name a person is called by, everywhere they act. Kept in step so the
+  // roster at a party and the profile page do not disagree about who came.
+  if (name) {
+    await env.DB.prepare(`UPDATE djs SET name = ? WHERE email_norm = ?`).bind(name, emailNorm).run();
+    await env.DB.prepare(`UPDATE members SET name = ? WHERE email_norm = ?`).bind(name, emailNorm).run();
+  }
+  return { ok: true };
 }
 
 function groupPage(group, events, base, posts, viewer, people, past) {
@@ -580,24 +828,27 @@ function groupPage(group, events, base, posts, viewer, people, past) {
          <p class="muted">One email to confirm. No account, and you can stop from any
          message we send.</p>`;
 
-  const initials = (name) => {
-    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if (!parts.length) return "\u00b7";
-    return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
-  };
   const shown = (people || []).slice(0, 12);
+  const roleWord = { owner: "DJ", host: "DJ" };
   // Side matter: who is here, and how to keep their nights. Both belong beside
   // the page rather than wedged between the schedule and the conversation.
   const rail = `<aside class="rail">
       <div class="card">
         <h2>Participants${people.length ? ` \u2014 ${people.length}` : ""}</h2>
         ${people.length ? `<div class="avatars">
-            ${shown.map((m) => `<span class="avatar" title="${esc(m.name || "Someone")}">${esc(initials(m.name))}</span>`).join("")}
+            ${shown.map((m) => personDisc(m)).join("")}
             ${people.length > shown.length ? `<span class="avatar more">+${people.length - shown.length}</span>` : ""}
           </div>
           <ul class="who-list">${shown.map((m) => `<li>
-            <span class="avatar">${esc(initials(m.name))}</span>
-            <span><b>${esc(m.name || "Someone")}</b><small>Following</small></span></li>`).join("")}</ul>`
+            ${personDisc(m)}
+            <span><b>${m.handle
+                ? `<a href="/@${esc(m.handle)}">${esc(m.name || "@" + m.handle)}</a>`
+                : esc(m.name || "Someone")}</b>
+              ${roleWord[m.role]
+                ? `<small>${esc(roleWord[m.role])}</small>`
+                : m.handle
+                  ? `<small class="at">@${esc(m.handle)}</small>`
+                  : `<small>Following</small>`}</span></li>`).join("")}</ul>`
           : `<p class="muted">Nobody yet. The first person to follow shows up here.</p>`}
       </div>
       <div class="card">
@@ -616,12 +867,56 @@ function groupPage(group, events, base, posts, viewer, people, past) {
     <h2>Nights</h2>
     ${list}
     <h2>Talk</h2>
+    ${viewer ? `<form class="say" method="post" action="/@${esc(group.handle)}/say"
+        enctype="multipart/form-data">
+      <textarea name="say" maxlength="2000"
+        placeholder="Write a post, or add a photo..."></textarea>
+      <div class="sayrow">
+        <label class="pickfile">📷 Add photo/video
+          <input type="file" name="media" accept="image/*,video/*">
+        </label>
+        <button class="btn" type="submit">Post</button>
+      </div>
+    </form>` : ""}
     ${postList(posts || [])}
   `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
-      `<a href="/home">Home</a>`), rail);
+      `<a href="/home">Home</a>`,
+      viewer && viewer.runsThisGroup ? coverTools(`/@${group.handle}/manage`, true) : ""), rail);
 }
 
-function eventPage(group, event, going, base, takeRate) {
+// A person at their @name. Not a second group page: a person is who they are
+// and what they run, and the nights themselves live on the group's page where
+// somebody can follow them.
+function personPage(profile, groups) {
+  const links = profile.linksObj || {};
+  const shown = SOCIAL_FIELDS
+    .map((field) => ({ field, value: links[field.key], href: linkHref(field.key, links[field.key]) }))
+    .filter((entry) => entry.value && entry.href);
+  return page(profile.name || `@${profile.handle}`, `
+    ${profile.bio ? `<p>${esc(profile.bio)}</p>` : ""}
+    ${shown.length ? `<p class="row">${shown.map((entry) =>
+      `<a class="btn plain small" href="${esc(entry.href)}" rel="noopener noreferrer nofollow"
+        target="_blank">${esc(entry.field.label)}</a>`).join("")}</p>` : ""}
+    ${groups.length ? `<h2>Their nights</h2>
+      ${groups.map((g) => `<a class="card" href="/@${esc(g.handle)}">
+        <strong>${esc(g.name || g.handle)}</strong>
+        <div class="muted">@${esc(g.handle)}${g.bio ? " · " + esc(g.bio) : ""}</div></a>`).join("")}`
+      : `<p class="muted">No groups yet.</p>`}
+  `, hero(profile.name || `@${profile.handle}`, profile.name ? "@" + profile.handle : "",
+      "", `<a href="/home">Home</a>`));
+}
+
+async function runsGroups(env, emailNorm) {
+  const { results } = await env.DB.prepare(
+    `SELECT g.handle, g.name, g.bio FROM groups g
+       JOIN group_djs gd ON gd.group_id = g.id
+       JOIN djs d ON d.id = gd.dj_id
+      WHERE d.email_norm = ? ORDER BY g.created_ms`
+  ).bind(emailNorm).all();
+  return results || [];
+}
+
+function eventPage(group, event, going, base, takeRate, canEdit) {
   return page(`${event.title || "A night"} - ${group.name || group.handle}`, `
     <p class="when">${esc(whenText(event))}</p>
     ${event.place ? `<p>${esc(event.place)}${event.address ? `<br><span class="muted">${esc(event.address)}</span>` : ""}</p>` : ""}
@@ -643,7 +938,8 @@ function eventPage(group, event, going, base, takeRate) {
     <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
     follow them to hear about their other nights.</p>
   `, hero(event.title || "A night", group.name || group.handle, event.cover_key,
-      `<a href="/@${esc(group.handle)}">The group</a>`));
+      `<a href="/@${esc(group.handle)}">The group</a>`,
+      canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""));
 }
 
 // Subscribing to a calendar, without the security warning.
@@ -797,6 +1093,224 @@ async function createGroup(env, dj, handle, name, now) {
   return { id, handle };
 }
 
+// ----------------------------------------------------------------- profiles
+
+// Two halves of a name that reads like somebody chose it. The point of minting
+// one is that a new arrival is already somebody - anonymous, but not a blank
+// form - and can rename themselves later if they care to.
+const HANDLE_FIRST = [
+  "neon", "velvet", "midnight", "glitter", "disco", "amber", "electric",
+  "golden", "silver", "ruby", "cosmic", "lunar", "sunset", "crimson", "indigo",
+  "mellow", "rowdy", "quiet", "swift", "copper", "hazy", "wild", "little",
+];
+const HANDLE_SECOND = [
+  "heron", "otter", "fox", "moth", "comet", "ember", "willow", "harbor",
+  "meadow", "lantern", "echo", "tide", "drift", "orbit", "prism", "canyon",
+  "thistle", "badger", "falcon", "marlin", "sparrow", "juniper", "quartz",
+];
+
+function pick(list) {
+  return list[crypto.getRandomValues(new Uint32Array(1))[0] % list.length];
+}
+
+// Free everywhere it has to be free: this database's two namespaces and the
+// broker's, which hands out names to Macs and knows nothing about people.
+async function handleFree(env, handle) {
+  if (handleProblem(handle)) return false;
+  const taken = await env.DB.prepare(
+    `SELECT 1 AS ok FROM groups WHERE handle = ?
+     UNION ALL SELECT 1 FROM profiles WHERE handle = ?`
+  ).bind(handle, handle).first();
+  if (taken) return false;
+  return claimHandle(env, handle);
+}
+
+async function mintHandle(env) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    // Two words first, and only then a number: "neonfox" is a name somebody
+    // might keep, "neonfox4817" is one they will certainly replace.
+    const suffix = attempt < 4 ? "" : String(10 + (crypto.getRandomValues(new Uint32Array(1))[0] % 89));
+    const candidate = `${pick(HANDLE_FIRST)}${pick(HANDLE_SECOND)}${suffix}`.slice(0, 30);
+    if (await handleFree(env, candidate)) return candidate;
+  }
+  return `guest${randomHex(4)}`;
+}
+
+function parseLinks(raw) {
+  try {
+    const value = JSON.parse(raw || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+// The one identity, read or created. Creating it here rather than at sign-up
+// means every person who already existed gets one the first time they are
+// looked at, with no backfill to run and nothing to miss.
+async function profileFor(env, emailNorm, now, fallbackName) {
+  if (!emailNorm) return null;
+  let row = await env.DB.prepare(`SELECT * FROM profiles WHERE email_norm = ?`)
+    .bind(emailNorm).first();
+  if (!row) {
+    // Whatever Apple or Google already told us, wherever it landed. Seeding
+    // this only on the page that happens to create the row leaves anybody who
+    // arrives by another route anonymous for no reason.
+    let name = String(fallbackName || "").slice(0, 60);
+    if (!name) {
+      const known = await env.DB.prepare(
+        `SELECT name FROM djs WHERE email_norm = ? AND name != ''
+         UNION ALL SELECT name FROM members WHERE email_norm = ? AND name != '' LIMIT 1`
+      ).bind(emailNorm, emailNorm).first();
+      name = (known && known.name) || "";
+    }
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO profiles (email_norm, name, created_ms, updated_ms)
+       VALUES (?, ?, ?, ?)`
+    ).bind(emailNorm, name, now, now).run();
+    row = await env.DB.prepare(`SELECT * FROM profiles WHERE email_norm = ?`)
+      .bind(emailNorm).first();
+  }
+  if (row && !row.handle) {
+    const handle = await mintHandle(env);
+    try {
+      await env.DB.prepare(`UPDATE profiles SET handle = ?, updated_ms = ? WHERE email_norm = ?`)
+        .bind(handle, now, emailNorm).run();
+      await reserveHandle(env, handle);
+      row.handle = handle;
+    } catch (e) {
+      // Lost the race to another request for the same person. Whatever the
+      // other one wrote is just as good a name as this one.
+      row = await env.DB.prepare(`SELECT * FROM profiles WHERE email_norm = ?`)
+        .bind(emailNorm).first();
+    }
+  }
+  if (row) row.linksObj = parseLinks(row.links);
+  return row;
+}
+
+async function profileByHandle(env, handle) {
+  const row = await env.DB.prepare(`SELECT * FROM profiles WHERE handle = ?`).bind(handle).first();
+  if (row) row.linksObj = parseLinks(row.links);
+  return row;
+}
+
+// Profiles for a set of addresses, in one query. The participants rail asks for
+// a dozen at a time and a query each would be a dozen round trips.
+async function profilesFor(env, emails) {
+  const list = [...new Set((emails || []).filter(Boolean))];
+  if (!list.length) return new Map();
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM profiles WHERE email_norm IN (${list.map(() => "?").join(",")})`
+  ).bind(...list).all();
+  const map = new Map();
+  for (const row of results || []) {
+    row.linksObj = parseLinks(row.links);
+    map.set(row.email_norm, row);
+  }
+  return map;
+}
+
+// A social handle, however it was pasted. People paste the whole URL as often
+// as the name, and rejecting either one is a form that argues with you.
+function socialName(raw) {
+  let value = String(raw || "").trim();
+  if (!value) return "";
+  value = value.replace(/^https?:\/\/(www\.)?[^/]+\//i, "").replace(/^@/, "");
+  return value.split(/[/?#]/)[0].slice(0, 40);
+}
+
+function websiteUrl(raw) {
+  const value = String(raw || "").trim().slice(0, 200);
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}/i.test(value) ? `https://${value}` : "";
+}
+
+const SOCIAL_FIELDS = [
+  { key: "instagram", label: "Instagram", place: "@username", prefix: "https://instagram.com/" },
+  { key: "soundcloud", label: "SoundCloud", place: "@username", prefix: "https://soundcloud.com/" },
+  { key: "website", label: "Website", place: "yoursite.com", prefix: "" },
+];
+
+function linkHref(key, value) {
+  if (!value) return "";
+  if (key === "website") return websiteUrl(value);
+  const field = SOCIAL_FIELDS.find((f) => f.key === key);
+  return field ? field.prefix + encodeURIComponent(value) : "";
+}
+
+// -------------------------------------------------------------------- media
+
+// Pictures live in the broker's bucket under their own prefix, served back
+// through /media/. Stored as they arrive: a Worker has no image pipeline, and
+// a cap plus knowing what the bytes actually are is the honest version of one.
+const MAX_AVATAR = 8 << 20;
+const MAX_COVER = 15 << 20;
+
+// What a file IS, not what it says it is. The declared type is whatever the
+// client felt like sending - plenty of real tools upload a perfectly good
+// image as application/octet-stream, and anything at all can claim image/png.
+// Reading the first few bytes answers both, and the answer is what gets served
+// back later, so a stored object can never carry a type its bytes contradict.
+function sniffMedia(bytes) {
+  const head = new Uint8Array(bytes, 0, Math.min(16, bytes.byteLength));
+  const at = (offset, ...values) => values.every((v, i) => head[offset + i] === v);
+  const ascii = (offset, text) => [...text].every((c, i) => head[offset + i] === c.charCodeAt(0));
+
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
+  if (at(0, 0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (ascii(0, "GIF8")) return "image/gif";
+  if (ascii(0, "RIFF") && ascii(8, "WEBP")) return "image/webp";
+  if (ascii(4, "ftyp")) {
+    // One container, several things inside it. The brand says which.
+    const brand = String.fromCharCode(head[8], head[9], head[10], head[11]);
+    if (brand === "avif" || brand === "avis") return "image/avif";
+    if (["heic", "heix", "hevc", "mif1", "msf1"].includes(brand)) return "image/heic";
+    if (["mp42", "mp41", "isom", "iso2", "avc1", "qt  "].includes(brand)) return "video/mp4";
+  }
+  if (at(0, 0x1a, 0x45, 0xdf, 0xa3)) return "video/webm";
+  return "";
+}
+
+function mediaUrl(key) {
+  return key ? (/^(https?:)?\/\//.test(key) ? key : `/media/${key}`) : "";
+}
+
+// The bundled pile, the same pictures the Mac shuffles through, published to
+// R2 by scripts/publish-covers.sh. Kept as bare names so the list is readable
+// and one place decides where they are served from.
+const COVER_PILE = [
+  "amber-festival", "arcade-afterhours", "arena-beams", "ballroom-dance",
+  "band-stage", "basement-house", "beach-dusk", "block-party", "blue-wash",
+  "boat-deck", "brass-section", "cabin-party", "club-lights", "community-hall",
+  "concert", "crowd-surfer", "crowd", "dance", "dancefloor", "decks",
+  "desert-dusk", "disco-ceiling", "dj-booth", "dj-close", "emerald-crowd",
+  "festival-tent", "garden-day", "golden-crowd", "haze-screens",
+  "kitchen-dance", "lanterns", "laser-warehouse", "led-canopy",
+  "midnight-stage", "open-air-blue", "pedalboard", "phone-glow",
+  "poolside-night", "record-store", "roller-disco", "rooftop-sunrise",
+  "rooftop", "soundcheck", "streamers", "tiny-club", "tunnel-party",
+  "turntable", "vinyl-loft", "warehouse",
+];
+
+function coverPileUrl(name) {
+  return `/media/covers/${name}.webp`;
+}
+
+async function storeMedia(env, file, prefix, maxBytes, allowVideo) {
+  if (!env.DL || !file || typeof file.arrayBuffer !== "function") return { error: "no file" };
+  if (Number(file.size) > maxBytes) return { error: "that file is too big" };
+  const bytes = await file.arrayBuffer();
+  if (!bytes.byteLength || bytes.byteLength > maxBytes) return { error: "that file is too big" };
+  const type = sniffMedia(bytes);
+  if (!type) return { error: "that is not a picture we can use" };
+  if (!allowVideo && type.startsWith("video/")) return { error: "that needs to be a picture" };
+  const key = `${prefix}/${randomHex(16)}`;
+  await env.DL.put(`media/${key}`, bytes, { httpMetadata: { contentType: type } });
+  return { key, type };
+}
+
 // Pro is on when EITHER store says so. Asking one of them alone is how a DJ
 // who paid on the web ends up being charged a fee in the app.
 async function isPro(env, groupId) {
@@ -900,14 +1414,17 @@ async function sendInvites(env, group, event, dj, base, now) {
 // The group's own thread. Whoever writes it is identified by the link they
 // already hold - a member by their settings token, a DJ by their session - so
 // taking part still needs no account.
-async function addPost(env, { group, dj, member, body, base, now }) {
+async function addPost(env, { group, dj, member, body, mediaKey, mediaType, base, now }) {
   const text = String(body || "").trim().slice(0, 2000);
-  if (!text) return 0;
+  // A picture on its own is a post. At a party most of them are.
+  if (!text && !mediaKey) return 0;
   const author = dj ? (dj.name || "The DJ") : (member && member.name) || "Someone";
   await env.DB.prepare(
-    `INSERT INTO posts (id, group_id, member_id, dj_id, author, body, origin, created_ms)
-     VALUES (?, ?, ?, ?, ?, ?, 'web', ?)`
-  ).bind(ulid(now), group.id, member ? member.id : null, dj ? dj.id : null, author, text, now).run();
+    `INSERT INTO posts (id, group_id, member_id, dj_id, author, body, media_key, media_type, origin, created_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'web', ?)`
+  ).bind(ulid(now), group.id, member ? member.id : null, dj ? dj.id : null, author, text,
+    mediaKey || null, mediaType || null, now).run();
+  if (!text) return 0;
 
   // Only the people who asked for every post. This is the whole difference
   // between a group here and a group chat: the volume is theirs, not the
@@ -931,30 +1448,100 @@ async function addPost(env, { group, dj, member, body, base, now }) {
   return mailed;
 }
 
-// The people in the group, for the rail. Names only - an address is theirs and
-// belongs to the group's own export, not on a public page.
+// Who is in this group, as people rather than rows: their picture, the name
+// they chose and the @name they can be found at. The DJs come first because
+// they are the reason anybody else is here.
 async function groupPeople(env, groupId) {
   const { results } = await env.DB.prepare(
-    `SELECT m.name FROM group_members gm JOIN members m ON m.id = gm.member_id
-      WHERE gm.group_id = ? AND gm.state = 'joined' ORDER BY gm.joined_ms DESC LIMIT 60`
+    // The union is wrapped because a compound SELECT can only be ordered by a
+    // plain result column, and the ordering here is an expression.
+    `SELECT * FROM (
+       SELECT m.name AS name, m.email_norm AS email_norm, 'follower' AS role,
+              gm.joined_ms AS since
+         FROM group_members gm JOIN members m ON m.id = gm.member_id
+        WHERE gm.group_id = ? AND gm.state = 'joined'
+       UNION ALL
+       SELECT d.name AS name, d.email_norm AS email_norm, gd.role AS role,
+              gd.created_ms AS since
+         FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
+        WHERE gd.group_id = ?
+     )
+     ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'host' THEN 1 ELSE 2 END, since DESC
+     LIMIT 60`
+  ).bind(groupId, groupId).all();
+
+  const rows = results || [];
+  const profiles = await profilesFor(env, rows.map((r) => r.email_norm));
+  const seen = new Set();
+  const people = [];
+  for (const row of rows) {
+    // A DJ who also follows their own group is one person on this list.
+    if (seen.has(row.email_norm)) continue;
+    seen.add(row.email_norm);
+    const profile = profiles.get(row.email_norm);
+    people.push({
+      name: (profile && profile.name) || row.name || "",
+      handle: (profile && profile.handle) || "",
+      avatar_key: (profile && profile.avatar_key) || null,
+      role: row.role,
+    });
+  }
+  return people;
+}
+
+// The feed, with the people on it. The author column is what somebody was
+// called when they wrote it; the profile is who they are now, and the live one
+// wins on screen so a person who fills in their name does not have to look at
+// thirty posts signed "Someone".
+async function recentPosts(env, groupId) {
+  const { results } = await env.DB.prepare(
+    `SELECT p.*,
+            COALESCE(pd.name, pm.name) AS profile_name,
+            COALESCE(pd.handle, pm.handle) AS handle,
+            COALESCE(pd.avatar_key, pm.avatar_key) AS avatar_key
+       FROM posts p
+       LEFT JOIN members m ON m.id = p.member_id
+       LEFT JOIN djs d ON d.id = p.dj_id
+       LEFT JOIN profiles pm ON pm.email_norm = m.email_norm
+       LEFT JOIN profiles pd ON pd.email_norm = d.email_norm
+      WHERE p.group_id = ? AND p.event_id IS NULL AND p.deleted_ms IS NULL
+      ORDER BY p.created_ms DESC LIMIT 30`
   ).bind(groupId).all();
   return results || [];
 }
 
-async function recentPosts(env, groupId) {
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM posts WHERE group_id = ? AND event_id IS NULL AND deleted_ms IS NULL
-      ORDER BY created_ms DESC LIMIT 30`
-  ).bind(groupId).all();
-  return results || [];
+function agoText(ms) {
+  const seconds = Math.max(0, Math.round((Date.now() - Number(ms || 0)) / 1000));
+  if (seconds < 90) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(Number(ms)).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
 function postList(posts) {
   if (!posts.length) return `<p class="muted">Nothing said yet.</p>`;
-  return posts.map((post) => `<div class="post">
-    <div class="who">${esc(post.author)}</div>
-    <div>${esc(post.body).replace(/\n/g, "<br>")}</div>
-  </div>`).join("");
+  return posts.map((post) => {
+    const name = post.profile_name || post.author || "Someone";
+    const media = mediaUrl(post.media_key);
+    const isVideo = String(post.media_type || "").startsWith("video/");
+    return `<div class="post">
+      <div class="posthead">
+        ${personDisc({ name, avatar_key: post.avatar_key })}
+        <div class="grow">
+          <div class="who">${post.handle
+            ? `<a href="/@${esc(post.handle)}">${esc(name)}</a>`
+            : esc(name)}</div>
+          <div class="when">${esc(agoText(post.created_ms))}</div>
+        </div>
+      </div>
+      ${post.body ? `<div>${esc(post.body).replace(/\n/g, "<br>")}</div>` : ""}
+      ${media ? (isVideo
+        ? `<video class="postmedia" src="${esc(media)}" controls playsinline preload="metadata"></video>`
+        : `<img class="postmedia" src="${esc(media)}" alt="" loading="lazy">`) : ""}
+    </div>`;
+  }).join("");
 }
 
 // A tip link is the DJ's own Venmo, Revolut, PayPal or whatever they already
@@ -1079,6 +1666,25 @@ export default {
 
     if (path === "/__pp/app-health") return json(200, { ok: true });
 
+    // Pictures. Immutable: every key is random and a new upload is a new key,
+    // so this can be cached hard and a changed photo still appears at once.
+    if (path.startsWith("/media/")) {
+      const key = path.slice("/media/".length);
+      if (!key || key.includes("..") || !/^[a-z0-9/_.-]+$/i.test(key)) {
+        return new Response("Not Found", { status: 404 });
+      }
+      if (!env.DL) return new Response("Not Found", { status: 404 });
+      const object = await env.DL.get(`media/${key}`);
+      if (!object) return new Response("Not Found", { status: 404 });
+      return new Response(object.body, {
+        headers: {
+          "content-type": (object.httpMetadata && object.httpMetadata.contentType) || "image/jpeg",
+          "cache-control": "public, max-age=31536000, immutable",
+          "strict-transport-security": HSTS,
+        },
+      });
+    }
+
     // Flush now rather than on the next minute. Used to prove sending works
     // right after a deploy; guarded by the same key the sender used to hold.
     if (path === "/api/v1/outbox/flush" && request.method === "POST") {
@@ -1100,7 +1706,10 @@ export default {
       if (!dj) {
         await env.DB.prepare(
           `INSERT INTO djs (id, email_norm, name, created_ms, last_seen_ms) VALUES (?, ?, ?, ?, ?)`
-        ).bind(ulid(now), emailNorm, url.searchParams.get("name") || "Test DJ", now, now).run();
+        // ?name= with nothing after it means nobody, which is the state a real
+        // provider never hands us and the one worth being able to look at.
+        ).bind(ulid(now), emailNorm,
+          url.searchParams.has("name") ? url.searchParams.get("name") : "Test DJ", now, now).run();
         dj = await env.DB.prepare(`SELECT * FROM djs WHERE email_norm = ?`).bind(emailNorm).first();
       }
       return new Response(null, {
@@ -1344,13 +1953,12 @@ export default {
       if (!dj) return html(200, signInPage(env));
       if (request.method === "POST") {
         const form = await request.formData().catch(() => null);
-        await env.DB.prepare(`UPDATE djs SET name = ? WHERE id = ?`)
-          .bind(String((form && form.get("name")) || "").slice(0, 60), dj.id).run();
-        // The same person, as a member of other people's groups.
-        await env.DB.prepare(`UPDATE members SET name = ? WHERE email_norm = ?`)
-          .bind(String((form && form.get("name")) || "").slice(0, 60), dj.email_norm).run();
+        if (!form) return notice("That did not save", "Try again.");
+        const saved = await saveProfileForm(env, dj.email_norm, form, now);
+        if (saved.error) return notice("That did not save", saved.error);
         return new Response(null, { status: 302, headers: { location: "/settings" } });
       }
+      const profile = await profileFor(env, dj.email_norm, now, dj.name);
       const { results: following } = await env.DB.prepare(
         `SELECT g.handle, g.name, gm.volume FROM groups g
            JOIN group_members gm ON gm.group_id = g.id
@@ -1361,13 +1969,14 @@ export default {
       const volumeWord = { all: "every post", events: "nights only", none: "nothing" };
       return html(200, page("Your settings", `
         <h1>You</h1>
+        <p class="muted">All of this is optional. You already have an @name, and
+        nothing here has to be your real one.</p>
+        ${profileEditor(profile, { action: "/settings" })}
         <p class="muted">Signed in as ${esc(dj.email_norm)}. That address came from
         ${esc(dj.apple_sub ? "Apple" : "your sign-in")} and cannot be changed here -
-        sign in with a different one and you are a different person to us.</p>
-        <form class="join" method="post" action="/settings">
-          <input type="text" name="name" placeholder="Your name" value="${esc(dj.name || "")}">
-          <button class="btn plain" type="submit">Save</button>
-        </form>
+        sign in with a different one and you are a different person to us.
+        ${profile.handle ? `Your page is
+          <a href="/@${esc(profile.handle)}">partyparty.party/@${esc(profile.handle)}</a>.` : ""}</p>
 
         <h2>Following</h2>
         ${(following || []).length
@@ -1383,7 +1992,7 @@ export default {
 
         <p style="margin-top:40px"><a class="muted" href="/home">Home</a> ·
           <a class="muted" href="/auth/signout">Sign out</a></p>
-      `));
+      `, "", "", true));
     }
 
     // Home for someone signed in: what is coming up, across the groups they run
@@ -1392,6 +2001,14 @@ export default {
     if (path === "/home") {
       const dj = await currentDJ(env, request, now);
       if (!dj) return html(200, signInPage(env));
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        if (!form) return notice("That did not save", "Try again.");
+        const saved = await saveProfileForm(env, dj.email_norm, form, now);
+        if (saved.error) return notice("That did not save", saved.error);
+        return new Response(null, { status: 302, headers: { location: "/home" } });
+      }
+      const profile = await profileFor(env, dj.email_norm, now, dj.name);
 
       const { results: mine } = await env.DB.prepare(
         `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id WHERE d.dj_id = ?`
@@ -1420,7 +2037,30 @@ export default {
         <strong>${esc(g.name || g.handle)}</strong>
         <div class="muted">@${esc(g.handle)}${note ? " · " + esc(note) : ""}</div></a>`;
 
+      // First sight: the profile, open and ready to fill in, prefilled with
+      // whatever Apple or Google told us. It is already valid - the @name was
+      // minted with the account - so this is an invitation rather than a gate,
+      // and answering it either way puts it away for good. Editing stays at
+      // /settings, which is where somebody who wants it later will look.
+      const you = !profile.saved_ms
+        ? profileEditor(profile, {
+            action: "/home",
+            heading: "You, if you want to be",
+            dismiss: "Not now",
+            note: `All optional. Skip it and you are <b>@${esc(profile.handle)}</b> to everyone.`,
+          })
+        : `<div class="you"><div class="yourow" style="align-items:center">
+            ${personDisc(profile, "big")}
+            <div class="grow" style="gap:2px">
+              <b style="font-size:16px">${esc(profile.name || "@" + profile.handle)}</b>
+              <span class="muted">@${esc(profile.handle)}${
+                profile.bio ? " · " + esc(profile.bio) : ""}</span>
+            </div>
+            <a class="btn plain small" href="/settings">Edit</a>
+          </div></div>`;
+
       return html(200, page("PartyParty", `
+        ${you}
         <h1>What's on</h1>
         ${upcoming.length ? upcoming.map((e) => `<a class="card" href="/@${esc(e.handle)}/${esc(e.slug)}">
             <div class="when">${esc(whenText(e))}</div>
@@ -1441,7 +2081,7 @@ export default {
         <p class="muted" style="margin-top:40px">
           <a href="/manage">Run a group</a> · <a href="/settings">Settings</a> ·
           <a href="/auth/signout">Sign out</a></p>
-      `));
+      `, "", "", true));
     }
 
     // /manage is a ROUTER, not a destination. A list of your groups is a list
@@ -1542,6 +2182,20 @@ export default {
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
       if (request.method === "POST") {
         const form = await request.formData().catch(() => null);
+        // The cover, first: it is posted from the public page as well as this
+        // one, and it is the only form here that arrives with a file on it.
+        if (form && (form.get("shuffleCover") || form.get("clearCover") || form.get("cover"))) {
+          const cover = await coverFromForm(env, form, group.cover_key);
+          if (cover) {
+            if (cover.error) return notice("That picture did not take", cover.error);
+            await env.DB.prepare(`UPDATE groups SET cover_key = ?, updated_ms = ? WHERE id = ?`)
+              .bind(cover.key, now, group.id).run();
+            return new Response(null, {
+              status: 302,
+              headers: { location: `/@${group.handle}${form.get("fromPublic") ? "" : "/manage"}` },
+            });
+          }
+        }
         const invite = String((form && form.get("invite")) || "");
         if (invite) {
           const event = await env.DB.prepare(
@@ -1699,7 +2353,6 @@ export default {
       return html(200, page(group.name || group.handle, `
         <p class="muted"><a class="muted" href="/@${esc(group.handle)}">partyparty.party/@${esc(group.handle)}</a>
           · ${Number((members && members.n) || 0)} ${Number((members && members.n) || 0) === 1 ? "member" : "members"}</p>
-        <h1>${esc(group.name || group.handle)}</h1>
 
         <form class="newnight" method="post" action="/@${esc(group.handle)}/manage">
           <input type="text" name="title" placeholder="What is the night called?" required>
@@ -1785,7 +2438,9 @@ export default {
           });
         }
         </script>
-      `));
+      `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
+          `<a href="/@${esc(group.handle)}">The public page</a><a href="/home">Home</a>`,
+          coverTools(`/@${group.handle}/manage`))));
     }
 
     // A group's calendar. Subscribed once, correct forever after - which is why
@@ -2057,6 +2712,48 @@ export default {
       return json(200, { ok: true });
     }
 
+    // Saying something on the group's own page. Signed in only - the way a
+    // member without an account posts is the link in their own email, which
+    // already carries who they are and needs no password.
+    match = path.match(/^\/@([a-z0-9]+)\/say$/);
+    if (match && request.method === "POST") {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const viewer = await viewerOf(env, request, group, now);
+      if (!viewer || (!viewer.runsThisGroup && !viewer.follows)) {
+        return notice("Not yours to post to", "Follow the group first.");
+      }
+      const form = await request.formData().catch(() => null);
+      if (!form) return notice("That did not post", "Try again.");
+
+      // Photos and video both, and neither is transcoded - a Worker is not the
+      // place for that, so the cap is the whole policy.
+      let mediaKey = null;
+      let mediaType = null;
+      const file = form.get("media");
+      if (file && typeof file.arrayBuffer === "function" && Number(file.size) > 0) {
+        const stored = await storeMedia(env, file, "posts", MAX_COVER, true);
+        if (stored.error) return notice("That did not post", stored.error);
+        mediaKey = stored.key;
+        mediaType = stored.type;
+      }
+
+      const member = viewer.runsThisGroup
+        ? null
+        : await memberByEmail(env, viewer.dj.email_norm);
+      await addPost(env, {
+        group,
+        dj: viewer.runsThisGroup ? viewer.dj : null,
+        member,
+        body: form.get("say"),
+        mediaKey,
+        mediaType,
+        base,
+        now,
+      });
+      return new Response(null, { status: 302, headers: { location: `/@${group.handle}` } });
+    }
+
     // A night.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)$/);
     if (match) {
@@ -2067,17 +2764,48 @@ export default {
       ).bind(group.id, match[2]).first();
       if (!event) return new Response("Not Found", { status: 404 });
       return html(200, eventPage(group, event, await goingCount(env, event.id), base,
-        await takeRateFor(env, group.id)));
+        await takeRateFor(env, group.id),
+        await djRunsGroup(env, await currentDJ(env, request, now), group.id)));
     }
 
-    // A group.
+    // A night's cover. Its own route because the night's page is public and
+    // this is the one thing on it only the DJ may do.
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/cover$/);
+    if (match && request.method === "POST") {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const dj = await currentDJ(env, request, now);
+      if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
+      const form = await request.formData().catch(() => null);
+      const cover = form && await coverFromForm(env, form, event.cover_key);
+      if (cover && cover.error) return notice("That picture did not take", cover.error);
+      if (cover) {
+        await env.DB.prepare(`UPDATE events SET cover_key = ?, updated_ms = ? WHERE id = ?`)
+          .bind(cover.key, now, event.id).run();
+      }
+      return new Response(null, {
+        status: 302,
+        headers: { location: `/@${group.handle}/${event.slug}` },
+      });
+    }
+
+    // A group, or failing that a person - one namespace, so /@x means exactly
+    // one thing and a group can never be shadowed by somebody's @name.
     match = path.match(/^\/@([a-z0-9]+)$/);
     if (match) {
       const group = await groupByHandle(env, match[1]);
-      if (!group) return new Response("Not Found", { status: 404 });
-      return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base,
-        await recentPosts(env, group.id), await viewerOf(env, request, group, now),
-        await groupPeople(env, group.id), await pastEvents(env, group.id, now)));
+      if (group) {
+        return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base,
+          await recentPosts(env, group.id), await viewerOf(env, request, group, now),
+          await groupPeople(env, group.id), await pastEvents(env, group.id, now)));
+      }
+      const profile = await profileByHandle(env, match[1]);
+      if (profile) return html(200, personPage(profile, await runsGroups(env, profile.email_norm)));
+      return new Response("Not Found", { status: 404 });
     }
 
     return new Response("Not Found", { status: 404 });

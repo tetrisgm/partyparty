@@ -51,7 +51,10 @@
     { "pattern": "partyparty.party/home", "zone_name": "partyparty.party" },
     { "pattern": "partyparty.party/settings", "zone_name": "partyparty.party" },
     // The subscription feed, on a path with no @ for a calendar client to mangle.
-    { "pattern": "partyparty.party/calendar/*", "zone_name": "partyparty.party" }
+    { "pattern": "partyparty.party/calendar/*", "zone_name": "partyparty.party" },
+    // Profile photos, covers and anything posted with a picture on it. Served
+    // out of the R2 bucket below under a media/ prefix.
+    { "pattern": "partyparty.party/media/*", "zone_name": "partyparty.party" }
   ],
 
   // Sign in with Apple. None of these are secrets - they identify the
