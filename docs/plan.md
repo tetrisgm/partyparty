@@ -48,6 +48,29 @@ The audio core, the playlist geometry, the 3s room target, and
 inside minutes on 2026-08-05; unit tests cannot hear AVPlayer. Nothing in this
 plan goes near any of it.
 
+### The cloud is a fallback, never a broadcast
+
+A club does not want its night streamed to the world, and neither does someone
+throwing a party in their flat. The relay exists for exactly one reason: the
+venue's own network cannot carry the room — AP isolation, a resolver that will
+not answer, a hostile guest network. It is a way to reach the party that is
+happening in front of you, not a way to attend from somewhere else.
+
+So: relay is infrastructure, not a feature. It is never advertised, never
+sold, and never the reason to buy anything. "Listen from anywhere" is not a
+product we offer.
+
+One honesty note, because the plan should not pretend otherwise: we cannot
+cleanly tell a guest standing in the venue on cellular from someone at home
+with the link. The relay stream is reachable by whoever holds the link, and the
+link is handed out at the door. The discipline is that we do not build on that,
+market it, or charge for it.
+
+**Owed:** the Settings control is still called *Party reach*, with "Wi-Fi only"
+and "Wi-Fi + cloud" — the vocabulary of broadcasting. It should read as what it
+is: whether the party may fall back to the cloud when this Wi-Fi cannot carry
+it.
+
 ### 1.1 The party link must survive the host leaving
 
 Today the join hostname resolves to one Mac. When that Mac leaves, the link
@@ -64,10 +87,9 @@ the tail of a long batch.
 
 - A real iPhone joining on a wildcard certificate.
 - A relayed party with more phones than one simulator, on venue Wi-Fi.
-- Remote listening over 5G: Settings → Party reach → Wi-Fi + cloud, go live,
-  open the join link off the network.
-
-The third one gates anything we sell as "listen from anywhere."
+- The fallback path end to end: Settings → allow the cloud, go live, and join
+  from off the network. This proves the relay works for a venue whose Wi-Fi
+  cannot carry the room. It is a reliability test, not a feature demo.
 
 ### 1.3 LAN honesty, as actually built
 
@@ -111,9 +133,9 @@ see who is coming, and come back after to dump their photos.
 
 - **Before** — details, who is going, tickets, and the timeline already
   running.
-- **During** — the same page hands you into the party. On the venue Wi-Fi it is
-  the live room. Off it, the same timeline without the player, or with the
-  relay stream when the DJ allows it.
+- **During** — the same page hands you into the party. In the room it is the
+  live room: the stream, the wall, posting. Away from it you get the timeline
+  and no player, because the music is for the people who are there.
 - **After** — the timeline stays and people keep uploading for days. The music
   does not: no replay, no recording, no archive of the set.
 
@@ -260,9 +282,11 @@ purchase screen exists to screenshot.
 
 The Mac app may show a total. It must never take a payment that isn't IAP.
 
-**DECISION:** what Pro contains. With branding dropped, the candidates are a
-custom party link name and remote listening — and remote listening costs us
-bandwidth on every use, which argues against selling it once, forever.
+**DECISION: does Pro exist at all?** Branding is dropped and remote listening
+is not a feature, which leaves the custom party link name as its only content —
+thin for $99. The alternative is cleaner: no Pro, no IAP, and the business is
+purely a cut of the money DJs make. The IAP is already created and can sit
+unused in `MISSING_METADATA` indefinitely without harm.
 
 ---
 
@@ -272,7 +296,8 @@ Free, permanently, no caps: the party, the group, the members, the events, the
 signups. No member limit, no event limit. A cap on the thing that fills the
 room would cost more in trust than it earns.
 
-Paid is money and scale: our cut of tickets and tips, and the Pro unlock.
+Paid is money: our cut of tickets and tips. The Pro unlock is now questionable
+enough to be a decision rather than a plan — see Part 3.
 
 ---
 
@@ -283,8 +308,9 @@ Ordered across everything, with what proves each step.
 **1. Party-link survival** (Part 1.1). Small, self-contained, protects what
 already ships. *Proof: a host leaves mid-party and a new guest still joins.*
 
-**2. Field tests** (Part 1.2). Owner-dependent, and the 5G test gates selling
-remote listening. *Proof: a phone off the venue Wi-Fi hears the set.*
+**2. Field tests** (Part 1.2). Owner-dependent. *Proof: a real iPhone joins on
+a wildcard cert, and a venue whose Wi-Fi cannot carry the room still gets its
+guests onto the fallback path.*
 
 **3. Platform: groups, events, signups, email.** D1, Sign in with Apple, the
 group page, the event page, join and confirm, going/not going, invite and
@@ -305,8 +331,8 @@ appears in the member list.*
 
 **7. Merch.** A link out, on the group page and the party page.
 
-**8. Pro and the Store.** The IAP screen, then submission once macOS 27 is
-released and a Store package can be built.
+**8. The Store.** Submission once macOS 27 is released and a Store package can
+be built on a released host. Pro only if it survives its decision.
 
 ---
 
@@ -314,4 +340,4 @@ released and a Store package can be built.
 
 1. Sign in with Apple only, or Apple plus Google for members?
 2. Our percentage on tickets, and on tips.
-3. What Pro contains.
+3. Whether Pro exists at all, now that its content is down to one name field.

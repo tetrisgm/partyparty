@@ -88,24 +88,30 @@ boundary.
    recordings, no set archives, and relay state stays ephemeral. Photos and
    posts belong to the group that collected them and are never made public or
    mailed out except by the DJ's own act.
-5. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and
+5. The cloud is a FALLBACK, never a broadcast. Relay exists so guests can reach
+   the party in front of them when the venue's own network cannot carry it - AP
+   isolation, a resolver that will not answer, a hostile guest network. A club
+   does not want its night streamed to the world. Relay is infrastructure: it
+   is never advertised, never sold, and "listen from anywhere" is not a product
+   we offer.
+6. Do not modify `internal/broadcast/` autonomously. It owns ffmpeg, tee, and
    MediaMTX behavior.
-6. Email is MXroute SMTP. A member's address belongs to the group that
+7. Email is MXroute SMTP. A member's address belongs to the group that
    collected it, is exportable by that group, and is never mailed for our own
    purposes. Every send carries a one-click unsubscribe honored platform-wide.
-7. Do not restore hotspots, Internet Sharing, captive portals, DNS hijacking,
+8. Do not restore hotspots, Internet Sharing, captive portals, DNS hijacking,
    or automatic network reconfiguration.
-8. Apple guests use native HLS/AVPlayer for background and lock-screen audio.
-9. Room delay never tracks listener count; correction is per device.
-10. Store and standalone builds are isolated. Store builds are sandboxed and
+9. Apple guests use native HLS/AVPlayer for background and lock-screen audio.
+10. Room delay never tracks listener count; correction is per device.
+11. Store and standalone builds are isolated. Store builds are sandboxed and
     Apple-updated; standalone builds use a separate bundle ID and Sparkle.
-11. A party is one night, not one calendar day: storage is `parties/<id>/`,
+12. A party is one night, not one calendar day: storage is `parties/<id>/`,
     resumed while it is current and started fresh once it has gone idle. The
     folder is a keepsake, not a database - guest uploads and one index.html of
     the wall, with the journal hidden in `.state`. The app does not record the
     music: the set-recording tee was removed 2026-08-06 at the owner's request
     and must not come back without one.
-12. One party per Wi-Fi: a Mac going live where a DJ is already playing JOINS
+13. One party per Wi-Fi: a Mac going live where a DJ is already playing JOINS
     that party - same id, same wall, same link handed to guests - rather than
     starting a rival that splits the room. A party with posts on it is never
     abandoned to join another.
