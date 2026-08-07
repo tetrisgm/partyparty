@@ -9,7 +9,7 @@ import { totalForBuyer, verifyWebhook } from "../stripe.js";
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
 // either work twice or corrupt a row.
-const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql", "0005_pro.sql", "0006_handle_aliases.sql"]
+const schema = ["0001_init.sql", "0002_installs.sql", "0003_merch.sql", "0004_tickets.sql", "0005_pro.sql"]
   .map((name) => readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8")).join("\n");
 
 class Stmt {
@@ -931,11 +931,9 @@ test("the group page leads with adding a night and its sendable link", async () 
   }
 });
 
-test("renaming a group keeps the old address alive", async () => {
+test("renaming a group moves its address, and the old one stops", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
-  env.raw.prepare(`INSERT INTO group_handles (handle, group_id, created_ms) VALUES ('sundaze', ?, ?)`)
-    .run(groupId, Date.now());
   const dj = await signedInDJ(env, groupId);
   env.DL = new Map();
   env.DL.head = async (k) => (env.DL.has(k) ? {} : null);
@@ -944,17 +942,15 @@ test("renaming a group keeps the old address alive", async () => {
   const body = new FormData();
   body.append("groupName", "Sundaze");
   body.append("handle", "slowsunday");
-  const saved = await get(env, "/@sundaze/manage", {
+  assert.equal((await get(env, "/@sundaze/manage", {
     method: "POST", body, headers: { cookie: dj.cookie },
-  });
-  assert.equal(saved.status, 302);
-  assert.equal(one(env, `SELECT handle FROM groups`).handle, "slowsunday");
+  })).status, 302);
 
-  // The new address works, and so does the one already in someone's calendar.
+  assert.equal(one(env, `SELECT handle FROM groups`).handle, "slowsunday");
   assert.equal((await get(env, "/@slowsunday")).status, 200);
-  assert.equal((await get(env, "/@sundaze")).status, 200,
-    "an address people already have must not become a 404");
-  assert.equal((await get(env, "/@sundaze.ics")).status, 200);
+  assert.equal((await get(env, "/@sundaze")).status, 404);
+  // Reserved, though: an abandoned address is never handed to a stranger.
+  assert.ok(env.DL.has("broker/handle/sundaze") || env.DL.has("broker/handle/slowsunday"));
 });
 
 test("home shows what is on across groups you run and groups you follow", async () => {

@@ -509,14 +509,8 @@ function notice(title, message) {
 
 // ------------------------------------------------------------------ queries
 
-// Current name first, then anything this group used to be called. An old
-// address stays reachable forever; the page it serves is simply the group's.
 async function groupByHandle(env, handle) {
-  const direct = await env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(handle).first();
-  if (direct) return direct;
-  return env.DB.prepare(
-    `SELECT g.* FROM groups g JOIN group_handles h ON h.group_id = g.id WHERE h.handle = ?`
-  ).bind(handle).first();
+  return env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(handle).first();
 }
 
 async function upcomingEvents(env, groupId, now) {
@@ -593,9 +587,6 @@ async function createGroup(env, dj, handle, name, now) {
     return { error: "that name is taken" };
   }
   await reserveHandle(env, handle);
-  await env.DB.prepare(
-    `INSERT OR IGNORE INTO group_handles (handle, group_id, created_ms) VALUES (?, ?, ?)`
-  ).bind(handle, id, now).run();
   await env.DB.prepare(
     `INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`
   ).bind(id, dj.id, now).run();
@@ -1351,12 +1342,9 @@ export default {
               return notice("That handle is taken", "Pick another.");
             }
             await reserveHandle(env, newHandle);
-            // The old handle is NOT released, and it keeps resolving here.
-            // Links to it are already in people's messages and calendars, and
-            // handing it to someone else would point them at a stranger's night.
-            await env.DB.prepare(
-              `INSERT OR IGNORE INTO group_handles (handle, group_id, created_ms) VALUES (?, ?, ?)`
-            ).bind(newHandle, group.id, now).run();
+            // The old handle stops answering. It stays reserved, so it is never
+            // handed to a stranger, but nothing forwards: changing your address
+            // changes your address.
           }
           await env.DB.prepare(`UPDATE groups SET name = ?, bio = ?, updated_ms = ? WHERE id = ?`)
             .bind(String(form.get("groupName") || "").slice(0, 80),
@@ -1465,8 +1453,8 @@ export default {
             <input type="text" name="bio" placeholder="A line about your nights" value="${esc(group.bio || "")}">
             <button class="btn plain" type="submit">Save</button>
           </form>
-          <p class="muted">Changing the handle changes your address. The old one keeps
-          working - links to it are already in people's messages.</p>
+          <p class="muted">Changing the handle changes your address. Links to the old
+          one stop working.</p>
 
           <h2>Pair a Mac</h2>
           <p class="muted">Type the code the Mac shows, and its parties find your nights.</p>
