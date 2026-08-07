@@ -92,6 +92,14 @@ const server = http.createServer(async (request, response) => {
     posts.profile.push(body);
     if (typeof body.name === 'string' && body.name.trim()) stored.host = body.name.trim();
     if (typeof body.bio === 'string') stored.bio = body.bio;
+    // Hold the FIRST save open. Moving from the name field to the bio fires a
+    // save carrying only the name, and everything that goes wrong goes wrong
+    // while that request is in flight: a second save can be dropped, and the
+    // first one's reply can overwrite what was typed meanwhile. On a fast
+    // machine the window is too small to land in, which is exactly why this
+    // failed only on the build runner. Forcing it makes the guard honest
+    // everywhere.
+    if (posts.profile.length === 1) await new Promise((r) => setTimeout(r, 1500));
     sendJSON(response, { ok: true, name: stored.host, bio: stored.bio, avatar: stored.avatar });
     return;
   }

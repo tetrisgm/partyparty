@@ -2719,15 +2719,28 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // NO profile or link edit was ever saved (2026-08-06). Covered by
     // scripts/test-dj-console-saves.mjs, which types like a DJ.
     window.ppProfileHydrated = false;
+    // What the fields held the last time the server wrote them. A field that
+    // has moved away from this holds the DJ's own typing, and nothing may
+    // overwrite it - not even after focus has left. "Is it focused right now"
+    // was the old guard and it was not enough: a save still in flight from the
+    // PREVIOUS field came back and wiped the one just typed.
+    const profileKnown = { name: '', bio: '' };
     function renderProfile(name, bio, avatar){
       window.ppProfileHydrated = true;
       eventMeta.host = String(name || eventMeta.host || 'the DJ');
       eventMeta.bio = String(bio || '');
       eventMeta.avatar = String(avatar || '');
       const nameInput = $('profileName');
-      if (nameInput && document.activeElement !== nameInput) nameInput.value = isPlaceholderHost(eventMeta.host) ? '' : eventMeta.host;
+      const nameText = isPlaceholderHost(eventMeta.host) ? '' : eventMeta.host;
+      if (nameInput && document.activeElement !== nameInput && nameInput.value === profileKnown.name) {
+        nameInput.value = nameText;
+        profileKnown.name = nameText;
+      }
       const bioInput = $('profileBio');
-      if (bioInput && document.activeElement !== bioInput) bioInput.value = eventMeta.bio;
+      if (bioInput && document.activeElement !== bioInput && bioInput.value === profileKnown.bio) {
+        bioInput.value = eventMeta.bio;
+        profileKnown.bio = eventMeta.bio;
+      }
       const photo = $('profilePhoto');
       const has = !!eventMeta.avatar;
       if (photo) {
@@ -2864,23 +2877,46 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         status.textContent = error.message || 'remove failed';
       }
     });
-    $('saveProfileBtn').addEventListener('click', async () => {
+    // One save at a time, and never a dropped one. The button used to BE the
+    // save path, disabled for the length of the fetch - so a save asked for
+    // while another was in flight was silently discarded, and then the older
+    // save's reply overwrote the field the DJ had just filled in. Typing a
+    // name, tabbing to the bio, typing that and clicking away lost the bio
+    // twice over: never sent, then erased on screen.
+    let profileSaving = false;
+    let profileQueued = false;
+    async function saveProfileNow(){
+      if (!window.ppProfileHydrated) return;
+      if (profileSaving) { profileQueued = true; return; }
+      profileSaving = true;
+      const btn = $('saveProfileBtn');
       const status = $('profileStatus');
-      $('saveProfileBtn').disabled = true;
+      if (btn) btn.disabled = true;
+      const sent = { name: $('profileName').value.trim(), bio: $('profileBio').value.trim() };
       try {
         const r = await fetch('/api/dj-profile', { method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ name:$('profileName').value.trim(), bio:$('profileBio').value.trim() }) });
+          body:JSON.stringify(sent) });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || data.error) throw new Error(data.error || 'save failed');
+        // What we sent is now what the fields are known to hold, so the reply
+        // may refresh them - but renderProfile still skips any field the DJ has
+        // typed into since.
+        profileKnown.name = sent.name;
+        profileKnown.bio = sent.bio;
         renderProfile(data.name, data.bio, data.avatar);
         status.textContent = '';
         toast('Saved');
       } catch (error) {
         status.textContent = error.message || 'save failed';
       } finally {
-        $('saveProfileBtn').disabled = false;
+        profileSaving = false;
+        if (btn) btn.disabled = false;
+        if (profileQueued) { profileQueued = false; saveProfileNow(); }
       }
-    });
+    }
+    // The field wiring lives in a different IIFE and cannot see this function.
+    window.ppSaveProfile = saveProfileNow;
+    $('saveProfileBtn').addEventListener('click', saveProfileNow);
     const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
     function stateBadge(state){
       return '';
@@ -3301,7 +3337,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   (function(){
     const debounce = (fn, ms) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
     const commit = (id) => debounce(() => { const b = $(id); if (b && !b.disabled && window.ppProfileHydrated) b.click(); }, 700);
-    const saveProfile = commit('saveProfileBtn');
+    // Profile saves go through ppSaveProfile, which queues rather than drops
+    // when one is already in flight. Clicking the button would be dropped.
+    const saveProfile = debounce(() => { if (window.ppSaveProfile) window.ppSaveProfile(); }, 700);
     const saveLinks = commit('saveLinksBtn');
     // Enter commits the field. In the bio textarea that means NO line break -
     // Shift+Enter is the deliberate way to add one.
@@ -3314,7 +3352,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const el = $(id); if (!el) return;
       enterCommits(el);
       el.addEventListener('input', saveProfile);
-      el.addEventListener('blur', () => { const b = $('saveProfileBtn'); if (b && !b.disabled && window.ppProfileHydrated) b.click(); });
+      el.addEventListener('blur', () => { if (window.ppSaveProfile) window.ppSaveProfile(); });
     });
     const rows = $('linkRows');
     if (rows) {
