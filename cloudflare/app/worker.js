@@ -855,7 +855,7 @@ async function saveProfileForm(env, emailNorm, form, now) {
   if (wanted && wanted !== profile.handle) {
     const problem = handleProblem(wanted);
     if (problem) return { error: `That @name has to be ${problem}.`, pending };
-    if (!await handleFree(env, wanted)) {
+    if (!await handleFree(env, wanted, emailNorm)) {
       return { error: `@${wanted} is already taken - pick another.`, pending };
     }
     handle = wanted;
@@ -1201,14 +1201,50 @@ function pick(list) {
 
 // Free everywhere it has to be free: this database's two namespaces and the
 // broker's, which hands out names to Macs and knows nothing about people.
-async function handleFree(env, handle) {
+//
+// `forEmail` is the person asking, and it matters. A name is not taken from
+// somebody by their own group: a solo DJ running @shokunin IS Shokunin, and
+// telling them their own address belongs to someone else is the system failing
+// to notice they are the same person. Called without an email - minting a name
+// out of nothing - the check is strict, because an invented name must not land
+// on anybody.
+async function handleFree(env, handle, forEmail) {
   if (handleProblem(handle)) return false;
-  const taken = await env.DB.prepare(
-    `SELECT 1 AS ok FROM groups WHERE handle = ?
-     UNION ALL SELECT 1 FROM profiles WHERE handle = ?`
-  ).bind(handle, handle).first();
-  if (taken) return false;
+
+  const group = await env.DB.prepare(`SELECT id FROM groups WHERE handle = ?`).bind(handle).first();
+  if (group) {
+    if (!forEmail) return false;
+    const yours = await env.DB.prepare(
+      `SELECT 1 AS ok FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
+        WHERE gd.group_id = ? AND d.email_norm = ?`
+    ).bind(group.id, forEmail).first();
+    // Already reserved in the broker keyspace when the group claimed it, and
+    // reserved by this same person, so there is nothing further to ask.
+    return !!yours;
+  }
+
+  const person = await env.DB.prepare(
+    `SELECT email_norm FROM profiles WHERE handle = ?`
+  ).bind(handle).first();
+  if (person) return !!forEmail && person.email_norm === forEmail;
+
   return claimHandle(env, handle);
+}
+
+// The name somebody already answers to. Minting `rowdyheron` for a DJ whose
+// group is @shokunin is the product introducing them to themselves under a
+// different name; when they run exactly one group, that group's handle is the
+// address they already hand out and already own.
+async function ownHandleFor(env, emailNorm) {
+  const { results } = await env.DB.prepare(
+    `SELECT g.handle FROM groups g
+       JOIN group_djs gd ON gd.group_id = g.id
+       JOIN djs d ON d.id = gd.dj_id
+      WHERE d.email_norm = ? ORDER BY g.created_ms LIMIT 2`
+  ).bind(emailNorm).all();
+  // Two groups is two answers, and guessing between them is worse than an
+  // invented name nobody has seen.
+  return (results || []).length === 1 ? results[0].handle : "";
 }
 
 async function mintHandle(env) {
@@ -1257,18 +1293,26 @@ async function profileFor(env, emailNorm, now, fallbackName) {
     row = await env.DB.prepare(`SELECT * FROM profiles WHERE email_norm = ?`)
       .bind(emailNorm).first();
   }
-  if (row && !row.handle) {
-    const handle = await mintHandle(env);
-    try {
-      await env.DB.prepare(`UPDATE profiles SET handle = ?, updated_ms = ? WHERE email_norm = ?`)
-        .bind(handle, now, emailNorm).run();
-      await reserveHandle(env, handle);
-      row.handle = handle;
-    } catch (e) {
-      // Lost the race to another request for the same person. Whatever the
-      // other one wrote is just as good a name as this one.
-      row = await env.DB.prepare(`SELECT * FROM profiles WHERE email_norm = ?`)
-        .bind(emailNorm).first();
+  // The @name. Their own group's if they run one, an invented pair of words if
+  // they do not - and an invented one is replaced by their group's if a group
+  // turns up later, right up until they save the profile themselves. After
+  // that the name is theirs and nothing here touches it: `saved_ms` is the line
+  // between a name we guessed and a name they chose.
+  if (row && (!row.handle || !row.saved_ms)) {
+    const own = await ownHandleFor(env, emailNorm);
+    const wanted = own || row.handle || await mintHandle(env);
+    if (wanted !== row.handle) {
+      try {
+        await env.DB.prepare(`UPDATE profiles SET handle = ?, updated_ms = ? WHERE email_norm = ?`)
+          .bind(wanted, now, emailNorm).run();
+        await reserveHandle(env, wanted);
+        row.handle = wanted;
+      } catch (e) {
+        // Lost the race to another request for the same person. Whatever the
+        // other one wrote is just as good a name as this one.
+        row = await env.DB.prepare(`SELECT * FROM profiles WHERE email_norm = ?`)
+          .bind(emailNorm).first();
+      }
     }
   }
   if (row) row.linksObj = parseLinks(row.links);
@@ -1910,7 +1954,7 @@ export default {
       if (profile && wanted === profile.handle) return json(200, { free: true, mine: true });
       const problem = handleProblem(wanted);
       if (problem) return json(200, { free: false, why: problem });
-      return await handleFree(env, wanted)
+      return await handleFree(env, wanted, dj.email_norm)
         ? json(200, { free: true })
         : json(200, { free: false, why: "already taken" });
     }

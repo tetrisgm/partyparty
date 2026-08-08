@@ -1472,6 +1472,60 @@ test("a name from the provider is taken whenever it arrives, not only the first 
   assert.equal(one(env, `SELECT name FROM profiles`).name, "Ada");
 });
 
+test("your own group's name is your name, not somebody else's", async () => {
+  const { env, send, read } = await signedIn();
+  const minted = one(env, `SELECT handle FROM profiles`).handle;
+
+  // Making a group re-points an @name nobody has chosen yet. A DJ running
+  // @shokunin IS Shokunin; introducing them to themselves as @rowdyheron is
+  // the product not noticing they are the same person.
+  await send("/manage", { name: "Shokunin", handle: "shokunin" });
+  const home = await (await read("/home")).text();
+  assert.equal(one(env, `SELECT handle FROM profiles`).handle, "shokunin");
+  assert.notEqual(minted, "shokunin");
+  assert.match(home, /value="shokunin"/);
+
+  // And it reads as available rather than taken by itself.
+  const free = JSON.parse(await (await read("/api/v1/handle-free?h=shokunin")).text());
+  assert.equal(free.free, true, "your own address is not taken from you");
+
+  // Saving it is a save, not a collision.
+  const saved = await send("/settings", { name: "Shokunin", handle: "shokunin" });
+  assert.equal(saved.status, 302);
+  assert.equal(one(env, `SELECT handle FROM profiles`).handle, "shokunin");
+
+  // Somebody else's group is still somebody else's.
+  seedGroup(env, "sundaze");
+  const theirs = JSON.parse(await (await read("/api/v1/handle-free?h=sundaze")).text());
+  assert.equal(theirs.free, false);
+  assert.match(await (await send("/settings", { handle: "sundaze" })).text(), /already taken/);
+  assert.equal(one(env, `SELECT handle FROM profiles`).handle, "shokunin");
+});
+
+test("a chosen @name is never re-pointed under them", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/settings", { name: "Ada", handle: "adalove" });
+  assert.ok(one(env, `SELECT saved_ms FROM profiles`).saved_ms);
+
+  // Making a group afterwards must not quietly rename the person: once they
+  // have chosen, the name is theirs.
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
+  await read("/home");
+  assert.equal(one(env, `SELECT handle FROM profiles`).handle, "adalove");
+});
+
+test("two groups is two answers, so it keeps the invented name", async () => {
+  const { env, send, read } = await signedIn();
+  const minted = one(env, `SELECT handle FROM profiles`).handle;
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
+  await send("/manage", { name: "Basement", handle: "basement" });
+  await read("/home");
+  assert.equal(one(env, `SELECT handle FROM profiles`).handle, minted,
+    "guessing between two is worse than a name nobody has seen");
+  // Either one is still theirs to take by hand.
+  assert.equal(JSON.parse(await (await read("/api/v1/handle-free?h=basement")).text()).free, true);
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();
