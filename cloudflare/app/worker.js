@@ -2310,16 +2310,43 @@ function partyForMac(event, group, base) {
   };
 }
 
+// Whose Mac this is. The install is bound to a PERSON, so this is the whole of
+// "who is asking" - no group in the middle, and no question for the DJ to
+// answer at sign-in beyond which account they are.
+async function installOwner(env, installId) {
+  const link = await env.DB.prepare(
+    `SELECT email_norm FROM install_accounts WHERE install_id = ?`
+  ).bind(String(installId || "")).first();
+  if (!link) return null;
+  return env.DB.prepare(`SELECT * FROM djs WHERE email_norm = ?`)
+    .bind(link.email_norm).first();
+}
+
+// Where this Mac's parties go. A party needs an address, so it needs a group -
+// but that is this code's problem to solve, not something to interrupt a DJ
+// about. Resolved from the account and made from their @name if they have none,
+// exactly as the web does when somebody adds their first party.
+async function installGroup(env, installId, now) {
+  const dj = await installOwner(env, installId);
+  if (!dj) return null;
+  return homeGroupFor(env, dj, now);
+}
+
 // Where a person's own parties live. Everybody who signs in gets one, made on
 // demand from their @name, so adding a party never begins with "first create a
 // group" - a concept the personal tracker does not need them to hold.
 async function homeGroupFor(env, dj, now) {
+  const profile = await profileFor(env, dj.email_norm, now, dj.name);
+  // The one at their own @name is home, whenever it exists. Plain
+  // oldest-first put somebody whose first group was a side project - "early
+  // testers", made once and forgotten - into that side project every time
+  // they added a party, which is the wrong place and reads as a bug.
   const existing = await env.DB.prepare(
     `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id
-      WHERE d.dj_id = ? ORDER BY g.created_ms LIMIT 1`
-  ).bind(dj.id).first();
+      WHERE d.dj_id = ?
+      ORDER BY CASE WHEN g.handle = ? THEN 0 ELSE 1 END, g.created_ms LIMIT 1`
+  ).bind(dj.id, profile.handle).first();
   if (existing) return existing;
-  const profile = await profileFor(env, dj.email_norm, now, dj.name);
   let made = await createGroup(env, dj, profile.handle, profile.name || profile.handle, now);
   if (made.error) {
     // Their @name is somehow unusable as a group name. Mint a fresh one rather
@@ -2788,13 +2815,15 @@ export default {
       const body = await readJson(request, 4096);
       if (!body) return json(400, { error: "bad json" });
       if (!await installAuth(env, body.id, body.secret)) return json(403, { error: "bad install auth" });
-      const existing = await env.DB.prepare(
-        `SELECT group_id FROM install_groups WHERE install_id = ?`
-      ).bind(String(body.id)).first();
-      if (existing) {
-        const group = await env.DB.prepare(`SELECT handle, name FROM groups WHERE id = ?`)
-          .bind(existing.group_id).first();
-        return json(200, { linked: true, handle: group && group.handle, name: group && group.name });
+      // Already signed in? Answer with the PERSON. The console shows this as
+      // "you are signed in", and who they are is their profile, not the name of
+      // some group they once made.
+      const owner = await installOwner(env, body.id);
+      if (owner) {
+        const profile = await profileFor(env, owner.email_norm, now, owner.name);
+        return json(200, {
+          linked: true, handle: profile.handle, name: profile.name || profile.handle,
+        });
       }
       const code = pairingCode();
       await env.DB.prepare(
@@ -2900,12 +2929,10 @@ export default {
       if (!body) return json(400, { error: "bad json" });
       if (!await installAuth(env, body.id, body.secret)) return json(403, { error: "bad install auth" });
 
-      const owner = await env.DB.prepare(
-        `SELECT d.email_norm FROM install_groups ig
-           JOIN group_djs gd ON gd.group_id = ig.group_id AND gd.role = 'owner'
-           JOIN djs d ON d.id = gd.dj_id
-          WHERE ig.install_id = ?`
-      ).bind(String(body.id)).first();
+      // Straight to the person. This used to join through the Mac's group to
+      // reach the DJ who owned it - a group in the middle of a question that
+      // was only ever about who this Mac belongs to.
+      const owner = await installOwner(env, body.id);
       // Not paired to anything. The console keeps whatever it has locally,
       // which is the whole behaviour of an unpaired Mac.
       if (!owner) return json(200, { linked: false });
@@ -2959,12 +2986,7 @@ export default {
       if (!await installAuth(env, form.get("id"), form.get("secret"))) {
         return json(403, { error: "bad install auth" });
       }
-      const owner = await env.DB.prepare(
-        `SELECT d.email_norm FROM install_groups ig
-           JOIN group_djs gd ON gd.group_id = ig.group_id AND gd.role = 'owner'
-           JOIN djs d ON d.id = gd.dj_id
-          WHERE ig.install_id = ?`
-      ).bind(String(form.get("id"))).first();
+      const owner = await installOwner(env, form.get("id"));
       if (!owner) return json(200, { linked: false });
 
       await profileFor(env, owner.email_norm, now);
@@ -3000,14 +3022,10 @@ export default {
         if (!await installAuth(env, body.id, body.secret)) {
           return json(403, { error: "bad install auth" });
         }
-        const link = await env.DB.prepare(
-          `SELECT group_id FROM install_groups WHERE install_id = ?`
-        ).bind(String(body.id)).first();
         // Not signed in on this Mac yet. Not an error - there is simply no
-        // account whose parties these would be.
-        if (!link) return json(200, { linked: false, parties: [] });
-        const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-          .bind(link.group_id).first();
+        // account whose parties these would be. Signed in, the group is
+        // resolved from the account and made on demand if they have none.
+        const group = await installGroup(env, body.id, now);
         if (!group) return json(200, { linked: false, parties: [] });
 
         // Everything this account has, so the Mac can open one made on the web.
@@ -3076,17 +3094,15 @@ export default {
       if (!install) return json(403, { error: "bad install auth" });
       if (!PARTY_ID_RE.test(String(body.partyId || ""))) return json(400, { error: "bad party id" });
 
-      const link = await env.DB.prepare(
-        `SELECT group_id FROM install_groups WHERE install_id = ?`
-      ).bind(String(body.id)).first();
-      if (!link) return json(200, { bound: false, reason: "this Mac is not linked to a group" });
+      const bindGroup = await installGroup(env, body.id, now);
+      if (!bindGroup) return json(200, { bound: false, reason: "this Mac is not signed in" });
 
       const window = 12 * 60 * 60 * 1000;
       const night = await env.DB.prepare(
         `SELECT * FROM events WHERE group_id = ? AND state = 'announced'
            AND starts_ms IS NOT NULL AND starts_ms > ? AND starts_ms < ?
          ORDER BY ABS(starts_ms - ?) LIMIT 1`
-      ).bind(link.group_id, now - window, now + window, now).first();
+      ).bind(bindGroup.id, now - window, now + window, now).first();
       if (!night) return json(200, { bound: false, reason: "no night on now" });
 
       // First Mac to claim it wins, and a night already tied to another party
@@ -3099,8 +3115,7 @@ export default {
         await env.DB.prepare(`UPDATE events SET party_id = ?, state = 'live', updated_ms = ? WHERE id = ?`)
           .bind(String(body.partyId), now, night.id).run();
       }
-      const group = await env.DB.prepare(`SELECT handle FROM groups WHERE id = ?`).bind(link.group_id).first();
-      return json(200, { bound: true, slug: night.slug, handle: group && group.handle, title: night.title });
+      return json(200, { bound: true, slug: night.slug, handle: bindGroup.handle, title: night.title });
     }
 
     // ---- sign-in ----------------------------------------------------------
@@ -3255,78 +3270,33 @@ export default {
         return html(200, signInPage(env, "Sign in to link this Mac", path));
       }
 
-      const { results } = await env.DB.prepare(
-        `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id
-          WHERE d.dj_id = ? ORDER BY g.created_ms`
-      ).bind(dj.id).all();
-      const mine = results || [];
-
-      if (request.method === "POST") {
-        const form = await request.formData().catch(() => null);
-        if (!form) return notice("That did not work", "Try again.");
-        let groupId = String(form.get("group") || "");
-        if (!groupId) {
-          // No group yet, so making one is part of linking rather than a
-          // separate errand. Their @name is the obvious address.
-          const profile = await profileFor(env, dj.email_norm, now, dj.name);
-          const made = await createGroup(env, dj,
-            normalizeHandle(form.get("handle")) || profile.handle,
-            String(form.get("name") || "").slice(0, 80) || profile.name || profile.handle, now);
-          if (made.error) return notice("That name will not work", made.error);
-          groupId = made.id;
-        } else if (!mine.some((g) => g.id === groupId)) {
-          return notice("Not yours", "That is not one of your groups.");
-        }
-        await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`)
-          .bind(now, match[1]).run();
-        await env.DB.prepare(
-          `INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)
-           ON CONFLICT(install_id) DO UPDATE SET group_id = excluded.group_id,
-             linked_ms = excluded.linked_ms`
-        ).bind(code.install_id, groupId, now).run();
-        const group = await env.DB.prepare(`SELECT handle, name FROM groups WHERE id = ?`)
-          .bind(groupId).first();
-        return html(200, page("This Mac is yours", `
-          <h1>Done</h1>
-          <p>This Mac is signed in as <b>${esc(group.name || group.handle)}</b>. Your name and
-          photo are already in the app, and anything you change in either place shows up in
-          the other.</p>
-          <p class="muted">You can close this tab and go back to the Mac.</p>
-          <p><a class="btn plain" href="/@${esc(group.handle)}/manage">Open the group</a></p>
-        `, "", "", true));
-      }
+      // Signing in IS the linking. There is no question to answer: this Mac
+      // belongs to the person who just proved who they are. It used to ask
+      // which of your groups to attach it to, which is a question about a
+      // concept most people do not have, on a screen whose only job is "yes,
+      // that is me".
+      await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`)
+        .bind(now, match[1]).run();
+      await env.DB.prepare(
+        `INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?, ?, ?)
+         ON CONFLICT(install_id) DO UPDATE SET email_norm = excluded.email_norm,
+           linked_ms = excluded.linked_ms`
+      ).bind(code.install_id, dj.email_norm, now).run();
 
       const profile = await profileFor(env, dj.email_norm, now, dj.name);
-      const who = profile.name || dj.name || "@" + profile.handle;
-      return html(200, page("Link this Mac", `
-        <h1>Link this Mac</h1>
-        <p class="muted">Signed in as ${esc(who)}. This is the Mac that asked, and the
-        request expires in a few minutes.</p>
-        ${mine.length
-          ? `<form method="post" action="${esc(path)}">
-              ${mine.length === 1
-                ? `<input type="hidden" name="group" value="${esc(mine[0].id)}">
-                   <button class="actionbar" type="submit">
-                     <span class="tile">\u{1F5A5}️</span>
-                     <span class="lines">Link it to ${esc(mine[0].name || mine[0].handle)}
-                       <small>@${esc(mine[0].handle)}</small></span>
-                   </button>`
-                : mine.map((g) => `<button class="actionbar quiet" type="submit" name="group"
-                     value="${esc(g.id)}" style="margin-bottom:8px">
-                     <span class="tile">\u{1F5A5}️</span>
-                     <span class="lines">${esc(g.name || g.handle)}<small>@${esc(g.handle)}</small></span>
-                   </button>`).join("")}
-            </form>`
-          : `<p>You do not run a group yet. Linking this Mac makes one, at your own @name.</p>
-             <form class="newnight" method="post" action="${esc(path)}">
-               <input type="text" name="name" placeholder="What are your nights called?"
-                 value="${esc(profile.name || "")}">
-               <input type="text" name="handle" placeholder="handle"
-                 value="${esc(profile.handle || "")}">
-               <button class="btn" type="submit">Link this Mac and start the group</button>
-             </form>`}
-        <p class="muted" style="margin-top:28px">Not expecting this? Close the tab and nothing
-        happens - the request expires on its own.</p>
+      return html(200, page("This Mac is yours", `
+        <div class="you"><div class="yourow" style="align-items:center">
+          ${personDisc(profile, "big")}
+          <div class="grow" style="gap:2px">
+            <b style="font-size:16px">${esc(profile.name || "@" + profile.handle)}</b>
+            <span class="muted">@${esc(profile.handle)}</span>
+          </div>
+        </div></div>
+        <h1>That is you</h1>
+        <p>This Mac is signed in as you. Your name and photo are already in the
+        app, and anything you change in either place shows up in the other.</p>
+        <p class="muted">You can close this tab and go back to the Mac.</p>
+        <p><a class="btn plain" href="/home">Your parties</a></p>
       `, "", "", true));
     }
 
@@ -3923,11 +3893,15 @@ export default {
           ).bind(pair, now).first();
           if (!code) return notice("That code has expired", "The Mac shows a fresh one every few minutes.");
           await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`).bind(now, pair).run();
+          // Same rule as the link page: the Mac becomes the PERSON'S, not this
+          // group's. Typing the code here is just another way of saying "that
+          // Mac is mine" from a page you happened to already have open.
           await env.DB.prepare(
-            `INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)
-             ON CONFLICT(install_id) DO UPDATE SET group_id = excluded.group_id, linked_ms = excluded.linked_ms`
-          ).bind(code.install_id, group.id, now).run();
-          return notice("That Mac is yours", `Its parties will find ${group.name || group.handle}'s nights.`);
+            `INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?, ?, ?)
+             ON CONFLICT(install_id) DO UPDATE SET email_norm = excluded.email_norm,
+               linked_ms = excluded.linked_ms`
+          ).bind(code.install_id, dj.email_norm, now).run();
+          return notice("That Mac is yours", "It is signed in as you.");
         }
         const say = String((form && form.get("say")) || "");
         if (say) {

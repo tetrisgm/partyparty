@@ -520,7 +520,7 @@ const api = (env, path, body) => worker.fetch(new Request("https://partyparty.pa
   method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" },
 }), env);
 
-test("a Mac pairs to a group with a code the DJ can read off the screen", async () => {
+test("a Mac pairs to the PERSON, with a code the DJ can read off the screen", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
   const mac = macEnv(env);
@@ -541,7 +541,11 @@ test("a Mac pairs to a group with a code the DJ can read off the screen", async 
   const body = new FormData();
   body.append("pair", asked.code.toLowerCase()); // typed in lowercase, still works
   await get(env, "/@sundaze/manage", { method: "POST", body, headers: { cookie: `pp_s=${secret}` } });
-  assert.equal(one(env, `SELECT group_id FROM install_groups`).group_id, groupId);
+  // The Mac belongs to whoever signed in, not to one of their groups. It used
+  // to ask which group to attach it to - a question about a concept the person
+  // may not have, on a screen whose only job is "yes, that is me".
+  assert.equal(one(env, `SELECT email_norm FROM install_accounts`).email_norm, "dj@example.com");
+  assert.equal(rows(env, `SELECT * FROM install_groups`).length, 0, "no group binding is written");
 
   // A code is single use, so a screenshot in a group chat is not a key.
   const again = new FormData();
@@ -559,8 +563,15 @@ test("a party finds tonight's night by itself, and never steals another one", as
   const env = makeEnv();
   const groupId = seedGroup(env);
   const mac = macEnv(env);
-  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)`)
-    .run(mac.id, groupId, Date.now());
+  // Signed in as the person who runs this group - the Mac's group is resolved
+  // from the account, not stored against the install.
+  const djId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
+    .run(djId, "dj@example.com", "DJ", Date.now());
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
+    .run(groupId, djId, Date.now());
+  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
+    .run(mac.id, "dj@example.com", Date.now());
   const partyId = "2026-08-06-2200-ab12";
 
   const nothing = await (await api(env, "/api/v1/party/bind", { ...mac, partyId })).json();
@@ -575,8 +586,8 @@ test("a party finds tonight's night by itself, and never steals another one", as
   // Another Mac, another party, same night: two rooms merging walls by
   // accident is worse than one wall staying local.
   const other = macEnv(env, "112233445566", "other");
-  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)`)
-    .run(other.id, groupId, Date.now());
+  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
+    .run(other.id, "dj@example.com", Date.now());
   const refused = await (await api(env, "/api/v1/party/bind", { ...other, partyId: "2026-08-06-2300-cd34" })).json();
   assert.equal(refused.bound, false);
 });
@@ -1184,8 +1195,13 @@ const signedIn = async () => {
 const linkedInstall = async (env, handle) => {
   const install = "aabbccddeeff";
   await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
-  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
-    .run(install, one(env, `SELECT id FROM groups WHERE handle = ?`, handle).id, Date.now());
+  // Bound to the PERSON who runs that group. Which group the Mac's parties
+  // land in is resolved from the account, so this is the whole binding.
+  const owner = one(env, `SELECT d.email_norm FROM groups g
+      JOIN group_djs gd ON gd.group_id = g.id JOIN djs d ON d.id = gd.dj_id
+     WHERE g.handle = ?`, handle);
+  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
+    .run(install, owner.email_norm, Date.now());
   return { id: install, secret: "sec" };
 };
 
@@ -1574,8 +1590,10 @@ const asInstall = async (env, { linked = true } = {}) => {
       method: "POST", body, headers: { cookie: `pp_s=${session[1]}` },
     }), env);
     groupId = one(env, `SELECT id FROM groups`).id;
-    env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
-      .run(install, groupId, Date.now());
+    const owner = one(env, `SELECT d.email_norm FROM group_djs gd
+        JOIN djs d ON d.id = gd.dj_id WHERE gd.group_id = ?`, groupId);
+    env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
+      .run(install, owner.email_norm, Date.now());
   }
   const call = async (path, extra) => {
     const r = await worker.fetch(new Request("https://partyparty.party" + path, {
@@ -1612,6 +1630,65 @@ test("every Mac route refuses a caller it cannot authenticate", async () => {
       assert.ok(text.length && text.startsWith("{"), `${path} did not answer with JSON`);
     }
   }
+});
+
+test("signing in on the Mac is the whole of it - no group to choose", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const { session } = await signIn(env);
+  const cookie = { cookie: `pp_s=${session[1]}` };
+  const install = "aabbccddeeff";
+  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
+
+  const asked = await (await api(env, "/api/v1/install/code", { id: install, secret: "sec" })).json();
+  assert.equal(asked.linked, false);
+
+  // The link page asks nothing. It used to list your groups and make you pick
+  // one, which is a question about a concept most people do not have.
+  const page = await (await get(env, `/link/${asked.code}`, { headers: cookie })).text();
+  assert.ok(!/Link it to|which of your groups|start the group/i.test(page),
+    "the link page must not ask which group");
+  assert.match(page, /That is you/);
+
+  // And it is the person that got bound, not a group.
+  const bound = one(env, `SELECT * FROM install_accounts WHERE install_id = ?`, install);
+  assert.ok(bound, "the Mac is bound to an account");
+  assert.equal(rows(env, `SELECT * FROM install_groups`).length, 0);
+
+  // Asking again says who they are, by their @name - not by a group's.
+  const linked = await (await api(env, "/api/v1/install/code", { id: install, secret: "sec" })).json();
+  assert.equal(linked.linked, true);
+  assert.equal(linked.handle, one(env, `SELECT handle FROM profiles`).handle);
+
+  // A code is single use even now that it asks nothing.
+  assert.match(await (await get(env, `/link/${asked.code}`, { headers: cookie })).text(), /expired/i);
+});
+
+test("a Mac's parties go to your own @name, not to a side project", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const { session } = await signIn(env);
+  const cookie = { cookie: `pp_s=${session[1]}` };
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+  const djId = one(env, `SELECT id FROM djs`).id;
+
+  // A side project made FIRST, and their own group after it. Plain
+  // oldest-first would send every party from the Mac into the side project.
+  const older = seedGroup(env, "earlytesters");
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
+    .run(older, djId, Date.now() - 86400000);
+  const body = new FormData();
+  body.append("name", "Mine");
+  body.append("handle", handle);
+  await get(env, "/manage", { method: "POST", body, headers: cookie });
+
+  const install = "aabbccddeeff";
+  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
+  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
+    .run(install, one(env, `SELECT email_norm FROM djs`).email_norm, Date.now());
+
+  const made = await (await api(env, "/api/v1/party/create",
+    { id: install, secret: "sec", title: "From the booth" })).json();
+  assert.equal(made.party.handle, handle,
+    `a party from the Mac landed in @${made.party.handle}, not the DJ's own @${handle}`);
 });
 
 test("a party made on the Mac is the same row a party made on the web is", async () => {
@@ -1713,8 +1790,13 @@ test("an edit on either client lands on the one record, and only where asked", a
   const outsider = "ffeeddccbbaa";
   await env.DL.put(`broker/${outsider}.json`, JSON.stringify({ secret: "s2", hostLabel: "other" }));
   const otherGroup = seedGroup(env, "basement");
-  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
-    .run(outsider, otherGroup, Date.now());
+  const strangerId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
+    .run(strangerId, "stranger@example.com", "Stranger", Date.now());
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
+    .run(otherGroup, strangerId, Date.now());
+  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
+    .run(outsider, "stranger@example.com", Date.now());
   const refused = await worker.fetch(new Request("https://partyparty.party/api/v1/party/update", {
     method: "POST",
     body: JSON.stringify({ id: outsider, secret: "s2", partyKey: key, title: "Mine now" }),
