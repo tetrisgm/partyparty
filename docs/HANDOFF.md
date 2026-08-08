@@ -29,8 +29,23 @@ Three things worth knowing before changing any of it:
   only the Mac's copy, so a party with a page ended the night under two names.
 
 Migrations `0009_people.sql` (people, party_people, party_notes) and
-`0010_party_details.sql` (events.links, live_url, live_ms). See Owed: production
-D1 has neither, and the worker on main needs them.
+`0010_party_details.sql` (events.links, live_url, live_ms), both applied to
+production D1 on 2026-08-08. There is no scripted deploy for `cloudflare/app`,
+so migrations do not ride along with one: `wrangler d1 migrations apply
+partyparty-app --remote` has to run BEFORE `wrangler deploy` in that directory,
+or the home page and every party page fail on their first query.
+
+DEPLOYED 2026-08-08: partyparty-app version 5a5ff09d, partyparty-site version
+235ea835, and TestFlight build 268 (125.47), which is IN_BETA_TESTING for the
+internal group.
+
+Two App Store Connect facts worth not rediscovering: `asc builds upload` wants
+the NUMERIC app id (6794880742), not the bundle id, and refuses a build number
+already on the record - 267 was up, so the package had to be rebuilt as 268.
+And an internal group cannot be added to a build at all ("Cannot add internal
+group to a build"): internal testers get every processed build automatically,
+so a VALID build with autoNotifyEnabled is already delivered. Only external
+groups need `add-groups`, and those need a beta review submission.
 
 A TRAP THIS SESSION WALKED INTO, now guarded: two workers share the zone, and
 which paths belong to the platform is declared in `cloudflare/app/wrangler.jsonc`
@@ -367,15 +382,6 @@ None recorded.
 
 ## Owed
 
-- The platform worker on `main` reads columns and tables production D1 does not
-  have yet: `0009_people.sql` (people, party_people, party_notes) and
-  `0010_party_details.sql` (events.links, live_url, live_ms). There is no
-  scripted deploy for `cloudflare/app`, so migrations do not ride along with
-  one - `npx wrangler d1 migrations apply partyparty-app --remote` has to run
-  BEFORE `npx wrangler deploy` in that directory, or the home page and every
-  party page fail on their first query. Neither has been run: deploying is the
-  owner's call, and this shell has no D1-scoped API token
-  (`wrangler d1 migrations list --remote` answers 7403).
 - Correction to Apple DTS: an earlier support message said the host was
   "macOS 26.0". It is macOS 27.0 build `26A5388g`.
 - Field tests no simulator can stand in for: a real-iPhone wildcard-cert join,
