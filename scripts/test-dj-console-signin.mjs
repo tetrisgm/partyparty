@@ -96,7 +96,14 @@ await page.goto(`${base}/dj`, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('.macdoor:not([hidden]) .macssobtn', { timeout: 10000 });
 
 await page.click('.macssobtn[data-provider="apple"]');
-await page.waitForFunction(() => document.getElementById('macDoorSays')?.textContent?.trim(), null, { timeout: 5000 });
+// Wait for the OUTCOME, not for the status line to be non-empty: the click
+// sets "Opening your browser…" synchronously, before the link has even been
+// fetched. Asserting at that moment passes on a fast machine and fails on the
+// build runner, which is how this test failed its own first merge gate.
+await page.waitForFunction(
+  () => /Finish in the browser|could not open/.test(
+    document.getElementById('macDoorSays')?.textContent || ''),
+  null, { timeout: 10000 });
 
 const says = (await page.textContent('#macDoorSays'))?.trim();
 const viaWindowOpen = await page.evaluate(() => window.__windowOpened);
