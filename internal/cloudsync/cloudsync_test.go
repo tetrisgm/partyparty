@@ -15,6 +15,7 @@ type request struct {
 	Posts   []Post `json:"posts"`
 	ID      string `json:"id"`
 	Secret  string `json:"secret"`
+	JoinURL string `json:"joinUrl"`
 }
 
 func TestSyncPushesOnceAndAdvancesOnlyPastWhatArrived(t *testing.T) {
@@ -39,6 +40,7 @@ func TestSyncPushesOnceAndAdvancesOnlyPastWhatArrived(t *testing.T) {
 	client.HTTP = server.Client()
 
 	got, err := client.Sync(context.Background(), "2026-08-06-2200-ab12",
+		"https://early-heron.party.partyparty.party:8443/",
 		[]Post{{ID: "l1", Author: "Guest", Body: "dancefloor", CreatedMs: 100}})
 	if err != nil {
 		t.Fatal(err)
@@ -49,13 +51,18 @@ func TestSyncPushesOnceAndAdvancesOnlyPastWhatArrived(t *testing.T) {
 	if seen[0].Since != 0 || len(seen[0].Posts) != 1 {
 		t.Fatalf("first request = %+v", seen[0])
 	}
+	// The link a guest opens rides along with the sync, because that call is
+	// also what tells the platform this room is still playing.
+	if seen[0].JoinURL != "https://early-heron.party.partyparty.party:8443/" {
+		t.Fatalf("join URL did not travel: %q", seen[0].JoinURL)
+	}
 
 	// The cursor moves to the newest post actually received - not to "now",
 	// which would skip anything written while the request was in flight.
 	if client.Since() != 500 {
 		t.Fatalf("cursor = %d, want 500", client.Since())
 	}
-	if _, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", nil); err != nil {
+	if _, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if seen[1].Since != 500 {
@@ -76,7 +83,7 @@ func TestSyncOnAnUnboundPartyIsQuiet(t *testing.T) {
 
 	// Most parties are just a Mac in a room. That is not an error and must not
 	// look like one.
-	posts, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", nil)
+	posts, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", "", nil)
 	if err != nil {
 		t.Fatalf("an unbound party must not error: %v", err)
 	}
@@ -109,7 +116,7 @@ func TestNotConfiguredNeverCallsOut(t *testing.T) {
 	// A Mac that has never registered must not make requests with empty
 	// credentials; it should simply have nothing to sync.
 	client := New("", "", "")
-	if _, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", nil); err == nil {
+	if _, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", "", nil); err == nil {
 		t.Fatal("expected an error rather than a request with no credentials")
 	}
 	if _, err := client.Bind(context.Background(), "2026-08-06-2200-ab12"); err == nil {
@@ -126,7 +133,7 @@ func TestServerErrorsSurfaceRatherThanLoseTheCursor(t *testing.T) {
 	client.HTTP = server.Client()
 	client.Resume(900)
 
-	if _, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", nil); err == nil {
+	if _, err := client.Sync(context.Background(), "2026-08-06-2200-ab12", "", nil); err == nil {
 		t.Fatal("a 502 must be reported")
 	}
 	if client.Since() != 900 {

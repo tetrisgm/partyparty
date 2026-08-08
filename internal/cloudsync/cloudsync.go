@@ -358,7 +358,7 @@ type syncResponse struct {
 // time. Pushing is idempotent by post id, so a retry after a dropped
 // connection costs nothing and duplicates nothing - which is what makes it
 // safe to just try again on a venue's bad Wi-Fi.
-func (c *Client) Sync(ctx context.Context, partyID string, outgoing []Post) ([]Post, error) {
+func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post) ([]Post, error) {
 	if !c.ready() {
 		return nil, errors.New("cloudsync: not configured")
 	}
@@ -369,7 +369,7 @@ func (c *Client) Sync(ctx context.Context, partyID string, outgoing []Post) ([]P
 	var out syncResponse
 	if err := c.post(ctx, "/api/v1/party/posts", map[string]any{
 		"id": c.InstallID, "secret": c.Secret, "partyId": partyID,
-		"posts": outgoing, "since": since,
+		"joinUrl": joinURL, "posts": outgoing, "since": since,
 	}, &out); err != nil {
 		return nil, err
 	}
@@ -412,8 +412,13 @@ func (c *Client) Resume(since int64) {
 // Hooks are the party, supplied as functions so this package never imports the
 // event store and the store never learns how it reaches the cloud.
 type Hooks struct {
-	PartyID  func() string
-	Live     func() bool
+	PartyID func() string
+	Live    func() bool
+	// JoinURL is the link a guest opens to hear this room. It travels with the
+	// timeline sync rather than on a channel of its own, so the platform learns
+	// where to send a listener at exactly the moments it learns the room is
+	// still playing - one heartbeat, one truth.
+	JoinURL  func() string
 	Outgoing func(limit int) []Post
 	Merge    func(id, author, body string, createdMs int64) (bool, error)
 	Bound    func(url string)
@@ -540,7 +545,11 @@ func (c *Client) Run(ctx context.Context, h Hooks, every time.Duration) {
 		if h.Outgoing != nil {
 			outgoing = h.Outgoing(100)
 		}
-		incoming, err := c.Sync(ctx, partyID, outgoing)
+		var joinURL string
+		if h.JoinURL != nil {
+			joinURL = h.JoinURL()
+		}
+		incoming, err := c.Sync(ctx, partyID, joinURL, outgoing)
 		if err != nil {
 			logf("cloudsync: %v", err)
 			continue

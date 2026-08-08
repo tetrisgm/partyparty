@@ -320,6 +320,14 @@ func main() {
 			go sync.Run(peerCtx, cloudsync.Hooks{
 				PartyID: func() string { return events.Identity().ID },
 				Live:    func() bool { return bc != nil && bc.Status().State == "live" },
+				// So the party's page can offer "listen" while the room is
+				// actually playing, and stop offering it when it is not.
+				JoinURL: func() string {
+					if handler == nil {
+						return ""
+					}
+					return handler.GuestJoinURL()
+				},
 				Outgoing: func(limit int) []cloudsync.Post {
 					local := events.OutgoingPosts(limit)
 					out := make([]cloudsync.Post, 0, len(local))

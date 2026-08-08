@@ -557,8 +557,9 @@ border-radius:var(--r-md);padding:18px;margin:0 0 14px}
 .yourow{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
 .yourow .grow{flex:1 1 260px;min-width:0;display:grid;gap:10px}
 .twoup{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.avatarpick{position:relative;flex:0 0 76px;width:76px;height:76px;cursor:pointer;
-display:block}
+/* Sized by what is in it, not pinned to the disc: a fixed 76px box left the
+   "Add a photo" line hanging outside it, over whatever wrapped underneath. */
+.avatarpick{position:relative;flex:0 0 76px;width:76px;cursor:pointer;display:block}
 .avatarpick .disc{width:76px;height:76px;border-radius:50%;overflow:hidden;
 display:grid;place-items:center;background:linear-gradient(135deg,#ff2d6f,#ff8a4c);
 color:#fff;font-size:26px;font-weight:800;border:1px solid var(--separator)}
@@ -586,8 +587,56 @@ border-radius:0;font-size:14px}
 /* What the @name field has to say about itself, while it is still in front of
    the person typing it. */
 .handlesays{font-size:13px;font-weight:650;color:var(--label-tertiary)}
+/* A party in a list: the date above the name, the way a diary reads. */
+.partyrow{display:flex;align-items:center;gap:14px}
+.partyrow .grow{min-width:0}
+.tag{display:inline-block;margin:6px 6px 0 0;padding:2px 9px;border-radius:var(--r-pill);
+font-size:11px;font-weight:700;letter-spacing:.02em;background:var(--fill);
+color:var(--label-secondary)}
+.tag.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--separator)}
+.tag.live{background:rgba(255,45,111,.16);color:var(--accent)}
+.tracker{margin-top:44px;padding-top:8px;border-top:1px solid var(--separator)}
+.wentrow{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:650}
+.wentrow input{width:20px;height:20px;accent-color:var(--accent)}
+.notemini{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.notemini input[type=text]{flex:1 1 200px;min-width:0;width:auto;min-height:36px;
+padding:7px 12px;font-size:13px}
+.who-list li{align-items:flex-start}
+.eventfield{display:grid;gap:6px}
+.eventfield span{font-size:12px;font-weight:700;letter-spacing:.03em;
+text-transform:uppercase;color:var(--label-tertiary)}
+textarea{width:100%;padding:11px 14px;border-radius:var(--r-sm);
+border:1px solid var(--separator);background:var(--bg-elevated);color:var(--label);
+font:inherit;font-size:15px;outline:none;resize:vertical}
+textarea:focus{border-color:var(--accent)}
+input[type=datetime-local],input[type=search]{width:100%;min-height:44px;padding:11px 14px;
+border-radius:var(--r-sm);border:1px solid var(--separator);background:var(--bg-elevated);
+color:var(--label);font:inherit;font-size:15px;outline:none}
+input[type=datetime-local]:focus,input[type=search]:focus{border-color:var(--accent)}
 .handlesays[data-state="ok"]{color:var(--success)}
 .handlesays[data-state="bad"]{color:var(--accent)}
+
+/* A room that is playing right now, and the way back into it. */
+.nowplaying{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;
+padding:12px 16px;border-radius:var(--r-sm);background:rgba(255,45,111,.12);
+border:1px solid rgba(255,45,111,.32);font-weight:700}
+.nowplaying .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+box-shadow:0 0 0 0 rgba(255,45,111,.55);animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 9px rgba(255,45,111,0)}
+100%{box-shadow:0 0 0 0 rgba(255,45,111,0)}}
+@media (prefers-reduced-motion:reduce){.nowplaying .dot{animation:none}}
+.linklist{list-style:none;padding:0;margin:0 0 14px;display:flex;flex-wrap:wrap;gap:8px}
+.linklist a{display:inline-block;padding:7px 14px;border-radius:var(--r-pill);
+background:var(--bg-elevated);border:1px solid var(--separator);
+font-size:14px;font-weight:650;text-decoration:none;max-width:100%;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+details.edit{margin:0 0 20px}
+details.edit summary{cursor:pointer;font-size:14px;font-weight:650;
+color:var(--label-secondary);padding:6px 0;list-style:none}
+details.edit summary::-webkit-details-marker{display:none}
+details.edit summary::before{content:'\\2699\\FE0E';padding-right:8px}
+details.edit summary:hover{color:var(--label)}
+details.edit[open] summary{margin-bottom:12px}
 /* Once a photo is waiting, Save is the only thing left to do. */
 @keyframes nudge{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
 .btn.nudge{animation:nudge .9s ease-in-out 2}
@@ -643,9 +692,21 @@ details.tinyhelp p{margin:8px 0 0}
 }
 @media (max-width:520px){
   .hero{padding:0 12px}
-  .hero .cover{min-height:180px;padding:18px}
-  .hero h1{font-size:32px}
-  .toptools{top:18px;right:26px}
+  /* The cover becomes a column on a phone. Left as a bottom-aligned row, a
+     two-line title runs straight under the Shuffle/Upload buttons pinned in
+     the corner - there is no room for both on 375px, so the buttons stop
+     floating and take a line of their own under the name. */
+  .hero .cover{min-height:180px;padding:16px;flex-direction:column;
+  align-items:stretch;justify-content:flex-end;gap:14px}
+  .hero h1{font-size:30px}
+  .hero .cover .titles{margin-top:52px}
+  .coveractions{position:static;flex-wrap:wrap}
+  .coversays{position:static;order:-1}
+  .toptools{top:16px;right:16px}
+  .brandchip{top:16px;left:16px}
+  .coverx{top:16px;right:16px}
+  .hero:has(.coverx) .toptools{right:62px}
+  .hero:has(.cover.bare) .toptools{right:16px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 `;
@@ -1370,12 +1431,119 @@ async function runsGroups(env, emailNorm) {
   return results || [];
 }
 
-function eventPage(group, event, going, base, takeRate, canEdit) {
+// My half of a party page: whether I went, what I thought, who played, who I
+// saw, and what I want to remember about running into each of them HERE.
+//
+// Only ever rendered for the person it belongs to. A note is a diary entry, not
+// content, and nothing in here appears on anybody else's screen.
+function trackerBlock(event, group, note, people, allNames) {
+  const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
+  const attended = note && note.attended === 1;
+  const list = (role, empty) => {
+    const rows = people.filter((p) => p.role === role);
+    if (!rows.length) return `<p class="muted">${empty}</p>`;
+    return `<ul class="who-list">${rows.map((p) => `<li>
+      ${personDisc(p)}
+      <span style="min-width:0">
+        <b><a href="/people/${esc(p.id)}">${esc(p.name)}</a></b>
+        <form method="post" action="${action}" class="notemini">
+          <input type="hidden" name="person" value="${esc(p.id)}">
+          <input type="text" name="encounter" maxlength="2000"
+            value="${esc(p.note || "")}" placeholder="What happened, if anything">
+          <button class="btn plain small" type="submit">Save</button>
+          <button class="btn plain small" type="submit" name="remove" value="1"
+            formnovalidate aria-label="Remove ${esc(p.name)}">\u2715</button>
+        </form>
+      </span></li>`).join("")}</ul>`;
+  };
+
+  return `<section class="tracker">
+    <div class="sectionhead"><h2>Your record</h2>
+      <span class="muted">Only you can see this</span></div>
+
+    <form class="you" method="post" action="${esc(action)}">
+      <div class="grow" style="display:grid;gap:10px">
+        <label class="wentrow">
+          <input type="checkbox" name="attended" value="1"${attended ? " checked" : ""}>
+          <span>I went to this</span>
+        </label>
+        <textarea name="note" maxlength="4000" style="min-height:76px"
+          placeholder="What you thought, or why you want to go">${esc((note && note.note) || "")}</textarea>
+      </div>
+      <div class="youbar"><button class="btn" type="submit">Save</button></div>
+    </form>
+
+    <h2>Who played</h2>
+    ${list("dj", "Nobody recorded yet.")}
+    <form class="join" method="post" action="${esc(action)}">
+      <input type="hidden" name="role" value="dj">
+      <input type="text" name="who" list="knownpeople" maxlength="80" required
+        placeholder="Name" autocomplete="off">
+      <button class="btn plain" type="submit">Add a DJ</button>
+    </form>
+
+    <h2>Who you saw</h2>
+    ${list("guest", "Nobody recorded yet.")}
+    <form class="join" method="post" action="${esc(action)}">
+      <input type="hidden" name="role" value="guest">
+      <input type="text" name="who" list="knownpeople" maxlength="80" required
+        placeholder="Name" autocomplete="off">
+      <button class="btn plain" type="submit">Add someone</button>
+    </form>
+    <datalist id="knownpeople">${allNames.map((n) =>
+      `<option value="${esc(n.name)}"></option>`).join("")}</datalist>
+    <p class="muted">Reusing a name keeps one person, so their history stays in
+    one place. They do not need an account.</p>
+  </section>`;
+}
+
+// Editing a party from the web: the same fields the Mac writes, through the
+// same updateParty. Folded away by default because the page's job is to show
+// the night, not to be a form - but one click from anywhere the owner is
+// looking, rather than a separate settings screen to go and find.
+function partyEditor(group, event, error, typed) {
+  const was = (name, fallback) => esc(
+    typed && typed.get(name) !== null ? typed.get(name) : fallback);
+  // datetime-local wants the wall clock it will show back. Everything stored is
+  // UTC ms, so this is the same conversion the create form does, in reverse.
+  const localValue = event.starts_ms
+    ? new Date(event.starts_ms).toISOString().slice(0, 16) : "";
+  return `<details class="edit"${error ? " open" : ""}>
+    <summary>Edit the details</summary>
+    ${error ? `<p class="formerror" role="alert">${esc(error)}</p>` : ""}
+    <form class="newnight" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/edit">
+      <label class="eventfield"><span>What is it called?</span>
+        <input type="text" name="title" maxlength="120" required
+          value="${was("title", event.title || "")}"></label>
+      <label class="eventfield"><span>When</span>
+        <input type="datetime-local" name="starts"
+          value="${was("starts", localValue)}"></label>
+      <label class="eventfield"><span>Where</span>
+        <input type="text" name="place" maxlength="120"
+          value="${was("place", event.place || "")}"></label>
+      <label class="eventfield"><span>Links</span>
+        <textarea name="links" maxlength="2000" style="min-height:76px"
+          placeholder="One per line. Tickets | https://...">${was("links", event.links || "")}</textarea></label>
+      <button class="btn" type="submit">Save the details</button>
+    </form>
+  </details>`;
+}
+
+function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra) {
+  const { live, editError, typed, phase } = extra || {};
+  const links = partyLinks(event.links);
   return page(`${event.title || "A night"} - ${group.name || group.handle}`, `
-    <p class="when">${esc(whenText(event))}</p>
+    ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
+      <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
+    <p class="when">${esc(whenText(event))}${
+      phase === "now" ? ` · <b>on tonight</b>` : ""}</p>
     ${event.place ? `<p>${esc(event.place)}${event.address ? `<br><span class="muted">${esc(event.address)}</span>` : ""}</p>` : ""}
     ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
     ${event.description ? `<p>${esc(event.description)}</p>` : ""}
+    ${links.length ? `<ul class="linklist">${links.map((l) =>
+      `<li><a href="${esc(l.href)}" rel="noopener noreferrer nofollow"
+        target="_blank">${esc(l.label)}</a></li>`).join("")}</ul>` : ""}
+    ${canEdit ? partyEditor(group, event, editError, typed) : ""}
     <p class="muted">${going} going</p>
     ${event.ticket_cents ? `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/buy">
       <input type="email" name="email" placeholder="your email" required>
@@ -1391,6 +1559,7 @@ function eventPage(group, event, going, base, takeRate, canEdit) {
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
     follow them to hear about their other nights.</p>
+    ${tracker || ""}
   `, hero(event.title || "A night", esc(group.name || group.handle), event.cover_key,
       `<a href="/@${esc(group.handle)}">The group</a>`,
       canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""));
@@ -1645,6 +1814,39 @@ function parseLinks(raw) {
   }
 }
 
+// The links that belong with a night - tickets, the set, a map pin - typed one
+// per line. A bare URL is its own label; "Tickets | https://..." names it.
+// Anything that is not http(s) is dropped rather than rendered: a link nobody
+// can click is worse than no link, and a javascript: one is worse than that.
+function partyLinks(raw) {
+  const out = [];
+  for (const line of String(raw || "").split("\n")) {
+    const text = line.trim();
+    if (!text) continue;
+    const bar = text.indexOf("|");
+    const label = bar > 0 ? text.slice(0, bar).trim().slice(0, 60) : "";
+    const href = (bar > 0 ? text.slice(bar + 1) : text).trim();
+    if (!/^https?:\/\/[^\s"'<>]+$/i.test(href)) continue;
+    out.push({
+      href,
+      label: label || href.replace(/^https?:\/\//i, "").replace(/\/$/, ""),
+    });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+// "Playing right now", answered by a heartbeat rather than by a flag. The Mac
+// syncs the party's timeline every twenty seconds for as long as it is live, so
+// a room that stopped - crashed, closed the lid, went home - stops being live
+// here by itself within a minute and a half. A flag would still be saying
+// "listen now" the next morning, which is the false-live bug in a new place.
+const LIVE_FOR = 90 * 1000;
+function liveNow(event, now) {
+  return !!event && Number(event.live_ms || 0) > now - LIVE_FOR &&
+    /^https:\/\//.test(String(event.live_url || ""));
+}
+
 // The one identity, read or created. Creating it here rather than at sign-up
 // means every person who already existed gets one the first time they are
 // looked at, with no backfill to run and nothing to miss.
@@ -1746,6 +1948,131 @@ function linkHref(key, value) {
   if (key === "website") return websiteUrl(value);
   const field = SOCIAL_FIELDS.find((f) => f.key === key);
   return field ? field.prefix + encodeURIComponent(value) : "";
+}
+
+// ------------------------------------------------------------- the record
+//
+// Who I saw, and what I thought. All of it belongs to one person: every query
+// here is scoped by the owner's verified address, and none of it is ever
+// rendered on a page somebody else can open.
+
+// My parties: the ones I run, and the ones I have kept a note or an encounter
+// against. Recording that I went to somebody else's night is exactly as valid
+// as throwing one, so both belong on the same shelf.
+async function myParties(env, emailNorm) {
+  const { results } = await env.DB.prepare(
+    `SELECT e.*, g.handle, g.name AS group_name,
+            n.attended AS attended, n.note AS my_note
+       FROM events e
+       JOIN groups g ON g.id = e.group_id
+       LEFT JOIN party_notes n ON n.event_id = e.id AND n.owner_email = ?
+      WHERE e.state != 'draft' AND (
+        EXISTS (SELECT 1 FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
+                 WHERE gd.group_id = e.group_id AND d.email_norm = ?)
+        OR n.event_id IS NOT NULL
+        OR EXISTS (SELECT 1 FROM party_people pp
+                    WHERE pp.event_id = e.id AND pp.owner_email = ?))
+      ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC
+      LIMIT 200`
+  ).bind(emailNorm, emailNorm, emailNorm).all();
+  return results || [];
+}
+
+// Where a party is in its own life, decided by the clock rather than by a field
+// somebody has to remember to change. A party with no date yet is upcoming: it
+// has not happened. Six hours is a night - a party that started at eleven is
+// still on at three, and is over by lunchtime.
+//
+// This is deliberately separate from whether a Mac is broadcasting: "the party
+// is on tonight" and "there is music coming out of it right now" are different
+// facts, and a party with no Mac in the room is still a party.
+const A_NIGHT = 6 * 60 * 60 * 1000;
+function partyPhase(event, now) {
+  if (!event.starts_ms) return "upcoming";
+  if (event.starts_ms > now) return "upcoming";
+  return event.starts_ms < now - A_NIGHT ? "past" : "now";
+}
+
+function partyIsPast(event, now) {
+  return partyPhase(event, now) === "past";
+}
+
+async function peopleFor(env, emailNorm, query) {
+  const like = `%${String(query || "").trim().toLowerCase()}%`;
+  const { results } = await env.DB.prepare(
+    `SELECT p.*, (SELECT COUNT(*) FROM party_people pp WHERE pp.person_id = p.id) AS times
+       FROM people p
+      WHERE p.owner_email = ? AND (? = '%%' OR lower(p.name) LIKE ?)
+      ORDER BY p.name LIMIT 200`
+  ).bind(emailNorm, like, like).all();
+  return results || [];
+}
+
+// One person, by name, reused rather than duplicated. Typing "Seth" twice must
+// not produce two Seths, or their history splits in half and the point of
+// keeping it is lost.
+async function personByName(env, emailNorm, name) {
+  return env.DB.prepare(
+    `SELECT * FROM people WHERE owner_email = ? AND lower(name) = lower(?)`
+  ).bind(emailNorm, String(name || "").trim()).first();
+}
+
+async function findOrMakePerson(env, emailNorm, name, now) {
+  const clean = String(name || "").trim().slice(0, 80);
+  if (!clean) return null;
+  const already = await personByName(env, emailNorm, clean);
+  if (already) return already;
+  const id = ulid(now);
+  await env.DB.prepare(
+    `INSERT INTO people (id, owner_email, name, created_ms, updated_ms) VALUES (?,?,?,?,?)`
+  ).bind(id, emailNorm, clean, now, now).run();
+  return env.DB.prepare(`SELECT * FROM people WHERE id = ?`).bind(id).first();
+}
+
+// Everyone recorded at one party, with the note I wrote about each of them
+// THERE. DJs first, because that is what the night was.
+async function partyPeople(env, emailNorm, eventId) {
+  const { results } = await env.DB.prepare(
+    `SELECT pp.role, pp.note, pp.created_ms, p.id, p.name, p.account_email
+       FROM party_people pp JOIN people p ON p.id = pp.person_id
+      WHERE pp.event_id = ? AND pp.owner_email = ?
+      ORDER BY CASE pp.role WHEN 'dj' THEN 0 ELSE 1 END, p.name`
+  ).bind(eventId, emailNorm).all();
+  return results || [];
+}
+
+// One person's history: every night I recorded them at, newest first, each with
+// the note from that night.
+async function personHistory(env, emailNorm, personId) {
+  const { results } = await env.DB.prepare(
+    `SELECT pp.role, pp.note, e.id, e.slug, e.title, e.starts_ms, e.place, g.handle
+       FROM party_people pp
+       JOIN events e ON e.id = pp.event_id
+       JOIN groups g ON g.id = e.group_id
+      WHERE pp.person_id = ? AND pp.owner_email = ?
+      ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC`
+  ).bind(personId, emailNorm).all();
+  return results || [];
+}
+
+async function myPartyNote(env, emailNorm, eventId) {
+  return env.DB.prepare(
+    `SELECT * FROM party_notes WHERE event_id = ? AND owner_email = ?`
+  ).bind(eventId, emailNorm).first();
+}
+
+async function setPartyNote(env, emailNorm, eventId, fields, now) {
+  const existing = await myPartyNote(env, emailNorm, eventId);
+  const note = fields.note === undefined
+    ? (existing ? existing.note : "") : String(fields.note || "").slice(0, 4000);
+  const attended = fields.attended === undefined
+    ? (existing ? existing.attended : null) : fields.attended;
+  await env.DB.prepare(
+    `INSERT INTO party_notes (event_id, owner_email, note, attended, updated_ms)
+     VALUES (?,?,?,?,?)
+     ON CONFLICT(event_id, owner_email) DO UPDATE SET
+       note = excluded.note, attended = excluded.attended, updated_ms = excluded.updated_ms`
+  ).bind(eventId, emailNorm, note, attended, now).run();
 }
 
 // -------------------------------------------------------------------- media
@@ -1897,11 +2224,12 @@ async function createParty(env, group, fields, now) {
 
   await env.DB.prepare(
     `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity,
-       cover_key, state, party_id, created_ms, updated_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?)`
+       cover_key, state, party_id, links, created_ms, updated_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?, ?)`
   ).bind(id, group.id, unique, title, startsMs,
     String(fields.place || "").slice(0, 120), capacity,
-    fields.coverKey || null, String(fields.partyId || ""), now, now).run();
+    fields.coverKey || null, String(fields.partyId || ""),
+    String(fields.links || "").slice(0, 2000), now, now).run();
 
   return { id, slug: unique, title, startsMs, handle: group.handle };
 }
@@ -1928,6 +2256,10 @@ async function updateParty(env, event, fields, now) {
   if (fields.coverKey !== undefined) {
     sets.push("cover_key = ?");
     args.push(fields.coverKey || null);
+  }
+  if (fields.links !== undefined) {
+    sets.push("links = ?");
+    args.push(String(fields.links || "").slice(0, 2000));
   }
   if (fields.state !== undefined && ["announced", "live", "over"].includes(fields.state)) {
     sets.push("state = ?");
@@ -1972,9 +2304,56 @@ function partyForMac(event, group, base) {
     coverUrl: mediaUrl(event.cover_key),
     state: event.state,
     partyId: event.party_id || "",
+    links: event.links || "",
     url: `${base}/@${group.handle}/${event.slug}`,
     handle: group.handle,
   };
+}
+
+// Where a person's own parties live. Everybody who signs in gets one, made on
+// demand from their @name, so adding a party never begins with "first create a
+// group" - a concept the personal tracker does not need them to hold.
+async function homeGroupFor(env, dj, now) {
+  const existing = await env.DB.prepare(
+    `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id
+      WHERE d.dj_id = ? ORDER BY g.created_ms LIMIT 1`
+  ).bind(dj.id).first();
+  if (existing) return existing;
+  const profile = await profileFor(env, dj.email_norm, now, dj.name);
+  let made = await createGroup(env, dj, profile.handle, profile.name || profile.handle, now);
+  if (made.error) {
+    // Their @name is somehow unusable as a group name. Mint a fresh one rather
+    // than making them solve it before they can write anything down.
+    made = await createGroup(env, dj, await mintHandle(env), profile.name || "My parties", now);
+  }
+  if (made.error) return null;
+  return env.DB.prepare(`SELECT * FROM groups WHERE id = ?`).bind(made.id).first();
+}
+
+// Adding a party: a name, and everything else optional. Somebody standing
+// outside a club typing this on a phone will not fill in six fields.
+function newPartyPage(group, state, form) {
+  const was = (name) => esc((form && form.get(name)) || "");
+  return page("Add a party", `
+    <h1>Add a party</h1>
+    <p class="muted">Only the name is needed. Fill the rest in whenever - or never.</p>
+    ${state.error ? `<p class="formerror" role="alert">${esc(state.error)}</p>` : ""}
+    <form class="newnight" method="post" action="/parties/new">
+      <label class="eventfield"><span>What is it called?</span>
+        <input type="text" name="title" maxlength="120" required autofocus
+          value="${was("title")}" placeholder="Warehouse, late"></label>
+      <label class="eventfield"><span>When</span>
+        <input type="datetime-local" name="starts" value="${was("starts")}"></label>
+      <label class="eventfield"><span>Where</span>
+        <input type="text" name="place" maxlength="120" value="${was("place")}"
+          placeholder="Unit 7, or a friend's kitchen"></label>
+      <label class="eventfield"><span>Who is playing</span>
+        <input type="text" name="dj" maxlength="200" value="${was("dj")}"
+          placeholder="Seth, and anyone else - separate with commas"></label>
+      <button class="btn" type="submit">Add it</button>
+    </form>
+    <p class="muted"><a href="/home">Back to your parties</a></p>
+  `, "", "", true);
 }
 
 function slugify(title, now) {
@@ -2441,6 +2820,16 @@ export default {
       // just a Mac in a room. It keeps its wall locally and syncs nothing.
       if (!event) return json(200, { bound: false, posts: [] });
 
+      // This call IS the liveness. The Mac makes it every twenty seconds for as
+      // long as it is broadcasting and stops the moment it is not, so stamping
+      // the clock here is the whole of "is this party playing right now" - no
+      // flag to set, and nothing left behind claiming a set that ended.
+      const joinUrl = String(body.joinUrl || "").slice(0, 300);
+      await env.DB.prepare(
+        `UPDATE events SET live_ms = ?, live_url = ? WHERE id = ?`
+      ).bind(now, /^https:\/\//.test(joinUrl) ? joinUrl : event.live_url || "",
+        event.id).run();
+
       let stored = 0;
       for (const post of (Array.isArray(body.posts) ? body.posts : []).slice(0, 200)) {
         const id = String(post.id || "");
@@ -2619,7 +3008,7 @@ export default {
         // Everything this account has, so the Mac can open one made on the web.
         if (path === "/api/v1/parties") {
           const { results } = await env.DB.prepare(
-            `SELECT id, slug, title, starts_ms, place, cover_key, state, party_id
+            `SELECT id, slug, title, starts_ms, place, cover_key, state, party_id, links
                FROM events WHERE group_id = ? AND state != 'draft'
               ORDER BY COALESCE(starts_ms, created_ms) DESC LIMIT 60`
           ).bind(group.id).all();
@@ -2639,6 +3028,7 @@ export default {
             place: body.place,
             capacity: body.capacity,
             coverKey: body.coverKey,
+            links: body.links,
             // Attaching the live room at creation, so a broadcast never has to
             // mint a second record to hang itself off.
             partyId: PARTY_ID_RE.test(String(body.partyId || "")) ? body.partyId : "",
@@ -2660,6 +3050,7 @@ export default {
             : (Number.isFinite(Number(body.startsMs)) ? Number(body.startsMs) : null),
           place: body.place,
           coverKey: body.coverKey,
+          links: body.links,
           state: body.state,
         }, now);
         if (done.error) return json(400, { error: done.error });
@@ -3014,42 +3405,16 @@ export default {
       // the one that was just refused back at them is nonsense.
       const profile = pending || stored;
 
-      const { results: mine } = await env.DB.prepare(
-        `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id WHERE d.dj_id = ?`
-      ).bind(dj.id).all();
-      const { results: following } = await env.DB.prepare(
-        `SELECT g.* FROM groups g
-           JOIN group_members gm ON gm.group_id = g.id
-           JOIN members m ON m.id = gm.member_id
-          WHERE m.email_norm = ? AND gm.state = 'joined'`
-      ).bind(dj.email_norm).all();
-
-      const ids = [...(mine || []), ...(following || [])].map((g) => g.id);
-      let upcoming = [];
-      if (ids.length) {
-        const { results } = await env.DB.prepare(
-          `SELECT e.*, g.handle, g.name AS group_name FROM events e JOIN groups g ON g.id = e.group_id
-            WHERE e.group_id IN (${ids.map(() => "?").join(",")})
-              AND e.state IN ('announced','live')
-              AND (e.starts_ms IS NULL OR e.starts_ms > ?)
-            ORDER BY e.starts_ms LIMIT 30`
-        ).bind(...ids, now - 12 * 60 * 60 * 1000).all();
-        upcoming = results || [];
-      }
-
-      const groupRow = (g, note) => `<a class="card" href="/@${esc(g.handle)}">
-        <strong>${esc(g.name || g.handle)}</strong>
-        <div class="muted">@${esc(g.handle)}${note ? " · " + esc(note) : ""}</div></a>`;
-
       // First sight: the profile, open and ready to fill in, prefilled with
       // whatever Apple or Google told us. It is already valid - the @name was
       // minted with the account - so this is an invitation rather than a gate,
       // and answering it either way puts it away for good. Editing stays at
       // /settings, which is where somebody who wants it later will look.
+      //
       // A rejected save keeps the welcome open, whatever the stored flag says:
       // the person is mid-edit and closing the form under them would be worse
       // than the error they are already looking at.
-      const you = (!profile.saved_ms || problem)
+      const you = (!stored.saved_ms || problem)
         ? profileEditor(profile, {
             action: "/home",
             heading: "You, if you want to be",
@@ -3062,33 +3427,207 @@ export default {
             <div class="grow" style="gap:2px">
               <b style="font-size:16px">${esc(profile.name || "@" + profile.handle)}</b>
               <span class="muted">@${esc(profile.handle)}${
-                profile.bio ? " · " + esc(profile.bio) : ""}</span>
+                profile.bio ? " \u00b7 " + esc(profile.bio) : ""}</span>
             </div>
             <a class="btn plain small" href="/settings">Edit</a>
           </div></div>`;
 
-      return html(200, page("PartyParty", `
+      // My parties. Everything I run, plus everything I have kept a note or an
+      // encounter against - going to somebody else's night is as much a party
+      // of mine as throwing one.
+      const mine = await myParties(env, dj.email_norm);
+      const upcoming = mine.filter((e) => !partyIsPast(e, now))
+        .sort((a, b) => (a.starts_ms || Infinity) - (b.starts_ms || Infinity));
+      const past = mine.filter((e) => partyIsPast(e, now));
+
+      const row = (e) => `<a class="card partyrow" href="/@${esc(e.handle)}/${esc(e.slug)}">
+        <div class="grow">
+          <div class="when">${esc(whenText(e))}${e.place ? " \u00b7 " + esc(e.place) : ""}</div>
+          <strong>${esc(e.title || "Untitled party")}</strong>
+          ${partyPhase(e, now) === "now" ? `<span class="tag live">On tonight</span>` : ""}
+          ${e.attended === 1 ? `<span class="tag">You went</span>` : ""}
+          ${e.my_note ? `<span class="tag quiet">Noted</span>` : ""}
+          ${liveNow(e, now) ? `<span class="tag live">Playing now</span>` : ""}
+        </div>
+      </a>`;
+
+      const section = (label, list, empty) => `<h2>${esc(label)}</h2>
+        ${list.length ? list.map(row).join("") : `<p class="muted">${empty}</p>`}`;
+
+      return html(200, page("Your parties", `
         ${you}
-        <h1>What's on</h1>
-        ${upcoming.length ? upcoming.map((e) => `<a class="card" href="/@${esc(e.handle)}/${esc(e.slug)}">
-            <div class="when">${esc(whenText(e))}</div>
-            <strong>${esc(e.title || "A night")}</strong>
-            <div class="muted">${esc(e.group_name || e.handle)}${e.place ? " · " + esc(e.place) : ""}</div>
-          </a>`).join("")
-          : `<p class="muted">Nothing coming up yet - from your own groups or the ones
-             you follow.</p>`}
-
-        ${(mine || []).length ? `<h2>Yours</h2>
-          ${mine.map((g) => groupRow(g, "you run this")).join("")}` : ""}
-
-        ${(following || []).length ? `<h2>Following</h2>
-          ${following.map((g) => groupRow(g)).join("")}`
-          : `<h2>Following</h2><p class="muted">Nobody yet. Open someone's page and
-             follow them, and their nights show up here.</p>`}
+        <div class="sectionhead"><h1>Your parties</h1>
+          <a class="btn" href="/parties/new">Add a party</a></div>
+        ${mine.length === 0
+          ? `<div class="card">
+               <p><b>Nothing here yet.</b></p>
+               <p class="muted">Add a party you are going to, or one you already
+               went to. Keep who played, who you saw, and what you thought - it is
+               yours and nobody else sees it.</p>
+               <p><a class="btn" href="/parties/new">Add your first party</a></p>
+             </div>`
+          : `${section("Upcoming", upcoming, "Nothing coming up.")}
+             ${section("Past", past, "Nothing yet.")}`}
 
         <p class="muted" style="margin-top:40px">
-          <a href="/manage">Run a group</a> · <a href="/settings">Settings</a> ·
+          <a href="/people">People you have seen</a> ·
+          <a href="/settings">Settings</a> ·
           <a href="/auth/signout">Sign out</a></p>
+      `, "", "", true));
+    }
+
+    // Adding a party. Deliberately two fields and a button: an incomplete party
+    // now is worth more than a complete one you did not bother to make.
+    if (path === "/parties/new") {
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return html(200, signInPage(env, "Sign in", path));
+      const group = await homeGroupFor(env, dj, now);
+      if (!group) return notice("Something went wrong", "Could not find your parties.");
+
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        if (!form) return notice("That did not save", "Try again.");
+        const title = String(form.get("title") || "").trim();
+        if (!title) {
+          return html(200, newPartyPage(group, { error: "Give it a name first." }, form));
+        }
+        const startsRaw = String(form.get("starts") || "");
+        const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
+        const made = await createParty(env, group, {
+          title,
+          startsMs: Number.isFinite(starts) ? starts : null,
+          place: form.get("place"),
+        }, now);
+        if (made.error) return html(200, newPartyPage(group, { error: made.error }, form));
+        // The DJ, typed as a name, becomes a person - so their history starts
+        // accruing from the first party rather than from whenever I first
+        // thought to make a contact record.
+        for (const name of String(form.get("dj") || "").split(",")) {
+          const person = await findOrMakePerson(env, dj.email_norm, name, now);
+          if (!person) continue;
+          await env.DB.prepare(
+            `INSERT OR IGNORE INTO party_people (event_id, person_id, owner_email, role, created_ms)
+             VALUES (?,?,?,'dj',?)`
+          ).bind(made.id, person.id, dj.email_norm, now).run();
+        }
+        return new Response(null, {
+          status: 302, headers: { location: `/@${group.handle}/${made.slug}` },
+        });
+      }
+      return html(200, newPartyPage(group, {}, null));
+    }
+
+    // Everyone I have recorded, and one person's whole history.
+    if (path === "/people" || path.startsWith("/people/")) {
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return html(200, signInPage(env, "Sign in", path));
+
+      const who = path === "/people" ? "" : path.slice("/people/".length);
+      if (!who) {
+        const q = url.searchParams.get("q") || "";
+        const list = await peopleFor(env, dj.email_norm, q);
+        return html(200, page("People", `
+          <div class="sectionhead"><h1>People</h1></div>
+          <form class="join" method="get" action="/people">
+            <input type="search" name="q" placeholder="Search by name" value="${esc(q)}">
+            <button class="btn plain" type="submit">Search</button>
+          </form>
+          ${list.length ? list.map((p) => `<a class="card partyrow" href="/people/${esc(p.id)}">
+              <div class="grow">
+                <strong>${esc(p.name)}</strong>
+                <div class="muted">${p.times} ${p.times === 1 ? "party" : "parties"}${
+                  p.account_email ? " \u00b7 on PartyParty" : ""}</div>
+              </div></a>`).join("")
+            : q
+              ? `<p class="muted">Nobody by that name.</p>`
+              : `<div class="card"><p><b>Nobody yet.</b></p>
+                 <p class="muted">People turn up here as you add them to parties -
+                 who played, and who you saw. They do not need accounts.</p></div>`}
+          <p class="muted" style="margin-top:32px"><a href="/home">Your parties</a></p>
+        `, "", "", true));
+      }
+
+      const person = await env.DB.prepare(
+        `SELECT * FROM people WHERE id = ? AND owner_email = ?`
+      ).bind(who, dj.email_norm).first();
+      if (!person) return new Response("Not Found", { status: 404 });
+
+      // Saying who they turned out to be. The name I typed years ago stays my
+      // name for them; the @name only says which account it is, and clearing
+      // the field unsays it. A person is never required to have one.
+      let linkError = "";
+      let typed = null;
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        if (form) {
+          typed = form;
+          const wanted = String(form.get("account") || "").trim().replace(/^@/, "").toLowerCase();
+          let accountEmail = null;
+          if (wanted) {
+            const profile = await profileByHandle(env, wanted);
+            if (!profile) linkError = `Nobody here is @${wanted}.`;
+            else accountEmail = profile.email_norm;
+          }
+          if (!linkError) {
+            await env.DB.prepare(
+              `UPDATE people SET name = ?, note = ?, account_email = ?, updated_ms = ?
+                WHERE id = ? AND owner_email = ?`
+            ).bind(String(form.get("name") || person.name).slice(0, 80).trim() || person.name,
+              String(form.get("note") || "").slice(0, 4000), accountEmail, now,
+              who, dj.email_norm).run();
+            return new Response(null, { status: 302, headers: { location: `/people/${who}` } });
+          }
+        }
+      }
+
+      // Their profile, if I have said which account they are. It is theirs, so
+      // it is whatever they have chosen to be called today - my note about them
+      // is mine and does not change when they rename themselves.
+      const account = person.account_email
+        ? await env.DB.prepare(`SELECT * FROM profiles WHERE email_norm = ?`)
+            .bind(person.account_email).first()
+        : null;
+      // A refusal keeps what was typed. Handing back the stored values instead
+      // makes the person retype the note they had just written because one
+      // other field was wrong.
+      const was = (name, fallback) => esc(
+        typed && typed.get(name) !== null ? typed.get(name) : fallback);
+      const history = await personHistory(env, dj.email_norm, who);
+      return html(200, page(person.name, `
+        <div class="sectionhead"><h1>${esc(person.name)}</h1></div>
+        <p class="muted">${history.length} ${history.length === 1 ? "time" : "times"}${
+          account ? ` \u00b7 <a href="/@${esc(account.handle)}">@${esc(account.handle)}</a>
+            on PartyParty` : ""}</p>
+
+        ${linkError ? `<p class="formerror" role="alert">${esc(linkError)}</p>` : ""}
+        <form class="you" method="post" action="/people/${esc(who)}">
+          <div class="grow" style="display:grid;gap:10px">
+            <input type="text" name="name" value="${
+              was("name", person.name)}" maxlength="80">
+            <textarea name="note" maxlength="4000" placeholder="Anything you want to remember about them"
+              style="min-height:64px">${was("note", person.note || "")}</textarea>
+            <label class="handlepill"><span>@</span>
+              <input type="text" name="account" maxlength="30" autocapitalize="off"
+                autocorrect="off" spellcheck="false" placeholder="their name here, if they have one"
+                value="${was("account", account ? account.handle : "")}"></label>
+          </div>
+          <div class="youbar"><button class="btn" type="submit">Save</button>
+            <p class="muted">This is the general note. What happened on a
+            particular night stays on that night. The @name is optional -
+            they do not need an account to be here.</p></div>
+        </form>
+
+        <h2>Where you saw them</h2>
+        ${history.length ? history.map((h) => `<div class="card">
+            <div class="when">${esc(whenText(h))}${h.place ? " \u00b7 " + esc(h.place) : ""}</div>
+            <strong><a href="/@${esc(h.handle)}/${esc(h.slug)}">${esc(h.title || "Untitled party")}</a></strong>
+            ${h.role === "dj" ? `<span class="tag">Played</span>` : ""}
+            ${h.note ? `<p style="margin:8px 0 0">${esc(h.note).replace(/\n/g, "<br>")}</p>`
+              : `<p class="muted" style="margin:6px 0 0">No note from that night.</p>`}
+          </div>`).join("")
+          : `<p class="muted">You have not recorded them at a party yet.</p>`}
+        <p class="muted" style="margin-top:32px"><a href="/people">All people</a> ·
+          <a href="/home">Your parties</a></p>
       `, "", "", true));
     }
 
@@ -3842,9 +4381,129 @@ export default {
         `SELECT * FROM events WHERE group_id = ? AND slug = ? AND state != 'draft'`
       ).bind(group.id, match[2]).first();
       if (!event) return new Response("Not Found", { status: 404 });
+      const viewer = await currentDJ(env, request, now);
+      // The tracker is the signed-in person's own record OF this party -
+      // available whether or not the party is theirs, because going to
+      // somebody else's night is the commonest case there is.
+      const tracker = viewer
+        ? trackerBlock(event, group,
+            await myPartyNote(env, viewer.email_norm, event.id),
+            await partyPeople(env, viewer.email_norm, event.id),
+            await peopleFor(env, viewer.email_norm, ""))
+        : "";
       return html(200, eventPage(group, event, await goingCount(env, event.id), base,
         await takeRateFor(env, group.id),
-        await djRunsGroup(env, await currentDJ(env, request, now), group.id)));
+        await djRunsGroup(env, viewer, group.id), tracker,
+        { live: liveNow(event, now), phase: partyPhase(event, now) }));
+    }
+
+    // Editing the party from the web. The same fields, the same updateParty and
+    // the same rules as the Mac's own edit route - one party, two clients.
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/edit$/);
+    if (match && request.method === "POST") {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const dj = await currentDJ(env, request, now);
+      if (!await djRunsGroup(env, dj, group.id)) {
+        return html(403, signInPage(env, "Sign in", `/@${match[1]}/${match[2]}`));
+      }
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
+      const form = await request.formData().catch(() => null);
+      if (!form) return notice("That did not save", "Try again.");
+
+      // Re-rendering the whole page with the form still filled in, rather than
+      // a bare error page with a Back button that loses what was typed.
+      const refuse = async (why) => html(200, eventPage(group, event,
+        await goingCount(env, event.id), base, await takeRateFor(env, group.id),
+        true,
+        trackerBlock(event, group,
+          await myPartyNote(env, dj.email_norm, event.id),
+          await partyPeople(env, dj.email_norm, event.id),
+          await peopleFor(env, dj.email_norm, "")),
+        { live: liveNow(event, now), phase: partyPhase(event, now),
+          editError: why, typed: form }));
+
+      const startsRaw = String(form.get("starts") || "");
+      const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
+      if (startsRaw && !Number.isFinite(starts)) {
+        return refuse("That date did not make sense.");
+      }
+      const done = await updateParty(env, event, {
+        title: form.get("title"),
+        startsMs: startsRaw ? starts : null,
+        place: form.get("place"),
+        links: form.get("links"),
+      }, now);
+      if (done.error) return refuse(done.error);
+      return new Response(null, {
+        status: 302, headers: { location: `/@${group.handle}/${event.slug}` },
+      });
+    }
+
+    // Writing the record: went/note, adding a person, an encounter note, or
+    // removing somebody. All of it belongs to whoever is signed in.
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/record$/);
+    if (match && request.method === "POST") {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return html(200, signInPage(env, "Sign in", `/@${match[1]}/${match[2]}`));
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
+      const form = await request.formData().catch(() => null);
+      if (!form) return notice("That did not save", "Try again.");
+      const back = `/@${group.handle}/${event.slug}`;
+
+      // Somebody new on the bill or in the room.
+      const who = String(form.get("who") || "").trim();
+      if (who) {
+        const person = await findOrMakePerson(env, dj.email_norm, who, now);
+        if (!person) return notice("That needs a name", "Type who it was.");
+        const role = form.get("role") === "dj" ? "dj" : "guest";
+        await env.DB.prepare(
+          `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
+        ).bind(event.id, person.id, dj.email_norm, role, now).run();
+        return new Response(null, { status: 302, headers: { location: back } });
+      }
+
+      // An encounter note, or removing somebody recorded by mistake.
+      const personId = String(form.get("person") || "");
+      if (personId) {
+        if (form.get("remove")) {
+          await env.DB.prepare(
+            `DELETE FROM party_people WHERE event_id = ? AND person_id = ? AND owner_email = ?`
+          ).bind(event.id, personId, dj.email_norm).run();
+          // A misspelled name, taken back off the only party it was ever on and
+          // never written about, is a typo rather than somebody I know. Leaving
+          // it would fill the people list with ghosts nobody can explain. A
+          // person with any encounter left, or a note, is kept.
+          await env.DB.prepare(
+            `DELETE FROM people WHERE id = ? AND owner_email = ? AND note = ''
+               AND NOT EXISTS (SELECT 1 FROM party_people WHERE person_id = ?)`
+          ).bind(personId, dj.email_norm, personId).run();
+        } else {
+          await env.DB.prepare(
+            `UPDATE party_people SET note = ?
+              WHERE event_id = ? AND person_id = ? AND owner_email = ?`
+          ).bind(String(form.get("encounter") || "").slice(0, 2000),
+            event.id, personId, dj.email_norm).run();
+        }
+        return new Response(null, { status: 302, headers: { location: back } });
+      }
+
+      // Went, and what I thought.
+      await setPartyNote(env, dj.email_norm, event.id, {
+        note: form.get("note"),
+        attended: form.get("attended") ? 1 : 0,
+      }, now);
+      return new Response(null, { status: 302, headers: { location: back } });
     }
 
     // A night's cover. Its own route because the night's page is public and

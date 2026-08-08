@@ -998,37 +998,42 @@ test("renaming a group moves its address, and the old one stops", async () => {
   assert.ok(env.DL.has("broker/handle/sundaze") || env.DL.has("broker/handle/slowsunday"));
 });
 
-test("home shows what is on across groups you run and groups you follow", async () => {
+test("home is your parties: upcoming, past, and an empty state that says what to do", async () => {
   const env = await withGoogle(makeEnv());
   const { session } = await signIn(env);
   const cookie = { headers: { cookie: `pp_s=${session[1]}` } };
 
+  // A new account owns nothing. The empty state has to say what this is for,
+  // not report an absence.
   const empty = await (await get(env, "/home", cookie)).text();
-  assert.match(empty, /Nothing coming up yet/);
-  assert.match(empty, /Nobody yet/);
+  assert.match(empty, /Nothing here yet/);
+  assert.match(empty, /Add your first party/);
+  assert.match(empty, /href="\/parties\/new"/);
 
-  // A group they run.
   const mineId = seedGroup(env, "sundaze");
   const dj = one(env, `SELECT id FROM djs`).id;
   env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
     .run(mineId, dj, Date.now());
-  seedEvent(env, mineId, { slug: "mine", title: "My night", starts_ms: Date.now() + 86400000 });
-
-  // A group they follow, matched by the address they signed in with.
-  const theirsId = seedGroup(env, "latenight");
-  env.raw.prepare(`UPDATE groups SET name = 'Late Night' WHERE id = ?`).run(theirsId);
-  const memberId = ulid();
-  env.raw.prepare(`INSERT INTO members (id, email_norm, name, created_ms) VALUES (?, 'dj@example.com', 'DJ', ?)`)
-    .run(memberId, Date.now());
-  env.raw.prepare(`INSERT INTO group_members (group_id, member_id, state, volume, source, joined_ms)
-    VALUES (?, ?, 'joined', 'events', 'link', ?)`).run(theirsId, memberId, Date.now());
-  seedEvent(env, theirsId, { slug: "theirs", title: "Their night", starts_ms: Date.now() + 172800000 });
+  seedEvent(env, mineId, { slug: "soon", title: "Coming up", starts_ms: Date.now() + 86400000 });
+  seedEvent(env, mineId, { slug: "gone", title: "Last month", starts_ms: Date.now() - 30 * 86400000 });
 
   const body = await (await get(env, "/home", cookie)).text();
-  assert.match(body, /My night/, "a night from a group you run");
-  assert.match(body, /Their night/, "a night from a group you follow - the point of following");
-  assert.match(body, /Late Night/);
-  assert.match(body, /you run this/);
+  assert.match(body, /Coming up/);
+  assert.match(body, /Last month/);
+  // Upcoming and past are decided by the clock, and what is coming comes first.
+  assert.ok(body.indexOf("<h2>Upcoming</h2>") < body.indexOf("<h2>Past</h2>"));
+  assert.ok(body.indexOf("Coming up") < body.indexOf("Last month"));
+
+  // A party somebody ELSE runs, that I kept a note against, is mine too -
+  // going to a night is as much a record as throwing one.
+  const theirs = seedGroup(env, "latenight");
+  const theirEvent = seedEvent(env, theirs, { slug: "warehouse", title: "Their warehouse" });
+  assert.ok(!(await (await get(env, "/home", cookie)).text()).includes("Their warehouse"));
+  env.raw.prepare(`INSERT INTO party_notes (event_id, owner_email, note, attended, updated_ms)
+    VALUES (?, 'dj@example.com', 'Loud, good', 1, ?)`).run(theirEvent, Date.now());
+  const withTheirs = await (await get(env, "/home", cookie)).text();
+  assert.match(withTheirs, /Their warehouse/, "a party you noted is on your shelf");
+  assert.match(withTheirs, /You went/);
 });
 
 test("your own group page offers management, not a form asking your name", async () => {
@@ -1173,6 +1178,19 @@ const signedIn = async () => {
   const read = (path) => get(env, path, { headers: cookie });
   return { env, cookie, send, read };
 };
+
+// A Mac belonging to the person who is already signed in, so the two clients in
+// a test are the same account rather than two accounts that happen to agree.
+const linkedInstall = async (env, handle) => {
+  const install = "aabbccddeeff";
+  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
+    .run(install, one(env, `SELECT id FROM groups WHERE handle = ?`, handle).id, Date.now());
+  return { id: install, secret: "sec" };
+};
+
+const postJson = (env, path, body) => worker.fetch(
+  new Request("https://partyparty.party" + path, { method: "POST", body: JSON.stringify(body) }), env);
 
 test("signing in mints an @name that is already valid and can be changed", async () => {
   const { env, read } = await signedIn();
@@ -1713,6 +1731,361 @@ test("an unsigned Mac has no parties and cannot make one", async () => {
   const made = await mac.call("/api/v1/party/create", { title: "Nope" });
   assert.equal(made.body.linked, false);
   assert.equal(rows(env, `SELECT * FROM events`).length, 0);
+});
+
+// ---------------------------------------------- the personal party record
+
+test("the acceptance scenario, end to end", async () => {
+  const { env, send, read } = await signedIn();
+  const at = (iso) => iso; // datetime-local, as a browser sends it
+
+  // 2-5. An upcoming party, with a date, a place, a DJ, and two people who
+  // have never heard of PartyParty.
+  const made = await send("/parties/new", {
+    title: "Warehouse, late", starts: at("2099-09-12T21:00"), place: "Unit 7", dj: "Seth",
+  });
+  assert.equal(made.status, 302);
+  const ev = one(env, `SELECT * FROM events`);
+  assert.equal(ev.title, "Warehouse, late");
+  assert.equal(ev.place, "Unit 7");
+  const where = `/@${one(env, `SELECT handle FROM groups`).handle}/${ev.slug}`;
+
+  for (const name of ["Ada", "Bo"]) {
+    await send(`${where}/record`, { who: name, role: "guest" });
+  }
+  await send(`${where}/record`, { note: "Bringing the good speakers", attended: "" });
+
+  // 6-7. It persists, and it is upcoming.
+  let home = await (await read("/home")).text();
+  assert.match(home, /Warehouse, late/);
+  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Warehouse, late"));
+  assert.equal(rows(env, `SELECT * FROM people`).length, 3, "Seth, Ada and Bo, no accounts needed");
+  assert.equal(one(env, `SELECT note FROM party_notes`).note, "Bringing the good speakers");
+
+  // 8-10. Move it into the past through the page's own edit form - the same
+  // updateParty the Mac calls - then say I went, and note one person.
+  const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 16);
+  const edited = await send(`${where}/edit`, {
+    title: "Warehouse, late", starts: lastWeek, place: "Unit 7",
+    links: "Tickets | https://tickets.example/warehouse",
+  });
+  assert.equal(edited.status, 302, "editing a party is a normal form post");
+  assert.ok(one(env, `SELECT starts_ms FROM events WHERE id = ?`, ev.id).starts_ms < Date.now(),
+    "the date the form sent is the date that was stored");
+  await send(`${where}/record`, { note: "Better than expected", attended: "1" });
+  const ada = one(env, `SELECT * FROM people WHERE name = 'Ada'`);
+  await send(`${where}/record`, { person: ada.id, encounter: "Introduced me to the promoter" });
+
+  // 11. Now it is past.
+  home = await (await read("/home")).text();
+  assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Warehouse, late"),
+    "a party whose date has gone is past, decided by the clock");
+  assert.match(home, /You went/);
+
+  // 12. Her page shows the party, its date, and the note from THAT night.
+  let page = await (await read(`/people/${ada.id}`)).text();
+  assert.match(page, /Warehouse, late/);
+  assert.match(page, /Introduced me to the promoter/);
+
+  // 13-14. A second party with the same person reuses her, and her history
+  // shows both - one Ada, not two.
+  await send("/parties/new", { title: "Rooftop", starts: at("2099-10-01T20:00") });
+  const second = rows(env, `SELECT * FROM events ORDER BY created_ms`)[1];
+  const there = `/@${one(env, `SELECT handle FROM groups`).handle}/${second.slug}`;
+  await send(`${there}/record`, { who: "Ada", role: "guest" });
+  assert.equal(rows(env, `SELECT * FROM people WHERE name = 'Ada'`).length, 1,
+    "typing a known name twice must not split their history");
+
+  page = await (await read(`/people/${ada.id}`)).text();
+  assert.match(page, /2 times/);
+  assert.match(page, /Warehouse, late/);
+  assert.match(page, /Rooftop/);
+  // And the note stayed with the night it belongs to rather than becoming a
+  // property of the person.
+  assert.match(page, /Introduced me to the promoter/);
+  assert.match(page, /No note from that night/);
+
+  // The edit landed on the page as well as in the row, links and all.
+  const party = await (await read(where)).text();
+  assert.match(party, /tickets\.example\/warehouse/);
+  assert.match(party, />Tickets</, "a named link is shown by its name");
+
+  // 20. Nothing anywhere lets the web start or control a broadcast.
+  for (const word of ["Go live", "Go Live", "Stop broadcast", "Start broadcast",
+    "/api/start", "/api/stop", "getDisplayMedia", "getUserMedia"]) {
+    assert.ok(!party.includes(word), `the web offers "${word}"`);
+  }
+});
+
+test("a party's details are editable from the web, and refused when empty", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Basement" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+
+  // The form is on the party page for its owner, filled in with what is there.
+  const owner = await (await read(where)).text();
+  assert.match(owner, /Edit the details/);
+  assert.match(owner, /name="starts"/);
+
+  const refused = await send(`${where}/edit`, { title: "   ", starts: "", place: "" });
+  assert.equal(refused.status, 200, "a refusal is the page again, not a dead end");
+  const body = await refused.text();
+  assert.match(body, /a party needs a name/);
+  assert.equal(one(env, `SELECT title FROM events`).title, "Basement", "nothing was written");
+
+  // A bad date is refused with what was typed still in the form, rather than
+  // silently storing nothing where a time should be.
+  const badDate = await (await send(`${where}/edit`,
+    { title: "Basement", starts: "the third of never" })).text();
+  assert.match(badDate, /did not make sense/);
+  assert.match(badDate, /value="Basement"/);
+
+  // Clearing the date is a real edit, not a no-op: a party can lose its time.
+  await send(`${where}/edit`, { title: "Basement", starts: "2099-01-02T23:30", place: "Mine" });
+  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, Date.parse("2099-01-02T23:30Z"));
+  await send(`${where}/edit`, { title: "Basement", starts: "", place: "Mine" });
+  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, null);
+
+  // And it is not open to a passer-by.
+  const stranger = await post(env, `${where}/edit`, { title: "Mine now" });
+  assert.equal(stranger.status, 403);
+  assert.equal(one(env, `SELECT title FROM events`).title, "Basement");
+});
+
+test("only links that can be clicked are rendered as links", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Basement" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  await send(`/@${handle}/${ev.slug}/edit`, {
+    title: "Basement",
+    links: [
+      "https://soundcloud.example/set",
+      "Map | https://maps.example/pin",
+      "javascript:alert(1)",
+      'https://evil.example/" onmouseover="steal()',
+    ].join("\n"),
+  });
+
+  const page = await (await read(`/@${handle}/${ev.slug}`)).text();
+  assert.match(page, /href="https:\/\/soundcloud\.example\/set"/);
+  assert.match(page, /href="https:\/\/maps\.example\/pin"/);
+  assert.ok(!page.includes('href="javascript:'), "a javascript: link is not a link");
+  assert.ok(!/href="[^"]*evil\.example/.test(page),
+    "a URL carrying a quote is dropped, not patched up into an anchor");
+  assert.ok(!page.includes('onmouseover="'), "a quote in a URL cannot escape the attribute");
+  // Two links typed, two links rendered - the other two lines are not links.
+  assert.equal((page.match(/<li><a href="http/g) || []).length, 2);
+  // What was typed comes back in the form, so editing does not silently rewrite
+  // it - escaped, because it is text now and not markup.
+  assert.match(page, /javascript:alert\(1\)/, "the textarea still holds what was typed");
+});
+
+test("a party is playing right now only while a Mac keeps saying so", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+  const partyId = "2026-08-06-2200-ab12";
+
+  // Nothing has ever broadcast: the page is a page, with no listen link.
+  let page = await (await read(where)).text();
+  assert.ok(!page.includes("Playing right now"), "a party that never broadcast is not live");
+
+  // A Mac attaches its room and syncs the wall - which is also the heartbeat.
+  const install = await linkedInstall(env, handle);
+  env.raw.prepare(`UPDATE events SET party_id = ? WHERE id = ?`).run(partyId, ev.id);
+  const synced = await postJson(env, "/api/v1/party/posts", {
+    ...install, partyId, joinUrl: "https://early-heron.party.partyparty.party:8443/", posts: [],
+  });
+  assert.equal((await synced.json()).bound, true);
+
+  page = await (await read(where)).text();
+  assert.match(page, /Playing right now/);
+  assert.match(page, /href="https:\/\/early-heron\.party\.partyparty\.party:8443\/"/);
+  assert.match(await (await read("/home")).text(), /Playing now/);
+
+  // Listening is all the web gets. No control of the room reaches this page.
+  for (const word of ["Go live", "Go Live", "Stop broadcast", "getDisplayMedia"]) {
+    assert.ok(!page.includes(word), `the web offers "${word}"`);
+  }
+
+  // The set ends: the Mac simply stops calling. Ninety seconds later the page
+  // stops claiming it, with nobody having told it anything.
+  env.raw.prepare(`UPDATE events SET live_ms = ? WHERE id = ?`)
+    .run(Date.now() - 120000, ev.id);
+  page = await (await read(where)).text();
+  assert.ok(!page.includes("Playing right now"), "a heartbeat that stopped is not a live room");
+  // But the party itself is untouched - the point of a permanent record.
+  assert.match(page, /Warehouse/);
+  assert.match(page, /Your record/);
+  assert.ok(!(await (await read("/home")).text()).includes("Playing now"));
+
+  // A join URL that is not https is never shown, whatever the Mac sends.
+  await postJson(env, "/api/v1/party/posts", {
+    ...install, partyId, joinUrl: "javascript:alert(1)", posts: [],
+  });
+  page = await (await read(where)).text();
+  assert.ok(!page.includes("javascript:alert"), "only an https room is offered to a listener");
+  assert.match(page, /Playing right now/, "the heartbeat still counts");
+  assert.match(page, /href="https:\/\/early-heron/, "and the last good link is kept");
+});
+
+test("a record belongs to one person and is invisible to everybody else", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse", dj: "Seth" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  await send(`/@${handle}/${ev.slug}/record`, { note: "My private thought", attended: "1" });
+
+  // Signed out, the party page is public and the record is not on it.
+  const publicPage = await (await get(env, `/@${handle}/${ev.slug}`)).text();
+  assert.match(publicPage, /Warehouse/);
+  assert.ok(!publicPage.includes("My private thought"), "a note is a diary, not content");
+  assert.ok(!publicPage.includes("Your record"));
+  assert.ok(!publicPage.includes("Seth"), "who I saw is mine too");
+
+  // Another person's record of the SAME party, in the same database. The risk
+  // is a query that forgets owner_email, so this puts a rival row right next
+  // to mine and checks which one comes back.
+  env.raw.prepare(`INSERT INTO party_notes (event_id, owner_email, note, attended, updated_ms)
+    VALUES (?, 'someone@else.example', 'Their private thought', 1, ?)`).run(ev.id, Date.now());
+  const theirPerson = ulid();
+  env.raw.prepare(`INSERT INTO people (id, owner_email, name, created_ms, updated_ms)
+    VALUES (?, 'someone@else.example', 'Their Friend', ?, ?)`)
+    .run(theirPerson, Date.now(), Date.now());
+  env.raw.prepare(`INSERT INTO party_people (event_id, person_id, owner_email, role, note, created_ms)
+    VALUES (?, ?, 'someone@else.example', 'guest', 'Their encounter', ?)`)
+    .run(ev.id, theirPerson, Date.now());
+
+  const mine = await (await read(`/@${handle}/${ev.slug}`)).text();
+  assert.match(mine, /My private thought/, "my own note is on my page");
+  assert.ok(!mine.includes("Their private thought"), "another person's note leaked in");
+  assert.ok(!mine.includes("Their Friend"), "another person's people leaked in");
+  assert.ok(!mine.includes("Their encounter"));
+
+  // And their party does not appear on my shelf, nor their person in my list.
+  assert.ok(!(await (await read("/people")).text()).includes("Their Friend"));
+});
+
+test("a person can turn out to be an account, later, or never", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse", dj: "Seth" });
+  const seth = one(env, `SELECT * FROM people WHERE name = 'Seth'`);
+  assert.equal(seth.account_email, null, "recording somebody never needs an account");
+
+  // Somebody who does have one. The @name is theirs; my name for them is mine.
+  env.raw.prepare(`INSERT INTO profiles (email_norm, handle, name, created_ms, updated_ms)
+    VALUES ('seth@example.com', 'sethplays', 'Seth Green', ?, ?)`).run(Date.now(), Date.now());
+
+  const wrong = await (await send(`/people/${seth.id}`,
+    { name: "Seth", note: "Owes me a record", account: "nobodyhere" })).text();
+  assert.match(wrong, /Nobody here is @nobodyhere/);
+  assert.equal(one(env, `SELECT account_email FROM people WHERE id = ?`, seth.id).account_email, null);
+  // The refusal is one bad field, not a reason to retype the rest.
+  assert.match(wrong, /Owes me a record/, "the note that was typed is still in the form");
+  assert.match(wrong, /value="nobodyhere"/);
+
+  await send(`/people/${seth.id}`, { name: "Seth", note: "Warehouse regular", account: "@SethPlays" });
+  assert.equal(one(env, `SELECT account_email FROM people WHERE id = ?`, seth.id).account_email,
+    "seth@example.com", "an @name with the shouting and the @ still lands");
+
+  let page = await (await read(`/people/${seth.id}`)).text();
+  assert.match(page, /@sethplays/);
+  assert.match(page, /href="\/@sethplays"/, "their profile is one click away");
+  assert.match(page, /<h1>Seth<\/h1>/, "my name for them is still my name for them");
+  assert.match(page, /Warehouse regular/);
+
+  // And unsaying it is just clearing the field.
+  await send(`/people/${seth.id}`, { name: "Seth", note: "Warehouse regular", account: "" });
+  assert.equal(one(env, `SELECT account_email FROM people WHERE id = ?`, seth.id).account_email, null);
+  page = await (await read(`/people/${seth.id}`)).text();
+  assert.ok(!page.includes("@sethplays"));
+  assert.match(page, /Warehouse regular/, "and the note it never belonged to survives");
+});
+
+test("upcoming, on tonight, and past are read off the clock", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Tonight" });
+  const ev = one(env, `SELECT * FROM events`);
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const at = (ms) => env.raw.prepare(`UPDATE events SET starts_ms = ? WHERE id = ?`).run(ms, ev.id);
+
+  // No date at all is upcoming: it has not happened.
+  let home = await (await read("/home")).text();
+  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Tonight"));
+
+  // Started an hour ago: still on, still filed under Upcoming rather than
+  // vanishing into Past while people are in the room.
+  at(Date.now() - 60 * 60 * 1000);
+  home = await (await read("/home")).text();
+  assert.match(home, /On tonight/);
+  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Tonight"));
+  assert.match(await (await read(`/@${handle}/${ev.slug}`)).text(), /on tonight/);
+
+  // Seven hours ago: the night is over, and nothing had to be switched.
+  at(Date.now() - 7 * 60 * 60 * 1000);
+  home = await (await read("/home")).text();
+  assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Tonight"));
+  assert.ok(!home.includes("On tonight"));
+});
+
+test("taking a name back off a party keeps the person only if they are one", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse", dj: "Seth" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const first = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${first.slug}`;
+
+  // A typo, added and taken straight back off: nothing was ever written about
+  // them and they were never anywhere else, so no ghost is left behind.
+  await send(`${where}/record`, { who: "Nnia", role: "guest" });
+  const typo = one(env, `SELECT * FROM people WHERE name = 'Nnia'`);
+  await send(`${where}/record`, { person: typo.id, remove: "1" });
+  assert.equal(one(env, `SELECT * FROM people WHERE name = 'Nnia'`), undefined);
+
+  // Somebody I wrote about at another party keeps their record, because the
+  // removal is from THIS night and their history is not this night's to erase.
+  await send("/parties/new", { title: "Rooftop" });
+  const second = rows(env, `SELECT * FROM events ORDER BY created_ms`)[1];
+  const there = `/@${handle}/${second.slug}`;
+  for (const at of [where, there]) await send(`${at}/record`, { who: "Nina", role: "guest" });
+  const nina = one(env, `SELECT * FROM people WHERE name = 'Nina'`);
+  await send(`${there}/record`, { person: nina.id, encounter: "Played the last hour" });
+  await send(`${where}/record`, { person: nina.id, remove: "1" });
+
+  assert.ok(one(env, `SELECT * FROM people WHERE id = ?`, nina.id), "she is still somebody I know");
+  const page = await (await read(`/people/${nina.id}`)).text();
+  assert.match(page, /Rooftop/);
+  assert.match(page, /Played the last hour/);
+  assert.ok(!page.includes("Warehouse"), "and the night she was taken off is gone");
+});
+
+test("people are searchable, reusable and never require an account", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "One", dj: "Seth Green, Ada Lovelace" });
+
+  const all = await (await read("/people")).text();
+  assert.match(all, /Seth Green/);
+  assert.match(all, /Ada Lovelace/);
+  const found = await (await read("/people?q=ada")).text();
+  assert.match(found, /Ada Lovelace/);
+  assert.ok(!found.includes("Seth Green"), "search narrows");
+  const missing = await (await read("/people?q=zzz")).text();
+  assert.match(missing, /Nobody by that name/);
+
+  // A general note about a person is separate from what happened on a night.
+  const ada = one(env, `SELECT * FROM people WHERE name = 'Ada Lovelace'`);
+  await send(`/people/${ada.id}`, { name: "Ada Lovelace", note: "Always worth saying hello" });
+  const page = await (await read(`/people/${ada.id}`)).text();
+  assert.match(page, /Always worth saying hello/);
+  assert.equal(one(env, `SELECT note FROM people WHERE id = ?`, ada.id).note,
+    "Always worth saying hello");
+  assert.equal(one(env, `SELECT account_email FROM people WHERE id = ?`, ada.id).account_email, null,
+    "no account required to be remembered");
 });
 
 for (const [name, fn] of tests) {

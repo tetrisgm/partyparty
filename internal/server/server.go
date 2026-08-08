@@ -275,6 +275,12 @@ func (s *srv) payloadConfig() json.RawMessage {
 // Srv is the exported handle: an http.Handler plus the async-activation hook.
 type Srv struct{ srv }
 
+// GuestJoinURL is the link this room hands out, or empty while there is not yet
+// a secure one to hand out. It is the same link the QR encodes - a guest who
+// followed the party on the web and a guest who scanned the code in the room
+// arrive at the same page.
+func (s *Srv) GuestJoinURL() string { return s.urls().Join }
+
 // AllowHTTPFallback permits the explicit offline emergency link only when the
 // current LAN IP is known and the secure hostname cannot be resolved. Normal
 // HTTP requests continue to redirect to HTTPS, and an old IP never becomes a
