@@ -326,6 +326,15 @@ None recorded.
 
 ## Owed
 
+- The platform worker on `main` reads columns and tables production D1 does not
+  have yet: `0009_people.sql` (people, party_people, party_notes) and
+  `0010_party_details.sql` (events.links, live_url, live_ms). There is no
+  scripted deploy for `cloudflare/app`, so migrations do not ride along with
+  one - `npx wrangler d1 migrations apply partyparty-app --remote` has to run
+  BEFORE `npx wrangler deploy` in that directory, or the home page and every
+  party page fail on their first query. Neither has been run: deploying is the
+  owner's call, and this shell has no D1-scoped API token
+  (`wrangler d1 migrations list --remote` answers 7403).
 - Correction to Apple DTS: an earlier support message said the host was
   "macOS 26.0". It is macOS 27.0 build `26A5388g`.
 - Field tests no simulator can stand in for: a real-iPhone wildcard-cert join,
