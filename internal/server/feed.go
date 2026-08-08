@@ -397,6 +397,26 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok": true, "linked": false, "url": base + "/link/" + out.Code,
 		})
+	case "/api/sign-in-check":
+		// Polled by the door while a browser tab is finishing the sign-in. One
+		// reconciliation now, then the honest answer - so the app opens the
+		// instant they are done instead of a minute later.
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		if s.SyncProfile != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+			defer cancel()
+			if err := s.SyncProfile(ctx); err != nil {
+				// Not an error worth showing: the tab may simply not be finished.
+				writeJSON(w, http.StatusOK, map[string]any{"signedIn": s.signedIn(), "waiting": true})
+				return true
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"signedIn": s.signedIn(), "handle": s.Events.CloudProfile().Handle,
+		})
 	case "/api/dj-profile":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})

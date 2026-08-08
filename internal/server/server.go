@@ -64,6 +64,12 @@ type Deps struct {
 	// Version is the app build version - shown in UIs and broadcast to clients
 	// so stale player pages refresh themselves after an update.
 	Version string
+
+	// SyncProfile runs one profile reconciliation now. The console calls it
+	// while somebody is signing in, so the door opens the moment they finish
+	// rather than on the next scheduled pass a minute later. nil when this Mac
+	// has no platform identity yet.
+	SyncProfile func(context.Context) error
 }
 
 type srv struct {

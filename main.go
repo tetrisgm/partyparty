@@ -296,6 +296,12 @@ func main() {
 		})
 	}
 
+	// Reconciling the DJ's profile on demand, for the sign-in door: it polls
+	// this while a browser tab finishes, so the app opens the moment they are
+	// done rather than on the next scheduled pass. nil until there is an
+	// install to reconcile.
+	var syncProfileNow func(context.Context) error
+
 	// The party's wall and its event page are one timeline. This is the only
 	// thing that reaches the platform from the Mac, it runs only while a party
 	// is live, and it is silent when there is no group, no night, or no
@@ -328,7 +334,7 @@ func main() {
 			// playing. A name and a photo are set up long before Go Live, and a
 			// console that opened blank because no party was running would be
 			// the same "it forgot me" bug that put identity in its own file.
-			go sync.RunProfile(peerCtx, cloudsync.ProfileHooks{
+			profileHooks := cloudsync.ProfileHooks{
 				Local: func() cloudsync.Profile {
 					p := events.CloudProfile()
 					return cloudsync.Profile{
@@ -346,12 +352,17 @@ func main() {
 				AvatarSeen:  events.AvatarSeen,
 				ApplyAvatar: events.ApplyCloudAvatar,
 				Logf:        log.Printf,
-			}, 60*time.Second)
+			}
+			go sync.RunProfile(peerCtx, profileHooks, 60*time.Second)
+			syncProfileNow = func(ctx context.Context) error {
+				return sync.SyncProfile(ctx, profileHooks)
+			}
 		}
 	}
 
 	handler = server.New(server.Deps{
 		Config:      cfg,
+		SyncProfile: syncProfileNow,
 		Broadcaster: bc,
 		Listeners:   ls,
 		RunDir:      runDir,

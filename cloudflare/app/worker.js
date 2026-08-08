@@ -2649,7 +2649,18 @@ export default {
           "Open PartyParty on the Mac and press Sign in again - it makes a fresh one.");
       }
       const dj = await currentDJ(env, request, now);
-      if (!dj) return html(200, signInPage(env, "Sign in to link this Mac", path));
+      if (!dj) {
+        // The Mac's door already asked which provider, so go straight there
+        // rather than showing a second identical pair of buttons.
+        const withProvider = url.searchParams.get("with");
+        if ((withProvider === "apple" || withProvider === "google") && configured(env, withProvider)) {
+          return new Response(null, {
+            status: 302,
+            headers: { location: `/auth/${withProvider}?to=${encodeURIComponent(path)}` },
+          });
+        }
+        return html(200, signInPage(env, "Sign in to link this Mac", path));
+      }
 
       const { results } = await env.DB.prepare(
         `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id
