@@ -1390,6 +1390,88 @@ test("the group's feed takes a photo, and shows who posted it", async () => {
   assert.equal(rows(env, `SELECT * FROM posts`).length, 2);
 });
 
+test("the @name says whether it is free while you are still typing", async () => {
+  const { env, read, send } = await signedIn();
+  seedGroup(env, "sundaze");
+  await send("/settings", { handle: "adalove" });
+
+  const ask = async (h) => JSON.parse(await (await read(
+    `/api/v1/handle-free?h=${encodeURIComponent(h)}`)).text());
+
+  assert.deepEqual(await ask("wideopen"), { free: true });
+  assert.equal((await ask("sundaze")).free, false, "a group's name is not available");
+  assert.match((await ask("sundaze")).why, /taken/i);
+  assert.equal((await ask("abc")).free, false);
+  assert.match((await ask("abc")).why, /five to thirty/i, "and it says why, not just no");
+  assert.equal((await ask("admin")).free, false);
+  assert.match((await ask("admin")).why, /reserved/i);
+
+  // Their own name always reads as available, or saving a form they did not
+  // change would report a collision with themselves.
+  assert.deepEqual(await ask("adalove"), { free: true, mine: true });
+
+  // Signed out, it answers nothing.
+  assert.equal((await get(env, "/api/v1/handle-free?h=wideopen")).status, 403);
+});
+
+test("a rejected @name comes back with everything else still typed in", async () => {
+  const { env, send } = await signedIn();
+  seedGroup(env, "sundaze");
+
+  const refused = await send("/settings", {
+    name: "Ada Lovelace", bio: "Slow Sunday rooms.", handle: "sundaze",
+    instagram: "adalove", soundcloud: "adasets", avatar: pngFile(),
+  });
+  assert.equal(refused.status, 200, "the form comes back, rather than a dead end");
+  const body = await refused.text();
+
+  assert.match(body, /@sundaze is already taken/, "and says which field and why");
+  assert.match(body, /value="Ada Lovelace"/, "the name is still there");
+  assert.match(body, /value="Slow Sunday rooms\./, "so is the line");
+  assert.match(body, /value="adalove"/);
+  assert.match(body, /value="adasets"/);
+  assert.match(body, /name="keepAvatar" value="avatars\//,
+    "and the photo they picked, which a file input cannot be refilled with");
+  assert.match(body, /name="handle"/, "with the field itself still editable");
+  assert.ok(!/That did not save/.test(body), "no full-page error");
+
+  // Nothing was written, including the name that was fine: a rejected form is
+  // rejected whole, so what is stored still matches what the page last showed.
+  assert.equal(one(env, `SELECT name FROM profiles`).name, "DJ Example");
+  assert.equal(one(env, `SELECT saved_ms FROM profiles`).saved_ms, null);
+
+  // Re-submitting with a free name keeps the photo that survived the round trip.
+  const key = /name="keepAvatar" value="([^"]+)"/.exec(body)[1];
+  const ok = await send("/settings", {
+    name: "Ada Lovelace", handle: "adalove", keepAvatar: key,
+  });
+  assert.equal(ok.status, 302);
+  const row = one(env, `SELECT * FROM profiles`);
+  assert.equal(row.handle, "adalove");
+  assert.equal(row.avatar_key, key, "the picture survived the rejection");
+});
+
+test("a name from the provider is taken whenever it arrives, not only the first time", async () => {
+  // The row already exists with no name - somebody who signed in before we
+  // asked for one, or an Apple account that hands it over exactly once and
+  // whose one time we missed. They stayed anonymous forever while the provider
+  // told us their name on every single sign-in.
+  const env = await withGoogle(makeEnv(), { name: "Ada Lovelace" });
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms, last_seen_ms)
+                   VALUES (?, 'dj@example.com', '', ?, ?)`).run(ulid(), Date.now(), Date.now());
+
+  await signIn(env);
+  assert.equal(one(env, `SELECT name FROM djs`).name, "Ada Lovelace");
+  assert.equal(one(env, `SELECT name FROM profiles`).name, "Ada Lovelace");
+  assert.equal(rows(env, `SELECT * FROM djs`).length, 1, "still one person");
+
+  // But a name they chose themselves is theirs. The provider does not get to
+  // change it back on the next sign-in.
+  env.raw.prepare(`UPDATE profiles SET name = 'Ada', saved_ms = ?`).run(Date.now());
+  await signIn(env);
+  assert.equal(one(env, `SELECT name FROM profiles`).name, "Ada");
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();

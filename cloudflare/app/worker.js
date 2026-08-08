@@ -532,6 +532,15 @@ border-radius:0;font-size:14px}
 .pill input:focus{border:0}
 .youbar{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
 .youbar .muted{margin:0}
+/* What the @name field has to say about itself, while it is still in front of
+   the person typing it. */
+.handlesays{font-size:13px;font-weight:650;color:var(--label-tertiary)}
+.handlesays[data-state="ok"]{color:var(--success)}
+.handlesays[data-state="bad"]{color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.formerror{margin:0 0 14px;padding:11px 14px;border-radius:var(--r-sm);
+background:rgba(255,45,111,.12);border:1px solid rgba(255,45,111,.35);
+color:var(--label);font-size:14px;font-weight:650}
 .handlepill{display:inline-flex;align-items:center;background:var(--bg-elevated-2);
 border:1px solid var(--separator);border-radius:var(--r-pill);padding:0 14px;
 min-height:44px;font-weight:700}
@@ -678,11 +687,14 @@ function personDisc(person, extraClass) {
 // The profile form. One component, because the whole promise is that the thing
 // you edit on first sight is the same thing you edit later - a settings page
 // with different fields to the welcome page is two profiles wearing one name.
-function profileEditor(profile, { action, heading, note, dismiss }) {
+function profileEditor(profile, { action, heading, note, dismiss, error }) {
   const links = (profile && profile.linksObj) || {};
   const avatar = mediaUrl(profile && profile.avatar_key);
   return `<form class="you" method="post" action="${esc(action)}" enctype="multipart/form-data">
     ${heading ? `<h2 style="margin:0 0 14px">${esc(heading)}</h2>` : ""}
+    ${error ? `<p class="formerror" role="alert">${esc(error)}</p>` : ""}
+    ${profile && profile.avatar_key
+      ? `<input type="hidden" name="keepAvatar" value="${esc(profile.avatar_key)}">` : ""}
     <div class="yourow">
       <label class="avatarpick" title="Choose a picture">
         <span class="disc">${avatar
@@ -711,11 +723,11 @@ function profileEditor(profile, { action, heading, note, dismiss }) {
       <label class="handlepill" title="Your address here">
         <span>@</span>
         <input type="text" name="handle" maxlength="30" spellcheck="false"
-          autocapitalize="none" autocomplete="off"
+          autocapitalize="none" autocomplete="off" data-handle
           value="${esc((profile && profile.handle) || "")}"
           size="${Math.max(8, ((profile && profile.handle) || "").length)}">
       </label>
-      <button class="btn" type="submit">Save</button>
+      <button class="btn" type="submit" data-save>Save</button>
       ${dismiss
         ? `<button class="btn plain" type="submit" name="dismiss" value="1"
             formnovalidate>${esc(dismiss)}</button>`
@@ -723,9 +735,66 @@ function profileEditor(profile, { action, heading, note, dismiss }) {
       ${profile && profile.avatar_key
         ? `<button class="btn plain small" type="submit" name="clearAvatar" value="1">Remove photo</button>`
         : ""}
+      <span class="handlesays" data-says aria-live="polite"></span>
       ${note ? `<p class="muted">${note}</p>` : ""}
     </div>
+    ${profileEditorScript()}
   </form>`;
+}
+
+// Ask while they are still typing.
+//
+// The old behaviour was to accept the form, fail on the server and replace the
+// whole page with "That @name is taken" - which is the answer arriving after
+// the question stopped being useful, on a page that no longer holds anything
+// they wrote. Now the field answers itself, and Save is not a thing you can
+// press into a wall.
+//
+// The server still checks. This is a courtesy, not a gate: two people can pick
+// the same name a second apart, and only the database can settle that.
+function profileEditorScript() {
+  return `<script>
+  (() => {
+    const form = document.currentScript.closest('form');
+    const field = form.querySelector('[data-handle]');
+    const says = form.querySelector('[data-says]');
+    const save = form.querySelector('[data-save]');
+    if (!field || !says || !save) return;
+    const was = field.value;
+    let timer = 0, seq = 0;
+    const show = (text, state) => {
+      says.textContent = text;
+      says.dataset.state = state || '';
+      // Never block the way out. A name that cannot be saved must not also
+      // trap somebody on the page with no way to put the old one back.
+      save.disabled = state === 'bad';
+    };
+    const ask = async () => {
+      const value = field.value.trim().toLowerCase();
+      if (!value || value === was) return show('', '');
+      const mine = ++seq;
+      show('checking…', '');
+      try {
+        const r = await fetch('/api/v1/handle-free?h=' + encodeURIComponent(value));
+        const d = await r.json();
+        if (mine !== seq) return;
+        show(d.free ? '@' + value + ' is free' : 'Not available - ' + (d.why || 'taken'),
+          d.free ? 'ok' : 'bad');
+      } catch (e) {
+        // Offline or blocked: say nothing and let the server decide. A false
+        // "taken" because a fetch failed would be worse than no answer.
+        if (mine === seq) show('', '');
+      }
+    };
+    field.addEventListener('input', () => {
+      field.value = field.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+      show('', '');
+      clearTimeout(timer);
+      timer = setTimeout(ask, 300);
+    });
+    field.addEventListener('blur', ask);
+  })();
+  </script>`;
 }
 
 // Reading the profile form back. Every field is optional and a blank one means
@@ -744,28 +813,9 @@ async function saveProfileForm(env, emailNorm, form, now) {
     return { ok: true };
   }
 
-  const wanted = normalizeHandle(form.get("handle"));
-  let handle = profile.handle;
-  if (wanted && wanted !== profile.handle) {
-    const problem = handleProblem(wanted);
-    if (problem) return { error: `That @name is ${problem}.`, profile };
-    if (!await handleFree(env, wanted)) return { error: "That @name is taken.", profile };
-    handle = wanted;
-    await reserveHandle(env, wanted);
-  }
-
-  let avatarKey = profile.avatar_key;
-  if (form.get("clearAvatar")) {
-    avatarKey = null;
-  } else {
-    const file = form.get("avatar");
-    if (file && typeof file.arrayBuffer === "function" && Number(file.size) > 0) {
-      const stored = await storeMedia(env, file, "avatars", MAX_AVATAR);
-      if (stored.error) return { error: stored.error, profile };
-      avatarKey = stored.key;
-    }
-  }
-
+  // Read the whole form first, so a rejection can hand back exactly what they
+  // typed. Failing early and rendering a bare error page threw away the name,
+  // the bio and the links along with the one field that was wrong.
   const links = {};
   for (const field of SOCIAL_FIELDS) {
     const value = field.key === "website"
@@ -775,6 +825,42 @@ async function saveProfileForm(env, emailNorm, form, now) {
   }
   const name = String(form.get("name") || "").slice(0, 60).trim();
   const bio = String(form.get("bio") || "").slice(0, 200).trim();
+  const wanted = normalizeHandle(form.get("handle"));
+
+  // The photo is stored before anything can be rejected, and its key is carried
+  // back on the form, so a bad @name does not also cost them the picture they
+  // just chose - a file input cannot be refilled from the server.
+  let avatarKey = profile.avatar_key;
+  let photoProblem = "";
+  if (form.get("clearAvatar")) {
+    avatarKey = null;
+  } else {
+    const keep = String(form.get("keepAvatar") || "");
+    if (keep && /^avatars\/[a-f0-9]+$/.test(keep)) avatarKey = keep;
+    const file = form.get("avatar");
+    if (file && typeof file.arrayBuffer === "function" && Number(file.size) > 0) {
+      const stored = await storeMedia(env, file, "avatars", MAX_AVATAR);
+      if (stored.error) photoProblem = stored.error;
+      else avatarKey = stored.key;
+    }
+  }
+  // What they submitted, in the shape the editor renders, ready to hand back.
+  const pending = {
+    ...profile, name, bio, avatar_key: avatarKey,
+    handle: wanted || profile.handle, linksObj: links,
+  };
+  if (photoProblem) return { error: photoProblem, pending };
+
+  let handle = profile.handle;
+  if (wanted && wanted !== profile.handle) {
+    const problem = handleProblem(wanted);
+    if (problem) return { error: `That @name has to be ${problem}.`, pending };
+    if (!await handleFree(env, wanted)) {
+      return { error: `@${wanted} is already taken - pick another.`, pending };
+    }
+    handle = wanted;
+    await reserveHandle(env, wanted);
+  }
 
   await env.DB.prepare(
     `UPDATE profiles SET handle = ?, name = ?, bio = ?, avatar_key = ?, links = ?,
@@ -1810,6 +1896,25 @@ export default {
       });
     }
 
+    // Is this @name free? Asked as somebody types, so the answer arrives while
+    // the field is still in front of them rather than after they press Save and
+    // lose the page. Signed in only, and it says nothing a guess would not:
+    // whether a name can be taken is exactly what the sign-up form tells you.
+    if (path === "/api/v1/handle-free") {
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return json(403, { error: "sign in first" });
+      const wanted = normalizeHandle(url.searchParams.get("h"));
+      const profile = await profileFor(env, dj.email_norm, now, dj.name);
+      // Their own name is always available to them - otherwise saving a form
+      // they did not change reads as a collision with themselves.
+      if (profile && wanted === profile.handle) return json(200, { free: true, mine: true });
+      const problem = handleProblem(wanted);
+      if (problem) return json(200, { free: false, why: problem });
+      return await handleFree(env, wanted)
+        ? json(200, { free: true })
+        : json(200, { free: false, why: "already taken" });
+    }
+
     // The DJ's profile, as the Mac sees it.
     //
     // The Mac has no sign-in and never will - it is a machine in a booth, not
@@ -2009,6 +2114,27 @@ export default {
       } else {
         await env.DB.prepare(`UPDATE djs SET last_seen_ms = ? WHERE id = ?`).bind(now, dj.id).run();
       }
+
+      // Take the name whenever it turns up, not only the first time we ever saw
+      // this person. Writing it on INSERT alone meant anybody whose row already
+      // existed - signed in before we asked for the name, or an Apple account
+      // that hands it over exactly once - stayed permanently anonymous while we
+      // were being told their name on every single sign-in.
+      //
+      // Filling a blank, never overwriting: once somebody has chosen their own
+      // name, the provider does not get to change it back.
+      if (name) {
+        if (!dj.name) {
+          await env.DB.prepare(`UPDATE djs SET name = ? WHERE id = ?`).bind(name, dj.id).run();
+          dj.name = name;
+        }
+        const profile = await profileFor(env, emailNorm, now, name);
+        if (profile && !profile.name && !profile.saved_ms) {
+          await env.DB.prepare(
+            `UPDATE profiles SET name = ?, updated_ms = ? WHERE email_norm = ?`
+          ).bind(name, now, emailNorm).run();
+        }
+      }
       // A member who signs in with the same verified address is the same
       // person: they keep every group they joined from a link.
       await env.DB.prepare(
@@ -2047,14 +2173,20 @@ export default {
     if (path === "/settings") {
       const dj = await currentDJ(env, request, now);
       if (!dj) return html(200, signInPage(env));
+      let problem = "", pending = null;
       if (request.method === "POST") {
         const form = await request.formData().catch(() => null);
         if (!form) return notice("That did not save", "Try again.");
         const saved = await saveProfileForm(env, dj.email_norm, form, now);
-        if (saved.error) return notice("That did not save", saved.error);
-        return new Response(null, { status: 302, headers: { location: "/settings" } });
+        if (!saved.error) {
+          return new Response(null, { status: 302, headers: { location: "/settings" } });
+        }
+        // Back to the same page with everything they typed still in it, and the
+        // one bad field named. Never a dead end that costs them the rest.
+        problem = saved.error;
+        pending = saved.pending;
       }
-      const profile = await profileFor(env, dj.email_norm, now, dj.name);
+      const profile = pending || await profileFor(env, dj.email_norm, now, dj.name);
       const { results: following } = await env.DB.prepare(
         `SELECT g.handle, g.name, gm.volume FROM groups g
            JOIN group_members gm ON gm.group_id = g.id
@@ -2067,7 +2199,7 @@ export default {
         <h1>You</h1>
         <p class="muted">All of this is optional. You already have an @name, and
         nothing here has to be your real one.</p>
-        ${profileEditor(profile, { action: "/settings" })}
+        ${profileEditor(profile, { action: "/settings", error: problem })}
         <p class="muted">Signed in as ${esc(dj.email_norm)}. That address came from
         ${esc(dj.apple_sub ? "Apple" : "your sign-in")} and cannot be changed here -
         sign in with a different one and you are a different person to us.
@@ -2097,14 +2229,22 @@ export default {
     if (path === "/home") {
       const dj = await currentDJ(env, request, now);
       if (!dj) return html(200, signInPage(env));
+      let problem = "", pending = null;
       if (request.method === "POST") {
         const form = await request.formData().catch(() => null);
         if (!form) return notice("That did not save", "Try again.");
         const saved = await saveProfileForm(env, dj.email_norm, form, now);
-        if (saved.error) return notice("That did not save", saved.error);
-        return new Response(null, { status: 302, headers: { location: "/home" } });
+        if (!saved.error) {
+          return new Response(null, { status: 302, headers: { location: "/home" } });
+        }
+        problem = saved.error;
+        pending = saved.pending;
       }
-      const profile = await profileFor(env, dj.email_norm, now, dj.name);
+      const stored = await profileFor(env, dj.email_norm, now, dj.name);
+      // On a rejection the form shows what they typed, but the sentence about
+      // what they are called must name the @name they actually HAVE - quoting
+      // the one that was just refused back at them is nonsense.
+      const profile = pending || stored;
 
       const { results: mine } = await env.DB.prepare(
         `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id WHERE d.dj_id = ?`
@@ -2138,12 +2278,16 @@ export default {
       // minted with the account - so this is an invitation rather than a gate,
       // and answering it either way puts it away for good. Editing stays at
       // /settings, which is where somebody who wants it later will look.
-      const you = !profile.saved_ms
+      // A rejected save keeps the welcome open, whatever the stored flag says:
+      // the person is mid-edit and closing the form under them would be worse
+      // than the error they are already looking at.
+      const you = (!profile.saved_ms || problem)
         ? profileEditor(profile, {
             action: "/home",
             heading: "You, if you want to be",
             dismiss: "Not now",
-            note: `All optional. Skip it and you are <b>@${esc(profile.handle)}</b> to everyone.`,
+            error: problem,
+            note: `All optional. Skip it and you are <b>@${esc(stored.handle)}</b> to everyone.`,
           })
         : `<div class="you"><div class="yourow" style="align-items:center">
             ${personDisc(profile, "big")}
