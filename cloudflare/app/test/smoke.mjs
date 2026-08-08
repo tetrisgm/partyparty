@@ -1541,6 +1541,152 @@ test("two groups is two answers, so it keeps the invented name", async () => {
   assert.equal(JSON.parse(await (await read("/api/v1/handle-free?h=basement")).text()).free, true);
 });
 
+// ------------------------------------------------- the Mac as a full client
+
+const asInstall = async (env, { linked = true } = {}) => {
+  const install = "aabbccddeeff";
+  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec", hostLabel: "chorus21" }));
+  let groupId = null;
+  if (linked) {
+    const { session } = await signIn(env);
+    const body = new FormData();
+    body.append("name", "Sundaze");
+    body.append("handle", "sundaze");
+    await worker.fetch(new Request("https://partyparty.party/manage", {
+      method: "POST", body, headers: { cookie: `pp_s=${session[1]}` },
+    }), env);
+    groupId = one(env, `SELECT id FROM groups`).id;
+    env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
+      .run(install, groupId, Date.now());
+  }
+  const call = async (path, extra) => {
+    const r = await worker.fetch(new Request("https://partyparty.party" + path, {
+      method: "POST", body: JSON.stringify({ id: install, secret: "sec", ...extra }),
+    }), env);
+    return { status: r.status, body: await r.json() };
+  };
+  return { install, groupId, call };
+};
+
+test("a party made on the Mac is the same row a party made on the web is", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const mac = await asInstall(env);
+
+  const made = await mac.call("/api/v1/party/create", {
+    title: "Warehouse, late", place: "Unit 7", partyId: "2026-08-08-2200-ab12",
+  });
+  assert.equal(made.status, 200);
+  assert.ok(made.body.party.key, "the Mac gets a real party back");
+
+  // Same table, same shape, same group as anything the web makes.
+  const row = one(env, `SELECT * FROM events WHERE id = ?`, made.body.party.key);
+  assert.equal(row.group_id, mac.groupId, "it belongs to the account, not to the Mac");
+  assert.equal(row.title, "Warehouse, late");
+  assert.equal(row.state, "announced");
+  assert.ok(row.starts_ms > 0, "the Mac knows when it is and fills it in");
+  assert.equal(row.party_id, "2026-08-08-2200-ab12", "the live room is attached at creation");
+  assert.equal(rows(env, `SELECT * FROM events`).length, 1, "exactly one record, never a shadow");
+
+  // And it is on the web immediately, at a real address.
+  const page = await get(env, `/@sundaze/${row.slug}`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Warehouse, late/);
+  assert.equal(made.body.party.url, `https://partyparty.party/@sundaze/${row.slug}`);
+});
+
+test("the Mac lists and opens parties made on the web", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const mac = await asInstall(env);
+  // Made in a browser, not by the Mac.
+  seedEvent(env, mac.groupId, { slug: "lido", title: "Sundaze at the Lido" });
+
+  const list = await mac.call("/api/v1/parties");
+  assert.equal(list.body.linked, true);
+  assert.equal(list.body.parties.length, 1);
+  assert.equal(list.body.parties[0].title, "Sundaze at the Lido");
+  assert.equal(list.body.parties[0].partyId, "", "not yet broadcasting");
+
+  // Broadcasting through it attaches the live room to THAT party.
+  const key = list.body.parties[0].key;
+  const bound = await mac.call("/api/v1/party/update", {
+    partyKey: key, partyId: "2026-08-08-2200-ab12", state: "live",
+  });
+  assert.equal(bound.status, 200);
+  assert.equal(bound.body.party.partyId, "2026-08-08-2200-ab12");
+  assert.equal(rows(env, `SELECT * FROM events`).length, 1, "broadcasting made no second party");
+
+  // Ending it leaves the party, and everything durable on it, alone.
+  await mac.call("/api/v1/party/update", { partyKey: key, state: "over" });
+  const after = one(env, `SELECT * FROM events WHERE id = ?`, key);
+  assert.equal(after.state, "over");
+  assert.equal(after.title, "Sundaze at the Lido");
+  assert.equal(after.party_id, "2026-08-08-2200-ab12", "what happened live is kept");
+  assert.equal((await get(env, "/@sundaze/lido")).status, 200, "still a page on the web");
+});
+
+test("a live room belongs to one party at a time", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const mac = await asInstall(env);
+  const room = "2026-08-08-2200-ab12";
+
+  const first = await mac.call("/api/v1/party/create", { title: "Rooftop", partyId: room });
+  const second = await mac.call("/api/v1/party/create", { title: "Basement", partyId: room });
+
+  // Moving the room to a new party releases it from the old one. Both holding
+  // it makes "which party did these photos land on" a coin toss, because the
+  // post sync finds the event BY room id.
+  const held = rows(env, `SELECT slug, party_id FROM events WHERE party_id != ''`);
+  assert.equal(held.length, 1, `two parties claim the same room: ${JSON.stringify(held)}`);
+  assert.equal(held[0].party_id, room);
+  assert.equal(one(env, `SELECT party_id FROM events WHERE id = ?`, first.body.party.key).party_id, "");
+  assert.equal(one(env, `SELECT party_id FROM events WHERE id = ?`, second.body.party.key).party_id, room);
+
+  // And opening the first one again moves it back, still only one holder.
+  await mac.call("/api/v1/party/update", { partyKey: first.body.party.key, partyId: room });
+  const now = rows(env, `SELECT slug, party_id FROM events WHERE party_id != ''`);
+  assert.equal(now.length, 1);
+  assert.equal(now[0].slug, "rooftop");
+});
+
+test("an edit on either client lands on the one record, and only where asked", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const mac = await asInstall(env);
+  const made = await mac.call("/api/v1/party/create", { title: "Rooftop", place: "The roof" });
+  const key = made.body.party.key;
+
+  // The Mac sets a time. It must not blank the place it was not asked about.
+  await mac.call("/api/v1/party/update", { partyKey: key, startsMs: 1786000000000 });
+  let row = one(env, `SELECT * FROM events WHERE id = ?`, key);
+  assert.equal(row.starts_ms, 1786000000000);
+  assert.equal(row.place, "The roof", "an untouched field is not cleared");
+  assert.ok(row.ics_seq > 0, "a subscribed calendar has to be told it moved");
+
+  // A stranger's Mac cannot touch it. Same database, a second install bound to
+  // a different group - checking this across two databases would pass on the
+  // row simply being absent and prove nothing about ownership.
+  const outsider = "ffeeddccbbaa";
+  await env.DL.put(`broker/${outsider}.json`, JSON.stringify({ secret: "s2", hostLabel: "other" }));
+  const otherGroup = seedGroup(env, "basement");
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
+    .run(outsider, otherGroup, Date.now());
+  const refused = await worker.fetch(new Request("https://partyparty.party/api/v1/party/update", {
+    method: "POST",
+    body: JSON.stringify({ id: outsider, secret: "s2", partyKey: key, title: "Mine now" }),
+  }), env);
+  assert.equal(refused.status, 404, "another account's party is not yours to edit");
+  assert.equal(one(env, `SELECT title FROM events WHERE id = ?`, key).title, "Rooftop");
+});
+
+test("an unsigned Mac has no parties and cannot make one", async () => {
+  const env = await withGoogle(makeEnv());
+  const mac = await asInstall(env, { linked: false });
+  const list = await mac.call("/api/v1/parties");
+  assert.deepEqual(list.body, { linked: false, parties: [] });
+  const made = await mac.call("/api/v1/party/create", { title: "Nope" });
+  assert.equal(made.body.linked, false);
+  assert.equal(rows(env, `SELECT * FROM events`).length, 0);
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();

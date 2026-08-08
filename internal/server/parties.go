@@ -1,0 +1,196 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"partyparty/internal/cloudsync"
+	"partyparty/internal/event"
+)
+
+// PartyClient is the platform, as the console needs it: the canonical parties
+// belonging to this account, created and edited through the same path the web
+// uses. An interface so the server can be tested without a network, and so this
+// package never learns how the platform is reached.
+type PartyClient interface {
+	Parties(ctx context.Context) ([]cloudsync.Party, bool, error)
+	CreateParty(ctx context.Context, title, place, partyID string, startsMs int64) (cloudsync.Party, error)
+	UpdateParty(ctx context.Context, key string, fields map[string]any) (cloudsync.Party, error)
+}
+
+func canonicalFrom(p cloudsync.Party) event.CanonicalParty {
+	return event.CanonicalParty{
+		Key: p.Key, Slug: p.Slug, Title: p.Title, URL: p.URL,
+		Handle: p.Handle, StartsMs: p.StartsMs, Place: p.Place,
+	}
+}
+
+// handlePartyAPI is the Mac's party management: everything the web console can
+// do to a party, done from the booth against the same record.
+func (s *srv) handlePartyAPI(w http.ResponseWriter, r *http.Request) bool {
+	switch r.URL.Path {
+	case "/api/parties":
+		// Everything on this account, so a party made on the web can be opened
+		// here. The one this room is currently running is marked.
+		if !s.requireDJ(w, r) {
+			return true
+		}
+		if s.Parties == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"linked": false, "parties": []any{}})
+			return true
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+		defer cancel()
+		list, linked, err := s.Parties.Parties(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return true
+		}
+		current := ""
+		if s.Events != nil {
+			current = s.Events.Canonical().Key
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"linked": linked, "parties": list, "current": current,
+		})
+
+	case "/api/party/create":
+		// Create the canonical party FIRST, then point this room at it. A
+		// broadcast never mints a record of its own.
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct {
+			Title string `json:"title"`
+			Place string `json:"place"`
+			// Open true attaches this Mac's room to the new party. False makes
+			// the party and leaves the room alone - creating one for Friday
+			// while standing in Tuesday must not hijack tonight.
+			Open bool `json:"open"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if s.Parties == nil || s.Events == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error": "this Mac is not signed in"})
+			return true
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+		defer cancel()
+		// The room id goes up with the party when this one is being opened, so
+		// the live session and the record are joined from the first moment.
+		roomID := ""
+		if body.Open {
+			roomID = s.Events.Identity().ID
+		}
+		party, err := s.Parties.CreateParty(ctx, body.Title, body.Place, roomID, time.Now().UnixMilli())
+		if err != nil {
+			status := http.StatusBadGateway
+			if cloudsync.NotSignedIn(err) {
+				status = http.StatusForbidden
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error()})
+			return true
+		}
+		if body.Open {
+			if err := s.Events.SetCanonical(canonicalFrom(party)); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+				return true
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "party": party, "opened": body.Open})
+
+	case "/api/party/open":
+		// Point this room at a party that already exists - the flow for one
+		// made on the web. Attaching the room is an edit to that same record.
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct {
+			Key string `json:"key"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil || body.Key == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "which party?"})
+			return true
+		}
+		if s.Parties == nil || s.Events == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error": "this Mac is not signed in"})
+			return true
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+		defer cancel()
+		party, err := s.Parties.UpdateParty(ctx, body.Key, map[string]any{
+			"partyId": s.Events.Identity().ID,
+		})
+		if err != nil {
+			status := http.StatusBadGateway
+			if cloudsync.NotSignedIn(err) {
+				status = http.StatusForbidden
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error()})
+			return true
+		}
+		if err := s.Events.SetCanonical(canonicalFrom(party)); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "party": party})
+
+	case "/api/party/edit":
+		// Editing from the booth writes to the same row the web edits. Only the
+		// fields sent move.
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		var body struct {
+			Title *string `json:"title"`
+			Place *string `json:"place"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if s.Parties == nil || s.Events == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error": "this Mac is not signed in"})
+			return true
+		}
+		current := s.Events.Canonical()
+		if current.Key == "" {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error": "this room is not running a party yet"})
+			return true
+		}
+		fields := map[string]any{}
+		if body.Title != nil {
+			fields["title"] = *body.Title
+		}
+		if body.Place != nil {
+			fields["place"] = *body.Place
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+		defer cancel()
+		party, err := s.Parties.UpdateParty(ctx, current.Key, fields)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return true
+		}
+		if err := s.Events.SetCanonical(canonicalFrom(party)); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "party": party})
+
+	default:
+		return false
+	}
+	return true
+}

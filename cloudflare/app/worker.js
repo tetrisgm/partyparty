@@ -1864,6 +1864,119 @@ async function djRunsGroup(env, dj, groupId) {
   return !!row;
 }
 
+// Creating a party. ONE implementation, called by the web form and by the Mac.
+//
+// The Mac is a full client, not a broadcast utility: a party it makes is the
+// same row, with the same validation and the same defaults, as one made in a
+// browser. Two creation paths would drift on the first field either side added,
+// and the Mac's copy would quietly become a lesser kind of party.
+//
+// Everything the caller does not supply is left alone rather than invented -
+// the Mac fills in what it genuinely knows (who is playing, when it started)
+// and nothing else.
+async function createParty(env, group, fields, now) {
+  const title = String(fields.title || "").slice(0, 120).trim();
+  if (!title) return { error: "a party needs a name" };
+
+  const startsMs = Number.isFinite(fields.startsMs) ? Number(fields.startsMs) : null;
+  const capacity = Math.max(0, Math.min(100000, parseInt(String(fields.capacity || "0"), 10) || 0));
+  const slug = slugify(title, now);
+  const id = ulid(now);
+
+  // A group can only hold one party per slug, and two parties named the same
+  // thing on one day is an ordinary accident rather than an error worth
+  // stopping for.
+  let unique = slug;
+  for (let n = 2; n < 40; n++) {
+    const clash = await env.DB.prepare(
+      `SELECT 1 AS ok FROM events WHERE group_id = ? AND slug = ?`
+    ).bind(group.id, unique).first();
+    if (!clash) break;
+    unique = `${slug}-${n}`;
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity,
+       cover_key, state, party_id, created_ms, updated_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?)`
+  ).bind(id, group.id, unique, title, startsMs,
+    String(fields.place || "").slice(0, 120), capacity,
+    fields.coverKey || null, String(fields.partyId || ""), now, now).run();
+
+  return { id, slug: unique, title, startsMs, handle: group.handle };
+}
+
+// Editing one, from either client. Only the fields actually supplied move, so
+// the Mac writing a start time cannot blank a place typed on the web.
+async function updateParty(env, event, fields, now) {
+  const sets = [];
+  const args = [];
+  if (fields.title !== undefined) {
+    const title = String(fields.title || "").slice(0, 120).trim();
+    if (!title) return { error: "a party needs a name" };
+    sets.push("title = ?");
+    args.push(title);
+  }
+  if (fields.startsMs !== undefined) {
+    sets.push("starts_ms = ?");
+    args.push(Number.isFinite(fields.startsMs) ? Number(fields.startsMs) : null);
+  }
+  if (fields.place !== undefined) {
+    sets.push("place = ?");
+    args.push(String(fields.place || "").slice(0, 120));
+  }
+  if (fields.coverKey !== undefined) {
+    sets.push("cover_key = ?");
+    args.push(fields.coverKey || null);
+  }
+  if (fields.state !== undefined && ["announced", "live", "over"].includes(fields.state)) {
+    sets.push("state = ?");
+    args.push(fields.state);
+  }
+  if (!sets.length) return { ok: true };
+  // Every change bumps the calendar sequence, or a subscribed calendar keeps
+  // showing the old time forever.
+  sets.push("ics_seq = ics_seq + 1", "updated_ms = ?");
+  args.push(now, event.id);
+  await env.DB.prepare(`UPDATE events SET ${sets.join(", ")} WHERE id = ?`).bind(...args).run();
+  return { ok: true };
+}
+
+// A party in the shape the Mac reads. Same row the web renders, minus nothing
+// the console needs and plus the two links it hands to guests.
+// A live room belongs to one party at a time.
+//
+// The Mac's room id is stable for the night, so moving from one party to
+// another left BOTH claiming it - and the post sync finds an event by room id,
+// so which party the photos landed on became a coin toss. Attaching releases
+// wherever it was before.
+async function attachRoom(env, groupId, eventId, partyId, now) {
+  if (!PARTY_ID_RE.test(String(partyId || ""))) return;
+  await env.DB.prepare(
+    `UPDATE events SET party_id = '', updated_ms = ?
+      WHERE group_id = ? AND party_id = ? AND id != ?`
+  ).bind(now, groupId, partyId, eventId).run();
+  await env.DB.prepare(
+    `UPDATE events SET party_id = ?, updated_ms = ? WHERE id = ?`
+  ).bind(partyId, now, eventId).run();
+}
+
+function partyForMac(event, group, base) {
+  if (!event) return null;
+  return {
+    key: event.id,
+    slug: event.slug,
+    title: event.title || "",
+    startsMs: event.starts_ms || 0,
+    place: event.place || "",
+    coverUrl: mediaUrl(event.cover_key),
+    state: event.state,
+    partyId: event.party_id || "",
+    url: `${base}/@${group.handle}/${event.slug}`,
+    handle: group.handle,
+  };
+}
+
 function slugify(title, now) {
   const base = String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "").slice(0, 40);
@@ -2473,6 +2586,86 @@ export default {
       return json(200, { linked: true, avatarUrl: key ? base + mediaUrl(key) : "" });
     }
 
+    // ---- the Mac, as a full client ---------------------------------------
+    //
+    // The Mac is not a broadcast utility with its own idea of a party. These
+    // routes are how it reads and writes the SAME rows the web does, through
+    // the same createParty/updateParty used by the browser form. Authenticated
+    // by the install, which is bound to a group, which is owned by a person -
+    // so "may this Mac touch this party" is the same question as on the web.
+    if (path.startsWith("/api/v1/party/") || path === "/api/v1/parties") {
+      const macRoutes = ["/api/v1/parties", "/api/v1/party/create", "/api/v1/party/update"];
+      if (macRoutes.includes(path)) {
+        if (request.method !== "POST") return json(405, { error: "POST required" });
+        const body = await readJson(request, 8192);
+        if (!body) return json(400, { error: "bad json" });
+        if (!await installAuth(env, body.id, body.secret)) {
+          return installAuthFailure(env, body.id);
+        }
+        const link = await env.DB.prepare(
+          `SELECT group_id FROM install_groups WHERE install_id = ?`
+        ).bind(String(body.id)).first();
+        // Not signed in on this Mac yet. Not an error - there is simply no
+        // account whose parties these would be.
+        if (!link) return json(200, { linked: false, parties: [] });
+        const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+          .bind(link.group_id).first();
+        if (!group) return json(200, { linked: false, parties: [] });
+
+        // Everything this account has, so the Mac can open one made on the web.
+        if (path === "/api/v1/parties") {
+          const { results } = await env.DB.prepare(
+            `SELECT id, slug, title, starts_ms, place, cover_key, state, party_id
+               FROM events WHERE group_id = ? AND state != 'draft'
+              ORDER BY COALESCE(starts_ms, created_ms) DESC LIMIT 60`
+          ).bind(group.id).all();
+          return json(200, {
+            linked: true,
+            group: { handle: group.handle, name: group.name },
+            parties: (results || []).map((e) => partyForMac(e, group, base)),
+          });
+        }
+
+        if (path === "/api/v1/party/create") {
+          const made = await createParty(env, group, {
+            title: body.title,
+            // The Mac knows when a party is actually starting, because it is
+            // standing in the room. The web has to be told.
+            startsMs: Number.isFinite(Number(body.startsMs)) ? Number(body.startsMs) : now,
+            place: body.place,
+            capacity: body.capacity,
+            coverKey: body.coverKey,
+            // Attaching the live room at creation, so a broadcast never has to
+            // mint a second record to hang itself off.
+            partyId: PARTY_ID_RE.test(String(body.partyId || "")) ? body.partyId : "",
+          }, now);
+          if (made.error) return json(400, { error: made.error });
+          await attachRoom(env, group.id, made.id, body.partyId, now);
+          const row = await env.DB.prepare(`SELECT * FROM events WHERE id = ?`).bind(made.id).first();
+          return json(200, { linked: true, party: partyForMac(row, group, base) });
+        }
+
+        // Editing, from the booth. Same rules as the web: it has to be yours.
+        const event = await env.DB.prepare(
+          `SELECT * FROM events WHERE id = ? AND group_id = ?`
+        ).bind(String(body.partyKey || ""), group.id).first();
+        if (!event) return json(404, { error: "no such party" });
+        const done = await updateParty(env, event, {
+          title: body.title,
+          startsMs: body.startsMs === undefined ? undefined
+            : (Number.isFinite(Number(body.startsMs)) ? Number(body.startsMs) : null),
+          place: body.place,
+          coverKey: body.coverKey,
+          state: body.state,
+        }, now);
+        if (done.error) return json(400, { error: done.error });
+        // Binding the live room to a party made earlier, on either client.
+        await attachRoom(env, group.id, event.id, body.partyId, now);
+        const fresh = await env.DB.prepare(`SELECT * FROM events WHERE id = ?`).bind(event.id).first();
+        return json(200, { linked: true, party: partyForMac(fresh, group, base) });
+      }
+    }
+
     // The Mac asks which night it is playing. Answered from the group the
     // install belongs to and the clock, so a DJ never has to pair anything: if
     // one of their nights is happening now, this is that night.
@@ -3007,19 +3200,16 @@ export default {
         const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
         const cover = await coverFromForm(env, form, "");
         if (cover && cover.error) return notice("That picture did not take", cover.error);
-        const slug = slugify(title, now);
-        const id = ulid(now);
-        await env.DB.prepare(
-          `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity,
-             cover_key, state, created_ms, updated_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?)`
-        ).bind(id, group.id, slug, title, Number.isFinite(starts) ? starts : null,
-          String(form.get("place") || "").slice(0, 120),
-          Math.max(0, Math.min(100000, parseInt(String(form.get("capacity") || "0"), 10) || 0)),
-          (cover && cover.key) || String(form.get("coverPick") || "") || null,
-          now, now).run();
+        const made = await createParty(env, group, {
+          title,
+          startsMs: Number.isFinite(starts) ? starts : null,
+          place: form.get("place"),
+          capacity: form.get("capacity"),
+          coverKey: (cover && cover.key) || String(form.get("coverPick") || "") || null,
+        }, now);
+        if (made.error) return notice("That did not save", made.error);
         return new Response(null, {
-          status: 302, headers: { location: `/@${group.handle}/${slug}` },
+          status: 302, headers: { location: `/@${group.handle}/${made.slug}` },
         });
       }
 

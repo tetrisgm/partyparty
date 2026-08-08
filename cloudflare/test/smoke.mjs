@@ -360,6 +360,36 @@ test("a forgotten install is told to register again, a wrong secret is not", asy
   }
 });
 
+test("the web ships no broadcaster: it may listen, never transmit", async () => {
+  // The platform boundary, asserted rather than assumed. The web is the
+  // personal, discovery and listening client; capturing a Mac's audio and
+  // pushing it is the Mac app's job and must not leak into anything served
+  // from the site.
+  const root = new URL("../", import.meta.url);
+  const shipped = [
+    "worker.js",
+    "app/worker.js",
+    "../site/index.html",
+  ];
+  // Words that only ever belong to the transmitting side.
+  const broadcaster = [
+    "ppcapture", "ffmpeg", "mediamtx", "CoreAudio",
+    "getDisplayMedia", "AudioHardwareCreateProcessTap",
+  ];
+  for (const file of shipped) {
+    const text = readFileSync(new URL(file, root), "utf8");
+    for (const word of broadcaster) {
+      assert.ok(!text.includes(word),
+        `${file} ships "${word}" - the web must not carry the broadcaster`);
+    }
+  }
+
+  // And the console, which IS the broadcaster's UI, is not a web asset. It is
+  // served by the Mac binary to its own loopback and nowhere else.
+  const site = readdirSync(new URL("../site/", import.meta.url));
+  assert.ok(!site.includes("dj.html"), "the DJ console is not served by the web");
+});
+
 test("the typeface is cached instead of refetched on every page load", async () => {
   const env = baseEnv();
   env.ASSETS = { fetch: async () => new Response("font bytes", {

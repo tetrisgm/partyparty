@@ -65,6 +65,13 @@ type Deps struct {
 	// so stale player pages refresh themselves after an update.
 	Version string
 
+	// Parties is this account's canonical parties, and the way the Mac creates
+	// and edits them. Every one of these goes through the platform's own
+	// creation path, so a party made in the booth is the same row as one made in
+	// a browser - there is no Mac-only kind of party. nil when there is no
+	// platform identity yet.
+	Parties PartyClient
+
 	// SyncProfile runs one profile reconciliation now. The console calls it
 	// while somebody is signing in, so the door opens the moment they finish
 	// rather than on the next scheduled pass a minute later. nil when this Mac
@@ -449,6 +456,11 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(p, "/media/"):
 		s.handleMedia(w, r)
 	case strings.HasPrefix(p, "/api/"):
+		// Managing the canonical party comes first: these are the Mac acting as
+		// a full client, and they must not be shadowed by the room's own API.
+		if s.handlePartyAPI(w, r) {
+			return
+		}
 		if s.handleFeedAPI(w, r) {
 			return
 		}

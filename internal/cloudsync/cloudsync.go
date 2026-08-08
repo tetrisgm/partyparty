@@ -117,6 +117,106 @@ func (c *Client) Bind(ctx context.Context, partyID string) (Binding, error) {
 	return out, err
 }
 
+// Party is the canonical record, as the Mac reads and writes it. The same row
+// the web renders - there is no Mac-only kind of party, and a broadcast is a
+// capability attached to one of these rather than a thing that becomes one.
+type Party struct {
+	Key      string `json:"key"`
+	Slug     string `json:"slug"`
+	Title    string `json:"title"`
+	StartsMs int64  `json:"startsMs"`
+	Place    string `json:"place"`
+	CoverURL string `json:"coverUrl"`
+	State    string `json:"state"`
+	// PartyID is the live room currently attached, empty when nothing is
+	// playing. Durable: it survives the broadcast so the record still says what
+	// happened here.
+	PartyID string `json:"partyId"`
+	URL     string `json:"url"`
+	Handle  string `json:"handle"`
+}
+
+type partiesResponse struct {
+	Linked  bool    `json:"linked"`
+	Parties []Party `json:"parties"`
+	Group   struct {
+		Handle string `json:"handle"`
+		Name   string `json:"name"`
+	} `json:"group"`
+}
+
+type partyResponse struct {
+	Linked bool   `json:"linked"`
+	Party  Party  `json:"party"`
+	Error  string `json:"error"`
+}
+
+// Parties lists what this account already has, so the Mac can open a party
+// somebody made in a browser. `linked` false means this Mac is not signed in.
+func (c *Client) Parties(ctx context.Context) ([]Party, bool, error) {
+	if !c.ready() {
+		return nil, false, errors.New("cloudsync: not configured")
+	}
+	var out partiesResponse
+	err := c.post(ctx, "/api/v1/parties", map[string]any{
+		"id": c.InstallID, "secret": c.Secret,
+	}, &out)
+	return out.Parties, out.Linked, err
+}
+
+// CreateParty makes a canonical party through the platform's own creation
+// path - the same one the web form calls. partyID attaches the live room at
+// creation so starting a broadcast never mints a second record.
+func (c *Client) CreateParty(ctx context.Context, title, place, partyID string, startsMs int64) (Party, error) {
+	if !c.ready() {
+		return Party{}, errors.New("cloudsync: not configured")
+	}
+	var out partyResponse
+	body := map[string]any{
+		"id": c.InstallID, "secret": c.Secret, "title": title, "place": place,
+	}
+	if partyID != "" {
+		body["partyId"] = partyID
+	}
+	if startsMs > 0 {
+		body["startsMs"] = startsMs
+	}
+	if err := c.post(ctx, "/api/v1/party/create", body, &out); err != nil {
+		return Party{}, err
+	}
+	if !out.Linked {
+		return Party{}, errNotSignedIn
+	}
+	return out.Party, nil
+}
+
+// UpdateParty edits one. Only the fields passed move; nil leaves them alone, so
+// the Mac writing a start time cannot blank a place typed on the web.
+func (c *Client) UpdateParty(ctx context.Context, key string, fields map[string]any) (Party, error) {
+	if !c.ready() {
+		return Party{}, errors.New("cloudsync: not configured")
+	}
+	body := map[string]any{"id": c.InstallID, "secret": c.Secret, "partyKey": key}
+	for k, v := range fields {
+		body[k] = v
+	}
+	var out partyResponse
+	if err := c.post(ctx, "/api/v1/party/update", body, &out); err != nil {
+		return Party{}, err
+	}
+	if !out.Linked {
+		return Party{}, errNotSignedIn
+	}
+	return out.Party, nil
+}
+
+// errNotSignedIn is this Mac having no account behind it. An ordinary state,
+// not a failure: nothing to list, nothing to write to.
+var errNotSignedIn = errors.New("this Mac is not signed in")
+
+// NotSignedIn reports that error without exporting the sentinel's identity.
+func NotSignedIn(err error) bool { return errors.Is(err, errNotSignedIn) }
+
 // Profile is the DJ, as both the console and the web show them. One record:
 // the Mac reads it so a paired console opens as whoever the DJ already is, and
 // writes it so an edit made in the booth is the same edit made on the site.

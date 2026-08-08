@@ -376,6 +376,21 @@
   .djhandle{margin-left:8px;font-family:var(--mono,ui-monospace,Menlo,monospace);
     font-size:12px;font-weight:600;color:var(--label-tertiary)}
   .djhandle[hidden]{display:none}
+  /* The party this room is running. One line, because choosing it is a thing
+     you do once a night and then forget about. */
+  .partybar{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);
+    flex-wrap:wrap;padding:10px var(--s-4);margin:0 0 var(--s-3);
+    background:var(--bg-elevated);border:1px solid var(--separator);border-radius:var(--r-md)}
+  .partybar[hidden]{display:none}
+  .partybarnow{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .partybarlabel{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--label-tertiary)}
+  .partybarnow b{font-size:14px;font-weight:700;overflow-wrap:anywhere}
+  .partybarlink{font-size:12px;font-weight:650;color:var(--accent)}
+  .partybarlink[hidden]{display:none}
+  .partybaracts{display:flex;align-items:center;gap:8px}
+  .partybaracts select{height:32px;border-radius:var(--r-sm);background:var(--fill);
+    color:var(--label);border:1px solid var(--separator);font:inherit;font-size:12px;padding:0 8px}
 
   /* ---- The sign-in door ---------------------------------------------
      The same two halves as the web: buttons on the left, a room full of
@@ -1076,6 +1091,22 @@
     <div id="bcnoteText"></div>
     <button class="ghost" id="audioPermBtn" style="display:none;margin-top:10px;width:100%">Open System Audio Recording Only</button>
     <div class="hint" id="capturePermHint" style="display:none;margin:6px 0 0">Turn on PartyParty in the list.</div>
+  </div>
+
+  <!-- Which canonical party this room is running. The same record the web
+       shows; this is the Mac choosing among them, not inventing one. -->
+  <div class="partybar" id="partyBar" hidden>
+    <div class="partybarnow">
+      <span class="partybarlabel">Party</span>
+      <b id="partyBarName">Not set</b>
+      <a class="partybarlink" id="partyBarLink" target="_blank" rel="noopener" hidden>Open page</a>
+    </div>
+    <div class="partybaracts">
+      <select id="partyPick" aria-label="Which party this is">
+        <option value="">Choose a party…</option>
+      </select>
+      <button class="ghost" id="partyNewBtn" type="button">New party</button>
+    </div>
   </div>
 
   <div class="eventtop">
@@ -2352,6 +2383,96 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const button = document.getElementById('signInBtn');
     if (button) button.hidden = !!eventMeta.handle;
   }
+  // The party this room is running.
+  //
+  // The Mac is a full client: these are the account's canonical parties, the
+  // same records the web shows. Choosing one attaches this room to it; making
+  // one creates the real party first and then attaches. Nothing here invents a
+  // Mac-only kind of party, and nothing is lost when a broadcast ends.
+  {
+    const bar = document.getElementById('partyBar');
+    const name = document.getElementById('partyBarName');
+    const link = document.getElementById('partyBarLink');
+    const pick = document.getElementById('partyPick');
+    const make = document.getElementById('partyNewBtn');
+    let known = [];
+
+    const when = (ms) => {
+      if (!ms) return '';
+      try {
+        return new Date(ms).toLocaleString(undefined,
+          { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      } catch (e) { return ''; }
+    };
+    const show = (party) => {
+      if (party && party.title) {
+        name.textContent = party.title;
+        link.href = party.url || '#';
+        link.hidden = !party.url;
+      } else {
+        name.textContent = 'Not set';
+        link.hidden = true;
+      }
+    };
+    async function loadParties(){
+      try {
+        const r = await fetch('/api/parties', { method: 'POST' });
+        const d = await r.json();
+        // Only shown once this Mac has an account; the door covers everything
+        // before that.
+        bar.hidden = !d.linked;
+        if (!d.linked) return;
+        known = d.parties || [];
+        const current = known.find((p) => p.key === d.current) || null;
+        show(current);
+        pick.innerHTML = '<option value="">Choose a party…</option>' +
+          known.map((p) => '<option value="' + p.key + '"' +
+            (p.key === d.current ? ' selected' : '') + '>' +
+            (p.title || 'Untitled') + (when(p.startsMs) ? ' - ' + when(p.startsMs) : '') +
+            '</option>').join('');
+      } catch (e) { /* offline: leave the bar as it is rather than blanking it */ }
+    }
+    pick.onchange = async () => {
+      const key = pick.value;
+      if (!key) return;
+      pick.disabled = true;
+      try {
+        const r = await fetch('/api/party/open', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'could not open that party');
+        show(d.party);
+        await loadParties();
+      } catch (e) {
+        name.textContent = String(e.message || e);
+      } finally { pick.disabled = false; }
+    };
+    make.onclick = async () => {
+      const title = (prompt('What is the party called?') || '').trim();
+      if (!title) return;
+      make.disabled = true;
+      try {
+        const r = await fetch('/api/party/create', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, open: true }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'could not create it');
+        show(d.party);
+        await loadParties();
+      } catch (e) {
+        name.textContent = String(e.message || e);
+      } finally { make.disabled = false; }
+    };
+    // Refreshed when the door opens, and on a slow tick so a party made in a
+    // browser mid-set turns up without a restart.
+    window.ppLoadParties = loadParties;
+    loadParties();
+    setInterval(loadParties, 60000);
+  }
+
   // The door. Shown until this Mac belongs to an account, hidden the moment it
   // does. Signing in happens in a browser because that is where Apple and
   // Google sign-in lives: this Mac asks the platform for a one-time code
@@ -2374,6 +2495,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // Coming back through the door means everything behind it was drawn for
     // nobody. Reload once so the console opens as the person who just signed in.
     if (signedIn && wasOpen) location.reload();
+    if (signedIn && window.ppLoadParties) window.ppLoadParties();
   }
   {
     const says = document.getElementById('macDoorSays');

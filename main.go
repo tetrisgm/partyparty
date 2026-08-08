@@ -301,6 +301,10 @@ func main() {
 	// done rather than on the next scheduled pass. nil until there is an
 	// install to reconcile.
 	var syncProfileNow func(context.Context) error
+	// The platform, as the console's party manager. nil until this Mac has an
+	// install to authenticate with; the endpoints answer "not signed in" rather
+	// than failing when that is the case.
+	var partyClient server.PartyClient
 
 	// The party's wall and its event page are one timeline. This is the only
 	// thing that reaches the platform from the Mac, it runs only while a party
@@ -357,11 +361,13 @@ func main() {
 			syncProfileNow = func(ctx context.Context) error {
 				return sync.SyncProfile(ctx, profileHooks)
 			}
+			partyClient = sync
 		}
 	}
 
 	handler = server.New(server.Deps{
 		Config:      cfg,
+		Parties:     partyClient,
 		SyncProfile: syncProfileNow,
 		Broadcaster: bc,
 		Listeners:   ls,
