@@ -13,7 +13,14 @@ PLIST="$APP/Contents/Info.plist"
 [ -d "$APP/Contents/Frameworks/Sparkle.framework" ]
 codesign --verify --deep --strict --verbose=2 "$APP"
 CAPTURE="$APP/Contents/Helpers/ppcapture"
-otool -L "$CAPTURE" | grep -q '/ShazamKit.framework/'
+# ShazamKit belongs to the APP, not to the capture helper.
+#
+# Track recognition used to live in ppcapture and moved into the app
+# (AppDelegate + TrackRecognizer); the Makefile links the helper against
+# CoreAudio and AVFoundation only. This check kept asking the helper for a
+# framework it stopped carrying, so the standalone lane could not be built or
+# installed at all - which nobody noticed while the channel sat dormant.
+otool -L "$APP/Contents/MacOS/PartyParty" | grep -q '/ShazamKit.framework/'
 capture_entitlements="$(codesign -d --entitlements :- "$CAPTURE" 2>/dev/null)"
 capture_keys="$(printf '%s' "$capture_entitlements" | plutil -convert json -o - - | /usr/bin/python3 -c \
   'import json,sys; print("\n".join(sorted(json.load(sys.stdin))))')"

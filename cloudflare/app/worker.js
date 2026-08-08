@@ -537,6 +537,10 @@ border-radius:0;font-size:14px}
 .handlesays{font-size:13px;font-weight:650;color:var(--label-tertiary)}
 .handlesays[data-state="ok"]{color:var(--success)}
 .handlesays[data-state="bad"]{color:var(--accent)}
+/* Once a photo is waiting, Save is the only thing left to do. */
+@keyframes nudge{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+.btn.nudge{animation:nudge .9s ease-in-out 2}
+@media (prefers-reduced-motion:reduce){.btn.nudge{animation:none}}
 .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
 .formerror{margin:0 0 14px;padding:11px 14px;border-radius:var(--r-sm);
 background:rgba(255,45,111,.12);border:1px solid rgba(255,45,111,.35);
@@ -598,6 +602,39 @@ details.tinyhelp p{margin:8px 0 0}
 // `wide` is for the pages that are a form rather than something to read. 680px
 // is the right measure for prose and too narrow for the profile row, where it
 // clips three link fields down to "@use".
+// The sign-in door only. Two columns on a laptop, and on a phone the picture
+// becomes a band across the top rather than half a tall screen of crowd.
+const DOOR_STYLE = `
+body.door{min-height:100dvh;display:grid;grid-template-columns:1fr 1fr}
+.doorleft{max-width:none;display:grid;place-items:center;padding:40px 32px}
+.doorbox{width:100%;max-width:380px}
+.doorbrand{display:inline-block;font-size:15px;font-weight:800;letter-spacing:-.01em;
+color:var(--label);margin-bottom:48px}
+.doorbrand:hover{text-decoration:none;color:var(--accent)}
+.door h1{font-size:34px;line-height:1.05;margin:0 0 10px}
+.door .muted{font-size:14px;line-height:1.5}
+.ssorow{display:grid;gap:10px;margin:28px 0 0}
+.ssobtn{display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;
+padding:0 20px;border-radius:var(--r-pill);background:var(--bg-elevated);
+border:1px solid var(--separator);color:var(--label);font-size:15px;font-weight:700;
+transition:background .15s,border-color .15s}
+.ssobtn:hover{text-decoration:none;background:var(--bg-elevated-2);border-color:var(--fill-hover)}
+.ssobtn svg{width:19px;height:19px;flex:0 0 19px}
+.doorfine{margin:22px 0 0;font-size:12px;line-height:1.5;color:var(--label-tertiary)}
+.doorart{background-size:cover;background-position:center;position:relative}
+/* The crowd sits behind a wash of the accent, so the two halves read as one
+   page rather than a form pasted beside a stock photo. */
+.doorart::after{content:'';position:absolute;inset:0;
+background:linear-gradient(200deg,rgba(255,45,111,.26),rgba(10,10,12,.38))}
+@media (max-width:820px){
+  body.door{grid-template-columns:1fr;grid-template-rows:32vh auto}
+  .doorart{order:-1}
+  .doorleft{padding:32px 24px 64px}
+  .doorbrand{margin-bottom:28px}
+  .door h1{font-size:29px}
+}
+`;
+
 function page(title, body, heroHtml, rail, wide) {
   const shell = rail
     ? `<div class="withrail"><div>${body}</div>${rail}</div>`
@@ -793,6 +830,70 @@ function profileEditorScript() {
       timer = setTimeout(ask, 300);
     });
     field.addEventListener('blur', ask);
+
+    // The photo. Choosing one used to do nothing visible at all: the disc kept
+    // showing initials, so there was no sign a Save was pending and no reason
+    // to press it. Every "the picture does not save" is really this.
+    const picker = form.querySelector('[name=avatar]');
+    const disc = form.querySelector('.avatarpick .disc');
+    const hint = form.querySelector('.avatarpick .hintline');
+    if (!picker || !disc) return;
+
+    const shown = (url, label) => {
+      disc.innerHTML = '';
+      const img = document.createElement('img');
+      img.alt = '';
+      // HEIC decodes in Safari and not in Chrome. If the preview cannot render
+      // we still say plainly that a file is attached, rather than showing a
+      // broken frame that reads as another failure.
+      img.onerror = () => { disc.textContent = '✓'; };
+      img.src = url;
+      disc.appendChild(img);
+      if (hint) { hint.textContent = label; hint.style.color = 'var(--accent)'; }
+      save.classList.add('nudge');
+    };
+
+    // Re-encoded to something modest before it ever leaves the browser: a
+    // 5MB photo from a phone becomes a ~60KB square, HEIC becomes JPEG
+    // wherever the browser can decode it, and the upload is instant on venue
+    // Wi-Fi. Falls back to the original bytes when the canvas cannot help.
+    const shrink = (file) => new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const side = Math.min(512, Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = side;
+          const ctx = canvas.getContext('2d');
+          // Square crop from the middle: the disc is a circle, so anything
+          // outside that square was never going to be seen.
+          const cut = Math.min(img.width, img.height);
+          ctx.drawImage(img, (img.width - cut) / 2, (img.height - cut) / 2, cut, cut, 0, 0, side, side);
+          canvas.toBlob((blob) => {
+            URL.revokeObjectURL(url);
+            resolve(blob ? new File([blob], 'avatar.jpg', { type: 'image/jpeg' }) : null);
+          }, 'image/jpeg', 0.85);
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+
+    picker.addEventListener('change', async () => {
+      const file = picker.files && picker.files[0];
+      if (!file) return;
+      shown(URL.createObjectURL(file), 'Press Save');
+      const smaller = await shrink(file);
+      if (!smaller || typeof DataTransfer !== 'function') return;
+      const swap = new DataTransfer();
+      swap.items.add(smaller);
+      picker.files = swap.files;
+      shown(URL.createObjectURL(smaller), 'Press Save');
+    });
   })();
   </script>`;
 }
@@ -1711,16 +1812,43 @@ async function spaceLeft(env, event) {
   return Math.max(0, event.capacity - Number((row && row.n) || 0));
 }
 
-function signInPage(env) {
-  const button = (provider, label) => (configured(env, provider)
-    ? `<p><a class="btn" href="/auth/${provider}">${esc(label)}</a></p>`
+// The door: the two buttons on the left, a room full of people on the right.
+//
+// The picture is one of the same covers a DJ shuffles through for their own
+// nights - the product showing what it is for rather than describing it. Picked
+// per request, so the page is a different party each time you arrive.
+function signInPage(env, heading) {
+  const apple = `<svg viewBox="0 0 384 512" aria-hidden="true" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>`;
+  const google = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.7-.4-4H24v7.3h12.1c-.2 2-1.6 5-4.5 7l-.1.3 6.5 5 .5.1c4.1-3.8 6.6-9.4 6.6-15.7"/><path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.8 1.3-4.3 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-7 5.4C7.9 40.8 15.4 46 24 46"/><path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.7-2.9-.7-4.4s.3-3 .7-4.4v-.3l-6.8-5.3-.2.1C2.9 17 2 20.4 2 24s.9 7 2.5 10z"/><path fill="#EA4335" d="M24 10.7c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.5 29.9 2 24 2 15.4 2 7.9 7.2 4.5 14l7 5.5c1.8-5.3 6.7-9.1 12.5-9.1"/></svg>`;
+
+  const button = (provider, mark, label) => (configured(env, provider)
+    ? `<a class="ssobtn" href="/auth/${provider}">${mark}<span>${esc(label)}</span></a>`
     : `<p class="muted">${esc(label)} is not configured yet.</p>`);
-  return page("Sign in", `
-    <h1>Sign in</h1>
-    <p class="muted">Only DJs need an account. Guests never do.</p>
-    ${button("apple", "Continue with Apple")}
-    ${button("google", "Continue with Google")}
-  `);
+
+  const cover = coverPileUrl(COVER_PILE[
+    crypto.getRandomValues(new Uint32Array(1))[0] % COVER_PILE.length]);
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${esc(heading || "Sign in")} · PartyParty</title><style>${STYLE}${DOOR_STYLE}</style></head>
+<body class="door">
+  <main class="doorleft">
+    <div class="doorbox">
+      <a class="doorbrand" href="/">PartyParty</a>
+      <h1>${esc(heading || "Sign in")}</h1>
+      <p class="muted">Only DJs need an account. Guests scan a code and they are in -
+      no sign-in, no app, nothing to install.</p>
+      <div class="ssorow">
+        ${button("apple", apple, "Continue with Apple")}
+        ${button("google", google, "Continue with Google")}
+      </div>
+      <p class="doorfine">We ask Apple and Google for your name and email, and
+      nothing else. You can change or clear both afterwards.</p>
+    </div>
+  </main>
+  <aside class="doorart" style="background-image:url('${esc(cover)}')" role="img"
+    aria-label="A crowd at a party"></aside>
+</body></html>`;
 }
 
 // Sending. The stack already speaks SMTP from a Worker (web-kit/worker-smtp.js,
