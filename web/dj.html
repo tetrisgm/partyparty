@@ -371,6 +371,11 @@
     font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
   .rostergroup:first-child .rostergrouphead{margin-top:0}
   .rostergrouphead small{font-size:11px;color:var(--label-tertiary);font-weight:600}
+  /* The DJ's @name, as the web shows it. Read-only here on purpose: the name
+     is minted and owned by the platform, and the console only reports it. */
+  .djhandle{margin-left:8px;font-family:var(--mono,ui-monospace,Menlo,monospace);
+    font-size:12px;font-weight:600;color:var(--label-tertiary)}
+  .djhandle[hidden]{display:none}
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   /* macOS-style hierarchy: quiet grouped surfaces, aligned fields, one clear
      action row per section. */
@@ -1048,7 +1053,7 @@
 
   <div class="card event-admin-tools" id="eventManagePanel">
     <div class="linkeditor" id="linkEditor">
-      <div class="linkeditor-head"><b>About You</b></div>
+      <div class="linkeditor-head"><b>About You</b><span class="djhandle" id="djHandle" hidden></span></div>
       <div class="profileeditor">
         <div class="profileimagewrap">
           <img class="profilephoto" id="profilePhoto" src="" alt="DJ profile photo" hidden>
@@ -2196,8 +2201,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         const djFace = avatarSrc
           ? '<span class="lemoji lphoto"><img src="' + esc(avatarSrc) + '" alt=""></span>'
           : '<span class="lemoji">🎧</span>';
+        // The local DJ is a person with an address on the platform; a peer DJ
+        // from another Mac is only ever a name to us.
+        const djTag = isLocalGroup && eventMeta.handle ? 'DJ · @' + esc(eventMeta.handle) : 'DJ';
         const djRow = '<div class="listener djrow">' + djFace +
-          '<div class="lbody"><span class="lname">' + esc(group.dj || 'DJ') + '</span><div class="ldetail">DJ</div></div></div>';
+          '<div class="lbody"><span class="lname">' + esc(group.dj || 'DJ') + '</span><div class="ldetail">' + djTag + '</div></div></div>';
         const head = '<div class="rostergrouphead"><span>' + esc(group.dj || 'DJ') +
           '</span><small>&mdash; ' + (1 + listeners.length) + '</small></div>';
         return '<section class="rostergroup">' + head + djRow + rows + '</section>';
@@ -2247,7 +2255,17 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   startConsoleRefresh();
 
   // ── Event identity: display first, edit only when requested ──
-  const eventMeta = { title: '', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', bio: '', avatar: '', slug: '' };
+  const eventMeta = { title: '', host: 'the DJ', starts: '', date: '', time: '', place: '', cover: '', bio: '', avatar: '', slug: '', handle: '' };
+  // The DJ's @name on the platform, once this Mac is paired to a group. Kept
+  // deliberately small: it reads eventMeta and the DOM and nothing else, so it
+  // is safe to call from the feed poller further down.
+  function setDJHandle(handle){
+    eventMeta.handle = String(handle || '');
+    const chip = document.getElementById('djHandle');
+    if (!chip) return;
+    chip.textContent = eventMeta.handle ? '@' + eventMeta.handle : '';
+    chip.hidden = !eventMeta.handle;
+  }
   let eventEditField = '';
   function isPlaceholderHost(host){
     const h = String(host || '').trim().toLowerCase();
@@ -3136,6 +3154,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderLinkEditor(data.links || []);
+        setDJHandle(data.handle);
         renderProfile(data.host, data.bio, data.avatar);
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);

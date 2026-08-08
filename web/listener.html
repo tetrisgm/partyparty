@@ -449,6 +449,10 @@
   .listenerpeople{display:grid;gap:7px}
   .listenerperson{display:flex;align-items:center;gap:9px;min-height:36px;font-size:14px}
   .listeneravatar{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:#fff;border:1px solid var(--separator);font-size:17px}
+  .listeneravatar.listenerphoto{overflow:hidden;padding:0}
+  .listeneravatar.listenerphoto img{width:100%;height:100%;object-fit:cover;display:block}
+  .listenerwho{display:grid;line-height:1.25}
+  .listenerwho small{font-size:11px;color:var(--muted,#77777f);font-family:ui-monospace,Menlo,monospace}
   .listenerempty{color:var(--label-tertiary);font-size:13px;padding:4px 0}
   body.trayopen{overflow:hidden}
 
@@ -992,7 +996,7 @@
     setConnectionMode(connectionMode);
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let discoveredPeers = [], selectedDJId = '', listenerCountsByDJ = new Map(), listenerGroups = [];
-    let localDJLinks = [], localDJAvatar = '', localDJBio = '';
+    let localDJLinks = [], localDJAvatar = '', localDJBio = '', localDJHandle = '';
     let mediaSessionHandlersRegistered = false, mediaSessionMetadataSignature = '';
     const djPalette = [
       ['#20c965', '#173b27'], ['#0a84ff', '#16334f'], ['#ff453a', '#4a211f'],
@@ -1355,6 +1359,8 @@
     function renderListenerGroups(target, rows){
       if (!target) return;
       const normalized = rows.map((group) => ({
+        djFace: localDJAvatar,
+        djAt: localDJHandle,
         id: String(group.id || ''),
         dj: String(group.dj || 'DJ'),
         listeners: (Array.isArray(group.listeners) ? group.listeners : []).map((listener) => ({
@@ -1379,8 +1385,27 @@
             '</b><small>' + listeners.length + (listeners.length === 1 ? ' listener' : ' listeners') +
             '</small></span></div><div class="listenerpeople"></div>';
           const people = section.querySelector('.listenerpeople');
+          // The DJ heads their own group AND stands in it. Only the local DJ
+          // has a photo and an @name here - a peer DJ on another Mac is a name
+          // discovered over the LAN and nothing more.
+          const isLocalGroup = !group.id;
+          const djRow = document.createElement('div');
+          djRow.className = 'listenerperson listenerdj';
+          const face = isLocalGroup && localDJAvatar
+            ? '<span class="listeneravatar listenerphoto"><img src="' +
+              escapeHTML(localDJAvatar) + '" alt=""></span>'
+            : '<span class="listeneravatar">\u{1F3A7}</span>';
+          const at = isLocalGroup && localDJHandle
+            ? '<small>@' + escapeHTML(localDJHandle) + '</small>'
+            : '<small>DJ</small>';
+          djRow.innerHTML = face + '<span class="listenerwho">' +
+            escapeHTML(group.dj) + at + '</span>';
+          people.appendChild(djRow);
           if (!listeners.length) {
-            people.innerHTML = '<div class="listenerempty">No listeners right now.</div>';
+            const none = document.createElement('div');
+            none.className = 'listenerempty';
+            none.textContent = 'No listeners right now.';
+            people.appendChild(none);
           } else {
             listeners.forEach((listener, index) => {
               const person = document.createElement('div');
@@ -1421,6 +1446,12 @@
       renderListenerGroups(sheetListenerGroups, rows);
       paintListenersRow(rows, listenerCount);
       updatePlayerDetails();
+    }
+    // The DJ's own photo and @name arrive from the feed, not from the roster,
+    // so a change to them has to ask for a repaint by hand.
+    function repaintPeople(){
+      listenerGroupsSignature = '';
+      paintListenerGroups(listenerGroups);
     }
     function paintListenersRow(rows, peopleCount){
       const faces = [];
@@ -3654,16 +3685,19 @@
           const nextHostName = data.host ? String(data.host) : guestHostName;
           const nextAvatar = String(data.avatar || localDJAvatar || '');
           const nextBio = String(data.bio || localDJBio || '');
+          const nextHandle = String(data.handle || localDJHandle || '');
           const profileChanged = nextHostName !== guestHostName ||
-            nextAvatar !== localDJAvatar || nextBio !== localDJBio;
+            nextAvatar !== localDJAvatar || nextBio !== localDJBio ||
+            nextHandle !== localDJHandle;
           guestHostName = nextHostName;
           localDJAvatar = nextAvatar;
           localDJBio = nextBio;
+          localDJHandle = nextHandle;
           const featureChanged = setFeatures(data.features || {});
           renderDJLinks(data.links || []);
           updateReactionUI(data.reactions || {});
           renderTrackID(data.nowPlaying || null, data.recentTracks || []);
-          if (profileChanged) paintDJs(discoveredPeers);
+          if (profileChanged) { paintDJs(discoveredPeers); repaintPeople(); }
           if (featureChanged && feedOn) {
             newestAct = 0; nodes.clear(); expanded.clear(); albumItems.clear(); feedList.innerHTML = '';
           }

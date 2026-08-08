@@ -222,3 +222,145 @@ func TestRunStaysSilentWhenThereIsNoParty(t *testing.T) {
 		t.Fatalf("made %d requests while not live", calls)
 	}
 }
+
+// ---------------------------------------------------------------- profiles
+
+// The whole contract of the profile sync is "newer wins", so these test which
+// direction it moves and nothing else.
+
+type profileServer struct {
+	remote   Profile
+	linked   bool
+	pushes   []map[string]any
+	avatars  int
+	cleared  int
+	imageHit int
+}
+
+func (p *profileServer) handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/install/profile", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Set       map[string]any `json:"set"`
+			UpdatedMs int64          `json:"updatedMs"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Set != nil {
+			p.pushes = append(p.pushes, body.Set)
+			if body.UpdatedMs > p.remote.UpdatedMs {
+				p.remote.Name, _ = body.Set["name"].(string)
+				p.remote.UpdatedMs = body.UpdatedMs
+			}
+		}
+		_ = json.NewEncoder(w).Encode(profileResponse{Linked: p.linked, Profile: p.remote})
+	})
+	mux.HandleFunc("/api/v1/install/avatar", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20)
+		if r.FormValue("clear") != "" {
+			p.cleared++
+		} else {
+			p.avatars++
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"linked": true, "avatarUrl": "https://x/media/a"})
+	})
+	mux.HandleFunc("/photo.png", func(w http.ResponseWriter, r *http.Request) {
+		p.imageHit++
+		w.Header().Set("content-type", "image/png")
+		_, _ = w.Write([]byte("PNGBYTES"))
+	})
+	return mux
+}
+
+func TestProfileTakesTheNewerSideAndOnlyThat(t *testing.T) {
+	state := &profileServer{linked: true, remote: Profile{Name: "From the web", UpdatedMs: 500}}
+	server := httptest.NewServer(state.handler())
+	defer server.Close()
+	client := New(server.URL, "aabbccddeeff", "s3cret")
+	client.HTTP = server.Client()
+
+	// The web is newer: the Mac takes it and sends nothing.
+	var applied []Profile
+	hooks := ProfileHooks{
+		Local: func() Profile { return Profile{Name: "Stale", UpdatedMs: 100} },
+		Apply: func(p Profile) (bool, error) { applied = append(applied, p); return true, nil },
+	}
+	if err := client.SyncProfile(context.Background(), hooks); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(applied) != 1 || applied[0].Name != "From the web" {
+		t.Fatalf("expected the web's copy to be applied, got %+v", applied)
+	}
+	if len(state.pushes) != 0 {
+		t.Fatalf("a stale Mac must not write: %+v", state.pushes)
+	}
+
+	// The Mac is newer: it writes, and the platform ends up holding its copy.
+	hooks.Local = func() Profile { return Profile{Name: "From the booth", UpdatedMs: 900} }
+	if err := client.SyncProfile(context.Background(), hooks); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if len(state.pushes) != 1 || state.pushes[0]["name"] != "From the booth" {
+		t.Fatalf("expected one push of the booth's copy, got %+v", state.pushes)
+	}
+	if len(applied) != 1 {
+		t.Fatalf("the Mac must not then apply its own write back over itself")
+	}
+	if state.remote.Name != "From the booth" {
+		t.Fatalf("platform kept %q", state.remote.Name)
+	}
+}
+
+func TestProfileFetchesAPhotoOnceAndPushesTheLocalOne(t *testing.T) {
+	state := &profileServer{linked: true}
+	server := httptest.NewServer(state.handler())
+	defer server.Close()
+	client := New(server.URL, "aabbccddeeff", "s3cret")
+	client.HTTP = server.Client()
+	state.remote = Profile{Name: "Web", UpdatedMs: 500, AvatarURL: server.URL + "/photo.png"}
+
+	seen := ""
+	hooks := ProfileHooks{
+		Local:       func() Profile { return Profile{UpdatedMs: 1} },
+		Apply:       func(Profile) (bool, error) { return true, nil },
+		AvatarSeen:  func() string { return seen },
+		ApplyAvatar: func(url, _ string, data []byte) error { seen = url; return nil },
+	}
+	for i := 0; i < 3; i++ {
+		if err := client.SyncProfile(context.Background(), hooks); err != nil {
+			t.Fatalf("sync: %v", err)
+		}
+	}
+	if state.imageHit != 1 {
+		t.Fatalf("an unchanged photo must be fetched once, not %d times", state.imageHit)
+	}
+
+	// Newer locally: the photo goes up with the rest of the profile.
+	hooks.Local = func() Profile { return Profile{Name: "Booth", UpdatedMs: 9000} }
+	hooks.LocalAvatar = func() (string, []byte, bool) { return "a.png", []byte("BYTES"), true }
+	if err := client.SyncProfile(context.Background(), hooks); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if state.avatars != 1 {
+		t.Fatalf("expected the local photo to be sent once, got %d", state.avatars)
+	}
+}
+
+func TestProfileOnAnUnpairedMacChangesNothing(t *testing.T) {
+	state := &profileServer{linked: false}
+	server := httptest.NewServer(state.handler())
+	defer server.Close()
+	client := New(server.URL, "aabbccddeeff", "s3cret")
+	client.HTTP = server.Client()
+
+	applied := 0
+	err := client.SyncProfile(context.Background(), ProfileHooks{
+		Local: func() Profile { return Profile{Name: "Local only", UpdatedMs: 900} },
+		Apply: func(Profile) (bool, error) { applied++; return true, nil },
+	})
+	if err != nil {
+		t.Fatalf("an unpaired Mac is not an error: %v", err)
+	}
+	if applied != 0 || len(state.pushes) != 0 {
+		t.Fatalf("nothing should move: applied=%d pushes=%d", applied, len(state.pushes))
+	}
+}

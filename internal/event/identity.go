@@ -25,6 +25,15 @@ type djIdentity struct {
 	Avatar string `json:"avatar,omitempty"` // file name beside this file, "" = none
 	Title  string `json:"title,omitempty"`
 	Cover  string `json:"cover,omitempty"`
+
+	// The @name on the platform, and when this profile last changed. Neither is
+	// derived from an event: the handle is minted by the platform and the stamp
+	// is what decides, when a Mac and the web disagree, which one is stale.
+	// AvatarURL is the platform picture already taken, so an unchanged photo is
+	// not downloaded again on every tick.
+	Handle    string `json:"handle,omitempty"`
+	ProfileMs int64  `json:"profileMs,omitempty"`
+	AvatarURL string `json:"avatarUrl,omitempty"`
 }
 
 // placeholderHost is the stand-in a fresh event carries until the DJ names
@@ -121,6 +130,13 @@ func (s *Store) saveIdentityLocked() {
 		Links: s.meta.Links,
 		Title: s.meta.Title,
 		Cover: s.meta.Cover,
+	}
+	// The handle and the stamp are not derived from the event, so a write
+	// triggered by a cover change must carry them across rather than blank
+	// them. Losing the stamp would make every local profile look brand new and
+	// let the Mac overwrite the web on the next tick.
+	if prev, ok := loadIdentity(s.base); ok {
+		id.Handle, id.ProfileMs, id.AvatarURL = prev.Handle, prev.ProfileMs, prev.AvatarURL
 	}
 	if src, ext, ok := s.eventAvatarFileLocked(); ok && s.meta.Avatar == "/dj-avatar" {
 		name := "dj-avatar" + ext

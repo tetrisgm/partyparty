@@ -115,6 +115,9 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
 			"date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
 			"bio": meta.Bio, "avatar": meta.Avatar,
+			// The DJ's @name, so a guest's phone can show who is playing the
+			// same way the group's page does rather than a bare first name.
+			"handle":    s.Events.CloudProfile().Handle,
 			"features":  meta.Features,
 			"reactions": reactions, "spikes": spikes,
 			// dir = the current room identity; clients reset their cursor when a
@@ -352,6 +355,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
+		s.Events.StampProfile()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": s.Events.Meta().Links})
 	case "/api/dj-profile":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
@@ -370,6 +374,11 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return true
 		}
+		// This Mac now holds the newest version of the DJ's profile, and the
+		// next sync will carry it up. Stamping here rather than inside the
+		// store keeps the platform's own writes - which arrive already stamped
+		// - from marking themselves as local edits and bouncing straight back.
+		s.Events.StampProfile()
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": meta.Host, "bio": meta.Bio, "avatar": meta.Avatar})
 	case "/api/post":
@@ -530,6 +539,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 				return true
 			}
+			s.Events.StampProfile()
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "avatar": ""})
 			return true
 		}
@@ -552,6 +562,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return true
 		}
+		s.Events.StampProfile()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "avatar": "/dj-avatar"})
 	case "/api/post-delete":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
@@ -663,6 +674,7 @@ func (s *srv) eventState() map[string]any {
 		"cover":    meta.Cover,
 		"bio":      meta.Bio,
 		"avatar":   meta.Avatar,
+		"handle":   s.Events.CloudProfile().Handle,
 		"features": meta.Features,
 		"posts":    len(ids),
 		"media":    mediaCount,

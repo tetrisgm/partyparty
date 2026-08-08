@@ -1810,6 +1810,102 @@ export default {
       });
     }
 
+    // The DJ's profile, as the Mac sees it.
+    //
+    // The Mac has no sign-in and never will - it is a machine in a booth, not
+    // an account. It knows itself by its install id, that id is paired to a
+    // group, and the group has an owner. That owner is the person whose face
+    // and name belong on the console, so this is the same record the web edits
+    // and there is only ever one of it.
+    //
+    // Sent with `set`, it writes; without, it reads. Writes are applied only
+    // when the Mac's copy is NEWER than ours, so a console left open for a week
+    // cannot undo something changed on the web this morning.
+    if (path === "/api/v1/install/profile" && request.method === "POST") {
+      const body = await readJson(request, 8192);
+      if (!body) return json(400, { error: "bad json" });
+      if (!await installAuth(env, body.id, body.secret)) return json(403, { error: "bad install auth" });
+
+      const owner = await env.DB.prepare(
+        `SELECT d.email_norm FROM install_groups ig
+           JOIN group_djs gd ON gd.group_id = ig.group_id AND gd.role = 'owner'
+           JOIN djs d ON d.id = gd.dj_id
+          WHERE ig.install_id = ?`
+      ).bind(String(body.id)).first();
+      // Not paired to anything. The console keeps whatever it has locally,
+      // which is the whole behaviour of an unpaired Mac.
+      if (!owner) return json(200, { linked: false });
+
+      const profile = await profileFor(env, owner.email_norm, now);
+      if (body.set && typeof body.set === "object") {
+        const sentMs = Number(body.updatedMs) || 0;
+        if (sentMs > Number(profile.updated_ms || 0)) {
+          const links = {};
+          for (const field of SOCIAL_FIELDS) {
+            const value = field.key === "website"
+              ? websiteUrl(body.set[field.key])
+              : socialName(body.set[field.key]);
+            if (value) links[field.key] = value;
+          }
+          const name = String(body.set.name || "").slice(0, 60).trim();
+          await env.DB.prepare(
+            `UPDATE profiles SET name = ?, bio = ?, links = ?, saved_ms = COALESCE(saved_ms, ?),
+               updated_ms = ? WHERE email_norm = ?`
+          ).bind(name, String(body.set.bio || "").slice(0, 200).trim(),
+            JSON.stringify(links), sentMs, sentMs, owner.email_norm).run();
+          if (name) {
+            await env.DB.prepare(`UPDATE djs SET name = ? WHERE email_norm = ?`)
+              .bind(name, owner.email_norm).run();
+            await env.DB.prepare(`UPDATE members SET name = ? WHERE email_norm = ?`)
+              .bind(name, owner.email_norm).run();
+          }
+        }
+      }
+
+      const fresh = await profileFor(env, owner.email_norm, now);
+      return json(200, {
+        linked: true,
+        profile: {
+          handle: fresh.handle || "",
+          name: fresh.name || "",
+          bio: fresh.bio || "",
+          links: fresh.linksObj || {},
+          // Absolute, because the Mac serves its own pages and a /media/ path
+          // would resolve against the Mac rather than against us.
+          avatarUrl: fresh.avatar_key ? base + mediaUrl(fresh.avatar_key) : "",
+          updatedMs: Number(fresh.updated_ms || 0),
+        },
+      });
+    }
+
+    // The photo, which is bytes rather than JSON and so has its own door.
+    if (path === "/api/v1/install/avatar" && request.method === "POST") {
+      const form = await request.formData().catch(() => null);
+      if (!form) return json(400, { error: "bad form" });
+      if (!await installAuth(env, form.get("id"), form.get("secret"))) {
+        return json(403, { error: "bad install auth" });
+      }
+      const owner = await env.DB.prepare(
+        `SELECT d.email_norm FROM install_groups ig
+           JOIN group_djs gd ON gd.group_id = ig.group_id AND gd.role = 'owner'
+           JOIN djs d ON d.id = gd.dj_id
+          WHERE ig.install_id = ?`
+      ).bind(String(form.get("id"))).first();
+      if (!owner) return json(200, { linked: false });
+
+      await profileFor(env, owner.email_norm, now);
+      let key = null;
+      if (!form.get("clear")) {
+        const stored = await storeMedia(env, form.get("avatar"), "avatars", MAX_AVATAR);
+        if (stored.error) return json(400, { error: stored.error });
+        key = stored.key;
+      }
+      await env.DB.prepare(
+        `UPDATE profiles SET avatar_key = ?, updated_ms = ? WHERE email_norm = ?`
+      ).bind(key, now, owner.email_norm).run();
+      return json(200, { linked: true, avatarUrl: key ? base + mediaUrl(key) : "" });
+    }
+
     // The Mac asks which night it is playing. Answered from the group the
     // install belongs to and the clock, so a DJ never has to pair anything: if
     // one of their nights is happening now, this is that night.

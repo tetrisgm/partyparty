@@ -323,6 +323,30 @@ func main() {
 				Merge: events.MergeRemotePost,
 				Logf:  log.Printf,
 			}, 20*time.Second)
+
+			// The DJ's own profile, kept in step whether or not anything is
+			// playing. A name and a photo are set up long before Go Live, and a
+			// console that opened blank because no party was running would be
+			// the same "it forgot me" bug that put identity in its own file.
+			go sync.RunProfile(peerCtx, cloudsync.ProfileHooks{
+				Local: func() cloudsync.Profile {
+					p := events.CloudProfile()
+					return cloudsync.Profile{
+						Handle: p.Handle, Name: p.Name, Bio: p.Bio,
+						Links: p.Links, UpdatedMs: p.UpdatedMs,
+					}
+				},
+				Apply: func(p cloudsync.Profile) (bool, error) {
+					return events.ApplyCloudProfile(event.CloudProfile{
+						Handle: p.Handle, Name: p.Name, Bio: p.Bio,
+						Links: p.Links, UpdatedMs: p.UpdatedMs,
+					})
+				},
+				LocalAvatar: events.LocalAvatar,
+				AvatarSeen:  events.AvatarSeen,
+				ApplyAvatar: events.ApplyCloudAvatar,
+				Logf:        log.Printf,
+			}, 60*time.Second)
 		}
 	}
 

@@ -17,6 +17,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"sync"
@@ -115,6 +117,137 @@ func (c *Client) Bind(ctx context.Context, partyID string) (Binding, error) {
 	return out, err
 }
 
+// Profile is the DJ, as both the console and the web show them. One record:
+// the Mac reads it so a paired console opens as whoever the DJ already is, and
+// writes it so an edit made in the booth is the same edit made on the site.
+type Profile struct {
+	Handle    string            `json:"handle,omitempty"`
+	Name      string            `json:"name,omitempty"`
+	Bio       string            `json:"bio,omitempty"`
+	Links     map[string]string `json:"links,omitempty"`
+	AvatarURL string            `json:"avatarUrl,omitempty"`
+	UpdatedMs int64             `json:"updatedMs,omitempty"`
+}
+
+type profileResponse struct {
+	Linked  bool    `json:"linked"`
+	Profile Profile `json:"profile"`
+}
+
+// Profile reads the paired DJ's profile. `linked` false means this Mac belongs
+// to no group, which is an ordinary state and not an error: the console keeps
+// whatever it has locally.
+func (c *Client) Profile(ctx context.Context) (Profile, bool, error) {
+	if !c.ready() {
+		return Profile{}, false, errors.New("cloudsync: not configured")
+	}
+	var out profileResponse
+	err := c.post(ctx, "/api/v1/install/profile", map[string]any{
+		"id": c.InstallID, "secret": c.Secret,
+	}, &out)
+	return out.Profile, out.Linked, err
+}
+
+// PushProfile sends a local edit up. The platform keeps its own copy if that
+// copy is newer, so this is safe to call on every change without a lock across
+// two machines - and the answer is always what the record now says.
+func (c *Client) PushProfile(ctx context.Context, p Profile) (Profile, bool, error) {
+	if !c.ready() {
+		return Profile{}, false, errors.New("cloudsync: not configured")
+	}
+	var out profileResponse
+	err := c.post(ctx, "/api/v1/install/profile", map[string]any{
+		"id": c.InstallID, "secret": c.Secret, "updatedMs": p.UpdatedMs,
+		"set": map[string]any{
+			"name": p.Name, "bio": p.Bio,
+			"instagram": p.Links["instagram"], "soundcloud": p.Links["soundcloud"],
+			"website": p.Links["website"],
+		},
+	}, &out)
+	return out.Profile, out.Linked, err
+}
+
+// PushAvatar sends the photo itself. Separate from PushProfile because it is
+// bytes rather than JSON, and because a picture is the one field somebody
+// changes without touching anything else.
+func (c *Client) PushAvatar(ctx context.Context, filename string, image []byte) (string, error) {
+	if !c.ready() {
+		return "", errors.New("cloudsync: not configured")
+	}
+	var buf bytes.Buffer
+	form := multipart.NewWriter(&buf)
+	_ = form.WriteField("id", c.InstallID)
+	_ = form.WriteField("secret", c.Secret)
+	if len(image) == 0 {
+		_ = form.WriteField("clear", "1")
+	} else {
+		part, err := form.CreateFormFile("avatar", filename)
+		if err != nil {
+			return "", err
+		}
+		if _, err := part.Write(image); err != nil {
+			return "", err
+		}
+	}
+	if err := form.Close(); err != nil {
+		return "", err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.Base+"/api/v1/install/avatar", bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("content-type", form.FormDataContentType())
+	client := c.HTTP
+	if client == nil {
+		client = http.DefaultClient
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("cloudsync: avatar: %s", response.Status)
+	}
+	var out struct {
+		AvatarURL string `json:"avatarUrl"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&out); err != nil {
+		return "", err
+	}
+	return out.AvatarURL, nil
+}
+
+// FetchImage pulls a picture the platform holds, so a console that has just
+// been paired shows the DJ's real photo rather than an empty disc.
+func (c *Client) FetchImage(ctx context.Context, url string) ([]byte, string, error) {
+	if url == "" {
+		return nil, "", errors.New("cloudsync: no image")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	client := c.HTTP
+	if client == nil {
+		client = http.DefaultClient
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("cloudsync: image: %s", response.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
+	if err != nil {
+		return nil, "", err
+	}
+	return body, response.Header.Get("content-type"), nil
+}
+
 type syncResponse struct {
 	Bound  bool   `json:"bound"`
 	Stored int    `json:"stored"`
@@ -185,6 +318,81 @@ type Hooks struct {
 	Merge    func(id, author, body string, createdMs int64) (bool, error)
 	Bound    func(url string)
 	Logf     func(format string, args ...any)
+}
+
+// ProfileHooks are the DJ's own record, supplied the same way: this package
+// knows how to reach the platform and nothing about where a Mac keeps a face.
+type ProfileHooks struct {
+	Local func() Profile
+	Apply func(Profile) (bool, error)
+	// The photo on this Mac, and where to put one that came from the platform.
+	// AvatarSeen is the last URL applied, so an unchanged picture is not
+	// downloaded once a minute for the length of a party.
+	LocalAvatar func() (name string, data []byte, ok bool)
+	AvatarSeen  func() string
+	ApplyAvatar func(url, contentType string, data []byte) error
+	Logf        func(format string, args ...any)
+}
+
+// SyncProfile reconciles the DJ's profile once. Newer wins, whichever side
+// that is; equal stamps mean nothing to do, which is almost every call.
+func (c *Client) SyncProfile(ctx context.Context, h ProfileHooks) error {
+	if !c.ready() || h.Local == nil {
+		return nil
+	}
+	local := h.Local()
+	remote, linked, err := c.Profile(ctx)
+	if err != nil || !linked {
+		return err
+	}
+
+	if local.UpdatedMs > remote.UpdatedMs {
+		// This Mac saw the last edit. Send it, and the photo with it - the
+		// picture is part of the profile, not a separate opinion about it.
+		if h.LocalAvatar != nil {
+			if name, data, ok := h.LocalAvatar(); ok {
+				if _, err := c.PushAvatar(ctx, name, data); err != nil && h.Logf != nil {
+					h.Logf("cloudsync: profile photo: %v", err)
+				}
+			}
+		}
+		_, _, err := c.PushProfile(ctx, local)
+		return err
+	}
+
+	if _, err := h.Apply(remote); err != nil {
+		return err
+	}
+	// The photo, only when it is one we have not already taken.
+	if remote.AvatarURL != "" && h.ApplyAvatar != nil &&
+		(h.AvatarSeen == nil || h.AvatarSeen() != remote.AvatarURL) {
+		data, contentType, err := c.FetchImage(ctx, remote.AvatarURL)
+		if err != nil {
+			return err
+		}
+		return h.ApplyAvatar(remote.AvatarURL, contentType, data)
+	}
+	return nil
+}
+
+// RunProfile keeps the profile in step for as long as the app is running -
+// deliberately NOT gated on a party being live, because a DJ sets their name
+// and photo up long before they press Go Live, and the console should already
+// know them when they do.
+func (c *Client) RunProfile(ctx context.Context, h ProfileHooks, every time.Duration) {
+	if every <= 0 {
+		every = 60 * time.Second
+	}
+	for {
+		if err := c.SyncProfile(ctx, h); err != nil && h.Logf != nil {
+			h.Logf("cloudsync: profile: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(every):
+		}
+	}
 }
 
 // Run keeps the timeline in step for as long as a party is playing. It is
