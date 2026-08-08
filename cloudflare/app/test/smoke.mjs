@@ -951,8 +951,12 @@ test("the group page leads with adding a night and its sendable link", async () 
   const dj = await signedInDJ(env, groupId);
   const body = await (await get(env, "/@sundaze/manage", { headers: { cookie: dj.cookie } })).text();
 
-  // The job: add a night, get the link, send it.
-  assert.match(body, /Add a night/);
+  // The job: create a party, get the link, send it. Creating one is an action
+  // that opens its own page, not a row of boxes wedged above the list.
+  assert.match(body, /Create a party/);
+  assert.match(body, /href="\/@sundaze\/new"/);
+  assert.ok(!/placeholder="What is the night called\?"/.test(body),
+    "the inline form is gone");
   assert.match(body, /value="https:\/\/partyparty\.party\/@sundaze\/june-14"/,
     "the link has to be there to be copied, not derived by the DJ");
   assert.match(body, /Copy<\/button>/);
@@ -961,7 +965,7 @@ test("the group page leads with adding a night and its sendable link", async () 
   // Everything set once is present but behind the fold, not competing with it.
   const settings = body.indexOf("<details");
   assert.ok(settings > 0, "settings must exist");
-  assert.ok(body.indexOf("Add a night") < settings, "adding a night comes first");
+  assert.ok(body.indexOf("Create a party") < settings, "creating a party comes first");
   // Headings, not bare words: "Pro" alone matches "SF Pro Text" in the font
   // stack, which is the sort of false pass that makes a layout test worthless.
   for (const later of ["<h2>Pair a Mac", "<h2>Tips", "<h2>Merch", "<h2>Pro"]) {
@@ -1128,15 +1132,20 @@ test("the group page is a party page: timeline, posts, and who is in it", async 
 
   const body = await (await get(env, "/@sundaze")).text();
 
-  // Nights read as a schedule, and one that has been is marked as past.
+  // Parties read as a schedule, upcoming under their own heading and the ones
+  // that have happened under theirs - not one run-on list with a grey dot.
   assert.match(body, /class="timeline"/);
   assert.match(body, /At the Lido/);
-  assert.match(body, /class="tl past"/, "a night that has happened is not still upcoming");
+  assert.match(body, /<h2>Parties<\/h2>/);
+  assert.match(body, /<h2>Past parties<\/h2>/);
+  assert.ok(body.indexOf("<h2>Parties</h2>") < body.indexOf("<h2>Past parties</h2>"),
+    "what is coming comes first");
+  assert.match(body, /class="tl past"/, "a party that has happened is not still upcoming");
 
   // The people, in the rail, as initials on the app's gradient discs.
   assert.match(body, /class="rail"/);
   assert.match(body, /Participants \u2014 2/, "the console labels the rail this way");
-  assert.match(body, /class="avatar"[^>]*>AL</, "initials from the name they gave");
+  assert.match(body, /<span class="avatar"[^>]*>AL</, "initials from the name they gave");
   assert.match(body, /Ada Lovelace/);
   // Their addresses are the group's, not the public page's.
   assert.ok(!/ada@example\.com/.test(body), "an address never appears on a public page");

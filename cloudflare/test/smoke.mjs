@@ -360,6 +360,25 @@ test("a forgotten install is told to register again, a wrong secret is not", asy
   }
 });
 
+test("the typeface is cached instead of refetched on every page load", async () => {
+  const env = baseEnv();
+  env.ASSETS = { fetch: async () => new Response("font bytes", {
+    headers: { "content-type": "font/woff2", "cache-control": "public, max-age=0, must-revalidate" },
+  }) };
+  const r = await worker.fetch(
+    new Request("https://partyparty.party/fonts/Geist-Variable.woff2"), env);
+  assert.equal(r.status, 200);
+  // Worker Assets hands back max-age=0. Left alone, the face is fetched again
+  // on every load and every load repaints in the fallback and then resizes.
+  assert.match(r.headers.get("cache-control"), /max-age=604800/);
+  assert.equal(r.headers.get("content-type"), "font/woff2");
+
+  // Not a licence to cache anything else that happens to live under /fonts.
+  const other = await worker.fetch(
+    new Request("https://partyparty.party/fonts/../index.html"), env);
+  assert.ok(!/604800/.test(other.headers.get("cache-control") || ""));
+});
+
 test("an address for a later invite is kept once, and read back only by an admin", async () => {
   const env = baseEnv();
   env.ADMIN_KEY = "admin-key";

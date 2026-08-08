@@ -1087,6 +1087,20 @@ var worker_default = {
       u.pathname = "/";
       return env.ASSETS.fetch(new Request(u, request));
     }
+    // Fonts, cached like the unchanging files they are.
+    //
+    // Worker Assets serves everything with max-age=0, must-revalidate, so the
+    // typeface was refetched on EVERY page load - and every load painted in the
+    // system face and then resized the whole page a beat later when Geist
+    // landed. A week, not a year: the filename carries no content hash, so a
+    // replacement has to be able to reach people.
+    if (/^\/fonts\/[a-zA-Z0-9._-]+\.(woff2|woff|ttf)$/.test(pathname)) {
+      const asset = await env.ASSETS.fetch(request);
+      if (!asset.ok) return asset;
+      const headers = new Headers(asset.headers);
+      headers.set("cache-control", "public, max-age=604800, stale-while-revalidate=86400");
+      return new Response(asset.body, { status: asset.status, headers });
+    }
     return env.ASSETS.fetch(request);
   },
   // Keep the machine namespace anchored so absent hostnames return NXDOMAIN

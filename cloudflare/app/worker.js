@@ -348,9 +348,15 @@ const STYLE = `
    image card for the header. The product is dark; these pages were not. */
 @font-face{font-family:Geist;src:url(/fonts/Geist-Variable.woff2) format('woff2-variations');
 font-weight:100 900;font-display:swap}
+/* The swap used to be visible: every line painted in the system face and then
+   resized a moment later when Geist arrived. The face is preloaded in the head
+   so it is usually there before first paint, and this metric-matched stand-in
+   covers the times it is not - same cap height and line box, so nothing moves. */
+@font-face{font-family:"Geist stand-in";src:local("Helvetica Neue"),local("Arial"),local("Roboto");
+size-adjust:104%;ascent-override:95%;descent-override:24%;line-gap-override:0%}
 :root{
   color-scheme:dark;
-  --sans:Geist,-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --sans:Geist,"Geist stand-in",-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
   --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
   --bg:#0e0e10; --bg-elevated:#1a1a1d; --bg-elevated-2:#202024;
   --label:#f2f2f4; --label-secondary:#a3a3ac; --label-tertiary:#77777f;
@@ -378,14 +384,16 @@ background-position:center;box-shadow:var(--shadow)}
 background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
 .hero .cover.bare::after{background:none}
 /* Remove, top right, only once there is something to remove. */
-/* Top LEFT, because the page's own chips (the public page, Home) already own
-   the right corner and the two were sitting on top of each other. */
-.coverx{position:absolute;top:18px;left:18px;z-index:3;width:34px;height:34px;
+/* Back with the other actions on the right; the left corner belongs to the
+   brand, which is the way home from anywhere. */
+.coverx{position:absolute;top:26px;right:26px;z-index:4;width:38px;height:38px;
 border-radius:50%;display:grid;place-items:center;padding:0;border:0;
 background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
 box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
 .coverx:hover{background:rgba(18,18,22,.68)}
 .cover.bare .coverx{display:none}
+.hero:has(.coverx) .toptools{right:92px}
+.hero:has(.cover.bare) .toptools{right:46px}
 .hero .titles{position:relative;z-index:1}
 .hero h1{font-size:clamp(34px,3.4vw,46px);font-weight:800;line-height:1.04;
 letter-spacing:-.03em;color:#fff;margin:0 0 4px;overflow-wrap:anywhere}
@@ -404,6 +412,14 @@ color:rgba(255,255,255,.85)}
 .coversays.bad{color:#ff7a7a}
 .hero .sub{margin:0;color:rgba(255,255,255,.72);font-weight:700;font-size:15px}
 .toptools{position:absolute;top:26px;right:46px;display:flex;gap:8px;z-index:2}
+/* The way home, in the corner every site puts it. */
+.brandchip{position:absolute;top:26px;left:46px;z-index:3;display:inline-flex;
+align-items:center;gap:7px;height:38px;padding:0 16px;border-radius:var(--r-pill);
+background:rgba(0,0,0,.45);color:#fff;font-size:14px;font-weight:750;
+-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+border:1px solid rgba(255,255,255,.14)}
+.brandchip:hover{text-decoration:none;background:rgba(0,0,0,.62)}
+@media (max-width:520px){.brandchip{left:26px}}
 .toptools a{display:grid;place-items:center;min-width:38px;height:38px;padding:0 14px;
 border-radius:var(--r-pill);background:rgba(0,0,0,.45);color:#fff;font-size:13px;
 font-weight:650;text-decoration:none;-webkit-backdrop-filter:blur(18px);
@@ -672,6 +688,7 @@ function page(title, body, heroHtml, rail, wide) {
     : `<main${wide ? ` class="wide"` : ""}>${body}</main>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <title>${esc(title)}</title><style>${STYLE}</style></head>
 <body>${heroHtml || ""}${shell}
 <footer><a href="/home">PartyParty</a></footer></body></html>`;
@@ -693,6 +710,7 @@ function hero(title, sub, cover, tools, coverForm, editable) {
          aria-label="Edit the group name" title="Edit the group name">${pencil}</button>`
     : esc(title);
   return `<header class="hero">
+    <a class="brandchip" href="/home" title="Back to your home">\u{1FA69} PartyParty</a>
     ${tools ? `<div class="toptools">${tools}</div>` : ""}
     <div class="cover${url ? "" : " bare"}"${image} id="heroCover">
       ${editable ? `<button class="coverx" type="button" id="coverRemove"
@@ -728,6 +746,76 @@ function coverTools(action, fromPublic) {
 // came back to look at one different image, which is a lot of blinking for
 // "show me another". The form still works with no JavaScript - this only
 // intercepts it.
+// The new-party page has nothing to save to yet, so Shuffle only changes what
+// is on screen and what will be submitted. The title is typed straight into the
+// hero and carried along as a hidden field.
+function newPartyScript() {
+  return `<script>
+  (() => {
+    const form = document.getElementById('newParty');
+    const cover = document.getElementById('heroCover');
+    const pick = document.getElementById('coverPick');
+    const name = document.getElementById('groupName');
+    if (!form || !cover || !pick) return;
+
+    const PILE = ${JSON.stringify(COVER_PILE)};
+    const shuffle = document.querySelector('#coverForm button[name=shuffleCover]');
+    const upload = document.querySelector('#coverForm input[type=file]');
+    const remove = document.getElementById('coverRemove');
+    const show = (url) => {
+      cover.style.backgroundImage = url ? "url('" + url + "')" : '';
+      cover.classList.toggle('bare', !url);
+    };
+    if (shuffle) shuffle.addEventListener('click', (event) => {
+      event.preventDefault();
+      let next = pick.value;
+      while (PILE.length > 1 && next === pick.value) {
+        next = '/media/covers/' + PILE[Math.floor(Math.random() * PILE.length)] + '.webp';
+      }
+      pick.value = next;
+      show(next);
+    });
+    if (remove) remove.addEventListener('click', (event) => {
+      event.preventDefault(); pick.value = ''; show('');
+    });
+    if (upload) upload.addEventListener('change', () => {
+      const file = upload.files && upload.files[0];
+      if (!file) return;
+      // Move the chosen file onto the form that actually submits.
+      const carried = form.querySelector('input[name=cover]') || (() => {
+        const input = document.createElement('input');
+        input.type = 'file'; input.name = 'cover'; input.hidden = true;
+        form.appendChild(input);
+        return input;
+      })();
+      const swap = new DataTransfer();
+      swap.items.add(file);
+      carried.files = swap.files;
+      pick.value = '';
+      show(URL.createObjectURL(file));
+    });
+
+    // The title lives in the hero; carry it with the rest on submit.
+    if (name) {
+      const carried = document.createElement('input');
+      carried.type = 'hidden'; carried.name = 'title';
+      form.appendChild(carried);
+      const sync = () => { carried.value = name.textContent.trim(); };
+      name.addEventListener('input', sync);
+      name.addEventListener('blur', sync);
+      form.addEventListener('submit', sync);
+      // A placeholder is not a name. Clear it the moment they start.
+      name.addEventListener('focus', () => {
+        if (name.textContent.trim() === 'Name your party') {
+          name.textContent = '';
+        }
+      }, { once: true });
+      sync();
+    }
+  })();
+  </script>`;
+}
+
 function coverScript(action) {
   return `<script>
   (() => {
@@ -1135,11 +1223,10 @@ async function saveProfileForm(env, emailNorm, form, now) {
 // phone lists a DJ above the room listening to them - a group is somebody's
 // before it is everybody's, and a rail that mixes them into one alphabetical
 // soup does not say that.
-function peopleRail(people, base, handle) {
+function peopleRail(people, base, handle, canManage) {
   const all = people || [];
   const djs = all.filter((p) => p.role === "owner" || p.role === "host");
   const rest = all.filter((p) => p.role !== "owner" && p.role !== "host").slice(0, 24);
-  const shown = all.slice(0, 12);
 
   const row = (m, under) => `<li>${personDisc(m)}
     <span><b>${m.handle
@@ -1157,18 +1244,21 @@ function peopleRail(people, base, handle) {
   return `<aside class="rail">
       <div class="card">
         <h2>Participants${all.length ? ` \u2014 ${all.length}` : ""}</h2>
-        ${all.length ? `<div class="avatars">
-            ${shown.map((m) => personDisc(m)).join("")}
-            ${all.length > shown.length ? `<span class="avatar more">+${all.length - shown.length}</span>` : ""}
-          </div>
-          ${section(djs.length === 1 ? "DJ" : "DJs", djs, () => "DJ")}
-          ${section("Members", rest, (m) => m.handle ? "@" + m.handle : "Following")}`
+        ${all.length
+          ? `${section(djs.length === 1 ? "DJ" : "DJs", djs, () => "DJ")}
+             ${section("Members", rest, (m) => m.handle ? "@" + m.handle : "Following")}`
           : `<p class="muted">Nobody yet. The first person to follow shows up here.</p>`}
       </div>
-      <div class="card">
+      ${canManage ? `<div class="card">
+        <h2>Manage this group</h2>
+        <p class="muted">Only you can see this.</p>
+        <p><a class="btn plain small" href="/@${esc(handle)}/manage">Settings and nights</a></p>
+        <h2 style="margin-top:22px">Calendar</h2>
+        ${calendarBlock(base, handle)}
+      </div>` : `<div class="card">
         <h2>Their calendar</h2>
         ${calendarBlock(base, handle)}
-      </div>
+      </div>`}
     </aside>`;
 }
 
@@ -1179,10 +1269,14 @@ function groupPage(group, events, base, posts, viewer, people, past) {
       <span class="tlname">${esc(event.title || "Untitled night")}</span>
       ${event.place ? `<span class="muted">${esc(event.place)}</span>` : ""}
     </a>`;
-  const list = (events.length || (past || []).length)
-    ? `<div class="timeline">${events.map((e) => night(e, false)).join("")}${
-        (past || []).map((e) => night(e, true)).join("")}</div>`
-    : `<p class="muted">No nights announced yet.</p>`;
+  const upcoming = events.length
+    ? `<h2>Parties</h2><div class="timeline">${events.map((e) => night(e, false)).join("")}</div>`
+    : "";
+  const before = (past || []).length
+    ? `<h2>Past parties</h2><div class="timeline">${past.map((e) => night(e, true)).join("")}</div>`
+    : "";
+  const list = upcoming + before || `<h2>Parties</h2>
+    <p class="muted">No parties announced yet.</p>`;
 
   // Who is looking. Showing a DJ a form asking for their own name on their own
   // page is the kind of thing that makes a product feel like it does not know
@@ -1219,9 +1313,9 @@ function groupPage(group, events, base, posts, viewer, people, past) {
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     ${group.merch_link ? `<p><a class="btn plain" href="${esc(group.merch_link)}"
       rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
-    <h2>Nights</h2>
     ${list}
     <h2>Talk</h2>
+    ${viewer && viewer.runsThisGroup ? coverScript(`/@${esc(group.handle)}/manage`) : ""}
     ${viewer ? `<form class="say" method="post" action="/@${esc(group.handle)}/say"
         enctype="multipart/form-data">
       <textarea name="say" maxlength="2000"
@@ -1234,8 +1328,7 @@ function groupPage(group, events, base, posts, viewer, people, past) {
       </div>
     </form>` : ""}
     ${postList(posts || [])}
-  `, hero(group.name || group.handle, esc("@" + group.handle), group.cover_key,
-      `<a href="/home">Home</a>`,
+  `, hero(group.name || group.handle, "", group.cover_key, "",
       viewer && viewer.runsThisGroup ? coverTools(`/@${group.handle}/manage`, true) : ""), rail);
 }
 
@@ -1938,7 +2031,7 @@ function agoText(ms) {
 }
 
 function postList(posts) {
-  if (!posts.length) return `<p class="muted">Nothing said yet.</p>`;
+  if (!posts.length) return `<p class="muted">No posts yet!</p>`;
   return posts.map((post) => {
     const name = post.profile_name || post.author || "Someone";
     const media = mediaUrl(post.media_key);
@@ -2020,6 +2113,7 @@ function signInPage(env, heading, to) {
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <title>${esc(heading || "Sign in")} · PartyParty</title><style>${STYLE}${DOOR_STYLE}</style></head>
 <body class="door">
   <main class="doorleft">
@@ -2874,6 +2968,66 @@ export default {
       `));
     }
 
+    // A new party, as an empty party page rather than a row of boxes.
+    //
+    // Same shape as naming one in the app: a picture already chosen, a title
+    // you type over, and the details under it. The cover shuffles without
+    // touching the server because there is nothing to save to yet - it rides
+    // along as a hidden field and lands with everything else.
+    match = path.match(/^\/@([a-z0-9]+)\/new$/);
+    if (match) {
+      const group = await groupByHandle(env, match[1]);
+      if (!group) return new Response("Not Found", { status: 404 });
+      const dj = await currentDJ(env, request, now);
+      if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env, "Sign in", path));
+
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        if (!form) return notice("That did not save", "Try again.");
+        const title = String(form.get("title") || "").slice(0, 120).trim();
+        if (!title) return notice("It needs a name", "Give the party a name first.");
+        const startsRaw = String(form.get("starts") || "");
+        const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
+        const cover = await coverFromForm(env, form, "");
+        if (cover && cover.error) return notice("That picture did not take", cover.error);
+        const slug = slugify(title, now);
+        const id = ulid(now);
+        await env.DB.prepare(
+          `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity,
+             cover_key, state, created_ms, updated_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?)`
+        ).bind(id, group.id, slug, title, Number.isFinite(starts) ? starts : null,
+          String(form.get("place") || "").slice(0, 120),
+          Math.max(0, Math.min(100000, parseInt(String(form.get("capacity") || "0"), 10) || 0)),
+          (cover && cover.key) || String(form.get("coverPick") || "") || null,
+          now, now).run();
+        return new Response(null, {
+          status: 302, headers: { location: `/@${group.handle}/${slug}` },
+        });
+      }
+
+      const pick = COVER_PILE[crypto.getRandomValues(new Uint32Array(1))[0] % COVER_PILE.length];
+      return html(200, page("A new party", `
+        <form class="newnight" method="post" action="/@${esc(group.handle)}/new"
+          enctype="multipart/form-data" id="newParty">
+          <input type="hidden" name="coverPick" id="coverPick" value="${esc(coverPileUrl(pick))}">
+          <label class="eventfield"><span>When</span>
+            <input type="datetime-local" name="starts"></label>
+          <label class="eventfield"><span>Where</span>
+            <input type="text" name="place" placeholder="The Lido, or a friend's kitchen"></label>
+          <label class="eventfield"><span>Capacity</span>
+            <input type="text" name="capacity" placeholder="Leave empty for no limit"></label>
+          <button class="btn" type="submit">Create the party</button>
+        </form>
+        <p class="muted">You get a link to send the moment it exists. Nothing is announced
+        to anybody until you send it.</p>
+        ${newPartyScript()}
+      `, hero("Name your party", "", coverPileUrl(pick),
+          `<a href="/@${esc(group.handle)}/manage">Back</a>`,
+          coverTools(`/@${group.handle}/new`), true), peopleRail(
+            await groupPeople(env, group.id), base, group.handle, true)));
+    }
+
     match = path.match(/^\/@([a-z0-9]+)\/manage$/);
     if (match) {
       const group = await groupByHandle(env, match[1]);
@@ -3071,18 +3225,13 @@ export default {
         <p class="muted"><a class="muted" href="/@${esc(group.handle)}">partyparty.party/@${esc(group.handle)}</a>
           · ${Number((members && members.n) || 0)} ${Number((members && members.n) || 0) === 1 ? "member" : "members"}</p>
 
-        <form class="newnight" method="post" action="/@${esc(group.handle)}/manage">
-          <input type="text" name="title" placeholder="What is the night called?" required>
-          <div class="row">
-            <input type="text" name="starts" placeholder="2026-09-12T21:00">
-            <input type="text" name="place" placeholder="Where?">
-            <input type="text" name="capacity" placeholder="Capacity">
-          </div>
-          <button class="btn" type="submit">Add a night</button>
-        </form>
+        <a class="actionbar" href="/@${esc(group.handle)}/new">
+          <span class="tile">\u2728</span>
+          <span class="lines">Create a party<small>Name it, pick a picture, get the link</small></span>
+        </a>
 
-        ${events.length ? events.map(night).join("") : `<p class="muted">No nights yet.
-          Add one above and you will get a link to send.</p>`}
+        ${events.length ? `<h2>Parties</h2>${events.map(night).join("")}`
+          : `<p class="muted">No parties yet. The link to send comes with the first one.</p>`}
 
         <details class="settings">
           <summary>Settings</summary>
@@ -3156,8 +3305,8 @@ export default {
         }
         </script>
         ${coverScript(`/@${esc(group.handle)}/manage`)}
-      `, hero(group.name || group.handle, esc("@" + group.handle), group.cover_key,
-          `<a href="/@${esc(group.handle)}">The public page</a><a href="/home">Home</a>`,
+      `, hero(group.name || group.handle, "", group.cover_key,
+          `<a href="/@${esc(group.handle)}">The public page</a>`,
           coverTools(`/@${group.handle}/manage`), true),
         peopleRail(await groupPeople(env, group.id), base, group.handle)));
     }
