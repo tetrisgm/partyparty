@@ -376,6 +376,13 @@
   .djhandle{margin-left:8px;font-family:var(--mono,ui-monospace,Menlo,monospace);
     font-size:12px;font-weight:600;color:var(--label-tertiary)}
   .djhandle[hidden]{display:none}
+  /* Signing in belongs next to the name it fills in, not in a settings drawer.
+     Quiet until it is the thing left to do. */
+  .signinbtn{margin-left:auto;min-height:30px;padding:0 14px;border-radius:var(--r-pill);
+    background:var(--fill);color:var(--label);border:1px solid var(--separator);
+    font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .signinbtn:hover{background:var(--fill-hover)}
+  .signinbtn[hidden]{display:none}
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   /* macOS-style hierarchy: quiet grouped surfaces, aligned fields, one clear
      action row per section. */
@@ -1053,7 +1060,7 @@
 
   <div class="card event-admin-tools" id="eventManagePanel">
     <div class="linkeditor" id="linkEditor">
-      <div class="linkeditor-head"><b>About You</b><span class="djhandle" id="djHandle" hidden></span></div>
+      <div class="linkeditor-head"><b>About You</b><span class="djhandle" id="djHandle" hidden></span><button class="signinbtn" id="signInBtn" type="button">Sign in</button></div>
       <div class="profileeditor">
         <div class="profileimagewrap">
           <img class="profilephoto" id="profilePhoto" src="" alt="DJ profile photo" hidden>
@@ -2262,9 +2269,36 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   function setDJHandle(handle){
     eventMeta.handle = String(handle || '');
     const chip = document.getElementById('djHandle');
-    if (!chip) return;
-    chip.textContent = eventMeta.handle ? '@' + eventMeta.handle : '';
-    chip.hidden = !eventMeta.handle;
+    if (chip) {
+      chip.textContent = eventMeta.handle ? '@' + eventMeta.handle : '';
+      chip.hidden = !eventMeta.handle;
+    }
+    // Once this Mac belongs to an account there is nothing left to sign in to.
+    const button = document.getElementById('signInBtn');
+    if (button) button.hidden = !!eventMeta.handle;
+  }
+  // Signing in happens in a browser, because that is where Apple and Google
+  // sign-in lives. This Mac asks the platform for a one-time code that says
+  // which Mac is asking, and opens the page that binds it to whoever is signed
+  // in there. No code is ever read out or retyped.
+  {
+    const button = document.getElementById('signInBtn');
+    if (button) button.onclick = async () => {
+      const was = button.textContent;
+      button.disabled = true; button.textContent = 'Opening…';
+      try {
+        const r = await fetch('/api/sign-in-link', { method: 'POST' });
+        const d = await r.json();
+        if (!r.ok || !d.url) throw new Error(d.error || 'could not start sign-in');
+        window.open(d.url, '_blank');
+        button.textContent = 'Finish in the browser';
+      } catch (e) {
+        button.textContent = String(e.message || e);
+        setTimeout(() => { button.textContent = was; button.disabled = false; }, 4000);
+        return;
+      }
+      setTimeout(() => { button.textContent = was; button.disabled = false; }, 8000);
+    };
   }
   let eventEditField = '';
   function isPlaceholderHost(host){

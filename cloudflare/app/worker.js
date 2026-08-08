@@ -1262,7 +1262,17 @@ async function reserveHandle(env, handle) {
 async function createGroup(env, dj, handle, name, now) {
   const problem = handleProblem(handle);
   if (problem) return { error: problem };
-  if (!await claimHandle(env, handle)) return { error: "that name is taken" };
+  // A group cannot take a name another group already has, even one of yours.
+  const existing = await env.DB.prepare(`SELECT 1 AS ok FROM groups WHERE handle = ?`)
+    .bind(handle).first();
+  if (existing) return { error: "that name is taken" };
+  // Everything else asks on this person's behalf. Their own @name is reserved
+  // in the broker keyspace by their own profile, so a plain claimHandle refused
+  // to let anybody name a group after themselves - which is the default the
+  // sign-in flow offers, so linking a Mac failed on the obvious answer.
+  if (!await handleFree(env, handle, dj && dj.email_norm)) {
+    return { error: "that name is taken" };
+  }
   const id = ulid(now);
   try {
     await env.DB.prepare(
@@ -1504,8 +1514,16 @@ function sniffMedia(bytes) {
   return "";
 }
 
+// A stored key becomes a URL exactly once.
+//
+// The pile writes "/media/covers/x.webp" and an upload writes "covers/<hex>",
+// and this used to prefix both - so every SHUFFLED cover rendered
+// /media//media/covers/x.webp and 404ed while uploaded ones worked, which
+// looked like the feature was randomly broken. Anything already absolute is
+// already a URL.
 function mediaUrl(key) {
-  return key ? (/^(https?:)?\/\//.test(key) ? key : `/media/${key}`) : "";
+  if (!key) return "";
+  return /^(https?:)?\/\//.test(key) || key.startsWith("/") ? key : `/media/${key}`;
 }
 
 // The bundled pile, the same pictures the Mac shuffles through, published to
@@ -1526,7 +1544,7 @@ const COVER_PILE = [
 ];
 
 function coverPileUrl(name) {
-  return `/media/covers/${name}.webp`;
+  return `covers/${name}.webp`;
 }
 
 async function storeMedia(env, file, prefix, maxBytes, allowVideo) {
@@ -1817,12 +1835,16 @@ async function spaceLeft(env, event) {
 // The picture is one of the same covers a DJ shuffles through for their own
 // nights - the product showing what it is for rather than describing it. Picked
 // per request, so the page is a different party each time you arrive.
-function signInPage(env, heading) {
+function signInPage(env, heading, to) {
   const apple = `<svg viewBox="0 0 384 512" aria-hidden="true" fill="currentColor"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>`;
   const google = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.7-.4-4H24v7.3h12.1c-.2 2-1.6 5-4.5 7l-.1.3 6.5 5 .5.1c4.1-3.8 6.6-9.4 6.6-15.7"/><path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.8 1.3-4.3 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-7 5.4C7.9 40.8 15.4 46 24 46"/><path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.7-2.9-.7-4.4s.3-3 .7-4.4v-.3l-6.8-5.3-.2.1C2.9 17 2 20.4 2 24s.9 7 2.5 10z"/><path fill="#EA4335" d="M24 10.7c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.5 29.9 2 24 2 15.4 2 7.9 7.2 4.5 14l7 5.5c1.8-5.3 6.7-9.1 12.5-9.1"/></svg>`;
 
+  // Carry where they were heading through the round trip, so signing in from a
+  // Mac's link lands back on that link rather than dumping them on the home
+  // page with the thing they were doing forgotten.
+  const back = to ? `?to=${encodeURIComponent(to)}` : "";
   const button = (provider, mark, label) => (configured(env, provider)
-    ? `<a class="ssobtn" href="/auth/${provider}">${mark}<span>${esc(label)}</span></a>`
+    ? `<a class="ssobtn" href="/auth/${provider}${back}">${mark}<span>${esc(label)}</span></a>`
     : `<p class="muted">${esc(label)} is not configured yet.</p>`);
 
   const cover = coverPileUrl(COVER_PILE[
@@ -2337,6 +2359,104 @@ export default {
     }
 
     if (path === "/signin") return html(200, signInPage(env));
+
+    // Signing in ON the Mac.
+    //
+    // The Mac used to show a code for the DJ to retype into a settings drawer
+    // on the web - machinery for a problem signing in already solves, and it
+    // was never even wired: nothing in the app ever asked for a code, so the
+    // box on the web was asking people to type something no Mac had shown them.
+    //
+    // Now the app opens this URL with its own code already in it. The person
+    // signs in if they are not, presses one button, and the Mac belongs to
+    // them. The code is still what proves WHICH Mac is asking - it is minted by
+    // an install-authed call and single use - but nobody ever reads it out.
+    match = path.match(/^\/link\/([A-Z0-9]{6})$/);
+    if (match) {
+      const code = await env.DB.prepare(
+        `SELECT * FROM install_codes WHERE code = ? AND used_ms IS NULL AND expires_ms > ?`
+      ).bind(match[1], now).first();
+      if (!code) {
+        return notice("That link has expired",
+          "Open PartyParty on the Mac and press Sign in again - it makes a fresh one.");
+      }
+      const dj = await currentDJ(env, request, now);
+      if (!dj) return html(200, signInPage(env, "Sign in to link this Mac", path));
+
+      const { results } = await env.DB.prepare(
+        `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id
+          WHERE d.dj_id = ? ORDER BY g.created_ms`
+      ).bind(dj.id).all();
+      const mine = results || [];
+
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        if (!form) return notice("That did not work", "Try again.");
+        let groupId = String(form.get("group") || "");
+        if (!groupId) {
+          // No group yet, so making one is part of linking rather than a
+          // separate errand. Their @name is the obvious address.
+          const profile = await profileFor(env, dj.email_norm, now, dj.name);
+          const made = await createGroup(env, dj,
+            normalizeHandle(form.get("handle")) || profile.handle,
+            String(form.get("name") || "").slice(0, 80) || profile.name || profile.handle, now);
+          if (made.error) return notice("That name will not work", made.error);
+          groupId = made.id;
+        } else if (!mine.some((g) => g.id === groupId)) {
+          return notice("Not yours", "That is not one of your groups.");
+        }
+        await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`)
+          .bind(now, match[1]).run();
+        await env.DB.prepare(
+          `INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)
+           ON CONFLICT(install_id) DO UPDATE SET group_id = excluded.group_id,
+             linked_ms = excluded.linked_ms`
+        ).bind(code.install_id, groupId, now).run();
+        const group = await env.DB.prepare(`SELECT handle, name FROM groups WHERE id = ?`)
+          .bind(groupId).first();
+        return html(200, page("This Mac is yours", `
+          <h1>Done</h1>
+          <p>This Mac is signed in as <b>${esc(group.name || group.handle)}</b>. Your name and
+          photo are already in the app, and anything you change in either place shows up in
+          the other.</p>
+          <p class="muted">You can close this tab and go back to the Mac.</p>
+          <p><a class="btn plain" href="/@${esc(group.handle)}/manage">Open the group</a></p>
+        `, "", "", true));
+      }
+
+      const profile = await profileFor(env, dj.email_norm, now, dj.name);
+      const who = profile.name || dj.name || "@" + profile.handle;
+      return html(200, page("Link this Mac", `
+        <h1>Link this Mac</h1>
+        <p class="muted">Signed in as ${esc(who)}. This is the Mac that asked, and the
+        request expires in a few minutes.</p>
+        ${mine.length
+          ? `<form method="post" action="${esc(path)}">
+              ${mine.length === 1
+                ? `<input type="hidden" name="group" value="${esc(mine[0].id)}">
+                   <button class="actionbar" type="submit">
+                     <span class="tile">\u{1F5A5}️</span>
+                     <span class="lines">Link it to ${esc(mine[0].name || mine[0].handle)}
+                       <small>@${esc(mine[0].handle)}</small></span>
+                   </button>`
+                : mine.map((g) => `<button class="actionbar quiet" type="submit" name="group"
+                     value="${esc(g.id)}" style="margin-bottom:8px">
+                     <span class="tile">\u{1F5A5}️</span>
+                     <span class="lines">${esc(g.name || g.handle)}<small>@${esc(g.handle)}</small></span>
+                   </button>`).join("")}
+            </form>`
+          : `<p>You do not run a group yet. Linking this Mac makes one, at your own @name.</p>
+             <form class="newnight" method="post" action="${esc(path)}">
+               <input type="text" name="name" placeholder="What are your nights called?"
+                 value="${esc(profile.name || "")}">
+               <input type="text" name="handle" placeholder="handle"
+                 value="${esc(profile.handle || "")}">
+               <button class="btn" type="submit">Link this Mac and start the group</button>
+             </form>`}
+        <p class="muted" style="margin-top:28px">Not expecting this? Close the tab and nothing
+        happens - the request expires on its own.</p>
+      `, "", "", true));
+    }
 
     // ---- the DJ's own pages -----------------------------------------------
     // You, not one of your groups. Your name and how you sign in are yours and

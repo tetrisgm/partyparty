@@ -1329,7 +1329,13 @@ test("a group has a cover, changed the same two ways a night's is", async () => 
   const first = await send("/@sundaze/manage", { shuffleCover: "1" });
   assert.equal(first.status, 302);
   const one1 = one(env, `SELECT cover_key FROM groups`).cover_key;
-  assert.match(one1, /^\/media\/covers\/[a-z-]+\.webp$/);
+  assert.match(one1, /^covers\/[a-z-]+\.webp$/);
+  // The RENDERED url, not just the stored key. Checking only the key is how a
+  // double /media/ prefix shipped: every shuffled cover 404ed while uploaded
+  // ones worked, so it read as randomly broken rather than as one bug.
+  const shuffled = await (await read("/@sundaze")).text();
+  assert.match(shuffled, new RegExp(`background-image:url\\('/media/${one1}'\\)`));
+  assert.ok(!/\/media\/\/media\//.test(shuffled), "a key must become a URL exactly once");
   await send("/@sundaze/manage", { shuffleCover: "1" });
   assert.notEqual(one(env, `SELECT cover_key FROM groups`).cover_key, one1,
     "a shuffle that shows the same picture reads as a broken button");
@@ -1348,7 +1354,7 @@ test("a group has a cover, changed the same two ways a night's is", async () => 
   // A night's cover works identically, through its own route.
   seedEvent(env, one(env, `SELECT id FROM groups`).id);
   await send("/@sundaze/june-14/cover", { shuffleCover: "1" });
-  assert.match(one(env, `SELECT cover_key FROM events`).cover_key, /^\/media\/covers\//);
+  assert.match(one(env, `SELECT cover_key FROM events`).cover_key, /^covers\//);
 
   // And a stranger, with no session, cannot touch either.
   const body = new FormData();

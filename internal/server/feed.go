@@ -2,11 +2,15 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -15,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"partyparty/internal/activate"
 	"partyparty/internal/event"
 	"partyparty/internal/peers"
 )
@@ -357,6 +362,41 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		s.Events.StampProfile()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": s.Events.Meta().Links})
+	case "/api/sign-in-link":
+		// Signing in happens in a browser, because that is where Apple and
+		// Google sign-in lives. This mints the one-time code that says WHICH
+		// Mac is asking and hands back the URL to open; the DJ presses one
+		// button there and this Mac belongs to their account. Nobody reads a
+		// code out loud, and nothing here needs a password.
+		if r.Method != http.MethodPost || !s.isDJ(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
+			return true
+		}
+		id, secret := activate.InstallCreds()
+		if id == "" || secret == "" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error": "this Mac has not reached partyparty.party yet"})
+			return true
+		}
+		base := strings.TrimRight(os.Getenv("PARTYPARTY_BROKER"), "/")
+		if base == "" {
+			base = "https://partyparty.party"
+		}
+		out, err := requestInstallCode(r.Context(), base, id, secret)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return true
+		}
+		if out.Linked {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "linked": true, "handle": out.Handle, "name": out.Name,
+				"url": base + "/@" + out.Handle + "/manage",
+			})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "linked": false, "url": base + "/link/" + out.Code,
+		})
 	case "/api/dj-profile":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -825,4 +865,43 @@ func (s *srv) proxyRoomWrite(w http.ResponseWriter, r *http.Request, peerID stri
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(response)
+}
+
+// installCodeReply is the platform's answer to "which Mac is this, and is it
+// already somebody's?".
+type installCodeReply struct {
+	Linked bool   `json:"linked"`
+	Code   string `json:"code"`
+	Handle string `json:"handle"`
+	Name   string `json:"name"`
+}
+
+func requestInstallCode(ctx context.Context, base, id, secret string) (installCodeReply, error) {
+	var out installCodeReply
+	body, err := json.Marshal(map[string]any{"id": id, "secret": secret})
+	if err != nil {
+		return out, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		base+"/api/v1/install/code", bytes.NewReader(body))
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("content-type", "application/json")
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return out, errors.New("could not reach partyparty.party")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("partyparty.party said %s", resp.Status)
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&out); err != nil {
+		return out, err
+	}
+	if !out.Linked && out.Code == "" {
+		return out, errors.New("no code came back")
+	}
+	return out, nil
 }
