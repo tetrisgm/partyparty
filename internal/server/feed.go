@@ -330,6 +330,14 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				return true
 			}
 		}
+		// The same edit, on the same party, wherever it was typed. Renaming in
+		// the booth used to change only this Mac's copy, so a party that had a
+		// page on the platform ended the night with two different names - the
+		// exact thing one canonical party is for. Best effort and in the
+		// background: the console is offline-first and a party with no page,
+		// or no internet, must not have its rename refused or delayed.
+		s.pushPartyEdit(body.Title, body.Place)
+
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok": true, "date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,

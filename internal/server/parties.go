@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"partyparty/internal/cloudsync"
@@ -25,6 +27,47 @@ func canonicalFrom(p cloudsync.Party) event.CanonicalParty {
 		Key: p.Key, Slug: p.Slug, Title: p.Title, URL: p.URL,
 		Handle: p.Handle, StartsMs: p.StartsMs, Place: p.Place,
 	}
+}
+
+// pushPartyEdit carries a local rename up to the canonical party this room is
+// running, if it is running one. Everything about it is deliberately quiet:
+//
+//   - It returns immediately. The console saves the DJ's words locally first
+//     and the platform is not allowed to make that wait, or fail it.
+//   - No party attached, not signed in, no internet: nothing happens, and
+//     nothing is said. Most parties are a Mac in a room.
+//   - Only fields that actually changed are sent, so a save that touched the
+//     place does not also rewrite a title somebody edited on the web.
+func (s *srv) pushPartyEdit(title string, place *string) {
+	if s.Parties == nil || s.Events == nil {
+		return
+	}
+	current := s.Events.Canonical()
+	if current.Key == "" {
+		return
+	}
+	fields := map[string]any{}
+	if title = strings.TrimSpace(title); title != "" && title != current.Title {
+		fields["title"] = title
+	}
+	if place != nil && strings.TrimSpace(*place) != current.Place {
+		fields["place"] = strings.TrimSpace(*place)
+	}
+	if len(fields) == 0 {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		party, err := s.Parties.UpdateParty(ctx, current.Key, fields)
+		if err != nil {
+			log.Printf("party: could not carry the rename to the platform: %v", err)
+			return
+		}
+		if err := s.Events.SetCanonical(canonicalFrom(party)); err != nil {
+			log.Printf("party: %v", err)
+		}
+	}()
 }
 
 // handlePartyAPI is the Mac's party management: everything the web console can

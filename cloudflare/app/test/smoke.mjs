@@ -1971,6 +1971,54 @@ test("a record belongs to one person and is invisible to everybody else", async 
   assert.ok(!(await (await read("/people")).text()).includes("Their Friend"));
 });
 
+// Two workers share one zone, and which paths belong to this one is declared
+// in wrangler.jsonc rather than in the code that serves them. A page added
+// without its route works perfectly on localhost and 404s on partyparty.party,
+// because the request never reaches this worker at all - it is answered by
+// partyparty-site, which has never heard of it. Nothing in a request-level
+// test can see that: the tests call this worker directly.
+//
+// So this reads the two files against each other. Every exact path the worker
+// answers must be claimed by a route, and the development doors must NOT be -
+// they are shut by DEV_LOGIN, and a route for them is a door on the internet.
+test("every page this worker serves is claimed by one of its routes", () => {
+  const source = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
+  const config = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+
+  // Cloudflare's * matches anything, including slashes. A pattern without one
+  // matches its own path and nothing under it, which is why /people needs two.
+  const patterns = [...config.matchAll(/"pattern":\s*"partyparty\.party([^"]*)"/g)]
+    .map((m) => new RegExp("^" + m[1].split("*")
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$"));
+  const claimed = (path) => patterns.some((re) => re.test(path));
+
+  // What the worker actually answers, read off the routing itself.
+  const exact = [...source.matchAll(/path === "(\/[^"]*)"/g)].map((m) => m[1]);
+  const prefixes = [...source.matchAll(/path\.startsWith\("(\/[^"]*)"\)/g)].map((m) => m[1]);
+  // The pattern routes, which are stable and not worth parsing out of regexes.
+  const patterned = ["/@sundaze", "/@sundaze/june-14", "/j/" + "a".repeat(48),
+    "/m/" + "a".repeat(48), "/g/" + "a".repeat(48), "/link/ABC123",
+    "/calendar/sundaze.ics", "/auth/apple", "/auth/apple/callback"];
+
+  assert.ok(exact.length > 10, "the routing moved; this test is reading the wrong thing");
+  assert.ok(exact.includes("/people") && exact.includes("/parties/new"),
+    "the tracker's own pages must be among the paths checked");
+
+  for (const path of exact) {
+    if (path.startsWith("/dev/")) {
+      assert.ok(!claimed(path), `${path} is a development door and must have no route`);
+      continue;
+    }
+    assert.ok(claimed(path), `${path} is served but no route sends it here`);
+  }
+  for (const prefix of prefixes) {
+    assert.ok(claimed(prefix + "x"), `${prefix}* is served but no route sends it here`);
+  }
+  for (const path of patterned) {
+    assert.ok(claimed(path), `${path} is served but no route sends it here`);
+  }
+});
+
 test("a person can turn out to be an account, later, or never", async () => {
   const { env, send, read } = await signedIn();
   await send("/parties/new", { title: "Warehouse", dj: "Seth" });

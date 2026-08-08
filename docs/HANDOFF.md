@@ -1,5 +1,46 @@
 # PartyParty.party handoff
 
+## Current position (2026-08-08): the web is a personal party record
+
+The web half changed shape. It was a place to PUBLISH a night, reached from the
+Mac. It is now first a place to KEEP one, and it is useful with nobody else on
+PartyParty at all - none of it needs the other people to have accounts.
+
+`/home` is your parties, upcoming and past. A party page carries your own record
+of it: went or not, a private note, who played, who you saw, and a note about
+each of them from THAT night. People are reused by name, so typing "Seth" twice
+is one Seth; `/people` and `/people/<id>` are the list and one person's whole
+history. Everything private is keyed by the owner's verified address, and a
+party page shows a signed-out visitor none of it.
+
+Three things worth knowing before changing any of it:
+
+- **Upcoming / on tonight / past is read off the clock** (`partyPhase`), never
+  a field somebody flips. Six hours is a night.
+- **"Playing right now" is a heartbeat, not a flag.** The Mac's timeline sync
+  already ran every 20s while live and stopped when it was not, so it now
+  carries the guest link and stamps `events.live_ms`; the page offers Listen
+  for 90s past the last one and then stops on its own. A flag would still be
+  saying "listen now" the next morning. The web LISTENS and never transmits -
+  there is a test that fails on the word.
+- **One party, two clients.** The web edit form and the Mac's `/api/party/edit`
+  are the same `updateParty` on the same row. Renaming in the booth now carries
+  up to the platform in the background (`pushPartyEdit`): it used to change
+  only the Mac's copy, so a party with a page ended the night under two names.
+
+Migrations `0009_people.sql` (people, party_people, party_notes) and
+`0010_party_details.sql` (events.links, live_url, live_ms). See Owed: production
+D1 has neither, and the worker on main needs them.
+
+A TRAP THIS SESSION WALKED INTO, now guarded: two workers share the zone, and
+which paths belong to the platform is declared in `cloudflare/app/wrangler.jsonc`
+rather than in the code that serves them. `/people` and `/parties/new` were
+served by the app worker with no route pointing at them - which works perfectly
+on localhost and 404s on partyparty.party, because the request is answered by
+partyparty-site instead. Nothing request-level can see it; the tests call the
+worker directly. A test now reads the two files against each other, and the
+development doors must have NO route.
+
 ## Current position (2026-08-06, end): every step of the plan has code
 
 `docs/plan.md` is the single plan, written from the person throwing the party.

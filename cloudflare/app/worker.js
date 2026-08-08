@@ -2704,7 +2704,12 @@ export default {
       return new Response(null, { status: 301, headers: { location: url.toString() } });
     }
 
-    if (path === "/__pp/app-health") return json(200, { ok: true });
+    // Is the platform worker up. On /api/v1/ because that prefix is routed to
+    // this worker; the old /__pp/app-health was inside the SITE worker's
+    // namespace and had no route of its own, so it had never once answered on
+    // the real domain - a health check that only works locally is worse than
+    // none, because it reports health for something nobody is asking about.
+    if (path === "/api/v1/health") return json(200, { ok: true });
 
     // Pictures. Immutable: every key is random and a new upload is a new key,
     // so this can be cached hard and a changed photo still appears at once.

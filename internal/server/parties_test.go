@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"testing"
+	"time"
 
 	"partyparty/internal/cloudsync"
 	"partyparty/internal/event"
@@ -17,6 +19,10 @@ import (
 // at it, that opening a web-made party is an edit to that same record, and that
 // none of it ever mints a second party.
 type fakePlatform struct {
+	// Guarded because a rename typed in the console is carried to the platform
+	// in the background: the DJ's words are saved locally first and never wait
+	// on the network. That makes this a second goroutine's view of the fake.
+	mu      sync.Mutex
 	linked  bool
 	parties []cloudsync.Party
 	creates []cloudsync.Party
@@ -27,10 +33,14 @@ type fakePlatform struct {
 }
 
 func (f *fakePlatform) Parties(context.Context) ([]cloudsync.Party, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.parties, f.linked, nil
 }
 
 func (f *fakePlatform) CreateParty(_ context.Context, title, place, partyID string, startsMs int64) (cloudsync.Party, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if !f.linked {
 		return cloudsync.Party{}, errors.New("this Mac is not signed in")
 	}
@@ -45,6 +55,8 @@ func (f *fakePlatform) CreateParty(_ context.Context, title, place, partyID stri
 }
 
 func (f *fakePlatform) UpdateParty(_ context.Context, key string, fields map[string]any) (cloudsync.Party, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.updates = append(f.updates, struct {
 		key    string
 		fields map[string]any
@@ -65,6 +77,37 @@ func (f *fakePlatform) UpdateParty(_ context.Context, key string, fields map[str
 		return f.parties[i], nil
 	}
 	return cloudsync.Party{}, http.ErrNoLocation
+}
+
+// waitForUpdates blocks until the platform has seen n edits, or gives up. The
+// rename is carried in the background on purpose, so there is nothing in the
+// response to wait on - and sleeping a fixed amount is how a test becomes flaky
+// on a loaded build runner.
+func (f *fakePlatform) waitForUpdates(t *testing.T, n int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		f.mu.Lock()
+		got := len(f.updates)
+		f.mu.Unlock()
+		if got >= n {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("the platform never saw %d edits", n)
+}
+
+// quiet proves the opposite: that nothing was sent, after long enough that a
+// send would have arrived.
+func (f *fakePlatform) quiet(t *testing.T) {
+	t.Helper()
+	time.Sleep(150 * time.Millisecond)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.updates) != 0 {
+		t.Fatalf("something was sent to the platform: %+v", f.updates)
+	}
 }
 
 func macSrv(t *testing.T, platform *fakePlatform) (*Srv, *event.Store) {
@@ -204,6 +247,64 @@ func TestAPartyIsNotRequiredAndAnUnsignedMacSaysSo(t *testing.T) {
 	if edit["__status"] != float64(409) {
 		t.Fatalf("a room running no party cannot be edited into one: %v", edit)
 	}
+}
+
+// Renaming the party in the booth is the same edit as renaming it on the web.
+// It used to change only this Mac's copy, and the party's own page kept the old
+// name for the rest of the night - two names for one party, which is the whole
+// thing the canonical record exists to prevent.
+func TestRenamingInTheBoothRenamesTheParty(t *testing.T) {
+	platform := &fakePlatform{linked: true}
+	s, ev := macSrv(t, platform)
+	post(t, s, "/api/party/create", map[string]any{
+		"title": "Rooftop", "place": "The roof", "open": true})
+
+	got := post(t, s, "/api/event-config", map[string]any{"title": "Rooftop, later"})
+	if got["__status"] != float64(200) {
+		t.Fatalf("rename: %v", got)
+	}
+	// Local first, and without waiting for anything.
+	if ev.Meta().Title != "Rooftop, later" {
+		t.Fatalf("the room did not take the name: %q", ev.Meta().Title)
+	}
+	platform.waitForUpdates(t, 1)
+
+	platform.mu.Lock()
+	last := platform.updates[len(platform.updates)-1]
+	platform.mu.Unlock()
+	if last.key != "ev-created" || last.fields["title"] != "Rooftop, later" {
+		t.Fatalf("the wrong edit reached the platform: %+v", last)
+	}
+	if _, sent := last.fields["place"]; sent {
+		t.Fatal("a place nobody typed must not be sent; it would clear one set on the web")
+	}
+	if ev.Canonical().Title != "Rooftop, later" {
+		t.Fatalf("the room's pointer kept the old name: %+v", ev.Canonical())
+	}
+}
+
+func TestRenamingSaysNothingWhenThereIsNoPartyToRename(t *testing.T) {
+	// A Mac in a room with no page on the platform, which is most of them. The
+	// rename still works; it just has nowhere to go, and says nothing about it.
+	platform := &fakePlatform{linked: true}
+	s, ev := macSrv(t, platform)
+
+	got := post(t, s, "/api/event-config", map[string]any{"title": "Someone's kitchen"})
+	if got["__status"] != float64(200) {
+		t.Fatalf("rename: %v", got)
+	}
+	if ev.Meta().Title != "Someone's kitchen" {
+		t.Fatalf("the room did not take the name: %q", ev.Meta().Title)
+	}
+	platform.quiet(t)
+
+	// And re-saving the same name is not an edit at all.
+	post(t, s, "/api/party/create", map[string]any{"title": "Named", "open": true})
+	platform.mu.Lock()
+	platform.updates = nil
+	platform.mu.Unlock()
+	post(t, s, "/api/event-config", map[string]any{"title": "Named"})
+	platform.quiet(t)
 }
 
 func TestGuestsOnlyEverSeeTheRoom(t *testing.T) {
