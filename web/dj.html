@@ -1823,6 +1823,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     if (lastState === 'live' || lastState === 'starting') {
       fetch('/api/stop', { method:'POST' }).then(refresh);
     } else {
+      // Not signed in yet: the button is the way in, not a locked door.
+      if (window.ppSignedIn === false) {
+        const signIn = document.getElementById('signInBtn');
+        if (signIn) signIn.click();
+        return;
+      }
       if (!eventMeta.title.trim()) {
         setEventEditOpen('title');
         return;
@@ -2117,8 +2123,17 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // The only guest path is HTTPS LL-HLS, so Go Live waits for the trusted
       // LAN certificate instead of advertising a room phones cannot open.
       const secureReady = s.llhlsRealCert === true;
-      const canStart = secureReady;
-      if (!live && !canStart) {
+      // The DJ signs in. Signing in on the Mac IS the pairing, so this is also
+      // what ties the party to their group - and the button says so instead of
+      // sitting there dead: pressing it opens the browser and signs them in.
+      const signedIn = s.signedIn === true;
+      window.ppSignedIn = signedIn;
+      const canStart = secureReady && signedIn;
+      if (!live && !signedIn) {
+        lb.textContent = '🔑 Sign in to go live';
+        lb.className = 'golive go biggo';
+        lb.disabled = false;
+      } else if (!live && !canStart) {
         lb.textContent = '🔒 Setting up secure link…';
         lb.className = 'golive go biggo';
         lb.disabled = true;

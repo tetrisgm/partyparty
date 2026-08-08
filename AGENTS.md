@@ -77,10 +77,13 @@ look should change, change it there first.
 ## Product Invariants
 
 1. Guests join, listen, and post on the LAN without accounts or internet.
-2. Accounts belong to DJs, never to guests at a party. A DJ signs in to run a
-   group; a member may sign in if they want one identity across groups, but
-   every member action also works from a link in an email. Go Live is never
-   gated on sign-in, a purchase, or a network check.
+2. THE DJ SIGNS IN. The Mac app requires it, the same Apple or Google sign-in
+   as the web, and signing in on the Mac IS the pairing - there is no code to
+   read out. Guests never sign in: they scan a code and they are in. A member
+   may sign in if they want one identity across groups, but every member action
+   also works from a link in an email. (An earlier version of this line said Go
+   Live is never gated on sign-in. An agent wrote that, not the owner; the owner
+   asked for the opposite on 2026-08-08.)
 3. Guest playback is HTTPS LL-HLS. The single exception is the OFFLINE
    EMERGENCY LINK, which is intended and supported: when a party has no
    internet and this Wi-Fi's resolver will not answer for the secure hostname,

@@ -684,6 +684,11 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"llhlsUrl":       s.llhlsURLFor(r),
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
+			// The DJ signs in, and signing in on the Mac IS the pairing. The
+			// handle only exists once this install belongs to an account, and it
+			// is cached locally - so a venue with no internet does not lock a
+			// signed-in DJ out of their own party.
+			"signedIn":       s.signedIn(),
 			"audioProven":    s.audioProven.Load(),
 			"activation":     s.activationState(),
 			"latencyTarget":  latencyTarget,
@@ -1657,4 +1662,15 @@ func compactFields(m map[string]any) string {
 		fmt.Fprintf(&b, "%s=%s ", k, s)
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// signedIn reports whether this Mac belongs to somebody's account. The @name
+// arrives with the profile the first time the install is linked and is kept on
+// disk, so this stays true offline - being at a venue with no uplink must never
+// sign a DJ out of the party they are standing in.
+func (s *srv) signedIn() bool {
+	if s.Events == nil {
+		return false
+	}
+	return s.Events.CloudProfile().Handle != ""
 }
