@@ -368,15 +368,40 @@ font-size:15px;line-height:1.45;font-synthesis:none}
 /* The header is a card, not a band: an image with the name on it, inset from
    the edges and rounded, the way the console's cover sits. */
 .hero{position:relative;max-width:1180px;margin:20px auto 0;padding:0 20px}
-.hero .cover{position:relative;min-height:230px;display:flex;align-items:flex-end;
-padding:26px;border-radius:var(--r-lg);overflow:hidden;
+/* The same box the console draws: same height curve, same corner, same scrim,
+   so a DJ moving between the app and the site is looking at one thing. */
+.hero .cover{position:relative;min-height:clamp(200px,21vw,300px);display:flex;
+align-items:flex-end;padding:28px 24px 20px;border-radius:var(--r-lg);overflow:hidden;
 background:linear-gradient(135deg,#3a1f2a,#1d1a22);background-size:cover;
 background-position:center;box-shadow:var(--shadow)}
-.hero .cover::after{content:'';position:absolute;inset:0;
-background:linear-gradient(180deg,rgba(0,0,0,.05) 30%,rgba(0,0,0,.72) 100%)}
+.hero .cover::after{content:'';position:absolute;inset:0;pointer-events:none;
+background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
+.hero .cover.bare::after{background:none}
+/* Remove, top right, only once there is something to remove. */
+/* Top LEFT, because the page's own chips (the public page, Home) already own
+   the right corner and the two were sitting on top of each other. */
+.coverx{position:absolute;top:18px;left:18px;z-index:3;width:34px;height:34px;
+border-radius:50%;display:grid;place-items:center;padding:0;border:0;
+background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
+.coverx:hover{background:rgba(18,18,22,.68)}
+.cover.bare .coverx{display:none}
 .hero .titles{position:relative;z-index:1}
-.hero h1{font-size:42px;font-weight:800;line-height:1.02;letter-spacing:-.02em;
-color:#fff;margin:0 0 4px;overflow-wrap:anywhere}
+.hero h1{font-size:clamp(34px,3.4vw,46px);font-weight:800;line-height:1.04;
+letter-spacing:-.03em;color:#fff;margin:0 0 4px;overflow-wrap:anywhere}
+.hero h1 [contenteditable]{outline:none;display:inline-block;min-width:2ch;
+border-radius:var(--r-sm);padding:0 2px}
+.hero h1 [contenteditable]:focus{background:rgba(0,0,0,.35);
+box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+.fieldedit{width:34px;height:34px;padding:0;margin-left:10px;border-radius:50%;
+display:inline-grid;place-items:center;vertical-align:middle;border:0;cursor:pointer;
+background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);
+color:rgba(255,255,255,.72)}
+.fieldedit:hover{background:rgba(255,255,255,.18);color:#fff}
+.fieldedit svg{width:15px;height:15px;display:block}
+.coversays{position:absolute;right:24px;bottom:66px;z-index:3;font-size:12px;
+color:rgba(255,255,255,.85)}
+.coversays.bad{color:#ff7a7a}
 .hero .sub{margin:0;color:rgba(255,255,255,.72);font-weight:700;font-size:15px}
 .toptools{position:absolute;top:26px;right:46px;display:flex;gap:8px;z-index:2}
 .toptools a{display:grid;place-items:center;min-width:38px;height:38px;padding:0 14px;
@@ -497,6 +522,12 @@ font-weight:800}
 letter-spacing:.04em;text-transform:uppercase}
 .who-list small.at{text-transform:none;letter-spacing:0;font-size:12px;
 font-family:var(--mono)}
+/* A section per kind of person, the way the guest's phone heads a DJ above the
+   room listening to them. */
+.whogroup + .whogroup{margin-top:18px}
+.whohead{display:flex;align-items:baseline;gap:6px;margin:0 0 10px;font-size:11px;
+font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--label-secondary)}
+.whohead small{font-size:11px;color:var(--label-tertiary);font-weight:600}
 
 /* "About You", as the console draws it: a round picture you can replace, your
    name and a line about you side by side, and the three link pills under them.
@@ -649,15 +680,26 @@ function page(title, body, heroHtml, rail, wide) {
 // The hero the guest page opens with: the group's own picture if it has one,
 // the warm party gradient if it does not, with the name sitting on it and the
 // round floating chrome the app uses for secondary actions.
-function hero(title, sub, cover, tools, coverForm) {
+function hero(title, sub, cover, tools, coverForm, editable) {
   const url = mediaUrl(cover);
   const image = url ? ` style="background-image:url('${esc(url)}')"` : "";
+  const pencil = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`;
+  const name = editable
+    ? `<span id="groupName" contenteditable="plaintext-only" role="textbox"
+         aria-label="Group name" spellcheck="false">${esc(title)}</span>
+       <button class="fieldedit" type="button" id="groupNamePencil"
+         aria-label="Edit the group name" title="Edit the group name">${pencil}</button>`
+    : esc(title);
   return `<header class="hero">
     ${tools ? `<div class="toptools">${tools}</div>` : ""}
-    <div class="cover"${image}>
+    <div class="cover${url ? "" : " bare"}"${image} id="heroCover">
+      ${editable ? `<button class="coverx" type="button" id="coverRemove"
+        aria-label="Remove the cover" title="Remove the cover">✕</button>` : ""}
       <div class="titles">
-        <h1>${esc(title)}</h1>
-        ${sub ? `<p class="sub">${esc(sub)}</p>` : ""}
+        <h1>${name}</h1>
+        ${sub ? `<p class="sub">${sub}</p>` : ""}
       </div>
       ${coverForm || ""}
     </div>
@@ -669,14 +711,124 @@ function hero(title, sub, cover, tools, coverForm) {
 // submit so it works with no JavaScript at all; Upload is a file input dressed
 // as a button that submits the moment a picture is chosen.
 function coverTools(action, fromPublic) {
-  return `<form class="coveractions" method="post" action="${esc(action)}"
-      enctype="multipart/form-data">
+  return `<span class="coversays" id="coverSays"></span>
+    <form class="coveractions" method="post" action="${esc(action)}"
+      enctype="multipart/form-data" id="coverForm">
     ${fromPublic ? `<input type="hidden" name="fromPublic" value="1">` : ""}
     <button type="submit" name="shuffleCover" value="1">Shuffle image</button>
     <button type="button" onclick="this.nextElementSibling.click()">Upload image</button>
     <input type="file" name="cover" accept="image/*"
       onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
   </form>`;
+}
+
+// Changing the picture, and the name, without the page going anywhere.
+//
+// Shuffling used to be a form post and a redirect: the whole page tore down and
+// came back to look at one different image, which is a lot of blinking for
+// "show me another". The form still works with no JavaScript - this only
+// intercepts it.
+function coverScript(action) {
+  return `<script>
+  (() => {
+    const form = document.getElementById('coverForm');
+    const cover = document.getElementById('heroCover');
+    const says = document.getElementById('coverSays');
+    const remove = document.getElementById('coverRemove');
+    if (!form || !cover) return;
+    const tell = (text, bad) => {
+      if (!says) return;
+      says.textContent = text || '';
+      says.classList.toggle('bad', !!bad);
+    };
+    const paint = (url) => {
+      cover.style.backgroundImage = url ? "url('" + url + "')" : '';
+      cover.classList.toggle('bare', !url);
+    };
+    const send = async (data) => {
+      form.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      tell('Working…');
+      try {
+        const r = await fetch(${JSON.stringify(action)}, {
+          method: 'POST', body: data, headers: { accept: 'application/json' },
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'that did not take');
+        paint(d.coverUrl || '');
+        tell('');
+      } catch (e) {
+        tell(String(e.message || e), true);
+      } finally {
+        form.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+      }
+    };
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      // A submit button's own name/value is not in FormData; the shuffle button
+      // is the only one that submits, so say so explicitly.
+      if (!data.get('cover') || !data.get('cover').size) {
+        data.delete('cover');
+        data.set('shuffleCover', '1');
+      }
+      send(data);
+      form.querySelector('input[type=file]').value = '';
+    });
+    if (remove) remove.addEventListener('click', () => {
+      const data = new FormData();
+      data.set('clearCover', '1');
+      send(data);
+    });
+
+    // The name, edited in place: Enter or clicking away saves it, Escape puts
+    // it back. Same as naming an event in the app.
+    const name = document.getElementById('groupName');
+    const pencil = document.getElementById('groupNamePencil');
+    if (!name) return;
+    let was = name.textContent.trim();
+    let saving = false;
+    const save = async () => {
+      const now = name.textContent.trim().slice(0, 80);
+      // Enter saves and then blurs, so without this the blur that follows
+      // would send the same name a second time.
+      if (saving) return;
+      if (!now || now === was) { name.textContent = was; return; }
+      saving = true;
+      try {
+        const body = new FormData();
+        body.set('groupName', now);
+        const r = await fetch(${JSON.stringify(action)}, {
+          method: 'POST', body, headers: { accept: 'application/json' },
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'that did not save');
+        was = d.name || now;
+        name.textContent = was;
+        document.title = was;
+      } catch (e) {
+        name.textContent = was;
+        tell(String(e.message || e), true);
+      } finally {
+        saving = false;
+      }
+    };
+    if (pencil) pencil.addEventListener('click', () => {
+      name.focus();
+      const range = document.createRange();
+      range.selectNodeContents(name);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+    });
+    name.addEventListener('keydown', (event) => {
+      // Enter saves on its own rather than leaning on the blur that follows:
+      // a blur event is not guaranteed to arrive when the window itself is not
+      // focused, and Enter means save now in any case.
+      if (event.key === 'Enter') { event.preventDefault(); save(); name.blur(); }
+      if (event.key === 'Escape') { name.textContent = was; name.blur(); }
+    });
+    name.addEventListener('blur', save);
+  })();
+  </script>`;
 }
 
 // The cover half of a form post, shared by groups and nights so the two cannot
@@ -977,6 +1129,49 @@ async function saveProfileForm(env, emailNorm, form, now) {
   return { ok: true };
 }
 
+// Who is in this group, beside the page.
+//
+// The people who RUN it come first under their own heading, the way the guest's
+// phone lists a DJ above the room listening to them - a group is somebody's
+// before it is everybody's, and a rail that mixes them into one alphabetical
+// soup does not say that.
+function peopleRail(people, base, handle) {
+  const all = people || [];
+  const djs = all.filter((p) => p.role === "owner" || p.role === "host");
+  const rest = all.filter((p) => p.role !== "owner" && p.role !== "host").slice(0, 24);
+  const shown = all.slice(0, 12);
+
+  const row = (m, under) => `<li>${personDisc(m)}
+    <span><b>${m.handle
+      ? `<a href="/@${esc(m.handle)}">${esc(m.name || "@" + m.handle)}</a>`
+      : esc(m.name || "Someone")}</b>
+    <small${under.startsWith("@") ? ` class="at"` : ""}>${esc(under)}</small></span></li>`;
+
+  const section = (label, list, under) => (list.length
+    ? `<div class="whogroup">
+         <div class="whohead">${esc(label)}<small>\u2014 ${list.length}</small></div>
+         <ul class="who-list">${list.map((m) => row(m, under(m))).join("")}</ul>
+       </div>`
+    : "");
+
+  return `<aside class="rail">
+      <div class="card">
+        <h2>Participants${all.length ? ` \u2014 ${all.length}` : ""}</h2>
+        ${all.length ? `<div class="avatars">
+            ${shown.map((m) => personDisc(m)).join("")}
+            ${all.length > shown.length ? `<span class="avatar more">+${all.length - shown.length}</span>` : ""}
+          </div>
+          ${section(djs.length === 1 ? "DJ" : "DJs", djs, () => "DJ")}
+          ${section("Members", rest, (m) => m.handle ? "@" + m.handle : "Following")}`
+          : `<p class="muted">Nobody yet. The first person to follow shows up here.</p>`}
+      </div>
+      <div class="card">
+        <h2>Their calendar</h2>
+        ${calendarBlock(base, handle)}
+      </div>
+    </aside>`;
+}
+
 function groupPage(group, events, base, posts, viewer, people, past) {
   const night = (event, past) => `
     <a class="tl${past ? " past" : ""}" href="/@${esc(group.handle)}/${esc(event.slug)}">
@@ -1015,34 +1210,7 @@ function groupPage(group, events, base, posts, viewer, people, past) {
          <p class="muted">One email to confirm. No account, and you can stop from any
          message we send.</p>`;
 
-  const shown = (people || []).slice(0, 12);
-  const roleWord = { owner: "DJ", host: "DJ" };
-  // Side matter: who is here, and how to keep their nights. Both belong beside
-  // the page rather than wedged between the schedule and the conversation.
-  const rail = `<aside class="rail">
-      <div class="card">
-        <h2>Participants${people.length ? ` \u2014 ${people.length}` : ""}</h2>
-        ${people.length ? `<div class="avatars">
-            ${shown.map((m) => personDisc(m)).join("")}
-            ${people.length > shown.length ? `<span class="avatar more">+${people.length - shown.length}</span>` : ""}
-          </div>
-          <ul class="who-list">${shown.map((m) => `<li>
-            ${personDisc(m)}
-            <span><b>${m.handle
-                ? `<a href="/@${esc(m.handle)}">${esc(m.name || "@" + m.handle)}</a>`
-                : esc(m.name || "Someone")}</b>
-              ${roleWord[m.role]
-                ? `<small>${esc(roleWord[m.role])}</small>`
-                : m.handle
-                  ? `<small class="at">@${esc(m.handle)}</small>`
-                  : `<small>Following</small>`}</span></li>`).join("")}</ul>`
-          : `<p class="muted">Nobody yet. The first person to follow shows up here.</p>`}
-      </div>
-      <div class="card">
-        <h2>Their calendar</h2>
-        ${calendarBlock(base, group.handle)}
-      </div>
-    </aside>`;
+  const rail = peopleRail(people, base, group.handle);
 
   return page(group.name || group.handle, `
     ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
@@ -1066,7 +1234,7 @@ function groupPage(group, events, base, posts, viewer, people, past) {
       </div>
     </form>` : ""}
     ${postList(posts || [])}
-  `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
+  `, hero(group.name || group.handle, esc("@" + group.handle), group.cover_key,
       `<a href="/home">Home</a>`,
       viewer && viewer.runsThisGroup ? coverTools(`/@${group.handle}/manage`, true) : ""), rail);
 }
@@ -1089,7 +1257,7 @@ function personPage(profile, groups) {
         <strong>${esc(g.name || g.handle)}</strong>
         <div class="muted">@${esc(g.handle)}${g.bio ? " · " + esc(g.bio) : ""}</div></a>`).join("")}`
       : `<p class="muted">No groups yet.</p>`}
-  `, hero(profile.name || `@${profile.handle}`, profile.name ? "@" + profile.handle : "",
+  `, hero(profile.name || `@${profile.handle}`, profile.name ? esc("@" + profile.handle) : "",
       "", `<a href="/home">Home</a>`));
 }
 
@@ -1124,7 +1292,7 @@ function eventPage(group, event, going, base, takeRate, canEdit) {
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
     follow them to hear about their other nights.</p>
-  `, hero(event.title || "A night", group.name || group.handle, event.cover_key,
+  `, hero(event.title || "A night", esc(group.name || group.handle), event.cover_key,
       `<a href="/@${esc(group.handle)}">The group</a>`,
       canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""));
 }
@@ -2716,17 +2884,34 @@ export default {
         const form = await request.formData().catch(() => null);
         // The cover, first: it is posted from the public page as well as this
         // one, and it is the only form here that arrives with a file on it.
+        // The console asks for JSON so the picture can change without the page
+        // going anywhere; a browser with no JavaScript posts the same form and
+        // gets the redirect it expects.
+        const wantsJson = (request.headers.get("accept") || "").includes("application/json");
         if (form && (form.get("shuffleCover") || form.get("clearCover") || form.get("cover"))) {
           const cover = await coverFromForm(env, form, group.cover_key);
           if (cover) {
-            if (cover.error) return notice("That picture did not take", cover.error);
+            if (cover.error) {
+              return wantsJson
+                ? json(400, { error: cover.error })
+                : notice("That picture did not take", cover.error);
+            }
             await env.DB.prepare(`UPDATE groups SET cover_key = ?, updated_ms = ? WHERE id = ?`)
               .bind(cover.key, now, group.id).run();
+            if (wantsJson) return json(200, { ok: true, coverUrl: mediaUrl(cover.key) });
             return new Response(null, {
               status: 302,
               headers: { location: `/@${group.handle}${form.get("fromPublic") ? "" : "/manage"}` },
             });
           }
+        }
+        // Renaming in place, from the pencil on the cover.
+        if (wantsJson && form && form.has("groupName") && !form.has("handle")) {
+          const wanted = String(form.get("groupName") || "").slice(0, 80).trim();
+          if (!wanted) return json(400, { error: "a group needs a name" });
+          await env.DB.prepare(`UPDATE groups SET name = ?, updated_ms = ? WHERE id = ?`)
+            .bind(wanted, now, group.id).run();
+          return json(200, { ok: true, name: wanted });
         }
         const invite = String((form && form.get("invite")) || "");
         if (invite) {
@@ -2970,9 +3155,11 @@ export default {
           });
         }
         </script>
-      `, hero(group.name || group.handle, "@" + group.handle, group.cover_key,
+        ${coverScript(`/@${esc(group.handle)}/manage`)}
+      `, hero(group.name || group.handle, esc("@" + group.handle), group.cover_key,
           `<a href="/@${esc(group.handle)}">The public page</a><a href="/home">Home</a>`,
-          coverTools(`/@${group.handle}/manage`))));
+          coverTools(`/@${group.handle}/manage`), true),
+        peopleRail(await groupPeople(env, group.id), base, group.handle)));
     }
 
     // A group's calendar. Subscribed once, correct forever after - which is why
