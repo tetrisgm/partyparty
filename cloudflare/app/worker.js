@@ -435,6 +435,10 @@ display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:40px;align-items:star
 h1{font-size:26px;font-weight:800;letter-spacing:-.015em;margin:0 0 4px}
 h2{font-size:17px;font-weight:700;letter-spacing:-.01em;margin:32px 0 12px}
 /* Rail headings are the console's eyebrows, not headlines. */
+/* A heading with its action on the same line. */
+.sectionhead{display:flex;align-items:center;justify-content:space-between;gap:16px;
+margin:32px 0 12px}
+.sectionhead h2{margin:0}
 .rail h2{margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:.05em;
 text-transform:uppercase;color:var(--label-tertiary)}
 p{margin:0 0 12px}
@@ -710,7 +714,7 @@ function hero(title, sub, cover, tools, coverForm, editable) {
          aria-label="Edit the group name" title="Edit the group name">${pencil}</button>`
     : esc(title);
   return `<header class="hero">
-    <a class="brandchip" href="/home" title="Back to your home">\u{1FA69} PartyParty</a>
+    <a class="brandchip" href="/home" title="Back to your home">\u{1FAA9} PartyParty</a>
     ${tools ? `<div class="toptools">${tools}</div>` : ""}
     <div class="cover${url ? "" : " bare"}"${image} id="heroCover">
       ${editable ? `<button class="coverx" type="button" id="coverRemove"
@@ -1245,51 +1249,47 @@ function peopleRail(people, base, handle, canManage) {
       <div class="card">
         <h2>Participants${all.length ? ` \u2014 ${all.length}` : ""}</h2>
         ${all.length
-          ? `${section(djs.length === 1 ? "DJ" : "DJs", djs, () => "DJ")}
+          ? `${section(djs.length === 1 ? "Admin" : "Admins", djs, () => "Admin")}
              ${section("Members", rest, (m) => m.handle ? "@" + m.handle : "Following")}`
           : `<p class="muted">Nobody yet. The first person to follow shows up here.</p>`}
       </div>
       ${canManage ? `<div class="card">
-        <h2>Manage this group</h2>
+        <h2>Yours to run</h2>
         <p class="muted">Only you can see this.</p>
-        <p><a class="btn plain small" href="/@${esc(handle)}/manage">Settings and nights</a></p>
-        <h2 style="margin-top:22px">Calendar</h2>
-        ${calendarBlock(base, handle)}
-      </div>` : `<div class="card">
-        <h2>Their calendar</h2>
-        ${calendarBlock(base, handle)}
-      </div>`}
+        <p><a class="btn plain small" href="/@${esc(handle)}/manage">Manage this group</a></p>
+      </div>` : ""}
     </aside>`;
 }
 
 function groupPage(group, events, base, posts, viewer, people, past) {
-  const night = (event, past) => `
-    <a class="tl${past ? " past" : ""}" href="/@${esc(group.handle)}/${esc(event.slug)}">
+  const runs = !!(viewer && viewer.runsThisGroup);
+  const night = (event, gone) => `
+    <a class="tl${gone ? " past" : ""}" href="/@${esc(group.handle)}/${esc(event.slug)}">
       <span class="when">${esc(whenText(event))}</span>
-      <span class="tlname">${esc(event.title || "Untitled night")}</span>
+      <span class="tlname">${esc(event.title || "Untitled party")}</span>
       ${event.place ? `<span class="muted">${esc(event.place)}</span>` : ""}
     </a>`;
+
+  // The heading carries the action, so making one is where you are already
+  // looking for them rather than somewhere further down the page.
+  const partiesHead = `<div class="sectionhead"><h2>Parties</h2>
+    ${runs ? `<a class="btn small" href="/@${esc(group.handle)}/new">Create a party</a>` : ""}
+  </div>`;
   const upcoming = events.length
-    ? `<h2>Parties</h2><div class="timeline">${events.map((e) => night(e, false)).join("")}</div>`
-    : "";
+    ? `<div class="timeline">${events.map((e) => night(e, false)).join("")}</div>`
+    : `<p class="muted">No parties announced yet.</p>`;
   const before = (past || []).length
     ? `<h2>Past parties</h2><div class="timeline">${past.map((e) => night(e, true)).join("")}</div>`
     : "";
-  const list = upcoming + before || `<h2>Parties</h2>
-    <p class="muted">No parties announced yet.</p>`;
 
-  // Who is looking. Showing a DJ a form asking for their own name on their own
-  // page is the kind of thing that makes a product feel like it does not know
-  // you - and it is exactly what this page did.
-  const follow = viewer && viewer.runsThisGroup
-    ? `<a class="actionbar quiet" href="/@${esc(group.handle)}/manage">
-         <span class="tile">\u2699\uFE0F</span>
-         <span class="lines">Manage this group<small>This is your public page</small></span>
-       </a>`
+  // Following, or the invitation to. An admin is not shown a form asking for
+  // their own name on their own page; managing it lives in the rail.
+  const follow = runs
+    ? ""
     : viewer && viewer.follows
       ? `<div class="actionbar quiet">
            <span class="tile">\u2713</span>
-           <span class="lines">Following<small>Their nights reach you</small></span>
+           <span class="lines">Following<small>Their parties reach you</small></span>
          </div>`
       : `<form method="post" action="/@${esc(group.handle)}/join">
            <div class="row" style="margin-top:18px">
@@ -1298,13 +1298,11 @@ function groupPage(group, events, base, posts, viewer, people, past) {
            </div>
            <button class="actionbar" type="submit">
              <span class="tile">\u2605</span>
-             <span class="lines">Follow<small>Hear about their nights</small></span>
+             <span class="lines">Follow<small>Hear about their parties</small></span>
            </button>
          </form>
          <p class="muted">One email to confirm. No account, and you can stop from any
          message we send.</p>`;
-
-  const rail = peopleRail(people, base, group.handle);
 
   return page(group.name || group.handle, `
     ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
@@ -1313,15 +1311,23 @@ function groupPage(group, events, base, posts, viewer, people, past) {
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     ${group.merch_link ? `<p><a class="btn plain" href="${esc(group.merch_link)}"
       rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
-    ${list}
+    ${partiesHead}
+    ${upcoming}
+    ${before}
+    <div class="card" style="margin-top:18px">
+      <h2 style="margin:0 0 10px">Add to your calendar</h2>
+      <p class="muted">Every party lands in your own calendar, and stays right when
+      one moves.</p>
+      ${calendarBlock(base, group.handle)}
+    </div>
     <h2>Talk</h2>
-    ${viewer && viewer.runsThisGroup ? coverScript(`/@${esc(group.handle)}/manage`) : ""}
+    ${runs ? coverScript(`/@${esc(group.handle)}/manage`) : ""}
     ${viewer ? `<form class="say" method="post" action="/@${esc(group.handle)}/say"
         enctype="multipart/form-data">
       <textarea name="say" maxlength="2000"
         placeholder="Write a post, or add a photo..."></textarea>
       <div class="sayrow">
-        <label class="pickfile">📷 Add photo/video
+        <label class="pickfile">\u{1F4F7} Add photo/video
           <input type="file" name="media" accept="image/*,video/*">
         </label>
         <button class="btn" type="submit">Post</button>
@@ -1329,11 +1335,12 @@ function groupPage(group, events, base, posts, viewer, people, past) {
     </form>` : ""}
     ${postList(posts || [])}
   `, hero(group.name || group.handle, "", group.cover_key, "",
-      viewer && viewer.runsThisGroup ? coverTools(`/@${group.handle}/manage`, true) : ""), rail);
+      runs ? coverTools(`/@${group.handle}/manage`, true) : "", runs),
+    peopleRail(people, base, group.handle, runs));
 }
 
 // A person at their @name. Not a second group page: a person is who they are
-// and what they run, and the nights themselves live on the group's page where
+// and what they run, and the parties themselves live on the group's page where
 // somebody can follow them.
 function personPage(profile, groups) {
   const links = profile.linksObj || {};
@@ -1345,13 +1352,12 @@ function personPage(profile, groups) {
     ${shown.length ? `<p class="row">${shown.map((entry) =>
       `<a class="btn plain small" href="${esc(entry.href)}" rel="noopener noreferrer nofollow"
         target="_blank">${esc(entry.field.label)}</a>`).join("")}</p>` : ""}
-    ${groups.length ? `<h2>Their nights</h2>
+    ${groups.length ? `<h2>Their parties</h2>
       ${groups.map((g) => `<a class="card" href="/@${esc(g.handle)}">
         <strong>${esc(g.name || g.handle)}</strong>
-        <div class="muted">@${esc(g.handle)}${g.bio ? " · " + esc(g.bio) : ""}</div></a>`).join("")}`
+        <div class="muted">@${esc(g.handle)}${g.bio ? " \u00b7 " + esc(g.bio) : ""}</div></a>`).join("")}`
       : `<p class="muted">No groups yet.</p>`}
-  `, hero(profile.name || `@${profile.handle}`, profile.name ? esc("@" + profile.handle) : "",
-      "", `<a href="/home">Home</a>`));
+  `, hero(profile.name || `@${profile.handle}`, "", "", ""));
 }
 
 async function runsGroups(env, emailNorm) {

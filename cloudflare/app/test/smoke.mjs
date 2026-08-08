@@ -1047,7 +1047,7 @@ test("your own group page offers management, not a form asking your name", async
   // A stranger still gets the follow form, and it says what following means.
   const stranger = await (await get(env, "/@sundaze")).text();
   assert.match(stranger, /placeholder="your name"/);
-  assert.match(stranger, /Hear about their nights/, "the action says what following does");
+  assert.match(stranger, /Hear about their parties/, "the action says what following does");
 });
 
 test("your settings are yours: name, and who you follow", async () => {
@@ -1326,7 +1326,7 @@ test("the rail shows the people, with their faces and their @names", async () =>
   assert.match(body, /<img src="\/media\/avatars\//, "their photo, not their initials");
   assert.match(body, /Grace Hopper/);
   assert.match(body, /class="avatar"[^>]*>GH</, "initials for somebody with no photo");
-  assert.match(body, />DJ</, "the person running it is labelled, as the console does");
+  assert.match(body, />Admin</, "whoever runs the group is labelled as such");
   assert.ok(!/grace@example\.com/.test(body), "an address never appears on a public page");
 });
 
