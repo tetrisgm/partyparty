@@ -83,6 +83,17 @@ type Broadcaster struct {
 }
 
 func New(cfg config.Config, runDir, helperPath, ingestURL string) *Broadcaster {
+	// A path is not a helper. SystemAudioAvailable used to answer "is this
+	// string non-empty", which in a .app build was always yes - so the console
+	// offered system audio, the DJ pressed Start, and the spawn failed. That is
+	// the same lie as a party that reads Live with nothing coming out of it, and
+	// a build that put the helper somewhere else shipped exactly it. Checked
+	// once, here, so every caller of SystemAudioAvailable gets the truth.
+	if helperPath != "" {
+		if info, err := os.Stat(helperPath); err != nil || info.IsDir() {
+			helperPath = ""
+		}
+	}
 	return &Broadcaster{
 		cfg:        cfg,
 		runDir:     runDir,

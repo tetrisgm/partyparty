@@ -35,7 +35,20 @@ go build -tags bundle -ldflags "-X main.appVersion=$VERSION" \
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
 cp "$SWIFT_BIN/PartyParty" "$APP/Contents/MacOS/PartyParty"
-cp "$ROOT/build/partyparty-server" "$ROOT/assets/ffmpeg" "$ROOT/assets/mediamtx" "$ROOT/assets/ppcapture" "$APP/Contents/Helpers/"
+cp "$ROOT/build/partyparty-server" "$ROOT/assets/ffmpeg" "$ROOT/assets/mediamtx" "$APP/Contents/Helpers/"
+# ppcapture ships as a bundle here too. The server is built -tags bundle and
+# resolves it at Helpers/ppcapture.app/Contents/MacOS/ppcapture
+# (assets_bundle.go); this script used to drop a bare binary beside the others,
+# so a standalone build shipped a helper the app could not find and capture
+# never started. The verifier looked at the same wrong path and passed.
+mkdir -p "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS"
+cp "$ROOT/assets/ppcapture" "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture"
+cp "$ROOT/app/ppcapture-Info.plist" "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" \
+  "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" \
+  "$APP/Contents/Helpers/ppcapture.app/Contents/Info.plist"
+chmod +x "$APP/Contents/Helpers/ppcapture.app/Contents/MacOS/ppcapture"
 cp -R "$SWIFT_BIN/Sparkle.framework" "$APP/Contents/Frameworks/"
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/PartyParty" 2>/dev/null || true
 cp "$ROOT/app/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
@@ -69,7 +82,7 @@ codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$SPARKLE"
 for helper in mediamtx ffmpeg partyparty-server; do
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/Helpers/$helper"
 done
-codesign --force --options runtime --timestamp --entitlements "$CAPTURE_ENT" --sign "$SIGN_ID" "$APP/Contents/Helpers/ppcapture"
+codesign --force --options runtime --timestamp --entitlements "$CAPTURE_ENT" --sign "$SIGN_ID" "$APP/Contents/Helpers/ppcapture.app"
 codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/MacOS/PartyParty"
 codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
 

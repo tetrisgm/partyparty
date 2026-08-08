@@ -12,7 +12,21 @@ PLIST="$APP/Contents/Info.plist"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$PLIST")" = "https://partyparty.party/appcast.xml" ]
 [ -d "$APP/Contents/Frameworks/Sparkle.framework" ]
 codesign --verify --deep --strict --verbose=2 "$APP"
-CAPTURE="$APP/Contents/Helpers/ppcapture"
+# The path the SHIPPED SERVER looks for, not the path this lane happens to
+# write. assets_bundle.go resolves the helper at
+# Helpers/ppcapture.app/Contents/MacOS/ppcapture; the builder used to drop a
+# bare binary next to the others and this check looked at that same bare path,
+# so the two agreed with each other and disagreed with the app. Capture could
+# never have started, and the verifier said the build was good.
+CAPTURE="$APP/Contents/Helpers/ppcapture.app"
+[ -x "$CAPTURE/Contents/MacOS/ppcapture" ] || {
+  echo "ppcapture is not where the server looks for it: $CAPTURE/Contents/MacOS/ppcapture" >&2
+  exit 1
+}
+[ ! -e "$APP/Contents/Helpers/ppcapture" ] || {
+  echo "A bare Helpers/ppcapture is left over; the server will not use it." >&2
+  exit 1
+}
 # ShazamKit belongs to the APP, not to the capture helper.
 #
 # Track recognition used to live in ppcapture and moved into the app

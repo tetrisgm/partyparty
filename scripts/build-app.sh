@@ -44,9 +44,14 @@ codesign_one() {
 }
 
 echo ">> codesigning inside-out ($SIGN_ID)"
-for helper in mediamtx ffmpeg partyparty-server ppcapture; do
+for helper in mediamtx ffmpeg partyparty-server; do
   codesign_one "$APP/Contents/Helpers/$helper" "$CHILD_ENT"
 done
+# ppcapture is a BUNDLE, not a bare binary - TCC needs one, and the server
+# resolves it as Helpers/ppcapture.app/Contents/MacOS/ppcapture (assets_bundle.go).
+# This loop still named the old bare path, so `make app` died at the signing
+# step with "No such file or directory" the moment the layout changed.
+codesign_one "$APP/Contents/Helpers/ppcapture.app" "$CHILD_ENT"
 codesign_one "$APP/Contents/MacOS/PartyParty" "$ENT"
 codesign_one "$APP" "$ENT"
 
