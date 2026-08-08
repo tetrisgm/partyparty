@@ -1568,6 +1568,34 @@ const asInstall = async (env, { linked = true } = {}) => {
   return { install, groupId, call };
 };
 
+test("every Mac route refuses a caller it cannot authenticate", async () => {
+  // This is the test that was missing. Every existing case authenticated
+  // successfully, so the refusal branch never ran - and it called a helper
+  // that lives in the OTHER worker, which threw a ReferenceError and took all
+  // three routes down with a 1101 in production.
+  const env = await withGoogle(makeEnv());
+  const paths = [
+    "/api/v1/parties", "/api/v1/party/create", "/api/v1/party/update",
+    "/api/v1/install/profile", "/api/v1/party/bind", "/api/v1/party/posts",
+  ];
+  for (const path of paths) {
+    for (const body of [
+      { id: "aabbccddeeff", secret: "wrong" },   // nothing on file
+      { id: "not-an-id", secret: "x" },          // malformed
+      {},                                        // nothing at all
+    ]) {
+      const r = await worker.fetch(new Request("https://partyparty.party" + path, {
+        method: "POST", body: JSON.stringify(body),
+      }), env);
+      assert.ok(r.status === 400 || r.status === 403,
+        `${path} answered ${r.status} for ${JSON.stringify(body)}`);
+      // A thrown exception is a 500 and an empty body; a refusal says so.
+      const text = await r.text();
+      assert.ok(text.length && text.startsWith("{"), `${path} did not answer with JSON`);
+    }
+  }
+});
+
 test("a party made on the Mac is the same row a party made on the web is", async () => {
   const env = await withGoogle(makeEnv(), { name: "DJ Example" });
   const mac = await asInstall(env);

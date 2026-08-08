@@ -2599,8 +2599,12 @@ export default {
         if (request.method !== "POST") return json(405, { error: "POST required" });
         const body = await readJson(request, 8192);
         if (!body) return json(400, { error: "bad json" });
+        // A plain refusal. The "unknown install, register again" signal belongs
+        // to the BROKER, which is the worker a Mac's activation talks to;
+        // installAuthFailure lives there and calling it from here was a
+        // ReferenceError that took these routes down with a 1101.
         if (!await installAuth(env, body.id, body.secret)) {
-          return installAuthFailure(env, body.id);
+          return json(403, { error: "bad install auth" });
         }
         const link = await env.DB.prepare(
           `SELECT group_id FROM install_groups WHERE install_id = ?`
