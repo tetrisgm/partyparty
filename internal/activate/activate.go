@@ -125,12 +125,25 @@ func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL, partyID str
 		return RelayRegistration{}, err
 	}
 	var out RelayRegistration
-	if err := b.post(ctx, "/api/broker/relay/register", map[string]any{
-		"id": b.id, "secret": b.secret, "lanIp": lanIP, "directUrl": directURL,
-		// Which party this Mac is playing, so the join page can fall back to
-		// another Mac in the SAME party when this one leaves.
-		"partyId": partyID,
-	}, &out); err != nil {
+	register := func() error {
+		return b.post(ctx, "/api/broker/relay/register", map[string]any{
+			"id": b.id, "secret": b.secret, "lanIp": lanIP, "directUrl": directURL,
+			// Which party this Mac is playing, so the join page can fall back to
+			// another Mac in the SAME party when this one leaves.
+			"partyId": partyID,
+		}, &out)
+	}
+	if err := register(); errors.Is(err, errUnknownInstall) {
+		// Registered again under a new identity, then straight back to what we
+		// came here to do. A room filling up must not wait for a restart.
+		forgetInstall(dir, logf)
+		if b, err = loadOrRegisterInstall(ctx, brokerURL, dir, logf); err != nil {
+			return RelayRegistration{}, err
+		}
+		if err := register(); err != nil {
+			return RelayRegistration{}, err
+		}
+	} else if err != nil {
 		return RelayRegistration{}, err
 	}
 	join, joinErr := url.Parse(out.JoinURL)
@@ -177,6 +190,23 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 		Reason   string `json:"reason"`
 	}
 	postErr := b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp)
+	if errors.Is(postErr, errUnknownInstall) {
+		// A new identity means a new machine name, so the cert on disk is for a
+		// host this Mac no longer answers to; the wildcard fetch below sees that
+		// through certUsable and pulls a fresh one.
+		forgetInstall(dir, logf)
+		if b, err = loadOrRegisterInstall(ctx, brokerURL, dir, logf); err != nil {
+			return Result{Reason: "broker: " + err.Error()}
+		}
+		aResp = struct {
+			OK       bool   `json:"ok"`
+			Host     string `json:"host"`
+			IP       string `json:"ip"`
+			Verified bool   `json:"verified"`
+			Reason   string `json:"reason"`
+		}{}
+		postErr = b.post(ctx, "/api/broker/a", map[string]any{"id": b.id, "secret": b.secret, "ip": lanIP}, &aResp)
+	}
 	host := aResp.Host
 	if host == "" {
 		host = b.hostLabel + "." + b.base
@@ -274,8 +304,17 @@ func (b *brokerClient) post(ctx context.Context, path string, body any, out any)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		var e struct{ Error string }
+		var e struct {
+			Error      string `json:"error"`
+			Reregister bool   `json:"reregister"`
+		}
 		_ = json.NewDecoder(resp.Body).Decode(&e)
+		// The broker has no record of this install. Not a network problem and
+		// not a wrong secret - the identity itself is gone, and retrying it
+		// will be refused forever.
+		if e.Reregister {
+			return errUnknownInstall
+		}
 		if e.Error != "" {
 			return errors.New(e.Error)
 		}
@@ -285,6 +324,25 @@ func (b *brokerClient) post(ctx context.Context, path string, body any, out any)
 		return json.NewDecoder(resp.Body).Decode(out)
 	}
 	return nil
+}
+
+// errUnknownInstall is the broker saying it has never heard of this install.
+// Distinct from every other failure on purpose: a network error, a 500 or a
+// wrong secret must all be retried with the identity we have, and only this one
+// means the identity is worthless.
+var errUnknownInstall = errors.New("broker: unknown install")
+
+// forgetInstall drops a broker identity the broker itself has disowned, so the
+// next call registers a fresh one. Only ever called on errUnknownInstall - a Mac
+// that threw its identity away on a timeout would rename itself every time the
+// venue Wi-Fi hiccuped, and the guest link would move with it.
+func forgetInstall(dir string, logf Logf) {
+	path := filepath.Join(dir, "install.json")
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logf("activate: could not clear the disowned install record: %v", err)
+		return
+	}
+	logf("activate: the broker no longer knows this install; registering again")
 }
 
 // loadOrRegisterInstall returns this Mac's broker identity, registering on

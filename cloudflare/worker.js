@@ -277,6 +277,28 @@ async function authInstall(env, id, secret) {
   if (!rec || rec.secret !== secret) return null;
   return rec;
 }
+
+// "I have never heard of you" is a different answer to "that is not your
+// secret", and a Mac needs to be able to tell them apart.
+//
+// Both used to come back as one opaque 403, and a Mac only ever registers when
+// its own install.json is missing - so an install this side had forgotten kept
+// presenting the same id forever and got refused forever: no DNS, no cert, no
+// relay, no self-heal, and nothing on screen saying why. Saying so plainly lets
+// the Mac register again and carry on.
+//
+// Safe to answer honestly: registering mints a NEW id, so knowing that an id is
+// unknown gets a caller nothing it could not get by asking to register.
+async function installKnown(env, id) {
+  if (!/^[a-f0-9]{12}$/.test(String(id || ""))) return false;
+  return !!await env.DL.head(`broker/${id}.json`);
+}
+
+async function installAuthFailure(env, id) {
+  return await installKnown(env, id)
+    ? jsonResp(403, { error: "bad install auth" })
+    : jsonResp(403, { error: "unknown install", reregister: true });
+}
 function randomHex(bytes) {
   return [...crypto.getRandomValues(new Uint8Array(bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -447,7 +469,7 @@ async function broker(request, env, pathname) {
   if (pathname === "/api/broker/wildcard-cert") {
     const id2 = String(body.id || "");
     if (!await authInstall(env, id2, body.secret || "")) {
-      return jsonResp(403, { error: "bad install auth" });
+      return installAuthFailure(env, id2);
     }
     const obj = await env.DL.get("wildcard/current.json");
     if (!obj) return jsonResp(404, { error: "wildcard cert not provisioned" });
@@ -503,7 +525,12 @@ async function broker(request, env, pathname) {
   const id = String(body.id || "");
   if (!/^[a-f0-9]{12}$/.test(id)) return jsonResp(400, { error: "bad id" });
   const rec = await env.DL.get(`broker/${id}.json`).then((o) => o ? o.json() : null);
-  if (!rec || rec.secret !== body.secret) {
+  if (!rec) {
+    // Forgotten, not wrong. The Mac registers again rather than retrying a
+    // credential nothing on this side has ever heard of.
+    return jsonResp(403, { error: "unknown install", reregister: true });
+  }
+  if (rec.secret !== body.secret) {
     return jsonResp(403, { error: "bad credentials" });
   }
   await ensureHostLabel(env, id, rec);

@@ -331,6 +331,35 @@ test("registering records party membership, and only a well-formed party id", as
   assert.equal(junk.objects.length, 1, "a malformed party id must never create a key");
 });
 
+test("a forgotten install is told to register again, a wrong secret is not", async () => {
+  const env = baseEnv();
+  const call = (path, body) => worker.fetch(new Request("https://partyparty.party" + path, {
+    method: "POST", body: JSON.stringify(body),
+  }), env);
+
+  // Nothing on this side has ever heard of this id. Saying so is what lets a
+  // Mac register again instead of presenting a dead credential forever - it
+  // only ever registers when its OWN install.json is missing, so an opaque
+  // refusal here is a Mac with no DNS, no cert and no relay, permanently.
+  for (const path of ["/api/broker/a", "/api/broker/relay/register", "/api/broker/wildcard-cert"]) {
+    const r = await call(path, { id: "aaaaaaaaaaaa", secret: "whatever", ip: "192.168.1.40" });
+    assert.equal(r.status, 403, path);
+    const d = await r.json();
+    assert.equal(d.reregister, true, path + " must invite re-registration");
+    assert.match(d.error, /unknown install/, path);
+  }
+
+  // Known id, wrong secret: that is an authentication failure and must NOT
+  // invite a rename. Answering both the same way is how this got missed.
+  await env.DL.put("broker/aaaaaaaaaaaa.json", JSON.stringify({ secret: "right", hostLabel: "host" }));
+  for (const path of ["/api/broker/a", "/api/broker/relay/register", "/api/broker/wildcard-cert"]) {
+    const r = await call(path, { id: "aaaaaaaaaaaa", secret: "wrong", ip: "192.168.1.40" });
+    assert.equal(r.status, 403, path);
+    const d = await r.json();
+    assert.ok(!d.reregister, path + " must not invite re-registration on a bad secret");
+  }
+});
+
 test("an address for a later invite is kept once, and read back only by an admin", async () => {
   const env = baseEnv();
   env.ADMIN_KEY = "admin-key";

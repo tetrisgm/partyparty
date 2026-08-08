@@ -9,7 +9,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -191,5 +194,124 @@ func writeCachedLiveCert(t *testing.T, host string, validFor time.Duration) {
 	}
 	if err := keyFile.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// ------------------------------------------------- disowned install recovery
+
+// A Mac only ever registered when its own install.json was missing, so an
+// install the broker had forgotten kept presenting the same id and getting
+// refused forever: no DNS, no cert, no relay, and nothing on screen. These
+// cover the recovery and, just as importantly, the failures that must NOT
+// trigger it - a Mac that renamed itself on every hiccup would move the guest
+// link out from under a room mid-party.
+
+func TestUnknownInstallIsDistinctFromEveryOtherRefusal(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		body    string
+		unknown bool
+	}{
+		{"forgotten", 403, `{"error":"unknown install","reregister":true}`, true},
+		{"wrong secret", 403, `{"error":"bad credentials"}`, false},
+		{"opaque refusal", 403, `{"error":"bad install auth"}`, false},
+		{"broker on fire", 500, `{"error":"boom"}`, false},
+		{"nothing useful", 502, ``, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			b := &brokerClient{url: server.URL, id: "aabbccddeeff", secret: "s"}
+			err := b.post(context.Background(), "/api/broker/a", map[string]any{}, nil)
+			if got := errors.Is(err, errUnknownInstall); got != tc.unknown {
+				t.Fatalf("errUnknownInstall = %v, want %v (err %v)", got, tc.unknown, err)
+			}
+		})
+	}
+}
+
+func TestForgottenInstallRegistersAgainAndCarriesOn(t *testing.T) {
+	dir := setupStateDir(t)
+	if err := os.WriteFile(filepath.Join(dir, "install.json"), []byte(
+		`{"id":"aaaaaaaaaaaa","secret":"old","base":"127.0.0.1","hostLabel":"stale"}`,
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var relayCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ ID string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch r.URL.Path {
+		case "/api/broker/register":
+			_, _ = w.Write([]byte(`{"id":"bbbbbbbbbbbb","secret":"new","base":"127.0.0.1","hostLabel":"freshname"}`))
+		case "/api/broker/relay/register":
+			relayCalls++
+			if body.ID == "aaaaaaaaaaaa" {
+				w.WriteHeader(403)
+				_, _ = w.Write([]byte(`{"error":"unknown install","reregister":true}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"joinUrl":"https://x.partyparty.party/j/abc","networkKey":"k"}`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+
+	out, err := RegisterRelay(context.Background(), server.URL, "192.168.1.44", "https://d", "", nil)
+	if err != nil {
+		t.Fatalf("RegisterRelay: %v", err)
+	}
+	if out.JoinURL == "" {
+		t.Fatal("recovered but returned nothing usable")
+	}
+	if relayCalls != 2 {
+		t.Fatalf("expected one refusal then one success, got %d calls", relayCalls)
+	}
+
+	// The new identity is on disk, so the next launch does not repeat this.
+	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec installRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.ID != "bbbbbbbbbbbb" || rec.label() != "freshname" {
+		t.Fatalf("install.json still holds %+v", rec)
+	}
+}
+
+func TestABadSecretNeverThrowsTheIdentityAway(t *testing.T) {
+	dir := setupStateDir(t)
+	original := `{"id":"aaaaaaaaaaaa","secret":"old","base":"127.0.0.1","hostLabel":"keepme"}`
+	if err := os.WriteFile(filepath.Join(dir, "install.json"), []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var registers int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/broker/register" {
+			registers++
+		}
+		w.WriteHeader(403)
+		_, _ = w.Write([]byte(`{"error":"bad credentials"}`))
+	}))
+	defer server.Close()
+
+	if _, err := RegisterRelay(context.Background(), server.URL, "192.168.1.44", "https://d", "", nil); err == nil {
+		t.Fatal("a refused secret should surface as an error, not a silent rename")
+	}
+	if registers != 0 {
+		t.Fatal("a wrong secret must never mint a new identity")
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "install.json"))
+	if string(data) != original {
+		t.Fatalf("install.json was touched: %s", data)
 	}
 }
