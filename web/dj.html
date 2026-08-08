@@ -1578,15 +1578,21 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   let lastRefreshError = '';
 
   let refreshTimer = null;
-  function openProductPage(path){
-    const url = 'https://partyparty.party' + path;
+  // A path of ours, or one of our own absolute URLs. Returns whether the link
+  // was actually handed somewhere that can open it: inside the console's
+  // WKWebView, window.open answers null and does nothing at all unless the app
+  // implements a UI delegate, so a caller about to say "opening your browser"
+  // has to be able to find out that it did not.
+  function openProductPage(pathOrURL){
+    const url = /^https:\/\/partyparty\.party\//.test(pathOrURL)
+      ? pathOrURL : 'https://partyparty.party' + pathOrURL;
     try {
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pp) {
         window.webkit.messageHandlers.pp.postMessage({ action: 'openURL', url });
-        return;
+        return true;
       }
     } catch (e) {}
-    window.open(url, '_blank', 'noopener');
+    return !!window.open(url, '_blank', 'noopener');
   }
   $('privacyBtn').onclick = () => openProductPage('/privacy');
   $('supportBtn').onclick = () => openProductPage('/support');
@@ -2501,10 +2507,14 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const says = document.getElementById('macDoorSays');
     let polling = 0;
     const tell = (t) => { if (says) says.textContent = t || ''; };
-    const waitForIt = () => {
+    const waitForIt = (url) => {
       clearInterval(polling);
       let tries = 0;
       polling = setInterval(async () => {
+        // Half a minute of nothing means the browser probably never came up.
+        // Show the link rather than sit on "finish in the browser" for five
+        // minutes, which is what the door did while opening nothing at all.
+        if (tries === 10 && url) tell('If no browser opened, go to ' + url);
         if (++tries > 100) { clearInterval(polling); tell('Still waiting - try again?'); return; }
         try {
           const r = await fetch('/api/sign-in-check', { method: 'POST' });
@@ -2522,9 +2532,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           const d = await r.json();
           if (!r.ok || !d.url) throw new Error(d.error || 'could not start sign-in');
           if (d.linked) { setDoor(true); return; }
-          window.open(d.url + '?with=' + button.dataset.provider, '_blank');
+          // Through the Swift bridge, NOT window.open: inside the console's
+          // WKWebView window.open reaches a UI delegate and, if that delegate
+          // does not build a window, returns null in complete silence. The
+          // browser never opened and the door cheerfully said it had.
+          if (!openProductPage(d.url + '?with=' + button.dataset.provider)) {
+            throw new Error('could not open your browser - open ' + d.url + ' yourself');
+          }
           tell('Finish in the browser - this opens by itself when you are done.');
-          waitForIt();
+          waitForIt(d.url);
         } catch (e) {
           tell(String(e.message || e));
         } finally {

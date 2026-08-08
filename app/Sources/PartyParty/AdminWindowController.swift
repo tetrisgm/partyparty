@@ -341,7 +341,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
                   let url = URL(string: raw),
                   url.scheme == "https",
                   url.host == "partyparty.party",
-                  ["/privacy", "/support"].contains(url.path) else { return }
+                  Self.opensInTheBrowser(url.path) else { return }
             NSWorkspace.shared.open(url)
         case "captureSourceChanged":
             setCaptureSource(body["device"] as? String)
@@ -365,6 +365,48 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         default:
             break
         }
+    }
+
+    /// Which of our own pages the console may hand to the real browser.
+    ///
+    /// Signing in is the reason this exists at all: the console opens
+    /// /link/<code> in Safari, the DJ presses one button there, and this Mac
+    /// belongs to their account. That path was not on the list, so the request
+    /// was dropped in silence while the console said "finish in the browser" -
+    /// a browser that never opened. Still an allowlist, and still our host
+    /// only: this is a web page asking the app to launch a URL.
+    static func opensInTheBrowser(_ path: String) -> Bool {
+        if ["/privacy", "/support", "/home", "/people"].contains(path) { return true }
+        // /link/<code>: the one-time pairing link. Six upper-case alphanumerics,
+        // the same shape the platform's own route matches.
+        if path.hasPrefix("/link/") {
+            let code = path.dropFirst("/link/".count)
+            return code.count == 6 && code.allSatisfy { $0.isUppercase || $0.isNumber }
+        }
+        // /@handle/... - where a Mac that is already linked is sent instead.
+        if path.hasPrefix("/@") {
+            let rest = path.dropFirst(2)
+            return !rest.isEmpty && !rest.contains("..") &&
+                rest.allSatisfy { $0.isLowercase || $0.isNumber || $0 == "/" || $0 == "-" }
+        }
+        return false
+    }
+
+    /// window.open from the console goes nowhere unless this exists.
+    ///
+    /// WKWebView routes it here, and a WKUIDelegate that does not implement the
+    /// method simply returns nil - no window, no error, no console message. The
+    /// sign-in button called window.open and looked, from the page's side, like
+    /// it had worked. Anything targeted out of the console now goes to the real
+    /// browser, which is the only place it could have meant.
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url,
+           url.scheme == "https" || url.scheme == "http" {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
     }
 
     private func setLoginItem(_ on: Bool) {
