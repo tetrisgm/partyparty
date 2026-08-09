@@ -622,6 +622,21 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .blank{margin:0 0 10px;padding:14px 12px;border-radius:var(--r-sm);
 background:var(--bg-elevated);color:var(--label-tertiary);font-size:14px;line-height:1.5}
 
+/* The capture line. The sentence the app exists for goes in here without
+   scrolling to find the right section: type the names or the tracks, say what
+   they are. The sections below are for correcting, not for entering. */
+.capture{position:sticky;top:8px;z-index:5;margin:0 0 26px;padding:10px 12px;
+border-radius:var(--r-md);background:var(--bg-elevated-2);
+box-shadow:0 8px 24px -18px #000;backdrop-filter:blur(18px)}
+.capture input{width:100%;border:0;background:none;padding:4px 2px;min-height:32px;
+font:inherit;font-size:16px;color:var(--label);outline:none}
+.capture input::placeholder{color:var(--label-tertiary)}
+.as{display:flex;gap:6px;margin-top:6px}
+.as button{flex:1 1 0;border:0;border-radius:var(--r-pill);padding:8px 4px;
+background:var(--bg-elevated);color:var(--label-secondary);font:inherit;
+font-size:13px;font-weight:650;cursor:pointer}
+.as button:hover{background:var(--night,var(--accent));color:#fff}
+
 /* The welcome, folded down to one line. */
 details.welcome{margin:0 0 18px}
 details.welcome summary{display:flex;align-items:center;gap:12px;cursor:pointer;
@@ -1607,7 +1622,7 @@ function trackerBlock(event, group, note, people, allNames, songs) {
 
   // One row per person: their face, their name, and a note about them from
   // THIS night, which is a different thought from a note about them generally.
-  const list = (role, empty, add) => {
+  const list = (role, empty) => {
     const rows = people.filter((p) => p.role === role);
     return `${rows.length ? `<ul class="people">${rows.map((p) => `<li>
       ${personDisc(p)}
@@ -1621,24 +1636,26 @@ function trackerBlock(event, group, note, people, allNames, songs) {
         <input class="quiet" type="text" name="encounter" maxlength="2000"
           value="${esc(p.note || "")}" placeholder="Add a note about them">
         <button class="onfocus" type="submit">Save</button>
-      </form></li>`).join("")}</ul>` : `<p class="blank">${empty}</p>`}
-    <form class="addline" method="post" action="${esc(action)}">
-      <input type="hidden" name="role" value="${role}">
-      <input type="text" name="who" list="knownpeople" maxlength="80" required
-        placeholder="${esc(add)}" autocomplete="off">
-      <button type="submit" aria-label="Add">+</button>
-    </form>`;
+      </form></li>`).join("")}</ul>` : `<p class="blank">${empty}</p>`}`;
   };
 
 
   return `<section class="tracker">
+    <form class="capture" method="post" action="${esc(action)}">
+      <input type="text" name="it" list="knownpeople" autocomplete="off"
+        placeholder="Ada, Bo and Cy\u2026" aria-label="Add to this night">
+      <div class="as">
+        <button type="submit" name="as" value="dj">played</button>
+        <button type="submit" name="as" value="guest">with me</button>
+        <button type="submit" name="as" value="song">on now</button>
+      </div>
+    </form>
+
     <h2>Who played</h2>
-    ${list("dj", "Whoever was on. They need no account - a name is enough.",
-      "Who played - Ada, Bo and Cy")}
+    ${list("dj", "Whoever was on. They need no account - a name is enough.")}
 
     <h2>Who was there</h2>
-    ${list("guest", "Who you were with. Next time you type their name, it is the same person.",
-      "Who you were with - names, commas")}
+    ${list("guest", "Who you were with. Next time you type their name, it is the same person.")}
 
     <h2>Songs</h2>
     ${songs && songs.length ? `<ol class="setlist">${songs.map((song) => `<li>
@@ -1651,13 +1668,6 @@ function trackerBlock(event, group, note, people, allNames, songs) {
           formnovalidate aria-label="Remove ${esc(song.title)}">\u2715</button>
       </form>
     </li>`).join("")}</ol>` : `<p class="blank">What was played, in the order it was played.</p>`}
-    <form class="addline two" method="post" action="${esc(action)}">
-      <input type="text" name="songTitle" maxlength="200" required
-        placeholder="What is playing - or several, commas" autocomplete="off">
-      <input type="text" name="songArtist" maxlength="120"
-        placeholder="Who by" autocomplete="off">
-      <button type="submit" aria-label="Add">+</button>
-    </form>
 
     <h2>Your notes</h2>
     <form class="you" method="post" action="${esc(action)}">
@@ -4901,6 +4911,31 @@ export default {
         if (event.owner_email === dj.email_norm) {
           await env.DB.prepare(`UPDATE events SET visibility = ?, updated_ms = ? WHERE id = ?`)
             .bind(wantSeen, now, event.id).run();
+        }
+        return new Response(null, { status: 302, headers: { location: back } });
+      }
+
+      // The capture line: one thing typed, one word for what it is.
+      const it = String(form.get("it") || "").trim();
+      const as = String(form.get("as") || "");
+      if (it && as) {
+        if (as === "song") {
+          const artistPart = it.split(" by ");
+          const titles = artistPart[0];
+          for (const one of titles.split(/,| and /i)) {
+            await addSong(env, dj.email_norm, event.id,
+              { title: one, artist: artistPart[1] || "" }, now);
+          }
+        } else {
+          for (const name of it.split(/,| and /i)) {
+            const person = await findOrMakePerson(env, dj.email_norm, name, now);
+            if (!person) continue;
+            await env.DB.prepare(
+              `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
+            ).bind(event.id, person.id, dj.email_norm, as === "dj" ? "dj" : "guest", now).run();
+          }
         }
         return new Response(null, { status: 302, headers: { location: back } });
       }

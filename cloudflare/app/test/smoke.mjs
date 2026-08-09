@@ -2117,6 +2117,35 @@ test("a party is found by its owner, and following is between people", async () 
   assert.ok(!/You follow/.test(home), "following nobody says nothing");
 });
 
+test("the whole sentence goes in from one place", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+
+  // "I saw DJ 1, 2 and 3, they played XYZ, I was with A and B" - four clauses.
+  // Each goes in at the top of the page, without scrolling to find a section.
+  await send(`${where}/record`, { it: "Ada, Bo and Cy", as: "dj" });
+  await send(`${where}/record`, { it: "Windowlicker by Aphex Twin", as: "song" });
+  await send(`${where}/record`, { it: "Dee and Eve", as: "guest" });
+
+  assert.deepEqual(rows(env, `SELECT p.name FROM party_people pp
+    JOIN people p ON p.id = pp.person_id WHERE pp.role='dj' ORDER BY p.name`)
+    .map((r) => r.name), ["Ada", "Bo", "Cy"]);
+  assert.deepEqual(rows(env, `SELECT p.name FROM party_people pp
+    JOIN people p ON p.id = pp.person_id WHERE pp.role='guest' ORDER BY p.name`)
+    .map((r) => r.name), ["Dee", "Eve"]);
+  const song = one(env, `SELECT * FROM songs`);
+  assert.equal(song.title, "Windowlicker");
+  assert.equal(song.artist, "Aphex Twin", "by names the artist without a second field");
+
+  // And the line is the first thing on the night, not buried under it.
+  const page = await (await read(where)).text();
+  assert.ok(page.indexOf('class="capture"') < page.indexOf("<h2>Who played</h2>"),
+    "you write at the top; the sections below are for correcting");
+});
+
 test("three DJs and three friends is one thing you type", async () => {
   const { env, send, read } = await signedIn();
   await send("/parties/new", { title: "Warehouse" });
