@@ -1,6 +1,38 @@
 # PartyParty.party handoff
 
-## Current position (2026-08-09): one event page, shown twice
+## Current position (2026-08-09): one line writes the whole night
+
+The product's only job, in the owner's words: "I'm at this party. I saw DJ 1, 2
+and 3. They played song XYZ. I attended it with friend A, B and C." That was
+three separate actions for four clauses. It is now one:
+
+    saw Ada and Bo, played Windowlicker by Aphex Twin, with Cy and Dee
+
+`parseNight` in `cloudflare/app/worker.js` reads it. A word opens a clause and
+owns the text until the next word opens one - `saw`/`dj` for who played,
+`played`/`song`/`track` for what, `with`/`w/` for who you were with. Quoted text
+is a song wherever it appears. A leading list with no word after it is who
+played, because that is how the sentence starts. `played by Ada` says who
+played, not a song called Ada. One artist covers a whole clause. A full stop
+separates thoughts, but not inside "Mr. Fingers".
+
+**What it refuses matters as much.** A bare list - "Ada, Bo and Cy" - returns
+`used:false` and the three buttons decide, exactly as before. Guessing there
+would file people under the wrong heading, and there are tests for the refusal.
+The sentence outranks the button: Enter submits via whichever button is first in
+the DOM, so a person who wrote out what happened must not be overruled by it.
+
+Two smaller things shipped with it. The place on a new night defaults to where
+you were last, the same kind of harmless guess as today's date, from one
+`lastPlaceUsed` so the error paths cannot answer differently. And somebody
+holding a share link can say "I was there" on a night that already happened -
+POST `/@handle/slug/here`, no account, a name is enough - which lands in the
+owner's own record as a guest. Private nights have no such door, and who you SAW
+still never appears on a shared page; only who PLAYED does.
+
+All three verified in 375px screenshots, not in HTML.
+
+## Earlier position (2026-08-09): one event page, shown twice
 
 The Mac and the web are one experience apart from streaming. That is not two
 implementations kept in step - the owner looked at the console beside

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import worker, {
-  entryCode, handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
+  entryCode, handleProblem, icsFor, normalizeEmail, parseNight, payLinkProblem,
+  sha256Hex, ulid,
 } from "../worker.js";
 import { totalForBuyer, verifyWebhook } from "../stripe.js";
 
@@ -97,6 +98,55 @@ const post = (env, path, fields) => {
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
+
+// The sentence the product exists for, read in one line. Every case here is a
+// way somebody actually types it, and the last group is the important half:
+// what the parser must REFUSE to guess.
+test("one line writes the whole night", () => {
+  const night = parseNight("saw Ada and Bo, played Windowlicker, with Cy and Dee");
+  assert.deepEqual(night.djs, ["Ada", "Bo"]);
+  assert.deepEqual(night.guests, ["Cy", "Dee"]);
+  assert.deepEqual(night.songs, [{ title: "Windowlicker", artist: "" }]);
+
+  // The owner's own sentence, near enough word for word.
+  const owner = parseNight("I saw DJ 1, 2 and 3. They played song XYZ. I was with A, B and C");
+  assert.deepEqual(owner.djs, ["1", "2", "3"]);
+  assert.deepEqual(owner.songs, [{ title: "XYZ", artist: "" }]);
+  assert.deepEqual(owner.guests, ["A", "B", "C"]);
+
+  // No word for who played: the list at the front is who played.
+  const lead = parseNight("Ada and Bo, they played Xtal by Aphex Twin, with Cy");
+  assert.deepEqual(lead.djs, ["Ada", "Bo"]);
+  assert.deepEqual(lead.songs, [{ title: "Xtal", artist: "Aphex Twin" }]);
+  assert.deepEqual(lead.guests, ["Cy"]);
+
+  // One artist covers the whole clause; quotes make a song with no word at all.
+  const many = parseNight('played Xtal and Ageispolis by Aphex Twin');
+  assert.deepEqual(many.songs, [
+    { title: "Xtal", artist: "Aphex Twin" }, { title: "Ageispolis", artist: "Aphex Twin" }]);
+  const quoted = parseNight('saw Ada, she played \u201cWindowlicker\u201d');
+  assert.deepEqual(quoted.djs, ["Ada"]);
+  assert.deepEqual(quoted.songs, [{ title: "Windowlicker", artist: "" }]);
+
+  // "played by Ada" says who played. It is not a song called Ada.
+  assert.deepEqual(parseNight("played by Ada").djs, ["Ada"]);
+  assert.deepEqual(parseNight("played by Ada").songs, []);
+
+  // Shorthand, and the same person twice is one person.
+  assert.deepEqual(parseNight("w/ Cy").guests, ["Cy"]);
+  assert.deepEqual(parseNight("saw Ada and Ada").djs, ["Ada"]);
+
+  // A word is only a word on its own. Sawyer played; "saw" did not.
+  assert.deepEqual(parseNight("saw Sawyer and Withers").djs, ["Sawyer", "Withers"]);
+
+  // And what it must not guess: a bare list means nothing on its own, so the
+  // buttons decide. Guessing here would file people under the wrong heading.
+  for (const bare of ["Ada, Bo and Cy", "Ada", "", "   "]) {
+    const nothing = parseNight(bare);
+    assert.equal(nothing.used, false, `"${bare}" should not be read as a sentence`);
+    assert.deepEqual([nothing.djs, nothing.guests, nothing.songs], [[], [], []]);
+  }
+});
 
 test("handles are gated before anything can claim one", () => {
   assert.equal(handleProblem("sundaze"), "");
@@ -516,6 +566,110 @@ test("what you hear is yours to turn down, and posting moved to the party", asyn
   await get(env, `/m/${manage}?do=all`);
   assert.equal(one(env, `SELECT volume FROM group_members`).volume, "all");
   assert.ok(groupId);
+});
+
+// Somebody holding the link was at the night too, and could never say so.
+test("somebody holding the link can say they were there", async () => {
+  const { env, send } = await signedIn();
+  await send("/parties/new", { title: "Warehouse, late", day: "2020-03-01" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+
+  // Private stays private: no page, and no back door on the route either.
+  assert.equal((await get(env, where)).status, 404);
+  assert.equal((await post(env, `${where}/here`, { name: "Cy" })).status, 404,
+    "a private night has no list for a stranger to join");
+
+  await send(`${where}/record`, { visibility: "link" });
+  const shared = await (await get(env, where)).text();
+  assert.match(shared, /I was there/, "a past night a visitor is on offers it");
+  assert.ok(!/I'm coming/.test(shared), "and does not ask them to a night that happened");
+
+  const said = await post(env, `${where}/here`, { name: "Cy" });
+  assert.equal(said.status, 200);
+  assert.match(await said.text(), /Cy is on the list/);
+
+  // It lands in the OWNER's record of their own night, as a guest.
+  const row = one(env,
+    `SELECT p.name, pp.role, pp.owner_email FROM party_people pp
+       JOIN people p ON p.id = pp.person_id WHERE p.name = 'Cy'`);
+  assert.equal(row.role, "guest");
+  assert.equal(row.owner_email, ev.owner_email);
+
+  // Saying it twice is still one person at one night.
+  await post(env, `${where}/here`, { name: "Cy" });
+  assert.equal(rows(env, `SELECT person_id FROM party_people`).length, 1);
+
+  // And who was there stays the owner's: the shared page bills who PLAYED.
+  assert.ok(!/Who was there/.test(await (await get(env, where)).text()));
+});
+
+// The date fills itself in. So should the place - most people run the same room
+// again, and the guess is wrong just as harmlessly as today's date is.
+test("starting a night already knows where you were last", async () => {
+  const { env, send, read } = await signedIn();
+  const handle = () => one(env, `SELECT handle FROM groups`).handle;
+
+  // Nothing to go on yet: an empty box, and the copy says only the date is in.
+  const first = await (await read("/parties/new")).text();
+  assert.match(first, /name="place"[^>]*value=""/, "no history, no guess");
+  assert.match(first, /Today is already/);
+
+  await send("/parties/new", { title: "Warehouse, late", place: "The Box Shop" });
+  const second = await (await read("/parties/new")).text();
+  assert.match(second, /name="place"[^>]*value="The Box Shop"/, "where you were last");
+  assert.match(second, /Today and where you were last are already/);
+
+  // And it survives a validation error, rather than the form forgetting it.
+  const failed = await (await send("/parties/new", { title: "" })).text();
+  assert.match(failed, /Give it a name first/);
+  assert.match(failed, /Today and where you were last are already/);
+
+  // A newer night moves it on.
+  await send("/parties/new", { title: "Rooftop", place: "The Roof" });
+  assert.match(await (await read("/parties/new")).text(),
+    /name="place"[^>]*value="The Roof"/);
+  assert.ok(handle());
+});
+
+// The parser is only worth anything if the sentence actually lands in the
+// database. This types one line at the real route and reads the rows back.
+test("the whole night goes in on one line", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse, late" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+
+  // One field, one return - the sentence the product exists for.
+  const sent = await send(`${where}/record`,
+    { it: "saw Ada and Bo, played Windowlicker by Aphex Twin, with Cy and Dee", as: "dj" });
+  assert.equal(sent.status, 302);
+
+  // node:sqlite hands back null-prototype rows; compare the values, not the
+  // prototype chain.
+  const roles = rows(env,
+    `SELECT p.name, pp.role FROM party_people pp JOIN people p ON p.id = pp.person_id
+      ORDER BY pp.role, p.name`).map((r) => ({ ...r }));
+  assert.deepEqual(roles, [
+    { name: "Ada", role: "dj" }, { name: "Bo", role: "dj" },
+    { name: "Cy", role: "guest" }, { name: "Dee", role: "guest" },
+  ], "as=dj came from the button Enter happens to press - the sentence outranks it");
+  assert.deepEqual(rows(env, `SELECT title, artist FROM songs`).map((r) => ({ ...r })),
+    [{ title: "Windowlicker", artist: "Aphex Twin" }]);
+
+  const page = await (await read(where)).text();
+  assert.match(page, /Ada/);
+  assert.match(page, /Windowlicker/);
+  assert.match(page, /Cy/);
+
+  // A bare list still means whatever the button says, unchanged.
+  await send(`${where}/record`, { it: "Eve", as: "guest" });
+  assert.equal(
+    one(env, `SELECT pp.role FROM party_people pp JOIN people p ON p.id = pp.person_id
+               WHERE p.name = 'Eve'`).role,
+    "guest", "a list with no sentence in it is what the button says");
 });
 
 // Saying something happens at a party, by whoever it belongs to and whoever

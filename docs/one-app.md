@@ -158,15 +158,34 @@ Still unexamined at Apple-Journal quality: /people, the visitor view on a phone
   editors, profile fields, feed, link editor, moderation, reactions. What is
   left is the room, which is the one thing the web cannot do.
 
-STILL OPEN, in the order they are worth doing:
+- DONE, this branch - the three seams the surgery left, and the three product
+  pieces that were still open:
+  - The event folder is back, in Settings beside the diagnostics logs.
+  - The frame and the party picker are one choice; `roomSlug` is the guard
+    against them bouncing, and the test proves it is load-bearing.
+  - 25,918 bytes of dead CSS, removed by deleting proven-dead byte ranges
+    rather than rewriting the sheet, and checked against the real server.
+  - **One line writes the whole night.** `parseNight` reads
+    "saw Ada and Bo, played Windowlicker by Aphex Twin, with Cy and Dee" into
+    two DJs, one song with its artist, and two guests - one field, one return.
+    A bare list still means whatever the buttons say; the parser refuses to
+    guess, and there are tests for the refusal.
+  - The place defaults to where you were last, the way the date defaults to
+    today, and survives a validation error.
+  - Somebody holding the link can say "I was there" on a night that already
+    happened. Private nights have no such door. Verified at 375px.
 
-1. **The one-line capture.** See "The only job" above. Typing the sentence still
-   takes three actions for four clauses. A capture line that routes names to
-   people and played-phrases to songs takes it to one. A parser, not a layout
-   change, and the largest remaining piece.
-2. **Place, the way the date works.** The date defaults to today; the place
-   defaults to nothing. The honest cheap version is the last place used, since
-   real geolocation means a browser prompt and a reverse-geocoding service.
-3. **The visitor view.** Somebody holding a link, on a phone, has been checked
-   in HTML but never in a screenshot - and there is still no way for them to
-   add themselves to a night they were at.
+## What the sentence takes now
+
+Owner, 2026-08-08: "I'm at this party. I saw DJ 1, 2 and 3. They played song
+XYZ. I attended it with friend A, B and C."
+
+    saw Ada and Bo, played Windowlicker by Aphex Twin, with Cy and Dee   [return]
+
+One field. One action. Four clauses.
+
+STILL OPEN:
+
+- Nothing from the original list. What is left is what the next session finds by
+  using it.
+

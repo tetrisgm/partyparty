@@ -768,6 +768,11 @@ padding:0;min-height:26px;font:inherit;font-size:15px;color:var(--label);outline
 .addline button{flex:0 0 auto;width:30px;height:30px;border:0;border-radius:50%;
 background:var(--bg-elevated-2);color:var(--label-secondary);font-size:17px;
 line-height:1;cursor:pointer}
+/* "I was there" is a phrase, not a plus sign: it needs a pill it fits inside,
+   or the round icon button squashes it onto three lines. */
+.wasthere{margin-top:14px}
+.wasthere button{width:auto;height:34px;padding:0 16px;border-radius:var(--r-pill);
+white-space:nowrap;font-size:14px;font-weight:700;background:var(--accent);color:#fff}
 .addline:focus-within button{background:var(--accent);color:#fff}
 .seenby{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
 hr.soft{border:0;border-top:1px solid var(--separator);margin:34px 0}
@@ -1238,6 +1243,114 @@ async function addSong(env, emailNorm, eventId, { title, artist, personId }, now
   return id;
 }
 
+// One line for the whole night.
+//
+// The product's only job, in the owner's words: "I'm at this party. I saw DJ 1,
+// 2 and 3. They played song XYZ. I attended it with friend A, B and C." That
+// was three separate actions for four clauses. This reads the sentence.
+//
+// A word opens a clause and owns the text until the next word opens one:
+//
+//   Ada and Bo, they played Windowlicker by Aphex Twin, with Cy and Dee
+//   \_______/         \___________________________/         \________/
+//     played              a song, and its artist              I was with
+//
+// Nothing here guesses at meaning it was not given. A bare list with no word in
+// it returns used:false, and the three buttons - which have always been one tap
+// and never ambiguous - decide instead.
+const NIGHT_WORDS = [
+  [/^(?:saw|dj|djs|b2b)$/i, "dj"],
+  [/^(?:played|playing|plays|dropped|song|songs|track|tracks)$/i, "song"],
+  [/^(?:with|w\/|w)$/i, "guest"],
+];
+// Words that carry no name: they join clauses rather than start one.
+// Articles are NOT filler: "The Blessed Madonna" is a name, and so is "A".
+// Only pronouns and joining words, which nobody is called.
+const NIGHT_FILLER = /^(?:i|we|us|me|they|he|she|it|and|then|also|too|was|were|at|this|that|tonight|today|there|here)$/i;
+
+function nightWord(token) {
+  const bare = token.replace(/[^a-z/]/gi, "");
+  for (const [re, kind] of NIGHT_WORDS) if (re.test(bare)) return kind;
+  return "";
+}
+
+// "Ada, Bo and Cy" -> ["Ada", "Bo", "Cy"], with the filler at the front of each
+// chunk dropped so "they played" does not record a DJ called "they".
+function nightList(text) {
+  return String(text)
+    .split(/,|;|\band\b|&|\+/i)
+    .map((chunk) => {
+      const words = chunk.trim().split(/\s+/).filter(Boolean);
+      while (words.length && NIGHT_FILLER.test(words[0])) words.shift();
+      return words.join(" ").replace(/^["'“‘]+|["'”’.]+$/g, "").trim();
+    })
+    .filter((one) => one && one.length <= 120);
+}
+
+export function parseNight(line) {
+  const out = { djs: [], guests: [], songs: [], used: false };
+  let text = String(line || "").trim();
+  if (!text) return out;
+
+  // A full stop between thoughts is a comma - "DJ 1, 2 and 3. They played X" is
+  // three DJs and a song. Inside a name it is not: "Mr. Fingers" is one person,
+  // so the stop only separates when what follows is filler or a word.
+  text = text.replace(/\.\s+([A-Za-z/]+)/g, (whole, next) =>
+    (NIGHT_FILLER.test(next) || nightWord(next)) ? " , " + next : whole);
+
+  // Quoted text is a song title wherever it appears, so "saw Ada, she played
+  // “Windowlicker”" needs no word for the song at all.
+  text = text.replace(/["“]([^"”]{1,200})["”]/g, (_, title) => {
+    out.songs.push({ title: title.trim(), artist: "" });
+    out.used = true;
+    return " , ";
+  });
+
+  // Split into (word, text) clauses. Everything before the first word is the
+  // leading clause, which is who played - that is how the sentence starts.
+  const tokens = text.split(/\s+/).filter(Boolean);
+  const clauses = [];
+  let kind = "lead";
+  let held = [];
+  for (const token of tokens) {
+    const found = nightWord(token);
+    // A word only opens a clause when it is a word on its own, not the tail of
+    // a name: "Sawyer" is not "saw", and that is what the boundary is for.
+    if (found && /^[a-z/]+[,.]?$/i.test(token)) {
+      clauses.push([kind, held.join(" ")]);
+      kind = found;
+      held = [];
+      continue;
+    }
+    held.push(token);
+  }
+  clauses.push([kind, held.join(" ")]);
+
+  for (const [what, body] of clauses) {
+    if (!body.trim()) continue;
+    if (what !== "lead") out.used = true;
+    if (what === "song") {
+      // "played by Ada" is not a song called "Ada" - it says who played.
+      const attribution = body.trim().match(/^by\s+(.+)$/i);
+      if (attribution) { out.djs.push(...nightList(attribution[1])); continue; }
+      // One artist for the whole clause: "Xtal and Ageispolis by Aphex Twin".
+      const parts = body.split(/\s+by\s+/i);
+      const artist = parts.length > 1 ? nightList(parts.pop()).join(", ") : "";
+      for (const title of nightList(parts.join(" by "))) out.songs.push({ title, artist });
+      continue;
+    }
+    // The leading clause is who played, the same as "saw".
+    (what === "guest" ? out.guests : out.djs).push(...nightList(body));
+  }
+
+  // A leading list with no word after it is just a list; the buttons decide.
+  if (!out.used) return { djs: [], guests: [], songs: [], used: false };
+  const once = (names) => [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+  out.djs = once(out.djs);
+  out.guests = once(out.guests);
+  return out;
+}
+
 function initials(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "·";
@@ -1668,7 +1781,10 @@ function trackerBlock(event, group, note, people, allNames, songs) {
   return `<section class="tracker">
     <form class="capture" method="post" action="${esc(action)}">
       <input type="text" name="it" list="knownpeople" autocomplete="off"
-        placeholder="Ada, Bo and Cy\u2026" aria-label="Add to this night">
+        placeholder="Ada, played Xtal, with Cy\u2026"
+        aria-label="Write down this night">
+      <!-- Write the sentence and press return. The buttons stay for a bare
+           list, which says nothing on its own about which of the three it is. -->
       <div class="as">
         <button type="submit" name="as" value="dj">played</button>
         <button type="submit" name="as" value="guest">with me</button>
@@ -1832,16 +1948,24 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
   // a ticket, the date in their own calendar, a way to tip whoever threw it.
   const forVisitors = `
     <hr class="soft">
-    <p class="muted">${going} going</p>
+    ${canPost && phase !== "upcoming" ? `<form class="addline wasthere" method="post"
+      action="${where}/here">
+      <input type="text" name="name" maxlength="80" required
+        placeholder="Your name" aria-label="Your name">
+      <button class="btn" type="submit">I was there</button>
+    </form>
+    <p class="muted">Puts you on ${esc(ownerName || group.handle)}\u2019s list of who
+    was at this night. No account, no sign-in.</p>` : ""}
+    ${phase === "upcoming" ? `<p class="muted">${going} going</p>` : ""}
     ${event.ticket_cents ? `<form class="join" method="post" action="${where}/buy">
       <input type="email" name="email" placeholder="your email" required>
       <button class="btn" type="submit">Buy a ticket -
         ${esc((totalForBuyer(event.ticket_cents, takeRate).total / 100).toFixed(2))}</button>
-    </form>` : `<form class="join" method="post" action="${where}/going">
+    </form>` : (phase === "upcoming" ? `<form class="join" method="post" action="${where}/going">
       <input type="email" name="email" placeholder="your email" required>
       <input type="text" name="name" placeholder="your name">
       <button class="btn" type="submit">I'm coming</button>
-    </form>`}
+    </form>` : "")}
     <p><a class="btn plain small" href="${where}.ics">Add this night to your calendar</a></p>
     ${payLink ? `<p><a class="btn plain" href="${esc(payLink)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
@@ -1917,8 +2041,11 @@ function calendarBlock(base, handle) {
     </script>`;
 }
 
-function notice(title, message) {
-  return html(200, page(title, `<h1>${esc(title)}</h1><p>${esc(message)}</p>`));
+// A notice with nowhere to go is a dead end, so callers may hand it the way
+// back. Older callers pass two arguments and get what they always did.
+function notice(title, message, back) {
+  return html(200, page(title, `<h1>${esc(title)}</h1><p>${esc(message)}</p>${
+    back ? `<p><a class="btn plain" href="${esc(back)}">Back to the night</a></p>` : ""}`));
 }
 
 // ------------------------------------------------------------------ queries
@@ -2728,6 +2855,18 @@ function newPartyPage(group, state, form, today, lastPlace) {
     in. Who played and what they played go on the night itself, a line at a time.</p>
     <p class="muted"><a href="/home">Back to your parties</a></p>
   `, "", "", true);
+}
+
+// Where you were last. The date fills itself in with today; the place is the
+// same kind of guess and is wrong just as harmlessly - most people run the same
+// room again, and anyone who does not types over it. Real geolocation means a
+// browser prompt and a reverse-geocoding service for the same answer.
+async function lastPlaceUsed(env, emailNorm) {
+  const last = await env.DB.prepare(
+    `SELECT place FROM events WHERE owner_email = ? AND place != ''
+      ORDER BY created_ms DESC LIMIT 1`
+  ).bind(emailNorm).first();
+  return (last && last.place) || "";
 }
 
 // Today, as a date field wants it.
@@ -3909,7 +4048,8 @@ export default {
         if (!form) return notice("That did not save", "Try again.");
         const title = String(form.get("title") || "").trim();
         if (!title) {
-          return html(200, newPartyPage(group, { error: "Give it a name first." }, form, todayISO(now)));
+          return html(200, newPartyPage(group, { error: "Give it a name first." },
+            form, todayISO(now), await lastPlaceUsed(env, dj.email_norm)));
         }
         // A day, at midday. Storing midnight means a reader an hour west sees
         // the party on the day before, which in a journal is simply wrong.
@@ -3922,7 +4062,8 @@ export default {
           place: form.get("place"),
         }, now);
         if (made.error) {
-          return html(200, newPartyPage(group, { error: made.error }, form, todayISO(now)));
+          return html(200, newPartyPage(group, { error: made.error },
+            form, todayISO(now), await lastPlaceUsed(env, dj.email_norm)));
         }
         // The DJ, typed as a name, becomes a person - so their history starts
         // accruing from the first party rather than from whenever I first
@@ -3939,12 +4080,8 @@ export default {
           status: 302, headers: { location: `/@${group.handle}/${made.slug}` },
         });
       }
-      const lastPlace = await env.DB.prepare(
-        `SELECT place FROM events WHERE owner_email = ? AND place != ''
-          ORDER BY created_ms DESC LIMIT 1`
-      ).bind(dj.email_norm).first();
       return html(200, newPartyPage(group, {}, null, todayISO(now),
-        lastPlace && lastPlace.place));
+        await lastPlaceUsed(env, dj.email_norm)));
     }
 
     // Everyone I have recorded, and one person's whole history.
@@ -4671,6 +4808,35 @@ export default {
     }
 
     // Saying you are coming, from the night's own page.
+    // "I was there." The other half of "I'm coming", for a night that already
+    // happened. Anybody holding the link can say it, exactly as they can add a
+    // photo - it is a fact they are contributing to somebody's record of their
+    // own night, and it needs no account, because a name is enough.
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/here$/);
+    if (match && request.method === "POST") {
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      // A private night is nobody's business, and there is no owner to tell.
+      if ((event.visibility || "private") === "private" || !event.owner_email) {
+        return new Response("Not Found", { status: 404 });
+      }
+      const form = await request.formData().catch(() => null);
+      const name = String((form && form.get("name")) || "").trim().slice(0, 80);
+      if (!name) return notice("That needs a name", "Go back and type who you are.");
+      const person = await findOrMakePerson(env, event.owner_email, name, now);
+      if (person) {
+        await env.DB.prepare(
+          `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+           VALUES (?,?,?,'guest',?)
+           ON CONFLICT(event_id, person_id) DO NOTHING`
+        ).bind(event.id, person.id, event.owner_email, now).run();
+      }
+      return notice(`You were there`,
+        `${name} is on the list for this night.`,
+        `/@${match[1]}/${match[2]}`);
+    }
+
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/going$/);
     if (match && request.method === "POST") {
       const at = await partyAt(env, match[1], match[2]);
@@ -4988,29 +5154,45 @@ export default {
         return new Response(null, { status: 302, headers: { location: back } });
       }
 
-      // The capture line: one thing typed, one word for what it is.
+      // The capture line. One line for the whole night when it says enough to
+      // read (parseNight), and otherwise the list plus the one word the buttons
+      // give it. The sentence wins: a person who wrote out what happened is
+      // telling us more than the button they happened to press to send it.
       const it = String(form.get("it") || "").trim();
       const as = String(form.get("as") || "");
-      if (it && as) {
+      const record = async (names, role) => {
+        for (const name of names) {
+          const person = await findOrMakePerson(env, dj.email_norm, name, now);
+          if (!person) continue;
+          await env.DB.prepare(
+            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+             VALUES (?,?,?,?,?)
+             ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
+          ).bind(event.id, person.id, dj.email_norm, role, now).run();
+        }
+      };
+      if (it) {
+        const night = parseNight(it);
+        if (night.used) {
+          await record(night.djs, "dj");
+          await record(night.guests, "guest");
+          for (const song of night.songs) {
+            await addSong(env, dj.email_norm, event.id, song, now);
+          }
+          return new Response(null, { status: 302, headers: { location: back } });
+        }
         if (as === "song") {
           const artistPart = it.split(" by ");
-          const titles = artistPart[0];
-          for (const one of titles.split(/,| and /i)) {
+          for (const one of artistPart[0].split(/,| and /i)) {
             await addSong(env, dj.email_norm, event.id,
               { title: one, artist: artistPart[1] || "" }, now);
           }
-        } else {
-          for (const name of it.split(/,| and /i)) {
-            const person = await findOrMakePerson(env, dj.email_norm, name, now);
-            if (!person) continue;
-            await env.DB.prepare(
-              `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
-               VALUES (?,?,?,?,?)
-               ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
-            ).bind(event.id, person.id, dj.email_norm, as === "dj" ? "dj" : "guest", now).run();
-          }
+          return new Response(null, { status: 302, headers: { location: back } });
         }
-        return new Response(null, { status: 302, headers: { location: back } });
+        if (as) {
+          await record(it.split(/,| and /i), as === "dj" ? "dj" : "guest");
+          return new Response(null, { status: 302, headers: { location: back } });
+        }
       }
 
       // A song, as it plays. One field and a button: anything more and it does
