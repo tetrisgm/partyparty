@@ -1717,6 +1717,33 @@ test("a party made on the Mac is the same row a party made on the web is", async
   assert.equal(made.body.party.url, `https://partyparty.party/@sundaze/${row.slug}`);
 });
 
+test("creating a party means the same thing in the booth as in a browser", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const mac = await asInstall(env);
+  const owner = one(env, `SELECT email_norm FROM djs`).email_norm;
+
+  // The web's form turns "who is playing" into people on the account. The Mac
+  // asks the same question, so it has to have the same consequence - otherwise
+  // a DJ named in the booth is a label and one named in a browser is a history.
+  const made = await mac.call("/api/v1/party/create", {
+    title: "Warehouse, late", place: "Unit 7", djs: "Seth, Ada",
+    startsMs: Date.parse("2099-09-12T21:00:00Z"),
+  });
+  assert.equal(made.status, 200);
+
+  const people = rows(env, `SELECT name FROM people WHERE owner_email = ? ORDER BY name`, owner)
+    .map((p) => p.name);
+  assert.deepEqual(people, ["Ada", "Seth"], "the DJs typed in the booth became people");
+  const billed = rows(env, `SELECT role FROM party_people WHERE event_id = ?`, made.body.party.key);
+  assert.equal(billed.length, 2);
+  assert.ok(billed.every((r) => r.role === "dj"));
+
+  // And the date the booth was given is the date that was stored, rather than
+  // "now" - a party can be made from the Mac for next Friday.
+  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms,
+    Date.parse("2099-09-12T21:00:00Z"));
+});
+
 test("the Mac lists and opens parties made on the web", async () => {
   const env = await withGoogle(makeEnv(), { name: "DJ Example" });
   const mac = await asInstall(env);

@@ -164,22 +164,37 @@ func (c *Client) Parties(ctx context.Context) ([]Party, bool, error) {
 	return out.Parties, out.Linked, err
 }
 
-// CreateParty makes a canonical party through the platform's own creation
-// path - the same one the web form calls. partyID attaches the live room at
-// creation so starting a broadcast never mints a second record.
-func (c *Client) CreateParty(ctx context.Context, title, place, partyID string, startsMs int64) (Party, error) {
+// NewParty is a party as somebody types it, on either client. The web form has
+// exactly these fields, so the booth asks exactly these questions - creating a
+// party is one thing that happens to have two front doors.
+type NewParty struct {
+	Title string
+	Place string
+	// Comma separated, as typed. They become people on the account, which is
+	// what makes "who played" a history rather than a label on one night.
+	DJs      string
+	StartsMs int64
+	// The live room, when this party is being opened to broadcast right now.
+	PartyID string
+}
+
+// CreateParty makes a canonical party through the platform's own creation path
+// - the same one the web form calls. PartyID attaches the live room at creation
+// so starting a broadcast never mints a second record.
+func (c *Client) CreateParty(ctx context.Context, p NewParty) (Party, error) {
 	if !c.ready() {
 		return Party{}, errors.New("cloudsync: not configured")
 	}
 	var out partyResponse
 	body := map[string]any{
-		"id": c.InstallID, "secret": c.Secret, "title": title, "place": place,
+		"id": c.InstallID, "secret": c.Secret, "title": p.Title, "place": p.Place,
+		"djs": p.DJs,
 	}
-	if partyID != "" {
-		body["partyId"] = partyID
+	if p.PartyID != "" {
+		body["partyId"] = p.PartyID
 	}
-	if startsMs > 0 {
-		body["startsMs"] = startsMs
+	if p.StartsMs > 0 {
+		body["startsMs"] = p.StartsMs
 	}
 	if err := c.post(ctx, "/api/v1/party/create", body, &out); err != nil {
 		return Party{}, err

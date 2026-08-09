@@ -3058,6 +3058,21 @@ export default {
           }, now);
           if (made.error) return json(400, { error: made.error });
           await attachRoom(env, group.id, made.id, body.partyId, now);
+          // Whoever is playing becomes a person, exactly as typing them into the
+          // web's own form does. Creating a party has to MEAN the same thing on
+          // both clients, not merely look similar: a DJ named in the booth has
+          // to turn up in the same history as one named in a browser.
+          const owner = await installOwner(env, body.id);
+          if (owner) {
+            for (const name of String(body.djs || "").split(",")) {
+              const person = await findOrMakePerson(env, owner.email_norm, name, now);
+              if (!person) continue;
+              await env.DB.prepare(
+                `INSERT OR IGNORE INTO party_people (event_id, person_id, owner_email, role, created_ms)
+                 VALUES (?,?,?,'dj',?)`
+              ).bind(made.id, person.id, owner.email_norm, now).run();
+            }
+          }
           const row = await env.DB.prepare(`SELECT * FROM events WHERE id = ?`).bind(made.id).first();
           return json(200, { linked: true, party: partyForMac(row, group, base) });
         }

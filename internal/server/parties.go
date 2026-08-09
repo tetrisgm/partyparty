@@ -18,7 +18,7 @@ import (
 // package never learns how the platform is reached.
 type PartyClient interface {
 	Parties(ctx context.Context) ([]cloudsync.Party, bool, error)
-	CreateParty(ctx context.Context, title, place, partyID string, startsMs int64) (cloudsync.Party, error)
+	CreateParty(ctx context.Context, p cloudsync.NewParty) (cloudsync.Party, error)
 	UpdateParty(ctx context.Context, key string, fields map[string]any) (cloudsync.Party, error)
 }
 
@@ -106,9 +106,17 @@ func (s *srv) handlePartyAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
 			return true
 		}
+		// The same four fields the web's own form asks for, so "add a party"
+		// means one thing with two front doors rather than two features that
+		// resemble each other.
 		var body struct {
 			Title string `json:"title"`
 			Place string `json:"place"`
+			DJs   string `json:"djs"`
+			// Milliseconds, as the console's date field resolves it. Zero means
+			// no date yet, which is a real answer: a party you know about
+			// before you know when.
+			StartsMs int64 `json:"startsMs"`
 			// Open true attaches this Mac's room to the new party. False makes
 			// the party and leaves the room alone - creating one for Friday
 			// while standing in Tuesday must not hijack tonight.
@@ -131,7 +139,16 @@ func (s *srv) handlePartyAPI(w http.ResponseWriter, r *http.Request) bool {
 		if body.Open {
 			roomID = s.Events.Identity().ID
 		}
-		party, err := s.Parties.CreateParty(ctx, body.Title, body.Place, roomID, time.Now().UnixMilli())
+		// A party being opened right now is starting now unless told otherwise;
+		// one made for later carries the date that was typed, or none at all.
+		startsMs := body.StartsMs
+		if startsMs == 0 && body.Open {
+			startsMs = time.Now().UnixMilli()
+		}
+		party, err := s.Parties.CreateParty(ctx, cloudsync.NewParty{
+			Title: body.Title, Place: body.Place, DJs: body.DJs,
+			StartsMs: startsMs, PartyID: roomID,
+		})
 		if err != nil {
 			status := http.StatusBadGateway
 			if cloudsync.NotSignedIn(err) {
