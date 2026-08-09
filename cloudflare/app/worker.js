@@ -1620,8 +1620,23 @@ function notice(title, message) {
 
 // ------------------------------------------------------------------ queries
 
+// The handle in an address. A person's @name now: groups are dead, and the one
+// thing they still supply is a home for parties made before the change. Their
+// own @name is tried first so somebody who has both - which is everybody who
+// ever made a group - is found as themselves.
 async function groupByHandle(env, handle) {
-  return env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(handle).first();
+  const clean = String(handle || "").toLowerCase();
+  const profile = await env.DB.prepare(`SELECT * FROM profiles WHERE handle = ?`)
+    .bind(clean).first();
+  if (profile) {
+    const owned = await env.DB.prepare(
+      `SELECT g.* FROM groups g JOIN group_djs gd ON gd.group_id = g.id
+         JOIN djs d ON d.id = gd.dj_id
+        WHERE d.email_norm = ? AND g.handle = ?`
+    ).bind(profile.email_norm, clean).first();
+    if (owned) return owned;
+  }
+  return env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(clean).first();
 }
 
 async function upcomingEvents(env, groupId, now) {
@@ -1967,8 +1982,7 @@ async function myParties(env, emailNorm) {
        JOIN groups g ON g.id = e.group_id
        LEFT JOIN party_notes n ON n.event_id = e.id AND n.owner_email = ?
       WHERE e.state != 'draft' AND (
-        EXISTS (SELECT 1 FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
-                 WHERE gd.group_id = e.group_id AND d.email_norm = ?)
+        e.owner_email = ?
         OR n.event_id IS NOT NULL
         OR EXISTS (SELECT 1 FROM party_people pp
                     WHERE pp.event_id = e.id AND pp.owner_email = ?))
@@ -2222,11 +2236,14 @@ async function createParty(env, group, fields, now) {
     unique = `${slug}-${n}`;
   }
 
+  // Whose party it is, on the party. Groups are dead; the group_id below is
+  // still written only so this is reversible by deploying the previous worker.
+  const ownerEmail = String(fields.ownerEmail || "");
   await env.DB.prepare(
-    `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity,
+    `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, capacity,
        cover_key, state, party_id, links, created_ms, updated_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?, ?)`
-  ).bind(id, group.id, unique, title, startsMs,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?, ?)`
+  ).bind(id, group.id, ownerEmail, unique, title, startsMs,
     String(fields.place || "").slice(0, 120), capacity,
     fields.coverKey || null, String(fields.partyId || ""),
     String(fields.links || "").slice(0, 2000), now, now).run();
@@ -3043,7 +3060,9 @@ export default {
         }
 
         if (path === "/api/v1/party/create") {
+          const maker = await installOwner(env, body.id);
           const made = await createParty(env, group, {
+            ownerEmail: maker ? maker.email_norm : "",
             title: body.title,
             // The Mac knows when a party is actually starting, because it is
             // standing in the room. The web has to be told.
@@ -3062,15 +3081,14 @@ export default {
           // web's own form does. Creating a party has to MEAN the same thing on
           // both clients, not merely look similar: a DJ named in the booth has
           // to turn up in the same history as one named in a browser.
-          const owner = await installOwner(env, body.id);
-          if (owner) {
+          if (maker) {
             for (const name of String(body.djs || "").split(",")) {
-              const person = await findOrMakePerson(env, owner.email_norm, name, now);
+              const person = await findOrMakePerson(env, maker.email_norm, name, now);
               if (!person) continue;
               await env.DB.prepare(
                 `INSERT OR IGNORE INTO party_people (event_id, person_id, owner_email, role, created_ms)
                  VALUES (?,?,?,'dj',?)`
-              ).bind(made.id, person.id, owner.email_norm, now).run();
+              ).bind(made.id, person.id, maker.email_norm, now).run();
             }
           }
           const row = await env.DB.prepare(`SELECT * FROM events WHERE id = ?`).bind(made.id).first();
@@ -3484,6 +3502,7 @@ export default {
         const startsRaw = String(form.get("starts") || "");
         const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
         const made = await createParty(env, group, {
+          ownerEmail: dj.email_norm,
           title,
           startsMs: Number.isFinite(starts) ? starts : null,
           place: form.get("place"),
@@ -3734,6 +3753,7 @@ export default {
         const cover = await coverFromForm(env, form, "");
         if (cover && cover.error) return notice("That picture did not take", cover.error);
         const made = await createParty(env, group, {
+          ownerEmail: dj.email_norm,
           title,
           startsMs: Number.isFinite(starts) ? starts : null,
           place: form.get("place"),

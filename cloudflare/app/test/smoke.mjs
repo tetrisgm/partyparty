@@ -70,10 +70,17 @@ const seedEvent = (env, groupId, over = {}) => {
     slug: "june-14", title: "Sundaze at the Lido", starts_ms: Date.parse("2026-09-12T21:00:00Z"),
     place: "The Lido", state: "announced", ...over,
   };
+  // A party belongs to a person. Seeded rows take the group's DJ the same way
+  // the migration does, so a fixture is not a party nobody owns.
+  const owner = over.owner_email ?? (env.raw.prepare(
+    `SELECT d.email_norm FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
+      WHERE gd.group_id = ? ORDER BY gd.created_ms LIMIT 1`
+  ).get(groupId)?.email_norm ?? "");
   env.raw.prepare(
-    `INSERT INTO events (id, group_id, slug, title, starts_ms, place, state, created_ms, updated_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, groupId, event.slug, event.title, event.starts_ms, event.place, event.state, Date.now(), Date.now());
+    `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, state, created_ms, updated_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, groupId, owner, event.slug, event.title, event.starts_ms, event.place, event.state,
+    Date.now(), Date.now());
   return id;
 };
 
@@ -2041,6 +2048,31 @@ test("a party is playing right now only while a Mac keeps saying so", async () =
   assert.ok(!page.includes("javascript:alert"), "only an https room is offered to a listener");
   assert.match(page, /Playing right now/, "the heartbeat still counts");
   assert.match(page, /href="https:\/\/early-heron/, "and the last good link is kept");
+});
+
+test("a party belongs to a person, not to a group", async () => {
+  const { env, send, read } = await signedIn();
+  const me = one(env, `SELECT email_norm FROM djs`).email_norm;
+  await send("/parties/new", { title: "Warehouse, late" });
+
+  const ev = one(env, `SELECT * FROM events`);
+  assert.equal(ev.owner_email, me, "the party carries whose it is");
+
+  // Being in the group is no longer what makes it mine. Cut every group tie and
+  // it is still my party, still on my home, still at its address.
+  env.raw.prepare(`DELETE FROM group_djs`).run();
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const home = await (await read("/home")).text();
+  assert.match(home, /Warehouse, late/, "a party I own is mine without a group");
+  assert.equal((await read(`/@${handle}/${ev.slug}`)).status, 200);
+
+  // And somebody else's party is not mine, however the groups are arranged.
+  const theirs = ulid();
+  env.raw.prepare(`INSERT INTO events (id, group_id, owner_email, slug, title, state, created_ms, updated_ms)
+    VALUES (?, ?, 'someone@else.example', 'not-mine', 'Not mine', 'announced', ?, ?)`)
+    .run(theirs, ev.group_id, Date.now(), Date.now());
+  assert.ok(!(await (await read("/home")).text()).includes("Not mine"),
+    "sharing a group with somebody does not make their party mine");
 });
 
 test("a record belongs to one person and is invisible to everybody else", async () => {
