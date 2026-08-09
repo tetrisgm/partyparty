@@ -103,13 +103,45 @@ ever needed. The fallback is a real state with its own copy, not an error.
 - No Mac-only party. There is one canonical row; a broadcast is temporary state
   attached to it.
 
+## The journal
+
+Owner, 2026-08-08, on what an event page IS: "the name of the event, the place
+and date. I don't need the time." Plus who was there, who played, what they
+played, notes and photos. Nothing else. The bar for the input is Apple's
+Journal - "you are not done until it feels like a journaling app from Apple
+that they would feature for a design award".
+
+Shipped so far (`3d6ae95`): a party is a DAY with today already filled in and
+the hour never shown; songs, which had nowhere to live at all; `visibility`
+(private / link / public) with everything private by default; and following
+became person-to-person, private by default, with every group follower carried
+across.
+
 ## Status
 
-- DONE: creating a party means the same thing from either client - same four
-  fields, and the DJs typed in the booth become people on the account
-  (`8000254`).
-- NEXT: G1 (ownership), G2 (the pages), G3 (the tables), then
-  `/api/v1/install/session`, the proxy, and the Mac layer.
+- DONE `8000254` - creating a party means the same thing from either client.
+- DONE `a0e18c5` - G1, a party belongs to a person.
+- DONE `051b586` - G2, /@handle is a person; photos and words moved onto the
+  night; tips and merch moved onto the profile.
+- DONE `3d6ae95` - the journal model: day-only dates, songs, visibility,
+  person-to-person follows.
 
-The order matters. Building the proxy first would mean rendering group-shaped
-pages into the console and then changing them underneath it.
+STILL OPEN, in the order they are worth doing:
+
+1. **The design pass.** The event page now has the right PARTS but is still
+   laid out as a form with headings. It has to read as one page you write on:
+   the night at the top, then people, songs, notes, photos, each one line to
+   add. This is the whole remaining point and the largest piece.
+2. **Wire what the model can now express.** `visibility` has no control on any
+   page; `follows` is written and read by nothing, while /@handle/join still
+   writes group_members; participants are still only in the private record,
+   with no way for somebody holding the link to add themselves.
+3. **Place, the way the date works.** The date defaults to today. The place
+   should default too - the honest cheap version is the last place used, since
+   real geolocation means a browser prompt and a reverse-geocoding service.
+4. **G3** - the group tables leave the read path. Invisible, and last: nothing
+   above depends on it.
+5. Then `/api/v1/install/session`, the proxy, and the Mac layer.
+
+The order matters. Building the proxy first would mean rendering pages into the
+console and then changing them underneath it.
