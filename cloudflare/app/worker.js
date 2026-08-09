@@ -1367,84 +1367,6 @@ function peopleRail(people, base, handle, canManage) {
     </aside>`;
 }
 
-function groupPage(group, events, base, posts, viewer, people, past) {
-  const runs = !!(viewer && viewer.runsThisGroup);
-  const night = (event, gone) => `
-    <a class="tl${gone ? " past" : ""}" href="/@${esc(group.handle)}/${esc(event.slug)}">
-      <span class="when">${esc(whenText(event))}</span>
-      <span class="tlname">${esc(event.title || "Untitled party")}</span>
-      ${event.place ? `<span class="muted">${esc(event.place)}</span>` : ""}
-    </a>`;
-
-  // The heading carries the action, so making one is where you are already
-  // looking for them rather than somewhere further down the page.
-  const partiesHead = `<div class="sectionhead"><h2>Parties</h2>
-    ${runs ? `<a class="btn small" href="/@${esc(group.handle)}/new">Create a party</a>` : ""}
-  </div>`;
-  const upcoming = events.length
-    ? `<div class="timeline">${events.map((e) => night(e, false)).join("")}</div>`
-    : `<p class="muted">No parties announced yet.</p>`;
-  const before = (past || []).length
-    ? `<h2>Past parties</h2><div class="timeline">${past.map((e) => night(e, true)).join("")}</div>`
-    : "";
-
-  // Following, or the invitation to. An admin is not shown a form asking for
-  // their own name on their own page; managing it lives in the rail.
-  const follow = runs
-    ? ""
-    : viewer && viewer.follows
-      ? `<div class="actionbar quiet">
-           <span class="tile">\u2713</span>
-           <span class="lines">Following<small>Their parties reach you</small></span>
-         </div>`
-      : `<form method="post" action="/@${esc(group.handle)}/join">
-           <div class="row" style="margin-top:18px">
-             <input type="email" name="email" placeholder="your email" required>
-             <input type="text" name="name" placeholder="your name">
-           </div>
-           <button class="actionbar" type="submit">
-             <span class="tile">\u2605</span>
-             <span class="lines">Follow<small>Hear about their parties</small></span>
-           </button>
-         </form>
-         <p class="muted">One email to confirm. No account, and you can stop from any
-         message we send.</p>`;
-
-  return page(group.name || group.handle, `
-    ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
-    ${follow}
-    ${payLink ? `<p><a class="btn plain" href="${esc(payLink)}"
-      rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
-    ${group.merch_link ? `<p><a class="btn plain" href="${esc(group.merch_link)}"
-      rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
-    ${partiesHead}
-    ${upcoming}
-    ${before}
-    <div class="card" style="margin-top:18px">
-      <h2 style="margin:0 0 10px">Add to your calendar</h2>
-      <p class="muted">Every party lands in your own calendar, and stays right when
-      one moves.</p>
-      ${calendarBlock(base, group.handle)}
-    </div>
-    <h2>Talk</h2>
-    ${runs ? coverScript(`/@${esc(group.handle)}/manage`) : ""}
-    ${viewer ? `<form class="say" method="post" action="/@${esc(group.handle)}/say"
-        enctype="multipart/form-data">
-      <textarea name="say" maxlength="2000"
-        placeholder="Write a post, or add a photo..."></textarea>
-      <div class="sayrow">
-        <label class="pickfile">\u{1F4F7} Add photo/video
-          <input type="file" name="media" accept="image/*,video/*">
-        </label>
-        <button class="btn" type="submit">Post</button>
-      </div>
-    </form>` : ""}
-    ${postList(posts || [])}
-  `, hero(group.name || group.handle, "", group.cover_key, "",
-      runs ? coverTools(`/@${group.handle}/manage`, true) : "", runs),
-    peopleRail(people, base, group.handle, runs));
-}
-
 // A person at their @name. Not a second group page: a person is who they are
 // and what they run, and the parties themselves live on the group's page where
 // somebody can follow them.
@@ -1522,16 +1444,6 @@ async function partiesOwnedBy(env, emailNorm, now) {
       .sort((a, b) => (a.starts_ms || Infinity) - (b.starts_ms || Infinity)),
     past: all.filter((e) => partyIsPast(e, now)),
   };
-}
-
-async function runsGroups(env, emailNorm) {
-  const { results } = await env.DB.prepare(
-    `SELECT g.handle, g.name, g.bio FROM groups g
-       JOIN group_djs gd ON gd.group_id = g.id
-       JOIN djs d ON d.id = gd.dj_id
-      WHERE d.email_norm = ? ORDER BY g.created_ms`
-  ).bind(emailNorm).all();
-  return results || [];
 }
 
 // My half of a party page: whether I went, what I thought, who played, who I
@@ -1760,6 +1672,28 @@ function notice(title, message) {
 // thing they still supply is a home for parties made before the change. Their
 // own @name is tried first so somebody who has both - which is everybody who
 // ever made a group - is found as themselves.
+// The party at /@handle/<slug>. Found by its OWNER, which is what an address
+// means now - the group behind it is only how a party made before the change
+// can still be reached. Returns the row and the person it belongs to.
+async function partyAt(env, handle, slug) {
+  const profile = await profileByHandle(env, handle);
+  if (profile) {
+    const event = await env.DB.prepare(
+      `SELECT * FROM events WHERE owner_email = ? AND slug = ?`
+    ).bind(profile.email_norm, slug).first();
+    if (event) return { event, profile };
+  }
+  // An address that was a group's handle, or a party from before owners.
+  const group = await groupByHandle(env, handle);
+  if (!group) return null;
+  const event = await env.DB.prepare(
+    `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+  ).bind(group.id, slug).first();
+  if (!event) return null;
+  return { event, profile: profile || (event.owner_email
+    ? await profileByHandle(env, handle) : null) };
+}
+
 async function groupByHandle(env, handle) {
   const clean = String(handle || "").toLowerCase();
   const profile = await env.DB.prepare(`SELECT * FROM profiles WHERE handle = ?`)
@@ -1779,18 +1713,6 @@ async function upcomingEvents(env, groupId, now) {
   const { results } = await env.DB.prepare(
     `SELECT * FROM events WHERE group_id = ? AND state != 'draft'
        AND (starts_ms IS NULL OR starts_ms > ?) ORDER BY starts_ms ASC LIMIT 50`
-  ).bind(groupId, now - 12 * 60 * 60 * 1000).all();
-  return results || [];
-}
-
-// Nights that have already happened. A group's page is its story, not just its
-// diary: someone deciding whether to follow wants to see that there have been
-// twelve of these, not an empty "nothing coming up".
-async function pastEvents(env, groupId, now) {
-  const { results } = await env.DB.prepare(
-    `SELECT * FROM events WHERE group_id = ? AND state != 'draft'
-       AND starts_ms IS NOT NULL AND starts_ms <= ?
-     ORDER BY starts_ms DESC LIMIT 12`
   ).bind(groupId, now - 12 * 60 * 60 * 1000).all();
   return results || [];
 }
@@ -2705,23 +2627,6 @@ async function eventPosts(env, eventId) {
       WHERE p.event_id = ? AND p.deleted_ms IS NULL
       ORDER BY p.created_ms DESC LIMIT 200`
   ).bind(eventId).all();
-  return results || [];
-}
-
-async function recentPosts(env, groupId) {
-  const { results } = await env.DB.prepare(
-    `SELECT p.*,
-            COALESCE(pd.name, pm.name) AS profile_name,
-            COALESCE(pd.handle, pm.handle) AS handle,
-            COALESCE(pd.avatar_key, pm.avatar_key) AS avatar_key
-       FROM posts p
-       LEFT JOIN members m ON m.id = p.member_id
-       LEFT JOIN djs d ON d.id = p.dj_id
-       LEFT JOIN profiles pm ON pm.email_norm = m.email_norm
-       LEFT JOIN profiles pd ON pd.email_norm = d.email_norm
-      WHERE p.group_id = ? AND p.event_id IS NULL AND p.deleted_ms IS NULL
-      ORDER BY p.created_ms DESC LIMIT 30`
-  ).bind(groupId).all();
   return results || [];
 }
 
@@ -3856,14 +3761,14 @@ export default {
     // because the one place a venue reliably has no signal is the door.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/door$/);
     if (match) {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       const { results } = await env.DB.prepare(
         `SELECT m.id, m.name, m.email_norm FROM signups s JOIN members m ON m.id = s.member_id
           WHERE s.event_id = ? AND s.state = 'going' ORDER BY m.name, m.email_norm`
@@ -3905,7 +3810,11 @@ export default {
     // along as a hidden field and lands with everything else.
     match = path.match(/^\/@([a-z0-9]+)\/new$/);
     if (match) {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env, "Sign in", path));
@@ -4269,10 +4178,6 @@ export default {
     if (match) {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       return new Response(icsFor(group, [event], base), {
         headers: {
           "content-type": "text/calendar;charset=utf-8",
@@ -4375,26 +4280,42 @@ export default {
     }
 
     // Joining a group from its page.
+    // Following a PERSON. Membership of a group was how this worked and groups
+    // are dead; the follow is recorded against the two people, and privately -
+    // whether it is anybody else's business is the follower's to decide.
     match = path.match(/^\/@([a-z0-9]+)\/join$/);
     if (match && request.method === "POST") {
+      const them = await profileByHandle(env, match[1]);
       const group = await groupByHandle(env, match[1]);
-      if (!group) return new Response("Not Found", { status: 404 });
+      if (!them && !group) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       const emailNorm = normalizeEmail(form && form.get("email"));
       if (!emailNorm) return notice("That address did not look right", "Go back and try again.");
-      await joinGroup(env, group, emailNorm, String((form && form.get("name")) || "").slice(0, 60), "link", base, now);
+      if (them && them.email_norm !== emailNorm) {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO follows (follower_email, person_email, public, created_ms)
+           VALUES (?,?,0,?)`
+        ).bind(emailNorm, them.email_norm, now).run();
+      }
+      // The confirmation email, and the settings link in it, still ride on the
+      // member record. That machinery outlives groups; it is how somebody with
+      // no account hears anything at all.
+      if (group) {
+        await joinGroup(env, group, emailNorm,
+          String((form && form.get("name")) || "").slice(0, 60), "link", base, now);
+      }
       return notice("Check your email", `We sent one message to ${emailNorm}. Tap the link in it and you are in.`);
     }
 
     // Saying you are coming, from the night's own page.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/going$/);
     if (match && request.method === "POST") {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       const emailNorm = normalizeEmail(form && form.get("email"));
       if (!emailNorm) return notice("That address did not look right", "Go back and try again.");
@@ -4433,12 +4354,15 @@ export default {
 
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/buy$/);
     if (match && request.method === "POST") {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ? AND state != 'draft'`
-      ).bind(group.id, match[2]).first();
-      if (!event || !event.ticket_cents) return new Response("Not Found", { status: 404 });
+      if (event.state === "draft" || !event.ticket_cents) {
+        return new Response("Not Found", { status: 404 });
+      }
       if (!group.stripe_acct || !stripeConfigured(env)) {
         return notice("Tickets are not on sale", "The DJ has not connected a payment account.");
       }
@@ -4516,12 +4440,12 @@ export default {
     // already carries who they are and needs no password.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/say$/);
     if (match && request.method === "POST") {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       const viewer = await viewerOf(env, request, group, now);
       if (!viewer || (!viewer.runsThisGroup && !viewer.follows)) {
         return notice("Not yours to post to", "Ask for the link to this party.");
@@ -4563,12 +4487,13 @@ export default {
     // A night.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)$/);
     if (match) {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      if (event.state === "draft") return new Response("Not Found", { status: 404 });
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ? AND state != 'draft'`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       const viewer = await currentDJ(env, request, now);
       // The tracker is the signed-in person's own record OF this party -
       // available whether or not the party is theirs, because going to
@@ -4600,16 +4525,16 @@ export default {
     // the same rules as the Mac's own edit route - one party, two clients.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/edit$/);
     if (match && request.method === "POST") {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) {
         return html(403, signInPage(env, "Sign in", `/@${match[1]}/${match[2]}`));
       }
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not save", "Try again.");
 
@@ -4647,14 +4572,14 @@ export default {
     // removing somebody. All of it belongs to whoever is signed in.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/record$/);
     if (match && request.method === "POST") {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!dj) return html(200, signInPage(env, "Sign in", `/@${match[1]}/${match[2]}`));
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not save", "Try again.");
       const back = `/@${group.handle}/${event.slug}`;
@@ -4725,14 +4650,14 @@ export default {
     // this is the one thing on it only the DJ may do.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/cover$/);
     if (match && request.method === "POST") {
-      const group = await groupByHandle(env, match[1]);
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
-      const event = await env.DB.prepare(
-        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-      ).bind(group.id, match[2]).first();
-      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       const cover = form && await coverFromForm(env, form, event.cover_key);
       if (cover && cover.error) return notice("That picture did not take", cover.error);

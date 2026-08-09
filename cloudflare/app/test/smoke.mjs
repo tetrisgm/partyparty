@@ -2066,6 +2066,30 @@ test("a party is playing right now only while a Mac keeps saying so", async () =
   assert.match(page, /href="https:\/\/early-heron/, "and the last good link is kept");
 });
 
+test("a party is found by its owner, and following is between people", async () => {
+  const { env, send, read } = await signedIn();
+  const me = one(env, `SELECT email_norm FROM djs`).email_norm;
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+  await send("/parties/new", { title: "Warehouse" });
+  const ev = one(env, `SELECT * FROM events`);
+
+  // The address is the PERSON's @name. Point the party at a group nobody has
+  // ever heard of and it is still reachable at mine, because the lookup no
+  // longer goes through groups at all.
+  const orphan = seedGroup(env, "nowhere");
+  env.raw.prepare(`UPDATE events SET group_id = ? WHERE id = ?`).run(orphan, ev.id);
+  assert.equal((await read(`/@${handle}/${ev.slug}`)).status, 200,
+    "found by whose it is, not by which group holds it");
+
+  // Following writes the two people, and privately: nobody consented to being
+  // seen following anybody.
+  await post(env, `/@${handle}/join`, { email: "fan@example.com", name: "Fan" });
+  const follow = one(env, `SELECT * FROM follows`);
+  assert.equal(follow.follower_email, "fan@example.com");
+  assert.equal(follow.person_email, me);
+  assert.equal(follow.public, 0, "private by default");
+});
+
 test("a night is a day, a place, and what was played", async () => {
   const { env, send, read } = await signedIn();
 
