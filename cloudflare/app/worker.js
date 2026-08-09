@@ -613,6 +613,17 @@ input[type=datetime-local],input[type=search]{width:100%;min-height:44px;padding
 border-radius:var(--r-sm);border:1px solid var(--separator);background:var(--bg-elevated);
 color:var(--label);font:inherit;font-size:15px;outline:none}
 input[type=datetime-local]:focus,input[type=search]:focus{border-color:var(--accent)}
+/* What was played, in the order it was played. Numbers in the margin so the
+   list reads as a record rather than as another form. */
+.setlist{list-style:none;counter-reset:song;padding:0;margin:0 0 12px;display:grid;gap:2px}
+.setlist li{counter-increment:song;display:flex;align-items:center;gap:10px;
+padding:9px 12px;border-radius:var(--r-sm);min-width:0}
+.setlist li:nth-child(odd){background:var(--bg-elevated)}
+.setlist li::before{content:counter(song);font-variant-numeric:tabular-nums;
+font-size:12px;font-weight:700;color:var(--label-tertiary);min-width:1.4em}
+.setlist .grow{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setlist .notemini{margin:0;flex:0 0 auto}
+.say textarea{min-height:72px;margin-bottom:8px}
 .handlesays[data-state="ok"]{color:var(--success)}
 .handlesays[data-state="bad"]{color:var(--accent)}
 
@@ -1002,13 +1013,47 @@ async function coverFromForm(env, form, current) {
   return null;
 }
 
+// A party is a DAY. Nobody journalling a night remembers that it started at
+// 21:00, and being asked for a time is one more field between standing in a
+// room and writing down that you were there. The hour is kept on the row for
+// upcoming/past and for a broadcast, and simply not shown.
 function whenText(event) {
   if (!event.starts_ms) return "Date to come";
   const date = new Date(event.starts_ms);
-  return date.toLocaleString("en-GB", {
-    weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-    timeZone: event.timezone || "UTC",
-  });
+  const parts = { weekday: "short", day: "numeric", month: "short", timeZone: event.timezone || "UTC" };
+  // A party from before the change carried a real time somebody typed, so it
+  // still gets one. Everything made since is a day.
+  if (!event.day_only) parts.hour = "2-digit", parts.minute = "2-digit";
+  const stamp = date.toLocaleString("en-GB", parts);
+  // The year, once it is not this one - a journal is read years later.
+  const year = date.getUTCFullYear();
+  return year === new Date().getUTCFullYear() ? stamp : `${stamp} ${year}`;
+}
+
+// What was played. The order they were added is the order they were played,
+// which is what somebody standing at a party can actually produce.
+async function songsFor(env, eventId) {
+  const { results } = await env.DB.prepare(
+    `SELECT s.*, p.name AS person_name FROM songs s
+       LEFT JOIN people p ON p.id = s.person_id
+      WHERE s.event_id = ? ORDER BY s.seq, s.created_ms`
+  ).bind(eventId).all();
+  return results || [];
+}
+
+async function addSong(env, emailNorm, eventId, { title, artist, personId }, now) {
+  const clean = String(title || "").trim().slice(0, 200);
+  if (!clean) return null;
+  const next = await env.DB.prepare(
+    `SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM songs WHERE event_id = ?`
+  ).bind(eventId).first();
+  const id = ulid(now);
+  await env.DB.prepare(
+    `INSERT INTO songs (id, event_id, owner_email, title, artist, person_id, seq, created_ms)
+     VALUES (?,?,?,?,?,?,?,?)`
+  ).bind(id, eventId, emailNorm, clean, String(artist || "").trim().slice(0, 120),
+    personId || null, next ? next.n : 1, now).run();
+  return id;
 }
 
 function initials(name) {
@@ -1494,7 +1539,7 @@ async function runsGroups(env, emailNorm) {
 //
 // Only ever rendered for the person it belongs to. A note is a diary entry, not
 // content, and nothing in here appears on anybody else's screen.
-function trackerBlock(event, group, note, people, allNames) {
+function trackerBlock(event, group, note, people, allNames, songs) {
   const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
   const attended = note && note.attended === 1;
   const list = (role, empty) => {
@@ -1540,6 +1585,25 @@ function trackerBlock(event, group, note, people, allNames) {
       <button class="btn plain" type="submit">Add a DJ</button>
     </form>
 
+    <h2>Songs</h2>
+    ${songs && songs.length ? `<ol class="setlist">${songs.map((song) => `<li>
+      <span class="grow"><b>${esc(song.title)}</b>${
+        song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}${
+        song.person_name ? ` <span class="tag quiet">${esc(song.person_name)}</span>` : ""}</span>
+      <form method="post" action="${action}" class="notemini">
+        <input type="hidden" name="song" value="${esc(song.id)}">
+        <button class="btn plain small" type="submit" name="remove" value="1"
+          formnovalidate aria-label="Remove ${esc(song.title)}">\u2715</button>
+      </form>
+    </li>`).join("")}</ol>` : `<p class="muted">Nothing written down yet.</p>`}
+    <form class="join" method="post" action="${esc(action)}">
+      <input type="text" name="songTitle" maxlength="200" required
+        placeholder="What is playing" autocomplete="off">
+      <input type="text" name="songArtist" maxlength="120"
+        placeholder="Who by" autocomplete="off">
+      <button class="btn plain" type="submit">Add</button>
+    </form>
+
     <h2>Who you saw</h2>
     ${list("guest", "Nobody recorded yet.")}
     <form class="join" method="post" action="${esc(action)}">
@@ -1565,7 +1629,7 @@ function partyEditor(group, event, error, typed) {
   // datetime-local wants the wall clock it will show back. Everything stored is
   // UTC ms, so this is the same conversion the create form does, in reverse.
   const localValue = event.starts_ms
-    ? new Date(event.starts_ms).toISOString().slice(0, 16) : "";
+    ? new Date(event.starts_ms).toISOString().slice(0, 10) : "";
   return `<details class="edit"${error ? " open" : ""}>
     <summary>Edit the details</summary>
     ${error ? `<p class="formerror" role="alert">${esc(error)}</p>` : ""}
@@ -1574,8 +1638,7 @@ function partyEditor(group, event, error, typed) {
         <input type="text" name="title" maxlength="120" required
           value="${was("title", event.title || "")}"></label>
       <label class="eventfield"><span>When</span>
-        <input type="datetime-local" name="starts"
-          value="${was("starts", localValue)}"></label>
+        <input type="date" name="day" value="${was("day", localValue)}"></label>
       <label class="eventfield"><span>Where</span>
         <input type="text" name="place" maxlength="120"
           value="${was("place", event.place || "")}"></label>
@@ -2449,18 +2512,19 @@ async function homeGroupFor(env, dj, now) {
 
 // Adding a party: a name, and everything else optional. Somebody standing
 // outside a club typing this on a phone will not fill in six fields.
-function newPartyPage(group, state, form) {
+function newPartyPage(group, state, form, today) {
   const was = (name) => esc((form && form.get(name)) || "");
   return page("Add a party", `
     <h1>Add a party</h1>
-    <p class="muted">Only the name is needed. Fill the rest in whenever - or never.</p>
+    <p class="muted">Today's date is already in. Only the name is needed - fill the
+    rest in whenever, or never.</p>
     ${state.error ? `<p class="formerror" role="alert">${esc(state.error)}</p>` : ""}
     <form class="newnight" method="post" action="/parties/new">
       <label class="eventfield"><span>What is it called?</span>
         <input type="text" name="title" maxlength="120" required autofocus
           value="${was("title")}" placeholder="Warehouse, late"></label>
       <label class="eventfield"><span>When</span>
-        <input type="datetime-local" name="starts" value="${was("starts")}"></label>
+        <input type="date" name="day" value="${was("day") || esc(today)}"></label>
       <label class="eventfield"><span>Where</span>
         <input type="text" name="place" maxlength="120" value="${was("place")}"
           placeholder="Unit 7, or a friend's kitchen"></label>
@@ -2471,6 +2535,11 @@ function newPartyPage(group, state, form) {
     </form>
     <p class="muted"><a href="/home">Back to your parties</a></p>
   `, "", "", true);
+}
+
+// Today, as a date field wants it.
+function todayISO(now) {
+  return new Date(now).toISOString().slice(0, 10);
 }
 
 function slugify(title, now) {
@@ -3591,17 +3660,21 @@ export default {
         if (!form) return notice("That did not save", "Try again.");
         const title = String(form.get("title") || "").trim();
         if (!title) {
-          return html(200, newPartyPage(group, { error: "Give it a name first." }, form));
+          return html(200, newPartyPage(group, { error: "Give it a name first." }, form, todayISO(now)));
         }
-        const startsRaw = String(form.get("starts") || "");
-        const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
+        // A day, at midday. Storing midnight means a reader an hour west sees
+        // the party on the day before, which in a journal is simply wrong.
+        const dayRaw = String(form.get("day") || "");
+        const starts = dayRaw ? Date.parse(dayRaw + "T12:00:00Z") : null;
         const made = await createParty(env, group, {
           ownerEmail: dj.email_norm,
           title,
           startsMs: Number.isFinite(starts) ? starts : null,
           place: form.get("place"),
         }, now);
-        if (made.error) return html(200, newPartyPage(group, { error: made.error }, form));
+        if (made.error) {
+          return html(200, newPartyPage(group, { error: made.error }, form, todayISO(now)));
+        }
         // The DJ, typed as a name, becomes a person - so their history starts
         // accruing from the first party rather than from whenever I first
         // thought to make a contact record.
@@ -3617,7 +3690,7 @@ export default {
           status: 302, headers: { location: `/@${group.handle}/${made.slug}` },
         });
       }
-      return html(200, newPartyPage(group, {}, null));
+      return html(200, newPartyPage(group, {}, null, todayISO(now)));
     }
 
     // Everyone I have recorded, and one person's whole history.
@@ -4504,7 +4577,8 @@ export default {
         ? trackerBlock(event, group,
             await myPartyNote(env, viewer.email_norm, event.id),
             await partyPeople(env, viewer.email_norm, event.id),
-            await peopleFor(env, viewer.email_norm, ""))
+            await peopleFor(env, viewer.email_norm, ""),
+            await songsFor(env, event.id))
         : "";
       return html(200, eventPage(group, event, await goingCount(env, event.id), base,
         await takeRateFor(env, group.id),
@@ -4547,18 +4621,19 @@ export default {
         trackerBlock(event, group,
           await myPartyNote(env, dj.email_norm, event.id),
           await partyPeople(env, dj.email_norm, event.id),
-          await peopleFor(env, dj.email_norm, "")),
+          await peopleFor(env, dj.email_norm, ""),
+          await songsFor(env, event.id)),
         { live: liveNow(event, now), phase: partyPhase(event, now),
-          editError: why, typed: form }));
+          editError: why, typed: form, posts: await eventPosts(env, event.id), canPost: true }));
 
-      const startsRaw = String(form.get("starts") || "");
-      const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
-      if (startsRaw && !Number.isFinite(starts)) {
+      const dayRaw = String(form.get("day") || "");
+      const starts = dayRaw ? Date.parse(dayRaw + "T12:00:00Z") : null;
+      if (dayRaw && !Number.isFinite(starts)) {
         return refuse("That date did not make sense.");
       }
       const done = await updateParty(env, event, {
         title: form.get("title"),
-        startsMs: startsRaw ? starts : null,
+        startsMs: dayRaw ? starts : null,
         place: form.get("place"),
         links: form.get("links"),
       }, now);
@@ -4595,6 +4670,21 @@ export default {
            VALUES (?,?,?,?,?)
            ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
         ).bind(event.id, person.id, dj.email_norm, role, now).run();
+        return new Response(null, { status: 302, headers: { location: back } });
+      }
+
+      // A song, as it plays. One field and a button: anything more and it does
+      // not get written down while the room is dark and loud.
+      const songTitle = String(form.get("songTitle") || "").trim();
+      if (songTitle) {
+        await addSong(env, dj.email_norm, event.id,
+          { title: songTitle, artist: form.get("songArtist") }, now);
+        return new Response(null, { status: 302, headers: { location: back } });
+      }
+      const songId = String(form.get("song") || "");
+      if (songId) {
+        await env.DB.prepare(`DELETE FROM songs WHERE id = ? AND owner_email = ?`)
+          .bind(songId, dj.email_norm).run();
         return new Response(null, { status: 302, headers: { location: back } });
       }
 

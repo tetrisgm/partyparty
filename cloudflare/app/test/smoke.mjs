@@ -1866,17 +1866,20 @@ test("an unsigned Mac has no parties and cannot make one", async () => {
 
 test("the acceptance scenario, end to end", async () => {
   const { env, send, read } = await signedIn();
-  const at = (iso) => iso; // datetime-local, as a browser sends it
+  const at = (iso) => iso; // a date field, as a browser sends it
 
   // 2-5. An upcoming party, with a date, a place, a DJ, and two people who
   // have never heard of PartyParty.
   const made = await send("/parties/new", {
-    title: "Warehouse, late", starts: at("2099-09-12T21:00"), place: "Unit 7", dj: "Seth",
+    title: "Warehouse, late", day: at("2099-09-12"), place: "Unit 7", dj: "Seth",
   });
   assert.equal(made.status, 302);
   const ev = one(env, `SELECT * FROM events`);
   assert.equal(ev.title, "Warehouse, late");
   assert.equal(ev.place, "Unit 7");
+  // A day, stored at midday so no reader sees it land on the day before.
+  assert.equal(ev.starts_ms, Date.parse("2099-09-12T12:00:00Z"),
+    "the date typed is the date stored");
   const where = `/@${one(env, `SELECT handle FROM groups`).handle}/${ev.slug}`;
 
   for (const name of ["Ada", "Bo"]) {
@@ -1893,9 +1896,9 @@ test("the acceptance scenario, end to end", async () => {
 
   // 8-10. Move it into the past through the page's own edit form - the same
   // updateParty the Mac calls - then say I went, and note one person.
-  const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 16);
+  const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const edited = await send(`${where}/edit`, {
-    title: "Warehouse, late", starts: lastWeek, place: "Unit 7",
+    title: "Warehouse, late", day: lastWeek, place: "Unit 7",
     links: "Tickets | https://tickets.example/warehouse",
   });
   assert.equal(edited.status, 302, "editing a party is a normal form post");
@@ -1918,7 +1921,7 @@ test("the acceptance scenario, end to end", async () => {
 
   // 13-14. A second party with the same person reuses her, and her history
   // shows both - one Ada, not two.
-  await send("/parties/new", { title: "Rooftop", starts: at("2099-10-01T20:00") });
+  await send("/parties/new", { title: "Rooftop", day: at("2099-10-01") });
   const second = rows(env, `SELECT * FROM events ORDER BY created_ms`)[1];
   const there = `/@${one(env, `SELECT handle FROM groups`).handle}/${second.slug}`;
   await send(`${there}/record`, { who: "Ada", role: "guest" });
@@ -1956,7 +1959,7 @@ test("a party's details are editable from the web, and refused when empty", asyn
   // The form is on the party page for its owner, filled in with what is there.
   const owner = await (await read(where)).text();
   assert.match(owner, /Edit the details/);
-  assert.match(owner, /name="starts"/);
+  assert.match(owner, /name="day"/, "a day, not a datetime: the product has no time in it");
 
   const refused = await send(`${where}/edit`, { title: "   ", starts: "", place: "" });
   assert.equal(refused.status, 200, "a refusal is the page again, not a dead end");
@@ -1967,14 +1970,14 @@ test("a party's details are editable from the web, and refused when empty", asyn
   // A bad date is refused with what was typed still in the form, rather than
   // silently storing nothing where a time should be.
   const badDate = await (await send(`${where}/edit`,
-    { title: "Basement", starts: "the third of never" })).text();
+    { title: "Basement", day: "the third of never" })).text();
   assert.match(badDate, /did not make sense/);
   assert.match(badDate, /value="Basement"/);
 
   // Clearing the date is a real edit, not a no-op: a party can lose its time.
-  await send(`${where}/edit`, { title: "Basement", starts: "2099-01-02T23:30", place: "Mine" });
-  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, Date.parse("2099-01-02T23:30Z"));
-  await send(`${where}/edit`, { title: "Basement", starts: "", place: "Mine" });
+  await send(`${where}/edit`, { title: "Basement", day: "2099-01-02", place: "Mine" });
+  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, Date.parse("2099-01-02T12:00:00Z"));
+  await send(`${where}/edit`, { title: "Basement", day: "", place: "Mine" });
   assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, null);
 
   // And it is not open to a passer-by.
@@ -2061,6 +2064,51 @@ test("a party is playing right now only while a Mac keeps saying so", async () =
   assert.ok(!page.includes("javascript:alert"), "only an https room is offered to a listener");
   assert.match(page, /Playing right now/, "the heartbeat still counts");
   assert.match(page, /href="https:\/\/early-heron/, "and the last good link is kept");
+});
+
+test("a night is a day, a place, and what was played", async () => {
+  const { env, send, read } = await signedIn();
+
+  // Today is already in the form. Standing at a party, the date is not a
+  // question worth asking.
+  const form = await (await read("/parties/new")).text();
+  assert.match(form, /type="date"/);
+  assert.ok(!/<input[^>]*type="datetime-local"/.test(form),
+    "no time field: nobody journals that it started at 21:00");
+  assert.match(form, new RegExp(`value="${new Date().toISOString().slice(0, 10)}"`),
+    "today is filled in already");
+
+  await send("/parties/new", { title: "Warehouse", day: "2026-08-08", place: "Unit 7" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+  assert.equal(ev.day_only, 1);
+
+  let page = await (await read(where)).text();
+  assert.match(page, /Sat 8 Aug/);
+  assert.ok(!/21:00|12:00|00:00/.test(page), "the hour is never shown");
+  assert.match(page, /Nothing written down yet/);
+
+  // A song, in one field, as it plays.
+  await send(`${where}/record`, { songTitle: "Windowlicker", songArtist: "Aphex Twin" });
+  await send(`${where}/record`, { songTitle: "Papua New Guinea" });
+  const played = rows(env, `SELECT * FROM songs ORDER BY seq`);
+  assert.deepEqual(played.map((x) => x.title), ["Windowlicker", "Papua New Guinea"],
+    "the order they were added is the order they were played");
+  assert.equal(played[0].artist, "Aphex Twin");
+
+  page = await (await read(where)).text();
+  assert.match(page, /Windowlicker/);
+  assert.match(page, /Aphex Twin/);
+  assert.match(page, /Papua New Guinea/);
+
+  // Written down by mistake, taken back off.
+  await send(`${where}/record`, { song: played[1].id, remove: "1" });
+  assert.deepEqual(rows(env, `SELECT title FROM songs`).map((x) => x.title), ["Windowlicker"]);
+
+  // A setlist is the owner's, like the rest of the record.
+  assert.ok(!(await (await get(env, where)).text()).includes("Windowlicker"),
+    "what was played is mine until I share it");
 });
 
 test("a party belongs to a person, not to a group", async () => {
