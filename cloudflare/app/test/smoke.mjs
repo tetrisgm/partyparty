@@ -529,7 +529,7 @@ test("photos and words belong to the night they happened at", async () => {
   const where = `/@${handle}/${ev.slug}`;
 
   const empty = await (await read(where)).text();
-  assert.match(empty, /No photos or notes here yet/);
+  assert.match(empty, /Photos and anything said here land in this space/, "an empty space says what belongs in it");
 
   const said = await send(`${where}/say`, { say: "The room went off at two" });
   assert.equal(said.status, 302);
@@ -2144,7 +2144,7 @@ test("a night is a day, a place, and what was played", async () => {
   let page = await (await read(where)).text();
   assert.match(page, /Sat 8 Aug/);
   assert.ok(!/21:00|12:00|00:00/.test(page), "the hour is never shown");
-  assert.match(page, /Nothing written down yet/);
+  assert.match(page, /What was played, in the order it was played/);
 
   // A song, in one field, as it plays.
   await send(`${where}/record`, { songTitle: "Windowlicker", songArtist: "Aphex Twin" });

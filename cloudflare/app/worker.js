@@ -595,6 +595,33 @@ font-size:11px;font-weight:700;letter-spacing:.02em;background:var(--fill);
 color:var(--label-secondary)}
 .tag.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--separator)}
 .tag.live{background:rgba(255,45,111,.16);color:var(--accent)}
+/* A night has a colour. Derived from the cover's own name rather than its
+   pixels - a Worker has no image pipeline, and a stable hue per picture is the
+   honest version of the same idea: every party looks like itself, and looks the
+   same every time you open it. */
+.nightlit{--night:var(--accent)}
+.nightlit .hero .cover{box-shadow:var(--shadow),0 0 90px -30px var(--night)}
+.nightlit h2{color:var(--label)}
+.nightlit .entry:hover,.nightlit .people li:hover{
+background:color-mix(in srgb,var(--night) 7%,var(--bg-elevated))}
+.nightlit .addline:focus-within{border-color:var(--night)}
+.nightlit .addline:focus-within button,.nightlit button.onfocus{background:var(--night)}
+
+/* Photos first: a night is mostly pictures, and a grid is how you look back at
+   one. Two up on a phone, three where there is room. */
+.roll{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+gap:6px;margin:0 0 16px}
+.roll figure{margin:0;position:relative;border-radius:var(--r-sm);overflow:hidden;
+background:var(--bg-elevated);aspect-ratio:1}
+.roll img,.roll video{width:100%;height:100%;object-fit:cover;display:block}
+.roll figcaption{position:absolute;left:0;right:0;bottom:0;padding:16px 10px 8px;
+font-size:12px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.72));
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* An empty space says what belongs in it, not that it is empty. */
+.blank{margin:0 0 10px;padding:14px 12px;border-radius:var(--r-sm);
+background:var(--bg-elevated);color:var(--label-tertiary);font-size:14px;line-height:1.5}
+
 /* The welcome, folded down to one line. */
 details.welcome{margin:0 0 18px}
 details.welcome summary{display:flex;align-items:center;gap:12px;cursor:pointer;
@@ -716,8 +743,10 @@ padding:9px 12px;border-radius:var(--r-sm);min-width:0}
 .setlist li::before{content:counter(song);font-variant-numeric:tabular-nums;
 font-size:12px;font-weight:700;color:var(--label-tertiary);min-width:1.4em}
 .setlist .grow{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.setlist .notemini{margin:0;flex:0 0 auto}
-.say textarea{min-height:72px;margin-bottom:8px}
+.setlist form{margin:0;flex:0 0 auto}
+.setlist li:hover .x,.setlist .x:focus{opacity:1}
+.addline .camera{background:none;color:var(--label-tertiary);font-size:15px;width:26px}
+.addline .camera:hover{color:var(--label)}
 .handlesays[data-state="ok"]{color:var(--success)}
 .handlesays[data-state="bad"]{color:var(--accent)}
 
@@ -735,7 +764,23 @@ box-shadow:0 0 0 0 rgba(255,45,111,.55);animation:pulse 1.8s ease-out infinite}
 background:var(--bg-elevated);border:1px solid var(--separator);
 font-size:14px;font-weight:650;text-decoration:none;max-width:100%;
 overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-details.edit{margin:-10px 0 0}
+details.edit{margin:0}
+details.edit summary{padding:5px 0}
+/* Who may see it, as one chip with the night. */
+/* One row of quiet controls under the night, not a stack of them. Either can
+   open, and opening one takes the whole row's width. */
+.nightbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 6px}
+.nightbar details[open]{flex:1 1 100%}
+details.seen{display:inline-block}
+details.seen summary{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+list-style:none;font-size:13px;font-weight:600;color:var(--label-secondary);
+padding:5px 12px;border-radius:var(--r-pill);background:var(--bg-elevated)}
+details.seen summary::-webkit-details-marker{display:none}
+details.seen summary:hover{color:var(--label)}
+.dotv{width:7px;height:7px;border-radius:50%;background:var(--label-tertiary)}
+.dotv.link{background:#f0b429}
+.dotv.public{background:var(--success,#3ddc84)}
+details.seen[open]{display:block;margin-bottom:10px}
 details.edit summary{cursor:pointer;font-size:13px;font-weight:600;
 color:var(--label-secondary);padding:6px 0;list-style:none}
 details.edit summary::-webkit-details-marker{display:none}
@@ -761,8 +806,9 @@ font-weight:700;width:auto;flex:1 1 auto}
 /* Changing the picture on a cover, the way the console does it: the buttons
    sit on the image itself rather than in a settings drawer below it. */
 .coveractions{position:absolute;right:26px;bottom:26px;display:flex;gap:8px;z-index:2}
-.coveractions button{min-height:30px;padding:0 12px;border-radius:var(--r-pill);
-background:rgba(0,0,0,.38);color:rgba(255,255,255,.82);font:inherit;font-size:12px;font-weight:600;
+.coveractions{right:20px;bottom:auto;top:20px}
+.coveractions button{width:32px;height:32px;padding:0;border-radius:50%;
+background:rgba(0,0,0,.34);color:rgba(255,255,255,.78);font:inherit;font-size:15px;
 cursor:pointer;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
 border:1px solid rgba(255,255,255,.14)}
 .coveractions button:hover{background:rgba(0,0,0,.62)}
@@ -852,7 +898,7 @@ background:linear-gradient(200deg,rgba(255,45,111,.26),rgba(10,10,12,.38))}
 }
 `;
 
-function page(title, body, heroHtml, rail, wide) {
+function page(title, body, heroHtml, rail, wide, lit) {
   const shell = rail
     ? `<div class="withrail"><div>${body}</div>${rail}</div>`
     : `<main${wide ? ` class="wide"` : ""}>${body}</main>`;
@@ -860,7 +906,7 @@ function page(title, body, heroHtml, rail, wide) {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <title>${esc(title)}</title><style>${STYLE}</style></head>
-<body>${heroHtml || ""}${shell}
+<body${lit ? ` class="nightlit"` : ""}>${heroHtml || ""}${shell}
 <footer><a href="/home">PartyParty</a></footer></body></html>`;
 }
 
@@ -903,8 +949,10 @@ function coverTools(action, fromPublic) {
     <form class="coveractions" method="post" action="${esc(action)}"
       enctype="multipart/form-data" id="coverForm">
     ${fromPublic ? `<input type="hidden" name="fromPublic" value="1">` : ""}
-    <button type="submit" name="shuffleCover" value="1">Shuffle image</button>
-    <button type="button" onclick="this.nextElementSibling.click()">Upload image</button>
+    <button type="submit" name="shuffleCover" value="1"
+      aria-label="Shuffle image" title="Shuffle image">\u21bb</button>
+    <button type="button" onclick="this.nextElementSibling.click()"
+      aria-label="Upload image" title="Upload image">\u2191</button>
     <input type="file" name="cover" accept="image/*"
       onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
   </form>`;
@@ -1573,7 +1621,7 @@ function trackerBlock(event, group, note, people, allNames, songs) {
         <input class="quiet" type="text" name="encounter" maxlength="2000"
           value="${esc(p.note || "")}" placeholder="Add a note about them">
         <button class="onfocus" type="submit">Save</button>
-      </form></li>`).join("")}</ul>` : `<p class="muted">${empty}</p>`}
+      </form></li>`).join("")}</ul>` : `<p class="blank">${empty}</p>`}
     <form class="addline" method="post" action="${esc(action)}">
       <input type="hidden" name="role" value="${role}">
       <input type="text" name="who" list="knownpeople" maxlength="80" required
@@ -1582,27 +1630,27 @@ function trackerBlock(event, group, note, people, allNames, songs) {
     </form>`;
   };
 
-  const seen = { private: "Only you", link: "Anyone with the link", public: "Anyone" };
-  const visibility = event.visibility || "private";
 
   return `<section class="tracker">
     <h2>Who played</h2>
-    ${list("dj", "Nobody yet.", "A DJ, an artist, whoever was on")}
+    ${list("dj", "Whoever was on. They need no account - a name is enough.",
+      "A DJ, an artist, whoever was on")}
 
     <h2>Who was there</h2>
-    ${list("guest", "Nobody yet.", "A name - they need no account")}
+    ${list("guest", "Who you were with. Next time you type their name, it is the same person.",
+      "A name - they need no account")}
 
     <h2>Songs</h2>
     ${songs && songs.length ? `<ol class="setlist">${songs.map((song) => `<li>
       <span class="grow"><b>${esc(song.title)}</b>${
         song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}${
         song.person_name ? ` <span class="tag quiet">${esc(song.person_name)}</span>` : ""}</span>
-      <form method="post" action="${action}" class="notemini">
+      <form method="post" action="${action}">
         <input type="hidden" name="song" value="${esc(song.id)}">
-        <button class="btn plain small" type="submit" name="remove" value="1"
+        <button class="x" type="submit" name="remove" value="1"
           formnovalidate aria-label="Remove ${esc(song.title)}">\u2715</button>
       </form>
-    </li>`).join("")}</ol>` : `<p class="muted">Nothing written down yet.</p>`}
+    </li>`).join("")}</ol>` : `<p class="blank">What was played, in the order it was played.</p>`}
     <form class="addline two" method="post" action="${esc(action)}">
       <input type="text" name="songTitle" maxlength="200" required
         placeholder="What is playing" autocomplete="off">
@@ -1623,19 +1671,6 @@ function trackerBlock(event, group, note, people, allNames, songs) {
       </div>
       <div class="youbar"><button class="btn" type="submit">Save</button></div>
     </form>
-
-    <h2>Who can see this</h2>
-    <form class="seenby" method="post" action="${esc(action)}">
-      ${Object.entries(seen).map(([value, label]) => `<button
-        class="btn ${value === visibility ? "" : "plain "}small" type="submit"
-        name="visibility" value="${value}"${value === visibility ? ' aria-current="true"' : ""}
-        >${esc(label)}</button>`).join("")}
-    </form>
-    <p class="muted">${visibility === "private"
-      ? "Yours. Nobody else can open this page."
-      : visibility === "link"
-        ? "Anybody you send the link to can open it, and add photos."
-        : "On your profile, for anyone."}</p>
 
     <datalist id="knownpeople">${allNames.map((n) =>
       `<option value="${esc(n.name)}"></option>`).join("")}</datalist>
@@ -1684,6 +1719,36 @@ function partyEditor(group, event, error, typed) {
 //
 // A visitor sees the night and what was shared of it, and the going/tickets/
 // calendar machinery that only means anything to somebody who was not there.
+// Who may see this night. A fact about the night, so it belongs with it - one
+// chip that says the answer and opens to the three of them. As a section in the
+// middle of the record it was a settings screen interrupting a diary.
+function seenBy(group, event) {
+  const seen = { private: "Only you", link: "Anyone with the link", public: "Anyone" };
+  const now = event.visibility || "private";
+  const says = {
+    private: "Yours. Nobody else can open this page.",
+    link: "Anybody you send the link to can open it, and add photos.",
+    public: "On your profile, for anyone.",
+  };
+  return `<details class="seen">
+    <summary><span class="dotv ${now}"></span>${esc(seen[now])}</summary>
+    <form class="seenby" method="post"
+      action="/@${esc(group.handle)}/${esc(event.slug)}/record">
+      ${Object.entries(seen).map(([value, label]) => `<button
+        class="btn ${value === now ? "" : "plain "}small" type="submit"
+        name="visibility" value="${value}"${value === now ? ' aria-current="true"' : ""}
+        >${esc(label)}</button>`).join("")}
+    </form>
+    <p class="muted">${says[now]}</p>
+  </details>`;
+}
+
+function nightHue(key) {
+  let n = 0;
+  for (const ch of String(key || "")) n = (n * 31 + ch.charCodeAt(0)) % 360;
+  return n;
+}
+
 function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra) {
   const { live, editError, typed, phase, posts, canPost, payLink, ownerName } = extra || {};
   const links = partyLinks(event.links);
@@ -1695,20 +1760,18 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
         target="_blank">${esc(l.label)}</a></li>`).join("")}</ul>` : ""}
     ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
 
-    <h2>Photos and moments</h2>
-    ${canPost ? `<form class="say" method="post" enctype="multipart/form-data"
+    <h2>Photos</h2>
+    ${canPost ? `<form class="addline say" method="post" enctype="multipart/form-data"
       action="${where}/say">
-      <textarea name="say" maxlength="2000" placeholder="What happened?"></textarea>
-      <div class="row">
-        <button class="btn plain small" type="button"
-          onclick="this.nextElementSibling.click()">Add a photo</button>
-        <input type="file" name="media" accept="image/*,video/*" hidden
-          onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
-        <button class="btn" type="submit">Post</button>
-      </div>
+      <input type="text" name="say" maxlength="2000" placeholder="Say something">
+      <button class="camera" type="button" aria-label="Add a photo"
+        onclick="this.nextElementSibling.click()">\u2b1a</button>
+      <input type="file" name="media" accept="image/*,video/*" hidden
+        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+      <button type="submit" aria-label="Post">+</button>
     </form>` : ""}
-    ${posts && posts.length ? postList(posts)
-      : `<p class="muted">No photos or notes here yet.</p>`}`;
+    ${posts && posts.length ? nightRoll(posts)
+      : `<p class="blank">Photos and anything said here land in this space.</p>`}`;
 
   // Everything a visitor needs and an owner does not: whether they are coming,
   // a ticket, the date in their own calendar, a way to tip whoever threw it.
@@ -1730,11 +1793,15 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
     <p class="muted">Kept by <a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a> -
     follow them to hear about their other nights.</p>`;
 
+  const tint = event.cover_key
+    ? `<style>body{--night:hsl(${nightHue(event.cover_key)} 78% 62%)}</style>` : "";
   return page(`${event.title || "A night"} - ${ownerName || group.handle}`, `
+    ${tint}
     ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
       <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
 
-    ${canEdit ? partyEditor(group, event, editError, typed) : ""}
+    ${canEdit ? `<div class="nightbar">${seenBy(group, event)}${
+      partyEditor(group, event, editError, typed)}</div>` : ""}
 
     ${canEdit ? (tracker || "") + shared : shared + forVisitors}
   `, hero(event.title || "A night",
@@ -1742,7 +1809,8 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
         phase === "now" ? ` \u00b7 <b>on tonight</b>` : ""}`,
       event.cover_key,
       canEdit ? "" : `<a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a>`,
-      canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""));
+      canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""),
+    "", false, true);
 }
 
 // Subscribing to a calendar, without the security warning.
@@ -2783,6 +2851,24 @@ function agoText(ms) {
   return new Date(Number(ms)).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+// A night, as pictures first. The photos become a grid you can take in at a
+// glance - which is what looking back at a party actually is - and the things
+// people wrote stay below as words. A column of full-width images each under
+// its own little header is a social feed, and this is not one.
+function nightRoll(posts) {
+  const shots = posts.filter((p) => p.media_key);
+  const said = posts.filter((p) => !p.media_key);
+  return `${shots.length ? `<div class="roll">${shots.map((post) => {
+    const media = mediaUrl(post.media_key);
+    const isVideo = String(post.media_type || "").startsWith("video/");
+    return `<figure>${isVideo
+      ? `<video src="${esc(media)}" controls playsinline preload="metadata"></video>`
+      : `<img src="${esc(media)}" alt="" loading="lazy">`}${
+      post.body ? `<figcaption>${esc(post.body)}</figcaption>` : ""}</figure>`;
+  }).join("")}</div>` : ""}
+  ${said.length ? postList(said) : ""}`;
+}
+
 function postList(posts) {
   if (!posts.length) return `<p class="muted">No posts yet!</p>`;
   return posts.map((post) => {
@@ -3700,7 +3786,7 @@ export default {
 
       const section = (label, list, empty) => `<h2>${esc(label)}</h2>
         ${list.length ? `<div class="entries">${list.map(row).join("")}</div>`
-          : `<p class="muted">${empty}</p>`}`;
+          : `<p class="blank">${empty}</p>`}`;
 
       return html(200, page("Your parties", `
         ${you}
