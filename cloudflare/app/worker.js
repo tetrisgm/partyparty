@@ -595,7 +595,8 @@ font-size:11px;font-weight:700;letter-spacing:.02em;background:var(--fill);
 color:var(--label-secondary)}
 .tag.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--separator)}
 .tag.live{background:rgba(255,45,111,.16);color:var(--accent)}
-.tracker{margin-top:44px;padding-top:8px;border-top:1px solid var(--separator)}
+.tracker{margin-top:4px}
+.tracker h2:first-child{margin-top:18px}
 .wentrow{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:650}
 .wentrow input{width:20px;height:20px;accent-color:var(--accent)}
 .notemini{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
@@ -613,6 +614,49 @@ input[type=datetime-local],input[type=search]{width:100%;min-height:44px;padding
 border-radius:var(--r-sm);border:1px solid var(--separator);background:var(--bg-elevated);
 color:var(--label);font:inherit;font-size:15px;outline:none}
 input[type=datetime-local]:focus,input[type=search]:focus{border-color:var(--accent)}
+/* The record, as a journal rather than a form.
+   Nothing here announces itself as an input until it is touched: a note reads
+   as the note it holds, an empty one as grey placeholder text, and the borders
+   and the Save button appear on focus. Four stacked controls per person is
+   what a form looks like; one line with a name on it is what a page you write
+   on looks like. */
+.tracker h2{font-size:19px;letter-spacing:-.02em;margin:34px 0 10px}
+.people{list-style:none;padding:0;margin:0 0 6px;display:grid;gap:2px}
+.people li{display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;
+align-items:start;padding:10px 12px;border-radius:var(--r-sm)}
+.people li:hover{background:var(--bg-elevated)}
+.personline{display:grid;gap:2px;min-width:0}
+.nameline{display:flex;align-items:center;gap:8px}
+.nameline a{font-weight:700;text-decoration:none;color:var(--label)}
+.nameline a:hover{color:var(--accent)}
+.x{margin-left:auto;border:0;background:none;color:var(--label-tertiary);
+font-size:13px;line-height:1;padding:4px 6px;border-radius:var(--r-sm);
+cursor:pointer;opacity:0;transition:opacity .12s}
+.people li:hover .x,.x:focus{opacity:1}
+input.quiet{width:100%;border:0;background:none;padding:2px 0;min-height:0;
+font:inherit;font-size:14px;color:var(--label-secondary);outline:none}
+input.quiet::placeholder{color:var(--label-tertiary)}
+input.quiet:focus{color:var(--label)}
+/* The save only exists once you are typing. */
+button.onfocus{display:none;justify-self:start;margin-top:6px;border:0;
+background:var(--accent);color:#fff;font:inherit;font-size:13px;font-weight:700;
+padding:6px 14px;border-radius:var(--r-pill);cursor:pointer}
+.personline:focus-within button.onfocus{display:block}
+
+/* One line to add anything: type, press +. */
+.addline{display:flex;align-items:center;gap:8px;margin:0 0 4px;
+padding:9px 12px;border-radius:var(--r-sm);border:1px dashed var(--separator)}
+.addline:focus-within{border-style:solid;border-color:var(--accent)}
+.addline input{flex:1 1 auto;min-width:0;width:auto;border:0;background:none;
+padding:0;min-height:26px;font:inherit;font-size:15px;color:var(--label);outline:none}
+.addline.two input:last-of-type{flex:0 1 38%;font-size:14px;color:var(--label-secondary)}
+.addline button{flex:0 0 auto;width:30px;height:30px;border:0;border-radius:50%;
+background:var(--bg-elevated-2);color:var(--label-secondary);font-size:17px;
+line-height:1;cursor:pointer}
+.addline:focus-within button{background:var(--accent);color:#fff}
+.seenby{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+hr.soft{border:0;border-top:1px solid var(--separator);margin:34px 0}
+
 /* What was played, in the order it was played. Numbers in the margin so the
    list reads as a record rather than as another form. */
 .setlist{list-style:none;counter-reset:song;padding:0;margin:0 0 12px;display:grid;gap:2px}
@@ -641,8 +685,8 @@ box-shadow:0 0 0 0 rgba(255,45,111,.55);animation:pulse 1.8s ease-out infinite}
 background:var(--bg-elevated);border:1px solid var(--separator);
 font-size:14px;font-weight:650;text-decoration:none;max-width:100%;
 overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-details.edit{margin:0 0 20px}
-details.edit summary{cursor:pointer;font-size:14px;font-weight:650;
+details.edit{margin:-10px 0 0}
+details.edit summary{cursor:pointer;font-size:13px;font-weight:600;
 color:var(--label-secondary);padding:6px 0;list-style:none}
 details.edit summary::-webkit-details-marker{display:none}
 details.edit summary::before{content:'\\2699\\FE0E';padding-right:8px}
@@ -667,8 +711,8 @@ font-weight:700;width:auto;flex:1 1 auto}
 /* Changing the picture on a cover, the way the console does it: the buttons
    sit on the image itself rather than in a settings drawer below it. */
 .coveractions{position:absolute;right:26px;bottom:26px;display:flex;gap:8px;z-index:2}
-.coveractions button{min-height:38px;padding:0 16px;border-radius:var(--r-pill);
-background:rgba(0,0,0,.45);color:#fff;font:inherit;font-size:13px;font-weight:650;
+.coveractions button{min-height:30px;padding:0 12px;border-radius:var(--r-pill);
+background:rgba(0,0,0,.38);color:rgba(255,255,255,.82);font:inherit;font-size:12px;font-weight:600;
 cursor:pointer;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
 border:1px solid rgba(255,255,255,.14)}
 .coveractions button:hover{background:rgba(0,0,0,.62)}
@@ -1451,51 +1495,50 @@ async function partiesOwnedBy(env, emailNorm, now) {
 //
 // Only ever rendered for the person it belongs to. A note is a diary entry, not
 // content, and nothing in here appears on anybody else's screen.
+// The record: the whole reason the app exists.
+//
+// Five things, each one line to add - who played, who was there, what they
+// played, what you thought, and who may see any of it. No sub-forms, no modes,
+// no save button you have to find. The bar is Apple's Journal: if it cannot be
+// done one-handed while a room is loud and dark, it does not get done at all.
 function trackerBlock(event, group, note, people, allNames, songs) {
   const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
   const attended = note && note.attended === 1;
-  const list = (role, empty) => {
+
+  // One row per person: their face, their name, and a note about them from
+  // THIS night, which is a different thought from a note about them generally.
+  const list = (role, empty, add) => {
     const rows = people.filter((p) => p.role === role);
-    if (!rows.length) return `<p class="muted">${empty}</p>`;
-    return `<ul class="who-list">${rows.map((p) => `<li>
+    return `${rows.length ? `<ul class="people">${rows.map((p) => `<li>
       ${personDisc(p)}
-      <span style="min-width:0">
-        <b><a href="/people/${esc(p.id)}">${esc(p.name)}</a></b>
-        <form method="post" action="${action}" class="notemini">
-          <input type="hidden" name="person" value="${esc(p.id)}">
-          <input type="text" name="encounter" maxlength="2000"
-            value="${esc(p.note || "")}" placeholder="What happened, if anything">
-          <button class="btn plain small" type="submit">Save</button>
-          <button class="btn plain small" type="submit" name="remove" value="1"
+      <form method="post" action="${action}" class="personline">
+        <input type="hidden" name="person" value="${esc(p.id)}">
+        <div class="nameline">
+          <a href="/people/${esc(p.id)}">${esc(p.name)}</a>
+          <button class="x" type="submit" name="remove" value="1"
             formnovalidate aria-label="Remove ${esc(p.name)}">\u2715</button>
-        </form>
-      </span></li>`).join("")}</ul>`;
+        </div>
+        <input class="quiet" type="text" name="encounter" maxlength="2000"
+          value="${esc(p.note || "")}" placeholder="Add a note about them">
+        <button class="onfocus" type="submit">Save</button>
+      </form></li>`).join("")}</ul>` : `<p class="muted">${empty}</p>`}
+    <form class="addline" method="post" action="${esc(action)}">
+      <input type="hidden" name="role" value="${role}">
+      <input type="text" name="who" list="knownpeople" maxlength="80" required
+        placeholder="${esc(add)}" autocomplete="off">
+      <button type="submit" aria-label="Add">+</button>
+    </form>`;
   };
 
+  const seen = { private: "Only you", link: "Anyone with the link", public: "Anyone" };
+  const visibility = event.visibility || "private";
+
   return `<section class="tracker">
-    <div class="sectionhead"><h2>Your record</h2>
-      <span class="muted">Only you can see this</span></div>
-
-    <form class="you" method="post" action="${esc(action)}">
-      <div class="grow" style="display:grid;gap:10px">
-        <label class="wentrow">
-          <input type="checkbox" name="attended" value="1"${attended ? " checked" : ""}>
-          <span>I went to this</span>
-        </label>
-        <textarea name="note" maxlength="4000" style="min-height:76px"
-          placeholder="What you thought, or why you want to go">${esc((note && note.note) || "")}</textarea>
-      </div>
-      <div class="youbar"><button class="btn" type="submit">Save</button></div>
-    </form>
-
     <h2>Who played</h2>
-    ${list("dj", "Nobody recorded yet.")}
-    <form class="join" method="post" action="${esc(action)}">
-      <input type="hidden" name="role" value="dj">
-      <input type="text" name="who" list="knownpeople" maxlength="80" required
-        placeholder="Name" autocomplete="off">
-      <button class="btn plain" type="submit">Add a DJ</button>
-    </form>
+    ${list("dj", "Nobody yet.", "A DJ, an artist, whoever was on")}
+
+    <h2>Who was there</h2>
+    ${list("guest", "Nobody yet.", "A name - they need no account")}
 
     <h2>Songs</h2>
     ${songs && songs.length ? `<ol class="setlist">${songs.map((song) => `<li>
@@ -1508,26 +1551,42 @@ function trackerBlock(event, group, note, people, allNames, songs) {
           formnovalidate aria-label="Remove ${esc(song.title)}">\u2715</button>
       </form>
     </li>`).join("")}</ol>` : `<p class="muted">Nothing written down yet.</p>`}
-    <form class="join" method="post" action="${esc(action)}">
+    <form class="addline two" method="post" action="${esc(action)}">
       <input type="text" name="songTitle" maxlength="200" required
         placeholder="What is playing" autocomplete="off">
       <input type="text" name="songArtist" maxlength="120"
         placeholder="Who by" autocomplete="off">
-      <button class="btn plain" type="submit">Add</button>
+      <button type="submit" aria-label="Add">+</button>
     </form>
 
-    <h2>Who you saw</h2>
-    ${list("guest", "Nobody recorded yet.")}
-    <form class="join" method="post" action="${esc(action)}">
-      <input type="hidden" name="role" value="guest">
-      <input type="text" name="who" list="knownpeople" maxlength="80" required
-        placeholder="Name" autocomplete="off">
-      <button class="btn plain" type="submit">Add someone</button>
+    <h2>Your notes</h2>
+    <form class="you" method="post" action="${esc(action)}">
+      <div class="grow" style="display:grid;gap:10px">
+        <textarea name="note" maxlength="4000" style="min-height:92px"
+          placeholder="What you thought">${esc((note && note.note) || "")}</textarea>
+        <label class="wentrow">
+          <input type="checkbox" name="attended" value="1"${attended ? " checked" : ""}>
+          <span>I was there</span>
+        </label>
+      </div>
+      <div class="youbar"><button class="btn" type="submit">Save</button></div>
     </form>
+
+    <h2>Who can see this</h2>
+    <form class="seenby" method="post" action="${esc(action)}">
+      ${Object.entries(seen).map(([value, label]) => `<button
+        class="btn ${value === visibility ? "" : "plain "}small" type="submit"
+        name="visibility" value="${value}"${value === visibility ? ' aria-current="true"' : ""}
+        >${esc(label)}</button>`).join("")}
+    </form>
+    <p class="muted">${visibility === "private"
+      ? "Yours. Nobody else can open this page."
+      : visibility === "link"
+        ? "Anybody you send the link to can open it, and add photos."
+        : "On your profile, for anyone."}</p>
+
     <datalist id="knownpeople">${allNames.map((n) =>
       `<option value="${esc(n.name)}"></option>`).join("")}</datalist>
-    <p class="muted">Reusing a name keeps one person, so their history stays in
-    one place. They do not need an account.</p>
   </section>`;
 }
 
@@ -1562,41 +1621,31 @@ function partyEditor(group, event, error, typed) {
   </details>`;
 }
 
+// A night, as the person who was at it reads it.
+//
+// This used to be a promotion page with a journal stapled underneath: on your
+// own entry it asked for your email so you could RSVP to your own party,
+// offered to add it to your calendar, and told you who had organised it. The
+// page IS the record now. Everything on it is one line to add - a name, a song,
+// a thought, a photo - because the whole thing gets written standing up, in a
+// dark room, on a phone.
+//
+// A visitor sees the night and what was shared of it, and the going/tickets/
+// calendar machinery that only means anything to somebody who was not there.
 function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra) {
-  const { live, editError, typed, phase, posts, canPost, payLink } = extra || {};
+  const { live, editError, typed, phase, posts, canPost, payLink, ownerName } = extra || {};
   const links = partyLinks(event.links);
-  return page(`${event.title || "A night"} - ${group.name || group.handle}`, `
-    ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
-      <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
-    <p class="when">${esc(whenText(event))}${
-      phase === "now" ? ` · <b>on tonight</b>` : ""}</p>
-    ${event.place ? `<p>${esc(event.place)}${event.address ? `<br><span class="muted">${esc(event.address)}</span>` : ""}</p>` : ""}
-    ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
-    ${event.description ? `<p>${esc(event.description)}</p>` : ""}
+  const where = `/@${esc(group.handle)}/${esc(event.slug)}`;
+
+  const shared = `
     ${links.length ? `<ul class="linklist">${links.map((l) =>
       `<li><a href="${esc(l.href)}" rel="noopener noreferrer nofollow"
         target="_blank">${esc(l.label)}</a></li>`).join("")}</ul>` : ""}
-    ${canEdit ? partyEditor(group, event, editError, typed) : ""}
-    <p class="muted">${going} going</p>
-    ${event.ticket_cents ? `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/buy">
-      <input type="email" name="email" placeholder="your email" required>
-      <button class="btn" type="submit">Buy a ticket -
-        ${esc((totalForBuyer(event.ticket_cents, takeRate).total / 100).toFixed(2))}</button>
-    </form>` : `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/going">
-      <input type="email" name="email" placeholder="your email" required>
-      <input type="text" name="name" placeholder="your name">
-      <button class="btn" type="submit">I'm coming</button>
-    </form>`}
-    <p><a class="btn plain small" href="/@${esc(group.handle)}/${esc(event.slug)}.ics">Add this night to your calendar</a></p>
-    ${payLink ? `<p><a class="btn plain" href="${esc(payLink)}"
-      rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
-    <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
-    follow them to hear about their other nights.</p>
-    ${tracker || ""}
+    ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
 
-    <h2>The night</h2>
+    <h2>Photos and moments</h2>
     ${canPost ? `<form class="say" method="post" enctype="multipart/form-data"
-      action="/@${esc(group.handle)}/${esc(event.slug)}/say">
+      action="${where}/say">
       <textarea name="say" maxlength="2000" placeholder="What happened?"></textarea>
       <div class="row">
         <button class="btn plain small" type="button"
@@ -1607,9 +1656,40 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
       </div>
     </form>` : ""}
     ${posts && posts.length ? postList(posts)
-      : `<p class="muted">No photos or notes here yet.</p>`}
-  `, hero(event.title || "A night", esc(group.name || group.handle), event.cover_key,
-      `<a href="/@${esc(group.handle)}">The group</a>`,
+      : `<p class="muted">No photos or notes here yet.</p>`}`;
+
+  // Everything a visitor needs and an owner does not: whether they are coming,
+  // a ticket, the date in their own calendar, a way to tip whoever threw it.
+  const forVisitors = `
+    <hr class="soft">
+    <p class="muted">${going} going</p>
+    ${event.ticket_cents ? `<form class="join" method="post" action="${where}/buy">
+      <input type="email" name="email" placeholder="your email" required>
+      <button class="btn" type="submit">Buy a ticket -
+        ${esc((totalForBuyer(event.ticket_cents, takeRate).total / 100).toFixed(2))}</button>
+    </form>` : `<form class="join" method="post" action="${where}/going">
+      <input type="email" name="email" placeholder="your email" required>
+      <input type="text" name="name" placeholder="your name">
+      <button class="btn" type="submit">I'm coming</button>
+    </form>`}
+    <p><a class="btn plain small" href="${where}.ics">Add this night to your calendar</a></p>
+    ${payLink ? `<p><a class="btn plain" href="${esc(payLink)}"
+      rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
+    <p class="muted">Kept by <a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a> -
+    follow them to hear about their other nights.</p>`;
+
+  return page(`${event.title || "A night"} - ${ownerName || group.handle}`, `
+    ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
+      <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
+
+    ${canEdit ? partyEditor(group, event, editError, typed) : ""}
+
+    ${canEdit ? (tracker || "") + shared : shared + forVisitors}
+  `, hero(event.title || "A night",
+      `${esc(whenText(event))}${event.place ? ` \u00b7 ${esc(event.place)}` : ""}${
+        phase === "now" ? ` \u00b7 <b>on tonight</b>` : ""}`,
+      event.cover_key,
+      canEdit ? "" : `<a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a>`,
       canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""));
 }
 
@@ -2297,14 +2377,20 @@ async function createParty(env, group, fields, now) {
   // Whose party it is, on the party. Groups are dead; the group_id below is
   // still written only so this is reversible by deploying the previous worker.
   const ownerEmail = String(fields.ownerEmail || "");
+  // Private, because a journal entry is. The exception is a party opened with a
+  // live room already on it: that is a night being played to people who are
+  // about to be handed its link, and starting it invisible would mean the DJ
+  // has to go and turn it on before anybody can see where they are.
+  const visibility = fields.visibility ||
+    (PARTY_ID_RE.test(String(fields.partyId || "")) ? "link" : "private");
   await env.DB.prepare(
     `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, capacity,
-       cover_key, state, party_id, links, created_ms, updated_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?, ?)`
+       cover_key, state, party_id, links, visibility, created_ms, updated_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?, ?, ?)`
   ).bind(id, group.id, ownerEmail, unique, title, startsMs,
     String(fields.place || "").slice(0, 120), capacity,
     fields.coverKey || null, String(fields.partyId || ""),
-    String(fields.links || "").slice(0, 2000), now, now).run();
+    String(fields.links || "").slice(0, 2000), visibility, now, now).run();
 
   return { id, slug: unique, title, startsMs, handle: group.handle };
 }
@@ -4505,16 +4591,26 @@ export default {
             await peopleFor(env, viewer.email_norm, ""),
             await songsFor(env, event.id))
         : "";
+      const mineToKeep = !!viewer && viewer.email_norm === event.owner_email;
+      // Private means private. A night nobody has been given is not on the
+      // internet for anybody who guesses its address.
+      const visibility = event.visibility || "private";
+      if (!mineToKeep && visibility === "private" &&
+          !await djRunsGroup(env, viewer, group.id)) {
+        return new Response("Not Found", { status: 404 });
+      }
+      const owner = event.owner_email
+        ? await profileFor(env, event.owner_email, now) : null;
       return html(200, eventPage(group, event, await goingCount(env, event.id), base,
         await takeRateFor(env, group.id),
-        await djRunsGroup(env, viewer, group.id), tracker,
+        mineToKeep || await djRunsGroup(env, viewer, group.id), tracker,
         {
+          ownerName: owner ? (owner.name || "@" + owner.handle) : group.handle,
           live: liveNow(event, now), phase: partyPhase(event, now),
           posts: await eventPosts(env, event.id),
           // Whoever it belongs to, and whoever they let in. The tracker above
           // is private; this is the part of a party other people can add to.
-          canPost: !!viewer && (viewer.email_norm === event.owner_email ||
-            await djRunsGroup(env, viewer, group.id)),
+          canPost: mineToKeep || visibility !== "private",
           // Tipping belongs to whoever threw it, wherever their page is.
           payLink: event.owner_email
             ? (await profileFor(env, event.owner_email, now)).pay_link : "",
@@ -4595,6 +4691,16 @@ export default {
            VALUES (?,?,?,?,?)
            ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
         ).bind(event.id, person.id, dj.email_norm, role, now).run();
+        return new Response(null, { status: 302, headers: { location: back } });
+      }
+
+      // Who may see it. One tap, three answers, no dialog.
+      const wantSeen = String(form.get("visibility") || "");
+      if (["private", "link", "public"].includes(wantSeen)) {
+        if (event.owner_email === dj.email_norm) {
+          await env.DB.prepare(`UPDATE events SET visibility = ?, updated_ms = ? WHERE id = ?`)
+            .bind(wantSeen, now, event.id).run();
+        }
         return new Response(null, { status: 302, headers: { location: back } });
       }
 

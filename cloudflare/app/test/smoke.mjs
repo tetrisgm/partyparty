@@ -76,11 +76,15 @@ const seedEvent = (env, groupId, over = {}) => {
     `SELECT d.email_norm FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
       WHERE gd.group_id = ? ORDER BY gd.created_ms LIMIT 1`
   ).get(groupId)?.email_norm ?? "");
+  // Published, like every party that existed before visibility did - the
+  // migration marks those public for exactly this reason. A party CREATED now
+  // starts private; these fixtures stand in for nights already on the internet.
   env.raw.prepare(
-    `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, state, created_ms, updated_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, state,
+       visibility, created_ms, updated_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(id, groupId, owner, event.slug, event.title, event.starts_ms, event.place, event.state,
-    Date.now(), Date.now());
+    over.visibility ?? "public", Date.now(), Date.now());
   return id;
 };
 
@@ -535,10 +539,21 @@ test("photos and words belong to the night they happened at", async () => {
   const page = await (await read(where)).text();
   assert.match(page, /The room went off at two/);
 
-  // A passer-by reads the night; they do not write on it.
-  const stranger = await (await get(env, where)).text();
-  assert.match(stranger, /The room went off at two/);
-  assert.ok(!/name="say"/.test(stranger), "no composer for somebody with no part in it");
+  // A party starts PRIVATE. A passer-by does not read it at all - not a bare
+  // page with the private parts stripped out, nothing.
+  assert.equal((await get(env, where)).status, 404, "mine until I share it");
+
+  // Sharing it by link opens it, and lets whoever has the link add to it -
+  // "they can post in the events that I'm allowing them to join".
+  await send(`${where}/record`, { visibility: "link" });
+  assert.equal(one(env, `SELECT visibility FROM events`).visibility, "link");
+  const shared = await (await get(env, where)).text();
+  assert.match(shared, /The room went off at two/);
+  assert.match(shared, /name="say"/, "somebody holding the link can add a photo");
+
+  // What is MINE stays mine even then: the record is not on the shared page.
+  assert.ok(!/Who can see this/.test(shared), "the controls are the owner's");
+  assert.ok(!/Your notes/.test(shared));
 });
 
 const macEnv = (env, id = "aabbccddeeff", secret = "s3cret") => {
@@ -1730,7 +1745,10 @@ test("a party made on the Mac is the same row a party made on the web is", async
   assert.equal(row.party_id, "2026-08-08-2200-ab12", "the live room is attached at creation");
   assert.equal(rows(env, `SELECT * FROM events`).length, 1, "exactly one record, never a shadow");
 
-  // And it is on the web immediately, at a real address.
+  // A party opened with a live room on it is a night people are about to be
+  // handed the link to, so it is shareable from the first moment - unlike one
+  // typed in for later, which is a private journal entry until it is shared.
+  assert.equal(row.visibility, "link");
   const page = await get(env, `/@sundaze/${row.slug}`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Warehouse, late/);
@@ -2053,7 +2071,7 @@ test("a party is playing right now only while a Mac keeps saying so", async () =
   assert.ok(!page.includes("Playing right now"), "a heartbeat that stopped is not a live room");
   // But the party itself is untouched - the point of a permanent record.
   assert.match(page, /Warehouse/);
-  assert.match(page, /Your record/);
+  assert.match(page, /Your notes/, "the record is the page, and it survives the broadcast");
   assert.ok(!(await (await read("/home")).text()).includes("Playing now"));
 
   // A join URL that is not https is never shown, whatever the Mac sends.
@@ -2167,11 +2185,12 @@ test("a record belongs to one person and is invisible to everybody else", async 
   const ev = one(env, `SELECT * FROM events`);
   await send(`/@${handle}/${ev.slug}/record`, { note: "My private thought", attended: "1" });
 
-  // Signed out, the party page is public and the record is not on it.
+  // Shared by link, the night is readable and the record still is not.
+  await send(`/@${handle}/${ev.slug}/record`, { visibility: "link" });
   const publicPage = await (await get(env, `/@${handle}/${ev.slug}`)).text();
   assert.match(publicPage, /Warehouse/);
   assert.ok(!publicPage.includes("My private thought"), "a note is a diary, not content");
-  assert.ok(!publicPage.includes("Your record"));
+  assert.ok(!publicPage.includes("Your notes"));
   assert.ok(!publicPage.includes("Seth"), "who I saw is mine too");
 
   // Another person's record of the SAME party, in the same database. The risk
