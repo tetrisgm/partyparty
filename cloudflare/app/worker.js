@@ -1368,7 +1368,7 @@ function groupPage(group, events, base, posts, viewer, people, past) {
   return page(group.name || group.handle, `
     ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
     ${follow}
-    ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
+    ${payLink ? `<p><a class="btn plain" href="${esc(payLink)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     ${group.merch_link ? `<p><a class="btn plain" href="${esc(group.merch_link)}"
       rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
@@ -1403,22 +1403,80 @@ function groupPage(group, events, base, posts, viewer, people, past) {
 // A person at their @name. Not a second group page: a person is who they are
 // and what they run, and the parties themselves live on the group's page where
 // somebody can follow them.
-function personPage(profile, groups) {
+// Somebody's page: who they are, and their parties. This replaced a group page
+// that showed the same rows under a borrowed name - groups are dead, and a
+// person was always what the address meant.
+function personPage(profile, upcoming, past, isMe, base, followHandle) {
   const links = profile.linksObj || {};
   const shown = SOCIAL_FIELDS
     .map((field) => ({ field, value: links[field.key], href: linkHref(field.key, links[field.key]) }))
     .filter((entry) => entry.value && entry.href);
+
+  const row = (e) => `<a class="card partyrow" href="/@${esc(profile.handle)}/${esc(e.slug)}">
+    <div class="grow">
+      <div class="when">${esc(whenText(e))}${e.place ? " \u00b7 " + esc(e.place) : ""}</div>
+      <strong>${esc(e.title || "Untitled party")}</strong>
+    </div>
+  </a>`;
+  const section = (label, list, empty) => `<h2>${esc(label)}</h2>
+    ${list.length ? list.map(row).join("") : `<p class="muted">${empty}</p>`}`;
+
   return page(profile.name || `@${profile.handle}`, `
-    ${profile.bio ? `<p>${esc(profile.bio)}</p>` : ""}
+    <div class="you"><div class="yourow" style="align-items:center">
+      ${personDisc(profile, "big")}
+      <div class="grow" style="gap:2px">
+        <b style="font-size:16px">${esc(profile.name || "@" + profile.handle)}</b>
+        <span class="muted">@${esc(profile.handle)}${
+          profile.bio ? " \u00b7 " + esc(profile.bio) : ""}</span>
+      </div>
+      ${isMe ? `<a class="btn plain small" href="/settings">Edit</a>` : ""}
+    </div></div>
     ${shown.length ? `<p class="row">${shown.map((entry) =>
       `<a class="btn plain small" href="${esc(entry.href)}" rel="noopener noreferrer nofollow"
         target="_blank">${esc(entry.field.label)}</a>`).join("")}</p>` : ""}
-    ${groups.length ? `<h2>Their parties</h2>
-      ${groups.map((g) => `<a class="card" href="/@${esc(g.handle)}">
-        <strong>${esc(g.name || g.handle)}</strong>
-        <div class="muted">@${esc(g.handle)}${g.bio ? " \u00b7 " + esc(g.bio) : ""}</div></a>`).join("")}`
-      : `<p class="muted">No groups yet.</p>`}
-  `, hero(profile.name || `@${profile.handle}`, "", "", ""));
+    ${profile.pay_link || profile.merch_link ? `<p class="row">
+      ${profile.pay_link ? `<a class="btn plain" href="${esc(profile.pay_link)}"
+        rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a>` : ""}
+      ${profile.merch_link ? `<a class="btn plain" href="${esc(profile.merch_link)}"
+        rel="noopener noreferrer nofollow" target="_blank">${
+          esc(profile.merch_label || "Merch")}</a>` : ""}
+    </p>` : ""}
+    ${isMe || !followHandle ? "" : `<form class="join" method="post"
+      action="/@${esc(followHandle)}/join">
+      <div class="row">
+        <input type="email" name="email" placeholder="your email" required>
+        <input type="text" name="name" placeholder="your name">
+      </div>
+      <button class="actionbar" type="submit">
+        <span class="tile">\u2605</span>
+        <span class="lines">Follow<small>Hear about their parties</small></span>
+      </button>
+    </form>
+    <p class="muted">One email to confirm. No account, and you can stop from any
+    message we send.</p>`}
+    ${section("Coming up", upcoming, isMe ? "Nothing coming up." : "Nothing announced.")}
+    ${section("Past", past, "Nothing yet.")}
+    <h2>Add to your calendar</h2>
+    <p class="muted">Their parties, in your own calendar, without an account.</p>
+    ${calendarBlock(base, profile.handle)}
+    ${isMe ? `<p class="muted" style="margin-top:32px"><a href="/home">Your parties</a> ·
+      <a href="/manage">Tips, merch and Pro</a></p>` : ""}
+  `, "", "", true);
+}
+
+// Everything one person is throwing, newest first for what has happened and
+// soonest first for what has not. Owned by them: groups no longer decide.
+async function partiesOwnedBy(env, emailNorm, now) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM events WHERE owner_email = ? AND state != 'draft'
+      ORDER BY COALESCE(starts_ms, created_ms) DESC LIMIT 200`
+  ).bind(emailNorm).all();
+  const all = results || [];
+  return {
+    upcoming: all.filter((e) => !partyIsPast(e, now))
+      .sort((a, b) => (a.starts_ms || Infinity) - (b.starts_ms || Infinity)),
+    past: all.filter((e) => partyIsPast(e, now)),
+  };
 }
 
 async function runsGroups(env, emailNorm) {
@@ -1530,7 +1588,7 @@ function partyEditor(group, event, error, typed) {
 }
 
 function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra) {
-  const { live, editError, typed, phase } = extra || {};
+  const { live, editError, typed, phase, posts, canPost, payLink } = extra || {};
   const links = partyLinks(event.links);
   return page(`${event.title || "A night"} - ${group.name || group.handle}`, `
     ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
@@ -1555,11 +1613,26 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
       <button class="btn" type="submit">I'm coming</button>
     </form>`}
     <p><a class="btn plain small" href="/@${esc(group.handle)}/${esc(event.slug)}.ics">Add this night to your calendar</a></p>
-    ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
+    ${payLink ? `<p><a class="btn plain" href="${esc(payLink)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
     <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
     follow them to hear about their other nights.</p>
     ${tracker || ""}
+
+    <h2>The night</h2>
+    ${canPost ? `<form class="say" method="post" enctype="multipart/form-data"
+      action="/@${esc(group.handle)}/${esc(event.slug)}/say">
+      <textarea name="say" maxlength="2000" placeholder="What happened?"></textarea>
+      <div class="row">
+        <button class="btn plain small" type="button"
+          onclick="this.nextElementSibling.click()">Add a photo</button>
+        <input type="file" name="media" accept="image/*,video/*" hidden
+          onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+        <button class="btn" type="submit">Post</button>
+      </div>
+    </form>` : ""}
+    ${posts && posts.length ? postList(posts)
+      : `<p class="muted">No photos or notes here yet.</p>`}
   `, hero(event.title || "A night", esc(group.name || group.handle), event.cover_key,
       `<a href="/@${esc(group.handle)}">The group</a>`,
       canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""));
@@ -2466,15 +2539,16 @@ async function sendInvites(env, group, event, dj, base, now) {
 // The group's own thread. Whoever writes it is identified by the link they
 // already hold - a member by their settings token, a DJ by their session - so
 // taking part still needs no account.
-async function addPost(env, { group, dj, member, body, mediaKey, mediaType, base, now }) {
+async function addPost(env, { group, event, dj, member, body, mediaKey, mediaType, base, now }) {
   const text = String(body || "").trim().slice(0, 2000);
   // A picture on its own is a post. At a party most of them are.
   if (!text && !mediaKey) return 0;
   const author = dj ? (dj.name || "The DJ") : (member && member.name) || "Someone";
   await env.DB.prepare(
-    `INSERT INTO posts (id, group_id, member_id, dj_id, author, body, media_key, media_type, origin, created_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'web', ?)`
-  ).bind(ulid(now), group.id, member ? member.id : null, dj ? dj.id : null, author, text,
+    `INSERT INTO posts (id, group_id, event_id, member_id, dj_id, author, body, media_key, media_type, origin, created_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'web', ?)`
+  ).bind(ulid(now), group.id, event ? event.id : null,
+    member ? member.id : null, dj ? dj.id : null, author, text,
     mediaKey || null, mediaType || null, now).run();
   if (!text) return 0;
 
@@ -2545,6 +2619,26 @@ async function groupPeople(env, groupId) {
 // called when they wrote it; the profile is who they are now, and the live one
 // wins on screen so a person who fills in their name does not have to look at
 // thirty posts signed "Someone".
+// Everything said and shown at one party. Posts used to hang off a group
+// thread; they belong to the night they happened at, which is where the photos
+// were always going to be looked for.
+async function eventPosts(env, eventId) {
+  const { results } = await env.DB.prepare(
+    `SELECT p.*,
+            COALESCE(pd.name, pm.name) AS profile_name,
+            COALESCE(pd.handle, pm.handle) AS handle,
+            COALESCE(pd.avatar_key, pm.avatar_key) AS avatar_key
+       FROM posts p
+       LEFT JOIN members m ON m.id = p.member_id
+       LEFT JOIN djs d ON d.id = p.dj_id
+       LEFT JOIN profiles pm ON pm.email_norm = m.email_norm
+       LEFT JOIN profiles pd ON pd.email_norm = d.email_norm
+      WHERE p.event_id = ? AND p.deleted_ms IS NULL
+      ORDER BY p.created_ms DESC LIMIT 200`
+  ).bind(eventId).all();
+  return results || [];
+}
+
 async function recentPosts(env, groupId) {
   const { results } = await env.DB.prepare(
     `SELECT p.*,
@@ -3879,16 +3973,19 @@ export default {
           const link = String(form.get("merchLink") || "").trim();
           const problem = payLinkProblem(link);
           if (problem) return notice("That link will not work", problem);
-          await env.DB.prepare(`UPDATE groups SET merch_link = ?, merch_label = ?, updated_ms = ? WHERE id = ?`)
-            .bind(link, String(form.get("merchLabel") || "").slice(0, 40), now, group.id).run();
+          await profileFor(env, dj.email_norm, now, dj.name);
+          await env.DB.prepare(
+            `UPDATE profiles SET merch_link = ?, merch_label = ?, updated_ms = ? WHERE email_norm = ?`
+          ).bind(link, String(form.get("merchLabel") || "").slice(0, 40), now, dj.email_norm).run();
           return notice("Saved", link ? "Your store is linked." : "The store link is off.");
         }
         if (form && form.has("payLink")) {
           const link = String(form.get("payLink") || "").trim();
           const problem = payLinkProblem(link);
           if (problem) return notice("That link will not work", problem);
-          await env.DB.prepare(`UPDATE groups SET pay_link = ?, updated_ms = ? WHERE id = ?`)
-            .bind(link, now, group.id).run();
+          await profileFor(env, dj.email_norm, now, dj.name);
+          await env.DB.prepare(`UPDATE profiles SET pay_link = ?, updated_ms = ? WHERE email_norm = ?`)
+            .bind(link, now, dj.email_norm).run();
           return notice("Saved", link ? "Guests can tip you now." : "Tipping is off.");
         }
         if (form && form.has("groupName")) {
@@ -3949,14 +4046,19 @@ export default {
         const startsRaw = String((form && form.get("starts")) || "");
         const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
         const capacity = Math.max(0, Math.min(100000, parseInt(String((form && form.get("capacity")) || "0"), 10) || 0));
-        await env.DB.prepare(
-          `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity, state, created_ms, updated_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?)`
-        ).bind(ulid(now), group.id, slugify(title, now), title, Number.isFinite(starts) ? starts : null,
-          String((form && form.get("place")) || "").slice(0, 120), capacity, now, now).run();
+        // Through createParty like everything else, so it carries an owner. A
+        // raw insert here made parties that belonged to nobody.
+        await createParty(env, group, {
+          ownerEmail: dj.email_norm, title,
+          startsMs: Number.isFinite(starts) ? starts : null,
+          place: (form && form.get("place")) || "", capacity,
+        }, now);
         return new Response(null, { status: 302, headers: { location: `/@${group.handle}/manage` } });
       }
       const events = await upcomingEvents(env, group.id, 0);
+      const meNow = await profileFor(env, dj.email_norm, now, dj.name);
+      const payLinkNow = meNow.pay_link || "";
+      const merchNow = { link: meNow.merch_link || "", label: meNow.merch_label || "" };
       const pro = await isPro(env, group.id);
       const members = await env.DB.prepare(
         `SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND state = 'joined'`
@@ -4020,16 +4122,16 @@ export default {
           <p class="muted">Your own link. It goes straight to you; we take nothing.</p>
           <form class="join" method="post" action="/@${esc(group.handle)}/manage">
             <input type="text" name="payLink" placeholder="Your Venmo, Revolut or PayPal link"
-              value="${esc(group.pay_link || "")}">
+              value="${esc(payLinkNow)}">
             <button class="btn plain" type="submit">Save</button>
           </form>
 
           <h2>Merch</h2>
           <form class="join" method="post" action="/@${esc(group.handle)}/manage">
             <input type="text" name="merchLink" placeholder="Link to your store"
-              value="${esc(group.merch_link || "")}">
+              value="${esc(merchNow.link)}">
             <input type="text" name="merchLabel" placeholder="Label, e.g. Shirts"
-              value="${esc(group.merch_label || "")}">
+              value="${esc(merchNow.label)}">
             <button class="btn plain" type="submit">Save</button>
           </form>
 
@@ -4167,21 +4269,13 @@ export default {
         return notice("Blocked", "You will not get invitations from them. You are still in the group.");
       }
 
-      if (request.method === "POST" && group) {
-        const form = await request.formData().catch(() => null);
-        const member = await env.DB.prepare(`SELECT * FROM members WHERE id = ?`).bind(token.member_id).first();
-        await addPost(env, { group, member, body: form && form.get("say"), base, now });
-        return new Response(null, { status: 302, headers: { location: `/@${group.handle}` } });
-      }
+      // Posting from here is gone with groups. A thread belonging to a group,
+      // mailed to its members, cannot survive a product with no groups in it -
+      // and photos and words belong to the night they happened at, which is
+      // where they are now. This link's remaining job is how much you hear.
       const link = (q, label) => `<p><a class="btn plain" href="/m/${match[1]}?do=${q}">${esc(label)}</a></p>`;
       return html(200, page("Your settings", `
         <h1>Your settings</h1>
-        ${group ? `<h2>Say something to ${esc(group.name || group.handle)}</h2>
-        <form class="join" method="post" action="/m/${match[1]}">
-          <input type="text" name="say" placeholder="Anything" required>
-          <button class="btn" type="submit">Post</button>
-        </form>` : ""}
-        ${group ? `<p class="muted">For ${esc(group.name || group.handle)}</p>` : ""}
         <h2>How much you hear</h2>
         ${link("all", "Every post")}
         ${link("events", "Only nights")}
@@ -4347,13 +4441,17 @@ export default {
     // Saying something on the group's own page. Signed in only - the way a
     // member without an account posts is the link in their own email, which
     // already carries who they are and needs no password.
-    match = path.match(/^\/@([a-z0-9]+)\/say$/);
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/say$/);
     if (match && request.method === "POST") {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       const viewer = await viewerOf(env, request, group, now);
       if (!viewer || (!viewer.runsThisGroup && !viewer.follows)) {
-        return notice("Not yours to post to", "Follow the group first.");
+        return notice("Not yours to post to", "Ask for the link to this party.");
       }
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not post", "Try again.");
@@ -4375,6 +4473,7 @@ export default {
         : await memberByEmail(env, viewer.dj.email_norm);
       await addPost(env, {
         group,
+        event,
         dj: viewer.runsThisGroup ? viewer.dj : null,
         member,
         body: form.get("say"),
@@ -4383,7 +4482,9 @@ export default {
         base,
         now,
       });
-      return new Response(null, { status: 302, headers: { location: `/@${group.handle}` } });
+      return new Response(null, {
+        status: 302, headers: { location: `/@${group.handle}/${event.slug}` },
+      });
     }
 
     // A night.
@@ -4408,7 +4509,17 @@ export default {
       return html(200, eventPage(group, event, await goingCount(env, event.id), base,
         await takeRateFor(env, group.id),
         await djRunsGroup(env, viewer, group.id), tracker,
-        { live: liveNow(event, now), phase: partyPhase(event, now) }));
+        {
+          live: liveNow(event, now), phase: partyPhase(event, now),
+          posts: await eventPosts(env, event.id),
+          // Whoever it belongs to, and whoever they let in. The tracker above
+          // is private; this is the part of a party other people can add to.
+          canPost: !!viewer && (viewer.email_norm === event.owner_email ||
+            await djRunsGroup(env, viewer, group.id)),
+          // Tipping belongs to whoever threw it, wherever their page is.
+          payLink: event.owner_email
+            ? (await profileFor(env, event.owner_email, now)).pay_link : "",
+        }));
     }
 
     // Editing the party from the web. The same fields, the same updateParty and
@@ -4549,15 +4660,33 @@ export default {
     // one thing and a group can never be shadowed by somebody's @name.
     match = path.match(/^\/@([a-z0-9]+)$/);
     if (match) {
-      const group = await groupByHandle(env, match[1]);
-      if (group) {
-        return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base,
-          await recentPosts(env, group.id), await viewerOf(env, request, group, now),
-          await groupPeople(env, group.id), await pastEvents(env, group.id, now)));
+      // A person. Groups are dead: an address that was a group's handle still
+      // resolves, to the person who owned it, showing the same parties - the
+      // rows never belonged to the group in the first place.
+      let profile = await profileByHandle(env, match[1]);
+      if (!profile) {
+        const group = await groupByHandle(env, match[1]);
+        const owner = group && await env.DB.prepare(
+          `SELECT d.email_norm FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
+            WHERE gd.group_id = ? ORDER BY gd.created_ms LIMIT 1`
+        ).bind(group.id).first();
+        if (owner) profile = await profileFor(env, owner.email_norm, now);
       }
-      const profile = await profileByHandle(env, match[1]);
-      if (profile) return html(200, personPage(profile, await runsGroups(env, profile.email_norm)));
-      return new Response("Not Found", { status: 404 });
+      if (!profile) return new Response("Not Found", { status: 404 });
+      const mine = await partiesOwnedBy(env, profile.email_norm, now);
+      const viewer = await currentDJ(env, request, now);
+      // Following is still stored as membership of the person's own group while
+      // that table exists. The model pass makes it person-to-person; the button
+      // means the same thing either way.
+      const home = await env.DB.prepare(
+        `SELECT g.handle FROM groups g JOIN group_djs gd ON gd.group_id = g.id
+           JOIN djs d ON d.id = gd.dj_id
+          WHERE d.email_norm = ?
+          ORDER BY CASE WHEN g.handle = ? THEN 0 ELSE 1 END, g.created_ms LIMIT 1`
+      ).bind(profile.email_norm, profile.handle).first();
+      return html(200, personPage(profile, mine.upcoming, mine.past,
+        !!viewer && viewer.email_norm === profile.email_norm, base,
+        home && home.handle));
     }
 
     return new Response("Not Found", { status: 404 });

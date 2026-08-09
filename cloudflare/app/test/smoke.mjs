@@ -249,13 +249,22 @@ test("a draft night is not a public night, and its calendar is not published", a
   assert.match(feed, /PartyParty beta launch/, "so the group reads as having nothing on");
 });
 
-test("the group page and its calendar are served", async () => {
+test("a handle is a person, and their calendar is served", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
+  // Groups are dead. An address that WAS a group's handle still resolves - to
+  // the person who owned it, showing the same parties, because the rows never
+  // belonged to the group.
+  const djId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
+    .run(djId, "dj@example.com", "Sundaze", Date.now());
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
+    .run(groupId, djId, Date.now());
   seedEvent(env, groupId);
 
   const page = await (await get(env, "/@sundaze")).text();
   assert.match(page, /Sundaze/);
+  assert.match(page, /Sundaze at the Lido/, "their parties are on their page");
   assert.match(page, /value="https:\/\/partyparty\.party\/calendar\/sundaze\.ics"/,
     "no @ in a URL that gets pasted into a calendar client");
   assert.match(page, /calendar\.google\.com\/calendar\/render\?cid=webcal/,
@@ -479,38 +488,57 @@ test("the day-of reminder goes once, to the people who said they are coming", as
   assert.ok(eventId);
 });
 
-test("the group has a thread, and the volume on it belongs to the reader", async () => {
+test("what you hear is yours to turn down, and posting moved to the party", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
   await post(env, "/@sundaze/join", { email: "loud@example.com", name: "Loud" });
   const manage = /\/m\/([a-f0-9]{48})/.exec(one(env, `SELECT body_text FROM outbox`).body_text)[1];
-  env.raw.prepare(`UPDATE group_members SET volume = 'all'`).run();
-  await post(env, "/@sundaze/join", { email: "quiet@example.com" });
-  env.raw.prepare(`UPDATE group_members SET volume = 'events' WHERE member_id =
-    (SELECT id FROM members WHERE email_norm = 'quiet@example.com')`).run();
   env.raw.prepare(`DELETE FROM outbox`).run();
 
-  const body = new FormData();
-  body.append("say", "Doors at ten, bring a coat");
-  const said = await get(env, `/m/${manage}`, { method: "POST", body });
-  assert.equal(said.status, 302);
+  // A thread belonging to a GROUP, mailed to its members, could not survive a
+  // product with no groups in it. Photos and words belong to the night they
+  // happened at, so the composer lives on the party page now.
+  const settings = await (await get(env, `/m/${manage}`)).text();
+  assert.ok(!/Say something to/.test(settings), "there is no group thread to post to");
+  const tried = new FormData();
+  tried.append("say", "Doors at ten");
+  await get(env, `/m/${manage}`, { method: "POST", body: tried });
+  assert.equal(rows(env, `SELECT * FROM posts`).length, 0, "and nothing is written by trying");
 
-  const wall = await (await get(env, "/@sundaze")).text();
-  assert.match(wall, /Doors at ten, bring a coat/, "the thread is on the group's page");
-
-  // The poster is not mailed their own post, and "only nights" means only
-  // nights - a busy thread must not reach someone who asked for quiet.
-  const mailed = rows(env, `SELECT to_email FROM outbox`).map((r) => r.to_email);
-  assert.deepEqual(mailed, [], "nobody else asked for every post");
-
-  env.raw.prepare(`UPDATE group_members SET volume = 'all' WHERE member_id =
-    (SELECT id FROM members WHERE email_norm = 'quiet@example.com')`).run();
-  const again = new FormData();
-  again.append("say", "One more thing");
-  await get(env, `/m/${manage}`, { method: "POST", body: again });
-  assert.deepEqual(rows(env, `SELECT to_email FROM outbox`).map((r) => r.to_email),
-    ["quiet@example.com"], "turning it up is what makes a post arrive");
+  // What the link is still for: how much a person hears, and leaving.
+  assert.match(settings, /How much you hear/);
+  await get(env, `/m/${manage}?do=none`);
+  assert.equal(one(env, `SELECT volume FROM group_members`).volume, "none");
+  await get(env, `/m/${manage}?do=all`);
+  assert.equal(one(env, `SELECT volume FROM group_members`).volume, "all");
   assert.ok(groupId);
+});
+
+// Saying something happens at a party, by whoever it belongs to and whoever
+// they let in - which is the shape the product actually has: my night, my
+// notes, and the people I shared the link with.
+test("photos and words belong to the night they happened at", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse, late" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+
+  const empty = await (await read(where)).text();
+  assert.match(empty, /No photos or notes here yet/);
+
+  const said = await send(`${where}/say`, { say: "The room went off at two" });
+  assert.equal(said.status, 302);
+  const written = one(env, `SELECT * FROM posts`);
+  assert.equal(written.event_id, ev.id, "the post is ON the party, not beside it");
+
+  const page = await (await read(where)).text();
+  assert.match(page, /The room went off at two/);
+
+  // A passer-by reads the night; they do not write on it.
+  const stranger = await (await get(env, where)).text();
+  assert.match(stranger, /The room went off at two/);
+  assert.ok(!/name="say"/.test(stranger), "no composer for somebody with no part in it");
 });
 
 const macEnv = (env, id = "aabbccddeeff", secret = "s3cret") => {
@@ -641,12 +669,14 @@ test("a tip goes straight to the DJ, and only over https", async () => {
 
   const env = makeEnv();
   const groupId = seedGroup(env);
-  seedEvent(env, groupId);
+  // The DJ first: a party carries whose it is, so it has to have somebody to
+  // belong to before it is seeded.
   const djId = ulid();
   env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
     .run(djId, "dj@example.com", "DJ", Date.now());
   env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
     .run(groupId, djId, Date.now());
+  seedEvent(env, groupId);
   const secret = "d".repeat(48);
   env.raw.prepare(`INSERT INTO sessions (id, hash, dj_id, created_ms, expires_ms) VALUES (?, ?, ?, ?, ?)`)
     .run(ulid(), await sha256Hex(secret), djId, Date.now(), Date.now() + 60000);
@@ -657,10 +687,13 @@ test("a tip goes straight to the DJ, and only over https", async () => {
     return get(env, "/@sundaze/manage", { method: "POST", body, headers: { cookie: `pp_s=${secret}` } });
   };
   assert.match(await (await save("http://insecure.example")).text(), /https/);
-  assert.equal(one(env, `SELECT pay_link FROM groups`).pay_link, "");
+  assert.equal(one(env, `SELECT pay_link FROM profiles`)?.pay_link ?? "", "",
+    "a refused link writes nothing at all");
 
+  // Tipping is a person's, not a group's - it lives with the rest of who they
+  // are, on the profile both clients already share.
   await save("https://revolut.me/someone");
-  assert.equal(one(env, `SELECT pay_link FROM groups`).pay_link, "https://revolut.me/someone");
+  assert.equal(one(env, `SELECT pay_link FROM profiles`).pay_link, "https://revolut.me/someone");
   assert.match(await (await get(env, "/@sundaze")).text(), /Tip the DJ/);
   assert.match(await (await get(env, "/@sundaze/june-14")).text(), /Tip the DJ/);
 
@@ -1054,7 +1087,7 @@ test("home is your parties: upcoming, past, and an empty state that says what to
   assert.match(withTheirs, /You went/);
 });
 
-test("your own group page offers management, not a form asking your name", async () => {
+test("your own page offers what you configure, not a form asking your name", async () => {
   const env = await withGoogle(makeEnv());
   const { session } = await signIn(env);
   const groupId = seedGroup(env);
@@ -1063,7 +1096,7 @@ test("your own group page offers management, not a form asking your name", async
     .run(groupId, dj, Date.now());
 
   const mine = await (await get(env, "/@sundaze", { headers: { cookie: `pp_s=${session[1]}` } })).text();
-  assert.match(mine, /Manage this group/);
+  assert.match(mine, /Tips, merch and Pro/);
   assert.ok(!/placeholder="your name"/.test(mine),
     "it must not ask its owner to introduce themselves");
 
@@ -1144,9 +1177,14 @@ test("a calendar feed is one clients will actually accept", async () => {
   assert.ok(!/beta launch/.test(real), "a real night replaces the placeholder");
 });
 
-test("the group page is a party page: timeline, posts, and who is in it", async () => {
+test("a person's page is their parties, coming up and gone", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
+  const djId = ulid();
+  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
+    .run(djId, "dj@example.com", "Sundaze", Date.now());
+  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
+    .run(groupId, djId, Date.now());
   seedEvent(env, groupId, { slug: "june-14", title: "At the Lido" });
   seedEvent(env, groupId, { slug: "old", title: "Last month", starts_ms: Date.now() - 86400000 });
   for (const [email, name] of [["ada@example.com", "Ada Lovelace"], ["bo@example.com", "Bo"]]) {
@@ -1155,22 +1193,17 @@ test("the group page is a party page: timeline, posts, and who is in it", async 
 
   const body = await (await get(env, "/@sundaze")).text();
 
-  // Parties read as a schedule, upcoming under their own heading and the ones
-  // that have happened under theirs - not one run-on list with a grey dot.
-  assert.match(body, /class="timeline"/);
+  // What is coming, then what has happened. Groups are dead: this is a person,
+  // and these are the parties that belong to them.
   assert.match(body, /At the Lido/);
-  assert.match(body, /<h2>Parties<\/h2>/);
-  assert.match(body, /<h2>Past parties<\/h2>/);
-  assert.ok(body.indexOf("<h2>Parties</h2>") < body.indexOf("<h2>Past parties</h2>"),
+  assert.match(body, /<h2>Coming up<\/h2>/);
+  assert.match(body, /<h2>Past<\/h2>/);
+  assert.ok(body.indexOf("<h2>Coming up</h2>") < body.indexOf("<h2>Past</h2>"),
     "what is coming comes first");
-  assert.match(body, /class="tl past"/, "a party that has happened is not still upcoming");
+  assert.match(body, /Last month/);
 
-  // The people, in the rail, as initials on the app's gradient discs.
-  assert.match(body, /class="rail"/);
-  assert.match(body, /Participants \u2014 2/, "the console labels the rail this way");
-  assert.match(body, /<span class="avatar"[^>]*>AL</, "initials from the name they gave");
-  assert.match(body, /Ada Lovelace/);
-  // Their addresses are the group's, not the public page's.
+  // Somebody who is not them can follow, and no address is ever on a page.
+  assert.match(body, /Hear about their parties/);
   assert.ok(!/ada@example\.com/.test(body), "an address never appears on a public page");
 });
 
@@ -1346,104 +1379,84 @@ test("pictures are served back, and only from inside the media prefix", async ()
   assert.match(await video.text(), /has to be a picture|needs to be a picture/i);
 });
 
-test("the rail shows the people, with their faces and their @names", async () => {
+test("a person's page is them, with their face and their @name", async () => {
   const { env, send, read } = await signedIn();
-  await send("/manage", { name: "Sundaze", handle: "sundaze" });
   await send("/home", { name: "Ada Lovelace", handle: "adalove", avatar: pngFile() });
 
-  const groupId = one(env, `SELECT id FROM groups`).id;
-  const memberId = ulid();
-  env.raw.prepare(`INSERT INTO members (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
-    .run(memberId, "grace@example.com", "Grace Hopper", Date.now());
-  env.raw.prepare(
-    `INSERT INTO group_members (group_id, member_id, state, volume, source, joined_ms)
-     VALUES (?, ?, 'joined', 'events', 'link', ?)`
-  ).run(groupId, memberId, Date.now());
-
-  const body = await (await read("/@sundaze")).text();
-  assert.match(body, /Participants — 2/);
+  // The participants rail belonged to a group page and went with it. Who was at
+  // a party is the party's business - guests and artists live on the night, in
+  // the record. What a person's own page shows is the person.
+  const body = await (await read("/@adalove")).text();
   assert.match(body, /Ada Lovelace/);
   assert.match(body, /@adalove/, "a person with a name is reachable at it");
   assert.match(body, /<img src="\/media\/avatars\//, "their photo, not their initials");
-  assert.match(body, /Grace Hopper/);
-  assert.match(body, /class="avatar"[^>]*>GH</, "initials for somebody with no photo");
-  assert.match(body, />Admin</, "whoever runs the group is labelled as such");
-  assert.ok(!/grace@example\.com/.test(body), "an address never appears on a public page");
+  assert.ok(!/Participants \u2014/.test(body), "no group rail: there is no group");
+  assert.ok(!(await (await read("/@adalove")).text()).includes("@example.com"),
+    "an address never appears on a public page");
 });
 
-test("a group has a cover, changed the same two ways a night's is", async () => {
+
+test("a party has a cover, shuffled or uploaded, and a stranger cannot touch it", async () => {
   const { env, send, read } = await signedIn();
-  await send("/manage", { name: "Sundaze", handle: "sundaze" });
+  await send("/parties/new", { title: "At the Lido" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
 
   // Shuffle, from the bundled pile, and never the one already showing.
-  const first = await send("/@sundaze/manage", { shuffleCover: "1" });
+  const first = await send(`${where}/cover`, { shuffleCover: "1" });
   assert.equal(first.status, 302);
-  const one1 = one(env, `SELECT cover_key FROM groups`).cover_key;
+  const one1 = one(env, `SELECT cover_key FROM events`).cover_key;
   assert.match(one1, /^covers\/[a-z-]+\.webp$/);
   // The RENDERED url, not just the stored key. Checking only the key is how a
   // double /media/ prefix shipped: every shuffled cover 404ed while uploaded
   // ones worked, so it read as randomly broken rather than as one bug.
-  const shuffled = await (await read("/@sundaze")).text();
+  const shuffled = await (await read(where)).text();
   assert.match(shuffled, new RegExp(`background-image:url\\('/media/${one1}'\\)`));
   assert.ok(!/\/media\/\/media\//.test(shuffled), "a key must become a URL exactly once");
-  await send("/@sundaze/manage", { shuffleCover: "1" });
-  assert.notEqual(one(env, `SELECT cover_key FROM groups`).cover_key, one1,
+  await send(`${where}/cover`, { shuffleCover: "1" });
+  assert.notEqual(one(env, `SELECT cover_key FROM events`).cover_key, one1,
     "a shuffle that shows the same picture reads as a broken button");
 
   // Upload, which stores the bytes and points the cover at them.
-  await send("/@sundaze/manage", { cover: pngFile("cover.png") });
-  const uploaded = one(env, `SELECT cover_key FROM groups`).cover_key;
+  await send(`${where}/cover`, { cover: pngFile("cover.png") });
+  const uploaded = one(env, `SELECT cover_key FROM events`).cover_key;
   assert.match(uploaded, /^covers\//);
   assert.ok(env.DL.objects.has(`media/${uploaded}`));
 
-  const page = await (await read("/@sundaze")).text();
+  const page = await (await read(where)).text();
   assert.match(page, new RegExp(`background-image:url\\('/media/${uploaded}'\\)`));
   assert.match(page, /Shuffle image/, "the DJ gets the console's two buttons on the picture");
   assert.match(page, /Upload image/);
 
-  // A night's cover works identically, through its own route.
-  seedEvent(env, one(env, `SELECT id FROM groups`).id);
-  await send("/@sundaze/june-14/cover", { shuffleCover: "1" });
-  assert.match(one(env, `SELECT cover_key FROM events`).cover_key, /^covers\//);
-
-  // And a stranger, with no session, cannot touch either.
+  // And a stranger, with no session, cannot touch it.
   const body = new FormData();
   body.append("shuffleCover", "1");
   const refused = await worker.fetch(
-    new Request("https://partyparty.party/@sundaze/manage", { method: "POST", body }), env);
+    new Request(`https://partyparty.party${where}/cover`, { method: "POST", body }), env);
   assert.equal(refused.status, 403);
-  assert.equal(one(env, `SELECT cover_key FROM groups`).cover_key, uploaded, "and changed nothing");
+  assert.equal(one(env, `SELECT cover_key FROM events`).cover_key, uploaded, "and changed nothing");
 });
 
-test("the group's feed takes a photo, and shows who posted it", async () => {
+test("a party's feed takes a photo, and shows who posted it", async () => {
   const { env, send, read } = await signedIn();
-  await send("/manage", { name: "Sundaze", handle: "sundaze" });
   await send("/home", { name: "Ada Lovelace", handle: "adalove", avatar: pngFile() });
+  await send("/parties/new", { title: "At the Lido" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
 
-  const posted = await send("/@sundaze/say", { say: "Doors at nine", media: pngFile("wall.png") });
+  const posted = await send(`${where}/say`, { say: "Doors at nine", media: pngFile("wall.png") });
   assert.equal(posted.status, 302);
-  const post = one(env, `SELECT * FROM posts`);
-  assert.equal(post.body, "Doors at nine");
-  assert.match(post.media_key, /^posts\//);
-  assert.ok(env.DL.objects.has(`media/${post.media_key}`));
+  const wrote = one(env, `SELECT * FROM posts`);
+  assert.equal(wrote.event_id, ev.id, "a photo belongs to the night it was taken at");
+  assert.match(wrote.media_key, /^posts\//);
+  assert.ok(env.DL.objects.has(`media/${wrote.media_key}`));
 
-  const body = await (await read("/@sundaze")).text();
-  assert.match(body, /Doors at nine/);
-  assert.match(body, new RegExp(`<img class="postmedia" src="/media/${post.media_key}"`));
-  assert.match(body, /class="posthead"/, "the feed shows the person, not just a name");
-  assert.match(body, /Ada Lovelace/);
-
-  // A picture with nothing written on it is still a post.
-  await send("/@sundaze/say", { say: "", media: pngFile("two.png") });
-  assert.equal(rows(env, `SELECT * FROM posts`).length, 2);
-
-  // Somebody who neither runs nor follows the group cannot post to it.
-  const body2 = new FormData();
-  body2.append("say", "hello");
-  const refused = await worker.fetch(
-    new Request("https://partyparty.party/@sundaze/say", { method: "POST", body: body2 }), env);
-  assert.match(await refused.text(), /Follow the group first/);
-  assert.equal(rows(env, `SELECT * FROM posts`).length, 2);
+  const page = await (await read(where)).text();
+  assert.match(page, /Doors at nine/);
+  assert.match(page, new RegExp(`/media/${wrote.media_key}`));
+  assert.match(page, /Ada Lovelace/, "posts carry who wrote them");
 });
 
 test("the @name says whether it is free while you are still typing", async () => {
