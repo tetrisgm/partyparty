@@ -630,6 +630,20 @@ text-decoration:none;color:var(--label)}
 .seen:hover{background:var(--bg-elevated);text-decoration:none}
 .seen .entrybody b{font-size:16px}
 
+/* Starting a night: the name is the page, and the two answered things sit
+   under it as one quiet row. */
+.startnight{display:grid;gap:12px;margin:14px 0}
+.startnight input.bigname{width:100%;border:0;background:none;padding:0;min-height:0;
+font:inherit;font-size:30px;font-weight:800;letter-spacing:-.025em;
+color:var(--label);outline:none;box-shadow:none}
+.startnight input.bigname::placeholder{color:var(--label-tertiary)}
+.startrow{display:flex;gap:8px;flex-wrap:wrap}
+.startrow input{flex:1 1 150px;min-width:0;width:auto;min-height:44px;padding:11px 14px;
+border-radius:var(--r-sm);border:1px solid var(--separator);background:var(--bg-elevated);
+color:var(--label);font:inherit;font-size:15px;outline:none}
+.startrow input:focus{border-color:var(--accent)}
+.startnight .btn{justify-self:start}
+
 /* The capture line. The sentence the app exists for goes in here without
    scrolling to find the right section: type the names or the tracks, say what
    they are. The sections below are for correcting, not for entering. */
@@ -2690,28 +2704,27 @@ async function homeGroupFor(env, dj, now) {
 
 // Adding a party: a name, and everything else optional. Somebody standing
 // outside a club typing this on a phone will not fill in six fields.
+// Starting a night. One thing to type - what it is called - and two that are
+// already answered. Who played and what they played are not here: the capture
+// line on the night's own page does that in one line, and asking for them
+// twice is how a form grows to four fields with four shouted labels over them.
 function newPartyPage(group, state, form, today, lastPlace) {
-  const was = (name) => esc((form && form.get(name)) || "");
+  const was = (name, fallback) => esc(
+    form && form.get(name) !== null ? form.get(name) : (fallback || ""));
   return page("Add a party", `
-    <h1>Add a party</h1>
-    <p class="muted">Today, and where you were last, are already in. Only the
-    name is needed - fill the rest in whenever, or never.</p>
     ${state.error ? `<p class="formerror" role="alert">${esc(state.error)}</p>` : ""}
-    <form class="newnight" method="post" action="/parties/new">
-      <label class="eventfield"><span>What is it called?</span>
-        <input type="text" name="title" maxlength="120" required autofocus
-          value="${was("title")}" placeholder="Warehouse, late"></label>
-      <label class="eventfield"><span>When</span>
-        <input type="date" name="day" value="${was("day") || esc(today)}"></label>
-      <label class="eventfield"><span>Where</span>
-        <input type="text" name="place" maxlength="120"
-          value="${was("place") || esc(lastPlace || "")}"
-          placeholder="Unit 7, or a friend's kitchen"></label>
-      <label class="eventfield"><span>Who is playing</span>
-        <input type="text" name="dj" maxlength="200" value="${was("dj")}"
-          placeholder="Seth, and anyone else - separate with commas"></label>
+    <form class="startnight" method="post" action="/parties/new">
+      <input class="bigname" type="text" name="title" maxlength="120" required autofocus
+        value="${was("title")}" placeholder="What is it called?">
+      <div class="startrow">
+        <input type="date" name="day" value="${was("day", today)}" aria-label="When">
+        <input type="text" name="place" maxlength="120" aria-label="Where"
+          value="${was("place", lastPlace)}" placeholder="Where">
+      </div>
       <button class="btn" type="submit">Add it</button>
     </form>
+    <p class="muted">Today${lastPlace ? " and where you were last are" : " is"} already
+    in. Who played and what they played go on the night itself, a line at a time.</p>
     <p class="muted"><a href="/home">Back to your parties</a></p>
   `, "", "", true);
 }
