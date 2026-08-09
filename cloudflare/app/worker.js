@@ -595,6 +595,38 @@ font-size:11px;font-weight:700;letter-spacing:.02em;background:var(--fill);
 color:var(--label-secondary)}
 .tag.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--separator)}
 .tag.live{background:rgba(255,45,111,.16);color:var(--accent)}
+/* The welcome, folded down to one line. */
+details.welcome{margin:0 0 18px}
+details.welcome summary{display:flex;align-items:center;gap:12px;cursor:pointer;
+padding:10px 12px;border-radius:var(--r-md);list-style:none}
+details.welcome summary::-webkit-details-marker{display:none}
+details.welcome summary:hover{background:var(--bg-elevated)}
+details.welcome summary span{display:grid;gap:1px;min-width:0}
+details.welcome summary b{font-size:15px}
+details.welcome summary small{font-size:13px;color:var(--label-tertiary)}
+details.welcome[open] summary{margin-bottom:6px}
+
+/* One scale, everywhere. Three sections were designed on three different days
+   and it read like it: headings at four sizes, secondary text at three. */
+h1{font-size:clamp(28px,4.4vw,34px);letter-spacing:-.025em;line-height:1.08}
+h2{font-size:19px;letter-spacing:-.02em}
+.muted{font-size:14px;line-height:1.5}
+
+/* Motion, of the kind you notice only when it is missing: entries settle in
+   rather than appearing, and each one a beat after the last. Nothing moves for
+   somebody who asked for less. */
+@keyframes settle{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.entry,.people li,.setlist li{animation:settle .28s cubic-bezier(.22,.61,.36,1) both}
+.entry:nth-child(2){animation-delay:.03s}
+.entry:nth-child(3){animation-delay:.06s}
+.entry:nth-child(4){animation-delay:.09s}
+.entry:nth-child(n+5){animation-delay:.12s}
+.btn,.entry,.people li,.x,.addline{transition:background .14s ease,color .14s ease,
+border-color .14s ease,opacity .14s ease}
+@media (prefers-reduced-motion:reduce){
+  .entry,.people li,.setlist li{animation:none}
+}
+
 /* Home as a journal timeline. A row in a table tells you nothing; an entry
    says when, where, and what is in it, and is a whole tap target. */
 .entries{display:grid;margin:0 0 8px;border-top:1px solid var(--separator)}
@@ -1435,7 +1467,7 @@ function peopleRail(people, base, handle, canManage) {
 // Somebody's page: who they are, and their parties. This replaced a group page
 // that showed the same rows under a borrowed name - groups are dead, and a
 // person was always what the address meant.
-function personPage(profile, upcoming, past, isMe, base, followHandle) {
+function personPage(profile, upcoming, past, isMe, base, followHandle, following) {
   const links = profile.linksObj || {};
   const shown = SOCIAL_FIELDS
     .map((field) => ({ field, value: links[field.key], href: linkHref(field.key, links[field.key]) }))
@@ -1470,7 +1502,7 @@ function personPage(profile, upcoming, past, isMe, base, followHandle) {
         rel="noopener noreferrer nofollow" target="_blank">${
           esc(profile.merch_label || "Merch")}</a>` : ""}
     </p>` : ""}
-    ${isMe || !followHandle ? "" : `<form class="join" method="post"
+    ${isMe || following ? "" : !followHandle ? "" : `<form class="join" method="post"
       action="/@${esc(followHandle)}/join">
       <div class="row">
         <input type="email" name="email" placeholder="your email" required>
@@ -1483,6 +1515,8 @@ function personPage(profile, upcoming, past, isMe, base, followHandle) {
     </form>
     <p class="muted">One email to confirm. No account, and you can stop from any
     message we send.</p>`}
+    ${following ? `<p class="muted">\u2605 You follow ${esc(profile.name || "@" + profile.handle)}.
+      Only you can see that.</p>` : ""}
     ${section("Coming up", upcoming, isMe ? "Nothing coming up." : "Nothing announced.")}
     ${section("Past", past, "Nothing yet.")}
     <h2>Add to your calendar</h2>
@@ -3599,14 +3633,23 @@ export default {
       // A rejected save keeps the welcome open, whatever the stored flag says:
       // the person is mid-edit and closing the form under them would be worse
       // than the error they are already looking at.
+      // A journal opens on the journal. Asking somebody to fill in a profile
+      // before they can see their own parties is a wall, and a form the height
+      // of the screen was exactly that - so it is a line that opens now, and
+      // only opens itself when something needs fixing.
       const you = (!stored.saved_ms || problem)
-        ? profileEditor(profile, {
-            action: "/home",
-            heading: "You, if you want to be",
-            dismiss: "Not now",
-            error: problem,
-            note: `All optional. Skip it and you are <b>@${esc(stored.handle)}</b> to everyone.`,
-          })
+        ? `<details class="welcome"${problem ? " open" : ""}>
+             <summary>${personDisc(profile)}<span>
+               <b>${esc(profile.name || "@" + profile.handle)}</b>
+               <small>Add your name and photo - optional, and you are already
+                 @${esc(stored.handle)}</small></span></summary>
+             ${profileEditor(profile, {
+               action: "/home",
+               dismiss: "Not now",
+               error: problem,
+               note: `All optional. Skip it and you are <b>@${esc(stored.handle)}</b> to everyone.`,
+             })}
+           </details>`
         : `<div class="you"><div class="yourow" style="align-items:center">
             ${personDisc(profile, "big")}
             <div class="grow" style="gap:2px">
@@ -3621,6 +3664,11 @@ export default {
       // encounter against - going to somebody else's night is as much a party
       // of mine as throwing one.
       const mine = await myParties(env, dj.email_norm);
+      const { results: follows = [] } = await env.DB.prepare(
+        `SELECT p.handle, p.name FROM follows f
+           JOIN profiles p ON p.email_norm = f.person_email
+          WHERE f.follower_email = ? ORDER BY p.handle`
+      ).bind(dj.email_norm).all();
       const upcoming = mine.filter((e) => !partyIsPast(e, now))
         .sort((a, b) => (a.starts_ms || Infinity) - (b.starts_ms || Infinity));
       const past = mine.filter((e) => partyIsPast(e, now));
@@ -4848,9 +4896,12 @@ export default {
           WHERE d.email_norm = ?
           ORDER BY CASE WHEN g.handle = ? THEN 0 ELSE 1 END, g.created_ms LIMIT 1`
       ).bind(profile.email_norm, profile.handle).first();
+      const following = viewer ? await env.DB.prepare(
+        `SELECT 1 AS yes FROM follows WHERE follower_email = ? AND person_email = ?`
+      ).bind(viewer.email_norm, profile.email_norm).first() : null;
       return html(200, personPage(profile, mine.upcoming, mine.past,
         !!viewer && viewer.email_norm === profile.email_norm, base,
-        home && home.handle));
+        home && home.handle, !!following));
     }
 
     return new Response("Not Found", { status: 404 });

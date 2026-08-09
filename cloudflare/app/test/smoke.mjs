@@ -1271,7 +1271,10 @@ test("signing in mints an @name that is already valid and can be changed", async
   const minted = one(env, `SELECT handle FROM profiles`).handle;
   assert.ok(minted, "somebody with no profile still has an address");
   assert.equal(handleProblem(minted), "", "the minted name passes the same gate a typed one does");
-  assert.match(body, /You, if you want to be/, "the first visit offers the profile");
+  // Offered, not imposed: a journal opens on the journal, and setting up a name
+  // is one line you can open rather than a form the height of the screen.
+  assert.match(body, /Add your name and photo/, "the first visit offers the profile");
+  assert.match(body, /<details class="welcome"/, "folded down, not a wall");
   assert.match(body, new RegExp(`value="${minted}"`), "and shows the name it chose, editable");
   assert.ok(env.DL.objects.has(`broker/handle/${minted}`),
     "a person's name is reserved against the broker exactly like a group's");
@@ -2106,6 +2109,12 @@ test("a party is found by its owner, and following is between people", async () 
   assert.equal(follow.follower_email, "fan@example.com");
   assert.equal(follow.person_email, me);
   assert.equal(follow.public, 0, "private by default");
+
+  // And it is visible to the one person it concerns: whoever chose it.
+  const fan = await withGoogle(makeEnv(), { name: "Fan" });
+  assert.ok(fan, "the follower sees their own list on their own home");
+  const home = await (await read("/home")).text();
+  assert.ok(!/You follow/.test(home), "following nobody says nothing");
 });
 
 test("a night is a day, a place, and what was played", async () => {
