@@ -3354,6 +3354,36 @@ export default {
     }
 
     // The photo, which is bytes rather than JSON and so has its own door.
+    // A web session for a Mac that is already signed in.
+    //
+    // The pages authenticate with a pp_s cookie; a Mac authenticates with the
+    // install credential the broker gave it. This trades the second for the
+    // first, so the console can show the person their OWN pages instead of a
+    // second implementation of them. Nothing new is trusted: the install is
+    // already proven to belong to the account, which is the whole of what a
+    // session says.
+    if (path === "/api/v1/install/session" && request.method === "POST") {
+      const body = await readJson(request, 4096);
+      if (!body) return json(400, { error: "bad json" });
+      if (!await installAuth(env, body.id, body.secret)) {
+        return json(403, { error: "bad install auth" });
+      }
+      const owner = await installOwner(env, body.id);
+      // Not signed in on this Mac. An ordinary state: there is no account whose
+      // session this would be, and the console falls back to its own screens.
+      if (!owner) return json(200, { linked: false });
+      const cookie = await startSession(env, { djId: owner.id, now });
+      const secret = /pp_s=([a-f0-9]+)/.exec(cookie);
+      const profile = await profileFor(env, owner.email_norm, now, owner.name);
+      return json(200, {
+        linked: true,
+        session: secret ? secret[1] : "",
+        expiresMs: now + SESSION_TTL_MS,
+        handle: profile.handle,
+        name: profile.name || profile.handle,
+      });
+    }
+
     if (path === "/api/v1/install/avatar" && request.method === "POST") {
       const form = await request.formData().catch(() => null);
       if (!form) return json(400, { error: "bad form" });

@@ -90,6 +90,10 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         // ::1), which loads as a blank page and - because the diagnostics below
         // also posted to localhost - reported nothing. 127.0.0.1 needs no DNS and
         // always hits the server's IPv4 listener. THIS is the field white-screen.
+        //
+        // /dj is the console shell: the room this Mac runs - who is listening,
+        // the code to join, Go live - around a frame showing the person's own
+        // pages, which the server fetches from the platform (mirror.go).
         guard let url = URL(string: "http://127.0.0.1:\(port)/dj") else { return }
         webView.load(URLRequest(url: url))
     }
@@ -295,10 +299,15 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             let booted = state.contains("\"booted\":true")
             let fallback = state.contains("\"fb\":true")
             let blank = state.contains("\"kids\":0") || state.contains("\"len\":0")
-            self.diag(booted ? "boot" : "error", ["state": state])
-            if booted || fallback {
-                self.bootAttempts = 0        // healthy, or already showing the recovery UI
-            } else if blank {
+            // __ppBooted is dj.html's own flag. The console also shows the
+            // person's pages from the platform, which never set it, so the
+            // honest test for those is simply that something rendered. The
+            // field bug this watches for is a WHITE window, and that is `blank`.
+            let healthy = booted || fallback || !blank
+            self.diag(healthy ? "boot" : "error", ["state": state])
+            if healthy {
+                self.bootAttempts = 0
+            } else {
                 self.recoverBlank()
             }
         }
@@ -318,7 +327,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             resetConsole()
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.scheduleBootWatchdog() }
         default:
-            diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts - WebView is not rendering /dj"])
+            diag("error", ["msg": "console UNRECOVERABLE after \(bootAttempts) attempts - the WebView is rendering nothing"])
         }
     }
 
@@ -376,7 +385,10 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     /// a browser that never opened. Still an allowlist, and still our host
     /// only: this is a web page asking the app to launch a URL.
     static func opensInTheBrowser(_ path: String) -> Bool {
-        if ["/privacy", "/support", "/home", "/people"].contains(path) { return true }
+        // /home and /people are NOT here: the console shows those itself now,
+        // so handing them to Safari would open a second, differently signed-in
+        // copy of the same pages.
+        if ["/privacy", "/support"].contains(path) { return true }
         // /link/<code>: the one-time pairing link. Six upper-case alphanumerics,
         // the same shape the platform's own route matches.
         if path.hasPrefix("/link/") {

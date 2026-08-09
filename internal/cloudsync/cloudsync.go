@@ -579,3 +579,27 @@ func (c *Client) Run(ctx context.Context, h Hooks, every time.Duration) {
 		}
 	}
 }
+
+// Session is a web session for this Mac's owner, so the console can show the
+// person their OWN pages rather than a second implementation of them. Empty
+// when this Mac is not signed in, which is an ordinary state.
+type Session struct {
+	Linked    bool   `json:"linked"`
+	Secret    string `json:"session"`
+	ExpiresMs int64  `json:"expiresMs"`
+	Handle    string `json:"handle"`
+	Name      string `json:"name"`
+}
+
+// Session trades the install credential for a browser session. Nothing new is
+// trusted: the install already belongs to the account.
+func (c *Client) Session(ctx context.Context) (Session, error) {
+	if !c.ready() {
+		return Session{}, errors.New("cloudsync: not configured")
+	}
+	var out Session
+	err := c.post(ctx, "/api/v1/install/session", map[string]any{
+		"id": c.InstallID, "secret": c.Secret,
+	}, &out)
+	return out, err
+}

@@ -1,6 +1,51 @@
 # PartyParty.party handoff
 
-## Current position (2026-08-08): the web is a personal party record
+## Current position (2026-08-09): one event page, shown twice
+
+The Mac and the web are one experience apart from streaming. That is not two
+implementations kept in step - the owner looked at the console beside
+partyparty.party on 2026-08-09 and said "they are completely different", which
+they were. There is now one implementation.
+
+**The console is a shell.** `web/dj.html` keeps what only a Mac can do - the
+capture source, Go live, the join code and QR, who is listening, permissions
+and LAN state - and shows the person's real pages in a frame in the middle of
+it (`#webFrame`, opening on `/home`). The frame is same-origin: this server
+serves `/home`, `/people`, `/settings`, `/parties/...`, `/@...` and `/media/...`
+by fetching them from partyparty.party as the owner (`internal/server/
+mirror.go`) and handing them back. The session comes from
+`/api/v1/install/session` - a linked Mac trades its install credential for its
+owner's web session; nothing new is trusted, the install already belonged to
+the account. The console holds that session rather than fetching one per page,
+and remembers a failure for 30s.
+
+**1,530 lines came out of dj.html.** The poster, the title and cover editors,
+the profile fields, the party feed and composer, the link editor, the
+moderation queue and the reaction panel were all the console's own copies of
+things the web page already owned, and every one of them had drifted. Deleted,
+with their CSS left in place (a purge of it broke Go live's styling and was
+reverted - dead CSS is cheap, a dead button is not).
+
+Three things that must not regress:
+
+- **A Mac with no platform still runs a party.** Unreachable, or nobody signed
+  in, and the mirrored paths serve a small local page saying so - never a
+  redirect to `/dj`, which would load the console into its own frame, and never
+  a hang or a 502. Covered in `internal/server/mirror_test.go`.
+- **The mirror is loopback and DJ-only.** A guest on the venue Wi-Fi reaches
+  none of it. Same file.
+- **The console must not grow a second event page again.**
+  `scripts/test-dj-console-shell.mjs` boots the real page in a real browser,
+  fails on any uncaught error, and asserts that `titleEdit`, `profileName`,
+  `djFeed`, `linkRows` and friends are absent. `test-stream-contract.mjs`
+  asserts the same statically. That shell test replaces
+  `test-dj-console-saves.mjs`, whose subject was the deleted editors.
+
+The console's boot probe used to call any page without dj.html's `__ppBooted`
+flag an error. It now treats a page that rendered as healthy; the field bug it
+exists for is a WHITE window, and that is still caught.
+
+## Earlier position (2026-08-08): the web is a personal party record
 
 The web half changed shape. It was a place to PUBLISH a night, reached from the
 Mac. It is now first a place to KEEP one, and it is useful with nobody else on

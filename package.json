@@ -5,7 +5,7 @@
   "scripts": {
     "pretest": "npm ci",
     "stream:e2e": "node scripts/stream-e2e.mjs",
-    "test": "node scripts/test-stream-contract.mjs && node scripts/test-listener-render-stability.mjs && node scripts/test-dj-console-saves.mjs && node scripts/test-dj-console-signin.mjs && node scripts/test-guest-page-taps.mjs"
+    "test": "node scripts/test-stream-contract.mjs && node scripts/test-listener-render-stability.mjs && node scripts/test-dj-console-shell.mjs && node scripts/test-dj-console-signin.mjs && node scripts/test-guest-page-taps.mjs"
   },
   "devDependencies": {
     "playwright": "^1.61.1"

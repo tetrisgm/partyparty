@@ -143,23 +143,30 @@ Still unexamined at Apple-Journal quality: /people, the visitor view on a phone
   night; tips and merch moved onto the profile.
 - DONE `3d6ae95` - the journal model: day-only dates, songs, visibility,
   person-to-person follows.
+- DONE `33aada9` - G3, parties are found by whose they are. The group tables
+  are out of the read path.
+- DONE `01e5354`..`0dfe6ec` - the design pass, screen by screen: the event page
+  as a record rather than a poster with a diary stapled on, home as a timeline
+  of nights, /people with faces, a person's page, and starting a night as one
+  field. Each one checked in a 375px screenshot, not in the HTML.
+- DONE, this branch - the Mac unification, in full. `/api/v1/install/session`
+  hands a linked Mac its owner's own web session; the server fetches the
+  person's real pages and serves them on its own origin; and the console became
+  a SHELL around them - capture source, Go live, join code, listeners - after
+  the owner put the two side by side and said "they are completely different".
+  1,530 lines of the console's own event page came out: poster, title and cover
+  editors, profile fields, feed, link editor, moderation, reactions. What is
+  left is the room, which is the one thing the web cannot do.
 
 STILL OPEN, in the order they are worth doing:
 
-1. **The design pass.** The event page now has the right PARTS but is still
-   laid out as a form with headings. It has to read as one page you write on:
-   the night at the top, then people, songs, notes, photos, each one line to
-   add. This is the whole remaining point and the largest piece.
-2. **Wire what the model can now express.** `visibility` has no control on any
-   page; `follows` is written and read by nothing, while /@handle/join still
-   writes group_members; participants are still only in the private record,
-   with no way for somebody holding the link to add themselves.
-3. **Place, the way the date works.** The date defaults to today. The place
-   should default too - the honest cheap version is the last place used, since
+1. **The one-line capture.** See "The only job" above. Typing the sentence still
+   takes three actions for four clauses. A capture line that routes names to
+   people and played-phrases to songs takes it to one. A parser, not a layout
+   change, and the largest remaining piece.
+2. **Place, the way the date works.** The date defaults to today; the place
+   defaults to nothing. The honest cheap version is the last place used, since
    real geolocation means a browser prompt and a reverse-geocoding service.
-4. **G3** - the group tables leave the read path. Invisible, and last: nothing
-   above depends on it.
-5. Then `/api/v1/install/session`, the proxy, and the Mac layer.
-
-The order matters. Building the proxy first would mean rendering pages into the
-console and then changing them underneath it.
+3. **The visitor view.** Somebody holding a link, on a phone, has been checked
+   in HTML but never in a screenshot - and there is still no way for them to
+   add themselves to a night they were at.

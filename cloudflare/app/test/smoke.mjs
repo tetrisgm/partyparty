@@ -1645,6 +1645,36 @@ const asInstall = async (env, { linked = true } = {}) => {
   return { install, groupId, call };
 };
 
+test("a linked Mac can be handed its owner's own session", async () => {
+  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
+  const mac = await asInstall(env);
+
+  const got = await mac.call("/api/v1/install/session", {});
+  assert.equal(got.status, 200);
+  assert.equal(got.body.linked, true);
+  assert.match(got.body.session, /^[a-f0-9]{48}$/);
+  assert.ok(got.body.handle, "and who it belongs to, for the console to show");
+
+  // It IS a session: the pages answer to it as the person, which is the whole
+  // point - the console shows their own pages rather than a second copy.
+  const home = await get(env, "/home", { headers: { cookie: `pp_s=${got.body.session}` } });
+  assert.equal(home.status, 200);
+  assert.match(await home.text(), /Your parties/);
+
+  // An unsigned Mac gets no session, and says so rather than failing.
+  const lone = await asInstall(await withGoogle(makeEnv()), { linked: false });
+  const none = await lone.call("/api/v1/install/session", {});
+  assert.equal(none.status, 200);
+  assert.equal(none.body.linked, false);
+  assert.ok(!none.body.session);
+
+  // And a caller who cannot prove which Mac it is gets nothing at all.
+  const forged = await worker.fetch(new Request(
+    "https://partyparty.party/api/v1/install/session",
+    { method: "POST", body: JSON.stringify({ id: "aabbccddeeff", secret: "wrong" }) }), env);
+  assert.equal(forged.status, 403);
+});
+
 test("every Mac route refuses a caller it cannot authenticate", async () => {
   // This is the test that was missing. Every existing case authenticated
   // successfully, so the refusal branch never ran - and it called a helper
@@ -1654,6 +1684,7 @@ test("every Mac route refuses a caller it cannot authenticate", async () => {
   const paths = [
     "/api/v1/parties", "/api/v1/party/create", "/api/v1/party/update",
     "/api/v1/install/profile", "/api/v1/party/bind", "/api/v1/party/posts",
+    "/api/v1/install/session",
   ];
   for (const path of paths) {
     for (const body of [

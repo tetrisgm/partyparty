@@ -305,6 +305,9 @@ func main() {
 	// install to authenticate with; the endpoints answer "not signed in" rather
 	// than failing when that is the case.
 	var partyClient server.PartyClient
+	// The same client, for showing the person their own pages in the console.
+	var sessions server.SessionClient
+	platformURL := ""
 
 	// The party's wall and its event page are one timeline. This is the only
 	// thing that reaches the platform from the Mac, it runs only while a party
@@ -370,12 +373,16 @@ func main() {
 				return sync.SyncProfile(ctx, profileHooks)
 			}
 			partyClient = sync
+			sessions = sync
+			platformURL = platform
 		}
 	}
 
 	handler = server.New(server.Deps{
 		Config:      cfg,
 		Parties:     partyClient,
+		Sessions:    sessions,
+		PlatformURL: platformURL,
 		SyncProfile: syncProfileNow,
 		Broadcaster: bc,
 		Listeners:   ls,
