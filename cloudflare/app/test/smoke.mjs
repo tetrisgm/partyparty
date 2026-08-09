@@ -2206,7 +2206,13 @@ test("a record belongs to one person and is invisible to everybody else", async 
   assert.match(publicPage, /Warehouse/);
   assert.ok(!publicPage.includes("My private thought"), "a note is a diary, not content");
   assert.ok(!publicPage.includes("Your notes"));
-  assert.ok(!publicPage.includes("Seth"), "who I saw is mine too");
+  // Seth is who PLAYED - the night's billing, which is what the night was, so
+  // sharing the night shares it. Who I SAW is my observation of a room and
+  // stays mine however widely the night is shared, like my note does.
+  assert.match(publicPage, /Seth/, "the bill is the night");
+  await send(`/@${handle}/${ev.slug}/record`, { who: "Ada", role: "guest" });
+  const again = await (await get(env, `/@${handle}/${ev.slug}`)).text();
+  assert.ok(!again.includes("Ada"), "who I saw is mine, shared or not");
 
   // Another person's record of the SAME party, in the same database. The risk
   // is a query that forgets owner_email, so this puts a rival row right next

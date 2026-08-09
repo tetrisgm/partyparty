@@ -850,8 +850,8 @@ details.tinyhelp p{margin:8px 0 0}
   .hero .cover{min-height:180px;padding:16px;flex-direction:column;
   align-items:stretch;justify-content:flex-end;gap:14px}
   .hero h1{font-size:30px}
-  .hero .cover .titles{margin-top:52px}
-  .coveractions{position:static;flex-wrap:wrap}
+  .hero .cover .titles{margin-top:56px}
+  .coveractions{right:14px;top:14px}
   .coversays{position:static;order:-1}
   .toptools{top:16px;right:16px}
   .brandchip{top:16px;left:16px}
@@ -1750,11 +1750,28 @@ function nightHue(key) {
 }
 
 function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra) {
-  const { live, editError, typed, phase, posts, canPost, payLink, ownerName } = extra || {};
+  const { live, editError, typed, phase, posts, canPost, payLink, ownerName,
+    billed, setlist } = extra || {};
   const links = partyLinks(event.links);
   const where = `/@${esc(group.handle)}/${esc(event.slug)}`;
 
+  // A night you shared shows the night: who was on, and what they played. Those
+  // are the interesting parts and they are not secrets once you have handed
+  // somebody the link. What stays yours is what you thought - your note, and
+  // your notes about the people.
+  // Who PLAYED is the night's billing: it is what the night was, and sharing
+  // the night shares it. Who I SAW is my observation of a room, and stays mine
+  // however widely the night is shared - the same reason my note does.
+  const bill = (billed || []).filter((p) => p.role === "dj");
+  const named = (rows) => `<ul class="who-list">${rows.map((p) => `<li>
+    ${personDisc(p)}<span><b>${esc(p.name)}</b></span></li>`).join("")}</ul>`;
+
   const shared = `
+    ${bill.length ? `<h2>Who played</h2>${named(bill)}` : ""}
+    ${(setlist || []).length ? `<h2>Songs</h2><ol class="setlist">${setlist.map((song) =>
+      `<li><span class="grow"><b>${esc(song.title)}</b>${
+        song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}</span></li>`)
+      .join("")}</ol>` : ""}
     ${links.length ? `<ul class="linklist">${links.map((l) =>
       `<li><a href="${esc(l.href)}" rel="noopener noreferrer nofollow"
         target="_blank">${esc(l.label)}</a></li>`).join("")}</ul>` : ""}
@@ -4783,6 +4800,8 @@ export default {
         mineToKeep || await djRunsGroup(env, viewer, group.id), tracker,
         {
           ownerName: owner ? (owner.name || "@" + owner.handle) : group.handle,
+          billed: mineToKeep ? [] : await partyPeople(env, event.owner_email, event.id),
+          setlist: mineToKeep ? [] : await songsFor(env, event.id),
           live: liveNow(event, now), phase: partyPhase(event, now),
           posts: await eventPosts(env, event.id),
           // Whoever it belongs to, and whoever they let in. The tracker above
