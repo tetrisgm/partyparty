@@ -70,34 +70,9 @@
   body{margin:0;padding-bottom:40px;overflow-x:hidden;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
   [hidden]{display:none!important}
-  .authbanner-actions .go{height:32px;padding:0 16px;border-radius:var(--r-pill);font-size:13px}
-  .authbanner-actions .ghost{height:32px;padding:0 12px;border-radius:var(--r-pill);font-size:13px}
-  .auth-actions .go{height:40px;padding:0 22px;border-radius:var(--r-pill)}
-  .auth-actions .ghost{height:40px;border-radius:var(--r-pill)}
-  .auth-status.error{color:var(--danger)}
-  .auth-status.ok{color:#1d883d}
-  .setwrap-in .go{white-space:nowrap}
-  .setwrap.done{background:rgba(52,199,89,.09);border-color:rgba(52,199,89,.32)}
-  .authgate.blocking .authbanner-actions .go,.authgate.blocking .authbanner-actions .ghost{width:100%;height:42px;font-size:14px}
   .settings-section{border-top:1px solid var(--separator);padding-top:16px;margin-top:16px}
   .settings-section:first-of-type{border-top:none;padding-top:0;margin-top:0}
   .support-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .event-actions .ghost{height:30px;border-radius:var(--r-pill);white-space:nowrap}
-  .eventedit{display:none;margin-top:14px;border:1px solid var(--separator);background:var(--bg-elevated);border-radius:var(--r-md);padding:14px;box-shadow:var(--elev-1)}
-  .eventedit.show{display:block}
-  .eventedit h2{font-size:15px;line-height:1.25;margin:0 0 10px;color:var(--label)}
-  .eventform-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .eventform-field{display:grid;gap:5px;min-width:0}
-  .eventform-field.wide{grid-column:1/-1}
-  .eventform-field span{font-size:12px;color:var(--label-secondary)}
-  .eventform-field input{width:100%;min-width:0;height:36px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 11px;color:var(--label);font:inherit;font-size:13px;outline:none}
-  .eventform-field input:focus{border-color:var(--accent);background:var(--bg-elevated)}
-  .eventform-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap}
-  .eventform-status{font-size:12px;line-height:1.45;color:var(--label-secondary);min-height:17px;margin-right:auto}
-  .eventform-status.error{color:var(--danger);font-weight:700}
-  .eventform-status.ok{color:#1d883d;font-weight:700}
-  .pub-fields.show{display:grid;gap:10px}
-  .eventcreate.show{display:block}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);text-transform:capitalize}
   .badge.live{background:rgba(52,199,89,.15);color:#1d883d}
   .badge.error{background:rgba(255,59,48,.12);color:#c1281e} /* darkened for light-mode contrast, like its siblings */
@@ -139,8 +114,6 @@
   .listener:hover{background:rgba(255,255,255,.05)}
   .listener:last-child{border-bottom:none}
   .listener.det{align-items:flex-start}
-  .listener .lstat{width:18px;text-align:center}
-  .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
   .listener .lemoji{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);display:grid;place-items:center;font-size:16px;line-height:1;flex:0 0 32px;overflow:hidden}
   .listener .lemoji.lphoto img{width:100%;height:100%;object-fit:cover;display:block}
   .listener .lname{flex:1;color:var(--label);font-size:14px;font-weight:500}
@@ -148,7 +121,6 @@
   .listener .lbody{flex:1;min-width:0}
   .listener .lbody .lname{display:block}
   .ldetail{color:var(--label-secondary);font-size:11px;font-variant-numeric:tabular-nums;margin-top:2px}
-  .listener .llat{color:var(--label-secondary);font-variant-numeric:tabular-nums}
   .stat{display:flex;gap:16px;align-items:baseline}
   pre{background:var(--bg-elevated-2);border:1px solid var(--separator);border-radius:var(--r-sm);padding:12px;font-family:var(--mono);font-size:12px;line-height:1.5;height:190px;overflow:auto;color:var(--label-secondary);white-space:pre-wrap;margin:0}
   .hint{font-size:11px;color:var(--label-tertiary);margin-top:10px;line-height:1.5}
@@ -171,91 +143,24 @@
   body.show-adv .adv{display:block}
   .inapp-check{display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer}
   .inapp-check input{accent-color:var(--accent)}
-  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
-  .cardhead h2{margin:0}
   .iconbtn{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);background:var(--fill);color:var(--label-secondary);font-size:15px;font-weight:600;line-height:1;cursor:pointer}
   .iconbtn:hover{background:var(--fill-hover);color:var(--label)}
   .iconbtn svg{display:block}
-  .iconbtn.spin svg{animation:pp-spin .6s linear}
   @keyframes pp-spin{to{transform:rotate(360deg)}}
-  /* wall bits shared with the guest page */
-  .wpost{padding:11px 0;border-bottom:1px solid var(--separator);font-size:13px}
-  .wpost:last-child{border-bottom:none}
-  .wtext{margin-top:4px;color:var(--label);white-space:pre-wrap;word-break:break-word}
-  .wtext.big{font-size:20px;font-weight:700;letter-spacing:-.02em}
-  .wverb{color:var(--label-secondary);font-size:11px;font-weight:500}
-  .wpostactions{display:flex;align-items:center;gap:10px;margin-top:9px}
-  .wreplybtn{height:28px;padding:0;background:none;color:var(--accent);font-size:12px;font-weight:700}
-  .wreplybtn:hover{text-decoration:underline}
-  .wreply[hidden]{display:none}
-  .wreply{display:flex;gap:8px;margin-top:7px}
-  .wreply input{flex:1;background:var(--fill);border:none;border-radius:var(--r-pill);padding:6px 12px;font:inherit;font-size:12px;color:var(--label);outline:none}
-  .wreply button{background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
-  .wcmt{font-size:12px;line-height:1.5;margin:3px 0 0 2px;color:var(--label)}
-  .wcmt b{font-weight:700}
-  .wthumb{position:relative;display:inline-block}
-  .wplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:var(--r-pill);background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
-  .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
-  .statebadge.pending{background:rgba(255,149,0,.16);color:#a15b00}
-  .statebadge.hidden{background:rgba(255,59,48,.12);color:var(--danger)}
-  .modbtn{background:none;border:none;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;padding:2px 4px}
-  .modbtn.hide,.modbtn.remove{color:var(--danger)}
-  .moditem .txt{flex:1;min-width:0;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
-  .pdel:hover{color:var(--danger)}
-  .reactionpanel{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
-  .reactionpanel[hidden]{display:none}
-  .reactiongrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px}
-  .djreact{background:var(--fill);border-radius:var(--r-sm);padding:7px 8px;font-size:12px;font-weight:700;color:var(--label);display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
-  .djreact.zero{color:var(--label-tertiary);font-weight:600}
-  .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
-  .trackcard.off{opacity:.7}
   /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
   /* The bar's glass runs edge to edge, but its controls sit on the same
      measure as every card below it. */
   .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:0}
   .source-picker{display:flex;align-items:center;gap:8px;min-width:230px;max-width:330px;flex:0 1 330px}
-  .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
-  .source-step label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .source-row{position:relative;display:flex;align-items:center;gap:6px;min-width:0;flex:1}
   .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:var(--r-pill);height:42px;font-weight:700;background-color:rgba(18,18,20,.78);color:transparent;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
   .source-row select option{color:var(--label);background:var(--bg-elevated)}
   .device-display{position:absolute;left:16px;right:16px;z-index:var(--z-base);pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
   .source-help{font-size:15px;font-weight:800}
-  .abspacer{flex:1;min-width:20px}
   .golive{height:52px;min-width:148px;padding:0 34px;border-radius:var(--r-pill);font-size:17px;font-weight:800}
   .golive.go{background:var(--success);color:#fff;box-shadow:0 8px 22px rgba(52,199,89,.33)}
   .golive.go:hover{filter:brightness(1.04)}
   .golive.stop{background:transparent;color:var(--accent);border:1px solid var(--accent);box-shadow:none}
-  .eventtop > .card + .card{margin-top:0}
-  .herocard{min-height:0}
-  .statuspill.live{background:var(--accent);color:#fff}
-  /* The QR column is ~310px tall; centring a 38px title against it left
-     ~145px of dead space above and below the event's own name. Sit the copy
-     at the top and let the column be as tall as it needs to be. */
-  .event-copy{min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:var(--s-3)}
-  .titlerow{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
-  .hostlinks .ll.add{border-style:dashed;color:var(--accent);background:transparent}
-  .eventcover{border-radius:var(--r-lg);position:relative;width:auto;margin-inline:0;overflow:hidden;border:0;border-radius:0;padding:0;box-shadow:none;height:clamp(170px,20vw,300px);display:block;text-align:center;background:#101012;color:var(--label-secondary)}
-  .cover-media{position:absolute;inset:0;display:block;overflow:hidden;background:#101012}
-  .cover-media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:none}
-  .eventcover.has-cover .cover-media img{display:block}
-  .cover-empty{position:absolute;inset:0;display:grid;place-items:center;padding:28px;transition:opacity .16s var(--curve)}
-  .eventcover.has-cover .cover-empty{opacity:0;pointer-events:none}
-  .eventcover .cam{font-size:36px;margin-bottom:12px;opacity:.62}
-  .cover-empty b{display:block;color:var(--label);font-size:17px;margin-bottom:4px}
-  .cover-empty .muted{display:block;max-width:320px;margin:0 auto;color:var(--label-secondary);font-size:13px;line-height:1.45}
-  .cover-toolbar{position:absolute;left:50%;bottom:16px;z-index:var(--z-raised);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:calc(100% - 32px);padding:5px;border-radius:var(--r-pill);background:rgba(20,20,24,.46);box-shadow:var(--elev-2);opacity:1;pointer-events:auto;transform:translateX(-50%);transition:opacity .16s var(--curve);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%)}
-  .eventcover:not(.has-cover) .cover-toolbar,.eventcover:hover .cover-toolbar,.eventcover:focus-within .cover-toolbar,.eventcover.dragging .cover-toolbar,body.event-manage-open .eventcover .cover-toolbar{opacity:1;pointer-events:auto}
-  .cover-action{min-height:32px;border:0;border-radius:var(--r-pill);padding:0 12px;background:rgba(255,255,255,.18);color:#fff;font:650 12px/1 var(--sans);cursor:pointer}
-  .cover-action:hover,.cover-action:focus-visible{background:rgba(255,255,255,.28)}
-  .cover-action:disabled{cursor:default;opacity:.55}
-  .cover-action.change{display:none}
-  .eventcover.has-cover .cover-action.change{display:inline-flex;align-items:center}
-  .cover-drop-hint{position:absolute;inset:0;z-index:var(--z-raised);display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.28);color:#fff;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .16s var(--curve)}
-  .eventcover.dragging .cover-drop-hint{opacity:1}
-  .cover-status{position:absolute;left:50%;top:16px;z-index:var(--z-raised);display:none;max-width:calc(100% - 32px);padding:7px 12px;border-radius:var(--r-pill);background:rgba(20,20,24,.48);color:#fff;font-size:12px;font-weight:700;transform:translateX(-50%);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
-  .cover-status.error{background:rgba(255,69,58,.78)}
   @keyframes bar{0%,100%{height:25%}50%{height:92%}}
   .listening{font-size:14px;font-weight:600;color:var(--label-secondary);white-space:nowrap}
   .listening b{font-size:25px;color:var(--label);font-weight:800}
@@ -274,7 +179,6 @@
   .qr-pending small{font-size:11px;line-height:1.3;color:var(--label-tertiary)}
   /* These sit beside the QR now, not under it: full measure, left aligned. */
   .qr-network-status{max-width:none;margin:0;font-size:12px;line-height:1.45;color:var(--label-secondary);text-align:left}
-  .sharelede{margin:0;font-size:15px;line-height:1.4;color:var(--label);font-weight:600}
   .linkfield{display:flex;align-items:center;gap:var(--s-2);margin-top:var(--s-3)}
   .linkfield input{
     flex:1 1 auto;min-width:0;height:38px;padding:0 var(--s-3);
@@ -306,8 +210,6 @@
   .qr-network-status.relay{color:var(--warning)}
   .offline-status.relay{background:rgba(255,149,0,.11);border-color:rgba(255,149,0,.34);color:#9a5700}
   .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-  .guest-selftest.error{color:var(--danger);font-weight:700}
-  .guest-selftest.ok{color:#1d883d;font-weight:700}
   .guest-qr-panel[hidden]{display:none}
   .party-qr-panel .url{font-size:18px}
   .spin16{width:16px;height:16px;border-radius:50%;border:2px solid var(--separator);border-top-color:var(--accent);animation:pp-spin .9s linear infinite;flex:0 0 auto}
@@ -319,16 +221,8 @@
   .pcount{margin-left:6px;background:var(--fill);border-radius:var(--r-pill);padding:1px 7px;font-size:11px;color:var(--label-secondary)}
   .pcount:empty{display:none}
   .ptab.active .pcount{background:var(--fill)}
-  /* The two columns must end level. The card is not a direct child of the
-     column - a #ptab-* panel wraps it - so the stretch has to be passed down
-     the whole chain or the column grows and the card inside it does not. */
-  .party-feed-col{min-width:0;display:flex;flex-direction:column}
-  .party-feed-col > [id^="ptab-"]{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
-  .party-feed-col > [id^="ptab-"] > .card{flex:1 1 auto}
-  .party-feed-col > .card{flex:1 1 auto}
   .guest-sidebar{display:grid;gap:16px;min-width:0;align-self:stretch}
   #roster{flex:1}
-  .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:var(--r-pill);padding:7px 13px;font-size:13px;font-weight:600}
   /* The photo is the control: hover reveals "Change", the X removes it.
      A separate "Choose profile photo" button restated what the image already
      affords and pushed Save profile out of reach. */
@@ -336,36 +230,6 @@
      that is what the circle is for. The + says it is addable; the whole
      circle is the target. */
   .profileimagewrap{position:relative;border-radius:50%;cursor:pointer}
-  .profileempty{
-    position:absolute;inset:0;display:grid;place-items:center;border-radius:50%;
-    background:var(--bg-elevated-2);color:var(--label-tertiary);
-    box-shadow:inset 0 0 0 1px var(--hairline);
-  }
-  .profileempty svg{width:52%;height:52%}
-  .profileimagewrap.has-photo .profileempty{display:none}
-  .profileplus{
-    position:absolute;right:-2px;bottom:-2px;width:28px;height:28px;
-    display:grid;place-items:center;border-radius:50%;
-    background:var(--accent);color:#fff;font-size:19px;font-weight:600;line-height:1;
-    border:3px solid var(--bg-elevated);pointer-events:none;
-  }
-  .profileimagewrap.has-photo .profileplus{display:none}
-  .profilephotopick{
-    /* Explicit size: the base button height would otherwise win over inset
-       and leave a 32px strip instead of covering the circle. */
-    position:absolute;inset:0;width:100%;height:100%;display:grid;place-items:center;border:0;padding:0;
-    border-radius:50%;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;
-    font:inherit;font-size:12px;font-weight:600;opacity:0;
-    transition:opacity var(--fast) var(--curve);
-  }
-  .profileimagewrap:hover .profilephotopick,
-  .profilephotopick:focus-visible{opacity:1}
-  .profilephoto{border-radius:50%;object-fit:cover;background:var(--fill);border:1px solid var(--separator)}
-  .profileremove{position:absolute;top:-5px;right:-5px;width:24px;height:24px;display:grid;place-items:center;padding:0;border:2px solid var(--bg-elevated);border-radius:50%;background:#55565c;color:#fff;font:700 15px/1 var(--sans);cursor:pointer}
-  .profilefield{display:grid;gap:6px;color:var(--label-secondary);font-size:12px;font-weight:600}
-  .profilefield input{height:38px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 10px;color:var(--label);font:inherit;font-size:14px}
-  .profilebuttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .profilestatus{font-size:12px;color:var(--label-secondary)}
   .rostergroup{padding:0 0 var(--s-3)}
   .rostergrouphead{display:flex;align-items:baseline;gap:6px;margin:var(--s-4) 0 var(--s-2);
     font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
@@ -375,7 +239,6 @@
      is minted and owned by the platform, and the console only reports it. */
   .djhandle{margin-left:8px;font-family:var(--mono,ui-monospace,Menlo,monospace);
     font-size:12px;font-weight:600;color:var(--label-tertiary)}
-  .djhandle[hidden]{display:none}
   /* The party this room is running. One line, because choosing it is a thing
      you do once a night and then forget about. */
   .partybar{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);
@@ -429,8 +292,6 @@
   .signinbtn{margin-left:auto;min-height:30px;padding:0 14px;border-radius:var(--r-pill);
     background:var(--fill);color:var(--label);border:1px solid var(--separator);
     font:inherit;font-size:12px;font-weight:700;cursor:pointer}
-  .signinbtn:hover{background:var(--fill-hover)}
-  .signinbtn[hidden]{display:none}
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   /* macOS-style hierarchy: quiet grouped surfaces, aligned fields, one clear
      action row per section. */
@@ -441,9 +302,7 @@
     border-top:1px solid var(--hairline);
   }
   .page{margin:0 auto;width:100%;max-width:var(--measure);padding:0 var(--page-pad) 96px}
-  .eventtop{display:grid;grid-template-columns:1fr;align-items:stretch;gap:14px}
   .card,.linkeditor{border-radius:var(--r-sm);box-shadow:none}
-  header.eventhead{margin:0 auto;display:block;width:100%;max-width:none;padding:22px 24px;background:var(--bg-elevated)}
   /* The name owns the top of the card; the QR sits under it on the left with
      its explanation running alongside, instead of a tall right-hand rail that
      stretched the row and stranded the title in whitespace. */
@@ -455,38 +314,12 @@
   /* Display type: size-specific negative tracking, tight leading. */
   .ename{margin:0;color:var(--label);font-weight:800;letter-spacing:-.03em;overflow-wrap:anywhere;
     font-size:clamp(34px,3.4vw,46px);line-height:1.04;font-optical-sizing:auto}
-  /* An eyebrow names the section in a whisper instead of a shout. */
-  .eyebrow{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;
-    padding:4px var(--s-3);border-radius:var(--r-pill);
-    background:var(--fill);color:var(--label-tertiary);
-    font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
-  .linkeditor{border:1px solid var(--separator);padding:20px 22px;background:var(--bg-elevated);margin:0}
-  .linkeditor{display:grid;grid-template-columns:100px minmax(0,1fr);gap:var(--s-3) var(--s-5);align-items:start}
-  .profilephoto-actions{gap:0}
-  /* Status rows exist for errors only; empty ones must not reserve a line. */
-  .profilephoto-actions .profilebuttons{display:none;margin:0;min-height:0}
-  .profilephoto-actions .profilebuttons:has(.profilestatus:not(:empty)){display:block;margin-top:6px}
-  .linkeditor > .linkactions{display:none}
-  .linkeditor > .linkactions:has(.linkstatus:not(:empty)){display:flex;margin:0}
-  /* The link row centers against the QR so the card carries no dead corner. */
-  .linkeditor > .linkeditor-head{grid-column:1/-1}
-  .linkeditor > .linkactions{grid-column:1/-1}
-  .profileeditor{display:contents}
-  .profileeditor .profileimagewrap{grid-column:1;grid-row:2 / span 2}
-  .profileeditor .profilephoto-actions{grid-column:2;grid-row:2}
-  .profileimagewrap,.profilephoto{width:100px;height:100px}
-  .profilephoto-actions{display:grid;align-content:start;gap:10px}
-  .profilephoto-actions textarea{width:100%;resize:vertical;background:var(--fill);border:1px solid var(--separator);padding:9px 10px;color:var(--label);font:inherit;min-height:86px;border-radius:var(--r-sm)}
-  .profilebuttons,.linkactions{justify-content:flex-end;padding-top:4px}
-  .party-grid .card{padding:20px}
   .guest-sidebar .card{margin-top:0;display:flex;flex-direction:column}
   .inspector .guest-sidebar .card{background:transparent;box-shadow:none;border:0;padding:0}
   /* The rail label and the per-DJ headers name the list; the card's own
      "Guests" heading would say it a third time. */
   .inspector .guesthead h2{display:none}
   .inspector .guesthead{justify-content:flex-end}
-  .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:0;margin:0 0 12px;padding:0}
-  .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:20px;line-height:1.25;font-weight:700}
   /* Social links as chips, the way an "about me" page does it: the brand mark,
      the service name and the handle all live inside one pill, so the field is
      part of the object instead of a separate box stretched across the window.
@@ -498,57 +331,10 @@
     box-shadow:inset 0 0 0 1px var(--hairline);
     transition:box-shadow var(--fast) var(--curve),background var(--fast) var(--curve);
   }
-  .linkrow:hover{background:var(--fill-hover)}
-  .linkrow:focus-within{box-shadow:inset 0 0 0 1px var(--accent);background:var(--bg-elevated-2)}
-  .linkbrand{display:grid;place-items:center;width:20px;height:20px;flex:0 0 20px}
-  .linkmark{width:18px;height:18px;display:block}
-  .linkname{font-size:13px;font-weight:600;color:var(--label-secondary);white-space:nowrap}
-  .linkrow input{
-    height:26px;min-width:0;flex:1 1 auto;
-    border:0;background:transparent;box-shadow:none;padding:0;
-    color:var(--label);font:inherit;font-size:13px;
-    border-left:1px solid var(--hairline);padding-left:var(--s-2);
-  }
-  .linkrow input::placeholder{color:var(--label-tertiary)}
-  .linkrow input:focus{outline:none}
-  .linkrow.filled{background:var(--bg-elevated-2)}
-  .linkrow input.bad{color:var(--danger)}
-  .linkrow:has(input.bad){box-shadow:inset 0 0 0 1px var(--danger)}
-
-
-  .linkdel{width:28px;height:28px;padding:0;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary)}
-  .linkactions{display:flex;align-items:center;gap:8px;margin-top:14px}
-  .linkstatus{font-size:12px;color:var(--label-secondary);min-height:16px}
-  body.event-manage-open .event-admin-tools{display:block}
-  body:not(.event-manage-open) .guest-sidebar .metrics,
-  body:not(.event-manage-open) .guest-sidebar .kv,
-  body:not(.event-manage-open) .guest-sidebar #detailsToggle,
-  body:not(.event-manage-open) .guest-sidebar #copySync{display:none!important}
-  body.event-manage-open .eventhead .eventedit{display:block}
-  #eventCard{padding:20px 22px;margin-top:0!important}
-  #eventCard > .composer{background:rgba(255,255,255,.03)!important;border:1px solid var(--separator)!important;border-radius:var(--r-md)!important;padding:12px 14px!important;margin-bottom:14px!important}
-  #eventCard > .composer.dropping{border-color:var(--accent)!important;background:rgba(255,45,111,.12)!important;box-shadow:0 0 0 3px rgba(255,45,111,.16)}
-  #eventCard textarea{font-size:16px!important}
   /* Party feed: Instagram-anatomy cards. Avatar + bold name header, media
      full-bleed to the card edge, bold-name caption, quiet uppercase time. */
   #djFeed{display:grid;gap:14px}
-  #djFeed .wpost{border:1px solid var(--separator);border-radius:var(--r-md);background:rgba(255,255,255,.03);padding:0;overflow:hidden}
-  .whead{display:flex;align-items:center;gap:10px;padding:10px 14px}
-  .wavatar{width:32px;height:32px;border-radius:50%;flex:0 0 auto;object-fit:cover;
-    display:flex;align-items:center;justify-content:center;background:var(--fill);font-size:16px}
-  .wname{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;min-width:0}
-  .wdj{background:var(--accent);color:#fff;border-radius:var(--r-xs);font-size:9px;font-weight:800;padding:1px 5px}
-  .wheadactions{margin-left:auto;display:flex;gap:6px;align-items:center;flex:0 0 auto}
-  .wmedia{display:flex;flex-direction:column;gap:2px}
-  .wmedia .wshot{display:block;width:100%;position:relative}
-  .wmedia .wshot img,.wmedia video.wshot{width:100%;max-height:420px;object-fit:cover;display:block}
-  .wcaption{padding:10px 14px 0;font-size:13px;line-height:1.45;color:var(--label);white-space:pre-wrap;word-break:break-word}
-  .wcaption b{font-weight:700;margin-right:5px}
-  #djFeed .wpostactions{display:flex;align-items:center;gap:10px;margin:0;padding:8px 14px 12px}
-  .wpostactions .wtime{margin-left:auto;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--label-tertiary)}
-  #djFeed .wcmts{padding:0 14px}
-  #djFeed .wreply{margin:0;padding:0 14px 12px}
-  #djFeed .wpost .whead + .wpostactions{padding-top:0} /* text-free post: no dead band */
+  .wdj{background:var(--accent);color:#fff;border-radius:var(--r-xs);font-size:9px;font-weight:800;padding:1px 5px} /* text-free post: no dead band */
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:var(--z-chrome);overflow:auto}
   .sheetov.show{display:flex}
@@ -565,34 +351,12 @@
   .sourceguide-body h3:first-child{margin-top:2px}
   .sourceguide-body p{font-size:13px;line-height:1.5;color:var(--label-secondary);margin:0}
   .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:var(--r-xs)}
-  button.action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
-    border-radius:var(--r-pill);padding:0 15px;background:var(--fill);color:var(--label-secondary);
-    box-shadow:inset 0 0 0 1px var(--hairline)}
-  button.action-folder:hover{background:var(--fill-hover);color:var(--label)}
-  button.action-folder:hover{background:#ff477f;color:#fff}
-  .action-folder svg{width:16px;height:16px;display:block}
-  .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
-  .fieldedit:hover{background:var(--fill-hover);color:var(--label)}
-  .fieldedit svg{width:14px;height:14px;display:block}
-  .ename .fieldedit{vertical-align:middle;width:34px;height:34px;margin-left:10px;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
-  .ename .fieldedit svg{width:15px;height:15px}
-  .posterbody .fieldedit{color:rgba(255,255,255,.72)}
-  .posterbody .fieldedit:hover{background:rgba(255,255,255,.18);color:#fff}
-  .eventform-field select{height:36px}
-  .eventedit [data-edit-group]{display:none}
-  .eventedit[data-field="title"] [data-edit-group="title"],
-  .eventedit[data-field="host"] [data-edit-group="host"],
-  .eventedit[data-field="schedule"] [data-edit-group="schedule"]{display:grid}
-  .party-grid{display:grid;align-items:stretch;gap:var(--s-4);margin-top:0;grid-template-columns:minmax(0,1fr)}
   .guesthead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .guesthead h2{margin:0!important}
   .detailsbtn{height:28px;padding:0;background:none;color:var(--accent);font-size:12px;font-weight:700}
   .detailsbtn:hover{text-decoration:underline}
   .guest-sidebar #detailsToggle{display:inline-block!important;align-self:flex-start}
   .guest-sidebar .metrics{display:flex!important}
-  .event-admin-tools{margin-top:14px;box-shadow:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:var(--r-md);padding:14px;margin:18px 0 0;display:block}
-  .confirm-cancel{background:none;color:var(--label-secondary);height:24px;padding:0 5px;font-size:11px}
-  .confirm-delete{color:var(--danger)!important;font-weight:800!important}
     /* accessibility + capability fallbacks (kept from the dark theme) */
   /* Headings should never drop a single orphaned word onto its own line. */
   h1,h2,h3,.ename,.sectiontitle{text-wrap:balance}
@@ -634,9 +398,9 @@
       background:#08080a;border:1px solid #6a6a72;
       -webkit-backdrop-filter:none;backdrop-filter:none}
   }
-  @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
-  @media (max-width:720px){.linkrow input{width:112px}.linkdel{justify-self:end}}
-  @media (max-width:760px){.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.titlerow{flex-direction:column}}
+  @media (max-width:640px){.source-picker{order:3;flex-basis:100%;max-width:none}}
+  @media (max-width:720px){}
+  @media (max-width:760px){.golive{margin-left:auto;min-width:128px}.event-qr{width:200px;min-height:0;justify-self:center}}
 
 
   /* ---- Native macOS shell -------------------------------------------
@@ -654,10 +418,6 @@
      separate app - so it needs a way back. Inside #appChrome, which the
      sign-in door covers entirely, so it is absent until somebody is signed in. */
   .homebar{display:flex;align-items:center;padding:10px 16px 0;flex:0 0 auto}
-  .homelink{display:inline-flex;align-items:center;gap:7px;text-decoration:none;
-    color:var(--label-secondary);font-size:13px;font-weight:700;
-    padding:6px 12px;border-radius:var(--r-pill);background:var(--fill)}
-  .homelink:hover{color:var(--label);background:var(--fill-hover)}
 
   /* No title bar. The poster tucks under the traffic lights; the gear lives
      in the transport bar. */
@@ -691,19 +451,6 @@
     border-right:1px solid var(--hairline);
     display:flex;flex-direction:column;gap:var(--s-5);
   }
-  .sidebargroup{display:flex;flex-direction:column;gap:1px}
-  .sidebarhead{padding:0 var(--s-3) var(--s-2);color:var(--label-tertiary);
-    font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
-  .sidebaritem{
-    display:flex;align-items:center;gap:var(--s-2);width:100%;
-    padding:0 var(--s-3);height:30px;border:0;border-radius:var(--r-sm);
-    background:transparent;color:var(--label-secondary);
-    font:inherit;font-size:13px;font-weight:500;text-align:left;cursor:pointer;
-    transition:background var(--fast) var(--curve),color var(--fast) var(--curve);
-  }
-  .sidebaritem svg{width:16px;height:16px;flex:0 0 16px;opacity:.85}
-  .sidebaritem:hover{background:rgba(255,255,255,.05);color:var(--label)}
-  .sidebaritem.active{background:var(--accent);color:#fff}
 
   .workspace > .page{
     min-height:0;overflow-y:auto;
@@ -724,7 +471,6 @@
   .inspectorhead{display:flex;align-items:center;gap:var(--s-2);
     color:var(--label-tertiary);font-size:11px;font-weight:600;
     letter-spacing:.04em;text-transform:uppercase;margin-bottom:var(--s-3)}
-  .sharelede{font-size:12px;font-weight:500;color:var(--label-secondary);line-height:1.4;margin:0}
   /* Invite guests lives at the top of the rail: the instruction block a DJ
      points at. Everything stacks to the rail's width - QR, then the link
      with Copy/Share wrapping below it. */
@@ -759,8 +505,6 @@
     padding:12px var(--s-4);border-top:1px solid rgba(255,255,255,.12);
     background:color-mix(in srgb,#fff 5%,var(--bg));
     box-shadow:0 -12px 32px rgba(0,0,0,.5)}
-  .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
-  .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
   /* Three zones with equal wings, so Go live sits on the bar's center line
      instead of tucked in a corner: capture left, the switch centered, gear right. */
   .gocapture{display:flex;align-items:center;gap:var(--s-3);min-width:0;flex:1 1 0}
@@ -770,7 +514,6 @@
     font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
   .golabel .iconbtn,.linkeditor-head .iconbtn{width:20px;height:20px;border-radius:50%;font-size:11px;
     background:rgba(255,255,255,.08);color:var(--label-secondary);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
-  .linkeditor-head .iconbtn{margin-left:8px}
   @media (max-width:700px){.transport .golabel span{display:none}}
   .goaction{display:flex;align-items:center;gap:var(--s-4);flex:0 0 auto}
   /* One control system in the bar: the hero switch at 44, every other control
@@ -784,8 +527,6 @@
   .wreact{height:26px;padding:0 9px;border:0;border-radius:var(--r-pill);cursor:pointer;
     background:var(--fill);color:var(--label-secondary);font:inherit;font-size:13px;
     display:inline-flex;align-items:center;gap:4px}
-  .wreact:hover{background:var(--fill-hover);color:var(--label)}
-  .wreact b{font-size:11px;font-weight:700}
   .golive.biggo,.golive.go.biggo{
     height:44px!important;min-width:200px!important;padding:0 32px!important;
     border-radius:var(--r-md)!important;font-size:16px!important;font-weight:800!important;letter-spacing:-.01em!important;
@@ -888,30 +629,15 @@
      so every section measures the same distance from title to content. */
   .workspace > .page .linkeditor-head b,
   .workspace > .page .cardhead h2{margin:0}
-  .workspace > .page #eventManagePanel .linkeditor-head{margin:0} /* grid gap is the 12px */
-  .ename{font-size:26px;font-weight:700;letter-spacing:-.02em}
 
   /* ---- grouped list ---------------------------------------------------
      One rounded container, hairline between rows, label left / control right.
      This is the only rounded box in the main area, and it holds rows - it is
      not a card wrapped around another card. */
   .grouped{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:10px}
-  .profilefield{
-    display:grid!important;grid-template-columns:minmax(0,1fr);
-    align-items:center;padding:0;margin:0!important;
-  }
-  .profilefield > span{color:var(--label-secondary);font-size:13px;font-weight:400}
-  .profilefield input,.profilefield textarea{
-    background:rgba(255,255,255,.06);border:0;border-radius:var(--r-sm);
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 2px rgba(0,0,0,.28);
-    color:var(--label);font:inherit;font-size:13px;padding:5px var(--s-2);width:100%;
-  }
   /* The bio is one visual line beside the name: same 38px box as the input,
      padding centers a single line while a longer bio still wraps and scrolls. */
   .profilefield textarea{min-height:38px;height:38px;resize:none;padding-top:10px;padding-bottom:10px}
-  .profilefield input:focus,.profilefield textarea:focus{
-    outline:none;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 24%,transparent);
-  }
 
   /* ---- no neon --------------------------------------------------------
      A pro tool does not glow. Go Live is the primary action and reads as one
@@ -933,17 +659,7 @@
     background:rgba(255,255,255,.1);color:var(--label);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);border-radius:var(--r-sm);
   }
-  /* Except the feed composer's two actions: they carry the accent. */
-  #djAttachBtn,#djPostBtn{background:var(--accent)!important;color:#fff!important;box-shadow:none!important}
-  #djAttachBtn:hover,#djPostBtn:hover{background:color-mix(in srgb,var(--accent) 86%,#000)!important}
   .workspace > .page button.go:hover{background:rgba(255,255,255,.16)}
-
-  /* The add-photo badge was the last neon left in the main area. */
-  .profileplus{
-    background:rgba(255,255,255,.16)!important;color:var(--label)!important;
-    border-color:var(--bg)!important;font-size:16px;
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
-  }
 
 
   /* Social links stay chips: the brand mark, the service and the handle in one
@@ -956,29 +672,6 @@
     align-content:start;max-width:none;
     background:transparent!important;box-shadow:none!important;border-radius:0!important;
   }
-  .linkrows .linkrow{
-    display:flex!important;align-items:center;gap:var(--s-2);width:100%;
-    height:34px;padding:0 var(--s-3)!important;border-top:0!important;
-    border-radius:var(--r-pill)!important;
-    background:rgba(255,255,255,.06)!important;
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;
-  }
-  .linkrows .linkrow:hover{background:rgba(255,255,255,.1)!important}
-  .linkrows .linkrow:focus-within{
-    background:rgba(255,255,255,.09)!important;
-    box-shadow:inset 0 0 0 1px var(--accent)!important;
-  }
-  .linkrows .linkrow.filled{background:rgba(255,255,255,.12)!important}
-  .linkrows .linkname{font-size:12px!important;font-weight:500!important;color:var(--label-secondary)!important}
-  .linkrows .linkrow input{
-    /* The field starts right after the label's divider - no dead middle - and
-       stretches to the chip's edge, so every chip fills the same. */
-    width:auto!important;height:22px;flex:1 1 auto;min-width:0;margin-left:6px;padding:0 0 0 var(--s-2)!important;
-    background:transparent!important;border:0!important;border-radius:0!important;
-    border-left:1px solid rgba(255,255,255,.12)!important;
-    box-shadow:none!important;color:var(--label);font-size:12px;
-  }
-  .linkrows .linkrow input:focus{outline:none;box-shadow:none!important}
 
   /* ---- Prepare / Live / Recap ----------------------------------------
      One composition that changes character, not three screens. The poster is
@@ -997,43 +690,11 @@
        two-thirds of the pre-redesign full-bleed cover. */
     min-height:clamp(200px,21vw,300px);display:flex;align-items:flex-end;
   }
-  .posterart{position:absolute;inset:0;z-index:-1;opacity:.5}
-  .coverwrap{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
-  .coverwrap img{width:100%;height:100%;object-fit:cover;display:none}
-  .coverwrap.has-cover img{display:block}
-  /* Scrim so the title stays legible on any artwork. */
-  .coverwrap.has-cover::after{content:'';position:absolute;inset:0;
-    background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
-  .coveractions{display:flex;gap:var(--s-2);flex:0 0 auto}
-  .coverbtn{
-    background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
-    border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:var(--r-sm);
-    padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
-  .coverbtn:hover{background:rgba(18,18,22,.68)}
-  .coverx{position:absolute;top:var(--s-4);right:var(--s-4);z-index:3;
-    width:34px;height:34px;border-radius:50%;display:none;place-items:center;padding:0;border:0;
-    background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
-  .poster:has(.coverwrap.has-cover) .coverx{display:grid}
-  .coverx:hover{background:rgba(18,18,22,.68)}
-  .coverstatus{position:absolute;right:var(--s-4);bottom:calc(var(--s-4) + 38px);z-index:3;
-    display:none;font-size:12px;color:rgba(255,255,255,.85)}
-  .coverstatus.error{color:#ff7a7a}
-  .posterbody{position:relative;z-index:1;width:100%;
-    display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s-4)}
-  .postertext{min-width:0}
-  .posterhost:empty{display:none}
   /* Empty poster space belongs to the cover, so a dragged image can land
      anywhere on the artwork; only the real controls keep the pointer. */
   .posterbody{pointer-events:none}
-  .posterbody #titleEdit,.posterbody .fieldedit,.posterbody .coveractions{pointer-events:auto}
   /* The title is the field. Click the words, type. No pencil to hunt for. */
   .ename{font-size:clamp(28px,3.4vw,44px);font-weight:700;letter-spacing:-.028em;line-height:1.05;margin:0}
-  #titleEdit{outline:none;display:inline-block;min-width:2ch;border-radius:var(--r-sm);padding:0 2px}
-  #titleEdit:empty::before{content:attr(data-placeholder);color:rgba(255,255,255,.34)}
-  #titleEdit:hover{background:rgba(255,255,255,.06)}
-  #titleEdit:focus{background:rgba(255,255,255,.1);box-shadow:0 0 0 3px color-mix(in srgb,var(--poster-accent) 40%,transparent)}
-  .posterhost{margin-top:var(--s-2);color:rgba(255,255,255,.62);font-size:14px}
 
   /* Live status lives on the poster, next to the identity - not at the bottom
      of the window under the guest list. */
@@ -1319,6 +980,10 @@
       <button class="ghost" id="permBtnAlways" style="display:none;margin-top:14px;width:100%;font-size:12px">Open audio privacy settings →</button>
       <div class="hint" id="permBtnHint" style="display:none;margin:5px 0 0">Turn on PartyParty in the list.</div>
       <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session - hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
+      <!-- Photos and recordings from the night land in a folder on this Mac.
+           The button used to sit over the console's own party feed; the feed
+           went to the web, and this is a Mac thing, so it lives here now. -->
+      <button class="ghost" id="openMediaBtn" style="margin-top:8px;width:100%;font-size:12px" title="Photos, videos and recordings from this party, on this Mac">Open this party's folder →</button>
     </section>
 
     <div class="settings-section">
@@ -1843,6 +1508,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   $('audioPermBtn').onclick = openCapturePermissionSettings;
   $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
+  $('openMediaBtn').onclick = () => fetch('/api/open-media', { method:'POST' });
   let qrAvatarShown = null;
   function renderQR(text){
     // eventMeta is declared further down; the first QR render runs before it
@@ -2314,7 +1980,24 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
       } catch (e) { return ''; }
     };
+    // The frame and the room are two views of ONE choice. Open a party in the
+    // frame and the room follows it; pick one in the bar and the frame goes
+    // there. Without this the Mac holds two ideas of which party is happening,
+    // which is the drift this whole change exists to end.
+    const frame = document.getElementById('webFrame');
+    let roomSlug = '';     // the party the ROOM is attached to
+
+    const framePath = () => {
+      try { return frame.contentWindow.location.pathname; } catch (e) { return ''; }
+    };
+    const frameToParty = (party) => {
+      if (!frame || !party || !party.slug || !party.handle) return;
+      const path = '/@' + party.handle + '/' + party.slug;
+      if (framePath() === path) return;
+      frame.src = path;
+    };
     const show = (party) => {
+      roomSlug = (party && party.slug) || '';
       if (party && party.title) {
         name.textContent = party.title;
         link.href = party.url || '#';
@@ -2324,6 +2007,34 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         link.hidden = true;
       }
     };
+    async function openParty(key){
+      const r = await fetch('/api/party/open', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || 'could not open that party');
+      show(d.party);
+      await loadParties();
+      return d.party;
+    }
+    // Reading the night in the frame is how a DJ says which one it is. A party
+    // made in a browser a moment ago is not in `known` yet, so refresh once
+    // before giving up on it.
+    // roomSlug is the whole guard against the two bouncing each other: by the
+    // time our own steering lands, the room is already on that party, so this
+    // returns before asking for it again.
+    if (frame) frame.addEventListener('load', async () => {
+      const hit = /^\/@[a-z0-9]+\/([a-z0-9-]+)$/.exec(framePath());
+      if (!hit || hit[1] === roomSlug) return;
+      let party = known.find((one) => one.slug === hit[1]);
+      if (!party) {
+        await loadParties();
+        party = known.find((one) => one.slug === hit[1]);
+      }
+      // No steering back: the frame is already on the page it just loaded.
+      if (party) await openParty(party.key).catch(() => {});
+    });
     async function loadParties(){
       try {
         const r = await fetch('/api/parties', { method: 'POST' });
@@ -2347,14 +2058,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (!key) return;
       pick.disabled = true;
       try {
-        const r = await fetch('/api/party/open', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ key }),
-        });
-        const d = await r.json();
-        if (!r.ok || d.error) throw new Error(d.error || 'could not open that party');
-        show(d.party);
-        await loadParties();
+        frameToParty(await openParty(key));
       } catch (e) {
         name.textContent = String(e.message || e);
       } finally { pick.disabled = false; }
@@ -2372,6 +2076,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (!r.ok || d.error) throw new Error(d.error || 'could not create it');
         show(d.party);
         await loadParties();
+        frameToParty(d.party);
       } catch (e) {
         name.textContent = String(e.message || e);
       } finally { make.disabled = false; }
@@ -2379,7 +2084,13 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // Refreshed when the door opens, and on a slow tick so a party made in a
     // browser mid-set turns up without a restart.
     window.ppLoadParties = loadParties;
-    loadParties();
+    // A console reopened mid-set opens on the night it is running, not on the
+    // list of every night. Only once, at boot: after that the frame is wherever
+    // the person put it.
+    loadParties().then(() => {
+      const current = known.find((one) => one.slug === roomSlug);
+      if (current) frameToParty(current);
+    });
     setInterval(loadParties, 60000);
   }
 

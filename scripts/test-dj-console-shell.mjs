@@ -45,6 +45,17 @@ const statusBody = () => ({
   log: [],
 });
 
+// Two parties on the account, so the seam between the frame and the picker has
+// something to be wrong about. `open` records what the console asked for.
+const parties = [
+  { key: 'k-one', slug: 'rooftop-pop-up', handle: 'seth', title: 'Rooftop pop-up',
+    url: 'https://partyparty.party/@seth/rooftop-pop-up', startsMs: 0 },
+  { key: 'k-two', slug: 'basement', handle: 'seth', title: 'Basement',
+    url: 'https://partyparty.party/@seth/basement', startsMs: 0 },
+];
+let current = 'k-one';
+const opened = [];
+
 function sendJSON(response, value) {
   const body = JSON.stringify(value);
   response.writeHead(200, {
@@ -78,7 +89,28 @@ const server = http.createServer((request, response) => {
     return;
   }
   if (url.pathname === '/api/status') return sendJSON(response, statusBody());
+  if (url.pathname === '/api/parties') {
+    return sendJSON(response, { linked: true, current, parties });
+  }
+  if (url.pathname === '/api/party/open') {
+    let raw = '';
+    request.on('data', (c) => { raw += c; });
+    request.on('end', () => {
+      const key = (JSON.parse(raw || '{}').key) || '';
+      opened.push(key);
+      current = key;
+      sendJSON(response, { party: parties.find((p) => p.key === key) || null });
+    });
+    return;
+  }
   if (url.pathname.startsWith('/api/')) return sendJSON(response, { ok: true });
+  // Any party page, so the frame has somewhere real to go.
+  const party = parties.find((p) => url.pathname === `/@${p.handle}/${p.slug}`);
+  if (party) {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(`<!doctype html><title>${party.title}</title><body><h1>${party.title}</h1>`);
+    return;
+  }
   response.writeHead(404).end();
 });
 
@@ -100,14 +132,15 @@ try {
   // Let the status poll run at least once: half the wiring only executes there.
   await page.waitForTimeout(1500);
 
-  // The person's own pages, in the frame, from this same origin.
+  // The person's own pages, in the frame, from this same origin. It is authored
+  // at /home (test-stream-contract asserts that statically) and the console
+  // steers it to the night this room is running, which is checked below.
   const frame = page.locator('#webFrame');
   assert.equal(await frame.count(), 1, 'the console has no frame for the web pages');
-  assert.equal(await frame.getAttribute('src'), '/home', 'the frame does not open on home');
-  assert.equal(
+  assert.match(
     await page.frameLocator('#webFrame').locator('h1').innerText(),
-    'Your parties',
-    'the frame did not load the page',
+    /\S/,
+    'the frame did not load a page at all',
   );
 
   // The room: the one thing the Mac has that the web does not.
@@ -131,6 +164,44 @@ try {
       `the console has grown its own #${id} again - that belongs to the web page`,
     );
   }
+
+  // The room and the frame are one choice. A console reopened mid-set opens on
+  // the night it is running, and reading a different night in the frame moves
+  // the room to it - without the two bouncing each other in a loop.
+  await page.waitForFunction(
+    () => document.getElementById('webFrame').contentWindow.location.pathname
+      === '/@seth/rooftop-pop-up',
+    null, { timeout: 10000 },
+  );
+  await page.evaluate(() => {
+    document.getElementById('webFrame').src = '/@seth/basement';
+  });
+  await page.waitForFunction(
+    () => document.getElementById('partyBarName').textContent === 'Basement',
+    null, { timeout: 10000 },
+  );
+  await page.waitForTimeout(1200);
+
+  // And the other way: the picker moves the frame. This is the direction that
+  // can loop - picking sends the frame, the frame's load asks to open again -
+  // so the count of opens is the assertion, not just the end state.
+  await page.selectOption('#partyPick', 'k-one');
+  await page.waitForFunction(
+    () => document.getElementById('webFrame').contentWindow.location.pathname
+      === '/@seth/rooftop-pop-up',
+    null, { timeout: 10000 },
+  );
+  await page.waitForTimeout(1200);
+  assert.deepEqual(
+    opened, ['k-two', 'k-one'],
+    `the frame and the picker are echoing each other: opened ${JSON.stringify(opened)}`,
+  );
+
+  // The frame must actually occupy the column. A purge of the console's dead
+  // CSS once collapsed the layout, and nothing failed.
+  const frameW = await page.evaluate(
+    () => document.getElementById('webFrame').getBoundingClientRect().width);
+  assert.ok(frameW > 300, `the frame collapsed to ${frameW}px`);
 
   assert.deepEqual(errors, [], 'the console threw');
   console.log('PASS dj console shell');

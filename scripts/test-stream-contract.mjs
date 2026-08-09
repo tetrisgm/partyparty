@@ -166,6 +166,13 @@ assert.deepEqual(
 // gone; this is the guard against a second implementation growing back.
 assert.match(dj, /id="webFrame"/);
 assert.match(dj, /class="webframe"/);
+// Authored on the person's own home. The console steers it to the night this
+// room is running when there is one, which the shell test drives in a browser.
+assert.match(dj, /id="webFrame" src="\/home"/);
+// Go live is a pink pill. Deleting the console's dead CSS once took this rule
+// with it and left a flat grey rectangle; the browser test cannot catch it,
+// because the button is correctly disabled on a runner with no capture device.
+assert.match(dj, /\.golive\.go\.biggo\{[\s\S]*?background:#ff2d6f!important/);
 for (const gone of [
   />About You</, /class="ename"/, /class="profilephotopick"/, /id="profileEmpty"/,
   /class="profileplus"/, /id="profileName"/, /id="profilePhotoRemoveBtn"/,
@@ -188,7 +195,6 @@ assert.doesNotMatch(dj, /dragstrip/);
 assert.match(dj, /class="iconbtn gearbtn" id="settingsBtn"/);
 assert.match(dj, /::-webkit-scrollbar\{width:8px/);
 assert.match(dj, /\.page\{[^}]*max-width:var\(--measure\)/);
-assert.match(dj, /\.eventcover\{[^}]*margin-inline:0/);
 // The version is a footer, not a sticker floating over the page.
 assert.match(dj, /<footer class="appfooter">/);
 assert.doesNotMatch(dj, /id="appver" style="position:fixed/);
