@@ -1956,7 +1956,9 @@ test("the acceptance scenario, end to end", async () => {
   // And the note stayed with the night it belongs to rather than becoming a
   // property of the person.
   assert.match(page, /Introduced me to the promoter/);
-  assert.match(page, /No note from that night/);
+  // A night with no note about them shows the night, not a sentence apologising
+  // for the absence of one.
+  assert.match(page, /Rooftop/);
 
   // The edit landed on the page as well as in the row, links and all.
   const party = await (await read(where)).text();
@@ -2367,7 +2369,7 @@ test("a person can turn out to be an account, later, or never", async () => {
   let page = await (await read(`/people/${seth.id}`)).text();
   assert.match(page, /@sethplays/);
   assert.match(page, /href="\/@sethplays"/, "their profile is one click away");
-  assert.match(page, /<h1>Seth<\/h1>/, "my name for them is still my name for them");
+  assert.match(page, />Seth</, "my name for them is still my name for them");
   assert.match(page, /Warehouse regular/);
 
   // And unsaying it is just clearing the field.

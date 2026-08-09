@@ -555,7 +555,7 @@ font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--label-
 .you{background:var(--bg-elevated);border:1px solid var(--separator);
 border-radius:var(--r-md);padding:18px;margin:0 0 14px}
 .yourow{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
-.yourow .grow{flex:1 1 260px;min-width:0;display:grid;gap:10px}
+.yourow .grow{flex:1 1 190px;min-width:0;display:grid;gap:10px}
 .twoup{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 /* Sized by what is in it, not pinned to the disc: a fixed 76px box left the
    "Add a photo" line hanging outside it, over whatever wrapped underneath. */
@@ -2367,7 +2367,7 @@ async function partyPeople(env, emailNorm, eventId) {
 // the note from that night.
 async function personHistory(env, emailNorm, personId) {
   const { results } = await env.DB.prepare(
-    `SELECT pp.role, pp.note, e.id, e.slug, e.title, e.starts_ms, e.place, g.handle
+    `SELECT pp.role, pp.note, e.id, e.slug, e.title, e.starts_ms, e.place, e.day_only, g.handle
        FROM party_people pp
        JOIN events e ON e.id = pp.event_id
        JOIN groups g ON g.id = e.group_id
@@ -3989,11 +3989,17 @@ export default {
         typed && typed.get(name) !== null ? typed.get(name) : fallback);
       const history = await personHistory(env, dj.email_norm, who);
       return html(200, page(person.name, `
-        <div class="sectionhead"><h1>${esc(person.name)}</h1></div>
-        <p class="muted">${history.length} ${history.length === 1 ? "time" : "times"}${
-          account ? ` \u00b7 <a href="/@${esc(account.handle)}">@${esc(account.handle)}</a>
-            on PartyParty` : ""}</p>
+        <div class="you"><div class="yourow" style="align-items:center">
+          ${personDisc(person, "big")}
+          <div class="grow" style="gap:2px">
+            <b style="font-size:19px;letter-spacing:-.02em">${esc(person.name)}</b>
+            <span class="muted">${history.length} ${history.length === 1 ? "time" : "times"}${
+          account ? ` \u00b7 <a href="/@${esc(account.handle)}">@${esc(account.handle)}</a>` : ""}</span>
+          </div>
+        </div></div>
 
+        <details class="edit"${linkError ? " open" : ""}>
+        <summary>Edit</summary>
         ${linkError ? `<p class="formerror" role="alert">${esc(linkError)}</p>` : ""}
         <form class="you" method="post" action="/people/${esc(who)}">
           <div class="grow" style="display:grid;gap:10px">
@@ -4010,17 +4016,20 @@ export default {
             <p class="muted">This is the general note. What happened on a
             particular night stays on that night. The @name is optional -
             they do not need an account to be here.</p></div>
-        </form>
+        </form></details>
 
         <h2>Where you saw them</h2>
-        ${history.length ? history.map((h) => `<div class="card">
-            <div class="when">${esc(whenText(h))}${h.place ? " \u00b7 " + esc(h.place) : ""}</div>
-            <strong><a href="/@${esc(h.handle)}/${esc(h.slug)}">${esc(h.title || "Untitled party")}</a></strong>
+        ${history.length ? `<div class="entries">${history.map((h) => `<a class="entry"
+            href="/@${esc(h.handle)}/${esc(h.slug)}">
+            <span class="entrywhen">${esc(whenText(h))}</span>
+            <span class="entrybody">
+              <b>${esc(h.title || "Untitled party")}</b>
+              ${h.place ? `<span class="entrywhere">${esc(h.place)}</span>` : ""}
+              ${h.note ? `<span class="entryinside">${esc(h.note)}</span>` : ""}
+            </span>
             ${h.role === "dj" ? `<span class="tag">Played</span>` : ""}
-            ${h.note ? `<p style="margin:8px 0 0">${esc(h.note).replace(/\n/g, "<br>")}</p>`
-              : `<p class="muted" style="margin:6px 0 0">No note from that night.</p>`}
-          </div>`).join("")
-          : `<p class="muted">You have not recorded them at a party yet.</p>`}
+          </a>`).join("")}</div>`
+          : `<p class="blank">Nights you saw them at will collect here.</p>`}
         <p class="muted" style="margin-top:32px"><a href="/people">All people</a> ·
           <a href="/home">Your parties</a></p>
       `, "", "", true));
