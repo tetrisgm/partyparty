@@ -1634,11 +1634,11 @@ function trackerBlock(event, group, note, people, allNames, songs) {
   return `<section class="tracker">
     <h2>Who played</h2>
     ${list("dj", "Whoever was on. They need no account - a name is enough.",
-      "A DJ, an artist, whoever was on")}
+      "Who played - Ada, Bo and Cy")}
 
     <h2>Who was there</h2>
     ${list("guest", "Who you were with. Next time you type their name, it is the same person.",
-      "A name - they need no account")}
+      "Who you were with - names, commas")}
 
     <h2>Songs</h2>
     ${songs && songs.length ? `<ol class="setlist">${songs.map((song) => `<li>
@@ -1653,7 +1653,7 @@ function trackerBlock(event, group, note, people, allNames, songs) {
     </li>`).join("")}</ol>` : `<p class="blank">What was played, in the order it was played.</p>`}
     <form class="addline two" method="post" action="${esc(action)}">
       <input type="text" name="songTitle" maxlength="200" required
-        placeholder="What is playing" autocomplete="off">
+        placeholder="What is playing - or several, commas" autocomplete="off">
       <input type="text" name="songArtist" maxlength="120"
         placeholder="Who by" autocomplete="off">
       <button type="submit" aria-label="Add">+</button>
@@ -4879,14 +4879,19 @@ export default {
       // Somebody new on the bill or in the room.
       const who = String(form.get("who") || "").trim();
       if (who) {
-        const person = await findOrMakePerson(env, dj.email_norm, who, now);
-        if (!person) return notice("That needs a name", "Type who it was.");
         const role = form.get("role") === "dj" ? "dj" : "guest";
-        await env.DB.prepare(
-          `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
-           VALUES (?,?,?,?,?)
-           ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
-        ).bind(event.id, person.id, dj.email_norm, role, now).run();
+        let added = 0;
+        for (const name of who.split(/,| and /i)) {
+          const person = await findOrMakePerson(env, dj.email_norm, name, now);
+          if (!person) continue;
+          await env.DB.prepare(
+            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+             VALUES (?,?,?,?,?)
+             ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
+          ).bind(event.id, person.id, dj.email_norm, role, now).run();
+          added++;
+        }
+        if (!added) return notice("That needs a name", "Type who it was.");
         return new Response(null, { status: 302, headers: { location: back } });
       }
 
@@ -4904,8 +4909,11 @@ export default {
       // not get written down while the room is dark and loud.
       const songTitle = String(form.get("songTitle") || "").trim();
       if (songTitle) {
-        await addSong(env, dj.email_norm, event.id,
-          { title: songTitle, artist: form.get("songArtist") }, now);
+        // "Windowlicker, Xtal, Papua New Guinea" is one thing somebody types.
+        const artist = form.get("songArtist");
+        for (const one of songTitle.split(",")) {
+          await addSong(env, dj.email_norm, event.id, { title: one, artist }, now);
+        }
         return new Response(null, { status: 302, headers: { location: back } });
       }
       const songId = String(form.get("song") || "");

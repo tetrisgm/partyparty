@@ -2117,6 +2117,34 @@ test("a party is found by its owner, and following is between people", async () 
   assert.ok(!/You follow/.test(home), "following nobody says nothing");
 });
 
+test("three DJs and three friends is one thing you type", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+
+  // "I saw DJ 1, 2 and 3" is one thought, so it is one action. Three trips
+  // through a form for one sentence is the friction this app exists to avoid.
+  await send(`${where}/record`, { who: "Ada, Bo and Cy", role: "dj" });
+  await send(`${where}/record`, { who: "Dee, Eve", role: "guest" });
+  await send(`${where}/record`, { songTitle: "Windowlicker, Xtal", songArtist: "Aphex Twin" });
+
+  const played = rows(env, `SELECT p.name FROM party_people pp JOIN people p ON p.id = pp.person_id
+    WHERE pp.role = 'dj' ORDER BY p.name`).map((r) => r.name);
+  assert.deepEqual(played, ["Ada", "Bo", "Cy"], "and is a separator too, because people type it");
+  const with_ = rows(env, `SELECT p.name FROM party_people pp JOIN people p ON p.id = pp.person_id
+    WHERE pp.role = 'guest' ORDER BY p.name`).map((r) => r.name);
+  assert.deepEqual(with_, ["Dee", "Eve"]);
+  const songs = rows(env, `SELECT title, artist FROM songs ORDER BY seq`);
+  assert.deepEqual(songs.map((x) => x.title), ["Windowlicker", "Xtal"]);
+  assert.ok(songs.every((x) => x.artist === "Aphex Twin"), "one artist covers the run");
+
+  // Six people and two songs, from three things typed.
+  assert.equal(rows(env, `SELECT * FROM people`).length, 5);
+  assert.match(await (await read(where)).text(), /Windowlicker/);
+});
+
 test("a night is a day, a place, and what was played", async () => {
   const { env, send, read } = await signedIn();
 
