@@ -622,6 +622,14 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .blank{margin:0 0 10px;padding:14px 12px;border-radius:var(--r-sm);
 background:var(--bg-elevated);color:var(--label-tertiary);font-size:14px;line-height:1.5}
 
+/* Somebody you know, and the last night you saw them at - the fact this page
+   exists to answer, with their face on it like everywhere else. */
+.seen{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:12px;
+align-items:center;padding:13px 12px;border-bottom:1px solid var(--separator);
+text-decoration:none;color:var(--label)}
+.seen:hover{background:var(--bg-elevated);text-decoration:none}
+.seen .entrybody b{font-size:16px}
+
 /* The capture line. The sentence the app exists for goes in here without
    scrolling to find the right section: type the names or the tracks, say what
    they are. The sections below are for correcting, not for entering. */
@@ -685,7 +693,7 @@ font-variant-numeric:tabular-nums;line-height:1.5}
 text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:520px){
   .entry{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:14px 10px}
-  .entrywhen{grid-column:1/-1;order:-1}
+  .entry .entrywhen{grid-column:1/-1;order:-1}
 }
 .tracker{margin-top:4px}
 .tracker h2:first-child{margin-top:18px}
@@ -736,7 +744,7 @@ padding:6px 14px;border-radius:var(--r-pill);cursor:pointer}
 .personline:focus-within button.onfocus{display:block}
 
 /* One line to add anything: type, press +. */
-.addline{display:flex;align-items:center;gap:8px;margin:0 0 4px;
+.addline{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;margin:0 0 4px;
 padding:9px 12px;border-radius:var(--r-sm);border:1px dashed var(--separator)}
 .addline:focus-within{border-style:solid;border-color:var(--accent)}
 .addline input{flex:1 1 auto;min-width:0;width:auto;border:0;background:none;
@@ -760,7 +768,9 @@ font-size:12px;font-weight:700;color:var(--label-tertiary);min-width:1.4em}
 .setlist .grow{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .setlist form{margin:0;flex:0 0 auto}
 .setlist li:hover .x,.setlist .x:focus{opacity:1}
-.addline .camera{background:none;color:var(--label-tertiary);font-size:15px;width:26px}
+.addline .camera{background:none;color:var(--label-tertiary);width:30px;height:30px;
+display:grid;place-items:center}
+.addline .camera svg{width:19px;height:19px}
 .addline .camera:hover{color:var(--label)}
 .handlesays[data-state="ok"]{color:var(--success)}
 .handlesays[data-state="bad"]{color:var(--accent)}
@@ -1792,7 +1802,10 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
       action="${where}/say">
       <input type="text" name="say" maxlength="2000" placeholder="Say something">
       <button class="camera" type="button" aria-label="Add a photo"
-        onclick="this.nextElementSibling.click()">\u2b1a</button>
+        onclick="this.nextElementSibling.click()"><svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path
+        d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-1.7A1 1 0 0 1 8.6 5h6.8a1 1 0 0 1 .8.3L17.3 7h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z"/><circle
+        cx="12" cy="13" r="3.2"/></svg></button>
       <input type="file" name="media" accept="image/*,video/*" hidden
         onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
       <button type="submit" aria-label="Post">+</button>
@@ -2303,7 +2316,13 @@ function partyIsPast(event, now) {
 async function peopleFor(env, emailNorm, query) {
   const like = `%${String(query || "").trim().toLowerCase()}%`;
   const { results } = await env.DB.prepare(
-    `SELECT p.*, (SELECT COUNT(*) FROM party_people pp WHERE pp.person_id = p.id) AS times
+    `SELECT p.*, (SELECT COUNT(*) FROM party_people pp WHERE pp.person_id = p.id) AS times,
+            (SELECT e.title FROM party_people pp JOIN events e ON e.id = pp.event_id
+              WHERE pp.person_id = p.id
+              ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC LIMIT 1) AS last_at,
+            (SELECT COALESCE(e.starts_ms, e.created_ms) FROM party_people pp
+               JOIN events e ON e.id = pp.event_id WHERE pp.person_id = p.id
+              ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC LIMIT 1) AS last_ms
        FROM people p
       WHERE p.owner_email = ? AND (? = '%%' OR lower(p.name) LIKE ?)
       ORDER BY p.name LIMIT 200`
@@ -3903,12 +3922,17 @@ export default {
             <input type="search" name="q" placeholder="Search by name" value="${esc(q)}">
             <button class="btn plain" type="submit">Search</button>
           </form>
-          ${list.length ? list.map((p) => `<a class="card partyrow" href="/people/${esc(p.id)}">
-              <div class="grow">
-                <strong>${esc(p.name)}</strong>
-                <div class="muted">${p.times} ${p.times === 1 ? "party" : "parties"}${
-                  p.account_email ? " \u00b7 on PartyParty" : ""}</div>
-              </div></a>`).join("")
+          ${list.length ? `<div class="entries">${list.map((p) => `<a class="seen" href="/people/${esc(p.id)}">
+              ${personDisc(p)}
+              <span class="entrybody">
+                <b>${esc(p.name)}</b>
+                <span class="entryinside">${p.last_at
+                  ? `Last at ${esc(p.last_at)}${p.last_ms
+                      ? " \u00b7 " + esc(whenText({ starts_ms: p.last_ms, day_only: 1 })) : ""}`
+                  : "Not at a party yet"}</span>
+              </span>
+              <span class="entrywhen">${p.times}</span>
+            </a>`).join("")}</div>`
             : q
               ? `<p class="muted">Nobody by that name.</p>`
               : `<div class="card"><p><b>Nobody yet.</b></p>
