@@ -1072,8 +1072,11 @@ test("home is your parties: upcoming, past, and an empty state that says what to
   // A new account owns nothing. The empty state has to say what this is for,
   // not report an absence.
   const empty = await (await get(env, "/home", cookie)).text();
-  assert.match(empty, /Nothing here yet/);
-  assert.match(empty, /Add your first party/);
+  // An empty home says what belongs in it, with one way to start - not two pink
+  // buttons for the same action on the emptiest screen in the app.
+  assert.match(empty, /A party you are going to/);
+  assert.equal((empty.match(/Add a party/g) || []).length, 1, "one way to start, not two");
+  assert.match(empty, /href="\/parties\/new"/, "and a way to start it");
   assert.match(empty, /href="\/parties\/new"/);
 
   const mineId = seedGroup(env, "sundaze");

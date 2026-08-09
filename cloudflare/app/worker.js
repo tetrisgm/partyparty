@@ -661,6 +661,7 @@ font-size:13px;font-weight:650;cursor:pointer}
 
 /* The welcome, folded down to one line. */
 details.welcome{margin:0 0 18px}
+details.welcome summary .avatar{flex:0 0 auto}
 details.welcome summary{display:flex;align-items:center;gap:12px;cursor:pointer;
 padding:10px 12px;border-radius:var(--r-md);list-style:none}
 details.welcome summary::-webkit-details-marker{display:none}
@@ -3852,13 +3853,9 @@ export default {
         <div class="sectionhead"><h1>Your parties</h1>
           <a class="btn" href="/parties/new">Add a party</a></div>
         ${mine.length === 0
-          ? `<div class="card">
-               <p><b>Nothing here yet.</b></p>
-               <p class="muted">Add a party you are going to, or one you already
-               went to. Keep who played, who you saw, and what you thought - it is
-               yours and nobody else sees it.</p>
-               <p><a class="btn" href="/parties/new">Add your first party</a></p>
-             </div>`
+          ? `<p class="blank">A party you are going to, or one you were at last
+             night. Who played, who you were with, what they played - yours, and
+             nobody else's unless you say so.</p>`
           : `${section("Upcoming", upcoming, "Nothing coming up.")}
              ${section("Past", past, "Nothing yet.")}`}
 
