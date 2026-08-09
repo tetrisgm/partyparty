@@ -380,13 +380,21 @@ font-size:15px;line-height:1.45;font-synthesis:none}
 align-items:flex-end;padding:28px 24px 20px;border-radius:var(--r-lg);overflow:hidden;
 background:linear-gradient(135deg,#3a1f2a,#1d1a22);background-size:cover;
 background-position:center;box-shadow:var(--shadow)}
+/* Two scrims, because a photograph of a party is busy exactly where the words
+   go. The flat one keeps the top tools readable; the second pools in the
+   bottom-left corner the title and date actually sit in - a crowd shot with
+   stage lights in it will otherwise eat a 15px line whole. */
 .hero .cover::after{content:'';position:absolute;inset:0;pointer-events:none;
-background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
+background:linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.30) 45%,rgba(0,0,0,.62)),
+radial-gradient(120% 90% at 0% 100%,rgba(0,0,0,.66),rgba(0,0,0,0) 62%)}
 .hero .cover.bare::after{background:none}
 /* Remove, top right, only once there is something to remove. */
 /* Back with the other actions on the right; the left corner belongs to the
    brand, which is the way home from anywhere. */
-.coverx{position:absolute;top:26px;right:26px;z-index:4;width:38px;height:38px;
+/* The remove-cover button shares the corner with the page's top tools, so it
+   sits to their LEFT rather than on top of them - 46px gutter, 38px per tool,
+   8px gap, two tools. */
+.coverx{position:absolute;top:26px;right:138px;z-index:4;width:38px;height:38px;
 border-radius:50%;display:grid;place-items:center;padding:0;border:0;
 background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
 box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
@@ -430,6 +438,12 @@ main{max-width:680px;margin:0 auto;padding:28px 20px 96px}
 main.wide{max-width:940px}
 .withrail{max-width:1180px;margin:0 auto;padding:28px 20px 96px;
 display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:40px;align-items:start}
+/* The Mac shows this page in a frame beside its own room controls, so the
+   window it gets is narrower than a browser's. The rail gives up width before
+   it gives up existing - standing beside the night is the whole point of it. */
+@media (max-width:1080px){
+  .withrail{grid-template-columns:minmax(0,1fr) 260px;gap:28px}
+}
 .rail{position:sticky;top:24px;display:grid;gap:26px}
 
 h1{font-size:26px;font-weight:800;letter-spacing:-.015em;margin:0 0 4px}
@@ -768,6 +782,15 @@ padding:0;min-height:26px;font:inherit;font-size:15px;color:var(--label);outline
 .addline button{flex:0 0 auto;width:30px;height:30px;border:0;border-radius:50%;
 background:var(--bg-elevated-2);color:var(--label-secondary);font-size:17px;
 line-height:1;cursor:pointer}
+/* Adding somebody in the rail. Two words per answer and 320px to do it in, so
+   the field takes a line and the answers take the next one. */
+.addwho{display:grid;gap:8px;margin-top:14px}
+.addwho .as{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.addwho button{width:auto;height:32px;border-radius:var(--r-pill);padding:0 10px;
+white-space:nowrap;font-size:13px;font-weight:650;background:var(--fill);
+color:var(--label-secondary)}
+.addwho button:hover{background:var(--fill-hover);color:var(--label)}
+
 /* "I was there" is a phrase, not a plus sign: it needs a pill it fits inside,
    or the round icon button squashes it onto three lines. */
 .wasthere{margin-top:14px}
@@ -882,7 +905,7 @@ details.tinyhelp summary{cursor:pointer;font-size:12px;font-weight:600;
 color:var(--label-tertiary);margin-top:6px}
 details.tinyhelp p{margin:8px 0 0}
 
-@media (max-width:900px){
+@media (max-width:760px){
   .withrail{grid-template-columns:minmax(0,1fr);gap:8px}
   .rail{position:static}
 }
@@ -964,11 +987,16 @@ function hero(title, sub, cover, tools, coverForm, editable) {
   const pencil = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`;
+  // `editable` is either false, or what the name is called - "group" or
+  // "party" - so the label a screen reader speaks is the truth.
+  const what = editable === true ? "group" : editable;
   const name = editable
     ? `<span id="groupName" contenteditable="plaintext-only" role="textbox"
-         aria-label="Group name" spellcheck="false">${esc(title)}</span>
+         aria-label="${esc(what[0].toUpperCase() + what.slice(1))} name"
+         spellcheck="false">${esc(title)}</span>
        <button class="fieldedit" type="button" id="groupNamePencil"
-         aria-label="Edit the group name" title="Edit the group name">${pencil}</button>`
+         aria-label="Edit the ${esc(what)} name"
+         title="Edit the ${esc(what)} name">${pencil}</button>`
     : esc(title);
   return `<header class="hero">
     <a class="brandchip" href="/home" title="Back to your home">\u{1FAA9} PartyParty</a>
@@ -1079,7 +1107,12 @@ function newPartyScript() {
   </script>`;
 }
 
-function coverScript(action) {
+// `name` says which field the in-place title posts and where: groups rename
+// through /manage with groupName, a night renames through its own /edit with
+// title. Same gesture, two records.
+function coverScript(action, name) {
+  const nameAction = (name && name.action) || action;
+  const nameField = (name && name.field) || "groupName";
   return `<script>
   (() => {
     const form = document.getElementById('coverForm');
@@ -1147,8 +1180,8 @@ function coverScript(action) {
       saving = true;
       try {
         const body = new FormData();
-        body.set('groupName', now);
-        const r = await fetch(${JSON.stringify(action)}, {
+        body.set(${JSON.stringify(nameField)}, now);
+        const r = await fetch(${JSON.stringify(nameAction)}, {
           method: 'POST', body, headers: { accept: 'application/json' },
         });
         const d = await r.json();
@@ -1743,6 +1776,51 @@ async function partiesOwnedBy(env, emailNorm, now) {
   };
 }
 
+// The people, down the side.
+//
+// Owner, 2026-08-09: "a bar on the right that was somewhat reminiscent of how
+// Discord does this. Just a list of participants and people." The middle of the
+// page is the night - what was played, what you thought, the photos. Who was
+// in the room stands beside it and does not scroll away.
+//
+// Two audiences, one rail. Who PLAYED is the night's billing and everybody sees
+// it. Who I SAW is my observation of a room and stays mine, however widely the
+// night is shared - the same rule the page has always had, now with the lists
+// in a different place.
+function nightRail(group, event, people, allNames, canKeep) {
+  const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
+  const djs = (people || []).filter((p) => p.role === "dj");
+  const guests = (people || []).filter((p) => p.role !== "dj");
+
+  const row = (p) => `<li>${personDisc(p)}
+    <span class="grow"><b><a href="/people/${esc(p.id)}">${esc(p.name)}</a></b>${
+      p.note ? `<small>${esc(p.note)}</small>` : ""}</span>${
+    canKeep ? `<form method="post" action="${action}">
+      <input type="hidden" name="person" value="${esc(p.id)}">
+      <button class="x" type="submit" name="remove" value="1" formnovalidate
+        aria-label="Remove ${esc(p.name)}">\u2715</button></form>` : ""}</li>`;
+
+  const group_ = (label, rows, empty) => `<div class="whogroup">
+    <div class="whohead">${esc(label)}${rows.length ? `<small>\u2014 ${rows.length}</small>` : ""}</div>
+    ${rows.length ? `<ul class="who-list">${rows.map(row).join("")}</ul>`
+      : `<p class="blank">${empty}</p>`}</div>`;
+
+  return `<aside class="rail nightpeople">
+    ${group_("Who played", djs, "Whoever was on. A name is enough.")}
+    ${canKeep ? group_("Who was there", guests, "Who you were with.") : ""}
+    ${canKeep ? `<form class="addline addwho" method="post" action="${action}">
+      <input type="text" name="it" list="knownpeople" autocomplete="off"
+        placeholder="Add someone\u2026" aria-label="Add someone to this night">
+      <div class="as">
+        <button type="submit" name="as" value="dj">played</button>
+        <button type="submit" name="as" value="guest">was there</button>
+      </div>
+      <datalist id="knownpeople">${(allNames || []).map((n) =>
+        `<option value="${esc(n.name)}"></option>`).join("")}</datalist>
+    </form>` : ""}
+  </aside>`;
+}
+
 // My half of a party page: whether I went, what I thought, who played, who I
 // saw, and what I want to remember about running into each of them HERE.
 //
@@ -1757,25 +1835,6 @@ async function partiesOwnedBy(env, emailNorm, now) {
 function trackerBlock(event, group, note, people, allNames, songs) {
   const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
   const attended = note && note.attended === 1;
-
-  // One row per person: their face, their name, and a note about them from
-  // THIS night, which is a different thought from a note about them generally.
-  const list = (role, empty) => {
-    const rows = people.filter((p) => p.role === role);
-    return `${rows.length ? `<ul class="people">${rows.map((p) => `<li>
-      ${personDisc(p)}
-      <form method="post" action="${action}" class="personline">
-        <input type="hidden" name="person" value="${esc(p.id)}">
-        <div class="nameline">
-          <a href="/people/${esc(p.id)}">${esc(p.name)}</a>
-          <button class="x" type="submit" name="remove" value="1"
-            formnovalidate aria-label="Remove ${esc(p.name)}">\u2715</button>
-        </div>
-        <input class="quiet" type="text" name="encounter" maxlength="2000"
-          value="${esc(p.note || "")}" placeholder="Add a note about them">
-        <button class="onfocus" type="submit">Save</button>
-      </form></li>`).join("")}</ul>` : `<p class="blank">${empty}</p>`}`;
-  };
 
 
   return `<section class="tracker">
@@ -1792,13 +1851,7 @@ function trackerBlock(event, group, note, people, allNames, songs) {
       </div>
     </form>
 
-    <h2>Who played</h2>
-    ${list("dj", "Whoever was on. They need no account - a name is enough.")}
-
-    <h2>Who was there</h2>
-    ${list("guest", "Who you were with. Next time you type their name, it is the same person.")}
-
-    <h2>Songs</h2>
+    <h2>Track list</h2>
     ${songs && songs.length ? `<ol class="setlist">${songs.map((song) => `<li>
       <span class="grow"><b>${esc(song.title)}</b>${
         song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}${
@@ -1823,8 +1876,6 @@ function trackerBlock(event, group, note, people, allNames, songs) {
       <div class="youbar"><button class="btn" type="submit">Save</button></div>
     </form>
 
-    <datalist id="knownpeople">${allNames.map((n) =>
-      `<option value="${esc(n.name)}"></option>`).join("")}</datalist>
   </section>`;
 }
 
@@ -1902,7 +1953,7 @@ function nightHue(key) {
 
 function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra) {
   const { live, editError, typed, phase, posts, canPost, payLink, ownerName,
-    billed, setlist } = extra || {};
+    billed, setlist, rail } = extra || {};
   const links = partyLinks(event.links);
   const where = `/@${esc(group.handle)}/${esc(event.slug)}`;
 
@@ -1918,8 +1969,7 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
     ${personDisc(p)}<span><b>${esc(p.name)}</b></span></li>`).join("")}</ul>`;
 
   const shared = `
-    ${bill.length ? `<h2>Who played</h2>${named(bill)}` : ""}
-    ${(setlist || []).length ? `<h2>Songs</h2><ol class="setlist">${setlist.map((song) =>
+    ${(setlist || []).length ? `<h2>Track list</h2><ol class="setlist">${setlist.map((song) =>
       `<li><span class="grow"><b>${esc(song.title)}</b>${
         song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}</span></li>`)
       .join("")}</ol>` : ""}
@@ -1983,13 +2033,20 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
       partyEditor(group, event, editError, typed)}</div>` : ""}
 
     ${canEdit ? (tracker || "") + shared : shared + forVisitors}
+    ${canEdit ? coverScript(`/@${esc(group.handle)}/${esc(event.slug)}/cover`,
+      { action: `/@${esc(group.handle)}/${esc(event.slug)}/edit`, field: "title" }) : ""}
   `, hero(event.title || "A night",
       `${esc(whenText(event))}${event.place ? ` \u00b7 ${esc(event.place)}` : ""}${
         phase === "now" ? ` \u00b7 <b>on tonight</b>` : ""}`,
-      event.cover_key,
+      coverForNight(event),
       canEdit ? "" : `<a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a>`,
-      canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""),
-    "", false, true);
+      canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : "",
+      // Click the words and type. The old console did this and it was better
+      // than opening a form to change four characters.
+      canEdit ? "party" : false),
+    // The people stand beside the night rather than inside it: page() turns a
+    // rail into the two-column layout, which stacks under 900px on its own.
+    rail || "", false, true);
 }
 
 // Subscribing to a calendar, without the security warning.
@@ -2603,6 +2660,18 @@ const COVER_PILE = [
 
 function coverPileUrl(name) {
   return `covers/${name}.webp`;
+}
+
+// The picture a night wears when nobody has chosen one. The console always
+// showed a photograph - that is most of why it looked like a party rather than
+// a form - and a hue tint on an empty card is not the same thing. Picked from
+// the id, so it is the same room every time you open it.
+function coverForNight(event) {
+  if (event && event.cover_key) return event.cover_key;
+  const id = String((event && event.id) || "");
+  let n = 0;
+  for (let i = 0; i < id.length; i++) n = (n * 31 + id.charCodeAt(i)) >>> 0;
+  return coverPileUrl(COVER_PILE[n % COVER_PILE.length]);
 }
 
 async function storeMedia(env, file, prefix, maxBytes, allowVideo) {
@@ -5047,10 +5116,19 @@ export default {
       }
       const owner = event.owner_email
         ? await profileFor(env, event.owner_email, now) : null;
+      const canKeep = mineToKeep || await djRunsGroup(env, viewer, group.id);
+      // Mine: everybody I put in the room. Not mine: who played, which is what
+      // the night WAS and is public the moment the night is.
+      const railPeople = canKeep
+        ? await partyPeople(env, viewer.email_norm, event.id)
+        : (await partyPeople(env, event.owner_email, event.id))
+            .filter((p) => p.role === "dj");
       return html(200, eventPage(group, event, await goingCount(env, event.id), base,
         await takeRateFor(env, group.id),
-        mineToKeep || await djRunsGroup(env, viewer, group.id), tracker,
+        canKeep, tracker,
         {
+          rail: nightRail(group, event, railPeople,
+            canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep),
           ownerName: owner ? (owner.name || "@" + owner.handle) : group.handle,
           billed: mineToKeep ? [] : await partyPeople(env, event.owner_email, event.id),
           setlist: mineToKeep ? [] : await songsFor(env, event.id),
@@ -5082,6 +5160,18 @@ export default {
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not save", "Try again.");
 
+      // Renaming in place, from the words in the hero. The same gesture as
+      // renaming a group, and the same shape of answer: a title on its own,
+      // asked for as JSON, saves and says so without the page going anywhere.
+      if ((request.headers.get("accept") || "").includes("application/json") &&
+          form.has("title") && !form.has("day")) {
+        const wanted = String(form.get("title") || "").slice(0, 120).trim();
+        if (!wanted) return json(400, { error: "a night needs a name" });
+        const done = await updateParty(env, event, { title: wanted }, now);
+        if (done && done.error) return json(400, { error: done.error });
+        return json(200, { ok: true, name: wanted });
+      }
+
       // Re-rendering the whole page with the form still filled in, rather than
       // a bare error page with a Back button that loses what was typed.
       const refuse = async (why) => html(200, eventPage(group, event,
@@ -5093,7 +5183,9 @@ export default {
           await peopleFor(env, dj.email_norm, ""),
           await songsFor(env, event.id)),
         { live: liveNow(event, now), phase: partyPhase(event, now),
-          editError: why, typed: form, posts: await eventPosts(env, event.id), canPost: true }));
+          editError: why, typed: form, posts: await eventPosts(env, event.id), canPost: true,
+          rail: nightRail(group, event, await partyPeople(env, dj.email_norm, event.id),
+            await peopleFor(env, dj.email_norm, ""), true) }));
 
       const dayRaw = String(form.get("day") || "");
       const starts = dayRaw ? Date.parse(dayRaw + "T12:00:00Z") : null;

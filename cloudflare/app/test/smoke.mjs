@@ -2330,10 +2330,15 @@ test("the whole sentence goes in from one place", async () => {
   assert.equal(song.title, "Windowlicker");
   assert.equal(song.artist, "Aphex Twin", "by names the artist without a second field");
 
-  // And the line is the first thing on the night, not buried under it.
+  // And the line is the first thing on the night, not buried under it. The
+  // people moved to the rail beside the page, so the section it must come
+  // above is now the track list.
   const page = await (await read(where)).text();
-  assert.ok(page.indexOf('class="capture"') < page.indexOf("<h2>Who played</h2>"),
+  assert.ok(page.indexOf('class="capture"') < page.indexOf("<h2>Track list</h2>"),
     "you write at the top; the sections below are for correcting");
+  assert.match(page, /class="rail nightpeople"/, "the people stand beside the night");
+  assert.ok(page.indexOf('class="rail nightpeople"') > page.indexOf('class="capture"'),
+    "the rail comes after the page body in source order, so a phone stacks it under");
 });
 
 test("three DJs and three friends is one thing you type", async () => {
