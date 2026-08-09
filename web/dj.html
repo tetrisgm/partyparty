@@ -251,7 +251,11 @@
   .partybarnow b{font-size:14px;font-weight:700;overflow-wrap:anywhere}
   .partybarlink{font-size:12px;font-weight:650;color:var(--accent)}
   .partybarlink[hidden]{display:none}
-  .partybaracts{display:flex;align-items:center;gap:8px}
+  .partybaracts{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  /* "New party" is two words and must stay on one line: the flex row will
+     happily squeeze it into a two-line block otherwise, which reads as a bug. */
+  .partybaracts button{white-space:nowrap;flex:0 0 auto}
+  .partybaracts select{flex:1 1 auto;min-width:0;max-width:420px}
   .partybaracts select{height:32px;border-radius:var(--r-sm);background:var(--fill);
     color:var(--label);border:1px solid var(--separator);font:inherit;font-size:12px;padding:0 8px}
 
