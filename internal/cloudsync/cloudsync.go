@@ -373,7 +373,13 @@ type syncResponse struct {
 // time. Pushing is idempotent by post id, so a retry after a dropped
 // connection costs nothing and duplicates nothing - which is what makes it
 // safe to just try again on a venue's bad Wi-Fi.
-func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post) ([]Post, error) {
+// Track is one thing the room played, as Shazam heard it.
+type Track struct {
+	Title  string `json:"title"`
+	Artist string `json:"artist,omitempty"`
+}
+
+func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post, played []Track) ([]Post, error) {
 	if !c.ready() {
 		return nil, errors.New("cloudsync: not configured")
 	}
@@ -384,7 +390,7 @@ func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []P
 	var out syncResponse
 	if err := c.post(ctx, "/api/v1/party/posts", map[string]any{
 		"id": c.InstallID, "secret": c.Secret, "partyId": partyID,
-		"joinUrl": joinURL, "posts": outgoing, "since": since,
+		"joinUrl": joinURL, "posts": outgoing, "since": since, "tracks": played,
 	}, &out); err != nil {
 		return nil, err
 	}
@@ -435,9 +441,13 @@ type Hooks struct {
 	// still playing - one heartbeat, one truth.
 	JoinURL  func() string
 	Outgoing func(limit int) []Post
-	Merge    func(id, author, body string, createdMs int64) (bool, error)
-	Bound    func(url string)
-	Logf     func(format string, args ...any)
+	// Played is the set so far, as Shazam heard it. It rides the same heartbeat
+	// as the posts because it is the same fact - this room is playing, and this
+	// is what it has played.
+	Played func() []Track
+	Merge  func(id, author, body string, createdMs int64) (bool, error)
+	Bound  func(url string)
+	Logf   func(format string, args ...any)
 }
 
 // ProfileHooks are the DJ's own record, supplied the same way: this package
@@ -564,7 +574,11 @@ func (c *Client) Run(ctx context.Context, h Hooks, every time.Duration) {
 		if h.JoinURL != nil {
 			joinURL = h.JoinURL()
 		}
-		incoming, err := c.Sync(ctx, partyID, joinURL, outgoing)
+		var played []Track
+		if h.Played != nil {
+			played = h.Played()
+		}
+		incoming, err := c.Sync(ctx, partyID, joinURL, outgoing, played)
 		if err != nil {
 			logf("cloudsync: %v", err)
 			continue

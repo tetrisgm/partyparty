@@ -782,6 +782,26 @@ padding:0;min-height:26px;font:inherit;font-size:15px;color:var(--label);outline
 .addline button{flex:0 0 auto;width:30px;height:30px;border:0;border-radius:50%;
 background:var(--bg-elevated-2);color:var(--label-secondary);font-size:17px;
 line-height:1;cursor:pointer}
+/* The composer. A box you write in, with its actions along the bottom - the
+   shape the console had, which is a place to write rather than a field to
+   fill. It lights up when a photo is over it. */
+.composer{border:1px dashed var(--separator);border-radius:var(--r-md);
+padding:10px 12px 8px;margin:0 0 12px;display:grid;gap:8px;
+transition:border-color .14s ease,background .14s ease}
+.composer:focus-within{border-style:solid;border-color:var(--accent)}
+.composer.dropping{border-style:solid;border-color:var(--accent);
+background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.composer textarea{width:100%;border:0;background:none;outline:none;resize:vertical;
+min-height:44px;font:inherit;font-size:15px;color:var(--label)}
+.composer textarea::placeholder{color:var(--label-tertiary)}
+.composerbar{display:flex;align-items:center;gap:10px}
+.composer .camera{width:34px;height:34px;border:0;border-radius:50%;flex:0 0 auto;
+background:var(--fill);color:var(--label-secondary);display:grid;place-items:center;
+cursor:pointer;padding:0}
+.composer .camera:hover{background:var(--fill-hover);color:var(--label)}
+.composer .camera svg{width:19px;height:19px}
+.composer .grow{flex:1 1 auto}
+
 /* Adding somebody in the rail. Two words per answer and 320px to do it in, so
    the field takes a line and the answers take the next one. */
 .addwho{display:grid;gap:8px;margin-top:14px}
@@ -1309,12 +1329,20 @@ function nightWord(token) {
 
 // "Ada, Bo and Cy" -> ["Ada", "Bo", "Cy"], with the filler at the front of each
 // chunk dropped so "they played" does not record a DJ called "they".
-function nightList(text) {
+function nightList(text, keepFirst) {
   return String(text)
     .split(/,|;|\band\b|&|\+/i)
     .map((chunk) => {
       const words = chunk.trim().split(/\s+/).filter(Boolean);
-      while (words.length && NIGHT_FILLER.test(words[0])) words.shift();
+      // Pronouns in front of a NAME are filler - "they played" is not a DJ
+      // called they. In front of a TITLE they are the title: "We Are the Music
+      // Makers" came out as "Are the Music Makers" until this told them apart.
+      // Either way a chunk of nothing but filler is nothing: "song XYZ. I was
+      // with Cy" left a track called "I was" the first time this went in.
+      if (!words.some((w) => !NIGHT_FILLER.test(w))) return "";
+      if (!keepFirst) {
+        while (words.length && NIGHT_FILLER.test(words[0])) words.shift();
+      }
       return words.join(" ").replace(/^["'“‘]+|["'”’.]+$/g, "").trim();
     })
     .filter((one) => one && one.length <= 120);
@@ -1369,7 +1397,7 @@ export function parseNight(line) {
       // One artist for the whole clause: "Xtal and Ageispolis by Aphex Twin".
       const parts = body.split(/\s+by\s+/i);
       const artist = parts.length > 1 ? nightList(parts.pop()).join(", ") : "";
-      for (const title of nightList(parts.join(" by "))) out.songs.push({ title, artist });
+      for (const title of nightList(parts.join(" by "), true)) out.songs.push({ title, artist });
       continue;
     }
     // The leading clause is who played, the same as "saw".
@@ -1776,6 +1804,62 @@ async function partiesOwnedBy(env, emailNorm, now) {
   };
 }
 
+// Dropping a photo on the composer. The console let you drag a picture straight
+// onto the box and the web made you find a file button, which is the difference
+// between writing a night down and filling in a form. No JavaScript, no drop -
+// the button still works, so nothing is lost by it failing.
+function dropScript() {
+  return `<script>
+  (() => {
+    const form = document.getElementById('sayForm');
+    if (!form) return;
+    const file = form.querySelector('input[type=file]');
+    const has = (e) => [...(e.dataTransfer ? e.dataTransfer.types : [])].includes('Files');
+    const stop = (e) => { if (has(e)) { e.preventDefault(); } };
+    form.addEventListener('dragenter', (e) => { stop(e); form.classList.add('dropping'); });
+    form.addEventListener('dragover', stop);
+    form.addEventListener('dragleave', (e) => {
+      if (!e.relatedTarget || !form.contains(e.relatedTarget)) form.classList.remove('dropping');
+    });
+    form.addEventListener('drop', (e) => {
+      if (!has(e)) return;
+      e.preventDefault();
+      form.classList.remove('dropping');
+      // DataTransfer to the file input, so the ordinary multipart post carries
+      // it - no second upload path to keep in step with the first.
+      if (file && e.dataTransfer.files.length) {
+        file.files = e.dataTransfer.files;
+        form.requestSubmit ? form.requestSubmit() : form.submit();
+      }
+    });
+  })();
+  <\/script>`;
+}
+
+// The night's tracks. A set runs to dozens once Shazam is writing them down, so
+// the page shows the shape of it - the first few and the last few - and opens
+// the rest on a click. Nothing is hidden that a click cannot reach, and no
+// scrollbar of its own: a list inside a scroller is a list nobody reads.
+const TRACKS_SHOWN = 8;
+function trackList(songs, tail) {
+  const all = songs || [];
+  if (!all.length) return `<p class="blank">What was played, in the order it was played.</p>`;
+  const row = (song, n) => `<li>
+    <span class="grow"><b>${esc(song.title)}</b>${
+      song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}${
+      song.person_name ? ` <span class="tag quiet">${esc(song.person_name)}</span>` : ""}</span>
+    ${tail ? tail(song) : ""}</li>`;
+  if (all.length <= TRACKS_SHOWN + 2) {
+    return `<ol class="setlist">${all.map(row).join("")}</ol>`;
+  }
+  const head = all.slice(0, TRACKS_SHOWN);
+  const rest = all.slice(TRACKS_SHOWN);
+  return `<ol class="setlist">${head.map(row).join("")}</ol>
+    <details class="moretracks"><summary>${rest.length} more</summary>
+      <ol class="setlist" start="${TRACKS_SHOWN + 1}">${rest.map(row).join("")}</ol>
+    </details>`;
+}
+
 // The people, down the side.
 //
 // Owner, 2026-08-09: "a bar on the right that was somewhat reminiscent of how
@@ -1852,16 +1936,11 @@ function trackerBlock(event, group, note, people, allNames, songs) {
     </form>
 
     <h2>Track list</h2>
-    ${songs && songs.length ? `<ol class="setlist">${songs.map((song) => `<li>
-      <span class="grow"><b>${esc(song.title)}</b>${
-        song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}${
-        song.person_name ? ` <span class="tag quiet">${esc(song.person_name)}</span>` : ""}</span>
-      <form method="post" action="${action}">
+    ${trackList(songs, (song) => `<form method="post" action="${action}">
         <input type="hidden" name="song" value="${esc(song.id)}">
         <button class="x" type="submit" name="remove" value="1"
           formnovalidate aria-label="Remove ${esc(song.title)}">\u2715</button>
-      </form>
-    </li>`).join("")}</ol>` : `<p class="blank">What was played, in the order it was played.</p>`}
+      </form>`)}
 
     <h2>Your notes</h2>
     <form class="you" method="post" action="${esc(action)}">
@@ -1969,19 +2048,18 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
     ${personDisc(p)}<span><b>${esc(p.name)}</b></span></li>`).join("")}</ul>`;
 
   const shared = `
-    ${(setlist || []).length ? `<h2>Track list</h2><ol class="setlist">${setlist.map((song) =>
-      `<li><span class="grow"><b>${esc(song.title)}</b>${
-        song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}</span></li>`)
-      .join("")}</ol>` : ""}
+    ${(setlist || []).length ? `<h2>Track list</h2>${trackList(setlist)}` : ""}
     ${links.length ? `<ul class="linklist">${links.map((l) =>
       `<li><a href="${esc(l.href)}" rel="noopener noreferrer nofollow"
         target="_blank">${esc(l.label)}</a></li>`).join("")}</ul>` : ""}
     ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
 
     <h2>Photos</h2>
-    ${canPost ? `<form class="addline say" method="post" enctype="multipart/form-data"
-      action="${where}/say">
-      <input type="text" name="say" maxlength="2000" placeholder="Say something">
+    ${canPost ? `<form class="composer say" method="post" enctype="multipart/form-data"
+      action="${where}/say" id="sayForm">
+      <textarea name="say" maxlength="2000" rows="2"
+        placeholder="Write something, or drop photos and videos here"></textarea>
+      <div class="composerbar">
       <button class="camera" type="button" aria-label="Add a photo"
         onclick="this.nextElementSibling.click()"><svg viewBox="0 0 24 24" fill="none"
         stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path
@@ -1989,8 +2067,10 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
         cx="12" cy="13" r="3.2"/></svg></button>
       <input type="file" name="media" accept="image/*,video/*" hidden
         onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
-      <button type="submit" aria-label="Post">+</button>
-    </form>` : ""}
+      <span class="grow"></span>
+      <button class="btn small" type="submit">Post</button>
+      </div>
+    </form>${dropScript()}` : ""}
     ${posts && posts.length ? nightRoll(posts)
       : `<p class="blank">Photos and anything said here land in this space.</p>`}`;
 
@@ -3449,6 +3529,38 @@ export default {
       ).bind(now, /^https:\/\//.test(joinUrl) ? joinUrl : event.live_url || "",
         event.id).run();
 
+      // Going live IS playing. A DJ who broadcast their own night should not
+      // then have to type their own name into it, and this call is the moment
+      // we know they did. Once per night; theirs to remove if they were only
+      // hosting.
+      if (event.owner_email) {
+        const me = await profileFor(env, event.owner_email, now);
+        const person = await findOrMakePerson(env, event.owner_email,
+          me.name || "@" + me.handle, now);
+        if (person) {
+          await env.DB.prepare(
+            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+             VALUES (?,?,?,'dj',?) ON CONFLICT(event_id, person_id) DO NOTHING`
+          ).bind(event.id, person.id, event.owner_email, now).run();
+        }
+      }
+
+      // The track list, as Shazam heard it. The Mac sends the set so far every
+      // heartbeat and this drops what is already down - a cursor nobody can get
+      // out of step, at the cost of one cheap query per beat.
+      if (event.owner_email && Array.isArray(body.tracks) && body.tracks.length) {
+        const { results: had = [] } = await env.DB.prepare(
+          `SELECT title, artist FROM songs WHERE event_id = ?`).bind(event.id).all();
+        const seen = new Set(had.map((r) => `${r.title}\u0000${r.artist || ""}`));
+        for (const track of body.tracks.slice(0, 60)) {
+          const title = String(track.title || "").trim().slice(0, 200);
+          const artist = String(track.artist || "").trim().slice(0, 120);
+          if (!title || seen.has(`${title}\u0000${artist}`)) continue;
+          seen.add(`${title}\u0000${artist}`);
+          await addSong(env, event.owner_email, event.id, { title, artist }, now);
+        }
+      }
+
       let stored = 0;
       for (const post of (Array.isArray(body.posts) ? body.posts : []).slice(0, 200)) {
         const id = String(post.id || "");
@@ -4024,8 +4136,13 @@ export default {
       // before they can see their own parties is a wall, and a form the height
       // of the screen was exactly that - so it is a line that opens now, and
       // only opens itself when something needs fixing.
+      // Open when there is nothing saved. Owner, 2026-08-09: start the app with
+      // no profile and the About You details are there to fill, because going
+      // live lists you as one of the DJs and a night billed to "@handle" is
+      // nobody. Still not the wall a previous decision removed - it is one
+      // block, dismissible, and your parties are right below it.
       const you = (!stored.saved_ms || problem)
-        ? `<details class="welcome"${problem ? " open" : ""}>
+        ? `<details class="welcome" open>
              <summary>${personDisc(profile)}<span>
                <b>${esc(profile.name || "@" + profile.handle)}</b>
                <small>Add your name and photo - optional, and you are already

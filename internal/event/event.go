@@ -1464,6 +1464,27 @@ func (s *Store) rotateTrackLocked() {
 	}
 }
 
+// Setlist is what Shazam heard this room play, oldest first, including the
+// track on right now. The platform's track list is written from it while a set
+// runs, so a DJ ends the night with the list already made.
+//
+// The whole thing every time, capped: the platform dedupes on title and artist,
+// which is a cursor nobody can get wrong. A set that plays past the cap loses
+// its beginning from the push, not from the file - writeSetlistLocked keeps
+// everything.
+func (s *Store) Setlist(limit int) []CurrentTrack {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := append([]CurrentTrack(nil), s.setlistTracks...)
+	if s.currentTrack != nil && s.currentTrack.Title != "" {
+		out = append(out, *s.currentTrack)
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[len(out)-limit:]
+	}
+	return out
+}
+
 func (s *Store) writeSetlistLocked() error {
 	tracks := append([]CurrentTrack(nil), s.setlistTracks...)
 	if s.currentTrack != nil && s.currentTrack.Title != "" {

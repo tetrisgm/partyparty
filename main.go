@@ -331,6 +331,18 @@ func main() {
 					}
 					return handler.GuestJoinURL()
 				},
+				// What Shazam heard, so the night's track list writes itself
+				// while the set runs instead of being remembered afterwards.
+				Played: func() []cloudsync.Track {
+					out := []cloudsync.Track{}
+					for _, t := range events.Setlist(40) {
+						if t.Title == "" {
+							continue
+						}
+						out = append(out, cloudsync.Track{Title: t.Title, Artist: t.Artist})
+					}
+					return out
+				},
 				Outgoing: func(limit int) []cloudsync.Post {
 					local := events.OutgoingPosts(limit)
 					out := make([]cloudsync.Post, 0, len(local))

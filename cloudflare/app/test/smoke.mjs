@@ -128,6 +128,14 @@ test("one line writes the whole night", () => {
   assert.deepEqual(quoted.djs, ["Ada"]);
   assert.deepEqual(quoted.songs, [{ title: "Windowlicker", artist: "" }]);
 
+  // A title keeps its first word. "We Are the Music Makers" lost its "We" to
+  // the pronoun filter, which is right for a name and wrong for a title.
+  assert.deepEqual(parseNight("played We Are the Music Makers by Aphex Twin").songs,
+    [{ title: "We Are the Music Makers", artist: "Aphex Twin" }]);
+  assert.deepEqual(parseNight("saw Ada, they played I Care Because You Do").songs,
+    [{ title: "I Care Because You Do", artist: "" }]);
+  assert.deepEqual(parseNight("saw Ada, they played I Care Because You Do").djs, ["Ada"]);
+
   // "played by Ada" says who played. It is not a song called Ada.
   assert.deepEqual(parseNight("played by Ada").djs, ["Ada"]);
   assert.deepEqual(parseNight("played by Ada").songs, []);
@@ -794,6 +802,65 @@ test("a party finds tonight's night by itself, and never steals another one", as
     .run(other.id, "dj@example.com", Date.now());
   const refused = await (await api(env, "/api/v1/party/bind", { ...other, partyId: "2026-08-06-2300-cd34" })).json();
   assert.equal(refused.bound, false);
+});
+
+// Two things the console did better, brought over.
+test("home opens the profile it does not have, and the composer is a box you write in", async () => {
+  const { env, send, read } = await signedIn();
+
+  // Nothing saved: the fields are open, not folded behind a summary you have
+  // to notice. It is still not a wall - the parties are on the same page.
+  const first = await (await read("/home")).text();
+  assert.match(first, /<details class="welcome" open>/, "fill it in without hunting for it");
+  assert.match(first, /Your parties|no parties|Add a party/i, "and your parties are right there");
+
+  await send("/home", { name: "Seth", bio: "" });
+  const after = await (await read("/home")).text();
+  assert.ok(!/<details class="welcome"/.test(after), "answered once, it puts itself away");
+
+  // The composer: somewhere to write, with its actions under it.
+  await send("/parties/new", { title: "Warehouse, late" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const page = await (await read(`/@${handle}/${ev.slug}`)).text();
+  assert.match(page, /<textarea name="say"/, "a box, not a one-line field");
+  assert.match(page, /drop photos and videos here/);
+  assert.match(page, /class="composerbar"/);
+  assert.ok(!/<input type="text" name="say"/.test(page), "the single line is gone");
+});
+
+// Shazam already listens in the app. Until now nothing carried what it heard to
+// the night's page, so a DJ typed out a list they had already played.
+test("the set writes its own track list, and going live lists the DJ", async () => {
+  const env = makeEnv();
+  const groupId = seedGroup(env);
+  const mac = macEnv(env);
+  const partyId = "2026-08-06-2200-ab12";
+  const eventId = seedEvent(env, groupId, { slug: "tonight", starts_ms: Date.now() });
+  env.raw.prepare(`UPDATE events SET party_id = ?, owner_email = ? WHERE id = ?`)
+    .run(partyId, "dj@example.com", eventId);
+
+  const beat = (tracks) => api(env, "/api/v1/party/posts", { ...mac, partyId, tracks });
+  await beat([{ title: "Windowlicker", artist: "Aphex Twin" }, { title: "Xtal" }]);
+  assert.deepEqual(
+    rows(env, `SELECT title, artist FROM songs ORDER BY seq`).map((r) => ({ ...r })),
+    [{ title: "Windowlicker", artist: "Aphex Twin" }, { title: "Xtal", artist: "" }]);
+
+  // The Mac resends the whole set every heartbeat. What is already down stays
+  // down once - the cursor is the list itself.
+  await beat([{ title: "Windowlicker", artist: "Aphex Twin" }, { title: "Xtal" },
+    { title: "Ageispolis", artist: "Aphex Twin" }]);
+  assert.deepEqual(rows(env, `SELECT title FROM songs ORDER BY seq`).map((r) => r.title),
+    ["Windowlicker", "Xtal", "Ageispolis"]);
+
+  // And broadcasting your own night means you played it.
+  const played = rows(env, `SELECT p.name, pp.role FROM party_people pp
+    JOIN people p ON p.id = pp.person_id`);
+  assert.equal(played.length, 1, "the DJ is on their own night, exactly once");
+  assert.equal(played[0].role, "dj");
+  await beat([]);
+  assert.equal(rows(env, `SELECT person_id FROM party_people`).length, 1,
+    "and stays exactly once, however many heartbeats");
 });
 
 test("the wall on the venue Wi-Fi and the page three days later are one timeline", async () => {
