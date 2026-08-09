@@ -117,6 +117,24 @@ the hour never shown; songs, which had nowhere to live at all; `visibility`
 became person-to-person, private by default, with every group follower carried
 across.
 
+## The only job
+
+Owner, 2026-08-08: "I'm at this party. I saw DJ 1, 2 and 3. They played song
+XYZ. I attended it with friend A, B and C." That sentence is the product. The
+Mac additionally streams; nothing else is in scope.
+
+Judge every change against typing that sentence. It currently takes: open the
+party, type three names in one box, two in another, the tracks in a third.
+Three actions for four clauses.
+
+What would take it to one: a single capture line at the top of a night that
+routes what you type - names to people, quoted or "played" phrases to songs -
+so the whole sentence goes in at once. That is the next real step and it is a
+parser, not a layout change.
+
+Still unexamined at Apple-Journal quality: /people, the visitor view on a phone
+(checked in HTML, not in a screenshot), and every empty state on home.
+
 ## Status
 
 - DONE `8000254` - creating a party means the same thing from either client.
