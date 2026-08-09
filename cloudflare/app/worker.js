@@ -810,7 +810,7 @@ details.edit summary{padding:5px 0}
    open, and opening one takes the whole row's width. */
 .nightbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 6px}
 .nightbar details[open]{flex:1 1 100%}
-details.seen{display:inline-block}
+details.seen{display:inline-block;border:0}
 details.seen summary{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
 list-style:none;font-size:13px;font-weight:600;color:var(--label-secondary);
 padding:5px 12px;border-radius:var(--r-pill);background:var(--bg-elevated)}
