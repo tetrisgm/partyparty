@@ -595,6 +595,24 @@ font-size:11px;font-weight:700;letter-spacing:.02em;background:var(--fill);
 color:var(--label-secondary)}
 .tag.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--separator)}
 .tag.live{background:rgba(255,45,111,.16);color:var(--accent)}
+/* Home as a journal timeline. A row in a table tells you nothing; an entry
+   says when, where, and what is in it, and is a whole tap target. */
+.entries{display:grid;margin:0 0 8px;border-top:1px solid var(--separator)}
+.entry{display:grid;grid-template-columns:88px minmax(0,1fr) auto;gap:14px;
+align-items:baseline;padding:16px 12px;border-bottom:1px solid var(--separator);
+text-decoration:none;color:var(--label)}
+.entry:hover{background:var(--bg-elevated);text-decoration:none}
+.entrywhen{font-size:13px;font-weight:650;color:var(--label-tertiary);
+font-variant-numeric:tabular-nums;line-height:1.5}
+.entrybody{display:grid;gap:3px;min-width:0}
+.entrybody b{font-size:17px;letter-spacing:-.01em;line-height:1.25}
+.entrywhere{font-size:14px;color:var(--label-secondary)}
+.entryinside{font-size:13px;color:var(--label-tertiary);overflow:hidden;
+text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:520px){
+  .entry{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:14px 10px}
+  .entrywhen{grid-column:1/-1;order:-1}
+}
 .tracker{margin-top:4px}
 .tracker h2:first-child{margin-top:18px}
 .wentrow{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:650}
@@ -2115,7 +2133,11 @@ function linkHref(key, value) {
 async function myParties(env, emailNorm) {
   const { results } = await env.DB.prepare(
     `SELECT e.*, g.handle, g.name AS group_name,
-            n.attended AS attended, n.note AS my_note
+            n.attended AS attended, n.note AS my_note,
+            (SELECT COUNT(*) FROM songs sg WHERE sg.event_id = e.id) AS song_count,
+            (SELECT GROUP_CONCAT(p.name, ', ') FROM party_people pp
+               JOIN people p ON p.id = pp.person_id
+              WHERE pp.event_id = e.id AND pp.owner_email = ? AND pp.role = 'dj') AS bill
        FROM events e
        JOIN groups g ON g.id = e.group_id
        LEFT JOIN party_notes n ON n.event_id = e.id AND n.owner_email = ?
@@ -2126,7 +2148,7 @@ async function myParties(env, emailNorm) {
                     WHERE pp.event_id = e.id AND pp.owner_email = ?))
       ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC
       LIMIT 200`
-  ).bind(emailNorm, emailNorm, emailNorm).all();
+  ).bind(emailNorm, emailNorm, emailNorm, emailNorm).all();
   return results || [];
 }
 
@@ -2520,12 +2542,12 @@ async function homeGroupFor(env, dj, now) {
 
 // Adding a party: a name, and everything else optional. Somebody standing
 // outside a club typing this on a phone will not fill in six fields.
-function newPartyPage(group, state, form, today) {
+function newPartyPage(group, state, form, today, lastPlace) {
   const was = (name) => esc((form && form.get(name)) || "");
   return page("Add a party", `
     <h1>Add a party</h1>
-    <p class="muted">Today's date is already in. Only the name is needed - fill the
-    rest in whenever, or never.</p>
+    <p class="muted">Today, and where you were last, are already in. Only the
+    name is needed - fill the rest in whenever, or never.</p>
     ${state.error ? `<p class="formerror" role="alert">${esc(state.error)}</p>` : ""}
     <form class="newnight" method="post" action="/parties/new">
       <label class="eventfield"><span>What is it called?</span>
@@ -2534,7 +2556,8 @@ function newPartyPage(group, state, form, today) {
       <label class="eventfield"><span>When</span>
         <input type="date" name="day" value="${was("day") || esc(today)}"></label>
       <label class="eventfield"><span>Where</span>
-        <input type="text" name="place" maxlength="120" value="${was("place")}"
+        <input type="text" name="place" maxlength="120"
+          value="${was("place") || esc(lastPlace || "")}"
           placeholder="Unit 7, or a friend's kitchen"></label>
       <label class="eventfield"><span>Who is playing</span>
         <input type="text" name="dj" maxlength="200" value="${was("dj")}"
@@ -3602,19 +3625,34 @@ export default {
         .sort((a, b) => (a.starts_ms || Infinity) - (b.starts_ms || Infinity));
       const past = mine.filter((e) => partyIsPast(e, now));
 
-      const row = (e) => `<a class="card partyrow" href="/@${esc(e.handle)}/${esc(e.slug)}">
-        <div class="grow">
-          <div class="when">${esc(whenText(e))}${e.place ? " \u00b7 " + esc(e.place) : ""}</div>
-          <strong>${esc(e.title || "Untitled party")}</strong>
-          ${partyPhase(e, now) === "now" ? `<span class="tag live">On tonight</span>` : ""}
-          ${e.attended === 1 ? `<span class="tag">You went</span>` : ""}
-          ${e.my_note ? `<span class="tag quiet">Noted</span>` : ""}
-          ${liveNow(e, now) ? `<span class="tag live">Playing now</span>` : ""}
-        </div>
+      // What is in a night, in one line, so a list of parties is worth reading
+      // a year later: who played, how much of the set you wrote down, and the
+      // opening of what you thought.
+      const inside = (e) => {
+        const bits = [];
+        if (e.attended === 1) bits.push("You were there");
+        if (e.bill) bits.push(esc(e.bill));
+        if (e.song_count) bits.push(`${e.song_count} ${e.song_count === 1 ? "song" : "songs"}`);
+        if (e.my_note) {
+          const line = String(e.my_note).replace(/\s+/g, " ").trim();
+          bits.push(esc(line.length > 68 ? line.slice(0, 67) + "\u2026" : line));
+        }
+        return bits.join(" \u00b7 ");
+      };
+      const row = (e) => `<a class="entry" href="/@${esc(e.handle)}/${esc(e.slug)}">
+        <span class="entrywhen">${esc(whenText(e))}</span>
+        <span class="entrybody">
+          <b>${esc(e.title || "Untitled party")}</b>
+          ${e.place ? `<span class="entrywhere">${esc(e.place)}</span>` : ""}
+          ${inside(e) ? `<span class="entryinside">${inside(e)}</span>` : ""}
+        </span>
+        ${liveNow(e, now) ? `<span class="tag live">Playing now</span>`
+          : partyPhase(e, now) === "now" ? `<span class="tag live">Tonight</span>` : ""}
       </a>`;
 
       const section = (label, list, empty) => `<h2>${esc(label)}</h2>
-        ${list.length ? list.map(row).join("") : `<p class="muted">${empty}</p>`}`;
+        ${list.length ? `<div class="entries">${list.map(row).join("")}</div>`
+          : `<p class="muted">${empty}</p>`}`;
 
       return html(200, page("Your parties", `
         ${you}
@@ -3681,7 +3719,12 @@ export default {
           status: 302, headers: { location: `/@${group.handle}/${made.slug}` },
         });
       }
-      return html(200, newPartyPage(group, {}, null, todayISO(now)));
+      const lastPlace = await env.DB.prepare(
+        `SELECT place FROM events WHERE owner_email = ? AND place != ''
+          ORDER BY created_ms DESC LIMIT 1`
+      ).bind(dj.email_norm).first();
+      return html(200, newPartyPage(group, {}, null, todayISO(now),
+        lastPlace && lastPlace.place));
     }
 
     // Everyone I have recorded, and one person's whole history.

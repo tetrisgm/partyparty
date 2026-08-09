@@ -1099,7 +1099,7 @@ test("home is your parties: upcoming, past, and an empty state that says what to
     VALUES (?, 'dj@example.com', 'Loud, good', 1, ?)`).run(theirEvent, Date.now());
   const withTheirs = await (await get(env, "/home", cookie)).text();
   assert.match(withTheirs, /Their warehouse/, "a party you noted is on your shelf");
-  assert.match(withTheirs, /You went/);
+  assert.match(withTheirs, /You were there/);
 });
 
 test("your own page offers what you configure, not a form asking your name", async () => {
@@ -1930,7 +1930,7 @@ test("the acceptance scenario, end to end", async () => {
   home = await (await read("/home")).text();
   assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Warehouse, late"),
     "a party whose date has gone is past, decided by the clock");
-  assert.match(home, /You went/);
+  assert.match(home, /You were there/, "an entry says what is in it, not just that it exists");
 
   // 12. Her page shows the party, its date, and the note from THAT night.
   let page = await (await read(`/people/${ada.id}`)).text();
@@ -2121,6 +2121,12 @@ test("a night is a day, a place, and what was played", async () => {
     "today is filled in already");
 
   await send("/parties/new", { title: "Warehouse", day: "2026-08-08", place: "Unit 7" });
+
+  // Where you were last is already in the next one. At a regular haunt that is
+  // the right answer, and everywhere else it is one tap to clear - which beats
+  // a browser location prompt and a geocoding service for the same guess.
+  assert.match(await (await read("/parties/new")).text(), /value="Unit 7"/);
+
   const handle = one(env, `SELECT handle FROM groups`).handle;
   const ev = one(env, `SELECT * FROM events`);
   const where = `/@${handle}/${ev.slug}`;
@@ -2302,28 +2308,28 @@ test("a person can turn out to be an account, later, or never", async () => {
 
 test("upcoming, on tonight, and past are read off the clock", async () => {
   const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Tonight" });
+  await send("/parties/new", { title: "Warehouse" });
   const ev = one(env, `SELECT * FROM events`);
   const handle = one(env, `SELECT handle FROM groups`).handle;
   const at = (ms) => env.raw.prepare(`UPDATE events SET starts_ms = ? WHERE id = ?`).run(ms, ev.id);
 
   // No date at all is upcoming: it has not happened.
   let home = await (await read("/home")).text();
-  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Tonight"));
+  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Warehouse"));
 
   // Started an hour ago: still on, still filed under Upcoming rather than
   // vanishing into Past while people are in the room.
   at(Date.now() - 60 * 60 * 1000);
   home = await (await read("/home")).text();
-  assert.match(home, /On tonight/);
-  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Tonight"));
+  assert.match(home, /class="tag live">Tonight</, "a night in progress says so");
+  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Warehouse"));
   assert.match(await (await read(`/@${handle}/${ev.slug}`)).text(), /on tonight/);
 
   // Seven hours ago: the night is over, and nothing had to be switched.
   at(Date.now() - 7 * 60 * 60 * 1000);
   home = await (await read("/home")).text();
-  assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Tonight"));
-  assert.ok(!home.includes("On tonight"));
+  assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Warehouse"));
+  assert.ok(!home.includes('class="tag live">Tonight<'));
 });
 
 test("taking a name back off a party keeps the person only if they are one", async () => {
