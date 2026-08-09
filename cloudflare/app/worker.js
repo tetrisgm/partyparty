@@ -2863,8 +2863,11 @@ function newPartyPage(group, state, form, today, lastPlace) {
 // browser prompt and a reverse-geocoding service for the same answer.
 async function lastPlaceUsed(env, emailNorm) {
   const last = await env.DB.prepare(
+    // rowid breaks the tie: two nights made in the same millisecond would
+    // otherwise return whichever the engine felt like, and "where you were
+    // last" would be a coin flip. Insertion order is what "last" means.
     `SELECT place FROM events WHERE owner_email = ? AND place != ''
-      ORDER BY created_ms DESC LIMIT 1`
+      ORDER BY created_ms DESC, rowid DESC LIMIT 1`
   ).bind(emailNorm).first();
   return (last && last.place) || "";
 }
