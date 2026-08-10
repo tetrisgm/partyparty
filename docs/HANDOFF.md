@@ -1,6 +1,71 @@
 # PartyParty.party handoff
 
-## Current position (2026-08-09): one line writes the whole night
+## Current position (2026-08-09): the night in the middle, the room down the side
+
+The owner used the console beside partyparty.party and rebuilt the shape of it
+in a dozen messages. Where it landed:
+
+**The console is a shell around the web's own pages.** `web/dj.html` keeps only
+what a Mac can do - capture source, Go live, the join code and QR - and shows
+the person's real pages in a frame (`#webFrame`). `internal/server/mirror.go`
+fetches them from the platform as the owner and serves them on the console's
+own origin. There is no top bar and no party picker: whatever night the frame
+is on IS the night the room is running, and the way home is the PartyParty chip
+the page itself draws on the cover.
+
+**The people live in the Mac's sidebar, beside the QR.** The platform serves
+the rail on its own at `/@handle/slug/rail` and the console hangs it under the
+invite code; the page is asked to leave its copy out with `?rail=0`. One
+implementation, one stylesheet, shown where the owner wanted it. Its forms
+carry `from=rail` so a post returns to the rail instead of opening the whole
+night inside a 300px column.
+
+**Who played is the DJs; who was there is the attendees.** Each list has its own
+field and its own `+` - there is no third question after the name, and no
+sentence parser (the capture line it existed for is gone). Going live lists you
+as a DJ; a NAMED listener rides the heartbeat and is recorded as an attendee, so
+the console keeps no second list of people. Unnamed phones are skipped.
+
+**The track list writes itself.** ShazamKit has always run in the app; it now
+carries what it hears on the same 20s heartbeat as the posts, deduped on title
+and artist server-side. A track can also be a photograph - `songs.media_key`,
+no title required, because at a party a Shazam screenshot is faster to keep
+than a line to type.
+
+**Permission is about the contents, not the page.** `whoSees()` is the only
+answer to both questions and every read path asks it:
+
+  public     anyone
+  followers  people who follow you
+  named      only the people you added to the night
+
+Following opens the page - a follower sees THAT a night happened and who played
+- and the setting opens the contents. A stranger gets 404. A party opened with
+a live room on it is public from the first moment, because the people about to
+be handed its address are in the room, not following the DJ.
+
+**Nothing has to be expanded to be useful.** Who can see it is three buttons;
+the day and the place are typed into the line under the name that shows them
+(the picker hides behind "Sat 8 Aug"); the notes and the composer are open. The
+delay/sync numbers are the one exception and sit behind Details, in a panel
+that only appears while somebody is listening.
+
+Three traps this file exists to stop the next session repeating:
+
+- **Remove markup and its JavaScript together.** Twice today the console lost a
+  block and kept the code that painted it, and `show()` threw on a missing
+  element - which stops the frame steering entirely. `test-dj-console-shell.mjs`
+  boots the real page and fails on any uncaught error; it caught both.
+- **Land before deploying.** `wrangler deploy` runs from the canonical checkout,
+  which only has what has landed. Deploying with the change still in the
+  worktree ships the old code and then production disagrees with the source.
+- **Measure, do not eyeball.** The remove-cover button was moved twice against
+  the wrong neighbour and ended up exactly on top of the upload button, which
+  made upload look deleted. `getBoundingClientRect` in the running app settled
+  it in one call.
+
+## Earlier position (2026-08-09): one line writes the whole night
+
 
 The product's only job, in the owner's words: "I'm at this party. I saw DJ 1, 2
 and 3. They played song XYZ. I attended it with friend A, B and C." That was
@@ -8,7 +73,9 @@ three separate actions for four clauses. It is now one:
 
     saw Ada and Bo, played Windowlicker by Aphex Twin, with Cy and Dee
 
-`parseNight` in `cloudflare/app/worker.js` reads it. A word opens a clause and
+`parseNight` read it. **It has since been deleted**: with a field per list, the
+name typed into "Add a DJ" is a DJ, and reading "Bo with Cy" as a guest was the
+app being clever at the expense of being right. Kept here for why it existed. A word opens a clause and
 owns the text until the next word opens one - `saw`/`dj` for who played,
 `played`/`song`/`track` for what, `with`/`w/` for who you were with. Quoted text
 is a song wherever it appears. A leading list with no word after it is who

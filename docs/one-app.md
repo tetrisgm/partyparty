@@ -175,17 +175,35 @@ Still unexamined at Apple-Journal quality: /people, the visitor view on a phone
   - Somebody holding the link can say "I was there" on a night that already
     happened. Private nights have no such door. Verified at 375px.
 
-## What the sentence takes now
+## What the night takes now
 
-Owner, 2026-08-08: "I'm at this party. I saw DJ 1, 2 and 3. They played song
-XYZ. I attended it with friend A, B and C."
+The capture line is gone. Owner, 2026-08-09: "I really hate that input field...
+we should just delete that field." Each list has its own way in, and the list
+you type into answers the question the line used to ask:
 
-    saw Ada and Bo, played Windowlicker by Aphex Twin, with Cy and Dee   [return]
+- **Who played** - a field and a `+` in the sidebar. Going live adds you.
+- **Who was there** - the same, and a named listener is recorded automatically.
+- **Track list** - a title, "Title by Artist", or a Shazam screenshot. Shazam
+  fills it in while the set runs.
 
-One field. One action. Four clauses.
+## Where things are
 
-STILL OPEN:
+The Mac is a shell: capture source, Go live, join code and QR, with the web's
+own pages in a frame and the night's people in the sidebar beside the QR
+(`/@handle/slug/rail`). One implementation of every page, shown twice.
 
-- Nothing from the original list. What is left is what the next session finds by
-  using it.
+## Permission
 
+Not how far the page reaches - how far the CONTENTS reach. Following opens the
+page; the setting opens what is in it. `public` / `followers` / `named`, all of
+it through `whoSees()`.
+
+## STILL OPEN
+
+- **The one-line capture is not coming back.** It was built, used, and deleted
+  by the person who asked for it; a field per list beat a parser.
+- **Unproven live:** Shazam into the track list, and listeners becoming
+  attendees. Both have tests; neither has run through a real set, which needs
+  somebody broadcasting music.
+- **A Mac release.** Everything is landed and deployed; nothing has shipped to
+  TestFlight or the App Store, which is the owner's decision.

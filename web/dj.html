@@ -836,7 +836,10 @@
          it only appears when somebody asks for it. -->
     <div id="ptab-people" class="guest-sidebar" hidden>
       <div class="card">
-        <div class="guesthead"><h2 id="listeners">In the room<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
+        <!-- No heading. Who is in the room is the rail above; this is the
+             measurement of it, and it needs a way in, not a title. The count
+             stays because it is the one number worth a glance mid-set. -->
+        <div class="guesthead"><span class="pcount" id="pcount"></span><span id="listeners" hidden></span><button class="detailsbtn" id="detailsToggle" type="button">Details</button></div>
         <div class="metrics" id="metricsLine" hidden title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
           <span>Delay from DJ <b id="djDelay">-</b></span>
           <span class="metricsep">·</span>
@@ -1433,7 +1436,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   let detailsOn = localStorage.getItem('pp.rosterDetails') === '1';
   { const dt = $('detailsToggle');
     const paint = () => {
-      dt.textContent = detailsOn ? 'Hide details' : 'View details';
+      dt.textContent = detailsOn ? 'Hide details' : 'Details';
       const m = $('metricsLine');
       if (m) m.hidden = !detailsOn;
     };
