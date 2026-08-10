@@ -1968,12 +1968,52 @@ function trackerBlock(event, group, note, people, allNames, songs) {
   </section>`;
 }
 
+// Who may open a night, and who may read it.
+//
+// Two different questions, which is the whole change. The PAGE is open to
+// anybody who follows you - that is what following is for. The CONTENTS are
+// what the setting governs: anyone, people who follow you, or only the people
+// you added to the night.
+//
+// The owner always gets both. Everybody else gets whatever this says, and
+// every read path asks this one function so none of them can drift.
+async function whoSees(env, event, viewer) {
+  const mine = !!viewer && viewer.email_norm === event.owner_email;
+  if (mine) return { open: true, contents: true, mine: true };
+
+  const level = event.visibility || "named";
+  if (level === "public") return { open: true, contents: true, mine: false };
+
+  // Following is what opens the page. Without it there is nothing to look at,
+  // whatever the setting says - a night is not addressable by strangers.
+  const follows = !!viewer && !!(await env.DB.prepare(
+    `SELECT 1 FROM follows WHERE follower_email = ? AND person_email = ?`
+  ).bind(viewer.email_norm, event.owner_email || "").first());
+
+  // "Only the people I add" means the people ON the night who have an account
+  // we can recognise them by.
+  const named = !!viewer && !!(await env.DB.prepare(
+    `SELECT 1 FROM party_people pp JOIN people p ON p.id = pp.person_id
+      WHERE pp.event_id = ? AND p.account_email = ?`
+  ).bind(event.id, viewer.email_norm).first());
+
+  return {
+    open: follows || named,
+    contents: level === "followers" ? follows || named : named,
+    mine: false,
+  };
+}
+
 function seenBy(group, event) {
-  const seen = { private: "Only you", link: "Anyone with the link", public: "Anyone" };
-  const now = event.visibility || "private";
+  const seen = {
+    named: "Only people I add",
+    followers: "People who follow me",
+    public: "Anyone",
+  };
+  const now = event.visibility || "named";
   const says = {
-    private: "Yours. Nobody else can open this page.",
-    link: "Anybody you send the link to can open it, and add photos.",
+    named: "Only the people on this night can read it. Anyone following you can see that it happened.",
+    followers: "Anyone following you can read it.",
     public: "On your profile, for anyone.",
   };
   // Not a disclosure. A control you have to click to discover is a control that
@@ -2822,12 +2862,13 @@ async function createParty(env, group, fields, now) {
   // Whose party it is, on the party. Groups are dead; the group_id below is
   // still written only so this is reversible by deploying the previous worker.
   const ownerEmail = String(fields.ownerEmail || "");
-  // Private, because a journal entry is. The exception is a party opened with a
-  // live room already on it: that is a night being played to people who are
-  // about to be handed its link, and starting it invisible would mean the DJ
-  // has to go and turn it on before anybody can see where they are.
+  // Only the people on it, because a journal entry is. The exception is a party
+  // opened with a live room already on it: that is a night being played to
+  // people about to be handed its address - most of whom do not follow the DJ,
+  // they are just in the room - so it opens to anyone rather than making the DJ
+  // go and turn it on before the party can find it.
   const visibility = fields.visibility ||
-    (PARTY_ID_RE.test(String(fields.partyId || "")) ? "link" : "private");
+    (PARTY_ID_RE.test(String(fields.partyId || "")) ? "public" : "named");
   await env.DB.prepare(
     `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, capacity,
        cover_key, state, party_id, links, visibility, created_ms, updated_ms)
@@ -5020,9 +5061,8 @@ export default {
       const viewer = await currentDJ(env, request, now);
       const canKeep = !!viewer &&
         (viewer.email_norm === event.owner_email || await djRunsGroup(env, viewer, group.id));
-      if (!canKeep && (event.visibility || "private") === "private") {
-        return new Response("Not Found", { status: 404 });
-      }
+      const sees = await whoSees(env, event, viewer);
+      if (!canKeep && !sees.open) return new Response("Not Found", { status: 404 });
       const people = canKeep
         ? await partyPeople(env, viewer.email_norm, event.id)
         : (await partyPeople(env, event.owner_email, event.id)).filter((p) => p.role === "dj");
@@ -5047,8 +5087,9 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
       const at = await partyAt(env, match[1], match[2]);
       if (!at) return new Response("Not Found", { status: 404 });
       const event = at.event;
-      // A private night is nobody's business, and there is no owner to tell.
-      if ((event.visibility || "private") === "private" || !event.owner_email) {
+      // A night you cannot open is a night you cannot put your name on.
+      if (!event.owner_email) return new Response("Not Found", { status: 404 });
+      if (!(await whoSees(env, event, await currentDJ(env, request, now))).open) {
         return new Response("Not Found", { status: 404 });
       }
       const form = await request.formData().catch(() => null);
@@ -5265,11 +5306,10 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
             await songsFor(env, event.id))
         : "";
       const mineToKeep = !!viewer && viewer.email_norm === event.owner_email;
-      // Private means private. A night nobody has been given is not on the
-      // internet for anybody who guesses its address.
-      const visibility = event.visibility || "private";
-      if (!mineToKeep && visibility === "private" &&
-          !await djRunsGroup(env, viewer, group.id)) {
+      // The page opens for anybody following you; what is IN it is the setting.
+      // A stranger still gets nothing - a night is not addressable by guessing.
+      const sees = await whoSees(env, event, viewer);
+      if (!mineToKeep && !sees.open && !await djRunsGroup(env, viewer, group.id)) {
         return new Response("Not Found", { status: 404 });
       }
       const owner = event.owner_email
@@ -5291,13 +5331,16 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
           rail: railHere ? nightRail(group, event, railPeople,
             canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep, true) : "",
           ownerName: owner ? (owner.name || "@" + owner.handle) : group.handle,
+          // The night HAPPENED - who played and when is what a follower came to
+          // see. What was played, and the photos, are the contents.
           billed: mineToKeep ? [] : await partyPeople(env, event.owner_email, event.id),
-          setlist: mineToKeep ? [] : await songsFor(env, event.id),
+          setlist: mineToKeep || !sees.contents ? [] : await songsFor(env, event.id),
           live: liveNow(event, now), phase: partyPhase(event, now),
-          posts: await eventPosts(env, event.id),
+          posts: mineToKeep || sees.contents ? await eventPosts(env, event.id) : [],
           // Whoever it belongs to, and whoever they let in. The tracker above
           // is private; this is the part of a party other people can add to.
-          canPost: mineToKeep || visibility !== "private",
+          // Adding to a night is reading it and then some.
+          canPost: mineToKeep || sees.contents,
           // Tipping belongs to whoever threw it, wherever their page is.
           payLink: event.owner_email
             ? (await profileFor(env, event.owner_email, now)).pay_link : "",
@@ -5420,7 +5463,7 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
 
       // Who may see it. One tap, three answers, no dialog.
       const wantSeen = String(form.get("visibility") || "");
-      if (["private", "link", "public"].includes(wantSeen)) {
+      if (["named", "followers", "public"].includes(wantSeen)) {
         if (event.owner_email === dj.email_norm) {
           await env.DB.prepare(`UPDATE events SET visibility = ?, updated_ms = ? WHERE id = ?`)
             .bind(wantSeen, now, event.id).run();

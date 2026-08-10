@@ -531,7 +531,7 @@ test("somebody holding the link can say they were there", async () => {
   assert.equal((await post(env, `${where}/here`, { name: "Cy" })).status, 404,
     "a private night has no list for a stranger to join");
 
-  await send(`${where}/record`, { visibility: "link" });
+  await send(`${where}/record`, { visibility: "public" });
   const shared = await (await get(env, where)).text();
   assert.match(shared, /I was there/, "a past night a visitor is on offers it");
   assert.ok(!/I'm coming/.test(shared), "and does not ask them to a night that happened");
@@ -641,8 +641,8 @@ test("photos and words belong to the night they happened at", async () => {
 
   // Sharing it by link opens it, and lets whoever has the link add to it -
   // "they can post in the events that I'm allowing them to join".
-  await send(`${where}/record`, { visibility: "link" });
-  assert.equal(one(env, `SELECT visibility FROM events`).visibility, "link");
+  await send(`${where}/record`, { visibility: "public" });
+  assert.equal(one(env, `SELECT visibility FROM events`).visibility, "public");
   const shared = await (await get(env, where)).text();
   assert.match(shared, /The room went off at two/);
   assert.match(shared, /name="say"/, "somebody holding the link can add a photo");
@@ -738,6 +738,58 @@ test("a party finds tonight's night by itself, and never steals another one", as
   assert.equal(refused.bound, false);
 });
 
+// Who can see the contents of a night.
+//
+// Owner, 2026-08-09: "every page can be seen by anyone who follows you. The
+// permission is about who can see the CONTENTS. Anyone, people who follow me,
+// or only the people I add." Two questions, not one - which is why this checks
+// both for every level.
+test("following opens the page; the setting opens the contents", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Basement" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+  await send(`${where}/record`, { songTitle: "Xtal by Aphex Twin" });
+
+  // A night starts between the people on it.
+  assert.equal(one(env, `SELECT visibility FROM events`).visibility, "named");
+
+  // A stranger gets nothing at all - a night is not addressable by guessing.
+  assert.equal((await get(env, where)).status, 404);
+
+  // Somebody who follows the DJ can open it, and sees THAT it happened - but
+  // not what was played, because the setting says only the people on it.
+  const owner = one(env, `SELECT owner_email FROM events`).owner_email;
+  env.raw.prepare(`INSERT INTO follows (follower_email, person_email, public, created_ms)
+    VALUES (?,?,0,?)`).run("fan@example.com", owner, Date.now());
+  const asFan = await withSignedIn(env, "fan@example.com");
+  const opened = await asFan(where);
+  assert.equal(opened.status, 200, "a follower can open the page");
+  let page = await opened.text();
+  assert.match(page, /Basement/);
+  assert.ok(!/Xtal/.test(page), "but the contents are not theirs to read");
+
+  // Turned up to followers, the same person reads it.
+  await send(`${where}/record`, { visibility: "followers" });
+  assert.match(await (await asFan(where)).text(), /Xtal/);
+
+  // And somebody who does not follow still gets nothing.
+  const asOther = await withSignedIn(env, "nobody@example.com");
+  assert.equal((await asOther(where)).status, 404);
+
+  // Back to "only people I add" - and being ON the night is what adds you.
+  await send(`${where}/record`, { visibility: "named" });
+  assert.ok(!/Xtal/.test(await (await asFan(where)).text()));
+  const person = one(env, `SELECT id FROM people WHERE owner_email = ?`, owner)
+    || (await send(`${where}/record`, { it: "Nobody", as: "guest" }),
+        one(env, `SELECT id FROM people WHERE name = 'Nobody'`));
+  env.raw.prepare(`UPDATE people SET account_email = ? WHERE id = ?`)
+    .run("nobody@example.com", person.id);
+  assert.match(await (await asOther(where)).text(), /Xtal/,
+    "the people you add can read the night they were at");
+});
+
 // The Mac's right sidebar has the QR in it, and the owner wants who played and
 // who was there beside it. The QR is a LAN address the platform does not know,
 // so the rail travels to the QR: the platform serves it on its own and the page
@@ -770,7 +822,7 @@ test("the rail can be served on its own, for a sidebar that has the QR in it", a
 
   // A private night has no side door: the rail is the record.
   assert.equal((await get(env, `${where}/rail`)).status, 404);
-  await send(`${where}/record`, { visibility: "link" });
+  await send(`${where}/record`, { visibility: "public" });
   const shared = await (await get(env, `${where}/rail`)).text();
   assert.match(shared, /Ada Kaleh/, "who played is the billing");
   assert.ok(!/Cy/.test(shared), "who I saw stays mine");
@@ -1477,6 +1529,16 @@ const pngFile = (name = "me.png") => new File([pngBytes()], name, { type: "image
 
 // Signed in the way a real person is: the provider hands over a name, which
 // is the case the welcome screen has to survive.
+// Reading a page as a different account, for the permission tests: the same
+// env, a second person, their own cookie.
+const withSignedIn = async (env, email) => {
+  env.DEV_LOGIN = "1";  // the door these tests need, shut everywhere else
+  const res = await get(env, `/dev/signin?email=${encodeURIComponent(email)}`);
+  const cookie = /pp_s=([a-f0-9]+)/.exec(res.headers.get("set-cookie") || "");
+  const headers = { cookie: `pp_s=${cookie ? cookie[1] : ""}` };
+  return (path) => get(env, path, { headers });
+};
+
 const signedIn = async () => {
   const env = await withGoogle(makeEnv(), { name: "DJ Example" });
   const { session } = await signIn(env);
@@ -2026,9 +2088,10 @@ test("a party made on the Mac is the same row a party made on the web is", async
   assert.equal(rows(env, `SELECT * FROM events`).length, 1, "exactly one record, never a shadow");
 
   // A party opened with a live room on it is a night people are about to be
-  // handed the link to, so it is shareable from the first moment - unlike one
-  // typed in for later, which is a private journal entry until it is shared.
-  assert.equal(row.visibility, "link");
+  // handed the address of - and most of them do not follow the DJ, they are
+  // just in the room - so it opens to anyone from the first moment. One typed
+  // in for later stays between the people on it until it is shared.
+  assert.equal(row.visibility, "public");
   const page = await get(env, `/@sundaze/${row.slug}`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Warehouse, late/);
@@ -2561,7 +2624,7 @@ test("a record belongs to one person and is invisible to everybody else", async 
   await send(`/@${handle}/${ev.slug}/record`, { note: "My private thought", attended: "1" });
 
   // Shared by link, the night is readable and the record still is not.
-  await send(`/@${handle}/${ev.slug}/record`, { visibility: "link" });
+  await send(`/@${handle}/${ev.slug}/record`, { visibility: "public" });
   const publicPage = await (await get(env, `/@${handle}/${ev.slug}`)).text();
   assert.match(publicPage, /Warehouse/);
   assert.ok(!publicPage.includes("My private thought"), "a note is a diary, not content");
