@@ -765,6 +765,13 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleTrackPost(w, r)
 	case "/api/shazam", "/api/shazam/library", "/api/shazam/import":
 		s.handleShazam(w, r, r.URL.Path)
+	case "/api/mirror":
+		// Can the person's own pages be shown? Asked by the page that appears
+		// when they cannot, so it can put itself away once they can.
+		if !s.requireDJ(w, r) {
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ready": s.mirrorReady(r.Context())})
 	case "/api/reach":
 		if !s.requireDJ(w, r) {
 			return

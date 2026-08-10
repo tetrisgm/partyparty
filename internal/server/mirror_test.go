@@ -139,6 +139,53 @@ func TestWithNoPlatformTheConsoleStillAnswers(t *testing.T) {
 	}
 }
 
+// The outage page has to end when the outage does.
+//
+// The console loads its frame the second it opens, which can be the second
+// before the platform client is ready. That happened on a signed-in Mac with
+// the platform up the whole time, and the DJ was left reading "cannot reach it
+// right now" for the rest of the session: nothing retried, and there was no
+// control anywhere that would.
+func TestTheOfflinePageComesBack(t *testing.T) {
+	var seen []*http.Request
+	platform := platformStub(t, &seen)
+	defer platform.Close()
+	// One bad moment at startup, then a perfectly good platform.
+	sessions := &fakeSessions{err: errors.New("dial: connection refused")}
+	s := mirrorSrv(t, platform.URL, sessions)
+
+	first := do(s, http.MethodGet, "/home", "127.0.0.1:1234")
+	if !strings.Contains(first.Body.String(), "cannot reach it right now") {
+		t.Fatal("the outage was not reported")
+	}
+	// The page must carry something that can notice the outage ending. A
+	// dead-end page looks identical in a screenshot.
+	if !strings.Contains(first.Body.String(), "/api/mirror") {
+		t.Fatal("the offline page has no way of ever going away")
+	}
+
+	// What it polls says no while the platform is down...
+	if body := decodeJSON(t, do(s, http.MethodGet, "/api/mirror", "127.0.0.1:1234")); body["ready"] != false {
+		t.Fatalf("/api/mirror said %v during an outage", body["ready"])
+	}
+	// ...and yes once it is back, which is the reload signal.
+	sessions.err = nil
+	sessions.linked = true
+	s.mirror.mu.Lock()
+	s.mirror.lastFail = time.Time{} // the 30s backoff, served out
+	s.mirror.mu.Unlock()
+	if body := decodeJSON(t, do(s, http.MethodGet, "/api/mirror", "127.0.0.1:1234")); body["ready"] != true {
+		t.Fatalf("/api/mirror still said %v with the platform back", body["ready"])
+	}
+
+	// And the reload it triggers gets the real page.
+	back := do(s, http.MethodGet, "/home", "127.0.0.1:1234")
+	if !strings.Contains(back.Body.String(), "Your parties") ||
+		strings.Contains(back.Body.String(), "cannot reach it right now") {
+		t.Fatalf("the reload did not reach the platform: %.120q", back.Body.String())
+	}
+}
+
 // A guest on the venue Wi-Fi must never be handed the DJ's account pages. The
 // mirror is loopback and DJ-only; everything else about a guest's night is
 // unchanged.

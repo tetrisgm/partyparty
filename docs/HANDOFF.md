@@ -38,14 +38,30 @@ no Shazam.app and has never used Music Recognition. The empty-state copy
 therefore promises nothing; it says what fills the library and how to find out
 in thirty seconds.
 
-**Where the app lives now.** `/Applications/PartyParty.app` is the TestFlight
-build and is SIP-protected (`com.apple.appstore.metadata`, root-owned): `mv` and
-`ditto` both get Permission denied, and no amount of admin rights changes that -
-only the App Store or the owner in Finder can remove it. Desk builds install to
-`~/Applications/PartyParty.app` instead. Both carry bundle id `fm.partyparty.app`,
-so `path to application id` may resolve to either - and calling that AppleScript
-LAUNCHES whichever it picks, which is how two copies ended up running at once.
-Quit by PID, not by bundle id.
+**Where the app lives now.** `/Applications/PartyParty.app`, owned by the user,
+built from `main` by `scripts/build-app.sh` and installed with `ditto`. There is
+exactly one copy on this Mac.
+
+It took a detour worth remembering. That path used to hold the TestFlight build,
+which is root-owned and carries `com.apple.appstore.metadata`: SIP refuses `mv`
+and `ditto` there whatever the shell's rights are, so an install can only ever go
+to `~/Applications` while an App Store copy is sitting in `/Applications`. Only
+the App Store or the owner in Finder can remove one - the owner did, and the desk
+build moved into the normal place.
+
+While both existed they shared bundle id `fm.partyparty.app`, and
+`osascript -e 'path to application id ...'` both resolved ambiguously AND
+LAUNCHED whichever it picked, which is how two copies ended up running at once.
+Find and quit by PID from `pgrep -lf "PartyParty.app/Contents/MacOS/PartyParty"`.
+
+**The frame's first load is the fragile one.** The console asks for `/home` the
+instant it opens, which can be before the platform client is ready. The mirror
+correctly falls back to `offlinePage` - but that page used to be a dead end, so
+one unlucky second at startup left a signed-in DJ reading "cannot reach it right
+now" for the whole session with partyparty.party up the entire time. It now
+polls `/api/mirror` every five seconds while visible and reloads itself the
+moment the answer is yes. `TestTheOfflinePageComesBack` fails if the page ever
+loses its way back.
 
 ## Earlier position (2026-08-09): the night in the middle, the room down the side
 
@@ -573,9 +589,6 @@ None recorded.
 
 ## Owed
 
-- One PartyParty on this Mac. The desk build is at `~/Applications` because the
-  TestFlight copy in `/Applications` is SIP-protected; removing that one is the
-  owner's to do (Finder, with their password) and needs no code.
 - Whether an iPhone's Shazams reach this Mac's `SHLibrary`. Thirty seconds to
   find out: Shazam something on the phone, then Settings -> Look in my Shazam
   library. If they never arrive, the import is only as good as Music

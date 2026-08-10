@@ -112,6 +112,13 @@ func (s *srv) serveConsoleFallback(w http.ResponseWriter, r *http.Request) bool 
 // What the console shows where the person's pages would be. It says the true
 // thing - the party is fine, the record is not reachable - because a party in a
 // basement with no signal is a supported way to use this, not a fault.
+//
+// And it comes back on its own. The console loads its frame the moment it
+// opens, which is the same moment the platform client may still be starting;
+// one unlucky second there used to leave a signed-in DJ looking at "cannot
+// reach it right now" for the rest of the session, with the platform reachable
+// the whole time and no control anywhere that would try again. So the page that
+// reports the outage is the thing that watches for it to end.
 const offlinePage = `<!doctype html><meta charset="utf-8">
 <title>Your parties</title>
 <style>
@@ -123,7 +130,29 @@ b{display:block;font-size:16px;color:#f2f2f4;margin-bottom:8px}
 </style>
 <div><b>Your parties are on partyparty.party</b>
 This Mac cannot reach it right now.<br>The room below still works.</div>
+<script>
+setInterval(function () {
+  if (document.hidden) return;
+  fetch('/api/mirror', { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (s) { if (s && s.ready) location.reload(); })
+    .catch(function () {});
+}, 5000);
+</script>
 `
+
+// mirrorReady reports whether the person's own pages can be served right now.
+// It is what the offline page polls, and it asks exactly what serveMirror asks
+// - including the failure backoff, so a poll every few seconds does not become
+// a session request every few seconds.
+func (s *srv) mirrorReady(ctx context.Context) bool {
+	if s.mirror == nil {
+		return false
+	}
+	ready, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	return s.mirror.cookie(ready) != ""
+}
 
 // serveMirror answers a console request from the platform. Returns false when
 // this is not a mirrored path, or when the platform cannot be reached - the
