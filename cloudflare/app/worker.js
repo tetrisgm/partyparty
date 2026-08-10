@@ -402,6 +402,24 @@ box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;curso
 .cover.bare .coverx{display:none}
 .hero:has(.coverx) .toptools{right:92px}
 .hero:has(.cover.bare) .toptools{right:46px}
+/* The when and the where, typed into the line that shows them. They look like
+   the text they replace until you put a cursor in them - a form that announces
+   itself under a photograph is a form nobody reads. */
+.subedit{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.subedit input[type=date],.subedit [contenteditable]{font:inherit;color:inherit;
+background:transparent;border:0;border-radius:6px;padding:1px 4px;outline:none;
+min-width:2ch}
+/* The date reads as the date - "Sat 8 Aug", not 08/08/2026 - and the picker
+   hides behind it. A heading should look like a heading until you touch it. */
+.dayedit{position:relative;display:inline-flex;align-items:center;cursor:pointer;
+border-radius:6px;padding:1px 4px}
+.dayedit:hover{background:rgba(0,0,0,.28)}
+.dayedit input[type=date]{position:absolute;inset:0;opacity:0;width:100%;height:100%;
+padding:0;cursor:pointer}
+.subedit [contenteditable]:empty::before{content:attr(data-empty);opacity:.6}
+.subedit input[type=date]:hover,.subedit [contenteditable]:hover{background:rgba(0,0,0,.28)}
+.subedit input[type=date]:focus,.subedit [contenteditable]:focus{background:rgba(0,0,0,.42);
+box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
 .hero .titles{position:relative;z-index:1}
 .hero h1{font-size:clamp(34px,3.4vw,46px);font-weight:800;line-height:1.04;
 letter-spacing:-.03em;color:#fff;margin:0 0 4px;overflow-wrap:anywhere}
@@ -1198,6 +1216,57 @@ function coverScript(action, name) {
       send(data);
     });
 
+    // The day and the place, edited in the line that shows them.
+    const sub = (el, field, read) => {
+      if (!el) return;
+      let was = read(el);
+      const put = async () => {
+        const value = read(el);
+        if (value === was) return;
+        const body = new FormData();
+        body.set(field, value);
+        try {
+          const r = await fetch(${JSON.stringify(nameAction)}, {
+            method: 'POST', body, headers: { accept: 'application/json' },
+          });
+          const d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || 'that did not save');
+          was = value;
+        } catch (e) {
+          if (el.isContentEditable) el.textContent = was; else el.value = was;
+          tell(String(e.message || e), true);
+        }
+      };
+      el.addEventListener('change', put);
+      el.addEventListener('blur', put);
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && el.isContentEditable) { e.preventDefault(); el.blur(); }
+      });
+    };
+    const dayField = document.getElementById('heroDay');
+    const dayText = document.getElementById('heroDayText');
+    if (dayField) {
+      // Clicking the words opens the picker rather than putting a cursor in a
+      // field nobody can see.
+      dayField.addEventListener('click', () => {
+        if (dayField.showPicker) { try { dayField.showPicker(); } catch (e) {} }
+      });
+      dayField.addEventListener('change', () => {
+        if (!dayText) return;
+        const v = dayField.value;
+        // Built from parts, not from a string with an hour in it: the product
+        // has no time in it, and a test greps the page to keep it that way.
+        const bits = v ? v.split('-').map(Number) : null;
+        dayText.textContent = bits
+          ? new Date(Date.UTC(bits[0], bits[1] - 1, bits[2], 12))
+              .toLocaleDateString(undefined,
+                { weekday: 'short', day: 'numeric', month: 'short' })
+          : 'No date yet';
+      });
+    }
+    sub(dayField, 'day', (el) => el.value);
+    sub(document.getElementById('heroPlace'), 'place', (el) => el.textContent.trim());
+
     // The name, edited in place: Enter or clicking away saves it, Escape puts
     // it back. Same as naming an event in the app.
     const name = document.getElementById('groupName');
@@ -1781,13 +1850,19 @@ function trackList(songs, tail) {
 // it. Who I SAW is my observation of a room and stays mine, however widely the
 // night is shared - the same rule the page has always had, now with the lists
 // in a different place.
-function nightRail(group, event, people, allNames, canKeep) {
+// `linked` is false when this rail is being shown on its own in the Mac's
+// sidebar. A name there is a name - the owner clicked one and a whole page
+// opened inside the sidebar, which is not what a list of who was in the room
+// is for. In the page, where there is somewhere to go, the names still lead to
+// that person's history.
+function nightRail(group, event, people, allNames, canKeep, linked) {
   const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
   const djs = (people || []).filter((p) => p.role === "dj");
   const guests = (people || []).filter((p) => p.role !== "dj");
 
   const row = (p) => `<li>${personDisc(p)}
-    <span class="grow"><b><a href="/people/${esc(p.id)}">${esc(p.name)}</a></b>${
+    <span class="grow"><b>${linked
+      ? `<a href="/people/${esc(p.id)}">${esc(p.name)}</a>` : esc(p.name)}</b>${
       p.note ? `<small>${esc(p.note)}</small>` : ""}</span>${
     canKeep ? `<form method="post" action="${action}">
       <input type="hidden" name="person" value="${esc(p.id)}">
@@ -1875,48 +1950,23 @@ function trackerBlock(event, group, note, people, allNames, songs) {
   </section>`;
 }
 
-// Editing a party from the web: the same fields the Mac writes, through the
-// same updateParty. Open, because a form you have to click open is a form
-// nobody fills in - and short, because the name is typed into the hero and a
-// second box for it here was the same field twice (owner, 2026-08-09).
-function partyEditor(group, event, error, typed) {
-  const was = (name, fallback) => esc(
-    typed && typed.get(name) !== null ? typed.get(name) : fallback);
-  // datetime-local wants the wall clock it will show back. Everything stored is
-  // UTC ms, so this is the same conversion the create form does, in reverse.
-  const localValue = event.starts_ms
-    ? new Date(event.starts_ms).toISOString().slice(0, 10) : "";
-  return `<details class="edit" open>
-    <summary>When and where</summary>
+// Tickets, a playlist, whatever the night points at. This used to share a form
+// with the day and the place; those moved into the hero, and rather than go
+// with them - a link is not a heading - they get their own line.
+function linksEditor(group, event, error, typed) {
+  const was = typed && typed.get("links") !== null ? typed.get("links") : (event.links || "");
+  return `<h2>Links</h2>
     ${error ? `<p class="formerror" role="alert">${esc(error)}</p>` : ""}
-    <form class="newnight" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/edit">
-      <label class="eventfield"><span>When</span>
-        <input type="date" name="day" value="${was("day", localValue)}"></label>
-      <label class="eventfield"><span>Where</span>
-        <input type="text" name="place" maxlength="120"
-          value="${was("place", event.place || "")}"></label>
-      <label class="eventfield"><span>Links</span>
-        <textarea name="links" maxlength="2000" style="min-height:76px"
-          placeholder="One per line. Tickets | https://...">${was("links", event.links || "")}</textarea></label>
-      <button class="btn" type="submit">Save the details</button>
-    </form>
-  </details>`;
+    <form class="you" method="post"
+      action="/@${esc(group.handle)}/${esc(event.slug)}/edit">
+      <div class="grow" style="display:grid;gap:10px">
+        <textarea name="links" maxlength="2000" style="min-height:64px"
+          placeholder="One per line. Tickets | https://\u2026">${esc(was)}</textarea>
+      </div>
+      <div class="youbar"><button class="btn" type="submit">Save</button></div>
+    </form>`;
 }
 
-// A night, as the person who was at it reads it.
-//
-// This used to be a promotion page with a journal stapled underneath: on your
-// own entry it asked for your email so you could RSVP to your own party,
-// offered to add it to your calendar, and told you who had organised it. The
-// page IS the record now. Everything on it is one line to add - a name, a song,
-// a thought, a photo - because the whole thing gets written standing up, in a
-// dark room, on a phone.
-//
-// A visitor sees the night and what was shared of it, and the going/tickets/
-// calendar machinery that only means anything to somebody who was not there.
-// Who may see this night. A fact about the night, so it belongs with it - one
-// chip that says the answer and opens to the three of them. As a section in the
-// middle of the record it was a settings screen interrupting a diary.
 function seenBy(group, event) {
   const seen = { private: "Only you", link: "Anyone with the link", public: "Anyone" };
   const now = event.visibility || "private";
@@ -2027,17 +2077,30 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
       <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
 
     <!-- Who can see it is one row and belongs at the top: it changes what the
-         page IS. When and where is a form, and a page that opens on a form is
-         a form - so it sits at the end, open, rather than in front of the
-         night it describes. -->
+         page IS. The day and the place are typed into the line under the name
+         that already shows them, so there is no form here at all. -->
+    ${editError ? `<p class="formerror" role="alert">${esc(editError)}</p>` : ""}
     ${canEdit ? `<div class="nightbar">${seenBy(group, event)}</div>` : ""}
 
-    ${canEdit ? (tracker || "") + shared + partyEditor(group, event, editError, typed)
+    ${canEdit ? (tracker || "") + shared + linksEditor(group, event, editError, typed)
       : shared + forVisitors}
     ${canEdit ? coverScript(`/@${esc(group.handle)}/${esc(event.slug)}/cover`,
       { action: `/@${esc(group.handle)}/${esc(event.slug)}/edit`, field: "title" }) : ""}
   `, hero(event.title || "A night",
-      `${esc(whenText(event))}${event.place ? ` \u00b7 ${esc(event.place)}` : ""}${
+      // The line under the name IS the when and the where, so it is also where
+      // they get changed. A second form below the page saying the same two
+      // things was redundant (owner, 2026-08-09) - and worse, it was a form.
+      canEdit ? `<span class="subedit">
+        <label class="dayedit"><span id="heroDayText">${esc(whenText(event))}</span>
+          <input type="date" id="heroDay" aria-label="When"
+            value="${esc(event.starts_ms
+              ? new Date(event.starts_ms).toISOString().slice(0, 10) : "")}"></label>
+        <span class="dot">\u00b7</span>
+        <span id="heroPlace" contenteditable="plaintext-only" role="textbox"
+          aria-label="Where" data-empty="Where">${esc(event.place || "")}</span>
+        ${phase === "now" ? ` \u00b7 <b>on tonight</b>` : ""}
+      </span>`
+      : `${esc(whenText(event))}${event.place ? ` \u00b7 ${esc(event.place)}` : ""}${
         phase === "now" ? ` \u00b7 <b>on tonight</b>` : ""}`,
       coverForNight(event),
       canEdit ? "" : `<a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a>`,
@@ -4958,7 +5021,7 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
 .rail.nightpeople{position:static;padding:0;gap:22px}
 </style></head><body>${
         nightRail(group, event, people,
-          canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep)
+          canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep, false)
       }</body></html>`);
     }
 
@@ -5209,7 +5272,7 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
         canKeep, tracker,
         {
           rail: railHere ? nightRail(group, event, railPeople,
-            canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep) : "",
+            canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep, true) : "",
           ownerName: owner ? (owner.name || "@" + owner.handle) : group.handle,
           billed: mineToKeep ? [] : await partyPeople(env, event.owner_email, event.id),
           setlist: mineToKeep ? [] : await songsFor(env, event.id),
@@ -5241,16 +5304,28 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not save", "Try again.");
 
-      // Renaming in place, from the words in the hero. The same gesture as
-      // renaming a group, and the same shape of answer: a title on its own,
-      // asked for as JSON, saves and says so without the page going anywhere.
+      // Editing in place, from the hero. The name, the day and the place each
+      // save on their own without the page going anywhere - asked for as JSON,
+      // one field at a time, which is what typing into a heading is.
       if ((request.headers.get("accept") || "").includes("application/json") &&
-          form.has("title") && !form.has("day")) {
-        const wanted = String(form.get("title") || "").slice(0, 120).trim();
-        if (!wanted) return json(400, { error: "a night needs a name" });
-        const done = await updateParty(env, event, { title: wanted }, now);
+          !form.has("links")) {
+        const fields = {};
+        if (form.has("title")) {
+          const wanted = String(form.get("title") || "").slice(0, 120).trim();
+          if (!wanted) return json(400, { error: "a night needs a name" });
+          fields.title = wanted;
+        }
+        if (form.has("place")) fields.place = String(form.get("place") || "").slice(0, 120);
+        if (form.has("day")) {
+          const raw = String(form.get("day") || "");
+          const at = raw ? Date.parse(raw + "T12:00:00Z") : null;
+          if (raw && !Number.isFinite(at)) return json(400, { error: "that date did not make sense" });
+          fields.startsMs = raw ? at : null;
+        }
+        if (!Object.keys(fields).length) return json(400, { error: "nothing to save" });
+        const done = await updateParty(env, event, fields, now);
         if (done && done.error) return json(400, { error: done.error });
-        return json(200, { ok: true, name: wanted });
+        return json(200, { ok: true, name: fields.title || event.title });
       }
 
       // Re-rendering the whole page with the form still filled in, rather than
@@ -5266,7 +5341,7 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
         { live: liveNow(event, now), phase: partyPhase(event, now),
           editError: why, typed: form, posts: await eventPosts(env, event.id), canPost: true,
           rail: nightRail(group, event, await partyPeople(env, dj.email_norm, event.id),
-            await peopleFor(env, dj.email_norm, ""), true) }));
+            await peopleFor(env, dj.email_norm, ""), true, true) }));
 
       const dayRaw = String(form.get("day") || "");
       const starts = dayRaw ? Date.parse(dayRaw + "T12:00:00Z") : null;

@@ -184,43 +184,27 @@ try {
   await page.evaluate(() => {
     document.getElementById('webFrame').src = '/@seth/basement';
   });
-  await page.waitForFunction(
-    () => document.getElementById('partyBarName').textContent === 'Basement',
-    null, { timeout: 10000 },
-  );
-  await page.waitForTimeout(1200);
-
-  // And the other way: the picker moves the frame. This is the direction that
-  // can loop - picking sends the frame, the frame's load asks to open again -
-  // so the count of opens is the assertion, not just the end state.
-  await page.selectOption('#partyPick', 'k-one');
-  await page.waitForFunction(
-    () => document.getElementById('webFrame').contentWindow.location.pathname
-      === '/@seth/rooftop-pop-up',
-    null, { timeout: 10000 },
-  );
-  await page.waitForTimeout(1200);
-  assert.deepEqual(
-    opened, ['k-two', 'k-one'],
-    `the frame and the picker are echoing each other: opened ${JSON.stringify(opened)}`,
-  );
-
-  // Who played and who was there sit in the sidebar with the QR, following
-  // whatever night the frame is on - and the frame is asked to leave its own
-  // copy out so the night is not flanked by two.
-  // The picker put the frame back on rooftop above, so that is the night the
-  // sidebar must be showing.
+  // Reading a night in the frame is how the room learns which night it is on.
+  // There is no picker to disagree with it any more - the frame IS the choice.
   await page.waitForFunction(
     () => document.getElementById('peopleFrame').getAttribute('src')
-      === '/@seth/rooftop-pop-up/rail',
+      === '/@seth/basement/rail',
     null, { timeout: 10000 },
   );
-  assert.match(
-    await page.frameLocator('#peopleFrame').locator('.rail.nightpeople').innerText(),
-    /Rooftop pop-up people/, 'the sidebar rail did not load the night it is on');
-  assert.match(
-    await page.locator('#webFrame').getAttribute('src'), /rail=0/,
-    'the page was not asked to leave its own rail out');
+  await page.waitForTimeout(1200);
+  assert.deepEqual(opened, ['k-two'],
+    `the frame and the room are echoing each other: opened ${JSON.stringify(opened)}`);
+
+  // And the way home, which is where a party is chosen or started.
+  await page.click('#homeBtn');
+  await page.waitForFunction(
+    () => document.getElementById('webFrame').getAttribute('src') === '/home',
+    null, { timeout: 10000 },
+  );
+  await page.waitForTimeout(600);
+  assert.equal(
+    await page.evaluate(() => document.getElementById('peopleFrame').hidden), true,
+    'no night, no rail');
 
   // The frame must actually occupy the column. A purge of the console's dead
   // CSS once collapsed the layout, and nothing failed.

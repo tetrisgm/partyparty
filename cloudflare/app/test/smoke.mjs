@@ -756,6 +756,11 @@ test("the rail can be served on its own, for a sidebar that has the QR in it", a
   assert.match(rail, /Ada Kaleh/);
   assert.match(rail, /Cy/);
   assert.match(rail, /Add a DJ/, "and it is a working rail, not a picture of one");
+  // In the sidebar a name is a name. Clicking one opened a whole page inside
+  // the sidebar, which is not what a list of who was in the room is for.
+  assert.ok(!/href="\/people\//.test(rail), "the sidebar rail does not navigate");
+  // In the page, where there is somewhere to go, it still does.
+  assert.match(await (await read(where)).text(), /href="\/people\//);
   assert.ok(!/Track list/.test(rail), "just the rail - the night is in the frame");
 
   // Asked to, the page leaves its own copy out so the night is not flanked by
@@ -786,7 +791,11 @@ test("each list has its own way in, and a track can be a picture", async () => {
   assert.ok(!/name="attended"/.test(page), "keeping the night is being at it");
   assert.ok(!/land in this space/.test(page));
   assert.match(page, /<div class="seenpick">/, "who can see it is not behind a disclosure");
-  assert.match(page, /<details class="edit" open>/, "and so are the details");
+  // No separate details form at all: the line under the name shows the day and
+  // the place, so it is also where they are changed.
+  assert.ok(!/<details class="edit"/.test(page), "the form that repeated the hero is gone");
+  assert.match(page, /id="heroDay"/);
+  assert.match(page, /id="heroPlace"/);
   assert.ok(!/name="title"/.test(page), "the name is typed in the hero, not asked twice");
   assert.match(page, /placeholder="Add a DJ"/);
   assert.match(page, /placeholder="Add someone"/);
@@ -2241,16 +2250,37 @@ test("the acceptance scenario, end to end", async () => {
 });
 
 test("a party's details are editable from the web, and refused when empty", async () => {
-  const { env, send, read } = await signedIn();
+  const { env, send, read, cookie } = await signedIn();
   await send("/parties/new", { title: "Basement" });
   const handle = one(env, `SELECT handle FROM groups`).handle;
   const ev = one(env, `SELECT * FROM events`);
   const where = `/@${handle}/${ev.slug}`;
 
-  // The form is on the party page for its owner, filled in with what is there.
+  // The when and the where are typed into the line that shows them, under the
+  // name. There is no second form repeating it further down the page.
   const owner = await (await read(where)).text();
-  assert.match(owner, /When and where/, "the details are open, and the name is not asked twice");
-  assert.match(owner, /name="day"/, "a day, not a datetime: the product has no time in it");
+  assert.match(owner, /id="heroDay"/, "the day is edited where it is shown");
+  assert.match(owner, /type="date"/, "a day, not a datetime: the product has no time in it");
+  assert.match(owner, /id="heroPlace"/);
+  assert.ok(!/When and where/.test(owner));
+
+  // Each field saves on its own, which is what typing into a heading is.
+  const inline = (fields) => {
+    const body = new FormData();
+    for (const [k, v] of Object.entries(fields)) body.append(k, v);
+    return worker.fetch(new Request(`https://partyparty.party${where}/edit`,
+      { method: "POST", body, headers: { ...cookie, accept: "application/json" } }), env);
+  };
+  assert.equal((await inline({ place: "The Lido" })).status, 200);
+  assert.equal(one(env, `SELECT place FROM events`).place, "The Lido");
+  assert.equal(one(env, `SELECT title FROM events`).title, "Basement",
+    "saving the place does not touch the name");
+
+  // A date that is not one is refused, and nothing is written.
+  const bad = await inline({ day: "the third of never" });
+  assert.equal(bad.status, 400);
+  assert.match(JSON.stringify(await bad.json()), /did not make sense/);
+  assert.equal(one(env, `SELECT place FROM events`).place, "The Lido");
 
   const refused = await send(`${where}/edit`, { title: "   ", starts: "", place: "" });
   assert.equal(refused.status, 200, "a refusal is the page again, not a dead end");
@@ -2258,14 +2288,10 @@ test("a party's details are editable from the web, and refused when empty", asyn
   assert.match(body, /a party needs a name/);
   assert.equal(one(env, `SELECT title FROM events`).title, "Basement", "nothing was written");
 
-  // A bad date is refused with what was typed still in the form, rather than
-  // silently storing nothing where a time should be.
-  const badDate = await (await send(`${where}/edit`,
-    { place: "The Lido", day: "the third of never" })).text();
-  assert.match(badDate, /did not make sense/);
-  assert.match(badDate, /value="The Lido"/, "what was typed survives the refusal");
-  // And the name is untouched by a form that no longer asks for it.
-  assert.equal(one(env, `SELECT title FROM events`).title, "Basement");
+  // The no-JavaScript path still refuses a bad date with the page rather than
+  // a dead end.
+  assert.match(await (await send(`${where}/edit`,
+    { day: "the third of never" })).text(), /did not make sense/);
 
   // Clearing the date is a real edit, not a no-op: a party can lose its time.
   await send(`${where}/edit`, { title: "Basement", day: "2099-01-02", place: "Mine" });

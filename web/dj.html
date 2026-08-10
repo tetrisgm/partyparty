@@ -472,6 +472,12 @@
     background:color-mix(in srgb,#000 22%,var(--bg));
     border-left:1px solid var(--hairline);
   }
+  .homebar{flex:0 0 auto;padding:10px 14px 0}
+  .homebtn{display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;
+    background:var(--fill);color:var(--label);font:inherit;font-size:14px;
+    font-weight:750;letter-spacing:-.01em;padding:7px 14px;border-radius:var(--r-pill)}
+  .homebtn:hover{background:var(--fill-hover)}
+  .homeglyph{font-size:15px}
   .peopleframe{width:100%;border:0;display:block;margin:0 0 var(--s-5);
     min-height:0;background:transparent;color-scheme:dark}
   .peopleframe[hidden]{display:none}
@@ -779,18 +785,14 @@
 
   <!-- Which canonical party this room is running. The same record the web
        shows; this is the Mac choosing among them, not inventing one. -->
-  <div class="partybar" id="partyBar" hidden>
-    <div class="partybarnow">
-      <span class="partybarlabel">Party</span>
-      <b id="partyBarName">Not set</b>
-      <a class="partybarlink" id="partyBarLink" target="_blank" rel="noopener" hidden>Open page</a>
-    </div>
-    <div class="partybaracts">
-      <select id="partyPick" aria-label="Which party this is">
-        <option value="">Choose a party…</option>
-      </select>
-      <button class="ghost" id="partyNewBtn" type="button">New party</button>
-    </div>
+  <!-- The way home, and nothing else. The bar that used to sit here named the
+       party, linked to its page and offered a picker and a New party button -
+       all of which home does better, and it named the night twice over the
+       night's own title. Choosing a party is going home and opening one; the
+       room follows whatever the frame is showing. -->
+  <div class="homebar">
+    <button class="homebtn" id="homeBtn" type="button" title="Your parties">
+      <span class="homeglyph" aria-hidden="true">🪩</span>PartyParty</button>
   </div>
 
   <!-- The person's own pages, exactly as the web serves them - the console
@@ -848,7 +850,10 @@
   <div id="ptab-people" class="guest-sidebar">
     <div class="card">
       <div class="guesthead"><h2 id="listeners">In the room<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
-      <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
+      <!-- Delay and sync are the advanced view. A room that is fine does not
+           need two numbers watching it all night; a room that is not is
+           exactly when somebody presses View details. -->
+      <div class="metrics" id="metricsLine" hidden title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
         <span>Delay from DJ <b id="djDelay">-</b></span>
         <span class="metricsep">·</span>
         <span>Sync <b id="syncSpread">-</b></span>
@@ -1442,7 +1447,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // "Show details" / "Hide details" - a link-looking toggle, not a checkbox.
   let detailsOn = localStorage.getItem('pp.rosterDetails') === '1';
   { const dt = $('detailsToggle');
-    const paint = () => dt.textContent = detailsOn ? 'Hide details' : 'View details';
+    const paint = () => {
+      dt.textContent = detailsOn ? 'Hide details' : 'View details';
+      const m = $('metricsLine');
+      if (m) m.hidden = !detailsOn;
+    };
     paint();
     dt.onclick = () => { detailsOn = !detailsOn; localStorage.setItem('pp.rosterDetails', detailsOn ? '1' : '0'); paint(); refresh(); };
   }
@@ -1989,24 +1998,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // one creates the real party first and then attaches. Nothing here invents a
   // Mac-only kind of party, and nothing is lost when a broadcast ends.
   {
-    const bar = document.getElementById('partyBar');
-    const name = document.getElementById('partyBarName');
-    const link = document.getElementById('partyBarLink');
-    const pick = document.getElementById('partyPick');
-    const make = document.getElementById('partyNewBtn');
     let known = [];
-
-    const when = (ms) => {
-      if (!ms) return '';
-      try {
-        return new Date(ms).toLocaleString(undefined,
-          { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      } catch (e) { return ''; }
-    };
-    // The frame and the room are two views of ONE choice. Open a party in the
-    // frame and the room follows it; pick one in the bar and the frame goes
-    // there. Without this the Mac holds two ideas of which party is happening,
-    // which is the drift this whole change exists to end.
+    // The frame and the room are ONE choice. Whatever night the frame is on is
+    // the night this room is running - there is no separate picker to disagree
+    // with it, which is the drift this whole change exists to end.
     const frame = document.getElementById('webFrame');
     let roomSlug = '';     // the party the ROOM is attached to
 
@@ -2053,14 +2048,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     };
     const show = (party) => {
       roomSlug = (party && party.slug) || '';
-      if (party && party.title) {
-        name.textContent = party.title;
-        link.href = party.url || '#';
-        link.hidden = !party.url;
-      } else {
-        name.textContent = 'Not set';
-        link.hidden = true;
-      }
+      document.title = (party && party.title ? party.title + ' - ' : '') + 'PartyParty';
     };
     async function openParty(key){
       const r = await fetch('/api/party/open', {
@@ -2091,54 +2079,25 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // No steering back: the frame is already on the page it just loaded.
       if (party) await openParty(party.key).catch(() => {});
     });
+    // Which parties this account has, and which one the room is on. Nothing is
+    // painted from it any more - the frame shows the night - but the room still
+    // needs the list to turn a slug in the frame into a party to open.
     async function loadParties(){
       try {
         const r = await fetch('/api/parties', { method: 'POST' });
         const d = await r.json();
-        // Only shown once this Mac has an account; the door covers everything
-        // before that.
-        bar.hidden = !d.linked;
         if (!d.linked) return;
         known = d.parties || [];
-        const current = known.find((p) => p.key === d.current) || null;
-        show(current);
-        pick.innerHTML = '<option value="">Choose a party…</option>' +
-          known.map((p) => '<option value="' + p.key + '"' +
-            (p.key === d.current ? ' selected' : '') + '>' +
-            (p.title || 'Untitled') + (when(p.startsMs) ? ' - ' + when(p.startsMs) : '') +
-            '</option>').join('');
-      } catch (e) { /* offline: leave the bar as it is rather than blanking it */ }
+        show(known.find((p) => p.key === d.current) || null);
+      } catch (e) { /* offline: keep whatever we last knew */ }
     }
-    pick.onchange = async () => {
-      const key = pick.value;
-      if (!key) return;
-      pick.disabled = true;
-      try {
-        frameToParty(await openParty(key));
-      } catch (e) {
-        name.textContent = String(e.message || e);
-      } finally { pick.disabled = false; }
-    };
-    make.onclick = async () => {
-      const title = (prompt('What is the party called?') || '').trim();
-      if (!title) return;
-      make.disabled = true;
-      try {
-        const r = await fetch('/api/party/create', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ title, open: true }),
-        });
-        const d = await r.json();
-        if (!r.ok || d.error) throw new Error(d.error || 'could not create it');
-        show(d.party);
-        await loadParties();
-        frameToParty(d.party);
-      } catch (e) {
-        name.textContent = String(e.message || e);
-      } finally { make.disabled = false; }
-    };
-    // Refreshed when the door opens, and on a slow tick so a party made in a
-    // browser mid-set turns up without a restart.
+    // The way home. Choosing a party or starting one both happen there, and the
+    // room follows whatever night the frame ends up on - so the picker and the
+    // New party button were two more ways to do what home already does.
+    const homeBtn = document.getElementById('homeBtn');
+    if (homeBtn && frame) homeBtn.onclick = () => { frame.src = '/home'; };
+
+
     window.ppLoadParties = loadParties;
     // A console reopened mid-set opens on the night it is running, not on the
     // list of every night. Only once, at boot: after that the frame is wherever
