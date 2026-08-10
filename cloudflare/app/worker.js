@@ -4922,6 +4922,43 @@ export default {
     // happened. Anybody holding the link can say it, exactly as they can add a
     // photo - it is a fact they are contributing to somebody's record of their
     // own night, and it needs no account, because a name is enough.
+    // The night's people, on their own, for the Mac's sidebar.
+    //
+    // Owner, 2026-08-09: who played and who was there belong on the right bar
+    // where the QR is. The QR is the Mac's - it is a LAN address the platform
+    // does not know until a set is live - so the rail comes to the QR rather
+    // than the other way round. Same nightRail(), same stylesheet, rendered on
+    // its own so the console can put it where it belongs.
+    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/rail$/);
+    if (match && request.method === "GET") {
+      const at = await partyAt(env, match[1], match[2]);
+      if (!at) return new Response("Not Found", { status: 404 });
+      const event = at.event;
+      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+        .bind(event.group_id).first();
+      if (!group) return new Response("Not Found", { status: 404 });
+      const viewer = await currentDJ(env, request, now);
+      const canKeep = !!viewer &&
+        (viewer.email_norm === event.owner_email || await djRunsGroup(env, viewer, group.id));
+      if (!canKeep && (event.visibility || "private") === "private") {
+        return new Response("Not Found", { status: 404 });
+      }
+      const people = canKeep
+        ? await partyPeople(env, viewer.email_norm, event.id)
+        : (await partyPeople(env, event.owner_email, event.id)).filter((p) => p.role === "dj");
+      return html(200, `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(event.title || "A night")}</title><style>${STYLE}
+/* On its own, with no page around it: no page padding, no sticky, and it may
+   scroll inside the sidebar that holds it. */
+body{margin:0;background:transparent}
+.rail.nightpeople{position:static;padding:0;gap:22px}
+</style></head><body>${
+        nightRail(group, event, people,
+          canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep)
+      }</body></html>`);
+    }
+
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/here$/);
     if (match && request.method === "POST") {
       const at = await partyAt(env, match[1], match[2]);
@@ -5155,6 +5192,9 @@ export default {
       const owner = event.owner_email
         ? await profileFor(env, event.owner_email, now) : null;
       const canKeep = mineToKeep || await djRunsGroup(env, viewer, group.id);
+      // The Mac shows the rail in its own sidebar beside the QR and asks the
+      // page to leave it out, so the night is not flanked by two of them.
+      const railHere = url.searchParams.get("rail") !== "0";
       // Mine: everybody I put in the room. Not mine: who played, which is what
       // the night WAS and is public the moment the night is.
       const railPeople = canKeep
@@ -5165,8 +5205,8 @@ export default {
         await takeRateFor(env, group.id),
         canKeep, tracker,
         {
-          rail: nightRail(group, event, railPeople,
-            canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep),
+          rail: railHere ? nightRail(group, event, railPeople,
+            canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep) : "",
           ownerName: owner ? (owner.name || "@" + owner.handle) : group.handle,
           billed: mineToKeep ? [] : await partyPeople(env, event.owner_email, event.id),
           setlist: mineToKeep ? [] : await songsFor(env, event.id),

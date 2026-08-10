@@ -104,6 +104,14 @@ const server = http.createServer((request, response) => {
     return;
   }
   if (url.pathname.startsWith('/api/')) return sendJSON(response, { ok: true });
+  // The night's people, served on their own - what the console shows in its
+  // sidebar beside the QR.
+  const railOf = parties.find((p) => url.pathname === `/@${p.handle}/${p.slug}/rail`);
+  if (railOf) {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(`<!doctype html><body><aside class="rail nightpeople">${railOf.title} people</aside>`);
+    return;
+  }
   // Any party page, so the frame has somewhere real to go.
   const party = parties.find((p) => url.pathname === `/@${p.handle}/${p.slug}`);
   if (party) {
@@ -196,6 +204,23 @@ try {
     opened, ['k-two', 'k-one'],
     `the frame and the picker are echoing each other: opened ${JSON.stringify(opened)}`,
   );
+
+  // Who played and who was there sit in the sidebar with the QR, following
+  // whatever night the frame is on - and the frame is asked to leave its own
+  // copy out so the night is not flanked by two.
+  // The picker put the frame back on rooftop above, so that is the night the
+  // sidebar must be showing.
+  await page.waitForFunction(
+    () => document.getElementById('peopleFrame').getAttribute('src')
+      === '/@seth/rooftop-pop-up/rail',
+    null, { timeout: 10000 },
+  );
+  assert.match(
+    await page.frameLocator('#peopleFrame').locator('.rail.nightpeople').innerText(),
+    /Rooftop pop-up people/, 'the sidebar rail did not load the night it is on');
+  assert.match(
+    await page.locator('#webFrame').getAttribute('src'), /rail=0/,
+    'the page was not asked to leave its own rail out');
 
   // The frame must actually occupy the column. A purge of the console's dead
   // CSS once collapsed the layout, and nothing failed.

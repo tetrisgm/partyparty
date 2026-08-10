@@ -738,6 +738,39 @@ test("a party finds tonight's night by itself, and never steals another one", as
   assert.equal(refused.bound, false);
 });
 
+// The Mac's right sidebar has the QR in it, and the owner wants who played and
+// who was there beside it. The QR is a LAN address the platform does not know,
+// so the rail travels to the QR: the platform serves it on its own and the page
+// leaves its copy out when asked.
+test("the rail can be served on its own, for a sidebar that has the QR in it", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse, late" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+  await send(`${where}/record`, { it: "Ada Kaleh", as: "dj" });
+  await send(`${where}/record`, { it: "Cy", as: "guest" });
+
+  const rail = await (await read(`${where}/rail`)).text();
+  assert.match(rail, /class="rail nightpeople"/);
+  assert.match(rail, /Ada Kaleh/);
+  assert.match(rail, /Cy/);
+  assert.match(rail, /Add a DJ/, "and it is a working rail, not a picture of one");
+  assert.ok(!/Track list/.test(rail), "just the rail - the night is in the frame");
+
+  // Asked to, the page leaves its own copy out so the night is not flanked by
+  // two identical rails.
+  assert.match(await (await read(where)).text(), /class="rail nightpeople"/);
+  assert.ok(!/class="rail nightpeople"/.test(await (await read(`${where}?rail=0`)).text()));
+
+  // A private night has no side door: the rail is the record.
+  assert.equal((await get(env, `${where}/rail`)).status, 404);
+  await send(`${where}/record`, { visibility: "link" });
+  const shared = await (await get(env, `${where}/rail`)).text();
+  assert.match(shared, /Ada Kaleh/, "who played is the billing");
+  assert.ok(!/Cy/.test(shared), "who I saw stays mine");
+});
+
 // What the page asks of you, after the owner used it: no capture line asking
 // which of three things you meant, one way in per list, and a track that can be
 // a photograph because at a party that is faster than typing.

@@ -472,6 +472,9 @@
     background:color-mix(in srgb,#000 22%,var(--bg));
     border-left:1px solid var(--hairline);
   }
+  .peopleframe{width:100%;border:0;display:block;margin:0 0 var(--s-5);
+    min-height:0;background:transparent;color-scheme:dark}
+  .peopleframe[hidden]{display:none}
   .inspectorhead{display:flex;align-items:center;gap:var(--s-2);
     color:var(--label-tertiary);font-size:11px;font-weight:600;
     letter-spacing:.04em;text-transform:uppercase;margin-bottom:var(--s-3)}
@@ -830,10 +833,16 @@
         </div>
       </div>
     </div>
-    <!-- "Participants" sat beside the night's own list of who played and who was
-         there and read as a second copy of it. It is not: this is who has the
-         stream open RIGHT NOW, with how far behind the booth they are. The
-         record is the page's; the room is the Mac's. -->
+    <!-- Who played and who was there, beside the code to join. Served by the
+         platform on its own (/@handle/slug/rail) rather than rebuilt here, so
+         there is still one rail with one set of styles - it just hangs in the
+         Mac's sidebar, which is where the QR is and where the owner wanted it.
+         The page in the main frame is asked to leave its copy out. -->
+    <iframe class="peopleframe" id="peopleFrame" title="Who played and who was there"></iframe>
+
+    <!-- Not the same list. This is who has the stream open RIGHT NOW, with how
+         far behind the booth they are. The record is the page's; the room is
+         the Mac's. -->
     <div class="inspectorhead">Listening now</div>
   <div id="ptab-people" class="guest-sidebar">
     <div class="card">
@@ -1998,11 +2007,34 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const framePath = () => {
       try { return frame.contentWindow.location.pathname; } catch (e) { return ''; }
     };
+    // The sidebar's rail follows whatever night the frame is on, and the frame
+    // is told to leave its own copy out - one rail, beside the QR.
+    const people = document.getElementById('peopleFrame');
+    const railFor = (path) => {
+      if (!people) return;
+      const hit = /^\/@[a-z0-9]+\/[a-z0-9-]+$/.test(path || '');
+      people.hidden = !hit;
+      if (!hit) { people.removeAttribute('src'); return; }
+      const want = path + '/rail';
+      if (people.getAttribute('src') !== want) people.src = want;
+    };
+    // It is as tall as the list it is showing: a scrollbar inside a sidebar
+    // that already scrolls is two scrollbars for one list.
+    const fitRail = () => {
+      try {
+        const d = people.contentDocument;
+        if (d && d.body) people.style.height = d.body.scrollHeight + 'px';
+      } catch (e) {}
+    };
+    if (people) {
+      people.hidden = true;
+      people.addEventListener('load', () => { fitRail(); setTimeout(fitRail, 250); });
+    }
     const frameToParty = (party) => {
       if (!frame || !party || !party.slug || !party.handle) return;
       const path = '/@' + party.handle + '/' + party.slug;
       if (framePath() === path) return;
-      frame.src = path;
+      frame.src = path + '?rail=0';
     };
     const show = (party) => {
       roomSlug = (party && party.slug) || '';
@@ -2033,6 +2065,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // time our own steering lands, the room is already on that party, so this
     // returns before asking for it again.
     if (frame) frame.addEventListener('load', async () => {
+      railFor(framePath());
       const hit = /^\/@[a-z0-9]+\/([a-z0-9-]+)$/.exec(framePath());
       if (!hit || hit[1] === roomSlug) return;
       let party = known.find((one) => one.slug === hit[1]);
