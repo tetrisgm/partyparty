@@ -1828,10 +1828,9 @@ function dropScript() {
 const TRACKS_SHOWN = 8;
 function trackList(songs, tail) {
   const all = songs || [];
-  if (!all.length) {
-    return `<p class="blank">What was played. Type a title, or add the Shazam
-      screenshot \u2014 the picture is the record.</p>`;
-  }
+  // Nothing yet is nothing to draw: the line above the list says what goes in
+  // it, and a paragraph repeating that is a paragraph.
+  if (!all.length) return "";
   // A track is a line, or a picture of one. A screenshot with nothing typed
   // beside it still says everything Shazam said - so it stands on its own
   // rather than under a placeholder title.
@@ -1932,7 +1931,8 @@ function trackerBlock(event, group, note, people, allNames, songs) {
   // DJ list, the people list and the track list each already know about
   // themselves (owner, 2026-08-09: "we should just delete that field").
   return `<section class="tracker">
-    <h2>Track list</h2>
+    <div class="sectionhead"><h2>Track list</h2>
+      <span class="muted">Type a title or add the Shazam screenshot</span></div>
     ${trackList(songs, (song) => `<form method="post" action="${action}">
         <input type="hidden" name="song" value="${esc(song.id)}">
         <button class="x" type="submit" name="remove" value="1"
