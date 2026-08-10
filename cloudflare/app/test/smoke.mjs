@@ -2908,6 +2908,52 @@ test("a Shazam library is not a thing a stranger's Mac can file", async () => {
   assert.equal(rows(env, `SELECT * FROM songs`).length, 0);
 });
 
+test("the settings page is fields and sections, not one long paragraph", async () => {
+  const { env, read, send } = await signedIn();
+  await send("/settings", { name: "Shokunin" });
+  const body = await (await read("/settings")).text();
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+
+  // The two facts that were buried in a sentence are fields now, and the
+  // public address - the one thing on this page you copy and send somebody -
+  // is a link box rather than the tail of a clause.
+  assert.match(body, /<span>Your page<\/span>/, "the public address is not a field");
+  assert.match(body, /<span>Signed in as<\/span>/, "the account is not a field");
+  assert.match(body, new RegExp(`class="linkbox" href="/@${handle}"`),
+    "the public address is not a link box");
+  // A div, not a span: .eventfield span is the uppercase LABEL rule, and it
+  // rendered a real address as DJ@EXAMPLE.COM.
+  assert.match(body, /<div class="linkbox">dj@example\.com<\/div>/,
+    "the address is inside the rule that uppercases labels");
+
+  // Sections are separated and Sign out is an action, not body text.
+  assert.ok((body.match(/<hr class="soft">/g) || []).length >= 2, "the sections run together");
+  assert.match(body, /<a class="btn plain small" href="\/auth\/signout">Sign out<\/a>/,
+    "signing out is styled as a sentence");
+  assert.ok(!/>Nobody yet\. Following someone puts/.test(body), "the old empty state survived");
+  assert.match(body, /<p class="blank">Nobody yet/, "the empty state is not an empty state");
+});
+
+test("importing a Shazam library is offered only where it can work", async () => {
+  const { read, send } = await signedIn();
+  await send("/settings", { name: "Shokunin" });
+  const body = await (await read("/settings")).text();
+
+  // The markup is the page's, so the console never injects into it - but on
+  // partyparty.party there is no Mac to read a library, so it stays hidden
+  // until a probe of /api/shazam answers. A dead button is worse than none.
+  assert.match(body, /<section id="shazamimport" hidden>/,
+    "the Shazam section is visible on the web, where it cannot work");
+  assert.match(body, /fetch\('\/api\/shazam'/, "nothing probes for the Mac");
+  assert.match(body, /box\.hidden = false/, "the probe never reveals the section");
+  // It asks the shell for a fresh read, because a frame has no bridge.
+  assert.match(body, /window\.parent\.postMessage\(\{ pp: 'shazamRead' \}, location\.origin\)/,
+    "the page cannot ask the app for a fresher library");
+  // And its buttons use classes that exist. `.ghost` does not, and shipped as
+  // raw system chrome on a dark page.
+  assert.ok(!/class="ghost"/.test(body), "a button is styled with a class the sheet never defines");
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();
@@ -2917,3 +2963,4 @@ for (const [name, fn] of tests) {
   }
 }
 console.log(`PASS ${tests.length} platform tests`);
+

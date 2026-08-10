@@ -483,8 +483,11 @@ h1{font-size:26px;font-weight:800;letter-spacing:-.015em;margin:0 0 4px}
 h2{font-size:17px;font-weight:700;letter-spacing:-.01em;margin:32px 0 12px}
 /* Rail headings are the console's eyebrows, not headlines. */
 /* A heading with its action on the same line. */
-.sectionhead{display:flex;align-items:center;justify-content:space-between;gap:16px;
-margin:32px 0 12px}
+/* The trailing hint drops under the heading rather than being squeezed beside
+   it: at phone width "Following"/"Their nights show up on your home page" was
+   two columns of four words each. */
+.sectionhead{display:flex;align-items:center;justify-content:space-between;
+gap:4px 16px;flex-wrap:wrap;margin:32px 0 12px}
 .sectionhead h2{margin:0}
 .rail h2{margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:.05em;
 text-transform:uppercase;color:var(--label-tertiary)}
@@ -768,6 +771,12 @@ padding:7px 12px;font-size:13px}
 .eventfield{display:grid;gap:6px}
 .eventfield span{font-size:12px;font-weight:700;letter-spacing:.03em;
 text-transform:uppercase;color:var(--label-tertiary)}
+/* Two facts side by side, one under the other when there is no room for two.
+   A person's public address and the account behind it were a sentence before,
+   which is a bad shape for the one thing on the page you copy and send. */
+.factrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+gap:8px 20px;margin:2px 0 10px}
+.factrow .linkrow{margin:0}
 textarea{width:100%;padding:11px 14px;border-radius:var(--r-sm);
 border:1px solid var(--separator);background:var(--bg-elevated);color:var(--label);
 font:inherit;font-size:15px;outline:none;resize:vertical}
@@ -1410,6 +1419,127 @@ function personDisc(person, extraClass) {
   const label = (person && (person.name || person.handle)) || "Someone";
   return `<span class="avatar${extraClass ? " " + extraClass : ""}" title="${esc(label)}">${
     url ? `<img src="${esc(url)}" alt="" loading="lazy">` : esc(initials(label))}</span>`;
+}
+
+// Import from Shazam, on the settings page, where somebody went looking for it.
+//
+// Reading a Shazam library is something only the Mac app can do - ShazamKit
+// authenticates by code-signing identity. But the console shows THIS page
+// through its own server, which makes `/api/shazam` same-origin from right
+// here. So the page owns the markup, the Mac owns the capability, and nothing
+// is ever injected into a web page by the console (which is the rule that keeps
+// the Mac and the web one thing).
+//
+// On partyparty.party there is no such endpoint, the probe fails, and the
+// section stays hidden - it is not a feature the web can offer, and offering a
+// dead button would be worse than offering nothing. Hidden by default for the
+// same reason: no flash of a control that is about to disappear.
+function shazamImport() {
+  return `<section id="shazamimport" hidden>
+    <hr class="soft">
+    <div class="sectionhead"><h2>Shazam library</h2>
+      <span class="muted">Anything caught before 6am counts as the night before</span></div>
+    <p class="muted">Your own Shazams, added to the party they happened at.</p>
+    <button class="btn plain" id="shazamgo" type="button">Look in my Shazam library</button>
+    <div id="shazamsaid" style="margin-top:14px"></div>
+  </section>
+  <script>
+  (() => {
+    const box = document.getElementById('shazamimport');
+    const btn = document.getElementById('shazamgo');
+    const said = document.getElementById('shazamsaid');
+    const esc = (s) => String(s == null ? '' : s)
+      .replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+    const look = () => fetch('/api/shazam', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const day = (iso) => {
+      const at = Date.parse(iso + 'T12:00:00Z');
+      return isNaN(at) ? iso : new Date(at).toLocaleDateString(undefined,
+        { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    };
+    const run = (preview) => fetch('/api/shazam/import', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ preview }),
+    }).then(async (r) => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || 'import failed');
+      return body;
+    });
+
+    // Only the app can read a library. It already read one when the console
+    // opened; asking for a fresher one goes up to the shell, because a frame
+    // has no bridge of its own.
+    const refresh = (since) => {
+      window.parent.postMessage({ pp: 'shazamRead' }, location.origin);
+      let tries = 0;
+      return new Promise((done) => {
+        const tick = async () => {
+          const s = await look();
+          if ((s && s.read && (s.readMs || 0) > since) || ++tries > 30) return done(s);
+          setTimeout(tick, 400);
+        };
+        tick();
+      });
+    };
+
+    const show = (found, count) => {
+      if (!found.nights.length) {
+        said.innerHTML = found.unmatched
+          ? '<p>' + found.unmatched + ' Shazam' + (found.unmatched === 1 ? '' : 's') +
+            ' here, but none of them land on a day you have a party for.</p>'
+          : '<p>Nothing new - every Shazam that matches one of your parties is already on it.</p>';
+        return;
+      }
+      said.innerHTML = '<p>From ' + count + ' Shazam' + (count === 1 ? '' : 's') + ':</p>' +
+        found.nights.map((n) => '<div class="card"><strong>' + esc(n.title || 'Untitled') +
+          '</strong> <span class="muted">' + esc(day(n.day)) + '</span> &middot; +' + n.added +
+          (n.titles && n.titles.length ? '<div class="muted">' + esc(n.titles.join(', ')) + '</div>' : '') +
+          '</div>').join('') +
+        (found.unmatched ? '<p class="muted">' + found.unmatched +
+          ' more happened on days with no party.</p>' : '') +
+        '<button class="btn plain" id="shazamadd" type="button">Add them</button>';
+      document.getElementById('shazamadd').onclick = async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = 'Adding\\u2026';
+        try {
+          const done = await run(false);
+          const added = done.nights.reduce((sum, n) => sum + n.added, 0);
+          said.innerHTML = '<p>Added ' + added + ' track' + (added === 1 ? '' : 's') + ' to ' +
+            done.nights.length + ' part' + (done.nights.length === 1 ? 'y' : 'ies') + '.</p>';
+        } catch (err) {
+          said.innerHTML = '<p>Could not add them: ' + esc(err.message || err) + '</p>';
+        }
+      };
+    };
+
+    look().then((state) => {
+      if (!state) return;             // not the Mac console: nothing to offer
+      box.hidden = false;
+      btn.onclick = async () => {
+        said.textContent = '';
+        btn.disabled = true;
+        const label = btn.textContent;
+        btn.textContent = 'Reading\\u2026';
+        try {
+          const fresh = await refresh((state.readMs) || 0) || state;
+          if (!fresh.count) {
+            said.innerHTML = "<p>This Mac's Shazam library is empty. It fills from Music " +
+              'Recognition in Control Center, and from an iPhone signed in to the same Apple ' +
+              'Account. Shazam something on your phone, then press this again to see whether ' +
+              'yours reach this Mac.</p>';
+            return;
+          }
+          show(await run(true), fresh.count);
+        } catch (err) {
+          said.innerHTML = '<p>Could not read it: ' + esc(err.message || err) + '</p>';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = label;
+        }
+      };
+    });
+  })();
+  </script>`;
 }
 
 // The profile form. One component, because the whole promise is that the thing
@@ -3935,7 +4065,7 @@ export default {
           const { results: had = [] } = await env.DB.prepare(
             `SELECT title, artist FROM songs WHERE event_id = ?`).bind(night.id).all();
           seenPerEvent.set(night.id, new Set(
-            had.map((r) => `${r.title} ${r.artist || ""}`)));
+            had.map((r) => `${r.title}\u0000${r.artist || ""}`)));
           report.set(night.id, {
             slug: night.slug, handle: group.handle, title: night.title,
             day: new Date(night.starts_ms).toISOString().slice(0, 10),
@@ -3943,7 +4073,7 @@ export default {
           });
         }
         const seen = seenPerEvent.get(night.id);
-        const key = `${title} ${artist}`;
+        const key = `${title}\u0000${artist}`;
         if (seen.has(key)) continue;
         seen.add(key);
 
@@ -4202,31 +4332,51 @@ export default {
       ).bind(dj.email_norm).all();
 
       const volumeWord = { all: "every post", events: "nights only", none: "nothing" };
+      // Four things, each said once, each looking like the kind of thing it is.
+      //
+      // This page used to be a heading and then prose all the way down: the
+      // account, the reason the account cannot change, and the person's public
+      // address were one grey paragraph, "Following" was an h2 with no rule
+      // above it, and Sign out was body text at the bottom. The facts are now
+      // fields, the sections are separated, and the two real actions look like
+      // buttons.
       return html(200, page("Your settings", `
         <h1>You</h1>
         <p class="muted">All of this is optional. You already have an @name, and
         nothing here has to be your real one.</p>
         ${profileEditor(profile, { action: "/settings", error: problem })}
-        <p class="muted">Signed in as ${esc(dj.email_norm)}. That address came from
-        ${esc(dj.apple_sub ? "Apple" : "your sign-in")} and cannot be changed here -
-        sign in with a different one and you are a different person to us.
-        ${profile.handle ? `Your page is
-          <a href="/@${esc(profile.handle)}">partyparty.party/@${esc(profile.handle)}</a>.` : ""}</p>
 
-        <h2>Following</h2>
+        <div class="factrow">
+          ${profile.handle ? `<div class="eventfield"><span>Your page</span>
+            <div class="linkrow"><a class="linkbox" href="/@${esc(profile.handle)}"
+              >partyparty.party/@${esc(profile.handle)}</a></div></div>` : ""}
+          <div class="eventfield"><span>Signed in as</span>
+            <!-- a div, not a span: .eventfield span IS the uppercase label rule,
+                 and an address rendered DJ@EXAMPLE.COM is not the address. -->
+            <div class="linkrow"><div class="linkbox">${esc(dj.email_norm)}</div></div></div>
+        </div>
+        <p class="muted">That address came from ${esc(dj.apple_sub ? "Apple" : "your sign-in")}
+        and cannot be changed here - sign in with a different one and you are a
+        different person to us.</p>
+
+        <hr class="soft">
+        <div class="sectionhead"><h2>Following</h2>
+          <span class="muted">Their nights show up on your home page</span></div>
         ${(following || []).length
-          ? (following).map((g) => `<div class="card">
-              <strong>${esc(g.name || g.handle)}</strong>
-              <div class="muted">You hear ${esc(volumeWord[g.volume] || g.volume)} ·
-                <a class="muted" href="/@${esc(g.handle)}">their page</a></div>
-            </div>`).join("")
-          : `<p class="muted">Nobody yet. Following someone puts their nights on your
-             home page.</p>`}
-        <p class="muted">How much you hear from each one is set from any message they
-        send you - that link works without signing in, which is the point.</p>
+          ? `<div class="entries">${(following).map((g) => `<a class="entry"
+              href="/@${esc(g.handle)}"><span class="entrywhen"
+              >${esc(volumeWord[g.volume] || g.volume)}</span>
+              <div class="entrybody"><b>${esc(g.name || g.handle)}</b>
+                <span class="entrywhere">@${esc(g.handle)}</span></div></a>`).join("")}</div>
+             <p class="muted">How much you hear from each one is set from any message
+             they send you - that link works without signing in, which is the point.</p>`
+          : `<p class="blank">Nobody yet. Follow someone from any message they send
+             you - that link works without signing in, which is the point.</p>`}
 
-        <p style="margin-top:40px"><a class="muted" href="/home">Home</a> ·
-          <a class="muted" href="/auth/signout">Sign out</a></p>
+        ${shazamImport()}
+
+        <hr class="soft">
+        <a class="btn plain small" href="/auth/signout">Sign out</a>
       `, "", "", true));
     }
 

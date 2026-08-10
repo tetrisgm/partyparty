@@ -206,18 +206,23 @@ try {
     null, { timeout: 10000 },
   );
 
-  // Import from Shazam. In a browser there is no app to read a library, and
-  // the honest answer is the whole feature working correctly: the failure this
-  // guards is a button wired into a scope where its helpers do not exist,
-  // which throws and looks like a dead button.
-  assert.equal(await page.locator('#shazamBtn').count(), 1, 'the Shazam import button is gone');
-  await page.evaluate(() => document.getElementById('shazamBtn').click());
-  await page.waitForFunction(
-    () => !document.getElementById('shazamReport').hidden, null, { timeout: 5000 });
-  assert.match(
-    await page.locator('#shazamReport').innerText(),
-    /Only the PartyParty app/,
-    'the Shazam button did not say why a browser cannot do this',
+  // Import from Shazam belongs to the settings PAGE, not to the console. The
+  // console lends it the one thing a browser cannot do - reaching the app - and
+  // owns no markup for it. A second copy here is the drift this whole shape
+  // exists to prevent.
+  assert.equal(await page.locator('#shazamBtn, #shazamSection').count(), 0,
+    'the console has grown its own Shazam UI again - that belongs to the web page');
+  assert.ok(
+    await page.evaluate(() => new Promise((done) => {
+      // Stand in for the app: if the shell forwards the frame's request, the
+      // bridge is called. Without the forwarder the page in the frame has no
+      // way to ever read a library and the button is dead.
+      let asked = null;
+      window.webkit = { messageHandlers: { pp: { postMessage: (m) => { asked = m; } } } };
+      window.postMessage({ pp: 'shazamRead' }, location.origin);
+      setTimeout(() => done(asked && asked.action === 'shazamRead'), 200);
+    })),
+    'the console does not pass the frame its Shazam request through to the app',
   );
 
   // The frame must actually occupy the column. A purge of the console's dead

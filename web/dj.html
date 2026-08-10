@@ -124,12 +124,6 @@
   .stat{display:flex;gap:16px;align-items:baseline}
   pre{background:var(--bg-elevated-2);border:1px solid var(--separator);border-radius:var(--r-sm);padding:12px;font-family:var(--mono);font-size:12px;line-height:1.5;height:190px;overflow:auto;color:var(--label-secondary);white-space:pre-wrap;margin:0}
   .hint{font-size:11px;color:var(--label-tertiary);margin-top:10px;line-height:1.5}
-  /* What a Shazam import would do, before it does it. */
-  .shazamreport{margin-top:12px;font-size:12px;line-height:1.5;color:var(--label-secondary)}
-  .shazamnight{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--separator)}
-  .shazamnight b{color:var(--label-primary);font-weight:700}
-  .shazamnight small{color:var(--label-tertiary);display:block;font-size:11px}
-  .shazamnight span{white-space:nowrap;font-weight:700;color:var(--accent)}
   .warn{background:rgba(255,149,0,.10);border:1px solid rgba(255,149,0,.35);color:#8a5200;font-size:12px;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
   .warn.danger-note{background:rgba(255,59,48,.10);border-color:rgba(255,59,48,.42);color:#a01109;font-weight:600}
   .offline-status{background:rgba(52,199,89,.11);border:1px solid rgba(52,199,89,.32);color:#1d883d;font-size:12px;font-weight:600;padding:10px 12px;border-radius:var(--r-sm);margin-top:12px;line-height:1.5}
@@ -984,16 +978,6 @@
       <div class="hint" style="margin:6px 0 0">Microphone is only used if you pick a mic or interface as the source. macOS gives apps no way to read the system-audio or local-network settings, so Check asks macOS directly.</div>
     </section>
 
-    <!-- Everything the DJ Shazamed, filed into the party it happened at. The
-         in-app recognizer only ever hears what THIS Mac broadcast; a phone in
-         the booth heard the rest, and it is already dated on their account. -->
-    <section class="settings-section" id="shazamSection">
-      <label>Shazam library</label>
-      <div class="hint" style="margin:0 0 8px">Your own Shazams, added to the party they happened at. Anything caught before 6am counts as the night before.</div>
-      <button class="ghost" id="shazamBtn" type="button" style="width:100%">Look in my Shazam library</button>
-      <div class="shazamreport" id="shazamReport" hidden></div>
-    </section>
-
     <section class="settings-section">
       <div class="support-actions">
         <button class="ghost" id="privacyBtn" type="button">Privacy policy</button>
@@ -1541,131 +1525,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
   $('openMediaBtn').onclick = () => fetch('/api/open-media', { method:'POST' });
 
-  /* Import from Shazam.
-     Three parties are involved and only one of them can do each step: the app
-     reads the library (ShazamKit authenticates by code-signing identity, so
-     nothing else can), the server holds it, and the platform knows which night
-     a dated match belongs to. This is the button that walks the DJ through it,
-     showing what WOULD happen before anything is written - an import that
-     silently rewrites four parties' track lists is worse than no import. */
-  (() => {
-    const btn = $('shazamBtn'), report = $('shazamReport');
-    if (!btn) return;
-    // Its own, deliberately: the page's other esc() lives in a different
-    // function and reaching for it from here is the silent ReferenceError this
-    // console has shipped twice.
-    const esc = (s) => String(s == null ? '' : s)
-      .replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-    const shell = () => {
-      try { return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pp); }
-      catch (e) { return false; }
-    };
-    const say = (html) => { report.innerHTML = html; report.hidden = !html; };
-    const busy = (on, label) => { btn.disabled = on; btn.textContent = label; };
-    const day = (iso) => {
-      const at = Date.parse(iso + 'T12:00:00Z');
-      return isNaN(at) ? iso : new Date(at).toLocaleDateString(undefined,
-        { weekday:'short', day:'numeric', month:'short', year:'numeric' });
-    };
-
-    const look = () => fetch('/api/shazam').then((r) => r.json()).catch(() => null);
-
-    // Wait for the app to put a FRESHER library down. Waiting for `read` alone
-    // would return instantly with the snapshot taken at launch, so a DJ who
-    // Shazamed something two minutes ago would be told it is not there.
-    async function waitForLibrary(since) {
-      for (let tries = 0; tries < 30; tries++) {
-        const state = await look();
-        if (state && state.read && (state.readMs || 0) > since) return state;
-        await new Promise((go) => setTimeout(go, 400));
-      }
-      return null;
-    }
-
-    async function run(preview) {
-      const out = await fetch('/api/shazam/import', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ preview }),
-      });
-      if (!out.ok) throw new Error((await out.json().catch(() => ({}))).error || 'import failed');
-      return out.json();
-    }
-
-    function show(found, state) {
-      if (!found.nights.length) {
-        say(found.unmatched
-          ? `<p>${found.unmatched} Shazam${found.unmatched === 1 ? '' : 's'} here, but none of them
-             land on a night you have a party for. Add the party for that date and try again.</p>`
-          : `<p>Nothing new - every Shazam that matches one of your parties is already on it.</p>`);
-        return;
-      }
-      const rows = found.nights.map((n) => `<div class="shazamnight"><div><b>${esc(n.title || 'Untitled')}</b>
-        <small>${esc(day(n.day))}${n.titles && n.titles.length ? ' &middot; ' + esc(n.titles.join(', ')) : ''}</small></div>
-        <span>+${n.added}</span></div>`).join('');
-      const spare = found.unmatched
-        ? `<div class="hint" style="margin-top:8px">${found.unmatched} more happened on days with no party.</div>` : '';
-      say(`<p style="margin:0 0 6px">From ${state.count} Shazam${state.count === 1 ? '' : 's'}:</p>${rows}${spare}
-        <button class="ghost" id="shazamGo" type="button" style="width:100%;margin-top:10px">Add them</button>`);
-      $('shazamGo').onclick = async () => {
-        const go = $('shazamGo');
-        go.disabled = true; go.textContent = 'Adding…';
-        try {
-          const done = await run(false);
-          const added = done.nights.reduce((sum, n) => sum + n.added, 0);
-          say(`<p>Added ${added} track${added === 1 ? '' : 's'} to
-            ${done.nights.length} part${done.nights.length === 1 ? 'y' : 'ies'}.</p>`);
-          // The track list is on the page in the frame; reload it so the DJ
-          // sees what they just agreed to rather than being told about it.
-          const frame = $('webFrame');
-          if (frame) frame.contentWindow.location.reload();
-        } catch (e) {
-          say(`<p>Could not add them: ${esc(String(e.message || e))}</p>`);
-        }
-      };
-    }
-
-    btn.onclick = async () => {
-      say('');
-      busy(true, 'Reading…');
-      try {
-        let state = await look();
-        // Only the app can read a library, but it already read one when the
-        // console came up. A console open in a browser can still work with
-        // that; what it cannot do is ask for a fresher one.
-        if (shell()) {
-          const since = (state && state.readMs) || 0;
-          window.webkit.messageHandlers.pp.postMessage({ action: 'shazamRead' });
-          state = await waitForLibrary(since);
-        } else if (!state || !state.read) {
-          say('<p>Only the PartyParty app can read your Shazam library - this console is open in a browser.</p>');
-          return;
-        }
-        if (!state) {
-          say('<p>The app did not answer. Quit PartyParty and open it again, then try once more.</p>');
-          return;
-        }
-        if (!state.count) {
-          // Deliberately not "your Shazams will sync": whether an iPhone's
-          // matches reach a given Mac is Apple's business and not something to
-          // promise. This says what fills the library and how to find out.
-          say(`<p>This Mac's Shazam library is empty. It fills from Music Recognition
-            in Control Center, and from an iPhone signed in to the same Apple Account.
-            Shazam something on your phone, then press this again to see whether
-            yours reach this Mac.</p>`);
-          return;
-        }
-        if (!state.available) {
-          say('<p>Sign in to file these into your parties.</p>');
-          return;
-        }
-        show(await run(true), state);
-      } catch (e) {
-        say(`<p>Could not read it: ${esc(String(e.message || e))}</p>`);
-      } finally {
-        busy(false, 'Look in my Shazam library');
-      }
-    };
-  })();
   let qrAvatarShown = null;
   function renderQR(text){
     // eventMeta is declared further down; the first QR render runs before it
@@ -2195,6 +2054,20 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       await loadParties();
       return d.party;
     }
+    // The one thing the pages in the frame cannot do for themselves.
+    //
+    // Reading a Shazam library needs the app, and only this window has a bridge
+    // to it. So the settings page asks its parent, and the parent asks the app.
+    // This is not markup pushed into a web page - the page owns its own button
+    // and its own layout; the shell only lends it the one capability a browser
+    // does not have. Same origin is checked because a frame is a frame.
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin) return;
+      if (!e.data || e.data.pp !== 'shazamRead') return;
+      try { window.webkit.messageHandlers.pp.postMessage({ action: 'shazamRead' }); }
+      catch (_) {}
+    });
+
     // Reading the night in the frame is how a DJ says which one it is. A party
     // made in a browser a moment ago is not in `known` yet, so refresh once
     // before giving up on it.
