@@ -2825,6 +2825,69 @@ test("people are searchable, reusable and never require an account", async () =>
     "no account required to be remembered");
 });
 
+test("a Shazam library files itself into the nights it happened at", async () => {
+  const { env, send, read } = await signedIn();
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+  await send("/parties/new", { title: "Mutant zoo", day: "2026-08-08", place: "The Box Shop" });
+  await send("/parties/new", { title: "Sunday roast", day: "2026-08-09", place: "Home" });
+  const mac = await linkedInstall(env, handle);
+  const zoo = one(env, `SELECT * FROM events WHERE title = 'Mutant zoo'`);
+
+  // One track already on the night, from the live recognizer. The import must
+  // merge with what the set already caught rather than double it.
+  await send(`/@${handle}/${zoo.slug}/record`, { songTitle: "Xtal by Aphex Twin" });
+
+  const items = [
+    { title: "Xtal", artist: "Aphex Twin", at: 1, night: "2026-08-08" },   // already there
+    { title: "Ptolemy", artist: "Aphex Twin", at: 2, night: "2026-08-08" },
+    { title: "Actium", artist: "Aphex Twin", at: 3, night: "2026-08-09" },
+    { title: "Heliosphan", artist: "Aphex Twin", at: 4, night: "2019-01-01" }, // no party that day
+  ];
+
+  // The preview describes the import and writes nothing.
+  const shown = await (await api(env, "/api/v1/shazam/import",
+    { ...mac, items, preview: true })).json();
+  assert.equal(shown.preview, true);
+  assert.equal(shown.matched, 3, "three of the four landed on a night");
+  assert.equal(shown.unmatched, 1, "and the one with no party is counted, not dropped quietly");
+  assert.deepEqual(shown.nights.map((n) => [n.title, n.added]),
+    [["Sunday roast", 1], ["Mutant zoo", 1]], "newest night first, dedupe already applied");
+  assert.equal(rows(env, `SELECT * FROM songs`).length, 1, "a preview wrote something");
+
+  // Agreeing to it does exactly what was shown.
+  const done = await (await api(env, "/api/v1/shazam/import",
+    { ...mac, items, preview: false })).json();
+  assert.equal(done.preview, false);
+  assert.deepEqual(done.nights.map((n) => [n.title, n.added]),
+    [["Sunday roast", 1], ["Mutant zoo", 1]], "the import differs from its own preview");
+  const titles = rows(env, `SELECT title FROM songs WHERE event_id = ?`, zoo.id)
+    .map((r) => r.title).sort();
+  assert.deepEqual(titles, ["Ptolemy", "Xtal"], "the live catch was doubled");
+
+  // And running it again is a no-op, which is what makes it safe to press.
+  const twice = await (await api(env, "/api/v1/shazam/import",
+    { ...mac, items, preview: false })).json();
+  assert.deepEqual(twice.nights, [], "a second import added rows again");
+  assert.equal(rows(env, `SELECT * FROM songs`).length, 3);
+
+  // It reads as a track list on the page, like any other song on the night.
+  const page = await (await read(`/@${handle}/${zoo.slug}`)).text();
+  assert.match(page, /Ptolemy/);
+});
+
+test("a Shazam library is not a thing a stranger's Mac can file", async () => {
+  const { env, send } = await signedIn();
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+  await send("/parties/new", { title: "Mutant zoo", day: "2026-08-08" });
+  await linkedInstall(env, handle);
+  const refused = await api(env, "/api/v1/shazam/import", {
+    id: "aabbccddeeff", secret: "not-the-secret",
+    items: [{ title: "Ptolemy", at: 1, night: "2026-08-08" }],
+  });
+  assert.equal(refused.status, 403);
+  assert.equal(rows(env, `SELECT * FROM songs`).length, 0);
+});
+
 for (const [name, fn] of tests) {
   try {
     await fn();

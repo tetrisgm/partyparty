@@ -358,6 +358,11 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             primeSystemAudio()
         case "permissions":
             pushPermissions()
+        case "shazamRead":
+            // The console asking for the Shazam library. Only the app can read
+            // it, so the answer arrives at the server rather than as a reply
+            // here, and the console reads it back from /api/shazam.
+            ShazamLibrary.push(port: port)
         case "resetConsole":
             resetConsole()
         case "jslog":

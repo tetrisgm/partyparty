@@ -307,6 +307,8 @@ func main() {
 	var partyClient server.PartyClient
 	// The same client, for showing the person their own pages in the console.
 	var sessions server.SessionClient
+	// And again, for filing the DJ's own Shazam library into their nights.
+	var shazam server.ShazamImporter
 	platformURL := ""
 
 	// The party's wall and its event page are one timeline. This is the only
@@ -405,6 +407,7 @@ func main() {
 			}
 			partyClient = sync
 			sessions = sync
+			shazam = sync
 			platformURL = platform
 		}
 	}
@@ -413,6 +416,7 @@ func main() {
 		Config:      cfg,
 		Parties:     partyClient,
 		Sessions:    sessions,
+		Shazam:      shazam,
 		PlatformURL: platformURL,
 		SyncProfile: syncProfileNow,
 		Broadcaster: bc,

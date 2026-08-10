@@ -1,0 +1,126 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"sync"
+	"time"
+
+	"partyparty/internal/cloudsync"
+)
+
+// ShazamImporter is the platform, as an import needs it: it knows which nights
+// exist and which of them a dated match belongs to. An interface so this
+// package never learns how the platform is reached, and so the seam can be
+// tested without one.
+type ShazamImporter interface {
+	ImportShazam(ctx context.Context, items []cloudsync.ShazamItem, preview bool) (cloudsync.ShazamImport, error)
+}
+
+// shazamShelf is the library snapshot, as the app last read it.
+//
+// The app is the only process that can read a Shazam library - ShazamKit
+// authenticates by code-signing identity, and this server has none - so the
+// direction is fixed: the app reads and pushes, and the console asks the
+// server. `at` distinguishes "no library" from "nobody has looked yet", which
+// are different things to say to somebody waiting for a button to do something.
+type shazamShelf struct {
+	mu    sync.RWMutex
+	items []cloudsync.ShazamItem
+	at    time.Time
+}
+
+func (s *shazamShelf) put(items []cloudsync.ShazamItem) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = items
+	s.at = time.Now()
+}
+
+func (s *shazamShelf) get() ([]cloudsync.ShazamItem, time.Time) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.items, s.at
+}
+
+// handleShazam serves the three sides of the import: the app putting a library
+// down, the console reading what is there, and the console asking for it to be
+// filed into nights.
+//
+// All three are DJ-only. A library is a list of everywhere its owner has been,
+// which is not a thing a guest on the party Wi-Fi may read.
+func (s *srv) handleShazam(w http.ResponseWriter, r *http.Request, path string) {
+	if !s.requireDJ(w, r) {
+		return
+	}
+	switch path {
+	case "/api/shazam/library":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		var body struct {
+			Items []cloudsync.ShazamItem `json:"items"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad json"})
+			return
+		}
+		s.shazam.put(body.Items)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "count": len(body.Items)})
+
+	case "/api/shazam":
+		items, at := s.shazam.get()
+		out := map[string]any{
+			"read":      !at.IsZero(),
+			"count":     len(items),
+			"available": s.Shazam != nil,
+		}
+		if !at.IsZero() {
+			out["readMs"] = at.UnixMilli()
+		}
+		if len(items) > 0 {
+			out["oldest"] = items[0].At
+			out["newest"] = items[len(items)-1].At
+		}
+		writeJSON(w, http.StatusOK, out)
+
+	case "/api/shazam/import":
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "POST required"})
+			return
+		}
+		var body struct {
+			Preview bool `json:"preview"`
+		}
+		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
+		items, at := s.shazam.get()
+		if at.IsZero() {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "library not read yet"})
+			return
+		}
+		if s.Shazam == nil {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "not signed in"})
+			return
+		}
+		if len(items) == 0 {
+			writeJSON(w, http.StatusOK, cloudsync.ShazamImport{Nights: []cloudsync.ShazamNight{}})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		result, err := s.Shazam.ImportShazam(ctx, items, body.Preview)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return
+		}
+		if result.Nights == nil {
+			result.Nights = []cloudsync.ShazamNight{}
+		}
+		writeJSON(w, http.StatusOK, result)
+
+	default:
+		http.NotFound(w, r)
+	}
+}

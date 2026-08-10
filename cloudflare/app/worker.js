@@ -3872,6 +3872,86 @@ export default {
     // The Mac asks which night it is playing. Answered from the group the
     // install belongs to and the clock, so a DJ never has to pair anything: if
     // one of their nights is happening now, this is that night.
+    // A DJ's Shazam library, filed into the nights it happened at.
+    //
+    // The in-app recognizer only ever hears what THIS Mac broadcast. A DJ
+    // Shazams all night on their phone too - in the booth, at the bar, at
+    // somebody else's set - and every one of those is dated on their account.
+    // This is where those land.
+    //
+    // The night is decided on the Mac (only it knows the DJ's timezone, and
+    // that a Shazam at 01:30 belongs to the evening before), so all that
+    // happens here is a lookup by day. A day with no party is not an error:
+    // there is nowhere to put those, and they are counted rather than dropped
+    // somewhere convenient.
+    if (path === "/api/v1/shazam/import" && request.method === "POST") {
+      const body = await readJson(request, 4 << 20);
+      if (!body) return json(400, { error: "bad json" });
+      const install = await installAuth(env, body.id, body.secret);
+      if (!install) return json(403, { error: "bad install auth" });
+      const owner = await installOwner(env, body.id);
+      if (!owner) return json(200, { nights: [], matched: 0, unmatched: 0, preview: !!body.preview });
+      const group = await homeGroupFor(env, owner, now);
+      if (!group) return json(200, { nights: [], matched: 0, unmatched: 0, preview: !!body.preview });
+
+      // Every night this account has, by the day it is on. `starts_ms` is
+      // stored as noon UTC on that day for a day-only party, so the date comes
+      // straight back out without a timezone entering into it.
+      const { results: nights = [] } = await env.DB.prepare(
+        `SELECT id, slug, title, starts_ms FROM events
+          WHERE group_id = ? AND starts_ms IS NOT NULL ORDER BY starts_ms`
+      ).bind(group.id).all();
+      const byDay = new Map();
+      for (const night of nights) {
+        byDay.set(new Date(night.starts_ms).toISOString().slice(0, 10), night);
+      }
+
+      const preview = !!body.preview;
+      const items = Array.isArray(body.items) ? body.items.slice(0, 5000) : [];
+      const seenPerEvent = new Map();   // event id -> Set of title\0artist
+      const report = new Map();         // event id -> what this import does to it
+      let matched = 0, unmatched = 0;
+
+      for (const raw of items) {
+        const title = String(raw && raw.title || "").trim().slice(0, 200);
+        const artist = String(raw && raw.artist || "").trim().slice(0, 120);
+        const night = byDay.get(String(raw && raw.night || ""));
+        if (!title) continue;
+        if (!night) { unmatched++; continue; }
+        matched++;
+
+        // What the night already has, read once per night. A DJ who broadcast
+        // the set already has most of it from the live recognizer, and an
+        // import must merge with that rather than double it.
+        if (!seenPerEvent.has(night.id)) {
+          const { results: had = [] } = await env.DB.prepare(
+            `SELECT title, artist FROM songs WHERE event_id = ?`).bind(night.id).all();
+          seenPerEvent.set(night.id, new Set(
+            had.map((r) => `${r.title} ${r.artist || ""}`)));
+          report.set(night.id, {
+            slug: night.slug, handle: group.handle, title: night.title,
+            day: new Date(night.starts_ms).toISOString().slice(0, 10),
+            added: 0, had: had.length, titles: [],
+          });
+        }
+        const seen = seenPerEvent.get(night.id);
+        const key = `${title} ${artist}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const entry = report.get(night.id);
+        entry.added++;
+        if (entry.titles.length < 4) entry.titles.push(artist ? `${title} - ${artist}` : title);
+        if (!preview) await addSong(env, owner.email_norm, night.id, { title, artist }, now);
+      }
+
+      return json(200, {
+        nights: [...report.values()].filter((n) => n.added > 0)
+          .sort((a, b) => (a.day < b.day ? 1 : -1)),
+        matched, unmatched, preview,
+      });
+    }
+
     if (path === "/api/v1/party/bind" && request.method === "POST") {
       const body = await readJson(request, 4096);
       if (!body) return json(400, { error: "bad json" });

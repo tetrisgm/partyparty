@@ -379,6 +379,57 @@ type Track struct {
 	Artist string `json:"artist,omitempty"`
 }
 
+// ShazamItem is one match out of the DJ's own Shazam library.
+//
+// `Night` is the date the app decided this match belongs to, in the DJ's
+// timezone and with the evening rolling over at six in the morning. It is
+// computed on the Mac because the Mac is the only part of this that knows what
+// time it is where the party was.
+type ShazamItem struct {
+	Title      string `json:"title"`
+	Artist     string `json:"artist,omitempty"`
+	ShazamID   string `json:"shazamId,omitempty"`
+	ArtworkURL string `json:"artworkUrl,omitempty"`
+	At         int64  `json:"at"`
+	Night      string `json:"night"`
+}
+
+// ShazamNight is one party an import found matches for.
+type ShazamNight struct {
+	Slug   string   `json:"slug"`
+	Handle string   `json:"handle"`
+	Title  string   `json:"title"`
+	Day    string   `json:"day"`
+	Added  int      `json:"added"`  // what this import would add, or did
+	Had    int      `json:"had"`    // already on the night, left alone
+	Titles []string `json:"titles"` // a few, so a preview can be looked at
+}
+
+// ShazamImport is what an import did, or would do. The same shape either way:
+// a preview a DJ agrees to must describe the thing that then happens.
+type ShazamImport struct {
+	Nights    []ShazamNight `json:"nights"`
+	Matched   int           `json:"matched"`   // items that found a night
+	Unmatched int           `json:"unmatched"` // items on days with no party
+	Preview   bool          `json:"preview"`
+}
+
+// ImportShazam files a Shazam library into the nights it belongs to.
+//
+// With preview set nothing is written and the answer describes what would be.
+// The DJ sees that first: an import that silently rewrites four parties' track
+// lists is worse than no import at all.
+func (c *Client) ImportShazam(ctx context.Context, items []ShazamItem, preview bool) (ShazamImport, error) {
+	if !c.ready() {
+		return ShazamImport{}, errors.New("cloudsync: not configured")
+	}
+	var out ShazamImport
+	err := c.post(ctx, "/api/v1/shazam/import", map[string]any{
+		"id": c.InstallID, "secret": c.Secret, "items": items, "preview": preview,
+	}, &out)
+	return out, err
+}
+
 func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post, played []Track, here []string) ([]Post, error) {
 	if !c.ready() {
 		return nil, errors.New("cloudsync: not configured")

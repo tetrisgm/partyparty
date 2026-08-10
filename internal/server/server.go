@@ -77,6 +77,12 @@ type Deps struct {
 	Sessions    SessionClient
 	PlatformURL string
 
+	// Shazam files the DJ's own Shazam library into the nights it belongs to.
+	// The app reads the library (only it can) and pushes it here; this is the
+	// other half, which knows where to put it. nil when this Mac has no
+	// platform identity.
+	Shazam ShazamImporter
+
 	// SyncProfile runs one profile reconciliation now. The console calls it
 	// while somebody is signing in, so the door opens the moment they finish
 	// rather than on the next scheduled pass a minute later. nil when this Mac
@@ -101,6 +107,8 @@ type srv struct {
 	// Deps.PlatformURL. nil when this Mac has no platform identity.
 	mirror *mirror
 	limits *limiter
+	// The DJ's Shazam library as the app last read it. Empty until it has.
+	shazam shazamShelf
 
 	// What the origin last reported about relayed guests. Guarded by relayMu.
 	relayMu        sync.RWMutex
@@ -755,6 +763,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.peerState(since))
 	case "/api/track":
 		s.handleTrackPost(w, r)
+	case "/api/shazam", "/api/shazam/library", "/api/shazam/import":
+		s.handleShazam(w, r, r.URL.Path)
 	case "/api/reach":
 		if !s.requireDJ(w, r) {
 			return

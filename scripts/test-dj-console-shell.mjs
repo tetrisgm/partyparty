@@ -206,6 +206,20 @@ try {
     null, { timeout: 10000 },
   );
 
+  // Import from Shazam. In a browser there is no app to read a library, and
+  // the honest answer is the whole feature working correctly: the failure this
+  // guards is a button wired into a scope where its helpers do not exist,
+  // which throws and looks like a dead button.
+  assert.equal(await page.locator('#shazamBtn').count(), 1, 'the Shazam import button is gone');
+  await page.evaluate(() => document.getElementById('shazamBtn').click());
+  await page.waitForFunction(
+    () => !document.getElementById('shazamReport').hidden, null, { timeout: 5000 });
+  assert.match(
+    await page.locator('#shazamReport').innerText(),
+    /Only the PartyParty app/,
+    'the Shazam button did not say why a browser cannot do this',
+  );
+
   // The frame must actually occupy the column. A purge of the console's dead
   // CSS once collapsed the layout, and nothing failed.
   const frameW = await page.evaluate(
