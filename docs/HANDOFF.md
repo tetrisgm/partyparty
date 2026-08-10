@@ -1,6 +1,53 @@
 # PartyParty.party handoff
 
-## Current position (2026-08-09): the night in the middle, the room down the side
+## Current position (2026-08-10): the DJ's own Shazams find their party
+
+The in-app recognizer only ever hears what THIS Mac broadcast. A DJ Shazams all
+night on their phone as well, and every one of those was lost to the party it
+happened at. `SHLibrary` (macOS 14+) is the read side of the same account, and
+`SHMediaItem.creationDate` is what makes it usable: without a date a library is
+a pile of songs with no night attached. The older `SHMediaLibrary` is write-only
+and deprecated - it can add a match and nothing else.
+
+Three parties, each doing the one thing only it can:
+
+- **The app reads it** (`app/Sources/PartyParty/ShazamLibrary.swift`), because
+  ShazamKit authenticates by code-signing identity and the Go server has none.
+  It also decides which NIGHT each match belongs to, because only it knows the
+  DJ's timezone - and that a Shazam at 01:30 belongs to the evening before, so
+  the night rolls over at 06:00 local rather than at midnight. It reads on the
+  console's `ready` message and again on `shazamRead`, and pushes to
+  `POST /api/shazam/library`.
+- **The server holds the snapshot** (`internal/server/shazam.go`). `read` and
+  `count` are separate on purpose: "your library is empty" and "nobody has
+  looked yet" are different things to tell somebody waiting for a button.
+- **The platform files them** (`/api/v1/shazam/import`). It looks each match up
+  by day - `starts_ms` is noon UTC for a day-only party, so no timezone enters
+  into it - and merges with what the live recognizer already caught. A day can
+  hold two parties (a night and the after); the one that actually ran a room
+  wins, and the preview names the night either way.
+
+`preview: true` is a real dry run through the same code path and writes nothing.
+Running the import twice adds nothing. Matches on days with no party are
+counted, not dropped somewhere convenient.
+
+**Unproven, and only the owner can prove it:** whether an iPhone's Shazams reach
+a Mac's `SHLibrary` at all. This Mac reads 0 items - sandboxed AND from a
+throwaway unsandboxed binary, so it is not an entitlement problem - and it has
+no Shazam.app and has never used Music Recognition. The empty-state copy
+therefore promises nothing; it says what fills the library and how to find out
+in thirty seconds.
+
+**Where the app lives now.** `/Applications/PartyParty.app` is the TestFlight
+build and is SIP-protected (`com.apple.appstore.metadata`, root-owned): `mv` and
+`ditto` both get Permission denied, and no amount of admin rights changes that -
+only the App Store or the owner in Finder can remove it. Desk builds install to
+`~/Applications/PartyParty.app` instead. Both carry bundle id `fm.partyparty.app`,
+so `path to application id` may resolve to either - and calling that AppleScript
+LAUNCHES whichever it picks, which is how two copies ended up running at once.
+Quit by PID, not by bundle id.
+
+## Earlier position (2026-08-09): the night in the middle, the room down the side
 
 The owner used the console beside partyparty.party and rebuilt the shape of it
 in a dozen messages. Where it landed:
@@ -526,6 +573,13 @@ None recorded.
 
 ## Owed
 
+- One PartyParty on this Mac. The desk build is at `~/Applications` because the
+  TestFlight copy in `/Applications` is SIP-protected; removing that one is the
+  owner's to do (Finder, with their password) and needs no code.
+- Whether an iPhone's Shazams reach this Mac's `SHLibrary`. Thirty seconds to
+  find out: Shazam something on the phone, then Settings -> Look in my Shazam
+  library. If they never arrive, the import is only as good as Music
+  Recognition on the Mac, and the screenshot path stays the way in.
 - Correction to Apple DTS: an earlier support message said the host was
   "macOS 26.0". It is macOS 27.0 build `26A5388g`.
 - Field tests no simulator can stand in for: a real-iPhone wildcard-cert join,
