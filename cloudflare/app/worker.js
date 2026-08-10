@@ -782,6 +782,19 @@ padding:0;min-height:26px;font:inherit;font-size:15px;color:var(--label);outline
 .addline button{flex:0 0 auto;width:30px;height:30px;border:0;border-radius:50%;
 background:var(--bg-elevated-2);color:var(--label-secondary);font-size:17px;
 line-height:1;cursor:pointer}
+/* A track that is a picture. The screenshot leads the row at a size you can
+   actually read a track name off, with anything typed beside it. */
+.setlist li.shot{align-items:center;gap:12px}
+.shotwrap{flex:0 0 auto;display:block;width:96px;border-radius:var(--r-sm);
+overflow:hidden;background:var(--bg-elevated-2)}
+.shotwrap img{display:block;width:100%;height:auto}
+.addtrack{margin-top:10px}
+.addtrack .camera{width:32px;height:32px;border-radius:50%;flex:0 0 auto;border:0;
+background:var(--fill);color:var(--label-secondary);display:grid;place-items:center;
+cursor:pointer;padding:0}
+.addtrack .camera:hover{background:var(--fill-hover);color:var(--label)}
+.addtrack .camera svg{width:18px;height:18px}
+
 /* The composer. A box you write in, with its actions along the bottom - the
    shape the console had, which is a place to write rather than a field to
    fill. It lights up when a photo is over it. */
@@ -802,14 +815,9 @@ cursor:pointer;padding:0}
 .composer .camera svg{width:19px;height:19px}
 .composer .grow{flex:1 1 auto}
 
-/* Adding somebody in the rail. Two words per answer and 320px to do it in, so
-   the field takes a line and the answers take the next one. */
-.addwho{display:grid;gap:8px;margin-top:14px}
-.addwho .as{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.addwho button{width:auto;height:32px;border-radius:var(--r-pill);padding:0 10px;
-white-space:nowrap;font-size:13px;font-weight:650;background:var(--fill);
-color:var(--label-secondary)}
-.addwho button:hover{background:var(--fill-hover);color:var(--label)}
+/* Adding to a list in the rail: the field, then a plus. One row - the two-word
+   answers it used to need went away with the question. */
+.addwho{margin-top:12px}
 
 /* "I was there" is a phrase, not a plus sign: it needs a pill it fits inside,
    or the round icon button squashes it onto three lines. */
@@ -818,6 +826,12 @@ color:var(--label-secondary)}
 white-space:nowrap;font-size:14px;font-weight:700;background:var(--accent);color:#fff}
 .addline:focus-within button{background:var(--accent);color:#fff}
 .seenby{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+/* The visibility picker, always open. A class called seen is already a person-entry
+   grid elsewhere in this sheet, and naming this one the same turned the three
+   choices into three stacked circles - what a collision looks like from the
+   outside. (No backticks in here: the stylesheet is a template literal.) */
+.seenpick{margin:0 0 18px}
+.seenpick .muted{margin:0}
 hr.soft{border:0;border-top:1px solid var(--separator);margin:34px 0}
 
 /* What was played, in the order it was played. Numbers in the margin so the
@@ -1281,135 +1295,22 @@ async function songsFor(env, eventId) {
   return results || [];
 }
 
-async function addSong(env, emailNorm, eventId, { title, artist, personId }, now) {
+async function addSong(env, emailNorm, eventId, { title, artist, personId, mediaKey }, now) {
   const clean = String(title || "").trim().slice(0, 200);
-  if (!clean) return null;
+  // A picture of a track IS the track. Shazam already put the title, the
+  // artist and the artwork on the screen; retyping all three off a screenshot
+  // is worse than keeping the screenshot (owner, 2026-08-09).
+  if (!clean && !mediaKey) return null;
   const next = await env.DB.prepare(
     `SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM songs WHERE event_id = ?`
   ).bind(eventId).first();
   const id = ulid(now);
   await env.DB.prepare(
-    `INSERT INTO songs (id, event_id, owner_email, title, artist, person_id, seq, created_ms)
-     VALUES (?,?,?,?,?,?,?,?)`
+    `INSERT INTO songs (id, event_id, owner_email, title, artist, person_id, media_key, seq, created_ms)
+     VALUES (?,?,?,?,?,?,?,?,?)`
   ).bind(id, eventId, emailNorm, clean, String(artist || "").trim().slice(0, 120),
-    personId || null, next ? next.n : 1, now).run();
+    personId || null, mediaKey || null, next ? next.n : 1, now).run();
   return id;
-}
-
-// One line for the whole night.
-//
-// The product's only job, in the owner's words: "I'm at this party. I saw DJ 1,
-// 2 and 3. They played song XYZ. I attended it with friend A, B and C." That
-// was three separate actions for four clauses. This reads the sentence.
-//
-// A word opens a clause and owns the text until the next word opens one:
-//
-//   Ada and Bo, they played Windowlicker by Aphex Twin, with Cy and Dee
-//   \_______/         \___________________________/         \________/
-//     played              a song, and its artist              I was with
-//
-// Nothing here guesses at meaning it was not given. A bare list with no word in
-// it returns used:false, and the three buttons - which have always been one tap
-// and never ambiguous - decide instead.
-const NIGHT_WORDS = [
-  [/^(?:saw|dj|djs|b2b)$/i, "dj"],
-  [/^(?:played|playing|plays|dropped|song|songs|track|tracks)$/i, "song"],
-  [/^(?:with|w\/|w)$/i, "guest"],
-];
-// Words that carry no name: they join clauses rather than start one.
-// Articles are NOT filler: "The Blessed Madonna" is a name, and so is "A".
-// Only pronouns and joining words, which nobody is called.
-const NIGHT_FILLER = /^(?:i|we|us|me|they|he|she|it|and|then|also|too|was|were|at|this|that|tonight|today|there|here)$/i;
-
-function nightWord(token) {
-  const bare = token.replace(/[^a-z/]/gi, "");
-  for (const [re, kind] of NIGHT_WORDS) if (re.test(bare)) return kind;
-  return "";
-}
-
-// "Ada, Bo and Cy" -> ["Ada", "Bo", "Cy"], with the filler at the front of each
-// chunk dropped so "they played" does not record a DJ called "they".
-function nightList(text, keepFirst) {
-  return String(text)
-    .split(/,|;|\band\b|&|\+/i)
-    .map((chunk) => {
-      const words = chunk.trim().split(/\s+/).filter(Boolean);
-      // Pronouns in front of a NAME are filler - "they played" is not a DJ
-      // called they. In front of a TITLE they are the title: "We Are the Music
-      // Makers" came out as "Are the Music Makers" until this told them apart.
-      // Either way a chunk of nothing but filler is nothing: "song XYZ. I was
-      // with Cy" left a track called "I was" the first time this went in.
-      if (!words.some((w) => !NIGHT_FILLER.test(w))) return "";
-      if (!keepFirst) {
-        while (words.length && NIGHT_FILLER.test(words[0])) words.shift();
-      }
-      return words.join(" ").replace(/^["'“‘]+|["'”’.]+$/g, "").trim();
-    })
-    .filter((one) => one && one.length <= 120);
-}
-
-export function parseNight(line) {
-  const out = { djs: [], guests: [], songs: [], used: false };
-  let text = String(line || "").trim();
-  if (!text) return out;
-
-  // A full stop between thoughts is a comma - "DJ 1, 2 and 3. They played X" is
-  // three DJs and a song. Inside a name it is not: "Mr. Fingers" is one person,
-  // so the stop only separates when what follows is filler or a word.
-  text = text.replace(/\.\s+([A-Za-z/]+)/g, (whole, next) =>
-    (NIGHT_FILLER.test(next) || nightWord(next)) ? " , " + next : whole);
-
-  // Quoted text is a song title wherever it appears, so "saw Ada, she played
-  // “Windowlicker”" needs no word for the song at all.
-  text = text.replace(/["“]([^"”]{1,200})["”]/g, (_, title) => {
-    out.songs.push({ title: title.trim(), artist: "" });
-    out.used = true;
-    return " , ";
-  });
-
-  // Split into (word, text) clauses. Everything before the first word is the
-  // leading clause, which is who played - that is how the sentence starts.
-  const tokens = text.split(/\s+/).filter(Boolean);
-  const clauses = [];
-  let kind = "lead";
-  let held = [];
-  for (const token of tokens) {
-    const found = nightWord(token);
-    // A word only opens a clause when it is a word on its own, not the tail of
-    // a name: "Sawyer" is not "saw", and that is what the boundary is for.
-    if (found && /^[a-z/]+[,.]?$/i.test(token)) {
-      clauses.push([kind, held.join(" ")]);
-      kind = found;
-      held = [];
-      continue;
-    }
-    held.push(token);
-  }
-  clauses.push([kind, held.join(" ")]);
-
-  for (const [what, body] of clauses) {
-    if (!body.trim()) continue;
-    if (what !== "lead") out.used = true;
-    if (what === "song") {
-      // "played by Ada" is not a song called "Ada" - it says who played.
-      const attribution = body.trim().match(/^by\s+(.+)$/i);
-      if (attribution) { out.djs.push(...nightList(attribution[1])); continue; }
-      // One artist for the whole clause: "Xtal and Ageispolis by Aphex Twin".
-      const parts = body.split(/\s+by\s+/i);
-      const artist = parts.length > 1 ? nightList(parts.pop()).join(", ") : "";
-      for (const title of nightList(parts.join(" by "), true)) out.songs.push({ title, artist });
-      continue;
-    }
-    // The leading clause is who played, the same as "saw".
-    (what === "guest" ? out.guests : out.djs).push(...nightList(body));
-  }
-
-  // A leading list with no word after it is just a list; the buttons decide.
-  if (!out.used) return { djs: [], guests: [], songs: [], used: false };
-  const once = (names) => [...new Set(names.map((n) => n.trim()).filter(Boolean))];
-  out.djs = once(out.djs);
-  out.guests = once(out.guests);
-  return out;
 }
 
 function initials(name) {
@@ -1843,9 +1744,18 @@ function dropScript() {
 const TRACKS_SHOWN = 8;
 function trackList(songs, tail) {
   const all = songs || [];
-  if (!all.length) return `<p class="blank">What was played, in the order it was played.</p>`;
-  const row = (song, n) => `<li>
-    <span class="grow"><b>${esc(song.title)}</b>${
+  if (!all.length) {
+    return `<p class="blank">What was played. Type a title, or add the Shazam
+      screenshot \u2014 the picture is the record.</p>`;
+  }
+  // A track is a line, or a picture of one. A screenshot with nothing typed
+  // beside it still says everything Shazam said - so it stands on its own
+  // rather than under a placeholder title.
+  const row = (song) => `<li${song.media_key ? ` class="shot"` : ""}>
+    ${song.media_key ? `<a class="shotwrap" href="${esc(mediaUrl(song.media_key))}"
+      target="_blank" rel="noopener"><img src="${esc(mediaUrl(song.media_key))}"
+      alt="${esc(song.title || "What was playing")}" loading="lazy"></a>` : ""}
+    <span class="grow">${song.title ? `<b>${esc(song.title)}</b>` : ""}${
       song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}${
       song.person_name ? ` <span class="tag quiet">${esc(song.person_name)}</span>` : ""}</span>
     ${tail ? tail(song) : ""}</li>`;
@@ -1884,24 +1794,28 @@ function nightRail(group, event, people, allNames, canKeep) {
       <button class="x" type="submit" name="remove" value="1" formnovalidate
         aria-label="Remove ${esc(p.name)}">\u2715</button></form>` : ""}</li>`;
 
-  const group_ = (label, rows, empty) => `<div class="whogroup">
+  // Each list has its OWN way in. Asking "is this a DJ or a guest?" after the
+  // name was typed is a question the list you typed into already answered
+  // (owner, 2026-08-09: "we do not need that separation").
+  const add = (as, label) => !canKeep ? "" : `<form class="addline addwho"
+    method="post" action="${action}">
+    <input type="text" name="it" list="knownpeople" autocomplete="off"
+      placeholder="${esc(label)}" aria-label="${esc(label)}">
+    <button type="submit" name="as" value="${as}" aria-label="${esc(label)}">+</button>
+  </form>`;
+
+  const group_ = (label, rows, empty, adder) => `<div class="whogroup">
     <div class="whohead">${esc(label)}${rows.length ? `<small>\u2014 ${rows.length}</small>` : ""}</div>
     ${rows.length ? `<ul class="who-list">${rows.map(row).join("")}</ul>`
-      : `<p class="blank">${empty}</p>`}</div>`;
+      : `<p class="blank">${empty}</p>`}
+    ${adder}</div>`;
 
   return `<aside class="rail nightpeople">
-    ${group_("Who played", djs, "Whoever was on. A name is enough.")}
-    ${canKeep ? group_("Who was there", guests, "Who you were with.") : ""}
-    ${canKeep ? `<form class="addline addwho" method="post" action="${action}">
-      <input type="text" name="it" list="knownpeople" autocomplete="off"
-        placeholder="Add someone\u2026" aria-label="Add someone to this night">
-      <div class="as">
-        <button type="submit" name="as" value="dj">played</button>
-        <button type="submit" name="as" value="guest">was there</button>
-      </div>
-      <datalist id="knownpeople">${(allNames || []).map((n) =>
-        `<option value="${esc(n.name)}"></option>`).join("")}</datalist>
-    </form>` : ""}
+    ${group_("Who played", djs, "Whoever was on. A name is enough.", add("dj", "Add a DJ"))}
+    ${canKeep ? group_("Who was there", guests, "Who you were with.",
+      add("guest", "Add someone")) : ""}
+    ${canKeep ? `<datalist id="knownpeople">${(allNames || []).map((n) =>
+      `<option value="${esc(n.name)}"></option>`).join("")}</datalist>` : ""}
   </aside>`;
 }
 
@@ -1918,39 +1832,42 @@ function nightRail(group, event, people, allNames, canKeep) {
 // done one-handed while a room is loud and dark, it does not get done at all.
 function trackerBlock(event, group, note, people, allNames, songs) {
   const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
-  const attended = note && note.attended === 1;
 
 
+  // One field per thing, each one always open. The capture line that used to
+  // sit here asked you to say WHICH of three things you were typing, which the
+  // DJ list, the people list and the track list each already know about
+  // themselves (owner, 2026-08-09: "we should just delete that field").
   return `<section class="tracker">
-    <form class="capture" method="post" action="${esc(action)}">
-      <input type="text" name="it" list="knownpeople" autocomplete="off"
-        placeholder="Ada, played Xtal, with Cy\u2026"
-        aria-label="Write down this night">
-      <!-- Write the sentence and press return. The buttons stay for a bare
-           list, which says nothing on its own about which of the three it is. -->
-      <div class="as">
-        <button type="submit" name="as" value="dj">played</button>
-        <button type="submit" name="as" value="guest">with me</button>
-        <button type="submit" name="as" value="song">on now</button>
-      </div>
-    </form>
-
     <h2>Track list</h2>
     ${trackList(songs, (song) => `<form method="post" action="${action}">
         <input type="hidden" name="song" value="${esc(song.id)}">
         <button class="x" type="submit" name="remove" value="1"
-          formnovalidate aria-label="Remove ${esc(song.title)}">\u2715</button>
+          formnovalidate aria-label="Remove ${esc(song.title || "this track")}">\u2715</button>
       </form>`)}
+    <form class="addline addtrack" method="post" action="${esc(action)}"
+      enctype="multipart/form-data">
+      <input type="text" name="songTitle" maxlength="200" autocomplete="off"
+        placeholder="Title \u2014 or Title by Artist" aria-label="Add a track">
+      <button class="camera" type="button" aria-label="Add a Shazam screenshot"
+        title="Add a Shazam screenshot"
+        onclick="this.nextElementSibling.click()"><svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path
+        d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-1.7A1 1 0 0 1 8.6 5h6.8a1 1 0 0 1 .8.3L17.3 7h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z"/><circle
+        cx="12" cy="13" r="3.2"/></svg></button>
+      <input type="file" name="shot" accept="image/*" hidden
+        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+      <button type="submit" aria-label="Add this track">+</button>
+    </form>
 
     <h2>Your notes</h2>
+    <!-- No "I was there" to tick. You are keeping a record of this night; that
+         IS being at it (owner, 2026-08-09). The column still exists for nights
+         somebody else kept, which is the only case it ever meant anything. -->
     <form class="you" method="post" action="${esc(action)}">
       <div class="grow" style="display:grid;gap:10px">
         <textarea name="note" maxlength="4000" style="min-height:92px"
           placeholder="What you thought">${esc((note && note.note) || "")}</textarea>
-        <label class="wentrow">
-          <input type="checkbox" name="attended" value="1"${attended ? " checked" : ""}>
-          <span>I was there</span>
-        </label>
       </div>
       <div class="youbar"><button class="btn" type="submit">Save</button></div>
     </form>
@@ -1959,9 +1876,9 @@ function trackerBlock(event, group, note, people, allNames, songs) {
 }
 
 // Editing a party from the web: the same fields the Mac writes, through the
-// same updateParty. Folded away by default because the page's job is to show
-// the night, not to be a form - but one click from anywhere the owner is
-// looking, rather than a separate settings screen to go and find.
+// same updateParty. Open, because a form you have to click open is a form
+// nobody fills in - and short, because the name is typed into the hero and a
+// second box for it here was the same field twice (owner, 2026-08-09).
 function partyEditor(group, event, error, typed) {
   const was = (name, fallback) => esc(
     typed && typed.get(name) !== null ? typed.get(name) : fallback);
@@ -1969,13 +1886,10 @@ function partyEditor(group, event, error, typed) {
   // UTC ms, so this is the same conversion the create form does, in reverse.
   const localValue = event.starts_ms
     ? new Date(event.starts_ms).toISOString().slice(0, 10) : "";
-  return `<details class="edit"${error ? " open" : ""}>
-    <summary>Edit the details</summary>
+  return `<details class="edit" open>
+    <summary>When and where</summary>
     ${error ? `<p class="formerror" role="alert">${esc(error)}</p>` : ""}
     <form class="newnight" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/edit">
-      <label class="eventfield"><span>What is it called?</span>
-        <input type="text" name="title" maxlength="120" required
-          value="${was("title", event.title || "")}"></label>
       <label class="eventfield"><span>When</span>
         <input type="date" name="day" value="${was("day", localValue)}"></label>
       <label class="eventfield"><span>Where</span>
@@ -2011,8 +1925,10 @@ function seenBy(group, event) {
     link: "Anybody you send the link to can open it, and add photos.",
     public: "On your profile, for anyone.",
   };
-  return `<details class="seen">
-    <summary><span class="dotv ${now}"></span>${esc(seen[now])}</summary>
+  // Not a disclosure. A control you have to click to discover is a control that
+  // does not get used, and a summary naming the current choice above three
+  // buttons with one of them lit says the same thing twice.
+  return `<div class="seenpick">
     <form class="seenby" method="post"
       action="/@${esc(group.handle)}/${esc(event.slug)}/record">
       ${Object.entries(seen).map(([value, label]) => `<button
@@ -2021,7 +1937,7 @@ function seenBy(group, event) {
         >${esc(label)}</button>`).join("")}
     </form>
     <p class="muted">${says[now]}</p>
-  </details>`;
+  </div>`;
 }
 
 function nightHue(key) {
@@ -2071,8 +1987,9 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
       <button class="btn small" type="submit">Post</button>
       </div>
     </form>${dropScript()}` : ""}
-    ${posts && posts.length ? nightRoll(posts)
-      : `<p class="blank">Photos and anything said here land in this space.</p>`}`;
+    <!-- No caption under an empty space explaining that it is a space for
+         things. The composer above it already says what goes here. -->
+    ${posts && posts.length ? nightRoll(posts) : ""}`;
 
   // Everything a visitor needs and an owner does not: whether they are coming,
   // a ticket, the date in their own calendar, a way to tip whoever threw it.
@@ -2109,10 +2026,14 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
     ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
       <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
 
-    ${canEdit ? `<div class="nightbar">${seenBy(group, event)}${
-      partyEditor(group, event, editError, typed)}</div>` : ""}
+    <!-- Who can see it is one row and belongs at the top: it changes what the
+         page IS. When and where is a form, and a page that opens on a form is
+         a form - so it sits at the end, open, rather than in front of the
+         night it describes. -->
+    ${canEdit ? `<div class="nightbar">${seenBy(group, event)}</div>` : ""}
 
-    ${canEdit ? (tracker || "") + shared : shared + forVisitors}
+    ${canEdit ? (tracker || "") + shared + partyEditor(group, event, editError, typed)
+      : shared + forVisitors}
     ${canEdit ? coverScript(`/@${esc(group.handle)}/${esc(event.slug)}/cover`,
       { action: `/@${esc(group.handle)}/${esc(event.slug)}/edit`, field: "title" }) : ""}
   `, hero(event.title || "A night",
@@ -5310,7 +5231,9 @@ export default {
         return refuse("That date did not make sense.");
       }
       const done = await updateParty(env, event, {
-        title: form.get("title"),
+        // Absent from this form on purpose - the hero owns the name. Passing
+        // null would ask updateParty to blank it.
+        title: form.has("title") ? form.get("title") : undefined,
         startsMs: dayRaw ? starts : null,
         place: form.get("place"),
         links: form.get("links"),
@@ -5366,10 +5289,8 @@ export default {
         return new Response(null, { status: 302, headers: { location: back } });
       }
 
-      // The capture line. One line for the whole night when it says enough to
-      // read (parseNight), and otherwise the list plus the one word the buttons
-      // give it. The sentence wins: a person who wrote out what happened is
-      // telling us more than the button they happened to press to send it.
+      // Adding to a list. Which list is not a question - the field it came
+      // from answers it.
       const it = String(form.get("it") || "").trim();
       const as = String(form.get("as") || "");
       const record = async (names, role) => {
@@ -5383,16 +5304,11 @@ export default {
           ).bind(event.id, person.id, dj.email_norm, role, now).run();
         }
       };
+      // No sentence parsing here any more. The capture line it existed for is
+      // gone, and with a field per list the name you typed into "Add a DJ" is
+      // a DJ - reading "Bo with Cy" as a guest would be the app being clever
+      // at the expense of being right.
       if (it) {
-        const night = parseNight(it);
-        if (night.used) {
-          await record(night.djs, "dj");
-          await record(night.guests, "guest");
-          for (const song of night.songs) {
-            await addSong(env, dj.email_norm, event.id, song, now);
-          }
-          return new Response(null, { status: 302, headers: { location: back } });
-        }
         if (as === "song") {
           const artistPart = it.split(" by ");
           for (const one of artistPart[0].split(/,| and /i)) {
@@ -5407,14 +5323,29 @@ export default {
         }
       }
 
-      // A song, as it plays. One field and a button: anything more and it does
-      // not get written down while the room is dark and loud.
+      // A track: typed, or photographed off the Shazam screen. Both in one
+      // form, because at a party the picture is the faster of the two and
+      // making it the second-class path would mean it never gets used.
+      const shot = form.get("shot");
       const songTitle = String(form.get("songTitle") || "").trim();
+      if (shot && typeof shot.arrayBuffer === "function" && Number(shot.size) > 0) {
+        const kept = await storeMedia(env, shot, "tracks", 12 * 1024 * 1024, false);
+        if (kept.error) return notice("That picture did not save", kept.error, back);
+        // "Title by Artist" beside the picture if they typed one too; a bare
+        // picture is a whole record on its own.
+        const by = songTitle.split(/\s+by\s+/i);
+        await addSong(env, dj.email_norm, event.id, {
+          title: by[0] || "", artist: by[1] || "", mediaKey: kept.key,
+        }, now);
+        return new Response(null, { status: 302, headers: { location: back } });
+      }
       if (songTitle) {
-        // "Windowlicker, Xtal, Papua New Guinea" is one thing somebody types.
-        const artist = form.get("songArtist");
+        // "Windowlicker, Xtal, Papua New Guinea" is one thing somebody types,
+        // and "Xtal by Aphex Twin" names the artist without a second field.
         for (const one of songTitle.split(",")) {
-          await addSong(env, dj.email_norm, event.id, { title: one, artist }, now);
+          const by = one.split(/\s+by\s+/i);
+          await addSong(env, dj.email_norm, event.id,
+            { title: by[0], artist: by[1] || form.get("songArtist") || "" }, now);
         }
         return new Response(null, { status: 302, headers: { location: back } });
       }
@@ -5450,10 +5381,13 @@ export default {
         return new Response(null, { status: 302, headers: { location: back } });
       }
 
-      // Went, and what I thought.
+      // What I thought. Writing anything down about a night is being at it, and
+      // there is no longer a box to tick saying so - so saving a note asserts
+      // attendance rather than clearing it, which is what reading an absent
+      // checkbox as "no" used to do.
       await setPartyNote(env, dj.email_norm, event.id, {
         note: form.get("note"),
-        attended: form.get("attended") ? 1 : 0,
+        attended: 1,
       }, now);
       return new Response(null, { status: 302, headers: { location: back } });
     }

@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import worker, {
-  entryCode, handleProblem, icsFor, normalizeEmail, parseNight, payLinkProblem,
-  sha256Hex, ulid,
+  entryCode, handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
 } from "../worker.js";
 import { totalForBuyer, verifyWebhook } from "../stripe.js";
 
@@ -98,63 +97,6 @@ const post = (env, path, fields) => {
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
-
-// The sentence the product exists for, read in one line. Every case here is a
-// way somebody actually types it, and the last group is the important half:
-// what the parser must REFUSE to guess.
-test("one line writes the whole night", () => {
-  const night = parseNight("saw Ada and Bo, played Windowlicker, with Cy and Dee");
-  assert.deepEqual(night.djs, ["Ada", "Bo"]);
-  assert.deepEqual(night.guests, ["Cy", "Dee"]);
-  assert.deepEqual(night.songs, [{ title: "Windowlicker", artist: "" }]);
-
-  // The owner's own sentence, near enough word for word.
-  const owner = parseNight("I saw DJ 1, 2 and 3. They played song XYZ. I was with A, B and C");
-  assert.deepEqual(owner.djs, ["1", "2", "3"]);
-  assert.deepEqual(owner.songs, [{ title: "XYZ", artist: "" }]);
-  assert.deepEqual(owner.guests, ["A", "B", "C"]);
-
-  // No word for who played: the list at the front is who played.
-  const lead = parseNight("Ada and Bo, they played Xtal by Aphex Twin, with Cy");
-  assert.deepEqual(lead.djs, ["Ada", "Bo"]);
-  assert.deepEqual(lead.songs, [{ title: "Xtal", artist: "Aphex Twin" }]);
-  assert.deepEqual(lead.guests, ["Cy"]);
-
-  // One artist covers the whole clause; quotes make a song with no word at all.
-  const many = parseNight('played Xtal and Ageispolis by Aphex Twin');
-  assert.deepEqual(many.songs, [
-    { title: "Xtal", artist: "Aphex Twin" }, { title: "Ageispolis", artist: "Aphex Twin" }]);
-  const quoted = parseNight('saw Ada, she played \u201cWindowlicker\u201d');
-  assert.deepEqual(quoted.djs, ["Ada"]);
-  assert.deepEqual(quoted.songs, [{ title: "Windowlicker", artist: "" }]);
-
-  // A title keeps its first word. "We Are the Music Makers" lost its "We" to
-  // the pronoun filter, which is right for a name and wrong for a title.
-  assert.deepEqual(parseNight("played We Are the Music Makers by Aphex Twin").songs,
-    [{ title: "We Are the Music Makers", artist: "Aphex Twin" }]);
-  assert.deepEqual(parseNight("saw Ada, they played I Care Because You Do").songs,
-    [{ title: "I Care Because You Do", artist: "" }]);
-  assert.deepEqual(parseNight("saw Ada, they played I Care Because You Do").djs, ["Ada"]);
-
-  // "played by Ada" says who played. It is not a song called Ada.
-  assert.deepEqual(parseNight("played by Ada").djs, ["Ada"]);
-  assert.deepEqual(parseNight("played by Ada").songs, []);
-
-  // Shorthand, and the same person twice is one person.
-  assert.deepEqual(parseNight("w/ Cy").guests, ["Cy"]);
-  assert.deepEqual(parseNight("saw Ada and Ada").djs, ["Ada"]);
-
-  // A word is only a word on its own. Sawyer played; "saw" did not.
-  assert.deepEqual(parseNight("saw Sawyer and Withers").djs, ["Sawyer", "Withers"]);
-
-  // And what it must not guess: a bare list means nothing on its own, so the
-  // buttons decide. Guessing here would file people under the wrong heading.
-  for (const bare of ["Ada, Bo and Cy", "Ada", "", "   "]) {
-    const nothing = parseNight(bare);
-    assert.equal(nothing.used, false, `"${bare}" should not be read as a sentence`);
-    assert.deepEqual([nothing.djs, nothing.guests, nothing.songs], [[], [], []]);
-  }
-});
 
 test("handles are gated before anything can claim one", () => {
   assert.equal(handleProblem("sundaze"), "");
@@ -641,43 +583,32 @@ test("starting a night already knows where you were last", async () => {
   assert.ok(handle());
 });
 
-// The parser is only worth anything if the sentence actually lands in the
-// database. This types one line at the real route and reads the rows back.
-test("the whole night goes in on one line", async () => {
+// The date fills itself in. So should the place - most people run the same room
+// again, and the guess is wrong just as harmlessly as today's date is.
+test("starting a night already knows where you were last", async () => {
   const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Warehouse, late" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
+  const handle = () => one(env, `SELECT handle FROM groups`).handle;
 
-  // One field, one return - the sentence the product exists for.
-  const sent = await send(`${where}/record`,
-    { it: "saw Ada and Bo, played Windowlicker by Aphex Twin, with Cy and Dee", as: "dj" });
-  assert.equal(sent.status, 302);
+  // Nothing to go on yet: an empty box, and the copy says only the date is in.
+  const first = await (await read("/parties/new")).text();
+  assert.match(first, /name="place"[^>]*value=""/, "no history, no guess");
+  assert.match(first, /Today is already/);
 
-  // node:sqlite hands back null-prototype rows; compare the values, not the
-  // prototype chain.
-  const roles = rows(env,
-    `SELECT p.name, pp.role FROM party_people pp JOIN people p ON p.id = pp.person_id
-      ORDER BY pp.role, p.name`).map((r) => ({ ...r }));
-  assert.deepEqual(roles, [
-    { name: "Ada", role: "dj" }, { name: "Bo", role: "dj" },
-    { name: "Cy", role: "guest" }, { name: "Dee", role: "guest" },
-  ], "as=dj came from the button Enter happens to press - the sentence outranks it");
-  assert.deepEqual(rows(env, `SELECT title, artist FROM songs`).map((r) => ({ ...r })),
-    [{ title: "Windowlicker", artist: "Aphex Twin" }]);
+  await send("/parties/new", { title: "Warehouse, late", place: "The Box Shop" });
+  const second = await (await read("/parties/new")).text();
+  assert.match(second, /name="place"[^>]*value="The Box Shop"/, "where you were last");
+  assert.match(second, /Today and where you were last are already/);
 
-  const page = await (await read(where)).text();
-  assert.match(page, /Ada/);
-  assert.match(page, /Windowlicker/);
-  assert.match(page, /Cy/);
+  // And it survives a validation error, rather than the form forgetting it.
+  const failed = await (await send("/parties/new", { title: "" })).text();
+  assert.match(failed, /Give it a name first/);
+  assert.match(failed, /Today and where you were last are already/);
 
-  // A bare list still means whatever the button says, unchanged.
-  await send(`${where}/record`, { it: "Eve", as: "guest" });
-  assert.equal(
-    one(env, `SELECT pp.role FROM party_people pp JOIN people p ON p.id = pp.person_id
-               WHERE p.name = 'Eve'`).role,
-    "guest", "a list with no sentence in it is what the button says");
+  // A newer night moves it on.
+  await send("/parties/new", { title: "Rooftop", place: "The Roof" });
+  assert.match(await (await read("/parties/new")).text(),
+    /name="place"[^>]*value="The Roof"/);
+  assert.ok(handle());
 });
 
 // Saying something happens at a party, by whoever it belongs to and whoever
@@ -691,7 +622,10 @@ test("photos and words belong to the night they happened at", async () => {
   const where = `/@${handle}/${ev.slug}`;
 
   const empty = await (await read(where)).text();
-  assert.match(empty, /Photos and anything said here land in this space/, "an empty space says what belongs in it");
+  // An empty space says nothing. The composer above it is the invitation, and a
+  // caption explaining that a space is a space for things is not one.
+  assert.ok(!/land in this space/.test(empty), "no caption under an empty space");
+  assert.match(empty, /drop photos and videos here/, "the composer is the invitation");
 
   const said = await send(`${where}/say`, { say: "The room went off at two" });
   assert.equal(said.status, 302);
@@ -802,6 +736,52 @@ test("a party finds tonight's night by itself, and never steals another one", as
     .run(other.id, "dj@example.com", Date.now());
   const refused = await (await api(env, "/api/v1/party/bind", { ...other, partyId: "2026-08-06-2300-cd34" })).json();
   assert.equal(refused.bound, false);
+});
+
+// What the page asks of you, after the owner used it: no capture line asking
+// which of three things you meant, one way in per list, and a track that can be
+// a photograph because at a party that is faster than typing.
+test("each list has its own way in, and a track can be a picture", async () => {
+  const { env, send, read } = await signedIn();
+  await send("/parties/new", { title: "Warehouse, late" });
+  const handle = one(env, `SELECT handle FROM groups`).handle;
+  const ev = one(env, `SELECT * FROM events`);
+  const where = `/@${handle}/${ev.slug}`;
+
+  const page = await (await read(where)).text();
+  assert.ok(!/class="capture"/.test(page), "the ask-me-which-one field is gone");
+  assert.ok(!/name="attended"/.test(page), "keeping the night is being at it");
+  assert.ok(!/land in this space/.test(page));
+  assert.match(page, /<div class="seenpick">/, "who can see it is not behind a disclosure");
+  assert.match(page, /<details class="edit" open>/, "and so are the details");
+  assert.ok(!/name="title"/.test(page), "the name is typed in the hero, not asked twice");
+  assert.match(page, /placeholder="Add a DJ"/);
+  assert.match(page, /placeholder="Add someone"/);
+  assert.match(page, /name="shot"/, "a Shazam screenshot is a way to add a track");
+
+  // Each list writes to its own role, with no third question.
+  await send(`${where}/record`, { it: "Ada Kaleh", as: "dj" });
+  await send(`${where}/record`, { it: "Cy", as: "guest" });
+  assert.deepEqual(
+    rows(env, `SELECT p.name, pp.role FROM party_people pp
+      JOIN people p ON p.id = pp.person_id ORDER BY pp.role`).map((r) => ({ ...r })),
+    [{ name: "Ada Kaleh", role: "dj" }, { name: "Cy", role: "guest" }]);
+
+  // A typed track still names its artist without a second field.
+  await send(`${where}/record`, { songTitle: "Xtal by Aphex Twin" });
+  const typed = one(env, `SELECT title, artist, media_key FROM songs`);
+  assert.equal(typed.title, "Xtal");
+  assert.equal(typed.artist, "Aphex Twin");
+  assert.equal(typed.media_key, null);
+
+  // And a picture is a whole record: no title needed, and it renders as one.
+  const shot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10])],
+    "shazam.png", { type: "image/png" });
+  await send(`${where}/record`, { shot });
+  const shots = rows(env, `SELECT title, media_key FROM songs WHERE media_key IS NOT NULL`);
+  assert.equal(shots.length, 1, "the screenshot is a track on its own");
+  assert.equal(shots[0].title, "");
+  assert.match(await (await read(where)).text(), /class="shotwrap"/);
 });
 
 // Two things the console did better, brought over.
@@ -2236,7 +2216,7 @@ test("a party's details are editable from the web, and refused when empty", asyn
 
   // The form is on the party page for its owner, filled in with what is there.
   const owner = await (await read(where)).text();
-  assert.match(owner, /Edit the details/);
+  assert.match(owner, /When and where/, "the details are open, and the name is not asked twice");
   assert.match(owner, /name="day"/, "a day, not a datetime: the product has no time in it");
 
   const refused = await send(`${where}/edit`, { title: "   ", starts: "", place: "" });
@@ -2248,9 +2228,11 @@ test("a party's details are editable from the web, and refused when empty", asyn
   // A bad date is refused with what was typed still in the form, rather than
   // silently storing nothing where a time should be.
   const badDate = await (await send(`${where}/edit`,
-    { title: "Basement", day: "the third of never" })).text();
+    { place: "The Lido", day: "the third of never" })).text();
   assert.match(badDate, /did not make sense/);
-  assert.match(badDate, /value="Basement"/);
+  assert.match(badDate, /value="The Lido"/, "what was typed survives the refusal");
+  // And the name is untouched by a form that no longer asks for it.
+  assert.equal(one(env, `SELECT title FROM events`).title, "Basement");
 
   // Clearing the date is a real edit, not a no-op: a party can lose its time.
   await send(`${where}/edit`, { title: "Basement", day: "2099-01-02", place: "Mine" });
