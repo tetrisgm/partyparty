@@ -2329,9 +2329,9 @@ test("only links that can be clicked are rendered as links", async () => {
   assert.ok(!page.includes('onmouseover="'), "a quote in a URL cannot escape the attribute");
   // Two links typed, two links rendered - the other two lines are not links.
   assert.equal((page.match(/<li><a href="http/g) || []).length, 2);
-  // What was typed comes back in the form, so editing does not silently rewrite
-  // it - escaped, because it is text now and not markup.
-  assert.match(page, /javascript:alert\(1\)/, "the textarea still holds what was typed");
+  // There is no editor for links any more (owner, 2026-08-09: "I don't think we
+  // need a link section") - but a night can still carry them from the Mac, so
+  // what they render as is still the thing that matters.
 });
 
 test("a party is playing right now only while a Mac keeps saying so", async () => {

@@ -331,6 +331,25 @@ func main() {
 					}
 					return handler.GuestJoinURL()
 				},
+				// Who is in the room. Owner, 2026-08-09: "who is listening now
+				// is supposed to be the same list of users as who was there. It
+				// is the attendees." So a named listener becomes one, and the
+				// console stops keeping a second list beside the night's own.
+				// Only NAMED ones: "Guest 3" is a phone, not somebody you were
+				// with, and a journal full of them is worse than no journal.
+				Here: func() []string {
+					seen := map[string]bool{}
+					out := []string{}
+					for _, l := range ls.Roster() {
+						name := strings.TrimSpace(l.Name)
+						if name == "" || seen[name] {
+							continue
+						}
+						seen[name] = true
+						out = append(out, name)
+					}
+					return out
+				},
 				// What Shazam heard, so the night's track list writes itself
 				// while the set runs instead of being remembered afterwards.
 				Played: func() []cloudsync.Track {

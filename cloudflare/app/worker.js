@@ -371,6 +371,19 @@ html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--label);font-family:var(--sans);
 font-size:15px;line-height:1.45;font-synthesis:none}
 
+/* The scrollbar. These pages are shown inside the Mac's dark window, where the
+   platform default paints a wide light-grey bar down the seam - which is what
+   it looked like: a grey gutter between the night and the room. Thin, dark,
+   and out of the way, matching the console's own. */
+html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.16) transparent;
+color-scheme:dark}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:99px;
+border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);background-clip:padding-box}
+::-webkit-scrollbar-corner{background:transparent}
+
 /* The header is a card, not a band: an image with the name on it, inset from
    the edges and rounded, the way the console's cover sits. */
 .hero{position:relative;max-width:1180px;margin:20px auto 0;padding:0 20px}
@@ -391,10 +404,10 @@ radial-gradient(120% 90% at 0% 100%,rgba(0,0,0,.66),rgba(0,0,0,0) 62%)}
 /* Remove, top right, only once there is something to remove. */
 /* Back with the other actions on the right; the left corner belongs to the
    brand, which is the way home from anywhere. */
-/* The remove-cover button shares the corner with the page's top tools, so it
-   sits to their LEFT rather than on top of them - 46px gutter, 38px per tool,
-   8px gap, two tools. */
-.coverx{position:absolute;top:26px;right:138px;z-index:4;width:38px;height:38px;
+/* One cluster of three in the corner: shuffle, upload, remove. The rule below
+   (.hero:has(.coverx) .toptools) already slides the other two over to make
+   room, so this sits at the gutter - moving it left put it on top of them. */
+.coverx{position:absolute;top:26px;right:26px;z-index:4;width:38px;height:38px;
 border-radius:50%;display:grid;place-items:center;padding:0;border:0;
 background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
 box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
@@ -1857,6 +1870,9 @@ function trackList(songs, tail) {
 // that person's history.
 function nightRail(group, event, people, allNames, canKeep, linked) {
   const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
+  // `linked` doubles as "this rail is inside the page". On its own it is the
+  // Mac's sidebar, and a post from it must come back to the rail.
+  const home = linked ? "" : `<input type="hidden" name="from" value="rail">`;
   const djs = (people || []).filter((p) => p.role === "dj");
   const guests = (people || []).filter((p) => p.role !== "dj");
 
@@ -1864,7 +1880,7 @@ function nightRail(group, event, people, allNames, canKeep, linked) {
     <span class="grow"><b>${linked
       ? `<a href="/people/${esc(p.id)}">${esc(p.name)}</a>` : esc(p.name)}</b>${
       p.note ? `<small>${esc(p.note)}</small>` : ""}</span>${
-    canKeep ? `<form method="post" action="${action}">
+    canKeep ? `<form method="post" action="${action}">${home}
       <input type="hidden" name="person" value="${esc(p.id)}">
       <button class="x" type="submit" name="remove" value="1" formnovalidate
         aria-label="Remove ${esc(p.name)}">\u2715</button></form>` : ""}</li>`;
@@ -1873,7 +1889,7 @@ function nightRail(group, event, people, allNames, canKeep, linked) {
   // name was typed is a question the list you typed into already answered
   // (owner, 2026-08-09: "we do not need that separation").
   const add = (as, label) => !canKeep ? "" : `<form class="addline addwho"
-    method="post" action="${action}">
+    method="post" action="${action}">${home}
     <input type="text" name="it" list="knownpeople" autocomplete="off"
       placeholder="${esc(label)}" aria-label="${esc(label)}">
     <button type="submit" name="as" value="${as}" aria-label="${esc(label)}">+</button>
@@ -1948,23 +1964,6 @@ function trackerBlock(event, group, note, people, allNames, songs) {
     </form>
 
   </section>`;
-}
-
-// Tickets, a playlist, whatever the night points at. This used to share a form
-// with the day and the place; those moved into the hero, and rather than go
-// with them - a link is not a heading - they get their own line.
-function linksEditor(group, event, error, typed) {
-  const was = typed && typed.get("links") !== null ? typed.get("links") : (event.links || "");
-  return `<h2>Links</h2>
-    ${error ? `<p class="formerror" role="alert">${esc(error)}</p>` : ""}
-    <form class="you" method="post"
-      action="/@${esc(group.handle)}/${esc(event.slug)}/edit">
-      <div class="grow" style="display:grid;gap:10px">
-        <textarea name="links" maxlength="2000" style="min-height:64px"
-          placeholder="One per line. Tickets | https://\u2026">${esc(was)}</textarea>
-      </div>
-      <div class="youbar"><button class="btn" type="submit">Save</button></div>
-    </form>`;
 }
 
 function seenBy(group, event) {
@@ -2082,8 +2081,7 @@ function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra)
     ${editError ? `<p class="formerror" role="alert">${esc(editError)}</p>` : ""}
     ${canEdit ? `<div class="nightbar">${seenBy(group, event)}</div>` : ""}
 
-    ${canEdit ? (tracker || "") + shared + linksEditor(group, event, editError, typed)
-      : shared + forVisitors}
+    ${canEdit ? (tracker || "") + shared : shared + forVisitors}
     ${canEdit ? coverScript(`/@${esc(group.handle)}/${esc(event.slug)}/cover`,
       { action: `/@${esc(group.handle)}/${esc(event.slug)}/edit`, field: "title" }) : ""}
   `, hero(event.title || "A night",
@@ -3525,6 +3523,23 @@ export default {
           await env.DB.prepare(
             `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
              VALUES (?,?,?,'dj',?) ON CONFLICT(event_id, person_id) DO NOTHING`
+          ).bind(event.id, person.id, event.owner_email, now).run();
+        }
+      }
+
+      // Who is in the room is who was there. A named listener becomes an
+      // attendee of the night, which is the same list the owner keeps by hand -
+      // not a second one beside it. Unnamed phones are left alone: "Guest 3"
+      // is a device, not somebody you were with.
+      if (event.owner_email && Array.isArray(body.here) && body.here.length) {
+        for (const raw of body.here.slice(0, 60)) {
+          const name = String(raw || "").trim().slice(0, 80);
+          if (!name) continue;
+          const person = await findOrMakePerson(env, event.owner_email, name, now);
+          if (!person) continue;
+          await env.DB.prepare(
+            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+             VALUES (?,?,?,'guest',?) ON CONFLICT(event_id, person_id) DO NOTHING`
           ).bind(event.id, person.id, event.owner_email, now).run();
         }
       }
@@ -5376,7 +5391,11 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
       if (!dj) return html(200, signInPage(env, "Sign in", `/@${match[1]}/${match[2]}`));
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not save", "Try again.");
-      const back = `/@${group.handle}/${event.slug}`;
+      // Back where it came from. A post from the Mac's sidebar returns to the
+      // sidebar; anything else returns to the night. Read off the form that is
+      // already parsed - cloning the request to peek costs the body.
+      const back = `/@${group.handle}/${event.slug}${
+        form.get("from") === "rail" ? "/rail" : ""}`;
 
       // Somebody new on the bill or in the room.
       const who = String(form.get("who") || "").trim();
@@ -5523,12 +5542,20 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
       const form = await request.formData().catch(() => null);
+      const wantsJson = (request.headers.get("accept") || "").includes("application/json");
       const cover = form && await coverFromForm(env, form, event.cover_key);
-      if (cover && cover.error) return notice("That picture did not take", cover.error);
+      if (cover && cover.error) {
+        return wantsJson ? json(400, { error: cover.error })
+          : notice("That picture did not take", cover.error);
+      }
       if (cover) {
         await env.DB.prepare(`UPDATE events SET cover_key = ?, updated_ms = ? WHERE id = ?`)
           .bind(cover.key, now, event.id).run();
       }
+      // Shuffle used to tear the whole page down to look at one different
+      // picture; the script asks for JSON instead. It only ever got a redirect
+      // back, which it could not parse - so Shuffle did nothing at all.
+      if (wantsJson) return json(200, { ok: true, coverUrl: mediaUrl(cover ? cover.key : event.cover_key) });
       return new Response(null, {
         status: 302,
         headers: { location: `/@${group.handle}/${event.slug}` },

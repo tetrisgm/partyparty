@@ -379,7 +379,7 @@ type Track struct {
 	Artist string `json:"artist,omitempty"`
 }
 
-func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post, played []Track) ([]Post, error) {
+func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post, played []Track, here []string) ([]Post, error) {
 	if !c.ready() {
 		return nil, errors.New("cloudsync: not configured")
 	}
@@ -391,6 +391,7 @@ func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []P
 	if err := c.post(ctx, "/api/v1/party/posts", map[string]any{
 		"id": c.InstallID, "secret": c.Secret, "partyId": partyID,
 		"joinUrl": joinURL, "posts": outgoing, "since": since, "tracks": played,
+		"here": here,
 	}, &out); err != nil {
 		return nil, err
 	}
@@ -445,9 +446,12 @@ type Hooks struct {
 	// as the posts because it is the same fact - this room is playing, and this
 	// is what it has played.
 	Played func() []Track
-	Merge  func(id, author, body string, createdMs int64) (bool, error)
-	Bound  func(url string)
-	Logf   func(format string, args ...any)
+	// Here is who has the stream open, by name. They are the night's attendees -
+	// the same list, not a second one beside it.
+	Here  func() []string
+	Merge func(id, author, body string, createdMs int64) (bool, error)
+	Bound func(url string)
+	Logf  func(format string, args ...any)
 }
 
 // ProfileHooks are the DJ's own record, supplied the same way: this package
@@ -578,7 +582,11 @@ func (c *Client) Run(ctx context.Context, h Hooks, every time.Duration) {
 		if h.Played != nil {
 			played = h.Played()
 		}
-		incoming, err := c.Sync(ctx, partyID, joinURL, outgoing, played)
+		var here []string
+		if h.Here != nil {
+			here = h.Here()
+		}
+		incoming, err := c.Sync(ctx, partyID, joinURL, outgoing, played, here)
 		if err != nil {
 			logf("cloudsync: %v", err)
 			continue

@@ -843,25 +843,22 @@
     <iframe class="peopleframe" id="peopleFrame" scrolling="no"
       title="Who played and who was there"></iframe>
 
-    <!-- Not the same list. This is who has the stream open RIGHT NOW, with how
-         far behind the booth they are. The record is the page's; the room is
-         the Mac's. -->
-    <div class="inspectorhead">Listening now</div>
-  <div id="ptab-people" class="guest-sidebar">
-    <div class="card">
-      <div class="guesthead"><h2 id="listeners">In the room<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
-      <!-- Delay and sync are the advanced view. A room that is fine does not
-           need two numbers watching it all night; a room that is not is
-           exactly when somebody presses View details. -->
-      <div class="metrics" id="metricsLine" hidden title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
-        <span>Delay from DJ <b id="djDelay">-</b></span>
-        <span class="metricsep">·</span>
-        <span>Sync <b id="syncSpread">-</b></span>
+    <!-- Who is in the room is the rail above: a named listener is recorded as
+         an attendee of the night, so there is no second list here. What is
+         left is the measurement - delay, sync, and the per-phone detail - and
+         it only appears when somebody asks for it. -->
+    <div id="ptab-people" class="guest-sidebar" hidden>
+      <div class="card">
+        <div class="guesthead"><h2 id="listeners">In the room<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
+        <div class="metrics" id="metricsLine" hidden title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
+          <span>Delay from DJ <b id="djDelay">-</b></span>
+          <span class="metricsep">·</span>
+          <span>Sync <b id="syncSpread">-</b></span>
+        </div>
+        <div id="roster"></div>
+        <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
       </div>
-      <div id="roster"></div>
-      <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
-  </div>
   </aside>
 </div>
 
@@ -1243,7 +1240,8 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // One panel left in the rail - who is in the room. The wall, and the tabs
   // that used to switch between them, went with the console's copy of the
   // event page; the web's page carries the posts now.
-  { const people = $('ptab-people'); if (people) people.hidden = false; }
+  // Only while a set is running: measurements of a room nobody is in are noise.
+  { const people = $('ptab-people'); if (people) people.hidden = true; }
 
   // First-run: register an anonymous machine hostname and publish it to DNS.
   // A shared certificate means there is no per-Mac certificate issuance wait.
@@ -1875,6 +1873,10 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const peers = Array.isArray(s.peers) ? s.peers : [];
       const peopleCount = roster.length + peers.length + 1;
       if ($('pcount')) $('pcount').textContent = peopleCount;
+      // The measurement panel exists only while somebody is listening. An
+      // empty room has nothing to say about delay or sync, and the names are
+      // the rail's job.
+      { const panel = $('ptab-people'); if (panel) panel.hidden = !(roster && roster.length); }
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       const spreadOf = (list) => {
         const v = list.filter(r => r.hasLatency).map(r => r.latencyMs).sort((a, b) => a - b);
