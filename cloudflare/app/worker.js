@@ -404,10 +404,12 @@ radial-gradient(120% 90% at 0% 100%,rgba(0,0,0,.66),rgba(0,0,0,0) 62%)}
 /* Remove, top right, only once there is something to remove. */
 /* Back with the other actions on the right; the left corner belongs to the
    brand, which is the way home from anywhere. */
-/* One cluster of three in the corner: shuffle, upload, remove. The rule below
-   (.hero:has(.coverx) .toptools) already slides the other two over to make
-   room, so this sits at the gutter - moving it left put it on top of them. */
-.coverx{position:absolute;top:26px;right:26px;z-index:4;width:38px;height:38px;
+/* One cluster of three in the corner: shuffle, upload, remove. The neighbours
+   are .coveractions - right:20px, 72px wide - not .toptools, which is what I
+   measured against twice and got wrong twice; at 26px the remove button sat
+   exactly on top of upload, so upload looked like it had been deleted.
+   100px = 20 + 72 + an 8px gap. */
+.coverx{position:absolute;top:20px;right:100px;width:32px;height:32px;z-index:4;
 border-radius:50%;display:grid;place-items:center;padding:0;border:0;
 background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
 box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
