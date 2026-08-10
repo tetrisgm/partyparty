@@ -1568,12 +1568,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         { weekday:'short', day:'numeric', month:'short', year:'numeric' });
     };
 
-    // Wait for the app to put a library down. It answers on its own schedule,
-    // so this polls rather than assuming a delay that is right on one Mac.
-    async function waitForLibrary() {
+    const look = () => fetch('/api/shazam').then((r) => r.json()).catch(() => null);
+
+    // Wait for the app to put a FRESHER library down. Waiting for `read` alone
+    // would return instantly with the snapshot taken at launch, so a DJ who
+    // Shazamed something two minutes ago would be told it is not there.
+    async function waitForLibrary(since) {
       for (let tries = 0; tries < 30; tries++) {
-        const state = await fetch('/api/shazam').then((r) => r.json()).catch(() => null);
-        if (state && state.read) return state;
+        const state = await look();
+        if (state && state.read && (state.readMs || 0) > since) return state;
         await new Promise((go) => setTimeout(go, 400));
       }
       return null;
@@ -1623,20 +1626,32 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
 
     btn.onclick = async () => {
       say('');
-      if (!shell()) {
-        say('<p>Only the PartyParty app can read your Shazam library - this console is open in a browser.</p>');
-        return;
-      }
       busy(true, 'Reading…');
       try {
-        window.webkit.messageHandlers.pp.postMessage({ action: 'shazamRead' });
-        const state = await waitForLibrary();
+        let state = await look();
+        // Only the app can read a library, but it already read one when the
+        // console came up. A console open in a browser can still work with
+        // that; what it cannot do is ask for a fresher one.
+        if (shell()) {
+          const since = (state && state.readMs) || 0;
+          window.webkit.messageHandlers.pp.postMessage({ action: 'shazamRead' });
+          state = await waitForLibrary(since);
+        } else if (!state || !state.read) {
+          say('<p>Only the PartyParty app can read your Shazam library - this console is open in a browser.</p>');
+          return;
+        }
         if (!state) {
           say('<p>The app did not answer. Quit PartyParty and open it again, then try once more.</p>');
           return;
         }
         if (!state.count) {
-          say('<p>Your Shazam library is empty on this Mac. Shazams sync from your phone when both are signed in to the same Apple Account.</p>');
+          // Deliberately not "your Shazams will sync": whether an iPhone's
+          // matches reach a given Mac is Apple's business and not something to
+          // promise. This says what fills the library and how to find out.
+          say(`<p>This Mac's Shazam library is empty. It fills from Music Recognition
+            in Control Center, and from an iPhone signed in to the same Apple Account.
+            Shazam something on your phone, then press this again to see whether
+            yours reach this Mac.</p>`);
           return;
         }
         if (!state.available) {

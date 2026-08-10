@@ -2875,6 +2875,26 @@ test("a Shazam library files itself into the nights it happened at", async () =>
   assert.match(page, /Ptolemy/);
 });
 
+test("two parties on one day: the one that ran a room takes the tracks", async () => {
+  const { env, send } = await signedIn();
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+  await send("/parties/new", { title: "The night", day: "2026-08-08" });
+  await send("/parties/new", { title: "The after", day: "2026-08-08" });
+  const mac = await linkedInstall(env, handle);
+
+  // Made second, but it is the one that broadcast. That is where the music was.
+  const after = one(env, `SELECT * FROM events WHERE title = 'The after'`);
+  env.raw.prepare(`UPDATE events SET live_ms = ? WHERE id = ?`).run(Date.now(), after.id);
+
+  const done = await (await api(env, "/api/v1/shazam/import", {
+    ...mac, preview: false,
+    items: [{ title: "Ptolemy", artist: "Aphex Twin", at: 1, night: "2026-08-08" }],
+  })).json();
+  assert.deepEqual(done.nights.map((n) => n.title), ["The after"],
+    "the tracks went to a night that never played");
+  assert.equal(one(env, `SELECT event_id FROM songs`).event_id, after.id);
+});
+
 test("a Shazam library is not a thing a stranger's Mac can file", async () => {
   const { env, send } = await signedIn();
   const handle = one(env, `SELECT handle FROM profiles`).handle;

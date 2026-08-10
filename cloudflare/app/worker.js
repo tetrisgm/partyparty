@@ -3897,13 +3897,21 @@ export default {
       // Every night this account has, by the day it is on. `starts_ms` is
       // stored as noon UTC on that day for a day-only party, so the date comes
       // straight back out without a timezone entering into it.
+      //
+      // A day can hold more than one party - a night and the after, which is a
+      // normal way to spend an evening. The one that actually ran a room takes
+      // the tracks, because that is where the music was; failing that, the one
+      // made first. Whichever it picks, the preview names it, so the DJ agrees
+      // to a night rather than to a guess.
       const { results: nights = [] } = await env.DB.prepare(
         `SELECT id, slug, title, starts_ms FROM events
-          WHERE group_id = ? AND starts_ms IS NOT NULL ORDER BY starts_ms`
+          WHERE group_id = ? AND starts_ms IS NOT NULL
+          ORDER BY starts_ms, CASE WHEN live_ms > 0 THEN 0 ELSE 1 END, created_ms`
       ).bind(group.id).all();
       const byDay = new Map();
       for (const night of nights) {
-        byDay.set(new Date(night.starts_ms).toISOString().slice(0, 10), night);
+        const day = new Date(night.starts_ms).toISOString().slice(0, 10);
+        if (!byDay.has(day)) byDay.set(day, night);
       }
 
       const preview = !!body.preview;

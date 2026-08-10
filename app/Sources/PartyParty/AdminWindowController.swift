@@ -371,6 +371,11 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         case "ready":
             pushLoginState()
             pushPermissions()
+            // Read the Shazam library once the console is up, so the count is
+            // already there when somebody opens Settings rather than being
+            // fetched while they watch a spinner. Off the launch path on
+            // purpose: this is a main-actor read and the window comes first.
+            ShazamLibrary.push(port: port)
             if let device = body["device"] as? String {
                 setCaptureSource(device)
             } else {
