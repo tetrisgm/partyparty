@@ -195,16 +195,16 @@ try {
   assert.deepEqual(opened, ['k-two'],
     `the frame and the room are echoing each other: opened ${JSON.stringify(opened)}`);
 
-  // And the way home, which is where a party is chosen or started.
-  await page.click('#homeBtn');
+  // The way home is the chip on the cover, which the page owns - the console
+  // has none of its own. What it must do is keep up: no night in the frame,
+  // no rail in the sidebar.
+  assert.equal(await page.locator('#homeBtn').count(), 0,
+    'the console has grown a second way home');
+  await page.evaluate(() => { document.getElementById('webFrame').src = '/home'; });
   await page.waitForFunction(
-    () => document.getElementById('webFrame').getAttribute('src') === '/home',
+    () => document.getElementById('peopleFrame').hidden === true,
     null, { timeout: 10000 },
   );
-  await page.waitForTimeout(600);
-  assert.equal(
-    await page.evaluate(() => document.getElementById('peopleFrame').hidden), true,
-    'no night, no rail');
 
   // The frame must actually occupy the column. A purge of the console's dead
   // CSS once collapsed the layout, and nothing failed.

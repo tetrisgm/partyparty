@@ -421,7 +421,6 @@
      party pages from the platform - the booth is one room inside that, not a
      separate app - so it needs a way back. Inside #appChrome, which the
      sign-in door covers entirely, so it is absent until somebody is signed in. */
-  .homebar{display:flex;align-items:center;padding:10px 16px 0;flex:0 0 auto}
 
   /* No title bar. The poster tucks under the traffic lights; the gear lives
      in the transport bar. */
@@ -472,12 +471,6 @@
     background:color-mix(in srgb,#000 22%,var(--bg));
     border-left:1px solid var(--hairline);
   }
-  .homebar{flex:0 0 auto;padding:10px 14px 0}
-  .homebtn{display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;
-    background:var(--fill);color:var(--label);font:inherit;font-size:14px;
-    font-weight:750;letter-spacing:-.01em;padding:7px 14px;border-radius:var(--r-pill)}
-  .homebtn:hover{background:var(--fill-hover)}
-  .homeglyph{font-size:15px}
   .peopleframe{width:100%;border:0;display:block;margin:0 0 var(--s-5);
     min-height:0;background:transparent;color-scheme:dark}
   .peopleframe[hidden]{display:none}
@@ -785,15 +778,9 @@
 
   <!-- Which canonical party this room is running. The same record the web
        shows; this is the Mac choosing among them, not inventing one. -->
-  <!-- The way home, and nothing else. The bar that used to sit here named the
-       party, linked to its page and offered a picker and a New party button -
-       all of which home does better, and it named the night twice over the
-       night's own title. Choosing a party is going home and opening one; the
-       room follows whatever the frame is showing. -->
-  <div class="homebar">
-    <button class="homebtn" id="homeBtn" type="button" title="Your parties">
-      <span class="homeglyph" aria-hidden="true">🪩</span>PartyParty</button>
-  </div>
+  <!-- No chrome above the page. The way home is the PartyParty chip on the
+       cover, which the page draws itself - a second one up here was the same
+       button twice, and the console has no business having its own. -->
 
   <!-- The person's own pages, exactly as the web serves them - the console
        fetches them from the platform and shows them here (internal/server/
@@ -2093,11 +2080,9 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         show(known.find((p) => p.key === d.current) || null);
       } catch (e) { /* offline: keep whatever we last knew */ }
     }
-    // The way home. Choosing a party or starting one both happen there, and the
-    // room follows whatever night the frame ends up on - so the picker and the
-    // New party button were two more ways to do what home already does.
-    const homeBtn = document.getElementById('homeBtn');
-    if (homeBtn && frame) homeBtn.onclick = () => { frame.src = '/home'; };
+    // Going home is the PartyParty chip on the cover, which the page owns.
+    // Choosing a party or starting one both happen there, and the room follows
+    // whatever night the frame ends up on.
 
 
     window.ppLoadParties = loadParties;
