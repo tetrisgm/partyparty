@@ -4949,9 +4949,12 @@ export default {
       return html(200, `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(event.title || "A night")}</title><style>${STYLE}
-/* On its own, with no page around it: no page padding, no sticky, and it may
-   scroll inside the sidebar that holds it. */
-body{margin:0;background:transparent}
+/* On its own, with no page around it. It must not scroll: the thing holding
+   it sizes itself to this content, and a scrollbar here paints a light gash
+   down somebody's dark sidebar. */
+html,body{margin:0;background:transparent;overflow:hidden;
+  scrollbar-width:none;color-scheme:dark}
+html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
 .rail.nightpeople{position:static;padding:0;gap:22px}
 </style></head><body>${
         nightRail(group, event, people,

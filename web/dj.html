@@ -838,7 +838,8 @@
          there is still one rail with one set of styles - it just hangs in the
          Mac's sidebar, which is where the QR is and where the owner wanted it.
          The page in the main frame is asked to leave its copy out. -->
-    <iframe class="peopleframe" id="peopleFrame" title="Who played and who was there"></iframe>
+    <iframe class="peopleframe" id="peopleFrame" scrolling="no"
+      title="Who played and who was there"></iframe>
 
     <!-- Not the same list. This is who has the stream open RIGHT NOW, with how
          far behind the booth they are. The record is the page's; the room is
@@ -1914,7 +1915,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           '<div class="lbody"><span class="lname">' + esc(group.dj || 'DJ') + '</span><div class="ldetail">' + djTag + '</div></div></div>';
         const head = '<div class="rostergrouphead"><span>' + esc(group.dj || 'DJ') +
           '</span><small>&mdash; ' + (1 + listeners.length) + '</small></div>';
-        return '<section class="rostergroup">' + head + djRow + rows + '</section>';
+        // With one DJ - which is most rooms - the header and the DJ row repeat
+        // the name that Who played, directly above this, already gives. Only a
+        // room with several DJs needs listeners sorted by whose stream they
+        // are on, so only that room gets the headings.
+        const many = groups.length > 1;
+        return '<section class="rostergroup">' + (many ? head + djRow : '') + rows + '</section>';
       }).join('');
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
@@ -2019,16 +2025,25 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       if (people.getAttribute('src') !== want) people.src = want;
     };
     // It is as tall as the list it is showing: a scrollbar inside a sidebar
-    // that already scrolls is two scrollbars for one list.
+    // that already scrolls is two scrollbars for one list. Watched rather than
+    // measured once - a measurement taken before the fonts land reports the
+    // height of nothing, which is how this first shipped as a 15px sliver.
     const fitRail = () => {
       try {
         const d = people.contentDocument;
-        if (d && d.body) people.style.height = d.body.scrollHeight + 'px';
+        if (d && d.body) people.style.height = (Math.ceil(d.body.scrollHeight) + 2) + 'px';
       } catch (e) {}
     };
     if (people) {
       people.hidden = true;
-      people.addEventListener('load', () => { fitRail(); setTimeout(fitRail, 250); });
+      people.addEventListener('load', () => {
+        fitRail();
+        try {
+          const d = people.contentDocument;
+          if (window.ResizeObserver && d && d.body) new ResizeObserver(fitRail).observe(d.body);
+          if (d && d.fonts && d.fonts.ready) d.fonts.ready.then(fitRail);
+        } catch (e) {}
+      });
     }
     const frameToParty = (party) => {
       if (!frame || !party || !party.slug || !party.handle) return;
