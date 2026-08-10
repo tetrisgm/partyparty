@@ -777,6 +777,10 @@ text-transform:uppercase;color:var(--label-tertiary)}
 .factrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
 gap:8px 20px;margin:2px 0 10px}
 .factrow .linkrow{margin:0}
+/* How many tracks a night is about to gain, which is the number somebody is
+   actually reading, so it is not a grey aside at the end of a date. */
+.importnight{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.importnight .tag{margin:0;flex:0 0 auto}
 textarea{width:100%;padding:11px 14px;border-radius:var(--r-sm);
 border:1px solid var(--separator);background:var(--bg-elevated);color:var(--label);
 font:inherit;font-size:15px;outline:none;resize:vertical}
@@ -1475,7 +1479,11 @@ function shazamImport() {
       return new Promise((done) => {
         const tick = async () => {
           const s = await look();
-          if ((s && s.read && (s.readMs || 0) > since) || ++tries > 30) return done(s);
+          // Five seconds, then work with the snapshot already here. The app
+          // answers in well under one; anything longer means there is no app
+          // listening, and standing on "Reading" for twelve seconds is not a
+          // better answer than the one we can already give.
+          if ((s && s.read && (s.readMs || 0) > since) || ++tries > 12) return done(s);
           setTimeout(tick, 400);
         };
         tick();
@@ -1491,10 +1499,11 @@ function shazamImport() {
         return;
       }
       said.innerHTML = '<p>From ' + count + ' Shazam' + (count === 1 ? '' : 's') + ':</p>' +
-        found.nights.map((n) => '<div class="card"><strong>' + esc(n.title || 'Untitled') +
-          '</strong> <span class="muted">' + esc(day(n.day)) + '</span> &middot; +' + n.added +
-          (n.titles && n.titles.length ? '<div class="muted">' + esc(n.titles.join(', ')) + '</div>' : '') +
-          '</div>').join('') +
+        found.nights.map((n) => '<div class="card"><div class="importnight"><strong>' +
+          esc(n.title || 'Untitled') + '</strong><span class="tag live">+' + n.added +
+          '</span></div><div class="muted">' + esc(day(n.day)) +
+          (n.titles && n.titles.length ? ' &middot; ' + esc(n.titles.join(', ')) : '') +
+          '</div></div>').join('') +
         (found.unmatched ? '<p class="muted">' + found.unmatched +
           ' more happened on days with no party.</p>' : '') +
         '<button class="btn plain" id="shazamadd" type="button">Add them</button>';
