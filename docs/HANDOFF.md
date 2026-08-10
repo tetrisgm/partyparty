@@ -54,6 +54,28 @@ While both existed they shared bundle id `fm.partyparty.app`, and
 LAUNCHED whichever it picked, which is how two copies ended up running at once.
 Find and quit by PID from `pgrep -lf "PartyParty.app/Contents/MacOS/PartyParty"`.
 
+**Import from Shazam lives on the settings page, not in the Mac's gear sheet.**
+It went into the gear sheet first and the owner reported "there is nothing about
+Shazam in the settings" - because the page called settings is the account one,
+and an import that files a whole library into a whole account belongs there.
+
+The shape that makes that possible is worth keeping: the console serves
+`/settings` through its own server, so `/api/shazam` is same-origin from inside
+the frame. The PAGE owns the markup (`shazamImport()` in worker.js), the Mac
+lends the capability, and the console still injects nothing into a web page. The
+section is `hidden` until a probe of `/api/shazam` answers, so on
+partyparty.party it simply is not there. Asking for a fresher read goes
+`window.parent.postMessage({pp:'shazamRead'})` to the shell, which owns the only
+bridge to the app - a frame has none.
+
+Three defects that only showed up by LOOKING at the rendered page: `.ghost` is
+not a class this stylesheet has ever defined (it exists in `web/dj.html`, which
+is a different sheet), so those buttons rendered as system chrome; a value in a
+`<span>` inside `.eventfield` gets the uppercase LABEL rule and turned an
+address into `DJ@EXAMPLE.COM`; and `.sectionhead` could not wrap, so a heading
+and its hint became two four-word columns on a phone. Render the page and read
+it. `cloudflare/app/test/smoke.mjs` now asserts all three.
+
 **The frame's first load is the fragile one.** The console asks for `/home` the
 instant it opens, which can be before the platform client is ready. The mirror
 correctly falls back to `offlinePage` - but that page used to be a dead end, so
