@@ -19,9 +19,11 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -67,8 +69,53 @@ func New(base, installID, secret string) *Client {
 		Base:      strings.TrimRight(base, "/"),
 		InstallID: installID,
 		Secret:    secret,
-		HTTP:      &http.Client{Timeout: 15 * time.Second},
+		HTTP:      &http.Client{Timeout: 15 * time.Second, Transport: platformTransport()},
 	}
+}
+
+// platformTransport dials the platform in a way that survives a network with
+// no IPv6, which is most venue Wi-Fi and was this Mac on 2026-08-11.
+//
+// The default transport is meant to handle this: Go races the families and
+// falls back. It does not help when the answer for a proxied Cloudflare name
+// is AAAA-only - a resolver that has cached the v6 record and a negative for
+// the v4 one hands Go a single family, there is nothing to race, and every
+// request dies on "connect: no route to host" with the address right there in
+// the error. The DJ sees the cloud half of their console fail while the whole
+// LAN party works, which reads like the backend is down.
+//
+// So: try as configured, and if the failure is the network refusing a route
+// rather than the server saying something, try again over IPv4 alone.
+func platformTransport() *http.Transport {
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	base.DialContext = withIPv4Fallback(dialer.DialContext)
+	return base
+}
+
+type dialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// withIPv4Fallback is the rule on its own, so a test can drive it without a
+// machine that actually lacks IPv6.
+func withIPv4Fallback(dial dialFunc) dialFunc {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dial(ctx, network, addr)
+		if err == nil || network != "tcp" || !unreachable(err) {
+			return conn, err
+		}
+		return dial(ctx, "tcp4", addr)
+	}
+}
+
+// unreachable reports whether a dial failed because this host cannot get to
+// that address family at all, as opposed to the peer answering unpleasantly.
+// Only those are worth retrying on a narrower network.
+func unreachable(err error) bool {
+	var se syscall.Errno
+	if errors.As(err, &se) {
+		return se == syscall.EHOSTUNREACH || se == syscall.ENETUNREACH || se == syscall.EAFNOSUPPORT
+	}
+	return false
 }
 
 func (c *Client) ready() bool {
