@@ -1990,7 +1990,14 @@ test("every page this worker serves is claimed by one of its routes", () => {
   const patterns = [...config.matchAll(/"pattern":\s*"partyparty\.party([^"]*)"/g)]
     .map((m) => new RegExp("^" + m[1].split("*")
       .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$"));
-  const claimed = (path) => patterns.some((re) => re.test(path));
+  // On workers.dev the worker IS the origin: every path reaches it, so there is
+  // no route to omit and nothing to strand. That is how this worker is reached
+  // since the 2026-08-11 split, while partyparty.party's platform paths still
+  // belong to the journal. The check below still runs in full the moment zone
+  // routes come back - and the dev-door half runs either way, because a door
+  // that must not be on the internet must not be routed on any hostname.
+  const onWorkersDev = /"workers_dev":\s*true/.test(config) && patterns.length === 0;
+  const claimed = (path) => onWorkersDev || patterns.some((re) => re.test(path));
 
   // What the worker actually answers, read off the routing itself.
   const exact = [...source.matchAll(/path === "(\/[^"]*)"/g)].map((m) => m[1]);
@@ -2006,7 +2013,8 @@ test("every page this worker serves is claimed by one of its routes", () => {
 
   for (const path of exact) {
     if (path.startsWith("/dev/")) {
-      assert.ok(!claimed(path), `${path} is a development door and must have no route`);
+      assert.ok(!patterns.some((re) => re.test(path)),
+        `${path} is a development door and must have no route`);
       continue;
     }
     assert.ok(claimed(path), `${path} is served but no route sends it here`);
