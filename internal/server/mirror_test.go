@@ -172,7 +172,7 @@ func TestTheOfflinePageComesBack(t *testing.T) {
 	sessions.err = nil
 	sessions.linked = true
 	s.mirror.mu.Lock()
-	s.mirror.lastFail = time.Time{} // the 30s backoff, served out
+	s.mirror.lastFail = time.Time{} // the backoff, served out
 	s.mirror.mu.Unlock()
 	if body := decodeJSON(t, do(s, http.MethodGet, "/api/mirror", "127.0.0.1:1234")); body["ready"] != true {
 		t.Fatalf("/api/mirror still said %v with the platform back", body["ready"])
@@ -183,6 +183,62 @@ func TestTheOfflinePageComesBack(t *testing.T) {
 	if !strings.Contains(back.Body.String(), "Your parties") ||
 		strings.Contains(back.Body.String(), "cannot reach it right now") {
 		t.Fatalf("the reload did not reach the platform: %.120q", back.Body.String())
+	}
+}
+
+// The first retry has to be quick. A flat thirty-second backoff is what a DJ
+// actually saw: the console asks for /home the instant it opens, one miss
+// against a platform client that was still starting locked the answer to "no"
+// for half a minute, and the window sat on an outage that had already ended.
+func TestTheFirstRetryIsQuick(t *testing.T) {
+	var seen []*http.Request
+	platform := platformStub(t, &seen)
+	defer platform.Close()
+	sessions := &fakeSessions{err: errors.New("still starting")}
+	s := mirrorSrv(t, platform.URL, sessions)
+
+	if s.mirror.cookie(context.Background()) != "" {
+		t.Fatal("a failing platform handed out a session")
+	}
+	if got := s.mirror.backoff(); got > 2*time.Second {
+		t.Fatalf("first retry waits %v - a startup race is not an outage", got)
+	}
+	// Repeated real failures do back off, so an offline party is not asking
+	// the network every second all night.
+	for i := 0; i < 8; i++ {
+		s.mirror.mu.Lock()
+		s.mirror.lastFail = time.Time{}
+		s.mirror.mu.Unlock()
+		s.mirror.cookie(context.Background())
+	}
+	if got := s.mirror.backoff(); got != 30*time.Second {
+		t.Fatalf("backoff settled at %v, want 30s", got)
+	}
+
+	// And one success clears it, so the next hiccup is quick again.
+	sessions.err = nil
+	sessions.linked = true
+	s.mirror.mu.Lock()
+	s.mirror.lastFail = time.Time{}
+	s.mirror.mu.Unlock()
+	if s.mirror.cookie(context.Background()) == "" {
+		t.Fatal("a healthy platform still gave nothing")
+	}
+	if got := s.mirror.backoff(); got > 2*time.Second {
+		t.Fatalf("backoff stayed at %v after a success", got)
+	}
+}
+
+// The page must not announce an outage during the half second it takes this
+// server to wake up. It says nothing until the wait is long enough to mean it.
+func TestTheOutagePageHoldsItsTongueAtFirst(t *testing.T) {
+	s := mirrorSrv(t, "http://127.0.0.1:1", &fakeSessions{linked: false})
+	body := do(s, http.MethodGet, "/home", "127.0.0.1:1234").Body.String()
+	if !strings.Contains(body, `id="say"`) || !strings.Contains(body, "opacity:0") {
+		t.Fatal("the outage message is shown before it is known to be one")
+	}
+	if !strings.Contains(body, "6000") {
+		t.Fatal("nothing decides when the wait has become an outage")
 	}
 }
 

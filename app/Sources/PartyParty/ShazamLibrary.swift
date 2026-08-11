@@ -47,9 +47,30 @@ enum ShazamLibrary {
     /// `SHLibrary.default.items` is a main-actor property, so the read happens
     /// on main and the mapping does not: a library with a few thousand matches
     /// should not be turned into JSON while the console is trying to draw.
+    ///
+    /// The first read of a cold library returns NOTHING. The store is opened
+    /// and synced by shazamd on demand, and `items` answers immediately with
+    /// whatever is loaded - which, in a process that has just launched, is an
+    /// empty array. This Mac has 898 matches in
+    /// `~/Library/Application Support/com.apple.shazamd/ShazamLibrary.sqlite`
+    /// and reported none of them, on every launch, because each launch asked
+    /// once and believed the answer. So it asks again until something arrives.
+    ///
+    /// An empty library is still a real answer - plenty of people have never
+    /// Shazamed anything - so this gives up after a few seconds and reports the
+    /// emptiness rather than hanging on a promise it cannot keep.
     static func push(port: Int) {
         Task { @MainActor in
-            let raw = SHLibrary.default.items
+            var raw = SHLibrary.default.items
+            var tries = 0
+            while raw.isEmpty && tries < 12 {
+                tries += 1
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                raw = SHLibrary.default.items
+            }
+            if !raw.isEmpty {
+                NSLog("PartyParty: Shazam library read (\(raw.count) matches, \(tries) retries)")
+            }
             Task.detached(priority: .utility) {
                 APIClient(port: port).postShazamLibrary(mapped(raw))
             }

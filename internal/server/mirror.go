@@ -41,10 +41,26 @@ type mirror struct {
 	session  string
 	expires  time.Time
 	lastFail time.Time
+	fails    int
+	everOK   bool
 }
 
 func newMirror(base string, client SessionClient) *mirror {
 	return &mirror{base: strings.TrimRight(base, "/"), client: client}
+}
+
+// backoff is how long to wait after a failed session fetch before trying
+// again: a second, then two, four, eight, capped at thirty.
+//
+// It was a flat thirty seconds, and that is what a DJ actually saw. The console
+// asks for /home the instant it opens, which can be the instant before the
+// platform client is ready; that one miss then locked the answer to "no" for
+// half a minute with partyparty.party reachable the whole time. The first
+// retry has to be quick, because the first failure is almost always a race
+// with our own startup rather than an outage.
+func (m *mirror) backoff() time.Duration {
+	wait := time.Second << min(m.fails, 5)
+	return min(wait, 30*time.Second)
 }
 
 // cookie returns a live session for this Mac's owner, fetching one when the
@@ -57,7 +73,7 @@ func (m *mirror) cookie(ctx context.Context) string {
 		defer m.mu.Unlock()
 		return m.session
 	}
-	if time.Since(m.lastFail) < 30*time.Second {
+	if m.fails > 0 && time.Since(m.lastFail) < m.backoff() {
 		defer m.mu.Unlock()
 		return ""
 	}
@@ -68,8 +84,11 @@ func (m *mirror) cookie(ctx context.Context) string {
 	defer m.mu.Unlock()
 	if err != nil || !got.Linked || got.Secret == "" {
 		m.lastFail = time.Now()
+		m.fails++
 		return ""
 	}
+	m.fails = 0
+	m.everOK = true
 	m.session = got.Secret
 	// Half the advertised life, so a page is never rendered with a cookie that
 	// expires between the request and the reply. Bounded at both ends: a silly
@@ -119,6 +138,11 @@ func (s *srv) serveConsoleFallback(w http.ResponseWriter, r *http.Request) bool 
 // reach it right now" for the rest of the session, with the platform reachable
 // the whole time and no control anywhere that would try again. So the page that
 // reports the outage is the thing that watches for it to end.
+// It also does not shout at somebody whose Mac is merely still waking up. For
+// the first few seconds this says nothing at all, because the overwhelmingly
+// common case is that the console beat the platform client to the punch by half
+// a second and the real page is about to arrive. Only when the wait has gone on
+// long enough to be a real outage does it say so.
 const offlinePage = `<!doctype html><meta charset="utf-8">
 <title>Your parties</title>
 <style>
@@ -127,17 +151,32 @@ body{margin:0;height:100vh;display:grid;place-items:center;
 font:14px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;
 background:#0e0e10;color:#a3a3ac;text-align:center;padding:24px}
 b{display:block;font-size:16px;color:#f2f2f4;margin-bottom:8px}
+#say{opacity:0;transition:opacity .4s}
+#say.show{opacity:1}
 </style>
-<div><b>Your parties are on partyparty.party</b>
+<div id="say"><b>Your parties are on partyparty.party</b>
 This Mac cannot reach it right now.<br>The room below still works.</div>
 <script>
-setInterval(function () {
-  if (document.hidden) return;
-  fetch('/api/mirror', { cache: 'no-store' })
-    .then(function (r) { return r.json(); })
-    .then(function (s) { if (s && s.ready) location.reload(); })
-    .catch(function () {});
-}, 5000);
+(function () {
+  var said = document.getElementById('say');
+  var start = Date.now();
+  function look() {
+    if (document.hidden) return;
+    fetch('/api/mirror', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        if (s && s.ready) { location.reload(); return; }
+        if (Date.now() - start > 6000) said.className = 'show';
+      })
+      .catch(function () {});
+  }
+  // Briskly at first - this is loopback, and the gap being closed is usually
+  // under a second - then settling down so a genuinely offline party is not
+  // polling forever.
+  var quick = setInterval(look, 700);
+  setTimeout(function () { clearInterval(quick); setInterval(look, 5000); }, 15000);
+  look();
+})();
 </script>
 `
 
