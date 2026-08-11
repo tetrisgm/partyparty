@@ -95,6 +95,29 @@ func (s *srv) handlePartyAPI(w http.ResponseWriter, r *http.Request) bool {
 		if s.Events != nil {
 			current = s.Events.Canonical().Key
 		}
+		// A canonical party the account no longer has is not this room's party.
+		// After the 2026-08-11 split this Mac was still showing "Tuesday, 31
+		// December 2024" in its header - a night from the OTHER product's
+		// database, held only in local state, offered as tonight's room. The
+		// name of a party nobody can open is worse than no name: Go Live is
+		// gated on having one, so a stale name gates the button on a ghost.
+		// Only when the account answered (linked) - an offline party keeps
+		// whatever it had, which is the whole point of an offline party.
+		if linked && current != "" && s.Events != nil {
+			found := false
+			for _, p := range list {
+				if p.Key == current {
+					found = true
+					break
+				}
+			}
+			if !found {
+				if err := s.Events.SetCanonical(event.CanonicalParty{}); err != nil {
+					log.Printf("clearing an orphaned canonical party: %v", err)
+				}
+				current = ""
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"linked": linked, "parties": list, "current": current,
 		})

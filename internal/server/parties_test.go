@@ -24,6 +24,7 @@ type fakePlatform struct {
 	// on the network. That makes this a second goroutine's view of the fake.
 	mu      sync.Mutex
 	linked  bool
+	down    error // the platform unreachable - an offline party's normal state
 	parties []cloudsync.Party
 	creates []cloudsync.Party
 	updates []struct {
@@ -35,6 +36,9 @@ type fakePlatform struct {
 func (f *fakePlatform) Parties(context.Context) ([]cloudsync.Party, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.down != nil {
+		return nil, false, f.down
+	}
 	return f.parties, f.linked, nil
 }
 
@@ -321,5 +325,43 @@ func TestGuestsOnlyEverSeeTheRoom(t *testing.T) {
 	}
 	if len(platform.creates)+len(platform.updates) != 0 {
 		t.Fatal("a guest reached the platform")
+	}
+}
+
+// A canonical party the account no longer has is not this room's party.
+//
+// The split proved why: this Mac kept showing "Tuesday, 31 December 2024" in
+// its header - a night that lives in the OTHER product's database and only in
+// local state here - and offered it as tonight's room. Go Live is gated on
+// having a party name, so a stale name gates the button on a ghost.
+func TestAPartyTheAccountNoLongerHasIsDropped(t *testing.T) {
+	platform := &fakePlatform{linked: true}
+	s, ev := macSrv(t, platform)
+
+	if err := ev.SetCanonical(event.CanonicalParty{
+		Key: "gone-with-the-other-product", Title: "Tuesday, 31 December 2024",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	out := decodeJSON(t, do(s, http.MethodGet, "/api/parties", "127.0.0.1:1234"))
+	if out["current"] != "" {
+		t.Fatalf("the orphan survived the list: %v", out["current"])
+	}
+	if ev.Canonical().Title != "" {
+		t.Fatalf("the console will still show %q in its header", ev.Canonical().Title)
+	}
+
+	// But an offline party keeps what it had: not being able to ask is not the
+	// same as being told it is gone, and the offline party is a pillar.
+	if err := ev.SetCanonical(event.CanonicalParty{Key: "k", Title: "Basement"}); err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	platform.down = errors.New("no internet")
+	platform.mu.Unlock()
+	do(s, http.MethodGet, "/api/parties", "127.0.0.1:1234")
+	if ev.Canonical().Title != "Basement" {
+		t.Fatal("an offline party lost its name")
 	}
 }
