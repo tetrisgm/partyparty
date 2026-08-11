@@ -84,9 +84,7 @@ Time, Siri's own inferences, and Journal ENTRIES. Worth knowing:
 **JournalingSuggestions** (iOS 17.2+) is Apple shipping our exact inference -
 "you were somewhere with music, want to write about it?" - as an API,
 iOS-only. It validates the product, and it is the one real argument for a
-someday-tiny iOS companion. Until then, **Shortcuts** covers the phone hook
-today: a personal automation "when I arrive anywhere after 10pm, open
-partyparty.party" can be handed to users as a pre-built shortcut.
+someday-tiny iOS companion.
 
 **The iPhone cut (owner, fourth pass: "restrict this to the things we would
 be able to do on an iPhone without being rejected by Apple").**
@@ -100,12 +98,12 @@ review-clean:
 - **Location, WHILE-USING ONLY (owner decree, fifth pass).** No Always
   prompt, no background monitoring - which rules out CLVisit and geofences
   (both are Always-only). Check-in is an ON-OPEN moment: open the app, one
-  fix, "At Public Works?". The arrival hook without Always still exists twice
-  over: the user's own Shortcuts automation ("when I arrive, open
-  PartyParty") runs on Shortcuts' consent rather than ours, and
-  JournalingSuggestions hands over Apple's own already-collected visit
-  history with NO location permission at all - making it the backbone of
-  retroactive presence on iPhone.
+  fix, "At Public Works?". (A Shortcuts arrival automation was considered as
+  the no-Always hook and REJECTED by the owner as spammy - auto-opening an
+  app at every 10pm arrival fires at restaurants and friends' places too.)
+  What covers the missed live moments instead: JournalingSuggestions hands
+  over Apple's own already-collected visit history with NO location
+  permission at all - the backbone of retroactive presence on iPhone.
 - **JournalingSuggestions** (iOS 17.2+) - the packaged inference itself:
   visits (with place names), music-detection moments, photos, contacts -
   surfaced through Apple's picker, no location permission involved. Needs its
