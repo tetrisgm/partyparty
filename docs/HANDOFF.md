@@ -65,8 +65,6 @@ build first; the standalone lane exists if App Store review balks:*
   never went through Mail.
 - **Messages.** The group chat that lit up at 1am; chats are often NAMED
   after the crew. "Who was with you" evidence.
-- **Voice Memos.** A DJ records sets - a 2am two-hour memo IS the night's
-  recording. Offer to attach it; a local recognition pass can name its tracks.
 - **Safari history.** The RA/Dice event pages visited that week say which
   party you were eyeing. Low rank, same door.
 - **Notes.** Occasionally a lineup or an address. Lowest.
@@ -99,20 +97,34 @@ open panel at. Mail, Messages, Safari history, Voice Memos, Downloads:
 unreachable by any app Apple would approve. What iOS gives instead, all
 review-clean:
 
-- **CLVisit + region monitoring** - Apple's own arrive/depart stream, in the
-  background, battery-cheap. THE check-in primitive; Foursquare and Swarm
-  shipped on it for a decade. Always-location prompt, honest purpose string.
+- **Location, WHILE-USING ONLY (owner decree, fifth pass).** No Always
+  prompt, no background monitoring - which rules out CLVisit and geofences
+  (both are Always-only). Check-in is an ON-OPEN moment: open the app, one
+  fix, "At Public Works?". The arrival hook without Always still exists twice
+  over: the user's own Shortcuts automation ("when I arrive, open
+  PartyParty") runs on Shortcuts' consent rather than ours, and
+  JournalingSuggestions hands over Apple's own already-collected visit
+  history with NO location permission at all - making it the backbone of
+  retroactive presence on iPhone.
 - **JournalingSuggestions** (iOS 17.2+) - the packaged inference itself:
-  visits, music-detection moments, photos, contacts. Needs its entitlement,
-  which Apple grants to journaling apps - which this literally is.
+  visits (with place names), music-detection moments, photos, contacts -
+  surfaced through Apple's picker, no location permission involved. Needs its
+  entitlement, which Apple grants to journaling apps - which this literally
+  is. With While-Using location, this is the single most important iOS
+  source.
 - **A share extension** - the sanctioned replacement for mail scanning: share
   the ticket email, the .pkpass, the screenshot, the RA page INTO PartyParty.
   One gesture, user-initiated, and it feeds the same evidence parsers.
+- **The forward address** - the TripIt move, and it works on ANY phone:
+  forward a ticket email to tickets@partyparty.party and the platform parses
+  it - name, venue, lineup, the .pkpass attachment. THE mail answer for an
+  iPhone-only user; the receiving plumbing is an implementation choice made
+  at build time.
 - The same one-prompt frameworks as the Mac: EventKit (titles, attendees,
   structured geo), PhotoKit (shared albums, screenshot subtype, Live Photo
   audio), Contacts, MapKit POI (no prompt), MusicKit, WeatherKit.
-- **Notifications + Live Activities** for the moment itself: a geofence fires
-  and the lock screen asks "At Public Works?" - accepted without unlocking.
+- **Live Activities** once checked in: the night on the lock screen while it
+  runs. (The geofence-fired lock-screen ask died with Always location.)
 - **ShazamKit live recognition while the app is open** - there is no
   background microphone on iOS, ever, so never promise it. SHLibrary history
   if the entitlement fight resolves.
@@ -131,10 +143,10 @@ Mac-owning user keeps every Tier 2 source - read on the machine where the
 doors exist. An iPhone-only user trades the deep history for the best live
 experience.
 
-Review risks, named: Always-location (accepted practice with a purpose
-string and visible in-app benefit), the JournalingSuggestions capability
-request, and the standing SHAZAM_KIT entitlement fight - which has to be
-resolved with Apple on any platform.
+Review risks, named: the JournalingSuggestions capability request, and the
+standing SHAZAM_KIT entitlement fight - which has to be resolved with Apple
+on any platform. (Always-location left the list with the owner's While-Using
+decree; nothing riskier than a While-Using prompt remains.)
 
 **The backlog** (the spine of the retroactive side):
 
@@ -166,7 +178,7 @@ Units, v2 order:
 5. **People suggestions** - co-attendance x recency x same-venue chips on
    check-in and creation; enriched by Contacts, later Messages.
 6. **Deep sources** - the Tier 2 stores (Mail with .pkpass/.ics/receipt
-   parsing, Downloads, Messages, Voice Memos, Safari history), the venue's
+   parsing, Downloads, Messages, Safari history), the venue's
    own page (URL on the venue record, parsed generically for schema.org Event
    JSON-LD), and other users' PUBLIC nights at the same venue and date (the
    network answer; designed now, worth more with every user).
