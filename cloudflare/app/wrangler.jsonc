@@ -58,13 +58,13 @@
 
 
   "vars": {
-    "APPLE_CLIENT_ID": "fm.partyparty.web",
+    "APPLE_CLIENT_ID": "fm.partyparty.live",
     "APPLE_TEAM_ID": "52WM463HR2",
     "APPLE_KEY_ID": "9DLLL4UAR8",
 
     // Sign in with Google. The client id is public by design; the secret is
     // GOOGLE_CLIENT_SECRET, set with `wrangler secret put`.
-    "GOOGLE_CLIENT_ID": "325964451960-8g7u6sf5fb3ib8u6aq11cuusk64fn9dk.apps.googleusercontent.com",
+    "GOOGLE_CLIENT_ID": "325964451960-ipl16to2mm6vuq2fmovqe47683sn712g.apps.googleusercontent.com",
 
     // Where links in email point. Pinned rather than taken from the request, so
     // a request arriving on an unexpected host cannot mint links to that host.
