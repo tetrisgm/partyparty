@@ -2241,6 +2241,12 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       // console that merely (re)opened mid-set.
       if (statusSeen && st === 'live' && lastState !== 'live') fireConfetti();
       statusSeen = true;
+      // Booting is not the same as working. The boot watchdog used to accept
+      // __ppBooted alone, so a console whose script ran perfectly but never
+      // reached the server looked healthy while showing "Name this party", no
+      // QR and an empty About You - which is what a DJ would be staring at.
+      // This is the flag that says a real answer was rendered.
+      window.__ppDataSeen = true;
       lastState = st;
       // Version pin (bottom-left) + self-refresh when the server updates
       // beneath an open console - only while idle (never mid-broadcast).

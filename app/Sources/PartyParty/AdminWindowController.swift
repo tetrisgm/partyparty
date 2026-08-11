@@ -281,6 +281,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         let js = """
         (function () { try { var b = document.body; return JSON.stringify({
           rs: document.readyState, booted: !!window.__ppBooted,
+          data: !!window.__ppDataSeen,
           kids: b ? b.childElementCount : -1, len: b ? (b.innerText || '').length : -1,
           fb: !!document.getElementById('__ppBootFallback'), url: location.href,
           err: window.__ppLastError || null }); } catch (e) { return '{"probeErr":"' + e + '"}'; } })()
@@ -293,12 +294,20 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
             }
             let state = (result as? String) ?? "nil"
             let booted = state.contains("\"booted\":true")
+            let sawData = state.contains("\"data\":true")
             let fallback = state.contains("\"fb\":true")
             let blank = state.contains("\"kids\":0") || state.contains("\"len\":0")
             self.diag(booted ? "boot" : "error", ["state": state])
-            if booted || fallback {
-                self.bootAttempts = 0        // healthy, or already showing the recovery UI
-            } else if blank {
+            if fallback {
+                self.bootAttempts = 0        // already showing the recovery UI
+            } else if booted && sawData {
+                self.bootAttempts = 0        // rendered a real answer from the server
+            } else if blank || (booted && !sawData) {
+                // Booted-but-dataless is the failure this missed for months: the
+                // shell renders, __ppBooted is true, and every fetch quietly
+                // failed - typically the WebView beating the local server up on
+                // a relaunch. It looks like a first-run console with the party
+                // name, QR and profile all gone, and nothing ever fixed it.
                 self.recoverBlank()
             }
         }
