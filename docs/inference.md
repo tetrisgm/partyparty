@@ -14,8 +14,9 @@ played" before being asked.
 
 The rule that keeps automation from becoming presumption:
 
-- **Creating a night is always confirmed.** Inference proposes; the owner
-  accepts, edits, or skips. Nothing appears in the journal by itself.
+- **Creating a night is confirmed - at the default setting.** Inference
+  proposes; the owner accepts, edits, or skips. The autonomy dial below can
+  raise this, by the owner's explicit choice, to auto-add-with-undo.
 - **Enriching an accepted night is automatic.** Tracks merge in, a venue name
   propagates, a better title is offered as a one-tap chip. Nothing is
   silently overwritten - anything typed by a person wins over anything
@@ -24,6 +25,36 @@ The rule that keeps automation from becoming presumption:
   ordinary night page.
 - **A skip is durable.** Skipped days are never re-suggested; a "skipped"
   list exists as the escape hatch for changed minds.
+
+## The autonomy dial
+
+Owner, seventh pass: "an experience like Foursquare was, but even more
+automatic." Foursquare asked; Swarm eventually just did it. The pipeline
+supports the whole range because confidence is already a number - the dial
+only changes what happens at a threshold:
+
+- **Suggest** (default). Cards wait in the backlog.
+- **Auto-add, undo after.** A candidate above the high bar - plan and
+  presence corroborating, or a familiar pattern ("sixth Saturday at Public
+  Works") - becomes a night by itself, and the morning message reads "Added:
+  Public Works, Saturday - edit or remove", never "may I?". Consent moves
+  from before to after; undo is the safety, and undo counts as a durable
+  skip.
+- **Full auto.** Everything above the surfacing threshold lands; the backlog
+  holds only the genuinely uncertain.
+
+One per-owner setting, changeable anytime. No ML mystery: thresholds are
+visible numbers, and nothing trains silently on behaviour.
+
+## The morning digest
+
+The retroactive experience is not a list the owner remembers to visit - it is
+a message the morning after a detected night: "Last night: Public Works,
+11:40pm-3:04am - 12 Shazams, 14 photos. Add it?" One tap accepts from the
+message itself. Channels, in order of preference: Web Push to the phone
+(partyparty.party installed to the Home Screen can receive push on iOS - no
+native app required), or email via the house SMTP. On auto-add settings the
+same message reports what was added instead of asking.
 
 ## The pipeline: evidence → candidate → night
 
@@ -66,13 +97,13 @@ people as chips. A live check-in is a candidate born accepted.
 | kind     | says                                | emitted by |
 |----------|-------------------------------------|------------|
 | presence | you were at G during W              | Shazam clusters, photo geotags, on-open location, Journal pick |
-| music    | these tracks played                 | Shazam import, live recognizer |
+| music    | these tracks played                 | Shazam import, live recognizer, and recognition run locally over the night's OWN videos and Live Photos - party footage carries the music in the room |
 | plan     | this was planned: title, venue, when, attendees | Calendar, .ics, tickets, .pkpass |
 | media    | you shot n photos/videos there      | PhotoKit (counts and windows only - attaching actual photos is a user pick) |
 | company  | A and B were probably there         | Calendar attendees, shared-album contributors, later Messages, network |
-| receipt  | you paid at V that night            | payment-receipt emails (merchant + time; never the amount) |
+| receipt  | you paid at V that night            | payment-receipt emails (merchant + time; never the amount). RIDE receipts are the special case worth naming: a 2:45am ride home FROM an address is presence at the venue plus the moment the night ended |
 | listing  | the venue's page says event E ran   | venue-page JSON-LD fetch |
-| attest   | another user's public night matches | the network layer |
+| attest   | another user's public night matches | the network layer. Two forms: CO-PRESENCE (two users' own evidence at the same venue and night auto-suggests them to each other as company - mutuals/followers only), and the SET FINGERPRINT (two track lists sharing the same songs in the same order on the same night are the same party even with no geo at all - and a guest's night can link itself to the DJ's published set, which no one else can do) |
 
 `plan` and `presence` corroborating is near-certainty. `plan` alone (a
 ticket for Friday) surfaces the card BEFORE the night - "going to this?" -
@@ -109,8 +140,25 @@ below-threshold candidates are queryable but never pushed.
 On the phone web (and the iOS app later): a button on /home, while-using
 location only, one fix → nearest venues ranked by the owner's own history
 first, MKLocalSearch candidates after → confirm → candidate born accepted,
-tonight's night exists. No background location anywhere, ever (owner
-decree); no Shortcuts arrival automation (owner: spammy).
+tonight's night exists. No background location anywhere (owner decree); no
+Shortcuts arrival automation (owner: spammy).
+
+**The ask, without Always** - the live moment can still come to the owner,
+through four channels that need no background location:
+
+- **A lock-screen widget** (iOS app). WidgetKit refreshes on the system's
+  schedule with while-using-class location: parked at a known venue late, it
+  reads "At Public Works? →" and a tap deep-links into the one-tap check-in.
+  It sits quietly on the lock screen; it never notifies.
+- **The plan-triggered nudge.** A ticket for tonight schedules one local
+  notification at doors: "Tonight: Sunset Campout - check in when you're
+  there." It fires only when a plan EXISTS - the anti-spam inverse of the
+  rejected arrival automation.
+- **App Intents donations.** Donate the check-in intent and let Apple's own
+  suggestion engine surface it contextually - its ML, its spam filter, zero
+  permissions.
+- **Web Push** for the PWA on any phone, carrying the morning digest and the
+  plan nudge before the iOS app exists.
 
 ## People
 
@@ -134,7 +182,11 @@ a shared label) is decided in its own unit.
 
 ## The scanners
 
-- **Mac (the deep scanner).** Shazam is SHIPPED. Add EventKit, PhotoKit,
+- **Mac (the deep scanner - and the always-on limb Apple actually allows).**
+  A menu-bar app runs all day, and Apple syncs everything to it: last
+  night's photos, the calendar, the mail. The nightly sweep means the
+  morning card exists with the phone never touched - the Mac is our
+  Pilgrim. Shazam is SHIPPED. Add EventKit, PhotoKit,
   Contacts - one prompt each, App-Store-clean. Later, behind macOS's per-app
   data consent, desk build first: Mail (tickets, .ics, .pkpass, receipts,
   attachment OCR via Vision), Downloads, Messages, Safari history. Cadence:
@@ -204,3 +256,6 @@ The iOS app is a separate later track; nothing in 1-7 depends on it.
   source reads empty and everything else stands.
 - Same-day multi-candidate replaces the current one-party-per-day merge rule
   in slice 2; until then the import's tiebreak stands.
+- If Swarm-grade ZERO-touch live check-in is ever wanted, Always + CLVisit is
+  the only path (reviewable - Foursquare precedent). The plan deliberately
+  does not need it; revisit only by owner decree.
