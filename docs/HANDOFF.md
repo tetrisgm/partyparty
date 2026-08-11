@@ -141,9 +141,21 @@ Mac-owning user keeps every Tier 2 source - read on the machine where the
 doors exist. An iPhone-only user trades the deep history for the best live
 experience.
 
-Review risks, named: the JournalingSuggestions capability request, and the
-standing SHAZAM_KIT entitlement fight - which has to be resolved with Apple
-on any platform. (Always-location left the list with the owner's While-Using
+**Every source is additive; none is load-bearing (owner, sixth pass).** The
+backlog is the spine: every source - Shazam, Calendar, Photos, tickets,
+on-open location, and JournalingSuggestions if Apple grants it - feeds the
+same candidate-night evidence model, keyed by (owner, day, venue). Sources
+CORROBORATE rather than duplicate: our inference says "11 Shazams cluster at
+195 Erie St on Friday", a Journal pick says "Public Works, 11:38pm-3:04am",
+and the same card gets stronger. If Apple says yes to the journaling
+entitlement, the picker becomes one more way to fill a card - with the best
+UX of the lot. If Apple says no, nothing is missing: the entitlement is a
+capability added in any later update, never a fork in the roadmap. Ship
+without it, request it, tie it in when granted.
+
+Review risks, named: the JournalingSuggestions capability request (additive
+only, per the above), and the standing SHAZAM_KIT entitlement fight - which
+has to be resolved with Apple on any platform. (Always-location left the list with the owner's While-Using
 decree; nothing riskier than a While-Using prompt remains.)
 
 **The backlog** (the spine of the retroactive side):
