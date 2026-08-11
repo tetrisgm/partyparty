@@ -1,60 +1,98 @@
 # PartyParty.party handoff
 
-## Direction (2026-08-10): the product is a check-in journal, on the web
+## Direction (2026-08-10, refined same night): a check-in journal that reads everything it may
 
-The owner, right after the Shazam import reconstructed eighteen nights with
-their venues: the experience to build toward is Foursquare's check-in, for
-parties. "I'm here" / "I was there" - and the app answers with the club
-(disambiguating neighbours when two are close), the party that was on, and the
-people you were probably with, the way Partiful suggests whoever you last
-partied with. Give it permissions and let it scan. The WEB APP is where this
-lives; the Mac app stays about streaming, and acts only as a quiet scanner of
-local stores it has been granted (it already reads the Shazam library at
-launch).
+The owner, after the Shazam import reconstructed eighteen nights: build toward
+Foursquare's check-in, for parties. "I'm here" / "I was there" - the app names
+the club (disambiguating neighbours), the party, and the people you were
+probably with, the way Partiful suggests whoever you last partied with. The WEB
+APP is the product surface; the Mac app stays about streaming. The check-in
+moment is a PHONE moment and the phone surface already exists:
+partyparty.party in mobile Safari, navigator.geolocation, one tap. No iOS app.
 
-The unlock that makes it buildable now: check-in is a PHONE moment, and the
-phone surface already exists. partyparty.party in mobile Safari can ask for
-location with one tap (navigator.geolocation). No iOS app is needed for the
-Foursquare mechanic.
+Refined the same night, two owner directives:
 
-The plan, in complete units, each shippable alone:
+- **Leverage the MAXIMUM data Apple permits.** Calendar, photos, mail,
+  messages, location - "look at all sorts of things that could allow us to
+  infer more than just Shazam gives us... extremely helpful and necessary."
+  The earlier plan ranked these too timidly.
+- **The retroactive side is a BACKLOG** - a standing, reviewable queue of
+  candidate nights: confirm "yes I was at a party that day", correct the place
+  or the DJ or anything, or skip it - and a skip is remembered, never
+  re-suggested.
 
-1. **Venues become records.** A `venues` table keyed by rounded (~100 m)
-   coordinates: name, geocoded address, optional URL; `events.venue_id`, with
-   `place` kept as display text. Naming a venue once names every night there,
-   past and future - the owner named Public Works once and six nights changed.
-   The Shazam import and go-live both resolve the venue automatically.
-2. **"I'm here"** - check-in on the phone web, signed-in, from /home: one
-   location tap -> nearest venues ranked by the owner's own history ("Public
-   Works - 6 nights" first, geocoded candidates after) -> confirm -> tonight's
-   night exists at that venue with you on it.
-3. **"With Cy and Dee?"** - the Partiful move. On check-in or creation, suggest
-   people ranked by co-attendance x recency x same-venue history. One tap adds
-   them. The data already accumulates in `party_people`; this is a query and a
-   row of chips.
-4. **"Were you at...?"** - the retroactive check-in, ambient. The settings-page
-   import becomes ongoing: the Mac scanner (Shazam today; Calendar via EventKit
-   next - one permission prompt, and a calendar entry on a party night is very
-   often the party's actual name) posts candidate nights, and /home shows
-   suggestion cards: "Friday at Public Works - 12 Shazams. Make it?"
-5. **Naming the party itself**, a ladder tried in order: the owner's own
-   repeat-venue history; the calendar entry title; the venue's own page - a URL
-   on the venue record, parsed generically for schema.org Event JSON-LD (most
-   ticketing and many venue pages carry it; no per-site scraping); other users'
-   PUBLIC nights at the same venue and date (designed now, worth more with
-   every user); ticket emails and image OCR LAST and opt-in - though the
-   songs-as-screenshots pattern already covers most of it: drop the ticket
-   screenshot on the night.
-6. **Series.** Same venue + cadence + recurring people => "these six Saturdays
-   at Public Works look like one series - name it once?" Nights inherit; a new
-   check-in there defaults into it.
+The rule that makes data-maximalism sane: **everything parses ON the Mac; only
+conclusions leave it.** The Shazam reader already works exactly this way - the
+library never leaves the machine; titles, nights and venue keys do. Every
+source below inherits that rule: raw calendar entries, mail bodies and photos
+are never uploaded, only the inference ("party named X, venue Y, day Z,
+probably with A and B").
 
-Privacy line: events store venue ids, venues store rounded coordinates, and a
-raw GPS fix is never persisted. The per-night contents permissions are
-unchanged by any of this.
+The scanner's sources, ranked by yield per prompt:
 
-Nothing below is started. Units land one at a time, whole, beginning with 1+2
-on the owner's go.
+1. **Shazam store** - SHIPPED (`ShazamStore.swift`, `ShazamPlaces.swift`).
+2. **Calendar** (EventKit, one prompt, App-Store-clean). Titles are often the
+   party's literal name; locations are venues; subscribed ical feeds (RA,
+   ticketing "add to calendar") land here too. The single richest sanctioned
+   source after Shazam.
+3. **Photos** (PhotoKit, one prompt, App-Store-clean). Geotagged timestamps are
+   attendance evidence - people photograph parties they never Shazam - and the
+   same photos are candidate WALL content ("14 photos from that night - add
+   some to the page?"). Ticket screenshots in the library OCR via Vision.
+4. **Contacts** (one prompt). Names become people records; feeds the Partiful
+   layer ("Cy" is Cyrus, with a face).
+5. **Mac location + Wi-Fi SSID** (one prompt). Venue resolution at go-live;
+   the SSID corroborates ("Public Works Guest").
+6. **Mail store.** Ticket confirmations are the highest-fidelity source that
+   exists - event name, venue, lineup, date, and image attachments OCR'd
+   locally. The door is macOS's own per-app data-access consent (the OS itself
+   prompts before an app touches another app's data) - prove it on the desk
+   build first; App Store review posture unknown, standalone lane exists.
+7. **Messages.** "Who was with you" evidence (the group chat that lit up at
+   1am). Same door as Mail; the heaviest-feeling source, so last.
+
+**The backlog** (the spine of the retroactive side):
+
+- The platform keeps candidate nights per (owner, day): merged evidence -
+  n Shazams, calendar title, n photos, venue key, suggested people - and a
+  state: pending / accepted / dismissed. Dismissed is durable.
+- /home renders pending candidates as cards: Accept (the night is created or
+  updated, and from there it is an ordinary night page - place, DJs, anything
+  editable as always), edit-in-card first, or Skip.
+- **The console gets the identical experience for free** - it shows /home in
+  its frame. This is the unification dividend: "the Mac offers the same as
+  mobile" costs zero Mac UI, which is also how the Mac stays about streaming.
+- A live check-in is just a candidate born accepted.
+
+Units, v2 order:
+
+1. **Venues become records** - `venues` keyed by rounded (~100 m) coords,
+   `events.venue_id`, `place` stays as display text. Naming once names all
+   nights there, past and future; import and go-live resolve automatically.
+2. **The backlog** - the queue, its states, the /home cards. The settings-page
+   import becomes a scanner that fills it.
+3. **Scanner expansion: Calendar + Photos** (+ Contacts, location/SSID) - the
+   one-prompt sanctioned sources, feeding names, venues and photo evidence
+   into the backlog.
+4. **"I'm here"** - phone-web check-in: location tap -> nearest venues ranked
+   by own history -> confirm -> tonight exists, entering the same pipeline.
+5. **People suggestions** - co-attendance x recency x same-venue chips on
+   check-in and creation; enriched by Contacts, later Messages.
+6. **Deep sources** - Mail ticket parsing (incl. attachment OCR), Messages,
+   the venue's own page (URL on the venue record, parsed generically for
+   schema.org Event JSON-LD), and other users' PUBLIC nights at the same venue
+   and date (the network answer; designed now, worth more with every user).
+7. **Series** - same venue + cadence + recurring people => "these six
+   Saturdays at Public Works look like one series - name it once?"; nights
+   inherit, new check-ins default in.
+
+Privacy line: events store venue ids, venues store rounded coordinates, a raw
+GPS fix is never persisted, and raw source content (calendar entries, mail,
+photos) never leaves the Mac - inferences only. Per-night contents permissions
+are unchanged by all of this.
+
+Nothing below this section is started. Units land one at a time, whole,
+beginning with 1+2 on the owner's go.
 
 ## Current position (2026-08-10): the DJ's own Shazams find their party
 
