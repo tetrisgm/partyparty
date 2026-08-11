@@ -75,6 +75,29 @@ Three things that shape the implementation:
   anything" render differently, because reporting the first as the second is a
   lie told to somebody who just declined on purpose.
 
+**The import makes the nights it finds.** A years-old library against a
+week-old party list gives "896 of these have nowhere to go", which is true and
+useless - and the owner's ask was for the Shazams from "various events" that are
+not in PartyParty at all. So the preview also lists days carrying five or more
+matches and no party, and each becomes a party named after its date with those
+tracks already on it. Ten or more starts ticked; the tail is shown unticked,
+because eighteen of this library's 157 nights are obviously nights out and the
+rest are a long dinner somewhere with music. Only the days handed to the route
+are made, a day that already has a party is left alone, and a second run makes
+and adds nothing.
+
+Two bugs from that work worth keeping:
+
+- `internal/cloudsync` is a TYPED pipe between the platform and the console. A
+  field nobody declares there is dropped in silence: the platform sent
+  `newNights`, the struct had no field, and the console rendered the useless
+  answer while the right one sat one hop upstream. Both ends were correct alone,
+  so looking at either proved nothing. `TestNothingThePlatformSaysIsLostInTheMiddle`
+  asserts on the JSON the console receives, not on the struct.
+- `"2026-13-45"` satisfies a `YYYY-MM-DD` regex, parses to NaN, and made a party
+  called "Invalid Date". A date is real when it round-trips, not when it is
+  shaped right.
+
 Desk builds are now Apple Development-signed rather than ad-hoc: `PP_SIGN_ID`
 plus `APP_STORE_PROVISIONING_PROFILE`, profile "PartyParty Mac Dev", expires
 2027-08-10. Strictly better than ad-hoc regardless of Shazam.
