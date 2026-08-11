@@ -15,7 +15,7 @@ import (
 // package never learns how the platform is reached, and so the seam can be
 // tested without one.
 type ShazamImporter interface {
-	ImportShazam(ctx context.Context, items []cloudsync.ShazamItem, preview bool) (cloudsync.ShazamImport, error)
+	ImportShazam(ctx context.Context, items []cloudsync.ShazamItem, preview bool, create []string) (cloudsync.ShazamImport, error)
 }
 
 // shazamShelf is the library snapshot, as the app last read it.
@@ -105,7 +105,8 @@ func (s *srv) handleShazam(w http.ResponseWriter, r *http.Request, path string) 
 			return
 		}
 		var body struct {
-			Preview bool `json:"preview"`
+			Preview bool     `json:"preview"`
+			Create  []string `json:"create"`
 		}
 		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
 		items, at := s.shazam.get()
@@ -123,13 +124,16 @@ func (s *srv) handleShazam(w http.ResponseWriter, r *http.Request, path string) 
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		result, err := s.Shazam.ImportShazam(ctx, items, body.Preview)
+		result, err := s.Shazam.ImportShazam(ctx, items, body.Preview, body.Create)
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 			return
 		}
 		if result.Nights == nil {
 			result.Nights = []cloudsync.ShazamNight{}
+		}
+		if result.NewNights == nil {
+			result.NewNights = []cloudsync.ShazamNewNight{}
 		}
 		writeJSON(w, http.StatusOK, result)
 

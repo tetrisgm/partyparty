@@ -21,10 +21,12 @@ import (
 type fakeImporter struct {
 	got     []cloudsync.ShazamItem
 	preview []bool
+	created []string
 	err     error
 }
 
-func (f *fakeImporter) ImportShazam(_ context.Context, items []cloudsync.ShazamItem, preview bool) (cloudsync.ShazamImport, error) {
+func (f *fakeImporter) ImportShazam(_ context.Context, items []cloudsync.ShazamItem, preview bool, create []string) (cloudsync.ShazamImport, error) {
+	f.created = create
 	if f.err != nil {
 		return cloudsync.ShazamImport{}, f.err
 	}
@@ -35,7 +37,11 @@ func (f *fakeImporter) ImportShazam(_ context.Context, items []cloudsync.ShazamI
 			Slug: "mutant-zoo", Handle: "shokunin", Title: "Mutant zoo",
 			Day: "2026-08-08", Added: len(items),
 		}},
-		Matched: len(items), Preview: preview,
+		NewNights: []cloudsync.ShazamNewNight{{
+			Day: "2025-07-19", Count: 84, Titles: []string{"Xtal - Aphex Twin"},
+		}},
+		NewNightTracks: 84,
+		Matched:        len(items), Preview: preview,
 	}, nil
 }
 
@@ -163,5 +169,39 @@ func TestAPlatformThatFailsIsReportedNotSwallowed(t *testing.T) {
 	shazamState(t, s, &still)
 	if still.Count != 1 {
 		t.Fatal("a failed import threw the library away")
+	}
+}
+
+// Everything the platform says has to reach the console.
+//
+// This is a typed pipe, and a field nobody declared on the way through is not
+// passed on - it is dropped in silence. That is exactly what happened to the
+// nights with no party: the platform sent them, the struct in the middle had no
+// field for them, and the console rendered "896 of these have nowhere to go"
+// while the answer was sitting one hop upstream. Both ends looked right alone.
+func TestNothingTheePlatformSaysIsLostInTheMiddle(t *testing.T) {
+	importer := &fakeImporter{}
+	s := shazamSrv(t, importer)
+	shazamPost(s, "/api/shazam/library",
+		`{"items":[{"title":"Tha","artist":"Aphex Twin","at":1,"night":"2025-07-19"}]}`)
+
+	raw := shazamPost(s, "/api/shazam/import", `{"preview":true}`).Body.Bytes()
+	var seen map[string]any
+	if err := json.Unmarshal(raw, &seen); err != nil {
+		t.Fatal(err)
+	}
+	nights, _ := seen["newNights"].([]any)
+	if len(nights) != 1 {
+		t.Fatalf("the nights with no party did not reach the console: %s", raw)
+	}
+	if seen["newNightTracks"] != float64(84) {
+		t.Fatalf("their weight did not reach the console: %s", raw)
+	}
+
+	// And the days the DJ agreed to must arrive at the platform, or the button
+	// makes nothing and says it made something.
+	shazamPost(s, "/api/shazam/import", `{"preview":false,"create":["2025-07-19","2025-03-22"]}`)
+	if len(importer.created) != 2 || importer.created[0] != "2025-07-19" {
+		t.Fatalf("the platform was asked to make %v", importer.created)
 	}
 }

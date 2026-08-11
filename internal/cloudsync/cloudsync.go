@@ -405,13 +405,28 @@ type ShazamNight struct {
 	Titles []string `json:"titles"` // a few, so a preview can be looked at
 }
 
+// ShazamNewNight is a day with enough matches on it to have been a party, and
+// no party. The DJ decides; this is what they are shown to decide from.
+type ShazamNewNight struct {
+	Day    string   `json:"day"`
+	Count  int      `json:"count"`
+	Titles []string `json:"titles"`
+}
+
 // ShazamImport is what an import did, or would do. The same shape either way:
 // a preview a DJ agrees to must describe the thing that then happens.
+//
+// Every field the platform sends has to exist here. This is a typed pipe, so a
+// field nobody declared is not passed through - it is dropped in silence, which
+// is exactly what happened to newNights: the platform sent it, the console
+// never saw it, and both ends looked correct on their own.
 type ShazamImport struct {
-	Nights    []ShazamNight `json:"nights"`
-	Matched   int           `json:"matched"`   // items that found a night
-	Unmatched int           `json:"unmatched"` // items on days with no party
-	Preview   bool          `json:"preview"`
+	Nights         []ShazamNight    `json:"nights"`
+	NewNights      []ShazamNewNight `json:"newNights"`
+	NewNightTracks int              `json:"newNightTracks"`
+	Matched        int              `json:"matched"`   // items that found a night
+	Unmatched      int              `json:"unmatched"` // items on days with no party
+	Preview        bool             `json:"preview"`
 }
 
 // ImportShazam files a Shazam library into the nights it belongs to.
@@ -419,13 +434,19 @@ type ShazamImport struct {
 // With preview set nothing is written and the answer describes what would be.
 // The DJ sees that first: an import that silently rewrites four parties' track
 // lists is worse than no import at all.
-func (c *Client) ImportShazam(ctx context.Context, items []ShazamItem, preview bool) (ShazamImport, error) {
+// `create` is the days the DJ agreed to make parties for, and is empty for
+// every ordinary import.
+func (c *Client) ImportShazam(ctx context.Context, items []ShazamItem, preview bool, create []string) (ShazamImport, error) {
 	if !c.ready() {
 		return ShazamImport{}, errors.New("cloudsync: not configured")
 	}
+	if create == nil {
+		create = []string{}
+	}
 	var out ShazamImport
 	err := c.post(ctx, "/api/v1/shazam/import", map[string]any{
-		"id": c.InstallID, "secret": c.Secret, "items": items, "preview": preview,
+		"id": c.InstallID, "secret": c.Secret, "items": items,
+		"preview": preview, "create": create,
 	}, &out)
 	return out, err
 }
