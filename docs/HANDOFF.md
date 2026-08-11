@@ -1,5 +1,61 @@
 # PartyParty.party handoff
 
+## Direction (2026-08-10): the product is a check-in journal, on the web
+
+The owner, right after the Shazam import reconstructed eighteen nights with
+their venues: the experience to build toward is Foursquare's check-in, for
+parties. "I'm here" / "I was there" - and the app answers with the club
+(disambiguating neighbours when two are close), the party that was on, and the
+people you were probably with, the way Partiful suggests whoever you last
+partied with. Give it permissions and let it scan. The WEB APP is where this
+lives; the Mac app stays about streaming, and acts only as a quiet scanner of
+local stores it has been granted (it already reads the Shazam library at
+launch).
+
+The unlock that makes it buildable now: check-in is a PHONE moment, and the
+phone surface already exists. partyparty.party in mobile Safari can ask for
+location with one tap (navigator.geolocation). No iOS app is needed for the
+Foursquare mechanic.
+
+The plan, in complete units, each shippable alone:
+
+1. **Venues become records.** A `venues` table keyed by rounded (~100 m)
+   coordinates: name, geocoded address, optional URL; `events.venue_id`, with
+   `place` kept as display text. Naming a venue once names every night there,
+   past and future - the owner named Public Works once and six nights changed.
+   The Shazam import and go-live both resolve the venue automatically.
+2. **"I'm here"** - check-in on the phone web, signed-in, from /home: one
+   location tap -> nearest venues ranked by the owner's own history ("Public
+   Works - 6 nights" first, geocoded candidates after) -> confirm -> tonight's
+   night exists at that venue with you on it.
+3. **"With Cy and Dee?"** - the Partiful move. On check-in or creation, suggest
+   people ranked by co-attendance x recency x same-venue history. One tap adds
+   them. The data already accumulates in `party_people`; this is a query and a
+   row of chips.
+4. **"Were you at...?"** - the retroactive check-in, ambient. The settings-page
+   import becomes ongoing: the Mac scanner (Shazam today; Calendar via EventKit
+   next - one permission prompt, and a calendar entry on a party night is very
+   often the party's actual name) posts candidate nights, and /home shows
+   suggestion cards: "Friday at Public Works - 12 Shazams. Make it?"
+5. **Naming the party itself**, a ladder tried in order: the owner's own
+   repeat-venue history; the calendar entry title; the venue's own page - a URL
+   on the venue record, parsed generically for schema.org Event JSON-LD (most
+   ticketing and many venue pages carry it; no per-site scraping); other users'
+   PUBLIC nights at the same venue and date (designed now, worth more with
+   every user); ticket emails and image OCR LAST and opt-in - though the
+   songs-as-screenshots pattern already covers most of it: drop the ticket
+   screenshot on the night.
+6. **Series.** Same venue + cadence + recurring people => "these six Saturdays
+   at Public Works look like one series - name it once?" Nights inherit; a new
+   check-in there defaults into it.
+
+Privacy line: events store venue ids, venues store rounded coordinates, and a
+raw GPS fix is never persisted. The per-night contents permissions are
+unchanged by any of this.
+
+Nothing below is started. Units land one at a time, whole, beginning with 1+2
+on the owner's go.
+
 ## Current position (2026-08-10): the DJ's own Shazams find their party
 
 The in-app recognizer only ever hears what THIS Mac broadcast. A DJ Shazams all
