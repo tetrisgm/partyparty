@@ -6,8 +6,19 @@
 commits touched no broadcast code, verified by path diff, but three findings
 matter here):**
 
-1. **Live track recognition is very likely dead in every lane, and the
-   "Shazam verdict (2026-08-05)" section below is too optimistic.** The
+1. **CORRECTED 2026-08-11, later the same night: live recognition WORKS.**
+   The dev-signed build (Mac Development profile, below) caught two real
+   tracks off the Mac's own output during testing - "Come As You Are (Live)"
+   by Post Malone and "Canada" by CoLD SToRAGE, the second with catalog
+   artwork, which only Apple's Shazam catalog supplies - and `shazamd` was
+   running. So SHSession catalog matching is fine with a real profile. What
+   is broken is only `SHLibrary`, the READ of the user's own library, which
+   returns empty; that is clubclub's problem, not this app's. Now Playing and
+   the track list work here today. The paragraph that follows was written
+   before that evidence and is kept because its facts about the entitlement
+   are still true - they just do not stop recognition.
+
+   **The entitlement facts, unchanged.** The
    journal era proved (2026-08-10): the App ID carries SHAZAM_KIT
    (`asc bundle-ids capabilities list --bundle YPMR3HYD9L`) but NO
    provisioning profile generated from it - fresh MAC_APP_DEVELOPMENT and
