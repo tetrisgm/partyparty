@@ -449,13 +449,66 @@ None recorded.
 - Judging room health via the r-<token> URL with curl: the Worker serves its relayBootstrap for every path on r- hosts; judge at <token>.relay… or /__pp/health on the box
 - Concluding files are missing from ls of ~/Library/Containers/...: TCC shows those dirs as empty to a no-FDA shell; prove absence by file read
 
+## MEASURED 2026-08-11: the two paths do not agree, and direct misses D
+
+A relay verification (the standing field debt below) turned up something
+bigger than the thing it was checking. Both numbers are from
+`scripts/soak-playback.sh`, a real muted AVPlayer, room live on the test tone,
+two minutes each, receipts in `build/`:
+
+| path | what the player fetches | EXT-X-START served | measured | verdict |
+|---|---|---|---|---|
+| direct `:8443/live/party/index.m3u8` | multivariant | `TIME-OFFSET=-3.000,PRECISE=YES` | **1.17s** | SOAK FAIL |
+| relay `<token>.relay…/stream.m3u8` | media playlist | none at all | **3.33s** | SOAK PASS |
+
+`latency` in that harness is `Date() - item.currentDate()`: wall clock minus
+the PROGRAM-DATE-TIME under the playhead, so it is true end-to-end delay, not
+a distance from the playlist edge.
+
+Read it in that order, because it is the reverse of what everyone assumed:
+
+- **Direct is the one that is wrong.** It carries the correct July D=3 pin, in
+  the multivariant, with PRECISE - the exact form `AGENTS.md` records as
+  re-proven at 3.11s flat before upload (affebd3) - and a real AVPlayer sits at
+  1.17s anyway. 1.17s is about PART-HOLD-BACK (0.9) plus the packaging floor,
+  which is where a player lands when it ignores the pin. The pin is being
+  served and is not taking effect. Reproduced in forced-relay AND in clean
+  auto/direct mode, so it is not an artifact of the override.
+- **Relay is near 3.0 by accident, not by design.** Nothing authors an
+  attachment point on that path: `contribute.cycle` fetches the multivariant
+  only to learn the variant name and publishes the MEDIA playlist as
+  `stream.m3u8`, and `schedule.RewritePlaylist` only adds the pin to a
+  playlist containing `EXT-X-STREAM-INF`. A relayed guest is handed a media
+  playlist with a hold-back and no pin. Its 3.33s is 1.17s of direct plus
+  ~2.2s of relay hop.
+- **So a room with both kinds of guest is ~2.2s out of sync with itself**,
+  which is the one thing `internal/schedule` exists to prevent, and the
+  comment in `contribute.cycle` claims it prevents.
+
+NOT FIXED, deliberately. `AGENTS.md` gates any change to hold-back,
+EXT-X-START, the room delay or segment shape on a real-AVPlayer soak that
+passes BEFORE a build goes anywhere, and the audio core on a supervised
+go-live test. Both belong to the owner's next real set, not to an unattended
+session. What is done is the measurement and the receipts.
+
+Worth knowing before touching it: `AGENTS.md`'s never-again list already
+records that the offset interacts with the parts region - stretching
+PART-HOLD-BACK to 2.9 put the pin outside it and AVPlayer snapped the listener
+to the window's oldest edge. A -3.000 offset against a 0.9 hold-back and a
+0.512s/0.171s window may be the same interaction seen from the other side.
+
 ## Owed
 
 - Correction to Apple DTS: an earlier support message said the host was
   "macOS 26.0". It is macOS 27.0 build `26A5388g`.
 - Field tests no simulator can stand in for: a real-iPhone wildcard-cert join,
   and a relayed party with more phones than one simulator on venue Wi-Fi
-  (`docs/relay-architecture.md`).
+  (`docs/relay-architecture.md`). The relay MEDIA path itself is no longer
+  unverified - one AVPlayer played it end to end (see above) - what is still
+  owed there is many phones on venue Wi-Fi.
+- The direct path's 1.17s vs its declared 3.00s, and the ~2.2s split between
+  direct and relayed guests in one room. Measured, reproduced, not fixed:
+  it is audio-core work and needs a supervised set.
 - Nothing on the web pages. The stacked layout eras are collapsed: dead rules
   removed and every selector declared more than once in the same context merged
   into one canonical rule (listener 500 -> 359 live rules, dj 438 -> 311), with
