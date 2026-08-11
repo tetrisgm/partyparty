@@ -397,6 +397,7 @@ type ShazamItem struct {
 // ShazamNight is one party an import found matches for.
 type ShazamNight struct {
 	Slug   string   `json:"slug"`
+	Place  string   `json:"place"`
 	Handle string   `json:"handle"`
 	Title  string   `json:"title"`
 	Day    string   `json:"day"`
@@ -411,6 +412,7 @@ type ShazamNewNight struct {
 	Day    string   `json:"day"`
 	Count  int      `json:"count"`
 	Titles []string `json:"titles"`
+	Place  string   `json:"place"`
 }
 
 // ShazamImport is what an import did, or would do. The same shape either way:
@@ -436,17 +438,20 @@ type ShazamImport struct {
 // lists is worse than no import at all.
 // `create` is the days the DJ agreed to make parties for, and is empty for
 // every ordinary import.
-func (c *Client) ImportShazam(ctx context.Context, items []ShazamItem, preview bool, create []string) (ShazamImport, error) {
+func (c *Client) ImportShazam(ctx context.Context, items []ShazamItem, preview bool, create []string, places map[string]string) (ShazamImport, error) {
 	if !c.ready() {
 		return ShazamImport{}, errors.New("cloudsync: not configured")
 	}
 	if create == nil {
 		create = []string{}
 	}
+	if places == nil {
+		places = map[string]string{}
+	}
 	var out ShazamImport
 	err := c.post(ctx, "/api/v1/shazam/import", map[string]any{
 		"id": c.InstallID, "secret": c.Secret, "items": items,
-		"preview": preview, "create": create,
+		"preview": preview, "create": create, "places": places,
 	}, &out)
 	return out, err
 }

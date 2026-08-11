@@ -147,7 +147,8 @@ enum ShazamStore {
         var statement: OpaquePointer?
         // ZDATE is Core Data's epoch - seconds since 2001-01-01 - so it becomes
         // a Date through timeIntervalSinceReferenceDate rather than 1970.
-        let sql = "SELECT ZTITLE, ZSUBTITLE, ZDATE, ZSHAZAMKEY, ZARTWORKURL FROM ZSHTRACKMO "
+        let sql = "SELECT ZTITLE, ZSUBTITLE, ZDATE, ZSHAZAMKEY, ZARTWORKURL, "
+            + "ZLATITUDE, ZLONGITUDE FROM ZSHTRACKMO "
             + "WHERE ZTITLE IS NOT NULL AND ZDATE IS NOT NULL ORDER BY ZDATE"
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
             NSLog("PartyParty: Shazam library has an unexpected shape")
@@ -162,13 +163,23 @@ enum ShazamStore {
             let title = text(0)
             if title.isEmpty { continue }
             let when = Date(timeIntervalSinceReferenceDate: sqlite3_column_double(statement, 2))
+            // -180,-180 is Shazam's "no location", and it is common enough to
+            // matter: fourteen of one night's eighty-four rows carried it, and
+            // averaging them put the party in the Pacific.
+            var lat = sqlite3_column_double(statement, 5)
+            var lon = sqlite3_column_double(statement, 6)
+            if abs(lat) > 89.9 || abs(lon) > 179.9 || (lat == 0 && lon == 0) {
+                lat = 0
+                lon = 0
+            }
             out.append(ShazamLibrary.Item(
                 title: title,
                 artist: text(1),
                 shazamID: text(3),
                 artworkURL: text(4),
                 atMs: Int64(when.timeIntervalSince1970 * 1000),
-                night: ShazamLibrary.night(of: when, calendar: calendar)))
+                night: ShazamLibrary.night(of: when, calendar: calendar),
+                lat: lat, lon: lon))
         }
         return out
     }

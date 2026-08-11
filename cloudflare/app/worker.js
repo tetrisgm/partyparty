@@ -787,6 +787,10 @@ gap:8px 20px;margin:2px 0 10px}
 .picknight.on{opacity:1}
 .picknight input{position:absolute;left:16px;top:18px;width:17px;height:17px;
 accent-color:var(--accent);cursor:pointer}
+/* Where the night was, worked out from its own coordinates. Louder than the
+   track list under it, because it is the line that makes somebody say "oh,
+   THAT one" - a date alone rarely does. */
+.wherewas{font-size:13px;font-weight:650;color:var(--label);margin:2px 0 1px}
 textarea{width:100%;padding:11px 14px;border-radius:var(--r-sm);
 border:1px solid var(--separator);background:var(--bg-elevated);color:var(--label);
 font:inherit;font-size:15px;outline:none;resize:vertical}
@@ -1514,7 +1518,8 @@ function shazamImport() {
       const onto = found.nights.length
         ? '<p>From ' + count + ' Shazam' + (count === 1 ? '' : 's') + ':</p>' +
           found.nights.map((n) => card(esc(n.title || 'Untitled'), '+' + n.added,
-            esc(day(n.day)) + (n.titles && n.titles.length
+            esc(day(n.day)) + (n.place ? ' &middot; ' + esc(n.place) : '') +
+            (n.titles && n.titles.length
               ? ' &middot; ' + esc(n.titles.join(', ')) : ''))).join('') +
           '<button class="btn plain" id="shazamadd" type="button">Add them</button>'
         : '';
@@ -1534,6 +1539,7 @@ function shazamImport() {
             (n.count >= SURE ? ' on' : '') + '"><input type="checkbox" value="' + n.day + '"' +
             (n.count >= SURE ? ' checked' : '') + '><div class="importnight"><strong>' +
             esc(day(n.day)) + '</strong><span class="tag live">' + n.count + '</span></div>' +
+            (n.place ? '<div class="wherewas">' + esc(n.place) + '</div>' : '') +
             '<div class="muted">' + esc(n.titles.join(', ')) + '</div></label>').join('') +
           '<p class="muted">Each becomes a party named after its date, with those tracks ' +
           'already on it. Rename them whenever.</p>' +
@@ -4118,7 +4124,7 @@ export default {
       // made first. Whichever it picks, the preview names it, so the DJ agrees
       // to a night rather than to a guess.
       const { results: nights = [] } = await env.DB.prepare(
-        `SELECT id, slug, title, starts_ms FROM events
+        `SELECT id, slug, title, starts_ms, place FROM events
           WHERE group_id = ? AND starts_ms IS NOT NULL
           ORDER BY starts_ms, CASE WHEN live_ms > 0 THEN 0 ELSE 1 END, created_ms`
       ).bind(group.id).all();
@@ -4134,6 +4140,12 @@ export default {
       // Nights the DJ has agreed to make. A list of days rather than a "create
       // everything" flag, because what they pressed the button on was a list -
       // and 157 nights of Shazams is not 157 parties.
+      // Where each night was, worked out on the Mac from the coordinates Shazam
+      // stores with every match. A night out is one room: across the first real
+      // import the spread within a night was 8 to 35 metres.
+      const placeOf = (body.places && typeof body.places === "object") ? body.places : {};
+      const placeFor = (day) => String(placeOf[day] || "").trim().slice(0, 120);
+
       const making = new Set((Array.isArray(body.create) ? body.create : [])
         .map((d) => String(d)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)));
       for (const day of making) {
@@ -4151,7 +4163,7 @@ export default {
           title: new Date(stamp).toLocaleDateString("en-GB",
             { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
           startsMs: stamp,
-          place: "",
+          place: placeFor(day),
         }, now);
         if (made.error || !made.id) continue;
         byDay.set(day, { id: made.id, slug: made.slug, title: made.title || day,
@@ -4174,7 +4186,9 @@ export default {
         if (!title) continue;
         if (!night) {
           unmatched++;
-          if (!orphans.has(day)) orphans.set(day, { day, count: 0, titles: [] });
+          if (!orphans.has(day)) {
+            orphans.set(day, { day, count: 0, titles: [], place: placeFor(day) });
+          }
           const seen = orphans.get(day);
           seen.count++;
           if (seen.titles.length < 3) seen.titles.push(artist ? `${title} - ${artist}` : title);
@@ -4190,9 +4204,18 @@ export default {
             `SELECT title, artist FROM songs WHERE event_id = ?`).bind(night.id).all();
           seenPerEvent.set(night.id, new Set(
             had.map((r) => `${r.title}\u0000${r.artist || ""}`)));
+          const on = new Date(night.starts_ms).toISOString().slice(0, 10);
+          // A night that never got a place gets the one its own music was heard
+          // at. Never an overwrite: somebody who typed a venue meant it.
+          const found = placeFor(on);
+          if (!preview && found && !String(night.place || "").trim()) {
+            await env.DB.prepare(`UPDATE events SET place = ?, updated_ms = ? WHERE id = ?`)
+              .bind(found, now, night.id).run();
+            night.place = found;
+          }
           report.set(night.id, {
             slug: night.slug, handle: group.handle, title: night.title,
-            day: new Date(night.starts_ms).toISOString().slice(0, 10),
+            day: on, place: String(night.place || "").trim() || found,
             added: 0, had: had.length, titles: [],
           });
         }

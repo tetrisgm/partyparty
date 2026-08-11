@@ -22,11 +22,13 @@ type fakeImporter struct {
 	got     []cloudsync.ShazamItem
 	preview []bool
 	created []string
+	placed  map[string]string
 	err     error
 }
 
-func (f *fakeImporter) ImportShazam(_ context.Context, items []cloudsync.ShazamItem, preview bool, create []string) (cloudsync.ShazamImport, error) {
+func (f *fakeImporter) ImportShazam(_ context.Context, items []cloudsync.ShazamItem, preview bool, create []string, places map[string]string) (cloudsync.ShazamImport, error) {
 	f.created = create
+	f.placed = places
 	if f.err != nil {
 		return cloudsync.ShazamImport{}, f.err
 	}

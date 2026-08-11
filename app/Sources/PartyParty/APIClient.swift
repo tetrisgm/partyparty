@@ -123,10 +123,13 @@ final class APIClient {
     /// platform) talks to the server about a snapshot already here. An empty
     /// array is a real answer; `denied` is the other one, and they must not be
     /// told to somebody as the same thing.
-    func postShazamLibrary(_ items: [ShazamLibrary.Item], denied: Bool = false) {
+    func postShazamLibrary(_ items: [ShazamLibrary.Item], denied: Bool = false,
+                           places: [String: String] = [:], placesPending: Int = 0) {
         guard let u = URL(string: "http://127.0.0.1:\(port)/api/shazam/library"),
-              let body = try? JSONSerialization.data(
-                withJSONObject: ["items": items.map(\.json), "denied": denied]) else { return }
+              let body = try? JSONSerialization.data(withJSONObject: [
+                  "items": items.map(\.json), "denied": denied,
+                  "places": places, "placesPending": placesPending,
+              ]) else { return }
         var req = URLRequest(url: u)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

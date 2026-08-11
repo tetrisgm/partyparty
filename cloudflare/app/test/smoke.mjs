@@ -2943,6 +2943,48 @@ test("a night with no party can become one, with its tracks already on it", asyn
   assert.equal(rows(env, `SELECT * FROM songs`).length, 6, "the tracks were doubled");
 });
 
+test("a night names its own venue, and never overwrites one somebody typed", async () => {
+  const { env, send } = await signedIn();
+  const handle = one(env, `SELECT handle FROM profiles`).handle;
+  // One night that exists with a place already, one that exists with none.
+  await send("/parties/new", { title: "Named night", day: "2025-05-01", place: "Frank's kitchen" });
+  await send("/parties/new", { title: "Blank night", day: "2025-05-02" });
+  const mac = await linkedInstall(env, handle);
+
+  const items = [
+    { title: "A", artist: "X", at: 1, night: "2025-05-01" },
+    { title: "B", artist: "X", at: 2, night: "2025-05-02" },
+  ];
+  for (let i = 0; i < 6; i++) items.push({ title: `N${i}`, artist: "X", at: 3, night: "2025-05-03" });
+  const places = {
+    "2025-05-01": "195 Erie St, San Francisco",
+    "2025-05-02": "Pier 80, San Francisco",
+    "2025-05-03": "42 Norfolk St, San Francisco",
+  };
+
+  // A preview writes nothing, and offers the venue with the night it belongs to.
+  const shown = await (await api(env, "/api/v1/shazam/import",
+    { ...mac, items, places, preview: true })).json();
+  assert.equal(shown.newNights[0].place, "42 Norfolk St, San Francisco",
+    "the night with no party was offered without its venue");
+  assert.equal(one(env, `SELECT place FROM events WHERE title = 'Blank night'`).place, "",
+    "a preview wrote a place");
+
+  await api(env, "/api/v1/shazam/import",
+    { ...mac, items, places, preview: false, create: ["2025-05-03"] });
+
+  // The blank one is filled, the typed one is left exactly alone.
+  assert.equal(one(env, `SELECT place FROM events WHERE title = 'Blank night'`).place,
+    "Pier 80, San Francisco", "an empty place was not filled in");
+  assert.equal(one(env, `SELECT place FROM events WHERE title = 'Named night'`).place,
+    "Frank's kitchen", "it overwrote a place somebody typed");
+  // And a night it makes is born knowing where it was.
+  const made = one(env, `SELECT title, place FROM events WHERE starts_ms = ?`,
+    Date.parse("2025-05-03T12:00:00Z"));
+  assert.equal(made.place, "42 Norfolk St, San Francisco",
+    "a night made from Shazams did not get its venue");
+});
+
 test("only the nights the DJ agreed to are made", async () => {
   const { env } = await signedIn();
   const mac = await installForPersonWithNoParties(env);

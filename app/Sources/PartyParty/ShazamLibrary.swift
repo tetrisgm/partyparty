@@ -29,6 +29,10 @@ enum ShazamLibrary {
         var artworkURL: String
         var atMs: Int64
         var night: String   // YYYY-MM-DD, the night it belongs to
+        // Where it was heard. Shazam records this for every match, and it is
+        // what lets a night name its own venue. (0, 0) means it did not.
+        var lat: Double = 0
+        var lon: Double = 0
 
         var json: [String: Any] {
             var out: [String: Any] = [
@@ -63,8 +67,23 @@ enum ShazamLibrary {
             guard ShazamStore.readable() else { return }
             Task.detached(priority: .utility) {
                 let items = ShazamStore.read()
-                NSLog("PartyParty: Shazam library read (\(items.count) matches)")
-                APIClient(port: port).postShazamLibrary(items)
+                // Send what is known immediately - a venue lookup is a network
+                // call at one a second and the library must not wait behind it.
+                let first = ShazamPlaces.known(for: items)
+                NSLog("PartyParty: Shazam library read (\(items.count) matches, "
+                    + "\(first.places.count) nights placed, \(first.missing) to look up)")
+                APIClient(port: port).postShazamLibrary(
+                    items, places: first.places, placesPending: first.missing)
+                guard first.missing > 0 else { return }
+
+                // Then find the rest and say so again. The console notices the
+                // second answer and redraws; nobody sat waiting for it.
+                await ShazamPlaces.fill(for: items)
+                let then = ShazamPlaces.known(for: items)
+                NSLog("PartyParty: venues resolved (\(then.places.count) nights placed, "
+                    + "\(then.missing) still unknown)")
+                APIClient(port: port).postShazamLibrary(
+                    items, places: then.places, placesPending: then.missing)
             }
         }
     }

@@ -15,7 +15,7 @@ import (
 // package never learns how the platform is reached, and so the seam can be
 // tested without one.
 type ShazamImporter interface {
-	ImportShazam(ctx context.Context, items []cloudsync.ShazamItem, preview bool, create []string) (cloudsync.ShazamImport, error)
+	ImportShazam(ctx context.Context, items []cloudsync.ShazamItem, preview bool, create []string, places map[string]string) (cloudsync.ShazamImport, error)
 }
 
 // shazamShelf is the library snapshot, as the app last read it.
@@ -27,18 +27,23 @@ type ShazamImporter interface {
 // `denied` from "you said no"; all three are different things to tell somebody
 // waiting for a button to do something.
 type shazamShelf struct {
-	mu     sync.RWMutex
-	items  []cloudsync.ShazamItem
-	at     time.Time
-	denied bool
+	mu      sync.RWMutex
+	items   []cloudsync.ShazamItem
+	at      time.Time
+	denied  bool
+	places  map[string]string // night -> where it was, once the app has looked
+	pending int               // venues still being looked up
 }
 
-func (s *shazamShelf) put(items []cloudsync.ShazamItem, denied bool) {
+func (s *shazamShelf) put(items []cloudsync.ShazamItem, denied bool,
+	places map[string]string, pending int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items = items
 	s.at = time.Now()
 	s.denied = denied
+	s.places = places
+	s.pending = pending
 }
 
 func (s *shazamShelf) get() ([]cloudsync.ShazamItem, time.Time) {
@@ -53,6 +58,15 @@ func (s *shazamShelf) refused() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.denied
+}
+
+// where reports the venues found so far, and how many are still being looked
+// up. The second number is why the console knows to ask again: a first import
+// sends what it has immediately and finds the rest at one a second.
+func (s *shazamShelf) where_() (map[string]string, int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.places, s.pending
 }
 
 // handleShazam serves the three sides of the import: the app putting a library
@@ -72,23 +86,28 @@ func (s *srv) handleShazam(w http.ResponseWriter, r *http.Request, path string) 
 			return
 		}
 		var body struct {
-			Items  []cloudsync.ShazamItem `json:"items"`
-			Denied bool                   `json:"denied"`
+			Items         []cloudsync.ShazamItem `json:"items"`
+			Denied        bool                   `json:"denied"`
+			Places        map[string]string      `json:"places"`
+			PlacesPending int                    `json:"placesPending"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad json"})
 			return
 		}
-		s.shazam.put(body.Items, body.Denied)
+		s.shazam.put(body.Items, body.Denied, body.Places, body.PlacesPending)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "count": len(body.Items)})
 
 	case "/api/shazam":
 		items, at := s.shazam.get()
+		places, pending := s.shazam.where_()
 		out := map[string]any{
-			"read":      !at.IsZero(),
-			"count":     len(items),
-			"available": s.Shazam != nil,
-			"denied":    s.shazam.refused(),
+			"read":          !at.IsZero(),
+			"count":         len(items),
+			"available":     s.Shazam != nil,
+			"denied":        s.shazam.refused(),
+			"placed":        len(places),
+			"placesPending": pending,
 		}
 		if !at.IsZero() {
 			out["readMs"] = at.UnixMilli()
@@ -124,7 +143,8 @@ func (s *srv) handleShazam(w http.ResponseWriter, r *http.Request, path string) 
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		result, err := s.Shazam.ImportShazam(ctx, items, body.Preview, body.Create)
+		places, _ := s.shazam.where_()
+		result, err := s.Shazam.ImportShazam(ctx, items, body.Preview, body.Create, places)
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 			return
