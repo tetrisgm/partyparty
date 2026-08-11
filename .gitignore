@@ -6,6 +6,10 @@
 # runtime output: HLS segments, generated certs, mediamtx config, letsencrypt
 /run/
 *.log
+# except the playback soaks: AGENTS.md requires the log itself as the receipt
+# for any claim about where a real AVPlayer sat, so these are evidence, not
+# build noise, and they have to survive the worktree they were produced in.
+!docs/receipts/*.log
 .DS_Store
 # certs / private keys - NEVER commit these (all generated at runtime)
 *.pem
