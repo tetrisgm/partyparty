@@ -76,14 +76,24 @@ enum ShazamLibrary {
                     items, places: first.places, placesPending: first.missing)
                 guard first.missing > 0 else { return }
 
-                // Then find the rest and say so again. The console notices the
-                // second answer and redraws; nobody sat waiting for it.
-                await ShazamPlaces.fill(for: items)
-                let then = ShazamPlaces.known(for: items)
-                NSLog("PartyParty: venues resolved (\(then.places.count) nights placed, "
-                    + "\(then.missing) still unknown)")
-                APIClient(port: port).postShazamLibrary(
-                    items, places: then.places, placesPending: then.missing)
+                // Then find the rest, a handful at a time, saying so after each
+                // handful. Geocoding is one request a second, so a first library
+                // takes a couple of minutes - and the console shows venues
+                // filling in rather than nothing until it is all done.
+                var left = first.missing
+                while left > 0 {
+                    await ShazamPlaces.fill(for: items, limit: 8)
+                    let now = ShazamPlaces.known(for: items)
+                    APIClient(port: port).postShazamLibrary(
+                        items, places: now.places, placesPending: now.missing)
+                    // No progress means no point going round again: a geocoder
+                    // that answers nothing will answer nothing forever, and a
+                    // loop that cannot finish is worse than an unknown venue.
+                    if now.missing >= left { break }
+                    left = now.missing
+                }
+                NSLog("PartyParty: venues resolved (\(ShazamPlaces.known(for: items).places.count) "
+                    + "nights placed)")
             }
         }
     }
