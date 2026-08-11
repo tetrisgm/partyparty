@@ -1461,9 +1461,9 @@ function shazamImport() {
       return isNaN(at) ? iso : new Date(at).toLocaleDateString(undefined,
         { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
     };
-    const run = (preview) => fetch('/api/shazam/import', {
+    const run = (preview, create) => fetch('/api/shazam/import', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ preview }),
+      body: JSON.stringify({ preview, create: create || [] }),
     }).then(async (r) => {
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.error || 'import failed');
@@ -1491,25 +1491,50 @@ function shazamImport() {
     };
 
     const show = (found, count) => {
-      if (!found.nights.length) {
+      const could = found.newNights || [];
+      if (!found.nights.length && !could.length) {
         said.innerHTML = found.unmatched
           ? '<p>' + found.unmatched + ' Shazam' + (found.unmatched === 1 ? '' : 's') +
-            ' here, but none of them land on a day you have a party for.</p>'
+            ' here, scattered over days too quiet to have been parties.</p>'
           : '<p>Nothing new - every Shazam that matches one of your parties is already on it.</p>';
         return;
       }
-      said.innerHTML = '<p>From ' + count + ' Shazam' + (count === 1 ? '' : 's') + ':</p>' +
-        found.nights.map((n) => '<div class="card"><div class="importnight"><strong>' +
-          esc(n.title || 'Untitled') + '</strong><span class="tag live">+' + n.added +
-          '</span></div><div class="muted">' + esc(day(n.day)) +
-          (n.titles && n.titles.length ? ' &middot; ' + esc(n.titles.join(', ')) : '') +
-          '</div></div>').join('') +
-        (found.unmatched ? '<p class="muted">' + found.unmatched +
-          ' more happened on days with no party.</p>' : '') +
-        '<button class="btn plain" id="shazamadd" type="button">Add them</button>';
-      document.getElementById('shazamadd').onclick = async (e) => {
-        e.target.disabled = true;
-        e.target.textContent = 'Adding\\u2026';
+
+      const card = (name, badge, under) => '<div class="card"><div class="importnight">' +
+        '<strong>' + name + '</strong><span class="tag live">' + badge + '</span></div>' +
+        (under ? '<div class="muted">' + under + '</div>' : '') + '</div>';
+
+      // What goes onto parties that already exist.
+      const onto = found.nights.length
+        ? '<p>From ' + count + ' Shazam' + (count === 1 ? '' : 's') + ':</p>' +
+          found.nights.map((n) => card(esc(n.title || 'Untitled'), '+' + n.added,
+            esc(day(n.day)) + (n.titles && n.titles.length
+              ? ' &middot; ' + esc(n.titles.join(', ')) : ''))).join('') +
+          '<button class="btn plain" id="shazamadd" type="button">Add them</button>'
+        : '';
+
+      // And the nights that WERE parties and were never written down. Without
+      // this the honest answer for a years-old library is "896 of these have
+      // nowhere to go", which is true and useless.
+      const rest = could.length
+        ? '<div class="sectionhead" style="margin:26px 0 8px"><h2>Nights with no party</h2>' +
+          '<span class="muted">' + found.newNightTracks + ' tracks across ' +
+          could.length + '</span></div>' +
+          could.map((n) => card(esc(day(n.day)), n.count, esc(n.titles.join(', ')))).join('') +
+          '<p class="muted">Each becomes a party named after its date, with those tracks ' +
+          'already on it. Rename them whenever.</p>' +
+          '<button class="btn plain" id="shazammake" type="button">Make these ' +
+          could.length + ' parties</button>'
+        : (found.unmatched
+          ? '<p class="muted">' + found.unmatched +
+            ' more are spread over days too quiet to have been parties.</p>' : '');
+
+      said.innerHTML = onto + rest;
+
+      const working = (button, word) => { button.disabled = true; button.textContent = word; };
+      const add = document.getElementById('shazamadd');
+      if (add) add.onclick = async (e) => {
+        working(e.target, 'Adding\\u2026');
         try {
           const done = await run(false);
           const added = done.nights.reduce((sum, n) => sum + n.added, 0);
@@ -1517,6 +1542,19 @@ function shazamImport() {
             done.nights.length + ' part' + (done.nights.length === 1 ? 'y' : 'ies') + '.</p>';
         } catch (err) {
           said.innerHTML = '<p>Could not add them: ' + esc(err.message || err) + '</p>';
+        }
+      };
+      const make = document.getElementById('shazammake');
+      if (make) make.onclick = async (e) => {
+        working(e.target, 'Making\\u2026');
+        try {
+          const done = await run(false, could.map((n) => n.day));
+          const added = done.nights.reduce((sum, n) => sum + n.added, 0);
+          said.innerHTML = '<p>Made ' + could.length + ' part' +
+            (could.length === 1 ? 'y' : 'ies') + ' and put ' + added +
+            ' tracks on them, named after their dates. They are on your home page.</p>';
+        } catch (err) {
+          said.innerHTML = '<p>Could not make them: ' + esc(err.message || err) + '</p>';
         }
       };
     };
@@ -4060,16 +4098,56 @@ export default {
 
       const preview = !!body.preview;
       const items = Array.isArray(body.items) ? body.items.slice(0, 5000) : [];
+
+      // Nights the DJ has agreed to make. A list of days rather than a "create
+      // everything" flag, because what they pressed the button on was a list -
+      // and 157 nights of Shazams is not 157 parties.
+      const making = new Set((Array.isArray(body.create) ? body.create : [])
+        .map((d) => String(d)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)));
+      for (const day of making) {
+        if (byDay.has(day)) continue;
+        // The shape being right is not the date being real: "2026-13-45" passes
+        // a regex and parses to NaN, and made a party called "Invalid Date".
+        // Round-tripping is the check that a date exists.
+        const stamp = Date.parse(day + "T12:00:00Z");
+        if (!Number.isFinite(stamp)) continue;
+        if (new Date(stamp).toISOString().slice(0, 10) !== day) continue;
+        const made = await createParty(env, group, {
+          ownerEmail: owner.email_norm,
+          // The date, as a name somebody will obviously want to change. A list
+          // of eighteen "Untitled" is worse than a list of eighteen dates.
+          title: new Date(stamp).toLocaleDateString("en-GB",
+            { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+          startsMs: stamp,
+          place: "",
+        }, now);
+        if (made.error || !made.id) continue;
+        byDay.set(day, { id: made.id, slug: made.slug, title: made.title || day,
+          starts_ms: stamp });
+      }
       const seenPerEvent = new Map();   // event id -> Set of title\0artist
       const report = new Map();         // event id -> what this import does to it
       let matched = 0, unmatched = 0;
 
+      // What a night with no party looks like, so the DJ can decide it was one.
+      // Only nights with a few tracks: one Shazam on a Tuesday is walking past
+      // a bar, and offering to make a party of it is noise.
+      const orphans = new Map();
+
       for (const raw of items) {
         const title = String(raw && raw.title || "").trim().slice(0, 200);
         const artist = String(raw && raw.artist || "").trim().slice(0, 120);
-        const night = byDay.get(String(raw && raw.night || ""));
+        const day = String(raw && raw.night || "");
+        const night = byDay.get(day);
         if (!title) continue;
-        if (!night) { unmatched++; continue; }
+        if (!night) {
+          unmatched++;
+          if (!orphans.has(day)) orphans.set(day, { day, count: 0, titles: [] });
+          const seen = orphans.get(day);
+          seen.count++;
+          if (seen.titles.length < 3) seen.titles.push(artist ? `${title} - ${artist}` : title);
+          continue;
+        }
         matched++;
 
         // What the night already has, read once per night. A DJ who broadcast
@@ -4097,9 +4175,13 @@ export default {
         if (!preview) await addSong(env, owner.email_norm, night.id, { title, artist }, now);
       }
 
+      const couldBe = [...orphans.values()].filter((n) => n.count >= 5)
+        .sort((a, b) => b.count - a.count).slice(0, 40);
       return json(200, {
         nights: [...report.values()].filter((n) => n.added > 0)
           .sort((a, b) => (a.day < b.day ? 1 : -1)),
+        newNights: couldBe,
+        newNightTracks: couldBe.reduce((sum, n) => sum + n.count, 0),
         matched, unmatched, preview,
       });
     }

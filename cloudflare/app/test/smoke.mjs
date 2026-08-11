@@ -2895,6 +2895,68 @@ test("two parties on one day: the one that ran a room takes the tracks", async (
   assert.equal(one(env, `SELECT event_id FROM songs`).event_id, after.id);
 });
 
+// A Mac bound to the signed-in person BEFORE they have any parties. The usual
+// helper resolves through a group, and a group is only made when the first
+// party is - which is exactly the state these tests are about.
+const installForPersonWithNoParties = async (env) => {
+  const install = "aabbccddeeff";
+  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
+  const dj = one(env, `SELECT email_norm FROM djs LIMIT 1`);
+  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
+    .run(install, dj.email_norm, Date.now());
+  return { id: install, secret: "sec" };
+};
+
+test("a night with no party can become one, with its tracks already on it", async () => {
+  const { env } = await signedIn();
+  const mac = await installForPersonWithNoParties(env);
+
+  // Six on one night, one on another. A years-old Shazam library is mostly
+  // days that were not parties, and offering to make a party of a single
+  // Tuesday match is noise.
+  const items = [];
+  for (const t of ["Xtal", "Ptolemy", "Actium", "Tha", "Delphium", "Hedphelym"]) {
+    items.push({ title: t, artist: "Aphex Twin", at: 1, night: "2025-07-19" });
+  }
+  items.push({ title: "Alone", artist: "Nobody", at: 2, night: "2025-03-01" });
+
+  const shown = await (await api(env, "/api/v1/shazam/import",
+    { ...mac, items, preview: true })).json();
+  assert.deepEqual(shown.newNights.map((n) => [n.day, n.count]), [["2025-07-19", 6]],
+    "the quiet day was offered as a party, or the busy one was not");
+  assert.equal(shown.newNightTracks, 6);
+  assert.equal(rows(env, `SELECT * FROM events`).length, 0, "a preview made a party");
+
+  const done = await (await api(env, "/api/v1/shazam/import",
+    { ...mac, items, preview: false, create: ["2025-07-19"] })).json();
+  const made = one(env, `SELECT * FROM events`);
+  assert.ok(made, "no party was made");
+  assert.equal(new Date(made.starts_ms).toISOString().slice(0, 10), "2025-07-19");
+  assert.match(made.title, /19 July 2025/, "the party is not named after its night");
+  assert.equal(rows(env, `SELECT * FROM songs WHERE event_id = ?`, made.id).length, 6,
+    "the tracks did not land on the party that was just made for them");
+  assert.deepEqual(done.nights.map((n) => n.added), [6]);
+
+  // And it does not make a second one on a re-run.
+  await api(env, "/api/v1/shazam/import", { ...mac, items, preview: false, create: ["2025-07-19"] });
+  assert.equal(rows(env, `SELECT * FROM events`).length, 1, "a second party appeared");
+  assert.equal(rows(env, `SELECT * FROM songs`).length, 6, "the tracks were doubled");
+});
+
+test("only the nights the DJ agreed to are made", async () => {
+  const { env } = await signedIn();
+  const mac = await installForPersonWithNoParties(env);
+  const items = [];
+  for (const day of ["2025-07-19", "2025-08-20"]) {
+    for (let i = 0; i < 6; i++) items.push({ title: `T${i}`, artist: "A", at: 1, night: day });
+  }
+  await api(env, "/api/v1/shazam/import",
+    { ...mac, items, preview: false, create: ["2025-07-19", "nonsense", "2026-13-45"] });
+  const made = rows(env, `SELECT starts_ms FROM events`);
+  assert.equal(made.length, 1, "it made nights nobody asked for");
+  assert.equal(new Date(made[0].starts_ms).toISOString().slice(0, 10), "2025-07-19");
+});
+
 test("a Shazam library is not a thing a stranger's Mac can file", async () => {
   const { env, send } = await signedIn();
   const handle = one(env, `SELECT handle FROM profiles`).handle;
