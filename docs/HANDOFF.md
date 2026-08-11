@@ -90,6 +90,52 @@ someday-tiny iOS companion. Until then, **Shortcuts** covers the phone hook
 today: a personal automation "when I arrive anywhere after 10pm, open
 partyparty.party" can be handed to users as a pre-built shortcut.
 
+**The iPhone cut (owner, fourth pass: "restrict this to the things we would
+be able to do on an iPhone without being rejected by Apple").**
+
+On iOS the Tier 2 doors DO NOT EXIST. There is no cross-app file access of
+any kind - no folder grants, no per-app data consent, nothing to point an
+open panel at. Mail, Messages, Safari history, Voice Memos, Downloads:
+unreachable by any app Apple would approve. What iOS gives instead, all
+review-clean:
+
+- **CLVisit + region monitoring** - Apple's own arrive/depart stream, in the
+  background, battery-cheap. THE check-in primitive; Foursquare and Swarm
+  shipped on it for a decade. Always-location prompt, honest purpose string.
+- **JournalingSuggestions** (iOS 17.2+) - the packaged inference itself:
+  visits, music-detection moments, photos, contacts. Needs its entitlement,
+  which Apple grants to journaling apps - which this literally is.
+- **A share extension** - the sanctioned replacement for mail scanning: share
+  the ticket email, the .pkpass, the screenshot, the RA page INTO PartyParty.
+  One gesture, user-initiated, and it feeds the same evidence parsers.
+- The same one-prompt frameworks as the Mac: EventKit (titles, attendees,
+  structured geo), PhotoKit (shared albums, screenshot subtype, Live Photo
+  audio), Contacts, MapKit POI (no prompt), MusicKit, WeatherKit.
+- **Notifications + Live Activities** for the moment itself: a geofence fires
+  and the lock screen asks "At Public Works?" - accepted without unlocking.
+- **ShazamKit live recognition while the app is open** - there is no
+  background microphone on iOS, ever, so never promise it. SHLibrary history
+  if the entitlement fight resolves.
+
+Gray - defensible, not load-bearing, hold until the core app is approved
+once: HealthKit sleep/steps as journal colour (guideline 5.1.3 wants clear
+relevance; a lifestyle journal arguably has it); MultipeerConnectivity
+presence between PartyParty users at the same party (clean API, belongs to
+the network stage).
+
+The split this forces is the architecture, and it loses nothing: **the
+iPhone is the LIVE limb** (presence, the ask at the door, share-ins), **the
+Mac is the DEEP scanner** (Mail, Messages and Voice Memos all sync to the
+Mac, and Apple permits reading them THERE), **the web is the record**. A
+Mac-owning user keeps every Tier 2 source - read on the machine where the
+doors exist. An iPhone-only user trades the deep history for the best live
+experience.
+
+Review risks, named: Always-location (accepted practice with a purpose
+string and visible in-app benefit), the JournalingSuggestions capability
+request, and the standing SHAZAM_KIT entitlement fight - which has to be
+resolved with Apple on any platform.
+
 **The backlog** (the spine of the retroactive side):
 
 - The platform keeps candidate nights per (owner, day): merged evidence -
