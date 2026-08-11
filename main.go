@@ -846,6 +846,43 @@ func main() {
 						diagLog.Printf("go-live health: pipeline recovery fired (%s)", reason)
 					}
 				}
+				// A set outliving its engine. Bounded: three tries, because a
+				// setup that is genuinely broken (port taken, device gone)
+				// must be allowed to stay broken and SAY so rather than
+				// relaunch forever. The count resets the moment audio is
+				// live again, so a long night can survive more than three
+				// separate hiccups.
+				revives := 0
+				go func() {
+					for {
+						time.Sleep(3 * time.Second)
+						switch bc.Status().State {
+						case "live":
+							revives = 0
+							continue
+						case "error":
+						default:
+							continue
+						}
+						if revives >= 3 {
+							continue
+						}
+						if err := mtx.EnsureReady(cfg.RTSPPort, cfg.HLSPort, 8*time.Second); err != nil {
+							if n := mediamtx.ReapOrphans(cfg.RTSPPort, cfg.HLSPort); n > 0 {
+								err = mtx.EnsureReady(cfg.RTSPPort, cfg.HLSPort, 8*time.Second)
+							}
+							if err != nil {
+								diagLog.Printf("crash revive: engine will not start: %v", err)
+								continue
+							}
+						}
+						if bc.ReviveAfterCrash() {
+							revives++
+							diagLog.MarkUrgent()
+							diagLog.Printf("crash revive: attempt=%d (the set died and is being restarted)", revives)
+						}
+					}
+				}()
 				lastLive := false
 				for {
 					time.Sleep(2 * time.Second)

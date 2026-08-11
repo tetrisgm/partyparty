@@ -323,6 +323,44 @@ func (b *Broadcaster) RecoverPipeline(reason string) bool {
 	return true
 }
 
+// shouldReviveAfterCrash is the guarded decision half of ReviveAfterCrash:
+// only from the error state (which means the pipeline DIED - a DJ who pressed
+// Stop leaves it idle, and this must never fight them), only with a device to
+// revive, and at most once per 20s.
+func (b *Broadcaster) shouldReviveAfterCrash() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.state != "error" || b.lastDevice == "" {
+		return false
+	}
+	if time.Since(b.lastPipelineRecover) < 20*time.Second {
+		return false
+	}
+	b.lastPipelineRecover = time.Now()
+	return true
+}
+
+// ReviveAfterCrash restarts a set that died on its own.
+//
+// The false-live cure assumes ffmpeg survives while its RTSP leg dies. The
+// other half, seen on the bench 2026-08-11: kill MediaMTX and ffmpeg dies WITH
+// it (broken pipe, exit 224), the state goes to "error", and the party is over
+// until somebody notices and presses Go Live. A set should outlive its engine.
+//
+// "error" is the whole intent signal - Stop() leaves the broadcaster idle, so
+// this can never restart a DJ who meant to finish.
+func (b *Broadcaster) ReviveAfterCrash() bool {
+	if !b.shouldReviveAfterCrash() {
+		return false
+	}
+	b.mu.Lock()
+	dev, name, opts := b.lastDevice, b.lastName, b.lastOpts
+	b.mu.Unlock()
+	b.pushLog("[PartyParty] the stream died - bringing the party back")
+	go b.startInternal(dev, name, opts, true)
+	return true
+}
+
 // captureRecovered clears an exclusive-output warning when frames resume.
 func (b *Broadcaster) captureRecovered() {
 	b.setCaptureNote("")

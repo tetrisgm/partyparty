@@ -42,3 +42,35 @@ func TestPipelineRecoveryIsGuarded(t *testing.T) {
 		t.Fatal("an ended set can still trigger recovery")
 	}
 }
+
+// A set must outlive its engine - but must never outlive the DJ's Stop.
+func TestACrashedSetRevivesButAStoppedOneDoesNot(t *testing.T) {
+	b := New(config.Config{}, t.TempDir(), "", "")
+
+	b.mu.Lock()
+	b.state = "idle" // what Stop() leaves behind
+	b.lastDevice = "mac"
+	b.mu.Unlock()
+	if b.shouldReviveAfterCrash() {
+		t.Fatal("it would restart a DJ who pressed Stop")
+	}
+
+	b.mu.Lock()
+	b.state = "error" // what a dead pipeline leaves behind
+	b.mu.Unlock()
+	if !b.shouldReviveAfterCrash() {
+		t.Fatal("a crashed set was left dead")
+	}
+	if b.shouldReviveAfterCrash() {
+		t.Fatal("revival is not throttled - a broken setup would be relaunched in a loop")
+	}
+
+	// And nothing to revive is not a crash.
+	b.mu.Lock()
+	b.lastDevice = ""
+	b.lastPipelineRecover = time.Time{}
+	b.mu.Unlock()
+	if b.shouldReviveAfterCrash() {
+		t.Fatal("it tried to revive a broadcast that never had a device")
+	}
+}
