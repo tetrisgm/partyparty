@@ -1531,11 +1531,16 @@ function shazamImport() {
         btn.textContent = 'Reading\\u2026';
         try {
           const fresh = await refresh((state.readMs) || 0) || state;
+          if (fresh.denied) {
+            said.innerHTML = '<p>PartyParty needs your permission to read the Shazam ' +
+              'library. Press this again and choose Allow - it is asked once, and the ' +
+              'library is only ever read.</p>';
+            return;
+          }
           if (!fresh.count) {
-            said.innerHTML = "<p>This Mac's Shazam library is empty. It fills from Music " +
-              'Recognition in Control Center, and from an iPhone signed in to the same Apple ' +
-              'Account. Shazam something on your phone, then press this again to see whether ' +
-              'yours reach this Mac.</p>';
+            said.innerHTML = "<p>Nothing in this Mac's Shazam library. It fills from " +
+              'Music Recognition in Control Center and from an iPhone signed in to the ' +
+              'same Apple Account.</p>';
             return;
           }
           show(await run(true), fresh.count);

@@ -52,11 +52,11 @@ enum ShazamLibrary {
     static func push(port: Int, prompt: Bool = false) {
         Task { @MainActor in
             if prompt, !ShazamStore.requestAccess() {
-                // Declining is an answer. The server keeps whatever it had, and
-                // the console says the library is empty rather than pretending
-                // something is still coming.
+                // Declining is an answer, and a different one from "you have
+                // never Shazamed anything". Reporting it as an empty library
+                // would be a lie told to somebody who just said no on purpose.
                 Task.detached(priority: .utility) {
-                    APIClient(port: port).postShazamLibrary([])
+                    APIClient(port: port).postShazamLibrary([], denied: true)
                 }
                 return
             }

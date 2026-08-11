@@ -2952,6 +2952,13 @@ test("importing a Shazam library is offered only where it can work", async () =>
   // And its buttons use classes that exist. `.ghost` does not, and shipped as
   // raw system chrome on a dark page.
   assert.ok(!/class="ghost"/.test(body), "a button is styled with a class the sheet never defines");
+
+  // Saying no to the file panel and having never Shazamed anything are not the
+  // same thing, and reporting the first as the second is a lie told to somebody
+  // who just declined on purpose.
+  assert.match(body, /fresh\.denied/, "a declined permission reads as an empty library");
+  assert.match(body, /needs your permission to read the Shazam/,
+    "nothing tells the DJ how to undo a decline");
 });
 
 for (const [name, fn] of tests) {

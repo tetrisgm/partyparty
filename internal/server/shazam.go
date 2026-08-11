@@ -20,28 +20,39 @@ type ShazamImporter interface {
 
 // shazamShelf is the library snapshot, as the app last read it.
 //
-// The app is the only process that can read a Shazam library - ShazamKit
-// authenticates by code-signing identity, and this server has none - so the
+// The app is the only process that can read a Shazam library - the store lives
+// outside the sandbox and the grant is a bookmark the app holds - so the
 // direction is fixed: the app reads and pushes, and the console asks the
-// server. `at` distinguishes "no library" from "nobody has looked yet", which
-// are different things to say to somebody waiting for a button to do something.
+// server. `at` distinguishes "no library" from "nobody has looked yet", and
+// `denied` from "you said no"; all three are different things to tell somebody
+// waiting for a button to do something.
 type shazamShelf struct {
-	mu    sync.RWMutex
-	items []cloudsync.ShazamItem
-	at    time.Time
+	mu     sync.RWMutex
+	items  []cloudsync.ShazamItem
+	at     time.Time
+	denied bool
 }
 
-func (s *shazamShelf) put(items []cloudsync.ShazamItem) {
+func (s *shazamShelf) put(items []cloudsync.ShazamItem, denied bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items = items
 	s.at = time.Now()
+	s.denied = denied
 }
 
 func (s *shazamShelf) get() ([]cloudsync.ShazamItem, time.Time) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.items, s.at
+}
+
+// refused reports that the DJ said no to the file panel, which is a different
+// thing from an empty library and has to read differently.
+func (s *shazamShelf) refused() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.denied
 }
 
 // handleShazam serves the three sides of the import: the app putting a library
@@ -61,13 +72,14 @@ func (s *srv) handleShazam(w http.ResponseWriter, r *http.Request, path string) 
 			return
 		}
 		var body struct {
-			Items []cloudsync.ShazamItem `json:"items"`
+			Items  []cloudsync.ShazamItem `json:"items"`
+			Denied bool                   `json:"denied"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad json"})
 			return
 		}
-		s.shazam.put(body.Items)
+		s.shazam.put(body.Items, body.Denied)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "count": len(body.Items)})
 
 	case "/api/shazam":
@@ -76,6 +88,7 @@ func (s *srv) handleShazam(w http.ResponseWriter, r *http.Request, path string) 
 			"read":      !at.IsZero(),
 			"count":     len(items),
 			"available": s.Shazam != nil,
+			"denied":    s.shazam.refused(),
 		}
 		if !at.IsZero() {
 			out["readMs"] = at.UnixMilli()
