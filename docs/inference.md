@@ -97,7 +97,7 @@ people as chips. A live check-in is a candidate born accepted.
 | kind     | says                                | emitted by |
 |----------|-------------------------------------|------------|
 | presence | you were at G during W              | Shazam clusters, photo geotags, on-open location, Journal pick |
-| music    | these tracks played                 | Shazam import, live recognizer, and recognition run locally over the night's OWN videos and Live Photos - party footage carries the music in the room |
+| music    | these tracks played                 | Shazam import, live recognizer, and Shazam matching over the night's own videos and Live Photos (footage rules below) |
 | plan     | this was planned: title, venue, when, attendees | Calendar, .ics, tickets, .pkpass |
 | media    | you shot n photos/videos there      | PhotoKit (counts and windows only - attaching actual photos is a user pick) |
 | company  | A and B were probably there         | Calendar attendees, shared-album contributors, later Messages, network |
@@ -108,6 +108,25 @@ people as chips. A live check-in is a candidate born accepted.
 `plan` and `presence` corroborating is near-certainty. `plan` alone (a
 ticket for Friday) surfaces the card BEFORE the night - "going to this?" -
 which is the forward-looking journal for free.
+
+**Footage rules (owner, 2026-08-11).** Recognition over videos and Live
+Photos is JUST SHAZAM, and only where there is music. A cheap on-device
+music-presence check (SoundAnalysis) gates every clip; only clips that sound
+like music get a Shazam pass, and the expectation is that MOST WILL NOT -
+crowd noise and talking dominate party footage, and that is fine. The only
+things ever computed from footage are "does this contain music?" (on-device)
+and a Shazam signature - the same fingerprint the Shazam app itself sends.
+No transcription, no scene analysis, no face anything, ever. Low weight:
+footage music is bonus evidence on a night, never the reason a card
+surfaces. Standing dependency: SHSession matching needs the SHAZAM_KIT
+entitlement resolved, exactly like live recognition.
+
+**Set reconstruction (owner: keep).** Nobody catches a whole set; a crowd
+does. When several people are on the same night - attendees of one event, or
+public nights matched by the set fingerprint - their music evidence UNIONS
+into one track list in time order, each track crediting whoever caught it.
+Five people with fifteen Shazams each reconstruct most of a set none of them
+could alone, and the reconstruction can link to the DJ's own published set.
 
 ## Venues
 
@@ -256,6 +275,7 @@ The iOS app is a separate later track; nothing in 1-7 depends on it.
   source reads empty and everything else stands.
 - Same-day multi-candidate replaces the current one-party-per-day merge rule
   in slice 2; until then the import's tiebreak stands.
-- If Swarm-grade ZERO-touch live check-in is ever wanted, Always + CLVisit is
-  the only path (reviewable - Foursquare precedent). The plan deliberately
-  does not need it; revisit only by owner decree.
+- Always location is DECIDED NO (owner, 2026-08-10, reaffirmed 2026-08-11).
+  It is the only path to zero-touch live check-in, and the answer is still
+  no - do not re-propose it. The widget, the plan nudge, App Intents
+  donations and the digest are the ceiling for live automation.
