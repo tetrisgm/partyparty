@@ -465,6 +465,38 @@ two minutes each, receipts in `build/`:
 the PROGRAM-DATE-TIME under the playhead, so it is true end-to-end delay, not
 a distance from the playlist edge.
 
+**The bench proxy cannot measure this, and that matters (2026-08-11).**
+`scripts/bench-playlist-proxy.py` is what AGENTS.md points at for soaking a
+candidate manifest without shipping it. It does not work for attachment
+position. Three two-minute soaks through it, same live room, same harness:
+
+| pin | measured |
+|---|---|
+| none at all | 3.16s PASS |
+| master only (what production ships) | 3.12s PASS |
+| master + media, both PRECISE | 3.20s PASS |
+
+It reports ~3.1s and PASSES whether the attachment pin is on the multivariant,
+on the media playlist as well, or **absent entirely** - while the same harness
+on the real guest path reports 1.17s and FAILS. The proxy is not serving
+staler playlists (newest PDT 0.88s old through it, 0.87s direct), so this is
+not manifest freshness; a player simply falls behind through a synchronous
+Python proxy that cannot keep up with LL-HLS part fetching, and lands ~3s back
+no matter what the manifest says.
+
+Two consequences. First, no candidate can be validated this way - the
+instrument returns the target regardless of the input, which is the same
+theater as a soak that never connected. Second, AGENTS.md records the July
+D=3 form as "re-proven on the soak harness at 3.11s flat before upload", and
+3.11s sits exactly in the band this proxy returns for *any* manifest. That
+receipt should not be treated as evidence the cushion ever reached a guest.
+Also fixed while here: the proxy 401'd on every media playlist because it
+carried no MediaMTX session cookie, so its media-tier transform had never run
+at all.
+
+What would actually measure a candidate is the real guest path, which means
+changing what the app serves - audio-core work, gated on a supervised set.
+
 **What the three seconds is for (owner, 2026-08-11).** It came out of a set at
 the Shack 15 office where guests got constant random cutoffs, and the cure was
 to buy buffer. It was never a sync target and was never meant to hold anybody

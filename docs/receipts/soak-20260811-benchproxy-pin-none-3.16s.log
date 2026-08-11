@@ -1,0 +1,25 @@
+soak t=005s pos=26.54s latency=3.16s status=ready ok
+soak t=010s pos=31.54s latency=3.16s status=ready ok
+soak t=015s pos=36.54s latency=3.16s status=ready ok
+soak t=020s pos=41.54s latency=3.16s status=ready ok
+soak t=025s pos=46.54s latency=3.16s status=ready ok
+soak t=030s pos=51.54s latency=3.16s status=ready ok
+soak t=035s pos=56.54s latency=3.16s status=ready ok
+soak t=040s pos=61.54s latency=3.16s status=ready ok
+soak t=045s pos=66.54s latency=3.16s status=ready ok
+soak t=050s pos=71.54s latency=3.16s status=ready ok
+soak t=055s pos=76.54s latency=3.16s status=ready ok
+soak t=060s pos=81.54s latency=3.16s status=ready ok
+soak t=065s pos=86.54s latency=3.16s status=ready ok
+soak t=070s pos=91.54s latency=3.16s status=ready ok
+soak t=075s pos=96.54s latency=3.16s status=ready ok
+soak t=080s pos=101.54s latency=3.16s status=ready ok
+soak t=085s pos=106.54s latency=3.16s status=ready ok
+soak t=090s pos=111.54s latency=3.16s status=ready ok
+soak t=095s pos=116.54s latency=3.16s status=ready ok
+soak t=100s pos=121.54s latency=3.16s status=ready ok
+soak t=105s pos=126.54s latency=3.16s status=ready ok
+soak t=110s pos=131.54s latency=3.16s status=ready ok
+soak t=115s pos=136.54s latency=3.16s status=ready ok
+soak t=120s pos=141.54s latency=3.16s status=ready ok
+SOAK PASS: 2min, 24 samples, median 3.16s at target 3.00s, zero backward movement
