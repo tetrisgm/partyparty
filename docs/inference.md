@@ -163,10 +163,10 @@ could alone, and the reconstruction can link to the DJ's own published set.
 
 Geokey = coordinates rounded to ~100m, the join key everywhere. Naming a
 venue once names every night there, past and future. Resolution ladder on
-first sight of a geokey: the owner's own venues → MKLocalSearch
-point-of-interest (nightlife category - returns "Public Works", not "195
-Erie St"; verify it runs in the sandboxed Mac app at build time, else fall
-back to the geocoded address) → reverse-geocoded address. `url`, when the
+first sight of a geokey: the owner's own venues → `venues_catalog` on the
+platform → device-side MKLocalSearch point-of-interest (nightlife category -
+returns "Public Works", not "195 Erie St"; verify it runs in the sandboxed
+Mac app at build time) → reverse-geocoded address. `url`, when the
 owner sets it, feeds the `listing` fetcher. Account-scoped now; a global
 suggestion layer (other users' public venue names) is the network stage.
 
@@ -267,11 +267,18 @@ Freshness is a column, not a hope: every row carries source and last_seen;
 harvests upsert; nothing hard-deletes (a closed club still names old
 nights). Suggestions prefer fresh rows.
 
-Geocoding the directory's addresses into geokeys: the Mac moonlights as the
-gazetteer's geocoder - it already has CLGeocoder/MKLocalSearch and an
-install-authed channel, so it can pull unresolved catalog rows and push
-coordinates back, using Apple's own data with no new dependency. (A
-server-side geocoder is the fallback, chosen at build time.)
+The gazetteer is ENTIRELY a platform service - Worker cron plus D1, nothing
+else (owner, 2026-08-11: "a web service needs to handle the database for the
+venues and artists; the Mac app has nothing to do with this"). No client is
+involved in building, refreshing, or matching against it: check-in fixes and
+evidence geokeys join against `venues_catalog` server-side, where they
+arrive. Geocoding the directories' addresses happens at harvest time on the
+platform too: OpenStreetMap's Nominatim, politely - cached forever, about a
+request a second, attributed. And OSM itself is a second seed alongside
+19hz: its nightclub and music-venue POIs carry name, coordinates AND website
+in one query, no geocoding needed. (Device-side MapKit remains only what it
+always was: a per-owner suggestion for naming the owner's OWN clusters,
+submitted like any other suggestion - never part of catalog construction.)
 
 The courtesies stand and extend: per-source daily/weekly caps, attribution
 on every suggestion the catalog produces, the 19hz maintainer written to
@@ -420,8 +427,8 @@ Each slice lands whole, in the workflow's usual way.
   MusicKit developer token - a key the owner mints once in the developer
   account; requested when slice 5 starts. Bandsintown needs an app_id and,
   if it ever matters commercially, their partner blessing.
-- External listings (19hz.info, Bandsintown, venue pages) are the fragile
-  tier: cached through D1, attributed on the suggestion, rate-limited to
+- External listings and catalog sources (19hz.info, OSM/Nominatim,
+  Bandsintown, venue pages) are the fragile tier: cached through D1, attributed on the suggestion, rate-limited to
   daily, and never load-bearing - any of them going dark removes a
   suggestion source and nothing else.
 - Always location is DECIDED NO (owner, 2026-08-10, reaffirmed 2026-08-11).
