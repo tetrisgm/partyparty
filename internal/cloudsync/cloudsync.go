@@ -75,6 +75,14 @@ func (c *Client) ready() bool {
 	return c != nil && c.Base != "" && c.InstallID != "" && c.Secret != ""
 }
 
+// postSlowly is post with room for a bulk operation to finish.
+func (c *Client) postSlowly(ctx context.Context, path string, body, out any) error {
+	was := c.HTTP
+	defer func() { c.HTTP = was }()
+	c.HTTP = &http.Client{Timeout: 3 * time.Minute}
+	return c.post(ctx, path, body, out)
+}
+
 func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -448,8 +456,12 @@ func (c *Client) ImportShazam(ctx context.Context, items []ShazamItem, preview b
 	if places == nil {
 		places = map[string]string{}
 	}
+	// A whole library is a bulk write, and the shared client's fifteen seconds
+	// is sized for a heartbeat. A first import creating eighteen parties and
+	// filing 543 tracks took longer than that and reported failure over work
+	// that had succeeded - which is worse than being slow.
 	var out ShazamImport
-	err := c.post(ctx, "/api/v1/shazam/import", map[string]any{
+	err := c.postSlowly(ctx, "/api/v1/shazam/import", map[string]any{
 		"id": c.InstallID, "secret": c.Secret, "items": items,
 		"preview": preview, "create": create, "places": places,
 	}, &out)

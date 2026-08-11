@@ -4177,6 +4177,12 @@ export default {
       // Only nights with a few tracks: one Shazam on a Tuesday is walking past
       // a bar, and offering to make a party of it is noise.
       const orphans = new Map();
+      // Songs are written in one batch per night rather than one round trip
+      // each. addSong is a SELECT for the sequence and then an INSERT, so a
+      // first import of 543 tracks was 1,086 sequential trips to D1 - which
+      // ran past the fifteen seconds the Mac's client waits and returned an
+      // error over work that had in fact succeeded.
+      const writing = {};
 
       for (const raw of items) {
         const title = String(raw && raw.title || "").trim().slice(0, 200);
@@ -4227,7 +4233,18 @@ export default {
         const entry = report.get(night.id);
         entry.added++;
         if (entry.titles.length < 4) entry.titles.push(artist ? `${title} - ${artist}` : title);
-        if (!preview) await addSong(env, owner.email_norm, night.id, { title, artist }, now);
+        if (!preview) (writing[night.id] || (writing[night.id] = [])).push({ title, artist });
+      }
+
+      for (const [eventId, songs] of Object.entries(writing)) {
+        if (!songs.length) continue;
+        const top = await env.DB.prepare(
+          `SELECT COALESCE(MAX(seq), 0) AS n FROM songs WHERE event_id = ?`).bind(eventId).first();
+        let seq = (top ? top.n : 0);
+        await env.DB.batch(songs.map((song) => env.DB.prepare(
+          `INSERT INTO songs (id, event_id, owner_email, title, artist, seq, created_ms)
+           VALUES (?,?,?,?,?,?,?)`
+        ).bind(ulid(now), eventId, owner.email_norm, song.title, song.artist, ++seq, now)));
       }
 
       const couldBe = [...orphans.values()].filter((n) => n.count >= 5)

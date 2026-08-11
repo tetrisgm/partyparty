@@ -50,7 +50,17 @@ const makeBucket = () => {
 const makeEnv = () => {
   const db = new DatabaseSync(":memory:");
   db.exec(schema);
-  return { DB: { prepare: (sql) => new Stmt(db, sql), _db: db }, DL: makeBucket(), raw: db };
+  return {
+    DB: {
+      prepare: (sql) => new Stmt(db, sql),
+      // Real D1 has batch(); the fake did not, so a route that used it passed
+      // review and died on the first request. A stub that is missing a method
+      // the real thing has is a test that agrees with nothing.
+      batch: async (stmts) => Promise.all(stmts.map((stmt) => stmt.run())),
+      _db: db,
+    },
+    DL: makeBucket(), raw: db,
+  };
 };
 
 const rows = (env, sql, ...args) => env.raw.prepare(sql).all(...args);
