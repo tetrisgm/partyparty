@@ -3021,6 +3021,12 @@ test("importing a Shazam library is offered only where it can work", async () =>
   assert.match(body, /fresh\.denied/, "a declined permission reads as an empty library");
   assert.match(body, /needs your permission to read the Shazam/,
     "nothing tells the DJ how to undo a decline");
+
+  // Forty parties is not something one button should make on a guess. The
+  // nights are ticked per night, and only the unambiguous ones start ticked.
+  assert.match(body, /card picknight/, "the nights cannot be chosen between");
+  assert.match(body, /const SURE = 10/, "every night is treated as equally certain");
+  assert.match(body, /picknight input:checked/, "the button ignores what was ticked");
 });
 
 for (const [name, fn] of tests) {

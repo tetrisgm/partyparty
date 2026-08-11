@@ -781,6 +781,12 @@ gap:8px 20px;margin:2px 0 10px}
    actually reading, so it is not a grey aside at the end of a date. */
 .importnight{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .importnight .tag{margin:0;flex:0 0 auto}
+/* A night the DJ is choosing. Unticked ones stay legible - they are the reason
+   the list is longer than the obvious answer - but sit back. */
+.picknight{display:block;cursor:pointer;position:relative;padding-left:44px;opacity:.5}
+.picknight.on{opacity:1}
+.picknight input{position:absolute;left:16px;top:18px;width:17px;height:17px;
+accent-color:var(--accent);cursor:pointer}
 textarea{width:100%;padding:11px 14px;border-radius:var(--r-sm);
 border:1px solid var(--separator);background:var(--bg-elevated);color:var(--label);
 font:inherit;font-size:15px;outline:none;resize:vertical}
@@ -1516,15 +1522,22 @@ function shazamImport() {
       // And the nights that WERE parties and were never written down. Without
       // this the honest answer for a years-old library is "896 of these have
       // nowhere to go", which is true and useless.
+      // Ten or more is a night out; five is a long dinner somewhere with music.
+      // Both are offered, only the first is ticked, and either way the DJ is
+      // choosing rather than pressing one button that makes forty records.
+      const SURE = 10;
       const rest = could.length
         ? '<div class="sectionhead" style="margin:26px 0 8px"><h2>Nights with no party</h2>' +
           '<span class="muted">' + found.newNightTracks + ' tracks across ' +
-          could.length + '</span></div>' +
-          could.map((n) => card(esc(day(n.day)), n.count, esc(n.titles.join(', ')))).join('') +
+          could.length + ' days</span></div>' +
+          could.map((n) => '<label class="card picknight' +
+            (n.count >= SURE ? ' on' : '') + '"><input type="checkbox" value="' + n.day + '"' +
+            (n.count >= SURE ? ' checked' : '') + '><div class="importnight"><strong>' +
+            esc(day(n.day)) + '</strong><span class="tag live">' + n.count + '</span></div>' +
+            '<div class="muted">' + esc(n.titles.join(', ')) + '</div></label>').join('') +
           '<p class="muted">Each becomes a party named after its date, with those tracks ' +
           'already on it. Rename them whenever.</p>' +
-          '<button class="btn plain" id="shazammake" type="button">Make these ' +
-          could.length + ' parties</button>'
+          '<button class="btn plain" id="shazammake" type="button"></button>'
         : (found.unmatched
           ? '<p class="muted">' + found.unmatched +
             ' more are spread over days too quiet to have been parties.</p>' : '');
@@ -1545,13 +1558,32 @@ function shazamImport() {
         }
       };
       const make = document.getElementById('shazammake');
+      const ticked = () => [...said.querySelectorAll('.picknight input:checked')]
+        .map((box) => box.value);
+      const retitle = () => {
+        const n = ticked().length;
+        make.disabled = n === 0;
+        make.textContent = n === 0 ? 'Pick a night' :
+          'Make ' + n + ' part' + (n === 1 ? 'y' : 'ies');
+      };
+      if (make) {
+        retitle();
+        said.querySelectorAll('.picknight input').forEach((box) => {
+          box.onchange = () => {
+            box.closest('.picknight').classList.toggle('on', box.checked);
+            retitle();
+          };
+        });
+      }
       if (make) make.onclick = async (e) => {
+        const days = ticked();
+        if (!days.length) return;
         working(e.target, 'Making\\u2026');
         try {
-          const done = await run(false, could.map((n) => n.day));
+          const done = await run(false, days);
           const added = done.nights.reduce((sum, n) => sum + n.added, 0);
-          said.innerHTML = '<p>Made ' + could.length + ' part' +
-            (could.length === 1 ? 'y' : 'ies') + ' and put ' + added +
+          said.innerHTML = '<p>Made ' + days.length + ' part' +
+            (days.length === 1 ? 'y' : 'ies') + ' and put ' + added +
             ' tracks on them, named after their dates. They are on your home page.</p>';
         } catch (err) {
           said.innerHTML = '<p>Could not make them: ' + esc(err.message || err) + '</p>';
