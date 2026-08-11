@@ -31,12 +31,52 @@ Three parties, each doing the one thing only it can:
 Running the import twice adds nothing. Matches on days with no party are
 counted, not dropped somewhere convenient.
 
-**Unproven, and only the owner can prove it:** whether an iPhone's Shazams reach
-a Mac's `SHLibrary` at all. This Mac reads 0 items - sandboxed AND from a
-throwaway unsandboxed binary, so it is not an entitlement problem - and it has
-no Shazam.app and has never used Music Recognition. The empty-state copy
-therefore promises nothing; it says what fills the library and how to find out
-in thirty seconds.
+**BLOCKED, and the earlier note here was wrong. 2026-08-10.**
+
+The phone-to-Mac sync WORKS. This Mac holds 898 matches in
+`~/Library/Application Support/com.apple.shazamd/ShazamLibrary.sqlite`
+(`ZSHTRACKMO`, `ZDATE` is Core Data epoch: `ZDATE + 978307200`), and a Shazam
+made on the owner's iPhone appeared there within half an hour. There was never
+anything wrong with the library.
+
+`SHLibrary.default.items` returns **0 anyway**, and nothing tried so far moves
+it. Ruled out, each by test rather than by argument:
+
+- *The sandbox.* A throwaway unsandboxed binary returns 0 too.
+- *A cold-load race.* Retried twelve times over five seconds. Still 0.
+- *Missing signing.* Fixed and it changed real behaviour - see below - but not
+  the count.
+
+What signing DID change is worth keeping. An ad-hoc build never reaches Shazam
+at all: `shazamd` does not even launch, and there are zero Shazam log lines. A
+build signed with a Mac Development profile launches `shazamd` and gets a
+CloudKit zone subscription of its own at
+`~/Library/Caches/com.apple.shazamlibrary.cloud/fm.partyparty.app/`. So the
+earlier "not an entitlement problem" reasoning was wrong: the unsandboxed probe
+was ALSO ad-hoc, so it controlled for the sandbox and not for provisioning.
+
+The wall is a capability mismatch. `asc bundle-ids capabilities list --bundle
+YPMR3HYD9L` reports `SHAZAM_KIT` on the App ID, but a profile generated from
+that App ID *today* carries only `application-identifier`, `applesignin`,
+`team-identifier`, `keychain-access-groups` - no ShazamKit entitlement. Signing
+a binary that requests `com.apple.developer.shazamkit` anyway gets it SIGKILLed
+at launch (exit 137). So the entitlement the framework wants cannot currently
+be obtained from this App ID.
+
+Two ways out, both the owner's call:
+
+1. Sort out the capability with Apple so profiles carry the entitlement, then
+   re-test. Everything downstream of the read is built, tested and deployed.
+2. Read `ShazamLibrary.sqlite` directly. It works today and has the dates the
+   import needs - but it is a private path, and the sandboxed App Store build
+   cannot reach it. That would make the import a Developer ID / standalone-lane
+   feature only.
+
+This also puts a question mark over LIVE recognition, which has the same
+dependency. Desk builds are now Apple Development-signed rather than ad-hoc
+(`PP_SIGN_ID` + `APP_STORE_PROVISIONING_PROFILE`, profile "PartyParty Mac Dev",
+expires 2027-08-10), which is strictly better, but the ShazamKit entitlement is
+missing there too.
 
 **Where the app lives now.** `/Applications/PartyParty.app`, owned by the user,
 built from `main` by `scripts/build-app.sh` and installed with `ditto`. There is
