@@ -31,52 +31,59 @@ Three parties, each doing the one thing only it can:
 Running the import twice adds nothing. Matches on days with no party are
 counted, not dropped somewhere convenient.
 
-**BLOCKED, and the earlier note here was wrong. 2026-08-10.**
+**It reads the store, not the API. 2026-08-10.**
 
-The phone-to-Mac sync WORKS. This Mac holds 898 matches in
+`SHLibrary.default.items` returns an empty array on a Mac holding 898 matches.
+Not an error - there is no error channel on that property, so empty is the only
+failure it can express. Ruled out by test, each one: the sandbox (an unsandboxed
+binary returns 0 too), a cold-load race (twelve retries over five seconds), and
+signing.
+
+Signing was nevertheless real and is now fixed. An ad-hoc build never reaches
+Shazam at all - `shazamd` does not launch and there are zero Shazam log lines. A
+build signed with a Mac Development profile launches it and gets a CloudKit zone
+subscription of its own under
+`~/Library/Caches/com.apple.shazamlibrary.cloud/fm.partyparty.app/`, and still
+reads nothing. The App ID carries `SHAZAM_KIT` (`asc bundle-ids capabilities
+list --bundle YPMR3HYD9L`), but no profile generated from it grants a ShazamKit
+entitlement - checked on a fresh MAC_APP_DEVELOPMENT profile AND a fresh
+MAC_APP_STORE one, byte-identical lists - and a binary that claims
+`com.apple.developer.shazamkit` anyway is SIGKILLed at launch.
+
+So the read is `app/Sources/PartyParty/ShazamStore.swift`, straight from
 `~/Library/Application Support/com.apple.shazamd/ShazamLibrary.sqlite`
-(`ZSHTRACKMO`, `ZDATE` is Core Data epoch: `ZDATE + 978307200`), and a Shazam
-made on the owner's iPhone appeared there within half an hour. There was never
-anything wrong with the library.
+(`ZSHTRACKMO`; `ZDATE` is Core Data epoch, `+ 978307200` for Unix). Owner's
+decision: "you were able to tell me what I've recognized from Shazam recently
+anyway, so that means you have access to the information and that's all we
+need." The cost is a private path with no stability promise; if macOS moves it
+the read returns nothing, the console says the library is empty, and nothing
+else in the app notices.
 
-`SHLibrary.default.items` returns **0 anyway**, and nothing tried so far moves
-it. Ruled out, each by test rather than by argument:
+Three things that shape the implementation:
 
-- *The sandbox.* A throwaway unsandboxed binary returns 0 too.
-- *A cold-load race.* Retried twelve times over five seconds. Still 0.
-- *Missing signing.* Fixed and it changed real behaviour - see below - but not
-  the count.
+- **The sandbox redirects `~`.** `NSHomeDirectory()` is the container, so the
+  path is built from `getpwuid`, and the file is reached through the one
+  sanctioned route: the DJ picks the folder once from a panel that opens on it,
+  and a security-scoped bookmark makes it permanent. `files.user-selected` was
+  already in the entitlements. Only the button may raise that panel - the
+  console coming up must never throw a file dialog at somebody.
+- **The store is WAL.** It is copied into our own space and read there. Opening
+  the original read-only needs to write a `-shm` beside it, which read-only
+  access forbids, and `immutable=1` skips the write-ahead log and misses the
+  newest Shazams - the ones somebody is asking about.
+- **Declining is its own answer.** "You said no" and "you have never Shazamed
+  anything" render differently, because reporting the first as the second is a
+  lie told to somebody who just declined on purpose.
 
-What signing DID change is worth keeping. An ad-hoc build never reaches Shazam
-at all: `shazamd` does not even launch, and there are zero Shazam log lines. A
-build signed with a Mac Development profile launches `shazamd` and gets a
-CloudKit zone subscription of its own at
-`~/Library/Caches/com.apple.shazamlibrary.cloud/fm.partyparty.app/`. So the
-earlier "not an entitlement problem" reasoning was wrong: the unsandboxed probe
-was ALSO ad-hoc, so it controlled for the sandbox and not for provisioning.
+Desk builds are now Apple Development-signed rather than ad-hoc: `PP_SIGN_ID`
+plus `APP_STORE_PROVISIONING_PROFILE`, profile "PartyParty Mac Dev", expires
+2027-08-10. Strictly better than ad-hoc regardless of Shazam.
 
-The wall is a capability mismatch. `asc bundle-ids capabilities list --bundle
-YPMR3HYD9L` reports `SHAZAM_KIT` on the App ID, but a profile generated from
-that App ID *today* carries only `application-identifier`, `applesignin`,
-`team-identifier`, `keychain-access-groups` - no ShazamKit entitlement. Signing
-a binary that requests `com.apple.developer.shazamkit` anyway gets it SIGKILLed
-at launch (exit 137). So the entitlement the framework wants cannot currently
-be obtained from this App ID.
-
-Two ways out, both the owner's call:
-
-1. Sort out the capability with Apple so profiles carry the entitlement, then
-   re-test. Everything downstream of the read is built, tested and deployed.
-2. Read `ShazamLibrary.sqlite` directly. It works today and has the dates the
-   import needs - but it is a private path, and the sandboxed App Store build
-   cannot reach it. That would make the import a Developer ID / standalone-lane
-   feature only.
-
-This also puts a question mark over LIVE recognition, which has the same
-dependency. Desk builds are now Apple Development-signed rather than ad-hoc
-(`PP_SIGN_ID` + `APP_STORE_PROVISIONING_PROFILE`, profile "PartyParty Mac Dev",
-expires 2027-08-10), which is strictly better, but the ShazamKit entitlement is
-missing there too.
+**LIVE recognition still has the ShazamKit dependency** and no profile carries
+the entitlement, so `SHSession` catalog matching is very likely dead in every
+lane. The notes have said since 2026-08-05 that it was only ever "proven in
+provisioned builds" with the next TestFlight build as the vehicle; there is no
+evidence that verification happened. Worth settling before the next set.
 
 **Where the app lives now.** `/Applications/PartyParty.app`, owned by the user,
 built from `main` by `scripts/build-app.sh` and installed with `ditto`. There is
