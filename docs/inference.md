@@ -131,7 +131,7 @@ people as chips. A live check-in is a candidate born accepted.
 | media    | you shot n photos/videos there      | PhotoKit (counts and windows only - attaching actual photos is a user pick) |
 | company  | A and B were probably there         | Calendar attendees, shared-album contributors, later Messages, network |
 | receipt  | you paid at V that night            | payment-receipt emails (merchant + time; never the amount). RIDE receipts are the special case worth naming: a 2:45am ride home FROM an address is presence at the venue plus the moment the night ended |
-| listing  | the venue's page says event E ran   | venue-page JSON-LD fetch |
+| listing  | a published calendar says event E ran there | the listings ladder below |
 | attest   | another user's public night matches | the network layer. Two forms: CO-PRESENCE (two users' own evidence at the same venue and night auto-suggests them to each other as company - mutuals/followers only), and the SET FINGERPRINT (two track lists sharing the same songs in the same order on the same night are the same party even with no geo at all - and a guest's night can link itself to the DJ's published set, which no one else can do) |
 
 `plan` and `presence` corroborating is near-certainty. `plan` alone (a
@@ -188,15 +188,46 @@ one of them, and each fills from every side at once:
 - **Performers.** A canonical table of DJs and artists: seeded from the
   platform's own DJs and every `party_people` row with the dj role,
   extended by lineups parsed from tickets and listings, and CANONICALIZED
-  against the Apple Music catalog (MusicKit lookup: proper name, artwork,
-  disambiguation) so "Ada" and "ada kaleh" and the misspelling on a flyer
-  are one performer. "Who played" then autocompletes and suggests from it.
+  against two catalogs - **Bandsintown** (a real, documented API: artist
+  name, image, links, and their events with venue name and coordinates;
+  often better than Apple Music for club DJs, because small touring artists
+  register there themselves) and the **Apple Music catalog** (MusicKit
+  lookup: proper name, artwork, disambiguation). Store both ids when both
+  hit. "Ada", "ada kaleh" and the misspelling on a flyer become one
+  performer, and "who played" autocompletes and suggests from it.
 - **People.** The comprehensive base is the owner's Contacts (one prompt),
   matched to the existing `people` table by email and name; co-attendance
   history ranks them. Faces come with them.
 
 Registries are suggestion sources, not truth: a registry hit renders as a
 suggested chip like everything else.
+
+## The listings ladder
+
+Owner, 2026-08-11: learn from Bandsintown and 19hz.info. Three rungs, tried
+in order, all feeding `listing` evidence and both registries:
+
+1. **The venue's own page** - a URL on the venue record, parsed generically
+   for schema.org Event JSON-LD. No per-site scraping.
+2. **Regional aggregator calendars - 19hz.info first.** THE community
+   calendar for electronic music (Bay Area above all - the owner's own
+   Public Works nights are literally on it - plus LA, NYC, Seattle and
+   more): date, title @ venue, genres, times, organizers, ticket links, in
+   famously plain, stable tables with calendar-feed links. Fetched at most
+   once a day per region into a cached `listings` table, matched to
+   candidates by day + venue. It is one person's labour of love: fetch
+   politely, attribute suggestions ("via 19hz.info"), and write the
+   maintainer before shipping it.
+3. **Bandsintown events by artist** - given a performer already linked to a
+   night, their event on that date names the party, the venue (with
+   coordinates), and the rest of the lineup. Documented API with an app_id;
+   its terms are scoped to artist promotion, so treat as enrichment, seek
+   the partner blessing if it grows load-bearing - which, by standing rule,
+   it never becomes.
+
+A listing hit is the single best "which party WAS this" answer - title,
+lineup, ticket link - and like everything external it degrades to nothing
+without anything else noticing.
 
 ## The backlog
 
@@ -275,11 +306,12 @@ a shared label) is decided in its own unit.
   missing), while-using location, EventKit, PhotoKit, Contacts, MapKit,
   live ShazamKit while open. No background microphone - it does not exist
   on iOS.
-- **Platform.** The `listing` fetcher: scheduled fetch of venue URLs, parsed
-  generically for schema.org Event JSON-LD - no per-site scraping. The
-  network layer: suggestions strictly from other users' PUBLIC nights. (The
-  forward-address idea is DROPPED - owner, 2026-08-11: "no point, we'll
-  just scan the mails." Mac Mail scanning is the mail answer.)
+- **Platform.** The listings ladder (venue pages, 19hz.info regional feeds,
+  Bandsintown by artist), fetched on the Worker's existing schedule and
+  cached in D1. The network layer: suggestions strictly from other users'
+  PUBLIC nights. (The forward-address idea is DROPPED - owner, 2026-08-11:
+  "no point, we'll just scan the mails." Mac Mail scanning is the mail
+  answer.)
 
 ## Privacy invariants
 
@@ -310,8 +342,8 @@ Each slice lands whole, in the workflow's usual way.
    last scan. Ask only ever on a button, as the Shazam folder grant does
    today.
 5. **People + performers** - co-attendance and company chips; the performer
-   registry seeded from platform DJs and canonicalized via the Apple Music
-   catalog; Contacts filling the people registry.
+   registry seeded from platform DJs, canonicalized via Bandsintown and the
+   Apple Music catalog; Contacts filling the people registry.
 6. **Deep sources** - Mail/Downloads doors on the desk build, the listing
    fetcher, Messages, Safari. Each its own small landing inside the slice.
 7. **Series.**
@@ -335,7 +367,12 @@ Each slice lands whole, in the workflow's usual way.
   in slice 2; until then the import's tiebreak stands.
 - Performer canonicalization against the Apple Music catalog needs a
   MusicKit developer token - a key the owner mints once in the developer
-  account; requested when slice 5 starts.
+  account; requested when slice 5 starts. Bandsintown needs an app_id and,
+  if it ever matters commercially, their partner blessing.
+- External listings (19hz.info, Bandsintown, venue pages) are the fragile
+  tier: cached through D1, attributed on the suggestion, rate-limited to
+  daily, and never load-bearing - any of them going dark removes a
+  suggestion source and nothing else.
 - Always location is DECIDED NO (owner, 2026-08-10, reaffirmed 2026-08-11).
   It is the only path to zero-touch live check-in, and the answer is still
   no - do not re-propose it. The widget, the plan nudge, App Intents
