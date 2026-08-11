@@ -2,6 +2,11 @@
 
 ## Direction (2026-08-10, refined same night): a check-in journal that reads everything it may
 
+**The consolidated, buildable spec is `docs/inference.md`** - the pipeline
+(evidence → candidate → night), every source per device, schemas, scoring,
+privacy invariants, and the slice order. This section remains the decision
+trail that produced it.
+
 The owner, after the Shazam import reconstructed eighteen nights: build toward
 Foursquare's check-in, for parties. "I'm here" / "I was there" - the app names
 the club (disambiguating neighbours), the party, and the people you were
