@@ -284,6 +284,33 @@ The courtesies stand and extend: per-source daily/weekly caps, attribution
 on every suggestion the catalog produces, the 19hz maintainer written to
 before any of it ships.
 
+**Compiled packs: match locally where it is hot (owner, 2026-08-11: "as fast
+and light as possible... there can't be that many clubs and artists").**
+The platform OWNS the catalogs; it also COMPILES them into small, versioned,
+read-only packs published to R2:
+
+- **The venue pack**, per region: name, geokey, address, url. A region is a
+  few hundred venues - tens of kilobytes gzipped.
+- **The artist pack**: names and canonical ids, capped to the owner's
+  regions plus their own history. Low megabytes at worst.
+
+Clients fetch a pack once, cache it (service worker / localStorage - the
+console and phone share the code), and re-check by version on the existing
+polling they already do. What runs locally against them:
+
+- **Check-in disambiguation** - the nearest-venues list renders instantly
+  from the cached pack, with no round trip. This matters MOST at the exact
+  moment it happens: 1am, concrete basement, dead club signal. With the
+  pack cached, check-in works with no connectivity at all - the confirmed
+  candidate queues locally and syncs when signal returns.
+- **Typeahead** - "who played" and venue fields autocomplete against the
+  packs with zero network.
+
+Local matches are suggestions like everything else; the platform re-runs
+the same join on confirm, so truth stays central and a stale pack can never
+write a wrong fact - only offer one. Packs are caches of the gazetteer,
+never a second source.
+
 ## The backlog
 
 Pending candidates render as cards on /home - web, phone web, and the Mac
@@ -393,14 +420,17 @@ Each slice lands whole, in the workflow's usual way.
    per-cluster candidates.
 3. **The phone journal** - the primary door ships early: backlog cards and
    check-in on the phone web, Home Screen install, Web Push, the morning
-   digest.
+   digest - and the region's venue pack cached on-device, so check-in
+   renders instantly and survives dead club signal (confirmations queue and
+   sync).
 4. **The collectors** - EventKit + PhotoKit + Contacts emission on the Mac,
    and a sources panel in settings showing each source's grant state and
    last scan. Ask only ever on a button, as the Shazam folder grant does
    today.
 5. **People + performers** - co-attendance and company chips; the performer
    registry seeded from platform DJs, canonicalized via Bandsintown and the
-   Apple Music catalog; Contacts filling the people registry.
+   Apple Music catalog; Contacts filling the people registry; the artist
+   pack shipping for local typeahead.
 6. **Deep sources** - Mail/Downloads doors on the desk build, the rest of
    the gazetteer harvest (venue sites, 19hz event tables, Bandsintown),
    Messages, Safari. Each its own small landing inside the slice.
