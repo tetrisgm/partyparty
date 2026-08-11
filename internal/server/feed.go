@@ -225,6 +225,29 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		_, recent := s.Events.TrackSnapshot()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "nowPlaying": tr, "recentTracks": recent})
+	case "/api/track/drop":
+		// Taking a wrong guess off the night's record. DJ-only: the setlist is
+		// the DJ's account of their own set, and a guest has no business
+		// editing it.
+		if r.Method != http.MethodPost || !s.requireDJ(w, r) {
+			return true
+		}
+		var body struct {
+			Title  string `json:"title"`
+			Artist string `json:"artist"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+			return true
+		}
+		if err := s.Events.DropTrack(body.Title, body.Artist); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "setlist": feedTracksFrom(s.Events.Setlist(300)),
+		})
+
 	case "/api/track/clear":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})

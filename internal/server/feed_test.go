@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"net/http"
 	"testing"
 
@@ -53,5 +54,55 @@ func TestTheSetlistReachesTheConsole(t *testing.T) {
 	guest := decodeJSON(t, do(s, http.MethodGet, "/api/feed?since=0", "192.168.1.44:5555"))
 	if _, ok := guest["setlist"]; ok {
 		t.Fatal("the setlist was served to a guest")
+	}
+}
+
+// Recognition guesses, so the DJ can take a song off the record.
+//
+// The setlist is REPLAYED from the journal, so a removal that only edits
+// memory comes back on the next launch. This asserts it survives a reopen -
+// which is the whole reason the drop is a journal line and not a slice edit.
+func TestATrackCanBeTakenOffTheRecord(t *testing.T) {
+	dir := t.TempDir()
+	ev, err := event.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev, Broadcaster: broadcast.New(config.Config{}, t.TempDir(), "", "")})
+
+	for _, tr := range [][2]string{
+		{"Windowlicker", "Aphex Twin"},
+		{"Sports Bar Playlist", "Nobody"},
+		{"Xtal", "Aphex Twin"},
+	} {
+		if _, err := ev.SetCurrentTrack(tr[0], tr[1], ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out := decodeJSON(t, doBody(s, http.MethodPost, "/api/track/drop", "127.0.0.1:1234",
+		"application/json", bytes.NewBufferString(`{"title":"Sports Bar Playlist","artist":"Nobody"}`)))
+	got, _ := out["setlist"].([]any)
+	if len(got) != 2 {
+		t.Fatalf("the reply still carries %d tracks: %v", len(got), out["setlist"])
+	}
+
+	// It has to survive the journal being replayed, or it returns on relaunch.
+	again, err := event.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := []string{}
+	for _, tr := range again.Setlist(0) {
+		titles = append(titles, tr.Title)
+	}
+	if len(titles) != 2 || titles[0] != "Windowlicker" || titles[1] != "Xtal" {
+		t.Fatalf("after a reopen the set is %v - the drop did not persist", titles)
+	}
+
+	// And a guest cannot edit the DJ's account of their own set.
+	if w := doBody(s, http.MethodPost, "/api/track/drop", "192.168.1.44:5555",
+		"application/json", bytes.NewBufferString(`{"title":"Xtal","artist":"Aphex Twin"}`)); w.Code == http.StatusOK {
+		t.Fatal("a guest removed a track from the setlist")
 	}
 }

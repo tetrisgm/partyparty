@@ -223,6 +223,16 @@
   .setlist b{font-weight:700;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .setlist span.by{color:var(--label-secondary);font-weight:400}
   .setlist time{color:var(--label-tertiary);font-size:11px;font-variant-numeric:tabular-nums}
+  /* The × is quiet until the row is under the cursor - a set list is mostly
+     read, and a column of delete buttons reads as a form. Keyboard focus
+     shows it too, or it would be unreachable without a mouse. */
+  .setlist .setright{display:flex;align-items:center;gap:8px;justify-self:end}
+  .setlist .dropx{border:0;background:none;color:var(--label-tertiary);font-size:14px;
+    line-height:1;padding:2px 4px;border-radius:var(--r-sm);cursor:pointer;
+    opacity:0;transition:opacity .12s,color .12s}
+  .setlist li:hover .dropx,.setlist .dropx:focus-visible{opacity:1}
+  .setlist .dropx:hover{color:var(--accent)}
+  .setlist .dropx:disabled{opacity:.3;cursor:default}
   .setlist li.playing b::after{content:"now";margin-left:8px;padding:1px 6px;border-radius:var(--r-pill);
     background:rgba(255,45,111,.16);color:var(--accent);font-size:10px;font-weight:800;
     letter-spacing:.03em;vertical-align:1px}
@@ -3497,9 +3507,30 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           { hour: 'numeric', minute: '2-digit' }) : '';
         return '<li' + (key === playing ? ' class="playing"' : '') + '><b>' + tesc(t.title) +
           (t.artist ? ' <span class="by">' + tesc(t.artist) + '</span>' : '') + '</b>' +
-          (at ? '<time>' + tesc(at) + '</time>' : '<time></time>') + '</li>';
+          '<span class="setright">' + (at ? '<time>' + tesc(at) + '</time>' : '') +
+          '<button class="dropx" type="button" title="Not played here"' +
+          ' data-title="' + tesc(t.title) + '" data-artist="' + tesc(t.artist || '') +
+          '" aria-label="Remove ' + tesc(t.title) + '">\u00d7</button></span></li>';
       }).join('');
     }
+    // Recognition guesses. It catches the bar's playlist between sets and the
+    // wrong remix, and only the DJ knows - so one click takes a song off.
+    const setlistList = $('setlistList');
+    if (setlistList) setlistList.addEventListener('click', async (e) => {
+      const x = e.target.closest('.dropx');
+      if (!x) return;
+      x.disabled = true;
+      try {
+        const r = await fetch('/api/track/drop', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title: x.dataset.title, artist: x.dataset.artist }),
+        });
+        const out = await r.json();
+        if (r.ok) { setlistShown = ''; renderSetlist(out.setlist, null); }
+        else x.disabled = false;
+      } catch (err) { x.disabled = false; }
+    });
+
     // The set as text, for the DJ who posts their tracklist somewhere else.
     const copyBtn = $('setlistCopyBtn');
     if (copyBtn) copyBtn.onclick = async () => {

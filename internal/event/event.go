@@ -525,6 +525,31 @@ func (s *Store) use(dir string) error {
 					}
 				}
 				currentTrack = nil
+			// A track the DJ took off the list. The setlist is REPLAYED from
+			// this journal, so removal has to be a line in it like everything
+			// else - the same shape as deleting a post. Matched on title and
+			// artist rather than position, because a set grows underneath the
+			// click and an index would drop the wrong song.
+			case l.Op == "track-drop" && l.Track != nil:
+				want := cleanTrack(*l.Track)
+				kept := setlistTracks[:0]
+				for _, t := range setlistTracks {
+					if t.Title != want.Title || t.Artist != want.Artist {
+						kept = append(kept, t)
+					}
+				}
+				setlistTracks = kept
+				if currentTrack != nil && currentTrack.Title == want.Title &&
+					currentTrack.Artist == want.Artist {
+					currentTrack = nil
+				}
+				recentKept := recentTracks[:0]
+				for _, t := range recentTracks {
+					if t.Title != want.Title || t.Artist != want.Artist {
+						recentKept = append(recentKept, t)
+					}
+				}
+				recentTracks = recentKept
 			case l.Op == "thumb":
 				for _, p := range posts {
 					for i := range p.Media {
@@ -1512,6 +1537,44 @@ func (s *Store) writeSetlistLocked() error {
 }
 
 // TrackSnapshot returns copies of now-playing and the capped recent history.
+// DropTrack takes a song off the night's record.
+//
+// Recognition is a guess: it hears the bar's playlist between sets, or the
+// wrong remix, and the DJ is the one who knows. Matched on title+artist so a
+// repeat of the same song goes too - which is the honest reading of "that was
+// not played here".
+func (s *Store) DropTrack(title, artist string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	want := cleanTrack(CurrentTrack{Title: title, Artist: artist})
+	if want.Title == "" {
+		return nil
+	}
+	kept := s.setlistTracks[:0]
+	for _, t := range s.setlistTracks {
+		if t.Title != want.Title || t.Artist != want.Artist {
+			kept = append(kept, t)
+		}
+	}
+	s.setlistTracks = kept
+	recentKept := s.recentTracks[:0]
+	for _, t := range s.recentTracks {
+		if t.Title != want.Title || t.Artist != want.Artist {
+			recentKept = append(recentKept, t)
+		}
+	}
+	s.recentTracks = recentKept
+	if s.currentTrack != nil && s.currentTrack.Title == want.Title &&
+		s.currentTrack.Artist == want.Artist {
+		s.currentTrack = nil
+	}
+	if err := s.appendLine(line{Op: "track-drop", Track: &want, TS: time.Now().UnixMilli()}); err != nil {
+		return err
+	}
+	s.changed()
+	return nil
+}
+
 // Setlist is everything this room has played, oldest first.
 //
 // recentTracks is a 15-deep rolling window for "what just played"; this is the
