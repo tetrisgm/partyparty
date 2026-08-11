@@ -74,7 +74,11 @@ type Broadcaster struct {
 	lastName        string
 	lastOpts        Options
 	lastAutoRestart time.Time
-	overridesFn     func() config.Overrides // OTA encode overrides, re-read on each Start (nil = none)
+	// lastPipelineRecover throttles RecoverPipeline (the mid-set false-live
+	// cure), separately from the capture-tap 15s throttle: a pipeline restart
+	// is heavier and a broken engine must not be thrashed.
+	lastPipelineRecover time.Time
+	overridesFn         func() config.Overrides // OTA encode overrides, re-read on each Start (nil = none)
 
 	logMu       sync.Mutex
 	logLines    []string
@@ -279,6 +283,42 @@ func (b *Broadcaster) tryAutoRestart() bool {
 		return false
 	}
 	b.pushLog("[PartyParty] capture stalled (device yanked or exclusive-mode release) - rebuilding the tap")
+	go b.startInternal(dev, name, opts, true)
+	return true
+}
+
+// shouldRecoverPipeline is the guarded decision half of RecoverPipeline,
+// split out so the gate is unit-testable without launching a pipeline: only
+// while live/starting, at most once per 90s, and deciding yes claims the slot.
+func (b *Broadcaster) shouldRecoverPipeline() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.state != "live" && b.state != "starting" {
+		return false
+	}
+	if time.Since(b.lastPipelineRecover) < 90*time.Second {
+		return false
+	}
+	b.lastPipelineRecover = time.Now()
+	return true
+}
+
+// RecoverPipeline rebuilds the whole capture→encode→publish pipeline while a
+// set is running. This is the CURE for the false-live: the ffmpeg tee's RTSP
+// leg dies silently (onfail=ignore, by design - the recording leg must
+// survive an ingest hiccup) while -progress keeps advancing, so the DJ shows
+// "Live" and guests hear nothing. The go-live health watch detects that from
+// MediaMTX's own manifest and calls this; ffmpeg relaunches and re-publishes.
+// Unlike the capture-tap auto-restart it applies to ANY device - the dead leg
+// is downstream of capture. Returns true only when a rebuild actually fired.
+func (b *Broadcaster) RecoverPipeline(reason string) bool {
+	if !b.shouldRecoverPipeline() {
+		return false
+	}
+	b.mu.Lock()
+	dev, name, opts := b.lastDevice, b.lastName, b.lastOpts
+	b.mu.Unlock()
+	b.pushLog("[PartyParty] " + reason + " - restarting the stream pipeline")
 	go b.startInternal(dev, name, opts, true)
 	return true
 }

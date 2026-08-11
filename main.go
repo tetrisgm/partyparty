@@ -832,6 +832,20 @@ func main() {
 					}
 					return b
 				}
+				// The recovery half of the cure. Order matters: a dead engine
+				// must be listening again before the publisher restarts, so
+				// re-ensure MediaMTX (idempotent, a no-op when it is fine -
+				// and the resurrection when it crashed, which previously left
+				// the set dead until app relaunch) and only then rebuild the
+				// ffmpeg pipeline, throttled inside RecoverPipeline.
+				recoverEngine := func(reason string) {
+					if err := mtx.EnsureReady(cfg.RTSPPort, cfg.HLSPort, 8*time.Second); err != nil {
+						diagLog.Printf("go-live health: engine re-ensure failed: %v", err)
+					}
+					if bc.RecoverPipeline(reason) {
+						diagLog.Printf("go-live health: pipeline recovery fired (%s)", reason)
+					}
+				}
 				lastLive := false
 				for {
 					time.Sleep(2 * time.Second)
@@ -879,11 +893,73 @@ func main() {
 									// ours. Condition on it instead.
 									handler.SetStreamHealth("Guests can’t hear anything - the capture isn’t delivering audio. If music is playing on this Mac right now, Stop and Go Live again.")
 								} else {
-									handler.SetStreamHealth("Guests can’t hear anything - the audio engine isn’t receiving the stream. Stop and Go Live again.")
+									handler.SetStreamHealth("Guests can’t hear anything - the audio engine isn’t receiving the stream. Recovering automatically - if this doesn’t clear in a minute, Stop and Go Live again.")
 								}
+							}
+							// The cure, not just the diagnosis: a dead stream
+							// with capture flowing is the tee's RTSP leg gone -
+							// rebuild it rather than asking the DJ to.
+							if badStreak >= 2 && verdict == "DEAD-STREAM" {
+								recoverEngine("guest stream not reaching the audio engine at go-live")
 							}
 							time.Sleep(4 * time.Second)
 						}
+
+						// Proven audible once - now WATCH THE WHOLE SET. This
+						// is the half that was missing: a stream that died at
+						// minute 30 wrote a heartbeat log line and nothing
+						// else - the DJ kept seeing "Live" while every guest
+						// heard silence (the 2026-07-31/08-04 field incidents).
+						// Three consecutive bad samples (~15s) confirm an
+						// incident - one blip never warns - then the console
+						// says so honestly and the engine recovers itself; the
+						// first healthy sample clears the warning.
+						strikes := 0
+						incident := false
+						for bc.Status().State == "live" {
+							time.Sleep(5 * time.Second)
+							if bc.Status().State != "live" {
+								break
+							}
+							before, _ := bc.ProgressSnapshot()
+							time.Sleep(2 * time.Second)
+							after, _ := bc.ProgressSnapshot()
+							capFlowing := after > before
+							pub, code, body := mediamtx.PathPublishing(cfg.HLSPort, cfg.StreamPath)
+							if capFlowing && pub {
+								if incident {
+									diagLog.Printf("go-live health: recovered mid-set (guests=%d)", len(ls.Roster()))
+								}
+								strikes = 0
+								incident = false
+								handler.SetStreamHealth("")
+								continue
+							}
+							strikes++
+							if strikes < 3 {
+								continue
+							}
+							verdict := "DEAD-STREAM"
+							if !capFlowing {
+								verdict = "CAPTURE-DEAD"
+							}
+							if !incident {
+								incident = true
+								diagLog.MarkUrgent()
+								diagLog.Printf("go-live health: MID-SET verdict=%s capture=%s mtx=%s(http=%d body=%q) guests=%d",
+									verdict, word(capFlowing, "flowing", "STALLED"),
+									word(pub, "publishing", "NO-PUBLISHER"), code, body, len(ls.Roster()))
+								if verdict == "CAPTURE-DEAD" {
+									handler.SetStreamHealth("Guests can’t hear anything - the capture stopped delivering audio. If music is playing on this Mac right now, Stop and Go Live again.")
+								} else {
+									handler.SetStreamHealth("Guests can’t hear anything - the stream stopped reaching the audio engine. Recovering automatically - if this doesn’t clear in a minute, Stop and Go Live again.")
+								}
+							}
+							if verdict == "DEAD-STREAM" {
+								recoverEngine("guest stream lost mid-set")
+							}
+						}
+						handler.SetStreamHealth("")
 					}
 					lastLive = live
 				}
