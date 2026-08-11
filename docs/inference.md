@@ -187,16 +187,27 @@ one of them, and each fills from every side at once:
   catalog knows the clubs before the owner's first visit: check-in
   disambiguation between two close venues comes from it, not just from
   history and MKLocalSearch.
-- **Performers.** A canonical table of DJs and artists: seeded from the
-  platform's own DJs and every `party_people` row with the dj role,
-  extended by lineups parsed from tickets and listings, and CANONICALIZED
-  against two catalogs - **Bandsintown** (a real, documented API: artist
-  name, image, links, and their events with venue name and coordinates;
-  often better than Apple Music for club DJs, because small touring artists
-  register there themselves) and the **Apple Music catalog** (MusicKit
-  lookup: proper name, artwork, disambiguation). Store both ids when both
-  hit. "Ada", "ada kaleh" and the misspelling on a flyer become one
-  performer, and "who played" autocompletes and suggests from it.
+- **Performers.** A canonical table of DJs and artists, and **Apple Music
+  ids are its spine** (owner, 2026-08-11: leverage Apple Music as much as
+  possible). The reason is already in the data: 805 of the owner's 898
+  Shazams carry an Apple Music song id in the store itself
+  (`ZAPPLEMUSICID`), so song → artist resolves through one exact catalog
+  lookup - no fuzzy name matching for anything that was ever Shazamed. The
+  Worker talks to the Apple Music catalog directly (a MusicKit developer
+  token, server-side): canonical names, artwork, genres, disambiguation.
+  **Bandsintown** is the second catalog, for what Apple misses - club DJs
+  who never charted register there themselves - and for events. Seeded from
+  the platform's own DJs and every `party_people` dj row, extended by
+  lineups parsed from tickets and listings. Store every id that hits.
+  "Ada", "ada kaleh" and the misspelling on a flyer become one performer,
+  and "who played" autocompletes and suggests from it.
+
+  The honest boundary, so nobody chases it twice: Apple Music's OWN concert
+  listings (artist pages, Shazam's concerts tab) are not in any API - and
+  their upstream supplier is Bandsintown, so our direct Bandsintown rung
+  taps the same well one hop closer. Apple Music has no usable
+  people/social data either. Apple Music's catalog is the spine for WHO an
+  artist is; it says nothing about WHERE they play.
 - **People.** The comprehensive base is the owner's Contacts (one prompt),
   matched to the existing `people` table by email and name; co-attendance
   history ranks them. Faces come with them.
@@ -262,6 +273,11 @@ The harvest, in order of what it yields:
    sites do not publish.
 4. **Bandsintown** - canonicalizes performer names met anywhere above, and
    its events corroborate venues with coordinates.
+5. **The Apple Music catalog** - server-side with the developer token:
+   resolves every Apple Music song id the Shazam evidence already carries
+   into canonical artists with artwork and genres, and enriches every
+   performer met by name. Pure enrichment - it never names a venue or a
+   date.
 
 Freshness is a column, not a hope: every row carries source and last_seen;
 harvests upsert; nothing hard-deletes (a closed club still names old
