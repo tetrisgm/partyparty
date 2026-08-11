@@ -1979,25 +1979,32 @@ test("a record belongs to one person and is invisible to everybody else", async 
 // test can see that: the tests call this worker directly.
 //
 // So this reads the two files against each other. Every exact path the worker
-// answers must be claimed by a route, and the development doors must NOT be -
-// they are shut by DEV_LOGIN, and a route for them is a door on the internet.
+// answers must be claimed by a route.
+//
+// The development doors used to be checked the opposite way: no route may
+// reach them. That worked while the routes were paths on a SHARED apex, where
+// an unrouted path simply fell through to partyparty-site. Since the
+// 2026-08-11 split this worker owns live.partyparty.party outright and nothing
+// else is behind it, so the wildcard route is the only correct shape -
+// enumerating paths there would strand every other path on the placeholder
+// address instead of serving a 404. The route cannot be what shuts those
+// doors anymore, so the test checks what actually does: each one is gated on
+// DEV_LOGIN in its own condition, and DEV_LOGIN is not in the deployed config.
 test("every page this worker serves is claimed by one of its routes", () => {
   const source = readFileSync(new URL("../worker.js", import.meta.url), "utf8");
   const config = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
 
   // Cloudflare's * matches anything, including slashes. A pattern without one
   // matches its own path and nothing under it, which is why /people needs two.
-  const patterns = [...config.matchAll(/"pattern":\s*"partyparty\.party([^"]*)"/g)]
+  // Any hostname on the zone, not just the apex: since the 2026-08-11 split
+  // this worker answers on live.partyparty.party, and a regex that only knew
+  // the apex found no routes at all - which made the workers.dev escape hatch
+  // below look true and passed this test for entirely the wrong reason.
+  const patterns = [...config.matchAll(/"pattern":\s*"[^"\/]*partyparty\.party([^"]*)"/g)]
     .map((m) => new RegExp("^" + m[1].split("*")
       .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$"));
-  // On workers.dev the worker IS the origin: every path reaches it, so there is
-  // no route to omit and nothing to strand. That is how this worker is reached
-  // since the 2026-08-11 split, while partyparty.party's platform paths still
-  // belong to the journal. The check below still runs in full the moment zone
-  // routes come back - and the dev-door half runs either way, because a door
-  // that must not be on the internet must not be routed on any hostname.
-  const onWorkersDev = /"workers_dev":\s*true/.test(config) && patterns.length === 0;
-  const claimed = (path) => onWorkersDev || patterns.some((re) => re.test(path));
+  assert.ok(patterns.length > 0, "no routes at all: nothing on the zone reaches this worker");
+  const claimed = (path) => patterns.some((re) => re.test(path));
 
   // What the worker actually answers, read off the routing itself.
   const exact = [...source.matchAll(/path === "(\/[^"]*)"/g)].map((m) => m[1]);
@@ -2011,12 +2018,19 @@ test("every page this worker serves is claimed by one of its routes", () => {
   assert.ok(exact.includes("/people") && exact.includes("/parties/new"),
     "the tracker's own pages must be among the paths checked");
 
+  const devDoors = exact.filter((path) => path.startsWith("/dev/"));
+  assert.ok(devDoors.length > 0, "the dev doors moved; this test is reading the wrong thing");
+  for (const path of devDoors) {
+    // The gate has to be in the SAME condition that matches the path - a
+    // check further down the handler is one early return away from being gone.
+    assert.ok(source.includes(`path === "${path}" && env.DEV_LOGIN === "1"`),
+      `${path} is a development door and must be gated on DEV_LOGIN where it is matched`);
+  }
+  assert.ok(!/"DEV_LOGIN"/.test(config),
+    "DEV_LOGIN is set in the deployed config, which opens the development doors");
+
   for (const path of exact) {
-    if (path.startsWith("/dev/")) {
-      assert.ok(!patterns.some((re) => re.test(path)),
-        `${path} is a development door and must have no route`);
-      continue;
-    }
+    if (path.startsWith("/dev/")) continue;
     assert.ok(claimed(path), `${path} is served but no route sends it here`);
   }
   for (const prefix of prefixes) {

@@ -37,15 +37,19 @@
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],
 
-  // NO ZONE ROUTES, deliberately (2026-08-11, the split).
+  // One route, on a subdomain of its own (2026-08-11, the split).
   //
   // partyparty.party's platform paths are still served by the JOURNAL worker
-  // (clubclub's deployment, holding the owner's real nights). Claiming them
-  // here would delete a live product. This worker is reached on its
-  // workers.dev hostname instead, which needs no DNS and cannot collide; the
-  // Mac points at it via PARTYPARTY_PLATFORM. When clubclub moves to
-  // clubclub.app and frees the zone, the route block comes back here.
-  "workers_dev": true,
+  // (clubclub's deployment, holding the owner's real nights), so this worker
+  // cannot claim them without deleting a live product. It answers on
+  // live.partyparty.party instead - a real hostname, so OAuth callbacks can be
+  // registered against something permanent rather than a workers.dev name that
+  // would have to be revoked later. The apex routes come back here when
+  // clubclub moves to clubclub.app.
+  "routes": [
+    { "pattern": "live.partyparty.party/*", "zone_name": "partyparty.party" }
+  ],
+
 
   "vars": {
     "APPLE_CLIENT_ID": "fm.partyparty.web",
@@ -58,7 +62,7 @@
 
     // Where links in email point. Pinned rather than taken from the request, so
     // a request arriving on an unexpected host cannot mint links to that host.
-    "PUBLIC_BASE": "https://partyparty-live.ramine-4e9.workers.dev"
+    "PUBLIC_BASE": "https://live.partyparty.party"
   },
 
   // The shared MXroute sending mailbox, from the account-level "stack" store -

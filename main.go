@@ -41,11 +41,12 @@ import (
 //go:embed all:web
 var webFS embed.FS
 
-// platformDefault is where the Mac finds its own parties. A workers.dev
-// hostname on purpose while partyparty.party's platform paths belong to the
-// journal: it needs no DNS and cannot collide. It moves back to the apex when
-// clubclub migrates to clubclub.app. Override with PARTYPARTY_PLATFORM.
-const platformDefault = "https://partyparty-live.ramine-4e9.workers.dev"
+// platformDefault is where the Mac finds its own parties. A subdomain of its
+// own while partyparty.party's platform paths belong to the journal - a real
+// hostname, so the OAuth callbacks registered against it survive; it moves
+// back to the apex when clubclub migrates to clubclub.app. Override with
+// PARTYPARTY_PLATFORM.
+const platformDefault = "https://live.partyparty.party"
 
 // appVersion is stamped by the build (-ldflags "-X main.appVersion=..."). It is
 // shown in the UIs and broadcast to clients so stale player pages refresh
