@@ -2,6 +2,38 @@
 
 ## THE SPLIT (2026-08-11): partyparty is the broadcast app again
 
+**What the journal era taught THIS app (ported knowledge - the era's 75
+commits touched no broadcast code, verified by path diff, but three findings
+matter here):**
+
+1. **Live track recognition is very likely dead in every lane, and the
+   "Shazam verdict (2026-08-05)" section below is too optimistic.** The
+   journal era proved (2026-08-10): the App ID carries SHAZAM_KIT
+   (`asc bundle-ids capabilities list --bundle YPMR3HYD9L`) but NO
+   provisioning profile generated from it - fresh MAC_APP_DEVELOPMENT and
+   MAC_APP_STORE both checked, byte-identical entitlement lists - carries a
+   ShazamKit entitlement, and a binary claiming
+   `com.apple.developer.shazamkit` is SIGKILLed at launch. So "recognition
+   proven only in provisioned builds" understates it: the entitlement may
+   not be obtainable at all until resolved with Apple. Now Playing during
+   sets depends on this. Nobody has ever verified live recognition in the
+   field.
+2. **Ad-hoc desk builds never reach Shazam at all** - shazamd does not even
+   launch, zero log lines. To test recognition on a desk build, sign it:
+   `PP_SIGN_ID="Apple Development: Created via API (PNPRMWUDTD)"` plus
+   `APP_STORE_PROVISIONING_PROFILE` pointing at the "PartyParty Mac Dev"
+   profile (asc profile id 76G3BZ3ULT, expires 2027-08-10; re-download with
+   `asc profiles download --id 76G3BZ3ULT`). The installed
+   /Applications/PartyParty.app is built exactly this way now.
+3. **The dialect seam.** This Build-269 app speaks the GROUP-flavored
+   /api/v1 dialect; partyparty.party production runs the journal-era
+   PERSON-flavored worker (see the deploy freeze below). cloudsync fails
+   soft by design, so streaming is unaffected - but the cloud extras (wall
+   sync, party bind, profile) may quietly no-op until clubclub migrates the
+   journal off this domain. Known, accepted, resolves at migration.
+
+
+
 Owner: two products were fighting for one codebase. PartyParty
 (partyparty.party) is the Mac app that broadcasts a party to the room's
 phones via QR - and ONLY that. The check-in journal (venues, nights, tracks,
