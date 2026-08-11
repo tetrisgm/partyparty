@@ -116,8 +116,20 @@ func (s *srv) handlePartyAPI(w http.ResponseWriter, r *http.Request) bool {
 				}
 			}
 			if !found {
+				// The name too, not just the binding. The console header reads
+				// the LOCAL meta title, which adopting a party overwrites - so
+				// clearing the binding alone left "Tuesday, 31 December 2024"
+				// on screen and Go Live still gated on it. Only when the local
+				// name is still the orphan's: a DJ who has since typed their
+				// own keeps it, because their words always outrank ours.
+				held := s.Events.Canonical()
 				if err := s.Events.SetCanonical(event.CanonicalParty{}); err != nil {
 					log.Printf("clearing an orphaned canonical party: %v", err)
+				}
+				if meta := s.Events.Meta(); held.Title != "" && meta.Title == held.Title {
+					if err := s.Events.ClearTitle(); err != nil {
+						log.Printf("clearing an orphaned party name: %v", err)
+					}
 				}
 				current = ""
 			}

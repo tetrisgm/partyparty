@@ -344,12 +344,32 @@ func TestAPartyTheAccountNoLongerHasIsDropped(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := ev.SetMeta("Tuesday, 31 December 2024", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
 	out := decodeJSON(t, do(s, http.MethodGet, "/api/parties", "127.0.0.1:1234"))
 	if out["current"] != "" {
 		t.Fatalf("the orphan survived the list: %v", out["current"])
 	}
 	if ev.Canonical().Title != "" {
-		t.Fatalf("the console will still show %q in its header", ev.Canonical().Title)
+		t.Fatalf("the binding survived: %q", ev.Canonical().Title)
+	}
+	// The header reads the LOCAL name, so the binding alone is not the ghost.
+	if ev.Meta().Title != "" {
+		t.Fatalf("the console still shows %q in its header", ev.Meta().Title)
+	}
+
+	// A name the DJ typed is theirs, even when the binding it came with dies.
+	if err := ev.SetCanonical(event.CanonicalParty{Key: "k3", Title: "Cloud name"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ev.SetMeta("My basement", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	do(s, http.MethodGet, "/api/parties", "127.0.0.1:1234")
+	if ev.Meta().Title != "My basement" {
+		t.Fatalf("it threw away a name the DJ typed: %q", ev.Meta().Title)
 	}
 
 	// Signed OUT is also a real answer: the account has no parties, so a held
