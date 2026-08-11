@@ -580,6 +580,12 @@ func (s *Store) SetMeta(title, host, starts string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if t := clip(strings.TrimSpace(title), 80); t != "" {
+		// "-" erases, the same sentinel Starts uses below. SetMeta is a
+		// sparse update - "" means "leave this alone" so a caller can send one
+		// field - which left the room's name with no way to be removed at all.
+		if t == "-" {
+			t = ""
+		}
 		s.meta.Title = t
 	}
 	if h := clip(strings.TrimSpace(host), 40); h != "" {
@@ -1506,6 +1512,34 @@ func (s *Store) writeSetlistLocked() error {
 }
 
 // TrackSnapshot returns copies of now-playing and the capped recent history.
+// Setlist is everything this room has played, oldest first.
+//
+// recentTracks is a 15-deep rolling window for "what just played"; this is the
+// night's record and it is what the event page shows. Capped only so a
+// twelve-hour set cannot make a status payload enormous.
+func (s *Store) Setlist(limit int) []CurrentTrack {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all := s.setlistTracks
+	// The track under the needle is not in the setlist until it is replaced -
+	// otherwise the list would visibly lag the room by one song all night.
+	if s.currentTrack != nil && s.currentTrack.Title != "" {
+		last := ""
+		if n := len(all); n > 0 {
+			last = all[n-1].Title + "\u0000" + all[n-1].Artist
+		}
+		if last != s.currentTrack.Title+"\u0000"+s.currentTrack.Artist {
+			all = append(append([]CurrentTrack{}, all...), *s.currentTrack)
+		}
+	}
+	if limit > 0 && len(all) > limit {
+		all = all[len(all)-limit:]
+	}
+	out := make([]CurrentTrack, len(all))
+	copy(out, all)
+	return out
+}
+
 func (s *Store) TrackSnapshot() (*CurrentTrack, []CurrentTrack) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

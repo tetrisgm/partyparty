@@ -134,6 +134,11 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		current, recent := s.Events.TrackSnapshot()
 		body["nowPlaying"] = feedTrackFrom(current)
 		body["recentTracks"] = feedTracksFrom(recent)
+		// The night's whole set, for the DJ's own page. Guests get now-playing
+		// and the recent window; the record of what was played is the DJ's.
+		if dj {
+			body["setlist"] = feedTracksFrom(s.Events.Setlist(300))
+		}
 		if dj && s.featureOn("trackId") {
 			body["trackAsks"] = s.Events.TrackAskCount()
 		}

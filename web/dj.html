@@ -210,6 +210,22 @@
   .djreact.zero{color:var(--label-tertiary);font-weight:600}
   .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
   .trackcard.off{opacity:.7}
+  /* The night's own record. Numbers in tabular figures so a 100-track set
+     keeps one left edge, and the row still playing marked rather than
+     animated - a set list is read, not watched. */
+  .setlist{list-style:none;margin:0;padding:0;counter-reset:played}
+  .setlist li{counter-increment:played;display:grid;
+    grid-template-columns:2.2em minmax(0,1fr) auto;gap:12px;align-items:baseline;
+    padding:8px 2px;border-top:1px solid var(--separator);font-size:13px}
+  .setlist li:first-child{border-top:0}
+  .setlist li::before{content:counter(played);color:var(--label-tertiary);
+    font-variant-numeric:tabular-nums;font-weight:650;font-size:12px}
+  .setlist b{font-weight:700;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .setlist span.by{color:var(--label-secondary);font-weight:400}
+  .setlist time{color:var(--label-tertiary);font-size:11px;font-variant-numeric:tabular-nums}
+  .setlist li.playing b::after{content:"now";margin-left:8px;padding:1px 6px;border-radius:var(--r-pill);
+    background:rgba(255,45,111,.16);color:var(--accent);font-size:10px;font-weight:800;
+    letter-spacing:.03em;vertical-align:1px}
   /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
   /* The bar's glass runs edge to edge, but its controls sit on the same
      measure as every card below it. */
@@ -1189,6 +1205,16 @@
   <div class="party-grid">
     <main class="party-feed-col">
   <section id="ptab-wall">
+    <!-- What the room played. Hidden until there is something to show: an
+         empty "Tracks played" card on a page nobody has DJed yet is furniture,
+         and the recognizer only speaks once music is running. -->
+    <div class="card" id="setlistCard" hidden>
+      <div class="cardhead">
+        <h2>Tracks played <span class="muted" id="setlistCount"></span></h2>
+        <button class="ghost" id="setlistCopyBtn" type="button">Copy list</button>
+      </div>
+      <ol id="setlistList" class="setlist"></ol>
+    </div>
     <div class="card" id="eventCard" style="display:none">
       <div class="cardhead">
         <h2 id="eventTitle">Party feed</h2>
@@ -3443,6 +3469,51 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const btn = list.querySelector('button[data-csend="' + pid + '"]');
       if (btn) btn.click();
     });
+    // What the room played, on the page that is the night's record.
+    //
+    // Its own escaping: this scope has no esc() and reaching for one in
+    // another function is the silent ReferenceError this console has shipped
+    // before. Titles come off Apple's catalog and can hold anything.
+    const tesc = (v) => String(v == null ? '' : v)
+      .replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+    let setlistShown = '';
+    function renderSetlist(tracks, now){
+      const card = $('setlistCard');
+      if (!card) return;
+      const list = Array.isArray(tracks) ? tracks : [];
+      if (!list.length) { card.hidden = true; setlistShown = ''; return; }
+      // Redraw only on change: this polls continuously, and rebuilding the
+      // list every second would fight text selection and any open copy.
+      const sig = list.map((t) => t.title + '\u0000' + (t.artist || '')).join('\u0001');
+      card.hidden = false;
+      $('setlistCount').textContent = list.length === 1 ? '1 track' : list.length + ' tracks';
+      if (sig === setlistShown) return;
+      setlistShown = sig;
+      const playing = now && now.title
+        ? now.title + '\u0000' + (now.artist || '') : '';
+      $('setlistList').innerHTML = list.map((t) => {
+        const key = t.title + '\u0000' + (t.artist || '');
+        const at = t.setAt ? new Date(t.setAt).toLocaleTimeString(undefined,
+          { hour: 'numeric', minute: '2-digit' }) : '';
+        return '<li' + (key === playing ? ' class="playing"' : '') + '><b>' + tesc(t.title) +
+          (t.artist ? ' <span class="by">' + tesc(t.artist) + '</span>' : '') + '</b>' +
+          (at ? '<time>' + tesc(at) + '</time>' : '<time></time>') + '</li>';
+      }).join('');
+    }
+    // The set as text, for the DJ who posts their tracklist somewhere else.
+    const copyBtn = $('setlistCopyBtn');
+    if (copyBtn) copyBtn.onclick = async () => {
+      const lines = [...document.querySelectorAll('#setlistList li')].map((li, i) => {
+        const b = li.querySelector('b');
+        return (i + 1) + '. ' + (b ? b.textContent.trim() : '');
+      });
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        copyBtn.textContent = 'Copied';
+        setTimeout(() => { copyBtn.textContent = 'Copy list'; }, 1500);
+      } catch (e) { copyBtn.textContent = 'Could not copy'; }
+    };
+
     async function poll(){
       try {
         // wait=1 after the first load: long-poll - guest posts/comments land
@@ -3452,6 +3523,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (!r.ok) return false;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
+        renderSetlist(data.setlist, data.nowPlaying);
         if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
