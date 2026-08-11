@@ -465,6 +465,23 @@ two minutes each, receipts in `build/`:
 the PROGRAM-DATE-TIME under the playhead, so it is true end-to-end delay, not
 a distance from the playlist edge.
 
+**What the three seconds is for (owner, 2026-08-11).** It came out of a set at
+the Shack 15 office where guests got constant random cutoffs, and the cure was
+to buy buffer. It was never a sync target and was never meant to hold anybody
+back from the room; sync is wanted as tight as it can be had. So read the
+table with that in mind, because it changes which number is the bad news:
+
+- 1.17s on the direct path is not "a declared number missed by a factor of
+  2.5". It is the Shack-15 cushion NOT BEING THERE on the path essentially
+  every guest uses. Whatever made those cutoffs stop is not in effect.
+- The ~2.2s spread between a direct guest and a relayed one is bad on its own
+  terms, because guests in one room should hear the same thing at the same
+  time.
+- A fix therefore has two jobs that do not automatically come together: put
+  the cushion back where it stops dropouts, and make both paths land on the
+  same number. Lowering D to match today's 1.17s would make the two agree and
+  bring the cutoffs back.
+
 Read it in that order, because it is the reverse of what everyone assumed:
 
 - **Direct is the one that is wrong.** It carries the correct July D=3 pin, in
@@ -497,6 +514,30 @@ PART-HOLD-BACK to 2.9 put the pin outside it and AVPlayer snapped the listener
 to the window's oldest edge. A -3.000 offset against a 0.9 hold-back and a
 0.512s/0.171s window may be the same interaction seen from the other side.
 
+## The LAN resolver caches a negative for half an hour (2026-08-11)
+
+This Mac does not ask the internet for DNS. `scutil --dns` puts
+**192.168.1.50 (the NAS)** first, and that resolver caches negative answers
+for the zone's SOA minimum, which is 1800s.
+
+The consequence, which cost real time tonight: look a name up BEFORE creating
+it and the whole LAN cannot see it for the next half hour, while `dig @1.1.1.1`
+and `dig` against Cloudflare's own nameservers answer correctly the whole
+time. The symptom is split-brain - `dig` fine, `getaddrinfo` NXDOMAIN, the Go
+app failing on an address family that should not have been chosen - and none
+of it is a fault in the record.
+
+So: create the record first, then look it up. If a name is already poisoned,
+wait it out. Flushing the NAS is touching shared infrastructure and is not
+worth it for a timer.
+
+Second thing the same episode showed: **this Mac has no global IPv6.**
+`ifconfig` has no `inet6 2…` address and the only default v6 routes point at
+utun tunnels, so `ping6` to Cloudflare says "no route to host". A `curl -6`
+that appears to succeed is reporting `::ffff:a.b.c.d` - an IPv4-mapped
+address, i.e. IPv4. Do not read that as IPv6 working, which is exactly the
+wrong turn taken here before checking `ifconfig`.
+
 ## Owed
 
 - Correction to Apple DTS: an earlier support message said the host was
@@ -508,7 +549,9 @@ to the window's oldest edge. A -3.000 offset against a 0.9 hold-back and a
   owed there is many phones on venue Wi-Fi.
 - The direct path's 1.17s vs its declared 3.00s, and the ~2.2s split between
   direct and relayed guests in one room. Measured, reproduced, not fixed:
-  it is audio-core work and needs a supervised set.
+  it is audio-core work and needs a supervised set. The cushion is there to
+  stop dropouts, not to hold listeners back - do not "fix" the disagreement by
+  lowering D to the number direct happens to sit at today.
 - Nothing on the web pages. The stacked layout eras are collapsed: dead rules
   removed and every selector declared more than once in the same context merged
   into one canonical rule (listener 500 -> 359 live rules, dj 438 -> 311), with
