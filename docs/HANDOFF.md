@@ -28,28 +28,67 @@ source below inherits that rule: raw calendar entries, mail bodies and photos
 are never uploaded, only the inference ("party named X, venue Y, day Z,
 probably with A and B").
 
-The scanner's sources, ranked by yield per prompt:
+The scanner's sources - the full Apple sweep (owner, third pass: "literally
+think of all of the Apple offering... what apps or data does Apple give us
+that we could leverage to infer the party." Wi-Fi SSID dropped by owner
+decree). Grouped by the door Apple actually gives:
 
-1. **Shazam store** - SHIPPED (`ShazamStore.swift`, `ShazamPlaces.swift`).
-2. **Calendar** (EventKit, one prompt, App-Store-clean). Titles are often the
-   party's literal name; locations are venues; subscribed ical feeds (RA,
-   ticketing "add to calendar") land here too. The single richest sanctioned
-   source after Shazam.
-3. **Photos** (PhotoKit, one prompt, App-Store-clean). Geotagged timestamps are
-   attendance evidence - people photograph parties they never Shazam - and the
-   same photos are candidate WALL content ("14 photos from that night - add
-   some to the page?"). Ticket screenshots in the library OCR via Vision.
-4. **Contacts** (one prompt). Names become people records; feeds the Partiful
-   layer ("Cy" is Cyrus, with a face).
-5. **Mac location + Wi-Fi SSID** (one prompt). Venue resolution at go-live;
-   the SSID corroborates ("Public Works Guest").
-6. **Mail store.** Ticket confirmations are the highest-fidelity source that
-   exists - event name, venue, lineup, date, and image attachments OCR'd
-   locally. The door is macOS's own per-app data-access consent (the OS itself
-   prompts before an app touches another app's data) - prove it on the desk
-   build first; App Store review posture unknown, standalone lane exists.
-7. **Messages.** "Who was with you" evidence (the group chat that lit up at
-   1am). Same door as Mail; the heaviest-feeling source, so last.
+*Tier 1 - sanctioned frameworks, App-Store-clean, one prompt or none:*
+
+- **Calendar** (EventKit, one prompt). Titles are often the party's literal
+  name; `EKStructuredLocation` carries venue GEO; ATTENDEES are who was
+  there; subscribed ical feeds (RA, ticketing "add to calendar") land here
+  too. The richest source after Shazam.
+- **Photos** (PhotoKit, one prompt). Geotagged timestamps are attendance
+  evidence people never Shazam; the screenshot media subtype finds ticket
+  screenshots directly; SHARED ALBUMS name their other contributors - who was
+  there; a Live Photo carries three seconds of AUDIO - the music in the room,
+  matchable locally. The same photos are candidate wall content.
+- **Maps** (MKLocalSearch, NO prompt). Point-of-interest search with the
+  nightlife category turns a coordinate cluster into a real venue NAME -
+  "Public Works", not "195 Erie St". Upgrades unit 1 immediately.
+- **Contacts** (one prompt). Names become people records with faces.
+- **Mac location** (one prompt). Venue resolution at go-live.
+- **MusicKit** recently-played (one prompt). Weak and mostly negative space -
+  a gap in your own listening on a Saturday night is itself a signal. Low.
+- **WeatherKit** (no prompt). The night's weather as journal color. Garnish.
+
+*Tier 2 - local stores on this Mac, through the doors the Shazam reader
+proved (user-selected folder grants; macOS's per-app data consent). Desk
+build first; the standalone lane exists if App Store review balks:*
+
+- **Mail.** Ticket confirmations (name, venue, lineup, date); .ics invites;
+  .pkpass attachments (see Wallet below); PAYMENT-RECEIPT emails - a Square
+  receipt from the venue bar is an attendance receipt with the venue's name
+  on it; image attachments OCR'd by Vision. All parsed locally.
+- **Downloads.** The same parsers over ticket PDFs, .ics and .pkpass that
+  never went through Mail.
+- **Messages.** The group chat that lit up at 1am; chats are often NAMED
+  after the crew. "Who was with you" evidence.
+- **Voice Memos.** A DJ records sets - a 2am two-hour memo IS the night's
+  recording. Offer to attach it; a local recognition pass can name its tracks.
+- **Safari history.** The RA/Dice event pages visited that week say which
+  party you were eyeing. Low rank, same door.
+- **Notes.** Occasionally a lineup or an address. Lowest.
+
+*Wallet, specifically (the owner asked):* the APP has no door on any platform
+- PassKit lets an app read only passes it added itself, and macOS has no
+Wallet at all. But a .pkpass is a zip with `pass.json` inside, and tickets
+arrive as mail attachments and downloads BEFORE Wallet ever sees them - so we
+intercept at the source. It is the best-structured evidence that exists:
+event name, venue, start time, and the venue's COORDINATES, because
+lock-screen relevance requires them.
+
+*Tier 3 - no door; named so nobody wonders again:* Significant Locations and
+CLVisit (iOS-only), Find My friends, Apple Pay transaction history, Health
+(macOS has no HealthKit at all - the 4am bedtime lives on the phone), Screen
+Time, Siri's own inferences, and Journal ENTRIES. Worth knowing:
+**JournalingSuggestions** (iOS 17.2+) is Apple shipping our exact inference -
+"you were somewhere with music, want to write about it?" - as an API,
+iOS-only. It validates the product, and it is the one real argument for a
+someday-tiny iOS companion. Until then, **Shortcuts** covers the phone hook
+today: a personal automation "when I arrive anywhere after 10pm, open
+partyparty.party" can be handed to users as a pre-built shortcut.
 
 **The backlog** (the spine of the retroactive side):
 
@@ -68,20 +107,23 @@ Units, v2 order:
 
 1. **Venues become records** - `venues` keyed by rounded (~100 m) coords,
    `events.venue_id`, `place` stays as display text. Naming once names all
-   nights there, past and future; import and go-live resolve automatically.
+   nights there, past and future; import and go-live resolve automatically,
+   and MKLocalSearch's nightlife category proposes the real NAME, not the
+   street address.
 2. **The backlog** - the queue, its states, the /home cards. The settings-page
    import becomes a scanner that fills it.
-3. **Scanner expansion: Calendar + Photos** (+ Contacts, location/SSID) - the
-   one-prompt sanctioned sources, feeding names, venues and photo evidence
-   into the backlog.
+3. **Scanner expansion: Calendar + Photos** (+ Contacts, location) - the
+   one-prompt sanctioned sources, feeding names, venues, attendees and photo
+   evidence into the backlog.
 4. **"I'm here"** - phone-web check-in: location tap -> nearest venues ranked
    by own history -> confirm -> tonight exists, entering the same pipeline.
 5. **People suggestions** - co-attendance x recency x same-venue chips on
    check-in and creation; enriched by Contacts, later Messages.
-6. **Deep sources** - Mail ticket parsing (incl. attachment OCR), Messages,
-   the venue's own page (URL on the venue record, parsed generically for
-   schema.org Event JSON-LD), and other users' PUBLIC nights at the same venue
-   and date (the network answer; designed now, worth more with every user).
+6. **Deep sources** - the Tier 2 stores (Mail with .pkpass/.ics/receipt
+   parsing, Downloads, Messages, Voice Memos, Safari history), the venue's
+   own page (URL on the venue record, parsed generically for schema.org Event
+   JSON-LD), and other users' PUBLIC nights at the same venue and date (the
+   network answer; designed now, worth more with every user).
 7. **Series** - same venue + cadence + recurring people => "these six
    Saturdays at Public Works look like one series - name it once?"; nights
    inherit, new check-ins default in.
