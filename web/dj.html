@@ -70,9 +70,34 @@
   body{margin:0;padding-bottom:40px;overflow-x:hidden;font-family:var(--sans);font-size:13px;line-height:1.31;letter-spacing:-.006em;
     background:var(--bg);color:var(--label);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-synthesis:none}
   [hidden]{display:none!important}
+  .authbanner-actions .go{height:32px;padding:0 16px;border-radius:var(--r-pill);font-size:13px}
+  .authbanner-actions .ghost{height:32px;padding:0 12px;border-radius:var(--r-pill);font-size:13px}
+  .auth-actions .go{height:40px;padding:0 22px;border-radius:var(--r-pill)}
+  .auth-actions .ghost{height:40px;border-radius:var(--r-pill)}
+  .auth-status.error{color:var(--danger)}
+  .auth-status.ok{color:#1d883d}
+  .setwrap-in .go{white-space:nowrap}
+  .setwrap.done{background:rgba(52,199,89,.09);border-color:rgba(52,199,89,.32)}
+  .authgate.blocking .authbanner-actions .go,.authgate.blocking .authbanner-actions .ghost{width:100%;height:42px;font-size:14px}
   .settings-section{border-top:1px solid var(--separator);padding-top:16px;margin-top:16px}
   .settings-section:first-of-type{border-top:none;padding-top:0;margin-top:0}
   .support-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .event-actions .ghost{height:30px;border-radius:var(--r-pill);white-space:nowrap}
+  .eventedit{display:none;margin-top:14px;border:1px solid var(--separator);background:var(--bg-elevated);border-radius:var(--r-md);padding:14px;box-shadow:var(--elev-1)}
+  .eventedit.show{display:block}
+  .eventedit h2{font-size:15px;line-height:1.25;margin:0 0 10px;color:var(--label)}
+  .eventform-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .eventform-field{display:grid;gap:5px;min-width:0}
+  .eventform-field.wide{grid-column:1/-1}
+  .eventform-field span{font-size:12px;color:var(--label-secondary)}
+  .eventform-field input{width:100%;min-width:0;height:36px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 11px;color:var(--label);font:inherit;font-size:13px;outline:none}
+  .eventform-field input:focus{border-color:var(--accent);background:var(--bg-elevated)}
+  .eventform-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .eventform-status{font-size:12px;line-height:1.45;color:var(--label-secondary);min-height:17px;margin-right:auto}
+  .eventform-status.error{color:var(--danger);font-weight:700}
+  .eventform-status.ok{color:#1d883d;font-weight:700}
+  .pub-fields.show{display:grid;gap:10px}
+  .eventcreate.show{display:block}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary);text-transform:capitalize}
   .badge.live{background:rgba(52,199,89,.15);color:#1d883d}
   .badge.error{background:rgba(255,59,48,.12);color:#c1281e} /* darkened for light-mode contrast, like its siblings */
@@ -114,6 +139,8 @@
   .listener:hover{background:rgba(255,255,255,.05)}
   .listener:last-child{border-bottom:none}
   .listener.det{align-items:flex-start}
+  .listener .lstat{width:18px;text-align:center}
+  .listener .ldot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
   .listener .lemoji{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);display:grid;place-items:center;font-size:16px;line-height:1;flex:0 0 32px;overflow:hidden}
   .listener .lemoji.lphoto img{width:100%;height:100%;object-fit:cover;display:block}
   .listener .lname{flex:1;color:var(--label);font-size:14px;font-weight:500}
@@ -121,6 +148,7 @@
   .listener .lbody{flex:1;min-width:0}
   .listener .lbody .lname{display:block}
   .ldetail{color:var(--label-secondary);font-size:11px;font-variant-numeric:tabular-nums;margin-top:2px}
+  .listener .llat{color:var(--label-secondary);font-variant-numeric:tabular-nums}
   .stat{display:flex;gap:16px;align-items:baseline}
   pre{background:var(--bg-elevated-2);border:1px solid var(--separator);border-radius:var(--r-sm);padding:12px;font-family:var(--mono);font-size:12px;line-height:1.5;height:190px;overflow:auto;color:var(--label-secondary);white-space:pre-wrap;margin:0}
   .hint{font-size:11px;color:var(--label-tertiary);margin-top:10px;line-height:1.5}
@@ -143,24 +171,91 @@
   body.show-adv .adv{display:block}
   .inapp-check{display:flex;align-items:center;gap:8px;color:var(--label);font-size:13px;cursor:pointer}
   .inapp-check input{accent-color:var(--accent)}
+  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
+  .cardhead h2{margin:0}
   .iconbtn{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);background:var(--fill);color:var(--label-secondary);font-size:15px;font-weight:600;line-height:1;cursor:pointer}
   .iconbtn:hover{background:var(--fill-hover);color:var(--label)}
   .iconbtn svg{display:block}
+  .iconbtn.spin svg{animation:pp-spin .6s linear}
   @keyframes pp-spin{to{transform:rotate(360deg)}}
+  /* wall bits shared with the guest page */
+  .wpost{padding:11px 0;border-bottom:1px solid var(--separator);font-size:13px}
+  .wpost:last-child{border-bottom:none}
+  .wtext{margin-top:4px;color:var(--label);white-space:pre-wrap;word-break:break-word}
+  .wtext.big{font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .wverb{color:var(--label-secondary);font-size:11px;font-weight:500}
+  .wpostactions{display:flex;align-items:center;gap:10px;margin-top:9px}
+  .wreplybtn{height:28px;padding:0;background:none;color:var(--accent);font-size:12px;font-weight:700}
+  .wreplybtn:hover{text-decoration:underline}
+  .wreply[hidden]{display:none}
+  .wreply{display:flex;gap:8px;margin-top:7px}
+  .wreply input{flex:1;background:var(--fill);border:none;border-radius:var(--r-pill);padding:6px 12px;font:inherit;font-size:12px;color:var(--label);outline:none}
+  .wreply button{background:none;border:none;color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
+  .wcmt{font-size:12px;line-height:1.5;margin:3px 0 0 2px;color:var(--label)}
+  .wcmt b{font-weight:700}
+  .wthumb{position:relative;display:inline-block}
+  .wplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:var(--r-pill);background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
+  .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
+  .statebadge.pending{background:rgba(255,149,0,.16);color:#a15b00}
+  .statebadge.hidden{background:rgba(255,59,48,.12);color:var(--danger)}
+  .modbtn{background:none;border:none;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;padding:2px 4px}
+  .modbtn.hide,.modbtn.remove{color:var(--danger)}
+  .moditem .txt{flex:1;min-width:0;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
+  .pdel:hover{color:var(--danger)}
+  .reactionpanel{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
+  .reactionpanel[hidden]{display:none}
+  .reactiongrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px}
+  .djreact{background:var(--fill);border-radius:var(--r-sm);padding:7px 8px;font-size:12px;font-weight:700;color:var(--label);display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
+  .djreact.zero{color:var(--label-tertiary);font-weight:600}
+  .spikeline{margin-top:8px;color:var(--accent);font-size:12px;font-weight:800}
+  .trackcard.off{opacity:.7}
   /* ── Admin action bar (sticky): source · help · settings · GO LIVE ── */
   /* The bar's glass runs edge to edge, but its controls sit on the same
      measure as every card below it. */
   .brandmark{display:inline-flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:var(--label);white-space:nowrap;margin-right:0}
   .source-picker{display:flex;align-items:center;gap:8px;min-width:230px;max-width:330px;flex:0 1 330px}
+  .source-step{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+  .source-step label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .source-row{position:relative;display:flex;align-items:center;gap:6px;min-width:0;flex:1}
   .source-row select{flex:1 1 auto;min-width:0;width:100%;max-width:none;border-radius:var(--r-pill);height:42px;font-weight:700;background-color:rgba(18,18,20,.78);color:transparent;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
   .source-row select option{color:var(--label);background:var(--bg-elevated)}
   .device-display{position:absolute;left:16px;right:16px;z-index:var(--z-base);pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--label);font-size:14px;font-weight:800}
   .source-help{font-size:15px;font-weight:800}
+  .abspacer{flex:1;min-width:20px}
   .golive{height:52px;min-width:148px;padding:0 34px;border-radius:var(--r-pill);font-size:17px;font-weight:800}
   .golive.go{background:var(--success);color:#fff;box-shadow:0 8px 22px rgba(52,199,89,.33)}
   .golive.go:hover{filter:brightness(1.04)}
   .golive.stop{background:transparent;color:var(--accent);border:1px solid var(--accent);box-shadow:none}
+  .eventtop > .card + .card{margin-top:0}
+  .herocard{min-height:0}
+  .statuspill.live{background:var(--accent);color:#fff}
+  /* The QR column is ~310px tall; centring a 38px title against it left
+     ~145px of dead space above and below the event's own name. Sit the copy
+     at the top and let the column be as tall as it needs to be. */
+  .event-copy{min-width:0;display:flex;flex-direction:column;justify-content:flex-start;gap:var(--s-3)}
+  .titlerow{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+  .hostlinks .ll.add{border-style:dashed;color:var(--accent);background:transparent}
+  .eventcover{border-radius:var(--r-lg);position:relative;width:auto;margin-inline:0;overflow:hidden;border:0;border-radius:0;padding:0;box-shadow:none;height:clamp(170px,20vw,300px);display:block;text-align:center;background:#101012;color:var(--label-secondary)}
+  .cover-media{position:absolute;inset:0;display:block;overflow:hidden;background:#101012}
+  .cover-media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:none}
+  .eventcover.has-cover .cover-media img{display:block}
+  .cover-empty{position:absolute;inset:0;display:grid;place-items:center;padding:28px;transition:opacity .16s var(--curve)}
+  .eventcover.has-cover .cover-empty{opacity:0;pointer-events:none}
+  .eventcover .cam{font-size:36px;margin-bottom:12px;opacity:.62}
+  .cover-empty b{display:block;color:var(--label);font-size:17px;margin-bottom:4px}
+  .cover-empty .muted{display:block;max-width:320px;margin:0 auto;color:var(--label-secondary);font-size:13px;line-height:1.45}
+  .cover-toolbar{position:absolute;left:50%;bottom:16px;z-index:var(--z-raised);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:calc(100% - 32px);padding:5px;border-radius:var(--r-pill);background:rgba(20,20,24,.46);box-shadow:var(--elev-2);opacity:1;pointer-events:auto;transform:translateX(-50%);transition:opacity .16s var(--curve);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%)}
+  .eventcover:not(.has-cover) .cover-toolbar,.eventcover:hover .cover-toolbar,.eventcover:focus-within .cover-toolbar,.eventcover.dragging .cover-toolbar,body.event-manage-open .eventcover .cover-toolbar{opacity:1;pointer-events:auto}
+  .cover-action{min-height:32px;border:0;border-radius:var(--r-pill);padding:0 12px;background:rgba(255,255,255,.18);color:#fff;font:650 12px/1 var(--sans);cursor:pointer}
+  .cover-action:hover,.cover-action:focus-visible{background:rgba(255,255,255,.28)}
+  .cover-action:disabled{cursor:default;opacity:.55}
+  .cover-action.change{display:none}
+  .eventcover.has-cover .cover-action.change{display:inline-flex;align-items:center}
+  .cover-drop-hint{position:absolute;inset:0;z-index:var(--z-raised);display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.28);color:#fff;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .16s var(--curve)}
+  .eventcover.dragging .cover-drop-hint{opacity:1}
+  .cover-status{position:absolute;left:50%;top:16px;z-index:var(--z-raised);display:none;max-width:calc(100% - 32px);padding:7px 12px;border-radius:var(--r-pill);background:rgba(20,20,24,.48);color:#fff;font-size:12px;font-weight:700;transform:translateX(-50%);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+  .cover-status.error{background:rgba(255,69,58,.78)}
   @keyframes bar{0%,100%{height:25%}50%{height:92%}}
   .listening{font-size:14px;font-weight:600;color:var(--label-secondary);white-space:nowrap}
   .listening b{font-size:25px;color:var(--label);font-weight:800}
@@ -179,6 +274,7 @@
   .qr-pending small{font-size:11px;line-height:1.3;color:var(--label-tertiary)}
   /* These sit beside the QR now, not under it: full measure, left aligned. */
   .qr-network-status{max-width:none;margin:0;font-size:12px;line-height:1.45;color:var(--label-secondary);text-align:left}
+  .sharelede{margin:0;font-size:15px;line-height:1.4;color:var(--label);font-weight:600}
   .linkfield{display:flex;align-items:center;gap:var(--s-2);margin-top:var(--s-3)}
   .linkfield input{
     flex:1 1 auto;min-width:0;height:38px;padding:0 var(--s-3);
@@ -210,6 +306,8 @@
   .qr-network-status.relay{color:var(--warning)}
   .offline-status.relay{background:rgba(255,149,0,.11);border-color:rgba(255,149,0,.34);color:#9a5700}
   .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+  .guest-selftest.error{color:var(--danger);font-weight:700}
+  .guest-selftest.ok{color:#1d883d;font-weight:700}
   .guest-qr-panel[hidden]{display:none}
   .party-qr-panel .url{font-size:18px}
   .spin16{width:16px;height:16px;border-radius:50%;border:2px solid var(--separator);border-top-color:var(--accent);animation:pp-spin .9s linear infinite;flex:0 0 auto}
@@ -221,8 +319,16 @@
   .pcount{margin-left:6px;background:var(--fill);border-radius:var(--r-pill);padding:1px 7px;font-size:11px;color:var(--label-secondary)}
   .pcount:empty{display:none}
   .ptab.active .pcount{background:var(--fill)}
+  /* The two columns must end level. The card is not a direct child of the
+     column - a #ptab-* panel wraps it - so the stretch has to be passed down
+     the whole chain or the column grows and the card inside it does not. */
+  .party-feed-col{min-width:0;display:flex;flex-direction:column}
+  .party-feed-col > [id^="ptab-"]{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+  .party-feed-col > [id^="ptab-"] > .card{flex:1 1 auto}
+  .party-feed-col > .card{flex:1 1 auto}
   .guest-sidebar{display:grid;gap:16px;min-width:0;align-self:stretch}
   #roster{flex:1}
+  .chips .chip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:var(--r-pill);padding:7px 13px;font-size:13px;font-weight:600}
   /* The photo is the control: hover reveals "Change", the X removes it.
      A separate "Choose profile photo" button restated what the image already
      affords and pushed Save profile out of reach. */
@@ -230,6 +336,36 @@
      that is what the circle is for. The + says it is addable; the whole
      circle is the target. */
   .profileimagewrap{position:relative;border-radius:50%;cursor:pointer}
+  .profileempty{
+    position:absolute;inset:0;display:grid;place-items:center;border-radius:50%;
+    background:var(--bg-elevated-2);color:var(--label-tertiary);
+    box-shadow:inset 0 0 0 1px var(--hairline);
+  }
+  .profileempty svg{width:52%;height:52%}
+  .profileimagewrap.has-photo .profileempty{display:none}
+  .profileplus{
+    position:absolute;right:-2px;bottom:-2px;width:28px;height:28px;
+    display:grid;place-items:center;border-radius:50%;
+    background:var(--accent);color:#fff;font-size:19px;font-weight:600;line-height:1;
+    border:3px solid var(--bg-elevated);pointer-events:none;
+  }
+  .profileimagewrap.has-photo .profileplus{display:none}
+  .profilephotopick{
+    /* Explicit size: the base button height would otherwise win over inset
+       and leave a 32px strip instead of covering the circle. */
+    position:absolute;inset:0;width:100%;height:100%;display:grid;place-items:center;border:0;padding:0;
+    border-radius:50%;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;
+    font:inherit;font-size:12px;font-weight:600;opacity:0;
+    transition:opacity var(--fast) var(--curve);
+  }
+  .profileimagewrap:hover .profilephotopick,
+  .profilephotopick:focus-visible{opacity:1}
+  .profilephoto{border-radius:50%;object-fit:cover;background:var(--fill);border:1px solid var(--separator)}
+  .profileremove{position:absolute;top:-5px;right:-5px;width:24px;height:24px;display:grid;place-items:center;padding:0;border:2px solid var(--bg-elevated);border-radius:50%;background:#55565c;color:#fff;font:700 15px/1 var(--sans);cursor:pointer}
+  .profilefield{display:grid;gap:6px;color:var(--label-secondary);font-size:12px;font-weight:600}
+  .profilefield input{height:38px;background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:0 10px;color:var(--label);font:inherit;font-size:14px}
+  .profilebuttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .profilestatus{font-size:12px;color:var(--label-secondary)}
   .rostergroup{padding:0 0 var(--s-3)}
   .rostergrouphead{display:flex;align-items:baseline;gap:6px;margin:var(--s-4) 0 var(--s-2);
     font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
@@ -239,6 +375,7 @@
      is minted and owned by the platform, and the console only reports it. */
   .djhandle{margin-left:8px;font-family:var(--mono,ui-monospace,Menlo,monospace);
     font-size:12px;font-weight:600;color:var(--label-tertiary)}
+  .djhandle[hidden]{display:none}
   /* The party this room is running. One line, because choosing it is a thing
      you do once a night and then forget about. */
   .partybar{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);
@@ -251,11 +388,7 @@
   .partybarnow b{font-size:14px;font-weight:700;overflow-wrap:anywhere}
   .partybarlink{font-size:12px;font-weight:650;color:var(--accent)}
   .partybarlink[hidden]{display:none}
-  .partybaracts{display:flex;align-items:center;gap:8px;flex:0 0 auto}
-  /* "New party" is two words and must stay on one line: the flex row will
-     happily squeeze it into a two-line block otherwise, which reads as a bug. */
-  .partybaracts button{white-space:nowrap;flex:0 0 auto}
-  .partybaracts select{flex:1 1 auto;min-width:0;max-width:420px}
+  .partybaracts{display:flex;align-items:center;gap:8px}
   .partybaracts select{height:32px;border-radius:var(--r-sm);background:var(--fill);
     color:var(--label);border:1px solid var(--separator);font:inherit;font-size:12px;padding:0 8px}
 
@@ -296,6 +429,8 @@
   .signinbtn{margin-left:auto;min-height:30px;padding:0 14px;border-radius:var(--r-pill);
     background:var(--fill);color:var(--label);border:1px solid var(--separator);
     font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .signinbtn:hover{background:var(--fill-hover)}
+  .signinbtn[hidden]{display:none}
   /* ── The event page below the bar: desktop width, not a phone layout ── */
   /* macOS-style hierarchy: quiet grouped surfaces, aligned fields, one clear
      action row per section. */
@@ -306,7 +441,9 @@
     border-top:1px solid var(--hairline);
   }
   .page{margin:0 auto;width:100%;max-width:var(--measure);padding:0 var(--page-pad) 96px}
+  .eventtop{display:grid;grid-template-columns:1fr;align-items:stretch;gap:14px}
   .card,.linkeditor{border-radius:var(--r-sm);box-shadow:none}
+  header.eventhead{margin:0 auto;display:block;width:100%;max-width:none;padding:22px 24px;background:var(--bg-elevated)}
   /* The name owns the top of the card; the QR sits under it on the left with
      its explanation running alongside, instead of a tall right-hand rail that
      stretched the row and stranded the title in whitespace. */
@@ -318,12 +455,38 @@
   /* Display type: size-specific negative tracking, tight leading. */
   .ename{margin:0;color:var(--label);font-weight:800;letter-spacing:-.03em;overflow-wrap:anywhere;
     font-size:clamp(34px,3.4vw,46px);line-height:1.04;font-optical-sizing:auto}
+  /* An eyebrow names the section in a whisper instead of a shout. */
+  .eyebrow{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;
+    padding:4px var(--s-3);border-radius:var(--r-pill);
+    background:var(--fill);color:var(--label-tertiary);
+    font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase}
+  .linkeditor{border:1px solid var(--separator);padding:20px 22px;background:var(--bg-elevated);margin:0}
+  .linkeditor{display:grid;grid-template-columns:100px minmax(0,1fr);gap:var(--s-3) var(--s-5);align-items:start}
+  .profilephoto-actions{gap:0}
+  /* Status rows exist for errors only; empty ones must not reserve a line. */
+  .profilephoto-actions .profilebuttons{display:none;margin:0;min-height:0}
+  .profilephoto-actions .profilebuttons:has(.profilestatus:not(:empty)){display:block;margin-top:6px}
+  .linkeditor > .linkactions{display:none}
+  .linkeditor > .linkactions:has(.linkstatus:not(:empty)){display:flex;margin:0}
+  /* The link row centers against the QR so the card carries no dead corner. */
+  .linkeditor > .linkeditor-head{grid-column:1/-1}
+  .linkeditor > .linkactions{grid-column:1/-1}
+  .profileeditor{display:contents}
+  .profileeditor .profileimagewrap{grid-column:1;grid-row:2 / span 2}
+  .profileeditor .profilephoto-actions{grid-column:2;grid-row:2}
+  .profileimagewrap,.profilephoto{width:100px;height:100px}
+  .profilephoto-actions{display:grid;align-content:start;gap:10px}
+  .profilephoto-actions textarea{width:100%;resize:vertical;background:var(--fill);border:1px solid var(--separator);padding:9px 10px;color:var(--label);font:inherit;min-height:86px;border-radius:var(--r-sm)}
+  .profilebuttons,.linkactions{justify-content:flex-end;padding-top:4px}
+  .party-grid .card{padding:20px}
   .guest-sidebar .card{margin-top:0;display:flex;flex-direction:column}
   .inspector .guest-sidebar .card{background:transparent;box-shadow:none;border:0;padding:0}
   /* The rail label and the per-DJ headers name the list; the card's own
      "Guests" heading would say it a third time. */
   .inspector .guesthead h2{display:none}
   .inspector .guesthead{justify-content:flex-end}
+  .sectiontitle,.linkeditor-head{display:flex;align-items:center;min-height:0;margin:0 0 12px;padding:0}
+  .sectiontitle h2,.linkeditor-head b{margin:0;color:var(--label);font-size:20px;line-height:1.25;font-weight:700}
   /* Social links as chips, the way an "about me" page does it: the brand mark,
      the service name and the handle all live inside one pill, so the field is
      part of the object instead of a separate box stretched across the window.
@@ -335,10 +498,57 @@
     box-shadow:inset 0 0 0 1px var(--hairline);
     transition:box-shadow var(--fast) var(--curve),background var(--fast) var(--curve);
   }
+  .linkrow:hover{background:var(--fill-hover)}
+  .linkrow:focus-within{box-shadow:inset 0 0 0 1px var(--accent);background:var(--bg-elevated-2)}
+  .linkbrand{display:grid;place-items:center;width:20px;height:20px;flex:0 0 20px}
+  .linkmark{width:18px;height:18px;display:block}
+  .linkname{font-size:13px;font-weight:600;color:var(--label-secondary);white-space:nowrap}
+  .linkrow input{
+    height:26px;min-width:0;flex:1 1 auto;
+    border:0;background:transparent;box-shadow:none;padding:0;
+    color:var(--label);font:inherit;font-size:13px;
+    border-left:1px solid var(--hairline);padding-left:var(--s-2);
+  }
+  .linkrow input::placeholder{color:var(--label-tertiary)}
+  .linkrow input:focus{outline:none}
+  .linkrow.filled{background:var(--bg-elevated-2)}
+  .linkrow input.bad{color:var(--danger)}
+  .linkrow:has(input.bad){box-shadow:inset 0 0 0 1px var(--danger)}
+
+
+  .linkdel{width:28px;height:28px;padding:0;border-radius:var(--r-pill);background:var(--fill);color:var(--label-secondary)}
+  .linkactions{display:flex;align-items:center;gap:8px;margin-top:14px}
+  .linkstatus{font-size:12px;color:var(--label-secondary);min-height:16px}
+  body.event-manage-open .event-admin-tools{display:block}
+  body:not(.event-manage-open) .guest-sidebar .metrics,
+  body:not(.event-manage-open) .guest-sidebar .kv,
+  body:not(.event-manage-open) .guest-sidebar #detailsToggle,
+  body:not(.event-manage-open) .guest-sidebar #copySync{display:none!important}
+  body.event-manage-open .eventhead .eventedit{display:block}
+  #eventCard{padding:20px 22px;margin-top:0!important}
+  #eventCard > .composer{background:rgba(255,255,255,.03)!important;border:1px solid var(--separator)!important;border-radius:var(--r-md)!important;padding:12px 14px!important;margin-bottom:14px!important}
+  #eventCard > .composer.dropping{border-color:var(--accent)!important;background:rgba(255,45,111,.12)!important;box-shadow:0 0 0 3px rgba(255,45,111,.16)}
+  #eventCard textarea{font-size:16px!important}
   /* Party feed: Instagram-anatomy cards. Avatar + bold name header, media
      full-bleed to the card edge, bold-name caption, quiet uppercase time. */
   #djFeed{display:grid;gap:14px}
-  .wdj{background:var(--accent);color:#fff;border-radius:var(--r-xs);font-size:9px;font-weight:800;padding:1px 5px} /* text-free post: no dead band */
+  #djFeed .wpost{border:1px solid var(--separator);border-radius:var(--r-md);background:rgba(255,255,255,.03);padding:0;overflow:hidden}
+  .whead{display:flex;align-items:center;gap:10px;padding:10px 14px}
+  .wavatar{width:32px;height:32px;border-radius:50%;flex:0 0 auto;object-fit:cover;
+    display:flex;align-items:center;justify-content:center;background:var(--fill);font-size:16px}
+  .wname{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;min-width:0}
+  .wdj{background:var(--accent);color:#fff;border-radius:var(--r-xs);font-size:9px;font-weight:800;padding:1px 5px}
+  .wheadactions{margin-left:auto;display:flex;gap:6px;align-items:center;flex:0 0 auto}
+  .wmedia{display:flex;flex-direction:column;gap:2px}
+  .wmedia .wshot{display:block;width:100%;position:relative}
+  .wmedia .wshot img,.wmedia video.wshot{width:100%;max-height:420px;object-fit:cover;display:block}
+  .wcaption{padding:10px 14px 0;font-size:13px;line-height:1.45;color:var(--label);white-space:pre-wrap;word-break:break-word}
+  .wcaption b{font-weight:700;margin-right:5px}
+  #djFeed .wpostactions{display:flex;align-items:center;gap:10px;margin:0;padding:8px 14px 12px}
+  .wpostactions .wtime{margin-left:auto;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--label-tertiary)}
+  #djFeed .wcmts{padding:0 14px}
+  #djFeed .wreply{margin:0;padding:0 14px 12px}
+  #djFeed .wpost .whead + .wpostactions{padding-top:0} /* text-free post: no dead band */
   /* settings sheet */
   .sheetov{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:var(--z-chrome);overflow:auto}
   .sheetov.show{display:flex}
@@ -355,12 +565,34 @@
   .sourceguide-body h3:first-child{margin-top:2px}
   .sourceguide-body p{font-size:13px;line-height:1.5;color:var(--label-secondary);margin:0}
   .sourceguide-body code{font-family:var(--mono);font-size:12px;background:var(--fill);padding:1px 5px;border-radius:var(--r-xs)}
+  button.action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
+    border-radius:var(--r-pill);padding:0 15px;background:var(--fill);color:var(--label-secondary);
+    box-shadow:inset 0 0 0 1px var(--hairline)}
+  button.action-folder:hover{background:var(--fill-hover);color:var(--label)}
+  button.action-folder:hover{background:#ff477f;color:#fff}
+  .action-folder svg{width:16px;height:16px;display:block}
+  .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
+  .fieldedit:hover{background:var(--fill-hover);color:var(--label)}
+  .fieldedit svg{width:14px;height:14px;display:block}
+  .ename .fieldedit{vertical-align:middle;width:34px;height:34px;margin-left:10px;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+  .ename .fieldedit svg{width:15px;height:15px}
+  .posterbody .fieldedit{color:rgba(255,255,255,.72)}
+  .posterbody .fieldedit:hover{background:rgba(255,255,255,.18);color:#fff}
+  .eventform-field select{height:36px}
+  .eventedit [data-edit-group]{display:none}
+  .eventedit[data-field="title"] [data-edit-group="title"],
+  .eventedit[data-field="host"] [data-edit-group="host"],
+  .eventedit[data-field="schedule"] [data-edit-group="schedule"]{display:grid}
+  .party-grid{display:grid;align-items:stretch;gap:var(--s-4);margin-top:0;grid-template-columns:minmax(0,1fr)}
   .guesthead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .guesthead h2{margin:0!important}
   .detailsbtn{height:28px;padding:0;background:none;color:var(--accent);font-size:12px;font-weight:700}
   .detailsbtn:hover{text-decoration:underline}
   .guest-sidebar #detailsToggle{display:inline-block!important;align-self:flex-start}
   .guest-sidebar .metrics{display:flex!important}
+  .event-admin-tools{margin-top:14px;box-shadow:none;border:1px solid var(--separator);background:rgba(255,255,255,.03);border-radius:var(--r-md);padding:14px;margin:18px 0 0;display:block}
+  .confirm-cancel{background:none;color:var(--label-secondary);height:24px;padding:0 5px;font-size:11px}
+  .confirm-delete{color:var(--danger)!important;font-weight:800!important}
     /* accessibility + capability fallbacks (kept from the dark theme) */
   /* Headings should never drop a single orphaned word onto its own line. */
   h1,h2,h3,.ename,.sectiontitle{text-wrap:balance}
@@ -402,9 +634,9 @@
       background:#08080a;border:1px solid #6a6a72;
       -webkit-backdrop-filter:none;backdrop-filter:none}
   }
-  @media (max-width:640px){.source-picker{order:3;flex-basis:100%;max-width:none}}
-  @media (max-width:720px){}
-  @media (max-width:760px){.golive{margin-left:auto;min-width:128px}.event-qr{width:200px;min-height:0;justify-self:center}}
+  @media (max-width:640px){.eventform-grid{grid-template-columns:1fr}.source-picker{order:3;flex-basis:100%;max-width:none}.brandmark{width:auto}}
+  @media (max-width:720px){.linkrow input{width:112px}.linkdel{justify-self:end}}
+  @media (max-width:760px){.golive{margin-left:auto;min-width:128px}.eventcover{height:auto;min-height:0;aspect-ratio:16/9}.ename{font-size:38px}.eventhead-grid{grid-template-columns:1fr;gap:22px;min-height:0}.event-qr{width:200px;min-height:0;justify-self:center}.titlerow{flex-direction:column}}
 
 
   /* ---- Native macOS shell -------------------------------------------
@@ -417,10 +649,6 @@
      the content on its own measure. */
   html,body{height:100%;overflow:hidden}
   #appChrome{height:100dvh;display:flex;flex-direction:column;min-height:0;padding:0}
-  /* Back to the person's own pages. The console shows /home, /people and the
-     party pages from the platform - the booth is one room inside that, not a
-     separate app - so it needs a way back. Inside #appChrome, which the
-     sign-in door covers entirely, so it is absent until somebody is signed in. */
 
   /* No title bar. The poster tucks under the traffic lights; the gear lives
      in the transport bar. */
@@ -454,29 +682,34 @@
     border-right:1px solid var(--hairline);
     display:flex;flex-direction:column;gap:var(--s-5);
   }
+  .sidebargroup{display:flex;flex-direction:column;gap:1px}
+  .sidebarhead{padding:0 var(--s-3) var(--s-2);color:var(--label-tertiary);
+    font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+  .sidebaritem{
+    display:flex;align-items:center;gap:var(--s-2);width:100%;
+    padding:0 var(--s-3);height:30px;border:0;border-radius:var(--r-sm);
+    background:transparent;color:var(--label-secondary);
+    font:inherit;font-size:13px;font-weight:500;text-align:left;cursor:pointer;
+    transition:background var(--fast) var(--curve),color var(--fast) var(--curve);
+  }
+  .sidebaritem svg{width:16px;height:16px;flex:0 0 16px;opacity:.85}
+  .sidebaritem:hover{background:rgba(255,255,255,.05);color:var(--label)}
+  .sidebaritem.active{background:var(--accent);color:#fff}
 
   .workspace > .page{
     min-height:0;overflow-y:auto;
     max-width:none!important;width:auto;margin:0;padding:var(--s-6) var(--s-6) var(--s-8);
   }
-  /* The web page fills the column. It scrolls itself, so the column does not:
-     two scrollbars on one page is the tell of a frame bolted into a layout. */
-  .workspace > .page:has(> .webframe){display:flex;flex-direction:column;
-    overflow:hidden;padding:0}
-  .webframe{flex:1 1 auto;width:100%;min-height:0;border:0;display:block;
-    background:var(--bg);color-scheme:dark}
 
   .inspector{
     min-height:0;overflow-y:auto;padding:var(--s-2) var(--s-4) var(--s-5);
     background:color-mix(in srgb,#000 22%,var(--bg));
     border-left:1px solid var(--hairline);
   }
-  .peopleframe{width:100%;border:0;display:block;margin:0 0 var(--s-5);
-    min-height:0;background:transparent;color-scheme:dark}
-  .peopleframe[hidden]{display:none}
   .inspectorhead{display:flex;align-items:center;gap:var(--s-2);
     color:var(--label-tertiary);font-size:11px;font-weight:600;
     letter-spacing:.04em;text-transform:uppercase;margin-bottom:var(--s-3)}
+  .sharelede{font-size:12px;font-weight:500;color:var(--label-secondary);line-height:1.4;margin:0}
   /* Invite guests lives at the top of the rail: the instruction block a DJ
      points at. Everything stacks to the rail's width - QR, then the link
      with Copy/Share wrapping below it. */
@@ -511,6 +744,8 @@
     padding:12px var(--s-4);border-top:1px solid rgba(255,255,255,.12);
     background:color-mix(in srgb,#fff 5%,var(--bg));
     box-shadow:0 -12px 32px rgba(0,0,0,.5)}
+  .workspace > .page .card#eventManagePanel{border-bottom:0!important} /* nothing rules off the chips */
+  .workspace > .page div.linkeditor{border-bottom:0!important;padding-bottom:0!important}
   /* Three zones with equal wings, so Go live sits on the bar's center line
      instead of tucked in a corner: capture left, the switch centered, gear right. */
   .gocapture{display:flex;align-items:center;gap:var(--s-3);min-width:0;flex:1 1 0}
@@ -520,6 +755,7 @@
     font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--label-tertiary)}
   .golabel .iconbtn,.linkeditor-head .iconbtn{width:20px;height:20px;border-radius:50%;font-size:11px;
     background:rgba(255,255,255,.08);color:var(--label-secondary);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .linkeditor-head .iconbtn{margin-left:8px}
   @media (max-width:700px){.transport .golabel span{display:none}}
   .goaction{display:flex;align-items:center;gap:var(--s-4);flex:0 0 auto}
   /* One control system in the bar: the hero switch at 44, every other control
@@ -533,6 +769,8 @@
   .wreact{height:26px;padding:0 9px;border:0;border-radius:var(--r-pill);cursor:pointer;
     background:var(--fill);color:var(--label-secondary);font:inherit;font-size:13px;
     display:inline-flex;align-items:center;gap:4px}
+  .wreact:hover{background:var(--fill-hover);color:var(--label)}
+  .wreact b{font-size:11px;font-weight:700}
   .golive.biggo,.golive.go.biggo{
     height:44px!important;min-width:200px!important;padding:0 32px!important;
     border-radius:var(--r-md)!important;font-size:16px!important;font-weight:800!important;letter-spacing:-.01em!important;
@@ -620,7 +858,6 @@
      full-width content off the edges: 32px on a laptop split, up to 96px
      maximized, without ever capping the poster's presence. */
   .workspace > .page{padding:var(--s-2) clamp(var(--s-6), 6vw, 96px) var(--s-7)}
-  .workspace > .page:has(> .webframe){padding:0}
 
   /* Section headings: bold sentence-case titles, the way Apple heads content
      sections (Music's "Recently Played"), one shared style everywhere. */
@@ -635,15 +872,30 @@
      so every section measures the same distance from title to content. */
   .workspace > .page .linkeditor-head b,
   .workspace > .page .cardhead h2{margin:0}
+  .workspace > .page #eventManagePanel .linkeditor-head{margin:0} /* grid gap is the 12px */
+  .ename{font-size:26px;font-weight:700;letter-spacing:-.02em}
 
   /* ---- grouped list ---------------------------------------------------
      One rounded container, hairline between rows, label left / control right.
      This is the only rounded box in the main area, and it holds rows - it is
      not a card wrapped around another card. */
   .grouped{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:10px}
+  .profilefield{
+    display:grid!important;grid-template-columns:minmax(0,1fr);
+    align-items:center;padding:0;margin:0!important;
+  }
+  .profilefield > span{color:var(--label-secondary);font-size:13px;font-weight:400}
+  .profilefield input,.profilefield textarea{
+    background:rgba(255,255,255,.06);border:0;border-radius:var(--r-sm);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 2px rgba(0,0,0,.28);
+    color:var(--label);font:inherit;font-size:13px;padding:5px var(--s-2);width:100%;
+  }
   /* The bio is one visual line beside the name: same 38px box as the input,
      padding centers a single line while a longer bio still wraps and scrolls. */
   .profilefield textarea{min-height:38px;height:38px;resize:none;padding-top:10px;padding-bottom:10px}
+  .profilefield input:focus,.profilefield textarea:focus{
+    outline:none;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 24%,transparent);
+  }
 
   /* ---- no neon --------------------------------------------------------
      A pro tool does not glow. Go Live is the primary action and reads as one
@@ -665,7 +917,17 @@
     background:rgba(255,255,255,.1);color:var(--label);
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);border-radius:var(--r-sm);
   }
+  /* Except the feed composer's two actions: they carry the accent. */
+  #djAttachBtn,#djPostBtn{background:var(--accent)!important;color:#fff!important;box-shadow:none!important}
+  #djAttachBtn:hover,#djPostBtn:hover{background:color-mix(in srgb,var(--accent) 86%,#000)!important}
   .workspace > .page button.go:hover{background:rgba(255,255,255,.16)}
+
+  /* The add-photo badge was the last neon left in the main area. */
+  .profileplus{
+    background:rgba(255,255,255,.16)!important;color:var(--label)!important;
+    border-color:var(--bg)!important;font-size:16px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
+  }
 
 
   /* Social links stay chips: the brand mark, the service and the handle in one
@@ -678,6 +940,29 @@
     align-content:start;max-width:none;
     background:transparent!important;box-shadow:none!important;border-radius:0!important;
   }
+  .linkrows .linkrow{
+    display:flex!important;align-items:center;gap:var(--s-2);width:100%;
+    height:34px;padding:0 var(--s-3)!important;border-top:0!important;
+    border-radius:var(--r-pill)!important;
+    background:rgba(255,255,255,.06)!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)!important;
+  }
+  .linkrows .linkrow:hover{background:rgba(255,255,255,.1)!important}
+  .linkrows .linkrow:focus-within{
+    background:rgba(255,255,255,.09)!important;
+    box-shadow:inset 0 0 0 1px var(--accent)!important;
+  }
+  .linkrows .linkrow.filled{background:rgba(255,255,255,.12)!important}
+  .linkrows .linkname{font-size:12px!important;font-weight:500!important;color:var(--label-secondary)!important}
+  .linkrows .linkrow input{
+    /* The field starts right after the label's divider - no dead middle - and
+       stretches to the chip's edge, so every chip fills the same. */
+    width:auto!important;height:22px;flex:1 1 auto;min-width:0;margin-left:6px;padding:0 0 0 var(--s-2)!important;
+    background:transparent!important;border:0!important;border-radius:0!important;
+    border-left:1px solid rgba(255,255,255,.12)!important;
+    box-shadow:none!important;color:var(--label);font-size:12px;
+  }
+  .linkrows .linkrow input:focus{outline:none;box-shadow:none!important}
 
   /* ---- Prepare / Live / Recap ----------------------------------------
      One composition that changes character, not three screens. The poster is
@@ -696,11 +981,43 @@
        two-thirds of the pre-redesign full-bleed cover. */
     min-height:clamp(200px,21vw,300px);display:flex;align-items:flex-end;
   }
+  .posterart{position:absolute;inset:0;z-index:-1;opacity:.5}
+  .coverwrap{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
+  .coverwrap img{width:100%;height:100%;object-fit:cover;display:none}
+  .coverwrap.has-cover img{display:block}
+  /* Scrim so the title stays legible on any artwork. */
+  .coverwrap.has-cover::after{content:'';position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
+  .coveractions{display:flex;gap:var(--s-2);flex:0 0 auto}
+  .coverbtn{
+    background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
+    border:1px solid rgba(255,255,255,.16);color:#fff;border-radius:var(--r-sm);
+    padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+  .coverbtn:hover{background:rgba(18,18,22,.68)}
+  .coverx{position:absolute;top:var(--s-4);right:var(--s-4);z-index:3;
+    width:34px;height:34px;border-radius:50%;display:none;place-items:center;padding:0;border:0;
+    background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
+  .poster:has(.coverwrap.has-cover) .coverx{display:grid}
+  .coverx:hover{background:rgba(18,18,22,.68)}
+  .coverstatus{position:absolute;right:var(--s-4);bottom:calc(var(--s-4) + 38px);z-index:3;
+    display:none;font-size:12px;color:rgba(255,255,255,.85)}
+  .coverstatus.error{color:#ff7a7a}
+  .posterbody{position:relative;z-index:1;width:100%;
+    display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s-4)}
+  .postertext{min-width:0}
+  .posterhost:empty{display:none}
   /* Empty poster space belongs to the cover, so a dragged image can land
      anywhere on the artwork; only the real controls keep the pointer. */
   .posterbody{pointer-events:none}
+  .posterbody #titleEdit,.posterbody .fieldedit,.posterbody .coveractions{pointer-events:auto}
   /* The title is the field. Click the words, type. No pencil to hunt for. */
   .ename{font-size:clamp(28px,3.4vw,44px);font-weight:700;letter-spacing:-.028em;line-height:1.05;margin:0}
+  #titleEdit{outline:none;display:inline-block;min-width:2ch;border-radius:var(--r-sm);padding:0 2px}
+  #titleEdit:empty::before{content:attr(data-placeholder);color:rgba(255,255,255,.34)}
+  #titleEdit:hover{background:rgba(255,255,255,.06)}
+  #titleEdit:focus{background:rgba(255,255,255,.1);box-shadow:0 0 0 3px color-mix(in srgb,var(--poster-accent) 40%,transparent)}
+  .posterhost{margin-top:var(--s-2);color:rgba(255,255,255,.62);font-size:14px}
 
   /* Live status lives on the poster, next to the identity - not at the bottom
      of the window under the guest list. */
@@ -778,18 +1095,125 @@
 
   <!-- Which canonical party this room is running. The same record the web
        shows; this is the Mac choosing among them, not inventing one. -->
-  <!-- No chrome above the page. The way home is the PartyParty chip on the
-       cover, which the page draws itself - a second one up here was the same
-       button twice, and the console has no business having its own. -->
+  <div class="partybar" id="partyBar" hidden>
+    <div class="partybarnow">
+      <span class="partybarlabel">Party</span>
+      <b id="partyBarName">Not set</b>
+      <a class="partybarlink" id="partyBarLink" target="_blank" rel="noopener" hidden>Open page</a>
+    </div>
+    <div class="partybaracts">
+      <select id="partyPick" aria-label="Which party this is">
+        <option value="">Choose a party…</option>
+      </select>
+      <button class="ghost" id="partyNewBtn" type="button">New party</button>
+    </div>
+  </div>
 
-  <!-- The person's own pages, exactly as the web serves them - the console
-       fetches them from the platform and shows them here (internal/server/
-       mirror.go). The Mac adds the ROOM around this frame: the code to join it,
-       who is listening, and Go live. It does not re-implement what is inside.
-       Every duplicate of it that used to live here - the poster, the title and
-       cover editor, the profile fields, the party feed - is gone, because two
-       implementations of one page is how the Mac and the web drifted apart. -->
-  <iframe class="webframe" id="webFrame" src="/home" title="Your parties"></iframe>
+  <div class="eventtop">
+    <header class="poster" id="eventHead">
+      <div class="posterart" id="posterArt" aria-hidden="true"></div>
+      <div class="coverwrap" id="eventCover">
+        <img id="eventCoverImg" alt="">
+      </div>
+      <button class="coverx" id="coverRemoveBtn" type="button" aria-label="Remove cover image" title="Remove cover image">✕</button>
+      <span class="coverstatus" id="pubCoverResult" role="status"></span>
+      <input id="pubCoverFile" type="file" accept="image/*" hidden>
+      <div class="posterbody">
+        <div class="postertext">
+        <h1 class="ename"><span id="titleEdit" contenteditable="plaintext-only" role="textbox"
+            aria-label="Event name" data-placeholder="Name this party"></span><button class="fieldedit" type="button" id="titlePencil" aria-label="Edit event name" title="Edit event name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button></h1>
+        <div class="posterhost" id="posterHost"></div>
+        </div>
+        <div class="coveractions">
+          <button class="coverbtn" id="pubCoverChangeBtn" type="button">Shuffle image</button>
+          <button class="coverbtn" id="pubCoverBtn" type="button">Upload image</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="eventedit" id="eventEditPanel" aria-label="Edit event details">
+      <h2 id="eventEditHeading">Edit event</h2>
+      <div class="eventform-grid">
+        <label class="eventform-field wide" data-edit-group="title">
+          <span>Event name</span>
+          <input id="eventTitleInput" type="text" maxlength="80" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="eventform-actions">
+        <span class="eventform-status" id="eventEditStatus"></span>
+        <button class="ghost" id="eventEditCancelBtn" type="button">Cancel</button>
+        <button class="go" id="eventEditSaveBtn" type="button">Save event</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="card event-admin-tools" id="eventManagePanel">
+    <div class="linkeditor" id="linkEditor">
+      <div class="linkeditor-head"><b>About You</b><span class="djhandle" id="djHandle" hidden></span><button class="signinbtn" id="signInBtn" type="button">Sign in</button></div>
+      <div class="profileeditor">
+        <div class="profileimagewrap">
+          <img class="profilephoto" id="profilePhoto" src="" alt="DJ profile photo" hidden>
+          <span class="profileempty" id="profileEmpty" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="9" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+          </span>
+          <button class="profilephotopick" id="profilePhotoBtn" type="button" aria-label="Change profile photo" title="Change profile photo"><span class="pickword">Change</span></button>
+          <span class="profileplus" id="profilePlus" aria-hidden="true">+</span>
+          <button class="profileremove" id="profilePhotoRemoveBtn" type="button" aria-label="Remove profile photo" title="Remove profile photo" hidden>×</button>
+        </div>
+        <div class="profilephoto-actions">
+          <div class="grouped">
+          <label class="profilefield"><input id="profileName" type="text" maxlength="40" autocomplete="name" placeholder="Your DJ name"></label>
+          <label class="profilefield"><textarea id="profileBio" maxlength="600" placeholder="A short description of you and your music"></textarea></label>
+          </div>
+          <div class="profilebuttons">
+            <button id="saveProfileBtn" type="button" hidden></button>
+            <span class="profilestatus" id="profileStatus"></span>
+          </div>
+          <input id="profilePhotoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        </div>
+      </div>
+      <div class="linkrows" id="linkRows"></div>
+      <div class="linkactions">
+        <button id="saveLinksBtn" type="button" hidden></button>
+        <span class="linkstatus" id="linkStatus"></span>
+      </div>
+    </div>
+    <div class="reactionpanel" id="djReactions" hidden>
+      <div class="reactiongrid" id="djReactionGrid"></div>
+      <div class="spikeline" id="djReactionSpike"></div>
+    </div>
+    <div id="modQueue" hidden><div id="modList"></div></div>
+  </div>
+
+  <div class="party-grid">
+    <main class="party-feed-col">
+  <section id="ptab-wall">
+    <div class="card" id="eventCard" style="display:none">
+      <div class="cardhead">
+        <h2 id="eventTitle">Party feed</h2>
+        <button class="ghost action-folder" id="actionOpenFolderBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/></svg>
+          Open event folder
+        </button>
+      </div>
+      <div class="composer" id="djComposer" style="background:var(--fill);border:1px solid var(--separator);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
+        <textarea id="djPostText" rows="2" maxlength="2000" placeholder="Write a post, or drop photos/videos here..." style="width:100%;background:transparent;border:none;outline:none;resize:none;color:var(--label);font:inherit;font-size:13px"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="ghost" id="djAttachBtn" type="button" style="font-size:12px">📷 Add photo/video</button>
+          <span class="muted" id="djAttachN" style="font-size:11px;align-self:center"></span>
+          <button class="go" id="djPostBtn" type="button" style="margin-left:auto;font-size:12px">Post</button>
+        </div>
+        <input type="file" id="djFiles" accept="image/*,video/*,audio/*" multiple hidden>
+      </div>
+      <div id="djFeed"></div>
+    </div>
+  </section>
+    </main>
+
+
+  <div id="wallAuthors" hidden></div>
+  </div>
 </div>
   <aside class="inspector" aria-label="Guests">
     <div class="joinrail" id="joinCard" aria-label="Share">
@@ -822,33 +1246,19 @@
         </div>
       </div>
     </div>
-    <!-- Who played and who was there, beside the code to join. Served by the
-         platform on its own (/@handle/slug/rail) rather than rebuilt here, so
-         there is still one rail with one set of styles - it just hangs in the
-         Mac's sidebar, which is where the QR is and where the owner wanted it.
-         The page in the main frame is asked to leave its copy out. -->
-    <iframe class="peopleframe" id="peopleFrame" scrolling="no"
-      title="Who played and who was there"></iframe>
-
-    <!-- Who is in the room is the rail above: a named listener is recorded as
-         an attendee of the night, so there is no second list here. What is
-         left is the measurement - delay, sync, and the per-phone detail - and
-         it only appears when somebody asks for it. -->
-    <div id="ptab-people" class="guest-sidebar" hidden>
-      <div class="card">
-        <!-- No heading. Who is in the room is the rail above; this is the
-             measurement of it, and it needs a way in, not a title. The count
-             stays because it is the one number worth a glance mid-set. -->
-        <div class="guesthead"><span class="pcount" id="pcount"></span><span id="listeners" hidden></span><button class="detailsbtn" id="detailsToggle" type="button">Details</button></div>
-        <div class="metrics" id="metricsLine" hidden title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
-          <span>Delay from DJ <b id="djDelay">-</b></span>
-          <span class="metricsep">·</span>
-          <span>Sync <b id="syncSpread">-</b></span>
-        </div>
-        <div id="roster"></div>
-        <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
+    <div class="inspectorhead">Participants</div>
+  <div id="ptab-people" class="guest-sidebar">
+    <div class="card">
+      <div class="guesthead"><h2 id="listeners">Guests<span class="pcount" id="pcount"></span></h2><button class="detailsbtn" id="detailsToggle" type="button">View details</button></div>
+      <div class="metrics" id="metricsLine" title="Delay from DJ: how long after you play something the room hears it - a couple of seconds is normal, nobody's comparing to your booth. Sync: how far apart two people standing next to each other are - under about half a second and the room moves together.">
+        <span>Delay from DJ <b id="djDelay">-</b></span>
+        <span class="metricsep">·</span>
+        <span>Sync <b id="syncSpread">-</b></span>
       </div>
+      <div id="roster"></div>
+      <button id="copySync" style="display:none;margin-top:10px;background:var(--fill);color:var(--label-secondary);border:0;border-radius:var(--r-sm);padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer">Copy sync report</button>
     </div>
+  </div>
   </aside>
 </div>
 
@@ -990,10 +1400,6 @@
       <button class="ghost" id="permBtnAlways" style="display:none;margin-top:14px;width:100%;font-size:12px">Open audio privacy settings →</button>
       <div class="hint" id="permBtnHint" style="display:none;margin:5px 0 0">Turn on PartyParty in the list.</div>
       <button class="ghost" id="openLogsBtn" style="margin-top:8px;width:100%;font-size:12px" title="One diagnostics file per session - hardware, activation, capture, every guest connection">Open diagnostics logs →</button>
-      <!-- Photos and recordings from the night land in a folder on this Mac.
-           The button used to sit over the console's own party feed; the feed
-           went to the web, and this is a Mac thing, so it lives here now. -->
-      <button class="ghost" id="openMediaBtn" style="margin-top:8px;width:100%;font-size:12px" title="Photos, videos and recordings from this party, on this Mac">Open this party's folder →</button>
     </section>
 
     <div class="settings-section">
@@ -1227,11 +1633,24 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // console is alive so it never mistakes a working page for a boot failure.
   window.__ppBooted = true;
 
-  // One panel left in the rail - who is in the room. The wall, and the tabs
-  // that used to switch between them, went with the console's copy of the
-  // event page; the web's page carries the posts now.
-  // Only while a set is running: measurements of a room nobody is in are noise.
-  { const people = $('ptab-people'); if (people) people.hidden = true; }
+  // Page tabs: the wall / participants (the old Broadcast|Settings tabs are
+  // gone - admin actions live in the action bar, settings behind the gear).
+  function showPTab(name){
+    document.querySelectorAll('[id^="ptab-"]').forEach(p => p.hidden = (p.id !== 'ptab-' + name));
+    document.querySelectorAll('.ptab').forEach(t => t.classList.toggle('active', t.dataset.ptab === name));
+    localStorage.setItem('pp.ptab', name);
+  }
+  {
+    const tabs = document.querySelectorAll('.ptab');
+    if (tabs.length) {
+      tabs.forEach(t => t.onclick = () => showPTab(t.dataset.ptab));
+      showPTab(localStorage.getItem('pp.ptab') || 'wall');
+    } else {
+      const wall = $('ptab-wall'), people = $('ptab-people');
+      if (wall) wall.hidden = false;
+      if (people) people.hidden = false;
+    }
+  }
 
   // First-run: register an anonymous machine hostname and publish it to DNS.
   // A shared certificate means there is no per-Mac certificate issuance wait.
@@ -1435,11 +1854,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // "Show details" / "Hide details" - a link-looking toggle, not a checkbox.
   let detailsOn = localStorage.getItem('pp.rosterDetails') === '1';
   { const dt = $('detailsToggle');
-    const paint = () => {
-      dt.textContent = detailsOn ? 'Hide details' : 'Details';
-      const m = $('metricsLine');
-      if (m) m.hidden = !detailsOn;
-    };
+    const paint = () => dt.textContent = detailsOn ? 'Hide details' : 'View details';
     paint();
     dt.onclick = () => { detailsOn = !detailsOn; localStorage.setItem('pp.rosterDetails', detailsOn ? '1' : '0'); paint(); refresh(); };
   }
@@ -1523,8 +1938,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   $('audioPermBtn').onclick = openCapturePermissionSettings;
   $('permBtnAlways').onclick = openCapturePermissionSettings;
   $('openLogsBtn').onclick = () => fetch('/api/open-logs', { method:'POST' });
-  $('openMediaBtn').onclick = () => fetch('/api/open-media', { method:'POST' });
-
   let qrAvatarShown = null;
   function renderQR(text){
     // eventMeta is declared further down; the first QR render runs before it
@@ -1784,6 +2197,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       renderGuestLink(s);
       setPhase(s);
       renderReadiness(s);
+      renderCounts(s);
       renderStartStage(s);
       const st = s.broadcast.state;
       if (st !== lastState) djLog('bstate', { from: lastState, to: st, dev: s.broadcast.deviceName || '', bad: !!s.broadcast.captureBad });
@@ -1864,10 +2278,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       const peers = Array.isArray(s.peers) ? s.peers : [];
       const peopleCount = roster.length + peers.length + 1;
       if ($('pcount')) $('pcount').textContent = peopleCount;
-      // The measurement panel exists only while somebody is listening. An
-      // empty room has nothing to say about delay or sync, and the names are
-      // the rail's job.
-      { const panel = $('ptab-people'); if (panel) panel.hidden = !(roster && roster.length); }
       const lt = s.latency || {}; lastLt = lt; lastStatus = s;
       const spreadOf = (list) => {
         const v = list.filter(r => r.hasLatency).map(r => r.latencyMs).sort((a, b) => a - b);
@@ -1917,12 +2327,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
           '<div class="lbody"><span class="lname">' + esc(group.dj || 'DJ') + '</span><div class="ldetail">' + djTag + '</div></div></div>';
         const head = '<div class="rostergrouphead"><span>' + esc(group.dj || 'DJ') +
           '</span><small>&mdash; ' + (1 + listeners.length) + '</small></div>';
-        // With one DJ - which is most rooms - the header and the DJ row repeat
-        // the name that Who played, directly above this, already gives. Only a
-        // room with several DJs needs listeners sorted by whose stream they
-        // are on, so only that room gets the headings.
-        const many = groups.length > 1;
-        return '<section class="rostergroup">' + (many ? head + djRow : '') + rows + '</section>';
+        return '<section class="rostergroup">' + head + djRow + rows + '</section>';
       }).join('');
       const h = s.health || {};
       const cls = { good:'live', strain:'starting', congested:'error', idle:'' };
@@ -1991,126 +2396,86 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // one creates the real party first and then attaches. Nothing here invents a
   // Mac-only kind of party, and nothing is lost when a broadcast ends.
   {
+    const bar = document.getElementById('partyBar');
+    const name = document.getElementById('partyBarName');
+    const link = document.getElementById('partyBarLink');
+    const pick = document.getElementById('partyPick');
+    const make = document.getElementById('partyNewBtn');
     let known = [];
-    // The frame and the room are ONE choice. Whatever night the frame is on is
-    // the night this room is running - there is no separate picker to disagree
-    // with it, which is the drift this whole change exists to end.
-    const frame = document.getElementById('webFrame');
-    let roomSlug = '';     // the party the ROOM is attached to
 
-    const framePath = () => {
-      try { return frame.contentWindow.location.pathname; } catch (e) { return ''; }
-    };
-    // The sidebar's rail follows whatever night the frame is on, and the frame
-    // is told to leave its own copy out - one rail, beside the QR.
-    const people = document.getElementById('peopleFrame');
-    const railFor = (path) => {
-      if (!people) return;
-      const hit = /^\/@[a-z0-9]+\/[a-z0-9-]+$/.test(path || '');
-      people.hidden = !hit;
-      if (!hit) { people.removeAttribute('src'); return; }
-      const want = path + '/rail';
-      if (people.getAttribute('src') !== want) people.src = want;
-    };
-    // It is as tall as the list it is showing: a scrollbar inside a sidebar
-    // that already scrolls is two scrollbars for one list. Watched rather than
-    // measured once - a measurement taken before the fonts land reports the
-    // height of nothing, which is how this first shipped as a 15px sliver.
-    const fitRail = () => {
+    const when = (ms) => {
+      if (!ms) return '';
       try {
-        const d = people.contentDocument;
-        if (d && d.body) people.style.height = (Math.ceil(d.body.scrollHeight) + 2) + 'px';
-      } catch (e) {}
-    };
-    if (people) {
-      people.hidden = true;
-      people.addEventListener('load', () => {
-        fitRail();
-        try {
-          const d = people.contentDocument;
-          if (window.ResizeObserver && d && d.body) new ResizeObserver(fitRail).observe(d.body);
-          if (d && d.fonts && d.fonts.ready) d.fonts.ready.then(fitRail);
-        } catch (e) {}
-      });
-    }
-    const frameToParty = (party) => {
-      if (!frame || !party || !party.slug || !party.handle) return;
-      const path = '/@' + party.handle + '/' + party.slug;
-      if (framePath() === path) return;
-      frame.src = path + '?rail=0';
+        return new Date(ms).toLocaleString(undefined,
+          { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      } catch (e) { return ''; }
     };
     const show = (party) => {
-      roomSlug = (party && party.slug) || '';
-      document.title = (party && party.title ? party.title + ' - ' : '') + 'PartyParty';
-    };
-    async function openParty(key){
-      const r = await fetch('/api/party/open', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ key }),
-      });
-      const d = await r.json();
-      if (!r.ok || d.error) throw new Error(d.error || 'could not open that party');
-      show(d.party);
-      await loadParties();
-      return d.party;
-    }
-    // The one thing the pages in the frame cannot do for themselves.
-    //
-    // Reading a Shazam library needs the app, and only this window has a bridge
-    // to it. So the settings page asks its parent, and the parent asks the app.
-    // This is not markup pushed into a web page - the page owns its own button
-    // and its own layout; the shell only lends it the one capability a browser
-    // does not have. Same origin is checked because a frame is a frame.
-    window.addEventListener('message', (e) => {
-      if (e.origin !== location.origin) return;
-      if (!e.data || e.data.pp !== 'shazamRead') return;
-      try { window.webkit.messageHandlers.pp.postMessage({ action: 'shazamRead' }); }
-      catch (_) {}
-    });
-
-    // Reading the night in the frame is how a DJ says which one it is. A party
-    // made in a browser a moment ago is not in `known` yet, so refresh once
-    // before giving up on it.
-    // roomSlug is the whole guard against the two bouncing each other: by the
-    // time our own steering lands, the room is already on that party, so this
-    // returns before asking for it again.
-    if (frame) frame.addEventListener('load', async () => {
-      railFor(framePath());
-      const hit = /^\/@[a-z0-9]+\/([a-z0-9-]+)$/.exec(framePath());
-      if (!hit || hit[1] === roomSlug) return;
-      let party = known.find((one) => one.slug === hit[1]);
-      if (!party) {
-        await loadParties();
-        party = known.find((one) => one.slug === hit[1]);
+      if (party && party.title) {
+        name.textContent = party.title;
+        link.href = party.url || '#';
+        link.hidden = !party.url;
+      } else {
+        name.textContent = 'Not set';
+        link.hidden = true;
       }
-      // No steering back: the frame is already on the page it just loaded.
-      if (party) await openParty(party.key).catch(() => {});
-    });
-    // Which parties this account has, and which one the room is on. Nothing is
-    // painted from it any more - the frame shows the night - but the room still
-    // needs the list to turn a slug in the frame into a party to open.
+    };
     async function loadParties(){
       try {
         const r = await fetch('/api/parties', { method: 'POST' });
         const d = await r.json();
+        // Only shown once this Mac has an account; the door covers everything
+        // before that.
+        bar.hidden = !d.linked;
         if (!d.linked) return;
         known = d.parties || [];
-        show(known.find((p) => p.key === d.current) || null);
-      } catch (e) { /* offline: keep whatever we last knew */ }
+        const current = known.find((p) => p.key === d.current) || null;
+        show(current);
+        pick.innerHTML = '<option value="">Choose a party…</option>' +
+          known.map((p) => '<option value="' + p.key + '"' +
+            (p.key === d.current ? ' selected' : '') + '>' +
+            (p.title || 'Untitled') + (when(p.startsMs) ? ' - ' + when(p.startsMs) : '') +
+            '</option>').join('');
+      } catch (e) { /* offline: leave the bar as it is rather than blanking it */ }
     }
-    // Going home is the PartyParty chip on the cover, which the page owns.
-    // Choosing a party or starting one both happen there, and the room follows
-    // whatever night the frame ends up on.
-
-
+    pick.onchange = async () => {
+      const key = pick.value;
+      if (!key) return;
+      pick.disabled = true;
+      try {
+        const r = await fetch('/api/party/open', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'could not open that party');
+        show(d.party);
+        await loadParties();
+      } catch (e) {
+        name.textContent = String(e.message || e);
+      } finally { pick.disabled = false; }
+    };
+    make.onclick = async () => {
+      const title = (prompt('What is the party called?') || '').trim();
+      if (!title) return;
+      make.disabled = true;
+      try {
+        const r = await fetch('/api/party/create', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, open: true }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(d.error || 'could not create it');
+        show(d.party);
+        await loadParties();
+      } catch (e) {
+        name.textContent = String(e.message || e);
+      } finally { make.disabled = false; }
+    };
+    // Refreshed when the door opens, and on a slow tick so a party made in a
+    // browser mid-set turns up without a restart.
     window.ppLoadParties = loadParties;
-    // A console reopened mid-set opens on the night it is running, not on the
-    // list of every night. Only once, at boot: after that the frame is wherever
-    // the person put it.
-    loadParties().then(() => {
-      const current = known.find((one) => one.slug === roomSlug);
-      if (current) frameToParty(current);
-    });
+    loadParties();
     setInterval(loadParties, 60000);
   }
 
@@ -2217,15 +2582,86 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   }
   function inputValue(id){ const el = $(id); return el ? el.value.trim() : ''; }
   function setInputValue(id, value){ const el = $(id); if (el && document.activeElement !== el) el.value = value || ''; }
+  function fillEventEditForm(field){
+    setInputValue('eventTitleInput', eventMeta.title);
+    const labels = { title:'event name' };
+    $('eventEditHeading').textContent = 'Edit ' + (labels[field] || 'event');
+    setFormStatus('eventEditStatus', '', '');
+  }
   // The Mac shell calls this when the menu-bar Go live hits the nameless-party
-  // gate. Naming a party happens on the party's own page, which the frame
-  // shows - the console does not carry a second editor for it.
-  window.ppOpenTitleEditor = () => {
-    const frame = document.getElementById('webFrame');
-    if (frame) frame.src = '/home';
-    toast('Give the party a name first');
+  // gate - same behavior as the console button, explicit so script scoping can
+  // never strand it off window.
+  window.ppOpenTitleEditor = () => setEventEditOpen('title');
+  function setEventEditOpen(field){
+    eventEditField = field || '';
+    const panel = $('eventEditPanel');
+    if (panel) {
+      panel.dataset.field = eventEditField;
+      panel.classList.toggle('show', !!eventEditField);
+    }
+    document.body.classList.toggle('event-manage-open', !!eventEditField);
+    const head = $('eventHead');
+    if (head) head.classList.toggle('editing', !!eventEditField);
+    if (eventEditField) {
+      fillEventEditForm(eventEditField);
+      const focusID = { title:'eventTitleInput' }[eventEditField];
+      setTimeout(() => { const el = $(focusID); if (el) el.focus(); }, 30);
+    }
+    refresh();
+  }
+  document.querySelectorAll('[data-event-field]').forEach(btn => {
+    btn.addEventListener('click', () => setEventEditOpen(eventEditField === btn.dataset.eventField ? '' : btn.dataset.eventField));
+  });
+  // The pencil exists to say "this is editable"; clicking it starts the same
+  // in-place edit a click on the words does, with everything selected.
+  if ($('titlePencil')) $('titlePencil').onclick = () => {
+    const t = $('titleEdit');
+    t.focus();
+    const range = document.createRange();
+    range.selectNodeContents(t);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
   };
+  if ($('eventEditCancelBtn')) $('eventEditCancelBtn').onclick = () => setEventEditOpen('');
+  async function saveEventDetails(){
+    if (!eventEditField) return;
+    const body = {};
+    if (eventEditField === 'title') {
+      body.title = inputValue('eventTitleInput');
+      if (!body.title) { setFormStatus('eventEditStatus', 'Add an event name.', 'error'); $('eventTitleInput').focus(); return; }
+    } else {
+      return;
+    }
+    const btn = $('eventEditSaveBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    setFormStatus('eventEditStatus', 'Saving…', '');
+    try {
+      const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || 'save failed');
+      Object.assign(eventMeta, body);
+      syncHeader(eventMeta.title, eventMeta.host, eventMeta.starts, eventMeta.slug, eventMeta.date, eventMeta.time, eventMeta.place, eventMeta.cover);
+      setFormStatus('eventEditStatus', '', 'ok');
+      toast('Saved');
+      setTimeout(() => setEventEditOpen(''), 250);
+    } catch (e) {
+      setFormStatus('eventEditStatus', 'Couldn’t save: ' + (e.message || e), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save event'; }
+    }
+  }
+  if ($('eventEditSaveBtn')) $('eventEditSaveBtn').onclick = saveEventDetails;
+  ['eventTitleInput'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveEventDetails(); }
+      if (e.key === 'Escape') { e.preventDefault(); setEventEditOpen(''); }
+    });
+  });
 
+  // ── Local event cover ──
+  const pubCoverFile = $('pubCoverFile'), pubCoverBtn = $('pubCoverBtn'), pubCoverChangeBtn = $('pubCoverChangeBtn'), pubCoverResult = $('pubCoverResult'), eventCover = $('eventCover'), eventCoverImg = $('eventCoverImg');
   const COVER_PILE = [
     '/covers/hero.jpg',
     '/covers/dance.webp',
@@ -2279,25 +2715,872 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     '/covers/emerald-crowd.webp',
     '/covers/lanterns.webp'
   ];
-  // The cover is the party's, and the party's page is the web's. The console
-  // used to carry its own uploader, shuffle and drop target for it; that was
-  // one of the two implementations this app is being cured of. COVER_PILE
-  // stays because the sign-in door paints itself with it.
+  let coverPreviewURL = '';
+  let currentCover = { kind: '', index: 0, src: '', file: null };
+  let coverMetaSeen = false;
+  function setCoverStatus(msg, kind){
+    if (!pubCoverResult) return;
+    pubCoverResult.textContent = msg || '';
+    pubCoverResult.style.display = msg ? 'inline-block' : 'none';
+    pubCoverResult.classList.toggle('error', kind === 'error');
+  }
+  function setCoverBusy(on){
+    [pubCoverBtn, pubCoverChangeBtn].forEach((b) => { if (b) b.disabled = !!on; });
+    if (pubCoverBtn) pubCoverBtn.textContent = on ? 'Uploading' : 'Upload image';
+    if (pubCoverChangeBtn) pubCoverChangeBtn.textContent = on ? 'Working' : 'Shuffle image';
+  }
+  function coverStorageKey(){
+    return 'pp.coverIndex.' + (eventMeta.slug || 'current');
+  }
+  function savedCoverIndex(){
+    const keyed = localStorage.getItem(coverStorageKey());
+    const generic = keyed == null ? localStorage.getItem('pp.coverIndex') : keyed;
+    const n = Number(generic);
+    return Number.isFinite(n) && n >= 0 ? n % COVER_PILE.length : Math.floor(Math.random() * COVER_PILE.length);
+  }
+  function rememberCoverIndex(index){
+    localStorage.setItem('pp.coverIndex', String(index));
+    localStorage.setItem(coverStorageKey(), String(index));
+  }
+  async function persistCoverRef(ref){
+    const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ cover:ref }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || 'cover save failed');
+    eventMeta.cover = d.cover || ref;
+    if (ref) localStorage.removeItem('pp.coverNone');
+  }
+  function clearCoverUI(){
+    if (coverPreviewURL) { URL.revokeObjectURL(coverPreviewURL); coverPreviewURL = ''; }
+    if (eventCoverImg) eventCoverImg.src = '';
+    if (eventCover) eventCover.classList.remove('has-cover');
+    currentCover = { kind:'none', index:-1, src:'', file:null };
+  }
+  function setCoverImage(src){
+    if (!eventCover || !eventCoverImg || !src) return;
+    if (coverPreviewURL && coverPreviewURL !== src) {
+      URL.revokeObjectURL(coverPreviewURL);
+      coverPreviewURL = '';
+    }
+    eventCoverImg.src = src;
+    eventCover.classList.add('has-cover');
+  }
+  function selectCuratedCover(index, opts){
+    opts = opts || {};
+    if (!COVER_PILE.length) return;
+    const next = ((Number(index) || 0) % COVER_PILE.length + COVER_PILE.length) % COVER_PILE.length;
+    const src = COVER_PILE[next];
+    setCoverImage(src);
+    rememberCoverIndex(next);
+    currentCover = { kind: 'curated', index: next, src, file: null };
+    if (opts.status) setCoverStatus('', '');
+    const persist = opts.persist === false ? Promise.resolve() : persistCoverRef(src);
+    return persist;
+  }
+  function syncEventCover(ref){
+    ref = String(ref || '');
+    if (!ref && localStorage.getItem('pp.coverNone')) {
+      // The DJ removed the cover on purpose: the empty gradient IS the choice.
+      coverMetaSeen = true;
+      clearCoverUI();
+      return;
+    }
+    if (!ref) {
+      if (!coverMetaSeen && currentCover.src) {
+        coverMetaSeen = true;
+        persistCoverRef(currentCover.src).catch((e) => setCoverStatus('Couldn’t save cover: ' + (e.message || e), 'error'));
+      }
+      return;
+    }
+    coverMetaSeen = true;
+    if (ref === '/event-cover') {
+      setCoverImage(ref + '?event=' + encodeURIComponent(eventMeta.slug || 'current'));
+      currentCover = { kind:'local', index:-1, src:ref, file:null };
+      return;
+    }
+    const index = COVER_PILE.indexOf(ref);
+    if (index >= 0 && (currentCover.kind !== 'curated' || currentCover.index !== index)) {
+      selectCuratedCover(index, { persist:false });
+    }
+  }
+  function showCoverPreview(file){
+    if (!file || !eventCover || !eventCoverImg) return;
+    if (coverPreviewURL) URL.revokeObjectURL(coverPreviewURL);
+    coverPreviewURL = URL.createObjectURL(file);
+    setCoverImage(coverPreviewURL);
+    currentCover = { kind: 'upload', index: -1, src: coverPreviewURL, file };
+  }
+  function pickCover(){ if (pubCoverFile) pubCoverFile.click(); }
+  function hasFileDrop(e){ return e && e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'); }
+  async function saveLocalCoverBlob(blob, filename){
+    const fd = new FormData();
+    fd.append('file', blob, filename || 'cover.jpg');
+    const r = await fetch('/api/event-cover-local', { method:'POST', body:fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(d.error || 'local cover save failed');
+    eventMeta.cover = d.cover || '/event-cover';
+  }
+  async function shuffleCoverImage(){
+    let next = Math.floor(Math.random() * COVER_PILE.length);
+    if (COVER_PILE.length > 1 && currentCover.kind === 'curated') {
+      while (next === currentCover.index) next = Math.floor(Math.random() * COVER_PILE.length);
+    }
+    await selectCuratedCover(next, { status: true });
+  }
+  async function uploadCoverFile(file){
+    if (!file) return;
+    if (!file.type || file.type.indexOf('image/') !== 0) {
+      setCoverStatus('Choose an image file.', 'error');
+      return;
+    }
+    showCoverPreview(file);
+    setCoverBusy(true);
+    setCoverStatus('Saving cover…', '');
+    try {
+      await saveLocalCoverBlob(file, file.name);
+      setCoverStatus('', '');
+      if (pubCoverFile) pubCoverFile.value = '';
+    } catch (e) {
+      setCoverStatus('Couldn’t set cover: ' + (e.message || e), 'error');
+    } finally {
+      setCoverBusy(false);
+    }
+  }
+  if (!localStorage.getItem('pp.coverNone')) selectCuratedCover(savedCoverIndex(), { persist:false });
+  if ($('coverRemoveBtn')) $('coverRemoveBtn').addEventListener('click', async () => {
+    try {
+      await persistCoverRef('');
+      localStorage.setItem('pp.coverNone', '1');
+      clearCoverUI();
+      setCoverStatus('', '');
+    } catch (e) {
+      setCoverStatus('Couldn’t remove cover: ' + (e.message || e), 'error');
+    }
+  });
+  if (pubCoverBtn) pubCoverBtn.addEventListener('click', pickCover);
+  if (pubCoverChangeBtn) pubCoverChangeBtn.addEventListener('click', shuffleCoverImage);
+  if (pubCoverFile) pubCoverFile.addEventListener('change', () => uploadCoverFile(pubCoverFile.files && pubCoverFile.files[0]));
+  if (eventCover) {
+    eventCover.addEventListener('dragenter', (e) => {
+      if (!hasFileDrop(e)) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+      eventCover.classList.add('dragging');
+    });
+    eventCover.addEventListener('dragover', (e) => {
+      if (!hasFileDrop(e)) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+      eventCover.classList.add('dragging');
+    });
+    eventCover.addEventListener('dragleave', (e) => {
+      const next = e.relatedTarget;
+      if (next && eventCover.contains(next)) return;
+      eventCover.classList.remove('dragging');
+    });
+    eventCover.addEventListener('drop', (e) => {
+      if (!hasFileDrop(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      eventCover.classList.remove('dragging');
+      const file = Array.from(e.dataTransfer.files || []).find((item) => item.type && item.type.indexOf('image/') === 0);
+      uploadCoverFile(file);
+    });
+  }
   function syncHeader(title, host, starts, slug, date, clock, place, cover){
-    // Keeps the room's idea of WHICH party it is running. The page that shows
-    // the party is the web's, in the frame; this only feeds the Mac's own
-    // parts - the window title, the join link, the post-set report.
+    const fallbackHost = 'the DJ';
+    const shouldAutofillHost = isPlaceholderHost(host);
     eventMeta.title = title || '';
-    eventMeta.host = isPlaceholderHost(host) ? 'the DJ' : host;
+    eventMeta.host = shouldAutofillHost ? fallbackHost : host;
     eventMeta.starts = starts || '';
     if (typeof slug === 'string') eventMeta.slug = slug;
     if (typeof date === 'string') eventMeta.date = date;
     if (typeof clock === 'string') eventMeta.time = clock;
     if (typeof place === 'string') eventMeta.place = place;
     if (typeof cover === 'string') eventMeta.cover = cover;
+    const titleEl = $('titleEdit');
+    const titleHeld = document.activeElement === titleEl || Date.now() < (window.__ppTitleHold || 0);
+    if (!titleHeld) titleEl.textContent = eventMeta.title || 'Name your event';
+    syncEventCover(eventMeta.cover);
+    if (eventEditField) {
+      const active = document.activeElement;
+      if (!active || !$('eventEditPanel').contains(active)) fillEventEditForm(eventEditField);
+    }
     document.title = (eventMeta.title ? eventMeta.title + ' - ' : '') + 'PartyParty';
   }
 
+  // ── The party wall (DJ view): render + post + comment + moderate + curate ──
+  (() => {
+    const card = $('eventCard'), list = $('djFeed');
+    const escT = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const nodes = new Map();
+    const allPosts = new Map();
+    const authors = new Map(); // "emoji name" -> true (participants tab)
+    const replying = new Set();
+    let newestAct = 0, on = false;
+    const linkTypes = [
+      ['instagram', 'Instagram'], ['soundcloud', 'SoundCloud'], ['website', 'Website']
+    ];
+    const linkTypeLabels = new Map(linkTypes);
+    // Every service gets a row up front. Making the DJ press "Add another
+    // link" before they can type an Instagram handle is a step that buys
+    // nothing; an empty row simply is not published.
+    const defaultLinkTypes = linkTypes.map(([type]) => type);
+    const linkPlaceholders = new Map([
+      ['instagram','@username'], ['soundcloud','@username'],
+      ['website','yoursite.com'],
+    ]);
+    const linkMarks = new Map([
+      ['instagram','#E4405F|M12 2.2c3.2 0 3.6 0 4.9.07 3.3.15 4.8 1.7 5 5 .06 1.3.07 1.7.07 4.9s0 3.6-.07 4.9c-.15 3.3-1.7 4.8-5 5-1.3.06-1.7.07-4.9.07s-3.6 0-4.9-.07c-3.3-.15-4.8-1.7-5-5C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.9c.15-3.3 1.7-4.8 5-5C8.4 2.2 8.8 2.2 12 2.2Zm0 3.2a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2Zm0 10.9a4.3 4.3 0 1 1 0-8.6 4.3 4.3 0 0 1 0 8.6Zm6.9-11.1a1.55 1.55 0 1 1-3.1 0 1.55 1.55 0 0 1 3.1 0Z'],
+      ['soundcloud','#FF5500|M2 14.2c0-1 .3-1.9.9-2.6.2 1.7.2 3.5 0 5.2-.6-.7-.9-1.6-.9-2.6Zm2.3-3.6c.4 2.4.4 4.9 0 7.3h.9c.4-2.5.4-5 0-7.4h-.9Zm2.2-1.1c.5 2.9.5 5.9 0 8.8h.9c.5-3 .5-6 0-8.9h-.9Zm2.2-.9c.5 3.2.5 6.5 0 9.7h1c.5-3.2.5-6.5 0-9.8h-1Zm2.3-.5c.5 3.4.5 6.9 0 10.3h1V8.1h-1Zm2.4 10.3h7c1.6 0 2.9-1.3 2.9-2.9s-1.3-2.9-2.9-2.9c-.4 0-.8.1-1.1.2A5.5 5.5 0 0 0 13.4 8v10.4Z'],
+      ['website','#8E8E93|M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm6.9 9h-3a15 15 0 0 0-1.2-5.4A8 8 0 0 1 18.9 11ZM12 4.1c.8 1.1 1.6 3.3 1.8 6.9h-3.6c.2-3.6 1-5.8 1.8-6.9ZM5.1 11a8 8 0 0 1 4.2-5.4A15 15 0 0 0 8.1 11h-3Zm0 2h3a15 15 0 0 0 1.2 5.4A8 8 0 0 1 5.1 13Zm5 0h3.8c-.2 3.6-1 5.8-1.9 6.9-.8-1.1-1.6-3.3-1.9-6.9Zm4.6 5.4A15 15 0 0 0 15.9 13h3a8 8 0 0 1-4.2 5.4Z'],
+    ]);
+    function linkMark(type){
+      const raw = linkMarks.get(type);
+      if (!raw) return '';
+      const i = raw.indexOf('|');
+      return '<svg class="linkmark" viewBox="0 0 24 24" fill="' + raw.slice(0,i) + '" aria-hidden="true"><path d="' + raw.slice(i+1) + '"/></svg>';
+    }
+    // The same palette the guest page offers, so counts mean one thing.
+    const postReactionChoices = ['❤️', '🔥', '😂', '🎉', '🪩'];
+    const reactionDefs = [
+      ['fire', '🔥 fire'], ['heart', '❤️ heart'], ['louder', '🔊 louder'], ['quieter', '🔉 quieter'],
+      ['rewind', '⏪ rewind'], ['id', '❓ ID?'], ['more', '✨ more']
+    ];
+    let linkSig = '';
+    function cleanUsername(raw){
+      const username = String(raw || '').trim().replace(/^[@$]+/, '');
+      return /^[a-z0-9][a-z0-9._-]{0,79}$/i.test(username) ? username : '';
+    }
+    function usernameURL(type, raw){
+      // A website is a whole address, not a handle: cleanUsername would strip
+      // the dots and slashes that make it an address at all.
+      if (type === 'website') {
+        const host = String(raw || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+        return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/.*)?$/i.test(host) ? 'https://' + host : '';
+      }
+      const username = cleanUsername(raw);
+      if (!username) return '';
+      const encoded = encodeURIComponent(username);
+      switch (type) {
+        case 'instagram': return 'https://www.instagram.com/' + encoded + '/';
+        case 'soundcloud': return 'https://soundcloud.com/' + encoded;
+        case 'bandcamp': return 'https://' + username.toLowerCase() + '.bandcamp.com/';
+        default: return '';
+      }
+    }
+    function usernameFromLink(link){
+      if (!link || !link.url) return '';
+      try {
+        const u = new URL(link.url);
+        const parts = u.pathname.split('/').filter(Boolean).map(part => {
+          try { return decodeURIComponent(part); } catch (e) { return part; }
+        });
+        if (link.type === 'bandcamp' && u.hostname.toLowerCase().endsWith('.bandcamp.com')) {
+          return cleanUsername(u.hostname.slice(0, -'.bandcamp.com'.length));
+        }
+        return cleanUsername(parts[parts.length - 1]);
+      } catch (e) {
+        return cleanUsername(link.url);
+      }
+    }
+    function editorRows(links){
+      const list = Array.isArray(links) ? links : [];
+      const picked = new Map();
+      const rest = [];
+      for (const link of list) {
+        const type = link && link.type;
+        if (!linkTypeLabels.has(type)) continue;
+        if (defaultLinkTypes.includes(type) && !picked.has(type)) picked.set(type, link);
+        else rest.push(link);
+      }
+      return defaultLinkTypes.map(type => picked.get(type) || { type, url:'' }).concat(rest);
+    }
+    function linkRow(link){
+      const type = linkTypeLabels.has(link && link.type) ? link.type : 'instagram';
+      const row = document.createElement('div');
+      row.className = 'linkrow';
+      row.dataset.type = type;
+      const mark = document.createElement('span');
+      mark.className = 'linkbrand';
+      mark.innerHTML = linkMark(type);
+      const name = document.createElement('span');
+      name.className = 'linkname';
+      name.textContent = linkTypeLabels.get(type);
+      const username = document.createElement('input');
+      username.dataset.field = 'username'; username.type = 'text'; username.inputMode = 'text';
+      username.autocapitalize = 'off'; username.autocomplete = 'off'; username.spellcheck = false; username.maxLength = 80; username.value = usernameFromLink(link);
+      username.placeholder = linkPlaceholders.get(type) || '@username';
+      // A chip with a handle in it reads as set; an empty one reads as an offer.
+      const sync = () => row.classList.toggle('filled', !!username.value.trim());
+      username.addEventListener('input', sync);
+      sync();
+      row.appendChild(mark); row.appendChild(name); row.appendChild(username);
+      return row;
+    }
+    function renderLinkEditor(links){
+      const rows = $('linkRows');
+      const clean = editorRows(links);
+      const sig = JSON.stringify(clean);
+      // Never rebuild under the caret: a post-save render here used to steal
+      // focus from the chip the user had just clicked. A later idle render
+      // syncs once nothing inside the rows is focused.
+      if (document.activeElement && rows.contains(document.activeElement)) return;
+      if (sig === linkSig && rows.children.length) return;
+      linkSig = sig;
+      rows.textContent = '';
+      for (const link of clean) rows.appendChild(linkRow(link));
+    }
+    // Auto-saves post whatever the inputs hold; before the first server render
+    // the inputs hold nothing, and an early save (autofill poke, stray blur)
+    // would overwrite stored truth with an empty screen. Saves stay disarmed
+    // until hydration has landed once.
+    //
+    // The flag lives on window ON PURPOSE: the autosave wiring sits in a later
+    // IIFE, outside this scope. A plain `let` here, read from there, is an
+    // undeclared identifier, and the ReferenceError it throws inside an event
+    // handler is silent - which is exactly how 125.41 shipped a console where
+    // NO profile or link edit was ever saved (2026-08-06). Covered by
+    // scripts/test-dj-console-saves.mjs, which types like a DJ.
+    window.ppProfileHydrated = false;
+    // What the fields held the last time the server wrote them. A field that
+    // has moved away from this holds the DJ's own typing, and nothing may
+    // overwrite it - not even after focus has left. "Is it focused right now"
+    // was the old guard and it was not enough: a save still in flight from the
+    // PREVIOUS field came back and wiped the one just typed.
+    const profileKnown = { name: '', bio: '' };
+    function renderProfile(name, bio, avatar){
+      window.ppProfileHydrated = true;
+      eventMeta.host = String(name || eventMeta.host || 'the DJ');
+      eventMeta.bio = String(bio || '');
+      eventMeta.avatar = String(avatar || '');
+      const nameInput = $('profileName');
+      const nameText = isPlaceholderHost(eventMeta.host) ? '' : eventMeta.host;
+      if (nameInput && document.activeElement !== nameInput && nameInput.value === profileKnown.name) {
+        nameInput.value = nameText;
+        profileKnown.name = nameText;
+      }
+      const bioInput = $('profileBio');
+      if (bioInput && document.activeElement !== bioInput && bioInput.value === profileKnown.bio) {
+        bioInput.value = eventMeta.bio;
+        profileKnown.bio = eventMeta.bio;
+      }
+      const photo = $('profilePhoto');
+      const has = !!eventMeta.avatar;
+      if (photo) {
+        photo.hidden = !has;
+        if (has) photo.src = eventMeta.avatar + '?v=' + encodeURIComponent(eventMeta.avatar);
+      }
+      // The wrapper carries the state so the silhouette, the + and the remove
+      // control all follow from one class instead of three separate toggles.
+      document.querySelector('.profileimagewrap').classList.toggle('has-photo', has);
+      $('profilePhotoRemoveBtn').hidden = !has;
+      // The QR carries the avatar badge; a changed photo re-renders it.
+      if (typeof qrText === 'string' && qrText) renderQR(qrText);
+    }
+    function collectLinks(){
+      const links = [];
+      let bad = false;
+      for (const row of $('linkRows').querySelectorAll('.linkrow')) {
+        const type = row.dataset.type;
+        const input = row.querySelector('[data-field="username"]');
+        const raw = input.value.trim();
+        input.classList.remove('bad');
+        if (!raw) continue;
+        const url = usernameURL(type, raw);
+        if (!url) {
+          input.classList.add('bad');
+          bad = true;
+          continue;
+        }
+        links.push({ type, url });
+      }
+      if (bad) throw new Error('Use a username without spaces or slashes.');
+      return links;
+    }
+    function reactionFeatureOn(features){
+      return !!(features && Object.prototype.hasOwnProperty.call(features, 'reactions') ? features.reactions !== false : false);
+    }
+    function renderReactions(features, counts, spikes){
+      const panel = $('djReactions');
+      if (!reactionFeatureOn(features)) {
+        panel.hidden = true;
+        $('djReactionGrid').innerHTML = '';
+        $('djReactionSpike').textContent = '';
+        return;
+      }
+      panel.hidden = false;
+      counts = counts || {};
+      spikes = spikes || {};
+      $('djReactionGrid').innerHTML = reactionDefs.map(([key, label]) => {
+        const n = Number(counts[key] || 0);
+        return '<div class="djreact' + (n ? '' : ' zero') + '"><span>' + escT(label) + '</span><span>×' + n + '</span></div>';
+      }).join('');
+      let top = null;
+      for (const [key, nRaw] of Object.entries(spikes)) {
+        const n = Number(nRaw || 0);
+        if (n > 0 && (!top || n > top.n)) top = { key, n };
+      }
+      if (!top) {
+        $('djReactionSpike').textContent = '';
+        return;
+      }
+      const def = reactionDefs.find(([key]) => key === top.key);
+      $('djReactionSpike').textContent = (def ? def[1] : top.key) + ' ×' + top.n + ' just now';
+    }
+    $('linkRows').addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest && e.target.closest('.linkdel');
+      if (!btn) return;
+      const row = btn.closest('.linkrow');
+      if (row) row.remove();
+      if (!$('linkRows').children.length) renderLinkEditor([]);
+    });
+    $('saveLinksBtn').addEventListener('click', async () => {
+      const status = $('linkStatus');
+      $('saveLinksBtn').disabled = true;
+      try {
+        const links = collectLinks();
+        const r = await fetch('/api/event-links', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ links }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'link save failed');
+        linkSig = '';
+        renderLinkEditor(d.links || []);
+        status.textContent = '';
+        toast('Saved');
+      } catch (err) {
+        status.textContent = err.message || 'link save failed';
+      } finally {
+        $('saveLinksBtn').disabled = false;
+      }
+    });
+    document.querySelector('.profileimagewrap').addEventListener('click', (event) => {
+      // the X is inside the circle; it must not also open the file picker
+      if (event.target.closest('#profilePhotoRemoveBtn')) return;
+      $('profilePhotoFile').click();
+    });
+    $('profilePhotoFile').addEventListener('change', async () => {
+      const file = $('profilePhotoFile').files && $('profilePhotoFile').files[0];
+      if (!file) return;
+      const status = $('profileStatus');
+      status.textContent = 'Uploading…';
+      const fd = new FormData();
+      fd.append('file', file, file.name || 'profile.jpg');
+      try {
+        const r = await fetch('/api/dj-avatar-local', { method:'POST', body:fd });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) throw new Error(data.error || 'upload failed');
+        renderProfile(eventMeta.host, eventMeta.bio, data.avatar || '/dj-avatar');
+        $('profilePhoto').src = (data.avatar || '/dj-avatar') + '?v=' + Date.now();
+        status.textContent = '';
+      } catch (error) {
+        status.textContent = error.message || 'upload failed';
+      }
+    });
+    $('profilePhoto').addEventListener('error', () => {
+      const wrap = document.querySelector('.profileimagewrap');
+      if (wrap) wrap.classList.remove('has-photo');
+      $('profilePhoto').hidden = true;
+      $('profileStatus').textContent = 'The profile photo failed to load - upload it again.';
+    });
+    // A later successful load must clear the failure note, or one transient
+    // miss (an app restart mid-request) leaves "upload it again" pinned under
+    // a photo that is plainly visible.
+    $('profilePhoto').addEventListener('load', () => {
+      const status = $('profileStatus');
+      if (status.textContent.startsWith('The profile photo failed to load')) status.textContent = '';
+    });
+    $('profilePhotoRemoveBtn').addEventListener('click', async () => {
+      const status = $('profileStatus');
+      try {
+        const r = await fetch('/api/dj-avatar-local', { method:'DELETE' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) throw new Error(data.error || 'remove failed');
+        renderProfile(eventMeta.host, eventMeta.bio, '');
+        status.textContent = '';
+      } catch (error) {
+        status.textContent = error.message || 'remove failed';
+      }
+    });
+    // One save at a time, and never a dropped one. The button used to BE the
+    // save path, disabled for the length of the fetch - so a save asked for
+    // while another was in flight was silently discarded, and then the older
+    // save's reply overwrote the field the DJ had just filled in. Typing a
+    // name, tabbing to the bio, typing that and clicking away lost the bio
+    // twice over: never sent, then erased on screen.
+    let profileSaving = false;
+    let profileQueued = false;
+    async function saveProfileNow(){
+      if (!window.ppProfileHydrated) return;
+      if (profileSaving) { profileQueued = true; return; }
+      profileSaving = true;
+      const btn = $('saveProfileBtn');
+      const status = $('profileStatus');
+      if (btn) btn.disabled = true;
+      const sent = { name: $('profileName').value.trim(), bio: $('profileBio').value.trim() };
+      try {
+        const r = await fetch('/api/dj-profile', { method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(sent) });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.error) throw new Error(data.error || 'save failed');
+        // What we sent is now what the fields are known to hold, so the reply
+        // may refresh them - but renderProfile still skips any field the DJ has
+        // typed into since.
+        profileKnown.name = sent.name;
+        profileKnown.bio = sent.bio;
+        renderProfile(data.name, data.bio, data.avatar);
+        status.textContent = '';
+        toast('Saved');
+      } catch (error) {
+        status.textContent = error.message || 'save failed';
+      } finally {
+        profileSaving = false;
+        if (btn) btn.disabled = false;
+        if (profileQueued) { profileQueued = false; saveProfileNow(); }
+      }
+    }
+    // The field wiring lives in a different IIFE and cannot see this function.
+    window.ppSaveProfile = saveProfileNow;
+    $('saveProfileBtn').addEventListener('click', saveProfileNow);
+    const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
+    function stateBadge(state){
+      return '';
+    }
+    function modButtons(postID, commentID, state){
+      return '';
+    }
+    function renderModQueue(){
+      $('modQueue').hidden = true;
+      $('modList').textContent = '';
+    }
+    function fallbackVideo(src){
+      const v = document.createElement('video');
+      v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
+      v.style.width = '180px'; v.style.borderRadius = '8px';
+      return v;
+    }
+    function render(p){
+      const t = new Date(p.ts);
+      const time = t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0');
+      const media = (p.media || []).map(m => {
+        const src = m.url || ('/media/' + encodeURIComponent(m.id));
+        const thumb = m.thumb || src;
+        if (m.type === 'image') return '<a class="wshot" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(thumb) + '" data-fallback-src="' + src + '" loading="lazy" alt=""></a>';
+        if (m.type === 'video') {
+          if (m.thumb) return '<a class="wshot wthumb" href="' + src + '" target="_blank" rel="noopener"><img src="' + escT(m.thumb) + '" data-fallback-video="' + src + '" loading="lazy" alt=""><span class="wplay">▶</span></a>';
+          return '<video class="wshot" src="' + src + '" controls preload="metadata"></video>';
+        }
+        return '<audio src="' + src + '" controls preload="none" style="width:100%"></audio>';
+      }).join('');
+      const cmtRows = (p.comments || []).map(c =>
+        '<div class="wcmt"><span style="display:flex;gap:6px;align-items:baseline"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' +
+        stateBadge(stateOf(c)) + '<span style="margin-left:auto;display:flex;gap:4px;align-items:center">' +
+        modButtons(p.id, c.id, stateOf(c)) +
+        '<button class="modbtn remove" data-cdel="' + escT(p.id) + '" data-comment="' + escT(c.id) + '">Remove</button></span></span>' +
+        '<span>' + escT(c.text) + '</span></div>').join('');
+      const cmts = cmtRows ? '<div class="wcmts">' + cmtRows + '</div>' : '';
+      // Instagram anatomy: avatar + bold name header (quiet controls right),
+      // full-bleed media, bold-name caption, comments, then a quiet foot with
+      // Reply and the time.
+      const avatar = p.dj && eventMeta.avatar
+        ? '<img class="wavatar" src="/dj-avatar?v=' + encodeURIComponent(eventMeta.avatar) + '" alt="">'
+        : '<span class="wavatar wemoji">' + escT(p.emoji || '🙂') + '</span>';
+      const el = document.createElement('div');
+      el.className = 'wpost';
+      el.dataset.id = p.id; el.dataset.ts = p.ts;
+      el.innerHTML = '<div class="whead">' + avatar +
+        '<b class="wname">' + escT(p.author || 'someone') +
+        (p.dj ? '<span class="wdj">DJ</span>' : '') + '</b>' +
+        stateBadge(stateOf(p)) +
+        '<span class="wheadactions">' +
+        modButtons(p.id, '', stateOf(p)) +
+        '<button class="pdel" data-del="' + escT(p.id) + '">Remove</button></span></div>' +
+        (media ? '<div class="wmedia">' + media + '</div>' : '') +
+        (p.text ? '<div class="wcaption"><b>' + escT(p.author || 'someone') + '</b>' + escT(p.text) + '</div>' : '') +
+        cmts +
+        '<div class="wpostactions"><button class="wreplybtn" data-reply="' + escT(p.id) + '" type="button">Reply</button>' +
+        postReactionChoices.map((emoji) => {
+          const n = Number((p.reactions || {})[emoji] || 0);
+          return '<button class="wreact" data-react="' + escT(p.id) + '" data-emoji="' + emoji + '" type="button">' + emoji + (n ? '<b>' + n + '</b>' : '') + '</button>';
+        }).join('') +
+        '<span class="wtime">' + time + '</span></div>' +
+        '<div class="wreply"' + (replying.has(p.id) ? '' : ' hidden') + '><input maxlength="1000" placeholder="Write a reply…" data-cpost="' + escT(p.id) + '">' +
+        '<button data-csend="' + escT(p.id) + '" type="button">Post</button></div>';
+      return el;
+    }
+    function place(p){
+      const el = render(p);
+      const old = nodes.get(p.id);
+      if (old) {
+        const active = old.querySelector('input[data-cpost]');
+        if (active && document.activeElement === active) {
+          // Mid-typing (incl. the DJ's own just-sent comment - Enter keeps the
+          // input focused in WKWebView): the cursor already moved past this
+          // post, so the update must land NOW. Swap only the comments block.
+          const oldC = old.querySelector('.wcmts'), newC = el.querySelector('.wcmts');
+          if (oldC && newC) oldC.replaceWith(newC);
+          else if (newC) old.insertBefore(newC, active.parentElement);
+          return;
+        }
+        if (active && active.value) {
+          const ni = el.querySelector('input[data-cpost]');
+          if (ni) ni.value = active.value;
+        }
+        old.replaceWith(el);
+      } else {
+        let before = null;
+        for (const child of list.children) {
+          if (Number(child.dataset.ts || 0) < p.ts) { before = child; break; }
+        }
+        list.insertBefore(el, before);
+      }
+      nodes.set(p.id, el);
+    }
+    list.addEventListener('error', (e) => {
+      const img = e.target;
+      if (!img || img.tagName !== 'IMG') return;
+      const vsrc = img.dataset && img.dataset.fallbackVideo;
+      if (vsrc) {
+        const v = fallbackVideo(vsrc);
+        const wrap = img.closest('a');
+        if (wrap) wrap.replaceWith(v);
+        else img.replaceWith(v);
+        return;
+      }
+      const osrc = img.dataset && img.dataset.fallbackSrc;
+      if (osrc && img.src !== new URL(osrc, location.href).href) {
+        img.dataset.fallbackSrc = '';
+        img.src = osrc;
+      }
+    }, true);
+    function askDelete(button){
+      if (!button || button.dataset.confirm === '1') return true;
+      button.dataset.confirm = '1';
+      button.textContent = 'Delete';
+      button.classList.add('confirm-delete');
+      const cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.className = 'confirm-cancel'; cancel.dataset.cancelDelete = '1'; cancel.textContent = 'Cancel';
+      button.insertAdjacentElement('afterend', cancel);
+      return false;
+    }
+    function cancelDelete(button){
+      const wrap = button && button.parentElement;
+      const confirm = wrap && wrap.querySelector('[data-confirm="1"]');
+      if (confirm) {
+        confirm.dataset.confirm = '';
+        confirm.textContent = 'Remove';
+        confirm.classList.remove('confirm-delete');
+      }
+      if (button) button.remove();
+    }
+    async function handleWallClick(e){
+      const d = e.target && e.target.dataset || {};
+      if (d.cancelDelete) { cancelDelete(e.target); return; }
+      // closest(): the count <b> inside the pill must react like the pill.
+      const reactBtn = e.target && e.target.closest && e.target.closest('.wreact');
+      if (reactBtn) {
+        reactBtn.disabled = true;
+        try {
+          const r = await fetch('/api/post-reaction', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ cid:'dj', post:reactBtn.dataset.react, reaction:reactBtn.dataset.emoji || '' }) });
+          if (r.ok) await poll();
+        } catch (err) {}
+        reactBtn.disabled = false;
+        return;
+      }
+      if (d.reply) {
+        replying.add(d.reply);
+        const form = e.target.closest('.wpost') && e.target.closest('.wpost').querySelector('.wreply');
+        if (form) {
+          form.hidden = false;
+          const input = form.querySelector('input[data-cpost]');
+          if (input) input.focus();
+        }
+        return;
+      }
+      if (d.mod) {
+        e.target.disabled = true;
+        try {
+          const url = '/api/mod?id=' + encodeURIComponent(d.mod) + '&state=' + encodeURIComponent(d.state || 'approved') +
+            (d.comment ? '&commentId=' + encodeURIComponent(d.comment) : '');
+          await fetch(url, { method:'POST' });
+          await poll();
+        } finally {
+          e.target.disabled = false;
+        }
+        return;
+      }
+      if (d.cdel) {
+        if (!askDelete(e.target)) return;
+        await fetch('/api/comment-delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ postID:d.cdel, commentID:d.comment || '' }) });
+        await poll();
+        return;
+      }
+      if (d.del) {
+        if (!askDelete(e.target)) return;
+        await fetch('/api/post-delete?id=' + encodeURIComponent(d.del), { method:'POST' });
+        const el = nodes.get(d.del);
+        if (el) { el.remove(); nodes.delete(d.del); allPosts.delete(d.del); replying.delete(d.del); renderModQueue(); }
+        return;
+      }
+      if (d.csend) {
+        const inp = list.querySelector('input[data-cpost="' + d.csend + '"]');
+        const text = inp && inp.value.trim();
+        if (!text) return;
+        e.target.disabled = true;
+        try {
+          const r = await fetch('/api/comment', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ post: d.csend, cid:'dj', author:eventMeta.host || 'the DJ', emoji:'🎧', text }) });
+          if (r.ok) { inp.value = ''; await poll(); }
+        } catch (err) {}
+        e.target.disabled = false;
+      }
+    }
+    list.addEventListener('click', handleWallClick);
+    $('modQueue').addEventListener('click', handleWallClick);
+    list.addEventListener('keydown', (e) => {
+      // Enter sends a reply; Cmd/Ctrl+Enter does too, so the habit learned in
+      // the post composer works here without thinking about it.
+      if (e.key !== 'Enter' || e.isComposing) return;
+      const pid = e.target && e.target.dataset && e.target.dataset.cpost;
+      if (!pid) return;
+      e.preventDefault();
+      const btn = list.querySelector('button[data-csend="' + pid + '"]');
+      if (btn) btn.click();
+    });
+    async function poll(){
+      try {
+        // wait=1 after the first load: long-poll - guest posts/comments land
+        // on the console the moment they happen.
+        const r = await fetch('/api/feed?since=' + newestAct + (on ? '&wait=1' : ''), { cache:'no-store' });
+        if (r.status === 404) return false;
+        if (!r.ok) return false;
+        const data = await r.json();
+        if (!on) { on = true; card.style.display = 'block'; }
+        if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
+        syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
+        renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
+        renderLinkEditor(data.links || []);
+        setDJHandle(data.handle);
+        renderProfile(data.host, data.bio, data.avatar);
+        if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
+          const alive = new Set(data.ids);
+          for (const [id, node] of [...nodes]) {
+            if (!alive.has(id)) { node.remove(); nodes.delete(id); allPosts.delete(id); replying.delete(id); }
+          }
+        }
+        for (const p of (data.posts || [])) {
+          newestAct = Math.max(newestAct, p.act || p.ts);
+          allPosts.set(p.id, p);
+          place(p);
+          if (!p.dj) authors.set(p.emoji + ' ' + (p.author || 'someone'), true);
+          for (const c of (p.comments || [])) if (!c.dj) authors.set(c.emoji + ' ' + (c.author || 'someone'), true);
+        }
+        renderModQueue();
+        // Participants tab: everyone who has joined the wall (pseudonyms).
+        if (authors.size) {
+          $('wallAuthors').innerHTML = [...authors.keys()].map(a => '<span class="chip">' + escT(a) + '</span>').join('');
+        }
+        return true;
+      } catch (e) { return false; }
+    }
+    // Long-poll loop (same shape as the guest page): parked request = the wait.
+    (async () => {
+      for (;;) {
+        const ok = await poll();
+        await new Promise(r => setTimeout(r, ok && on ? 150 : 5000));
+      }
+    })();
+
+    let djPendingFiles = [];
+    function supportedDropFile(file){
+      if (!file) return false;
+      const typ = (file.type || '').toLowerCase();
+      if (typ.startsWith('image/') || typ.startsWith('video/') || typ.startsWith('audio/')) return true;
+      return /\.(jpe?g|png|gif|heic|heif|webp|mp4|mov|m4v|webm|mp3|m4a|aac|wav)$/i.test(file.name || '');
+    }
+    function setDJFiles(files, append){
+      const incoming = [...(files || [])].filter(supportedDropFile);
+      djPendingFiles = append ? djPendingFiles.concat(incoming) : incoming;
+      $('djAttachN').textContent = djPendingFiles.length ? djPendingFiles.length + ' selected' : '';
+    }
+    function filesFromTransfer(dt){
+      const out = [];
+      if (!dt) return out;
+      if (dt.items && dt.items.length) {
+        for (const item of dt.items) {
+          if (item.kind !== 'file') continue;
+          const f = item.getAsFile();
+          if (f) out.push(f);
+        }
+      }
+      if (!out.length && dt.files) out.push(...dt.files);
+      return out;
+    }
+    function transferHasFiles(dt){
+      if (!dt) return false;
+      if (dt.types && Array.from(dt.types).includes('Files')) return true;
+      if (dt.items && Array.from(dt.items).some(item => item.kind === 'file')) return true;
+      return !!(dt.files && dt.files.length);
+    }
+    $('djAttachBtn').onclick = () => $('djFiles').click();
+    $('djFiles').onchange = () => setDJFiles($('djFiles').files, false);
+    const djComposer = $('djComposer');
+    if (djComposer) {
+      ['dragenter', 'dragover'].forEach(type => djComposer.addEventListener(type, (e) => {
+        if (!transferHasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        djComposer.classList.add('dropping');
+      }));
+      ['dragleave', 'dragend'].forEach(type => djComposer.addEventListener(type, () => {
+        djComposer.classList.remove('dropping');
+      }));
+      djComposer.addEventListener('drop', (e) => {
+        const files = filesFromTransfer(e.dataTransfer);
+        if (!files.length) return;
+        e.preventDefault();
+        djComposer.classList.remove('dropping');
+        setDJFiles(files, true);
+      });
+    }
+    $('djPostText').addEventListener('paste', (e) => {
+      const files = filesFromTransfer(e.clipboardData);
+      if (!files.length) return;
+      e.preventDefault();
+      setDJFiles(files, true);
+    });
+    // Cmd/Ctrl+Enter posts, matching every message field on a Mac. Plain
+    // Enter stays a line break here: a post is allowed to have paragraphs.
+    $('djPostText').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.isComposing) return;
+      e.preventDefault();
+      const b = $('djPostBtn');
+      if (b && !b.disabled) b.click();
+    });
+    $('djPostBtn').onclick = async () => {
+      const files = djPendingFiles.slice();
+      const text = $('djPostText').value.trim();
+      if (!text && !files.length) return;
+      $('djPostBtn').disabled = true;
+      try {
+        const media = [];
+        for (let i = 0; i < files.length; i++) {
+          $('djPostBtn').textContent = (i + 1) + '/' + files.length + '…';
+          const fd = new FormData(); fd.append('file', files[i]);
+          const r = await fetch('/api/upload', { method:'POST', body: fd });
+          const m = await r.json();
+          if (!r.ok) throw new Error(m.error || 'upload failed');
+          media.push(m);
+        }
+        const r = await fetch('/api/post', { method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ cid:'dj', author:eventMeta.host || 'the DJ', emoji:'🎧', text, media }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'post failed');
+        $('djPostText').value = ''; $('djFiles').value = ''; djPendingFiles = []; $('djAttachN').textContent = '';
+        poll();
+      } catch (e) { $('djAttachN').textContent = e.message; }
+      finally { $('djPostBtn').disabled = false; $('djPostBtn').textContent = 'Post'; }
+    };
+    function openCurrentEventFolder(){
+      return fetch('/api/open-media', { method:'POST' });
+    }
+    if ($('actionOpenFolderBtn')) $('actionOpenFolderBtn').onclick = openCurrentEventFolder;
+  })();
 
   // ---- permissions block ------------------------------------------------
   // Honest by construction: microphone has a real status API, system audio has
@@ -2372,6 +3655,39 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
   // ---- autosave -------------------------------------------------------
   // A Mac app does not ask you to press Save. The existing handlers are the
   // save path; they stay, the buttons just stop being something to press.
+  (function(){
+    const debounce = (fn, ms) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
+    const commit = (id) => debounce(() => { const b = $(id); if (b && !b.disabled && window.ppProfileHydrated) b.click(); }, 700);
+    // Profile saves go through ppSaveProfile, which queues rather than drops
+    // when one is already in flight. Clicking the button would be dropped.
+    const saveProfile = debounce(() => { if (window.ppSaveProfile) window.ppSaveProfile(); }, 700);
+    const saveLinks = commit('saveLinksBtn');
+    // Enter commits the field. In the bio textarea that means NO line break -
+    // Shift+Enter is the deliberate way to add one.
+    const enterCommits = (el) => el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      el.blur(); // blur is the existing save path
+    });
+    ['profileName','profileBio'].forEach((id) => {
+      const el = $(id); if (!el) return;
+      enterCommits(el);
+      el.addEventListener('input', saveProfile);
+      el.addEventListener('blur', () => { if (window.ppSaveProfile) window.ppSaveProfile(); });
+    });
+    const rows = $('linkRows');
+    if (rows) {
+      rows.addEventListener('input', saveLinks);
+      rows.addEventListener('focusout', () => { const b = $('saveLinksBtn'); if (b && !b.disabled) b.click(); });
+      rows.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+        const el = e.target;
+        if (!el || !el.matches || !el.matches('input,textarea')) return;
+        e.preventDefault();
+        el.blur();
+      });
+    }
+  })();
 
   // ---- lifecycle: prepare -> live -> recap ---------------------------
   // One composition that changes character. The phase is derived from the
@@ -2521,7 +3837,59 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       : lan.state === 'ready' ? 'Reachable' : 'Checking');
   }
 
+  // The host is not a guest. Listener count is listeners.
+  function renderCounts(s){
+    const host = $('posterHost');
+    if (host && window.eventMeta) host.textContent = eventMeta.host && eventMeta.host !== 'the DJ' ? eventMeta.host : '';
+  }
 
+  // The title is the field. Click the words and type; commit on blur or Enter.
+  (function(){
+    const el = $('titleEdit');
+    if (!el) return;
+    const commit = async () => {
+      const name = el.textContent.trim().slice(0, 80);
+      if (name === (eventMeta.title || '')) return;
+      // An empty blur never erases the party name; put the real one back.
+      if (!name) { el.textContent = eventMeta.title || ''; return; }
+      // Offline-first and optimistic: the DJ's words become the truth
+      // immediately, and the save (to the LOCAL server on this Mac - no
+      // internet involved) follows with retries. The name is never taken
+      // back from under the DJ.
+      eventMeta.title = name;
+      document.title = name + ' - PartyParty';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        window.__ppTitleHold = Date.now() + 4000;
+        try {
+          const r = await fetch('/api/event-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: name }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || d.error) throw new Error(d.error || 'save failed');
+          toast('Saved');
+          return;
+        } catch (err) {
+          await new Promise((res) => setTimeout(res, 1200));
+        }
+      }
+      window.__ppTitleHold = Date.now() + 4000;
+      toast('Name kept - still trying to save it');
+    };
+    // Ending the edit must actually end it. WebKit keeps the caret blinking in
+    // a blurred contenteditable until the selection is dropped, and a click on
+    // a plain div never moves focus at all, so blur alone never fires there.
+    const deactivate = () => {
+      el.blur();
+      const sel = window.getSelection && window.getSelection();
+      if (sel && sel.removeAllRanges) sel.removeAllRanges();
+    };
+    el.addEventListener('blur', commit);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); deactivate(); }
+      if (e.key === 'Escape') { el.textContent = eventMeta.title || ''; deactivate(); }
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (document.activeElement === el && !el.contains(e.target)) deactivate();
+    });
+  })();
 </script>
 <div id="ppToast" class="pptoast" role="status" aria-live="polite"></div>
 <footer class="appfooter"><span id="appver"></span></footer>

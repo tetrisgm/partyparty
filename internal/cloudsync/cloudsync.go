@@ -75,14 +75,6 @@ func (c *Client) ready() bool {
 	return c != nil && c.Base != "" && c.InstallID != "" && c.Secret != ""
 }
 
-// postSlowly is post with room for a bulk operation to finish.
-func (c *Client) postSlowly(ctx context.Context, path string, body, out any) error {
-	was := c.HTTP
-	defer func() { c.HTTP = was }()
-	c.HTTP = &http.Client{Timeout: 3 * time.Minute}
-	return c.post(ctx, path, body, out)
-}
-
 func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -172,37 +164,22 @@ func (c *Client) Parties(ctx context.Context) ([]Party, bool, error) {
 	return out.Parties, out.Linked, err
 }
 
-// NewParty is a party as somebody types it, on either client. The web form has
-// exactly these fields, so the booth asks exactly these questions - creating a
-// party is one thing that happens to have two front doors.
-type NewParty struct {
-	Title string
-	Place string
-	// Comma separated, as typed. They become people on the account, which is
-	// what makes "who played" a history rather than a label on one night.
-	DJs      string
-	StartsMs int64
-	// The live room, when this party is being opened to broadcast right now.
-	PartyID string
-}
-
-// CreateParty makes a canonical party through the platform's own creation path
-// - the same one the web form calls. PartyID attaches the live room at creation
-// so starting a broadcast never mints a second record.
-func (c *Client) CreateParty(ctx context.Context, p NewParty) (Party, error) {
+// CreateParty makes a canonical party through the platform's own creation
+// path - the same one the web form calls. partyID attaches the live room at
+// creation so starting a broadcast never mints a second record.
+func (c *Client) CreateParty(ctx context.Context, title, place, partyID string, startsMs int64) (Party, error) {
 	if !c.ready() {
 		return Party{}, errors.New("cloudsync: not configured")
 	}
 	var out partyResponse
 	body := map[string]any{
-		"id": c.InstallID, "secret": c.Secret, "title": p.Title, "place": p.Place,
-		"djs": p.DJs,
+		"id": c.InstallID, "secret": c.Secret, "title": title, "place": place,
 	}
-	if p.PartyID != "" {
-		body["partyId"] = p.PartyID
+	if partyID != "" {
+		body["partyId"] = partyID
 	}
-	if p.StartsMs > 0 {
-		body["startsMs"] = p.StartsMs
+	if startsMs > 0 {
+		body["startsMs"] = startsMs
 	}
 	if err := c.post(ctx, "/api/v1/party/create", body, &out); err != nil {
 		return Party{}, err
@@ -381,94 +358,7 @@ type syncResponse struct {
 // time. Pushing is idempotent by post id, so a retry after a dropped
 // connection costs nothing and duplicates nothing - which is what makes it
 // safe to just try again on a venue's bad Wi-Fi.
-// Track is one thing the room played, as Shazam heard it.
-type Track struct {
-	Title  string `json:"title"`
-	Artist string `json:"artist,omitempty"`
-}
-
-// ShazamItem is one match out of the DJ's own Shazam library.
-//
-// `Night` is the date the app decided this match belongs to, in the DJ's
-// timezone and with the evening rolling over at six in the morning. It is
-// computed on the Mac because the Mac is the only part of this that knows what
-// time it is where the party was.
-type ShazamItem struct {
-	Title      string `json:"title"`
-	Artist     string `json:"artist,omitempty"`
-	ShazamID   string `json:"shazamId,omitempty"`
-	ArtworkURL string `json:"artworkUrl,omitempty"`
-	At         int64  `json:"at"`
-	Night      string `json:"night"`
-}
-
-// ShazamNight is one party an import found matches for.
-type ShazamNight struct {
-	Slug   string   `json:"slug"`
-	Place  string   `json:"place"`
-	Handle string   `json:"handle"`
-	Title  string   `json:"title"`
-	Day    string   `json:"day"`
-	Added  int      `json:"added"`  // what this import would add, or did
-	Had    int      `json:"had"`    // already on the night, left alone
-	Titles []string `json:"titles"` // a few, so a preview can be looked at
-}
-
-// ShazamNewNight is a day with enough matches on it to have been a party, and
-// no party. The DJ decides; this is what they are shown to decide from.
-type ShazamNewNight struct {
-	Day    string   `json:"day"`
-	Count  int      `json:"count"`
-	Titles []string `json:"titles"`
-	Place  string   `json:"place"`
-}
-
-// ShazamImport is what an import did, or would do. The same shape either way:
-// a preview a DJ agrees to must describe the thing that then happens.
-//
-// Every field the platform sends has to exist here. This is a typed pipe, so a
-// field nobody declared is not passed through - it is dropped in silence, which
-// is exactly what happened to newNights: the platform sent it, the console
-// never saw it, and both ends looked correct on their own.
-type ShazamImport struct {
-	Nights         []ShazamNight    `json:"nights"`
-	NewNights      []ShazamNewNight `json:"newNights"`
-	NewNightTracks int              `json:"newNightTracks"`
-	Matched        int              `json:"matched"`   // items that found a night
-	Unmatched      int              `json:"unmatched"` // items on days with no party
-	Preview        bool             `json:"preview"`
-}
-
-// ImportShazam files a Shazam library into the nights it belongs to.
-//
-// With preview set nothing is written and the answer describes what would be.
-// The DJ sees that first: an import that silently rewrites four parties' track
-// lists is worse than no import at all.
-// `create` is the days the DJ agreed to make parties for, and is empty for
-// every ordinary import.
-func (c *Client) ImportShazam(ctx context.Context, items []ShazamItem, preview bool, create []string, places map[string]string) (ShazamImport, error) {
-	if !c.ready() {
-		return ShazamImport{}, errors.New("cloudsync: not configured")
-	}
-	if create == nil {
-		create = []string{}
-	}
-	if places == nil {
-		places = map[string]string{}
-	}
-	// A whole library is a bulk write, and the shared client's fifteen seconds
-	// is sized for a heartbeat. A first import creating eighteen parties and
-	// filing 543 tracks took longer than that and reported failure over work
-	// that had succeeded - which is worse than being slow.
-	var out ShazamImport
-	err := c.postSlowly(ctx, "/api/v1/shazam/import", map[string]any{
-		"id": c.InstallID, "secret": c.Secret, "items": items,
-		"preview": preview, "create": create, "places": places,
-	}, &out)
-	return out, err
-}
-
-func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post, played []Track, here []string) ([]Post, error) {
+func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []Post) ([]Post, error) {
 	if !c.ready() {
 		return nil, errors.New("cloudsync: not configured")
 	}
@@ -479,8 +369,7 @@ func (c *Client) Sync(ctx context.Context, partyID, joinURL string, outgoing []P
 	var out syncResponse
 	if err := c.post(ctx, "/api/v1/party/posts", map[string]any{
 		"id": c.InstallID, "secret": c.Secret, "partyId": partyID,
-		"joinUrl": joinURL, "posts": outgoing, "since": since, "tracks": played,
-		"here": here,
+		"joinUrl": joinURL, "posts": outgoing, "since": since,
 	}, &out); err != nil {
 		return nil, err
 	}
@@ -531,16 +420,9 @@ type Hooks struct {
 	// still playing - one heartbeat, one truth.
 	JoinURL  func() string
 	Outgoing func(limit int) []Post
-	// Played is the set so far, as Shazam heard it. It rides the same heartbeat
-	// as the posts because it is the same fact - this room is playing, and this
-	// is what it has played.
-	Played func() []Track
-	// Here is who has the stream open, by name. They are the night's attendees -
-	// the same list, not a second one beside it.
-	Here  func() []string
-	Merge func(id, author, body string, createdMs int64) (bool, error)
-	Bound func(url string)
-	Logf  func(format string, args ...any)
+	Merge    func(id, author, body string, createdMs int64) (bool, error)
+	Bound    func(url string)
+	Logf     func(format string, args ...any)
 }
 
 // ProfileHooks are the DJ's own record, supplied the same way: this package
@@ -667,15 +549,7 @@ func (c *Client) Run(ctx context.Context, h Hooks, every time.Duration) {
 		if h.JoinURL != nil {
 			joinURL = h.JoinURL()
 		}
-		var played []Track
-		if h.Played != nil {
-			played = h.Played()
-		}
-		var here []string
-		if h.Here != nil {
-			here = h.Here()
-		}
-		incoming, err := c.Sync(ctx, partyID, joinURL, outgoing, played, here)
+		incoming, err := c.Sync(ctx, partyID, joinURL, outgoing)
 		if err != nil {
 			logf("cloudsync: %v", err)
 			continue
@@ -689,28 +563,4 @@ func (c *Client) Run(ctx context.Context, h Hooks, every time.Duration) {
 			}
 		}
 	}
-}
-
-// Session is a web session for this Mac's owner, so the console can show the
-// person their OWN pages rather than a second implementation of them. Empty
-// when this Mac is not signed in, which is an ordinary state.
-type Session struct {
-	Linked    bool   `json:"linked"`
-	Secret    string `json:"session"`
-	ExpiresMs int64  `json:"expiresMs"`
-	Handle    string `json:"handle"`
-	Name      string `json:"name"`
-}
-
-// Session trades the install credential for a browser session. Nothing new is
-// trusted: the install already belongs to the account.
-func (c *Client) Session(ctx context.Context) (Session, error) {
-	if !c.ready() {
-		return Session{}, errors.New("cloudsync: not configured")
-	}
-	var out Session
-	err := c.post(ctx, "/api/v1/install/session", map[string]any{
-		"id": c.InstallID, "secret": c.Secret,
-	}, &out)
-	return out, err
 }

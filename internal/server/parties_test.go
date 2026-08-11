@@ -26,7 +26,6 @@ type fakePlatform struct {
 	linked  bool
 	parties []cloudsync.Party
 	creates []cloudsync.Party
-	djs     []string
 	updates []struct {
 		key    string
 		fields map[string]any
@@ -39,21 +38,20 @@ func (f *fakePlatform) Parties(context.Context) ([]cloudsync.Party, bool, error)
 	return f.parties, f.linked, nil
 }
 
-func (f *fakePlatform) CreateParty(_ context.Context, p cloudsync.NewParty) (cloudsync.Party, error) {
+func (f *fakePlatform) CreateParty(_ context.Context, title, place, partyID string, startsMs int64) (cloudsync.Party, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if !f.linked {
 		return cloudsync.Party{}, errors.New("this Mac is not signed in")
 	}
-	made := cloudsync.Party{
-		Key: "ev-created", Slug: "warehouse-late", Title: p.Title, Place: p.Place,
-		PartyID: p.PartyID, StartsMs: p.StartsMs, Handle: "sundaze",
+	p := cloudsync.Party{
+		Key: "ev-created", Slug: "warehouse-late", Title: title, Place: place,
+		PartyID: partyID, StartsMs: startsMs, Handle: "sundaze",
 		URL: "https://partyparty.party/@sundaze/warehouse-late", State: "announced",
 	}
-	f.djs = append(f.djs, p.DJs)
-	f.creates = append(f.creates, made)
-	f.parties = append(f.parties, made)
-	return made, nil
+	f.creates = append(f.creates, p)
+	f.parties = append(f.parties, p)
+	return p, nil
 }
 
 func (f *fakePlatform) UpdateParty(_ context.Context, key string, fields map[string]any) (cloudsync.Party, error) {

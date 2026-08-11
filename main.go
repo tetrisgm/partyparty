@@ -305,11 +305,6 @@ func main() {
 	// install to authenticate with; the endpoints answer "not signed in" rather
 	// than failing when that is the case.
 	var partyClient server.PartyClient
-	// The same client, for showing the person their own pages in the console.
-	var sessions server.SessionClient
-	// And again, for filing the DJ's own Shazam library into their nights.
-	var shazam server.ShazamImporter
-	platformURL := ""
 
 	// The party's wall and its event page are one timeline. This is the only
 	// thing that reaches the platform from the Mac, it runs only while a party
@@ -332,37 +327,6 @@ func main() {
 						return ""
 					}
 					return handler.GuestJoinURL()
-				},
-				// Who is in the room. Owner, 2026-08-09: "who is listening now
-				// is supposed to be the same list of users as who was there. It
-				// is the attendees." So a named listener becomes one, and the
-				// console stops keeping a second list beside the night's own.
-				// Only NAMED ones: "Guest 3" is a phone, not somebody you were
-				// with, and a journal full of them is worse than no journal.
-				Here: func() []string {
-					seen := map[string]bool{}
-					out := []string{}
-					for _, l := range ls.Roster() {
-						name := strings.TrimSpace(l.Name)
-						if name == "" || seen[name] {
-							continue
-						}
-						seen[name] = true
-						out = append(out, name)
-					}
-					return out
-				},
-				// What Shazam heard, so the night's track list writes itself
-				// while the set runs instead of being remembered afterwards.
-				Played: func() []cloudsync.Track {
-					out := []cloudsync.Track{}
-					for _, t := range events.Setlist(40) {
-						if t.Title == "" {
-							continue
-						}
-						out = append(out, cloudsync.Track{Title: t.Title, Artist: t.Artist})
-					}
-					return out
 				},
 				Outgoing: func(limit int) []cloudsync.Post {
 					local := events.OutgoingPosts(limit)
@@ -406,18 +370,12 @@ func main() {
 				return sync.SyncProfile(ctx, profileHooks)
 			}
 			partyClient = sync
-			sessions = sync
-			shazam = sync
-			platformURL = platform
 		}
 	}
 
 	handler = server.New(server.Deps{
 		Config:      cfg,
 		Parties:     partyClient,
-		Sessions:    sessions,
-		Shazam:      shazam,
-		PlatformURL: platformURL,
 		SyncProfile: syncProfileNow,
 		Broadcaster: bc,
 		Listeners:   ls,

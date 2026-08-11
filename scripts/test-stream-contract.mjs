@@ -159,31 +159,13 @@ assert.deepEqual(
   [],
   'DJ console JavaScript references an element that is no longer in the page',
 );
-// The console shows the person's real pages from the platform in a frame and
-// adds only the room around them. It used to carry its own copy of the event
-// page - poster, title and cover editor, profile fields, party feed, link
-// editor - and every one of those drifted from the web's version. They are
-// gone; this is the guard against a second implementation growing back.
-assert.match(dj, /id="webFrame"/);
-assert.match(dj, /class="webframe"/);
-// Authored on the person's own home. The console steers it to the night this
-// room is running when there is one, which the shell test drives in a browser.
-assert.match(dj, /id="webFrame" src="\/home"/);
-// Go live is a pink pill. Deleting the console's dead CSS once took this rule
-// with it and left a flat grey rectangle; the browser test cannot catch it,
-// because the button is correctly disabled on a runner with no capture device.
-assert.match(dj, /\.golive\.go\.biggo\{[\s\S]*?background:#ff2d6f!important/);
-for (const gone of [
-  />About You</, /class="ename"/, /class="profilephotopick"/, /id="profileEmpty"/,
-  /class="profileplus"/, /id="profileName"/, /id="profilePhotoRemoveBtn"/,
-  /id="titleEdit"/, /id="eventCoverImg"/, /id="pubCoverFile"/, /id="djFeed"/,
-  /id="djComposer"/, /id="linkRows"/, /id="eventEditPanel"/,
-]) assert.doesNotMatch(dj, gone, `the console has grown its own ${gone} again`);
+assert.match(dj, />About You</);
 // The event's own name is the headline, with nothing above it: "Event Details"
 // was a generic label outranking the one thing that identifies the party, and
 // a "Your event" chip over the name said the same thing twice.
 assert.doesNotMatch(dj, />Event Details</);
 assert.doesNotMatch(dj, /class="eyebrow"/);
+assert.match(dj, /class="ename"/);
 // One measure down the column, and it stretches with the window: a fixed
 // column parked between two empty rails is not responsive.
 assert.match(dj, /--measure:min\(\d+px,100%\)/);
@@ -195,6 +177,7 @@ assert.doesNotMatch(dj, /dragstrip/);
 assert.match(dj, /class="iconbtn gearbtn" id="settingsBtn"/);
 assert.match(dj, /::-webkit-scrollbar\{width:8px/);
 assert.match(dj, /\.page\{[^}]*max-width:var\(--measure\)/);
+assert.match(dj, /\.eventcover\{[^}]*margin-inline:0/);
 // The version is a footer, not a sticker floating over the page.
 assert.match(dj, /<footer class="appfooter">/);
 assert.doesNotMatch(dj, /id="appver" style="position:fixed/);
@@ -204,6 +187,7 @@ assert.match(dj, /class="event-share"/);
 assert.match(dj, /\.event-share\{[^}]*grid-template-columns:200px/);
 // The photo is the control; a separate "Choose profile photo" button restated
 // what the image already affords.
+assert.match(dj, /class="profilephotopick"/);
 assert.doesNotMatch(dj, />Choose profile photo</);
 // No tally of posts/photos/videos over the composer, and Venmo is not offered.
 assert.doesNotMatch(dj, /id="eventCounts"/);
@@ -211,6 +195,7 @@ assert.doesNotMatch(dj, /id="eventCounts"/);
 // render, because silently breaking those is a worse change than removing it.
 assert.doesNotMatch(dj, /venmo/i);
 assert.doesNotMatch(dj, /cashapp|paypal/i);
+assert.match(dj, /\['website', 'Website'\]/);
 // The console has one radius scale, one elevation scale and one motion curve.
 // Raw px radii and the browser-default `ease` are what made it read as dated.
 assert.match(dj, /--curve:cubic-bezier/);
@@ -223,6 +208,9 @@ assert.match(dj, /:active\{transform:scale\(\.97\)/);
 // present up front. Making the DJ press "Add another link" before typing a
 // handle was a step that bought nothing.
 assert.doesNotMatch(dj, /Add another link/);
+assert.match(dj, /mark\.className = 'linkbrand'/);
+assert.match(dj, /\.linkbrand\{/);
+assert.match(dj, /const defaultLinkTypes = linkTypes\.map/);
 // The party link is liftable, and the offline address stays folded away.
 assert.match(dj, /id="joinLinkField"/);
 assert.match(dj, /id="copyLinkBtn"/);
@@ -230,6 +218,10 @@ assert.match(dj, /id="shareLinkBtn"/);
 assert.match(dj, /<details class="failsafe"/);
 // An empty avatar has to read as a profile photo, and the whole circle is the
 // target for setting one.
+assert.match(dj, /id="profileEmpty"/);
+assert.match(dj, /class="profileplus"/);
+assert.match(dj, /id="profileName"/);
+assert.match(dj, /id="profilePhotoRemoveBtn"/);
 assert.doesNotMatch(dj, /Guests connected to the LAN room/);
 assert.doesNotMatch(dj, /hosted by&nbsp;/);
 assert.doesNotMatch(dj, /id="heroLinks"/);

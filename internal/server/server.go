@@ -71,17 +71,6 @@ type Deps struct {
 	// a browser - there is no Mac-only kind of party. nil when there is no
 	// platform identity yet.
 	Parties PartyClient
-	// Sessions hands the console a web session for this Mac's owner, so it can
-	// show the person their OWN pages. nil on a Mac with no platform client,
-	// which is every offline party.
-	Sessions    SessionClient
-	PlatformURL string
-
-	// Shazam files the DJ's own Shazam library into the nights it belongs to.
-	// The app reads the library (only it can) and pushes it here; this is the
-	// other half, which knows where to put it. nil when this Mac has no
-	// platform identity.
-	Shazam ShazamImporter
 
 	// SyncProfile runs one profile reconciliation now. The console calls it
 	// while somebody is signing in, so the door opens the moment they finish
@@ -103,12 +92,7 @@ type srv struct {
 	startRelayAt   time.Time
 	vendor         http.Handler
 	liveProxy      http.Handler
-	// mirror shows the person their own pages, built from Deps.Sessions and
-	// Deps.PlatformURL. nil when this Mac has no platform identity.
-	mirror *mirror
-	limits *limiter
-	// The DJ's Shazam library as the app last read it. Empty until it has.
-	shazam shazamShelf
+	limits         *limiter
 
 	// What the origin last reported about relayed guests. Guarded by relayMu.
 	relayMu        sync.RWMutex
@@ -176,9 +160,6 @@ func New(d Deps) *Srv {
 	// The /live proxy keeps LL-HLS on the guest page's HTTPS origin without
 	// rewriting MediaMTX's low-latency playlist.
 	s.liveProxy = newLiveProxy(d.Config.HLSPort, "/live")
-	if d.Sessions != nil && d.PlatformURL != "" {
-		s.mirror = newMirror(d.PlatformURL, d.Sessions)
-	}
 	if _, err := os.Stat(audioProvenPath()); err == nil {
 		s.audioProven.Store(true)
 	}
@@ -479,9 +460,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(p, "/live/"):
 		s.liveProxy.ServeHTTP(w, r)
 	case strings.HasPrefix(p, "/media/"):
-		if s.serveMirror(w, r) {
-			return
-		}
 		s.handleMedia(w, r)
 	case strings.HasPrefix(p, "/api/"):
 		// Managing the canonical party comes first: these are the Mac acting as
@@ -494,12 +472,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleAPI(w, r)
 	default:
-		// The person's own pages, shown in the console. When the platform cannot
-		// be reached the console goes to the booth instead - which is what runs
-		// a party with no internet, and is the whole point of the Mac.
-		if s.serveMirror(w, r) || s.serveConsoleFallback(w, r) {
-			return
-		}
 		http.Error(w, "not found", http.StatusNotFound)
 	}
 }
@@ -763,15 +735,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.peerState(since))
 	case "/api/track":
 		s.handleTrackPost(w, r)
-	case "/api/shazam", "/api/shazam/library", "/api/shazam/import":
-		s.handleShazam(w, r, r.URL.Path)
-	case "/api/mirror":
-		// Can the person's own pages be shown? Asked by the page that appears
-		// when they cannot, so it can put itself away once they can.
-		if !s.requireDJ(w, r) {
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ready": s.mirrorReady(r.Context())})
 	case "/api/reach":
 		if !s.requireDJ(w, r) {
 			return

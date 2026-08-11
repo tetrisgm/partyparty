@@ -50,17 +50,7 @@ const makeBucket = () => {
 const makeEnv = () => {
   const db = new DatabaseSync(":memory:");
   db.exec(schema);
-  return {
-    DB: {
-      prepare: (sql) => new Stmt(db, sql),
-      // Real D1 has batch(); the fake did not, so a route that used it passed
-      // review and died on the first request. A stub that is missing a method
-      // the real thing has is a test that agrees with nothing.
-      batch: async (stmts) => Promise.all(stmts.map((stmt) => stmt.run())),
-      _db: db,
-    },
-    DL: makeBucket(), raw: db,
-  };
+  return { DB: { prepare: (sql) => new Stmt(db, sql), _db: db }, DL: makeBucket(), raw: db };
 };
 
 const rows = (env, sql, ...args) => env.raw.prepare(sql).all(...args);
@@ -80,21 +70,10 @@ const seedEvent = (env, groupId, over = {}) => {
     slug: "june-14", title: "Sundaze at the Lido", starts_ms: Date.parse("2026-09-12T21:00:00Z"),
     place: "The Lido", state: "announced", ...over,
   };
-  // A party belongs to a person. Seeded rows take the group's DJ the same way
-  // the migration does, so a fixture is not a party nobody owns.
-  const owner = over.owner_email ?? (env.raw.prepare(
-    `SELECT d.email_norm FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
-      WHERE gd.group_id = ? ORDER BY gd.created_ms LIMIT 1`
-  ).get(groupId)?.email_norm ?? "");
-  // Published, like every party that existed before visibility did - the
-  // migration marks those public for exactly this reason. A party CREATED now
-  // starts private; these fixtures stand in for nights already on the internet.
   env.raw.prepare(
-    `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, state,
-       visibility, created_ms, updated_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, groupId, owner, event.slug, event.title, event.starts_ms, event.place, event.state,
-    over.visibility ?? "public", Date.now(), Date.now());
+    `INSERT INTO events (id, group_id, slug, title, starts_ms, place, state, created_ms, updated_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, groupId, event.slug, event.title, event.starts_ms, event.place, event.state, Date.now(), Date.now());
   return id;
 };
 
@@ -263,22 +242,13 @@ test("a draft night is not a public night, and its calendar is not published", a
   assert.match(feed, /PartyParty beta launch/, "so the group reads as having nothing on");
 });
 
-test("a handle is a person, and their calendar is served", async () => {
+test("the group page and its calendar are served", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
-  // Groups are dead. An address that WAS a group's handle still resolves - to
-  // the person who owned it, showing the same parties, because the rows never
-  // belonged to the group.
-  const djId = ulid();
-  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
-    .run(djId, "dj@example.com", "Sundaze", Date.now());
-  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
-    .run(groupId, djId, Date.now());
   seedEvent(env, groupId);
 
   const page = await (await get(env, "/@sundaze")).text();
   assert.match(page, /Sundaze/);
-  assert.match(page, /Sundaze at the Lido/, "their parties are on their page");
   assert.match(page, /value="https:\/\/partyparty\.party\/calendar\/sundaze\.ics"/,
     "no @ in a URL that gets pasted into a calendar client");
   assert.match(page, /calendar\.google\.com\/calendar\/render\?cid=webcal/,
@@ -502,164 +472,38 @@ test("the day-of reminder goes once, to the people who said they are coming", as
   assert.ok(eventId);
 });
 
-test("what you hear is yours to turn down, and posting moved to the party", async () => {
+test("the group has a thread, and the volume on it belongs to the reader", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
   await post(env, "/@sundaze/join", { email: "loud@example.com", name: "Loud" });
   const manage = /\/m\/([a-f0-9]{48})/.exec(one(env, `SELECT body_text FROM outbox`).body_text)[1];
+  env.raw.prepare(`UPDATE group_members SET volume = 'all'`).run();
+  await post(env, "/@sundaze/join", { email: "quiet@example.com" });
+  env.raw.prepare(`UPDATE group_members SET volume = 'events' WHERE member_id =
+    (SELECT id FROM members WHERE email_norm = 'quiet@example.com')`).run();
   env.raw.prepare(`DELETE FROM outbox`).run();
 
-  // A thread belonging to a GROUP, mailed to its members, could not survive a
-  // product with no groups in it. Photos and words belong to the night they
-  // happened at, so the composer lives on the party page now.
-  const settings = await (await get(env, `/m/${manage}`)).text();
-  assert.ok(!/Say something to/.test(settings), "there is no group thread to post to");
-  const tried = new FormData();
-  tried.append("say", "Doors at ten");
-  await get(env, `/m/${manage}`, { method: "POST", body: tried });
-  assert.equal(rows(env, `SELECT * FROM posts`).length, 0, "and nothing is written by trying");
-
-  // What the link is still for: how much a person hears, and leaving.
-  assert.match(settings, /How much you hear/);
-  await get(env, `/m/${manage}?do=none`);
-  assert.equal(one(env, `SELECT volume FROM group_members`).volume, "none");
-  await get(env, `/m/${manage}?do=all`);
-  assert.equal(one(env, `SELECT volume FROM group_members`).volume, "all");
-  assert.ok(groupId);
-});
-
-// Somebody holding the link was at the night too, and could never say so.
-test("somebody holding the link can say they were there", async () => {
-  const { env, send } = await signedIn();
-  await send("/parties/new", { title: "Warehouse, late", day: "2020-03-01" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-
-  // Private stays private: no page, and no back door on the route either.
-  assert.equal((await get(env, where)).status, 404);
-  assert.equal((await post(env, `${where}/here`, { name: "Cy" })).status, 404,
-    "a private night has no list for a stranger to join");
-
-  await send(`${where}/record`, { visibility: "public" });
-  const shared = await (await get(env, where)).text();
-  assert.match(shared, /I was there/, "a past night a visitor is on offers it");
-  assert.ok(!/I'm coming/.test(shared), "and does not ask them to a night that happened");
-
-  const said = await post(env, `${where}/here`, { name: "Cy" });
-  assert.equal(said.status, 200);
-  assert.match(await said.text(), /Cy is on the list/);
-
-  // It lands in the OWNER's record of their own night, as a guest.
-  const row = one(env,
-    `SELECT p.name, pp.role, pp.owner_email FROM party_people pp
-       JOIN people p ON p.id = pp.person_id WHERE p.name = 'Cy'`);
-  assert.equal(row.role, "guest");
-  assert.equal(row.owner_email, ev.owner_email);
-
-  // Saying it twice is still one person at one night.
-  await post(env, `${where}/here`, { name: "Cy" });
-  assert.equal(rows(env, `SELECT person_id FROM party_people`).length, 1);
-
-  // And who was there stays the owner's: the shared page bills who PLAYED.
-  assert.ok(!/Who was there/.test(await (await get(env, where)).text()));
-});
-
-// The date fills itself in. So should the place - most people run the same room
-// again, and the guess is wrong just as harmlessly as today's date is.
-test("starting a night already knows where you were last", async () => {
-  const { env, send, read } = await signedIn();
-  const handle = () => one(env, `SELECT handle FROM groups`).handle;
-
-  // Nothing to go on yet: an empty box, and the copy says only the date is in.
-  const first = await (await read("/parties/new")).text();
-  assert.match(first, /name="place"[^>]*value=""/, "no history, no guess");
-  assert.match(first, /Today is already/);
-
-  await send("/parties/new", { title: "Warehouse, late", place: "The Box Shop" });
-  const second = await (await read("/parties/new")).text();
-  assert.match(second, /name="place"[^>]*value="The Box Shop"/, "where you were last");
-  assert.match(second, /Today and where you were last are already/);
-
-  // And it survives a validation error, rather than the form forgetting it.
-  const failed = await (await send("/parties/new", { title: "" })).text();
-  assert.match(failed, /Give it a name first/);
-  assert.match(failed, /Today and where you were last are already/);
-
-  // A newer night moves it on.
-  await send("/parties/new", { title: "Rooftop", place: "The Roof" });
-  assert.match(await (await read("/parties/new")).text(),
-    /name="place"[^>]*value="The Roof"/);
-  assert.ok(handle());
-});
-
-// The date fills itself in. So should the place - most people run the same room
-// again, and the guess is wrong just as harmlessly as today's date is.
-test("starting a night already knows where you were last", async () => {
-  const { env, send, read } = await signedIn();
-  const handle = () => one(env, `SELECT handle FROM groups`).handle;
-
-  // Nothing to go on yet: an empty box, and the copy says only the date is in.
-  const first = await (await read("/parties/new")).text();
-  assert.match(first, /name="place"[^>]*value=""/, "no history, no guess");
-  assert.match(first, /Today is already/);
-
-  await send("/parties/new", { title: "Warehouse, late", place: "The Box Shop" });
-  const second = await (await read("/parties/new")).text();
-  assert.match(second, /name="place"[^>]*value="The Box Shop"/, "where you were last");
-  assert.match(second, /Today and where you were last are already/);
-
-  // And it survives a validation error, rather than the form forgetting it.
-  const failed = await (await send("/parties/new", { title: "" })).text();
-  assert.match(failed, /Give it a name first/);
-  assert.match(failed, /Today and where you were last are already/);
-
-  // A newer night moves it on.
-  await send("/parties/new", { title: "Rooftop", place: "The Roof" });
-  assert.match(await (await read("/parties/new")).text(),
-    /name="place"[^>]*value="The Roof"/);
-  assert.ok(handle());
-});
-
-// Saying something happens at a party, by whoever it belongs to and whoever
-// they let in - which is the shape the product actually has: my night, my
-// notes, and the people I shared the link with.
-test("photos and words belong to the night they happened at", async () => {
-  const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Warehouse, late" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-
-  const empty = await (await read(where)).text();
-  // An empty space says nothing. The composer above it is the invitation, and a
-  // caption explaining that a space is a space for things is not one.
-  assert.ok(!/land in this space/.test(empty), "no caption under an empty space");
-  assert.match(empty, /drop photos and videos here/, "the composer is the invitation");
-
-  const said = await send(`${where}/say`, { say: "The room went off at two" });
+  const body = new FormData();
+  body.append("say", "Doors at ten, bring a coat");
+  const said = await get(env, `/m/${manage}`, { method: "POST", body });
   assert.equal(said.status, 302);
-  const written = one(env, `SELECT * FROM posts`);
-  assert.equal(written.event_id, ev.id, "the post is ON the party, not beside it");
 
-  const page = await (await read(where)).text();
-  assert.match(page, /The room went off at two/);
+  const wall = await (await get(env, "/@sundaze")).text();
+  assert.match(wall, /Doors at ten, bring a coat/, "the thread is on the group's page");
 
-  // A party starts PRIVATE. A passer-by does not read it at all - not a bare
-  // page with the private parts stripped out, nothing.
-  assert.equal((await get(env, where)).status, 404, "mine until I share it");
+  // The poster is not mailed their own post, and "only nights" means only
+  // nights - a busy thread must not reach someone who asked for quiet.
+  const mailed = rows(env, `SELECT to_email FROM outbox`).map((r) => r.to_email);
+  assert.deepEqual(mailed, [], "nobody else asked for every post");
 
-  // Sharing it by link opens it, and lets whoever has the link add to it -
-  // "they can post in the events that I'm allowing them to join".
-  await send(`${where}/record`, { visibility: "public" });
-  assert.equal(one(env, `SELECT visibility FROM events`).visibility, "public");
-  const shared = await (await get(env, where)).text();
-  assert.match(shared, /The room went off at two/);
-  assert.match(shared, /name="say"/, "somebody holding the link can add a photo");
-
-  // What is MINE stays mine even then: the record is not on the shared page.
-  assert.ok(!/Who can see this/.test(shared), "the controls are the owner's");
-  assert.ok(!/Your notes/.test(shared));
+  env.raw.prepare(`UPDATE group_members SET volume = 'all' WHERE member_id =
+    (SELECT id FROM members WHERE email_norm = 'quiet@example.com')`).run();
+  const again = new FormData();
+  again.append("say", "One more thing");
+  await get(env, `/m/${manage}`, { method: "POST", body: again });
+  assert.deepEqual(rows(env, `SELECT to_email FROM outbox`).map((r) => r.to_email),
+    ["quiet@example.com"], "turning it up is what makes a post arrive");
+  assert.ok(groupId);
 });
 
 const macEnv = (env, id = "aabbccddeeff", secret = "s3cret") => {
@@ -676,7 +520,7 @@ const api = (env, path, body) => worker.fetch(new Request("https://partyparty.pa
   method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" },
 }), env);
 
-test("a Mac pairs to the PERSON, with a code the DJ can read off the screen", async () => {
+test("a Mac pairs to a group with a code the DJ can read off the screen", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
   const mac = macEnv(env);
@@ -697,11 +541,7 @@ test("a Mac pairs to the PERSON, with a code the DJ can read off the screen", as
   const body = new FormData();
   body.append("pair", asked.code.toLowerCase()); // typed in lowercase, still works
   await get(env, "/@sundaze/manage", { method: "POST", body, headers: { cookie: `pp_s=${secret}` } });
-  // The Mac belongs to whoever signed in, not to one of their groups. It used
-  // to ask which group to attach it to - a question about a concept the person
-  // may not have, on a screen whose only job is "yes, that is me".
-  assert.equal(one(env, `SELECT email_norm FROM install_accounts`).email_norm, "dj@example.com");
-  assert.equal(rows(env, `SELECT * FROM install_groups`).length, 0, "no group binding is written");
+  assert.equal(one(env, `SELECT group_id FROM install_groups`).group_id, groupId);
 
   // A code is single use, so a screenshot in a group chat is not a key.
   const again = new FormData();
@@ -719,15 +559,8 @@ test("a party finds tonight's night by itself, and never steals another one", as
   const env = makeEnv();
   const groupId = seedGroup(env);
   const mac = macEnv(env);
-  // Signed in as the person who runs this group - the Mac's group is resolved
-  // from the account, not stored against the install.
-  const djId = ulid();
-  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
-    .run(djId, "dj@example.com", "DJ", Date.now());
-  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
-    .run(groupId, djId, Date.now());
-  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
-    .run(mac.id, "dj@example.com", Date.now());
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)`)
+    .run(mac.id, groupId, Date.now());
   const partyId = "2026-08-06-2200-ab12";
 
   const nothing = await (await api(env, "/api/v1/party/bind", { ...mac, partyId })).json();
@@ -742,209 +575,10 @@ test("a party finds tonight's night by itself, and never steals another one", as
   // Another Mac, another party, same night: two rooms merging walls by
   // accident is worse than one wall staying local.
   const other = macEnv(env, "112233445566", "other");
-  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
-    .run(other.id, "dj@example.com", Date.now());
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)`)
+    .run(other.id, groupId, Date.now());
   const refused = await (await api(env, "/api/v1/party/bind", { ...other, partyId: "2026-08-06-2300-cd34" })).json();
   assert.equal(refused.bound, false);
-});
-
-// Who can see the contents of a night.
-//
-// Owner, 2026-08-09: "every page can be seen by anyone who follows you. The
-// permission is about who can see the CONTENTS. Anyone, people who follow me,
-// or only the people I add." Two questions, not one - which is why this checks
-// both for every level.
-test("following opens the page; the setting opens the contents", async () => {
-  const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Basement" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-  await send(`${where}/record`, { songTitle: "Xtal by Aphex Twin" });
-
-  // A night starts between the people on it.
-  assert.equal(one(env, `SELECT visibility FROM events`).visibility, "named");
-
-  // A stranger gets nothing at all - a night is not addressable by guessing.
-  assert.equal((await get(env, where)).status, 404);
-
-  // Somebody who follows the DJ can open it, and sees THAT it happened - but
-  // not what was played, because the setting says only the people on it.
-  const owner = one(env, `SELECT owner_email FROM events`).owner_email;
-  env.raw.prepare(`INSERT INTO follows (follower_email, person_email, public, created_ms)
-    VALUES (?,?,0,?)`).run("fan@example.com", owner, Date.now());
-  const asFan = await withSignedIn(env, "fan@example.com");
-  const opened = await asFan(where);
-  assert.equal(opened.status, 200, "a follower can open the page");
-  let page = await opened.text();
-  assert.match(page, /Basement/);
-  assert.ok(!/Xtal/.test(page), "but the contents are not theirs to read");
-
-  // Turned up to followers, the same person reads it.
-  await send(`${where}/record`, { visibility: "followers" });
-  assert.match(await (await asFan(where)).text(), /Xtal/);
-
-  // And somebody who does not follow still gets nothing.
-  const asOther = await withSignedIn(env, "nobody@example.com");
-  assert.equal((await asOther(where)).status, 404);
-
-  // Back to "only people I add" - and being ON the night is what adds you.
-  await send(`${where}/record`, { visibility: "named" });
-  assert.ok(!/Xtal/.test(await (await asFan(where)).text()));
-  const person = one(env, `SELECT id FROM people WHERE owner_email = ?`, owner)
-    || (await send(`${where}/record`, { it: "Nobody", as: "guest" }),
-        one(env, `SELECT id FROM people WHERE name = 'Nobody'`));
-  env.raw.prepare(`UPDATE people SET account_email = ? WHERE id = ?`)
-    .run("nobody@example.com", person.id);
-  assert.match(await (await asOther(where)).text(), /Xtal/,
-    "the people you add can read the night they were at");
-});
-
-// The Mac's right sidebar has the QR in it, and the owner wants who played and
-// who was there beside it. The QR is a LAN address the platform does not know,
-// so the rail travels to the QR: the platform serves it on its own and the page
-// leaves its copy out when asked.
-test("the rail can be served on its own, for a sidebar that has the QR in it", async () => {
-  const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Warehouse, late" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-  await send(`${where}/record`, { it: "Ada Kaleh", as: "dj" });
-  await send(`${where}/record`, { it: "Cy", as: "guest" });
-
-  const rail = await (await read(`${where}/rail`)).text();
-  assert.match(rail, /class="rail nightpeople"/);
-  assert.match(rail, /Ada Kaleh/);
-  assert.match(rail, /Cy/);
-  assert.match(rail, /Add a DJ/, "and it is a working rail, not a picture of one");
-  // In the sidebar a name is a name. Clicking one opened a whole page inside
-  // the sidebar, which is not what a list of who was in the room is for.
-  assert.ok(!/href="\/people\//.test(rail), "the sidebar rail does not navigate");
-  // In the page, where there is somewhere to go, it still does.
-  assert.match(await (await read(where)).text(), /href="\/people\//);
-  assert.ok(!/Track list/.test(rail), "just the rail - the night is in the frame");
-
-  // Asked to, the page leaves its own copy out so the night is not flanked by
-  // two identical rails.
-  assert.match(await (await read(where)).text(), /class="rail nightpeople"/);
-  assert.ok(!/class="rail nightpeople"/.test(await (await read(`${where}?rail=0`)).text()));
-
-  // A private night has no side door: the rail is the record.
-  assert.equal((await get(env, `${where}/rail`)).status, 404);
-  await send(`${where}/record`, { visibility: "public" });
-  const shared = await (await get(env, `${where}/rail`)).text();
-  assert.match(shared, /Ada Kaleh/, "who played is the billing");
-  assert.ok(!/Cy/.test(shared), "who I saw stays mine");
-});
-
-// What the page asks of you, after the owner used it: no capture line asking
-// which of three things you meant, one way in per list, and a track that can be
-// a photograph because at a party that is faster than typing.
-test("each list has its own way in, and a track can be a picture", async () => {
-  const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Warehouse, late" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-
-  const page = await (await read(where)).text();
-  assert.ok(!/class="capture"/.test(page), "the ask-me-which-one field is gone");
-  assert.ok(!/name="attended"/.test(page), "keeping the night is being at it");
-  assert.ok(!/land in this space/.test(page));
-  assert.match(page, /<div class="seenpick">/, "who can see it is not behind a disclosure");
-  // No separate details form at all: the line under the name shows the day and
-  // the place, so it is also where they are changed.
-  assert.ok(!/<details class="edit"/.test(page), "the form that repeated the hero is gone");
-  assert.match(page, /id="heroDay"/);
-  assert.match(page, /id="heroPlace"/);
-  assert.ok(!/name="title"/.test(page), "the name is typed in the hero, not asked twice");
-  assert.match(page, /placeholder="Add a DJ"/);
-  assert.match(page, /placeholder="Add someone"/);
-  assert.match(page, /name="shot"/, "a Shazam screenshot is a way to add a track");
-
-  // Each list writes to its own role, with no third question.
-  await send(`${where}/record`, { it: "Ada Kaleh", as: "dj" });
-  await send(`${where}/record`, { it: "Cy", as: "guest" });
-  assert.deepEqual(
-    rows(env, `SELECT p.name, pp.role FROM party_people pp
-      JOIN people p ON p.id = pp.person_id ORDER BY pp.role`).map((r) => ({ ...r })),
-    [{ name: "Ada Kaleh", role: "dj" }, { name: "Cy", role: "guest" }]);
-
-  // A typed track still names its artist without a second field.
-  await send(`${where}/record`, { songTitle: "Xtal by Aphex Twin" });
-  const typed = one(env, `SELECT title, artist, media_key FROM songs`);
-  assert.equal(typed.title, "Xtal");
-  assert.equal(typed.artist, "Aphex Twin");
-  assert.equal(typed.media_key, null);
-
-  // And a picture is a whole record: no title needed, and it renders as one.
-  const shot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10])],
-    "shazam.png", { type: "image/png" });
-  await send(`${where}/record`, { shot });
-  const shots = rows(env, `SELECT title, media_key FROM songs WHERE media_key IS NOT NULL`);
-  assert.equal(shots.length, 1, "the screenshot is a track on its own");
-  assert.equal(shots[0].title, "");
-  assert.match(await (await read(where)).text(), /class="shotwrap"/);
-});
-
-// Two things the console did better, brought over.
-test("home opens the profile it does not have, and the composer is a box you write in", async () => {
-  const { env, send, read } = await signedIn();
-
-  // Nothing saved: the fields are open, not folded behind a summary you have
-  // to notice. It is still not a wall - the parties are on the same page.
-  const first = await (await read("/home")).text();
-  assert.match(first, /<details class="welcome" open>/, "fill it in without hunting for it");
-  assert.match(first, /Your parties|no parties|Add a party/i, "and your parties are right there");
-
-  await send("/home", { name: "Seth", bio: "" });
-  const after = await (await read("/home")).text();
-  assert.ok(!/<details class="welcome"/.test(after), "answered once, it puts itself away");
-
-  // The composer: somewhere to write, with its actions under it.
-  await send("/parties/new", { title: "Warehouse, late" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const page = await (await read(`/@${handle}/${ev.slug}`)).text();
-  assert.match(page, /<textarea name="say"/, "a box, not a one-line field");
-  assert.match(page, /drop photos and videos here/);
-  assert.match(page, /class="composerbar"/);
-  assert.ok(!/<input type="text" name="say"/.test(page), "the single line is gone");
-});
-
-// Shazam already listens in the app. Until now nothing carried what it heard to
-// the night's page, so a DJ typed out a list they had already played.
-test("the set writes its own track list, and going live lists the DJ", async () => {
-  const env = makeEnv();
-  const groupId = seedGroup(env);
-  const mac = macEnv(env);
-  const partyId = "2026-08-06-2200-ab12";
-  const eventId = seedEvent(env, groupId, { slug: "tonight", starts_ms: Date.now() });
-  env.raw.prepare(`UPDATE events SET party_id = ?, owner_email = ? WHERE id = ?`)
-    .run(partyId, "dj@example.com", eventId);
-
-  const beat = (tracks) => api(env, "/api/v1/party/posts", { ...mac, partyId, tracks });
-  await beat([{ title: "Windowlicker", artist: "Aphex Twin" }, { title: "Xtal" }]);
-  assert.deepEqual(
-    rows(env, `SELECT title, artist FROM songs ORDER BY seq`).map((r) => ({ ...r })),
-    [{ title: "Windowlicker", artist: "Aphex Twin" }, { title: "Xtal", artist: "" }]);
-
-  // The Mac resends the whole set every heartbeat. What is already down stays
-  // down once - the cursor is the list itself.
-  await beat([{ title: "Windowlicker", artist: "Aphex Twin" }, { title: "Xtal" },
-    { title: "Ageispolis", artist: "Aphex Twin" }]);
-  assert.deepEqual(rows(env, `SELECT title FROM songs ORDER BY seq`).map((r) => r.title),
-    ["Windowlicker", "Xtal", "Ageispolis"]);
-
-  // And broadcasting your own night means you played it.
-  const played = rows(env, `SELECT p.name, pp.role FROM party_people pp
-    JOIN people p ON p.id = pp.person_id`);
-  assert.equal(played.length, 1, "the DJ is on their own night, exactly once");
-  assert.equal(played[0].role, "dj");
-  await beat([]);
-  assert.equal(rows(env, `SELECT person_id FROM party_people`).length, 1,
-    "and stays exactly once, however many heartbeats");
 });
 
 test("the wall on the venue Wi-Fi and the page three days later are one timeline", async () => {
@@ -989,14 +623,12 @@ test("a tip goes straight to the DJ, and only over https", async () => {
 
   const env = makeEnv();
   const groupId = seedGroup(env);
-  // The DJ first: a party carries whose it is, so it has to have somebody to
-  // belong to before it is seeded.
+  seedEvent(env, groupId);
   const djId = ulid();
   env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
     .run(djId, "dj@example.com", "DJ", Date.now());
   env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?, ?, 'owner', ?)`)
     .run(groupId, djId, Date.now());
-  seedEvent(env, groupId);
   const secret = "d".repeat(48);
   env.raw.prepare(`INSERT INTO sessions (id, hash, dj_id, created_ms, expires_ms) VALUES (?, ?, ?, ?, ?)`)
     .run(ulid(), await sha256Hex(secret), djId, Date.now(), Date.now() + 60000);
@@ -1007,13 +639,10 @@ test("a tip goes straight to the DJ, and only over https", async () => {
     return get(env, "/@sundaze/manage", { method: "POST", body, headers: { cookie: `pp_s=${secret}` } });
   };
   assert.match(await (await save("http://insecure.example")).text(), /https/);
-  assert.equal(one(env, `SELECT pay_link FROM profiles`)?.pay_link ?? "", "",
-    "a refused link writes nothing at all");
+  assert.equal(one(env, `SELECT pay_link FROM groups`).pay_link, "");
 
-  // Tipping is a person's, not a group's - it lives with the rest of who they
-  // are, on the profile both clients already share.
   await save("https://revolut.me/someone");
-  assert.equal(one(env, `SELECT pay_link FROM profiles`).pay_link, "https://revolut.me/someone");
+  assert.equal(one(env, `SELECT pay_link FROM groups`).pay_link, "https://revolut.me/someone");
   assert.match(await (await get(env, "/@sundaze")).text(), /Tip the DJ/);
   assert.match(await (await get(env, "/@sundaze/june-14")).text(), /Tip the DJ/);
 
@@ -1377,11 +1006,8 @@ test("home is your parties: upcoming, past, and an empty state that says what to
   // A new account owns nothing. The empty state has to say what this is for,
   // not report an absence.
   const empty = await (await get(env, "/home", cookie)).text();
-  // An empty home says what belongs in it, with one way to start - not two pink
-  // buttons for the same action on the emptiest screen in the app.
-  assert.match(empty, /A party you are going to/);
-  assert.equal((empty.match(/Add a party/g) || []).length, 1, "one way to start, not two");
-  assert.match(empty, /href="\/parties\/new"/, "and a way to start it");
+  assert.match(empty, /Nothing here yet/);
+  assert.match(empty, /Add your first party/);
   assert.match(empty, /href="\/parties\/new"/);
 
   const mineId = seedGroup(env, "sundaze");
@@ -1407,10 +1033,10 @@ test("home is your parties: upcoming, past, and an empty state that says what to
     VALUES (?, 'dj@example.com', 'Loud, good', 1, ?)`).run(theirEvent, Date.now());
   const withTheirs = await (await get(env, "/home", cookie)).text();
   assert.match(withTheirs, /Their warehouse/, "a party you noted is on your shelf");
-  assert.match(withTheirs, /You were there/);
+  assert.match(withTheirs, /You went/);
 });
 
-test("your own page offers what you configure, not a form asking your name", async () => {
+test("your own group page offers management, not a form asking your name", async () => {
   const env = await withGoogle(makeEnv());
   const { session } = await signIn(env);
   const groupId = seedGroup(env);
@@ -1419,7 +1045,7 @@ test("your own page offers what you configure, not a form asking your name", asy
     .run(groupId, dj, Date.now());
 
   const mine = await (await get(env, "/@sundaze", { headers: { cookie: `pp_s=${session[1]}` } })).text();
-  assert.match(mine, /Tips, merch and Pro/);
+  assert.match(mine, /Manage this group/);
   assert.ok(!/placeholder="your name"/.test(mine),
     "it must not ask its owner to introduce themselves");
 
@@ -1500,14 +1126,9 @@ test("a calendar feed is one clients will actually accept", async () => {
   assert.ok(!/beta launch/.test(real), "a real night replaces the placeholder");
 });
 
-test("a person's page is their parties, coming up and gone", async () => {
+test("the group page is a party page: timeline, posts, and who is in it", async () => {
   const env = makeEnv();
   const groupId = seedGroup(env);
-  const djId = ulid();
-  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
-    .run(djId, "dj@example.com", "Sundaze", Date.now());
-  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
-    .run(groupId, djId, Date.now());
   seedEvent(env, groupId, { slug: "june-14", title: "At the Lido" });
   seedEvent(env, groupId, { slug: "old", title: "Last month", starts_ms: Date.now() - 86400000 });
   for (const [email, name] of [["ada@example.com", "Ada Lovelace"], ["bo@example.com", "Bo"]]) {
@@ -1516,17 +1137,22 @@ test("a person's page is their parties, coming up and gone", async () => {
 
   const body = await (await get(env, "/@sundaze")).text();
 
-  // What is coming, then what has happened. Groups are dead: this is a person,
-  // and these are the parties that belong to them.
+  // Parties read as a schedule, upcoming under their own heading and the ones
+  // that have happened under theirs - not one run-on list with a grey dot.
+  assert.match(body, /class="timeline"/);
   assert.match(body, /At the Lido/);
-  assert.match(body, /<h2>Coming up<\/h2>/);
-  assert.match(body, /<h2>Past<\/h2>/);
-  assert.ok(body.indexOf("<h2>Coming up</h2>") < body.indexOf("<h2>Past</h2>"),
+  assert.match(body, /<h2>Parties<\/h2>/);
+  assert.match(body, /<h2>Past parties<\/h2>/);
+  assert.ok(body.indexOf("<h2>Parties</h2>") < body.indexOf("<h2>Past parties</h2>"),
     "what is coming comes first");
-  assert.match(body, /Last month/);
+  assert.match(body, /class="tl past"/, "a party that has happened is not still upcoming");
 
-  // Somebody who is not them can follow, and no address is ever on a page.
-  assert.match(body, /Hear about their parties/);
+  // The people, in the rail, as initials on the app's gradient discs.
+  assert.match(body, /class="rail"/);
+  assert.match(body, /Participants \u2014 2/, "the console labels the rail this way");
+  assert.match(body, /<span class="avatar"[^>]*>AL</, "initials from the name they gave");
+  assert.match(body, /Ada Lovelace/);
+  // Their addresses are the group's, not the public page's.
   assert.ok(!/ada@example\.com/.test(body), "an address never appears on a public page");
 });
 
@@ -1539,16 +1165,6 @@ const pngFile = (name = "me.png") => new File([pngBytes()], name, { type: "image
 
 // Signed in the way a real person is: the provider hands over a name, which
 // is the case the welcome screen has to survive.
-// Reading a page as a different account, for the permission tests: the same
-// env, a second person, their own cookie.
-const withSignedIn = async (env, email) => {
-  env.DEV_LOGIN = "1";  // the door these tests need, shut everywhere else
-  const res = await get(env, `/dev/signin?email=${encodeURIComponent(email)}`);
-  const cookie = /pp_s=([a-f0-9]+)/.exec(res.headers.get("set-cookie") || "");
-  const headers = { cookie: `pp_s=${cookie ? cookie[1] : ""}` };
-  return (path) => get(env, path, { headers });
-};
-
 const signedIn = async () => {
   const env = await withGoogle(makeEnv(), { name: "DJ Example" });
   const { session } = await signIn(env);
@@ -1568,13 +1184,8 @@ const signedIn = async () => {
 const linkedInstall = async (env, handle) => {
   const install = "aabbccddeeff";
   await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
-  // Bound to the PERSON who runs that group. Which group the Mac's parties
-  // land in is resolved from the account, so this is the whole binding.
-  const owner = one(env, `SELECT d.email_norm FROM groups g
-      JOIN group_djs gd ON gd.group_id = g.id JOIN djs d ON d.id = gd.dj_id
-     WHERE g.handle = ?`, handle);
-  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
-    .run(install, owner.email_norm, Date.now());
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
+    .run(install, one(env, `SELECT id FROM groups WHERE handle = ?`, handle).id, Date.now());
   return { id: install, secret: "sec" };
 };
 
@@ -1589,10 +1200,7 @@ test("signing in mints an @name that is already valid and can be changed", async
   const minted = one(env, `SELECT handle FROM profiles`).handle;
   assert.ok(minted, "somebody with no profile still has an address");
   assert.equal(handleProblem(minted), "", "the minted name passes the same gate a typed one does");
-  // Offered, not imposed: a journal opens on the journal, and setting up a name
-  // is one line you can open rather than a form the height of the screen.
-  assert.match(body, /Add your name and photo/, "the first visit offers the profile");
-  assert.match(body, /<details class="welcome"/, "folded down, not a wall");
+  assert.match(body, /You, if you want to be/, "the first visit offers the profile");
   assert.match(body, new RegExp(`value="${minted}"`), "and shows the name it chose, editable");
   assert.ok(env.DL.objects.has(`broker/handle/${minted}`),
     "a person's name is reserved against the broker exactly like a group's");
@@ -1715,84 +1323,104 @@ test("pictures are served back, and only from inside the media prefix", async ()
   assert.match(await video.text(), /has to be a picture|needs to be a picture/i);
 });
 
-test("a person's page is them, with their face and their @name", async () => {
+test("the rail shows the people, with their faces and their @names", async () => {
   const { env, send, read } = await signedIn();
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
   await send("/home", { name: "Ada Lovelace", handle: "adalove", avatar: pngFile() });
 
-  // The participants rail belonged to a group page and went with it. Who was at
-  // a party is the party's business - guests and artists live on the night, in
-  // the record. What a person's own page shows is the person.
-  const body = await (await read("/@adalove")).text();
+  const groupId = one(env, `SELECT id FROM groups`).id;
+  const memberId = ulid();
+  env.raw.prepare(`INSERT INTO members (id, email_norm, name, created_ms) VALUES (?, ?, ?, ?)`)
+    .run(memberId, "grace@example.com", "Grace Hopper", Date.now());
+  env.raw.prepare(
+    `INSERT INTO group_members (group_id, member_id, state, volume, source, joined_ms)
+     VALUES (?, ?, 'joined', 'events', 'link', ?)`
+  ).run(groupId, memberId, Date.now());
+
+  const body = await (await read("/@sundaze")).text();
+  assert.match(body, /Participants — 2/);
   assert.match(body, /Ada Lovelace/);
   assert.match(body, /@adalove/, "a person with a name is reachable at it");
   assert.match(body, /<img src="\/media\/avatars\//, "their photo, not their initials");
-  assert.ok(!/Participants \u2014/.test(body), "no group rail: there is no group");
-  assert.ok(!(await (await read("/@adalove")).text()).includes("@example.com"),
-    "an address never appears on a public page");
+  assert.match(body, /Grace Hopper/);
+  assert.match(body, /class="avatar"[^>]*>GH</, "initials for somebody with no photo");
+  assert.match(body, />Admin</, "whoever runs the group is labelled as such");
+  assert.ok(!/grace@example\.com/.test(body), "an address never appears on a public page");
 });
 
-
-test("a party has a cover, shuffled or uploaded, and a stranger cannot touch it", async () => {
+test("a group has a cover, changed the same two ways a night's is", async () => {
   const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "At the Lido" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
 
   // Shuffle, from the bundled pile, and never the one already showing.
-  const first = await send(`${where}/cover`, { shuffleCover: "1" });
+  const first = await send("/@sundaze/manage", { shuffleCover: "1" });
   assert.equal(first.status, 302);
-  const one1 = one(env, `SELECT cover_key FROM events`).cover_key;
+  const one1 = one(env, `SELECT cover_key FROM groups`).cover_key;
   assert.match(one1, /^covers\/[a-z-]+\.webp$/);
   // The RENDERED url, not just the stored key. Checking only the key is how a
   // double /media/ prefix shipped: every shuffled cover 404ed while uploaded
   // ones worked, so it read as randomly broken rather than as one bug.
-  const shuffled = await (await read(where)).text();
+  const shuffled = await (await read("/@sundaze")).text();
   assert.match(shuffled, new RegExp(`background-image:url\\('/media/${one1}'\\)`));
   assert.ok(!/\/media\/\/media\//.test(shuffled), "a key must become a URL exactly once");
-  await send(`${where}/cover`, { shuffleCover: "1" });
-  assert.notEqual(one(env, `SELECT cover_key FROM events`).cover_key, one1,
+  await send("/@sundaze/manage", { shuffleCover: "1" });
+  assert.notEqual(one(env, `SELECT cover_key FROM groups`).cover_key, one1,
     "a shuffle that shows the same picture reads as a broken button");
 
   // Upload, which stores the bytes and points the cover at them.
-  await send(`${where}/cover`, { cover: pngFile("cover.png") });
-  const uploaded = one(env, `SELECT cover_key FROM events`).cover_key;
+  await send("/@sundaze/manage", { cover: pngFile("cover.png") });
+  const uploaded = one(env, `SELECT cover_key FROM groups`).cover_key;
   assert.match(uploaded, /^covers\//);
   assert.ok(env.DL.objects.has(`media/${uploaded}`));
 
-  const page = await (await read(where)).text();
+  const page = await (await read("/@sundaze")).text();
   assert.match(page, new RegExp(`background-image:url\\('/media/${uploaded}'\\)`));
   assert.match(page, /Shuffle image/, "the DJ gets the console's two buttons on the picture");
   assert.match(page, /Upload image/);
 
-  // And a stranger, with no session, cannot touch it.
+  // A night's cover works identically, through its own route.
+  seedEvent(env, one(env, `SELECT id FROM groups`).id);
+  await send("/@sundaze/june-14/cover", { shuffleCover: "1" });
+  assert.match(one(env, `SELECT cover_key FROM events`).cover_key, /^covers\//);
+
+  // And a stranger, with no session, cannot touch either.
   const body = new FormData();
   body.append("shuffleCover", "1");
   const refused = await worker.fetch(
-    new Request(`https://partyparty.party${where}/cover`, { method: "POST", body }), env);
+    new Request("https://partyparty.party/@sundaze/manage", { method: "POST", body }), env);
   assert.equal(refused.status, 403);
-  assert.equal(one(env, `SELECT cover_key FROM events`).cover_key, uploaded, "and changed nothing");
+  assert.equal(one(env, `SELECT cover_key FROM groups`).cover_key, uploaded, "and changed nothing");
 });
 
-test("a party's feed takes a photo, and shows who posted it", async () => {
+test("the group's feed takes a photo, and shows who posted it", async () => {
   const { env, send, read } = await signedIn();
+  await send("/manage", { name: "Sundaze", handle: "sundaze" });
   await send("/home", { name: "Ada Lovelace", handle: "adalove", avatar: pngFile() });
-  await send("/parties/new", { title: "At the Lido" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
 
-  const posted = await send(`${where}/say`, { say: "Doors at nine", media: pngFile("wall.png") });
+  const posted = await send("/@sundaze/say", { say: "Doors at nine", media: pngFile("wall.png") });
   assert.equal(posted.status, 302);
-  const wrote = one(env, `SELECT * FROM posts`);
-  assert.equal(wrote.event_id, ev.id, "a photo belongs to the night it was taken at");
-  assert.match(wrote.media_key, /^posts\//);
-  assert.ok(env.DL.objects.has(`media/${wrote.media_key}`));
+  const post = one(env, `SELECT * FROM posts`);
+  assert.equal(post.body, "Doors at nine");
+  assert.match(post.media_key, /^posts\//);
+  assert.ok(env.DL.objects.has(`media/${post.media_key}`));
 
-  const page = await (await read(where)).text();
-  assert.match(page, /Doors at nine/);
-  assert.match(page, new RegExp(`/media/${wrote.media_key}`));
-  assert.match(page, /Ada Lovelace/, "posts carry who wrote them");
+  const body = await (await read("/@sundaze")).text();
+  assert.match(body, /Doors at nine/);
+  assert.match(body, new RegExp(`<img class="postmedia" src="/media/${post.media_key}"`));
+  assert.match(body, /class="posthead"/, "the feed shows the person, not just a name");
+  assert.match(body, /Ada Lovelace/);
+
+  // A picture with nothing written on it is still a post.
+  await send("/@sundaze/say", { say: "", media: pngFile("two.png") });
+  assert.equal(rows(env, `SELECT * FROM posts`).length, 2);
+
+  // Somebody who neither runs nor follows the group cannot post to it.
+  const body2 = new FormData();
+  body2.append("say", "hello");
+  const refused = await worker.fetch(
+    new Request("https://partyparty.party/@sundaze/say", { method: "POST", body: body2 }), env);
+  assert.match(await refused.text(), /Follow the group first/);
+  assert.equal(rows(env, `SELECT * FROM posts`).length, 2);
 });
 
 test("the @name says whether it is free while you are still typing", async () => {
@@ -1946,10 +1574,8 @@ const asInstall = async (env, { linked = true } = {}) => {
       method: "POST", body, headers: { cookie: `pp_s=${session[1]}` },
     }), env);
     groupId = one(env, `SELECT id FROM groups`).id;
-    const owner = one(env, `SELECT d.email_norm FROM group_djs gd
-        JOIN djs d ON d.id = gd.dj_id WHERE gd.group_id = ?`, groupId);
-    env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
-      .run(install, owner.email_norm, Date.now());
+    env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
+      .run(install, groupId, Date.now());
   }
   const call = async (path, extra) => {
     const r = await worker.fetch(new Request("https://partyparty.party" + path, {
@@ -1960,36 +1586,6 @@ const asInstall = async (env, { linked = true } = {}) => {
   return { install, groupId, call };
 };
 
-test("a linked Mac can be handed its owner's own session", async () => {
-  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
-  const mac = await asInstall(env);
-
-  const got = await mac.call("/api/v1/install/session", {});
-  assert.equal(got.status, 200);
-  assert.equal(got.body.linked, true);
-  assert.match(got.body.session, /^[a-f0-9]{48}$/);
-  assert.ok(got.body.handle, "and who it belongs to, for the console to show");
-
-  // It IS a session: the pages answer to it as the person, which is the whole
-  // point - the console shows their own pages rather than a second copy.
-  const home = await get(env, "/home", { headers: { cookie: `pp_s=${got.body.session}` } });
-  assert.equal(home.status, 200);
-  assert.match(await home.text(), /Your parties/);
-
-  // An unsigned Mac gets no session, and says so rather than failing.
-  const lone = await asInstall(await withGoogle(makeEnv()), { linked: false });
-  const none = await lone.call("/api/v1/install/session", {});
-  assert.equal(none.status, 200);
-  assert.equal(none.body.linked, false);
-  assert.ok(!none.body.session);
-
-  // And a caller who cannot prove which Mac it is gets nothing at all.
-  const forged = await worker.fetch(new Request(
-    "https://partyparty.party/api/v1/install/session",
-    { method: "POST", body: JSON.stringify({ id: "aabbccddeeff", secret: "wrong" }) }), env);
-  assert.equal(forged.status, 403);
-});
-
 test("every Mac route refuses a caller it cannot authenticate", async () => {
   // This is the test that was missing. Every existing case authenticated
   // successfully, so the refusal branch never ran - and it called a helper
@@ -1999,7 +1595,6 @@ test("every Mac route refuses a caller it cannot authenticate", async () => {
   const paths = [
     "/api/v1/parties", "/api/v1/party/create", "/api/v1/party/update",
     "/api/v1/install/profile", "/api/v1/party/bind", "/api/v1/party/posts",
-    "/api/v1/install/session",
   ];
   for (const path of paths) {
     for (const body of [
@@ -2017,65 +1612,6 @@ test("every Mac route refuses a caller it cannot authenticate", async () => {
       assert.ok(text.length && text.startsWith("{"), `${path} did not answer with JSON`);
     }
   }
-});
-
-test("signing in on the Mac is the whole of it - no group to choose", async () => {
-  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
-  const { session } = await signIn(env);
-  const cookie = { cookie: `pp_s=${session[1]}` };
-  const install = "aabbccddeeff";
-  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
-
-  const asked = await (await api(env, "/api/v1/install/code", { id: install, secret: "sec" })).json();
-  assert.equal(asked.linked, false);
-
-  // The link page asks nothing. It used to list your groups and make you pick
-  // one, which is a question about a concept most people do not have.
-  const page = await (await get(env, `/link/${asked.code}`, { headers: cookie })).text();
-  assert.ok(!/Link it to|which of your groups|start the group/i.test(page),
-    "the link page must not ask which group");
-  assert.match(page, /That is you/);
-
-  // And it is the person that got bound, not a group.
-  const bound = one(env, `SELECT * FROM install_accounts WHERE install_id = ?`, install);
-  assert.ok(bound, "the Mac is bound to an account");
-  assert.equal(rows(env, `SELECT * FROM install_groups`).length, 0);
-
-  // Asking again says who they are, by their @name - not by a group's.
-  const linked = await (await api(env, "/api/v1/install/code", { id: install, secret: "sec" })).json();
-  assert.equal(linked.linked, true);
-  assert.equal(linked.handle, one(env, `SELECT handle FROM profiles`).handle);
-
-  // A code is single use even now that it asks nothing.
-  assert.match(await (await get(env, `/link/${asked.code}`, { headers: cookie })).text(), /expired/i);
-});
-
-test("a Mac's parties go to your own @name, not to a side project", async () => {
-  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
-  const { session } = await signIn(env);
-  const cookie = { cookie: `pp_s=${session[1]}` };
-  const handle = one(env, `SELECT handle FROM profiles`).handle;
-  const djId = one(env, `SELECT id FROM djs`).id;
-
-  // A side project made FIRST, and their own group after it. Plain
-  // oldest-first would send every party from the Mac into the side project.
-  const older = seedGroup(env, "earlytesters");
-  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
-    .run(older, djId, Date.now() - 86400000);
-  const body = new FormData();
-  body.append("name", "Mine");
-  body.append("handle", handle);
-  await get(env, "/manage", { method: "POST", body, headers: cookie });
-
-  const install = "aabbccddeeff";
-  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
-  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
-    .run(install, one(env, `SELECT email_norm FROM djs`).email_norm, Date.now());
-
-  const made = await (await api(env, "/api/v1/party/create",
-    { id: install, secret: "sec", title: "From the booth" })).json();
-  assert.equal(made.party.handle, handle,
-    `a party from the Mac landed in @${made.party.handle}, not the DJ's own @${handle}`);
 });
 
 test("a party made on the Mac is the same row a party made on the web is", async () => {
@@ -2097,42 +1633,11 @@ test("a party made on the Mac is the same row a party made on the web is", async
   assert.equal(row.party_id, "2026-08-08-2200-ab12", "the live room is attached at creation");
   assert.equal(rows(env, `SELECT * FROM events`).length, 1, "exactly one record, never a shadow");
 
-  // A party opened with a live room on it is a night people are about to be
-  // handed the address of - and most of them do not follow the DJ, they are
-  // just in the room - so it opens to anyone from the first moment. One typed
-  // in for later stays between the people on it until it is shared.
-  assert.equal(row.visibility, "public");
+  // And it is on the web immediately, at a real address.
   const page = await get(env, `/@sundaze/${row.slug}`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Warehouse, late/);
   assert.equal(made.body.party.url, `https://partyparty.party/@sundaze/${row.slug}`);
-});
-
-test("creating a party means the same thing in the booth as in a browser", async () => {
-  const env = await withGoogle(makeEnv(), { name: "DJ Example" });
-  const mac = await asInstall(env);
-  const owner = one(env, `SELECT email_norm FROM djs`).email_norm;
-
-  // The web's form turns "who is playing" into people on the account. The Mac
-  // asks the same question, so it has to have the same consequence - otherwise
-  // a DJ named in the booth is a label and one named in a browser is a history.
-  const made = await mac.call("/api/v1/party/create", {
-    title: "Warehouse, late", place: "Unit 7", djs: "Seth, Ada",
-    startsMs: Date.parse("2099-09-12T21:00:00Z"),
-  });
-  assert.equal(made.status, 200);
-
-  const people = rows(env, `SELECT name FROM people WHERE owner_email = ? ORDER BY name`, owner)
-    .map((p) => p.name);
-  assert.deepEqual(people, ["Ada", "Seth"], "the DJs typed in the booth became people");
-  const billed = rows(env, `SELECT role FROM party_people WHERE event_id = ?`, made.body.party.key);
-  assert.equal(billed.length, 2);
-  assert.ok(billed.every((r) => r.role === "dj"));
-
-  // And the date the booth was given is the date that was stored, rather than
-  // "now" - a party can be made from the Mac for next Friday.
-  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms,
-    Date.parse("2099-09-12T21:00:00Z"));
 });
 
 test("the Mac lists and opens parties made on the web", async () => {
@@ -2208,13 +1713,8 @@ test("an edit on either client lands on the one record, and only where asked", a
   const outsider = "ffeeddccbbaa";
   await env.DL.put(`broker/${outsider}.json`, JSON.stringify({ secret: "s2", hostLabel: "other" }));
   const otherGroup = seedGroup(env, "basement");
-  const strangerId = ulid();
-  env.raw.prepare(`INSERT INTO djs (id, email_norm, name, created_ms) VALUES (?,?,?,?)`)
-    .run(strangerId, "stranger@example.com", "Stranger", Date.now());
-  env.raw.prepare(`INSERT INTO group_djs (group_id, dj_id, role, created_ms) VALUES (?,?, 'owner', ?)`)
-    .run(otherGroup, strangerId, Date.now());
-  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
-    .run(outsider, "stranger@example.com", Date.now());
+  env.raw.prepare(`INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?,?,?)`)
+    .run(outsider, otherGroup, Date.now());
   const refused = await worker.fetch(new Request("https://partyparty.party/api/v1/party/update", {
     method: "POST",
     body: JSON.stringify({ id: outsider, secret: "s2", partyKey: key, title: "Mine now" }),
@@ -2237,20 +1737,17 @@ test("an unsigned Mac has no parties and cannot make one", async () => {
 
 test("the acceptance scenario, end to end", async () => {
   const { env, send, read } = await signedIn();
-  const at = (iso) => iso; // a date field, as a browser sends it
+  const at = (iso) => iso; // datetime-local, as a browser sends it
 
   // 2-5. An upcoming party, with a date, a place, a DJ, and two people who
   // have never heard of PartyParty.
   const made = await send("/parties/new", {
-    title: "Warehouse, late", day: at("2099-09-12"), place: "Unit 7", dj: "Seth",
+    title: "Warehouse, late", starts: at("2099-09-12T21:00"), place: "Unit 7", dj: "Seth",
   });
   assert.equal(made.status, 302);
   const ev = one(env, `SELECT * FROM events`);
   assert.equal(ev.title, "Warehouse, late");
   assert.equal(ev.place, "Unit 7");
-  // A day, stored at midday so no reader sees it land on the day before.
-  assert.equal(ev.starts_ms, Date.parse("2099-09-12T12:00:00Z"),
-    "the date typed is the date stored");
   const where = `/@${one(env, `SELECT handle FROM groups`).handle}/${ev.slug}`;
 
   for (const name of ["Ada", "Bo"]) {
@@ -2267,9 +1764,9 @@ test("the acceptance scenario, end to end", async () => {
 
   // 8-10. Move it into the past through the page's own edit form - the same
   // updateParty the Mac calls - then say I went, and note one person.
-  const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 16);
   const edited = await send(`${where}/edit`, {
-    title: "Warehouse, late", day: lastWeek, place: "Unit 7",
+    title: "Warehouse, late", starts: lastWeek, place: "Unit 7",
     links: "Tickets | https://tickets.example/warehouse",
   });
   assert.equal(edited.status, 302, "editing a party is a normal form post");
@@ -2283,7 +1780,7 @@ test("the acceptance scenario, end to end", async () => {
   home = await (await read("/home")).text();
   assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Warehouse, late"),
     "a party whose date has gone is past, decided by the clock");
-  assert.match(home, /You were there/, "an entry says what is in it, not just that it exists");
+  assert.match(home, /You went/);
 
   // 12. Her page shows the party, its date, and the note from THAT night.
   let page = await (await read(`/people/${ada.id}`)).text();
@@ -2292,7 +1789,7 @@ test("the acceptance scenario, end to end", async () => {
 
   // 13-14. A second party with the same person reuses her, and her history
   // shows both - one Ada, not two.
-  await send("/parties/new", { title: "Rooftop", day: at("2099-10-01") });
+  await send("/parties/new", { title: "Rooftop", starts: at("2099-10-01T20:00") });
   const second = rows(env, `SELECT * FROM events ORDER BY created_ms`)[1];
   const there = `/@${one(env, `SELECT handle FROM groups`).handle}/${second.slug}`;
   await send(`${there}/record`, { who: "Ada", role: "guest" });
@@ -2306,9 +1803,7 @@ test("the acceptance scenario, end to end", async () => {
   // And the note stayed with the night it belongs to rather than becoming a
   // property of the person.
   assert.match(page, /Introduced me to the promoter/);
-  // A night with no note about them shows the night, not a sentence apologising
-  // for the absence of one.
-  assert.match(page, /Rooftop/);
+  assert.match(page, /No note from that night/);
 
   // The edit landed on the page as well as in the row, links and all.
   const party = await (await read(where)).text();
@@ -2323,37 +1818,16 @@ test("the acceptance scenario, end to end", async () => {
 });
 
 test("a party's details are editable from the web, and refused when empty", async () => {
-  const { env, send, read, cookie } = await signedIn();
+  const { env, send, read } = await signedIn();
   await send("/parties/new", { title: "Basement" });
   const handle = one(env, `SELECT handle FROM groups`).handle;
   const ev = one(env, `SELECT * FROM events`);
   const where = `/@${handle}/${ev.slug}`;
 
-  // The when and the where are typed into the line that shows them, under the
-  // name. There is no second form repeating it further down the page.
+  // The form is on the party page for its owner, filled in with what is there.
   const owner = await (await read(where)).text();
-  assert.match(owner, /id="heroDay"/, "the day is edited where it is shown");
-  assert.match(owner, /type="date"/, "a day, not a datetime: the product has no time in it");
-  assert.match(owner, /id="heroPlace"/);
-  assert.ok(!/When and where/.test(owner));
-
-  // Each field saves on its own, which is what typing into a heading is.
-  const inline = (fields) => {
-    const body = new FormData();
-    for (const [k, v] of Object.entries(fields)) body.append(k, v);
-    return worker.fetch(new Request(`https://partyparty.party${where}/edit`,
-      { method: "POST", body, headers: { ...cookie, accept: "application/json" } }), env);
-  };
-  assert.equal((await inline({ place: "The Lido" })).status, 200);
-  assert.equal(one(env, `SELECT place FROM events`).place, "The Lido");
-  assert.equal(one(env, `SELECT title FROM events`).title, "Basement",
-    "saving the place does not touch the name");
-
-  // A date that is not one is refused, and nothing is written.
-  const bad = await inline({ day: "the third of never" });
-  assert.equal(bad.status, 400);
-  assert.match(JSON.stringify(await bad.json()), /did not make sense/);
-  assert.equal(one(env, `SELECT place FROM events`).place, "The Lido");
+  assert.match(owner, /Edit the details/);
+  assert.match(owner, /name="starts"/);
 
   const refused = await send(`${where}/edit`, { title: "   ", starts: "", place: "" });
   assert.equal(refused.status, 200, "a refusal is the page again, not a dead end");
@@ -2361,15 +1835,17 @@ test("a party's details are editable from the web, and refused when empty", asyn
   assert.match(body, /a party needs a name/);
   assert.equal(one(env, `SELECT title FROM events`).title, "Basement", "nothing was written");
 
-  // The no-JavaScript path still refuses a bad date with the page rather than
-  // a dead end.
-  assert.match(await (await send(`${where}/edit`,
-    { day: "the third of never" })).text(), /did not make sense/);
+  // A bad date is refused with what was typed still in the form, rather than
+  // silently storing nothing where a time should be.
+  const badDate = await (await send(`${where}/edit`,
+    { title: "Basement", starts: "the third of never" })).text();
+  assert.match(badDate, /did not make sense/);
+  assert.match(badDate, /value="Basement"/);
 
   // Clearing the date is a real edit, not a no-op: a party can lose its time.
-  await send(`${where}/edit`, { title: "Basement", day: "2099-01-02", place: "Mine" });
-  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, Date.parse("2099-01-02T12:00:00Z"));
-  await send(`${where}/edit`, { title: "Basement", day: "", place: "Mine" });
+  await send(`${where}/edit`, { title: "Basement", starts: "2099-01-02T23:30", place: "Mine" });
+  assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, Date.parse("2099-01-02T23:30Z"));
+  await send(`${where}/edit`, { title: "Basement", starts: "", place: "Mine" });
   assert.equal(one(env, `SELECT starts_ms FROM events`).starts_ms, null);
 
   // And it is not open to a passer-by.
@@ -2402,9 +1878,9 @@ test("only links that can be clicked are rendered as links", async () => {
   assert.ok(!page.includes('onmouseover="'), "a quote in a URL cannot escape the attribute");
   // Two links typed, two links rendered - the other two lines are not links.
   assert.equal((page.match(/<li><a href="http/g) || []).length, 2);
-  // There is no editor for links any more (owner, 2026-08-09: "I don't think we
-  // need a link section") - but a night can still carry them from the Mac, so
-  // what they render as is still the thing that matters.
+  // What was typed comes back in the form, so editing does not silently rewrite
+  // it - escaped, because it is text now and not markup.
+  assert.match(page, /javascript:alert\(1\)/, "the textarea still holds what was typed");
 });
 
 test("a party is playing right now only while a Mac keeps saying so", async () => {
@@ -2445,7 +1921,7 @@ test("a party is playing right now only while a Mac keeps saying so", async () =
   assert.ok(!page.includes("Playing right now"), "a heartbeat that stopped is not a live room");
   // But the party itself is untouched - the point of a permanent record.
   assert.match(page, /Warehouse/);
-  assert.match(page, /Your notes/, "the record is the page, and it survives the broadcast");
+  assert.match(page, /Your record/);
   assert.ok(!(await (await read("/home")).text()).includes("Playing now"));
 
   // A join URL that is not https is never shown, whatever the Mac sends.
@@ -2458,174 +1934,6 @@ test("a party is playing right now only while a Mac keeps saying so", async () =
   assert.match(page, /href="https:\/\/early-heron/, "and the last good link is kept");
 });
 
-test("a party is found by its owner, and following is between people", async () => {
-  const { env, send, read } = await signedIn();
-  const me = one(env, `SELECT email_norm FROM djs`).email_norm;
-  const handle = one(env, `SELECT handle FROM profiles`).handle;
-  await send("/parties/new", { title: "Warehouse" });
-  const ev = one(env, `SELECT * FROM events`);
-
-  // The address is the PERSON's @name. Point the party at a group nobody has
-  // ever heard of and it is still reachable at mine, because the lookup no
-  // longer goes through groups at all.
-  const orphan = seedGroup(env, "nowhere");
-  env.raw.prepare(`UPDATE events SET group_id = ? WHERE id = ?`).run(orphan, ev.id);
-  assert.equal((await read(`/@${handle}/${ev.slug}`)).status, 200,
-    "found by whose it is, not by which group holds it");
-
-  // Following writes the two people, and privately: nobody consented to being
-  // seen following anybody.
-  await post(env, `/@${handle}/join`, { email: "fan@example.com", name: "Fan" });
-  const follow = one(env, `SELECT * FROM follows`);
-  assert.equal(follow.follower_email, "fan@example.com");
-  assert.equal(follow.person_email, me);
-  assert.equal(follow.public, 0, "private by default");
-
-  // And it is visible to the one person it concerns: whoever chose it.
-  const fan = await withGoogle(makeEnv(), { name: "Fan" });
-  assert.ok(fan, "the follower sees their own list on their own home");
-  const home = await (await read("/home")).text();
-  assert.ok(!/You follow/.test(home), "following nobody says nothing");
-});
-
-test("the whole sentence goes in from one place", async () => {
-  const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Warehouse" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-
-  // "I saw DJ 1, 2 and 3, they played XYZ, I was with A and B" - four clauses.
-  // Each goes in at the top of the page, without scrolling to find a section.
-  await send(`${where}/record`, { it: "Ada, Bo and Cy", as: "dj" });
-  await send(`${where}/record`, { it: "Windowlicker by Aphex Twin", as: "song" });
-  await send(`${where}/record`, { it: "Dee and Eve", as: "guest" });
-
-  assert.deepEqual(rows(env, `SELECT p.name FROM party_people pp
-    JOIN people p ON p.id = pp.person_id WHERE pp.role='dj' ORDER BY p.name`)
-    .map((r) => r.name), ["Ada", "Bo", "Cy"]);
-  assert.deepEqual(rows(env, `SELECT p.name FROM party_people pp
-    JOIN people p ON p.id = pp.person_id WHERE pp.role='guest' ORDER BY p.name`)
-    .map((r) => r.name), ["Dee", "Eve"]);
-  const song = one(env, `SELECT * FROM songs`);
-  assert.equal(song.title, "Windowlicker");
-  assert.equal(song.artist, "Aphex Twin", "by names the artist without a second field");
-
-  // And the line is the first thing on the night, not buried under it. The
-  // people moved to the rail beside the page, so the section it must come
-  // above is now the track list.
-  const page = await (await read(where)).text();
-  assert.ok(page.indexOf('class="capture"') < page.indexOf("<h2>Track list</h2>"),
-    "you write at the top; the sections below are for correcting");
-  assert.match(page, /class="rail nightpeople"/, "the people stand beside the night");
-  assert.ok(page.indexOf('class="rail nightpeople"') > page.indexOf('class="capture"'),
-    "the rail comes after the page body in source order, so a phone stacks it under");
-});
-
-test("three DJs and three friends is one thing you type", async () => {
-  const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Warehouse" });
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-
-  // "I saw DJ 1, 2 and 3" is one thought, so it is one action. Three trips
-  // through a form for one sentence is the friction this app exists to avoid.
-  await send(`${where}/record`, { who: "Ada, Bo and Cy", role: "dj" });
-  await send(`${where}/record`, { who: "Dee, Eve", role: "guest" });
-  await send(`${where}/record`, { songTitle: "Windowlicker, Xtal", songArtist: "Aphex Twin" });
-
-  const played = rows(env, `SELECT p.name FROM party_people pp JOIN people p ON p.id = pp.person_id
-    WHERE pp.role = 'dj' ORDER BY p.name`).map((r) => r.name);
-  assert.deepEqual(played, ["Ada", "Bo", "Cy"], "and is a separator too, because people type it");
-  const with_ = rows(env, `SELECT p.name FROM party_people pp JOIN people p ON p.id = pp.person_id
-    WHERE pp.role = 'guest' ORDER BY p.name`).map((r) => r.name);
-  assert.deepEqual(with_, ["Dee", "Eve"]);
-  const songs = rows(env, `SELECT title, artist FROM songs ORDER BY seq`);
-  assert.deepEqual(songs.map((x) => x.title), ["Windowlicker", "Xtal"]);
-  assert.ok(songs.every((x) => x.artist === "Aphex Twin"), "one artist covers the run");
-
-  // Six people and two songs, from three things typed.
-  assert.equal(rows(env, `SELECT * FROM people`).length, 5);
-  assert.match(await (await read(where)).text(), /Windowlicker/);
-});
-
-test("a night is a day, a place, and what was played", async () => {
-  const { env, send, read } = await signedIn();
-
-  // Today is already in the form. Standing at a party, the date is not a
-  // question worth asking.
-  const form = await (await read("/parties/new")).text();
-  assert.match(form, /type="date"/);
-  assert.ok(!/<input[^>]*type="datetime-local"/.test(form),
-    "no time field: nobody journals that it started at 21:00");
-  assert.match(form, new RegExp(`value="${new Date().toISOString().slice(0, 10)}"`),
-    "today is filled in already");
-
-  await send("/parties/new", { title: "Warehouse", day: "2026-08-08", place: "Unit 7" });
-
-  // Where you were last is already in the next one. At a regular haunt that is
-  // the right answer, and everywhere else it is one tap to clear - which beats
-  // a browser location prompt and a geocoding service for the same guess.
-  assert.match(await (await read("/parties/new")).text(), /value="Unit 7"/);
-
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const ev = one(env, `SELECT * FROM events`);
-  const where = `/@${handle}/${ev.slug}`;
-  assert.equal(ev.day_only, 1);
-
-  let page = await (await read(where)).text();
-  assert.match(page, /Sat 8 Aug/);
-  assert.ok(!/21:00|12:00|00:00/.test(page), "the hour is never shown");
-  assert.match(page, /What was played, in the order it was played/);
-
-  // A song, in one field, as it plays.
-  await send(`${where}/record`, { songTitle: "Windowlicker", songArtist: "Aphex Twin" });
-  await send(`${where}/record`, { songTitle: "Papua New Guinea" });
-  const played = rows(env, `SELECT * FROM songs ORDER BY seq`);
-  assert.deepEqual(played.map((x) => x.title), ["Windowlicker", "Papua New Guinea"],
-    "the order they were added is the order they were played");
-  assert.equal(played[0].artist, "Aphex Twin");
-
-  page = await (await read(where)).text();
-  assert.match(page, /Windowlicker/);
-  assert.match(page, /Aphex Twin/);
-  assert.match(page, /Papua New Guinea/);
-
-  // Written down by mistake, taken back off.
-  await send(`${where}/record`, { song: played[1].id, remove: "1" });
-  assert.deepEqual(rows(env, `SELECT title FROM songs`).map((x) => x.title), ["Windowlicker"]);
-
-  // A setlist is the owner's, like the rest of the record.
-  assert.ok(!(await (await get(env, where)).text()).includes("Windowlicker"),
-    "what was played is mine until I share it");
-});
-
-test("a party belongs to a person, not to a group", async () => {
-  const { env, send, read } = await signedIn();
-  const me = one(env, `SELECT email_norm FROM djs`).email_norm;
-  await send("/parties/new", { title: "Warehouse, late" });
-
-  const ev = one(env, `SELECT * FROM events`);
-  assert.equal(ev.owner_email, me, "the party carries whose it is");
-
-  // Being in the group is no longer what makes it mine. Cut every group tie and
-  // it is still my party, still on my home, still at its address.
-  env.raw.prepare(`DELETE FROM group_djs`).run();
-  const handle = one(env, `SELECT handle FROM groups`).handle;
-  const home = await (await read("/home")).text();
-  assert.match(home, /Warehouse, late/, "a party I own is mine without a group");
-  assert.equal((await read(`/@${handle}/${ev.slug}`)).status, 200);
-
-  // And somebody else's party is not mine, however the groups are arranged.
-  const theirs = ulid();
-  env.raw.prepare(`INSERT INTO events (id, group_id, owner_email, slug, title, state, created_ms, updated_ms)
-    VALUES (?, ?, 'someone@else.example', 'not-mine', 'Not mine', 'announced', ?, ?)`)
-    .run(theirs, ev.group_id, Date.now(), Date.now());
-  assert.ok(!(await (await read("/home")).text()).includes("Not mine"),
-    "sharing a group with somebody does not make their party mine");
-});
-
 test("a record belongs to one person and is invisible to everybody else", async () => {
   const { env, send, read } = await signedIn();
   await send("/parties/new", { title: "Warehouse", dj: "Seth" });
@@ -2633,19 +1941,12 @@ test("a record belongs to one person and is invisible to everybody else", async 
   const ev = one(env, `SELECT * FROM events`);
   await send(`/@${handle}/${ev.slug}/record`, { note: "My private thought", attended: "1" });
 
-  // Shared by link, the night is readable and the record still is not.
-  await send(`/@${handle}/${ev.slug}/record`, { visibility: "public" });
+  // Signed out, the party page is public and the record is not on it.
   const publicPage = await (await get(env, `/@${handle}/${ev.slug}`)).text();
   assert.match(publicPage, /Warehouse/);
   assert.ok(!publicPage.includes("My private thought"), "a note is a diary, not content");
-  assert.ok(!publicPage.includes("Your notes"));
-  // Seth is who PLAYED - the night's billing, which is what the night was, so
-  // sharing the night shares it. Who I SAW is my observation of a room and
-  // stays mine however widely the night is shared, like my note does.
-  assert.match(publicPage, /Seth/, "the bill is the night");
-  await send(`/@${handle}/${ev.slug}/record`, { who: "Ada", role: "guest" });
-  const again = await (await get(env, `/@${handle}/${ev.slug}`)).text();
-  assert.ok(!again.includes("Ada"), "who I saw is mine, shared or not");
+  assert.ok(!publicPage.includes("Your record"));
+  assert.ok(!publicPage.includes("Seth"), "who I saw is mine too");
 
   // Another person's record of the SAME party, in the same database. The risk
   // is a query that forgets owner_email, so this puts a rival row right next
@@ -2743,7 +2044,7 @@ test("a person can turn out to be an account, later, or never", async () => {
   let page = await (await read(`/people/${seth.id}`)).text();
   assert.match(page, /@sethplays/);
   assert.match(page, /href="\/@sethplays"/, "their profile is one click away");
-  assert.match(page, />Seth</, "my name for them is still my name for them");
+  assert.match(page, /<h1>Seth<\/h1>/, "my name for them is still my name for them");
   assert.match(page, /Warehouse regular/);
 
   // And unsaying it is just clearing the field.
@@ -2756,28 +2057,28 @@ test("a person can turn out to be an account, later, or never", async () => {
 
 test("upcoming, on tonight, and past are read off the clock", async () => {
   const { env, send, read } = await signedIn();
-  await send("/parties/new", { title: "Warehouse" });
+  await send("/parties/new", { title: "Tonight" });
   const ev = one(env, `SELECT * FROM events`);
   const handle = one(env, `SELECT handle FROM groups`).handle;
   const at = (ms) => env.raw.prepare(`UPDATE events SET starts_ms = ? WHERE id = ?`).run(ms, ev.id);
 
   // No date at all is upcoming: it has not happened.
   let home = await (await read("/home")).text();
-  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Warehouse"));
+  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Tonight"));
 
   // Started an hour ago: still on, still filed under Upcoming rather than
   // vanishing into Past while people are in the room.
   at(Date.now() - 60 * 60 * 1000);
   home = await (await read("/home")).text();
-  assert.match(home, /class="tag live">Tonight</, "a night in progress says so");
-  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Warehouse"));
+  assert.match(home, /On tonight/);
+  assert.ok(home.indexOf("<h2>Upcoming</h2>") < home.indexOf("Tonight"));
   assert.match(await (await read(`/@${handle}/${ev.slug}`)).text(), /on tonight/);
 
   // Seven hours ago: the night is over, and nothing had to be switched.
   at(Date.now() - 7 * 60 * 60 * 1000);
   home = await (await read("/home")).text();
-  assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Warehouse"));
-  assert.ok(!home.includes('class="tag live">Tonight<'));
+  assert.ok(home.indexOf("<h2>Past</h2>") < home.indexOf("Tonight"));
+  assert.ok(!home.includes("On tonight"));
 });
 
 test("taking a name back off a party keeps the person only if they are one", async () => {
@@ -2835,252 +2136,6 @@ test("people are searchable, reusable and never require an account", async () =>
     "no account required to be remembered");
 });
 
-test("a Shazam library files itself into the nights it happened at", async () => {
-  const { env, send, read } = await signedIn();
-  const handle = one(env, `SELECT handle FROM profiles`).handle;
-  await send("/parties/new", { title: "Mutant zoo", day: "2026-08-08", place: "The Box Shop" });
-  await send("/parties/new", { title: "Sunday roast", day: "2026-08-09", place: "Home" });
-  const mac = await linkedInstall(env, handle);
-  const zoo = one(env, `SELECT * FROM events WHERE title = 'Mutant zoo'`);
-
-  // One track already on the night, from the live recognizer. The import must
-  // merge with what the set already caught rather than double it.
-  await send(`/@${handle}/${zoo.slug}/record`, { songTitle: "Xtal by Aphex Twin" });
-
-  const items = [
-    { title: "Xtal", artist: "Aphex Twin", at: 1, night: "2026-08-08" },   // already there
-    { title: "Ptolemy", artist: "Aphex Twin", at: 2, night: "2026-08-08" },
-    { title: "Actium", artist: "Aphex Twin", at: 3, night: "2026-08-09" },
-    { title: "Heliosphan", artist: "Aphex Twin", at: 4, night: "2019-01-01" }, // no party that day
-  ];
-
-  // The preview describes the import and writes nothing.
-  const shown = await (await api(env, "/api/v1/shazam/import",
-    { ...mac, items, preview: true })).json();
-  assert.equal(shown.preview, true);
-  assert.equal(shown.matched, 3, "three of the four landed on a night");
-  assert.equal(shown.unmatched, 1, "and the one with no party is counted, not dropped quietly");
-  assert.deepEqual(shown.nights.map((n) => [n.title, n.added]),
-    [["Sunday roast", 1], ["Mutant zoo", 1]], "newest night first, dedupe already applied");
-  assert.equal(rows(env, `SELECT * FROM songs`).length, 1, "a preview wrote something");
-
-  // Agreeing to it does exactly what was shown.
-  const done = await (await api(env, "/api/v1/shazam/import",
-    { ...mac, items, preview: false })).json();
-  assert.equal(done.preview, false);
-  assert.deepEqual(done.nights.map((n) => [n.title, n.added]),
-    [["Sunday roast", 1], ["Mutant zoo", 1]], "the import differs from its own preview");
-  const titles = rows(env, `SELECT title FROM songs WHERE event_id = ?`, zoo.id)
-    .map((r) => r.title).sort();
-  assert.deepEqual(titles, ["Ptolemy", "Xtal"], "the live catch was doubled");
-
-  // And running it again is a no-op, which is what makes it safe to press.
-  const twice = await (await api(env, "/api/v1/shazam/import",
-    { ...mac, items, preview: false })).json();
-  assert.deepEqual(twice.nights, [], "a second import added rows again");
-  assert.equal(rows(env, `SELECT * FROM songs`).length, 3);
-
-  // It reads as a track list on the page, like any other song on the night.
-  const page = await (await read(`/@${handle}/${zoo.slug}`)).text();
-  assert.match(page, /Ptolemy/);
-});
-
-test("two parties on one day: the one that ran a room takes the tracks", async () => {
-  const { env, send } = await signedIn();
-  const handle = one(env, `SELECT handle FROM profiles`).handle;
-  await send("/parties/new", { title: "The night", day: "2026-08-08" });
-  await send("/parties/new", { title: "The after", day: "2026-08-08" });
-  const mac = await linkedInstall(env, handle);
-
-  // Made second, but it is the one that broadcast. That is where the music was.
-  const after = one(env, `SELECT * FROM events WHERE title = 'The after'`);
-  env.raw.prepare(`UPDATE events SET live_ms = ? WHERE id = ?`).run(Date.now(), after.id);
-
-  const done = await (await api(env, "/api/v1/shazam/import", {
-    ...mac, preview: false,
-    items: [{ title: "Ptolemy", artist: "Aphex Twin", at: 1, night: "2026-08-08" }],
-  })).json();
-  assert.deepEqual(done.nights.map((n) => n.title), ["The after"],
-    "the tracks went to a night that never played");
-  assert.equal(one(env, `SELECT event_id FROM songs`).event_id, after.id);
-});
-
-// A Mac bound to the signed-in person BEFORE they have any parties. The usual
-// helper resolves through a group, and a group is only made when the first
-// party is - which is exactly the state these tests are about.
-const installForPersonWithNoParties = async (env) => {
-  const install = "aabbccddeeff";
-  await env.DL.put(`broker/${install}.json`, JSON.stringify({ secret: "sec" }));
-  const dj = one(env, `SELECT email_norm FROM djs LIMIT 1`);
-  env.raw.prepare(`INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?,?,?)`)
-    .run(install, dj.email_norm, Date.now());
-  return { id: install, secret: "sec" };
-};
-
-test("a night with no party can become one, with its tracks already on it", async () => {
-  const { env } = await signedIn();
-  const mac = await installForPersonWithNoParties(env);
-
-  // Six on one night, one on another. A years-old Shazam library is mostly
-  // days that were not parties, and offering to make a party of a single
-  // Tuesday match is noise.
-  const items = [];
-  for (const t of ["Xtal", "Ptolemy", "Actium", "Tha", "Delphium", "Hedphelym"]) {
-    items.push({ title: t, artist: "Aphex Twin", at: 1, night: "2025-07-19" });
-  }
-  items.push({ title: "Alone", artist: "Nobody", at: 2, night: "2025-03-01" });
-
-  const shown = await (await api(env, "/api/v1/shazam/import",
-    { ...mac, items, preview: true })).json();
-  assert.deepEqual(shown.newNights.map((n) => [n.day, n.count]), [["2025-07-19", 6]],
-    "the quiet day was offered as a party, or the busy one was not");
-  assert.equal(shown.newNightTracks, 6);
-  assert.equal(rows(env, `SELECT * FROM events`).length, 0, "a preview made a party");
-
-  const done = await (await api(env, "/api/v1/shazam/import",
-    { ...mac, items, preview: false, create: ["2025-07-19"] })).json();
-  const made = one(env, `SELECT * FROM events`);
-  assert.ok(made, "no party was made");
-  assert.equal(new Date(made.starts_ms).toISOString().slice(0, 10), "2025-07-19");
-  assert.match(made.title, /19 July 2025/, "the party is not named after its night");
-  assert.equal(rows(env, `SELECT * FROM songs WHERE event_id = ?`, made.id).length, 6,
-    "the tracks did not land on the party that was just made for them");
-  assert.deepEqual(done.nights.map((n) => n.added), [6]);
-
-  // And it does not make a second one on a re-run.
-  await api(env, "/api/v1/shazam/import", { ...mac, items, preview: false, create: ["2025-07-19"] });
-  assert.equal(rows(env, `SELECT * FROM events`).length, 1, "a second party appeared");
-  assert.equal(rows(env, `SELECT * FROM songs`).length, 6, "the tracks were doubled");
-});
-
-test("a night names its own venue, and never overwrites one somebody typed", async () => {
-  const { env, send } = await signedIn();
-  const handle = one(env, `SELECT handle FROM profiles`).handle;
-  // One night that exists with a place already, one that exists with none.
-  await send("/parties/new", { title: "Named night", day: "2025-05-01", place: "Frank's kitchen" });
-  await send("/parties/new", { title: "Blank night", day: "2025-05-02" });
-  const mac = await linkedInstall(env, handle);
-
-  const items = [
-    { title: "A", artist: "X", at: 1, night: "2025-05-01" },
-    { title: "B", artist: "X", at: 2, night: "2025-05-02" },
-  ];
-  for (let i = 0; i < 6; i++) items.push({ title: `N${i}`, artist: "X", at: 3, night: "2025-05-03" });
-  const places = {
-    "2025-05-01": "195 Erie St, San Francisco",
-    "2025-05-02": "Pier 80, San Francisco",
-    "2025-05-03": "42 Norfolk St, San Francisco",
-  };
-
-  // A preview writes nothing, and offers the venue with the night it belongs to.
-  const shown = await (await api(env, "/api/v1/shazam/import",
-    { ...mac, items, places, preview: true })).json();
-  assert.equal(shown.newNights[0].place, "42 Norfolk St, San Francisco",
-    "the night with no party was offered without its venue");
-  assert.equal(one(env, `SELECT place FROM events WHERE title = 'Blank night'`).place, "",
-    "a preview wrote a place");
-
-  await api(env, "/api/v1/shazam/import",
-    { ...mac, items, places, preview: false, create: ["2025-05-03"] });
-
-  // The blank one is filled, the typed one is left exactly alone.
-  assert.equal(one(env, `SELECT place FROM events WHERE title = 'Blank night'`).place,
-    "Pier 80, San Francisco", "an empty place was not filled in");
-  assert.equal(one(env, `SELECT place FROM events WHERE title = 'Named night'`).place,
-    "Frank's kitchen", "it overwrote a place somebody typed");
-  // And a night it makes is born knowing where it was.
-  const made = one(env, `SELECT title, place FROM events WHERE starts_ms = ?`,
-    Date.parse("2025-05-03T12:00:00Z"));
-  assert.equal(made.place, "42 Norfolk St, San Francisco",
-    "a night made from Shazams did not get its venue");
-});
-
-test("only the nights the DJ agreed to are made", async () => {
-  const { env } = await signedIn();
-  const mac = await installForPersonWithNoParties(env);
-  const items = [];
-  for (const day of ["2025-07-19", "2025-08-20"]) {
-    for (let i = 0; i < 6; i++) items.push({ title: `T${i}`, artist: "A", at: 1, night: day });
-  }
-  await api(env, "/api/v1/shazam/import",
-    { ...mac, items, preview: false, create: ["2025-07-19", "nonsense", "2026-13-45"] });
-  const made = rows(env, `SELECT starts_ms FROM events`);
-  assert.equal(made.length, 1, "it made nights nobody asked for");
-  assert.equal(new Date(made[0].starts_ms).toISOString().slice(0, 10), "2025-07-19");
-});
-
-test("a Shazam library is not a thing a stranger's Mac can file", async () => {
-  const { env, send } = await signedIn();
-  const handle = one(env, `SELECT handle FROM profiles`).handle;
-  await send("/parties/new", { title: "Mutant zoo", day: "2026-08-08" });
-  await linkedInstall(env, handle);
-  const refused = await api(env, "/api/v1/shazam/import", {
-    id: "aabbccddeeff", secret: "not-the-secret",
-    items: [{ title: "Ptolemy", at: 1, night: "2026-08-08" }],
-  });
-  assert.equal(refused.status, 403);
-  assert.equal(rows(env, `SELECT * FROM songs`).length, 0);
-});
-
-test("the settings page is fields and sections, not one long paragraph", async () => {
-  const { env, read, send } = await signedIn();
-  await send("/settings", { name: "Shokunin" });
-  const body = await (await read("/settings")).text();
-  const handle = one(env, `SELECT handle FROM profiles`).handle;
-
-  // The two facts that were buried in a sentence are fields now, and the
-  // public address - the one thing on this page you copy and send somebody -
-  // is a link box rather than the tail of a clause.
-  assert.match(body, /<span>Your page<\/span>/, "the public address is not a field");
-  assert.match(body, /<span>Signed in as<\/span>/, "the account is not a field");
-  assert.match(body, new RegExp(`class="linkbox" href="/@${handle}"`),
-    "the public address is not a link box");
-  // A div, not a span: .eventfield span is the uppercase LABEL rule, and it
-  // rendered a real address as DJ@EXAMPLE.COM.
-  assert.match(body, /<div class="linkbox">dj@example\.com<\/div>/,
-    "the address is inside the rule that uppercases labels");
-
-  // Sections are separated and Sign out is an action, not body text.
-  assert.ok((body.match(/<hr class="soft">/g) || []).length >= 2, "the sections run together");
-  assert.match(body, /<a class="btn plain small" href="\/auth\/signout">Sign out<\/a>/,
-    "signing out is styled as a sentence");
-  assert.ok(!/>Nobody yet\. Following someone puts/.test(body), "the old empty state survived");
-  assert.match(body, /<p class="blank">Nobody yet/, "the empty state is not an empty state");
-});
-
-test("importing a Shazam library is offered only where it can work", async () => {
-  const { read, send } = await signedIn();
-  await send("/settings", { name: "Shokunin" });
-  const body = await (await read("/settings")).text();
-
-  // The markup is the page's, so the console never injects into it - but on
-  // partyparty.party there is no Mac to read a library, so it stays hidden
-  // until a probe of /api/shazam answers. A dead button is worse than none.
-  assert.match(body, /<section id="shazamimport" hidden>/,
-    "the Shazam section is visible on the web, where it cannot work");
-  assert.match(body, /fetch\('\/api\/shazam'/, "nothing probes for the Mac");
-  assert.match(body, /box\.hidden = false/, "the probe never reveals the section");
-  // It asks the shell for a fresh read, because a frame has no bridge.
-  assert.match(body, /window\.parent\.postMessage\(\{ pp: 'shazamRead' \}, location\.origin\)/,
-    "the page cannot ask the app for a fresher library");
-  // And its buttons use classes that exist. `.ghost` does not, and shipped as
-  // raw system chrome on a dark page.
-  assert.ok(!/class="ghost"/.test(body), "a button is styled with a class the sheet never defines");
-
-  // Saying no to the file panel and having never Shazamed anything are not the
-  // same thing, and reporting the first as the second is a lie told to somebody
-  // who just declined on purpose.
-  assert.match(body, /fresh\.denied/, "a declined permission reads as an empty library");
-  assert.match(body, /needs your permission to read the Shazam/,
-    "nothing tells the DJ how to undo a decline");
-
-  // Forty parties is not something one button should make on a guess. The
-  // nights are ticked per night, and only the unambiguous ones start ticked.
-  assert.match(body, /card picknight/, "the nights cannot be chosen between");
-  assert.match(body, /const SURE = 10/, "every night is treated as equally certain");
-  assert.match(body, /picknight input:checked/, "the button ignores what was ticked");
-});
-
 for (const [name, fn] of tests) {
   try {
     await fn();
@@ -3090,4 +2145,3 @@ for (const [name, fn] of tests) {
   }
 }
 console.log(`PASS ${tests.length} platform tests`);
-

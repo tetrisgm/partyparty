@@ -115,26 +115,4 @@ final class APIClient {
         URLSession.shared.dataTask(with: req).resume()
     }
 
-    /// Hand the server this Mac's Shazam library.
-    ///
-    /// The app is the only process that can read it: the store is outside the
-    /// sandbox and the grant is a security-scoped bookmark this process holds.
-    /// So the app reads and pushes, and everything downstream (the console, the
-    /// platform) talks to the server about a snapshot already here. An empty
-    /// array is a real answer; `denied` is the other one, and they must not be
-    /// told to somebody as the same thing.
-    func postShazamLibrary(_ items: [ShazamLibrary.Item], denied: Bool = false,
-                           places: [String: String] = [:], placesPending: Int = 0) {
-        guard let u = URL(string: "http://127.0.0.1:\(port)/api/shazam/library"),
-              let body = try? JSONSerialization.data(withJSONObject: [
-                  "items": items.map(\.json), "denied": denied,
-                  "places": places, "placesPending": placesPending,
-              ]) else { return }
-        var req = URLRequest(url: u)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = body
-        URLSession.shared.dataTask(with: req).resume()
-    }
-
 }

@@ -371,19 +371,6 @@ html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--label);font-family:var(--sans);
 font-size:15px;line-height:1.45;font-synthesis:none}
 
-/* The scrollbar. These pages are shown inside the Mac's dark window, where the
-   platform default paints a wide light-grey bar down the seam - which is what
-   it looked like: a grey gutter between the night and the room. Thin, dark,
-   and out of the way, matching the console's own. */
-html{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.16) transparent;
-color-scheme:dark}
-::-webkit-scrollbar{width:9px;height:9px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:99px;
-border:2px solid transparent;background-clip:padding-box}
-::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);background-clip:padding-box}
-::-webkit-scrollbar-corner{background:transparent}
-
 /* The header is a card, not a band: an image with the name on it, inset from
    the edges and rounded, the way the console's cover sits. */
 .hero{position:relative;max-width:1180px;margin:20px auto 0;padding:0 20px}
@@ -393,23 +380,13 @@ border:2px solid transparent;background-clip:padding-box}
 align-items:flex-end;padding:28px 24px 20px;border-radius:var(--r-lg);overflow:hidden;
 background:linear-gradient(135deg,#3a1f2a,#1d1a22);background-size:cover;
 background-position:center;box-shadow:var(--shadow)}
-/* Two scrims, because a photograph of a party is busy exactly where the words
-   go. The flat one keeps the top tools readable; the second pools in the
-   bottom-left corner the title and date actually sit in - a crowd shot with
-   stage lights in it will otherwise eat a 15px line whole. */
 .hero .cover::after{content:'';position:absolute;inset:0;pointer-events:none;
-background:linear-gradient(180deg,rgba(0,0,0,.18),rgba(0,0,0,.30) 45%,rgba(0,0,0,.62)),
-radial-gradient(120% 90% at 0% 100%,rgba(0,0,0,.66),rgba(0,0,0,0) 62%)}
+background:linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.32) 55%,rgba(0,0,0,.58))}
 .hero .cover.bare::after{background:none}
 /* Remove, top right, only once there is something to remove. */
 /* Back with the other actions on the right; the left corner belongs to the
    brand, which is the way home from anywhere. */
-/* One cluster of three in the corner: shuffle, upload, remove. The neighbours
-   are .coveractions - right:20px, 72px wide - not .toptools, which is what I
-   measured against twice and got wrong twice; at 26px the remove button sat
-   exactly on top of upload, so upload looked like it had been deleted.
-   100px = 20 + 72 + an 8px gap. */
-.coverx{position:absolute;top:20px;right:100px;width:32px;height:32px;z-index:4;
+.coverx{position:absolute;top:26px;right:26px;z-index:4;width:38px;height:38px;
 border-radius:50%;display:grid;place-items:center;padding:0;border:0;
 background:rgba(18,18,22,.5);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
 box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
@@ -417,24 +394,6 @@ box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);color:#fff;font-size:15px;curso
 .cover.bare .coverx{display:none}
 .hero:has(.coverx) .toptools{right:92px}
 .hero:has(.cover.bare) .toptools{right:46px}
-/* The when and the where, typed into the line that shows them. They look like
-   the text they replace until you put a cursor in them - a form that announces
-   itself under a photograph is a form nobody reads. */
-.subedit{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
-.subedit input[type=date],.subedit [contenteditable]{font:inherit;color:inherit;
-background:transparent;border:0;border-radius:6px;padding:1px 4px;outline:none;
-min-width:2ch}
-/* The date reads as the date - "Sat 8 Aug", not 08/08/2026 - and the picker
-   hides behind it. A heading should look like a heading until you touch it. */
-.dayedit{position:relative;display:inline-flex;align-items:center;cursor:pointer;
-border-radius:6px;padding:1px 4px}
-.dayedit:hover{background:rgba(0,0,0,.28)}
-.dayedit input[type=date]{position:absolute;inset:0;opacity:0;width:100%;height:100%;
-padding:0;cursor:pointer}
-.subedit [contenteditable]:empty::before{content:attr(data-empty);opacity:.6}
-.subedit input[type=date]:hover,.subedit [contenteditable]:hover{background:rgba(0,0,0,.28)}
-.subedit input[type=date]:focus,.subedit [contenteditable]:focus{background:rgba(0,0,0,.42);
-box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
 .hero .titles{position:relative;z-index:1}
 .hero h1{font-size:clamp(34px,3.4vw,46px);font-weight:800;line-height:1.04;
 letter-spacing:-.03em;color:#fff;margin:0 0 4px;overflow-wrap:anywhere}
@@ -471,23 +430,14 @@ main{max-width:680px;margin:0 auto;padding:28px 20px 96px}
 main.wide{max-width:940px}
 .withrail{max-width:1180px;margin:0 auto;padding:28px 20px 96px;
 display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:40px;align-items:start}
-/* The Mac shows this page in a frame beside its own room controls, so the
-   window it gets is narrower than a browser's. The rail gives up width before
-   it gives up existing - standing beside the night is the whole point of it. */
-@media (max-width:1080px){
-  .withrail{grid-template-columns:minmax(0,1fr) 260px;gap:28px}
-}
 .rail{position:sticky;top:24px;display:grid;gap:26px}
 
 h1{font-size:26px;font-weight:800;letter-spacing:-.015em;margin:0 0 4px}
 h2{font-size:17px;font-weight:700;letter-spacing:-.01em;margin:32px 0 12px}
 /* Rail headings are the console's eyebrows, not headlines. */
 /* A heading with its action on the same line. */
-/* The trailing hint drops under the heading rather than being squeezed beside
-   it: at phone width "Following"/"Their nights show up on your home page" was
-   two columns of four words each. */
-.sectionhead{display:flex;align-items:center;justify-content:space-between;
-gap:4px 16px;flex-wrap:wrap;margin:32px 0 12px}
+.sectionhead{display:flex;align-items:center;justify-content:space-between;gap:16px;
+margin:32px 0 12px}
 .sectionhead h2{margin:0}
 .rail h2{margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:.05em;
 text-transform:uppercase;color:var(--label-tertiary)}
@@ -605,7 +555,7 @@ font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--label-
 .you{background:var(--bg-elevated);border:1px solid var(--separator);
 border-radius:var(--r-md);padding:18px;margin:0 0 14px}
 .yourow{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
-.yourow .grow{flex:1 1 190px;min-width:0;display:grid;gap:10px}
+.yourow .grow{flex:1 1 260px;min-width:0;display:grid;gap:10px}
 .twoup{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 /* Sized by what is in it, not pinned to the disc: a fixed 76px box left the
    "Add a photo" line hanging outside it, over whatever wrapped underneath. */
@@ -645,123 +595,7 @@ font-size:11px;font-weight:700;letter-spacing:.02em;background:var(--fill);
 color:var(--label-secondary)}
 .tag.quiet{background:transparent;box-shadow:inset 0 0 0 1px var(--separator)}
 .tag.live{background:rgba(255,45,111,.16);color:var(--accent)}
-/* A night has a colour. Derived from the cover's own name rather than its
-   pixels - a Worker has no image pipeline, and a stable hue per picture is the
-   honest version of the same idea: every party looks like itself, and looks the
-   same every time you open it. */
-.nightlit{--night:var(--accent)}
-.nightlit .hero .cover{box-shadow:var(--shadow),0 0 90px -30px var(--night)}
-.nightlit h2{color:var(--label)}
-.nightlit .entry:hover,.nightlit .people li:hover{
-background:color-mix(in srgb,var(--night) 7%,var(--bg-elevated))}
-.nightlit .addline:focus-within{border-color:var(--night)}
-.nightlit .addline:focus-within button,.nightlit button.onfocus{background:var(--night)}
-
-/* Photos first: a night is mostly pictures, and a grid is how you look back at
-   one. Two up on a phone, three where there is room. */
-.roll{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
-gap:6px;margin:0 0 16px}
-.roll figure{margin:0;position:relative;border-radius:var(--r-sm);overflow:hidden;
-background:var(--bg-elevated);aspect-ratio:1}
-.roll img,.roll video{width:100%;height:100%;object-fit:cover;display:block}
-.roll figcaption{position:absolute;left:0;right:0;bottom:0;padding:16px 10px 8px;
-font-size:12px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.72));
-overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* An empty space says what belongs in it, not that it is empty. */
-.blank{margin:0 0 10px;padding:14px 12px;border-radius:var(--r-sm);
-background:var(--bg-elevated);color:var(--label-tertiary);font-size:14px;line-height:1.5}
-
-/* Somebody you know, and the last night you saw them at - the fact this page
-   exists to answer, with their face on it like everywhere else. */
-.seen{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:12px;
-align-items:center;padding:13px 12px;border-bottom:1px solid var(--separator);
-text-decoration:none;color:var(--label)}
-.seen:hover{background:var(--bg-elevated);text-decoration:none}
-.seen .entrybody b{font-size:16px}
-
-/* Starting a night: the name is the page, and the two answered things sit
-   under it as one quiet row. */
-.startnight{display:grid;gap:12px;margin:14px 0}
-.startnight input.bigname{width:100%;border:0;background:none;padding:0;min-height:0;
-font:inherit;font-size:30px;font-weight:800;letter-spacing:-.025em;
-color:var(--label);outline:none;box-shadow:none}
-.startnight input.bigname::placeholder{color:var(--label-tertiary)}
-.startrow{display:flex;gap:8px;flex-wrap:wrap}
-.startrow input{flex:1 1 150px;min-width:0;width:auto;min-height:44px;padding:11px 14px;
-border-radius:var(--r-sm);border:1px solid var(--separator);background:var(--bg-elevated);
-color:var(--label);font:inherit;font-size:15px;outline:none}
-.startrow input:focus{border-color:var(--accent)}
-.startnight .btn{justify-self:start}
-
-/* The capture line. The sentence the app exists for goes in here without
-   scrolling to find the right section: type the names or the tracks, say what
-   they are. The sections below are for correcting, not for entering. */
-.capture{position:sticky;top:8px;z-index:5;margin:0 0 26px;padding:10px 12px;
-border-radius:var(--r-md);background:var(--bg-elevated-2);
-box-shadow:0 8px 24px -18px #000;backdrop-filter:blur(18px)}
-.capture input{width:100%;border:0;background:none;padding:4px 2px;min-height:32px;
-font:inherit;font-size:16px;color:var(--label);outline:none}
-.capture input::placeholder{color:var(--label-tertiary)}
-.as{display:flex;gap:6px;margin-top:6px}
-.as button{flex:1 1 0;border:0;border-radius:var(--r-pill);padding:8px 4px;
-background:var(--bg-elevated);color:var(--label-secondary);font:inherit;
-font-size:13px;font-weight:650;cursor:pointer}
-.as button:hover{background:var(--night,var(--accent));color:#fff}
-
-/* The welcome, folded down to one line. */
-details.welcome{margin:0 0 18px}
-details.welcome summary .avatar{flex:0 0 auto}
-details.welcome summary{display:flex;align-items:center;gap:12px;cursor:pointer;
-padding:10px 12px;border-radius:var(--r-md);list-style:none}
-details.welcome summary::-webkit-details-marker{display:none}
-details.welcome summary:hover{background:var(--bg-elevated)}
-details.welcome summary span{display:grid;gap:1px;min-width:0}
-details.welcome summary b{font-size:15px}
-details.welcome summary small{font-size:13px;color:var(--label-tertiary)}
-details.welcome[open] summary{margin-bottom:6px}
-
-/* One scale, everywhere. Three sections were designed on three different days
-   and it read like it: headings at four sizes, secondary text at three. */
-h1{font-size:clamp(28px,4.4vw,34px);letter-spacing:-.025em;line-height:1.08}
-h2{font-size:19px;letter-spacing:-.02em}
-.muted{font-size:14px;line-height:1.5}
-
-/* Motion, of the kind you notice only when it is missing: entries settle in
-   rather than appearing, and each one a beat after the last. Nothing moves for
-   somebody who asked for less. */
-@keyframes settle{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.entry,.people li,.setlist li{animation:settle .28s cubic-bezier(.22,.61,.36,1) both}
-.entry:nth-child(2){animation-delay:.03s}
-.entry:nth-child(3){animation-delay:.06s}
-.entry:nth-child(4){animation-delay:.09s}
-.entry:nth-child(n+5){animation-delay:.12s}
-.btn,.entry,.people li,.x,.addline{transition:background .14s ease,color .14s ease,
-border-color .14s ease,opacity .14s ease}
-@media (prefers-reduced-motion:reduce){
-  .entry,.people li,.setlist li{animation:none}
-}
-
-/* Home as a journal timeline. A row in a table tells you nothing; an entry
-   says when, where, and what is in it, and is a whole tap target. */
-.entries{display:grid;margin:0 0 8px;border-top:1px solid var(--separator)}
-.entry{display:grid;grid-template-columns:88px minmax(0,1fr) auto;gap:14px;
-align-items:baseline;padding:16px 12px;border-bottom:1px solid var(--separator);
-text-decoration:none;color:var(--label)}
-.entry:hover{background:var(--bg-elevated);text-decoration:none}
-.entrywhen{font-size:13px;font-weight:650;color:var(--label-tertiary);
-font-variant-numeric:tabular-nums;line-height:1.5}
-.entrybody{display:grid;gap:3px;min-width:0}
-.entrybody b{font-size:17px;letter-spacing:-.01em;line-height:1.25}
-.entrywhere{font-size:14px;color:var(--label-secondary)}
-.entryinside{font-size:13px;color:var(--label-tertiary);overflow:hidden;
-text-overflow:ellipsis;white-space:nowrap}
-@media (max-width:520px){
-  .entry{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:14px 10px}
-  .entry .entrywhen{grid-column:1/-1;order:-1}
-}
-.tracker{margin-top:4px}
-.tracker h2:first-child{margin-top:18px}
+.tracker{margin-top:44px;padding-top:8px;border-top:1px solid var(--separator)}
 .wentrow{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:650}
 .wentrow input{width:20px;height:20px;accent-color:var(--accent)}
 .notemini{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
@@ -771,26 +605,6 @@ padding:7px 12px;font-size:13px}
 .eventfield{display:grid;gap:6px}
 .eventfield span{font-size:12px;font-weight:700;letter-spacing:.03em;
 text-transform:uppercase;color:var(--label-tertiary)}
-/* Two facts side by side, one under the other when there is no room for two.
-   A person's public address and the account behind it were a sentence before,
-   which is a bad shape for the one thing on the page you copy and send. */
-.factrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
-gap:8px 20px;margin:2px 0 10px}
-.factrow .linkrow{margin:0}
-/* How many tracks a night is about to gain, which is the number somebody is
-   actually reading, so it is not a grey aside at the end of a date. */
-.importnight{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-.importnight .tag{margin:0;flex:0 0 auto}
-/* A night the DJ is choosing. Unticked ones stay legible - they are the reason
-   the list is longer than the obvious answer - but sit back. */
-.picknight{display:block;cursor:pointer;position:relative;padding-left:44px;opacity:.5}
-.picknight.on{opacity:1}
-.picknight input{position:absolute;left:16px;top:18px;width:17px;height:17px;
-accent-color:var(--accent);cursor:pointer}
-/* Where the night was, worked out from its own coordinates. Louder than the
-   track list under it, because it is the line that makes somebody say "oh,
-   THAT one" - a date alone rarely does. */
-.wherewas{font-size:13px;font-weight:650;color:var(--label);margin:2px 0 1px}
 textarea{width:100%;padding:11px 14px;border-radius:var(--r-sm);
 border:1px solid var(--separator);background:var(--bg-elevated);color:var(--label);
 font:inherit;font-size:15px;outline:none;resize:vertical}
@@ -799,112 +613,6 @@ input[type=datetime-local],input[type=search]{width:100%;min-height:44px;padding
 border-radius:var(--r-sm);border:1px solid var(--separator);background:var(--bg-elevated);
 color:var(--label);font:inherit;font-size:15px;outline:none}
 input[type=datetime-local]:focus,input[type=search]:focus{border-color:var(--accent)}
-/* The record, as a journal rather than a form.
-   Nothing here announces itself as an input until it is touched: a note reads
-   as the note it holds, an empty one as grey placeholder text, and the borders
-   and the Save button appear on focus. Four stacked controls per person is
-   what a form looks like; one line with a name on it is what a page you write
-   on looks like. */
-.tracker h2{font-size:19px;letter-spacing:-.02em;margin:34px 0 10px}
-.people{list-style:none;padding:0;margin:0 0 6px;display:grid;gap:2px}
-.people li{display:grid;grid-template-columns:36px minmax(0,1fr);gap:12px;
-align-items:start;padding:10px 12px;border-radius:var(--r-sm)}
-.people li:hover{background:var(--bg-elevated)}
-.personline{display:grid;gap:2px;min-width:0}
-.nameline{display:flex;align-items:center;gap:8px}
-.nameline a{font-weight:700;text-decoration:none;color:var(--label)}
-.nameline a:hover{color:var(--accent)}
-.x{margin-left:auto;border:0;background:none;color:var(--label-tertiary);
-font-size:13px;line-height:1;padding:4px 6px;border-radius:var(--r-sm);
-cursor:pointer;opacity:0;transition:opacity .12s}
-.people li:hover .x,.x:focus{opacity:1}
-input.quiet{width:100%;border:0;background:none;padding:2px 0;min-height:0;
-font:inherit;font-size:14px;color:var(--label-secondary);outline:none}
-input.quiet::placeholder{color:var(--label-tertiary)}
-input.quiet:focus{color:var(--label)}
-/* The save only exists once you are typing. */
-button.onfocus{display:none;justify-self:start;margin-top:6px;border:0;
-background:var(--accent);color:#fff;font:inherit;font-size:13px;font-weight:700;
-padding:6px 14px;border-radius:var(--r-pill);cursor:pointer}
-.personline:focus-within button.onfocus{display:block}
-
-/* One line to add anything: type, press +. */
-.addline{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;margin:0 0 4px;
-padding:9px 12px;border-radius:var(--r-sm);border:1px dashed var(--separator)}
-.addline:focus-within{border-style:solid;border-color:var(--accent)}
-.addline input{flex:1 1 auto;min-width:0;width:auto;border:0;background:none;
-padding:0;min-height:26px;font:inherit;font-size:15px;color:var(--label);outline:none}
-.addline.two input:last-of-type{flex:0 1 38%;font-size:14px;color:var(--label-secondary)}
-.addline button{flex:0 0 auto;width:30px;height:30px;border:0;border-radius:50%;
-background:var(--bg-elevated-2);color:var(--label-secondary);font-size:17px;
-line-height:1;cursor:pointer}
-/* A track that is a picture. The screenshot leads the row at a size you can
-   actually read a track name off, with anything typed beside it. */
-.setlist li.shot{align-items:center;gap:12px}
-.shotwrap{flex:0 0 auto;display:block;width:96px;border-radius:var(--r-sm);
-overflow:hidden;background:var(--bg-elevated-2)}
-.shotwrap img{display:block;width:100%;height:auto}
-.addtrack{margin-top:10px}
-.addtrack .camera{width:32px;height:32px;border-radius:50%;flex:0 0 auto;border:0;
-background:var(--fill);color:var(--label-secondary);display:grid;place-items:center;
-cursor:pointer;padding:0}
-.addtrack .camera:hover{background:var(--fill-hover);color:var(--label)}
-.addtrack .camera svg{width:18px;height:18px}
-
-/* The composer. A box you write in, with its actions along the bottom - the
-   shape the console had, which is a place to write rather than a field to
-   fill. It lights up when a photo is over it. */
-.composer{border:1px dashed var(--separator);border-radius:var(--r-md);
-padding:10px 12px 8px;margin:0 0 12px;display:grid;gap:8px;
-transition:border-color .14s ease,background .14s ease}
-.composer:focus-within{border-style:solid;border-color:var(--accent)}
-.composer.dropping{border-style:solid;border-color:var(--accent);
-background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.composer textarea{width:100%;border:0;background:none;outline:none;resize:vertical;
-min-height:44px;font:inherit;font-size:15px;color:var(--label)}
-.composer textarea::placeholder{color:var(--label-tertiary)}
-.composerbar{display:flex;align-items:center;gap:10px}
-.composer .camera{width:34px;height:34px;border:0;border-radius:50%;flex:0 0 auto;
-background:var(--fill);color:var(--label-secondary);display:grid;place-items:center;
-cursor:pointer;padding:0}
-.composer .camera:hover{background:var(--fill-hover);color:var(--label)}
-.composer .camera svg{width:19px;height:19px}
-.composer .grow{flex:1 1 auto}
-
-/* Adding to a list in the rail: the field, then a plus. One row - the two-word
-   answers it used to need went away with the question. */
-.addwho{margin-top:12px}
-
-/* "I was there" is a phrase, not a plus sign: it needs a pill it fits inside,
-   or the round icon button squashes it onto three lines. */
-.wasthere{margin-top:14px}
-.wasthere button{width:auto;height:34px;padding:0 16px;border-radius:var(--r-pill);
-white-space:nowrap;font-size:14px;font-weight:700;background:var(--accent);color:#fff}
-.addline:focus-within button{background:var(--accent);color:#fff}
-.seenby{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
-/* The visibility picker, always open. A class called seen is already a person-entry
-   grid elsewhere in this sheet, and naming this one the same turned the three
-   choices into three stacked circles - what a collision looks like from the
-   outside. (No backticks in here: the stylesheet is a template literal.) */
-.seenpick{margin:0 0 18px}
-.seenpick .muted{margin:0}
-hr.soft{border:0;border-top:1px solid var(--separator);margin:34px 0}
-
-/* What was played, in the order it was played. Numbers in the margin so the
-   list reads as a record rather than as another form. */
-.setlist{list-style:none;counter-reset:song;padding:0;margin:0 0 12px;display:grid;gap:2px}
-.setlist li{counter-increment:song;display:flex;align-items:center;gap:10px;
-padding:9px 12px;border-radius:var(--r-sm);min-width:0}
-.setlist li:nth-child(odd){background:var(--bg-elevated)}
-.setlist li::before{content:counter(song);font-variant-numeric:tabular-nums;
-font-size:12px;font-weight:700;color:var(--label-tertiary);min-width:1.4em}
-.setlist .grow{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.setlist form{margin:0;flex:0 0 auto}
-.setlist li:hover .x,.setlist .x:focus{opacity:1}
-.addline .camera{background:none;color:var(--label-tertiary);width:30px;height:30px;
-display:grid;place-items:center}
-.addline .camera svg{width:19px;height:19px}
-.addline .camera:hover{color:var(--label)}
 .handlesays[data-state="ok"]{color:var(--success)}
 .handlesays[data-state="bad"]{color:var(--accent)}
 
@@ -922,24 +630,8 @@ box-shadow:0 0 0 0 rgba(255,45,111,.55);animation:pulse 1.8s ease-out infinite}
 background:var(--bg-elevated);border:1px solid var(--separator);
 font-size:14px;font-weight:650;text-decoration:none;max-width:100%;
 overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-details.edit{margin:0}
-details.edit summary{padding:5px 0}
-/* Who may see it, as one chip with the night. */
-/* One row of quiet controls under the night, not a stack of them. Either can
-   open, and opening one takes the whole row's width. */
-.nightbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 6px}
-.nightbar details[open]{flex:1 1 100%}
-details.seen{display:inline-block;border:0}
-details.seen summary{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
-list-style:none;font-size:13px;font-weight:600;color:var(--label-secondary);
-padding:5px 12px;border-radius:var(--r-pill);background:var(--bg-elevated)}
-details.seen summary::-webkit-details-marker{display:none}
-details.seen summary:hover{color:var(--label)}
-.dotv{width:7px;height:7px;border-radius:50%;background:var(--label-tertiary)}
-.dotv.link{background:#f0b429}
-.dotv.public{background:var(--success,#3ddc84)}
-details.seen[open]{display:block;margin-bottom:10px}
-details.edit summary{cursor:pointer;font-size:13px;font-weight:600;
+details.edit{margin:0 0 20px}
+details.edit summary{cursor:pointer;font-size:14px;font-weight:650;
 color:var(--label-secondary);padding:6px 0;list-style:none}
 details.edit summary::-webkit-details-marker{display:none}
 details.edit summary::before{content:'\\2699\\FE0E';padding-right:8px}
@@ -964,9 +656,8 @@ font-weight:700;width:auto;flex:1 1 auto}
 /* Changing the picture on a cover, the way the console does it: the buttons
    sit on the image itself rather than in a settings drawer below it. */
 .coveractions{position:absolute;right:26px;bottom:26px;display:flex;gap:8px;z-index:2}
-.coveractions{right:20px;bottom:auto;top:20px}
-.coveractions button{width:32px;height:32px;padding:0;border-radius:50%;
-background:rgba(0,0,0,.34);color:rgba(255,255,255,.78);font:inherit;font-size:15px;
+.coveractions button{min-height:38px;padding:0 16px;border-radius:var(--r-pill);
+background:rgba(0,0,0,.45);color:#fff;font:inherit;font-size:13px;font-weight:650;
 cursor:pointer;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
 border:1px solid rgba(255,255,255,.14)}
 .coveractions button:hover{background:rgba(0,0,0,.62)}
@@ -995,7 +686,7 @@ details.tinyhelp summary{cursor:pointer;font-size:12px;font-weight:600;
 color:var(--label-tertiary);margin-top:6px}
 details.tinyhelp p{margin:8px 0 0}
 
-@media (max-width:760px){
+@media (max-width:900px){
   .withrail{grid-template-columns:minmax(0,1fr);gap:8px}
   .rail{position:static}
 }
@@ -1008,8 +699,8 @@ details.tinyhelp p{margin:8px 0 0}
   .hero .cover{min-height:180px;padding:16px;flex-direction:column;
   align-items:stretch;justify-content:flex-end;gap:14px}
   .hero h1{font-size:30px}
-  .hero .cover .titles{margin-top:56px}
-  .coveractions{right:14px;top:14px}
+  .hero .cover .titles{margin-top:52px}
+  .coveractions{position:static;flex-wrap:wrap}
   .coversays{position:static;order:-1}
   .toptools{top:16px;right:16px}
   .brandchip{top:16px;left:16px}
@@ -1056,7 +747,7 @@ background:linear-gradient(200deg,rgba(255,45,111,.26),rgba(10,10,12,.38))}
 }
 `;
 
-function page(title, body, heroHtml, rail, wide, lit) {
+function page(title, body, heroHtml, rail, wide) {
   const shell = rail
     ? `<div class="withrail"><div>${body}</div>${rail}</div>`
     : `<main${wide ? ` class="wide"` : ""}>${body}</main>`;
@@ -1064,7 +755,7 @@ function page(title, body, heroHtml, rail, wide, lit) {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <title>${esc(title)}</title><style>${STYLE}</style></head>
-<body${lit ? ` class="nightlit"` : ""}>${heroHtml || ""}${shell}
+<body>${heroHtml || ""}${shell}
 <footer><a href="/home">PartyParty</a></footer></body></html>`;
 }
 
@@ -1077,16 +768,11 @@ function hero(title, sub, cover, tools, coverForm, editable) {
   const pencil = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`;
-  // `editable` is either false, or what the name is called - "group" or
-  // "party" - so the label a screen reader speaks is the truth.
-  const what = editable === true ? "group" : editable;
   const name = editable
     ? `<span id="groupName" contenteditable="plaintext-only" role="textbox"
-         aria-label="${esc(what[0].toUpperCase() + what.slice(1))} name"
-         spellcheck="false">${esc(title)}</span>
+         aria-label="Group name" spellcheck="false">${esc(title)}</span>
        <button class="fieldedit" type="button" id="groupNamePencil"
-         aria-label="Edit the ${esc(what)} name"
-         title="Edit the ${esc(what)} name">${pencil}</button>`
+         aria-label="Edit the group name" title="Edit the group name">${pencil}</button>`
     : esc(title);
   return `<header class="hero">
     <a class="brandchip" href="/home" title="Back to your home">\u{1FAA9} PartyParty</a>
@@ -1112,10 +798,8 @@ function coverTools(action, fromPublic) {
     <form class="coveractions" method="post" action="${esc(action)}"
       enctype="multipart/form-data" id="coverForm">
     ${fromPublic ? `<input type="hidden" name="fromPublic" value="1">` : ""}
-    <button type="submit" name="shuffleCover" value="1"
-      aria-label="Shuffle image" title="Shuffle image">\u21bb</button>
-    <button type="button" onclick="this.nextElementSibling.click()"
-      aria-label="Upload image" title="Upload image">\u2191</button>
+    <button type="submit" name="shuffleCover" value="1">Shuffle image</button>
+    <button type="button" onclick="this.nextElementSibling.click()">Upload image</button>
     <input type="file" name="cover" accept="image/*"
       onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
   </form>`;
@@ -1197,12 +881,7 @@ function newPartyScript() {
   </script>`;
 }
 
-// `name` says which field the in-place title posts and where: groups rename
-// through /manage with groupName, a night renames through its own /edit with
-// title. Same gesture, two records.
-function coverScript(action, name) {
-  const nameAction = (name && name.action) || action;
-  const nameField = (name && name.field) || "groupName";
+function coverScript(action) {
   return `<script>
   (() => {
     const form = document.getElementById('coverForm');
@@ -1254,57 +933,6 @@ function coverScript(action, name) {
       send(data);
     });
 
-    // The day and the place, edited in the line that shows them.
-    const sub = (el, field, read) => {
-      if (!el) return;
-      let was = read(el);
-      const put = async () => {
-        const value = read(el);
-        if (value === was) return;
-        const body = new FormData();
-        body.set(field, value);
-        try {
-          const r = await fetch(${JSON.stringify(nameAction)}, {
-            method: 'POST', body, headers: { accept: 'application/json' },
-          });
-          const d = await r.json();
-          if (!r.ok || d.error) throw new Error(d.error || 'that did not save');
-          was = value;
-        } catch (e) {
-          if (el.isContentEditable) el.textContent = was; else el.value = was;
-          tell(String(e.message || e), true);
-        }
-      };
-      el.addEventListener('change', put);
-      el.addEventListener('blur', put);
-      el.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && el.isContentEditable) { e.preventDefault(); el.blur(); }
-      });
-    };
-    const dayField = document.getElementById('heroDay');
-    const dayText = document.getElementById('heroDayText');
-    if (dayField) {
-      // Clicking the words opens the picker rather than putting a cursor in a
-      // field nobody can see.
-      dayField.addEventListener('click', () => {
-        if (dayField.showPicker) { try { dayField.showPicker(); } catch (e) {} }
-      });
-      dayField.addEventListener('change', () => {
-        if (!dayText) return;
-        const v = dayField.value;
-        // Built from parts, not from a string with an hour in it: the product
-        // has no time in it, and a test greps the page to keep it that way.
-        const bits = v ? v.split('-').map(Number) : null;
-        dayText.textContent = bits
-          ? new Date(Date.UTC(bits[0], bits[1] - 1, bits[2], 12))
-              .toLocaleDateString(undefined,
-                { weekday: 'short', day: 'numeric', month: 'short' })
-          : 'No date yet';
-      });
-    }
-    sub(dayField, 'day', (el) => el.value);
-    sub(document.getElementById('heroPlace'), 'place', (el) => el.textContent.trim());
-
     // The name, edited in place: Enter or clicking away saves it, Escape puts
     // it back. Same as naming an event in the app.
     const name = document.getElementById('groupName');
@@ -1321,8 +949,8 @@ function coverScript(action, name) {
       saving = true;
       try {
         const body = new FormData();
-        body.set(${JSON.stringify(nameField)}, now);
-        const r = await fetch(${JSON.stringify(nameAction)}, {
+        body.set('groupName', now);
+        const r = await fetch(${JSON.stringify(action)}, {
           method: 'POST', body, headers: { accept: 'application/json' },
         });
         const d = await r.json();
@@ -1374,50 +1002,13 @@ async function coverFromForm(env, form, current) {
   return null;
 }
 
-// A party is a DAY. Nobody journalling a night remembers that it started at
-// 21:00, and being asked for a time is one more field between standing in a
-// room and writing down that you were there. The hour is kept on the row for
-// upcoming/past and for a broadcast, and simply not shown.
 function whenText(event) {
   if (!event.starts_ms) return "Date to come";
   const date = new Date(event.starts_ms);
-  const parts = { weekday: "short", day: "numeric", month: "short", timeZone: event.timezone || "UTC" };
-  // A party from before the change carried a real time somebody typed, so it
-  // still gets one. Everything made since is a day.
-  if (!event.day_only) parts.hour = "2-digit", parts.minute = "2-digit";
-  const stamp = date.toLocaleString("en-GB", parts);
-  // The year, once it is not this one - a journal is read years later.
-  const year = date.getUTCFullYear();
-  return year === new Date().getUTCFullYear() ? stamp : `${stamp} ${year}`;
-}
-
-// What was played. The order they were added is the order they were played,
-// which is what somebody standing at a party can actually produce.
-async function songsFor(env, eventId) {
-  const { results } = await env.DB.prepare(
-    `SELECT s.*, p.name AS person_name FROM songs s
-       LEFT JOIN people p ON p.id = s.person_id
-      WHERE s.event_id = ? ORDER BY s.seq, s.created_ms`
-  ).bind(eventId).all();
-  return results || [];
-}
-
-async function addSong(env, emailNorm, eventId, { title, artist, personId, mediaKey }, now) {
-  const clean = String(title || "").trim().slice(0, 200);
-  // A picture of a track IS the track. Shazam already put the title, the
-  // artist and the artwork on the screen; retyping all three off a screenshot
-  // is worse than keeping the screenshot (owner, 2026-08-09).
-  if (!clean && !mediaKey) return null;
-  const next = await env.DB.prepare(
-    `SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM songs WHERE event_id = ?`
-  ).bind(eventId).first();
-  const id = ulid(now);
-  await env.DB.prepare(
-    `INSERT INTO songs (id, event_id, owner_email, title, artist, person_id, media_key, seq, created_ms)
-     VALUES (?,?,?,?,?,?,?,?,?)`
-  ).bind(id, eventId, emailNorm, clean, String(artist || "").trim().slice(0, 120),
-    personId || null, mediaKey || null, next ? next.n : 1, now).run();
-  return id;
+  return date.toLocaleString("en-GB", {
+    weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    timeZone: event.timezone || "UTC",
+  });
 }
 
 function initials(name) {
@@ -1433,203 +1024,6 @@ function personDisc(person, extraClass) {
   const label = (person && (person.name || person.handle)) || "Someone";
   return `<span class="avatar${extraClass ? " " + extraClass : ""}" title="${esc(label)}">${
     url ? `<img src="${esc(url)}" alt="" loading="lazy">` : esc(initials(label))}</span>`;
-}
-
-// Import from Shazam, on the settings page, where somebody went looking for it.
-//
-// Reading a Shazam library is something only the Mac app can do - ShazamKit
-// authenticates by code-signing identity. But the console shows THIS page
-// through its own server, which makes `/api/shazam` same-origin from right
-// here. So the page owns the markup, the Mac owns the capability, and nothing
-// is ever injected into a web page by the console (which is the rule that keeps
-// the Mac and the web one thing).
-//
-// On partyparty.party there is no such endpoint, the probe fails, and the
-// section stays hidden - it is not a feature the web can offer, and offering a
-// dead button would be worse than offering nothing. Hidden by default for the
-// same reason: no flash of a control that is about to disappear.
-function shazamImport() {
-  return `<section id="shazamimport" hidden>
-    <hr class="soft">
-    <div class="sectionhead"><h2>Shazam library</h2>
-      <span class="muted">Anything caught before 6am counts as the night before</span></div>
-    <p class="muted">Your own Shazams, added to the party they happened at.</p>
-    <button class="btn plain" id="shazamgo" type="button">Look in my Shazam library</button>
-    <div id="shazamsaid" style="margin-top:14px"></div>
-  </section>
-  <script>
-  (() => {
-    const box = document.getElementById('shazamimport');
-    const btn = document.getElementById('shazamgo');
-    const said = document.getElementById('shazamsaid');
-    const esc = (s) => String(s == null ? '' : s)
-      .replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-    const look = () => fetch('/api/shazam', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    const day = (iso) => {
-      const at = Date.parse(iso + 'T12:00:00Z');
-      return isNaN(at) ? iso : new Date(at).toLocaleDateString(undefined,
-        { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-    };
-    const run = (preview, create) => fetch('/api/shazam/import', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ preview, create: create || [] }),
-    }).then(async (r) => {
-      const body = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(body.error || 'import failed');
-      return body;
-    });
-
-    // Only the app can read a library. It already read one when the console
-    // opened; asking for a fresher one goes up to the shell, because a frame
-    // has no bridge of its own.
-    const refresh = (since) => {
-      window.parent.postMessage({ pp: 'shazamRead' }, location.origin);
-      let tries = 0;
-      return new Promise((done) => {
-        const tick = async () => {
-          const s = await look();
-          // Five seconds, then work with the snapshot already here. The app
-          // answers in well under one; anything longer means there is no app
-          // listening, and standing on "Reading" for twelve seconds is not a
-          // better answer than the one we can already give.
-          if ((s && s.read && (s.readMs || 0) > since) || ++tries > 12) return done(s);
-          setTimeout(tick, 400);
-        };
-        tick();
-      });
-    };
-
-    const show = (found, count) => {
-      const could = found.newNights || [];
-      if (!found.nights.length && !could.length) {
-        said.innerHTML = found.unmatched
-          ? '<p>' + found.unmatched + ' Shazam' + (found.unmatched === 1 ? '' : 's') +
-            ' here, scattered over days too quiet to have been parties.</p>'
-          : '<p>Nothing new - every Shazam that matches one of your parties is already on it.</p>';
-        return;
-      }
-
-      const card = (name, badge, under) => '<div class="card"><div class="importnight">' +
-        '<strong>' + name + '</strong><span class="tag live">' + badge + '</span></div>' +
-        (under ? '<div class="muted">' + under + '</div>' : '') + '</div>';
-
-      // What goes onto parties that already exist.
-      const onto = found.nights.length
-        ? '<p>From ' + count + ' Shazam' + (count === 1 ? '' : 's') + ':</p>' +
-          found.nights.map((n) => card(esc(n.title || 'Untitled'), '+' + n.added,
-            esc(day(n.day)) + (n.place ? ' &middot; ' + esc(n.place) : '') +
-            (n.titles && n.titles.length
-              ? ' &middot; ' + esc(n.titles.join(', ')) : ''))).join('') +
-          '<button class="btn plain" id="shazamadd" type="button">Add them</button>'
-        : '';
-
-      // And the nights that WERE parties and were never written down. Without
-      // this the honest answer for a years-old library is "896 of these have
-      // nowhere to go", which is true and useless.
-      // Ten or more is a night out; five is a long dinner somewhere with music.
-      // Both are offered, only the first is ticked, and either way the DJ is
-      // choosing rather than pressing one button that makes forty records.
-      const SURE = 10;
-      const rest = could.length
-        ? '<div class="sectionhead" style="margin:26px 0 8px"><h2>Nights with no party</h2>' +
-          '<span class="muted">' + found.newNightTracks + ' tracks across ' +
-          could.length + ' days</span></div>' +
-          could.map((n) => '<label class="card picknight' +
-            (n.count >= SURE ? ' on' : '') + '"><input type="checkbox" value="' + n.day + '"' +
-            (n.count >= SURE ? ' checked' : '') + '><div class="importnight"><strong>' +
-            esc(day(n.day)) + '</strong><span class="tag live">' + n.count + '</span></div>' +
-            (n.place ? '<div class="wherewas">' + esc(n.place) + '</div>' : '') +
-            '<div class="muted">' + esc(n.titles.join(', ')) + '</div></label>').join('') +
-          '<p class="muted">Each becomes a party named after its date, with those tracks ' +
-          'already on it. Rename them whenever.</p>' +
-          '<button class="btn plain" id="shazammake" type="button"></button>'
-        : (found.unmatched
-          ? '<p class="muted">' + found.unmatched +
-            ' more are spread over days too quiet to have been parties.</p>' : '');
-
-      said.innerHTML = onto + rest;
-
-      const working = (button, word) => { button.disabled = true; button.textContent = word; };
-      const add = document.getElementById('shazamadd');
-      if (add) add.onclick = async (e) => {
-        working(e.target, 'Adding\\u2026');
-        try {
-          const done = await run(false);
-          const added = done.nights.reduce((sum, n) => sum + n.added, 0);
-          said.innerHTML = '<p>Added ' + added + ' track' + (added === 1 ? '' : 's') + ' to ' +
-            done.nights.length + ' part' + (done.nights.length === 1 ? 'y' : 'ies') + '.</p>';
-        } catch (err) {
-          said.innerHTML = '<p>Could not add them: ' + esc(err.message || err) + '</p>';
-        }
-      };
-      const make = document.getElementById('shazammake');
-      const ticked = () => [...said.querySelectorAll('.picknight input:checked')]
-        .map((box) => box.value);
-      const retitle = () => {
-        const n = ticked().length;
-        make.disabled = n === 0;
-        make.textContent = n === 0 ? 'Pick a night' :
-          'Make ' + n + ' part' + (n === 1 ? 'y' : 'ies');
-      };
-      if (make) {
-        retitle();
-        said.querySelectorAll('.picknight input').forEach((box) => {
-          box.onchange = () => {
-            box.closest('.picknight').classList.toggle('on', box.checked);
-            retitle();
-          };
-        });
-      }
-      if (make) make.onclick = async (e) => {
-        const days = ticked();
-        if (!days.length) return;
-        working(e.target, 'Making\\u2026');
-        try {
-          const done = await run(false, days);
-          const added = done.nights.reduce((sum, n) => sum + n.added, 0);
-          said.innerHTML = '<p>Made ' + days.length + ' part' +
-            (days.length === 1 ? 'y' : 'ies') + ' and put ' + added +
-            ' tracks on them, named after their dates. They are on your home page.</p>';
-        } catch (err) {
-          said.innerHTML = '<p>Could not make them: ' + esc(err.message || err) + '</p>';
-        }
-      };
-    };
-
-    look().then((state) => {
-      if (!state) return;             // not the Mac console: nothing to offer
-      box.hidden = false;
-      btn.onclick = async () => {
-        said.textContent = '';
-        btn.disabled = true;
-        const label = btn.textContent;
-        btn.textContent = 'Reading\\u2026';
-        try {
-          const fresh = await refresh((state.readMs) || 0) || state;
-          if (fresh.denied) {
-            said.innerHTML = '<p>PartyParty needs your permission to read the Shazam ' +
-              'library. Press this again and choose Allow - it is asked once, and the ' +
-              'library is only ever read.</p>';
-            return;
-          }
-          if (!fresh.count) {
-            said.innerHTML = "<p>Nothing in this Mac's Shazam library. It fills from " +
-              'Music Recognition in Control Center and from an iPhone signed in to the ' +
-              'same Apple Account.</p>';
-            return;
-          }
-          show(await run(true), fresh.count);
-        } catch (err) {
-          said.innerHTML = '<p>Could not read it: ' + esc(err.message || err) + '</p>';
-        } finally {
-          btn.disabled = false;
-          btn.textContent = label;
-        }
-      };
-    });
-  })();
-  </script>`;
 }
 
 // The profile form. One component, because the whole promise is that the thing
@@ -1928,207 +1322,113 @@ function peopleRail(people, base, handle, canManage) {
     </aside>`;
 }
 
+function groupPage(group, events, base, posts, viewer, people, past) {
+  const runs = !!(viewer && viewer.runsThisGroup);
+  const night = (event, gone) => `
+    <a class="tl${gone ? " past" : ""}" href="/@${esc(group.handle)}/${esc(event.slug)}">
+      <span class="when">${esc(whenText(event))}</span>
+      <span class="tlname">${esc(event.title || "Untitled party")}</span>
+      ${event.place ? `<span class="muted">${esc(event.place)}</span>` : ""}
+    </a>`;
+
+  // The heading carries the action, so making one is where you are already
+  // looking for them rather than somewhere further down the page.
+  const partiesHead = `<div class="sectionhead"><h2>Parties</h2>
+    ${runs ? `<a class="btn small" href="/@${esc(group.handle)}/new">Create a party</a>` : ""}
+  </div>`;
+  const upcoming = events.length
+    ? `<div class="timeline">${events.map((e) => night(e, false)).join("")}</div>`
+    : `<p class="muted">No parties announced yet.</p>`;
+  const before = (past || []).length
+    ? `<h2>Past parties</h2><div class="timeline">${past.map((e) => night(e, true)).join("")}</div>`
+    : "";
+
+  // Following, or the invitation to. An admin is not shown a form asking for
+  // their own name on their own page; managing it lives in the rail.
+  const follow = runs
+    ? ""
+    : viewer && viewer.follows
+      ? `<div class="actionbar quiet">
+           <span class="tile">\u2713</span>
+           <span class="lines">Following<small>Their parties reach you</small></span>
+         </div>`
+      : `<form method="post" action="/@${esc(group.handle)}/join">
+           <div class="row" style="margin-top:18px">
+             <input type="email" name="email" placeholder="your email" required>
+             <input type="text" name="name" placeholder="your name">
+           </div>
+           <button class="actionbar" type="submit">
+             <span class="tile">\u2605</span>
+             <span class="lines">Follow<small>Hear about their parties</small></span>
+           </button>
+         </form>
+         <p class="muted">One email to confirm. No account, and you can stop from any
+         message we send.</p>`;
+
+  return page(group.name || group.handle, `
+    ${group.bio ? `<p>${esc(group.bio)}</p>` : ""}
+    ${follow}
+    ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
+      rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
+    ${group.merch_link ? `<p><a class="btn plain" href="${esc(group.merch_link)}"
+      rel="noopener noreferrer nofollow" target="_blank">${esc(group.merch_label || "Merch")}</a></p>` : ""}
+    ${partiesHead}
+    ${upcoming}
+    ${before}
+    <div class="card" style="margin-top:18px">
+      <h2 style="margin:0 0 10px">Add to your calendar</h2>
+      <p class="muted">Every party lands in your own calendar, and stays right when
+      one moves.</p>
+      ${calendarBlock(base, group.handle)}
+    </div>
+    <h2>Talk</h2>
+    ${runs ? coverScript(`/@${esc(group.handle)}/manage`) : ""}
+    ${viewer ? `<form class="say" method="post" action="/@${esc(group.handle)}/say"
+        enctype="multipart/form-data">
+      <textarea name="say" maxlength="2000"
+        placeholder="Write a post, or add a photo..."></textarea>
+      <div class="sayrow">
+        <label class="pickfile">\u{1F4F7} Add photo/video
+          <input type="file" name="media" accept="image/*,video/*">
+        </label>
+        <button class="btn" type="submit">Post</button>
+      </div>
+    </form>` : ""}
+    ${postList(posts || [])}
+  `, hero(group.name || group.handle, "", group.cover_key, "",
+      runs ? coverTools(`/@${group.handle}/manage`, true) : "", runs),
+    peopleRail(people, base, group.handle, runs));
+}
+
 // A person at their @name. Not a second group page: a person is who they are
 // and what they run, and the parties themselves live on the group's page where
 // somebody can follow them.
-// Somebody's page: who they are, and their parties. This replaced a group page
-// that showed the same rows under a borrowed name - groups are dead, and a
-// person was always what the address meant.
-function personPage(profile, upcoming, past, isMe, base, followHandle, following) {
+function personPage(profile, groups) {
   const links = profile.linksObj || {};
   const shown = SOCIAL_FIELDS
     .map((field) => ({ field, value: links[field.key], href: linkHref(field.key, links[field.key]) }))
     .filter((entry) => entry.value && entry.href);
-
-  const row = (e) => `<a class="card partyrow" href="/@${esc(profile.handle)}/${esc(e.slug)}">
-    <div class="grow">
-      <div class="when">${esc(whenText(e))}${e.place ? " \u00b7 " + esc(e.place) : ""}</div>
-      <strong>${esc(e.title || "Untitled party")}</strong>
-    </div>
-  </a>`;
-  const section = (label, list, empty) => `<h2>${esc(label)}</h2>
-    ${list.length ? list.map(row).join("") : `<p class="muted">${empty}</p>`}`;
-
   return page(profile.name || `@${profile.handle}`, `
-    <div class="you"><div class="yourow" style="align-items:center">
-      ${personDisc(profile, "big")}
-      <div class="grow" style="gap:2px">
-        <b style="font-size:16px">${esc(profile.name || "@" + profile.handle)}</b>
-        <span class="muted">@${esc(profile.handle)}${
-          profile.bio ? " \u00b7 " + esc(profile.bio) : ""}</span>
-      </div>
-      ${isMe ? `<a class="btn plain small" href="/settings">Edit</a>` : ""}
-    </div></div>
+    ${profile.bio ? `<p>${esc(profile.bio)}</p>` : ""}
     ${shown.length ? `<p class="row">${shown.map((entry) =>
       `<a class="btn plain small" href="${esc(entry.href)}" rel="noopener noreferrer nofollow"
         target="_blank">${esc(entry.field.label)}</a>`).join("")}</p>` : ""}
-    ${profile.pay_link || profile.merch_link ? `<p class="row">
-      ${profile.pay_link ? `<a class="btn plain" href="${esc(profile.pay_link)}"
-        rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a>` : ""}
-      ${profile.merch_link ? `<a class="btn plain" href="${esc(profile.merch_link)}"
-        rel="noopener noreferrer nofollow" target="_blank">${
-          esc(profile.merch_label || "Merch")}</a>` : ""}
-    </p>` : ""}
-    ${isMe || following ? "" : !followHandle ? "" : `<form class="join" method="post"
-      action="/@${esc(followHandle)}/join">
-      <div class="row">
-        <input type="email" name="email" placeholder="your email" required>
-        <input type="text" name="name" placeholder="your name">
-      </div>
-      <button class="actionbar" type="submit">
-        <span class="tile">\u2605</span>
-        <span class="lines">Follow<small>Hear about their parties</small></span>
-      </button>
-    </form>
-    <p class="muted">One email to confirm. No account, and you can stop from any
-    message we send.</p>`}
-    ${following ? `<p class="muted">\u2605 You follow ${esc(profile.name || "@" + profile.handle)}.
-      Only you can see that.</p>` : ""}
-    ${section("Coming up", upcoming, isMe ? "Nothing coming up." : "Nothing announced.")}
-    ${section("Past", past, "Nothing yet.")}
-    <h2>Add to your calendar</h2>
-    <p class="muted">Their parties, in your own calendar, without an account.</p>
-    ${calendarBlock(base, profile.handle)}
-    ${isMe ? `<p class="muted" style="margin-top:32px"><a href="/home">Your parties</a> ·
-      <a href="/manage">Tips, merch and Pro</a></p>` : ""}
-  `, "", "", true);
+    ${groups.length ? `<h2>Their parties</h2>
+      ${groups.map((g) => `<a class="card" href="/@${esc(g.handle)}">
+        <strong>${esc(g.name || g.handle)}</strong>
+        <div class="muted">@${esc(g.handle)}${g.bio ? " \u00b7 " + esc(g.bio) : ""}</div></a>`).join("")}`
+      : `<p class="muted">No groups yet.</p>`}
+  `, hero(profile.name || `@${profile.handle}`, "", "", ""));
 }
 
-// Everything one person is throwing, newest first for what has happened and
-// soonest first for what has not. Owned by them: groups no longer decide.
-async function partiesOwnedBy(env, emailNorm, now) {
+async function runsGroups(env, emailNorm) {
   const { results } = await env.DB.prepare(
-    `SELECT * FROM events WHERE owner_email = ? AND state != 'draft'
-      ORDER BY COALESCE(starts_ms, created_ms) DESC LIMIT 200`
+    `SELECT g.handle, g.name, g.bio FROM groups g
+       JOIN group_djs gd ON gd.group_id = g.id
+       JOIN djs d ON d.id = gd.dj_id
+      WHERE d.email_norm = ? ORDER BY g.created_ms`
   ).bind(emailNorm).all();
-  const all = results || [];
-  return {
-    upcoming: all.filter((e) => !partyIsPast(e, now))
-      .sort((a, b) => (a.starts_ms || Infinity) - (b.starts_ms || Infinity)),
-    past: all.filter((e) => partyIsPast(e, now)),
-  };
-}
-
-// Dropping a photo on the composer. The console let you drag a picture straight
-// onto the box and the web made you find a file button, which is the difference
-// between writing a night down and filling in a form. No JavaScript, no drop -
-// the button still works, so nothing is lost by it failing.
-function dropScript() {
-  return `<script>
-  (() => {
-    const form = document.getElementById('sayForm');
-    if (!form) return;
-    const file = form.querySelector('input[type=file]');
-    const has = (e) => [...(e.dataTransfer ? e.dataTransfer.types : [])].includes('Files');
-    const stop = (e) => { if (has(e)) { e.preventDefault(); } };
-    form.addEventListener('dragenter', (e) => { stop(e); form.classList.add('dropping'); });
-    form.addEventListener('dragover', stop);
-    form.addEventListener('dragleave', (e) => {
-      if (!e.relatedTarget || !form.contains(e.relatedTarget)) form.classList.remove('dropping');
-    });
-    form.addEventListener('drop', (e) => {
-      if (!has(e)) return;
-      e.preventDefault();
-      form.classList.remove('dropping');
-      // DataTransfer to the file input, so the ordinary multipart post carries
-      // it - no second upload path to keep in step with the first.
-      if (file && e.dataTransfer.files.length) {
-        file.files = e.dataTransfer.files;
-        form.requestSubmit ? form.requestSubmit() : form.submit();
-      }
-    });
-  })();
-  <\/script>`;
-}
-
-// The night's tracks. A set runs to dozens once Shazam is writing them down, so
-// the page shows the shape of it - the first few and the last few - and opens
-// the rest on a click. Nothing is hidden that a click cannot reach, and no
-// scrollbar of its own: a list inside a scroller is a list nobody reads.
-const TRACKS_SHOWN = 8;
-function trackList(songs, tail) {
-  const all = songs || [];
-  // Nothing yet is nothing to draw: the line above the list says what goes in
-  // it, and a paragraph repeating that is a paragraph.
-  if (!all.length) return "";
-  // A track is a line, or a picture of one. A screenshot with nothing typed
-  // beside it still says everything Shazam said - so it stands on its own
-  // rather than under a placeholder title.
-  const row = (song) => `<li${song.media_key ? ` class="shot"` : ""}>
-    ${song.media_key ? `<a class="shotwrap" href="${esc(mediaUrl(song.media_key))}"
-      target="_blank" rel="noopener"><img src="${esc(mediaUrl(song.media_key))}"
-      alt="${esc(song.title || "What was playing")}" loading="lazy"></a>` : ""}
-    <span class="grow">${song.title ? `<b>${esc(song.title)}</b>` : ""}${
-      song.artist ? ` <span class="muted">${esc(song.artist)}</span>` : ""}${
-      song.person_name ? ` <span class="tag quiet">${esc(song.person_name)}</span>` : ""}</span>
-    ${tail ? tail(song) : ""}</li>`;
-  if (all.length <= TRACKS_SHOWN + 2) {
-    return `<ol class="setlist">${all.map(row).join("")}</ol>`;
-  }
-  const head = all.slice(0, TRACKS_SHOWN);
-  const rest = all.slice(TRACKS_SHOWN);
-  return `<ol class="setlist">${head.map(row).join("")}</ol>
-    <details class="moretracks"><summary>${rest.length} more</summary>
-      <ol class="setlist" start="${TRACKS_SHOWN + 1}">${rest.map(row).join("")}</ol>
-    </details>`;
-}
-
-// The people, down the side.
-//
-// Owner, 2026-08-09: "a bar on the right that was somewhat reminiscent of how
-// Discord does this. Just a list of participants and people." The middle of the
-// page is the night - what was played, what you thought, the photos. Who was
-// in the room stands beside it and does not scroll away.
-//
-// Two audiences, one rail. Who PLAYED is the night's billing and everybody sees
-// it. Who I SAW is my observation of a room and stays mine, however widely the
-// night is shared - the same rule the page has always had, now with the lists
-// in a different place.
-// `linked` is false when this rail is being shown on its own in the Mac's
-// sidebar. A name there is a name - the owner clicked one and a whole page
-// opened inside the sidebar, which is not what a list of who was in the room
-// is for. In the page, where there is somewhere to go, the names still lead to
-// that person's history.
-function nightRail(group, event, people, allNames, canKeep, linked) {
-  const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
-  // `linked` doubles as "this rail is inside the page". On its own it is the
-  // Mac's sidebar, and a post from it must come back to the rail.
-  const home = linked ? "" : `<input type="hidden" name="from" value="rail">`;
-  const djs = (people || []).filter((p) => p.role === "dj");
-  const guests = (people || []).filter((p) => p.role !== "dj");
-
-  const row = (p) => `<li>${personDisc(p)}
-    <span class="grow"><b>${linked
-      ? `<a href="/people/${esc(p.id)}">${esc(p.name)}</a>` : esc(p.name)}</b>${
-      p.note ? `<small>${esc(p.note)}</small>` : ""}</span>${
-    canKeep ? `<form method="post" action="${action}">${home}
-      <input type="hidden" name="person" value="${esc(p.id)}">
-      <button class="x" type="submit" name="remove" value="1" formnovalidate
-        aria-label="Remove ${esc(p.name)}">\u2715</button></form>` : ""}</li>`;
-
-  // Each list has its OWN way in. Asking "is this a DJ or a guest?" after the
-  // name was typed is a question the list you typed into already answered
-  // (owner, 2026-08-09: "we do not need that separation").
-  const add = (as, label) => !canKeep ? "" : `<form class="addline addwho"
-    method="post" action="${action}">${home}
-    <input type="text" name="it" list="knownpeople" autocomplete="off"
-      placeholder="${esc(label)}" aria-label="${esc(label)}">
-    <button type="submit" name="as" value="${as}" aria-label="${esc(label)}">+</button>
-  </form>`;
-
-  const group_ = (label, rows, empty, adder) => `<div class="whogroup">
-    <div class="whohead">${esc(label)}${rows.length ? `<small>\u2014 ${rows.length}</small>` : ""}</div>
-    ${rows.length ? `<ul class="who-list">${rows.map(row).join("")}</ul>`
-      : `<p class="blank">${empty}</p>`}
-    ${adder}</div>`;
-
-  return `<aside class="rail nightpeople">
-    ${group_("Who played", djs, "Whoever was on. A name is enough.", add("dj", "Add a DJ"))}
-    ${canKeep ? group_("Who was there", guests, "Who you were with.",
-      add("guest", "Add someone")) : ""}
-    ${canKeep ? `<datalist id="knownpeople">${(allNames || []).map((n) =>
-      `<option value="${esc(n.name)}"></option>`).join("")}</datalist>` : ""}
-  </aside>`;
+  return results || [];
 }
 
 // My half of a party page: whether I went, what I thought, who played, who I
@@ -2136,241 +1436,133 @@ function nightRail(group, event, people, allNames, canKeep, linked) {
 //
 // Only ever rendered for the person it belongs to. A note is a diary entry, not
 // content, and nothing in here appears on anybody else's screen.
-// The record: the whole reason the app exists.
-//
-// Five things, each one line to add - who played, who was there, what they
-// played, what you thought, and who may see any of it. No sub-forms, no modes,
-// no save button you have to find. The bar is Apple's Journal: if it cannot be
-// done one-handed while a room is loud and dark, it does not get done at all.
-function trackerBlock(event, group, note, people, allNames, songs) {
+function trackerBlock(event, group, note, people, allNames) {
   const action = `/@${esc(group.handle)}/${esc(event.slug)}/record`;
+  const attended = note && note.attended === 1;
+  const list = (role, empty) => {
+    const rows = people.filter((p) => p.role === role);
+    if (!rows.length) return `<p class="muted">${empty}</p>`;
+    return `<ul class="who-list">${rows.map((p) => `<li>
+      ${personDisc(p)}
+      <span style="min-width:0">
+        <b><a href="/people/${esc(p.id)}">${esc(p.name)}</a></b>
+        <form method="post" action="${action}" class="notemini">
+          <input type="hidden" name="person" value="${esc(p.id)}">
+          <input type="text" name="encounter" maxlength="2000"
+            value="${esc(p.note || "")}" placeholder="What happened, if anything">
+          <button class="btn plain small" type="submit">Save</button>
+          <button class="btn plain small" type="submit" name="remove" value="1"
+            formnovalidate aria-label="Remove ${esc(p.name)}">\u2715</button>
+        </form>
+      </span></li>`).join("")}</ul>`;
+  };
 
-
-  // One field per thing, each one always open. The capture line that used to
-  // sit here asked you to say WHICH of three things you were typing, which the
-  // DJ list, the people list and the track list each already know about
-  // themselves (owner, 2026-08-09: "we should just delete that field").
   return `<section class="tracker">
-    <div class="sectionhead"><h2>Track list</h2>
-      <span class="muted">Type a title or add the Shazam screenshot</span></div>
-    ${trackList(songs, (song) => `<form method="post" action="${action}">
-        <input type="hidden" name="song" value="${esc(song.id)}">
-        <button class="x" type="submit" name="remove" value="1"
-          formnovalidate aria-label="Remove ${esc(song.title || "this track")}">\u2715</button>
-      </form>`)}
-    <form class="addline addtrack" method="post" action="${esc(action)}"
-      enctype="multipart/form-data">
-      <input type="text" name="songTitle" maxlength="200" autocomplete="off"
-        placeholder="Title \u2014 or Title by Artist" aria-label="Add a track">
-      <button class="camera" type="button" aria-label="Add a Shazam screenshot"
-        title="Add a Shazam screenshot"
-        onclick="this.nextElementSibling.click()"><svg viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path
-        d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-1.7A1 1 0 0 1 8.6 5h6.8a1 1 0 0 1 .8.3L17.3 7h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z"/><circle
-        cx="12" cy="13" r="3.2"/></svg></button>
-      <input type="file" name="shot" accept="image/*" hidden
-        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
-      <button type="submit" aria-label="Add this track">+</button>
-    </form>
+    <div class="sectionhead"><h2>Your record</h2>
+      <span class="muted">Only you can see this</span></div>
 
-    <h2>Your notes</h2>
-    <!-- No "I was there" to tick. You are keeping a record of this night; that
-         IS being at it (owner, 2026-08-09). The column still exists for nights
-         somebody else kept, which is the only case it ever meant anything. -->
     <form class="you" method="post" action="${esc(action)}">
       <div class="grow" style="display:grid;gap:10px">
-        <textarea name="note" maxlength="4000" style="min-height:92px"
-          placeholder="What you thought">${esc((note && note.note) || "")}</textarea>
+        <label class="wentrow">
+          <input type="checkbox" name="attended" value="1"${attended ? " checked" : ""}>
+          <span>I went to this</span>
+        </label>
+        <textarea name="note" maxlength="4000" style="min-height:76px"
+          placeholder="What you thought, or why you want to go">${esc((note && note.note) || "")}</textarea>
       </div>
       <div class="youbar"><button class="btn" type="submit">Save</button></div>
     </form>
 
+    <h2>Who played</h2>
+    ${list("dj", "Nobody recorded yet.")}
+    <form class="join" method="post" action="${esc(action)}">
+      <input type="hidden" name="role" value="dj">
+      <input type="text" name="who" list="knownpeople" maxlength="80" required
+        placeholder="Name" autocomplete="off">
+      <button class="btn plain" type="submit">Add a DJ</button>
+    </form>
+
+    <h2>Who you saw</h2>
+    ${list("guest", "Nobody recorded yet.")}
+    <form class="join" method="post" action="${esc(action)}">
+      <input type="hidden" name="role" value="guest">
+      <input type="text" name="who" list="knownpeople" maxlength="80" required
+        placeholder="Name" autocomplete="off">
+      <button class="btn plain" type="submit">Add someone</button>
+    </form>
+    <datalist id="knownpeople">${allNames.map((n) =>
+      `<option value="${esc(n.name)}"></option>`).join("")}</datalist>
+    <p class="muted">Reusing a name keeps one person, so their history stays in
+    one place. They do not need an account.</p>
   </section>`;
 }
 
-// Who may open a night, and who may read it.
-//
-// Two different questions, which is the whole change. The PAGE is open to
-// anybody who follows you - that is what following is for. The CONTENTS are
-// what the setting governs: anyone, people who follow you, or only the people
-// you added to the night.
-//
-// The owner always gets both. Everybody else gets whatever this says, and
-// every read path asks this one function so none of them can drift.
-async function whoSees(env, event, viewer) {
-  const mine = !!viewer && viewer.email_norm === event.owner_email;
-  if (mine) return { open: true, contents: true, mine: true };
-
-  const level = event.visibility || "named";
-  if (level === "public") return { open: true, contents: true, mine: false };
-
-  // Following is what opens the page. Without it there is nothing to look at,
-  // whatever the setting says - a night is not addressable by strangers.
-  const follows = !!viewer && !!(await env.DB.prepare(
-    `SELECT 1 FROM follows WHERE follower_email = ? AND person_email = ?`
-  ).bind(viewer.email_norm, event.owner_email || "").first());
-
-  // "Only the people I add" means the people ON the night who have an account
-  // we can recognise them by.
-  const named = !!viewer && !!(await env.DB.prepare(
-    `SELECT 1 FROM party_people pp JOIN people p ON p.id = pp.person_id
-      WHERE pp.event_id = ? AND p.account_email = ?`
-  ).bind(event.id, viewer.email_norm).first());
-
-  return {
-    open: follows || named,
-    contents: level === "followers" ? follows || named : named,
-    mine: false,
-  };
-}
-
-function seenBy(group, event) {
-  const seen = {
-    named: "Only people I add",
-    followers: "People who follow me",
-    public: "Anyone",
-  };
-  const now = event.visibility || "named";
-  const says = {
-    named: "Only the people on this night can read it. Anyone following you can see that it happened.",
-    followers: "Anyone following you can read it.",
-    public: "On your profile, for anyone.",
-  };
-  // Not a disclosure. A control you have to click to discover is a control that
-  // does not get used, and a summary naming the current choice above three
-  // buttons with one of them lit says the same thing twice.
-  return `<div class="seenpick">
-    <form class="seenby" method="post"
-      action="/@${esc(group.handle)}/${esc(event.slug)}/record">
-      ${Object.entries(seen).map(([value, label]) => `<button
-        class="btn ${value === now ? "" : "plain "}small" type="submit"
-        name="visibility" value="${value}"${value === now ? ' aria-current="true"' : ""}
-        >${esc(label)}</button>`).join("")}
+// Editing a party from the web: the same fields the Mac writes, through the
+// same updateParty. Folded away by default because the page's job is to show
+// the night, not to be a form - but one click from anywhere the owner is
+// looking, rather than a separate settings screen to go and find.
+function partyEditor(group, event, error, typed) {
+  const was = (name, fallback) => esc(
+    typed && typed.get(name) !== null ? typed.get(name) : fallback);
+  // datetime-local wants the wall clock it will show back. Everything stored is
+  // UTC ms, so this is the same conversion the create form does, in reverse.
+  const localValue = event.starts_ms
+    ? new Date(event.starts_ms).toISOString().slice(0, 16) : "";
+  return `<details class="edit"${error ? " open" : ""}>
+    <summary>Edit the details</summary>
+    ${error ? `<p class="formerror" role="alert">${esc(error)}</p>` : ""}
+    <form class="newnight" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/edit">
+      <label class="eventfield"><span>What is it called?</span>
+        <input type="text" name="title" maxlength="120" required
+          value="${was("title", event.title || "")}"></label>
+      <label class="eventfield"><span>When</span>
+        <input type="datetime-local" name="starts"
+          value="${was("starts", localValue)}"></label>
+      <label class="eventfield"><span>Where</span>
+        <input type="text" name="place" maxlength="120"
+          value="${was("place", event.place || "")}"></label>
+      <label class="eventfield"><span>Links</span>
+        <textarea name="links" maxlength="2000" style="min-height:76px"
+          placeholder="One per line. Tickets | https://...">${was("links", event.links || "")}</textarea></label>
+      <button class="btn" type="submit">Save the details</button>
     </form>
-    <p class="muted">${says[now]}</p>
-  </div>`;
-}
-
-function nightHue(key) {
-  let n = 0;
-  for (const ch of String(key || "")) n = (n * 31 + ch.charCodeAt(0)) % 360;
-  return n;
+  </details>`;
 }
 
 function eventPage(group, event, going, base, takeRate, canEdit, tracker, extra) {
-  const { live, editError, typed, phase, posts, canPost, payLink, ownerName,
-    billed, setlist, rail } = extra || {};
+  const { live, editError, typed, phase } = extra || {};
   const links = partyLinks(event.links);
-  const where = `/@${esc(group.handle)}/${esc(event.slug)}`;
-
-  // A night you shared shows the night: who was on, and what they played. Those
-  // are the interesting parts and they are not secrets once you have handed
-  // somebody the link. What stays yours is what you thought - your note, and
-  // your notes about the people.
-  // Who PLAYED is the night's billing: it is what the night was, and sharing
-  // the night shares it. Who I SAW is my observation of a room, and stays mine
-  // however widely the night is shared - the same reason my note does.
-  const bill = (billed || []).filter((p) => p.role === "dj");
-  const named = (rows) => `<ul class="who-list">${rows.map((p) => `<li>
-    ${personDisc(p)}<span><b>${esc(p.name)}</b></span></li>`).join("")}</ul>`;
-
-  const shared = `
-    ${(setlist || []).length ? `<h2>Track list</h2>${trackList(setlist)}` : ""}
+  return page(`${event.title || "A night"} - ${group.name || group.handle}`, `
+    ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
+      <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
+    <p class="when">${esc(whenText(event))}${
+      phase === "now" ? ` · <b>on tonight</b>` : ""}</p>
+    ${event.place ? `<p>${esc(event.place)}${event.address ? `<br><span class="muted">${esc(event.address)}</span>` : ""}</p>` : ""}
+    ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
+    ${event.description ? `<p>${esc(event.description)}</p>` : ""}
     ${links.length ? `<ul class="linklist">${links.map((l) =>
       `<li><a href="${esc(l.href)}" rel="noopener noreferrer nofollow"
         target="_blank">${esc(l.label)}</a></li>`).join("")}</ul>` : ""}
-    ${event.state === "cancelled" ? `<p><strong>This night is cancelled.</strong></p>` : ""}
-
-    <h2>Photos</h2>
-    ${canPost ? `<form class="composer say" method="post" enctype="multipart/form-data"
-      action="${where}/say" id="sayForm">
-      <textarea name="say" maxlength="2000" rows="2"
-        placeholder="Write something, or drop photos and videos here"></textarea>
-      <div class="composerbar">
-      <button class="camera" type="button" aria-label="Add a photo"
-        onclick="this.nextElementSibling.click()"><svg viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path
-        d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2.2l1.1-1.7A1 1 0 0 1 8.6 5h6.8a1 1 0 0 1 .8.3L17.3 7h2.2A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z"/><circle
-        cx="12" cy="13" r="3.2"/></svg></button>
-      <input type="file" name="media" accept="image/*,video/*" hidden
-        onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
-      <span class="grow"></span>
-      <button class="btn small" type="submit">Post</button>
-      </div>
-    </form>${dropScript()}` : ""}
-    <!-- No caption under an empty space explaining that it is a space for
-         things. The composer above it already says what goes here. -->
-    ${posts && posts.length ? nightRoll(posts) : ""}`;
-
-  // Everything a visitor needs and an owner does not: whether they are coming,
-  // a ticket, the date in their own calendar, a way to tip whoever threw it.
-  const forVisitors = `
-    <hr class="soft">
-    ${canPost && phase !== "upcoming" ? `<form class="addline wasthere" method="post"
-      action="${where}/here">
-      <input type="text" name="name" maxlength="80" required
-        placeholder="Your name" aria-label="Your name">
-      <button class="btn" type="submit">I was there</button>
-    </form>
-    <p class="muted">Puts you on ${esc(ownerName || group.handle)}\u2019s list of who
-    was at this night. No account, no sign-in.</p>` : ""}
-    ${phase === "upcoming" ? `<p class="muted">${going} going</p>` : ""}
-    ${event.ticket_cents ? `<form class="join" method="post" action="${where}/buy">
+    ${canEdit ? partyEditor(group, event, editError, typed) : ""}
+    <p class="muted">${going} going</p>
+    ${event.ticket_cents ? `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/buy">
       <input type="email" name="email" placeholder="your email" required>
       <button class="btn" type="submit">Buy a ticket -
         ${esc((totalForBuyer(event.ticket_cents, takeRate).total / 100).toFixed(2))}</button>
-    </form>` : (phase === "upcoming" ? `<form class="join" method="post" action="${where}/going">
+    </form>` : `<form class="join" method="post" action="/@${esc(group.handle)}/${esc(event.slug)}/going">
       <input type="email" name="email" placeholder="your email" required>
       <input type="text" name="name" placeholder="your name">
       <button class="btn" type="submit">I'm coming</button>
-    </form>` : "")}
-    <p><a class="btn plain small" href="${where}.ics">Add this night to your calendar</a></p>
-    ${payLink ? `<p><a class="btn plain" href="${esc(payLink)}"
+    </form>`}
+    <p><a class="btn plain small" href="/@${esc(group.handle)}/${esc(event.slug)}.ics">Add this night to your calendar</a></p>
+    ${group.pay_link ? `<p><a class="btn plain" href="${esc(group.pay_link)}"
       rel="noopener noreferrer nofollow" target="_blank">Tip the DJ</a></p>` : ""}
-    <p class="muted">Kept by <a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a> -
-    follow them to hear about their other nights.</p>`;
-
-  const tint = event.cover_key
-    ? `<style>body{--night:hsl(${nightHue(event.cover_key)} 78% 62%)}</style>` : "";
-  return page(`${event.title || "A night"} - ${ownerName || group.handle}`, `
-    ${tint}
-    ${live ? `<p class="nowplaying"><span class="dot"></span> Playing right now
-      <a class="btn small" href="${esc(event.live_url)}" rel="noopener">Listen</a></p>` : ""}
-
-    <!-- Who can see it is one row and belongs at the top: it changes what the
-         page IS. The day and the place are typed into the line under the name
-         that already shows them, so there is no form here at all. -->
-    ${editError ? `<p class="formerror" role="alert">${esc(editError)}</p>` : ""}
-    ${canEdit ? `<div class="nightbar">${seenBy(group, event)}</div>` : ""}
-
-    ${canEdit ? (tracker || "") + shared : shared + forVisitors}
-    ${canEdit ? coverScript(`/@${esc(group.handle)}/${esc(event.slug)}/cover`,
-      { action: `/@${esc(group.handle)}/${esc(event.slug)}/edit`, field: "title" }) : ""}
-  `, hero(event.title || "A night",
-      // The line under the name IS the when and the where, so it is also where
-      // they get changed. A second form below the page saying the same two
-      // things was redundant (owner, 2026-08-09) - and worse, it was a form.
-      canEdit ? `<span class="subedit">
-        <label class="dayedit"><span id="heroDayText">${esc(whenText(event))}</span>
-          <input type="date" id="heroDay" aria-label="When"
-            value="${esc(event.starts_ms
-              ? new Date(event.starts_ms).toISOString().slice(0, 10) : "")}"></label>
-        <span class="dot">\u00b7</span>
-        <span id="heroPlace" contenteditable="plaintext-only" role="textbox"
-          aria-label="Where" data-empty="Where">${esc(event.place || "")}</span>
-        ${phase === "now" ? ` \u00b7 <b>on tonight</b>` : ""}
-      </span>`
-      : `${esc(whenText(event))}${event.place ? ` \u00b7 ${esc(event.place)}` : ""}${
-        phase === "now" ? ` \u00b7 <b>on tonight</b>` : ""}`,
-      coverForNight(event),
-      canEdit ? "" : `<a href="/@${esc(group.handle)}">${esc(ownerName || group.handle)}</a>`,
-      canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : "",
-      // Click the words and type. The old console did this and it was better
-      // than opening a form to change four characters.
-      canEdit ? "party" : false),
-    // The people stand beside the night rather than inside it: page() turns a
-    // rail into the two-column layout, which stacks under 900px on its own.
-    rail || "", false, true);
+    <p class="muted">Organised by <a href="/@${esc(group.handle)}">${esc(group.name || group.handle)}</a> -
+    follow them to hear about their other nights.</p>
+    ${tracker || ""}
+  `, hero(event.title || "A night", esc(group.name || group.handle), event.cover_key,
+      `<a href="/@${esc(group.handle)}">The group</a>`,
+      canEdit ? coverTools(`/@${group.handle}/${event.slug}/cover`) : ""));
 }
 
 // Subscribing to a calendar, without the security warning.
@@ -2422,60 +1614,32 @@ function calendarBlock(base, handle) {
     </script>`;
 }
 
-// A notice with nowhere to go is a dead end, so callers may hand it the way
-// back. Older callers pass two arguments and get what they always did.
-function notice(title, message, back) {
-  return html(200, page(title, `<h1>${esc(title)}</h1><p>${esc(message)}</p>${
-    back ? `<p><a class="btn plain" href="${esc(back)}">Back to the night</a></p>` : ""}`));
+function notice(title, message) {
+  return html(200, page(title, `<h1>${esc(title)}</h1><p>${esc(message)}</p>`));
 }
 
 // ------------------------------------------------------------------ queries
 
-// The handle in an address. A person's @name now: groups are dead, and the one
-// thing they still supply is a home for parties made before the change. Their
-// own @name is tried first so somebody who has both - which is everybody who
-// ever made a group - is found as themselves.
-// The party at /@handle/<slug>. Found by its OWNER, which is what an address
-// means now - the group behind it is only how a party made before the change
-// can still be reached. Returns the row and the person it belongs to.
-async function partyAt(env, handle, slug) {
-  const profile = await profileByHandle(env, handle);
-  if (profile) {
-    const event = await env.DB.prepare(
-      `SELECT * FROM events WHERE owner_email = ? AND slug = ?`
-    ).bind(profile.email_norm, slug).first();
-    if (event) return { event, profile };
-  }
-  // An address that was a group's handle, or a party from before owners.
-  const group = await groupByHandle(env, handle);
-  if (!group) return null;
-  const event = await env.DB.prepare(
-    `SELECT * FROM events WHERE group_id = ? AND slug = ?`
-  ).bind(group.id, slug).first();
-  if (!event) return null;
-  return { event, profile: profile || (event.owner_email
-    ? await profileByHandle(env, handle) : null) };
-}
-
 async function groupByHandle(env, handle) {
-  const clean = String(handle || "").toLowerCase();
-  const profile = await env.DB.prepare(`SELECT * FROM profiles WHERE handle = ?`)
-    .bind(clean).first();
-  if (profile) {
-    const owned = await env.DB.prepare(
-      `SELECT g.* FROM groups g JOIN group_djs gd ON gd.group_id = g.id
-         JOIN djs d ON d.id = gd.dj_id
-        WHERE d.email_norm = ? AND g.handle = ?`
-    ).bind(profile.email_norm, clean).first();
-    if (owned) return owned;
-  }
-  return env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(clean).first();
+  return env.DB.prepare(`SELECT * FROM groups WHERE handle = ?`).bind(handle).first();
 }
 
 async function upcomingEvents(env, groupId, now) {
   const { results } = await env.DB.prepare(
     `SELECT * FROM events WHERE group_id = ? AND state != 'draft'
        AND (starts_ms IS NULL OR starts_ms > ?) ORDER BY starts_ms ASC LIMIT 50`
+  ).bind(groupId, now - 12 * 60 * 60 * 1000).all();
+  return results || [];
+}
+
+// Nights that have already happened. A group's page is its story, not just its
+// diary: someone deciding whether to follow wants to see that there have been
+// twelve of these, not an empty "nothing coming up".
+async function pastEvents(env, groupId, now) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM events WHERE group_id = ? AND state != 'draft'
+       AND starts_ms IS NOT NULL AND starts_ms <= ?
+     ORDER BY starts_ms DESC LIMIT 12`
   ).bind(groupId, now - 12 * 60 * 60 * 1000).all();
   return results || [];
 }
@@ -2798,22 +1962,19 @@ function linkHref(key, value) {
 async function myParties(env, emailNorm) {
   const { results } = await env.DB.prepare(
     `SELECT e.*, g.handle, g.name AS group_name,
-            n.attended AS attended, n.note AS my_note,
-            (SELECT COUNT(*) FROM songs sg WHERE sg.event_id = e.id) AS song_count,
-            (SELECT GROUP_CONCAT(p.name, ', ') FROM party_people pp
-               JOIN people p ON p.id = pp.person_id
-              WHERE pp.event_id = e.id AND pp.owner_email = ? AND pp.role = 'dj') AS bill
+            n.attended AS attended, n.note AS my_note
        FROM events e
        JOIN groups g ON g.id = e.group_id
        LEFT JOIN party_notes n ON n.event_id = e.id AND n.owner_email = ?
       WHERE e.state != 'draft' AND (
-        e.owner_email = ?
+        EXISTS (SELECT 1 FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
+                 WHERE gd.group_id = e.group_id AND d.email_norm = ?)
         OR n.event_id IS NOT NULL
         OR EXISTS (SELECT 1 FROM party_people pp
                     WHERE pp.event_id = e.id AND pp.owner_email = ?))
       ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC
       LIMIT 200`
-  ).bind(emailNorm, emailNorm, emailNorm, emailNorm).all();
+  ).bind(emailNorm, emailNorm, emailNorm).all();
   return results || [];
 }
 
@@ -2839,13 +2000,7 @@ function partyIsPast(event, now) {
 async function peopleFor(env, emailNorm, query) {
   const like = `%${String(query || "").trim().toLowerCase()}%`;
   const { results } = await env.DB.prepare(
-    `SELECT p.*, (SELECT COUNT(*) FROM party_people pp WHERE pp.person_id = p.id) AS times,
-            (SELECT e.title FROM party_people pp JOIN events e ON e.id = pp.event_id
-              WHERE pp.person_id = p.id
-              ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC LIMIT 1) AS last_at,
-            (SELECT COALESCE(e.starts_ms, e.created_ms) FROM party_people pp
-               JOIN events e ON e.id = pp.event_id WHERE pp.person_id = p.id
-              ORDER BY COALESCE(e.starts_ms, e.created_ms) DESC LIMIT 1) AS last_ms
+    `SELECT p.*, (SELECT COUNT(*) FROM party_people pp WHERE pp.person_id = p.id) AS times
        FROM people p
       WHERE p.owner_email = ? AND (? = '%%' OR lower(p.name) LIKE ?)
       ORDER BY p.name LIMIT 200`
@@ -2890,7 +2045,7 @@ async function partyPeople(env, emailNorm, eventId) {
 // the note from that night.
 async function personHistory(env, emailNorm, personId) {
   const { results } = await env.DB.prepare(
-    `SELECT pp.role, pp.note, e.id, e.slug, e.title, e.starts_ms, e.place, e.day_only, g.handle
+    `SELECT pp.role, pp.note, e.id, e.slug, e.title, e.starts_ms, e.place, g.handle
        FROM party_people pp
        JOIN events e ON e.id = pp.event_id
        JOIN groups g ON g.id = e.group_id
@@ -2986,18 +2141,6 @@ function coverPileUrl(name) {
   return `covers/${name}.webp`;
 }
 
-// The picture a night wears when nobody has chosen one. The console always
-// showed a photograph - that is most of why it looked like a party rather than
-// a form - and a hue tint on an empty card is not the same thing. Picked from
-// the id, so it is the same room every time you open it.
-function coverForNight(event) {
-  if (event && event.cover_key) return event.cover_key;
-  const id = String((event && event.id) || "");
-  let n = 0;
-  for (let i = 0; i < id.length; i++) n = (n * 31 + id.charCodeAt(i)) >>> 0;
-  return coverPileUrl(COVER_PILE[n % COVER_PILE.length]);
-}
-
 async function storeMedia(env, file, prefix, maxBytes, allowVideo) {
   if (!env.DL || !file || typeof file.arrayBuffer !== "function") return { error: "no file" };
   if (Number(file.size) > maxBytes) return { error: "that file is too big" };
@@ -3079,24 +2222,14 @@ async function createParty(env, group, fields, now) {
     unique = `${slug}-${n}`;
   }
 
-  // Whose party it is, on the party. Groups are dead; the group_id below is
-  // still written only so this is reversible by deploying the previous worker.
-  const ownerEmail = String(fields.ownerEmail || "");
-  // Only the people on it, because a journal entry is. The exception is a party
-  // opened with a live room already on it: that is a night being played to
-  // people about to be handed its address - most of whom do not follow the DJ,
-  // they are just in the room - so it opens to anyone rather than making the DJ
-  // go and turn it on before the party can find it.
-  const visibility = fields.visibility ||
-    (PARTY_ID_RE.test(String(fields.partyId || "")) ? "public" : "named");
   await env.DB.prepare(
-    `INSERT INTO events (id, group_id, owner_email, slug, title, starts_ms, place, capacity,
-       cover_key, state, party_id, links, visibility, created_ms, updated_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?, ?, ?)`
-  ).bind(id, group.id, ownerEmail, unique, title, startsMs,
+    `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity,
+       cover_key, state, party_id, links, created_ms, updated_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?, ?, ?)`
+  ).bind(id, group.id, unique, title, startsMs,
     String(fields.place || "").slice(0, 120), capacity,
     fields.coverKey || null, String(fields.partyId || ""),
-    String(fields.links || "").slice(0, 2000), visibility, now, now).run();
+    String(fields.links || "").slice(0, 2000), now, now).run();
 
   return { id, slug: unique, title, startsMs, handle: group.handle };
 }
@@ -3177,43 +2310,16 @@ function partyForMac(event, group, base) {
   };
 }
 
-// Whose Mac this is. The install is bound to a PERSON, so this is the whole of
-// "who is asking" - no group in the middle, and no question for the DJ to
-// answer at sign-in beyond which account they are.
-async function installOwner(env, installId) {
-  const link = await env.DB.prepare(
-    `SELECT email_norm FROM install_accounts WHERE install_id = ?`
-  ).bind(String(installId || "")).first();
-  if (!link) return null;
-  return env.DB.prepare(`SELECT * FROM djs WHERE email_norm = ?`)
-    .bind(link.email_norm).first();
-}
-
-// Where this Mac's parties go. A party needs an address, so it needs a group -
-// but that is this code's problem to solve, not something to interrupt a DJ
-// about. Resolved from the account and made from their @name if they have none,
-// exactly as the web does when somebody adds their first party.
-async function installGroup(env, installId, now) {
-  const dj = await installOwner(env, installId);
-  if (!dj) return null;
-  return homeGroupFor(env, dj, now);
-}
-
 // Where a person's own parties live. Everybody who signs in gets one, made on
 // demand from their @name, so adding a party never begins with "first create a
 // group" - a concept the personal tracker does not need them to hold.
 async function homeGroupFor(env, dj, now) {
-  const profile = await profileFor(env, dj.email_norm, now, dj.name);
-  // The one at their own @name is home, whenever it exists. Plain
-  // oldest-first put somebody whose first group was a side project - "early
-  // testers", made once and forgotten - into that side project every time
-  // they added a party, which is the wrong place and reads as a bug.
   const existing = await env.DB.prepare(
     `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id
-      WHERE d.dj_id = ?
-      ORDER BY CASE WHEN g.handle = ? THEN 0 ELSE 1 END, g.created_ms LIMIT 1`
-  ).bind(dj.id, profile.handle).first();
+      WHERE d.dj_id = ? ORDER BY g.created_ms LIMIT 1`
+  ).bind(dj.id).first();
   if (existing) return existing;
+  const profile = await profileFor(env, dj.email_norm, now, dj.name);
   let made = await createGroup(env, dj, profile.handle, profile.name || profile.handle, now);
   if (made.error) {
     // Their @name is somehow unusable as a group name. Mint a fresh one rather
@@ -3226,49 +2332,28 @@ async function homeGroupFor(env, dj, now) {
 
 // Adding a party: a name, and everything else optional. Somebody standing
 // outside a club typing this on a phone will not fill in six fields.
-// Starting a night. One thing to type - what it is called - and two that are
-// already answered. Who played and what they played are not here: the capture
-// line on the night's own page does that in one line, and asking for them
-// twice is how a form grows to four fields with four shouted labels over them.
-function newPartyPage(group, state, form, today, lastPlace) {
-  const was = (name, fallback) => esc(
-    form && form.get(name) !== null ? form.get(name) : (fallback || ""));
+function newPartyPage(group, state, form) {
+  const was = (name) => esc((form && form.get(name)) || "");
   return page("Add a party", `
+    <h1>Add a party</h1>
+    <p class="muted">Only the name is needed. Fill the rest in whenever - or never.</p>
     ${state.error ? `<p class="formerror" role="alert">${esc(state.error)}</p>` : ""}
-    <form class="startnight" method="post" action="/parties/new">
-      <input class="bigname" type="text" name="title" maxlength="120" required autofocus
-        value="${was("title")}" placeholder="What is it called?">
-      <div class="startrow">
-        <input type="date" name="day" value="${was("day", today)}" aria-label="When">
-        <input type="text" name="place" maxlength="120" aria-label="Where"
-          value="${was("place", lastPlace)}" placeholder="Where">
-      </div>
+    <form class="newnight" method="post" action="/parties/new">
+      <label class="eventfield"><span>What is it called?</span>
+        <input type="text" name="title" maxlength="120" required autofocus
+          value="${was("title")}" placeholder="Warehouse, late"></label>
+      <label class="eventfield"><span>When</span>
+        <input type="datetime-local" name="starts" value="${was("starts")}"></label>
+      <label class="eventfield"><span>Where</span>
+        <input type="text" name="place" maxlength="120" value="${was("place")}"
+          placeholder="Unit 7, or a friend's kitchen"></label>
+      <label class="eventfield"><span>Who is playing</span>
+        <input type="text" name="dj" maxlength="200" value="${was("dj")}"
+          placeholder="Seth, and anyone else - separate with commas"></label>
       <button class="btn" type="submit">Add it</button>
     </form>
-    <p class="muted">Today${lastPlace ? " and where you were last are" : " is"} already
-    in. Who played and what they played go on the night itself, a line at a time.</p>
     <p class="muted"><a href="/home">Back to your parties</a></p>
   `, "", "", true);
-}
-
-// Where you were last. The date fills itself in with today; the place is the
-// same kind of guess and is wrong just as harmlessly - most people run the same
-// room again, and anyone who does not types over it. Real geolocation means a
-// browser prompt and a reverse-geocoding service for the same answer.
-async function lastPlaceUsed(env, emailNorm) {
-  const last = await env.DB.prepare(
-    // rowid breaks the tie: two nights made in the same millisecond would
-    // otherwise return whichever the engine felt like, and "where you were
-    // last" would be a coin flip. Insertion order is what "last" means.
-    `SELECT place FROM events WHERE owner_email = ? AND place != ''
-      ORDER BY created_ms DESC, rowid DESC LIMIT 1`
-  ).bind(emailNorm).first();
-  return (last && last.place) || "";
-}
-
-// Today, as a date field wants it.
-function todayISO(now) {
-  return new Date(now).toISOString().slice(0, 10);
 }
 
 function slugify(title, now) {
@@ -3337,16 +2422,15 @@ async function sendInvites(env, group, event, dj, base, now) {
 // The group's own thread. Whoever writes it is identified by the link they
 // already hold - a member by their settings token, a DJ by their session - so
 // taking part still needs no account.
-async function addPost(env, { group, event, dj, member, body, mediaKey, mediaType, base, now }) {
+async function addPost(env, { group, dj, member, body, mediaKey, mediaType, base, now }) {
   const text = String(body || "").trim().slice(0, 2000);
   // A picture on its own is a post. At a party most of them are.
   if (!text && !mediaKey) return 0;
   const author = dj ? (dj.name || "The DJ") : (member && member.name) || "Someone";
   await env.DB.prepare(
-    `INSERT INTO posts (id, group_id, event_id, member_id, dj_id, author, body, media_key, media_type, origin, created_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'web', ?)`
-  ).bind(ulid(now), group.id, event ? event.id : null,
-    member ? member.id : null, dj ? dj.id : null, author, text,
+    `INSERT INTO posts (id, group_id, member_id, dj_id, author, body, media_key, media_type, origin, created_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'web', ?)`
+  ).bind(ulid(now), group.id, member ? member.id : null, dj ? dj.id : null, author, text,
     mediaKey || null, mediaType || null, now).run();
   if (!text) return 0;
 
@@ -3417,10 +2501,7 @@ async function groupPeople(env, groupId) {
 // called when they wrote it; the profile is who they are now, and the live one
 // wins on screen so a person who fills in their name does not have to look at
 // thirty posts signed "Someone".
-// Everything said and shown at one party. Posts used to hang off a group
-// thread; they belong to the night they happened at, which is where the photos
-// were always going to be looked for.
-async function eventPosts(env, eventId) {
+async function recentPosts(env, groupId) {
   const { results } = await env.DB.prepare(
     `SELECT p.*,
             COALESCE(pd.name, pm.name) AS profile_name,
@@ -3431,9 +2512,9 @@ async function eventPosts(env, eventId) {
        LEFT JOIN djs d ON d.id = p.dj_id
        LEFT JOIN profiles pm ON pm.email_norm = m.email_norm
        LEFT JOIN profiles pd ON pd.email_norm = d.email_norm
-      WHERE p.event_id = ? AND p.deleted_ms IS NULL
-      ORDER BY p.created_ms DESC LIMIT 200`
-  ).bind(eventId).all();
+      WHERE p.group_id = ? AND p.event_id IS NULL AND p.deleted_ms IS NULL
+      ORDER BY p.created_ms DESC LIMIT 30`
+  ).bind(groupId).all();
   return results || [];
 }
 
@@ -3445,24 +2526,6 @@ function agoText(ms) {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return new Date(Number(ms)).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-}
-
-// A night, as pictures first. The photos become a grid you can take in at a
-// glance - which is what looking back at a party actually is - and the things
-// people wrote stay below as words. A column of full-width images each under
-// its own little header is a social feed, and this is not one.
-function nightRoll(posts) {
-  const shots = posts.filter((p) => p.media_key);
-  const said = posts.filter((p) => !p.media_key);
-  return `${shots.length ? `<div class="roll">${shots.map((post) => {
-    const media = mediaUrl(post.media_key);
-    const isVideo = String(post.media_type || "").startsWith("video/");
-    return `<figure>${isVideo
-      ? `<video src="${esc(media)}" controls playsinline preload="metadata"></video>`
-      : `<img src="${esc(media)}" alt="" loading="lazy">`}${
-      post.body ? `<figcaption>${esc(post.body)}</figcaption>` : ""}</figure>`;
-  }).join("")}</div>` : ""}
-  ${said.length ? postList(said) : ""}`;
 }
 
 function postList(posts) {
@@ -3725,15 +2788,13 @@ export default {
       const body = await readJson(request, 4096);
       if (!body) return json(400, { error: "bad json" });
       if (!await installAuth(env, body.id, body.secret)) return json(403, { error: "bad install auth" });
-      // Already signed in? Answer with the PERSON. The console shows this as
-      // "you are signed in", and who they are is their profile, not the name of
-      // some group they once made.
-      const owner = await installOwner(env, body.id);
-      if (owner) {
-        const profile = await profileFor(env, owner.email_norm, now, owner.name);
-        return json(200, {
-          linked: true, handle: profile.handle, name: profile.name || profile.handle,
-        });
+      const existing = await env.DB.prepare(
+        `SELECT group_id FROM install_groups WHERE install_id = ?`
+      ).bind(String(body.id)).first();
+      if (existing) {
+        const group = await env.DB.prepare(`SELECT handle, name FROM groups WHERE id = ?`)
+          .bind(existing.group_id).first();
+        return json(200, { linked: true, handle: group && group.handle, name: group && group.name });
       }
       const code = pairingCode();
       await env.DB.prepare(
@@ -3773,55 +2834,6 @@ export default {
         `UPDATE events SET live_ms = ?, live_url = ? WHERE id = ?`
       ).bind(now, /^https:\/\//.test(joinUrl) ? joinUrl : event.live_url || "",
         event.id).run();
-
-      // Going live IS playing. A DJ who broadcast their own night should not
-      // then have to type their own name into it, and this call is the moment
-      // we know they did. Once per night; theirs to remove if they were only
-      // hosting.
-      if (event.owner_email) {
-        const me = await profileFor(env, event.owner_email, now);
-        const person = await findOrMakePerson(env, event.owner_email,
-          me.name || "@" + me.handle, now);
-        if (person) {
-          await env.DB.prepare(
-            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
-             VALUES (?,?,?,'dj',?) ON CONFLICT(event_id, person_id) DO NOTHING`
-          ).bind(event.id, person.id, event.owner_email, now).run();
-        }
-      }
-
-      // Who is in the room is who was there. A named listener becomes an
-      // attendee of the night, which is the same list the owner keeps by hand -
-      // not a second one beside it. Unnamed phones are left alone: "Guest 3"
-      // is a device, not somebody you were with.
-      if (event.owner_email && Array.isArray(body.here) && body.here.length) {
-        for (const raw of body.here.slice(0, 60)) {
-          const name = String(raw || "").trim().slice(0, 80);
-          if (!name) continue;
-          const person = await findOrMakePerson(env, event.owner_email, name, now);
-          if (!person) continue;
-          await env.DB.prepare(
-            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
-             VALUES (?,?,?,'guest',?) ON CONFLICT(event_id, person_id) DO NOTHING`
-          ).bind(event.id, person.id, event.owner_email, now).run();
-        }
-      }
-
-      // The track list, as Shazam heard it. The Mac sends the set so far every
-      // heartbeat and this drops what is already down - a cursor nobody can get
-      // out of step, at the cost of one cheap query per beat.
-      if (event.owner_email && Array.isArray(body.tracks) && body.tracks.length) {
-        const { results: had = [] } = await env.DB.prepare(
-          `SELECT title, artist FROM songs WHERE event_id = ?`).bind(event.id).all();
-        const seen = new Set(had.map((r) => `${r.title}\u0000${r.artist || ""}`));
-        for (const track of body.tracks.slice(0, 60)) {
-          const title = String(track.title || "").trim().slice(0, 200);
-          const artist = String(track.artist || "").trim().slice(0, 120);
-          if (!title || seen.has(`${title}\u0000${artist}`)) continue;
-          seen.add(`${title}\u0000${artist}`);
-          await addSong(env, event.owner_email, event.id, { title, artist }, now);
-        }
-      }
 
       let stored = 0;
       for (const post of (Array.isArray(body.posts) ? body.posts : []).slice(0, 200)) {
@@ -3888,10 +2900,12 @@ export default {
       if (!body) return json(400, { error: "bad json" });
       if (!await installAuth(env, body.id, body.secret)) return json(403, { error: "bad install auth" });
 
-      // Straight to the person. This used to join through the Mac's group to
-      // reach the DJ who owned it - a group in the middle of a question that
-      // was only ever about who this Mac belongs to.
-      const owner = await installOwner(env, body.id);
+      const owner = await env.DB.prepare(
+        `SELECT d.email_norm FROM install_groups ig
+           JOIN group_djs gd ON gd.group_id = ig.group_id AND gd.role = 'owner'
+           JOIN djs d ON d.id = gd.dj_id
+          WHERE ig.install_id = ?`
+      ).bind(String(body.id)).first();
       // Not paired to anything. The console keeps whatever it has locally,
       // which is the whole behaviour of an unpaired Mac.
       if (!owner) return json(200, { linked: false });
@@ -3939,43 +2953,18 @@ export default {
     }
 
     // The photo, which is bytes rather than JSON and so has its own door.
-    // A web session for a Mac that is already signed in.
-    //
-    // The pages authenticate with a pp_s cookie; a Mac authenticates with the
-    // install credential the broker gave it. This trades the second for the
-    // first, so the console can show the person their OWN pages instead of a
-    // second implementation of them. Nothing new is trusted: the install is
-    // already proven to belong to the account, which is the whole of what a
-    // session says.
-    if (path === "/api/v1/install/session" && request.method === "POST") {
-      const body = await readJson(request, 4096);
-      if (!body) return json(400, { error: "bad json" });
-      if (!await installAuth(env, body.id, body.secret)) {
-        return json(403, { error: "bad install auth" });
-      }
-      const owner = await installOwner(env, body.id);
-      // Not signed in on this Mac. An ordinary state: there is no account whose
-      // session this would be, and the console falls back to its own screens.
-      if (!owner) return json(200, { linked: false });
-      const cookie = await startSession(env, { djId: owner.id, now });
-      const secret = /pp_s=([a-f0-9]+)/.exec(cookie);
-      const profile = await profileFor(env, owner.email_norm, now, owner.name);
-      return json(200, {
-        linked: true,
-        session: secret ? secret[1] : "",
-        expiresMs: now + SESSION_TTL_MS,
-        handle: profile.handle,
-        name: profile.name || profile.handle,
-      });
-    }
-
     if (path === "/api/v1/install/avatar" && request.method === "POST") {
       const form = await request.formData().catch(() => null);
       if (!form) return json(400, { error: "bad form" });
       if (!await installAuth(env, form.get("id"), form.get("secret"))) {
         return json(403, { error: "bad install auth" });
       }
-      const owner = await installOwner(env, form.get("id"));
+      const owner = await env.DB.prepare(
+        `SELECT d.email_norm FROM install_groups ig
+           JOIN group_djs gd ON gd.group_id = ig.group_id AND gd.role = 'owner'
+           JOIN djs d ON d.id = gd.dj_id
+          WHERE ig.install_id = ?`
+      ).bind(String(form.get("id"))).first();
       if (!owner) return json(200, { linked: false });
 
       await profileFor(env, owner.email_norm, now);
@@ -4011,10 +3000,14 @@ export default {
         if (!await installAuth(env, body.id, body.secret)) {
           return json(403, { error: "bad install auth" });
         }
+        const link = await env.DB.prepare(
+          `SELECT group_id FROM install_groups WHERE install_id = ?`
+        ).bind(String(body.id)).first();
         // Not signed in on this Mac yet. Not an error - there is simply no
-        // account whose parties these would be. Signed in, the group is
-        // resolved from the account and made on demand if they have none.
-        const group = await installGroup(env, body.id, now);
+        // account whose parties these would be.
+        if (!link) return json(200, { linked: false, parties: [] });
+        const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
+          .bind(link.group_id).first();
         if (!group) return json(200, { linked: false, parties: [] });
 
         // Everything this account has, so the Mac can open one made on the web.
@@ -4032,9 +3025,7 @@ export default {
         }
 
         if (path === "/api/v1/party/create") {
-          const maker = await installOwner(env, body.id);
           const made = await createParty(env, group, {
-            ownerEmail: maker ? maker.email_norm : "",
             title: body.title,
             // The Mac knows when a party is actually starting, because it is
             // standing in the room. The web has to be told.
@@ -4049,20 +3040,6 @@ export default {
           }, now);
           if (made.error) return json(400, { error: made.error });
           await attachRoom(env, group.id, made.id, body.partyId, now);
-          // Whoever is playing becomes a person, exactly as typing them into the
-          // web's own form does. Creating a party has to MEAN the same thing on
-          // both clients, not merely look similar: a DJ named in the booth has
-          // to turn up in the same history as one named in a browser.
-          if (maker) {
-            for (const name of String(body.djs || "").split(",")) {
-              const person = await findOrMakePerson(env, maker.email_norm, name, now);
-              if (!person) continue;
-              await env.DB.prepare(
-                `INSERT OR IGNORE INTO party_people (event_id, person_id, owner_email, role, created_ms)
-                 VALUES (?,?,?,'dj',?)`
-              ).bind(made.id, person.id, maker.email_norm, now).run();
-            }
-          }
           const row = await env.DB.prepare(`SELECT * FROM events WHERE id = ?`).bind(made.id).first();
           return json(200, { linked: true, party: partyForMac(row, group, base) });
         }
@@ -4092,172 +3069,6 @@ export default {
     // The Mac asks which night it is playing. Answered from the group the
     // install belongs to and the clock, so a DJ never has to pair anything: if
     // one of their nights is happening now, this is that night.
-    // A DJ's Shazam library, filed into the nights it happened at.
-    //
-    // The in-app recognizer only ever hears what THIS Mac broadcast. A DJ
-    // Shazams all night on their phone too - in the booth, at the bar, at
-    // somebody else's set - and every one of those is dated on their account.
-    // This is where those land.
-    //
-    // The night is decided on the Mac (only it knows the DJ's timezone, and
-    // that a Shazam at 01:30 belongs to the evening before), so all that
-    // happens here is a lookup by day. A day with no party is not an error:
-    // there is nowhere to put those, and they are counted rather than dropped
-    // somewhere convenient.
-    if (path === "/api/v1/shazam/import" && request.method === "POST") {
-      const body = await readJson(request, 4 << 20);
-      if (!body) return json(400, { error: "bad json" });
-      const install = await installAuth(env, body.id, body.secret);
-      if (!install) return json(403, { error: "bad install auth" });
-      const owner = await installOwner(env, body.id);
-      if (!owner) return json(200, { nights: [], matched: 0, unmatched: 0, preview: !!body.preview });
-      const group = await homeGroupFor(env, owner, now);
-      if (!group) return json(200, { nights: [], matched: 0, unmatched: 0, preview: !!body.preview });
-
-      // Every night this account has, by the day it is on. `starts_ms` is
-      // stored as noon UTC on that day for a day-only party, so the date comes
-      // straight back out without a timezone entering into it.
-      //
-      // A day can hold more than one party - a night and the after, which is a
-      // normal way to spend an evening. The one that actually ran a room takes
-      // the tracks, because that is where the music was; failing that, the one
-      // made first. Whichever it picks, the preview names it, so the DJ agrees
-      // to a night rather than to a guess.
-      const { results: nights = [] } = await env.DB.prepare(
-        `SELECT id, slug, title, starts_ms, place FROM events
-          WHERE group_id = ? AND starts_ms IS NOT NULL
-          ORDER BY starts_ms, CASE WHEN live_ms > 0 THEN 0 ELSE 1 END, created_ms`
-      ).bind(group.id).all();
-      const byDay = new Map();
-      for (const night of nights) {
-        const day = new Date(night.starts_ms).toISOString().slice(0, 10);
-        if (!byDay.has(day)) byDay.set(day, night);
-      }
-
-      const preview = !!body.preview;
-      const items = Array.isArray(body.items) ? body.items.slice(0, 5000) : [];
-
-      // Nights the DJ has agreed to make. A list of days rather than a "create
-      // everything" flag, because what they pressed the button on was a list -
-      // and 157 nights of Shazams is not 157 parties.
-      // Where each night was, worked out on the Mac from the coordinates Shazam
-      // stores with every match. A night out is one room: across the first real
-      // import the spread within a night was 8 to 35 metres.
-      const placeOf = (body.places && typeof body.places === "object") ? body.places : {};
-      const placeFor = (day) => String(placeOf[day] || "").trim().slice(0, 120);
-
-      const making = new Set((Array.isArray(body.create) ? body.create : [])
-        .map((d) => String(d)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)));
-      for (const day of making) {
-        if (byDay.has(day)) continue;
-        // The shape being right is not the date being real: "2026-13-45" passes
-        // a regex and parses to NaN, and made a party called "Invalid Date".
-        // Round-tripping is the check that a date exists.
-        const stamp = Date.parse(day + "T12:00:00Z");
-        if (!Number.isFinite(stamp)) continue;
-        if (new Date(stamp).toISOString().slice(0, 10) !== day) continue;
-        const made = await createParty(env, group, {
-          ownerEmail: owner.email_norm,
-          // The date, as a name somebody will obviously want to change. A list
-          // of eighteen "Untitled" is worse than a list of eighteen dates.
-          title: new Date(stamp).toLocaleDateString("en-GB",
-            { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-          startsMs: stamp,
-          place: placeFor(day),
-        }, now);
-        if (made.error || !made.id) continue;
-        byDay.set(day, { id: made.id, slug: made.slug, title: made.title || day,
-          starts_ms: stamp });
-      }
-      const seenPerEvent = new Map();   // event id -> Set of title\0artist
-      const report = new Map();         // event id -> what this import does to it
-      let matched = 0, unmatched = 0;
-
-      // What a night with no party looks like, so the DJ can decide it was one.
-      // Only nights with a few tracks: one Shazam on a Tuesday is walking past
-      // a bar, and offering to make a party of it is noise.
-      const orphans = new Map();
-      // Songs are written in one batch per night rather than one round trip
-      // each. addSong is a SELECT for the sequence and then an INSERT, so a
-      // first import of 543 tracks was 1,086 sequential trips to D1 - which
-      // ran past the fifteen seconds the Mac's client waits and returned an
-      // error over work that had in fact succeeded.
-      const writing = {};
-
-      for (const raw of items) {
-        const title = String(raw && raw.title || "").trim().slice(0, 200);
-        const artist = String(raw && raw.artist || "").trim().slice(0, 120);
-        const day = String(raw && raw.night || "");
-        const night = byDay.get(day);
-        if (!title) continue;
-        if (!night) {
-          unmatched++;
-          if (!orphans.has(day)) {
-            orphans.set(day, { day, count: 0, titles: [], place: placeFor(day) });
-          }
-          const seen = orphans.get(day);
-          seen.count++;
-          if (seen.titles.length < 3) seen.titles.push(artist ? `${title} - ${artist}` : title);
-          continue;
-        }
-        matched++;
-
-        // What the night already has, read once per night. A DJ who broadcast
-        // the set already has most of it from the live recognizer, and an
-        // import must merge with that rather than double it.
-        if (!seenPerEvent.has(night.id)) {
-          const { results: had = [] } = await env.DB.prepare(
-            `SELECT title, artist FROM songs WHERE event_id = ?`).bind(night.id).all();
-          seenPerEvent.set(night.id, new Set(
-            had.map((r) => `${r.title}\u0000${r.artist || ""}`)));
-          const on = new Date(night.starts_ms).toISOString().slice(0, 10);
-          // A night that never got a place gets the one its own music was heard
-          // at. Never an overwrite: somebody who typed a venue meant it.
-          const found = placeFor(on);
-          if (!preview && found && !String(night.place || "").trim()) {
-            await env.DB.prepare(`UPDATE events SET place = ?, updated_ms = ? WHERE id = ?`)
-              .bind(found, now, night.id).run();
-            night.place = found;
-          }
-          report.set(night.id, {
-            slug: night.slug, handle: group.handle, title: night.title,
-            day: on, place: String(night.place || "").trim() || found,
-            added: 0, had: had.length, titles: [],
-          });
-        }
-        const seen = seenPerEvent.get(night.id);
-        const key = `${title}\u0000${artist}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        const entry = report.get(night.id);
-        entry.added++;
-        if (entry.titles.length < 4) entry.titles.push(artist ? `${title} - ${artist}` : title);
-        if (!preview) (writing[night.id] || (writing[night.id] = [])).push({ title, artist });
-      }
-
-      for (const [eventId, songs] of Object.entries(writing)) {
-        if (!songs.length) continue;
-        const top = await env.DB.prepare(
-          `SELECT COALESCE(MAX(seq), 0) AS n FROM songs WHERE event_id = ?`).bind(eventId).first();
-        let seq = (top ? top.n : 0);
-        await env.DB.batch(songs.map((song) => env.DB.prepare(
-          `INSERT INTO songs (id, event_id, owner_email, title, artist, seq, created_ms)
-           VALUES (?,?,?,?,?,?,?)`
-        ).bind(ulid(now), eventId, owner.email_norm, song.title, song.artist, ++seq, now)));
-      }
-
-      const couldBe = [...orphans.values()].filter((n) => n.count >= 5)
-        .sort((a, b) => b.count - a.count).slice(0, 40);
-      return json(200, {
-        nights: [...report.values()].filter((n) => n.added > 0)
-          .sort((a, b) => (a.day < b.day ? 1 : -1)),
-        newNights: couldBe,
-        newNightTracks: couldBe.reduce((sum, n) => sum + n.count, 0),
-        matched, unmatched, preview,
-      });
-    }
-
     if (path === "/api/v1/party/bind" && request.method === "POST") {
       const body = await readJson(request, 4096);
       if (!body) return json(400, { error: "bad json" });
@@ -4265,15 +3076,17 @@ export default {
       if (!install) return json(403, { error: "bad install auth" });
       if (!PARTY_ID_RE.test(String(body.partyId || ""))) return json(400, { error: "bad party id" });
 
-      const bindGroup = await installGroup(env, body.id, now);
-      if (!bindGroup) return json(200, { bound: false, reason: "this Mac is not signed in" });
+      const link = await env.DB.prepare(
+        `SELECT group_id FROM install_groups WHERE install_id = ?`
+      ).bind(String(body.id)).first();
+      if (!link) return json(200, { bound: false, reason: "this Mac is not linked to a group" });
 
       const window = 12 * 60 * 60 * 1000;
       const night = await env.DB.prepare(
         `SELECT * FROM events WHERE group_id = ? AND state = 'announced'
            AND starts_ms IS NOT NULL AND starts_ms > ? AND starts_ms < ?
          ORDER BY ABS(starts_ms - ?) LIMIT 1`
-      ).bind(bindGroup.id, now - window, now + window, now).first();
+      ).bind(link.group_id, now - window, now + window, now).first();
       if (!night) return json(200, { bound: false, reason: "no night on now" });
 
       // First Mac to claim it wins, and a night already tied to another party
@@ -4286,7 +3099,8 @@ export default {
         await env.DB.prepare(`UPDATE events SET party_id = ?, state = 'live', updated_ms = ? WHERE id = ?`)
           .bind(String(body.partyId), now, night.id).run();
       }
-      return json(200, { bound: true, slug: night.slug, handle: bindGroup.handle, title: night.title });
+      const group = await env.DB.prepare(`SELECT handle FROM groups WHERE id = ?`).bind(link.group_id).first();
+      return json(200, { bound: true, slug: night.slug, handle: group && group.handle, title: night.title });
     }
 
     // ---- sign-in ----------------------------------------------------------
@@ -4441,33 +3255,78 @@ export default {
         return html(200, signInPage(env, "Sign in to link this Mac", path));
       }
 
-      // Signing in IS the linking. There is no question to answer: this Mac
-      // belongs to the person who just proved who they are. It used to ask
-      // which of your groups to attach it to, which is a question about a
-      // concept most people do not have, on a screen whose only job is "yes,
-      // that is me".
-      await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`)
-        .bind(now, match[1]).run();
-      await env.DB.prepare(
-        `INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?, ?, ?)
-         ON CONFLICT(install_id) DO UPDATE SET email_norm = excluded.email_norm,
-           linked_ms = excluded.linked_ms`
-      ).bind(code.install_id, dj.email_norm, now).run();
+      const { results } = await env.DB.prepare(
+        `SELECT g.* FROM groups g JOIN group_djs d ON d.group_id = g.id
+          WHERE d.dj_id = ? ORDER BY g.created_ms`
+      ).bind(dj.id).all();
+      const mine = results || [];
+
+      if (request.method === "POST") {
+        const form = await request.formData().catch(() => null);
+        if (!form) return notice("That did not work", "Try again.");
+        let groupId = String(form.get("group") || "");
+        if (!groupId) {
+          // No group yet, so making one is part of linking rather than a
+          // separate errand. Their @name is the obvious address.
+          const profile = await profileFor(env, dj.email_norm, now, dj.name);
+          const made = await createGroup(env, dj,
+            normalizeHandle(form.get("handle")) || profile.handle,
+            String(form.get("name") || "").slice(0, 80) || profile.name || profile.handle, now);
+          if (made.error) return notice("That name will not work", made.error);
+          groupId = made.id;
+        } else if (!mine.some((g) => g.id === groupId)) {
+          return notice("Not yours", "That is not one of your groups.");
+        }
+        await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`)
+          .bind(now, match[1]).run();
+        await env.DB.prepare(
+          `INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)
+           ON CONFLICT(install_id) DO UPDATE SET group_id = excluded.group_id,
+             linked_ms = excluded.linked_ms`
+        ).bind(code.install_id, groupId, now).run();
+        const group = await env.DB.prepare(`SELECT handle, name FROM groups WHERE id = ?`)
+          .bind(groupId).first();
+        return html(200, page("This Mac is yours", `
+          <h1>Done</h1>
+          <p>This Mac is signed in as <b>${esc(group.name || group.handle)}</b>. Your name and
+          photo are already in the app, and anything you change in either place shows up in
+          the other.</p>
+          <p class="muted">You can close this tab and go back to the Mac.</p>
+          <p><a class="btn plain" href="/@${esc(group.handle)}/manage">Open the group</a></p>
+        `, "", "", true));
+      }
 
       const profile = await profileFor(env, dj.email_norm, now, dj.name);
-      return html(200, page("This Mac is yours", `
-        <div class="you"><div class="yourow" style="align-items:center">
-          ${personDisc(profile, "big")}
-          <div class="grow" style="gap:2px">
-            <b style="font-size:16px">${esc(profile.name || "@" + profile.handle)}</b>
-            <span class="muted">@${esc(profile.handle)}</span>
-          </div>
-        </div></div>
-        <h1>That is you</h1>
-        <p>This Mac is signed in as you. Your name and photo are already in the
-        app, and anything you change in either place shows up in the other.</p>
-        <p class="muted">You can close this tab and go back to the Mac.</p>
-        <p><a class="btn plain" href="/home">Your parties</a></p>
+      const who = profile.name || dj.name || "@" + profile.handle;
+      return html(200, page("Link this Mac", `
+        <h1>Link this Mac</h1>
+        <p class="muted">Signed in as ${esc(who)}. This is the Mac that asked, and the
+        request expires in a few minutes.</p>
+        ${mine.length
+          ? `<form method="post" action="${esc(path)}">
+              ${mine.length === 1
+                ? `<input type="hidden" name="group" value="${esc(mine[0].id)}">
+                   <button class="actionbar" type="submit">
+                     <span class="tile">\u{1F5A5}️</span>
+                     <span class="lines">Link it to ${esc(mine[0].name || mine[0].handle)}
+                       <small>@${esc(mine[0].handle)}</small></span>
+                   </button>`
+                : mine.map((g) => `<button class="actionbar quiet" type="submit" name="group"
+                     value="${esc(g.id)}" style="margin-bottom:8px">
+                     <span class="tile">\u{1F5A5}️</span>
+                     <span class="lines">${esc(g.name || g.handle)}<small>@${esc(g.handle)}</small></span>
+                   </button>`).join("")}
+            </form>`
+          : `<p>You do not run a group yet. Linking this Mac makes one, at your own @name.</p>
+             <form class="newnight" method="post" action="${esc(path)}">
+               <input type="text" name="name" placeholder="What are your nights called?"
+                 value="${esc(profile.name || "")}">
+               <input type="text" name="handle" placeholder="handle"
+                 value="${esc(profile.handle || "")}">
+               <button class="btn" type="submit">Link this Mac and start the group</button>
+             </form>`}
+        <p class="muted" style="margin-top:28px">Not expecting this? Close the tab and nothing
+        happens - the request expires on its own.</p>
       `, "", "", true));
     }
 
@@ -4500,51 +3359,31 @@ export default {
       ).bind(dj.email_norm).all();
 
       const volumeWord = { all: "every post", events: "nights only", none: "nothing" };
-      // Four things, each said once, each looking like the kind of thing it is.
-      //
-      // This page used to be a heading and then prose all the way down: the
-      // account, the reason the account cannot change, and the person's public
-      // address were one grey paragraph, "Following" was an h2 with no rule
-      // above it, and Sign out was body text at the bottom. The facts are now
-      // fields, the sections are separated, and the two real actions look like
-      // buttons.
       return html(200, page("Your settings", `
         <h1>You</h1>
         <p class="muted">All of this is optional. You already have an @name, and
         nothing here has to be your real one.</p>
         ${profileEditor(profile, { action: "/settings", error: problem })}
+        <p class="muted">Signed in as ${esc(dj.email_norm)}. That address came from
+        ${esc(dj.apple_sub ? "Apple" : "your sign-in")} and cannot be changed here -
+        sign in with a different one and you are a different person to us.
+        ${profile.handle ? `Your page is
+          <a href="/@${esc(profile.handle)}">partyparty.party/@${esc(profile.handle)}</a>.` : ""}</p>
 
-        <div class="factrow">
-          ${profile.handle ? `<div class="eventfield"><span>Your page</span>
-            <div class="linkrow"><a class="linkbox" href="/@${esc(profile.handle)}"
-              >partyparty.party/@${esc(profile.handle)}</a></div></div>` : ""}
-          <div class="eventfield"><span>Signed in as</span>
-            <!-- a div, not a span: .eventfield span IS the uppercase label rule,
-                 and an address rendered DJ@EXAMPLE.COM is not the address. -->
-            <div class="linkrow"><div class="linkbox">${esc(dj.email_norm)}</div></div></div>
-        </div>
-        <p class="muted">That address came from ${esc(dj.apple_sub ? "Apple" : "your sign-in")}
-        and cannot be changed here - sign in with a different one and you are a
-        different person to us.</p>
-
-        <hr class="soft">
-        <div class="sectionhead"><h2>Following</h2>
-          <span class="muted">Their nights show up on your home page</span></div>
+        <h2>Following</h2>
         ${(following || []).length
-          ? `<div class="entries">${(following).map((g) => `<a class="entry"
-              href="/@${esc(g.handle)}"><span class="entrywhen"
-              >${esc(volumeWord[g.volume] || g.volume)}</span>
-              <div class="entrybody"><b>${esc(g.name || g.handle)}</b>
-                <span class="entrywhere">@${esc(g.handle)}</span></div></a>`).join("")}</div>
-             <p class="muted">How much you hear from each one is set from any message
-             they send you - that link works without signing in, which is the point.</p>`
-          : `<p class="blank">Nobody yet. Follow someone from any message they send
-             you - that link works without signing in, which is the point.</p>`}
+          ? (following).map((g) => `<div class="card">
+              <strong>${esc(g.name || g.handle)}</strong>
+              <div class="muted">You hear ${esc(volumeWord[g.volume] || g.volume)} ·
+                <a class="muted" href="/@${esc(g.handle)}">their page</a></div>
+            </div>`).join("")
+          : `<p class="muted">Nobody yet. Following someone puts their nights on your
+             home page.</p>`}
+        <p class="muted">How much you hear from each one is set from any message they
+        send you - that link works without signing in, which is the point.</p>
 
-        ${shazamImport()}
-
-        <hr class="soft">
-        <a class="btn plain small" href="/auth/signout">Sign out</a>
+        <p style="margin-top:40px"><a class="muted" href="/home">Home</a> ·
+          <a class="muted" href="/auth/signout">Sign out</a></p>
       `, "", "", true));
     }
 
@@ -4580,28 +3419,14 @@ export default {
       // A rejected save keeps the welcome open, whatever the stored flag says:
       // the person is mid-edit and closing the form under them would be worse
       // than the error they are already looking at.
-      // A journal opens on the journal. Asking somebody to fill in a profile
-      // before they can see their own parties is a wall, and a form the height
-      // of the screen was exactly that - so it is a line that opens now, and
-      // only opens itself when something needs fixing.
-      // Open when there is nothing saved. Owner, 2026-08-09: start the app with
-      // no profile and the About You details are there to fill, because going
-      // live lists you as one of the DJs and a night billed to "@handle" is
-      // nobody. Still not the wall a previous decision removed - it is one
-      // block, dismissible, and your parties are right below it.
       const you = (!stored.saved_ms || problem)
-        ? `<details class="welcome" open>
-             <summary>${personDisc(profile)}<span>
-               <b>${esc(profile.name || "@" + profile.handle)}</b>
-               <small>Add your name and photo - optional, and you are already
-                 @${esc(stored.handle)}</small></span></summary>
-             ${profileEditor(profile, {
-               action: "/home",
-               dismiss: "Not now",
-               error: problem,
-               note: `All optional. Skip it and you are <b>@${esc(stored.handle)}</b> to everyone.`,
-             })}
-           </details>`
+        ? profileEditor(profile, {
+            action: "/home",
+            heading: "You, if you want to be",
+            dismiss: "Not now",
+            error: problem,
+            note: `All optional. Skip it and you are <b>@${esc(stored.handle)}</b> to everyone.`,
+          })
         : `<div class="you"><div class="yourow" style="align-items:center">
             ${personDisc(profile, "big")}
             <div class="grow" style="gap:2px">
@@ -4616,52 +3441,36 @@ export default {
       // encounter against - going to somebody else's night is as much a party
       // of mine as throwing one.
       const mine = await myParties(env, dj.email_norm);
-      const { results: follows = [] } = await env.DB.prepare(
-        `SELECT p.handle, p.name FROM follows f
-           JOIN profiles p ON p.email_norm = f.person_email
-          WHERE f.follower_email = ? ORDER BY p.handle`
-      ).bind(dj.email_norm).all();
       const upcoming = mine.filter((e) => !partyIsPast(e, now))
         .sort((a, b) => (a.starts_ms || Infinity) - (b.starts_ms || Infinity));
       const past = mine.filter((e) => partyIsPast(e, now));
 
-      // What is in a night, in one line, so a list of parties is worth reading
-      // a year later: who played, how much of the set you wrote down, and the
-      // opening of what you thought.
-      const inside = (e) => {
-        const bits = [];
-        if (e.attended === 1) bits.push("You were there");
-        if (e.bill) bits.push(esc(e.bill));
-        if (e.song_count) bits.push(`${e.song_count} ${e.song_count === 1 ? "song" : "songs"}`);
-        if (e.my_note) {
-          const line = String(e.my_note).replace(/\s+/g, " ").trim();
-          bits.push(esc(line.length > 68 ? line.slice(0, 67) + "\u2026" : line));
-        }
-        return bits.join(" \u00b7 ");
-      };
-      const row = (e) => `<a class="entry" href="/@${esc(e.handle)}/${esc(e.slug)}">
-        <span class="entrywhen">${esc(whenText(e))}</span>
-        <span class="entrybody">
-          <b>${esc(e.title || "Untitled party")}</b>
-          ${e.place ? `<span class="entrywhere">${esc(e.place)}</span>` : ""}
-          ${inside(e) ? `<span class="entryinside">${inside(e)}</span>` : ""}
-        </span>
-        ${liveNow(e, now) ? `<span class="tag live">Playing now</span>`
-          : partyPhase(e, now) === "now" ? `<span class="tag live">Tonight</span>` : ""}
+      const row = (e) => `<a class="card partyrow" href="/@${esc(e.handle)}/${esc(e.slug)}">
+        <div class="grow">
+          <div class="when">${esc(whenText(e))}${e.place ? " \u00b7 " + esc(e.place) : ""}</div>
+          <strong>${esc(e.title || "Untitled party")}</strong>
+          ${partyPhase(e, now) === "now" ? `<span class="tag live">On tonight</span>` : ""}
+          ${e.attended === 1 ? `<span class="tag">You went</span>` : ""}
+          ${e.my_note ? `<span class="tag quiet">Noted</span>` : ""}
+          ${liveNow(e, now) ? `<span class="tag live">Playing now</span>` : ""}
+        </div>
       </a>`;
 
       const section = (label, list, empty) => `<h2>${esc(label)}</h2>
-        ${list.length ? `<div class="entries">${list.map(row).join("")}</div>`
-          : `<p class="blank">${empty}</p>`}`;
+        ${list.length ? list.map(row).join("") : `<p class="muted">${empty}</p>`}`;
 
       return html(200, page("Your parties", `
         ${you}
         <div class="sectionhead"><h1>Your parties</h1>
           <a class="btn" href="/parties/new">Add a party</a></div>
         ${mine.length === 0
-          ? `<p class="blank">A party you are going to, or one you were at last
-             night. Who played, who you were with, what they played - yours, and
-             nobody else's unless you say so.</p>`
+          ? `<div class="card">
+               <p><b>Nothing here yet.</b></p>
+               <p class="muted">Add a party you are going to, or one you already
+               went to. Keep who played, who you saw, and what you thought - it is
+               yours and nobody else sees it.</p>
+               <p><a class="btn" href="/parties/new">Add your first party</a></p>
+             </div>`
           : `${section("Upcoming", upcoming, "Nothing coming up.")}
              ${section("Past", past, "Nothing yet.")}`}
 
@@ -4685,23 +3494,16 @@ export default {
         if (!form) return notice("That did not save", "Try again.");
         const title = String(form.get("title") || "").trim();
         if (!title) {
-          return html(200, newPartyPage(group, { error: "Give it a name first." },
-            form, todayISO(now), await lastPlaceUsed(env, dj.email_norm)));
+          return html(200, newPartyPage(group, { error: "Give it a name first." }, form));
         }
-        // A day, at midday. Storing midnight means a reader an hour west sees
-        // the party on the day before, which in a journal is simply wrong.
-        const dayRaw = String(form.get("day") || "");
-        const starts = dayRaw ? Date.parse(dayRaw + "T12:00:00Z") : null;
+        const startsRaw = String(form.get("starts") || "");
+        const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
         const made = await createParty(env, group, {
-          ownerEmail: dj.email_norm,
           title,
           startsMs: Number.isFinite(starts) ? starts : null,
           place: form.get("place"),
         }, now);
-        if (made.error) {
-          return html(200, newPartyPage(group, { error: made.error },
-            form, todayISO(now), await lastPlaceUsed(env, dj.email_norm)));
-        }
+        if (made.error) return html(200, newPartyPage(group, { error: made.error }, form));
         // The DJ, typed as a name, becomes a person - so their history starts
         // accruing from the first party rather than from whenever I first
         // thought to make a contact record.
@@ -4717,8 +3519,7 @@ export default {
           status: 302, headers: { location: `/@${group.handle}/${made.slug}` },
         });
       }
-      return html(200, newPartyPage(group, {}, null, todayISO(now),
-        await lastPlaceUsed(env, dj.email_norm)));
+      return html(200, newPartyPage(group, {}, null));
     }
 
     // Everyone I have recorded, and one person's whole history.
@@ -4736,17 +3537,12 @@ export default {
             <input type="search" name="q" placeholder="Search by name" value="${esc(q)}">
             <button class="btn plain" type="submit">Search</button>
           </form>
-          ${list.length ? `<div class="entries">${list.map((p) => `<a class="seen" href="/people/${esc(p.id)}">
-              ${personDisc(p)}
-              <span class="entrybody">
-                <b>${esc(p.name)}</b>
-                <span class="entryinside">${p.last_at
-                  ? `Last at ${esc(p.last_at)}${p.last_ms
-                      ? " \u00b7 " + esc(whenText({ starts_ms: p.last_ms, day_only: 1 })) : ""}`
-                  : "Not at a party yet"}</span>
-              </span>
-              <span class="entrywhen">${p.times}</span>
-            </a>`).join("")}</div>`
+          ${list.length ? list.map((p) => `<a class="card partyrow" href="/people/${esc(p.id)}">
+              <div class="grow">
+                <strong>${esc(p.name)}</strong>
+                <div class="muted">${p.times} ${p.times === 1 ? "party" : "parties"}${
+                  p.account_email ? " \u00b7 on PartyParty" : ""}</div>
+              </div></a>`).join("")
             : q
               ? `<p class="muted">Nobody by that name.</p>`
               : `<div class="card"><p><b>Nobody yet.</b></p>
@@ -4803,17 +3599,11 @@ export default {
         typed && typed.get(name) !== null ? typed.get(name) : fallback);
       const history = await personHistory(env, dj.email_norm, who);
       return html(200, page(person.name, `
-        <div class="you"><div class="yourow" style="align-items:center">
-          ${personDisc(person, "big")}
-          <div class="grow" style="gap:2px">
-            <b style="font-size:19px;letter-spacing:-.02em">${esc(person.name)}</b>
-            <span class="muted">${history.length} ${history.length === 1 ? "time" : "times"}${
-          account ? ` \u00b7 <a href="/@${esc(account.handle)}">@${esc(account.handle)}</a>` : ""}</span>
-          </div>
-        </div></div>
+        <div class="sectionhead"><h1>${esc(person.name)}</h1></div>
+        <p class="muted">${history.length} ${history.length === 1 ? "time" : "times"}${
+          account ? ` \u00b7 <a href="/@${esc(account.handle)}">@${esc(account.handle)}</a>
+            on PartyParty` : ""}</p>
 
-        <details class="edit"${linkError ? " open" : ""}>
-        <summary>Edit</summary>
         ${linkError ? `<p class="formerror" role="alert">${esc(linkError)}</p>` : ""}
         <form class="you" method="post" action="/people/${esc(who)}">
           <div class="grow" style="display:grid;gap:10px">
@@ -4830,20 +3620,17 @@ export default {
             <p class="muted">This is the general note. What happened on a
             particular night stays on that night. The @name is optional -
             they do not need an account to be here.</p></div>
-        </form></details>
+        </form>
 
         <h2>Where you saw them</h2>
-        ${history.length ? `<div class="entries">${history.map((h) => `<a class="entry"
-            href="/@${esc(h.handle)}/${esc(h.slug)}">
-            <span class="entrywhen">${esc(whenText(h))}</span>
-            <span class="entrybody">
-              <b>${esc(h.title || "Untitled party")}</b>
-              ${h.place ? `<span class="entrywhere">${esc(h.place)}</span>` : ""}
-              ${h.note ? `<span class="entryinside">${esc(h.note)}</span>` : ""}
-            </span>
+        ${history.length ? history.map((h) => `<div class="card">
+            <div class="when">${esc(whenText(h))}${h.place ? " \u00b7 " + esc(h.place) : ""}</div>
+            <strong><a href="/@${esc(h.handle)}/${esc(h.slug)}">${esc(h.title || "Untitled party")}</a></strong>
             ${h.role === "dj" ? `<span class="tag">Played</span>` : ""}
-          </a>`).join("")}</div>`
-          : `<p class="blank">Nights you saw them at will collect here.</p>`}
+            ${h.note ? `<p style="margin:8px 0 0">${esc(h.note).replace(/\n/g, "<br>")}</p>`
+              : `<p class="muted" style="margin:6px 0 0">No note from that night.</p>`}
+          </div>`).join("")
+          : `<p class="muted">You have not recorded them at a party yet.</p>`}
         <p class="muted" style="margin-top:32px"><a href="/people">All people</a> ·
           <a href="/home">Your parties</a></p>
       `, "", "", true));
@@ -4898,14 +3685,14 @@ export default {
     // because the one place a venue reliably has no signal is the door.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/door$/);
     if (match) {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       const { results } = await env.DB.prepare(
         `SELECT m.id, m.name, m.email_norm FROM signups s JOIN members m ON m.id = s.member_id
           WHERE s.event_id = ? AND s.state = 'going' ORDER BY m.name, m.email_norm`
@@ -4947,11 +3734,7 @@ export default {
     // along as a hidden field and lands with everything else.
     match = path.match(/^\/@([a-z0-9]+)\/new$/);
     if (match) {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env, "Sign in", path));
@@ -4966,7 +3749,6 @@ export default {
         const cover = await coverFromForm(env, form, "");
         if (cover && cover.error) return notice("That picture did not take", cover.error);
         const made = await createParty(env, group, {
-          ownerEmail: dj.email_norm,
           title,
           startsMs: Number.isFinite(starts) ? starts : null,
           place: form.get("place"),
@@ -5092,19 +3874,16 @@ export default {
           const link = String(form.get("merchLink") || "").trim();
           const problem = payLinkProblem(link);
           if (problem) return notice("That link will not work", problem);
-          await profileFor(env, dj.email_norm, now, dj.name);
-          await env.DB.prepare(
-            `UPDATE profiles SET merch_link = ?, merch_label = ?, updated_ms = ? WHERE email_norm = ?`
-          ).bind(link, String(form.get("merchLabel") || "").slice(0, 40), now, dj.email_norm).run();
+          await env.DB.prepare(`UPDATE groups SET merch_link = ?, merch_label = ?, updated_ms = ? WHERE id = ?`)
+            .bind(link, String(form.get("merchLabel") || "").slice(0, 40), now, group.id).run();
           return notice("Saved", link ? "Your store is linked." : "The store link is off.");
         }
         if (form && form.has("payLink")) {
           const link = String(form.get("payLink") || "").trim();
           const problem = payLinkProblem(link);
           if (problem) return notice("That link will not work", problem);
-          await profileFor(env, dj.email_norm, now, dj.name);
-          await env.DB.prepare(`UPDATE profiles SET pay_link = ?, updated_ms = ? WHERE email_norm = ?`)
-            .bind(link, now, dj.email_norm).run();
+          await env.DB.prepare(`UPDATE groups SET pay_link = ?, updated_ms = ? WHERE id = ?`)
+            .bind(link, now, group.id).run();
           return notice("Saved", link ? "Guests can tip you now." : "Tipping is off.");
         }
         if (form && form.has("groupName")) {
@@ -5144,15 +3923,11 @@ export default {
           ).bind(pair, now).first();
           if (!code) return notice("That code has expired", "The Mac shows a fresh one every few minutes.");
           await env.DB.prepare(`UPDATE install_codes SET used_ms = ? WHERE code = ?`).bind(now, pair).run();
-          // Same rule as the link page: the Mac becomes the PERSON'S, not this
-          // group's. Typing the code here is just another way of saying "that
-          // Mac is mine" from a page you happened to already have open.
           await env.DB.prepare(
-            `INSERT INTO install_accounts (install_id, email_norm, linked_ms) VALUES (?, ?, ?)
-             ON CONFLICT(install_id) DO UPDATE SET email_norm = excluded.email_norm,
-               linked_ms = excluded.linked_ms`
-          ).bind(code.install_id, dj.email_norm, now).run();
-          return notice("That Mac is yours", "It is signed in as you.");
+            `INSERT INTO install_groups (install_id, group_id, linked_ms) VALUES (?, ?, ?)
+             ON CONFLICT(install_id) DO UPDATE SET group_id = excluded.group_id, linked_ms = excluded.linked_ms`
+          ).bind(code.install_id, group.id, now).run();
+          return notice("That Mac is yours", `Its parties will find ${group.name || group.handle}'s nights.`);
         }
         const say = String((form && form.get("say")) || "");
         if (say) {
@@ -5165,19 +3940,14 @@ export default {
         const startsRaw = String((form && form.get("starts")) || "");
         const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
         const capacity = Math.max(0, Math.min(100000, parseInt(String((form && form.get("capacity")) || "0"), 10) || 0));
-        // Through createParty like everything else, so it carries an owner. A
-        // raw insert here made parties that belonged to nobody.
-        await createParty(env, group, {
-          ownerEmail: dj.email_norm, title,
-          startsMs: Number.isFinite(starts) ? starts : null,
-          place: (form && form.get("place")) || "", capacity,
-        }, now);
+        await env.DB.prepare(
+          `INSERT INTO events (id, group_id, slug, title, starts_ms, place, capacity, state, created_ms, updated_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'announced', ?, ?)`
+        ).bind(ulid(now), group.id, slugify(title, now), title, Number.isFinite(starts) ? starts : null,
+          String((form && form.get("place")) || "").slice(0, 120), capacity, now, now).run();
         return new Response(null, { status: 302, headers: { location: `/@${group.handle}/manage` } });
       }
       const events = await upcomingEvents(env, group.id, 0);
-      const meNow = await profileFor(env, dj.email_norm, now, dj.name);
-      const payLinkNow = meNow.pay_link || "";
-      const merchNow = { link: meNow.merch_link || "", label: meNow.merch_label || "" };
       const pro = await isPro(env, group.id);
       const members = await env.DB.prepare(
         `SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND state = 'joined'`
@@ -5241,16 +4011,16 @@ export default {
           <p class="muted">Your own link. It goes straight to you; we take nothing.</p>
           <form class="join" method="post" action="/@${esc(group.handle)}/manage">
             <input type="text" name="payLink" placeholder="Your Venmo, Revolut or PayPal link"
-              value="${esc(payLinkNow)}">
+              value="${esc(group.pay_link || "")}">
             <button class="btn plain" type="submit">Save</button>
           </form>
 
           <h2>Merch</h2>
           <form class="join" method="post" action="/@${esc(group.handle)}/manage">
             <input type="text" name="merchLink" placeholder="Link to your store"
-              value="${esc(merchNow.link)}">
+              value="${esc(group.merch_link || "")}">
             <input type="text" name="merchLabel" placeholder="Label, e.g. Shirts"
-              value="${esc(merchNow.label)}">
+              value="${esc(group.merch_label || "")}">
             <button class="btn plain" type="submit">Save</button>
           </form>
 
@@ -5315,6 +4085,10 @@ export default {
     if (match) {
       const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       return new Response(icsFor(group, [event], base), {
         headers: {
           "content-type": "text/calendar;charset=utf-8",
@@ -5384,13 +4158,21 @@ export default {
         return notice("Blocked", "You will not get invitations from them. You are still in the group.");
       }
 
-      // Posting from here is gone with groups. A thread belonging to a group,
-      // mailed to its members, cannot survive a product with no groups in it -
-      // and photos and words belong to the night they happened at, which is
-      // where they are now. This link's remaining job is how much you hear.
+      if (request.method === "POST" && group) {
+        const form = await request.formData().catch(() => null);
+        const member = await env.DB.prepare(`SELECT * FROM members WHERE id = ?`).bind(token.member_id).first();
+        await addPost(env, { group, member, body: form && form.get("say"), base, now });
+        return new Response(null, { status: 302, headers: { location: `/@${group.handle}` } });
+      }
       const link = (q, label) => `<p><a class="btn plain" href="/m/${match[1]}?do=${q}">${esc(label)}</a></p>`;
       return html(200, page("Your settings", `
         <h1>Your settings</h1>
+        ${group ? `<h2>Say something to ${esc(group.name || group.handle)}</h2>
+        <form class="join" method="post" action="/m/${match[1]}">
+          <input type="text" name="say" placeholder="Anything" required>
+          <button class="btn" type="submit">Post</button>
+        </form>` : ""}
+        ${group ? `<p class="muted">For ${esc(group.name || group.handle)}</p>` : ""}
         <h2>How much you hear</h2>
         ${link("all", "Every post")}
         ${link("events", "Only nights")}
@@ -5417,111 +4199,26 @@ export default {
     }
 
     // Joining a group from its page.
-    // Following a PERSON. Membership of a group was how this worked and groups
-    // are dead; the follow is recorded against the two people, and privately -
-    // whether it is anybody else's business is the follower's to decide.
     match = path.match(/^\/@([a-z0-9]+)\/join$/);
     if (match && request.method === "POST") {
-      const them = await profileByHandle(env, match[1]);
       const group = await groupByHandle(env, match[1]);
-      if (!them && !group) return new Response("Not Found", { status: 404 });
+      if (!group) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       const emailNorm = normalizeEmail(form && form.get("email"));
       if (!emailNorm) return notice("That address did not look right", "Go back and try again.");
-      if (them && them.email_norm !== emailNorm) {
-        await env.DB.prepare(
-          `INSERT OR IGNORE INTO follows (follower_email, person_email, public, created_ms)
-           VALUES (?,?,0,?)`
-        ).bind(emailNorm, them.email_norm, now).run();
-      }
-      // The confirmation email, and the settings link in it, still ride on the
-      // member record. That machinery outlives groups; it is how somebody with
-      // no account hears anything at all.
-      if (group) {
-        await joinGroup(env, group, emailNorm,
-          String((form && form.get("name")) || "").slice(0, 60), "link", base, now);
-      }
+      await joinGroup(env, group, emailNorm, String((form && form.get("name")) || "").slice(0, 60), "link", base, now);
       return notice("Check your email", `We sent one message to ${emailNorm}. Tap the link in it and you are in.`);
     }
 
     // Saying you are coming, from the night's own page.
-    // "I was there." The other half of "I'm coming", for a night that already
-    // happened. Anybody holding the link can say it, exactly as they can add a
-    // photo - it is a fact they are contributing to somebody's record of their
-    // own night, and it needs no account, because a name is enough.
-    // The night's people, on their own, for the Mac's sidebar.
-    //
-    // Owner, 2026-08-09: who played and who was there belong on the right bar
-    // where the QR is. The QR is the Mac's - it is a LAN address the platform
-    // does not know until a set is live - so the rail comes to the QR rather
-    // than the other way round. Same nightRail(), same stylesheet, rendered on
-    // its own so the console can put it where it belongs.
-    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/rail$/);
-    if (match && request.method === "GET") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
-      if (!group) return new Response("Not Found", { status: 404 });
-      const viewer = await currentDJ(env, request, now);
-      const canKeep = !!viewer &&
-        (viewer.email_norm === event.owner_email || await djRunsGroup(env, viewer, group.id));
-      const sees = await whoSees(env, event, viewer);
-      if (!canKeep && !sees.open) return new Response("Not Found", { status: 404 });
-      const people = canKeep
-        ? await partyPeople(env, viewer.email_norm, event.id)
-        : (await partyPeople(env, event.owner_email, event.id)).filter((p) => p.role === "dj");
-      return html(200, `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(event.title || "A night")}</title><style>${STYLE}
-/* On its own, with no page around it. It must not scroll: the thing holding
-   it sizes itself to this content, and a scrollbar here paints a light gash
-   down somebody's dark sidebar. */
-html,body{margin:0;background:transparent;overflow:hidden;
-  scrollbar-width:none;color-scheme:dark}
-html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
-.rail.nightpeople{position:static;padding:0;gap:22px}
-</style></head><body>${
-        nightRail(group, event, people,
-          canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep, false)
-      }</body></html>`);
-    }
-
-    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/here$/);
-    if (match && request.method === "POST") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      // A night you cannot open is a night you cannot put your name on.
-      if (!event.owner_email) return new Response("Not Found", { status: 404 });
-      if (!(await whoSees(env, event, await currentDJ(env, request, now))).open) {
-        return new Response("Not Found", { status: 404 });
-      }
-      const form = await request.formData().catch(() => null);
-      const name = String((form && form.get("name")) || "").trim().slice(0, 80);
-      if (!name) return notice("That needs a name", "Go back and type who you are.");
-      const person = await findOrMakePerson(env, event.owner_email, name, now);
-      if (person) {
-        await env.DB.prepare(
-          `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
-           VALUES (?,?,?,'guest',?)
-           ON CONFLICT(event_id, person_id) DO NOTHING`
-        ).bind(event.id, person.id, event.owner_email, now).run();
-      }
-      return notice(`You were there`,
-        `${name} is on the list for this night.`,
-        `/@${match[1]}/${match[2]}`);
-    }
-
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/going$/);
     if (match && request.method === "POST") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       const emailNorm = normalizeEmail(form && form.get("email"));
       if (!emailNorm) return notice("That address did not look right", "Go back and try again.");
@@ -5560,15 +4257,12 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
 
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/buy$/);
     if (match && request.method === "POST") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
-      if (event.state === "draft" || !event.ticket_cents) {
-        return new Response("Not Found", { status: 404 });
-      }
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ? AND state != 'draft'`
+      ).bind(group.id, match[2]).first();
+      if (!event || !event.ticket_cents) return new Response("Not Found", { status: 404 });
       if (!group.stripe_acct || !stripeConfigured(env)) {
         return notice("Tickets are not on sale", "The DJ has not connected a payment account.");
       }
@@ -5644,17 +4338,13 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
     // Saying something on the group's own page. Signed in only - the way a
     // member without an account posts is the link in their own email, which
     // already carries who they are and needs no password.
-    match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/say$/);
+    match = path.match(/^\/@([a-z0-9]+)\/say$/);
     if (match && request.method === "POST") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       const viewer = await viewerOf(env, request, group, now);
       if (!viewer || (!viewer.runsThisGroup && !viewer.follows)) {
-        return notice("Not yours to post to", "Ask for the link to this party.");
+        return notice("Not yours to post to", "Follow the group first.");
       }
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not post", "Try again.");
@@ -5676,7 +4366,6 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
         : await memberByEmail(env, viewer.dj.email_norm);
       await addPost(env, {
         group,
-        event,
         dj: viewer.runsThisGroup ? viewer.dj : null,
         member,
         body: form.get("say"),
@@ -5685,21 +4374,18 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
         base,
         now,
       });
-      return new Response(null, {
-        status: 302, headers: { location: `/@${group.handle}/${event.slug}` },
-      });
+      return new Response(null, { status: 302, headers: { location: `/@${group.handle}` } });
     }
 
     // A night.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)$/);
     if (match) {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      if (event.state === "draft") return new Response("Not Found", { status: 404 });
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ? AND state != 'draft'`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       const viewer = await currentDJ(env, request, now);
       // The tracker is the signed-in person's own record OF this party -
       // available whether or not the party is theirs, because going to
@@ -5708,91 +4394,30 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
         ? trackerBlock(event, group,
             await myPartyNote(env, viewer.email_norm, event.id),
             await partyPeople(env, viewer.email_norm, event.id),
-            await peopleFor(env, viewer.email_norm, ""),
-            await songsFor(env, event.id))
+            await peopleFor(env, viewer.email_norm, ""))
         : "";
-      const mineToKeep = !!viewer && viewer.email_norm === event.owner_email;
-      // The page opens for anybody following you; what is IN it is the setting.
-      // A stranger still gets nothing - a night is not addressable by guessing.
-      const sees = await whoSees(env, event, viewer);
-      if (!mineToKeep && !sees.open && !await djRunsGroup(env, viewer, group.id)) {
-        return new Response("Not Found", { status: 404 });
-      }
-      const owner = event.owner_email
-        ? await profileFor(env, event.owner_email, now) : null;
-      const canKeep = mineToKeep || await djRunsGroup(env, viewer, group.id);
-      // The Mac shows the rail in its own sidebar beside the QR and asks the
-      // page to leave it out, so the night is not flanked by two of them.
-      const railHere = url.searchParams.get("rail") !== "0";
-      // Mine: everybody I put in the room. Not mine: who played, which is what
-      // the night WAS and is public the moment the night is.
-      const railPeople = canKeep
-        ? await partyPeople(env, viewer.email_norm, event.id)
-        : (await partyPeople(env, event.owner_email, event.id))
-            .filter((p) => p.role === "dj");
       return html(200, eventPage(group, event, await goingCount(env, event.id), base,
         await takeRateFor(env, group.id),
-        canKeep, tracker,
-        {
-          rail: railHere ? nightRail(group, event, railPeople,
-            canKeep ? await peopleFor(env, viewer.email_norm, "") : [], canKeep, true) : "",
-          ownerName: owner ? (owner.name || "@" + owner.handle) : group.handle,
-          // The night HAPPENED - who played and when is what a follower came to
-          // see. What was played, and the photos, are the contents.
-          billed: mineToKeep ? [] : await partyPeople(env, event.owner_email, event.id),
-          setlist: mineToKeep || !sees.contents ? [] : await songsFor(env, event.id),
-          live: liveNow(event, now), phase: partyPhase(event, now),
-          posts: mineToKeep || sees.contents ? await eventPosts(env, event.id) : [],
-          // Whoever it belongs to, and whoever they let in. The tracker above
-          // is private; this is the part of a party other people can add to.
-          // Adding to a night is reading it and then some.
-          canPost: mineToKeep || sees.contents,
-          // Tipping belongs to whoever threw it, wherever their page is.
-          payLink: event.owner_email
-            ? (await profileFor(env, event.owner_email, now)).pay_link : "",
-        }));
+        await djRunsGroup(env, viewer, group.id), tracker,
+        { live: liveNow(event, now), phase: partyPhase(event, now) }));
     }
 
     // Editing the party from the web. The same fields, the same updateParty and
     // the same rules as the Mac's own edit route - one party, two clients.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/edit$/);
     if (match && request.method === "POST") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) {
         return html(403, signInPage(env, "Sign in", `/@${match[1]}/${match[2]}`));
       }
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not save", "Try again.");
-
-      // Editing in place, from the hero. The name, the day and the place each
-      // save on their own without the page going anywhere - asked for as JSON,
-      // one field at a time, which is what typing into a heading is.
-      if ((request.headers.get("accept") || "").includes("application/json") &&
-          !form.has("links")) {
-        const fields = {};
-        if (form.has("title")) {
-          const wanted = String(form.get("title") || "").slice(0, 120).trim();
-          if (!wanted) return json(400, { error: "a night needs a name" });
-          fields.title = wanted;
-        }
-        if (form.has("place")) fields.place = String(form.get("place") || "").slice(0, 120);
-        if (form.has("day")) {
-          const raw = String(form.get("day") || "");
-          const at = raw ? Date.parse(raw + "T12:00:00Z") : null;
-          if (raw && !Number.isFinite(at)) return json(400, { error: "that date did not make sense" });
-          fields.startsMs = raw ? at : null;
-        }
-        if (!Object.keys(fields).length) return json(400, { error: "nothing to save" });
-        const done = await updateParty(env, event, fields, now);
-        if (done && done.error) return json(400, { error: done.error });
-        return json(200, { ok: true, name: fields.title || event.title });
-      }
 
       // Re-rendering the whole page with the form still filled in, rather than
       // a bare error page with a Back button that loses what was typed.
@@ -5802,23 +4427,18 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
         trackerBlock(event, group,
           await myPartyNote(env, dj.email_norm, event.id),
           await partyPeople(env, dj.email_norm, event.id),
-          await peopleFor(env, dj.email_norm, ""),
-          await songsFor(env, event.id)),
+          await peopleFor(env, dj.email_norm, "")),
         { live: liveNow(event, now), phase: partyPhase(event, now),
-          editError: why, typed: form, posts: await eventPosts(env, event.id), canPost: true,
-          rail: nightRail(group, event, await partyPeople(env, dj.email_norm, event.id),
-            await peopleFor(env, dj.email_norm, ""), true, true) }));
+          editError: why, typed: form }));
 
-      const dayRaw = String(form.get("day") || "");
-      const starts = dayRaw ? Date.parse(dayRaw + "T12:00:00Z") : null;
-      if (dayRaw && !Number.isFinite(starts)) {
+      const startsRaw = String(form.get("starts") || "");
+      const starts = startsRaw ? Date.parse(startsRaw + "Z") : null;
+      if (startsRaw && !Number.isFinite(starts)) {
         return refuse("That date did not make sense.");
       }
       const done = await updateParty(env, event, {
-        // Absent from this form on purpose - the hero owns the name. Passing
-        // null would ask updateParty to blank it.
-        title: form.has("title") ? form.get("title") : undefined,
-        startsMs: dayRaw ? starts : null,
+        title: form.get("title"),
+        startsMs: startsRaw ? starts : null,
         place: form.get("place"),
         links: form.get("links"),
       }, now);
@@ -5832,115 +4452,29 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
     // removing somebody. All of it belongs to whoever is signed in.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/record$/);
     if (match && request.method === "POST") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!dj) return html(200, signInPage(env, "Sign in", `/@${match[1]}/${match[2]}`));
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
       if (!form) return notice("That did not save", "Try again.");
-      // Back where it came from. A post from the Mac's sidebar returns to the
-      // sidebar; anything else returns to the night. Read off the form that is
-      // already parsed - cloning the request to peek costs the body.
-      const back = `/@${group.handle}/${event.slug}${
-        form.get("from") === "rail" ? "/rail" : ""}`;
+      const back = `/@${group.handle}/${event.slug}`;
 
       // Somebody new on the bill or in the room.
       const who = String(form.get("who") || "").trim();
       if (who) {
+        const person = await findOrMakePerson(env, dj.email_norm, who, now);
+        if (!person) return notice("That needs a name", "Type who it was.");
         const role = form.get("role") === "dj" ? "dj" : "guest";
-        let added = 0;
-        for (const name of who.split(/,| and /i)) {
-          const person = await findOrMakePerson(env, dj.email_norm, name, now);
-          if (!person) continue;
-          await env.DB.prepare(
-            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
-             VALUES (?,?,?,?,?)
-             ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
-          ).bind(event.id, person.id, dj.email_norm, role, now).run();
-          added++;
-        }
-        if (!added) return notice("That needs a name", "Type who it was.");
-        return new Response(null, { status: 302, headers: { location: back } });
-      }
-
-      // Who may see it. One tap, three answers, no dialog.
-      const wantSeen = String(form.get("visibility") || "");
-      if (["named", "followers", "public"].includes(wantSeen)) {
-        if (event.owner_email === dj.email_norm) {
-          await env.DB.prepare(`UPDATE events SET visibility = ?, updated_ms = ? WHERE id = ?`)
-            .bind(wantSeen, now, event.id).run();
-        }
-        return new Response(null, { status: 302, headers: { location: back } });
-      }
-
-      // Adding to a list. Which list is not a question - the field it came
-      // from answers it.
-      const it = String(form.get("it") || "").trim();
-      const as = String(form.get("as") || "");
-      const record = async (names, role) => {
-        for (const name of names) {
-          const person = await findOrMakePerson(env, dj.email_norm, name, now);
-          if (!person) continue;
-          await env.DB.prepare(
-            `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
-             VALUES (?,?,?,?,?)
-             ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
-          ).bind(event.id, person.id, dj.email_norm, role, now).run();
-        }
-      };
-      // No sentence parsing here any more. The capture line it existed for is
-      // gone, and with a field per list the name you typed into "Add a DJ" is
-      // a DJ - reading "Bo with Cy" as a guest would be the app being clever
-      // at the expense of being right.
-      if (it) {
-        if (as === "song") {
-          const artistPart = it.split(" by ");
-          for (const one of artistPart[0].split(/,| and /i)) {
-            await addSong(env, dj.email_norm, event.id,
-              { title: one, artist: artistPart[1] || "" }, now);
-          }
-          return new Response(null, { status: 302, headers: { location: back } });
-        }
-        if (as) {
-          await record(it.split(/,| and /i), as === "dj" ? "dj" : "guest");
-          return new Response(null, { status: 302, headers: { location: back } });
-        }
-      }
-
-      // A track: typed, or photographed off the Shazam screen. Both in one
-      // form, because at a party the picture is the faster of the two and
-      // making it the second-class path would mean it never gets used.
-      const shot = form.get("shot");
-      const songTitle = String(form.get("songTitle") || "").trim();
-      if (shot && typeof shot.arrayBuffer === "function" && Number(shot.size) > 0) {
-        const kept = await storeMedia(env, shot, "tracks", 12 * 1024 * 1024, false);
-        if (kept.error) return notice("That picture did not save", kept.error, back);
-        // "Title by Artist" beside the picture if they typed one too; a bare
-        // picture is a whole record on its own.
-        const by = songTitle.split(/\s+by\s+/i);
-        await addSong(env, dj.email_norm, event.id, {
-          title: by[0] || "", artist: by[1] || "", mediaKey: kept.key,
-        }, now);
-        return new Response(null, { status: 302, headers: { location: back } });
-      }
-      if (songTitle) {
-        // "Windowlicker, Xtal, Papua New Guinea" is one thing somebody types,
-        // and "Xtal by Aphex Twin" names the artist without a second field.
-        for (const one of songTitle.split(",")) {
-          const by = one.split(/\s+by\s+/i);
-          await addSong(env, dj.email_norm, event.id,
-            { title: by[0], artist: by[1] || form.get("songArtist") || "" }, now);
-        }
-        return new Response(null, { status: 302, headers: { location: back } });
-      }
-      const songId = String(form.get("song") || "");
-      if (songId) {
-        await env.DB.prepare(`DELETE FROM songs WHERE id = ? AND owner_email = ?`)
-          .bind(songId, dj.email_norm).run();
+        await env.DB.prepare(
+          `INSERT INTO party_people (event_id, person_id, owner_email, role, created_ms)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(event_id, person_id) DO UPDATE SET role = excluded.role`
+        ).bind(event.id, person.id, dj.email_norm, role, now).run();
         return new Response(null, { status: 302, headers: { location: back } });
       }
 
@@ -5969,13 +4503,10 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
         return new Response(null, { status: 302, headers: { location: back } });
       }
 
-      // What I thought. Writing anything down about a night is being at it, and
-      // there is no longer a box to tick saying so - so saving a note asserts
-      // attendance rather than clearing it, which is what reading an absent
-      // checkbox as "no" used to do.
+      // Went, and what I thought.
       await setPartyNote(env, dj.email_norm, event.id, {
         note: form.get("note"),
-        attended: 1,
+        attended: form.get("attended") ? 1 : 0,
       }, now);
       return new Response(null, { status: 302, headers: { location: back } });
     }
@@ -5984,29 +4515,21 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
     // this is the one thing on it only the DJ may do.
     match = path.match(/^\/@([a-z0-9]+)\/([a-z0-9-]+)\/cover$/);
     if (match && request.method === "POST") {
-      const at = await partyAt(env, match[1], match[2]);
-      if (!at) return new Response("Not Found", { status: 404 });
-      const event = at.event;
-      const group = await env.DB.prepare(`SELECT * FROM groups WHERE id = ?`)
-        .bind(event.group_id).first();
+      const group = await groupByHandle(env, match[1]);
       if (!group) return new Response("Not Found", { status: 404 });
       const dj = await currentDJ(env, request, now);
       if (!await djRunsGroup(env, dj, group.id)) return html(403, signInPage(env));
+      const event = await env.DB.prepare(
+        `SELECT * FROM events WHERE group_id = ? AND slug = ?`
+      ).bind(group.id, match[2]).first();
+      if (!event) return new Response("Not Found", { status: 404 });
       const form = await request.formData().catch(() => null);
-      const wantsJson = (request.headers.get("accept") || "").includes("application/json");
       const cover = form && await coverFromForm(env, form, event.cover_key);
-      if (cover && cover.error) {
-        return wantsJson ? json(400, { error: cover.error })
-          : notice("That picture did not take", cover.error);
-      }
+      if (cover && cover.error) return notice("That picture did not take", cover.error);
       if (cover) {
         await env.DB.prepare(`UPDATE events SET cover_key = ?, updated_ms = ? WHERE id = ?`)
           .bind(cover.key, now, event.id).run();
       }
-      // Shuffle used to tear the whole page down to look at one different
-      // picture; the script asks for JSON instead. It only ever got a redirect
-      // back, which it could not parse - so Shuffle did nothing at all.
-      if (wantsJson) return json(200, { ok: true, coverUrl: mediaUrl(cover ? cover.key : event.cover_key) });
       return new Response(null, {
         status: 302,
         headers: { location: `/@${group.handle}/${event.slug}` },
@@ -6017,36 +4540,15 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}
     // one thing and a group can never be shadowed by somebody's @name.
     match = path.match(/^\/@([a-z0-9]+)$/);
     if (match) {
-      // A person. Groups are dead: an address that was a group's handle still
-      // resolves, to the person who owned it, showing the same parties - the
-      // rows never belonged to the group in the first place.
-      let profile = await profileByHandle(env, match[1]);
-      if (!profile) {
-        const group = await groupByHandle(env, match[1]);
-        const owner = group && await env.DB.prepare(
-          `SELECT d.email_norm FROM group_djs gd JOIN djs d ON d.id = gd.dj_id
-            WHERE gd.group_id = ? ORDER BY gd.created_ms LIMIT 1`
-        ).bind(group.id).first();
-        if (owner) profile = await profileFor(env, owner.email_norm, now);
+      const group = await groupByHandle(env, match[1]);
+      if (group) {
+        return html(200, groupPage(group, await upcomingEvents(env, group.id, now), base,
+          await recentPosts(env, group.id), await viewerOf(env, request, group, now),
+          await groupPeople(env, group.id), await pastEvents(env, group.id, now)));
       }
-      if (!profile) return new Response("Not Found", { status: 404 });
-      const mine = await partiesOwnedBy(env, profile.email_norm, now);
-      const viewer = await currentDJ(env, request, now);
-      // Following is still stored as membership of the person's own group while
-      // that table exists. The model pass makes it person-to-person; the button
-      // means the same thing either way.
-      const home = await env.DB.prepare(
-        `SELECT g.handle FROM groups g JOIN group_djs gd ON gd.group_id = g.id
-           JOIN djs d ON d.id = gd.dj_id
-          WHERE d.email_norm = ?
-          ORDER BY CASE WHEN g.handle = ? THEN 0 ELSE 1 END, g.created_ms LIMIT 1`
-      ).bind(profile.email_norm, profile.handle).first();
-      const following = viewer ? await env.DB.prepare(
-        `SELECT 1 AS yes FROM follows WHERE follower_email = ? AND person_email = ?`
-      ).bind(viewer.email_norm, profile.email_norm).first() : null;
-      return html(200, personPage(profile, mine.upcoming, mine.past,
-        !!viewer && viewer.email_norm === profile.email_norm, base,
-        home && home.handle, !!following));
+      const profile = await profileByHandle(env, match[1]);
+      if (profile) return html(200, personPage(profile, await runsGroups(env, profile.email_norm)));
+      return new Response("Not Found", { status: 404 });
     }
 
     return new Response("Not Found", { status: 404 });
