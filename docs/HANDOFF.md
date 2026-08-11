@@ -5,7 +5,12 @@
 **The consolidated, buildable spec is `docs/inference.md`** - the pipeline
 (evidence → candidate → night), every source per device, schemas, scoring,
 privacy invariants, and the slice order. This section remains the decision
-trail that produced it.
+trail that produced it. Later passes recorded IN THE SPEC and superseding
+anything below: suggestion-only (no autonomy dial, nothing auto-adds), no
+forward address (Mac Mail scanning is the mail answer), registries for
+venues/performers/people, and the phone-first reframe - one journal, the
+phone as its primary door, the Mac a collector, the iOS app a numbered
+slice wrapping the same pages.
 
 The owner, after the Shazam import reconstructed eighteen nights: build toward
 Foursquare's check-in, for parties. "I'm here" / "I was there" - the app names

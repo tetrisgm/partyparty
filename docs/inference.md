@@ -14,9 +14,10 @@ played" before being asked.
 
 The rule that keeps automation from becoming presumption:
 
-- **Creating a night is confirmed - at the default setting.** Inference
-  proposes; the owner accepts, edits, or skips. The autonomy dial below can
-  raise this, by the owner's explicit choice, to auto-add-with-undo.
+- **Creating a night is always confirmed.** Inference proposes; the owner
+  accepts, edits, or skips. There is NO auto-add tier (owner, 2026-08-11):
+  a suggestion is an item you HAVE - it can sit unconfirmed forever at no
+  cost - and confirming is what makes a field beyond doubt.
 - **Enriching an accepted night is automatic.** Tracks merge in, a venue name
   propagates, a better title is offered as a one-tap chip. Nothing is
   silently overwritten - anything typed by a person wins over anything
@@ -26,25 +27,27 @@ The rule that keeps automation from becoming presumption:
 - **A skip is durable.** Skipped days are never re-suggested; a "skipped"
   list exists as the escape hatch for changed minds.
 
-## The autonomy dial
+## Everything is a suggestion
 
-Owner, seventh pass: "an experience like Foursquare was, but even more
-automatic." Foursquare asked; Swarm eventually just did it. The pipeline
-supports the whole range because confidence is already a number - the dial
-only changes what happens at a threshold:
+Owner, 2026-08-11, replacing the earlier autonomy-dial idea: "everything
+should be a suggestion and then you can just confirm. It's okay to have lots
+of suggestions - they're just items that you have. If you confirm them, then
+there is no doubt about what's in the field."
 
-- **Suggest** (default). Cards wait in the backlog.
-- **Auto-add, undo after.** A candidate above the high bar - plan and
-  presence corroborating, or a familiar pattern ("sixth Saturday at Public
-  Works") - becomes a night by itself, and the morning message reads "Added:
-  Public Works, Saturday - edit or remove", never "may I?". Consent moves
-  from before to after; undo is the safety, and undo counts as a durable
-  skip.
-- **Full auto.** Everything above the surfacing threshold lands; the backlog
-  holds only the genuinely uncertain.
+So there are exactly two states, and both are visible everywhere:
 
-One per-owner setting, changeable anytime. No ML mystery: thresholds are
-visible numbers, and nothing trains silently on behaviour.
+- **Suggested** - pencil. Nights the pipeline believes in, venue names it
+  worked out, people it thinks were there, titles it proposes. Suggested
+  items render distinctly (dimmed, marked), can accumulate without limit,
+  and never harden on their own.
+- **Confirmed** - ink. One tap. A confirmed field is beyond doubt because a
+  person said so.
+
+Thresholds and scores only decide SURFACING ORDER - what shows first, what
+stays in the long tail - never truth. Nothing is ever auto-added; there is
+no dial. This also applies inside a night: a suggested venue or person shows
+as a suggestion on the page itself until tapped, so the page is honest about
+what is known versus inferred.
 
 ## The morning digest
 
@@ -53,8 +56,34 @@ a message the morning after a detected night: "Last night: Public Works,
 11:40pm-3:04am - 12 Shazams, 14 photos. Add it?" One tap accepts from the
 message itself. Channels, in order of preference: Web Push to the phone
 (partyparty.party installed to the Home Screen can receive push on iOS - no
-native app required), or email via the house SMTP. On auto-add settings the
-same message reports what was added instead of asking.
+native app required), or email via the house SMTP. It always asks; nothing
+is ever added on its own.
+
+## One journal, three doors
+
+Owner, 2026-08-11, on a real flaw in the earlier framing: "web and Mac are
+the priority, while they're the least likely to be used when doing this kind
+of journaling and check-in. They're also very separated from each other."
+
+The correction, stated as architecture:
+
+- **There is ONE journal - the web pages - and the PHONE is its primary
+  door.** "Web" in this plan means partyparty.party on the phone in the
+  pocket at the party: installable to the Home Screen, receiving push,
+  asking "At Public Works?" on open. Not a desktop site.
+- **The Mac is a collector, not a destination.** Nobody journals on a Mac.
+  Its job is to feed the phone's morning: it is the always-on device Apple
+  syncs everything to (photos, calendar, mail) and the only place those may
+  legally be read. Its console shows the same journal in a frame - already
+  true today - so it is never a second product.
+- **The iOS app, when it comes, is the third door around the SAME pages** -
+  exactly the shell the Mac console already is - plus the four things only a
+  native app can add: the lock-screen widget, the share extension,
+  JournalingSuggestions, live Shazam while open. It is a numbered slice
+  below, not a someday.
+
+Nothing is separate: three shells, one journal, and the build order below
+puts the phone experience immediately after the foundation.
 
 ## The pipeline: evidence → candidate → night
 
@@ -146,6 +175,29 @@ Auto-titles: an accepted candidate with no plan-derived name is titled
 "Saturday, 21 March 2026". The eighteen date-named parties from the first
 import get offered the better titles once venues land.
 
+## The registries: venues, performers, people
+
+Owner, 2026-08-11: comprehensive lists, so recognition has something to
+recognize AGAINST. Three catalogs; every suggestion field resolves through
+one of them, and each fills from every side at once:
+
+- **Venues** (above). Comprehensive is the goal, not just "ones you have
+  named": MKLocalSearch answers for anywhere on first sight, every named
+  venue accumulates, and the network layer shares PUBLIC venue names across
+  users - the map fills in as the product is used.
+- **Performers.** A canonical table of DJs and artists: seeded from the
+  platform's own DJs and every `party_people` row with the dj role,
+  extended by lineups parsed from tickets and listings, and CANONICALIZED
+  against the Apple Music catalog (MusicKit lookup: proper name, artwork,
+  disambiguation) so "Ada" and "ada kaleh" and the misspelling on a flyer
+  are one performer. "Who played" then autocompletes and suggests from it.
+- **People.** The comprehensive base is the owner's Contacts (one prompt),
+  matched to the existing `people` table by email and name; co-attendance
+  history ranks them. Faces come with them.
+
+Registries are suggestion sources, not truth: a registry hit renders as a
+suggested chip like everything else.
+
 ## The backlog
 
 Pending candidates render as cards on /home - web, phone web, and the Mac
@@ -211,20 +263,23 @@ a shared label) is decided in its own unit.
   attachment OCR via Vision), Downloads, Messages, Safari history. Cadence:
   on launch plus a daily idle tick; evidence posted via install-authed
   /api/v1; everything parses locally.
-- **Phone web (now).** On-open geolocation check-in. No scanning - browsers
-  have none to give.
-- **iOS app (later, the live limb).** While-using location,
-  JournalingSuggestions (additive - if Apple grants the journaling
+- **Phone web (now) - the primary door.** The whole journal, the backlog
+  cards, on-open check-in, the digest via Web Push once installed to the
+  Home Screen. Browsers scan nothing; they do not need to - the collectors
+  feed this surface.
+- **iOS app (slice 8) - the same pages in a native shell**, the way the Mac
+  console already is, plus what only a native app adds: the lock-screen
+  widget, the share extension (share the ticket email / .pkpass / screenshot
+  / RA page in), JournalingSuggestions (additive - if Apple grants the
   entitlement the picker becomes the best card-filler; if not, nothing is
-  missing), a share extension (share the ticket email / .pkpass / screenshot
-  / RA page in), EventKit, PhotoKit, Contacts, MapKit, live ShazamKit while
-  open. No background microphone - it does not exist on iOS.
-- **Platform.** The forward address - tickets@partyparty.party, the TripIt
-  move, works from any phone with zero permissions (receiving plumbing
-  decided at build time; the MXroute-for-sending rule is untouched). The
-  `listing` fetcher: scheduled fetch of venue URLs, parsed generically for
-  schema.org Event JSON-LD - no per-site scraping. The network layer:
-  suggestions strictly from other users' PUBLIC nights.
+  missing), while-using location, EventKit, PhotoKit, Contacts, MapKit,
+  live ShazamKit while open. No background microphone - it does not exist
+  on iOS.
+- **Platform.** The `listing` fetcher: scheduled fetch of venue URLs, parsed
+  generically for schema.org Event JSON-LD - no per-site scraping. The
+  network layer: suggestions strictly from other users' PUBLIC nights. (The
+  forward-address idea is DROPPED - owner, 2026-08-11: "no point, we'll
+  just scan the mails." Mac Mail scanning is the mail answer.)
 
 ## Privacy invariants
 
@@ -247,19 +302,22 @@ Each slice lands whole, in the workflow's usual way.
    import becomes a scanner emitting evidence; its one-shot preview UI
    retires. Supersedes the import's one-party-per-day tiebreak with
    per-cluster candidates.
-3. **Mac scanner expansion** - EventKit + PhotoKit + Contacts emission, and
-   a sources panel in settings showing each source's grant state and last
-   scan. Ask only ever on a button, as the Shazam folder grant does today.
-4. **Phone check-in** - the /home button, venue disambiguation, candidate
-   born accepted.
-5. **People chips** - co-attendance query + company evidence, on check-in,
-   creation, and cards.
-6. **Deep sources** - Mail/Downloads doors on the desk build, the forward
-   address, the listing fetcher, Messages, Safari. Each is its own small
-   landing inside the slice.
+3. **The phone journal** - the primary door ships early: backlog cards and
+   check-in on the phone web, Home Screen install, Web Push, the morning
+   digest.
+4. **The collectors** - EventKit + PhotoKit + Contacts emission on the Mac,
+   and a sources panel in settings showing each source's grant state and
+   last scan. Ask only ever on a button, as the Shazam folder grant does
+   today.
+5. **People + performers** - co-attendance and company chips; the performer
+   registry seeded from platform DJs and canonicalized via the Apple Music
+   catalog; Contacts filling the people registry.
+6. **Deep sources** - Mail/Downloads doors on the desk build, the listing
+   fetcher, Messages, Safari. Each its own small landing inside the slice.
 7. **Series.**
-
-The iOS app is a separate later track; nothing in 1-7 depends on it.
+8. **The iOS shell** - the same journal wrapped native: widget, share
+   extension, JournalingSuggestions, push. Nothing in 1-7 depends on it;
+   everything in 1-7 makes it thinner.
 
 ## Known risks and standing facts
 
@@ -275,6 +333,9 @@ The iOS app is a separate later track; nothing in 1-7 depends on it.
   source reads empty and everything else stands.
 - Same-day multi-candidate replaces the current one-party-per-day merge rule
   in slice 2; until then the import's tiebreak stands.
+- Performer canonicalization against the Apple Music catalog needs a
+  MusicKit developer token - a key the owner mints once in the developer
+  account; requested when slice 5 starts.
 - Always location is DECIDED NO (owner, 2026-08-10, reaffirmed 2026-08-11).
   It is the only path to zero-touch live check-in, and the answer is still
   no - do not re-propose it. The widget, the plan nudge, App Intents
