@@ -181,10 +181,12 @@ Owner, 2026-08-11: comprehensive lists, so recognition has something to
 recognize AGAINST. Three catalogs; every suggestion field resolves through
 one of them, and each fills from every side at once:
 
-- **Venues** (above). Comprehensive is the goal, not just "ones you have
-  named": MKLocalSearch answers for anywhere on first sight, every named
-  venue accumulates, and the network layer shares PUBLIC venue names across
-  users - the map fills in as the product is used.
+- **Venues** (above). Two layers: the owner's overlay (what THEY call a
+  place, always winning) over a GLOBAL CATALOG the platform builds and
+  refreshes itself - see the gazetteer below. Comprehensive means the
+  catalog knows the clubs before the owner's first visit: check-in
+  disambiguation between two close venues comes from it, not just from
+  history and MKLocalSearch.
 - **Performers.** A canonical table of DJs and artists: seeded from the
   platform's own DJs and every `party_people` row with the dj role,
   extended by lineups parsed from tickets and listings, and CANONICALIZED
@@ -228,6 +230,52 @@ in order, all feeding `listing` evidence and both registries:
 A listing hit is the single best "which party WAS this" answer - title,
 lineup, ticket link - and like everything external it degrades to nothing
 without anything else noticing.
+
+## The gazetteer
+
+Owner, 2026-08-11, sharpening what "learn from 19hz" means: it is not just a
+match-time lookup - it is HOW THE CATALOGS GET BUILT. "A good way to find out
+the names of venues... and their official websites... and potentially
+artists. We need a way to build a database of all of these and refresh them,
+so the suggestions are good."
+
+So the platform keeps standing catalog tables, harvested on the Worker's
+existing cron, separate from any owner's data:
+
+    venues_catalog(id, region, name, address, url, geokey NULL,
+                   source, first_seen_ms, last_seen_ms)
+    performers_catalog(id, name, bandsintown_id NULL, apple_music_id NULL,
+                       image_url, source, first_seen_ms, last_seen_ms)
+    listings(id, region, day, title, venue_name, venue_id NULL,
+             lineup JSON, links JSON, source, seen_ms)
+
+The harvest, in order of what it yields:
+
+1. **19hz venue directories** - the seed. Each region page lists club names
+   with ADDRESSES and OFFICIAL WEBSITES: exactly the bootstrap. Weekly.
+2. **The venues' own sites** - the rich ongoing source ("we will learn a lot
+   more from club venues"): every catalog venue with a URL gets the JSON-LD
+   event fetch, which yields party names, dates and LINEUPS - and lineups
+   feed the performers catalog. Daily, polite, cached.
+3. **19hz event tables** - daily per region: title @ venue, organizers,
+   ticket links. Names venues the directory missed and parties the venue
+   sites do not publish.
+4. **Bandsintown** - canonicalizes performer names met anywhere above, and
+   its events corroborate venues with coordinates.
+
+Freshness is a column, not a hope: every row carries source and last_seen;
+harvests upsert; nothing hard-deletes (a closed club still names old
+nights). Suggestions prefer fresh rows.
+
+Geocoding the directory's addresses into geokeys: the Mac moonlights as the
+gazetteer's geocoder - it already has CLGeocoder/MKLocalSearch and an
+install-authed channel, so it can pull unresolved catalog rows and push
+coordinates back, using Apple's own data with no new dependency. (A
+server-side geocoder is the fallback, chosen at build time.)
+
+The courtesies stand and extend: per-source daily/weekly caps, attribution
+on every suggestion the catalog produces, the 19hz maintainer written to
+before any of it ships.
 
 ## The backlog
 
@@ -328,7 +376,9 @@ Each slice lands whole, in the workflow's usual way.
 
 1. **Venues** - table, geokey resolution ladder, MKLocalSearch naming,
    `events.venue_id`, backfill of coordinate-known places, auto-title
-   offers for the date-named eighteen.
+   offers for the date-named eighteen - plus the gazetteer seed: the 19hz
+   venue directories harvested into `venues_catalog`, so the catalog knows
+   the clubs before slice 3's check-in needs to disambiguate them.
 2. **Evidence + backlog** - the three-stage pipeline, scoring, /home cards,
    accept/edit/skip with durable skips, the skipped list. The settings-page
    import becomes a scanner emitting evidence; its one-shot preview UI
@@ -344,8 +394,9 @@ Each slice lands whole, in the workflow's usual way.
 5. **People + performers** - co-attendance and company chips; the performer
    registry seeded from platform DJs, canonicalized via Bandsintown and the
    Apple Music catalog; Contacts filling the people registry.
-6. **Deep sources** - Mail/Downloads doors on the desk build, the listing
-   fetcher, Messages, Safari. Each its own small landing inside the slice.
+6. **Deep sources** - Mail/Downloads doors on the desk build, the rest of
+   the gazetteer harvest (venue sites, 19hz event tables, Bandsintown),
+   Messages, Safari. Each its own small landing inside the slice.
 7. **Series.**
 8. **The iOS shell** - the same journal wrapped native: widget, share
    extension, JournalingSuggestions, push. Nothing in 1-7 depends on it;
