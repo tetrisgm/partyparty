@@ -3214,6 +3214,16 @@
         }
       }, true);
 
+      // Enter on the name field is "Let's party". It clicks the real button
+      // instead of calling the handler, because everything in there depends on
+      // running inside a user gesture - claimPlaybackSession, the unmute, the
+      // first play() - and a keydown keeps that activation only if the click it
+      // triggers is synchronous with it.
+      $id('welName').addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.isComposing) return;
+        e.preventDefault();
+        $id('welGo').click();
+      });
       $id('welGo').addEventListener('click', () => {
         claimPlaybackSession(); // in-gesture: make audio ignore the Silent switch
         welcomed = true;
@@ -3609,6 +3619,18 @@
           img.src = osrc;
         }
       }, true);
+      // Enter in a reply box is the Post button. Delegated because the boxes
+      // are re-rendered as posts gain comments, and it clicks the real button
+      // so the guard rails on that path (features off, empty text) still hold.
+      feedList.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+        const inp = e.target && e.target.closest && e.target.closest('input[data-cpost]');
+        if (!inp) return;
+        const btn = feedList.querySelector('button[data-csend="' + inp.dataset.cpost + '"]');
+        if (!btn || btn.disabled) return;
+        e.preventDefault();
+        btn.click();
+      });
       feedList.addEventListener('click', async (e) => {
         const target = e.target && e.target.closest ? e.target.closest('button,[data-more]') : e.target;
         const data = target && target.dataset || {};

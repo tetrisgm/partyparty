@@ -139,6 +139,13 @@ export function clientIdFor(env, provider) {
 }
 
 export function configured(env, provider) {
+  // STATE_SECRET first, for either provider. signState falls back to a constant
+  // written in this file so the tests and `wrangler dev` need no setup, and a
+  // deployment that never set the real one would run the whole OAuth handshake
+  // on a key published in the repository - anybody could mint a state value and
+  // the only thing standing between a callback and a session is that signature.
+  // A provider whose state cannot be trusted is not configured.
+  if (!env.STATE_SECRET) return false;
   if (provider === "apple") {
     return !!(env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_SIWA_KEY);
   }

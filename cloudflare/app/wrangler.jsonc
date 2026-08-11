@@ -42,12 +42,18 @@
   // partyparty.party's platform paths are still served by the JOURNAL worker
   // (clubclub's deployment, holding the owner's real nights), so this worker
   // cannot claim them without deleting a live product. It answers on
-  // live.partyparty.party instead - a real hostname, so OAuth callbacks can be
+  // party.partyparty.party instead - a real hostname, so OAuth callbacks can be
   // registered against something permanent rather than a workers.dev name that
   // would have to be revoked later. The apex routes come back here when
   // clubclub moves to clubclub.app.
+  //
+  // A route pattern matches ONE exact host, so this does not touch the LAN
+  // machine namespace living one label deeper - <handle>.party.partyparty.party
+  // still resolves to a Mac's own address and is still guarded against
+  // synthesised answers for absent names. Both were re-checked either side of
+  // creating this record.
   "routes": [
-    { "pattern": "live.partyparty.party/*", "zone_name": "partyparty.party" }
+    { "pattern": "party.partyparty.party/*", "zone_name": "partyparty.party" }
   ],
 
 
@@ -62,7 +68,7 @@
 
     // Where links in email point. Pinned rather than taken from the request, so
     // a request arriving on an unexpected host cannot mint links to that host.
-    "PUBLIC_BASE": "https://live.partyparty.party"
+    "PUBLIC_BASE": "https://party.partyparty.party"
   },
 
   // The shared MXroute sending mailbox, from the account-level "stack" store -

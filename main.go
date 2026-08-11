@@ -46,7 +46,7 @@ var webFS embed.FS
 // hostname, so the OAuth callbacks registered against it survive; it moves
 // back to the apex when clubclub migrates to clubclub.app. Override with
 // PARTYPARTY_PLATFORM.
-const platformDefault = "https://live.partyparty.party"
+const platformDefault = "https://party.partyparty.party"
 
 // appVersion is stamped by the build (-ldflags "-X main.appVersion=..."). It is
 // shown in the UIs and broadcast to clients so stale player pages refresh

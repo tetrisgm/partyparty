@@ -5,6 +5,7 @@ import worker, {
   entryCode, handleProblem, icsFor, normalizeEmail, payLinkProblem, sha256Hex, ulid,
 } from "../worker.js";
 import { totalForBuyer, verifyWebhook } from "../stripe.js";
+import { configured } from "../auth.js";
 
 // A real SQLite behind the D1 shape, so the tests exercise the actual SQL -
 // including the ON CONFLICT clauses, which are where the join and going paths
@@ -1984,8 +1985,8 @@ test("a record belongs to one person and is invisible to everybody else", async 
 // The development doors used to be checked the opposite way: no route may
 // reach them. That worked while the routes were paths on a SHARED apex, where
 // an unrouted path simply fell through to partyparty-site. Since the
-// 2026-08-11 split this worker owns live.partyparty.party outright and nothing
-// else is behind it, so the wildcard route is the only correct shape -
+// 2026-08-11 split this worker owns party.partyparty.party outright and
+// nothing else is behind it, so the wildcard route is the only correct shape -
 // enumerating paths there would strand every other path on the placeholder
 // address instead of serving a 404. The route cannot be what shuts those
 // doors anymore, so the test checks what actually does: each one is gated on
@@ -1997,14 +1998,32 @@ test("every page this worker serves is claimed by one of its routes", () => {
   // Cloudflare's * matches anything, including slashes. A pattern without one
   // matches its own path and nothing under it, which is why /people needs two.
   // Any hostname on the zone, not just the apex: since the 2026-08-11 split
-  // this worker answers on live.partyparty.party, and a regex that only knew
+  // this worker answers on party.partyparty.party, and a regex that only knew
   // the apex found no routes at all - which made the workers.dev escape hatch
-  // below look true and passed this test for entirely the wrong reason.
-  const patterns = [...config.matchAll(/"pattern":\s*"[^"\/]*partyparty\.party([^"]*)"/g)]
-    .map((m) => new RegExp("^" + m[1].split("*")
+  // look true and passed this test for entirely the wrong reason. Labels are
+  // matched explicitly rather than with [^"/]*, so a lookalike host cannot
+  // count as coverage.
+  const routes = [...config.matchAll(
+    /"pattern":\s*"((?:[a-z0-9-]+\.)*partyparty\.party)([^"]*)"/g)]
+    .map((m) => ({ host: m[1], path: m[2] }));
+  const patterns = routes.map(({ path }) => new RegExp("^" + path.split("*")
       .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$"));
-  assert.ok(patterns.length > 0, "no routes at all: nothing on the zone reaches this worker");
+  assert.ok(routes.length > 0, "no routes at all: nothing on the zone reaches this worker");
   const claimed = (path) => patterns.some((re) => re.test(path));
+
+  // The route host and PUBLIC_BASE have to be the same machine. PUBLIC_BASE is
+  // what every emailed link and both OAuth callback URLs are built from, and it
+  // is pinned rather than taken from the request - so if the two drift, the
+  // worker keeps answering perfectly on one host while sending people to
+  // another that 404s, and the redirect URIs registered with Apple and Google
+  // silently stop matching. Renaming the deployment means editing both; this is
+  // the check that says so out loud.
+  const publicBase = (config.match(/"PUBLIC_BASE":\s*"([^"]+)"/) || [])[1];
+  assert.ok(publicBase, "PUBLIC_BASE is not set; links and OAuth callbacks have no host");
+  const baseHost = new URL(publicBase).host;
+  assert.ok(routes.some((r) => r.host === baseHost),
+    `PUBLIC_BASE is ${baseHost} but no route sends that host here (routes: ${
+      routes.map((r) => r.host).join(", ") || "none"})`);
 
   // What the worker actually answers, read off the routing itself.
   const exact = [...source.matchAll(/path === "(\/[^"]*)"/g)].map((m) => m[1]);
@@ -2156,6 +2175,28 @@ test("people are searchable, reusable and never require an account", async () =>
     "Always worth saying hello");
   assert.equal(one(env, `SELECT account_email FROM people WHERE id = ?`, ada.id).account_email, null,
     "no account required to be remembered");
+});
+
+test("a provider is not configured until its state signature can be trusted", () => {
+  // signState falls back to a constant written in auth.js so tests and
+  // `wrangler dev` need no setup. A deployment that never set the real
+  // STATE_SECRET would run OAuth on a key anybody can read in the repository,
+  // and that signature is the only thing between a forged callback and a
+  // session - so the door has to report itself shut, not quietly work.
+  const apple = {
+    APPLE_CLIENT_ID: "fm.partyparty.web", APPLE_TEAM_ID: "T", APPLE_KEY_ID: "K",
+    APPLE_SIWA_KEY: "-----BEGIN PRIVATE KEY-----",
+  };
+  const google = { GOOGLE_CLIENT_ID: "g.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "s" };
+
+  assert.equal(configured(apple, "apple"), false, "apple must not be configured without STATE_SECRET");
+  assert.equal(configured(google, "google"), false, "google must not be configured without STATE_SECRET");
+  assert.equal(configured({ ...apple, STATE_SECRET: "x" }, "apple"), true);
+  assert.equal(configured({ ...google, STATE_SECRET: "x" }, "google"), true);
+
+  // And STATE_SECRET alone is not enough to open a door with no credentials.
+  assert.equal(configured({ STATE_SECRET: "x" }, "apple"), false);
+  assert.equal(configured({ STATE_SECRET: "x" }, "google"), false);
 });
 
 for (const [name, fn] of tests) {

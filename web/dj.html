@@ -3468,6 +3468,19 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       }
     }
     list.addEventListener('click', handleWallClick);
+    // A reply box is one line with a Post button beside it, so Enter is what a
+    // keyboard reaches for. Delegated like the click above, because the boxes
+    // are rebuilt whenever a post gains activity - and it CLICKS the button
+    // rather than repeating the send, so there is one code path to keep right.
+    list.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      const inp = e.target && e.target.closest && e.target.closest('input[data-cpost]');
+      if (!inp) return;
+      const btn = list.querySelector('button[data-csend="' + inp.dataset.cpost + '"]');
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      btn.click();
+    });
     $('modQueue').addEventListener('click', handleWallClick);
     list.addEventListener('keydown', (e) => {
       // Enter sends a reply; Cmd/Ctrl+Enter does too, so the habit learned in
