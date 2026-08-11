@@ -538,6 +538,61 @@ that appears to succeed is reporting `::ffff:a.b.c.d` - an IPv4-mapped
 address, i.e. IPv4. Do not read that as IPv6 working, which is exactly the
 wrong turn taken here before checking `ifconfig`.
 
+## Splitting the OAuth identities from clubclub (2026-08-11)
+
+Both products authenticate with ONE Google client
+(`325964451960-8g7u6sf5fb3ib8u6aq11cuusk64fn9dk`) and ONE Apple Services ID
+(`fm.partyparty.web`, key `9DLLL4UAR8`, team `52WM463HR2`). That is why every
+hostname move needs a console visit, and why either product could invalidate
+the other's sign-in by editing a redirect list.
+
+**PartyParty is the one that should move, not clubclub.** clubclub serves the
+apex today, owns the route `partyparty.party/auth/*`, and its Google sign-in
+is live on that shared client. PartyParty's own backend has no users yet. So
+the new identities go to PartyParty and the working product is not touched.
+
+**Creating them is console work; it is not an API gap that can be coded
+around.** Checked rather than assumed:
+
+- Google exposes no public API for creating OAuth 2.0 web clients, and gcloud
+  is not installed on this Mac. Console only.
+- App Store Connect can create bundle IDs, but `POST /v1/bundleIds` documents
+  `platform` as IOS | MAC_OS | UNIVERSAL - `SERVICES` is not offered. And the
+  return URLs are not in the API at all: `fm.partyparty.web`'s existing
+  `APPLE_ID_AUTH` capability comes back with no `settings`. A Services ID made
+  by API would be unusable without the portal anyway.
+
+So the two steps that need a person:
+
+1. **Google Cloud Console** → project `project-9ddb389f-8f22-482d-abf` →
+   Credentials → Create OAuth client ID → Web application, named for
+   PartyParty. Authorized redirect URI:
+   `https://party.partyparty.party/auth/google/callback`. Download the JSON.
+2. **Apple Developer** → Identifiers → new **Services ID** (e.g.
+   `fm.partyparty.live`) → enable Sign in with Apple → configure it against
+   the primary App ID with return URL
+   `https://party.partyparty.party/auth/apple/callback`. The existing key
+   `9DLLL4UAR8` can keep signing: a Sign in with Apple key is scoped to the
+   team, and the client secret JWT names the Services ID in `sub`.
+
+Everything after that is one command, which edits the config, sets the secret
+from the downloaded file without it ever becoming an argument, deploys, and
+then ASKS both providers whether the callbacks are registered instead of
+assuming:
+
+    scripts/adopt-oauth-client.sh \
+      --google-client-id <new id> \
+      --google-secret-file ~/Downloads/client_secret_<new>.json \
+      --apple-service-id fm.partyparty.live
+
+It refuses either of clubclub's identities, because adopting those would not
+be a split.
+
+**Until then PartyParty's sign-in still works** on the shared identities - the
+worker holds all three secrets and both buttons render - and only needs the
+subdomain callbacks added to the SHARED client, which is the smaller version
+of step 1 and 2 above. Doing the full split makes that the last time.
+
 ## Owed
 
 - Correction to Apple DTS: an earlier support message said the host was
