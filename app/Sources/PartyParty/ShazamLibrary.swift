@@ -1,5 +1,4 @@
 import Foundation
-import ShazamKit
 
 /// The DJ's own Shazam library, read back into the parties it belongs to.
 ///
@@ -9,11 +8,10 @@ import ShazamKit
 /// which only ever hears what THIS Mac broadcast, so everything caught on a
 /// phone was lost to the party it happened at.
 ///
-/// `SHLibrary` is the read side of the same account. Each item carries
-/// `creationDate`, which is the entire reason this is possible: without a date
-/// a library is a pile of songs with no night attached. (The older
-/// `SHMediaLibrary` is write-only and deprecated - it can add a match to the
-/// library and nothing else.)
+/// macOS keeps that library on this Mac, dated, already synced from the phone.
+/// The date is the entire reason this is possible: without one a library is a
+/// pile of songs with no night attached. `ShazamStore` is where it is read
+/// from, and why it is not read through ShazamKit.
 ///
 /// This reads and hands over. It never writes to the library, never removes
 /// anything from it, and nothing here can reach the audio path.
@@ -44,66 +42,31 @@ enum ShazamLibrary {
 
     /// Read the library and hand it to the local server.
     ///
-    /// `SHLibrary.default.items` is a main-actor property, so the read happens
-    /// on main and the mapping does not: a library with a few thousand matches
-    /// should not be turned into JSON while the console is trying to draw.
+    /// `prompt` is the difference between the console coming up (which must
+    /// never throw a file panel at somebody who just opened their app) and the
+    /// DJ pressing the button (where being asked once is the whole point).
     ///
-    /// The first read of a cold library returns NOTHING. The store is opened
-    /// and synced by shazamd on demand, and `items` answers immediately with
-    /// whatever is loaded - which, in a process that has just launched, is an
-    /// empty array. This Mac has 898 matches in
-    /// `~/Library/Application Support/com.apple.shazamd/ShazamLibrary.sqlite`
-    /// and reported none of them, on every launch, because each launch asked
-    /// once and believed the answer. So it asks again until something arrives.
-    ///
-    /// An empty library is still a real answer - plenty of people have never
-    /// Shazamed anything - so this gives up after a few seconds and reports the
-    /// emptiness rather than hanging on a promise it cannot keep.
-    static func push(port: Int) {
+    /// The read itself is `ShazamStore`, not `SHLibrary`: the framework returns
+    /// an empty library on a Mac that has 898 matches, and the reasons are
+    /// written down there.
+    static func push(port: Int, prompt: Bool = false) {
         Task { @MainActor in
-            var raw = SHLibrary.default.items
-            var tries = 0
-            while raw.isEmpty && tries < 12 {
-                tries += 1
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                raw = SHLibrary.default.items
+            if prompt, !ShazamStore.requestAccess() {
+                // Declining is an answer. The server keeps whatever it had, and
+                // the console says the library is empty rather than pretending
+                // something is still coming.
+                Task.detached(priority: .utility) {
+                    APIClient(port: port).postShazamLibrary([])
+                }
+                return
             }
-            if !raw.isEmpty {
-                NSLog("PartyParty: Shazam library read (\(raw.count) matches, \(tries) retries)")
-            }
+            guard ShazamStore.readable() else { return }
             Task.detached(priority: .utility) {
-                APIClient(port: port).postShazamLibrary(mapped(raw))
+                let items = ShazamStore.read()
+                NSLog("PartyParty: Shazam library read (\(items.count) matches)")
+                APIClient(port: port).postShazamLibrary(items)
             }
         }
-    }
-
-    /// Turn library items into ours, dropping the ones that cannot be placed.
-    ///
-    /// An item with no `creationDate` is not an error: it is a match from
-    /// before the system stored one. It cannot be attributed to a night, and
-    /// inventing a date for it would drop somebody's song onto the wrong
-    /// party's page. Those are left behind rather than guessed at.
-    static func mapped(_ raw: [SHMediaItem]) -> [Item] {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone.current
-        var out: [Item] = []
-        out.reserveCapacity(raw.count)
-        for item in raw {
-            guard let when = item.creationDate else { continue }
-            let title = (item.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !title.isEmpty else { continue }
-            out.append(Item(
-                title: title,
-                artist: (item.artist ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                shazamID: item.shazamID ?? "",
-                artworkURL: item.artworkURL?.absoluteString ?? "",
-                atMs: Int64(when.timeIntervalSince1970 * 1000),
-                night: night(of: when, calendar: calendar)))
-        }
-        // Oldest first, so a night's tracks arrive in the order they were heard
-        // and land in the list in that order.
-        out.sort { $0.atMs < $1.atMs }
-        return out
     }
 
     /// The night a moment belongs to: the local date, with everything before

@@ -361,8 +361,10 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         case "shazamRead":
             // The console asking for the Shazam library. Only the app can read
             // it, so the answer arrives at the server rather than as a reply
-            // here, and the console reads it back from /api/shazam.
-            ShazamLibrary.push(port: port)
+            // here, and the console reads it back from /api/shazam. This is the
+            // one place allowed to ask for access, because a person just
+            // pressed a button that says it will.
+            ShazamLibrary.push(port: port, prompt: true)
         case "resetConsole":
             resetConsole()
         case "jslog":

@@ -18,6 +18,7 @@
 		10000000000000000000000B /* StatusPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* StatusPopover.swift */; };
 		10000000000000000000000C /* TrackRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* TrackRecognizer.swift */; };
 		10000000000000000000001A /* ShazamLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001A /* ShazamLibrary.swift */; };
+		10000000000000000000001B /* ShazamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000001B /* ShazamStore.swift */; };
 		100000000000000000000008 /* AppAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* AppAssets.xcassets */; };
 		100000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -38,6 +39,7 @@
 		20000000000000000000000D /* StatusPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPopover.swift; sourceTree = "<group>"; };
 		20000000000000000000000E /* TrackRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRecognizer.swift; sourceTree = "<group>"; };
 		20000000000000000000001A /* ShazamLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamLibrary.swift; sourceTree = "<group>"; };
+		20000000000000000000001B /* ShazamStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShazamStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,6 +76,7 @@
 				20000000000000000000000D /* StatusPopover.swift */,
 				20000000000000000000000E /* TrackRecognizer.swift */,
 				20000000000000000000001A /* ShazamLibrary.swift */,
+				20000000000000000000001B /* ShazamStore.swift */,
 				200000000000000000000007 /* main.swift */,
 				20000000000000000000000C /* Updater.swift */,
 			);
@@ -190,6 +193,7 @@
 				10000000000000000000000B /* StatusPopover.swift in Sources */,
 				10000000000000000000000C /* TrackRecognizer.swift in Sources */,
 				10000000000000000000001A /* ShazamLibrary.swift in Sources */,
+				10000000000000000000001B /* ShazamStore.swift in Sources */,
 				100000000000000000000007 /* main.swift in Sources */,
 				10000000000000000000000A /* Updater.swift in Sources */,
 			);
