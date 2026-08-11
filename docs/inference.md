@@ -327,6 +327,46 @@ the same join on confirm, so truth stays central and a stale pack can never
 write a wrong fact - only offer one. Packs are caches of the gazetteer,
 never a second source.
 
+## Coming up, and recommendations
+
+Owner, 2026-08-11: "is there a clear recommended way of populating the
+concerts, the parties, the events - pre-populating them so we can see
+what's coming up, and even recommend them?"
+
+There is, and it is the machinery above pointed forward: **the `listings`
+table is the events calendar** - harvest rows with `day >= today` ARE
+"coming up". Sources for the future, ranked by cleanliness:
+
+1. **19hz calendar feeds.** The regional lists ship as subscribable
+   calendars - the cleanest ingestion there is (ICS, the format we already
+   parse), curated by a human, strongest exactly in the owner's scene.
+2. **Venue sites' JSON-LD** - listing upcoming events is what venue sites
+   are FOR; the same per-venue fetch that names past nights fills the
+   future ones.
+3. **Bandsintown by artist** - the personalized leg: the performers the
+   owner has actually Shazamed (the Apple Music id spine gives us the
+   artist graph for free) each answer "playing near you soon?".
+4. **Ticketmaster Discovery** (later, optional) - the one genuinely open
+   large events API, for mainstream-concert breadth beyond the underground.
+5. **Resident Advisor: parse-on-share ONLY.** No API, no crawling - but
+   when the owner shares or pastes an RA link, that one page's JSON-LD is
+   parsed like any shared ticket. User-directed, one page at a time.
+
+Two distinct surfaces fall out, and they must not blur:
+
+- **"You're going"** - plan evidence the owner already holds (a ticket in
+  Mail, a calendar entry). Near-certain, shown first, becomes the night's
+  head start.
+- **"You might like"** - RECOMMENDATIONS: upcoming listings scored against
+  the taste graph the journal already accumulates - artist affinity (the
+  Shazam/Apple Music ids), venue affinity (six nights at Public Works),
+  rhythm (Saturdays), city. Rendered as pencil cards in a "Coming up" rail
+  on /home; a tap turns one into a plan. Friends' PUBLIC plans join the
+  scoring at the network stage.
+
+Recommendations are suggestions with the same contract as everything else:
+they can sit unconfirmed forever, and nothing is ever added on its own.
+
 ## The backlog
 
 Pending candidates render as cards on /home - web, phone web, and the Mac
@@ -454,6 +494,10 @@ Each slice lands whole, in the workflow's usual way.
 8. **The iOS shell** - the same journal wrapped native: widget, share
    extension, JournalingSuggestions, push. Nothing in 1-7 depends on it;
    everything in 1-7 makes it thinner.
+9. **Coming up + recommendations** - the future half of the listings
+   harvest, the "you're going" rail from plan evidence, and the scored
+   "you might like" rail from the taste graph. Last on purpose: it gets
+   better the longer the journal has been accumulating taste.
 
 ## Known risks and standing facts
 
