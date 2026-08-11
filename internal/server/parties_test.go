@@ -352,6 +352,22 @@ func TestAPartyTheAccountNoLongerHasIsDropped(t *testing.T) {
 		t.Fatalf("the console will still show %q in its header", ev.Canonical().Title)
 	}
 
+	// Signed OUT is also a real answer: the account has no parties, so a held
+	// key is an orphan. This is the case the split actually produced - a Mac
+	// pointed at a fresh backend it has never registered with - and gating on
+	// `linked` was why the ghost survived the first fix.
+	if err := ev.SetCanonical(event.CanonicalParty{Key: "k2", Title: "Ghost"}); err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	platform.linked = false
+	platform.parties = nil
+	platform.mu.Unlock()
+	do(s, http.MethodGet, "/api/parties", "127.0.0.1:1234")
+	if ev.Canonical().Title != "" {
+		t.Fatalf("a signed-out Mac kept %q as tonight's party", ev.Canonical().Title)
+	}
+
 	// But an offline party keeps what it had: not being able to ask is not the
 	// same as being told it is gone, and the offline party is a pillar.
 	if err := ev.SetCanonical(event.CanonicalParty{Key: "k", Title: "Basement"}); err != nil {

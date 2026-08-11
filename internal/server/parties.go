@@ -101,9 +101,13 @@ func (s *srv) handlePartyAPI(w http.ResponseWriter, r *http.Request) bool {
 		// database, held only in local state, offered as tonight's room. The
 		// name of a party nobody can open is worse than no name: Go Live is
 		// gated on having one, so a stale name gates the button on a ghost.
-		// Only when the account answered (linked) - an offline party keeps
-		// whatever it had, which is the whole point of an offline party.
-		if linked && current != "" && s.Events != nil {
+		// The test is that the platform ANSWERED, not that it said yes: an
+		// unreachable platform returned 502 above, so reaching here means a
+		// real answer. "Not signed in" is one - the held key names a party on
+		// an account this Mac can no longer see, and a name nobody can open is
+		// exactly the ghost. An OFFLINE party is untouched by construction,
+		// because its list request never gets this far.
+		if current != "" && s.Events != nil {
 			found := false
 			for _, p := range list {
 				if p.Key == current {
