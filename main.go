@@ -41,6 +41,12 @@ import (
 //go:embed all:web
 var webFS embed.FS
 
+// platformDefault is where the Mac finds its own parties. A workers.dev
+// hostname on purpose while partyparty.party's platform paths belong to the
+// journal: it needs no DNS and cannot collide. It moves back to the apex when
+// clubclub migrates to clubclub.app. Override with PARTYPARTY_PLATFORM.
+const platformDefault = "https://partyparty-live.ramine-4e9.workers.dev"
+
 // appVersion is stamped by the build (-ldflags "-X main.appVersion=..."). It is
 // shown in the UIs and broadcast to clients so stale player pages refresh
 // themselves after an update instead of running old logic forever.
@@ -311,9 +317,14 @@ func main() {
 	// is live, and it is silent when there is no group, no night, or no
 	// internet - which is most parties, and not a fault.
 	if events != nil {
-		platform := os.Getenv("PARTYPARTY_BROKER")
+		// PartyParty's own backend, separate from the certificate broker
+		// (PARTYPARTY_BROKER) since the 2026-08-11 split: partyparty.party's
+		// platform paths still serve clubclub's journal and its real data, so
+		// this Mac must not read parties from there - it would offer the DJ a
+		// 2024 journal night to broadcast into, which is exactly what it did.
+		platform := os.Getenv("PARTYPARTY_PLATFORM")
 		if platform == "" {
-			platform = "https://partyparty.party"
+			platform = platformDefault
 		}
 		if installID, installSecret := activate.InstallCreds(); installID != "" {
 			sync := cloudsync.New(platform, installID, installSecret)

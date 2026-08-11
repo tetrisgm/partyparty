@@ -1,11 +1,14 @@
 {
-  // PartyParty platform - groups, nights, and the people who come to them.
+  // PartyParty's OWN backend - parties a broadcast attaches to, and the pages
+  // guests keep. Separate worker, separate D1 (2026-08-11, the split): the
+  // journal that used to share this deployment is clubclub now, and its data
+  // stays untouched on partyparty.party until it migrates to clubclub.app.
   //
   // A SECOND Worker on purpose. partyparty-site carries the certificate broker,
   // DNS and relay registration, which a party in progress depends on minute to
   // minute. Deploying this must never be able to take those down.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "partyparty-app",
+  "name": "partyparty-live",
   "main": "worker.js",
   "compatibility_date": "2026-07-07",
   "account_id": "4e958c1f2621ced0354e94826590e34f",
@@ -18,8 +21,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "partyparty-app",
-      "database_id": "d539f4c0-da91-43ce-b14a-8ba271349dab",
+      "database_name": "partyparty-live",
+      "database_id": "67720cd7-f8f2-45f3-99f7-8c51a9de2962",
       // wrangler tracks which of these have run in a d1_migrations table, so
       // applying twice is a no-op. Running the files by hand is not: an
       // ALTER TABLE ADD COLUMN fails the second time and takes the rest of the
@@ -34,46 +37,16 @@
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],
 
-  // Only the platform paths. Everything else on the zone stays with
-  // partyparty-site, including the apex, the machine namespace and r-<token>.
-  "routes": [
-    { "pattern": "partyparty.party/@*", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/j/*", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/m/*", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/g/*", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/api/v1/*", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/auth/*", "zone_name": "partyparty.party" },
-    // The DJ's own pages. Missing these sends /manage and /signin to the site
-    // Worker, which knows nothing about them - the platform would look broken
-    // on the real domain while working perfectly on localhost.
-    { "pattern": "partyparty.party/manage", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/signin", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/home", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/settings", "zone_name": "partyparty.party" },
-    // Your own record: the people you have seen, and adding a party. A page
-    // with no route here works perfectly on localhost and 404s on the real
-    // domain, which is why a test now reads this list against the worker.
-    // Both forms of /people: a bare pattern matches only itself.
-    { "pattern": "partyparty.party/people", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/people/*", "zone_name": "partyparty.party" },
-    { "pattern": "partyparty.party/parties/*", "zone_name": "partyparty.party" },
-    // The subscription feed, on a path with no @ for a calendar client to mangle.
-    { "pattern": "partyparty.party/calendar/*", "zone_name": "partyparty.party" },
-    // Profile photos, covers and anything posted with a picture on it. Served
-    // out of the R2 bucket below under a media/ prefix.
-    { "pattern": "partyparty.party/media/*", "zone_name": "partyparty.party" },
-    // Signing in on a Mac: the app opens this with its own one-time code.
-    { "pattern": "partyparty.party/link/*", "zone_name": "partyparty.party" }
-  ],
-
-  // Sign in with Apple. None of these are secrets - they identify the
-  // configuration, they do not authorise anything. The key itself is
-  // APPLE_SIWA_KEY, set with `wrangler secret put` and never written here.
+  // NO ZONE ROUTES, deliberately (2026-08-11, the split).
   //
-  //   Services ID  fm.partyparty.web   (Sign In with Apple, primary
-  //                fm.partyparty.app, domain partyparty.party, return URL
-  //                https://partyparty.party/auth/apple/callback)
-  //   Key          "PartyParty Sign In", created 2026-08-07
+  // partyparty.party's platform paths are still served by the JOURNAL worker
+  // (clubclub's deployment, holding the owner's real nights). Claiming them
+  // here would delete a live product. This worker is reached on its
+  // workers.dev hostname instead, which needs no DNS and cannot collide; the
+  // Mac points at it via PARTYPARTY_PLATFORM. When clubclub moves to
+  // clubclub.app and frees the zone, the route block comes back here.
+  "workers_dev": true,
+
   "vars": {
     "APPLE_CLIENT_ID": "fm.partyparty.web",
     "APPLE_TEAM_ID": "52WM463HR2",
@@ -85,7 +58,7 @@
 
     // Where links in email point. Pinned rather than taken from the request, so
     // a request arriving on an unexpected host cannot mint links to that host.
-    "PUBLIC_BASE": "https://partyparty.party"
+    "PUBLIC_BASE": "https://partyparty-live.ramine-4e9.workers.dev"
   },
 
   // The shared MXroute sending mailbox, from the account-level "stack" store -
