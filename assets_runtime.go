@@ -2,7 +2,7 @@
 
 package main
 
-// Clean dev builds (`go build ./...`, tests, Workshop verification) must compile
+// Clean dev builds (`go build ./...`, tests, merge-gate verification) must compile
 // without the ignored native helper binaries. When those helpers are present
 // locally, copy them into the run dir at startup; otherwise return "" and let the
 // caller surface the missing-helper state.
