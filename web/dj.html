@@ -215,8 +215,12 @@
      animated - a set list is read, not watched. */
   .setlist{list-style:none;margin:0;padding:0;counter-reset:played}
   .setlist li{counter-increment:played;display:grid;
-    grid-template-columns:2.2em minmax(0,1fr) auto;gap:12px;align-items:baseline;
+    grid-template-columns:2.2em 34px minmax(0,1fr) auto;gap:12px;align-items:center;
     padding:8px 2px;border-top:1px solid var(--separator);font-size:13px}
+  /* The cover keeps its slot whether or not recognition returned artwork, so
+     rows never jump as the night fills in. */
+  .setlist .setart{width:34px;height:34px;border-radius:var(--r-sm);object-fit:cover;
+    background:var(--fill-tertiary);display:block}
   .setlist li:first-child{border-top:0}
   .setlist li::before{content:counter(played);color:var(--label-tertiary);
     font-variant-numeric:tabular-nums;font-weight:650;font-size:12px}
@@ -3524,7 +3528,11 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         const key = t.title + '\u0000' + (t.artist || '');
         const at = t.setAt ? new Date(t.setAt).toLocaleTimeString(undefined,
           { hour: 'numeric', minute: '2-digit' }) : '';
-        return '<li' + (key === playing ? ' class="playing"' : '') + '><b>' + tesc(t.title) +
+        const art = String(t.artworkUrl || '');
+        const artTag = art
+          ? '<img class="setart" src="' + tesc(art) + '" alt="" loading="lazy">'
+          : '<span class="setart" aria-hidden="true"></span>';
+        return '<li' + (key === playing ? ' class="playing"' : '') + '>' + artTag + '<b>' + tesc(t.title) +
           (t.artist ? ' <span class="by">' + tesc(t.artist) + '</span>' : '') + '</b>' +
           '<span class="setright">' + (at ? '<time>' + tesc(at) + '</time>' : '') +
           '<button class="dropx" type="button" title="Not played here"' +
