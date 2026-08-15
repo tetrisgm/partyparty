@@ -24,7 +24,6 @@ import (
 
 	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
-	"partyparty/internal/cloudsync"
 	"partyparty/internal/config"
 	"partyparty/internal/contribute"
 	"partyparty/internal/diag"
@@ -40,13 +39,6 @@ import (
 
 //go:embed all:web
 var webFS embed.FS
-
-// platformDefault is where the Mac finds its own parties. A subdomain of its
-// own while partyparty.party's platform paths belong to the journal - a real
-// hostname, so the OAuth callbacks registered against it survive; it moves
-// back to the apex when clubclub migrates to clubclub.app. Override with
-// PARTYPARTY_PLATFORM.
-const platformDefault = "https://party.partyparty.party"
 
 // appVersion is stamped by the build (-ldflags "-X main.appVersion=..."). It is
 // shown in the UIs and broadcast to clients so stale player pages refresh
@@ -303,92 +295,14 @@ func main() {
 		})
 	}
 
-	// Reconciling the DJ's profile on demand, for the sign-in door: it polls
-	// this while a browser tab finishes, so the app opens the moment they are
-	// done rather than on the next scheduled pass. nil until there is an
-	// install to reconcile.
-	var syncProfileNow func(context.Context) error
-	// The platform, as the console's party manager. nil until this Mac has an
-	// install to authenticate with; the endpoints answer "not signed in" rather
-	// than failing when that is the case.
-	var partyClient server.PartyClient
-
-	// The party's wall and its event page are one timeline. This is the only
-	// thing that reaches the platform from the Mac, it runs only while a party
-	// is live, and it is silent when there is no group, no night, or no
-	// internet - which is most parties, and not a fault.
-	if events != nil {
-		// PartyParty's own backend, separate from the certificate broker
-		// (PARTYPARTY_BROKER) since the 2026-08-11 split: partyparty.party's
-		// platform paths still serve clubclub's journal and its real data, so
-		// this Mac must not read parties from there - it would offer the DJ a
-		// 2024 journal night to broadcast into, which is exactly what it did.
-		platform := os.Getenv("PARTYPARTY_PLATFORM")
-		if platform == "" {
-			platform = platformDefault
-		}
-		if installID, installSecret := activate.InstallCreds(); installID != "" {
-			sync := cloudsync.New(platform, installID, installSecret)
-			go sync.Run(peerCtx, cloudsync.Hooks{
-				PartyID: func() string { return events.Identity().ID },
-				Live:    func() bool { return bc != nil && bc.Status().State == "live" },
-				// So the party's page can offer "listen" while the room is
-				// actually playing, and stop offering it when it is not.
-				JoinURL: func() string {
-					if handler == nil {
-						return ""
-					}
-					return handler.GuestJoinURL()
-				},
-				Outgoing: func(limit int) []cloudsync.Post {
-					local := events.OutgoingPosts(limit)
-					out := make([]cloudsync.Post, 0, len(local))
-					for _, post := range local {
-						out = append(out, cloudsync.Post{
-							ID: post.ID, Author: post.Author, Body: post.Body, CreatedMs: post.CreatedMs,
-						})
-					}
-					return out
-				},
-				Merge: events.MergeRemotePost,
-				Logf:  log.Printf,
-			}, 20*time.Second)
-
-			// The DJ's own profile, kept in step whether or not anything is
-			// playing. A name and a photo are set up long before Go Live, and a
-			// console that opened blank because no party was running would be
-			// the same "it forgot me" bug that put identity in its own file.
-			profileHooks := cloudsync.ProfileHooks{
-				Local: func() cloudsync.Profile {
-					p := events.CloudProfile()
-					return cloudsync.Profile{
-						Handle: p.Handle, Name: p.Name, Bio: p.Bio,
-						Links: p.Links, UpdatedMs: p.UpdatedMs,
-					}
-				},
-				Apply: func(p cloudsync.Profile) (bool, error) {
-					return events.ApplyCloudProfile(event.CloudProfile{
-						Handle: p.Handle, Name: p.Name, Bio: p.Bio,
-						Links: p.Links, UpdatedMs: p.UpdatedMs,
-					})
-				},
-				LocalAvatar: events.LocalAvatar,
-				AvatarSeen:  events.AvatarSeen,
-				ApplyAvatar: events.ApplyCloudAvatar,
-				Logf:        log.Printf,
-			}
-			go sync.RunProfile(peerCtx, profileHooks, 60*time.Second)
-			syncProfileNow = func(ctx context.Context) error {
-				return sync.SyncProfile(ctx, profileHooks)
-			}
-			partyClient = sync
-		}
-	}
+	// There is no account layer. A DJ installs the app, runs it, and guests
+	// scan the code: nothing here signs in, holds a profile, or mirrors the
+	// room to a page on the web. What reaches the internet is the certificate
+	// broker (anonymous install credentials, for DNS and HTTPS) and, on an
+	// isolated network, the relay. Both are below.
 
 	handler = server.New(server.Deps{
 		Config:      cfg,
-		Parties:     partyClient,
-		SyncProfile: syncProfileNow,
 		Broadcaster: bc,
 		Listeners:   ls,
 		RunDir:      runDir,

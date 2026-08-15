@@ -1,5 +1,38 @@
 # PartyParty.party handoff
 
+## NO ACCOUNTS (2026-08-14, owner decision)
+
+The app has no sign-in and no account layer. A DJ installs it, runs it, and
+guests scan the code. That is the whole product.
+
+Removed, in one pass: the full-screen sign-in door and its Continue with
+Apple / Google buttons, `/api/sign-in-link` and `/api/sign-in-check`, the
+`signedIn` field on `/api/status`, the `handle` field on the feed and event
+payloads, the DJ `@name` chip in the console and on the guest page, the
+canonical-party picker (`/api/parties`, `/api/party/create|open|edit`), and the
+packages behind all of it: `internal/cloudsync`, `internal/server/parties.go`,
+`internal/event/profile.go`, `internal/event/canonical.go`. `PARTYPARTY_PLATFORM`
+and `platformDefault` are gone; nothing in the app now talks to
+`party.partyparty.party`.
+
+**Go Live used to be gated on being signed in** (`canStart = secureReady &&
+signedIn`, and a button reading "Sign in to go live"). It is now gated only on
+the trusted LAN certificate, which is the one thing a guest actually needs.
+
+**Untouched, deliberately:** the certificate broker (`internal/activate`, the
+anonymous install id and secret used for DNS and HTTPS), relay mode, the cloud
+HLS mirror (`internal/contribute` - a different thing from cloudsync despite
+the name), the room feed, and every guest path. Those are how an isolated
+network still works.
+
+Two things this leaves outside the repo, both belonging to clubclub's
+deployment and both still live: `partyparty.party/home` still serves an
+Apple/Google sign-in page, and clubclub's `cloudflare/` is a fork that deploys
+the same worker name `partyparty-site` to the same routes. Neither is
+reachable from this app any more. The OAuth-identity section further down is
+superseded for PartyParty: the Google client and the `fm.partyparty.live`
+Services ID are no longer used by anything here.
+
 ## THE SPLIT (2026-08-11): partyparty is the broadcast app again
 
 **What the journal era taught THIS app (ported knowledge - the era's 75

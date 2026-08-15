@@ -996,7 +996,7 @@
     setConnectionMode(connectionMode);
     let hls = null, started = false, live = false, stalledSinceBeat = false;
     let discoveredPeers = [], selectedDJId = '', listenerCountsByDJ = new Map(), listenerGroups = [];
-    let localDJLinks = [], localDJAvatar = '', localDJBio = '', localDJHandle = '';
+    let localDJLinks = [], localDJAvatar = '', localDJBio = '';
     let mediaSessionHandlersRegistered = false, mediaSessionMetadataSignature = '';
     const djPalette = [
       ['#20c965', '#173b27'], ['#0a84ff', '#16334f'], ['#ff453a', '#4a211f'],
@@ -1360,7 +1360,6 @@
       if (!target) return;
       const normalized = rows.map((group) => ({
         djFace: localDJAvatar,
-        djAt: localDJHandle,
         id: String(group.id || ''),
         dj: String(group.dj || 'DJ'),
         listeners: (Array.isArray(group.listeners) ? group.listeners : []).map((listener) => ({
@@ -1395,9 +1394,7 @@
             ? '<span class="listeneravatar listenerphoto"><img src="' +
               escapeHTML(localDJAvatar) + '" alt=""></span>'
             : '<span class="listeneravatar">\u{1F3A7}</span>';
-          const at = isLocalGroup && localDJHandle
-            ? '<small>@' + escapeHTML(localDJHandle) + '</small>'
-            : '<small>DJ</small>';
+          const at = '<small>DJ</small>';
           djRow.innerHTML = face + '<span class="listenerwho">' +
             escapeHTML(group.dj) + at + '</span>';
           people.appendChild(djRow);
@@ -3707,14 +3704,11 @@
           const nextHostName = data.host ? String(data.host) : guestHostName;
           const nextAvatar = String(data.avatar || localDJAvatar || '');
           const nextBio = String(data.bio || localDJBio || '');
-          const nextHandle = String(data.handle || localDJHandle || '');
           const profileChanged = nextHostName !== guestHostName ||
-            nextAvatar !== localDJAvatar || nextBio !== localDJBio ||
-            nextHandle !== localDJHandle;
+            nextAvatar !== localDJAvatar || nextBio !== localDJBio;
           guestHostName = nextHostName;
           localDJAvatar = nextAvatar;
           localDJBio = nextBio;
-          localDJHandle = nextHandle;
           const featureChanged = setFeatures(data.features || {});
           renderDJLinks(data.links || []);
           updateReactionUI(data.reactions || {});

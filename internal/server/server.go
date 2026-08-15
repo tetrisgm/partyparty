@@ -64,19 +64,6 @@ type Deps struct {
 	// Version is the app build version - shown in UIs and broadcast to clients
 	// so stale player pages refresh themselves after an update.
 	Version string
-
-	// Parties is this account's canonical parties, and the way the Mac creates
-	// and edits them. Every one of these goes through the platform's own
-	// creation path, so a party made in the booth is the same row as one made in
-	// a browser - there is no Mac-only kind of party. nil when there is no
-	// platform identity yet.
-	Parties PartyClient
-
-	// SyncProfile runs one profile reconciliation now. The console calls it
-	// while somebody is signing in, so the door opens the moment they finish
-	// rather than on the next scheduled pass a minute later. nil when this Mac
-	// has no platform identity yet.
-	SyncProfile func(context.Context) error
 }
 
 type srv struct {
@@ -462,11 +449,6 @@ func (s *srv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(p, "/media/"):
 		s.handleMedia(w, r)
 	case strings.HasPrefix(p, "/api/"):
-		// Managing the canonical party comes first: these are the Mac acting as
-		// a full client, and they must not be shadowed by the room's own API.
-		if s.handlePartyAPI(w, r) {
-			return
-		}
 		if s.handleFeedAPI(w, r) {
 			return
 		}
@@ -708,11 +690,6 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			"llhlsUrl":       s.llhlsURLFor(r),
 			"llhlsAvailable": s.MTX != nil,
 			"llhlsRealCert":  s.realCert(),
-			// The DJ signs in, and signing in on the Mac IS the pairing. The
-			// handle only exists once this install belongs to an account, and it
-			// is cached locally - so a venue with no internet does not lock a
-			// signed-in DJ out of their own party.
-			"signedIn":       s.signedIn(),
 			"audioProven":    s.audioProven.Load(),
 			"activation":     s.activationState(),
 			"latencyTarget":  latencyTarget,
@@ -1686,15 +1663,4 @@ func compactFields(m map[string]any) string {
 		fmt.Fprintf(&b, "%s=%s ", k, s)
 	}
 	return strings.TrimSpace(b.String())
-}
-
-// signedIn reports whether this Mac belongs to somebody's account. The @name
-// arrives with the profile the first time the install is linked and is kept on
-// disk, so this stays true offline - being at a venue with no uplink must never
-// sign a DJ out of the party they are standing in.
-func (s *srv) signedIn() bool {
-	if s.Events == nil {
-		return false
-	}
-	return s.Events.CloudProfile().Handle != ""
 }

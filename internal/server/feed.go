@@ -2,15 +2,11 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -19,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"partyparty/internal/activate"
 	"partyparty/internal/event"
 	"partyparty/internal/peers"
 )
@@ -120,9 +115,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			"title": meta.Title, "host": meta.Host, "starts": meta.Starts,
 			"date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
 			"bio": meta.Bio, "avatar": meta.Avatar,
-			// The DJ's @name, so a guest's phone can show who is playing the
-			// same way the group's page does rather than a bare first name.
-			"handle":    s.Events.CloudProfile().Handle,
 			"features":  meta.Features,
 			"reactions": reactions, "spikes": spikes,
 			// dir = the current room identity; clients reset their cursor when a
@@ -358,14 +350,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				return true
 			}
 		}
-		// The same edit, on the same party, wherever it was typed. Renaming in
-		// the booth used to change only this Mac's copy, so a party that had a
-		// page on the platform ended the night with two different names - the
-		// exact thing one canonical party is for. Best effort and in the
-		// background: the console is offline-first and a party with no page,
-		// or no internet, must not have its rename refused or delayed.
-		s.pushPartyEdit(body.Title, body.Place)
-
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok": true, "date": meta.Date, "time": meta.Time, "place": meta.Place, "cover": meta.Cover,
@@ -396,63 +380,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return true
 		}
-		s.Events.StampProfile()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "links": s.Events.Meta().Links})
-	case "/api/sign-in-link":
-		// Signing in happens in a browser, because that is where Apple and
-		// Google sign-in lives. This mints the one-time code that says WHICH
-		// Mac is asking and hands back the URL to open; the DJ presses one
-		// button there and this Mac belongs to their account. Nobody reads a
-		// code out loud, and nothing here needs a password.
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		id, secret := activate.InstallCreds()
-		if id == "" || secret == "" {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-				"error": "this Mac has not reached partyparty.party yet"})
-			return true
-		}
-		base := strings.TrimRight(os.Getenv("PARTYPARTY_BROKER"), "/")
-		if base == "" {
-			base = "https://partyparty.party"
-		}
-		out, err := requestInstallCode(r.Context(), base, id, secret)
-		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-			return true
-		}
-		if out.Linked {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"ok": true, "linked": true, "handle": out.Handle, "name": out.Name,
-				"url": base + "/@" + out.Handle + "/manage",
-			})
-			return true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok": true, "linked": false, "url": base + "/link/" + out.Code,
-		})
-	case "/api/sign-in-check":
-		// Polled by the door while a browser tab is finishing the sign-in. One
-		// reconciliation now, then the honest answer - so the app opens the
-		// instant they are done instead of a minute later.
-		if r.Method != http.MethodPost || !s.isDJ(r) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
-			return true
-		}
-		if s.SyncProfile != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
-			defer cancel()
-			if err := s.SyncProfile(ctx); err != nil {
-				// Not an error worth showing: the tab may simply not be finished.
-				writeJSON(w, http.StatusOK, map[string]any{"signedIn": s.signedIn(), "waiting": true})
-				return true
-			}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"signedIn": s.signedIn(), "handle": s.Events.CloudProfile().Handle,
-		})
 	case "/api/dj-profile":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "DJ only"})
@@ -470,11 +398,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return true
 		}
-		// This Mac now holds the newest version of the DJ's profile, and the
-		// next sync will carry it up. Stamping here rather than inside the
-		// store keeps the platform's own writes - which arrive already stamped
-		// - from marking themselves as local edits and bouncing straight back.
-		s.Events.StampProfile()
 		meta := s.Events.Meta()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": meta.Host, "bio": meta.Bio, "avatar": meta.Avatar})
 	case "/api/post":
@@ -635,7 +558,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 				return true
 			}
-			s.Events.StampProfile()
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "avatar": ""})
 			return true
 		}
@@ -658,7 +580,6 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return true
 		}
-		s.Events.StampProfile()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "avatar": "/dj-avatar"})
 	case "/api/post-delete":
 		if r.Method != http.MethodPost || !s.isDJ(r) {
@@ -770,7 +691,6 @@ func (s *srv) eventState() map[string]any {
 		"cover":    meta.Cover,
 		"bio":      meta.Bio,
 		"avatar":   meta.Avatar,
-		"handle":   s.Events.CloudProfile().Handle,
 		"features": meta.Features,
 		"posts":    len(ids),
 		"media":    mediaCount,
@@ -921,43 +841,4 @@ func (s *srv) proxyRoomWrite(w http.ResponseWriter, r *http.Request, peerID stri
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(response)
-}
-
-// installCodeReply is the platform's answer to "which Mac is this, and is it
-// already somebody's?".
-type installCodeReply struct {
-	Linked bool   `json:"linked"`
-	Code   string `json:"code"`
-	Handle string `json:"handle"`
-	Name   string `json:"name"`
-}
-
-func requestInstallCode(ctx context.Context, base, id, secret string) (installCodeReply, error) {
-	var out installCodeReply
-	body, err := json.Marshal(map[string]any{"id": id, "secret": secret})
-	if err != nil {
-		return out, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		base+"/api/v1/install/code", bytes.NewReader(body))
-	if err != nil {
-		return out, err
-	}
-	req.Header.Set("content-type", "application/json")
-	client := &http.Client{Timeout: 12 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return out, errors.New("could not reach partyparty.party")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return out, fmt.Errorf("partyparty.party said %s", resp.Status)
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&out); err != nil {
-		return out, err
-	}
-	if !out.Linked && out.Code == "" {
-		return out, errors.New("no code came back")
-	}
-	return out, nil
 }
