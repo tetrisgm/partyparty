@@ -2,187 +2,542 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PartyParty - the party, on every phone</title>
-<meta name="description" content="A macOS app for silent-disco DJ popups. Your Mac is the venue: guests scan a QR and the music plays on their phones - perfectly together, no app, no account, no internet required.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="PartyParty turns your Mac into the venue. Guests scan a QR code and the music plays on their phones, together. No app, no account, no internet required.">
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
+<link rel="canonical" href="https://partyparty.party/">
 <meta property="og:title" content="PartyParty">
-<meta property="og:description" content="Turn your Mac into the venue. Guests scan a QR and the music plays on every phone - together. No app, no account.">
+<meta property="og:description" content="PartyParty turns your Mac into the venue. Guests scan a QR code and the music plays on their phones, together. No app, no account, no internet required.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="/img/og-default.jpg">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕺</text></svg>">
-<style>
-  :root{
-    --bg:#ffffff; --band:#f5f5f7; --ink:#1d1d1f; --ink-2:#6e6e73; --hairline:rgba(0,0,0,.08);
-    --accent:#ff2d75; --accent-ink:#ffffff; --nav:rgba(255,255,255,.72); --frame:#e8e8ed; --bezel:#1d1d1f;
-  }
-  @media(prefers-color-scheme:dark){
-    :root{ --bg:#000; --band:#161617; --ink:#f5f5f7; --ink-2:#a1a1a6; --hairline:rgba(255,255,255,.12);
-           --nav:rgba(0,0,0,.66); --frame:#2c2c2e; --bezel:#3a3a3c; }
-  }
-  *{margin:0;padding:0;box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{
-    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
-    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; line-height:1.5;
-  }
-  .wrap{max-width:1040px;margin:0 auto;padding:0 22px}
-  a{color:inherit;text-decoration:none}
-
-  nav{position:sticky;top:0;z-index:50;background:var(--nav);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--hairline)}
-  .nav-in{max-width:1040px;margin:0 auto;height:48px;display:flex;align-items:center;gap:26px;padding:0 22px}
-  .brand{font-weight:700;font-size:17px;letter-spacing:-.01em}
-  .nav-sp{flex:1}
-  .nav-dl{font-size:14px;font-weight:600;color:var(--accent)}
-
-  .hero{padding:104px 0 84px;text-align:center}
-  h1{font-size:clamp(46px,7.4vw,84px);line-height:1.04;font-weight:700;letter-spacing:-.022em;text-wrap:balance}
-  .lede{font-size:clamp(18px,2.4vw,23px);color:var(--ink-2);max-width:44ch;margin:22px auto 0;text-wrap:balance}
-  .cta{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:12px}
-  .btn{
-    display:inline-block;background:var(--accent);color:var(--accent-ink);font-size:17px;font-weight:600;
-    padding:14px 30px;border-radius:999px;transition:transform .15s,filter .15s;
-  }
-  .btn:hover{filter:brightness(1.06);transform:scale(1.015)}
-  .meta{font-size:13px;color:var(--ink-2)}
-
-  section{padding:96px 0}
-  .band{background:var(--band)}
-  .sec-head{text-align:center;max-width:640px;margin:0 auto 52px}
-  h2{font-size:clamp(30px,4.6vw,52px);line-height:1.08;font-weight:700;letter-spacing:-.02em;text-wrap:balance}
-  .sub{font-size:clamp(16px,2vw,20px);color:var(--ink-2);margin-top:14px;text-wrap:balance}
-
-  .macwin{
-    max-width:980px;margin:0 auto;border-radius:14px;overflow:hidden;background:var(--frame);
-    box-shadow:0 30px 80px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.08);
-  }
-  .macbar{height:34px;display:flex;align-items:center;gap:7px;padding:0 14px}
-  .dot{width:11px;height:11px;border-radius:50%}
-  .d1{background:#ff5f57}.d2{background:#febc2e}.d3{background:#28c840}
-  .macwin img{display:block;width:100%;height:auto}
-
-  .duo{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;max-width:980px;margin:0 auto}
-  .duo-copy h2{text-align:left}
-  .duo-copy .sub{text-align:left}
-  .duo-copy ul{list-style:none;margin-top:26px;display:flex;flex-direction:column;gap:14px}
-  .duo-copy li{display:flex;gap:12px;font-size:16px;color:var(--ink-2)}
-  .duo-copy li b{color:var(--ink);font-weight:600}
-  .duo-copy .tick{color:var(--accent);font-weight:700}
-  .phone{
-    width:min(320px,78vw);margin:0 auto;border-radius:52px;padding:12px;background:var(--bezel);
-    box-shadow:0 30px 80px rgba(0,0,0,.22),0 2px 8px rgba(0,0,0,.1);
-  }
-  .phone img{display:block;width:100%;height:auto;border-radius:40px}
-
-  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;max-width:880px;margin:0 auto}
-  .cell{background:var(--bg);border-radius:18px;padding:30px 28px}
-  .cell h3{font-size:19px;font-weight:650;letter-spacing:-.01em}
-  .cell p{font-size:15px;color:var(--ink-2);margin-top:8px}
-
-  .finale{text-align:center;padding:110px 0}
-  footer{border-top:1px solid var(--hairline);padding:28px 0 44px}
-  .fine{font-size:12px;color:var(--ink-2);text-align:center}
-  .fine a{text-decoration:underline;text-underline-offset:2px}
-
-  .rv{opacity:0;transform:translateY(14px);transition:opacity .7s ease,transform .7s ease}
-  .rv.on{opacity:1;transform:none}
-  @media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none}.btn{transition:none}}
-
-  @media(max-width:760px){
-    section{padding:72px 0}
-    .hero{padding:76px 0 64px}
-    .duo{grid-template-columns:1fr;gap:44px}
-    .duo-copy h2,.duo-copy .sub{text-align:center}
-    .duo-copy ul{max-width:420px;margin:26px auto 0}
-    .grid{grid-template-columns:1fr}
-  }
-</style>
+<meta property="og:url" content="https://partyparty.party/">
+<meta property="og:site_name" content="PartyParty">
+<meta property="og:image" content="https://partyparty.party/img/pp-hero.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PartyParty">
+<meta name="twitter:description" content="PartyParty turns your Mac into the venue. Guests scan a QR code and the music plays on their phones, together. No app, no account, no internet required.">
+<meta name="twitter:image" content="https://partyparty.party/img/pp-hero.jpg">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F57A;</text></svg>">
+<link rel="preload" as="image" href="/img/pp-hero.jpg" fetchpriority="high">
+<script>document.documentElement.className+=' js'</script>
+<title>PartyParty: the party goes where speakers can't</title>
 </head>
 <body>
+<style>
+:root{
+  --red:#fa243c; --ink:#1d1d1f; --ink2:#6e6e73; --ink3:#86868b; --blue:#0066cc;
+  --band:#f5f5f7; --dark:#0d1015; --dark-ink:#f5f5f7; --dark-ink2:#a1a1a6;
+  --navh:62px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:#fff;color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  font-size:17px;line-height:1.47;-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.015em;text-wrap:balance}
+p{margin:0}
+a{color:var(--blue)}
+img{display:block}
+.wrap{max-width:980px;margin:0 auto;padding:0 22px}
+.eyebrow{font-size:14px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--red);margin-bottom:12px}
+.btn{display:inline-block;background:var(--red);color:#fff;text-decoration:none;font-size:17px;font-weight:400;
+  letter-spacing:-.022em;padding:12px 22px;border-radius:980px;transition:transform 100ms ease-out}
+.btn:active{transform:scale(.97)}
+/* Apple publishes no TestFlight badge and its identity guidelines allow only the
+   badge artwork they supply, so the destination is named in words, not borrowed
+   iconography. The nav drops to the short form where the bar would otherwise
+   collide with the wordmark. */
+.tfshort{display:none}
+@media(max-width:389px){.nav .tflabel{display:none}.nav .tfshort{display:inline}}
+.btn:focus-visible,a:focus-visible{outline:3px solid currentColor;outline-offset:3px;border-radius:8px}
+.btn.inv{background:#fff;color:var(--ink)}
+.btn.ghost{background:transparent;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.55);color:#fff}
 
-<nav>
-  <div class="nav-in">
-    <a class="brand" href="/">🕺 PartyParty</a>
-    <span class="nav-sp"></span>
-    <a class="nav-dl" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the beta</a>
+/* nav */
+.nav{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.82);
+  backdrop-filter:blur(18px) saturate(180%);-webkit-backdrop-filter:blur(18px) saturate(180%);
+  border-bottom:1px solid rgba(0,0,0,.08)}
+.nav .in{max-width:1080px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 24px}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink)}
+.brand .mark{font-size:22px;line-height:1}
+.brand b{font-size:19px;font-weight:600}
+.nav .btn{font-size:14px;padding:8px 17px;white-space:nowrap}
+@media(prefers-reduced-transparency:reduce){.nav{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}}
+
+/* hero */
+/* Apple's service heroes fill the first screen: measured 100vh on apple.com/apple-arcade
+   (700/900/1100 viewports all matched exactly), 100vh minus the in-flow chrome on
+   apple-tv-plus, and a pixel floor (min-height:760px) on airpods-pro so a short window
+   never crushes it. Content is vertically centred, not top-padded. */
+.hero{position:relative;color:#fff;text-align:center;overflow:hidden;
+  display:flex;flex-direction:column;align-items:stretch;justify-content:center;
+  padding:96px 24px 104px;
+  min-height:600px;
+  min-height:max(600px,calc(100vh - var(--navh)));
+  min-height:max(600px,calc(100svh - var(--navh)));
+  background:linear-gradient(180deg,rgba(6,6,10,.58) 0%,rgba(6,6,10,.42) 45%,rgba(6,6,10,.78) 100%),
+  url(/img/pp-hero.jpg) center 42%/cover no-repeat #0a0a10}
+.hero .eyebrow{color:rgba(255,255,255,.85)}
+.hero h1{font-size:40px;font-weight:700;letter-spacing:0;line-height:1.025;max-width:980px;margin:0 auto}
+.hero .sub2{font-size:17px;font-weight:600;line-height:1.235;letter-spacing:-.022em;color:rgba(255,255,255,.9);max-width:36ch;margin:20px auto 0}
+.hero .ctas{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+.hero .note{margin-top:16px;font-size:14px;color:rgba(255,255,255,.72)}
+
+/* section scaffolding */
+.sect{padding:82px 0}
+.sect .lede{font-size:32px;font-weight:700;line-height:1.125;letter-spacing:.002em;color:var(--ink);margin:14px auto 0;text-align:center;text-wrap:balance}
+.h2{font-size:40px;font-weight:700;letter-spacing:0;line-height:1.0;
+  text-align:center;margin-left:auto;margin-right:auto;text-wrap:balance}
+
+/* how it works: three editorial product moments */
+.how{background:var(--band);padding-bottom:72px}
+.wrap.wide{max-width:1024px}
+.phframe{background:#0c0c0e;border-radius:clamp(34px,4vw,46px);padding:clamp(8px,1vw,12px);position:relative;
+  box-shadow:0 26px 60px rgba(0,0,0,.34),inset 0 0 0 1.5px rgba(255,255,255,.10)}
+.phframe .island{position:absolute;top:calc(clamp(8px,1vw,12px) + 8px);left:50%;transform:translateX(-50%);
+  width:34%;height:14px;border-radius:9px;background:#000;z-index:2}
+.phframe .pscreen{border-radius:clamp(26px,3.2vw,36px);overflow:hidden;background:#f4f4f6}
+.phframe .pscreen img{width:100%;height:auto}
+/* Apple News' card anatomy, measured on apple.com/apple-news: one white surface at
+   radius 18, .card-content padding 45px 20px 0 45px, an h3 at 21/600/25 and body at
+   17/400/25, and the image inside that same card below the copy. The caption used to
+   sit outside the tile, which read as two unrelated objects. */
+.moment{position:relative;isolation:isolate;cursor:pointer}
+/* The headline stays on the page grid while the card system gets its own wider field. */
+.moments{width:min(calc(100vw - 44px),1140px);position:relative;left:50%;translate:-50% 0;
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px;margin-top:clamp(48px,5vw,72px)}
+.mcard{--cardpad:38px;--visH:352px;--visPad:44px;
+  min-height:530px;height:100%;padding:40px var(--cardpad) 32px;
+  display:flex;flex-direction:column;background:#fff;border-radius:18px;overflow:hidden;
+  box-shadow:0 4px 20px rgba(0,0,0,.06)}
+/* Copy and media share one inset, so the card has a single left edge. The copy box
+   aligns every media stage without stretching the words themselves. */
+/* 86px holds a title plus two lines of body, so all three media stages start level.
+   Body stays at Apple's 17/400/25 like every other paragraph here, including the
+   detail panel that opens over this same card. */
+.mcopy{min-height:86px}
+.mcopy h3{font-size:21px;font-weight:600;line-height:1.19;letter-spacing:-.003em;color:var(--ink)}
+.mcopy p{margin-top:9px;font-size:17px;font-weight:400;line-height:1.47;letter-spacing:-.022em;color:var(--ink3)}
+/* Each visual lives in a lower media stage. The 44px lower reserve combines with the
+   32px card inset to keep the shared 76px control corner quiet. */
+.mvis{height:var(--visH);flex:0 0 var(--visH);margin-top:26px;
+  display:flex;align-items:flex-end;justify-content:center;overflow:visible}
+.mvis.src,.mvis.golive,.mvis.listen{padding-bottom:var(--visPad)}
+/* Card one: PartyParty is the product in front, the DJ app is the context behind it.
+   The console's own transport bar shows the source it is broadcasting, and the bar is
+   cropped to its live left half so the words stay readable at card scale. */
+.macstage{position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;
+  background:#0b0b0d;box-shadow:0 10px 30px rgba(0,0,0,.28)}
+.macstage .behind{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  object-position:center 34%;opacity:.38;filter:saturate(.65)}
+/* the bar runs slightly wider than the stage so its two controls stay readable;
+   the overflow crops it at the card's edge like the edge of a screen */
+.macstage .front{position:absolute;left:50%;translate:-50% 0;bottom:0;width:124%;max-width:none;
+  height:auto;box-shadow:0 -16px 38px rgba(0,0,0,.6)}
+/* Card two: the console's real Invite guests panel, sized by the stage like its siblings. */
+.mvis.golive .joinrailshot{height:100%;width:auto;max-width:100%;border-radius:14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.28)}
+/* the phone is sized by the box height, so it fills the card instead of floating in it.
+   aspect-ratio keeps the width honest, and the inset lets its own corners survive. */
+/* Centred, and lit from above like every other shadow on the page. The 44px lower
+   reserve already leaves the control corner clear by 70px, so the phone does not need
+   to be nudged off the card's centre line to stay out of it. */
+.mvis.listen .phframe.mini{height:100%;width:auto;aspect-ratio:605/760;max-width:100%;flex:0 0 auto}
+.mvis.listen .phframe.mini .pscreen{height:100%}
+.mvis.listen .phframe.mini .pscreen img{width:100%;height:100%;object-fit:cover}
+.phframe.mini{border-radius:26px;padding:7px;box-shadow:0 10px 30px rgba(0,0,0,.4),inset 0 0 0 1.5px rgba(255,255,255,.10)}
+.phframe.mini .island{height:9px;top:13px;width:36%}
+.phframe.mini .pscreen{border-radius:20px}
+@media(max-width:1068px){
+  .moments{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+}
+@media(max-width:734px){
+  .moments{grid-template-columns:1fr;gap:24px}
+  .mcard{--cardpad:30px;--visH:320px;--visPad:46px;min-height:488px;padding-top:34px;padding-bottom:30px}
+  .mvis{margin-top:24px}
+}
+/* places: one lead scene, three supporting */
+.scene{position:relative;border-radius:28px;overflow:hidden;color:#fff;display:flex;align-items:flex-end}
+.scene.lead{min-height:clamp(340px,38vw,480px);margin-top:clamp(36px,4vw,52px)}
+.trio3{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(18px,2.2vw,26px);margin-top:clamp(18px,2.2vw,26px)}
+.trio3 .scene{min-height:clamp(300px,30vw,400px)}
+.trio3 .scene h3{font-size:19px;line-height:1.21;letter-spacing:-.003em}
+.trio3 .scene p{font-size:17px;max-width:30ch}
+/* keeps its own bottom reserve, because this rule out-specifies the one on .scene .txt */
+.trio3 .scene .txt{padding:clamp(20px,2vw,28px);padding-bottom:76px}
+.trio3 .scene .scrim{background:linear-gradient(180deg,rgba(4,4,8,.06) 20%,rgba(4,4,8,.62) 62%,rgba(4,4,8,.90) 100%)}
+@media(max-width:820px){
+  .trio3{grid-template-columns:1fr}
+  .trio3 .scene{min-height:clamp(280px,58vw,360px)}
+}
+.scene .ph{position:absolute;inset:0;background-size:cover;background-position:center}
+.scene .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,4,8,.05) 26%,rgba(4,4,8,.58) 66%,rgba(4,4,8,.90) 100%)}
+/* Every card composes around the shared control: the caption stops above it rather
+   than running under it, which is what moving the plus in from 18px to 28px exposed. */
+.scene .txt{position:relative;padding:clamp(26px,4vw,44px);padding-bottom:76px}
+.scene h3{font-size:32px;font-weight:700;letter-spacing:.002em;line-height:1.125}
+.scene p{margin-top:8px;font-size:17px;font-weight:600;line-height:1.235;letter-spacing:-.022em;color:rgba(255,255,255,.88);max-width:40ch}
+.ph.afterhours{background-image:url(/img/pp-afterhours.jpg);background-position:center 46%}
+.ph.beach{background-image:url(/img/pp-beach.jpg);background-position:center 46%}
+.ph.park{background-image:url(/img/pp-park.jpg);background-position:center 42%}
+.ph.silent{background-image:url(/img/pp-silent.jpg);background-position:center 42%}
+
+/* setlist panel */
+.rpanel{position:relative;isolation:isolate;border-radius:28px;padding:clamp(34px,4.4vw,60px)}
+.rlede{margin:14px auto 0;font-size:32px;font-weight:700;line-height:1.125;letter-spacing:.002em;text-align:center;text-wrap:balance}
+
+/* shazam */
+.rpanel.shz{background:radial-gradient(95% 85% at 50% 0%,#0d47b8 0%,#082b70 48%,#04102e 100%);color:var(--dark-ink)}
+
+/* Apple's responsive type steps, measured on apple.com/apple-news at 390 / 1000 / 1440.
+   Breakpoints are Apple's own: 735px and 1069px. */
+@media(min-width:735px){
+  .hero h1,.h2{font-size:44px}
+  .hero h1{line-height:1.09}
+}
+@media(min-width:1069px){
+  .hero h1{font-size:72px;line-height:1.056;letter-spacing:-.008em}
+  .hero .sub2{font-size:19px;line-height:1.21;letter-spacing:-.003em;max-width:44ch}
+  .h2{font-size:72px;line-height:1.0;letter-spacing:-.016em}
+  .sect .lede,.rlede{font-size:51px;line-height:1.176;letter-spacing:-.0025em}
+  .scene h3{font-size:51px;line-height:1.176;letter-spacing:-.0025em}
+  .trio3 .scene h3{font-size:21px;line-height:1.19;letter-spacing:-.003em}
+  .scene p{font-size:19px;line-height:1.21;letter-spacing:-.003em}
+  /* the Shazam sentence supports the headline, it does not rival it */
+  .shz .rlede{font-size:21px;line-height:1.38;letter-spacing:.011em}
+}
+
+/* the QR and its button read as one control, not two floating crops */
+.qrstack{display:flex;flex-direction:column;align-items:center;gap:10px;width:74%}
+.qrstack .qrimg{width:100%;border-radius:10px;display:block}
+.qrstack .btnimg{width:90%;border-radius:8px;display:block}
+
+/* Shazam: one claim, proved by one screenshot. The mark is the room the copy sits
+   in, not an object above it, so the card carries no dedicated icon row. */
+.rpanel.shz{position:relative;overflow:hidden;
+  padding:clamp(30px,3.6vw,52px) clamp(30px,3.6vw,52px) 0}
+.rpanel.shz > *{position:relative;z-index:1}
+/* the affordance, its overlay and the watermark stay pinned to the card, not the flow.
+   These have to out-specify the rule above or they land back in the layout. */
+.rpanel.shz > .plus,.rpanel.shz > .detail{position:absolute}
+.rpanel.shz > .shazwash{position:absolute;z-index:0}
+/* The mark is lifted out of the official icon as a transparent glyph: no squircle,
+   no disc, no box of its own. Centred on the card with its optical middle at 45% of
+   the height, so the track list rides over its lower half and it reads as part of the
+   blue rather than an object sitting on it. */
+.shazwash{position:absolute;z-index:0;pointer-events:none;height:auto;
+  left:50%;top:37%;transform:translate(-50%,-50%);
+  width:clamp(200px,33vw,350px);opacity:.07}
+/* one left edge for the headline, the sentence and the evidence */
+.shz .h2{text-align:left;margin-left:0;margin-right:0;max-width:17ch}
+.shz .rlede{text-align:left;margin:clamp(14px,1.5vw,20px) 0 0;max-width:54ch;
+  font-size:17px;font-weight:400;line-height:1.42;letter-spacing:-.022em;color:rgba(255,255,255,.84)}
+/* the real Tracks played card, sized to be read and cropped by the card's own edge */
+.shz .setshotwrap{width:92%;margin:clamp(30px,3.4vw,46px) 0 clamp(-14px,-.8vw,-8px);
+  background:#0b0b0d;border-radius:16px 16px 0 0;overflow:hidden;
+  box-shadow:0 -8px 44px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.08)}
+.shz .setshotwrap img{width:100%;height:auto;display:block}
+/* Below the width where the whole list still renders at a readable scale, crop it
+   instead of shrinking it: 760px holds the source at 0.54, which keeps track titles
+   around 14px. The timestamps fall off the right; the titles are the evidence. */
+@media(max-width:863px){
+  /* full width leaves no navy strip for the control, so the list stops above it
+     instead of running under it */
+  .shz .setshotwrap{width:100%;margin-bottom:76px}
+  /* the card is taller here and the list starts higher, so keep the middle clear */
+  .shazwash{top:29%}
+  .shz .setshotwrap img{width:760px;max-width:none}
+}
+
+/* Apple's plus affordance: tap to reveal the detail behind a card. Apple only makes
+   the 40px control clickable; here the whole card is the target, so it says so. */
+.scene{isolation:isolate;cursor:pointer}
+.rpanel.shz{cursor:pointer}
+.plus{position:absolute;right:28px;bottom:28px;z-index:4;width:36px;height:36px;padding:0;border:0;
+  border-radius:50%;background:rgba(210,210,215,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  display:grid;place-items:center;cursor:pointer;transition:background 160ms ease}
+.plus:hover{background:rgba(230,230,235,.75)}
+.plus:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.plus .glyph{position:relative;width:15px;height:15px;display:block}
+.plus .glyph::before,.plus .glyph::after{content:'';position:absolute;background:#1d1d1f;border-radius:1px;
+  transition:transform 200ms ease}
+.plus .glyph::before{left:0;top:6.5px;width:15px;height:2px}
+.plus .glyph::after{top:0;left:6.5px;width:2px;height:15px}
+.scene.open .plus .glyph{transform:rotate(45deg)}
+.plus .glyph{transition:transform 200ms ease}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* One expanded panel for every card, at the type Apple actually sets in theirs:
+   the App Store grid modal is 21/600/25 over 17/400/25, and it is centred in the
+   card rather than pinned to the top. Every card here now reads the same. */
+.moment .detail,.rpanel .detail,.scene .detail{position:absolute;inset:0;z-index:3;margin:0;
+  display:flex;flex-direction:column;justify-content:center;gap:14px;
+  padding:clamp(26px,3vw,44px);padding-bottom:74px;text-align:left;
+  background:#1d1d1f;color:#fff;border-radius:18px;overflow:auto;
+  opacity:0;visibility:hidden;transition:opacity 220ms ease,visibility 220ms}
+.scene .detail{z-index:2;border-radius:28px}
+.rpanel .detail{border-radius:28px}
+.moment.open .detail,.rpanel.open .detail,.scene.open .detail{opacity:1;visibility:visible}
+.moment .detail h4,.rpanel .detail h4,.scene .detail h4{margin:0;
+  font-size:21px;font-weight:600;line-height:1.19;letter-spacing:-.003em;max-width:34ch}
+.moment .detail p,.rpanel .detail p,.scene .detail p{margin:0;
+  font-size:17px;font-weight:400;line-height:1.47;letter-spacing:-.022em;
+  color:rgba(255,255,255,.78);max-width:46ch}
+.moment.open .plus .glyph,.rpanel.open .plus .glyph{transform:rotate(45deg)}
+@media(prefers-reduced-motion:reduce){.plus,.plus .glyph::after,.scene .detail{transition:none}}
+
+/* faq: questions, answers */
+.faq{background:var(--band)}
+.qlist{max-width:1000px;margin:clamp(48px,6vw,80px) auto 0;border-top:1px solid rgba(0,0,0,.13)}
+.qlist details{border-bottom:1px solid rgba(0,0,0,.13)}
+.qlist summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:24px;
+  padding:24px 4px;font-size:19px;font-weight:600;line-height:1.21;letter-spacing:-.003em;color:var(--ink)}
+.qlist summary::-webkit-details-marker{display:none}
+.qlist summary:hover{color:var(--red)}
+.qlist summary:focus-visible{outline:3px solid var(--red);outline-offset:4px;border-radius:8px}
+.qlist summary i{flex:0 0 auto;width:13px;height:13px;margin-right:6px;border-right:2px solid var(--ink3);
+  border-bottom:2px solid var(--ink3);transform:rotate(45deg) translate(-3px,-3px);transition:transform 200ms ease}
+.qlist details[open] summary i{transform:rotate(225deg) translate(-3px,-3px)}
+.qlist .ans{padding:0 4px 30px}
+.qlist .ans p{font-size:17px;font-weight:400;line-height:1.47;letter-spacing:-.022em;color:var(--ink)}
+@media(prefers-reduced-motion:reduce){.qlist summary i{transition:none}}
+
+/* close */
+.close{background:#fff;text-align:center;padding:66px 24px 54px}
+.close .h2{margin:0 auto}
+.close .btn{margin-top:30px}
+.close .note{margin-top:18px;font-size:17px;font-weight:400;line-height:1.47;letter-spacing:-.022em;color:var(--ink3)}
+
+/* footer */
+footer{padding:26px 24px 34px;color:var(--ink2);font-size:13px;line-height:1.62}
+footer .in{max-width:1080px;margin:0 auto}
+footer .fmark{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:8px}
+footer p+p{margin-top:8px}
+footer .fmeta{color:var(--ink3)}
+footer a{color:var(--ink2);text-decoration:none}
+footer a:hover{color:var(--ink);text-decoration:underline}
+
+/* reveals
+   Gated on the .js class the head sets, so the hidden state only ever exists
+   where the script that undoes it is running. Hiding unconditionally means a
+   blocked or broken script leaves most of the page blank at opacity 0, which
+   is a bad trade for an animation. */
+.js .rv{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+.js .rv.on{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .js .rv{opacity:1;transform:none;transition:none}
+}
+</style>
+
+<nav class="nav">
+  <div class="in">
+    <a class="brand" href="#top"><span class="mark">&#x1F57A;</span><b>PartyParty</b></a>
+    <a class="btn" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener"><span class="tflabel">Join the TestFlight beta</span><span class="tfshort">TestFlight beta</span></a>
   </div>
 </nav>
 
-<header class="hero wrap">
-  <h1>The party,<br>on every phone.</h1>
-  <p class="lede">PartyParty turns your Mac into the venue. Guests scan a QR and the music plays on their phones - perfectly together. No app. No accounts. No internet required.</p>
-  <div class="cta">
-    <a class="btn" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a>
-    <span class="meta">Free. Needs the TestFlight app. Apple Silicon, macOS 26 or later.</span>
+<header class="hero" id="top">
+  <h1>Turn your Mac into a party machine.</h1>
+  <p class="sub2">Play music or DJ live. Friends scan the code on iPhone and listen through their AirPods.</p>
+  <div class="ctas">
+    <a class="btn inv" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a>
   </div>
+  <p class="note">Free. Needs the TestFlight app and macOS&nbsp;26 or later.</p>
 </header>
 
-<section class="band">
+<section class="sect places">
+  <div class="wrap wide">
+    <h2 class="h2 rv">The party goes where speakers can&rsquo;t.</h2>
+
+    <div class="scene lead rv">
+      <div class="ph park" role="img" aria-label="A group of friends sitting together in a city park."></div>
+      <div class="scrim"></div>
+      <div class="txt">
+        <h3>Party in the park.</h3>
+        <p>Nothing for the rangers to shut down.</p>
+      </div>
+        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+        <div class="detail"><h4>No permit for a PA you never brought.</h4><p>A ranger can shut down a speaker. There isn&rsquo;t one. Your MacBook runs the set, the sound lands in everyone&rsquo;s own headphones, and the lawn around you stays exactly as quiet as it was before you arrived.</p></div>
+    </div>
+
+    <div class="trio3 rv">
+      <div class="scene">
+        <div class="ph silent" role="img" aria-label="Friends dancing together in headphones under string lights at dusk."></div>
+        <div class="scrim"></div>
+        <div class="txt">
+          <h3>Silent disco.</h3>
+          <p>No expensive rental gear. Nothing to carry.</p>
+        </div>
+        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+        <div class="detail"><h4>A silent disco without the rental truck.</h4><p>The usual version means hiring headsets, handing them out at the door and collecting them at 2 a.m. Your friends already own better headphones than the rental ones. They scan a code and they are in.</p></div>
+      </div>
+      <div class="scene">
+        <div class="ph afterhours" role="img" aria-label="An apartment building at night, one window still lit."></div>
+        <div class="scrim"></div>
+        <div class="txt">
+          <h3>Apartment after-party.</h3>
+          <p>Keep the night going without waking your neighbors.</p>
+        </div>
+        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+        <div class="detail"><h4>The building sleeps through the after-party.</h4><p>Nothing leaves the room but conversation. The set runs at whatever hour it wants, guests can lock their phones and pocket them, and the neighbours never learn what time it ended.</p></div>
+      </div>
+      <div class="scene">
+        <div class="ph beach" role="img" aria-label="Friends around a fire on the beach at dusk."></div>
+        <div class="scrim"></div>
+        <div class="txt">
+          <h3>Beach party. Offline.</h3>
+          <p>Take a travel router and keep the party local.</p>
+        </div>
+        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+        <div class="detail"><h4>No signal? The party brings its own.</h4><p>Pack a travel router and the network travels with you. Your MacBook and everyone&rsquo;s phones make their own Wi&#8209;Fi on the sand, with no bars of service and no venue network to borrow.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sect how" id="how">
+  <div class="wrap wide">
+    <h2 class="h2 rv">The sound system is already in everyone&rsquo;s pocket.</h2>
+    <div class="moments rv">
+      <div class="moment">
+        <div class="mcard">
+          <div class="mcopy">
+            <h3>Play anything.</h3>
+            <p>A song, a DJ set, or all Mac audio.</p>
+          </div>
+          <div class="mvis src">
+            <div class="macstage">
+              <img class="behind" src="/img/pp-rekordbox.jpg" alt="rekordbox running on the Mac behind PartyParty.">
+              <img class="front" src="/img/pp-transport.png" alt="PartyParty's console set to broadcast the Mac's output, with Go live ready.">
+            </div>
+          </div>
+        </div>
+        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+        <div class="detail"><h4>Whatever your Mac can play.</h4><p>PartyParty broadcasts the Mac&rsquo;s own audio, so the source is whatever you already use: Apple Music, a browser tab, rekordbox or another DJ app, or decks and a controller coming in through an audio interface.</p></div>
+      </div>
+      <div class="moment">
+        <div class="mcard">
+          <div class="mcopy">
+            <h3>Go live.</h3>
+            <p>PartyParty creates a QR code.</p>
+          </div>
+          <div class="mvis golive">
+            <img class="joinrailshot" src="/img/pp-joinrail.png" alt="PartyParty's Invite guests panel: the party's QR code and its join address, ready to share.">
+          </div>
+        </div>
+        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+        <div class="detail"><h4>One code, and the room is in.</h4><p>Going live publishes a private address for tonight and turns it into a QR code. Point a camera at it, or send the link in a group chat. There is nothing to configure and nothing to hand out at the door.</p></div>
+      </div>
+      <div class="moment">
+        <div class="mcard">
+          <div class="mcopy">
+            <h3>Scan and listen.</h3>
+            <p>Everyone can listen at their own volume.</p>
+          </div>
+          <div class="mvis listen">
+            <div class="phframe mini">
+              <div class="island"></div>
+              <div class="pscreen"><img src="/img/pp-phone.jpg" alt="The real guest page on an iPhone: the party header, one DJ playing, and the green listen bar."></div>
+            </div>
+          </div>
+        </div>
+        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+        <div class="detail"><h4>Everyone on the same beat.</h4><p>Every phone plays about three seconds behind your Mac. It is one fixed cushion for the whole room, so people stay together while each pair of ears picks its own level. Locked screens keep playing.</p></div>
+      </div>
+    </div>
+</section>
+
+<section class="sect setlist" id="remembers">
+  <div class="wrap wide">
+    <div class="rpanel shz rv">
+      <img class="shazwash" src="/img/pp-shazam-glyph.png" alt="" aria-hidden="true">
+      <h2 class="h2">Every song, remembered.</h2>
+      <p class="rlede">PartyParty identifies tracks as they play and builds the party&rsquo;s tracklist automatically.</p>
+      <div class="setshotwrap"><img src="/img/pp-setcard.jpg" alt="The console's Tracks played card: four recognized tracks with timestamps, the current one marked now."></div>
+      <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
+      <div class="detail"><h4>The night writes itself down.</h4><p>Recognition runs while you play, so the set list fills in without anyone typing. It needs an internet connection to identify a track, and it keeps the artwork, the artist and the moment each one dropped.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sect faq">
   <div class="wrap">
-    <div class="sec-head rv">
-      <h2>Run the whole night from one app.</h2>
-      <p class="sub">Pick your sound source - decks, any app, or everything the Mac plays - and go live. The QR on screen is the invitation.</p>
-    </div>
-    <figure class="macwin rv" aria-label="The PartyParty DJ console on a Mac">
-      <div class="macbar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span></div>
-      <img src="/shots/console.jpg" alt="PartyParty DJ console: live badge, audio source picker, event page with QR code" width="1440" height="900" loading="lazy">
-    </figure>
-  </div>
-</section>
-
-<section>
-  <div class="wrap duo">
-    <div class="duo-copy rv">
-      <h2>Guests scan. Music plays. Together.</h2>
-      <p class="sub">The stream opens in the browser already on their phone and stays in step with everyone else's - engineered so the whole room drops at the same moment.</p>
-      <ul>
-        <li><span class="tick">✓</span><span><b>Keeps playing locked.</b>&nbsp;Phone in pocket, screen off - the music stays on.</span></li>
-        <li><span class="tick">✓</span><span><b>Local to the room.</b>&nbsp;Audio, photos, shout-outs and the guest list stay on the venue Wi-Fi.</span></li>
-        <li><span class="tick">✓</span><span><b>iPhone and Android.</b>&nbsp;If it has a browser and earbuds, it's in.</span></li>
-      </ul>
-    </div>
-    <figure class="phone rv" aria-label="The guest view on a phone">
-      <img src="/shots/phone.jpg" alt="PartyParty on a phone: playing live audio with the party feed and guest list" width="393" height="852" loading="lazy">
-    </figure>
-  </div>
-</section>
-
-<section class="band">
-  <div class="wrap">
-    <div class="sec-head rv">
-      <h2>Quietly serious engineering.</h2>
-      <p class="sub">Everything hard about a silent disco, handled.</p>
-    </div>
-    <div class="grid rv">
-      <div class="cell"><h3>No internet needed</h3><p>The party runs entirely on your Mac over local Wi-Fi. The venue's connection can die - the music doesn't.</p></div>
-      <div class="cell"><h3>Nothing to install</h3><p>A popup dies the second you ask 40 strangers to download an app. Here they scan a QR and they're listening.</p></div>
-      <div class="cell"><h3>In sync by design</h3><p>Every phone locks to the same beat - and the system snaps any stray back to the room, automatically.</p></div>
-      <div class="cell"><h3>Venue Wi-Fi only</h3><p>No hotspot setup or Mac-hosted network. Join the venue Wi-Fi, show the QR, and the Mac serves the room directly.</p></div>
+    <h2 class="h2 rv">Questions? Answers.</h2>
+    <div class="qlist rv">
+      <details>
+        <summary>What can I play?<i></i></summary>
+        <div class="ans"><p>Anything your Mac can play. Apple Music, a browser tab, or DJ software like rekordbox all work the same way, because PartyParty broadcasts the Mac&rsquo;s own audio. Decks, a controller, or a turntable work too when they&rsquo;re routed into your Mac through a mixer or audio interface.</p></div>
+      </details>
+      <details>
+        <summary>Do my friends need to install PartyParty?<i></i></summary>
+        <div class="ans"><p>No. PartyParty is a Mac app for whoever is playing the music. Your friends scan a QR code and the party opens in their phone&rsquo;s browser. No app, no account, no sign-up. It plays through the headphones they already have.</p></div>
+      </details>
+      <details>
+        <summary>Do we need Wi-Fi or internet?<i></i></summary>
+        <div class="ans"><p>You need a Wi-Fi network that your Mac and your friends&rsquo; phones can all join. It doesn&rsquo;t need to reach the internet: a travel router with no uplink works, so the music plays at a beach or anywhere else off the grid. An internet connection is needed the first time you set PartyParty up, and for recognizing tracks with Shazam.</p></div>
+      </details>
+      <details>
+        <summary>Is everyone synchronized?<i></i></summary>
+        <div class="ans"><p>Yes. Every phone plays the party about three seconds behind your Mac. It is one fixed cushion, the same for everyone, so people stay on the same beat and an ordinary Wi-Fi hiccup passes without anyone hearing it.</p></div>
+      </details>
+      <details>
+        <summary>How do I get PartyParty?<i></i></summary>
+        <div class="ans"><p>Through TestFlight, Apple&rsquo;s beta service. Install TestFlight from the Mac App Store, then open the <a href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">join link</a> and press Install. Updates arrive the same way.</p></div>
+      </details>
+      <details>
+        <summary>Which Macs and phones are supported?<i></i></summary>
+        <div class="ans"><p>PartyParty runs on any Mac with macOS 26 or later. Guests join from the browser on a recent iPhone or Android phone, with any headphones they like.</p></div>
+      </details>
+      <details>
+        <summary>What does PartyParty cost?<i></i></summary>
+        <div class="ans"><p>It&rsquo;s free. For you and for everyone listening.</p></div>
+      </details>
     </div>
   </div>
 </section>
 
-<section class="finale wrap">
-  <h2 class="rv">Throw a party where speakers<br>would get you shut down.</h2>
-  <div class="cta rv">
-    <a class="btn" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a>
-    <span class="meta">Free. Needs the TestFlight app. Apple Silicon, macOS 26 or later.</span>
-  </div>
+<section class="close" id="get">
+  <h2 class="h2 rv">Bring a Mac. Start a party.</h2>
+  <a class="btn rv" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a>
 </section>
 
 <footer>
-  <!-- Two pages and a year. The product is the Mac app, so the site is the
-       front door and nothing else: no account area, no FAQ that was linked
-       here for months while returning 404, no list to join. The way in is
-       TestFlight, and that is the only call to action on the page. -->
-  <div class="fine">PartyParty · <a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <span id="yr">2026</span></div>
+  <div class="in">
+    <p class="fmark">&#x1F57A; PartyParty</p>
+    <p class="fmeta"><a href="/support">Support</a> &middot; <a href="/privacy">Privacy</a> &middot; &copy; 2026 PartyParty</p>
+  </div>
 </footer>
 
 <script>
-  document.getElementById('yr').textContent = new Date().getFullYear();
-  const io = new IntersectionObserver((es) => {
-    for (const e of es) if (e.isIntersecting) { e.target.classList.add('on'); io.unobserve(e.target); }
-  }, { threshold: 0.15 });
-  document.querySelectorAll('.rv').forEach(el => io.observe(el));
+(function(){
+  // The plus is the affordance, but the whole card is the target: anywhere on it
+  // toggles, and the cursor says so. The button stays the accessible control.
+  document.querySelectorAll('.scene, .moment, .rpanel').forEach(function(card){
+    var btn = card.querySelector(':scope > .plus');
+    if (!btn) return;
+    function toggle(){
+      var open = card.classList.toggle('open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    btn.addEventListener('click', function(e){ e.stopPropagation(); toggle(); });
+    card.addEventListener('click', function(e){
+      // never swallow a real link or a text selection the reader is making
+      if (e.target.closest('a')) return;
+      var sel = window.getSelection();
+      if (sel && String(sel).length) return;
+      toggle();
+    });
+  });
+})();
+(function(){
+  var els = document.querySelectorAll('.rv');
+  if (!('IntersectionObserver' in window)) { els.forEach(function(e){ e.classList.add('on'); }); return; }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if (en.isIntersecting) { en.target.classList.add('on'); io.unobserve(en.target); } });
+  }, { rootMargin: '0px 0px -8% 0px' });
+  els.forEach(function(e){ io.observe(e); });
+})();
 </script>
+
 </body>
 </html>
