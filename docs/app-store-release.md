@@ -122,15 +122,24 @@ analytics or diagnostics collection for the Store build.
 
 ## Automated verification
 
-Build, install, and launch the sandboxed Store edition locally with an Apple
-Development signature:
+Build and RUN the sandboxed Store edition locally, without installing it:
 
 ```sh
-scripts/build-install-app-store-local.sh
+scripts/run-local.sh
 ```
 
 This is the normal Store-development lane on the owner's Mac. It does not
-notarize, publish, upload to App Store Connect, or create an App Store release.
+notarize, publish, upload to App Store Connect, or create an App Store release,
+and it does not put anything in `/Applications`.
+
+**Nothing local ever enters `/Applications/PartyParty.app`.** That path belongs
+to TestFlight. A local build there is ad-hoc signed with no App Store receipt,
+and macOS will not let TestFlight overwrite an app whose signature differs: it
+installs a second copy called `PartyParty 2.app` instead, silently, which then
+fights the first over ports 8000 and 8443. The old
+`scripts/build-install-app-store-local.sh` put dev builds in that slot and was
+removed on 2026-08-14 for causing exactly that. If a duplicate ever does appear,
+`scripts/hand-slot-to-testflight.sh` repairs it.
 It installs separately at
 `~/Applications/PartyParty Store Development/PartyParty.app`. The standalone
 beta is quit first because both editions own the same local server ports.
