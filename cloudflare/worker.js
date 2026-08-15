@@ -1,11 +1,11 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
 var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
-// There is no public download any more: the app reaches people through
-// TestFlight, by invitation (owner, 2026-08-07). What remains is the UPDATE
-// path for Macs already carrying a standalone build - removing that would
-// strand them on whatever version they have, silently. The advertised entry
-// point, /PartyParty-Beta.zip, is gone.
+// There is no public download any more: the app reaches people through the
+// permanent TestFlight link, which is the site's only call to action. What
+// remains here is the UPDATE path for Macs already carrying a standalone build
+// - removing that would strand them on whatever version they have, silently.
+// The advertised entry point, /PartyParty-Beta.zip, is gone.
 var STANDALONE_FILES = {
   "/appcast.xml": { key: "standalone/appcast.xml", type: "application/xml; charset=utf-8", cache: "public, max-age=300" }
 };
@@ -105,7 +105,9 @@ footer{max-width:760px;margin:0 auto;padding:24px 20px 48px;color:var(--ink3);fo
 @media(max-width:560px){.sectionhead{display:grid}.navlinks .btn:first-child{display:none}}
 `;
 var SVGDEFS = "";
-var NAV = `<nav><a class="brand" href="/">PartyParty</a><div class="navlinks"><span class="btn lt sm">Coming to the Mac App Store</span></div></nav>`;
+// One door, the same one the landing page offers. It used to say "Coming to the
+// Mac App Store", which was never true of this app and had sat there for weeks.
+var NAV = `<nav><a class="brand" href="/">PartyParty</a><div class="navlinks"><a class="btn sm" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a></div></nav>`;
 var TOAST_JS = "";
 function shell({ title, desc, ogImage, url, body }) {
   const pageUrl = absUrl(url || "/");
@@ -996,10 +998,6 @@ var worker_default = {
       if (object.httpEtag) headers.set("etag", object.httpEtag);
       return new Response(request.method === "HEAD" ? null : object.body, { headers });
     }
-    // People asking for an invite. Stored under a hash of the address, so the
-    // same person asking twice is one entry, and read back only with the admin
-    // key. It is a list to invite from later and nothing else: no group owns
-    // it and nothing is ever sent from it automatically.
     // Apple hands out a file to prove we own this domain before Sign in with
     // Apple will work on it. Served from R2 so putting it in place is an
     // upload, not a deploy - the file arrives from Apple long after this code
@@ -1010,38 +1008,6 @@ var worker_default = {
       return new Response(await object.text(), {
         headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" },
       });
-    }
-    if (pathname === "/api/waitlist") {
-      if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
-      const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
-      if (await discoverRateLimited(ipHash, "waitlist", 10)) {
-        return jsonResp(429, { error: "slow down" }, { "retry-after": "10" });
-      }
-      const body = await readJson(request, 2048);
-      const email = String((body && body.email) || "").trim().toLowerCase();
-      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return jsonResp(400, { error: "that address did not look right" });
-      }
-      const key = `waitlist/${await sha256Hex("waitlist:" + email)}.json`;
-      if (!await env.DL.head(key)) {
-        await env.DL.put(key, JSON.stringify({ email, at: Date.now() }));
-      }
-      return jsonResp(200, { ok: true });
-    }
-    if (pathname === "/api/waitlist/list" && request.method === "POST") {
-      const body = await readJson(request, 2048);
-      if (!env.ADMIN_KEY || !body || body.admin !== env.ADMIN_KEY) {
-        return jsonResp(403, { error: "admin only" });
-      }
-      const listed = await env.DL.list({ prefix: "waitlist/", limit: 1000 });
-      const people = [];
-      for (const object of listed.objects || []) {
-        const raw = await env.DL.get(object.key);
-        if (!raw) continue;
-        try { people.push(JSON.parse(await raw.text())); } catch (e) {}
-      }
-      people.sort((a, b) => (a.at || 0) - (b.at || 0));
-      return jsonResp(200, { count: people.length, people });
     }
     if (pathname === "/api/relay-canary") {
       const raw = await env.DL.get("canary/relay.json");

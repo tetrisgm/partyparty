@@ -103,19 +103,17 @@
   <div class="nav-in">
     <a class="brand" href="/">🕺 PartyParty</a>
     <span class="nav-sp"></span>
-    <a class="nav-dl" href="#invite">Ask for an invite</a>
+    <a class="nav-dl" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the beta</a>
   </div>
 </nav>
 
 <header class="hero wrap">
   <h1>The party,<br>on every phone.</h1>
   <p class="lede">PartyParty turns your Mac into the venue. Guests scan a QR and the music plays on their phones - perfectly together. No app. No accounts. No internet required.</p>
-  <form class="cta" id="invite" data-invite>
-    <input type="email" name="email" placeholder="your email" required
-      style="flex:1 1 240px;min-width:0;padding:11px 16px;border-radius:999px;border:1px solid var(--line);font:inherit">
-    <button class="btn" type="submit">Ask for an invite</button>
-    <span class="meta" data-invite-note>TestFlight, by invitation. Apple Silicon, macOS 26+.</span>
-  </form>
+  <div class="cta">
+    <a class="btn" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a>
+    <span class="meta">Free. Needs the TestFlight app. Apple Silicon, macOS 26 or later.</span>
+  </div>
 </header>
 
 <section class="band">
@@ -165,65 +163,26 @@
 
 <section class="finale wrap">
   <h2 class="rv">Throw a party where speakers<br>would get you shut down.</h2>
-  <form class="cta rv" data-invite>
-    <input type="email" name="email" placeholder="your email" required
-      style="flex:1 1 240px;min-width:0;padding:11px 16px;border-radius:999px;border:1px solid var(--line);font:inherit">
-    <button class="btn" type="submit">Ask for an invite</button>
-    <span class="meta" data-invite-note>TestFlight, by invitation. Apple Silicon, macOS 26+.</span>
-  </form>
+  <div class="cta rv">
+    <a class="btn" href="https://testflight.apple.com/join/HPRAgyJk" target="_blank" rel="noopener">Join the TestFlight beta</a>
+    <span class="meta">Free. Needs the TestFlight app. Apple Silicon, macOS 26 or later.</span>
+  </div>
 </section>
 
 <footer>
-  <!-- The way back in. Someone who already has an account had no door on this
-       page at all: the site was written when the web was only where a DJ
-       published a night, reached from the app. It is now also where their
-       record of the parties lives, and that needs a link like anything else.
-       It offers no download, so the invitation-only lane is unchanged. -->
-  <div class="fine">PartyParty · <a href="/home">Your parties</a> · <a href="/faq">FAQ</a> · <a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <span id="yr">2026</span></div>
+  <!-- Two pages and a year. The product is the Mac app, so the site is the
+       front door and nothing else: no account area, no FAQ that was linked
+       here for months while returning 404, no list to join. The way in is
+       TestFlight, and that is the only call to action on the page. -->
+  <div class="fine">PartyParty · <a href="/privacy">Privacy</a> · <a href="/support">Support</a> · <span id="yr">2026</span></div>
 </footer>
 
 <script>
   document.getElementById('yr').textContent = new Date().getFullYear();
-  fetch('/api/version', { cache:'no-store' })
-    .then(r => r.json())
-    .then(v => {
-      if (!v || !v.version) return;
-      document.querySelectorAll('[data-version-line]').forEach(el => {
-        el.textContent = 'Apple-notarized · Apple Silicon · macOS 26+ · v' + v.version;
-      });
-    }).catch(() => {});
   const io = new IntersectionObserver((es) => {
     for (const e of es) if (e.isIntersecting) { e.target.classList.add('on'); io.unobserve(e.target); }
   }, { threshold: 0.15 });
   document.querySelectorAll('.rv').forEach(el => io.observe(el));
-</script>
-<script>
-// One address, one request, and the button says what happened. No download to
-// offer any more: the app goes out through TestFlight by invitation.
-for (const form of document.querySelectorAll('[data-invite]')) {
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const note = form.querySelector('[data-invite-note]');
-    const button = form.querySelector('button');
-    button.disabled = true;
-    try {
-      const response = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: form.querySelector('input[name=email]').value }),
-      });
-      const body = await response.json().catch(() => ({}));
-      note.textContent = response.ok
-        ? "You're on the list. We'll send a TestFlight invite."
-        : (body.error || 'That did not go through - try again in a moment.');
-      if (response.ok) form.querySelector('input[name=email]').value = '';
-    } catch (error) {
-      note.textContent = 'That did not go through - try again in a moment.';
-    } finally {
-      button.disabled = false;
-    }
-  });
-}
 </script>
 </body>
 </html>

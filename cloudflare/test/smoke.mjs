@@ -112,12 +112,23 @@ test("landing, legal pages, version, and the update feed - but no public downloa
   }
 });
 
-test("retired public party, profile, discovery, and media routes stay gone", async () => {
+test("retired public party, profile, discovery, sign-up, and media routes stay gone", async () => {
   const env = baseEnv();
-  for (const path of ["/live", "/home", "/demo", "/e/test", "/@dj", "/api/discover", "/api/events", "/event/test/live/live.m3u8"]) {
+  env.ADMIN_KEY = "admin-key";
+  for (const path of ["/live", "/home", "/demo", "/e/test", "/@dj", "/faq", "/api/discover", "/api/events", "/event/test/live/live.m3u8", "/api/waitlist", "/api/waitlist/list"]) {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
     assert.equal(response.status, 404, path);
   }
+  // The site collects no addresses any more - the way in is the TestFlight
+  // link, so there is nothing to post to and nothing to read back. POSTing is
+  // the shape the old form used, and the one worth pinning.
+  for (const path of ["/api/waitlist", "/api/waitlist/list"]) {
+    const response = await worker.fetch(new Request(`https://partyparty.party${path}`, {
+      method: "POST", body: JSON.stringify({ email: "someone@example.com", admin: "admin-key" }),
+    }), env);
+    assert.equal(response.status, 404, "POST " + path);
+  }
+  assert.equal((await env.DL.list({ prefix: "waitlist/" })).objects.length, 0);
 });
 
 test("broker ping remains public and registration remains available", async () => {
@@ -407,32 +418,6 @@ test("the typeface is cached instead of refetched on every page load", async () 
   const other = await worker.fetch(
     new Request("https://partyparty.party/fonts/../index.html"), env);
   assert.ok(!/604800/.test(other.headers.get("cache-control") || ""));
-});
-
-test("an address for a later invite is kept once, and read back only by an admin", async () => {
-  const env = baseEnv();
-  env.ADMIN_KEY = "admin-key";
-  const ask = (email) => worker.fetch(new Request("https://partyparty.party/api/waitlist", {
-    method: "POST", body: JSON.stringify({ email }),
-  }), env);
-
-  assert.equal((await ask("Someone@Example.com")).status, 200);
-  assert.equal((await ask("someone@example.com")).status, 200, "asking twice is one person");
-  assert.equal((await ask("not-an-address")).status, 400);
-
-  const listed = await env.DL.list({ prefix: "waitlist/" });
-  assert.equal(listed.objects.length, 1);
-
-  const refused = await worker.fetch(new Request("https://partyparty.party/api/waitlist/list", {
-    method: "POST", body: JSON.stringify({ admin: "wrong" }),
-  }), env);
-  assert.equal(refused.status, 403, "the list of who wants in is not public");
-
-  const dump = await (await worker.fetch(new Request("https://partyparty.party/api/waitlist/list", {
-    method: "POST", body: JSON.stringify({ admin: "admin-key" }),
-  }), env)).json();
-  assert.equal(dump.count, 1);
-  assert.equal(dump.people[0].email, "someone@example.com", "stored lowercased");
 });
 
 test("Apple's domain proof is served from the bucket, not from a deploy", async () => {
