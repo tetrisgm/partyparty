@@ -10,6 +10,30 @@ STAGED_APP="$DEST_DIR/.PartyParty-Beta.new.$$"
 OLD_APP="$DEST_DIR/.PartyParty-Beta.old.$$"
 EXECUTABLE="$DEST_APP/Contents/MacOS/PartyParty"
 
+# The Mac has one install slot. This lane carries bundle id fm.partyparty.beta, so
+# macOS files it as a separate app and it lands *beside* /Applications/PartyParty.app
+# instead of replacing it. That is how a stray "PartyParty Beta.app" appeared on
+# 2026-08-14: two copies fighting over port 8000 and the menu bar, and no way to tell
+# from the Dock which build was which. Local iteration belongs in the one slot, via
+# scripts/build-install-app-store-local.sh. Refuse rather than quietly make a second.
+STORE_APP="${PP_STORE_INSTALL_DIR:-/Applications}/PartyParty.app"
+if [ -d "$STORE_APP" ] && [ "${PP_ALLOW_SECOND_COPY:-0}" != "1" ]; then
+  cat >&2 <<EOF
+Refusing to install: $STORE_APP already occupies the single install slot.
+
+This script installs the Sparkle standalone edition (fm.partyparty.beta), which does
+not replace that app, it sits next to it. Two PartyParty copies on one Mac is the
+thing this guard exists to prevent.
+
+  To iterate locally:  scripts/build-install-app-store-local.sh
+  To ship:             upload to TestFlight
+
+If you genuinely want both copies (reproducing a standalone-only Sparkle bug, say),
+re-run with PP_ALLOW_SECOND_COPY=1.
+EOF
+  exit 1
+fi
+
 app_pids() {
   ps -axo pid=,command= | awk -v exe="$EXECUTABLE" '
     {
