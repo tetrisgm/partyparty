@@ -89,15 +89,24 @@ This tree is main reverted to ed02579 ("Build 269") - the exact commit of
 the TestFlight build - in one restorative commit. The 75 journal-era commits
 remain in history here and live on in clubclub.
 
-**DEPLOY FREEZE - cloudflare/app.** partyparty.party PRODUCTION still runs
-the journal-era `partyparty-app` worker, and its D1 holds real data (21
-nights, ~550 tracks). That deployment now belongs to the clubclub repo. From
-THIS repo, `wrangler deploy` in `cloudflare/app` would destroy the live
-journal - do not run it, ever. (The site broker in `cloudflare/` is
-unaffected: it did not change during the journal era and stays deployable.)
-The freeze lifts when clubclub.app stands up and the journal migrates off
-this domain; unwinding partyparty.party's journal routes happens then, as
-clubclub work.
+**`cloudflare/app` is gone (2026-08-14).** The account backend it held - the
+`partyparty-live` worker, its D1, Stripe, SMTP and OAuth - came out with the
+sign-in door, along with `scripts/adopt-oauth-client.sh`,
+`apple-signin-check.sh`, `platform-dev.sh` and `test-dj-console-signin.mjs`.
+There is exactly ONE worker in this repo now: `cloudflare/` (`partyparty-site`,
+the certificate broker, relay registration and the front-door site). It is
+deployable and is what `wrangler deploy` there touches.
+
+**Two deployments still run that this repo no longer describes.** Deleting
+source does not delete a Worker, so both keep serving until somebody removes
+them in Cloudflare:
+
+- `partyparty-live` on `party.partyparty.party` - our own account backend,
+  still answering `/home`. Nothing reaches it any more. Its D1
+  (`67720cd7-f8f2-45f3-99f7-8c51a9de2962`) holds whatever accounts were made.
+- `partyparty-app` on `partyparty.party`'s platform paths - clubclub's journal,
+  holding real data (21 nights, ~550 tracks) and serving the apex `/home`
+  sign-in page. **Not ours to delete**; that is clubclub work.
 
 Do not rebuild journal features here. If a task smells like check-in,
 venues, Shazam, calendars or suggestions, it belongs in ~/dev/clubclub.
