@@ -77,3 +77,12 @@ trap - EXIT
 
 open -g "$DEST_APP"
 echo "installed and launched $DEST_APP"
+cat <<'EOF'
+
+This build is ad-hoc signed and carries no App Store receipt. macOS will NOT
+let TestFlight replace it: the signatures differ, so TestFlight installs a
+SECOND copy beside it called "PartyParty 2.app". That happened on 2026-08-14
+and is not a maybe, it is what always happens.
+
+  Before installing anything from TestFlight, run:  scripts/hand-slot-to-testflight.sh
+EOF
