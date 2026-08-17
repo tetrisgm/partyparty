@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
 import worker, {
   readJson,
   sha256Hex,
@@ -156,10 +157,15 @@ test("broker ping remains public and registration remains available", async () =
   }), env);
   assert.equal(relay.status, 200);
   const relayBody = await relay.json();
-  assert.match(relayBody.joinUrl, /^https:\/\/r-[a-f0-9]{32}\.partyparty\.party\/$/);
-  assert.match(relayBody.connectUrl, /^wss:\/\/partyparty\.party\/api\/broker\/relay\/connect\/[a-f0-9]{32}$/);
+  // The guest-visible host is the pretty join name now, two party words minted
+  // once per install. r-<token> still resolves, for QRs already printed, but it
+  // is not what anybody is handed.
+  assert.match(relayBody.joinUrl, /^https:\/\/[a-z]+-[a-z]+(-\d{1,2})?\.partyparty\.party\/$/);
+  assert.match(relayBody.room, /^[a-f0-9]{32}$/);
+  assert.match(relayBody.relayUrl, /^https:\/\/[a-f0-9]{32}\.relay\.partyparty\.party$/);
+  assert.match(relayBody.publishToken, /^[a-f0-9]{48}$/);
   assert.match(relayBody.networkKey, /^[a-f0-9]{64}$/);
-  const relayToken = new URL(relayBody.joinUrl).hostname.slice(2, 34);
+  const relayToken = relayBody.room;
   await env.DL.delete(`broker/relay/${relayToken}`);
   const repaired = await worker.fetch(new Request("https://partyparty.party/api/broker/relay/register", {
     method: "POST",
@@ -179,53 +185,27 @@ test("broker ping remains public and registration remains available", async () =
   }), env);
   assert.equal(invalidLAN.status, 400);
 
-  const publicRoom = await worker.fetch(
-    new Request(relayBody.joinUrl),
-    env,
-    { waitUntil() {} },
-  );
+  // The join host serves the bootstrap page. It used to be a Durable Object
+  // proxying media and websockets, and the assertions below used to check that
+  // proxy's JSON. Guests fetch audio straight from the relay origin now, so
+  // there is no proxy left to test and this checks the page that replaced it.
+  const publicRoom = await worker.fetch(new Request(relayBody.joinUrl), env, { waitUntil() {} });
   assert.equal(publicRoom.status, 200);
-  const routed = await publicRoom.json();
-  assert.equal(routed.path, "/room/");
-  assert.match(routed.host, /^r-[a-f0-9]{32}\.partyparty\.party$/);
+  assert.match(publicRoom.headers.get("content-type"), /text\/html/);
+  const bootstrap = await publicRoom.text();
+  assert.ok(bootstrap.includes(relayBody.relayUrl),
+    "the page must know where to send a guest this Wi-Fi isolates");
 
-  const blockedUpload = await worker.fetch(new Request(new URL("/api/upload", relayBody.joinUrl), {
-    method: "POST",
-    body: new Uint8Array(1024),
-  }), env, { waitUntil() {} });
-  assert.equal(blockedUpload.status, 409);
-  assert.equal((await blockedUpload.json()).code, "relay_video_unavailable");
-  const blockedMedia = await worker.fetch(
-    new Request(new URL("/media/large-video.mp4", relayBody.joinUrl)),
-    env,
-    { waitUntil() {} },
-  );
-  assert.equal(blockedMedia.status, 409);
-  assert.equal((await blockedMedia.json()).code, "relay_video_unavailable");
-  const relayedPhoto = await worker.fetch(new Request(new URL("/api/upload", relayBody.joinUrl), {
-    method: "POST",
-    headers: { "content-type": "image/jpeg", "x-pp-name": "party.jpg" },
-    body: new Uint8Array(1024),
-  }), env, { waitUntil() {} });
-  assert.equal(relayedPhoto.status, 200);
-  assert.equal((await relayedPhoto.json()).path, "/room/api/upload");
-  const relayedPhotoDownload = await worker.fetch(
-    new Request(new URL("/media/party.jpg", relayBody.joinUrl)),
-    env,
-    { waitUntil() {} },
-  );
-  assert.equal(relayedPhotoDownload.status, 200);
-  assert.equal((await relayedPhotoDownload.json()).path, "/room/media/party.jpg");
+  // The raw r-<token> host keeps working, for codes already printed.
+  const legacy = await worker.fetch(
+    new Request(`https://r-${relayToken}.partyparty.party/`), env, { waitUntil() {} });
+  assert.equal(legacy.status, 200);
+  assert.match(legacy.headers.get("content-type"), /text\/html/);
 
-  const connect = await worker.fetch(new Request(relayBody.connectUrl.replace("wss:", "https:"), {
-    headers: {
-      upgrade: "websocket",
-      "x-partyparty-install": body.id,
-      "x-partyparty-secret": body.secret,
-    },
-  }), env);
-  assert.equal(connect.status, 200);
-  assert.equal((await connect.json()).path, "/connect");
+  // A name nobody minted is not a room.
+  const unknown = await worker.fetch(
+    new Request(`https://r-${"b".repeat(32)}.partyparty.party/`), env, { waitUntil() {} });
+  assert.equal(unknown.status, 404);
 });
 
 test("retired cloud ingest endpoints reject requests", async () => {
@@ -270,7 +250,17 @@ test("the relay bootstrap is stateless and sends guests to the relay origin", as
   const html = await page.text();
   assert.ok(html.includes("disco.party.partyparty.party:8443"), "bootstrap must know the direct URL");
   assert.ok(html.includes(".relay.partyparty.party"), "bootstrap must know the relay origin");
-  assert.ok(html.includes("[3000,5000]"), "a transient first LAN probe must not force relay mode");
+  // A first failed probe must not condemn a guest to relay mode: DNS can still
+  // be converging, TLS starting, Wi-Fi mid-transition. The page retries on a
+  // widening ladder before it gives up on the LAN. Asserted as "more than one
+  // attempt, and they grow", not as exact numbers, because this test pinned
+  // "[3000,5000]" and then never ran again while the ladder became
+  // [2500,4000,6000].
+  const ladder = html.match(/for\s*\(\s*const\s+timeout\s+of\s*\[([\d,\s]+)\]/);
+  assert.ok(ladder, "the bootstrap must still retry the LAN before falling back");
+  const waits = ladder[1].split(",").map((n) => Number(n.trim()));
+  assert.ok(waits.length >= 2, `a transient first LAN probe must not force relay mode (got ${waits})`);
+  assert.deepEqual(waits, [...waits].sort((a, b) => a - b), "each retry should wait longer");
   assert.ok(!html.includes("__pp/state"), "the state endpoint died with the Durable Object");
 });
 
@@ -377,9 +367,9 @@ test("the web ships no broadcaster: it may listen, never transmit", async () => 
   // pushing it is the Mac app's job and must not leak into anything served
   // from the site.
   const root = new URL("../", import.meta.url);
+  // One worker, since the account backend in app/ was deleted on 2026-08-14.
   const shipped = [
     "worker.js",
-    "app/worker.js",
     "../site/index.html",
   ];
   // Words that only ever belong to the transmitting side.
@@ -397,27 +387,8 @@ test("the web ships no broadcaster: it may listen, never transmit", async () => 
 
   // And the console, which IS the broadcaster's UI, is not a web asset. It is
   // served by the Mac binary to its own loopback and nowhere else.
-  const site = readdirSync(new URL("../site/", import.meta.url));
+  const site = readdirSync(new URL("../site/", new URL("../", import.meta.url)));
   assert.ok(!site.includes("dj.html"), "the DJ console is not served by the web");
-});
-
-test("the typeface is cached instead of refetched on every page load", async () => {
-  const env = baseEnv();
-  env.ASSETS = { fetch: async () => new Response("font bytes", {
-    headers: { "content-type": "font/woff2", "cache-control": "public, max-age=0, must-revalidate" },
-  }) };
-  const r = await worker.fetch(
-    new Request("https://partyparty.party/fonts/Geist-Variable.woff2"), env);
-  assert.equal(r.status, 200);
-  // Worker Assets hands back max-age=0. Left alone, the face is fetched again
-  // on every load and every load repaints in the fallback and then resizes.
-  assert.match(r.headers.get("cache-control"), /max-age=604800/);
-  assert.equal(r.headers.get("content-type"), "font/woff2");
-
-  // Not a licence to cache anything else that happens to live under /fonts.
-  const other = await worker.fetch(
-    new Request("https://partyparty.party/fonts/../index.html"), env);
-  assert.ok(!/604800/.test(other.headers.get("cache-control") || ""));
 });
 
 test("Apple's domain proof is served from the bucket, not from a deploy", async () => {
@@ -433,4 +404,25 @@ test("Apple's domain proof is served from the bucket, not from a deploy", async 
   assert.equal(await served.text(), "apple-proof-contents");
 });
 
+// Actually run them.
+//
+// This line used to read `console.log(`PASS ${tests.length} ...`)` and nothing
+// else: every test was registered into the array above and not one was ever
+// called. The suite printed "PASS 14 worker smoke tests" on any worker.js at
+// all, including one with the route a test asserts on deleted. It was a
+// counter wearing the word PASS, and it was believed for months.
+let failed = 0;
+for (const [name, fn] of tests) {
+  try {
+    await fn();
+  } catch (error) {
+    failed++;
+    console.error(`FAIL ${name}`);
+    console.error(`     ${(error && error.message || error).toString().split("\n").join("\n     ")}`);
+  }
+}
+if (failed) {
+  console.error(`\nFAIL ${failed} of ${tests.length} worker smoke tests`);
+  process.exit(1);
+}
 console.log(`PASS ${tests.length} worker smoke tests`);

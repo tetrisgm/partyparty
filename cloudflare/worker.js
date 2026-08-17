@@ -121,7 +121,6 @@ function shell({ title, desc, ogImage, url, body }) {
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(imageUrl)}">
 <meta name="theme-color" content="#f5f5f7"><meta name="color-scheme" content="light">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u{1F57A}</text></svg>">
-<link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
 <style>${CSS}</style></head><body>${SVGDEFS}${NAV}${body}${TOAST_JS}</body></html>`;
 }
 function legalResponse(pathname) {
@@ -1052,20 +1051,6 @@ var worker_default = {
       const u = new URL(request.url);
       u.pathname = "/";
       return env.ASSETS.fetch(new Request(u, request));
-    }
-    // Fonts, cached like the unchanging files they are.
-    //
-    // Worker Assets serves everything with max-age=0, must-revalidate, so the
-    // typeface was refetched on EVERY page load - and every load painted in the
-    // system face and then resized the whole page a beat later when Geist
-    // landed. A week, not a year: the filename carries no content hash, so a
-    // replacement has to be able to reach people.
-    if (/^\/fonts\/[a-zA-Z0-9._-]+\.(woff2|woff|ttf)$/.test(pathname)) {
-      const asset = await env.ASSETS.fetch(request);
-      if (!asset.ok) return asset;
-      const headers = new Headers(asset.headers);
-      headers.set("cache-control", "public, max-age=604800, stale-while-revalidate=86400");
-      return new Response(asset.body, { status: asset.status, headers });
     }
     return env.ASSETS.fetch(request);
   },
