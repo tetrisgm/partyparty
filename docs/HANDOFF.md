@@ -25,13 +25,10 @@ HLS mirror (`internal/contribute` - a different thing from cloudsync despite
 the name), the room feed, and every guest path. Those are how an isolated
 network still works.
 
-Two things this leaves outside the repo, both belonging to clubclub's
-deployment and both still live: `partyparty.party/home` still serves an
-Apple/Google sign-in page, and clubclub's `cloudflare/` is a fork that deploys
-the same worker name `partyparty-site` to the same routes. Neither is
-reachable from this app any more. The OAuth-identity section further down is
-superseded for PartyParty: the Google client and the `fm.partyparty.live`
-Services ID are no longer used by anything here.
+One thing this leaves outside the repo. A separate deployment, not ours and not
+in this checkout, still answers on the apex platform paths, including
+`partyparty.party/home` with an Apple/Google sign-in page. Nothing in this app
+reaches it. See "The apex is shared" below.
 
 ## THE SPLIT (2026-08-11): partyparty is the broadcast app again
 
@@ -46,7 +43,7 @@ matter here):**
    artwork, which only Apple's Shazam catalog supplies - and `shazamd` was
    running. So SHSession catalog matching is fine with a real profile. What
    is broken is only `SHLibrary`, the READ of the user's own library, which
-   returns empty; that is clubclub's problem, not this app's. Now Playing and
+   returns empty, which is not this app's problem. Now Playing and
    the track list work here today. The paragraph that follows was written
    before that evidence and is kept because its facts about the entitlement
    are still true - they just do not stop recognition.
@@ -69,25 +66,19 @@ matter here):**
    profile (asc profile id 76G3BZ3ULT, expires 2027-08-10; re-download with
    `asc profiles download --id 76G3BZ3ULT`). The installed
    /Applications/PartyParty.app is built exactly this way now.
-3. **The dialect seam.** This Build-269 app speaks the GROUP-flavored
-   /api/v1 dialect; partyparty.party production runs the journal-era
-   PERSON-flavored worker (see the deploy freeze below). cloudsync fails
-   soft by design, so streaming is unaffected - but the cloud extras (wall
-   sync, party bind, profile) may quietly no-op until clubclub migrates the
-   journal off this domain. Known, accepted, resolves at migration.
+3. **The dialect seam is closed.** This used to speak an /api/v1 dialect the
+   apex deployment did not, so the cloud extras quietly no-opped. All of it
+   (cloudsync, wall sync, party bind, profile) was deleted on 2026-08-14 when
+   the product went account-free. Nothing here talks to the apex any more.
 
-
-
-Owner: two products were fighting for one codebase. PartyParty
-(partyparty.party) is the Mac app that broadcasts a party to the room's
-phones via QR - and ONLY that. The check-in journal (venues, nights, tracks,
-people, inference) moved to its own product: **clubclub**
-(clubclub.app, repo github.com/tetrisgm/clubclub, checkout ~/dev/clubclub) -
-a full clone of this repo at the split point, history included.
+Owner: two products were fighting for one codebase. **PartyParty is the Mac app
+that broadcasts a party to the room's phones via QR, and ONLY that.** The
+check-in journal (venues, nights, tracks, people, inference) left and became a
+separate product with its own repo.
 
 This tree is main reverted to ed02579 ("Build 269") - the exact commit of
 the TestFlight build - in one restorative commit. The 75 journal-era commits
-remain in history here and live on in clubclub.
+remain in this history.
 
 **`cloudflare/app` is gone (2026-08-14).** The account backend it held - the
 `partyparty-live` worker, its D1, Stripe, SMTP and OAuth - came out with the
@@ -97,19 +88,29 @@ There is exactly ONE worker in this repo now: `cloudflare/` (`partyparty-site`,
 the certificate broker, relay registration and the front-door site). It is
 deployable and is what `wrangler deploy` there touches.
 
-**Two deployments still run that this repo no longer describes.** Deleting
-source does not delete a Worker, so both keep serving until somebody removes
-them in Cloudflare:
+`partyparty-live`, the account backend that briefly ran on
+`party.partyparty.party`, was deleted from Cloudflare on 2026-08-14 along with
+its D1, which was verified empty first.
 
-- `partyparty-live` on `party.partyparty.party` - our own account backend,
-  still answering `/home`. Nothing reaches it any more. Its D1
-  (`67720cd7-f8f2-45f3-99f7-8c51a9de2962`) holds whatever accounts were made.
-- `partyparty-app` on `partyparty.party`'s platform paths - clubclub's journal,
-  holding real data (21 nights, ~550 tracks) and serving the apex `/home`
-  sign-in page. **Not ours to delete**; that is clubclub work.
+## The apex is shared, and the other half is not ours
 
-Do not rebuild journal features here. If a task smells like check-in,
-venues, Shazam, calendars or suggestions, it belongs in ~/dev/clubclub.
+`partyparty.party` is served by TWO Workers on two sets of routes:
+
+- **`partyparty-site`, ours.** Deployed from `cloudflare/` in this repo. The
+  apex `/`, `/privacy`, `/support`, the certificate broker, relay registration,
+  the machine namespace and the `r-<token>` join hosts. A party in progress
+  depends on it minute to minute.
+- **The journal deployment, NOT ours.** Roughly two dozen apex paths including
+  `/home`, `/@*`, `/auth/*`, `/api/v1/*`, `/people`, `/venues`, `/catalog`. It
+  holds real data and is maintained in its own repo. Nothing in this app calls
+  it. **Do not deploy it, delete it, or reason about its internals from here.**
+
+Two couplings between them are still open and are tracked as the other repo's
+work: that deployment binds our `partyparty-dl` R2 bucket, and its product
+domain has not moved off this one.
+
+Do not rebuild journal features here. If a task smells like check-in, venues,
+Shazam, calendars or suggestions, it is not this product.
 
 ## Current position (2026-08-08): the web is a personal party record
 
@@ -277,7 +278,6 @@ pass with the Worker smoke test extended, not the tail of a long batch. Until
 then a host who leaves keeps serving nobody new; guests already in are covered
 by re-homing.
 
-
 ## Current position (2026-08-05, close): TestFlight 125.42 build 262
 
 On top of the benched 3s buffer (below): 261 made the DJ profile stick
@@ -296,7 +296,6 @@ renders with the DJ avatar badged center on the console (correction H).
 Remote-listen test protocol: Settings -> Party reach -> Wi-Fi + cloud, go
 live, open the join link on 5G.
 
-
 ## Current position (2026-08-05, end of night): 125.40 build 260 - the buffer, benched
 
 The 3s cushion SHIPPED on the third attempt, done the way the contract now
@@ -313,7 +312,6 @@ once); ten minutes, 120 samples, 3.11s flat, zero backward movement; receipt
 at build/soak-125.40-260.log. TestFlight: 260 is the only live build,
 internal active, external submitted. Owner-side: update, one permission
 prompt, and every phone should join at 3s and hold - venue blips inaudible.
-
 
 ## Current position (2026-08-05 night): TestFlight 125.39 build 259 - proven geometry restored
 
@@ -341,7 +339,6 @@ memory, find the mechanism AVPlayer respects for deep attachment, pass the
 soak, then ONE build. Also parked: per-phone stall counters into /api/status
 (proposed, owner receptive) - would have made tonight's phone-vs-stream
 attribution instant.
-
 
 ## Current position (2026-08-05 evening): TestFlight 125.36 build 256
 
@@ -612,47 +609,28 @@ that appears to succeed is reporting `::ffff:a.b.c.d` - an IPv4-mapped
 address, i.e. IPv4. Do not read that as IPv6 working, which is exactly the
 wrong turn taken here before checking `ifconfig`.
 
-## The OAuth identities are split (2026-08-11, DONE)
+## The OAuth identities are split (2026-08-11), and then went away
 
-PartyParty no longer borrows clubclub's sign-in. It has its own:
+PartyParty had its own Google client and its own Apple Services ID
+(`fm.partyparty.live`), moved off shared ones so a hostname change here could
+not disturb the other product. **All of it is moot as of 2026-08-14:** the
+account system was deleted, nothing in this app signs anybody in, and neither
+identity is used by anything here. `scripts/adopt-oauth-client.sh` went with it.
 
-| | PartyParty | clubclub (unchanged) |
-|---|---|---|
-| Google client | `325964451960-ipl16to2mm6vuq2fmovqe47683sn712g` | `325964451960-8g7u6sf5fb3ib8u6aq11cuusk64fn9dk` |
-| Apple Services ID | `fm.partyparty.live` | `fm.partyparty.web` |
-| callbacks | `https://party.partyparty.party/auth/<p>/callback` | `https://partyparty.party/auth/<p>/callback` |
+Kept because it cost a day to learn and would cost it again:
 
-Verified by asking the providers, not by reading the console back - both
-`redirect_uri_mismatch` (Google) and `invalid_request` (Apple) are absent, and
-clubclub's apex `/auth/google` still answers 302 on its own client.
-
-**PartyParty moved, not clubclub**, because clubclub is the one with users: it
-serves the apex, owns `partyparty.party/auth/*`, and its sign-in was live
-throughout. Change the side with nothing to lose.
-
-Four things that are not obvious and cost time:
-
-- **The Apple Services ID must be grouped under the primary App ID
+- **An Apple Services ID must be grouped under the primary App ID
   `52WM463HR2.fm.partyparty.app`.** The portal offers the *Write* app first and
-  will happily accept it. The Sign in with Apple key is scoped to that group,
-  which is why the existing key `9DLLL4UAR8` still signs and no new key was
-  needed - `APPLE_KEY_ID` in wrangler.jsonc is unchanged.
+  will happily accept it. The Sign in with Apple key is scoped to that group.
 - **Google's console said "Create failed - internal error" and created the
   client anyway.** Check the client list before retrying, or you get two.
-- **Google no longer reveals an existing client secret**, and the creation
-  dialog that would have shown it never appeared because of that error. The
-  fix is Add secret, which reveals the new one once; the original then has to
-  be disabled and deleted, in that order, or the trash icon refuses.
+- **Google no longer reveals an existing client secret.** The fix is Add secret,
+  which reveals the new one once; the original then has to be disabled and
+  deleted, in that order, or the trash icon refuses.
 - **Neither creation is reachable by API.** Google publishes none for OAuth web
   clients; App Store Connect's `POST /v1/bundleIds` answers
   `409 'SERVICES' is not a valid value for the attribute 'platform'`, and a
-  Services ID's return URLs are absent from the API entirely. This was done
-  through the browser.
-
-`scripts/adopt-oauth-client.sh` did everything after the two creations and is
-the path for any future move: it rewrites the config, pipes the secret out of
-Google's downloaded JSON without it becoming an argument, deploys, and probes
-both providers. It refuses either of clubclub's identities.
+  Services ID's return URLs are absent from the API entirely. Browser only.
 
 ## Owed
 
