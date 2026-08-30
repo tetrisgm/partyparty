@@ -414,6 +414,10 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 		writeCompressible(w, r, body)
 
 	case r.Method == http.MethodPost:
+		if !publicRoomAction(endpoint) {
+			http.NotFound(w, r)
+			return
+		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {
 			http.Error(w, "read failed", http.StatusBadRequest)
@@ -433,6 +437,19 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 	default:
 		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// publicRoomAction is the listener page's complete JSON-write surface. Keep
+// internal actions out of this path: relay-upload, in particular, is minted by
+// relayPhotoUpload only after the origin has accepted and stored an image.
+func publicRoomAction(endpoint string) bool {
+	switch endpoint {
+	case "post", "comment", "post-reaction", "reactions", "track-id-request",
+		"guest-profile", "client-events":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -88,6 +88,10 @@ type srv struct {
 	relayGuests    []RelayGuest
 	relayAt        time.Time
 
+	relayPhotoMu      sync.Mutex
+	relayPhotoActive  int
+	relayPhotoPending []relayPhotoImport
+
 	// Async activation result (cert broker / BYO) - set after launch so the
 	// server can start serving instantly while certs are obtained in the
 	// background. Guarded by actMu.

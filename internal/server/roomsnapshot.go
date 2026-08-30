@@ -21,8 +21,19 @@ import (
 // that a finished party stops showing a crowd.
 const relayPresenceTTL = 5 * time.Second
 
+// Photo downloads are secondary to the live room. A drained burst must not
+// turn into one network goroutine per guest upload on the Mac.
+const relayPhotoImportConcurrency = 2
+const relayPhotoImportQueue = 32
+
 var nowFunc = time.Now
 var relayPhotoHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+type relayPhotoImport struct {
+	ID     string
+	Name   string
+	Source url.URL
+}
 
 // The room's interactive surface, for guests who reach us through the relay.
 //
@@ -113,8 +124,8 @@ func (s *Srv) ApplyRelayWrite(path string, body json.RawMessage) {
 		return
 	}
 	switch name {
-	case "post", "comment", "post-reaction", "reactions", "requests",
-		"track-id-request", "guest-profile", "heartbeat", "client-events":
+	case "post", "comment", "post-reaction", "reactions", "track-id-request",
+		"guest-profile", "client-events":
 	default:
 		return
 	}
@@ -140,28 +151,105 @@ func (s *srv) importRelayPhoto(body json.RawMessage) {
 		return
 	}
 	source, err := url.Parse(upload.Source)
-	if err != nil || source.Scheme != "https" ||
-		!strings.HasSuffix(strings.ToLower(source.Hostname()), ".relay.partyparty.party") ||
-		!strings.HasPrefix(source.Path, "/media/") {
+	if err != nil || !trustedRelayPhotoURL(source, nil) {
 		return
 	}
-	go func() {
-		resp, err := relayPhotoHTTPClient.Get(source.String())
-		if err != nil {
-			return
+	s.enqueueRelayPhotoImport(relayPhotoImport{ID: upload.ID, Name: upload.Name, Source: *source})
+}
+
+// enqueueRelayPhotoImport keeps the plane loop non-blocking while bounding
+// both live downloads and retained photo work. Fixed workers would sit around
+// forever for every short-lived test/server; this starts at most two goroutines
+// on demand and hands each the next queued job as it finishes.
+func (s *srv) enqueueRelayPhotoImport(upload relayPhotoImport) {
+	s.relayPhotoMu.Lock()
+	if s.relayPhotoActive >= relayPhotoImportConcurrency {
+		if len(s.relayPhotoPending) < relayPhotoImportQueue {
+			s.relayPhotoPending = append(s.relayPhotoPending, upload)
 		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return
+		s.relayPhotoMu.Unlock()
+		return
+	}
+	s.relayPhotoActive++
+	s.relayPhotoMu.Unlock()
+	go s.runRelayPhotoImport(upload)
+}
+
+func (s *srv) runRelayPhotoImport(upload relayPhotoImport) {
+	defer s.advanceRelayPhotoImports()
+	source := &upload.Source
+	client := *relayPhotoHTTPClient
+	priorRedirectCheck := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
 		}
-		media, err := s.Events.ImportMedia(upload.ID, upload.Name, io.LimitReader(resp.Body, (8<<20)+1))
-		if err != nil {
-			return
+		if !trustedRelayPhotoURL(req.URL, source) {
+			return fmt.Errorf("relay photo redirect left its room origin")
 		}
-		if p, ok := s.Events.MediaPath(media.ID); ok {
-			s.Events.EnqueueThumb(media.ID, p, media.Type)
+		if priorRedirectCheck != nil {
+			return priorRedirectCheck(req, via)
 		}
-	}()
+		return nil
+	}
+	resp, err := client.Get(source.String())
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	media, err := s.Events.ImportMedia(upload.ID, upload.Name, io.LimitReader(resp.Body, (8<<20)+1))
+	if err != nil {
+		return
+	}
+	if p, ok := s.Events.MediaPath(media.ID); ok {
+		s.Events.EnqueueThumb(media.ID, p, media.Type)
+	}
+}
+
+func (s *srv) advanceRelayPhotoImports() {
+	s.relayPhotoMu.Lock()
+	if len(s.relayPhotoPending) == 0 {
+		s.relayPhotoActive--
+		s.relayPhotoMu.Unlock()
+		return
+	}
+	next := s.relayPhotoPending[0]
+	s.relayPhotoPending[0] = relayPhotoImport{}
+	if len(s.relayPhotoPending) == 1 {
+		s.relayPhotoPending = nil
+	} else {
+		s.relayPhotoPending = s.relayPhotoPending[1:]
+	}
+	s.relayPhotoMu.Unlock()
+	go s.runRelayPhotoImport(next)
+}
+
+func trustedRelayPhotoURL(candidate, roomOrigin *url.URL) bool {
+	if candidate == nil || !strings.EqualFold(candidate.Scheme, "https") || candidate.User != nil ||
+		candidate.Port() != "" && candidate.Port() != "443" ||
+		!strings.HasSuffix(strings.ToLower(candidate.Hostname()), ".relay.partyparty.party") ||
+		candidate.RawQuery != "" || candidate.Fragment != "" {
+		return false
+	}
+	name := strings.TrimPrefix(candidate.Path, "/media/")
+	if name == candidate.Path || name == "" || name != filepath.Base(name) {
+		return false
+	}
+	if roomOrigin == nil {
+		return true
+	}
+	return strings.EqualFold(candidate.Hostname(), roomOrigin.Hostname()) &&
+		relayOriginPort(candidate) == relayOriginPort(roomOrigin)
+}
+
+func relayOriginPort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	return "443"
 }
 
 // GuestPage renders the listener page for publication to the origin. Relayed

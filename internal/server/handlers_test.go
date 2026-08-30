@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net"
@@ -16,6 +17,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -205,6 +208,117 @@ func TestRelayPhotoIsImportedToTheMac(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("relay photo was not imported")
+}
+
+func TestRelayPhotoImportsAreBoundedWithoutBlockingThePlane(t *testing.T) {
+	env := newTestEnv(t, nil)
+	events, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.srv.Events = events
+
+	var active atomic.Int32
+	var maximum atomic.Int32
+	var requests atomic.Int32
+	started := make(chan struct{}, 8)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	oldClient := relayPhotoHTTPClient
+	relayPhotoHTTPClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		current := active.Add(1)
+		for prior := maximum.Load(); current > prior && !maximum.CompareAndSwap(prior, current); prior = maximum.Load() {
+		}
+		requests.Add(1)
+		started <- struct{}{}
+		<-release
+		active.Add(-1)
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		relayPhotoHTTPClient = oldClient
+	})
+
+	queued := make(chan struct{})
+	go func() {
+		for i := 0; i < 6; i++ {
+			env.srv.ApplyRelayWrite("relay-upload", json.RawMessage(fmt.Sprintf(
+				`{"id":"%016x.jpg","name":"party.jpg","source":"https://room.relay.partyparty.party/media/%016x.jpg"}`,
+				i, i)))
+		}
+		close(queued)
+	}()
+	select {
+	case <-queued:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("photo work blocked the relay plane while download slots were occupied")
+	}
+
+	for i := 0; i < relayPhotoImportConcurrency; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("initial relay photo downloads did not start")
+		}
+	}
+	select {
+	case <-started:
+		t.Fatal("more relay photo downloads than the concurrency limit started")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	releaseOnce.Do(func() { close(release) })
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		env.srv.relayPhotoMu.Lock()
+		idle := env.srv.relayPhotoActive == 0 && len(env.srv.relayPhotoPending) == 0
+		env.srv.relayPhotoMu.Unlock()
+		if requests.Load() == 6 && active.Load() == 0 && idle {
+			if maximum.Load() != relayPhotoImportConcurrency {
+				t.Fatalf("maximum concurrent relay photo downloads = %d, want %d", maximum.Load(), relayPhotoImportConcurrency)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("relay photo queue did not drain: requests=%d active=%d", requests.Load(), active.Load())
+}
+
+func TestTrustedRelayPhotoRedirectsStayOnRoomOrigin(t *testing.T) {
+	origin, err := url.Parse("https://room.relay.partyparty.party/media/source.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "same room", raw: "https://room.relay.partyparty.party/media/next.jpg", want: true},
+		{name: "explicit default port", raw: "https://room.relay.partyparty.party:443/media/next.jpg", want: true},
+		{name: "other relay room", raw: "https://other.relay.partyparty.party/media/next.jpg"},
+		{name: "plain HTTP", raw: "http://room.relay.partyparty.party/media/next.jpg"},
+		{name: "other port", raw: "https://room.relay.partyparty.party:8443/media/next.jpg"},
+		{name: "credentials", raw: "https://name@room.relay.partyparty.party/media/next.jpg"},
+		{name: "nested path", raw: "https://room.relay.partyparty.party/media/sub/next.jpg"},
+		{name: "query", raw: "https://room.relay.partyparty.party/media/next.jpg?redirect=1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate, err := url.Parse(tt.raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := trustedRelayPhotoURL(candidate, origin); got != tt.want {
+				t.Fatalf("trustedRelayPhotoURL(%q) = %v, want %v", tt.raw, got, tt.want)
+			}
+		})
+	}
 }
 
 // The QR is how CHECKING ends. A guest scans it, reaches the Mac or fails to,

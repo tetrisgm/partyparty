@@ -335,6 +335,48 @@ func TestRoomAPIAggregatesBeatsAndQueuesWrites(t *testing.T) {
 	}
 }
 
+func TestRoomAPIQueuesOnlyPublicListenerActions(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	room, _ := store.Room(roomToken, false)
+
+	allowed := []string{
+		"post", "comment", "post-reaction", "reactions", "track-id-request",
+		"guest-profile", "client-events",
+	}
+	for _, endpoint := range allowed {
+		req := httptest.NewRequest(http.MethodPost, "/r/"+roomToken+"/api/"+endpoint, strings.NewReader(`{}`))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusAccepted {
+			t.Fatalf("public action %q = %d, want accepted", endpoint, w.Code)
+		}
+	}
+	digest := room.Plane().Drain()
+	if len(digest.Writes) != len(allowed) {
+		t.Fatalf("queued public actions = %+v", digest.Writes)
+	}
+	for i, write := range digest.Writes {
+		if write.Path != allowed[i] {
+			t.Fatalf("queued action %d = %q, want %q", i, write.Path, allowed[i])
+		}
+	}
+
+	for _, endpoint := range []string{
+		"relay-upload", "event-config", "post-delete", "connection-mode", "anything",
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/r/"+roomToken+"/api/"+endpoint, strings.NewReader(`{}`))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("non-public action %q = %d, want not found", endpoint, w.Code)
+		}
+	}
+	if digest := room.Plane().Drain(); len(digest.Writes) != 0 {
+		t.Fatalf("non-public actions reached the Mac queue: %+v", digest.Writes)
+	}
+}
+
 // TestHostRoutingKeepsGuestPathsAbsolute: serving a room on its own hostname is
 // what lets guest pages use the same absolute paths they use on the LAN.
 func TestHostRoutingKeepsGuestPathsAbsolute(t *testing.T) {
