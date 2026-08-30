@@ -529,7 +529,7 @@ func TestRelayPhotoUploadReturnsMediaAndQueuesMacTransfer(t *testing.T) {
 	if json.Unmarshal(w.Body.Bytes(), &media) != nil || media.ID == "" || media.Type != "image" {
 		t.Fatalf("photo response = %q", w.Body.String())
 	}
-	got := get(t, h, media.ID)
+	got := get(t, h, "media/"+media.ID)
 	if got.Code != http.StatusOK || got.Body.String() != "jpeg-bytes" {
 		t.Fatalf("photo fetch = %d %q", got.Code, got.Body.String())
 	}

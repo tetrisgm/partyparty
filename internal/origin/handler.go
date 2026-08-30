@@ -468,7 +468,7 @@ func (h *Handler) relayPhotoUpload(w http.ResponseWriter, r *http.Request, room 
 		return
 	}
 	id := hex.EncodeToString(idBytes) + ext
-	room.PutPhoto(id, body, r.Header.Get("Content-Type"))
+	room.PutPhoto("media/"+id, body, r.Header.Get("Content-Type"))
 	source := "https://" + r.Host + "/media/" + url.PathEscape(id)
 	action, _ := json.Marshal(map[string]any{
 		"id": id, "name": name, "size": len(body), "source": source,

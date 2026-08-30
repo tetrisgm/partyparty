@@ -2,6 +2,10 @@ package origin_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -219,6 +223,81 @@ func TestRelayPathEndToEnd(t *testing.T) {
 	//    how many times the playlist is re-pushed.
 	if pushed := pusher.Snapshot().Pushed; pushed > 8 {
 		t.Fatalf("uploaded %d media files for a 5-file window; the dedupe is not working", pushed)
+	}
+}
+
+func TestRelayPhotoQueuedSourceEndToEnd(t *testing.T) {
+	store := origin.NewStore()
+	originSrv := httptest.NewTLSServer(origin.NewHandler(origin.Config{
+		BaseDomain: "example.com",
+		Tokens: func(room string) (string, bool) {
+			return "publish-secret", room == "room1"
+		},
+	}, store))
+	defer originSrv.Close()
+
+	port := originSrv.Listener.Addr().(*net.TCPAddr).Port
+	roomURL := fmt.Sprintf("https://room1.example.com:%d", port)
+	originAddr := originSrv.Listener.Addr().String()
+	transport := originSrv.Client().Transport.(*http.Transport).Clone()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var dialer net.Dialer
+		return dialer.DialContext(ctx, network, originAddr)
+	}
+	client := &http.Client{Transport: transport}
+
+	publish, err := http.NewRequest(http.MethodPut, roomURL+"/stream.m3u8", strings.NewReader(macPlaylistV1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	publish.Header.Set("Authorization", "Bearer publish-secret")
+	publishResp, err := client.Do(publish)
+	if err != nil {
+		t.Fatalf("publish room: %v", err)
+	}
+	publishResp.Body.Close()
+	if publishResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("publish room = %d", publishResp.StatusCode)
+	}
+
+	upload, err := http.NewRequest(http.MethodPost, roomURL+"/api/upload", strings.NewReader("jpeg-bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload.Header.Set("Content-Type", "image/jpeg")
+	upload.Header.Set("X-PP-Name", "party.jpg")
+	uploadResp, err := client.Do(upload)
+	if err != nil {
+		t.Fatalf("upload photo: %v", err)
+	}
+	uploadResp.Body.Close()
+	if uploadResp.StatusCode != http.StatusOK {
+		t.Fatalf("upload photo = %d", uploadResp.StatusCode)
+	}
+
+	room, _ := store.Room("room1", false)
+	digest := room.Plane().Drain()
+	if len(digest.Writes) != 1 || digest.Writes[0].Path != "relay-upload" {
+		t.Fatalf("photo transfer action = %+v", digest.Writes)
+	}
+	var action struct {
+		Source string `json:"source"`
+	}
+	if err := json.Unmarshal(digest.Writes[0].Body, &action); err != nil || action.Source == "" {
+		t.Fatalf("decode photo transfer action %q: %v", digest.Writes[0].Body, err)
+	}
+
+	photoResp, err := client.Get(action.Source)
+	if err != nil {
+		t.Fatalf("GET queued source %q: %v", action.Source, err)
+	}
+	photoBody, err := io.ReadAll(photoResp.Body)
+	photoResp.Body.Close()
+	if err != nil {
+		t.Fatalf("read queued source %q: %v", action.Source, err)
+	}
+	if photoResp.StatusCode != http.StatusOK || string(photoBody) != "jpeg-bytes" {
+		t.Fatalf("GET queued source %q = %d %q", action.Source, photoResp.StatusCode, photoBody)
 	}
 }
 
