@@ -345,7 +345,10 @@ func Open(baseDir string) (*Store, error) {
 		return nil, err
 	}
 	id := chooseParty(baseDir, time.Now())
-	dir := filepath.Join(baseDir, id)
+	dir, err := partyPath(baseDir, id)
+	if err != nil {
+		return nil, err
+	}
 	s := &Store{notify: make(chan struct{}), base: baseDir}
 	if err := s.use(dir); err != nil {
 		return nil, err

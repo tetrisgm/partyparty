@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +48,47 @@ func newPartyID(now time.Time) string {
 	return now.Format("2006-01-02-1504") + "-" + hex.EncodeToString(b)
 }
 
+var partyIDPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-\d{4}-[0-9a-f]{4}$`)
+
+// validPartyID accepts exactly the identifiers minted by newPartyID. Keeping
+// this narrower than a generic filename also makes a peer-provided identity
+// safe to use as a directory name on every supported filesystem.
+func validPartyID(id string) bool {
+	if !partyIDPattern.MatchString(id) {
+		return false
+	}
+	_, err := time.Parse("2006-01-02-1504", id[:15])
+	return err == nil
+}
+
+// partyPath returns the canonical direct child of base for id. The grammar
+// rejects separators, while the path checks keep that invariant explicit and
+// refuse an existing symlink that could resolve outside the parties root.
+func partyPath(base, id string) (string, error) {
+	if !validPartyID(id) {
+		return "", fmt.Errorf("invalid party id %q", id)
+	}
+	root, err := filepath.Abs(base)
+	if err != nil {
+		return "", err
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	target := filepath.Join(root, id)
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel != id || filepath.Dir(target) != root {
+		return "", fmt.Errorf("party id %q does not resolve to one child of the parties root", id)
+	}
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("party id %q resolves through a symlink", id)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	return target, nil
+}
+
 func currentPath(base string) string { return filepath.Join(base, currentFile) }
 
 func readCurrent(base string) (currentParty, bool) {
@@ -54,7 +97,7 @@ func readCurrent(base string) (currentParty, bool) {
 		return currentParty{}, false
 	}
 	var c currentParty
-	if json.Unmarshal(data, &c) != nil || c.ID == "" {
+	if json.Unmarshal(data, &c) != nil || !validPartyID(c.ID) {
 		return currentParty{}, false
 	}
 	return c, true
@@ -96,8 +139,8 @@ func partyIsEmpty(dir string) bool {
 // otherwise starts a new one.
 func chooseParty(base string, now time.Time) string {
 	if c, ok := readCurrent(base); ok {
-		dir := filepath.Join(base, c.ID)
-		if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		dir, pathErr := partyPath(base, c.ID)
+		if st, err := os.Stat(dir); pathErr == nil && err == nil && st.IsDir() {
 			fresh := now.Sub(time.UnixMilli(c.LastSeen)) < partyIdleWindow
 			if fresh || partyIsEmpty(dir) {
 				return c.ID
@@ -302,6 +345,9 @@ func (s *Store) JoinParty(id PartyIdentity) (bool, error) {
 	if id.ID == "" {
 		return false, nil
 	}
+	if !validPartyID(id.ID) {
+		return false, fmt.Errorf("invalid party id %q", id.ID)
+	}
 	s.mu.Lock()
 	current := filepath.Base(s.dir)
 	base, dir := s.base, s.dir
@@ -313,7 +359,10 @@ func (s *Store) JoinParty(id PartyIdentity) (bool, error) {
 		return false, nil
 	}
 
-	target := filepath.Join(base, id.ID)
+	target, err := partyPath(base, id.ID)
+	if err != nil {
+		return false, err
+	}
 	if err := s.use(target); err != nil {
 		return false, err
 	}

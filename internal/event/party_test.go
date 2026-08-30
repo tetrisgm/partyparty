@@ -63,6 +63,108 @@ func TestEmptyPartyIsReusedNotLittered(t *testing.T) {
 	}
 }
 
+func TestPartyIDGrammar(t *testing.T) {
+	for _, now := range []time.Time{
+		time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, time.August, 30, 23, 59, 0, 0, time.FixedZone("PDT", -7*60*60)),
+	} {
+		id := newPartyID(now)
+		if !validPartyID(id) {
+			t.Errorf("generated party id %q was rejected", id)
+		}
+	}
+
+	tests := []struct {
+		name string
+		id   string
+		want bool
+	}{
+		{name: "valid", id: "2026-08-06-2213-ab12", want: true},
+		{name: "parent traversal", id: "../2026-08-06-2213-ab12"},
+		{name: "absolute", id: "/tmp/2026-08-06-2213-ab12"},
+		{name: "slash separator", id: "2026-08-06/2213-ab12"},
+		{name: "backslash separator", id: `2026-08-06\2213-ab12`},
+		{name: "unicode division slash", id: "2026-08-06∕2213-ab12"},
+		{name: "unicode fullwidth digits", id: "２０２６-08-06-2213-ab12"},
+		{name: "malformed date", id: "2026-02-30-2213-ab12"},
+		{name: "malformed time", id: "2026-08-06-2460-ab12"},
+		{name: "uppercase hex", id: "2026-08-06-2213-AB12"},
+		{name: "missing suffix", id: "2026-08-06-2213"},
+		{name: "overlong", id: "2026-08-06-2213-ab12-extra"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validPartyID(tt.id); got != tt.want {
+				t.Fatalf("validPartyID(%q) = %v, want %v", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJoinPartyRejectsInvalidIDsBeforeUsingAPath(t *testing.T) {
+	invalid := []string{
+		"../outside",
+		"/tmp/2026-08-06-2213-ab12",
+		"2026-08-06/2213-ab12",
+		`2026-08-06\2213-ab12`,
+		"2026-08-06∕2213-ab12",
+		"2026-02-30-2213-ab12",
+		"2026-08-06-2213-ab12-extra",
+	}
+	for _, id := range invalid {
+		t.Run(id, func(t *testing.T) {
+			base := t.TempDir()
+			st, err := Open(base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := st.PartyID()
+			joined, err := st.JoinParty(PartyIdentity{ID: id, Name: "Untrusted peer"})
+			if err == nil {
+				t.Fatalf("JoinParty(%q) did not reject the invalid id", id)
+			}
+			if joined || st.PartyID() != before {
+				t.Fatalf("invalid join changed party: joined=%v id=%q, want %q", joined, st.PartyID(), before)
+			}
+		})
+	}
+}
+
+func TestCurrentPartyRejectsInvalidIDBeforeUsingAPath(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "parties")
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCurrentForTest(t, base, currentParty{ID: "../outside", LastSeen: time.Now().UnixMilli()})
+
+	st, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validPartyID(st.PartyID()) {
+		t.Fatalf("Open selected invalid party id %q", st.PartyID())
+	}
+	if st.Dir() == outside {
+		t.Fatal("Open escaped the parties root through current.json")
+	}
+}
+
+func TestPartyPathRejectsSymlinkedChild(t *testing.T) {
+	base := t.TempDir()
+	id := "2026-08-06-2213-ab12"
+	if err := os.Symlink(t.TempDir(), filepath.Join(base, id)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := partyPath(base, id); err == nil {
+		t.Fatal("partyPath accepted a child that resolves through a symlink")
+	}
+}
+
 // TestPartyFolderHoldsOnlyKeepsakes: a DJ opening the folder should find the
 // night's uploads and one page, not our journals.
 func TestPartyFolderHoldsOnlyKeepsakes(t *testing.T) {
