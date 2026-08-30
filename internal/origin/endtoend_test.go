@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -328,9 +329,12 @@ func TestOriginRestartRecoversFixedNameAssets(t *testing.T) {
 	macSrv := httptest.NewServer(mac.handler())
 	defer macSrv.Close()
 
-	store := origin.NewStore()
 	cfg := origin.Config{Tokens: func(room string) (string, bool) { return "secret", room == "room1" }}
-	originSrv := httptest.NewServer(origin.NewHandler(cfg, store))
+	var activeHandler atomic.Pointer[origin.Handler]
+	activeHandler.Store(origin.NewHandler(cfg, origin.NewStore()))
+	originSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		activeHandler.Load().ServeHTTP(w, r)
+	}))
 	defer originSrv.Close()
 
 	pusher := contribute.New(contribute.Config{
@@ -363,8 +367,9 @@ func TestOriginRestartRecoversFixedNameAssets(t *testing.T) {
 	waitFor200("init.mp4")
 	waitFor200("index.html")
 
-	// The restart: same address, empty store. Uploads keep succeeding.
-	*store = *origin.NewStore()
+	// The restart: same address, empty store. Swapping handlers models a new
+	// process without mutating a Store while an upload is still using it.
+	activeHandler.Store(origin.NewHandler(cfg, origin.NewStore()))
 
 	waitFor200("init.mp4")
 	waitFor200("index.html")
