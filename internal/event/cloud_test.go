@@ -31,12 +31,19 @@ func TestActivityCursorSurvivesRemoteClockSkewAndReload(t *testing.T) {
 	if err != nil || !added {
 		t.Fatalf("MergeRemotePost = (%v, %v), want added", added, err)
 	}
+	remote, _, _, remoteCursor := store.FeedFor(0, "", true)
+	if len(remote) != 1 || remote[0].TS != future {
+		t.Fatalf("remote post = %#v, want preserved display timestamp %d", remote, future)
+	}
+	if remote[0].Act >= future || remoteCursor != remote[0].Act {
+		t.Fatalf("remote activity = %d, cursor = %d; remote clock %d poisoned arrival order", remote[0].Act, remoteCursor, future)
+	}
 	local, err := store.AddPost("cid", "Local", "", "after remote", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if local.Act <= future {
-		t.Fatalf("local activity %d did not advance past remote cursor %d", local.Act, future)
+	if local.Act <= remote[0].Act {
+		t.Fatalf("local activity %d did not advance past remote arrival %d", local.Act, remote[0].Act)
 	}
 	if _, err := store.AddComment(local.ID, "other", "Guest", "", "still here", false); err != nil {
 		t.Fatal(err)
@@ -60,6 +67,18 @@ func TestActivityCursorSurvivesRemoteClockSkewAndReload(t *testing.T) {
 	}
 	if next.Act <= cursor {
 		t.Fatalf("post-reload activity %d did not advance past cursor %d", next.Act, cursor)
+	}
+}
+
+func TestActivityClockBreaksSameMillisecondTies(t *testing.T) {
+	store := &Store{}
+	store.mu.Lock()
+	first := store.nextActivityLocked(1234)
+	second := store.nextActivityLocked(1234)
+	backward := store.nextActivityLocked(12)
+	store.mu.Unlock()
+	if first != 1234 || second != 1235 || backward != 1236 {
+		t.Fatalf("activity sequence = %d, %d, %d; want 1234, 1235, 1236", first, second, backward)
 	}
 }
 

@@ -107,3 +107,42 @@ func TestDeleteCommentDropsOnReplay(t *testing.T) {
 		t.Fatalf("replayed comments = %#v, want none", posts)
 	}
 }
+
+func TestDeleteAdvancesCursorAndSurvivesReplay(t *testing.T) {
+	base := t.TempDir()
+	st, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := st.AddPost("cid-1", "Guest", ":)", "remove me", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, before := st.FeedFor(0, "", true)
+	if before != p.Act {
+		t.Fatalf("cursor before delete = %d, want post activity %d", before, p.Act)
+	}
+	if err := st.Delete(p.ID); err != nil {
+		t.Fatal(err)
+	}
+	posts, ids, _, after := st.FeedFor(before, "", true)
+	if len(posts) != 0 || len(ids) != 0 || after <= before {
+		t.Fatalf("feed after delete = %d posts, ids %v, cursor %d; want empty feed past %d", len(posts), ids, after, before)
+	}
+
+	reloaded, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	posts, ids, _, replayed := reloaded.FeedFor(before, "", true)
+	if len(posts) != 0 || len(ids) != 0 || replayed != after {
+		t.Fatalf("replayed delete = %d posts, ids %v, cursor %d; want cursor %d", len(posts), ids, replayed, after)
+	}
+	next, err := reloaded.AddPost("cid-2", "Later", ":D", "after delete", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Act <= replayed {
+		t.Fatalf("post-delete activity %d did not advance past replayed cursor %d", next.Act, replayed)
+	}
+}

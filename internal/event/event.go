@@ -483,7 +483,12 @@ func (s *Store) use(dir string) error {
 				for i := range p.Comments {
 					p.Comments[i].State = normalizeState(p.Comments[i].State)
 				}
-				if p.Act < p.TS {
+				// New post lines carry their explicit synchronization token outside
+				// the display object. Legacy lines did not, and historically used TS
+				// as the lower bound for Act.
+				if l.TS > 0 {
+					p.Act = l.TS
+				} else if p.Act < p.TS {
 					p.Act = p.TS
 				}
 				posts = append(posts, &p)
@@ -491,6 +496,9 @@ func (s *Store) use(dir string) error {
 			case l.Op == "delete":
 				if p, ok := byID[l.ID]; ok {
 					p.Deleted = true
+					if p.Act < l.TS {
+						p.Act = l.TS
+					}
 				}
 			case l.Op == "comment" && l.Comment != nil:
 				if p, ok := byID[l.ID]; ok {
@@ -1233,7 +1241,7 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	} else {
 		p.State = StateApproved
 	}
-	if err := s.appendLine(line{Op: "post", CID: cid, Post: p}); err != nil {
+	if err := s.appendLine(line{Op: "post", CID: cid, Post: p, TS: p.Act}); err != nil {
 		return nil, err
 	}
 	s.posts = append(s.posts, p)
@@ -1406,9 +1414,11 @@ func (s *Store) Delete(id string) error {
 	if !ok || p.Deleted {
 		return errors.New("no such post")
 	}
-	if err := s.appendLine(line{Op: "delete", ID: id}); err != nil {
+	activity := s.nextActivityLocked(time.Now().UnixMilli())
+	if err := s.appendLine(line{Op: "delete", ID: id, TS: activity}); err != nil {
 		return err
 	}
+	p.Act = activity
 	p.Deleted = true
 	s.changed()
 	return nil
@@ -1779,13 +1789,14 @@ func (s *Store) Feed(sinceTS int64) (posts []Post, ids []string, mediaCount int)
 func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids []string, mediaCount int, cursor int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	cursor = s.lastActivity
 	ids = make([]string, 0, len(s.posts))
 	for _, p := range s.posts {
-		if p.Deleted {
-			continue
-		}
 		if p.Act > cursor {
 			cursor = p.Act
+		}
+		if p.Deleted {
+			continue
 		}
 		if legacyStreamStatusPost(p) {
 			continue

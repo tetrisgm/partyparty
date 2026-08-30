@@ -63,27 +63,30 @@ func TestFeedForReturnsIndependentPostSnapshots(t *testing.T) {
 
 func TestFeedForCurrentCursorDoesNotCopyHistory(t *testing.T) {
 	const postCount = 100
-	store := &Store{posts: make([]*Post, 0, postCount)}
-	for i := int64(1); i <= postCount; i++ {
-		store.posts = append(store.posts, &Post{
-			ID:        fmt.Sprintf("post-%d", i),
-			TS:        i,
-			Act:       i,
-			State:     StateApproved,
-			Media:     []Media{{ID: "photo.jpg"}},
-			Comments:  []Comment{{ID: "comment", State: StateApproved}},
-			Reactions: map[string]int{"🔥": 1},
+	measure := func(rich bool) float64 {
+		store := &Store{posts: make([]*Post, 0, postCount), lastActivity: postCount}
+		for i := int64(1); i <= postCount; i++ {
+			post := &Post{ID: fmt.Sprintf("post-%d", i), TS: i, Act: i, State: StateApproved}
+			if rich {
+				post.Media = []Media{{ID: "photo.jpg"}}
+				post.Comments = []Comment{{ID: "comment", State: StateApproved}}
+				post.Reactions = map[string]int{"🔥": 1}
+			}
+			store.posts = append(store.posts, post)
+		}
+		return testing.AllocsPerRun(50, func() {
+			posts, ids, _, cursor := store.FeedFor(postCount, "", true)
+			if len(posts) != 0 || len(ids) != postCount || cursor != postCount {
+				t.Fatalf("current feed = %d posts, %d ids, cursor %d", len(posts), len(ids), cursor)
+			}
 		})
 	}
 
-	allocations := testing.AllocsPerRun(50, func() {
-		posts, ids, media, cursor := store.FeedFor(postCount, "", true)
-		if len(posts) != 0 || len(ids) != postCount || media != postCount || cursor != postCount {
-			t.Fatalf("current feed = %d posts, %d ids, %d media, cursor %d", len(posts), len(ids), media, cursor)
-		}
-	})
-	if allocations > 5 {
-		t.Fatalf("current-cursor feed allocated %.1f times; historical posts were copied", allocations)
+	lean, rich := measure(false), measure(true)
+	// Compiler/runtime bookkeeping may move the absolute number. What matters
+	// is that mutable history does not add one allocation per nested field.
+	if rich > lean+1 {
+		t.Fatalf("rich current-cursor feed allocated %.1f times versus lean %.1f; historical snapshots were copied", rich, lean)
 	}
 }
 

@@ -40,8 +40,9 @@ func (s *Store) MergeRemotePost(id, author, text string, tsMs int64) (bool, erro
 	if len(text) > 2000 {
 		text = text[:2000]
 	}
+	now := time.Now().UnixMilli()
 	if tsMs <= 0 {
-		tsMs = time.Now().UnixMilli()
+		tsMs = now
 	}
 
 	s.mu.Lock()
@@ -56,8 +57,12 @@ func (s *Store) MergeRemotePost(id, author, text string, tsMs int64) (bool, erro
 		Text:   text,
 		State:  StateApproved,
 	}
-	post.Act = s.nextActivityLocked(tsMs)
-	if err := s.appendLine(line{Op: "post", Post: post}); err != nil {
+	// TS belongs to the remote post and remains its display timestamp. Act is a
+	// local arrival-order token: allowing an untrusted remote clock to choose it
+	// can push this store (and every Mac merging its feed) arbitrarily far into
+	// the future.
+	post.Act = s.nextActivityLocked(now)
+	if err := s.appendLine(line{Op: "post", Post: post, TS: post.Act}); err != nil {
 		return false, err
 	}
 	s.posts = append(s.posts, post)
