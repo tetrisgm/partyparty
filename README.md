@@ -19,12 +19,13 @@ keep listening when Safari is backgrounded or the phone is locked.
   engine because it is smooth and survives screen lock.
 - The venue provides Wi-Fi. PartyParty does not create a hotspot, captive portal,
   or Internet Sharing configuration.
-- The Mac selects one room-wide connection mode. Direct mode keeps traffic on
-  venue Wi-Fi. If a phone proves that the Wi-Fi isolates nearby devices, relay
-  mode carries music and lightweight room interaction through an ephemeral
-  Cloudflare reverse relay. HLS traffic has strict priority. Guest photos use a
-  capped, throttled secondary path, and videos are disabled in relay mode. The
-  relay does not create public event pages or retain party content.
+- The Mac selects one room-wide connection mode. Wi-Fi only is the default, so
+  direct mode keeps traffic at the venue. If the DJ enables Wi-Fi + cloud and a
+  phone proves that the Wi-Fi isolates nearby devices, relay mode contributes
+  one copy of the stream to the relay origin for fan-out. HLS traffic has strict
+  priority. Guest photos use a capped, throttled secondary path, and videos are
+  disabled in relay mode. The relay does not create public event pages or retain
+  party content.
 
 ## Run from source
 

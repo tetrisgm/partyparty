@@ -23,8 +23,9 @@ the Mac's direct HTTPS address, then sends the guest to whichever path works:
 - **Local:** the same LAN path with no internet involved anywhere. Requires this
   network's resolver to answer for the Mac's hostname, which the Mac checks and
   reports rather than assumes.
-- **Relay:** the Mac pushes its LL-HLS to a relay origin that fans it out to
-  guests. Used only when a phone proves the venue isolates nearby devices.
+- **Relay:** when the DJ has enabled Wi-Fi + cloud, the Mac pushes its LL-HLS
+  to a relay origin that fans it out to guests. Used only when a phone proves
+  the venue isolates nearby devices.
 - **No path:** the secure hostname cannot be resolved and there is no internet.
   The console may offer an explicitly degraded HTTP link to the current LAN IP.
   It does not provide the hostname certificate, and locked-screen playback is
