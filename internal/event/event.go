@@ -1790,7 +1790,7 @@ func (s *Store) Feed(sinceTS int64) (posts []Post, ids []string, mediaCount int)
 func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids []string, mediaCount int, cursor int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ids = []string{}
+	ids = make([]string, 0, len(s.posts))
 	for _, p := range s.posts {
 		if p.Deleted {
 			continue
@@ -1804,14 +1804,15 @@ func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids [
 		if !postVisibleTo(p, cid, dj) {
 			continue
 		}
+		ids = append(ids, p.ID)
+		mediaCount += len(p.Media)
+		if p.Act <= sinceTS {
+			continue
+		}
 		cp := snapshotPost(p)
 		cp.State = normalizeState(cp.State)
 		cp.Comments = visibleComments(cp.Comments, cid, dj)
-		ids = append(ids, cp.ID)
-		mediaCount += len(cp.Media)
-		if cp.Act > sinceTS {
-			posts = append(posts, cp)
-		}
+		posts = append(posts, cp)
 	}
 	sort.Slice(posts, func(i, j int) bool { return posts[i].TS < posts[j].TS })
 	return posts, ids, mediaCount, cursor

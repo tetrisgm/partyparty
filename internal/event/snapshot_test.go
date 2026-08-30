@@ -1,6 +1,7 @@
 package event
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -57,6 +58,32 @@ func TestFeedForReturnsIndependentPostSnapshots(t *testing.T) {
 	again, _, _, _ := st.FeedFor(0, "", true)
 	if again[0].Media[0].Thumb != "stored-thumb" || again[0].Comments[0].Text != "stored-comment" || again[0].Reactions["fire"] != 1 {
 		t.Fatalf("caller mutation reached store: %#v", again[0])
+	}
+}
+
+func TestFeedForCurrentCursorDoesNotCopyHistory(t *testing.T) {
+	const postCount = 100
+	store := &Store{posts: make([]*Post, 0, postCount)}
+	for i := int64(1); i <= postCount; i++ {
+		store.posts = append(store.posts, &Post{
+			ID:        fmt.Sprintf("post-%d", i),
+			TS:        i,
+			Act:       i,
+			State:     StateApproved,
+			Media:     []Media{{ID: "photo.jpg"}},
+			Comments:  []Comment{{ID: "comment", State: StateApproved}},
+			Reactions: map[string]int{"🔥": 1},
+		})
+	}
+
+	allocations := testing.AllocsPerRun(50, func() {
+		posts, ids, media, cursor := store.FeedFor(postCount, "", true)
+		if len(posts) != 0 || len(ids) != postCount || media != postCount || cursor != postCount {
+			t.Fatalf("current feed = %d posts, %d ids, %d media, cursor %d", len(posts), len(ids), media, cursor)
+		}
+	})
+	if allocations > 5 {
+		t.Fatalf("current-cursor feed allocated %.1f times; historical posts were copied", allocations)
 	}
 }
 
