@@ -37,8 +37,8 @@ import (
 
 const (
 	// maxQueuedWrites bounds the write queue. A flood of guest posts must never
-	// grow memory without limit; past the cap the oldest are dropped, because a
-	// live party cares about what is happening now.
+	// grow memory without limit; past the cap new writes are refused so callers
+	// can report that they were not accepted.
 	maxQueuedWrites = 512
 
 	// maxTrackedListeners bounds presence tracking. Well above any real room, and
@@ -232,9 +232,9 @@ func (r *Room) Beat(guest Guest, latMs float64, hasLat bool) {
 	}
 }
 
-// Enqueue queues a guest write for the Mac. Returns false when the queue is
-// full, so the caller can tell the guest honestly rather than accepting a post
-// that will never arrive.
+// Enqueue queues a guest write for the Mac. It returns false without changing
+// the queue when path is empty or the queue is full, so the caller can tell the
+// guest honestly rather than accepting a post that will never arrive.
 func (r *Room) Enqueue(path string, body json.RawMessage) bool {
 	if path == "" {
 		return false
@@ -242,10 +242,7 @@ func (r *Room) Enqueue(path string, body json.RawMessage) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.writes) >= maxQueuedWrites {
-		// A live party cares about now, so drop the oldest rather than refusing
-		// everything once a backlog forms.
-		copy(r.writes, r.writes[1:])
-		r.writes = r.writes[:len(r.writes)-1]
+		return false
 	}
 	stored := make(json.RawMessage, len(body))
 	copy(stored, body)

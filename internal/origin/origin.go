@@ -159,6 +159,28 @@ func (r *Room) PutPhoto(name string, body []byte, contentType string) {
 	}
 }
 
+// dropPhoto removes a photo whose matching command could not be queued for the
+// Mac. The guest received a failure, so retaining unreachable media would only
+// consume the room's bounded photo window.
+func (r *Room) dropPhoto(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.media, name)
+	delete(r.pinned, name)
+	for i, candidate := range r.photos {
+		if candidate == name {
+			r.photos = append(r.photos[:i], r.photos[i+1:]...)
+			break
+		}
+	}
+	for i, candidate := range r.order {
+		if candidate == name {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
+}
+
 // pinnedCount counts pinned names still present in order. Caller holds mu.
 func (r *Room) pinnedCount() int {
 	n := 0

@@ -335,6 +335,62 @@ func TestRoomAPIAggregatesBeatsAndQueuesWrites(t *testing.T) {
 	}
 }
 
+func TestRoomAPIReturnsServiceUnavailableWhenWriteQueueIsFull(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	room, _ := store.Room(roomToken, false)
+	fillWriteQueue(t, room.Plane())
+
+	req := httptest.NewRequest(http.MethodPost, "/r/"+roomToken+"/api/post", strings.NewReader(`{"text":"not accepted"}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("post with a full command queue = %d %q, want 503", w.Code, w.Body.String())
+	}
+	for _, write := range room.Plane().Drain().Writes {
+		if write.Path != "seed" {
+			t.Fatalf("rejected post displaced an accepted command: %+v", write)
+		}
+	}
+}
+
+func TestRelayPhotoUploadReturnsServiceUnavailableWhenWriteQueueIsFull(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	room, _ := store.Room(roomToken, false)
+	fillWriteQueue(t, room.Plane())
+	mediaBefore := store.Stats().MediaFiles
+
+	req := httptest.NewRequest(http.MethodPost, "/r/"+roomToken+"/api/upload", strings.NewReader("jpeg-bytes"))
+	req.Header.Set("Content-Type", "image/jpeg")
+	req.Header.Set("X-PP-Name", "party.jpg")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("photo with a full command queue = %d %q, want 503", w.Code, w.Body.String())
+	}
+	if got := store.Stats().MediaFiles; got != mediaBefore {
+		t.Fatalf("rejected photo changed retained media count from %d to %d", mediaBefore, got)
+	}
+	for _, write := range room.Plane().Drain().Writes {
+		if write.Path != "seed" {
+			t.Fatalf("rejected photo displaced an accepted command: %+v", write)
+		}
+	}
+}
+
+func fillWriteQueue(t *testing.T, plane interface {
+	Enqueue(string, json.RawMessage) bool
+}) {
+	t.Helper()
+	for i := 0; i < 10_000; i++ {
+		if !plane.Enqueue("seed", json.RawMessage(`{}`)) {
+			return
+		}
+	}
+	t.Fatal("write queue did not report its bounded capacity")
+}
+
 func TestRoomAPIQueuesOnlyPublicListenerActions(t *testing.T) {
 	h, store := testHandler()
 	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)

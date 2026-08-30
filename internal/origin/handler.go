@@ -491,6 +491,7 @@ func (h *Handler) relayPhotoUpload(w http.ResponseWriter, r *http.Request, room 
 		"id": id, "name": name, "size": len(body), "source": source,
 	})
 	if !plane.Enqueue("relay-upload", action) {
+		room.dropPhoto("media/" + id)
 		writeJSONError(w, http.StatusServiceUnavailable, "room is busy")
 		return
 	}

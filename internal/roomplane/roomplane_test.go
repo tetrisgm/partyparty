@@ -3,6 +3,7 @@ package roomplane
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -136,11 +137,12 @@ func TestListenersExpire(t *testing.T) {
 	}
 }
 
-// TestWritesDrainOnceAndAreBounded: queued guest actions reach the Mac exactly
-// once, and a flood cannot grow memory without limit.
-func TestWritesDrainOnceAndAreBounded(t *testing.T) {
+// TestWritesDrainOnce: queued guest actions reach the Mac exactly once.
+func TestWritesDrainOnce(t *testing.T) {
 	r := New()
-	r.Enqueue("/api/react", json.RawMessage(`{"emoji":"fire"}`))
+	if !r.Enqueue("/api/react", json.RawMessage(`{"emoji":"fire"}`)) {
+		t.Fatal("enqueue rejected a write with an empty queue")
+	}
 
 	d := r.Drain()
 	if len(d.Writes) != 1 || d.Writes[0].Path != "/api/react" {
@@ -149,12 +151,98 @@ func TestWritesDrainOnceAndAreBounded(t *testing.T) {
 	if d2 := r.Drain(); len(d2.Writes) != 0 {
 		t.Fatalf("writes delivered twice: %+v", d2.Writes)
 	}
-
-	for i := 0; i < maxQueuedWrites*2; i++ {
-		r.Enqueue("/api/post", json.RawMessage(`{}`))
+	if !r.Enqueue("/api/post", json.RawMessage(`{}`)) {
+		t.Fatal("draining did not make queue capacity available again")
 	}
-	if got := len(r.Drain().Writes); got > maxQueuedWrites {
-		t.Fatalf("queue grew to %d, past the %d cap", got, maxQueuedWrites)
+}
+
+func TestEnqueueRejectsAtCapacityWithoutDroppingAcceptedWrites(t *testing.T) {
+	r := New()
+	for i := 0; i < maxQueuedWrites; i++ {
+		body := json.RawMessage(fmt.Sprintf(`{"id":%d}`, i))
+		if !r.Enqueue("post", body) {
+			t.Fatalf("enqueue %d rejected before the %d-write cap", i, maxQueuedWrites)
+		}
+	}
+	if r.Enqueue("post", json.RawMessage(`{"id":"rejected"}`)) {
+		t.Fatal("enqueue reported success for a write beyond the queue cap")
+	}
+
+	writes := r.Drain().Writes
+	if len(writes) != maxQueuedWrites {
+		t.Fatalf("drained %d writes, want all %d accepted writes", len(writes), maxQueuedWrites)
+	}
+	if got := string(writes[0].Body); got != `{"id":0}` {
+		t.Fatalf("oldest accepted write was replaced: %s", got)
+	}
+	if got := string(writes[len(writes)-1].Body); got != fmt.Sprintf(`{"id":%d}`, maxQueuedWrites-1) {
+		t.Fatalf("last accepted write = %s", got)
+	}
+	if !r.Enqueue("post", json.RawMessage(`{"id":"after-drain"}`)) {
+		t.Fatal("draining did not restore queue capacity")
+	}
+}
+
+func TestConcurrentEnqueueSaturationReportsEveryRejection(t *testing.T) {
+	const workers = 16
+	const attempts = maxQueuedWrites * 4
+
+	r := New()
+	start := make(chan struct{})
+	accepted := make([]bool, attempts)
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			<-start
+			for id := worker; id < attempts; id += workers {
+				body := json.RawMessage(fmt.Sprintf(`{"id":%d}`, id))
+				accepted[id] = r.Enqueue("post", body)
+			}
+		}(worker)
+	}
+	close(start)
+	wg.Wait()
+
+	acceptedCount := 0
+	for _, ok := range accepted {
+		if ok {
+			acceptedCount++
+		}
+	}
+	if acceptedCount != maxQueuedWrites {
+		t.Fatalf("accepted %d concurrent writes, want queue cap %d", acceptedCount, maxQueuedWrites)
+	}
+	writes := r.Drain().Writes
+	if len(writes) != acceptedCount {
+		t.Fatalf("drained %d writes after accepting %d", len(writes), acceptedCount)
+	}
+	assertDeliveredWritesMatchAccepted(t, writes, accepted)
+}
+
+func assertDeliveredWritesMatchAccepted(t *testing.T, writes []Write, accepted []bool) {
+	t.Helper()
+	delivered := make([]bool, len(accepted))
+	for _, write := range writes {
+		var payload struct {
+			ID int `json:"id"`
+		}
+		if err := json.Unmarshal(write.Body, &payload); err != nil {
+			t.Fatalf("decode delivered write %q: %v", write.Body, err)
+		}
+		if payload.ID < 0 || payload.ID >= len(accepted) {
+			t.Fatalf("delivered out-of-range id %d", payload.ID)
+		}
+		if delivered[payload.ID] {
+			t.Fatalf("write %d was delivered more than once", payload.ID)
+		}
+		delivered[payload.ID] = true
+	}
+	for id := range accepted {
+		if delivered[id] != accepted[id] {
+			t.Fatalf("write %d accepted=%v delivered=%v", id, accepted[id], delivered[id])
+		}
 	}
 }
 
