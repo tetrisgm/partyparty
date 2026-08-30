@@ -79,6 +79,24 @@ func uploadLooksLikeVideo(name, contentType string) bool {
 	}
 }
 
+// feedSource is the part of the event store needed to start a feed long-poll.
+// The notification subscription must be captured before the snapshot: a
+// mutation closes and replaces the current channel, so reading first can miss
+// a mutation in the gap and park on the replacement channel for 25 seconds.
+type feedSource interface {
+	Wait() <-chan struct{}
+	FeedFor(int64, string, bool) ([]event.Post, []string, int, int64)
+}
+
+func watchedFeed(source feedSource, since int64, cid string, dj bool, roomPeers []peers.Peer) (
+	posts []event.Post, ids []string, mediaCount int, cursor int64, changed <-chan struct{},
+) {
+	changed = source.Wait()
+	posts, ids, mediaCount, cursor = source.FeedFor(since, cid, dj)
+	posts, ids, mediaCount, cursor = mergeRoomFeed(posts, ids, mediaCount, cursor, since, roomPeers)
+	return
+}
+
 func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	if s.Events == nil {
 		return false
@@ -87,27 +105,30 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/feed":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 		dj := s.isDJ(r) && r.URL.Query().Get("guest") != "1"
-		posts, ids, mediaCount, cursor := s.Events.FeedFor(since, r.URL.Query().Get("cid"), dj)
+		roomPeers := s.roomPeers()
+		posts, ids, mediaCount, cursor, changed := watchedFeed(s.Events, since, r.URL.Query().Get("cid"), dj, roomPeers)
 		// Long-poll (wait=1): nothing new → park until the next mutation (or
 		// ~25s heartbeat), then answer. Posts and comments land on every open
 		// page within a network round-trip instead of a polling interval.
 		if len(posts) == 0 && cursor <= since && r.URL.Query().Get("wait") == "1" {
 			wait := 25 * time.Second
-			if len(s.roomPeers()) > 0 {
+			if len(roomPeers) > 0 {
 				wait = 2 * time.Second
 			}
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
 			select {
-			case <-s.Events.Wait():
-			case <-time.After(wait):
+			case <-changed:
+			case <-timer.C:
 			case <-r.Context().Done():
 				return true
 			}
 			posts, ids, mediaCount, cursor = s.Events.FeedFor(since, r.URL.Query().Get("cid"), dj)
+			posts, ids, mediaCount, cursor = mergeRoomFeed(posts, ids, mediaCount, cursor, since, s.roomPeers())
 		}
 		if posts == nil {
 			posts = []event.Post{}
 		}
-		posts, ids, mediaCount, cursor = mergeRoomFeed(posts, ids, mediaCount, cursor, since, s.roomPeers())
 		photos, videos, audio := s.Events.MediaTypeCounts(r.URL.Query().Get("cid"), dj)
 		meta := s.Events.Meta()
 		reactions, spikes := s.Events.ReactionSnapshot()

@@ -8,7 +8,47 @@ import (
 	"partyparty/internal/broadcast"
 	"partyparty/internal/config"
 	"partyparty/internal/event"
+	"partyparty/internal/peers"
 )
+
+// replacingFeedSource models event.Store's close-and-replace notification.
+// Its feed read performs a mutation in the exact gap that used to exist
+// between FeedFor and Wait, without depending on goroutine scheduling.
+type replacingFeedSource struct {
+	current chan struct{}
+}
+
+func (s *replacingFeedSource) Wait() <-chan struct{} {
+	return s.current
+}
+
+func (s *replacingFeedSource) FeedFor(int64, string, bool) ([]event.Post, []string, int, int64) {
+	close(s.current)
+	s.current = make(chan struct{})
+	return nil, nil, 0, 0
+}
+
+func TestWatchedFeedCannotLoseMutationBetweenSnapshotAndPark(t *testing.T) {
+	source := &replacingFeedSource{current: make(chan struct{})}
+	_, _, _, _, changed := watchedFeed(source, 0, "guest", false, nil)
+	select {
+	case <-changed:
+		// The snapshot raced a mutation, so the request must not park.
+	default:
+		t.Fatal("feed mutation was lost; long-poll would wait on the replacement channel")
+	}
+}
+
+func TestWatchedFeedIncludesKnownPeerBeforePark(t *testing.T) {
+	source := &replacingFeedSource{current: make(chan struct{})}
+	peerPost := event.Post{ID: "remote-post", TS: 11, Act: 12}
+	posts, _, _, cursor, _ := watchedFeed(source, 10, "guest", false, []peers.Peer{{
+		ID: "other-dj", Room: &peers.Room{Posts: []event.Post{peerPost}, Cursor: peerPost.Act},
+	}})
+	if len(posts) != 1 || posts[0].ID != "other-dj~remote-post" || cursor != peerPost.Act {
+		t.Fatalf("watched feed = posts %#v, cursor %d; known peer update would be parked", posts, cursor)
+	}
+}
 
 // The night's record has to reach the page that shows it.
 //
