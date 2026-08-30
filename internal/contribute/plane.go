@@ -154,7 +154,7 @@ func (m *Manager) publishSnapshot(ctx context.Context, kind string, body json.Ra
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := m.httpClient().Do(req)
+	resp, err := m.originClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func (m *Manager) drain(ctx context.Context) (digest, error) {
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := m.httpClient().Do(req)
+	resp, err := m.originClient.Do(req)
 	if err != nil {
 		return out, err
 	}

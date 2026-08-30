@@ -49,6 +49,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -164,8 +165,9 @@ func (c Config) target() (string, string) {
 
 // Manager supervises contribution for as long as it is enabled.
 type Manager struct {
-	cfg    Config
-	client *http.Client
+	cfg          Config
+	sourceClient *http.Client
+	originClient *http.Client
 
 	mu      sync.RWMutex
 	status  Status
@@ -218,20 +220,31 @@ func New(cfg Config) *Manager {
 	// hold a cookie cannot read this Mac's own stream at all.
 	jar, _ := cookiejar.New(nil)
 	return &Manager{
-		cfg:  cfg,
-		wake: make(chan struct{}, 1),
-		sent: make(map[string]bool),
-		client: &http.Client{
-			Jar:     jar,
-			Timeout: uploadTimeout,
-			Transport: &http.Transport{
-				// Local MediaMTX serves the same hot-swapped cert on loopback.
-				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
-				MaxIdleConns:        16,
-				MaxIdleConnsPerHost: 16,
-				IdleConnTimeout:     90 * time.Second,
-				DisableCompression:  true, // media is already compressed; playlists are tiny
-			},
+		cfg:          cfg,
+		wake:         make(chan struct{}, 1),
+		sent:         make(map[string]bool),
+		originClient: &http.Client{Timeout: uploadTimeout},
+		sourceClient: newSourceClient(jar),
+	}
+}
+
+func newSourceClient(jar http.CookieJar) *http.Client {
+	return &http.Client{
+		Jar:     jar,
+		Timeout: uploadTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return validateLoopbackSourceURL(req.URL)
+		},
+		Transport: &http.Transport{
+			// Local MediaMTX serves the same hot-swapped cert on loopback.
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- requests and redirects are restricted to loopback
+			MaxIdleConns:        16,
+			MaxIdleConnsPerHost: 16,
+			IdleConnTimeout:     90 * time.Second,
+			DisableCompression:  true, // media is already compressed; playlists are tiny
 		},
 	}
 }
@@ -344,12 +357,13 @@ func (m *Manager) noteCycle(err error) int {
 	return failures
 }
 
-// httpClient returns the current client. It is swapped by resetSession, and
-// the plane goroutine shares it, so all use goes through this accessor.
-func (m *Manager) httpClient() *http.Client {
+// localClient returns the current MediaMTX client. It is swapped by
+// resetSession, so all local stream reads go through this accessor. The
+// separate origin client always performs normal TLS certificate verification.
+func (m *Manager) localClient() *http.Client {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.client
+	return m.sourceClient
 }
 
 // resetSession discards the cookie jar and everything believed already sent,
@@ -361,7 +375,12 @@ func (m *Manager) httpClient() *http.Client {
 func (m *Manager) resetSession(cause error) {
 	jar, _ := cookiejar.New(nil)
 	m.mu.Lock()
-	m.client = &http.Client{Jar: jar, Timeout: m.client.Timeout, Transport: m.client.Transport}
+	m.sourceClient = &http.Client{
+		Jar:           jar,
+		Timeout:       m.sourceClient.Timeout,
+		Transport:     m.sourceClient.Transport,
+		CheckRedirect: m.sourceClient.CheckRedirect,
+	}
 	m.variant = ""
 	m.sent = make(map[string]bool)
 	m.pageSent = false
@@ -532,7 +551,10 @@ func (m *Manager) fetch(ctx context.Context, rawURL string, limit int64) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	resp, err := m.httpClient().Do(req)
+	if err := validateLoopbackSourceURL(req.URL); err != nil {
+		return nil, err
+	}
+	resp, err := m.localClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -541,6 +563,21 @@ func (m *Manager) fetch(ctx context.Context, rawURL string, limit int64) ([]byte
 		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, limit))
+}
+
+func validateLoopbackSourceURL(target *url.URL) error {
+	if target == nil || (target.Scheme != "http" && target.Scheme != "https") {
+		return errors.New("local MediaMTX source must use HTTP or HTTPS on loopback")
+	}
+	host := target.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("local MediaMTX source host %q is not loopback", host)
+	}
+	return nil
 }
 
 func (m *Manager) upload(ctx context.Context, name string, body []byte, contentType string) error {
@@ -573,7 +610,7 @@ func (m *Manager) put(ctx context.Context, name string, body []byte, contentType
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := m.httpClient().Do(req)
+	resp, err := m.originClient.Do(req)
 	if err != nil {
 		return err
 	}

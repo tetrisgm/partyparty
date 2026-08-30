@@ -2,10 +2,12 @@ package contribute
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -113,9 +115,9 @@ audio1_stream.m3u8
 // media playlist requires the session cookie handed out by the multivariant one.
 // A stub that served any .m3u8 to anyone let this package point at a path that
 // does not exist and still pass, while relayed guests got nothing.
-func localStub() *httptest.Server {
+func localHandler() http.Handler {
 	const sessionCookie = "mediamtx-session"
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Path[strings.LastIndexByte(r.URL.Path, '/')+1:]
 		switch {
 		case name == "index.m3u8":
@@ -135,7 +137,11 @@ func localStub() *httptest.Server {
 			w.Header().Set("Content-Type", "video/mp4")
 			_, _ = w.Write([]byte("media:" + strings.TrimPrefix(r.URL.Path, "/party/")))
 		}
-	}))
+	})
+}
+
+func localStub() *httptest.Server {
+	return httptest.NewServer(localHandler())
 }
 
 func runOneCycle(t *testing.T, m *Manager) error {
@@ -267,6 +273,106 @@ func TestPublishCredentialIsSent(t *testing.T) {
 	_, _, auth := origin.snapshot()
 	if auth["stream.m3u8"] != "Bearer room-token" {
 		t.Fatalf("playlist upload was unauthenticated: %q", auth["stream.m3u8"])
+	}
+}
+
+// TestUntrustedTLSOriginIsRejected ensures the loopback MediaMTX certificate
+// exception can never weaken authenticated uploads to the remote relay origin.
+func TestUntrustedTLSOriginIsRejected(t *testing.T) {
+	origin := newOriginStub()
+	originSrv := httptest.NewTLSServer(origin.handler())
+	defer originSrv.Close()
+
+	m := New(Config{
+		Target: func() (string, string) { return originSrv.URL + "/room/", "room-token" },
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := m.upload(ctx, PublishedPlaylist, []byte(samplePlaylist), "application/vnd.apple.mpegurl"); err == nil {
+		t.Fatal("an origin with an untrusted TLS certificate was accepted")
+	}
+	if order, _, _ := origin.snapshot(); len(order) != 0 {
+		t.Fatalf("untrusted origin received authenticated uploads: %v", order)
+	}
+}
+
+// TestLoopbackMediaMTXAllowsSelfSignedTLS preserves the one intentional
+// certificate exception: MediaMTX's hot-swapped loopback certificate.
+func TestLoopbackMediaMTXAllowsSelfSignedTLS(t *testing.T) {
+	local := httptest.NewTLSServer(localHandler())
+	defer local.Close()
+	origin := newOriginStub()
+	originSrv := httptest.NewServer(origin.handler())
+	defer originSrv.Close()
+
+	m := New(Config{
+		SourceURL: local.URL + "/party/index.m3u8",
+		Target:    func() (string, string) { return originSrv.URL + "/room/", "room-token" },
+	})
+	if err := runOneCycle(t, m); err != nil {
+		t.Fatalf("self-signed loopback MediaMTX source failed: %v", err)
+	}
+	if order, _, _ := origin.snapshot(); len(order) == 0 {
+		t.Fatal("loopback stream was not contributed")
+	}
+}
+
+// TestNonLoopbackMediaMTXSourceIsRejected keeps the certificate exception tied
+// to the configured loopback service, even if a remote endpoint is reachable.
+func TestNonLoopbackMediaMTXSourceIsRejected(t *testing.T) {
+	var requests atomic.Int32
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte(sampleMaster))
+	}))
+	defer remote.Close()
+
+	m := New(Config{SourceURL: "https://media.example/party/index.m3u8"})
+	transport := m.sourceClient.Transport.(*http.Transport)
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, remote.Listener.Addr().String())
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := m.fetch(ctx, m.cfg.SourceURL, maxPlaylistBytes); err == nil || !strings.Contains(err.Error(), "not loopback") {
+		t.Fatalf("non-loopback source was not rejected as such: %v", err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("non-loopback source received %d insecure requests", got)
+	}
+}
+
+// TestLoopbackSourceCannotRedirectInsecureClientOffLoopback ensures every
+// redirect hop is checked before the source client's relaxed TLS policy applies.
+func TestLoopbackSourceCannotRedirectInsecureClientOffLoopback(t *testing.T) {
+	var requests atomic.Int32
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = w.Write([]byte(sampleMaster))
+	}))
+	defer remote.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://media.example/party/index.m3u8", http.StatusFound)
+	}))
+	defer redirect.Close()
+
+	m := New(Config{SourceURL: redirect.URL + "/party/index.m3u8"})
+	transport := m.sourceClient.Transport.(*http.Transport)
+	dialer := &net.Dialer{}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, _, err := net.SplitHostPort(address)
+		if err == nil && host == "media.example" {
+			address = remote.Listener.Addr().String()
+		}
+		return dialer.DialContext(ctx, network, address)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := m.fetch(ctx, m.cfg.SourceURL, maxPlaylistBytes); err == nil || !strings.Contains(err.Error(), "not loopback") {
+		t.Fatalf("off-loopback redirect was not rejected as such: %v", err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("redirect target received %d insecure requests", got)
 	}
 }
 
