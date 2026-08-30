@@ -71,6 +71,14 @@ func (l *chanListener) Accept() (net.Conn, error) { return <-l.conns, nil }
 func (l *chanListener) Close() error              { return nil }
 func (l *chanListener) Addr() net.Addr            { return l.addr }
 
+func partyHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
 func main() {
 	cfg := config.Parse()
 
@@ -424,7 +432,7 @@ func main() {
 		}
 	}()
 
-	httpSrv := &http.Server{Handler: handler}
+	httpSrv := partyHTTPServer(handler)
 
 	// HTTPS guest listener (the Plex model): the ADVERTISED link is
 	// https://<domain>:<tls-port>/ - the page itself rides the activated cert,
@@ -488,28 +496,26 @@ func main() {
 		}
 	}
 	if rawLn, err := net.Listen("tcp4", fmt.Sprintf(":%d", cfg.TLSPort)); err == nil {
-		tlsSrv := &http.Server{
-			Handler: handler,
-			TLSConfig: &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-				certMu.Lock()
-				defer certMu.Unlock()
-				if liveCert == nil {
-					return nil, errors.New("certificate not provisioned yet")
-				}
-				return liveCert, nil
-			}},
-		}
+		tlsSrv := partyHTTPServer(handler)
+		tlsSrv.TLSConfig = &tls.Config{GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			certMu.Lock()
+			defer certMu.Unlock()
+			if liveCert == nil {
+				return nil, errors.New("certificate not provisioned yet")
+			}
+			return liveCert, nil
+		}}
 		// Plaintext hitting the HTTPS port is normally redirected. The one
 		// exception is the explicitly advertised offline emergency link, which
 		// uses the current LAN IP because that IP cannot present the hostname
 		// certificate. We sniff the first byte: 0x16 is TLS, anything else is HTTP.
-		redirectSrv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectSrv := partyHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if handler.AllowHTTPFallback(r) {
 				handler.ServeHTTP(w, r)
 				return
 			}
 			http.Redirect(w, r, "https://"+r.Host+r.URL.RequestURI(), http.StatusMovedPermanently)
-		})}
+		}))
 		tlsCh := &chanListener{conns: make(chan net.Conn), addr: rawLn.Addr()}
 		httpCh := &chanListener{conns: make(chan net.Conn), addr: rawLn.Addr()}
 		// Boot fast path: a cert issued on a previous run is cached (~90-day
