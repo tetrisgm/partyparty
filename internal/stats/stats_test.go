@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
@@ -31,6 +32,31 @@ func TestRosterKeepsSelectedDJWhilePaused(t *testing.T) {
 	roster := l.Roster()
 	if len(roster) != 1 || !roster[0].Paused || roster[0].DJID != "seth" {
 		t.Fatalf("paused roster = %#v, want selected DJ seth", roster)
+	}
+}
+
+func TestListenerIdentityTrackingIsBounded(t *testing.T) {
+	l := New(time.Minute)
+	for i := 0; i < maxTrackedListeners; i++ {
+		l.Heartbeat(strconv.Itoa(i), false, false, 0, false, "hls")
+	}
+	l.Heartbeat("overflow", false, false, 0, false, "hls")
+	if len(l.clients) != maxTrackedListeners || len(l.ever) != maxTrackedListeners {
+		t.Fatalf("tracked clients = %d, unique history = %d; want cap %d", len(l.clients), len(l.ever), maxTrackedListeners)
+	}
+	if _, exists := l.clients["overflow"]; exists {
+		t.Fatal("rotating cid bypassed the active-listener cap")
+	}
+
+	for _, client := range l.clients {
+		client.lastSeen = time.Now().Add(-2 * l.window)
+	}
+	l.Heartbeat("replacement", false, false, 0, false, "native")
+	if len(l.clients) != 1 || l.clients["replacement"] == nil {
+		t.Fatalf("expired clients were not pruned before admitting replacement: %#v", l.clients)
+	}
+	if len(l.ever) != maxTrackedListeners {
+		t.Fatalf("unique history grew past its cap: %d", len(l.ever))
 	}
 }
 

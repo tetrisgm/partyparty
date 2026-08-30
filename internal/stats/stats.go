@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+// maxTrackedListeners is far beyond a real room while keeping an
+// unauthenticated client that rotates its cid from growing process memory
+// forever. It matches the relay-origin presence ceiling.
+const maxTrackedListeners = 2048
+
 // Listeners counts active listeners and gauges health from heartbeats sent by
 // the player page (works the same whether media is served by us or MediaMTX).
 type client struct {
@@ -77,9 +82,17 @@ func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, h
 	now := time.Now()
 	c := l.clients[key]
 	if c == nil {
+		if len(l.clients) >= maxTrackedListeners {
+			l.pruneExpiredLocked(now)
+			if len(l.clients) >= maxTrackedListeners {
+				return
+			}
+		}
 		c = &client{firstSeen: now}
 		l.clients[key] = c
-		l.ever[key] = struct{}{}
+		if len(l.ever) < maxTrackedListeners {
+			l.ever[key] = struct{}{}
+		}
 	}
 	c.lastSeen = now
 	c.paused = paused
@@ -101,6 +114,14 @@ func (l *Listeners) Heartbeat(key string, stalled, paused bool, latMs float64, h
 	}
 	if platform != "" {
 		c.platform = platform
+	}
+}
+
+func (l *Listeners) pruneExpiredLocked(now time.Time) {
+	for key, c := range l.clients {
+		if now.Sub(c.lastSeen) > l.window {
+			delete(l.clients, key)
+		}
 	}
 }
 
@@ -159,15 +180,8 @@ func (l *Listeners) Active() int {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	active := 0
-	for ip, c := range l.clients {
-		if now.Sub(c.lastSeen) > l.window {
-			delete(l.clients, ip)
-			continue
-		}
-		active++
-	}
-	return active
+	l.pruneExpiredLocked(now)
+	return len(l.clients)
 }
 
 type Health struct {
@@ -182,13 +196,10 @@ func (l *Listeners) Health(live bool, bitrateKbps int) Health {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.pruneExpiredLocked(now)
 
 	active, struggling := 0, 0
-	for ip, c := range l.clients {
-		if now.Sub(c.lastSeen) > l.window {
-			delete(l.clients, ip)
-			continue
-		}
+	for _, c := range l.clients {
 		active++
 		if !c.lastStall.IsZero() && now.Sub(c.lastStall) < 12*time.Second {
 			struggling++
