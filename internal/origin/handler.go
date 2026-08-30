@@ -333,6 +333,11 @@ func relayWaitingPage(w http.ResponseWriter, r *http.Request) {
 // is answered by us rather than cut off by infrastructure.
 const planeParkMax = 20 * time.Second
 
+// maxRoomActionBytes matches the largest guest JSON body accepted by the Mac.
+// Read one byte beyond the limit so an oversized action is rejected here
+// instead of forwarding a truncated (and potentially different) request.
+const maxRoomActionBytes = 1 << 20
+
 // planeETag is a strong validator for a snapshot version. The quotes are part
 // of the ETag grammar, not decoration.
 func planeETag(version uint64) string { return fmt.Sprintf("%q", strconv.FormatUint(version, 10)) }
@@ -418,13 +423,18 @@ func (h *Handler) roomAPI(w http.ResponseWriter, r *http.Request, token, endpoin
 			http.NotFound(w, r)
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxRoomActionBytes+1))
 		if err != nil {
-			http.Error(w, "read failed", http.StatusBadRequest)
+			writeJSONError(w, http.StatusBadRequest, "read failed")
+			return
+		}
+		if len(body) > maxRoomActionBytes {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "request is too large")
 			return
 		}
 		if !json.Valid(body) {
-			body = []byte("{}")
+			writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+			return
 		}
 		if !plane.Enqueue(endpoint, body) {
 			// Telling the guest honestly beats accepting a post that will never

@@ -354,6 +354,37 @@ func TestRoomAPIReturnsServiceUnavailableWhenWriteQueueIsFull(t *testing.T) {
 	}
 }
 
+func TestRoomAPIRejectsInvalidOrOversizedWrites(t *testing.T) {
+	h, store := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	room, _ := store.Room(roomToken, false)
+
+	tests := []struct {
+		name   string
+		body   string
+		status int
+	}{
+		{name: "invalid JSON", body: `{"text":`, status: http.StatusBadRequest},
+		{name: "oversized", body: `{"text":"` + strings.Repeat("x", maxRoomActionBytes) + `"}`, status: http.StatusRequestEntityTooLarge},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/r/"+roomToken+"/api/post", strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, req)
+			if w.Code != tt.status {
+				t.Fatalf("write = %d %q, want %d", w.Code, w.Body.String(), tt.status)
+			}
+			if got := w.Header().Get("Content-Type"); got != "application/json" {
+				t.Fatalf("content type = %q, want application/json", got)
+			}
+		})
+	}
+	if writes := room.Plane().Drain().Writes; len(writes) != 0 {
+		t.Fatalf("rejected writes reached the Mac queue: %+v", writes)
+	}
+}
+
 func TestRelayPhotoUploadReturnsServiceUnavailableWhenWriteQueueIsFull(t *testing.T) {
 	h, store := testHandler()
 	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
