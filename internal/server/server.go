@@ -232,10 +232,13 @@ func newLiveProxy(hlsPort int, prefix string) http.Handler {
 			// untouched; only the declared distance from the live edge is ours.
 			if resp.Request != nil && resp.StatusCode == http.StatusOK &&
 				strings.HasSuffix(resp.Request.URL.Path, ".m3u8") {
-				body, err := io.ReadAll(resp.Body)
+				body, err := io.ReadAll(io.LimitReader(resp.Body, maxLivePlaylistBytes+1))
 				_ = resp.Body.Close()
 				if err != nil {
 					return err
+				}
+				if len(body) > maxLivePlaylistBytes {
+					return fmt.Errorf("upstream playlist exceeds %d bytes", maxLivePlaylistBytes)
 				}
 				body = rewriteLivePlaylist(body)
 				resp.Body = io.NopCloser(bytes.NewReader(body))
@@ -250,6 +253,11 @@ func newLiveProxy(hlsPort int, prefix string) http.Handler {
 		},
 	}
 }
+
+// A production playlist is only a few kilobytes. Keep the proxy rewrite
+// bounded so a broken loopback media service cannot make the public server
+// buffer an arbitrary response in memory.
+const maxLivePlaylistBytes = 1 << 20
 
 func (s *srv) webFS() fs.FS {
 	return s.Web

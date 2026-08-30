@@ -1424,6 +1424,10 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		if r.URL.Query().Get("oversize") == "1" {
+			_, _ = w.Write(bytes.Repeat([]byte("x"), maxLivePlaylistBytes+1))
+			return
+		}
 		_, _ = w.Write([]byte("#EXTM3U\n#EXT-X-VERSION:10\n#EXT-X-STREAM-INF:BANDWIDTH=328000\nstream.m3u8\n"))
 	}))
 	defer upstream.Close()
@@ -1461,6 +1465,14 @@ func TestLiveProxyUsesSameOriginPath(t *testing.T) {
 	}
 	if !strings.Contains(compressed.Body.String(), "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES") {
 		t.Fatalf("playlist lost the room's attachment pin:\n%s", compressed.Body.String())
+	}
+
+	oversize := do(env.srv, http.MethodGet, "/live/party/index.m3u8?cookieCheck=1&oversize=1", "192.168.1.25:5000")
+	if oversize.Code != http.StatusBadGateway {
+		t.Fatalf("oversize playlist = %d, want %d", oversize.Code, http.StatusBadGateway)
+	}
+	if oversize.Body.Len() > 1024 {
+		t.Fatalf("oversize playlist response leaked %d upstream bytes", oversize.Body.Len())
 	}
 }
 
