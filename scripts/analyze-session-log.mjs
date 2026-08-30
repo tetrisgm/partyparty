@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const EVENT_RE = /^(\d\d):(\d\d):(\d\d)\.(\d{3}) \| ev\[(.*?)\] ([^ ]+)(?: (.*))?$/;
 const STREAM_READY_RE = /stream sync ready: generation=(\d+) real=([0-9.]+)s gaps=([0-9.]+)s holdback=([0-9.]+)s part=([0-9.]+)s target=([0-9.]+)s playlist=(.*)$/;
-const ROOM_TARGET_SEC = 1;
-const WARN_OPEN_LATENCY_SEC = 1.5;
-const MAX_OPEN_LATENCY_SEC = 2;
+const ROOM_TARGET_SEC = 3;
+const WARN_OPEN_LATENCY_SEC = ROOM_TARGET_SEC + 0.5;
+const MAX_OPEN_LATENCY_SEC = ROOM_TARGET_SEC + 1;
 const MAX_ROOM_SPREAD_MS = 1000;
 const KNOWN_KEYS = [
   'app', 'attempt', 'audible', 'audibleSeeks', 'before', 'buf', 'committed', 'err',

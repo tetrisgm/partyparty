@@ -397,7 +397,7 @@ every broadcast status and health value, so the `latencyTarget(_, _)` property
 at `internal/server/server.go:1314` cannot be eroded later.
 
 Acceptance: room spread tightens against today's behavior with **no increase**
-in the one-second target, and a deliberately crippled device (throttled
+in the fixed three-second target, and a deliberately crippled device (throttled
 network) changes nothing for its peers. Verified by
 `node scripts/analyze-session-log.mjs --strict`, with the mic kit as an
 occasional check on the output-path layer telemetry structurally cannot see.
@@ -454,7 +454,7 @@ DHCP reservation, verified by the resolver check. Nothing there blocks Unit 1.
 2. **Photos in RELAY mode** at launch: enabled behind the throttle, or dark
    until measured.
 
-D is not a decision. It stays today's one-second target for LOCAL and DIRECT,
+D is not a decision. It stays today's fixed three-second target for LOCAL and DIRECT,
 and for RELAY it is that plus the extra pipeline floor of the contribution hop.
 Both are constants derived from the path, and neither responds to conditions.
 The non-negotiable constraint on Unit 2 is that the room's delay never grows

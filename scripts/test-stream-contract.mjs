@@ -63,6 +63,9 @@ checkInlineScripts('web/dj.html');
 const listener = read('web/listener.html');
 const forbiddenDash = String.fromCodePoint(0x2014);
 assert.match(listener, /const ROOM_TARGET_FALLBACK = 3\.0;/);
+
+const analyzer = read('scripts/analyze-session-log.mjs');
+assert.match(analyzer, /const ROOM_TARGET_SEC = 3;/);
 assert.match(listener, /const useNative = nativeHLS && \(isAppleUA \|\| iosShellBrowser\);/);
 assert.match(listener, /const OUTLIER_LATE_BY = 0\.75;/);
 assert.match(listener, /const OUTLIER_CONFIRMATIONS = 3;/);
