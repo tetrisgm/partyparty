@@ -41,7 +41,7 @@ const statusBody = {
   name: 'Stable Party',
   connection: { mode: 'direct' },
   llhlsUrl: '/hls/index.m3u8',
-  latencyTarget: 1,
+  latencyTarget: 3,
   broadcast: { state: 'idle', since: 0 },
   streamSync: { generation: 0, ready: false },
   event: {

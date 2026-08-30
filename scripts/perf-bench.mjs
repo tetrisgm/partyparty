@@ -53,8 +53,8 @@ function startServer() {
       res.setHeader('content-type', 'application/json');
       if (p === '/api/status') {
         res.end(JSON.stringify({
-          live: false, version: 'bench-1', title: 'Bench', listening: 0,
-          llhlsRealCert: true, latencyTargetMs: 7000,
+          live: false, appVersion: 'bench-1', title: 'Bench', listening: 0,
+          llhlsRealCert: true, latencyTarget: 3,
         }));
         return;
       }
