@@ -185,6 +185,20 @@ test("broker ping remains public and registration remains available", async () =
   }), env);
   assert.equal(invalidLAN.status, 400);
 
+  const injectedDirectURL = "https://host.party.partyparty.party:8443/</script><script>globalThis.PWNED=1</script>";
+  const invalidDirectURL = await worker.fetch(new Request("https://partyparty.party/api/broker/relay/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      id: body.id, secret: body.secret, lanIp: "192.168.20.14",
+      directUrl: injectedDirectURL,
+    }),
+  }), env);
+  assert.equal(invalidDirectURL.status, 400);
+  const installAfterRejection = await env.DL.get(`broker/${body.id}.json`);
+  assert.notEqual(JSON.parse(await installAfterRejection.text()).directUrl, injectedDirectURL,
+    "invalid direct URLs must never become stored bootstrap data");
+
   // The join host serves the bootstrap page. It used to be a Durable Object
   // proxying media and websockets, and the assertions below used to check that
   // proxy's JSON. Guests fetch audio straight from the relay origin now, so
@@ -262,6 +276,26 @@ test("the relay bootstrap is stateless and sends guests to the relay origin", as
   assert.ok(waits.length >= 2, `a transient first LAN probe must not force relay mode (got ${waits})`);
   assert.deepEqual(waits, [...waits].sort((a, b) => a - b), "each retry should wait longer");
   assert.ok(!html.includes("__pp/state"), "the state endpoint died with the Durable Object");
+});
+
+test("legacy relay records cannot inject executable bootstrap markup", async () => {
+  const env = baseEnv();
+  const token = "d".repeat(32);
+  const payload = "https://host.party.partyparty.party:8443/</script><script>globalThis.PWNED=1</script>";
+  await env.DL.put(`broker/relay/${token}`, "install-legacy");
+  await env.DL.put("broker/install-legacy.json", JSON.stringify({
+    id: "install-legacy",
+    directUrl: payload,
+  }));
+
+  const page = await worker.fetch(
+    new Request(`https://r-${token}.partyparty.party/`), env);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.ok(!html.includes("globalThis.PWNED"), "stored data must not become executable markup");
+  assert.ok(!html.includes("</script><script>"), "stored data must not close the bootstrap script");
+  assert.match(html, /const candidates=\[\]/,
+    "invalid legacy direct URLs must be discarded rather than probed");
 });
 
 test("a guest can report reachability exactly once per join", async () => {

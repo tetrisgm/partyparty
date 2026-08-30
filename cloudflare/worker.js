@@ -260,6 +260,23 @@ async function ensureHostLabel(env, id, rec) {
 function machineHost(env, label) {
   return `${label}.party.${env.BROKER_BASE}`;
 }
+function normalizeDirectURL(env, value) {
+  const raw = String(value == null ? "" : value).trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    const suffix = `.party.${String(env.BROKER_BASE || "").toLowerCase()}`;
+    const hostname = parsed.hostname.toLowerCase();
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password ||
+        parsed.pathname !== "/" || parsed.search || parsed.hash ||
+        !hostname.endsWith(suffix)) return null;
+    const label = hostname.slice(0, -suffix.length);
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) return null;
+    return `${parsed.origin}/`;
+  } catch (_) {
+    return null;
+  }
+}
 async function cfDNS(env, method, suffix, body, zoneId) {
   const zone = zoneId || env.CF_ZONE_ID;
   const url = `https://api.cloudflare.com/client/v4/zones/${zone}/dns_records${suffix}`;
@@ -579,9 +596,13 @@ async function broker(request, env, pathname) {
     }
     // The bootstrap is stateless, so it reads the Mac's direct URL from here
     // rather than from a live socket the Mac used to hold open.
-    if (typeof body.directUrl === "string" && body.directUrl !== rec.directUrl) {
-      rec.directUrl = body.directUrl.slice(0, 300);
-      await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+    if (typeof body.directUrl === "string") {
+      const directUrl = normalizeDirectURL(env, body.directUrl);
+      if (directUrl === null) return jsonResp(400, { error: "bad direct URL" });
+      if (directUrl !== rec.directUrl) {
+        rec.directUrl = directUrl;
+        await env.DL.put(`broker/${id}.json`, JSON.stringify(rec));
+      }
     }
 
     // Pretty join name, minted once and kept for the install's lifetime. The
@@ -669,13 +690,21 @@ async function relayTokenExists(env, token) {
   }
 }
 
+function scriptJSON(value) {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (character) => ({
+    "<": "\\u003c",
+    ">": "\\u003e",
+    "&": "\\u0026",
+    "\u2028": "\\u2028",
+    "\u2029": "\\u2029"
+  })[character]);
+}
 function relayBootstrap(state) {
-  const directURL = JSON.stringify(String(state.directUrl || ""));
   const known = Array.isArray(state.directUrls) && state.directUrls.length
     ? state.directUrls
     : [String(state.directUrl || "")];
-  const directURLs = JSON.stringify(known.filter(Boolean).map(String));
-  const relayURL = JSON.stringify(String(state.relayUrl || ""));
+  const directURLs = scriptJSON(known.filter(Boolean).map(String));
+  const relayURL = scriptJSON(String(state.relayUrl || ""));
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -694,7 +723,6 @@ button{margin-top:22px;border:0;border-radius:999px;padding:12px 20px;background
 </head>
 <body><main><div class="spinner" aria-hidden="true"></div><h1>Checking this Wi-Fi</h1><p id="detail">Finding the fastest connection to the DJ.</p><button id="retry" hidden>Try Again</button></main>
 <script>
-const directURL=${directURL};
 // Every Mac currently playing this party, freshest first. The link's own Mac
 // leads while it is alive; the others are why the link still works after the
 // host packs up.
@@ -881,9 +909,9 @@ async function relayRoomRecord(env, token) {
     const raw = await env.DL.get(`broker/${id}.json`);
     if (!raw) return { directUrl: "", directUrls: [], relayUrl };
     const rec = JSON.parse(await raw.text());
-    const own = String(rec.directUrl || "");
+    const own = normalizeDirectURL(env, rec.directUrl);
     const directUrls = await partyDirectUrls(env, rec.partyId, own);
-    return { directUrl: own, directUrls, relayUrl };
+    return { directUrl: own || "", directUrls, relayUrl };
   } catch (e) {
     return { directUrl: "", directUrls: [], relayUrl };
   }
@@ -905,7 +933,7 @@ function partyMemberKey(partyId, installId) {
 async function partyDirectUrls(env, partyId, ownUrl) {
   const urls = [];
   const push = (url) => {
-    const clean = String(url || "").trim();
+    const clean = normalizeDirectURL(env, url);
     if (clean && !urls.includes(clean)) urls.push(clean);
   };
   if (!PARTY_ID_RE.test(String(partyId || ""))) {
