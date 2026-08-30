@@ -639,24 +639,6 @@ func (s *Store) SetMeta(title, host, starts string) error {
 	return nil
 }
 
-// ClearTitle removes the room's name.
-//
-// SetMeta cannot: it is a sparse update where "" means "leave this alone", so
-// every caller can send one field. Erasing needs to be asked for explicitly,
-// and exactly one thing asks - the reconcile that finds this room named after
-// a party the account no longer has.
-func (s *Store) ClearTitle() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.meta.Title = ""
-	if err := s.saveMetaLocked(); err != nil {
-		return err
-	}
-	s.saveIdentityLocked()
-	s.changed()
-	return nil
-}
-
 // SetSchedule stores structured event fields while Starts remains the compact,
 // human-readable line used by older clients and published replay pages.
 func (s *Store) SetSchedule(date, clock, place, starts string) error {
