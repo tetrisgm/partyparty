@@ -285,7 +285,6 @@ func (s *Srv) PageAssets() []contribute.Asset {
 		}
 	}
 	fromWeb("fonts/Geist-Variable.woff2", "font/woff2")
-	fromWeb("fonts/GeistMono-Variable.woff2", "font/woff2")
 	if s.Events != nil {
 		if avatar, ok := s.Events.AvatarPath(); ok {
 			if body, err := os.ReadFile(avatar); err == nil {

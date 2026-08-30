@@ -3,10 +3,23 @@ package server
 import (
 	"reflect"
 	"testing"
+	"testing/fstest"
 
 	"partyparty/internal/event"
 	"partyparty/internal/peers"
 )
+
+func TestPageAssetsPublishOnlyReferencedFonts(t *testing.T) {
+	web := fstest.MapFS{
+		"fonts/Geist-Variable.woff2":     {Data: []byte("sans")},
+		"fonts/GeistMono-Variable.woff2": {Data: []byte("unused mono")},
+	}
+	s := &Srv{srv: srv{Deps: Deps{Web: web}}}
+	assets := s.PageAssets()
+	if len(assets) != 1 || assets[0].Name != "fonts/Geist-Variable.woff2" {
+		t.Fatalf("published fixed web assets = %#v, want the one referenced font", assets)
+	}
+}
 
 func TestMergeRoomFeedQualifiesOwnersAndMedia(t *testing.T) {
 	remote := event.Post{
