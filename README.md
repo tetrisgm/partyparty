@@ -11,7 +11,10 @@ keep listening when Safari is backgrounded or the phone is locked.
   remain available in direct mode.
 - Guests need no account. Normal Wi-Fi and offline travel-router parties use
   the direct mode and need no internet.
-- The guest link is HTTPS and the stream is LL-HLS. There is no HTTP fallback.
+- The normal guest link is HTTPS and the stream is LL-HLS. A narrowly gated
+  HTTP emergency link exists only when there is no internet relay and the local
+  resolver is proven unable to resolve the secure hostname; locked-screen
+  playback is not promised on that degraded path.
 - iPhones use native HLS/AVPlayer. This is the only supported Apple playback
   engine because it is smooth and survives screen lock.
 - The venue provides Wi-Fi. PartyParty does not create a hotspot, captive portal,
