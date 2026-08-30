@@ -556,24 +556,9 @@ func (s *Store) use(dir string) error {
 			// click and an index would drop the wrong song.
 			case l.Op == "track-drop" && l.Track != nil:
 				want := cleanTrack(*l.Track)
-				kept := setlistTracks[:0]
-				for _, t := range setlistTracks {
-					if t.Title != want.Title || t.Artist != want.Artist {
-						kept = append(kept, t)
-					}
-				}
-				setlistTracks = kept
-				if currentTrack != nil && currentTrack.Title == want.Title &&
-					currentTrack.Artist == want.Artist {
-					currentTrack = nil
-				}
-				recentKept := recentTracks[:0]
-				for _, t := range recentTracks {
-					if t.Title != want.Title || t.Artist != want.Artist {
-						recentKept = append(recentKept, t)
-					}
-				}
-				recentTracks = recentKept
+				currentTrack, recentTracks, setlistTracks, _ = dropTrackState(
+					currentTrack, recentTracks, setlistTracks, want,
+				)
 			case l.Op == "thumb":
 				for _, p := range posts {
 					for i := range p.Media {
@@ -1561,7 +1546,6 @@ func (s *Store) writeSetlistLocked() error {
 	return os.Rename(tmp, path)
 }
 
-// TrackSnapshot returns copies of now-playing and the capped recent history.
 // DropTrack takes a song off the night's record.
 //
 // Recognition is a guess: it hears the bar's playlist between sets, or the
@@ -1575,29 +1559,59 @@ func (s *Store) DropTrack(title, artist string) error {
 	if want.Title == "" {
 		return nil
 	}
-	kept := s.setlistTracks[:0]
-	for _, t := range s.setlistTracks {
-		if t.Title != want.Title || t.Artist != want.Artist {
-			kept = append(kept, t)
-		}
-	}
-	s.setlistTracks = kept
-	recentKept := s.recentTracks[:0]
-	for _, t := range s.recentTracks {
-		if t.Title != want.Title || t.Artist != want.Artist {
-			recentKept = append(recentKept, t)
-		}
-	}
-	s.recentTracks = recentKept
-	if s.currentTrack != nil && s.currentTrack.Title == want.Title &&
-		s.currentTrack.Artist == want.Artist {
-		s.currentTrack = nil
+	current, recent, setlist, changed := dropTrackState(
+		s.currentTrack, s.recentTracks, s.setlistTracks, want,
+	)
+	if !changed {
+		return nil
 	}
 	if err := s.appendLine(line{Op: "track-drop", Track: &want, TS: time.Now().UnixMilli()}); err != nil {
 		return err
 	}
+	s.currentTrack, s.recentTracks, s.setlistTracks = current, recent, setlist
+	_ = s.writeSetlistLocked()
 	s.changed()
 	return nil
+}
+
+// dropTrackState is the one reducer for a track-drop journal line, used both
+// when the line is first recorded and when the journal is replayed. It builds
+// replacement slices before the caller commits them, so an append failure
+// cannot partly mutate the live store and removed tracks do not remain held in
+// a shortened slice's backing array.
+func dropTrackState(current *CurrentTrack, recent, setlist []CurrentTrack, want CurrentTrack) (
+	*CurrentTrack, []CurrentTrack, []CurrentTrack, bool,
+) {
+	nextRecent, recentChanged := withoutTrack(recent, want)
+	nextSetlist, setlistChanged := withoutTrack(setlist, want)
+	currentChanged := current != nil && sameTrack(*current, want)
+	if currentChanged {
+		current = nil
+	}
+	return current, nextRecent, nextSetlist, currentChanged || recentChanged || setlistChanged
+}
+
+func withoutTrack(tracks []CurrentTrack, want CurrentTrack) ([]CurrentTrack, bool) {
+	removed := 0
+	for _, tr := range tracks {
+		if sameTrack(tr, want) {
+			removed++
+		}
+	}
+	if removed == 0 {
+		return tracks, false
+	}
+	kept := make([]CurrentTrack, 0, len(tracks)-removed)
+	for _, tr := range tracks {
+		if !sameTrack(tr, want) {
+			kept = append(kept, tr)
+		}
+	}
+	return kept, true
+}
+
+func sameTrack(a, b CurrentTrack) bool {
+	return a.Title == b.Title && a.Artist == b.Artist
 }
 
 // Setlist is everything this room has played, oldest first.
@@ -1628,6 +1642,7 @@ func (s *Store) Setlist(limit int) []CurrentTrack {
 	return out
 }
 
+// TrackSnapshot returns copies of now-playing and the capped recent history.
 func (s *Store) TrackSnapshot() (*CurrentTrack, []CurrentTrack) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

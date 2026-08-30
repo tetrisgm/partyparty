@@ -3,9 +3,21 @@ package event
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+type trackStateSnapshot struct {
+	current *CurrentTrack
+	recent  []CurrentTrack
+	setlist []CurrentTrack
+}
+
+func snapshotTrackState(st *Store) trackStateSnapshot {
+	current, recent := st.TrackSnapshot()
+	return trackStateSnapshot{current: current, recent: recent, setlist: st.Setlist(0)}
+}
 
 func TestCurrentTrackRotatesRecentAndPersists(t *testing.T) {
 	dir := t.TempDir()
@@ -93,5 +105,99 @@ func TestRecognizedTrackDeduplicatesCatalogCallbacks(t *testing.T) {
 	if current == nil || current.MatchID != "shazam-1" ||
 		current.ArtworkURL != "https://example.com/art.jpg" || len(recent) != 0 {
 		t.Fatalf("current=%#v recent=%#v", current, recent)
+	}
+}
+
+func TestDropTrackCommitsBeforeMutationAndReplaysExactly(t *testing.T) {
+	base := t.TempDir()
+	st, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tr := range [][2]string{
+		{"First Tune", "One Artist"},
+		{"Wrong Guess", "Bar Playlist"},
+		{"Current Tune", "Three Artist"},
+	} {
+		if _, err := st.SetCurrentTrack(tr[0], tr[1], ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	beforeFailure := snapshotTrackState(st)
+	journal := dataPath(st.Dir(), "posts.jsonl")
+	savedJournal := journal + ".saved"
+	if err := os.Rename(journal, savedJournal); err != nil {
+		t.Fatal(err)
+	}
+	restored := false
+	t.Cleanup(func() {
+		if !restored {
+			_ = os.Remove(journal)
+			_ = os.Rename(savedJournal, journal)
+		}
+	})
+	if err := os.Mkdir(journal, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DropTrack("Wrong Guess", "Bar Playlist"); err == nil {
+		t.Fatal("DropTrack succeeded with an unavailable journal")
+	}
+	if afterFailure := snapshotTrackState(st); !reflect.DeepEqual(afterFailure, beforeFailure) {
+		t.Fatalf("failed drop changed live state:\n before = %#v\n after  = %#v", beforeFailure, afterFailure)
+	}
+	if err := os.Remove(journal); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(savedJournal, journal); err != nil {
+		t.Fatal(err)
+	}
+	restored = true
+
+	if err := st.DropTrack("Wrong Guess", "Bar Playlist"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DropTrack("Current Tune", "Three Artist"); err != nil {
+		t.Fatal(err)
+	}
+	want := trackStateSnapshot{
+		recent:  []CurrentTrack{beforeFailure.recent[1]},
+		setlist: []CurrentTrack{beforeFailure.setlist[0]},
+	}
+	if got := snapshotTrackState(st); !reflect.DeepEqual(got, want) {
+		t.Fatalf("live state after drops = %#v, want %#v", got, want)
+	}
+
+	setlist, err := os.ReadFile(dataPath(st.Dir(), "setlist.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(setlist)
+	if !strings.Contains(text, "One Artist - First Tune") ||
+		strings.Contains(text, "Wrong Guess") || strings.Contains(text, "Current Tune") {
+		t.Fatalf("setlist.txt was not refreshed after drops: %q", text)
+	}
+
+	journalBeforeNoop, err := os.Stat(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DropTrack("Never Played", "Nobody"); err != nil {
+		t.Fatal(err)
+	}
+	journalAfterNoop, err := os.Stat(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journalAfterNoop.Size() != journalBeforeNoop.Size() {
+		t.Fatalf("no-op drop grew journal from %d to %d bytes", journalBeforeNoop.Size(), journalAfterNoop.Size())
+	}
+
+	reopened, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshotTrackState(reopened); !reflect.DeepEqual(got, want) {
+		t.Fatalf("replayed state = %#v, want live state %#v", got, want)
 	}
 }
