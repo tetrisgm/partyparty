@@ -62,6 +62,8 @@ checkInlineScripts('web/dj.html');
 
 const listener = read('web/listener.html');
 const forbiddenDash = String.fromCodePoint(0x2014);
+assert.equal((listener.match(/feedList\.addEventListener\('keydown'/g) || []).length, 1,
+  'listener replies must have one delegated key handler');
 assert.match(listener, /const ROOM_TARGET_FALLBACK = 3\.0;/);
 
 const analyzer = read('scripts/analyze-session-log.mjs');
@@ -155,6 +157,8 @@ assert.match(listener, /data-web-fallback|dataset\.webFallback/);
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
 
 const dj = read('web/dj.html');
+assert.equal((dj.match(/list\.addEventListener\('keydown'/g) || []).length, 1,
+  'DJ replies must have one delegated key handler');
 const djIDs = new Set([...dj.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]));
 const djIDRefs = [...dj.matchAll(/\$\(["']([^"']+)["']\)/g)].map((match) => match[1]);
 assert.deepEqual(

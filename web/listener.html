@@ -3670,13 +3670,6 @@
           target.disabled = false;
         }
       });
-      feedList.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter') return;
-        const pid = e.target && e.target.dataset && e.target.dataset.cpost;
-        if (!pid) return;
-        const btn = feedList.querySelector('button[data-csend="' + pid + '"]');
-        if (btn) btn.click();
-      });
       let feedTag = '';
       async function pollFeed(force){
         if (!feedOn && !force) return false;
