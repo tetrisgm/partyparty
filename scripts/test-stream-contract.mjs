@@ -134,6 +134,10 @@ assert.match(listener, /renderIfChanged\(target, JSON\.stringify\(model\)/);
 assert.match(listener, /function serviceIconMarkup\(type\)/);
 assert.match(listener, /class="serviceicon"/);
 assert.match(listener, /renderIfChanged\(albumStrip, signature/);
+const placePostBlock = listener.match(/function placePost\(p\)\{[\s\S]*?\n      \}\n      feedList\.addEventListener\('error'/);
+assert.ok(placePostBlock, 'listener must retain its feed placement function');
+assert.doesNotMatch(placePostBlock[0], /renderAlbum\(/,
+  'feed batches must render the album once after all posts are placed');
 assert.match(listener, /sheetPlay\.dataset\.playState !== playState/);
 assert.match(listener, /let currentLinksSignature = '';/);
 assert.match(listener, /let currentTrackSignature = '';/);

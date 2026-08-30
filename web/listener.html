@@ -3566,7 +3566,6 @@
           if (active && (!featureOn('wallMode') || !featureOn('comments'))) {
             old.replaceWith(el);
             nodes.set(p.id, el);
-            renderAlbum(0);
             return;
           }
           if (active && document.activeElement === active) {
@@ -3592,7 +3591,6 @@
           feedList.insertBefore(el, before);
         }
         nodes.set(p.id, el);
-        renderAlbum(0);
       }
       feedList.addEventListener('error', (e) => {
         const img = e.target;
