@@ -1373,6 +1373,9 @@ func TestHeartbeatAndRoster(t *testing.T) {
 	if entry["latencyMs"] != 250.0 || entry["hasLatency"] != true {
 		t.Errorf("roster entry latency = %v/%v", entry["latencyMs"], entry["hasLatency"])
 	}
+	if entry["rate"] != 1.0 || entry["bufS"] != 3.5 {
+		t.Errorf("roster entry debug telemetry = rate %v/buffer %v", entry["rate"], entry["bufS"])
+	}
 	if entry["platform"] != "native" {
 		t.Errorf("roster entry platform = %v", entry["platform"])
 	}
@@ -1392,6 +1395,50 @@ func TestHeartbeatAndRoster(t *testing.T) {
 	lat, ok := body["latency"].(map[string]any)
 	if !ok || lat["count"] != 1.0 {
 		t.Errorf("latency spread = %v", body["latency"])
+	}
+}
+
+func TestHeartbeatHostileNumbersCannotPoisonStatusJSON(t *testing.T) {
+	env := newTestEnv(t, nil)
+	tests := []struct {
+		name   string
+		values string
+	}{
+		{name: "nan", values: "lat=NaN&rate=NaN&buf=NaN"},
+		{name: "positive-infinity", values: "lat=Inf&rate=Inf&buf=Inf"},
+		{name: "negative", values: "lat=-1&rate=-1&buf=-1"},
+		{name: "implausibly-large", values: "lat=60001&rate=2.01&buf=30.1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := "/api/heartbeat?cid=hostile-" + tt.name + "&v=test&" + tt.values
+			if w := do(env.srv, http.MethodGet, path, "127.0.0.1:5000"); w.Code != http.StatusOK {
+				t.Fatalf("heartbeat = %d, body %q", w.Code, w.Body.String())
+			}
+		})
+	}
+
+	w := do(env.srv, http.MethodGet, "/api/status", djAddr)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status after hostile heartbeats = %d, body %q", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	roster, ok := body["roster"].([]any)
+	if !ok || len(roster) != len(tests) {
+		t.Fatalf("roster = %#v, want %d safely recorded listeners", body["roster"], len(tests))
+	}
+	for _, raw := range roster {
+		entry := raw.(map[string]any)
+		if entry["hasLatency"] != false {
+			t.Errorf("hostile latency was retained: %#v", entry)
+		}
+		if _, exists := entry["rate"]; exists {
+			t.Errorf("hostile playback rate was retained: %#v", entry)
+		}
+		if _, exists := entry["bufS"]; exists {
+			t.Errorf("hostile buffer was retained: %#v", entry)
+		}
 	}
 }
 

@@ -855,12 +855,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		if key == "" {
 			key = clientIP(r)
 		}
-		lat, hasLat := 0.0, false
-		if v := q.Get("lat"); v != "" {
-			if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
-				lat, hasLat = f, true
-			}
-		}
+		lat, hasLat := parseHeartbeatFloat(q.Get("lat"), maxHeartbeatLatencyMs)
 		if q.Get("v") == "" {
 			// Legacy zombie tab: every page since 0.13 sends its version, but
 			// pages older than the self-refresh mechanism heartbeat FOREVER
@@ -876,8 +871,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Listeners.Heartbeat(key, q.Get("stalled") == "1", q.Get("paused") == "1", lat, hasLat, q.Get("plat"))
 		s.Listeners.Selection(key, clipStr(strings.TrimSpace(q.Get("dj")), 160))
-		rate, _ := strconv.ParseFloat(q.Get("rate"), 64)
-		buf, _ := strconv.ParseFloat(q.Get("buf"), 64)
+		rate, _ := parseHeartbeatFloat(q.Get("rate"), maxHeartbeatPlaybackRate)
+		buf, _ := parseHeartbeatFloat(q.Get("buf"), maxHeartbeatBufferSeconds)
 		s.Listeners.Debug(key, rate, buf)
 		s.Listeners.Meta(key, clientIP(r), s.friendlyName(clientIP(r), r.UserAgent()))
 		s.Listeners.Identity(key, clipStr(strings.TrimSpace(q.Get("name")), 40), clipStr(strings.TrimSpace(q.Get("emoji")), 16))
@@ -1490,6 +1485,27 @@ func writeJSONGzip(w http.ResponseWriter, r *http.Request, status int, v any) {
 func kbps(bitrate string) int {
 	n, _ := strconv.Atoi(strings.TrimSuffix(bitrate, "k"))
 	return n
+}
+
+const (
+	// The player only publishes a PDT latency below 60 seconds. The fixed
+	// 48 x 500ms playlist retains 24 seconds, so 30 seconds leaves headroom for
+	// buffer-range rounding. Playback is fixed at 1x; 2x still accommodates old
+	// controller diagnostics without admitting nonsensical telemetry.
+	maxHeartbeatLatencyMs     = 60 * 1000
+	maxHeartbeatBufferSeconds = 30
+	maxHeartbeatPlaybackRate  = 2
+)
+
+// parseHeartbeatFloat accepts only finite, non-negative telemetry inside the
+// field's physical range. Comparisons on NaN are false, which makes the single
+// inclusive-range test reject it along with infinities and outliers.
+func parseHeartbeatFloat(value string, max float64) (float64, bool) {
+	f, err := strconv.ParseFloat(value, 64)
+	if err == nil && f >= 0 && f <= max {
+		return f, true
+	}
+	return 0, false
 }
 
 // parseDurSeconds parses "500ms" / "1s" / "800ms" into seconds.
