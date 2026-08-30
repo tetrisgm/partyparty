@@ -153,6 +153,24 @@ try {
   // Hydration has to land before saves arm, exactly as in production.
   await page.waitForFunction(() => window.ppProfileHydrated === true, null, { timeout: 10000 });
 
+  // Parse the design tokens and press rule in a browser. Source regexes did
+  // not catch either a missing custom-property semicolon or a dangling
+  // selector comma, even though both invalidated visible console CSS.
+  assert.equal(await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--tray').trim()), '4px',
+  'the root design-token block did not parse through --tray');
+  const settings = page.locator('#settingsBtn');
+  const settingsBox = await settings.boundingBox();
+  assert.ok(settingsBox, 'the settings control is not visible for press-state verification');
+  await page.mouse.move(settingsBox.x + settingsBox.width / 2, settingsBox.y + settingsBox.height / 2);
+  await page.mouse.down();
+  const pressedTransform = await settings.evaluate((button) => getComputedStyle(button).transform);
+  // Release away from the button so this style assertion does not open the
+  // settings sheet and interfere with the save behavior exercised below.
+  await page.mouse.move(1, 1);
+  await page.mouse.up();
+  assert.notEqual(pressedTransform, 'none', 'the shared active-state selector did not parse');
+
   // Type a name and a bio, then blur - the console's own save path.
   await page.fill('#profileName', 'DJ Luna');
   await page.fill('#profileBio', 'House music and bright rooms.');

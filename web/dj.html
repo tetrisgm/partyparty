@@ -18,7 +18,7 @@
     --success:#34c759; --warn:#ff9500; --danger:#ff3b30;
     --glass-bg:rgba(14,14,16,.78);
     --shadow:0 18px 50px rgba(0,0,0,.24), 0 1px 0 rgba(255,255,255,.04) inset;
-    --r-sm:10px; --r-md:14px; --r-pill:980px
+    --r-sm:10px; --r-md:14px; --r-pill:980px;
     /* ---- Design system -------------------------------------------------
        The console had ten unrelated corner radii, six ad-hoc shadows (one of
        them invisible on this background) and a single `ease` curve. None of
@@ -575,6 +575,7 @@
   button.go:active,button.ghost:active,.golive.go:active,.iconbtn:active,
   .cover-action:active,.cardx:active,button.action-folder:active,
   .fieldedit:active,.detailsbtn:active,.wreplybtn:active,.pdel:active,
+  .requestactions button:active{transform:scale(.97);transition-duration:60ms}
 
   @media (prefers-reduced-motion:reduce){
     /* Reduced motion means a gentler equivalent, not silence. Drop travel and
