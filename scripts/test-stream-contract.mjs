@@ -59,6 +59,7 @@ checkNesting('web/wall.html');
 
 checkInlineScripts('web/listener.html');
 checkInlineScripts('web/dj.html');
+checkInlineScripts('web/wall.html');
 
 const listener = read('web/listener.html');
 const forbiddenDash = String.fromCodePoint(0x2014);
@@ -162,6 +163,14 @@ assert.match(listener, /mediaSessionMetadataSignature/);
 assert.doesNotMatch(listener, /venmo/i);
 assert.match(listener, /data-web-fallback|dataset\.webFallback/);
 assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|untracked-reconnect|forceHlsOnApple|beginAlignedAudible|alignOnce|sync-failed|sync-watchdog|mode=aggressive/);
+
+const wall = read('web/wall.html');
+assert.match(wall, /const STATUS_POLL_TIMEOUT_MS = 8000;/);
+assert.match(wall, /const FEED_POLL_TIMEOUT_MS = 30000;/);
+assert.match(wall, /if \(!statusPollPromise\)/);
+assert.match(wall, /headers\['If-None-Match'\] = feedTag;/);
+assert.equal((wall.match(/\$\('collage'\)\.addEventListener\('error'/g) || []).length, 1,
+  'the wall collage must have one delegated media error handler');
 
 const dj = read('web/dj.html');
 assert.equal((dj.match(/list\.addEventListener\('keydown'/g) || []).length, 1,

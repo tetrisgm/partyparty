@@ -9,9 +9,8 @@
   :root{
     color-scheme:dark;
     --sans:-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
-    --bg:#050509; --panel:rgba(22,22,30,.76); --panel-strong:rgba(255,255,255,.11);
-    --label:#f5f5f7; --label-secondary:rgba(245,245,247,.72); --label-tertiary:rgba(245,245,247,.48);
-    --separator:rgba(255,255,255,.13); --accent:#ff2d55; --success:#34c759;
+    --panel:rgba(22,22,30,.76); --label:#f5f5f7; --label-secondary:rgba(245,245,247,.72);
+    --separator:rgba(255,255,255,.13); --accent:#ff2d55;
   }
   *{box-sizing:border-box}
   [hidden]{display:none!important}
@@ -95,7 +94,7 @@
         <div class="url" id="joinUrl"></div>
       </section>
       <section class="statbox">
-        <div class="metric"><b id="listenerCount">0</b><span id="listenerLabel">listening</span></div>
+        <div class="metric"><b id="listenerCount">0</b><span>listening</span></div>
       </section>
       <section class="now">
         <small>Now playing</small>
@@ -129,15 +128,21 @@
     const MAX_MEDIA = 28;
     const MAX_TILES = 18;
     const MAX_BURSTS = 18;
+    const STATUS_POLL_TIMEOUT_MS = 8000;
+    const FEED_POLL_TIMEOUT_MS = 30000;
     const reactionDefs = [
       ['fire', '🔥'], ['heart', '❤️'], ['louder', '🔊'], ['quieter', '🔉'],
       ['rewind', '⏪'], ['id', '❓'], ['more', '✨']
     ];
     const media = new Map();
     const tiles = [];
-    let newestAct = 0, feedOn = false, curDir = '', qrText = '', wallOn = true;
+    let newestAct = 0, feedOn = false, feedTag = '', curDir = '', qrSignature = '';
     let relayVideosUnavailable = /^r-[a-f0-9]{32}\.partyparty\.party$/i.test(location.hostname);
     let lastStatusOK = 0;
+    let statusPollPromise = null;
+    let linkPromptSignature = '';
+    let reactionsSignature = '';
+    let collageSignature = '';
     const lastBurstAt = new Map();
 
     function esc(s){
@@ -146,23 +151,23 @@
     function featureOn(features, name, def){
       return Object.prototype.hasOwnProperty.call(features || {}, name) ? features[name] !== false : def;
     }
-    function partyName(data){
-      const title = data && data.title || '';
-      const host = data && data.host || '';
-      return title || host || 'PartyParty';
+    function setText(target, value){
+      const next = String(value == null ? '' : value);
+      if (target.textContent !== next) target.textContent = next;
     }
     function setWallEnabled(on){
-      wallOn = on;
       $('wall').hidden = !on;
       $('offState').hidden = on;
     }
     function renderQR(text){
-      if (!text || text === qrText || typeof QRCode === 'undefined') return;
-      qrText = text;
-      $('qr').innerHTML = '';
-      new QRCode($('qr'), { text, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
+      const signature = JSON.stringify([text || '', typeof QRCode !== 'undefined']);
+      if (signature === qrSignature) return;
+      qrSignature = signature;
+      const target = $('qr');
+      target.innerHTML = '';
+      if (!text || typeof QRCode === 'undefined') return;
+      new QRCode(target, { text, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
     }
-    const tipTypes = new Set();
     function safeHTTP(url){
       try {
         const u = new URL(url);
@@ -171,13 +176,17 @@
     }
     function primaryDJLink(links){
       const list = Array.isArray(links) ? links : [];
-      return list.find(l => l && safeHTTP(l.url) && !tipTypes.has(l.type)) ||
-        list.find(l => l && safeHTTP(l.url)) ||
-        null;
+      return list.find(l => l && safeHTTP(l.url)) || null;
     }
     function renderLinkPrompt(links){
       const link = primaryDJLink(links);
       const href = safeHTTP(link && link.url);
+      const label = link && link.type === 'instagram' ? 'Instagram' :
+        link && link.type === 'soundcloud' ? 'SoundCloud' :
+        'DJ link';
+      const signature = JSON.stringify([href, label, typeof QRCode !== 'undefined']);
+      if (signature === linkPromptSignature) return;
+      linkPromptSignature = signature;
       if (!href) {
         $('linkPrompt').hidden = true;
         $('linkPrompt').textContent = '';
@@ -189,9 +198,7 @@
       prompt.appendChild(document.createTextNode('Follow the DJ → '));
       const a = document.createElement('a');
       a.href = href; a.target = '_blank'; a.rel = 'noopener';
-      a.textContent = link.type === 'instagram' ? 'Instagram' :
-        link.type === 'soundcloud' ? 'SoundCloud' :
-        'DJ link';
+      a.textContent = label;
       prompt.appendChild(a);
       if (typeof QRCode !== 'undefined') {
         const q = document.createElement('div');
@@ -203,17 +210,18 @@
     function updateIdentity(data){
       const title = data.title || 'PartyParty';
       const host = data.host || 'the DJ';
-      $('eventTitle').textContent = title;
-      $('joinName').textContent = title || host;
-      $('hostLine').textContent = host + ' is hosting';
-      document.title = (title || 'PartyParty') + ' wall';
+      setText($('eventTitle'), title);
+      setText($('joinName'), title || host);
+      setText($('hostLine'), host + ' is hosting');
+      const pageTitle = (title || 'PartyParty') + ' wall';
+      if (document.title !== pageTitle) document.title = pageTitle;
     }
     function renderNowPlaying(data){
       const track = data && data.nowPlaying;
       if (track && track.title) {
-        $('nowPlaying').textContent = track.artist ? track.title + ' - ' + track.artist : track.title;
+        setText($('nowPlaying'), track.artist ? track.title + ' - ' + track.artist : track.title);
       } else {
-        $('nowPlaying').textContent = 'Live';
+        setText($('nowPlaying'), 'Live');
       }
     }
     function renderStatus(s){
@@ -229,22 +237,32 @@
       setWallEnabled(featureOn(event.features || {}, 'wallMode', true));
       updateIdentity({ title: event.title || s.name, host: event.host || 'the DJ' });
       const count = Number(s.listeners || 0);
-      $('listenerCount').textContent = String(count);
-      $('listenerLabel').textContent = count === 1 ? 'listening' : 'listening';
+      setText($('listenerCount'), count);
       const guestUrl = s.urls && (s.urls.join || (!s.connection && s.urls.primary)) || '';
-      $('joinUrl').textContent = guestUrl;
+      setText($('joinUrl'), guestUrl);
       renderQR(guestUrl);
       const state = s.broadcast && s.broadcast.state || 'idle';
-      $('livePill').textContent = state === 'live' ? 'Live now' : state === 'starting' ? 'Starting' : 'Ready';
+      setText($('livePill'), state === 'live' ? 'Live now' : state === 'starting' ? 'Starting' : 'Ready');
       $('livePill').classList.toggle('live', state === 'live' || state === 'starting');
       renderLinkPrompt(event.links || []);
     }
     async function pollStatus(){
+      if (!statusPollPromise) {
+        statusPollPromise = fetchStatus().finally(() => { statusPollPromise = null; });
+      }
+      return statusPollPromise;
+    }
+    async function fetchStatus(){
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), STATUS_POLL_TIMEOUT_MS);
       try {
-        const r = await fetch('/api/status', { cache: 'no-store' });
+        const r = await fetch('/api/status', { cache: 'no-store', signal: controller.signal });
         if (!r.ok) return;
         renderStatus(await r.json());
-      } catch (e) {}
+      } catch (e) {
+      } finally {
+        clearTimeout(timer);
+      }
     }
     function mediaSource(m){
       const src = '/media/' + encodeURIComponent(m.id);
@@ -298,6 +316,11 @@
     function renderCollage(){
       const items = [...media.values()].sort((a, b) => (b.act - a.act) || (b.ts - a.ts)).slice(0, MAX_TILES);
       const collage = $('collage');
+      const signature = items.length
+        ? JSON.stringify(items.map(item => [item.key, item.src, item.fallback, item.type, item.author]))
+        : 'empty:' + (relayVideosUnavailable ? 'relay' : 'direct');
+      if (signature === collageSignature) return;
+      collageSignature = signature;
       if (!items.length) {
         ensureTiles(0);
         collage.innerHTML = relayVideosUnavailable
@@ -311,10 +334,10 @@
       items.forEach((item, i) => {
         const el = tiles[i];
         const cls = tileClass(i) + ' show';
-        if (el.dataset.key !== item.key || el.dataset.src !== item.src) {
+        const itemSignature = JSON.stringify([item.key, item.src, item.fallback, item.type, item.author]);
+        if (el.dataset.signature !== itemSignature) {
           el.className = tileClass(i);
-          el.dataset.key = item.key;
-          el.dataset.src = item.src;
+          el.dataset.signature = itemSignature;
           const art = item.src
             ? '<img src="' + esc(item.src) + '" data-fallback="' + esc(item.fallback) + '" loading="lazy" alt="">'
             : '<div class="poster">▶</div>';
@@ -339,18 +362,25 @@
     function renderReactions(features, counts, spikes){
       const on = featureOn(features || {}, 'reactions', false);
       const bar = $('reactBar');
+      counts = counts || {};
+      const values = reactionDefs.map(([key, glyph]) => [key, glyph, Number(counts[key] || 0)]);
+      const signature = on ? JSON.stringify(values.map(([key, , n]) => [key, n])) : 'off';
       if (!on) {
-        bar.hidden = true;
-        bar.innerHTML = '';
+        if (signature !== reactionsSignature) {
+          reactionsSignature = signature;
+          bar.hidden = true;
+          bar.innerHTML = '';
+        }
         return;
       }
-      counts = counts || {};
       spikes = spikes || {};
-      bar.hidden = false;
-      bar.innerHTML = reactionDefs.map(([key, glyph]) => {
-        const n = Number(counts[key] || 0);
-        return '<div class="react' + (n ? ' hot' : '') + '">' + glyph + ' ' + n + '</div>';
-      }).join('');
+      if (signature !== reactionsSignature) {
+        reactionsSignature = signature;
+        bar.hidden = false;
+        bar.innerHTML = values.map(([, glyph, n]) =>
+          '<div class="react' + (n ? ' hot' : '') + '">' + glyph + ' ' + n + '</div>'
+        ).join('');
+      }
       const now = Date.now();
       for (const [key, glyph] of reactionDefs) {
         const n = Number(spikes[key] || 0);
@@ -398,13 +428,20 @@
     }
     async function pollFeed(force){
       if (!feedOn && !force) return false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), FEED_POLL_TIMEOUT_MS);
       try {
-        const r = await fetch('/api/feed?guest=1&since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store' });
+        const headers = {};
+        if (feedOn && feedTag) headers['If-None-Match'] = feedTag;
+        const r = await fetch('/api/feed?guest=1&since=' + newestAct + (feedOn ? '&wait=1' : ''), {
+          cache: 'no-store', headers, signal: controller.signal
+        });
         if (r.status === 404) {
           renderCollage();
           return false;
         }
         if (!r.ok) return false;
+        feedTag = r.headers.get('ETag') || feedTag;
         const data = await r.json();
         if (!feedOn) feedOn = true;
         renderFeed(data);
@@ -412,17 +449,24 @@
       } catch (e) {
         renderCollage();
         return false;
+      } finally {
+        clearTimeout(timer);
       }
     }
     setInterval(pollStatus, 5000);
     setInterval(() => {
-      if (lastStatusOK && Date.now() - lastStatusOK > 30000) $('livePill').textContent = 'Reconnecting';
+      if (lastStatusOK && Date.now() - lastStatusOK > 30000) setText($('livePill'), 'Reconnecting');
     }, 5000);
     pollStatus();
     (async () => {
+      let instant = 0;
       for (;;) {
+        const started = Date.now();
         const ok = await pollFeed(!feedOn);
-        await new Promise(r => setTimeout(r, ok && feedOn ? 150 : 5000));
+        const tookMs = Date.now() - started;
+        instant = (ok && feedOn && tookMs < 500) ? instant + 1 : 0;
+        const breather = !ok || !feedOn ? 5000 : (instant >= 4 ? 2000 : 150);
+        await new Promise(r => setTimeout(r, breather));
       }
     })();
   </script>
