@@ -81,6 +81,9 @@ assert.doesNotMatch(listener, /OUTLIER_MAX_REATTACHES/);
 assert.match(listener, /outlierCooldownMs = OUTLIER_COOLDOWN_MS; \/\/ on target/);
 assert.match(listener, /logEvent\('outlier-reattach'/);
 assert.match(listener, /document\.visibilityState !== 'visible'/);
+assert.match(listener, /const STATUS_POLL_TIMEOUT_MS = 8000;/);
+assert.match(listener, /if \(!statusPollPromise\)/);
+assert.match(listener, /signal: controller\.signal/);
 // The DJ picker still opens the wall, but the "Party feed" heading above the
 // photos was redundant and is gone for good.
 assert.match(listener, /<div class="djpickerhead" id="djPickerHead">1 DJ now playing<\/div>[\s\S]*?<section class="album" id="albumSec"/);
