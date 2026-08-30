@@ -52,19 +52,11 @@ func (s *Store) MergeRemotePost(id, author, text string, tsMs int64) (bool, erro
 	post := &Post{
 		ID:     id,
 		TS:     tsMs,
-		Act:    tsMs,
 		Author: clip(author, 40),
 		Text:   text,
 		State:  StateApproved,
 	}
-	// The feed cursor is Act, and a post that lands with an older stamp than
-	// the newest one already here would be skipped by every client that has
-	// already read past it. Keep it monotonic instead of silently invisible.
-	if len(s.posts) > 0 {
-		if newest := s.posts[len(s.posts)-1].Act; post.Act <= newest {
-			post.Act = newest + 1
-		}
-	}
+	post.Act = s.nextActivityLocked(tsMs)
 	if err := s.appendLine(line{Op: "post", Post: post}); err != nil {
 		return false, err
 	}

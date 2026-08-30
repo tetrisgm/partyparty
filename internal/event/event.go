@@ -298,6 +298,7 @@ type Store struct {
 	recapPending  bool
 	meta          Meta
 	posts         []*Post
+	lastActivity  int64
 	byID          map[string]*Post
 	guests        map[string]*Guest // cid -> guest - PRIVATE, never in feed responses
 	reactions     map[string]*reactionCounter
@@ -437,6 +438,19 @@ func (s *Store) Wait() <-chan struct{} {
 	return s.notify
 }
 
+// nextActivityLocked advances the feed's store-wide logical clock. Wall-clock
+// milliseconds are not unique, and remote posts can carry clocks ahead of this
+// Mac; using either value directly lets a later mutation fall at or behind a
+// cursor a client has already consumed. Display timestamps remain real time,
+// while Act is the strictly increasing synchronization token.
+func (s *Store) nextActivityLocked(preferred int64) int64 {
+	if preferred <= s.lastActivity {
+		preferred = s.lastActivity + 1
+	}
+	s.lastActivity = preferred
+	return preferred
+}
+
 // use switches the store to dir, creating the layout and replaying the journal.
 func (s *Store) use(dir string) error {
 	for _, sub := range []string{"", ".state", filepath.Join(".state", "thumbs")} {
@@ -483,8 +497,12 @@ func (s *Store) use(dir string) error {
 					c.CID = l.CID
 					c.State = normalizeState(c.State)
 					p.Comments = append(p.Comments, c)
-					if p.Act < c.TS {
-						p.Act = c.TS
+					activity := c.TS
+					if l.TS > activity {
+						activity = l.TS
+					}
+					if p.Act < activity {
+						p.Act = activity
 					}
 				}
 			case l.Op == "comment-delete":
@@ -587,8 +605,14 @@ func (s *Store) use(dir string) error {
 	meta.Features = normalizeFeatures(meta.Features)
 	meta.Links, _ = normalizeLinks(meta.Links)
 	meta.Cover = normalizeCoverRef(meta.Cover)
+	var lastActivity int64
+	for _, p := range posts {
+		if p.Act > lastActivity {
+			lastActivity = p.Act
+		}
+	}
 	s.mu.Lock()
-	s.dir, s.posts, s.byID, s.guests, s.meta, s.reactions = dir, posts, byID, guests, meta, newReactionCounters()
+	s.dir, s.posts, s.lastActivity, s.byID, s.guests, s.meta, s.reactions = dir, posts, lastActivity, byID, guests, meta, newReactionCounters()
 	s.currentTrack, s.recentTracks, s.setlistTracks, s.trackAsks = currentTrack, recentTracks, setlistTracks, nil
 	_ = s.writeSetlistLocked()
 	s.mu.Unlock()
@@ -1149,15 +1173,13 @@ func (s *Store) SetMediaThumb(mediaID string) error {
 	if len(hits) == 0 {
 		return nil
 	}
-	now := time.Now().UnixMilli()
-	if err := s.appendLine(line{Op: "thumb", MediaID: mediaID, Thumb: thumb, TS: now}); err != nil {
+	activity := s.nextActivityLocked(time.Now().UnixMilli())
+	if err := s.appendLine(line{Op: "thumb", MediaID: mediaID, Thumb: thumb, TS: activity}); err != nil {
 		return err
 	}
 	for _, h := range hits {
 		h.p.Media[h.i].Thumb = thumb
-		if h.p.Act < now {
-			h.p.Act = now
-		}
+		h.p.Act = activity
 	}
 	s.changed()
 	return nil
@@ -1203,8 +1225,8 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 	defer s.mu.Unlock()
 	// Stamp UNDER the lock: stamping outside let two concurrent posts journal
 	// out of timestamp order, and a client cursor could then skip one forever.
-	now := time.Now().UnixMilli()
-	p.TS, p.Act = now, now
+	p.TS = time.Now().UnixMilli()
+	p.Act = s.nextActivityLocked(p.TS)
 	if dj {
 		p.State = StateApproved
 	} else {
@@ -1244,29 +1266,25 @@ func (s *Store) AddComment(postID, cid, author, emoji, text string, dj bool) (*C
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c.TS = time.Now().UnixMilli() // under the lock - keeps Act monotonic across clients
 	p, ok := s.byID[postID]
 	if !ok || p.Deleted {
 		return nil, errors.New("no such post")
 	}
-	if c.TS <= p.Act {
-		c.TS = p.Act + 1
-	}
 	if len(p.Comments) >= 500 {
 		return nil, errors.New("comment limit reached")
 	}
+	c.TS = time.Now().UnixMilli()
+	activity := s.nextActivityLocked(c.TS)
 	if dj {
 		c.State = StateApproved
 	} else {
 		c.State = StateApproved
 	}
-	if err := s.appendLine(line{Op: "comment", ID: postID, CID: cid, Comment: c}); err != nil {
+	if err := s.appendLine(line{Op: "comment", ID: postID, CID: cid, Comment: c, TS: activity}); err != nil {
 		return nil, err
 	}
 	p.Comments = append(p.Comments, *c)
-	if p.Act < c.TS {
-		p.Act = c.TS
-	}
+	p.Act = activity
 	s.changed()
 	return c, nil
 }
@@ -1284,10 +1302,7 @@ func (s *Store) AddPostReaction(postID, reaction string) error {
 	if !ok || p.Deleted {
 		return errors.New("no such post")
 	}
-	now := time.Now().UnixMilli()
-	if now <= p.Act {
-		now = p.Act + 1
-	}
+	now := s.nextActivityLocked(time.Now().UnixMilli())
 	if err := s.appendLine(line{Op: "post-reaction", ID: postID, Reaction: reaction, TS: now}); err != nil {
 		return err
 	}
@@ -1311,10 +1326,7 @@ func (s *Store) SetPostState(id, state string) error {
 	if !ok || p.Deleted {
 		return errors.New("no such post")
 	}
-	now := time.Now().UnixMilli()
-	if now <= p.Act {
-		now = p.Act + 1
-	}
+	now := s.nextActivityLocked(time.Now().UnixMilli())
 	if err := s.appendLine(line{Op: "mod", ID: id, State: state, TS: now}); err != nil {
 		return err
 	}
@@ -1345,10 +1357,7 @@ func (s *Store) SetCommentState(postID, commentID, state string) error {
 	if idx < 0 {
 		return errors.New("no such comment")
 	}
-	now := time.Now().UnixMilli()
-	if now <= p.Act {
-		now = p.Act + 1
-	}
+	now := s.nextActivityLocked(time.Now().UnixMilli())
 	if err := s.appendLine(line{Op: "mod", ID: postID, CommentID: commentID, State: state, TS: now}); err != nil {
 		return err
 	}
@@ -1377,10 +1386,7 @@ func (s *Store) DeleteComment(postID, commentID string) error {
 	if idx < 0 {
 		return errors.New("no such comment")
 	}
-	now := time.Now().UnixMilli()
-	if now <= p.Act {
-		now = p.Act + 1
-	}
+	now := s.nextActivityLocked(time.Now().UnixMilli())
 	if err := s.appendLine(line{Op: "comment-delete", ID: postID, CommentID: commentID, TS: now}); err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package event
 import (
 	"regexp"
 	"testing"
+	"time"
 )
 
 func TestCloudPostIDIsStableSoARetryIsARetry(t *testing.T) {
@@ -16,6 +17,49 @@ func TestCloudPostIDIsStableSoARetryIsARetry(t *testing.T) {
 	}
 	if CloudPostID("abcdef0123456789", 1754500000000) == CloudPostID("0123456789abcdef", 1754500000000) {
 		t.Fatal("two different posts must not share an id")
+	}
+}
+
+func TestActivityCursorSurvivesRemoteClockSkewAndReload(t *testing.T) {
+	base := t.TempDir()
+	store, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(time.Hour).UnixMilli()
+	added, err := store.MergeRemotePost("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "Remote", "future", future)
+	if err != nil || !added {
+		t.Fatalf("MergeRemotePost = (%v, %v), want added", added, err)
+	}
+	local, err := store.AddPost("cid", "Local", "", "after remote", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.Act <= future {
+		t.Fatalf("local activity %d did not advance past remote cursor %d", local.Act, future)
+	}
+	if _, err := store.AddComment(local.ID, "other", "Guest", "", "still here", false); err != nil {
+		t.Fatal(err)
+	}
+	updated, _, _, cursor := store.FeedFor(local.Act, "", true)
+	if len(updated) != 1 || updated[0].ID != local.ID || cursor <= local.Act {
+		t.Fatalf("comment after skew = posts %#v, cursor %d; want %s after %d", updated, cursor, local.ID, local.Act)
+	}
+
+	reloaded, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, _, _, replayedCursor := reloaded.FeedFor(local.Act, "", true)
+	if len(replayed) != 1 || replayed[0].ID != local.ID || replayedCursor != cursor {
+		t.Fatalf("replayed activity = posts %#v, cursor %d; want %s at %d", replayed, replayedCursor, local.ID, cursor)
+	}
+	next, err := reloaded.AddPost("cid", "Local", "", "after reload", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Act <= cursor {
+		t.Fatalf("post-reload activity %d did not advance past cursor %d", next.Act, cursor)
 	}
 }
 
