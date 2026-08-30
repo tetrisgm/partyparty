@@ -43,8 +43,10 @@ network configuration, or weakens the permission floor.
 
 ## Worker
 
-The public Worker may serve the product website, the anonymous LAN
-hostname/certificate broker, the standalone beta download, the signed beta
-appcast, and an ephemeral live relay when venue Wi-Fi isolates guests from the
-Mac. The relay retains no party pages, audio, or posts, and never provides
-replays or a remote-listening product.
+The public Worker serves the product website, anonymous LAN
+hostname/certificate broker, relay registration and bootstrap, standalone beta
+download, and signed beta appcast. It never carries media. When venue Wi-Fi
+isolates guests, the Mac contributes one LL-HLS copy to `cmd/pporigin`, which
+keeps only a bounded active-room window and fans it out. Neither component
+creates a cloud party page, replay, recording archive, or remote-listening
+product.
