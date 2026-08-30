@@ -1,7 +1,11 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -211,6 +215,85 @@ func TestFailedProbeCannotDemoteProvenDirectRoom(t *testing.T) {
 	manager.applyProbe("network-1", false)
 	if got := manager.Snapshot().Mode; got != ModeDirect {
 		t.Fatalf("failed follow-up probe demoted direct room to %q", got)
+	}
+}
+
+func TestRegistrationHealthProbesReturnedOrigin(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var oldHits, newHits atomic.Int32
+	oldOrigin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		oldHits.Add(1)
+		http.Error(w, "old origin", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(oldOrigin.Close)
+	newOrigin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		newHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(newOrigin.Close)
+
+	manager := New(Config{})
+	oldRegistration := registration{RelayRegistration: activateRegistration(
+		"https://old.partyparty.party/", oldOrigin.URL, "network-old")}
+	manager.applyRegistration(oldRegistration)
+
+	next := registration{RelayRegistration: activateRegistration(
+		"https://new.partyparty.party/", newOrigin.URL, "network-new")}
+	manager.applyRegistrationWithOriginProbe(context.Background(), next)
+
+	if got := oldHits.Load(); got != 0 {
+		t.Fatalf("previous relay origin was probed %d times", got)
+	}
+	if got := newHits.Load(); got != 1 {
+		t.Fatalf("returned relay origin was probed %d times, want 1", got)
+	}
+	manager.mu.RLock()
+	down := manager.originDown
+	manager.mu.RUnlock()
+	if down {
+		t.Fatal("healthy returned relay origin was recorded down")
+	}
+}
+
+func TestStaleRegistrationHealthCannotOverwriteNewOrigin(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	oldOrigin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		http.Error(w, "old origin failed", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(oldOrigin.Close)
+
+	manager := New(Config{})
+	oldRegistration := registration{RelayRegistration: activateRegistration(
+		"https://old.partyparty.party/", oldOrigin.URL, "network-old")}
+	manager.applyRegistration(oldRegistration)
+	probeDone := make(chan struct{})
+	go func() {
+		manager.applyRegistrationWithOriginProbe(context.Background(), oldRegistration)
+		close(probeDone)
+	}()
+	<-started
+
+	newRegistration := registration{RelayRegistration: activateRegistration(
+		"https://new.partyparty.party/", "https://new-origin.partyparty.party", "network-new")}
+	manager.applyRegistration(newRegistration)
+	close(release)
+	<-probeDone
+
+	manager.mu.RLock()
+	gotRegistration := manager.reg
+	down := manager.originDown
+	manager.mu.RUnlock()
+	if !sameRegistration(gotRegistration, newRegistration) {
+		t.Fatalf("current registration = %+v, want newer %+v", gotRegistration, newRegistration)
+	}
+	if down {
+		t.Fatal("failed probe from old registration marked the newer origin down")
 	}
 }
 

@@ -409,3 +409,40 @@ func TestPushObserverCoversHybridReach(t *testing.T) {
 		t.Fatalf("reach did not persist: %q", m2.Reach())
 	}
 }
+
+func TestSetOverrideFlushesPushObserverOnceAfterUnlock(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var pushes []bool
+	var m *Manager
+	m = New(Config{OnPush: func(enabled bool) {
+		// Re-entering the manager proves SetOverride released its lock before
+		// delivering the notification.
+		_ = m.Snapshot()
+		pushes = append(pushes, enabled)
+	}})
+	m.SetDirectURL("https://disco.party.partyparty.party:8443/")
+	m.applyRegistration(registration{RelayRegistration: activateRegistration(
+		"https://r-room.partyparty.party/", "https://room.relay.partyparty.party", "net-1")})
+	m.applyProbe("net-1", true)
+	pushes = nil
+
+	m.SetOverride(OverrideRelay)
+	if len(pushes) != 1 || !pushes[0] {
+		t.Fatalf("relay override callbacks = %v, want exactly [true]", pushes)
+	}
+	if got := m.Snapshot(); got.Mode != ModeRelay || !got.PushWanted {
+		t.Fatalf("relay override status = %+v", got)
+	}
+
+	pushes = nil
+	m.SetOverride(OverrideRelay)
+	if len(pushes) != 0 {
+		t.Fatalf("no-op override fired callbacks: %v", pushes)
+	}
+
+	m.SetOverride(OverrideAuto)
+	if len(pushes) != 1 || pushes[0] {
+		t.Fatalf("automatic override callbacks = %v, want exactly [false]", pushes)
+	}
+}

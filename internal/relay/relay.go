@@ -196,6 +196,7 @@ func (m *Manager) SetOverride(value string) {
 	m.recomputeLocked()
 	m.mu.Unlock()
 	saveOverride(value)
+	m.flushModeChange()
 	m.signal(m.stateChanged)
 }
 
@@ -330,16 +331,6 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 			lanIP = currentIP
 			continue
 		}
-		// Registration succeeding proves the BROKER answers; it says nothing
-		// about the origin that would actually serve relayed guests. Probing it
-		// here keeps the room mode honest: a dead origin makes the mode say NO
-		// PATH instead of sending a room full of guests to a dead page. At most
-		// one small request per refresh cycle.
-		if err == nil {
-			if origin := m.currentRelayOrigin(); origin != "" {
-				m.setOriginDown(!probeOrigin(ctx, origin))
-			}
-		}
 		nextDelay := registrationRefreshInterval
 		if err != nil {
 			settled := m.noteRegistrationFailure()
@@ -356,11 +347,17 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 				m.noteRegistrationFailure()
 				nextDelay = 5 * time.Second
 			} else {
-				m.applyRegistration(registration{
+				next := registration{
 					RelayRegistration: registered,
 					InstallID:         id,
 					Secret:            secret,
-				})
+				}
+				// Registration succeeding proves the BROKER answers; it says
+				// nothing about the origin that would actually serve relayed
+				// guests. Probe the origin returned by this registration, not the
+				// previous registration, then associate the verdict with this exact
+				// state generation. At most one small request per refresh cycle.
+				m.applyRegistrationWithOriginProbe(ctx, next)
 				status := m.Snapshot()
 				if status.Mode == ModeChecking && status.Reason == ReasonAwaitingProbe {
 					nextDelay = 2 * time.Second
@@ -469,17 +466,33 @@ func (m *Manager) ApplyRegistrationForTest(joinURL, networkKey string) {
 	}})
 }
 
-// currentRelayOrigin reads the registered origin URL.
-func (m *Manager) currentRelayOrigin() string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.reg.RelayURL
+// applyRegistrationWithOriginProbe installs one broker response and checks the
+// relay origin returned by that same response.
+func (m *Manager) applyRegistrationWithOriginProbe(ctx context.Context, next registration) {
+	m.applyRegistration(next)
+	m.probeRegistrationOrigin(ctx, next)
 }
 
-// setOriginDown records whether the relay origin is answering, and re-derives
-// the mode when that changes.
-func (m *Manager) setOriginDown(down bool) {
+// probeRegistrationOrigin asks the origin returned by next whether it is alive.
+// The result is committed only if next is still the current registration: a
+// slower probe from an older refresh must not overwrite a newer origin's health.
+func (m *Manager) probeRegistrationOrigin(ctx context.Context, next registration) {
+	origin := strings.TrimSpace(next.RelayURL)
+	if origin == "" {
+		return
+	}
+	m.setOriginDownForRegistration(next, !probeOrigin(ctx, origin))
+}
+
+// setOriginDownForRegistration records whether one registered relay origin is
+// answering. The registration comparison and health update share the manager
+// lock, so a stale probe result cannot become the verdict for a newer room.
+func (m *Manager) setOriginDownForRegistration(probed registration, down bool) {
 	m.mu.Lock()
+	if !sameRegistration(m.reg, probed) {
+		m.mu.Unlock()
+		return
+	}
 	if m.originDown == down {
 		m.mu.Unlock()
 		return
@@ -489,6 +502,16 @@ func (m *Manager) setOriginDown(down bool) {
 	m.mu.Unlock()
 	m.flushModeChange()
 	m.signal(m.stateChanged)
+}
+
+func sameRegistration(a, b registration) bool {
+	return a.InstallID == b.InstallID &&
+		a.Secret == b.Secret &&
+		a.JoinURL == b.JoinURL &&
+		a.NetworkKey == b.NetworkKey &&
+		a.RelayURL == b.RelayURL &&
+		a.PublishToken == b.PublishToken &&
+		a.Room == b.Room
 }
 
 // probeOrigin asks the relay origin whether it is alive. One bounded GET of the
