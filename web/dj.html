@@ -188,12 +188,8 @@
   .wcmt b{font-weight:700}
   .wthumb{position:relative;display:inline-block}
   .wplay{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:var(--r-pill);background:rgba(0,0,0,.58);color:#fff;display:grid;place-items:center;font-size:15px;line-height:1}
-  .pubbtn.off{color:var(--label-tertiary);background:var(--fill);text-decoration:line-through}
-  .statebadge.pending{background:rgba(255,149,0,.16);color:#a15b00}
-  .statebadge.hidden{background:rgba(255,59,48,.12);color:var(--danger)}
   .modbtn{background:none;border:none;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;padding:2px 4px}
-  .modbtn.hide,.modbtn.remove{color:var(--danger)}
-  .moditem .txt{flex:1;min-width:0;color:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .modbtn.remove{color:var(--danger)}
   .pdel{background:none;border:none;color:var(--label-tertiary);font-size:11px;cursor:pointer;padding:2px 4px}
   .pdel:hover{color:var(--danger)}
   .reactionpanel{border:1px solid var(--separator);background:var(--bg-elevated-2);border-radius:var(--r-sm);padding:10px;margin:0 0 12px}
@@ -531,7 +527,6 @@
   button.action-folder{height:40px;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
     border-radius:var(--r-pill);padding:0 15px;background:var(--fill);color:var(--label-secondary);
     box-shadow:inset 0 0 0 1px var(--hairline)}
-  button.action-folder:hover{background:var(--fill-hover);color:var(--label)}
   button.action-folder:hover{background:#ff477f;color:#fff}
   .action-folder svg{width:16px;height:16px;display:block}
   .fieldedit{width:26px;height:26px;padding:0;margin-left:5px;border-radius:50%;background:transparent;color:var(--label-secondary);vertical-align:middle;display:inline-grid;place-items:center}
@@ -1104,7 +1099,6 @@
       <div class="reactiongrid" id="djReactionGrid"></div>
       <div class="spikeline" id="djReactionSpike"></div>
     </div>
-    <div id="modQueue" hidden><div id="modList"></div></div>
   </div>
 
   <div class="party-grid">
@@ -2636,7 +2630,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     const card = $('eventCard'), list = $('djFeed');
     const escT = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const nodes = new Map();
-    const allPosts = new Map();
     const authors = new Map(); // "emoji name" -> true (participants tab)
     const replying = new Set();
     let newestAct = 0, on = false;
@@ -2687,7 +2680,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       switch (type) {
         case 'instagram': return 'https://www.instagram.com/' + encoded + '/';
         case 'soundcloud': return 'https://soundcloud.com/' + encoded;
-        case 'bandcamp': return 'https://' + username.toLowerCase() + '.bandcamp.com/';
         default: return '';
       }
     }
@@ -2698,9 +2690,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         const parts = u.pathname.split('/').filter(Boolean).map(part => {
           try { return decodeURIComponent(part); } catch (e) { return part; }
         });
-        if (link.type === 'bandcamp' && u.hostname.toLowerCase().endsWith('.bandcamp.com')) {
-          return cleanUsername(u.hostname.slice(0, -'.bandcamp.com'.length));
-        }
         return cleanUsername(parts[parts.length - 1]);
       } catch (e) {
         return cleanUsername(link.url);
@@ -2963,17 +2952,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
     // The field wiring lives in a different IIFE and cannot see this function.
     window.ppSaveProfile = saveProfileNow;
     $('saveProfileBtn').addEventListener('click', saveProfileNow);
-    const stateOf = (x) => (x && (x.state === 'pending' || x.state === 'hidden')) ? x.state : 'approved';
-    function stateBadge(state){
-      return '';
-    }
-    function modButtons(postID, commentID, state){
-      return '';
-    }
-    function renderModQueue(){
-      $('modQueue').hidden = true;
-      $('modList').textContent = '';
-    }
     function fallbackVideo(src){
       const v = document.createElement('video');
       v.src = src; v.controls = true; v.playsInline = true; v.preload = 'metadata';
@@ -2995,8 +2973,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       }).join('');
       const cmtRows = (p.comments || []).map(c =>
         '<div class="wcmt"><span style="display:flex;gap:6px;align-items:baseline"><b>' + escT(c.emoji) + ' ' + escT(c.author || 'someone') + '</b> ' +
-        stateBadge(stateOf(c)) + '<span style="margin-left:auto;display:flex;gap:4px;align-items:center">' +
-        modButtons(p.id, c.id, stateOf(c)) +
+        '<span style="margin-left:auto;display:flex;gap:4px;align-items:center">' +
         '<button class="modbtn remove" data-cdel="' + escT(p.id) + '" data-comment="' + escT(c.id) + '">Remove</button></span></span>' +
         '<span>' + escT(c.text) + '</span></div>').join('');
       const cmts = cmtRows ? '<div class="wcmts">' + cmtRows + '</div>' : '';
@@ -3012,9 +2989,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       el.innerHTML = '<div class="whead">' + avatar +
         '<b class="wname">' + escT(p.author || 'someone') +
         (p.dj ? '<span class="wdj">DJ</span>' : '') + '</b>' +
-        stateBadge(stateOf(p)) +
         '<span class="wheadactions">' +
-        modButtons(p.id, '', stateOf(p)) +
         '<button class="pdel" data-del="' + escT(p.id) + '">Remove</button></span></div>' +
         (media ? '<div class="wmedia">' + media + '</div>' : '') +
         (p.text ? '<div class="wcaption"><b>' + escT(p.author || 'someone') + '</b>' + escT(p.text) + '</div>' : '') +
@@ -3119,18 +3094,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         }
         return;
       }
-      if (d.mod) {
-        e.target.disabled = true;
-        try {
-          const url = '/api/mod?id=' + encodeURIComponent(d.mod) + '&state=' + encodeURIComponent(d.state || 'approved') +
-            (d.comment ? '&commentId=' + encodeURIComponent(d.comment) : '');
-          await fetch(url, { method:'POST' });
-          await poll();
-        } finally {
-          e.target.disabled = false;
-        }
-        return;
-      }
       if (d.cdel) {
         if (!askDelete(e.target)) return;
         await fetch('/api/comment-delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ postID:d.cdel, commentID:d.comment || '' }) });
@@ -3141,7 +3104,7 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (!askDelete(e.target)) return;
         await fetch('/api/post-delete?id=' + encodeURIComponent(d.del), { method:'POST' });
         const el = nodes.get(d.del);
-        if (el) { el.remove(); nodes.delete(d.del); allPosts.delete(d.del); replying.delete(d.del); renderModQueue(); }
+        if (el) { el.remove(); nodes.delete(d.del); replying.delete(d.del); }
         return;
       }
       if (d.csend) {
@@ -3171,7 +3134,6 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       e.preventDefault();
       btn.click();
     });
-    $('modQueue').addEventListener('click', handleWallClick);
     // What the room played, on the page that is the night's record.
     //
     // Its own escaping: this scope has no esc() and reaching for one in
@@ -3260,17 +3222,15 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
         if (Array.isArray(data.ids)) { // prune removed / previous-wall posts
           const alive = new Set(data.ids);
           for (const [id, node] of [...nodes]) {
-            if (!alive.has(id)) { node.remove(); nodes.delete(id); allPosts.delete(id); replying.delete(id); }
+            if (!alive.has(id)) { node.remove(); nodes.delete(id); replying.delete(id); }
           }
         }
         for (const p of (data.posts || [])) {
           newestAct = Math.max(newestAct, p.act || p.ts);
-          allPosts.set(p.id, p);
           place(p);
           if (!p.dj) authors.set(p.emoji + ' ' + (p.author || 'someone'), true);
           for (const c of (p.comments || [])) if (!c.dj) authors.set(c.emoji + ' ' + (c.author || 'someone'), true);
         }
-        renderModQueue();
         // Participants tab: everyone who has joined the wall (pseudonyms).
         if (authors.size) {
           $('wallAuthors').innerHTML = [...authors.keys()].map(a => '<span class="chip">' + escT(a) + '</span>').join('');

@@ -159,6 +159,9 @@ assert.doesNotMatch(listener, /player\.currentTime\s*=|nativeGovernorTick|GOV_|u
 const dj = read('web/dj.html');
 assert.equal((dj.match(/list\.addEventListener\('keydown'/g) || []).length, 1,
   'DJ replies must have one delegated key handler');
+assert.equal((dj.match(/button\.action-folder:hover/g) || []).length, 1,
+  'the folder action must have one effective hover rule');
+assert.doesNotMatch(dj, /modQueue|renderModQueue|stateBadge|modButtons|bandcamp/i);
 const djIDs = new Set([...dj.matchAll(/\bid=["']([^"']+)["']/g)].map((match) => match[1]));
 const djIDRefs = [...dj.matchAll(/\$\(["']([^"']+)["']\)/g)].map((match) => match[1]);
 assert.deepEqual(
