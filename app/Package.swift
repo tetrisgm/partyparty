@@ -20,12 +20,21 @@ let package = Package(
         ? [.package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")]
         : [],
     targets: [
+        .target(
+            name: "PartyPartyCore",
+            path: "Sources/PartyPartyCore"
+        ),
         .executableTarget(
             name: "PartyParty",
-            dependencies: standalone
+            dependencies: ["PartyPartyCore"] + (standalone
                 ? [.product(name: "Sparkle", package: "Sparkle")]
-                : [],
+                : []),
             path: "Sources/PartyParty"
-        )
+        ),
+        .testTarget(
+            name: "PartyPartyTests",
+            dependencies: ["PartyPartyCore"],
+            path: "Tests/PartyPartyTests"
+        ),
     ]
 )

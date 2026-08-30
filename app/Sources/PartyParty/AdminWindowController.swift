@@ -4,6 +4,9 @@ import CoreAudio
 import WebKit
 import ServiceManagement
 import CoreGraphics
+#if SWIFT_PACKAGE
+import PartyPartyCore
+#endif
 
 /// Weak forwarder so WKUserContentController's strong handler reference
 /// doesn't retain the window controller (see init below).
@@ -30,6 +33,8 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     }
 
     private let port: Int
+    private let consoleURL: URL
+    private let securityPolicy: ConsoleSecurityPolicy
     private var webView: WKWebView!
     private var capturePermissionKind: CapturePermissionKind = .systemAudio
     // Consecutive blank-console recovery attempts (reset to 0 on a healthy boot).
@@ -38,6 +43,12 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
 
     init(port: Int) {
         self.port = port
+        guard let consoleURL = URL(string: "http://127.0.0.1:\(port)/dj"),
+              let securityPolicy = ConsoleSecurityPolicy(consoleURL: consoleURL) else {
+            preconditionFailure("invalid loopback console port \(port)")
+        }
+        self.consoleURL = consoleURL
+        self.securityPolicy = securityPolicy
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1140, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -90,8 +101,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         // ::1), which loads as a blank page and - because the diagnostics below
         // also posted to localhost - reported nothing. 127.0.0.1 needs no DNS and
         // always hits the server's IPv4 listener. THIS is the field white-screen.
-        guard let url = URL(string: "http://127.0.0.1:\(port)/dj") else { return }
-        webView.load(URLRequest(url: url))
+        webView.load(URLRequest(url: consoleURL))
     }
 
     /// Clear the console's persisted web state (localStorage + caches) and reload.
@@ -164,6 +174,48 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
     """
 
     // MARK: - Navigation lifecycle (instrumented)
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        let target: ConsoleSecurityPolicy.NavigationTarget
+        if let frame = navigationAction.targetFrame {
+            target = frame.isMainFrame ? .mainFrame : .subframe
+        } else {
+            target = .newWindow
+        }
+
+        // Only an actual link activation may escape to the browser. Redirects
+        // and script-driven main-frame navigations arrive as `.other` and are
+        // cancelled even if they point at one of the public allowlisted pages.
+        let mayOpenExternal = navigationAction.navigationType == .linkActivated || target == .newWindow
+        switch securityPolicy.navigationDecision(
+            for: navigationAction.request.url,
+            target: target,
+            mayOpenKnownExternalLink: mayOpenExternal
+        ) {
+        case .allow:
+            decisionHandler(.allow)
+        case .openInSystemBrowser:
+            if let url = navigationAction.request.url {
+                NSWorkspace.shared.open(url)
+            }
+            decisionHandler(.cancel)
+        case .cancel:
+            decisionHandler(.cancel)
+        }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        // Action policy catches normal requests and redirects. Response policy
+        // is a second boundary for every frame in case WebKit did not surface
+        // an intermediate action callback.
+        if !securityPolicy.isConsoleURL(navigationResponse.response.url) {
+            decisionHandler(.cancel)
+        } else {
+            decisionHandler(.allow)
+        }
+    }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         diag("nav-start", ["url": webView.url?.absoluteString ?? "?"])
@@ -338,6 +390,17 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
 
     // JS -> Swift
     func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
+        let frameOrigin = message.frameInfo.securityOrigin
+        let origin = ConsoleOrigin(
+            scheme: frameOrigin.protocol,
+            host: frameOrigin.host,
+            port: frameOrigin.port
+        )
+        guard message.name == "pp",
+              securityPolicy.allowsBridgeMessage(
+                from: origin,
+                isMainFrame: message.frameInfo.isMainFrame
+              ) else { return }
         guard let body = message.body as? [String: Any], let action = body["action"] as? String else { return }
         switch action {
         case "quit":
@@ -348,9 +411,7 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         case "openURL":
             guard let raw = body["url"] as? String,
                   let url = URL(string: raw),
-                  url.scheme == "https",
-                  url.host == "partyparty.party",
-                  Self.opensInTheBrowser(url.path) else { return }
+                  ConsoleSecurityPolicy.isKnownExternalLink(url) else { return }
             NSWorkspace.shared.open(url)
         case "captureSourceChanged":
             setCaptureSource(body["device"] as? String)
@@ -376,29 +437,22 @@ final class AdminWindowController: NSWindowController, NSWindowDelegate, WKNavig
         }
     }
 
-    /// Which of our own pages the console may hand to the real browser.
-    ///
-    /// Two, now that there are no accounts: the pairing link, the @handle page
-    /// and the account home came out with the sign-in door. An allowlist rather
-    /// than a check on the host, because this is a web page asking the app to
-    /// launch a URL and the answer should be a short list of known pages.
-    static func opensInTheBrowser(_ path: String) -> Bool {
-        ["/privacy", "/support"].contains(path)
-    }
-
-    /// window.open from the console goes nowhere unless this exists.
-    ///
-    /// WKWebView routes it here, and a WKUIDelegate that does not implement the
-    /// method simply returns nil - no window, no error, no console message, so
-    /// a page that called window.open looked, from its own side, like it had
-    /// worked. Anything targeted out of the console now goes to the real
-    /// browser, which is the only place it could have meant.
+    /// Defense-in-depth for window.open if WebKit reaches the UI delegate
+    /// without first applying the navigation delegate decision: exact-origin
+    /// media and known product pages use the real browser, and every other
+    /// destination is dropped.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction,
                  windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = navigationAction.request.url,
-           url.scheme == "https" || url.scheme == "http" {
-            NSWorkspace.shared.open(url)
+        switch securityPolicy.navigationDecision(
+            for: navigationAction.request.url,
+            target: .newWindow,
+            mayOpenKnownExternalLink: true
+        ) {
+        case .openInSystemBrowser:
+            if let url = navigationAction.request.url { NSWorkspace.shared.open(url) }
+        case .allow, .cancel:
+            break
         }
         return nil
     }
