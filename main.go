@@ -1054,7 +1054,7 @@ func humanizeActivation(reason string) string {
 	r := strings.ToLower(reason)
 	switch {
 	case strings.Contains(r, "link this mac") || strings.Contains(r, "account link"):
-		return "link this Mac to your PartyParty account before secure low-latency setup can finish"
+		return "the PartyParty setup service needs to refresh this Mac's installation - retrying automatically"
 	case strings.Contains(r, "acme") || strings.Contains(r, "letsencrypt") || strings.Contains(r, "let's encrypt"):
 		return "the free certificate service (Let's Encrypt) isn't answering right now - retrying automatically, this usually clears in a few minutes"
 	case strings.Contains(r, "register") || strings.Contains(r, "broker") || strings.Contains(r, "partyparty.party"):

@@ -22,3 +22,11 @@ func TestPartyHTTPServerBoundsIdleClients(t *testing.T) {
 		t.Fatalf("write timeout = %s; long polls and media responses must remain unbounded", server.WriteTimeout)
 	}
 }
+
+func TestHumanizeActivationDoesNotReviveRemovedAccounts(t *testing.T) {
+	got := humanizeActivation("account link required: link this Mac")
+	want := "the PartyParty setup service needs to refresh this Mac's installation - retrying automatically"
+	if got != want {
+		t.Fatalf("humanizeActivation = %q, want %q", got, want)
+	}
+}
