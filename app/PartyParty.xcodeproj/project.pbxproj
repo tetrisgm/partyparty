@@ -18,6 +18,7 @@
 		10000000000000000000000B /* StatusPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000D /* StatusPopover.swift */; };
 		10000000000000000000000C /* TrackRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000E /* TrackRecognizer.swift */; };
 		10000000000000000000000D /* ConsoleSecurityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000F /* ConsoleSecurityPolicy.swift */; };
+		10000000000000000000000E /* CoalescingRefreshState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* CoalescingRefreshState.swift */; };
 		100000000000000000000008 /* AppAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* AppAssets.xcassets */; };
 		100000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -38,6 +39,7 @@
 		20000000000000000000000D /* StatusPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPopover.swift; sourceTree = "<group>"; };
 		20000000000000000000000E /* TrackRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRecognizer.swift; sourceTree = "<group>"; };
 		20000000000000000000000F /* ConsoleSecurityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../PartyPartyCore/ConsoleSecurityPolicy.swift; sourceTree = "<group>"; };
+		200000000000000000000010 /* CoalescingRefreshState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../PartyPartyCore/CoalescingRefreshState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +69,7 @@
 			children = (
 				200000000000000000000001 /* APIClient.swift */,
 				200000000000000000000002 /* AdminWindowController.swift */,
+				200000000000000000000010 /* CoalescingRefreshState.swift */,
 				20000000000000000000000F /* ConsoleSecurityPolicy.swift */,
 				200000000000000000000003 /* AppDelegate.swift */,
 				200000000000000000000004 /* Constants.swift */,
@@ -183,6 +186,7 @@
 			files = (
 				100000000000000000000001 /* APIClient.swift in Sources */,
 				100000000000000000000002 /* AdminWindowController.swift in Sources */,
+				10000000000000000000000E /* CoalescingRefreshState.swift in Sources */,
 				10000000000000000000000D /* ConsoleSecurityPolicy.swift in Sources */,
 				100000000000000000000003 /* AppDelegate.swift in Sources */,
 				100000000000000000000004 /* Constants.swift in Sources */,
