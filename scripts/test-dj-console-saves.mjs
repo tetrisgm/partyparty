@@ -28,12 +28,7 @@ const pixel = Buffer.from(
 const stored = { host: '', bio: '', links: [], avatar: '' };
 const posts = { profile: [], links: [] };
 
-// Signed in, because that is the console this test is about. The sign-in door
-// covers everything until a Mac belongs to an account, which is correct and
-// also means an unsigned console has no fields to type into.
-const signedIn = { value: true };
 const statusBody = () => ({
-  signedIn: signedIn.value,
   appVersion: 'save-test',
   name: 'PartyParty',
   broadcast: { state: 'idle', since: 0, device: 'mac' },
@@ -191,18 +186,11 @@ try {
   const bioAfterEnter = await page.inputValue('#profileBio');
   assert.ok(!bioAfterEnter.includes('\n'), `Enter inserted a line break: ${JSON.stringify(bioAfterEnter)}`);
 
-  // The door: a Mac that belongs to nobody cannot be used. Not a banner over a
-  // working console - the console behind it was drawn for no one.
-  signedIn.value = false;
-  await page.waitForTimeout(1600);
-  assert.equal(await page.isVisible('#macDoor'), true, 'a signed-out Mac must show the door');
-  assert.equal(await page.isVisible('.macssobtn[data-provider="apple"]'), true);
-  assert.equal(await page.isVisible('.macssobtn[data-provider="google"]'), true);
-  // And it really covers: the console underneath cannot be typed into.
-  await assert.rejects(
-    () => page.click('#profileName', { timeout: 1200 }),
-    'the door must block the console, not sit beside it',
-  );
+  // Accounts were removed from the product. Keep this browser test honest: a
+  // status response with no account field must leave the local console usable,
+  // and no legacy sign-in door may return unnoticed.
+  assert.equal(await page.locator('#macDoor,.macssobtn').count(), 0,
+    'the account-era sign-in door returned');
 
   assert.deepEqual(consoleErrors, [], `console errors: ${consoleErrors.join(' | ')}`);
   console.log('PASS dj console saves');
