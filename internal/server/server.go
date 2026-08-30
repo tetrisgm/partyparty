@@ -693,6 +693,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		})
 	case "/api/status":
 		bc := s.Broadcaster.Status()
+		dj := s.isDJ(r)
 		if bc.State == "live" && bc.Device == "mac" {
 			s.markAudioProven()
 		}
@@ -701,7 +702,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		latencyTarget := s.latencyTarget(bc, health.Status)
 		roster := s.Listeners.Roster()
 		var rosterBody any = roster
-		if !s.isDJ(r) {
+		if !dj {
 			public := make([]map[string]string, 0, len(roster))
 			for _, listener := range roster {
 				public = append(public, map[string]string{"name": listener.Name, "emoji": listener.Emoji})
@@ -709,36 +710,46 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			rosterBody = public
 		}
 		rosterBody, roomListeners := s.roomRoster(rosterBody)
-		writeJSONGzip(w, r, http.StatusOK, map[string]any{
+		connection := s.connectionState()
+		event := s.eventState()
+		if !dj && event != nil {
+			delete(event, "dir")
+		}
+		payload := map[string]any{
 			"name":           s.Config.Name,
 			"appVersion":     s.version(),
-			"broadcast":      broadcastStatus(bc),
+			"broadcast":      publicBroadcastStatus(bc),
 			"listeners":      roomListeners,
 			"listenersTotal": s.Listeners.TotalUnique(),
-			"health":         health,
-			"urls":           s.urls(),
-			"lan":            s.lanStateSnapshot(), // honest LAN readiness from observed LAN vs cloud listeners
-			"connection":     s.connectionState(),
+			"connection":     publicConnectionStatus(connection),
 			"llhlsUrl":       s.llhlsURLFor(r),
-			"llhlsAvailable": s.MTX != nil,
-			"llhlsRealCert":  s.realCert(),
-			"audioProven":    s.audioProven.Load(),
-			"activation":     s.activationState(),
 			"latencyTarget":  latencyTarget,
 			"streamSync":     s.streamSyncState(bc, latencyTarget),
-			"log":            lastN(s.Broadcaster.Log(), 60),
-			"diagPath":       s.diagPath(), // "" = session log unavailable; a whole night once ran with no log and no way to notice
-			"startup":        s.startupTrace(bc.State),
-			"latency":        s.Listeners.LatencySpread(),
-			"relay":          s.relayPresenceState(),
-			"schedule":       s.scheduleState(),
 			"roster":         rosterBody,
 			"listenerGroups": s.listenerGroups(roster),
-			"event":          s.eventState(),
-			"config":         s.payloadConfig(),
-			"streamHealth":   s.streamHealthText(),
+			"event":          event,
 			"peers":          s.peerList(),
-		})
+		}
+		if dj {
+			payload["broadcast"] = broadcastStatus(bc)
+			payload["health"] = health
+			payload["urls"] = s.urls()
+			payload["lan"] = s.lanStateSnapshot() // honest LAN readiness from observed LAN vs cloud listeners
+			payload["connection"] = connection
+			payload["llhlsAvailable"] = s.MTX != nil
+			payload["llhlsRealCert"] = s.realCert()
+			payload["audioProven"] = s.audioProven.Load()
+			payload["activation"] = s.activationState()
+			payload["log"] = lastN(s.Broadcaster.Log(), 60)
+			payload["diagPath"] = s.diagPath() // "" = session log unavailable; a whole night once ran with no log and no way to notice
+			payload["startup"] = s.startupTrace(bc.State)
+			payload["latency"] = s.Listeners.LatencySpread()
+			payload["relay"] = s.relayPresenceState()
+			payload["schedule"] = s.scheduleState()
+			payload["config"] = s.payloadConfig()
+			payload["streamHealth"] = s.streamHealthText()
+		}
+		writeJSONGzip(w, r, http.StatusOK, payload)
 	case "/api/peer":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 		writeJSON(w, http.StatusOK, s.peerState(since))
@@ -1317,6 +1328,34 @@ func broadcastStatus(status broadcast.Status) map[string]any {
 		"note":       status.Note,
 		"captureBad": status.CaptureBad,
 	}
+}
+
+// publicBroadcastStatus is the listener's stable playback contract. Capture
+// devices, errors, and health notes belong to the loopback DJ console and can
+// include machine-specific details.
+func publicBroadcastStatus(status broadcast.Status) map[string]any {
+	return map[string]any{
+		"state": status.State,
+		"since": status.Since,
+	}
+}
+
+// publicConnectionStatus contains only the routes a listener needs to move
+// between direct and relay service. Override choices and network diagnostics
+// remain on the DJ-only status response.
+func publicConnectionStatus(status relay.Status) map[string]any {
+	out := map[string]any{"mode": status.Mode}
+	for key, value := range map[string]string{
+		"reason":      status.Reason,
+		"joinUrl":     status.JoinURL,
+		"relayOrigin": status.RelayOrigin,
+		"directUrl":   status.DirectURL,
+	} {
+		if value != "" {
+			out[key] = value
+		}
+	}
+	return out
 }
 
 // llhlsURL is the one guest stream URL, available once the cert-backed LAN

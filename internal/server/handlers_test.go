@@ -538,7 +538,7 @@ func waitIdle(t *testing.T, bc *broadcast.Broadcaster) {
 
 func TestStatusEndpoint(t *testing.T) {
 	env := newTestEnv(t, nil)
-	w := do(env.srv, "GET", "/api/status", "")
+	w := do(env.srv, "GET", "/api/status", djAddr)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d", w.Code)
 	}
@@ -1512,6 +1512,58 @@ func TestHeartbeatAndRoster(t *testing.T) {
 	}
 }
 
+func TestGuestStatusContainsOnlyTheListenerContract(t *testing.T) {
+	env := newTestEnv(t, nil)
+	events, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.srv.Events = events
+	env.srv.SetActivation("disco.party.partyparty.party")
+
+	guest := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", "192.168.1.99:6000"))
+	allowed := map[string]bool{
+		"name": true, "appVersion": true, "broadcast": true,
+		"listeners": true, "listenersTotal": true, "connection": true,
+		"llhlsUrl": true, "latencyTarget": true, "streamSync": true,
+		"roster": true, "listenerGroups": true, "event": true, "peers": true,
+	}
+	for key := range guest {
+		if !allowed[key] {
+			t.Errorf("guest status exposed DJ-only field %q", key)
+		}
+	}
+	for key := range allowed {
+		if _, ok := guest[key]; !ok {
+			t.Errorf("guest status omitted listener field %q", key)
+		}
+	}
+
+	broadcast := guest["broadcast"].(map[string]any)
+	if len(broadcast) != 2 || broadcast["state"] == nil {
+		t.Errorf("public broadcast = %#v, want state and generation only", broadcast)
+	}
+	connection := guest["connection"].(map[string]any)
+	for _, private := range []string{"override", "reach", "pushWanted", "internetOk", "knownNetwork", "message"} {
+		if _, ok := connection[private]; ok {
+			t.Errorf("public connection exposed %q: %#v", private, connection)
+		}
+	}
+	if _, ok := guest["event"].(map[string]any)["dir"]; ok {
+		t.Errorf("public event exposed its local directory: %#v", guest["event"])
+	}
+
+	dj := decodeJSON(t, do(env.srv, http.MethodGet, "/api/status", djAddr))
+	for _, key := range []string{"health", "urls", "lan", "activation", "log", "diagPath", "startup", "config"} {
+		if _, ok := dj[key]; !ok {
+			t.Errorf("DJ status lost diagnostic field %q", key)
+		}
+	}
+	if _, ok := dj["event"].(map[string]any)["dir"]; !ok {
+		t.Errorf("DJ status lost the event directory: %#v", dj["event"])
+	}
+}
+
 func TestHeartbeatHostileNumbersCannotPoisonStatusJSON(t *testing.T) {
 	env := newTestEnv(t, nil)
 	tests := []struct {
@@ -1559,7 +1611,7 @@ func TestHeartbeatHostileNumbersCannotPoisonStatusJSON(t *testing.T) {
 func TestActivationFlow(t *testing.T) {
 	env := newTestEnv(t, nil)
 
-	body := decodeJSON(t, do(env.srv, "GET", "/api/status", ""))
+	body := decodeJSON(t, do(env.srv, "GET", "/api/status", djAddr))
 	if act := body["activation"].(map[string]any); act["ready"] != false {
 		t.Fatalf("activation before setup = %v", act)
 	}
@@ -1568,13 +1620,13 @@ func TestActivationFlow(t *testing.T) {
 	}
 
 	env.srv.SetActivationPending("waiting for the certificate")
-	body = decodeJSON(t, do(env.srv, "GET", "/api/status", ""))
+	body = decodeJSON(t, do(env.srv, "GET", "/api/status", djAddr))
 	if act := body["activation"].(map[string]any); act["reason"] != "waiting for the certificate" {
 		t.Errorf("pending reason = %v", act["reason"])
 	}
 
 	env.srv.SetActivation("party.example.net")
-	body = decodeJSON(t, do(env.srv, "GET", "/api/status", ""))
+	body = decodeJSON(t, do(env.srv, "GET", "/api/status", djAddr))
 	act := body["activation"].(map[string]any)
 	if act["ready"] != true || act["reason"] != "" {
 		t.Errorf("activation after SetActivation = %v", act)
@@ -1589,7 +1641,7 @@ func TestActivationFlow(t *testing.T) {
 
 	// A late "pending" must not regress a completed activation.
 	env.srv.SetActivationPending("stale reason")
-	body = decodeJSON(t, do(env.srv, "GET", "/api/status", ""))
+	body = decodeJSON(t, do(env.srv, "GET", "/api/status", djAddr))
 	act = body["activation"].(map[string]any)
 	if act["ready"] != true || act["reason"] != "" {
 		t.Errorf("activation regressed by late pending: %v", act)

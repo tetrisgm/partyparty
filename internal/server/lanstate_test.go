@@ -43,7 +43,7 @@ func TestReduceLanState(t *testing.T) {
 // no activation in the test env there is no cert, so it reduces to `unavailable`.
 func TestStatusIncludesLanObject(t *testing.T) {
 	env := newTestEnv(t, nil)
-	body := decodeJSON(t, do(env.srv, "GET", "/api/status", ""))
+	body := decodeJSON(t, do(env.srv, "GET", "/api/status", djAddr))
 	lan, ok := body["lan"].(map[string]any)
 	if !ok {
 		t.Fatalf("/api/status has no lan object: %v", body["lan"])
