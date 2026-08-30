@@ -356,8 +356,9 @@ func newReactionCounters() map[string]*reactionCounter {
 	return out
 }
 
-// Open uses one active room per calendar day, so an app restart mid-party
-// lands back in the same feed without exposing a previous-room picker.
+// Open resumes the current room within the eight-hour idle window, so an app
+// restart—or a set crossing midnight—lands back in the same feed without
+// exposing a previous-room picker.
 func Open(baseDir string) (*Store, error) {
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return nil, err
