@@ -11,7 +11,7 @@ EnvironmentFile=/etc/pporigin.env
 ExecStart=/opt/pporigin/current/pporigin \
   -addr :443 \
   -base-domain ${PPORIGIN_BASE_DOMAIN} \
-  -rooms /etc/pporigin-rooms.json \
+  -broker ${PPORIGIN_BROKER} \
   -cert ${PPORIGIN_CERT} \
   -key ${PPORIGIN_KEY}
 Restart=always

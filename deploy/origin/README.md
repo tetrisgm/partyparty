@@ -42,7 +42,7 @@ anything else.
 ```sh
 sudo apt-get install -y certbot python3-certbot-dns-cloudflare
 sudo install -m 0600 /dev/null /etc/letsencrypt/cloudflare.ini
-echo "dns_cloudflare_api_token = <scoped-token>" | sudo tee /etc/letsencrypt/cloudflare.ini >/dev/null
+sudoedit /etc/letsencrypt/cloudflare.ini
 sudo certbot certonly \
   --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
   -d '*.relay.partyparty.party' -d relay.partyparty.party \
@@ -51,6 +51,10 @@ sudo certbot certonly \
 
 Certbot installs its own renewal timer. The origin re-reads the certificate from
 disk when it changes, so renewal needs no restart and is a non-event.
+
+Enter `dns_cloudflare_api_token = ...` in the protected file opened by
+`sudoedit`; do not pass the token in a command argument or leave it in shell
+history.
 
 ### 3. DNS
 
@@ -61,16 +65,13 @@ exists to remove.
 
 ### 4. Publish credentials
 
-```sh
-echo '{"<room-token>":"<publish-secret>"}' | sudo tee /etc/pporigin-rooms.json >/dev/null
-sudo chmod 0600 /etc/pporigin-rooms.json
-sudo chown ubuntu:ubuntu /etc/pporigin-rooms.json
-```
+Production credentials are minted per installation by the anonymous broker.
+The origin asks the broker whether a presented room/token pair is valid and
+caches that verdict briefly; it never retrieves or stores the credential. Set
+`PPORIGIN_BROKER` in the environment file to the broker base URL.
 
-An absent or empty file means nobody may publish. Failing closed is correct: an
-origin that accepted anonymous publishes would let anyone hijack a party.
-`systemctl reload pporigin` is not needed; send SIGHUP to reload without dropping
-a live party.
+The binary's `-rooms` flag remains an optional static override for isolated
+local tests. Production does not maintain a room-token file.
 
 ### 5. Environment
 

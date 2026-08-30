@@ -1,10 +1,10 @@
 // Command pporigin is the relay origin: it accepts a DJ Mac's pushed LL-HLS and
 // serves it to guests.
 //
-// It is deliberately a plain HTTP service with no database and no disk state, so
-// it runs behind an ordinary reverse proxy beside other services rather than
-// needing a box of its own. Everything it holds is one party's live window, in
-// memory, dropped when the party goes quiet.
+// It is deliberately a small HTTP service with no database or durable room
+// state. It can terminate TLS itself or run behind a reverse proxy. Everything
+// it holds is one party's live window, in memory, dropped when the party goes
+// quiet.
 package main
 
 import (
@@ -39,7 +39,8 @@ func main() {
 	}
 
 	// The broker is the authority on publish credentials, because it is what
-	// mints them when a Mac registers. The rooms file stays as a local override.
+	// mints them when a Mac registers. The optional rooms file is only a local
+	// development/test override.
 	tokens := newBrokerTokens(*broker, rooms)
 
 	store := origin.NewStore()
@@ -61,7 +62,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	// Reload credentials without dropping a live party.
+	// Reload optional static overrides without dropping a live party.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
 	go func() {
@@ -128,8 +129,8 @@ func (r *roomTokens) load() error {
 			return err
 		}
 	}
-	// No rooms file means nobody may publish. Failing closed is correct: an
-	// origin that accepted anonymous publishes would let anyone hijack a party.
+	// No rooms file means there are no static overrides. Broker verification still
+	// applies; when both sources are absent, publishing fails closed.
 	r.mu.Lock()
 	r.current = next
 	r.mu.Unlock()
