@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"partyparty/internal/activate"
 	"partyparty/internal/broadcast"
@@ -104,8 +105,10 @@ type srv struct {
 	peersMu sync.RWMutex
 
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
+	hostCacheN int32
 	seenCIDs   sync.Map // cid -> true (first-heartbeat join logging)
-	clientLogN sync.Map // cid -> *int32 (client error reports, capped per guest)
+	seenCIDN   int32
+	clientLogN sync.Map // prefixed cid -> *int32 (client diagnostics, capped per guest)
 	clientEvN  int32    // global event ceiling - a rotating cid can't defeat this
 	clientCIDs int32    // distinct-cid ceiling - a rotating cid can't grow clientLogN without bound
 
@@ -792,8 +795,10 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
 			return
 		}
-		nAny, _ := s.clientLogN.LoadOrStore(body.CID, new(int32))
-		if atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest - no log floods
+		body.CID = clipStr(strings.TrimSpace(body.CID), 64)
+		nAny, _, tracked := cappedLoadOrStore(&s.clientLogN, &s.clientCIDs,
+			maxClientDiagnosticIDs, "log:"+body.CID, new(int32))
+		if tracked && atomic.AddInt32(nAny.(*int32), 1) <= 25 { // cap per guest - no log floods
 			if s.Diag != nil {
 				s.Diag.Printf("client[%s v%s]: %s: %s", clientIP(r), clipStr(body.V, 16), clipStr(body.Kind, 16), clipStr(body.Msg, 300))
 			}
@@ -831,11 +836,12 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			who = s.friendlyName(clientIP(r), r.UserAgent()) + " | " + who
 		}
 		key := "ev:" + body.CID
-		if _, seen := s.clientLogN.Load(key); !seen && atomic.AddInt32(&s.clientCIDs, 1) > 20000 {
+		nAny, _, tracked := cappedLoadOrStore(&s.clientLogN, &s.clientCIDs,
+			maxClientDiagnosticIDs, key, new(int32))
+		if !tracked {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return // distinct-client ceiling hit - stop tracking new cids
 		}
-		nAny, _ := s.clientLogN.LoadOrStore(key, new(int32))
 		urgent := false
 		for i, ev := range body.Events {
 			if i >= 200 { // one batch is a burst, not a flood
@@ -866,7 +872,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/heartbeat":
 		q := r.URL.Query()
-		key := q.Get("cid")
+		key := clipStr(strings.TrimSpace(q.Get("cid")), 64)
 		if key == "" {
 			key = clientIP(r)
 		}
@@ -879,7 +885,8 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
-		if _, known := s.seenCIDs.LoadOrStore(key, true); !known {
+		if _, known, tracked := cappedLoadOrStore(&s.seenCIDs, &s.seenCIDN,
+			maxSeenClientIDs, key, true); tracked && !known {
 			if s.Diag != nil {
 				s.Diag.Printf("guest joined: %s ip=%s plat=%s pageV=%s", s.friendlyName(clientIP(r), r.UserAgent()), clientIP(r), q.Get("plat"), q.Get("v"))
 			}
@@ -1401,8 +1408,19 @@ func (s *srv) friendlyName(ip, ua string) string {
 		}
 		return label // looked up already, nothing useful
 	}
-	// First sight of this IP: mark pending + resolve in the background.
-	s.hostCache.Store(ip, "")
+	// First sight of this IP: reserve a bounded cache entry, mark it pending,
+	// and resolve in the background.
+	actual, loaded, tracked := cappedLoadOrStore(&s.hostCache, &s.hostCacheN,
+		maxHostCacheEntries, ip, "")
+	if !tracked {
+		return label
+	}
+	if loaded {
+		if name, _ := actual.(string); name != "" {
+			return name
+		}
+		return label
+	}
 	go func(ip string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -1716,10 +1734,13 @@ func lastN(s []string, n int) []string {
 }
 
 func clipStr(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if len(s) <= n {
+		return s
 	}
-	return s
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // compactFields renders a client event's fields as one greppable line:

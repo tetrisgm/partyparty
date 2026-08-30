@@ -13,6 +13,7 @@ const (
 	reactionLimitInterval = time.Second
 	trackIDLimitInterval  = 3 * time.Second
 	limitEntryTTL         = time.Minute
+	maxLimitEntries       = 4096
 )
 
 type limiter struct {
@@ -63,13 +64,16 @@ func (l *limiter) allow(key, kind string) bool {
 	if last, ok := l.last[mapKey]; ok && now.Sub(last) < interval {
 		return false
 	}
+	if _, exists := l.last[mapKey]; !exists && len(l.last) >= maxLimitEntries {
+		return false
+	}
 	l.last[mapKey] = now
 	return true
 }
 
 func guestLimitKey(cid string, r *http.Request) string {
 	if cid = strings.TrimSpace(cid); cid != "" {
-		return cid
+		return clipStr(cid, 64)
 	}
 	return clientIP(r)
 }
