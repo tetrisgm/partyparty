@@ -731,8 +731,13 @@ const relayURL=${relayURL};
 const detail=document.getElementById('detail');
 const retry=document.getElementById('retry');
 const sleep=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
-async function reach(url,timeout){
+async function reach(url,timeout,roundSignal){
   const controller=new AbortController();
+  const cancel=()=>controller.abort();
+  if(roundSignal){
+    if(roundSignal.aborted)return false;
+    roundSignal.addEventListener('abort',cancel,{once:true});
+  }
   const timer=setTimeout(()=>controller.abort(),timeout);
   try{
     const target=new URL('/api/time?partyPartyProbe='+Date.now(),url);
@@ -742,8 +747,31 @@ async function reach(url,timeout){
       if(Number(body.t)>0)return true;
     }
   }catch(_){}
-  finally{clearTimeout(timer)}
+  finally{
+    clearTimeout(timer);
+    if(roundSignal)roundSignal.removeEventListener('abort',cancel);
+  }
   return false;
+}
+async function probeRound(timeout){
+  const controller=new AbortController();
+  return new Promise((resolve)=>{
+    let remaining=candidates.length;
+    let settled=false;
+    const finish=(url)=>{
+      if(settled)return;
+      settled=true;
+      controller.abort();
+      resolve(url);
+    };
+    for(const url of candidates){
+      reach(url,timeout,controller.signal).then((answered)=>{
+        if(answered){finish(url);return}
+        remaining--;
+        if(remaining===0)finish('');
+      });
+    }
+  });
 }
 // Returns the address that answered, or '' - the party may be several Macs and
 // the one that minted this link is not always the one still playing.
@@ -752,14 +780,16 @@ async function probe(){
   // A success proves direct reachability. A timeout does not prove isolation:
   // the first scan can race DNS convergence, TLS startup, or a brief Wi-Fi
   // transition. Keep the total check bounded, but require several independent
-  // failures before paying the permanent latency cost of relay mode. Each pass
-  // tries the whole party before the next, longer one, so a slow-but-present
-  // host still wins over a faster Mac that has already left.
-  for(const timeout of [2500,4000,6000]){
-    for(const url of candidates){
-      if(await reach(url,timeout))return url;
-    }
-    await sleep(500);
+  // failures before paying the permanent latency cost of relay mode. Macs in
+  // one round are checked together: trying 40 serially could otherwise keep a
+  // guest on this spinner for more than eight minutes. The first answer aborts
+  // the losing requests; the retry ladder now has a fixed 13.5-second ceiling
+  // regardless of party size.
+  const timeouts=[2500,4000,6000];
+  for(let i=0;i<timeouts.length;i++){
+    const answered=await probeRound(timeouts[i]);
+    if(answered)return answered;
+    if(i+1<timeouts.length)await sleep(500);
   }
   return '';
 }

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import vm from "node:vm";
 import worker, {
   readJson,
   sha256Hex,
@@ -270,12 +271,63 @@ test("the relay bootstrap is stateless and sends guests to the relay origin", as
   // attempt, and they grow", not as exact numbers, because this test pinned
   // "[3000,5000]" and then never ran again while the ladder became
   // [2500,4000,6000].
-  const ladder = html.match(/for\s*\(\s*const\s+timeout\s+of\s*\[([\d,\s]+)\]/);
+  const ladder = html.match(/const\s+timeouts\s*=\s*\[([\d,\s]+)\]/);
   assert.ok(ladder, "the bootstrap must still retry the LAN before falling back");
   const waits = ladder[1].split(",").map((n) => Number(n.trim()));
   assert.ok(waits.length >= 2, `a transient first LAN probe must not force relay mode (got ${waits})`);
   assert.deepEqual(waits, [...waits].sort((a, b) => a - b), "each retry should wait longer");
   assert.ok(!html.includes("__pp/state"), "the state endpoint died with the Durable Object");
+});
+
+test("the relay bootstrap probes party Macs concurrently and aborts losers", async () => {
+  const env = baseEnv();
+  const token = "e".repeat(32);
+  const party = "2026-08-30-2213-ab12";
+  const slow = "https://slow.party.partyparty.party:8443/";
+  const fast = "https://fast.party.partyparty.party:8443/";
+  await env.DL.put(`broker/relay/${token}`, "install-slow");
+  await env.DL.put("broker/install-slow.json", JSON.stringify({
+    id: "install-slow", directUrl: slow, partyId: party,
+  }));
+  await env.DL.put(`broker/party/${party}/install-slow`, JSON.stringify({ directUrl: slow, at: Date.now() }));
+  await env.DL.put(`broker/party/${party}/install-fast`, JSON.stringify({ directUrl: fast, at: Date.now() - 1 }));
+  const html = await (await worker.fetch(
+    new Request(`https://r-${token}.partyparty.party/`), env)).text();
+  const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1] || "";
+  const prefix = script.slice(0, script.indexOf("async function report"));
+  assert.ok(prefix.includes("async function probeRound"), "bootstrap probe implementation was not found");
+
+  const calls = [];
+  let slowAborts = 0;
+  const context = {
+    AbortController,
+    Date,
+    Promise,
+    URL,
+    clearTimeout,
+    document: { getElementById: () => ({}) },
+    setTimeout,
+    fetch: async (target, options) => {
+      calls.push(target.hostname);
+      if (target.hostname === "fast.party.partyparty.party") {
+        return { ok: true, json: async () => ({ t: Date.now() }) };
+      }
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          slowAborts++;
+          reject(new Error("aborted"));
+        }, { once: true });
+      });
+    },
+  };
+  vm.runInNewContext(`${prefix}\nglobalThis.testProbe = probe;`, context);
+  const answered = await Promise.race([
+    context.testProbe(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("party probes ran serially")), 250)),
+  ]);
+  assert.equal(answered, fast);
+  assert.deepEqual(calls.sort(), ["fast.party.partyparty.party", "slow.party.partyparty.party"]);
+  assert.equal(slowAborts, 1, "the successful probe must abort the losing request");
 });
 
 test("legacy relay records cannot inject executable bootstrap markup", async () => {
