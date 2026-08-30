@@ -5,7 +5,7 @@ Review steps:
 2. Connect the Mac and a default-configured iPhone to the same Wi-Fi network.
 3. In the Mac app, choose "Mac output (everything)" or an available audio input and press Go Live.
 4. macOS asks for System Audio Recording only when Mac output is selected, or Microphone only when an input device is selected. Local Network access is used to serve the room.
-5. Scan the HTTPS QR code shown by the Mac with the iPhone. The Mac chooses direct mode on normal Wi-Fi. If the Wi-Fi isolates nearby devices, it uses an encrypted internet relay and explains the added latency in the Mac console.
+5. Scan the HTTPS QR code shown by the Mac with the iPhone. The Mac chooses direct mode on normal Wi-Fi. Wi-Fi only is the default. To exercise the optional relay on a client-isolated network, choose "Wi-Fi + cloud" under Party reach in Settings; the console explains when that path is active.
 6. Start playback on the iPhone, then lock it. Audio continues through native HLS/AVPlayer and lock-screen media controls remain available.
 7. The wall view is available from the Mac app and displays the room QR plus guest posts and media.
 
