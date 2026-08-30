@@ -286,7 +286,7 @@ func (d *Directory) Peers() []Peer {
 	defer d.mu.RUnlock()
 	out := make([]Peer, 0, len(d.peers))
 	for _, peer := range d.peers {
-		out = append(out, peer)
+		out = append(out, clonePeer(peer))
 	}
 	return out
 }
@@ -296,7 +296,40 @@ func (d *Directory) Peer(id string) (Peer, bool) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	peer, ok := d.peers[id]
-	return peer, ok
+	if !ok {
+		return Peer{}, false
+	}
+	return clonePeer(peer), true
+}
+
+func clonePeer(peer Peer) Peer {
+	out := peer
+	if peer.NowPlaying != nil {
+		nowPlaying := *peer.NowPlaying
+		out.NowPlaying = &nowPlaying
+	}
+	out.Links = append([]event.Link(nil), peer.Links...)
+	if peer.Room == nil {
+		return out
+	}
+
+	room := *peer.Room
+	room.Roster = append([]Guest(nil), peer.Room.Roster...)
+	room.IDs = append([]string(nil), peer.Room.IDs...)
+	room.Posts = make([]event.Post, len(peer.Room.Posts))
+	for i, post := range peer.Room.Posts {
+		room.Posts[i] = post
+		room.Posts[i].Media = append([]event.Media(nil), post.Media...)
+		room.Posts[i].Comments = append([]event.Comment(nil), post.Comments...)
+		if post.Reactions != nil {
+			room.Posts[i].Reactions = make(map[string]int, len(post.Reactions))
+			for reaction, count := range post.Reactions {
+				room.Posts[i].Reactions[reaction] = count
+			}
+		}
+	}
+	out.Room = &room
+	return out
 }
 
 // Close stops the Bonjour advertisement.

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"reflect"
 	"testing"
 
 	"partyparty/internal/event"
@@ -35,6 +36,31 @@ func TestMergeRoomFeedQualifiesOwnersAndMedia(t *testing.T) {
 	peerID, postID, remotePost := splitRoomPostID(posts[1].ID)
 	if !remotePost || peerID != "seth" || postID != "post-1" {
 		t.Fatalf("owner routing = %q/%q/%v", peerID, postID, remotePost)
+	}
+}
+
+func TestMergeRoomFeedRepeatedlyProducesExactMediaURLs(t *testing.T) {
+	roomPeers := []peers.Peer{{
+		ID:      "seth",
+		RoomURL: "https://seth.party:8443",
+		Room: &peers.Room{Posts: []event.Post{{
+			ID: "post-1", TS: 20, Act: 21,
+			Media: []event.Media{{
+				ID:    "photo one.jpg",
+				Thumb: "/media/thumb/photo%20one.jpg",
+			}},
+		}}},
+	}}
+
+	first, _, _, _ := mergeRoomFeed(nil, nil, 0, 0, 0, roomPeers)
+	second, _, _, _ := mergeRoomFeed(nil, nil, 0, 0, 0, roomPeers)
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("repeated merges differ:\nfirst:  %#v\nsecond: %#v", first, second)
+	}
+	media := second[0].Media[0]
+	if media.URL != "https://seth.party:8443/media/photo%20one.jpg" ||
+		media.Thumb != "https://seth.party:8443/media/thumb/photo%20one.jpg" {
+		t.Fatalf("repeated merge media URLs = %#v", media)
 	}
 }
 

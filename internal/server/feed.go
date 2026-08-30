@@ -781,7 +781,9 @@ func mergeRoomFeed(local []event.Post, ids []string, mediaCount int, cursor, sin
 		if peer.Room.Cursor > cursor {
 			cursor = peer.Room.Cursor
 		}
-		for _, remote := range peer.Room.Posts {
+		for _, stored := range peer.Room.Posts {
+			remote := stored
+			remote.Media = append([]event.Media(nil), stored.Media...)
 			allIDs = append(allIDs, roomPostID(peer.ID, remote.ID))
 			if remote.Act <= since {
 				continue

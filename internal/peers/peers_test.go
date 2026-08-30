@@ -125,6 +125,52 @@ func TestTransientProbeFailureKeepsPeer(t *testing.T) {
 	}
 }
 
+func TestPeerSnapshotsDoNotAliasDirectoryState(t *testing.T) {
+	d := &Directory{peers: map[string]Peer{
+		"other": {
+			ID:         "other",
+			NowPlaying: &event.CurrentTrack{Title: "Original track"},
+			Links:      []event.Link{{Label: "Original link"}},
+			Room: &Room{
+				Roster: []Guest{{Name: "Original guest"}},
+				Posts: []event.Post{{
+					ID:        "post",
+					Media:     []event.Media{{ID: "original.jpg"}},
+					Comments:  []event.Comment{{ID: "comment", Text: "Original comment"}},
+					Reactions: map[string]int{"fire": 1},
+				}},
+				IDs: []string{"post"},
+			},
+		},
+	}}
+
+	all := d.Peers()
+	all[0].NowPlaying.Title = "Changed track"
+	all[0].Links[0].Label = "Changed link"
+	all[0].Room.Roster[0].Name = "Changed guest"
+	all[0].Room.Posts[0].Media[0].ID = "changed.jpg"
+	all[0].Room.Posts[0].Comments[0].Text = "Changed comment"
+	all[0].Room.Posts[0].Reactions["fire"] = 2
+	all[0].Room.IDs[0] = "changed"
+
+	one, ok := d.Peer("other")
+	if !ok {
+		t.Fatal("peer disappeared")
+	}
+	if one.NowPlaying.Title != "Original track" || one.Links[0].Label != "Original link" ||
+		one.Room.Roster[0].Name != "Original guest" || one.Room.Posts[0].Media[0].ID != "original.jpg" ||
+		one.Room.Posts[0].Comments[0].Text != "Original comment" || one.Room.Posts[0].Reactions["fire"] != 1 ||
+		one.Room.IDs[0] != "post" {
+		t.Fatalf("Peers result mutated directory state: %#v", one)
+	}
+
+	one.Room.Posts[0].Media[0].ID = "changed-again.jpg"
+	again, _ := d.Peer("other")
+	if again.Room.Posts[0].Media[0].ID != "original.jpg" {
+		t.Fatalf("Peer result mutated directory state: %#v", again.Room.Posts[0].Media)
+	}
+}
+
 func TestMergePostsAppliesChangesAndRemovals(t *testing.T) {
 	previous := []event.Post{{ID: "keep", Text: "old"}, {ID: "remove"}}
 	changed := []event.Post{{ID: "keep", Text: "new"}, {ID: "add"}}
