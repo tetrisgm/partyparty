@@ -41,7 +41,6 @@ async function appcastVersion(env) {
   } catch (_) {}
   return VERSION_CACHE;
 }
-var READ_JSON_TOO_LARGE = /* @__PURE__ */ new WeakSet();
 var esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var absUrl = (s) => {
   try {
@@ -50,44 +49,37 @@ var absUrl = (s) => {
     return SITE_ORIGIN + "/";
   }
 };
-async function readJson(request, maxBytes = 16384) {
+async function readJsonResult(request, maxBytes = 16384) {
   const cap = Math.max(0, Number(maxBytes) || 0);
   const len = Number(request?.headers?.get("content-length") || "0");
-  READ_JSON_TOO_LARGE.delete(request);
   if (len && len > cap) {
-    READ_JSON_TOO_LARGE.add(request);
-    return null;
+    return { value: null, tooLarge: true };
   }
   try {
+    if (!request?.body?.getReader) return { value: null, tooLarge: false };
     let text = "";
-    if (request?.body?.getReader) {
-      const reader = request.body.getReader();
-      const decoder = new TextDecoder();
-      let total = 0;
-      for (; ; ) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        if (total > cap) {
-          await reader.cancel().catch(() => {
-          });
-          READ_JSON_TOO_LARGE.add(request);
-          return null;
-        }
-        text += decoder.decode(value, { stream: true });
+    const reader = request.body.getReader();
+    const decoder = new TextDecoder();
+    let total = 0;
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > cap) {
+        await reader.cancel().catch(() => {
+        });
+        return { value: null, tooLarge: true };
       }
-      text += decoder.decode();
-    } else {
-      text = await request.text();
-      if (new TextEncoder().encode(text).byteLength > cap) {
-        READ_JSON_TOO_LARGE.add(request);
-        return null;
-      }
+      text += decoder.decode(value, { stream: true });
     }
-    return text ? JSON.parse(text) : null;
+    text += decoder.decode();
+    return { value: text ? JSON.parse(text) : null, tooLarge: false };
   } catch (_) {
-    return null;
+    return { value: null, tooLarge: false };
   }
+}
+async function readJson(request, maxBytes = 16384) {
+  return (await readJsonResult(request, maxBytes)).value;
 }
 async function sha256Hex(str) {
   const bytes = new TextEncoder().encode(String(str == null ? "" : str));
@@ -167,6 +159,33 @@ var jsonResp = (status, obj, headers = void 0) => {
   h.set("content-type", "application/json");
   return new Response(JSON.stringify(obj), { status, headers: h });
 };
+function requestMediaType(request) {
+  return String(request.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
+}
+function isJsonContentType(request) {
+  return requestMediaType(request) === "application/json";
+}
+function isRelayProbeContentType(request) {
+  // Older listener pages deliberately used the CORS-safelisted text/plain
+  // envelope for this cross-origin recovery report. The body is still bounded
+  // and strictly typed as JSON below, so retain that wire compatibility.
+  const mediaType = requestMediaType(request);
+  return mediaType === "application/json" || mediaType === "text/plain";
+}
+function jsonMethodNotAllowed(allow, error) {
+  return jsonResp(405, { error }, { allow });
+}
+function methodNotAllowed(allow) {
+  return new Response("Method Not Allowed", { status: 405, headers: { allow } });
+}
+function withoutBodyForHead(request, response) {
+  if (request.method !== "HEAD") return response;
+  return new Response(null, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 var BROKER_HOST_FIRST_WORDS = [
   "disco",
   "neon",
@@ -430,18 +449,21 @@ async function discoverRateLimited(ipHash, bucket = "discover", maxAge = 2) {
     return false;
   }
 }
-function brokerJsonCap(pathname) {
-  return 16384;
-}
+const BROKER_JSON_MAX_BYTES = 16384;
 async function broker(request, env, pathname) {
-  if (pathname === "/api/broker/ping") return jsonResp(200, { ok: true, t: Date.now() });
-  if (request.method !== "POST") return jsonResp(405, { error: "POST required" });
+  if (pathname === "/api/broker/ping") {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return jsonMethodNotAllowed("GET, HEAD", "GET or HEAD required");
+    }
+    return withoutBodyForHead(request, jsonResp(200, { ok: true, t: Date.now() }));
+  }
+  if (request.method !== "POST") return jsonMethodNotAllowed("POST", "POST required");
+  if (!isJsonContentType(request)) return jsonResp(415, { error: "application/json required" });
   if (!env.CF_DNS_TOKEN || !env.CF_ZONE_ID || !env.BROKER_BASE) return jsonResp(503, { error: "broker not configured" });
-  const jsonCap = brokerJsonCap(pathname);
-  const contentLength = Number(request.headers.get("content-length") || "0");
-  if (contentLength && contentLength > jsonCap) return jsonResp(413, { error: "too large" });
-  const body = await readJson(request, jsonCap);
-  if (!body) return READ_JSON_TOO_LARGE.has(request) ? jsonResp(413, { error: "too large" }) : jsonResp(400, { error: "bad json" });
+  const parsed = await readJsonResult(request, BROKER_JSON_MAX_BYTES);
+  if (parsed.tooLarge) return jsonResp(413, { error: "too large" });
+  const body = parsed.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return jsonResp(400, { error: "bad json" });
   if (pathname === "/api/broker/register") {
     const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
     if (await discoverRateLimited(ipHash, "register", 10)) {
@@ -662,6 +684,16 @@ async function broker(request, env, pathname) {
 }
 
 const RELAY_TOKEN_RE = /^[a-f0-9]{32}$/;
+const RELAY_PROBE_JSON_MAX_BYTES = 128;
+const RELAY_PROBE_HEADERS = Object.freeze({
+  "cache-control": "no-store",
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "access-control-allow-headers": "content-type",
+});
+function relayProbeJson(status, body, headers = void 0) {
+  return jsonResp(status, body, { ...RELAY_PROBE_HEADERS, ...(headers || {}) });
+}
 function relayTokenFromHost(hostname, env) {
   const suffix = `.${String(env.BROKER_BASE || "").toLowerCase()}`;
   const host = String(hostname || "").toLowerCase();
@@ -674,20 +706,32 @@ function relayTokenFromHost(hostname, env) {
 
 async function relayTokenExists(env, token) {
   if (!RELAY_TOKEN_RE.test(token)) return false;
-  try {
-    const cache = caches.default;
-    const key = new Request(`https://relay-token.partyparty.internal/${token}`);
-    const hit = await cache.match(key);
-    if (hit) return hit.status === 204;
-    const exists = !!await env.DL.head(`broker/relay/${token}`);
-    await cache.put(key, new Response(null, {
-      status: exists ? 204 : 404,
-      headers: { "cache-control": "max-age=300" },
-    }));
-    return exists;
-  } catch (_) {
-    return !!await env.DL.get(`broker/relay/${token}`);
+  const cache = globalThis.caches?.default;
+  const key = new Request(`https://relay-token.partyparty.internal/${token}`);
+  if (cache) {
+    try {
+      const hit = await cache.match(key);
+      if (hit) return hit.status === 204;
+    } catch (_) {}
   }
+
+  let exists;
+  try {
+    exists = typeof env.DL.head === "function"
+      ? !!await env.DL.head(`broker/relay/${token}`)
+      : !!await env.DL.get(`broker/relay/${token}`);
+  } catch (_) {
+    exists = !!await env.DL.get(`broker/relay/${token}`);
+  }
+  if (cache) {
+    try {
+      await cache.put(key, new Response(null, {
+        status: exists ? 204 : 404,
+        headers: { "cache-control": "max-age=300" },
+      }));
+    } catch (_) {}
+  }
+  return exists;
 }
 
 function scriptJSON(value) {
@@ -873,23 +917,31 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)run()});
 // the room API never touch a Worker; they go straight to the relay origin, which
 // is why this file no longer contains a proxy or a Durable Object.
 async function relayBootstrapRequest(request, env, token) {
-  if (!await relayTokenExists(env, token)) return new Response("Not Found", { status: 404 });
   const url = new URL(request.url);
 
   // The guest's verdict, reported once per join. Low frequency by construction:
   // one request per phone, never per part.
-  if (url.pathname === "/__pp/probe" && request.method === "POST") {
-    let reachable = false;
-    try { reachable = !!(await request.json()).reachable; } catch (e) {}
+  if (url.pathname === "/__pp/probe") {
+    if (request.method !== "POST" && request.method !== "OPTIONS") {
+      return relayProbeJson(405, { error: "POST required" }, { allow: "POST, OPTIONS" });
+    }
+    if (request.method === "POST" && !isRelayProbeContentType(request)) {
+      return relayProbeJson(415, { error: "JSON body required" });
+    }
+    if (!await relayTokenExists(env, token)) return relayProbeJson(404, { error: "room not found" });
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: RELAY_PROBE_HEADERS });
+    }
+    const parsed = await readJsonResult(request, RELAY_PROBE_JSON_MAX_BYTES);
+    if (parsed.tooLarge) return relayProbeJson(413, { error: "too large" });
+    const body = parsed.value;
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.reachable !== "boolean") {
+      return relayProbeJson(400, { error: "bad json" });
+    }
     await env.DL.put(`broker/relay-probe/${token}`, JSON.stringify({
-      reachable, at: Date.now(),
+      reachable: body.reachable, at: Date.now(),
     }));
-    return jsonResp(200, { ok: true }, {
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "POST, OPTIONS",
-      "access-control-allow-headers": "content-type",
-    });
+    return relayProbeJson(200, { ok: true });
   }
 
   // Same-origin relay liveness for the bootstrap page. The page cannot check
@@ -899,23 +951,35 @@ async function relayBootstrapRequest(request, env, token) {
   // fine (2026-08-05). The Worker checks server-side, where CORS does not
   // exist.
   if (url.pathname === "/__pp/relay-live") {
+    if (request.method !== "GET") return jsonMethodNotAllowed("GET", "GET required");
+    if (!await relayTokenExists(env, token)) return new Response("Not Found", { status: 404 });
     const origin = relayOriginFor(env, token);
     let live = false;
     if (origin) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2500);
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 2500);
         const response = await fetch(origin + "/__pp/health", {
           signal: controller.signal,
           cf: { cacheTtl: 0 },
         });
-        clearTimeout(timer);
         live = response.ok;
+        if (response.body) await response.body.cancel().catch(() => {
+        });
       } catch (e) {}
+      finally { clearTimeout(timer); }
     }
     return jsonResp(200, { live }, { "cache-control": "no-store" });
   }
 
+  if (url.pathname !== "/") return new Response("Not Found", { status: 404 });
+  if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed("GET, HEAD");
+  if (!await relayTokenExists(env, token)) return new Response("Not Found", { status: 404 });
+  if (request.method === "HEAD") {
+    return new Response(null, {
+      headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" },
+    });
+  }
   const record = await relayRoomRecord(env, token);
   return new Response(relayBootstrap(record), {
     headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" },
@@ -1060,22 +1124,30 @@ var worker_default = {
     // upload, not a deploy - the file arrives from Apple long after this code
     // does, and nobody should have to ship a Worker to paste it.
     if (pathname === "/.well-known/apple-developer-domain-association.txt") {
+      if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed("GET, HEAD");
       const object = await env.DL.get("apple/domain-association.txt");
       if (!object) return new Response("Not Found", { status: 404 });
-      return new Response(await object.text(), {
-        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" },
+      const headers = new Headers({ "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" });
+      if (Number.isFinite(object.size)) headers.set("content-length", String(object.size));
+      return new Response(request.method === "HEAD" ? null : object.body, {
+        headers,
       });
     }
     if (pathname === "/api/relay-canary") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return jsonMethodNotAllowed("GET, HEAD", "GET or HEAD required");
+      }
       const raw = await env.DL.get("canary/relay.json");
-      if (!raw) return jsonResp(200, { healthy: null, note: "no check has run yet" }, { "cache-control": "no-store" });
-      return new Response(await raw.text(), {
+      if (!raw) {
+        return withoutBodyForHead(request, jsonResp(200, { healthy: null, note: "no check has run yet" }, { "cache-control": "no-store" }));
+      }
+      return new Response(request.method === "HEAD" ? null : raw.body, {
         headers: { "content-type": "application/json", "cache-control": "no-store" },
       });
     }
     if (pathname === "/api/version") {
       if (request.method !== "GET" && request.method !== "HEAD") {
-        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+        return methodNotAllowed("GET, HEAD");
       }
       const headers = { "cache-control": "public, max-age=300" };
       if (request.method === "HEAD") {
@@ -1090,7 +1162,7 @@ var worker_default = {
     }
     if (pathname === "/privacy" || pathname === "/support") {
       if (request.method !== "GET" && request.method !== "HEAD") {
-        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+        return methodNotAllowed("GET, HEAD");
       }
       const response = legalResponse(pathname);
       return request.method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
@@ -1104,7 +1176,7 @@ var worker_default = {
     }
     if (pathname === "/") {
       if (request.method !== "GET" && request.method !== "HEAD") {
-        return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
+        return methodNotAllowed("GET, HEAD");
       }
       const u = new URL(request.url);
       u.pathname = "/";

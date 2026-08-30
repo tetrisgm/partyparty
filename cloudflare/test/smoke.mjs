@@ -64,6 +64,75 @@ const test = (name, fn) => tests.push([name, fn]);
 test("bounded JSON parsing remains strict", async () => {
   assert.deepEqual(await readJson(new Request("https://x/", { method: "POST", body: '{"ok":true}' }), 32), { ok: true });
   assert.equal(await readJson(new Request("https://x/", { method: "POST", body: '{"too":"large"}' }), 2), null);
+  assert.equal(await readJson(new Request("https://x/", { method: "POST", body: "{" }), 32), null);
+});
+
+test("broker JSON envelopes are rejected before broker work", async () => {
+  const env = baseEnv();
+  const registerURL = "https://partyparty.party/api/broker/register";
+
+  let response = await worker.fetch(new Request(registerURL, {
+    method: "POST",
+    body: "{}",
+  }), env);
+  assert.equal(response.status, 415);
+
+  response = await worker.fetch(new Request(registerURL), env);
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get("allow"), "POST");
+
+  response = await worker.fetch(new Request("https://partyparty.party/api/broker/ping", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  }), env);
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get("allow"), "GET, HEAD");
+
+  response = await worker.fetch(new Request("https://partyparty.party/api/broker/a", {
+    method: "POST",
+    headers: { "content-type": "Application/JSON; charset=UTF-8" },
+    body: "{}",
+  }), env);
+  assert.equal(response.status, 400, "JSON media types are matched case-insensitively and may carry parameters");
+
+  response = await worker.fetch(new Request(registerURL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ padding: "x".repeat(17000) }),
+  }), env);
+  assert.equal(response.status, 413, "a body without Content-Length is still bounded while streaming");
+
+  response = await worker.fetch(new Request(registerURL, {
+    method: "POST",
+    headers: { "content-type": "application/json", "content-length": "16385" },
+    body: "{}",
+  }), env);
+  assert.equal(response.status, 413, "an oversized declared body is rejected without reading it");
+
+  assert.equal((await env.DL.list({ prefix: "broker/" })).objects.length, 0,
+    "rejected envelopes must not create broker state");
+});
+
+test("read-only public routes reject mutating methods before storage", async () => {
+  const env = baseEnv();
+  for (const path of [
+    "/", "/privacy", "/support", "/api/version", "/api/relay-canary",
+    "/.well-known/apple-developer-domain-association.txt", "/appcast.xml",
+  ]) {
+    const response = await worker.fetch(new Request(`https://partyparty.party${path}`, {
+      method: "POST",
+      body: "ignored",
+    }), env);
+    assert.equal(response.status, 405, path);
+    assert.equal(response.headers.get("allow"), "GET, HEAD", path);
+  }
+
+  const ping = await worker.fetch(new Request("https://partyparty.party/api/broker/ping", {
+    method: "HEAD",
+  }), env);
+  assert.equal(ping.status, 200);
+  assert.equal(await ping.text(), "");
 });
 
 test("landing, legal pages, version, and the update feed - but no public download", async () => {
@@ -350,6 +419,97 @@ test("legacy relay records cannot inject executable bootstrap markup", async () 
     "invalid legacy direct URLs must be discarded rather than probed");
 });
 
+test("relay probe JSON is typed, bounded, and side-effect free when invalid", async () => {
+  const env = baseEnv();
+  const token = "f".repeat(32);
+  const path = `https://r-${token}.partyparty.party/__pp/probe`;
+  await env.DL.put(`broker/relay/${token}`, "install-1");
+
+  let response = await worker.fetch(new Request(path, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: JSON.stringify({ reachable: false }),
+  }), env);
+  assert.equal(response.status, 415);
+
+  response = await worker.fetch(new Request(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{",
+  }), env);
+  assert.equal(response.status, 400);
+
+  response = await worker.fetch(new Request(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reachable: "false" }),
+  }), env);
+  assert.equal(response.status, 400);
+
+  response = await worker.fetch(new Request(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reachable: false, padding: "x".repeat(200) }),
+  }), env);
+  assert.equal(response.status, 413);
+
+  response = await worker.fetch(new Request(path, { method: "OPTIONS" }), env);
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-methods"), "POST, OPTIONS");
+
+  response = await worker.fetch(new Request(path), env);
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get("allow"), "POST, OPTIONS");
+
+  assert.equal(await env.DL.head(`broker/relay-probe/${token}`), null,
+    "invalid probe requests must not overwrite the Mac's next verdict");
+
+  response = await worker.fetch(new Request(path, {
+    method: "POST",
+    headers: { "content-type": "text/plain;charset=UTF-8" },
+    body: JSON.stringify({ reachable: true }),
+  }), env);
+  assert.equal(response.status, 200, "existing listener pages use a text/plain JSON envelope");
+  const compatible = await env.DL.get(`broker/relay-probe/${token}`);
+  assert.equal(JSON.parse(await compatible.text()).reachable, true);
+});
+
+test("relay route dispatch avoids room and origin work for rejected requests", async () => {
+  const token = "9".repeat(32);
+  let heads = 0;
+  let gets = 0;
+  const env = {
+    ...baseEnv(),
+    DL: {
+      async head() { heads++; return { size: 1 }; },
+      async get() { gets++; throw new Error("unexpected room read"); },
+    },
+  };
+
+  let response = await worker.fetch(new Request(
+    `https://r-${token}.partyparty.party/not-a-bootstrap-route`), env);
+  assert.equal(response.status, 404);
+
+  response = await worker.fetch(new Request(`https://r-${token}.partyparty.party/`, {
+    method: "POST",
+    body: "ignored",
+  }), env);
+  assert.equal(response.status, 405);
+
+  response = await worker.fetch(new Request(
+    `https://r-${token}.partyparty.party/__pp/relay-live`, { method: "POST" }), env);
+  assert.equal(response.status, 405);
+  assert.equal(heads, 0, "rejected paths and methods must not look up a room");
+  assert.equal(gets, 0, "rejected paths and methods must not load room records");
+
+  response = await worker.fetch(new Request(
+    `https://r-${token}.partyparty.party/`, { method: "HEAD" }), env);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "");
+  assert.equal(heads, 1, "HEAD verifies that the room exists");
+  assert.equal(gets, 0, "HEAD must not build the full room bootstrap");
+});
+
 test("a guest can report reachability exactly once per join", async () => {
   const env = baseEnv();
   const token = "b".repeat(32);
@@ -357,7 +517,11 @@ test("a guest can report reachability exactly once per join", async () => {
 
   const reported = await worker.fetch(new Request(
     "https://r-" + token + ".partyparty.party/__pp/probe",
-    { method: "POST", body: JSON.stringify({ reachable: false }) }), env);
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reachable: false }),
+    }), env);
   assert.equal(reported.status, 200);
 
   const stored = await env.DL.get("broker/relay-probe/" + token);
@@ -401,6 +565,7 @@ test("registering records party membership, and only a well-formed party id", as
   const env = baseEnv();
   const register = (partyId) => worker.fetch(new Request("https://partyparty.party/api/broker/relay/register", {
     method: "POST",
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({
       id: "aaaaaaaaaaaa", secret: "sec", lanIp: "192.168.1.40",
       directUrl: "https://host.party.partyparty.party:8443/", partyId,
@@ -421,7 +586,9 @@ test("registering records party membership, and only a well-formed party id", as
 test("a forgotten install is told to register again, a wrong secret is not", async () => {
   const env = baseEnv();
   const call = (path, body) => worker.fetch(new Request("https://partyparty.party" + path, {
-    method: "POST", body: JSON.stringify(body),
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
   }), env);
 
   // Nothing on this side has ever heard of this id. Saying so is what lets a
