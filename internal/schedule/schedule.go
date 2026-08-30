@@ -6,11 +6,10 @@
 // guests all obey the same absolute instant, so they agree by construction
 // rather than by coincidence.
 //
-// D is DECLARED, never discovered. It is the pipeline floor plus the hold-back
-// we write into the playlist, and both terms are ours. A conforming player
-// riding the live edge of a playlist we author is therefore on schedule without
-// honoring any advisory tag, without us commanding AVPlayer, and without anyone
-// measuring a venue first.
+// D is DECLARED, never discovered. The shipping geometry expresses the fixed
+// three-second cushion with an EXT-X-START attachment pin in the multivariant
+// playlist and a modest part hold-back in media playlists. PartyParty does not
+// command AVPlayer after attachment and never adapts D to a venue or listener.
 //
 // This lives in its own package because the schedule has to be identical on
 // every path a guest can arrive by, and there is more than one such path: the
@@ -27,9 +26,9 @@
 //     devices, must never lengthen the delay for anyone else. The product has
 //     already been burned once by a room-wide value that tracked room health,
 //     which made healthy players move whenever a struggling peer changed it.
-//  2. Devices that fall behind are corrected strictly per device, by the
-//     visible-only forward governor, which never runs while locked or
-//     backgrounded and never touches a peer.
+//  2. Devices that fall behind are corrected strictly per device with a fresh
+//     visible-only native attachment, never while locked or backgrounded and
+//     never by changing a peer's target.
 //
 // What the schedule buys is coherence, not adaptation: every device targets the
 // same declared point instead of independently choosing one, which removes
@@ -42,15 +41,11 @@ import (
 	"strings"
 )
 
-// PartHoldBack is the distance from the live edge that we declare to players,
-// in seconds. It is the one lever that sets where a conforming player starts,
-// and it is self-enforcing: a player that ignores it starves, so it respects it
-// out of self-interest. This is why the schedule leans on it rather than on
-// EXT-X-START, which is purely advisory and may be silently ignored.
-//
-// It is a constant of the design, not a tuning knob, and specifically not a
-// function of anybody's network. It must also stay INSIDE the region where
-// parts exist (the spec sizes it around 3x the part duration).
+// PartHoldBack is the modest media-playlist floor, in seconds. It remains a
+// constant of the design rather than a network tuning knob, and must stay inside
+// the region where parts exist. It is intentionally not stretched to the full
+// room target; the three-second attachment point is authored separately in the
+// multivariant playlist.
 //
 // STABILITY DELIVERY (2026-08-05, third attempt, BENCHED FIRST): the owner's
 // fixed 3s cushion ships as EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES in the
@@ -66,10 +61,9 @@ import (
 // BEFORE upload, per the contract's soak rule.
 const PartHoldBack = 0.9
 
-// Delay is the room's published D: what a guest should expect between a sound
-// leaving the DJ and reaching a listener. It is the declared hold-back plus the
-// fixed pipeline floor (capture, AAC encode, packaging), which is a property of
-// the path rather than of the venue.
+// Delay is the room's fixed published D: what a guest should expect between a
+// sound leaving the DJ and reaching a listener. Direct, local, and relay expose
+// this same target; it is not recomputed from path or listener conditions.
 const Delay = 3.0
 
 // RewritePlaylist authors the schedule into whichever playlist tier it is
