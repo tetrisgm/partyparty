@@ -66,6 +66,27 @@ type Post struct {
 	Deleted   bool           `json:"-"`
 }
 
+// snapshotPost returns a post that can be read after the store lock is
+// released. Post itself is a value, but these fields have mutable backing
+// storage that writers update in place. The source must remain locked while
+// the snapshot is made.
+func snapshotPost(p *Post) Post {
+	cp := *p
+	if p.Media != nil {
+		cp.Media = append(make([]Media, 0, len(p.Media)), p.Media...)
+	}
+	if p.Comments != nil {
+		cp.Comments = append(make([]Comment, 0, len(p.Comments)), p.Comments...)
+	}
+	if p.Reactions != nil {
+		cp.Reactions = make(map[string]int, len(p.Reactions))
+		for reaction, count := range p.Reactions {
+			cp.Reactions[reaction] = count
+		}
+	}
+	return cp
+}
+
 // CurrentTrack is the DJ-shared "now playing" state. It is deliberately
 // manual for the MVP; future integrations can feed the same store method.
 type CurrentTrack struct {
@@ -1237,7 +1258,8 @@ func (s *Store) AddPost(cid, author, emoji, text string, media []Media, dj bool)
 		_ = s.saveGuestsLocked()
 	}
 	s.changed()
-	return p, nil
+	snapshot := snapshotPost(p)
+	return &snapshot, nil
 }
 
 // AddComment appends a reply under a post.
@@ -1767,15 +1789,9 @@ func (s *Store) FeedFor(sinceTS int64, cid string, dj bool) (posts []Post, ids [
 		if !postVisibleTo(p, cid, dj) {
 			continue
 		}
-		cp := *p
+		cp := snapshotPost(p)
 		cp.State = normalizeState(cp.State)
-		cp.Comments = visibleComments(p.Comments, cid, dj)
-		if len(p.Reactions) > 0 {
-			cp.Reactions = make(map[string]int, len(p.Reactions))
-			for reaction, count := range p.Reactions {
-				cp.Reactions[reaction] = count
-			}
-		}
+		cp.Comments = visibleComments(cp.Comments, cid, dj)
 		ids = append(ids, cp.ID)
 		mediaCount += len(cp.Media)
 		if cp.Act > sinceTS {

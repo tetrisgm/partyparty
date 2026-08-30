@@ -26,13 +26,12 @@ func (s *Store) writeRecap() {
 	s.mu.Lock()
 	dir := s.dir
 	meta := s.meta
-	posts := make([]*Post, 0, len(s.posts))
+	posts := make([]Post, 0, len(s.posts))
 	for _, p := range s.posts {
 		if p.Deleted || p.State == StateHidden {
 			continue
 		}
-		clone := *p
-		posts = append(posts, &clone)
+		posts = append(posts, snapshotPost(p))
 	}
 	tracks := append([]CurrentTrack(nil), s.setlistTracks...)
 	s.mu.Unlock()
