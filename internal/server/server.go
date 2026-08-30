@@ -636,20 +636,48 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/connection-mode":
 		// The DJ's connection preference. POST {"override":"auto|direct|relay|local"}
-		// sets it; any method returns the current state. Automatic is the default
+		// sets it; GET returns the current state. Automatic is the default
 		// and right almost always; the rest are preferences with honest fallback,
 		// never forced dead ends, so asking for relay with no internet reports
 		// NO PATH rather than pretending.
-		if s.Relay == nil {
-			writeJSON(w, http.StatusOK, map[string]any{"override": relay.OverrideAuto, "available": false})
-			return
-		}
-		if r.Method == http.MethodPost {
+		switch r.Method {
+		case http.MethodGet:
+		case http.MethodPost:
+			if !s.requireDJ(w, r) {
+				return
+			}
 			var body struct {
 				Override string `json:"override"`
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			s.Relay.SetOverride(strings.TrimSpace(body.Override))
+			decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+			if err := decoder.Decode(&body); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+				return
+			}
+			// A second JSON value is not part of the request body, even if both
+			// values happen to decode successfully on their own.
+			if err := decoder.Decode(&struct{}{}); err != io.EOF {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+				return
+			}
+			body.Override = strings.TrimSpace(body.Override)
+			switch body.Override {
+			case relay.OverrideAuto, relay.OverrideDirect, relay.OverrideRelay, relay.OverrideLocal:
+			default:
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid override"})
+				return
+			}
+			if s.Relay != nil {
+				s.Relay.SetOverride(body.Override)
+			}
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET or POST required"})
+			return
+		}
+		if s.Relay == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"override": relay.OverrideAuto, "available": false})
+			return
 		}
 		connection := s.Relay.Snapshot()
 		writeJSON(w, http.StatusOK, map[string]any{

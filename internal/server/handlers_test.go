@@ -264,6 +264,82 @@ func TestStatusWithNoRegistrationYetHasNoJoinURL(t *testing.T) {
 	}
 }
 
+func TestConnectionModeGETIsPublicButPOSTIsDJOnly(t *testing.T) {
+	isolateUserConfig(t)
+	env := newTestEnv(t, nil)
+	env.srv.Relay = relay.New(relay.Config{})
+
+	remote := "192.168.1.44:3333"
+	w := do(env.srv, http.MethodGet, "/api/connection-mode", remote)
+	if w.Code != http.StatusOK {
+		t.Fatalf("remote GET = %d, body %q", w.Code, w.Body.String())
+	}
+	if got := decodeJSON(t, w)["override"]; got != relay.OverrideAuto {
+		t.Fatalf("remote GET override = %#v, want %q", got, relay.OverrideAuto)
+	}
+
+	w = doBody(env.srv, http.MethodPost, "/api/connection-mode", remote, "application/json",
+		bytes.NewBufferString(`{"override":"relay"}`))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("remote POST = %d, body %q; want 403", w.Code, w.Body.String())
+	}
+	if got := env.srv.Relay.Override(); got != relay.OverrideAuto {
+		t.Fatalf("remote POST changed override to %q", got)
+	}
+
+	w = doBody(env.srv, http.MethodPost, "/api/connection-mode", djAddr, "application/json",
+		bytes.NewBufferString(`{"override":"relay"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("loopback POST = %d, body %q", w.Code, w.Body.String())
+	}
+	if got := env.srv.Relay.Override(); got != relay.OverrideRelay {
+		t.Fatalf("loopback POST override = %q, want %q", got, relay.OverrideRelay)
+	}
+
+	w = do(env.srv, http.MethodGet, "/api/connection-mode", remote)
+	if got := decodeJSON(t, w)["override"]; got != relay.OverrideRelay {
+		t.Fatalf("remote GET after DJ mutation = %#v, want %q", got, relay.OverrideRelay)
+	}
+}
+
+func TestConnectionModeRejectsUnsupportedMethodsAndBadInput(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		body       string
+		wantStatus int
+		wantError  string
+	}{
+		{name: "method", method: http.MethodPut, body: `{"override":"relay"}`, wantStatus: http.StatusMethodNotAllowed, wantError: "GET or POST required"},
+		{name: "malformed JSON", method: http.MethodPost, body: `{"override":`, wantStatus: http.StatusBadRequest, wantError: "bad request"},
+		{name: "multiple JSON values", method: http.MethodPost, body: `{"override":"relay"} {}`, wantStatus: http.StatusBadRequest, wantError: "bad request"},
+		{name: "invalid override", method: http.MethodPost, body: `{"override":"sometimes"}`, wantStatus: http.StatusBadRequest, wantError: "invalid override"},
+		{name: "missing override", method: http.MethodPost, body: `{}`, wantStatus: http.StatusBadRequest, wantError: "invalid override"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isolateUserConfig(t)
+			env := newTestEnv(t, nil)
+			env.srv.Relay = relay.New(relay.Config{})
+
+			w := doBody(env.srv, tt.method, "/api/connection-mode", djAddr, "application/json", bytes.NewBufferString(tt.body))
+			if w.Code != tt.wantStatus {
+				t.Fatalf("status = %d, body %q; want %d", w.Code, w.Body.String(), tt.wantStatus)
+			}
+			if got := decodeJSON(t, w)["error"]; got != tt.wantError {
+				t.Fatalf("error = %#v, want %q", got, tt.wantError)
+			}
+			if got := env.srv.Relay.Override(); got != relay.OverrideAuto {
+				t.Fatalf("rejected request changed override to %q", got)
+			}
+			if tt.wantStatus == http.StatusMethodNotAllowed && w.Header().Get("Allow") != "GET, POST" {
+				t.Fatalf("Allow = %q, want GET, POST", w.Header().Get("Allow"))
+			}
+		})
+	}
+}
+
 func do(s *Srv, method, target, remoteAddr string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, nil)
 	if remoteAddr != "" {
