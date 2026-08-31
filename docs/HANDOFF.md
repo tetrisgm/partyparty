@@ -152,8 +152,7 @@ packaging/verification scripts; no upload is a diagnostic step.
 
 ## Deep review record (2026-08-30)
 
-The current review is deliberately landing as small commits. Completed work so
-far includes:
+The review landed as 43 small commits on `main`. Completed work includes:
 
 - removed account-era tests, reconciliation/moderation APIs, duplicate reply
   handlers, unused UI assets/fonts, and stale ignore entries;
@@ -166,13 +165,22 @@ far includes:
   origin restarts, track-deletion journaling, and immutable event snapshots;
 - made relay mode transitions generation-aware and updated the web surfaces to
   avoid rapid polling and unnecessary DOM/QR reconstruction;
+- made activation state and certificate generations atomic, bound broker
+  results to immutable install generations, and prevented stale relay
+  registrations from being committed;
+- made relay contribution cancellation and target rotation generation-safe,
+  with complete destination republishing before a playlist becomes visible;
+- replaced cross-Mac wall-clock feed ordering with opaque source revisions,
+  wakeable peer snapshots, and authoritative full-snapshot cursors, including
+  peer disappearance, future-clock, deletion, restart, and room-switch cases;
 - replaced the obsolete account, one-second playback, and Durable
   Object/WebSocket documentation with the system that ships.
 
-Activation certificate/identity atomicity, relay contribution lifecycle, and
-cross-Mac feed cursor correctness are under focused concurrency review. Do not
-call this audit complete until those increments land and the full Go, race,
-browser, Worker, and Swift gates pass from a clean tree.
+The closing gate passed on 2026-08-30: all Go tests, `go vet`, the full Go race
+suite, browser contract/render/interaction tests, 19 Worker smoke tests, and all
+Swift tests and builds. Three independent focused reviews covered activation,
+relay contribution, and cross-Mac feed concurrency. No release, deployment, or
+playback-geometry change was made.
 
 ## Owed to physical reality
 
