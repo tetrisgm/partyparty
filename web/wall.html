@@ -418,7 +418,8 @@
         switched = true;
         media.clear();
       }
-      if (data.cursor && !switched) newestAct = Math.max(newestAct, Number(data.cursor || 0));
+      if (data.full) newestAct = Number(data.cursor || 0);
+      else if (data.cursor && !switched) newestAct = Math.max(newestAct, Number(data.cursor || 0));
       pruneByIDs(data.ids);
       for (const p of data.posts || []) {
         newestAct = Math.max(newestAct, Number(p.act || p.ts || 0));

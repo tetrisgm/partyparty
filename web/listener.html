@@ -3691,10 +3691,9 @@
           // instant anything happens - realtime without a hammering interval.
           // (Never on the FIRST load: an empty event would park the request
           // 25s and hold the welcome card hostage.)
-          // The relay origin serves the feed from a snapshot and parks only
-          // when told what we already have, so echo its ETag back. The Mac's
-          // own server ignores the header; either way the parked request stays
-          // the pacing instead of an instant answer turning this into a hot loop.
+          // The server parks only when told what snapshot we already have, so
+          // echo its ETag back. The parked request stays the pacing instead of
+          // an instant answer turning this into a hot loop.
           const feedHeaders = {};
           if (feedOn && feedTag) feedHeaders['If-None-Match'] = feedTag;
           const r = await fetch('/api/feed?cid=' + encodeURIComponent(cid) + '&since=' + newestAct + (feedOn ? '&wait=1' : ''), { cache: 'no-store', headers: feedHeaders });
@@ -3722,7 +3721,8 @@
             feedOn = true;
             feedSec.hidden = !featureOn('wallMode'); downhint.hidden = !featureOn('wallMode');
           }
-          if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
+          if (data.full) newestAct = Number(data.cursor || 0);
+          else if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
           // The hero IS the event: host line, title, invite line. Flag the
           // title as event-owned so the status poll stops writing s.name.
           if (data.title) { setEventTitle(data.title); document.body.dataset.eventTitle = '1'; }

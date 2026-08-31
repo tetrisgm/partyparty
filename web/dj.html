@@ -3204,17 +3204,24 @@ try { if (navigator.sendBeacon) navigator.sendBeacon('/api/client-events', JSON.
       } catch (e) { copyBtn.textContent = 'Could not copy'; }
     };
 
+    let feedTag = '';
     async function poll(){
       try {
         // wait=1 after the first load: long-poll - guest posts/comments land
         // on the console the moment they happen.
-        const r = await fetch('/api/feed?since=' + newestAct + (on ? '&wait=1' : ''), { cache:'no-store' });
+        const headers = {};
+        if (on && feedTag) headers['If-None-Match'] = feedTag;
+        const r = await fetch('/api/feed?since=' + newestAct + (on ? '&wait=1' : ''), {
+          cache:'no-store', headers
+        });
         if (r.status === 404) return false;
         if (!r.ok) return false;
+        feedTag = r.headers.get('ETag') || feedTag;
         const data = await r.json();
         if (!on) { on = true; card.style.display = 'block'; }
         renderSetlist(data.setlist, data.nowPlaying);
-        if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
+        if (data.full) newestAct = Number(data.cursor || 0);
+        else if (data.cursor) newestAct = Math.max(newestAct, data.cursor);
         syncHeader(data.title, data.host, data.starts, data.slug, data.date, data.time, data.place, data.cover);
         renderReactions(data.features || {}, data.reactions || {}, data.spikes || {});
         renderLinkEditor(data.links || []);

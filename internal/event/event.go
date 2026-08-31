@@ -314,6 +314,7 @@ type Store struct {
 	// happens - the wall feels realtime without a 1s hammering interval.
 	notifyMu sync.Mutex
 	notify   chan struct{}
+	notifyID uint64
 }
 
 type reactionCounter struct {
@@ -372,7 +373,7 @@ func Open(baseDir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{notify: make(chan struct{}), base: baseDir}
+	s := &Store{notify: make(chan struct{}), notifyID: newNotifyID(), base: baseDir}
 	if err := s.use(dir); err != nil {
 		return nil, err
 	}
@@ -427,6 +428,8 @@ func migrateEventData(dir string) error {
 func (s *Store) changed() {
 	s.scheduleRecap()
 	s.notifyMu.Lock()
+	s.ensureNotifyLocked()
+	s.notifyID++
 	close(s.notify)
 	s.notify = make(chan struct{})
 	s.notifyMu.Unlock()
@@ -434,9 +437,38 @@ func (s *Store) changed() {
 
 // Wait returns a channel that closes on the next visible mutation.
 func (s *Store) Wait() <-chan struct{} {
+	changed, _ := s.Watch()
+	return changed
+}
+
+// Watch atomically returns the next-change notification and the current
+// store-lifetime revision. Capturing both under one lock lets feed handlers
+// compare an opaque client revision without opening a snapshot/subscription
+// gap. The random initial value also invalidates browser revisions on restart.
+func (s *Store) Watch() (<-chan struct{}, uint64) {
 	s.notifyMu.Lock()
 	defer s.notifyMu.Unlock()
-	return s.notify
+	s.ensureNotifyLocked()
+	return s.notify, s.notifyID
+}
+
+func (s *Store) ensureNotifyLocked() {
+	if s.notify == nil {
+		s.notify = make(chan struct{})
+	}
+	if s.notifyID == 0 {
+		s.notifyID = newNotifyID()
+	}
+}
+
+func newNotifyID() uint64 {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		if id := binary.LittleEndian.Uint64(b[:]); id != 0 {
+			return id
+		}
+	}
+	return uint64(time.Now().UnixNano()) | 1
 }
 
 // nextActivityLocked advances the feed's store-wide logical clock. Wall-clock

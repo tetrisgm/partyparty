@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,6 +87,8 @@ type Directory struct {
 	candidates map[string]candidate
 	peers      map[string]Peer
 	peerSeen   map[string]time.Time
+	wake       chan struct{}
+	revision   uint64
 }
 
 // New starts Bonjour advertisement, browsing, and HTTPS reachability probes.
@@ -100,6 +104,8 @@ func New(ctx context.Context, selfID, host string, port int) (*Directory, error)
 		candidates: make(map[string]candidate),
 		peers:      make(map[string]Peer),
 		peerSeen:   make(map[string]time.Time),
+		wake:       make(chan struct{}),
+		revision:   newDirectoryRevision(),
 	}
 	txt := []string{"id=" + selfID, "host=" + host, "port=" + strconv.Itoa(port)}
 	server, err := zeroconf.Register("partyparty-"+selfID, service, "local.", port, txt, nil)
@@ -223,11 +229,15 @@ func (d *Directory) probe(ctx context.Context) {
 				peer.Room.Posts = mergePosts(previous.Room.Posts, peer.Room.Posts, peer.Room.IDs)
 			}
 			d.mu.Lock()
+			visibleChanged := !peerVisibleEqual(d.peers[c.id], peer)
 			d.peers[c.id] = peer
 			if d.peerSeen == nil {
 				d.peerSeen = make(map[string]time.Time)
 			}
 			d.peerSeen[c.id] = time.Now()
+			if visibleChanged {
+				d.changedLocked()
+			}
 			d.mu.Unlock()
 			if previous.ID == "" {
 				log.Printf("peer discovery: connected to %s (%s)", peer.ID, peer.Name)
@@ -240,11 +250,33 @@ func (d *Directory) probe(ctx context.Context) {
 	for id, c := range d.candidates {
 		if now.Sub(c.seen) > 2*time.Minute {
 			delete(d.candidates, id)
+			_, visible := d.peers[id]
 			delete(d.peers, id)
 			delete(d.peerSeen, id)
+			if visible {
+				d.changedLocked()
+			}
 		}
 	}
 	d.mu.Unlock()
+}
+
+// peerVisibleEqual excludes the accumulated post bodies. A peer response's
+// room cursor and ID set already identify visible feed changes, while comparing
+// every retained post on every two-second health probe makes steady-state
+// discovery cost grow with the whole night's history.
+func peerVisibleEqual(a, b Peer) bool {
+	if a.Room != nil {
+		room := *a.Room
+		room.Posts = nil
+		a.Room = &room
+	}
+	if b.Room != nil {
+		room := *b.Room
+		room.Posts = nil
+		b.Room = &room
+	}
+	return reflect.DeepEqual(a, b)
 }
 
 func mergePosts(previous, changed []event.Post, currentIDs []string) []event.Post {
@@ -265,6 +297,12 @@ func mergePosts(previous, changed []event.Post, currentIDs []string) []event.Pos
 	for _, post := range posts {
 		out = append(out, post)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TS == out[j].TS {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].TS < out[j].TS
+	})
 	return out
 }
 
@@ -275,9 +313,40 @@ func (d *Directory) markPeerUnavailable(id, reason string) {
 	if peer.ID != "" && !lastSeen.IsZero() && time.Since(lastSeen) >= peerGrace {
 		delete(d.peers, id)
 		delete(d.peerSeen, id)
+		d.changedLocked()
 		log.Printf("peer discovery: lost %s: %s", id, reason)
 	}
 	d.mu.Unlock()
+}
+
+// Watch atomically returns the next-change notification and current directory
+// revision. Only changes to the public peer snapshot advance it; successful
+// identical health probes merely refresh peerSeen and do not wake feed polls.
+func (d *Directory) Watch() (<-chan struct{}, uint64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ensureWatchLocked()
+	return d.wake, d.revision
+}
+
+func (d *Directory) changedLocked() {
+	d.ensureWatchLocked()
+	d.revision++
+	close(d.wake)
+	d.wake = make(chan struct{})
+}
+
+func (d *Directory) ensureWatchLocked() {
+	if d.wake == nil {
+		d.wake = make(chan struct{})
+	}
+	if d.revision == 0 {
+		d.revision = newDirectoryRevision()
+	}
+}
+
+func newDirectoryRevision() uint64 {
+	return uint64(time.Now().UnixNano()) | 1
 }
 
 // Peers returns the currently reachable peer snapshot.

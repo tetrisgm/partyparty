@@ -2,6 +2,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -84,17 +86,82 @@ func uploadLooksLikeVideo(name, contentType string) bool {
 // mutation closes and replaces the current channel, so reading first can miss
 // a mutation in the gap and park on the replacement channel for 25 seconds.
 type feedSource interface {
-	Wait() <-chan struct{}
+	Watch() (<-chan struct{}, uint64)
 	FeedFor(int64, string, bool) ([]event.Post, []string, int, int64)
 }
 
 func watchedFeed(source feedSource, since int64, cid string, dj bool, roomPeers []peers.Peer) (
-	posts []event.Post, ids []string, mediaCount int, cursor int64, changed <-chan struct{},
+	posts []event.Post, ids []string, mediaCount int, cursor int64, changed <-chan struct{}, revision uint64,
 ) {
-	changed = source.Wait()
+	changed, revision = source.Watch()
 	posts, ids, mediaCount, cursor = source.FeedFor(since, cid, dj)
 	posts, ids, mediaCount, cursor = mergeRoomFeed(posts, ids, mediaCount, cursor, since, roomPeers)
 	return
+}
+
+type feedSubscription struct {
+	eventWake       <-chan struct{}
+	peerInstallWake <-chan struct{}
+	peerWake        <-chan struct{}
+	eventRevision   uint64
+	peerInstallRev  uint64
+	peerRevision    uint64
+	roomPeers       []peers.Peer
+}
+
+func (s *srv) captureFeedSubscription() feedSubscription {
+	eventWake, eventRevision := s.Events.Watch()
+	directory, peerInstallWake, peerInstallRev := s.peerWatch()
+	sub := feedSubscription{
+		eventWake:       eventWake,
+		peerInstallWake: peerInstallWake,
+		eventRevision:   eventRevision,
+		peerInstallRev:  peerInstallRev,
+	}
+	if directory != nil {
+		sub.peerWake, sub.peerRevision = directory.Watch()
+		sub.roomPeers = directory.Peers()
+	}
+	return sub
+}
+
+func (s feedSubscription) token(cid string, dj bool) string {
+	// Hash the three independent source revisions together with the response
+	// audience. The scalar activity cursor remains in the JSON for old pages,
+	// but it no longer has to order clocks from different Macs.
+	raw := strconv.FormatUint(s.eventRevision, 10) + ":" +
+		strconv.FormatUint(s.peerInstallRev, 10) + ":" +
+		strconv.FormatUint(s.peerRevision, 10) + ":" +
+		strconv.FormatBool(dj) + ":" + cid
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:16])
+}
+
+func (s feedSubscription) hasRoomFeed() bool {
+	for _, peer := range s.roomPeers {
+		if peer.Room != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func feedETag(token string) string { return `W/"` + token + `"` }
+
+func feedETagMatches(header, token string) bool {
+	expected := `"` + token + `"`
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "W/"))
+		if candidate == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func feedPeerRevisionChanged(a, b feedSubscription) bool {
+	return a.peerInstallRev != b.peerInstallRev || a.peerRevision != b.peerRevision
 }
 
 func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
@@ -105,27 +172,63 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 	case "/api/feed":
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 		dj := s.isDJ(r) && r.URL.Query().Get("guest") != "1"
-		roomPeers := s.roomPeers()
-		posts, ids, mediaCount, cursor, changed := watchedFeed(s.Events, since, r.URL.Query().Get("cid"), dj, roomPeers)
-		// Long-poll (wait=1): nothing new → park until the next mutation (or
-		// ~25s heartbeat), then answer. Posts and comments land on every open
-		// page within a network round-trip instead of a polling interval.
-		if len(posts) == 0 && cursor <= since && r.URL.Query().Get("wait") == "1" {
-			wait := 25 * time.Second
-			if len(roomPeers) > 0 {
-				wait = 2 * time.Second
+		cid := r.URL.Query().Get("cid")
+		subscription := s.captureFeedSubscription()
+		token := subscription.token(cid, dj)
+		clientTag := r.Header.Get("If-None-Match")
+		matched := feedETagMatches(clientTag, token)
+		fullSnapshot := !matched
+
+		if r.URL.Query().Get("wait") == "1" {
+			park := matched
+			if !matched && strings.TrimSpace(clientTag) == "" {
+				// A legacy page has only the scalar cursor. It is sufficient on one
+				// Store's strictly increasing clock, but cannot prove completeness
+				// across independent Macs. Return immediately for an ordinary new
+				// activity; otherwise use a bounded full refresh while federated.
+				posts, _, _, cursor, _, _ := watchedFeed(s.Events, since, cid, dj, subscription.roomPeers)
+				park = len(posts) == 0 && cursor <= since
 			}
-			timer := time.NewTimer(wait)
-			defer timer.Stop()
-			select {
-			case <-changed:
-			case <-timer.C:
-			case <-r.Context().Done():
-				return true
+			if park {
+				wait := 25 * time.Second
+				if !matched && subscription.hasRoomFeed() {
+					wait = 2 * time.Second
+				}
+				timer := time.NewTimer(wait)
+				select {
+				case <-subscription.eventWake:
+				case <-subscription.peerInstallWake:
+				case <-subscription.peerWake:
+				case <-timer.C:
+				case <-r.Context().Done():
+					timer.Stop()
+					return true
+				}
+				timer.Stop()
+
+				previous := subscription
+				subscription = s.captureFeedSubscription()
+				nextToken := subscription.token(cid, dj)
+				// A matched single-Mac client can keep the allocation-friendly
+				// incremental response. With any federated room, a full snapshot
+				// contains same-millisecond and skewed-clock changes without asking
+				// one scalar cursor to order independent sources.
+				if matched {
+					fullSnapshot = nextToken != token &&
+						(previous.hasRoomFeed() || subscription.hasRoomFeed() || feedPeerRevisionChanged(previous, subscription))
+				} else {
+					fullSnapshot = true
+				}
+				token = nextToken
 			}
-			posts, ids, mediaCount, cursor = s.Events.FeedFor(since, r.URL.Query().Get("cid"), dj)
-			posts, ids, mediaCount, cursor = mergeRoomFeed(posts, ids, mediaCount, cursor, since, s.roomPeers())
 		}
+
+		snapshotSince := since
+		if fullSnapshot {
+			snapshotSince = 0
+		}
+		posts, ids, mediaCount, cursor := s.Events.FeedFor(snapshotSince, cid, dj)
+		posts, ids, mediaCount, cursor = mergeRoomFeed(posts, ids, mediaCount, cursor, snapshotSince, subscription.roomPeers)
 		if posts == nil {
 			posts = []event.Post{}
 		}
@@ -143,6 +246,7 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 			"dir":   filepath.Base(s.Events.Dir()),
 			"posts": posts, "ids": ids, "total": len(ids), "media": mediaCount,
 			"photos": photos, "videos": videos, "audio": audio, "cursor": cursor, "dj": dj,
+			"revision": token, "full": fullSnapshot,
 		}
 		current, recent := s.Events.TrackSnapshot()
 		body["nowPlaying"] = feedTrackFrom(current)
@@ -160,6 +264,8 @@ func (s *srv) handleFeedAPI(w http.ResponseWriter, r *http.Request) bool {
 		} else if len(meta.Links) > 0 {
 			body["links"] = meta.Links
 		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("ETag", feedETag(token))
 		writeJSON(w, http.StatusOK, body)
 	case "/api/reactions":
 		if r.Method != http.MethodPost {

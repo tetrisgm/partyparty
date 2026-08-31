@@ -62,6 +62,7 @@ checkInlineScripts('web/dj.html');
 checkInlineScripts('web/wall.html');
 
 const listener = read('web/listener.html');
+assert.match(listener, /if \(data\.full\) newestAct = Number\(data\.cursor \|\| 0\);/);
 const forbiddenDash = String.fromCodePoint(0x2014);
 assert.equal((listener.match(/feedList\.addEventListener\('keydown'/g) || []).length, 1,
   'listener replies must have one delegated key handler');
@@ -169,10 +170,13 @@ assert.match(wall, /const STATUS_POLL_TIMEOUT_MS = 8000;/);
 assert.match(wall, /const FEED_POLL_TIMEOUT_MS = 30000;/);
 assert.match(wall, /if \(!statusPollPromise\)/);
 assert.match(wall, /headers\['If-None-Match'\] = feedTag;/);
+assert.match(wall, /if \(data\.full\) newestAct = Number\(data\.cursor \|\| 0\);/);
 assert.equal((wall.match(/\$\('collage'\)\.addEventListener\('error'/g) || []).length, 1,
   'the wall collage must have one delegated media error handler');
 
 const dj = read('web/dj.html');
+assert.match(dj, /headers\['If-None-Match'\] = feedTag;/);
+assert.match(dj, /if \(data\.full\) newestAct = Number\(data\.cursor \|\| 0\);/);
 assert.equal((dj.match(/list\.addEventListener\('keydown'/g) || []).length, 1,
   'DJ replies must have one delegated key handler');
 assert.equal((dj.match(/button\.action-folder:hover/g) || []).length, 1,
@@ -325,7 +329,7 @@ assert.match(server, /case "\/api\/time":[\s\S]*?Access-Control-Allow-Origin/);
 assert.doesNotMatch(server, /Privacy_ScreenCapture|Screen & System Audio Recording/);
 
 const main = read('main.go');
-assert.match(main, /startPeerDiscovery\(res\.Host\)/);
+assert.match(main, /startPeerDiscovery\(res\.Host, res\.InstallID\(\)\)/);
 assert.match(main, /relay\.New\(relay\.Config/);
 
 const relayMode = read('internal/relay/mode.go');

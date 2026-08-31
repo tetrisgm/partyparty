@@ -102,7 +102,9 @@ type srv struct {
 	actLast    activate.Result
 	actLastSet bool
 
-	peersMu sync.RWMutex
+	peersMu       sync.RWMutex
+	peersWake     chan struct{}
+	peersRevision uint64
 
 	hostCache  sync.Map // ip -> reverse-DNS device name ("" = looked up, nothing useful)
 	hostCacheN int32
@@ -149,7 +151,9 @@ type srv struct {
 func New(d Deps) *Srv {
 	s := &Srv{srv{
 		Deps: d, vendor: http.FileServer(http.FS(d.Web)),
-		limits: newLimiter(),
+		limits:        newLimiter(),
+		peersWake:     make(chan struct{}),
+		peersRevision: uint64(time.Now().UnixNano()) | 1,
 	}}
 	// The /live proxy keeps LL-HLS on the guest page's HTTPS origin without
 	// rewriting MediaMTX's low-latency playlist.
@@ -375,8 +379,15 @@ func (s *Srv) SetActivationPending(reason string) {
 // so discovery cannot be treated as a launch-only dependency.
 func (s *Srv) SetPeers(directory *peers.Directory, peerID string) {
 	s.peersMu.Lock()
+	changed := s.Peers != directory || s.PeerID != peerID
 	s.Peers = directory
 	s.PeerID = peerID
+	if changed {
+		s.ensurePeersWatchLocked()
+		s.peersRevision++
+		close(s.peersWake)
+		s.peersWake = make(chan struct{})
+	}
 	s.peersMu.Unlock()
 }
 
@@ -1328,6 +1339,22 @@ func (s *srv) roomPeers() []peers.Peer {
 		return nil
 	}
 	return directory.Peers()
+}
+
+func (s *srv) peerWatch() (*peers.Directory, <-chan struct{}, uint64) {
+	s.peersMu.Lock()
+	defer s.peersMu.Unlock()
+	s.ensurePeersWatchLocked()
+	return s.Peers, s.peersWake, s.peersRevision
+}
+
+func (s *srv) ensurePeersWatchLocked() {
+	if s.peersWake == nil {
+		s.peersWake = make(chan struct{})
+	}
+	if s.peersRevision == 0 {
+		s.peersRevision = uint64(time.Now().UnixNano()) | 1
+	}
 }
 
 func broadcastStatus(status broadcast.Status) map[string]any {

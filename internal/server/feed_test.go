@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"partyparty/internal/broadcast"
@@ -11,26 +13,82 @@ import (
 	"partyparty/internal/peers"
 )
 
+func feedRequest(s *Srv, target, remoteAddr, tag string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req.RemoteAddr = remoteAddr
+	if tag != "" {
+		req.Header.Set("If-None-Match", tag)
+	}
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	return w
+}
+
+func TestFeedGenerationMakesFullSnapshotCursorAuthoritative(t *testing.T) {
+	ev, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ev.AddPost("guest", "Guest", "🎉", "first", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	s := New(Deps{Events: ev, Broadcaster: broadcast.New(config.Config{}, t.TempDir(), "", "")})
+
+	first := feedRequest(s, "/api/feed?cid=guest&since=999999999999999", "192.168.1.44:5555", "")
+	firstBody := decodeJSON(t, first)
+	if full, _ := firstBody["full"].(bool); !full {
+		t.Fatalf("first response full = %#v, want authoritative snapshot", firstBody["full"])
+	}
+	if got := int64(firstBody["cursor"].(float64)); got >= 999999999999999 {
+		t.Fatalf("authoritative cursor = %d, stale future cursor was not replaced", got)
+	}
+	firstTag := first.Header().Get("ETag")
+	if firstTag == "" {
+		t.Fatal("full snapshot has no generation ETag")
+	}
+
+	cursor := int64(firstBody["cursor"].(float64))
+	matched := feedRequest(s, "/api/feed?cid=guest&since="+strconv.FormatInt(cursor, 10), "192.168.1.44:5555", firstTag)
+	matchedBody := decodeJSON(t, matched)
+	if full, _ := matchedBody["full"].(bool); full {
+		t.Fatal("matching generation unexpectedly forced a full snapshot")
+	}
+
+	if _, err := ev.AddPost("guest", "Guest", "🎉", "second", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	changed := feedRequest(s, "/api/feed?cid=guest&since="+strconv.FormatInt(cursor, 10), "192.168.1.44:5555", firstTag)
+	changedBody := decodeJSON(t, changed)
+	if full, _ := changedBody["full"].(bool); !full {
+		t.Fatal("changed generation did not return an authoritative full snapshot")
+	}
+	if changed.Header().Get("ETag") == firstTag {
+		t.Fatal("changed generation reused the previous ETag")
+	}
+}
+
 // replacingFeedSource models event.Store's close-and-replace notification.
 // Its feed read performs a mutation in the exact gap that used to exist
 // between FeedFor and Wait, without depending on goroutine scheduling.
 type replacingFeedSource struct {
-	current chan struct{}
+	current  chan struct{}
+	revision uint64
 }
 
-func (s *replacingFeedSource) Wait() <-chan struct{} {
-	return s.current
+func (s *replacingFeedSource) Watch() (<-chan struct{}, uint64) {
+	return s.current, s.revision
 }
 
 func (s *replacingFeedSource) FeedFor(int64, string, bool) ([]event.Post, []string, int, int64) {
 	close(s.current)
 	s.current = make(chan struct{})
+	s.revision++
 	return nil, nil, 0, 0
 }
 
 func TestWatchedFeedCannotLoseMutationBetweenSnapshotAndPark(t *testing.T) {
 	source := &replacingFeedSource{current: make(chan struct{})}
-	_, _, _, _, changed := watchedFeed(source, 0, "guest", false, nil)
+	_, _, _, _, changed, _ := watchedFeed(source, 0, "guest", false, nil)
 	select {
 	case <-changed:
 		// The snapshot raced a mutation, so the request must not park.
@@ -42,7 +100,7 @@ func TestWatchedFeedCannotLoseMutationBetweenSnapshotAndPark(t *testing.T) {
 func TestWatchedFeedIncludesKnownPeerBeforePark(t *testing.T) {
 	source := &replacingFeedSource{current: make(chan struct{})}
 	peerPost := event.Post{ID: "remote-post", TS: 11, Act: 12}
-	posts, _, _, cursor, _ := watchedFeed(source, 10, "guest", false, []peers.Peer{{
+	posts, _, _, cursor, _, _ := watchedFeed(source, 10, "guest", false, []peers.Peer{{
 		ID: "other-dj", Room: &peers.Room{Posts: []event.Post{peerPost}, Cursor: peerPost.Act},
 	}})
 	if len(posts) != 1 || posts[0].ID != "other-dj~remote-post" || cursor != peerPost.Act {
