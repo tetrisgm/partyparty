@@ -1,6 +1,7 @@
 package activate
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -38,13 +39,22 @@ func TestCachedCertReadyBYOHostFromLocalFiles(t *testing.T) {
 	if res.Host != "dj.example.net" {
 		t.Fatalf("Host = %q, want dj.example.net", res.Host)
 	}
-	if filepath.Base(res.CertFile) != "live-cert.pem" || filepath.Base(res.KeyFile) != "live-key.pem" {
-		t.Fatalf("cert/key files = %q %q", res.CertFile, res.KeyFile)
+	if res.CertFile != res.KeyFile || filepath.Dir(res.CertFile) != filepath.Join(dirForResult(t), certificatePairsDirName) {
+		t.Fatalf("cert/key snapshot files = %q %q", res.CertFile, res.KeyFile)
 	}
 
 	if res, ok := CachedCertReady("other.example.net"); ok || res.OK {
 		t.Fatalf("CachedCertReady for wrong host = (%+v, %v), want not usable", res, ok)
 	}
+}
+
+func dirForResult(t *testing.T) string {
+	t.Helper()
+	dir, err := stateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 func TestCachedCertReadyBrokerHostFromInstallJSON(t *testing.T) {
@@ -83,7 +93,7 @@ func TestBrokerRememberHostUpdatesCachedBase(t *testing.T) {
 		base:      "pp.example.net",
 		hostLabel: "disco42",
 	}
-	if err := b.rememberHost(dir, "disco42.party.example.net"); err != nil {
+	if err := b.rememberHost(context.Background(), dir, "disco42.party.example.net"); err != nil {
 		t.Fatal(err)
 	}
 	if got := BrokerHost(); got != "disco42.party.example.net" {
@@ -119,7 +129,7 @@ func TestCachedCertReadyAcceptsNearExpiry(t *testing.T) {
 	if !ok || !res.OK {
 		t.Fatalf("CachedCertReady near expiry = (%+v, %v), want usable until close to expiry", res, ok)
 	}
-	if certUsable(filepath.Join(dir, "live-cert.pem"), "dj.example.net") {
+	if certUsable(filepath.Join(dir, "live-cert.pem"), filepath.Join(dir, "live-key.pem"), "dj.example.net") {
 		t.Fatalf("certUsable near expiry = true, want false so online activation renews")
 	}
 }
@@ -152,6 +162,19 @@ func writeCachedLiveCert(t *testing.T, host string, validFor time.Duration) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	certPEM, keyPEM := makeLiveCertPair(t, host, validFor)
+	if err := installCertificatePair(
+		filepath.Join(dir, "live-cert.pem"),
+		filepath.Join(dir, "live-key.pem"),
+		certPEM,
+		keyPEM,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func makeLiveCertPair(t *testing.T, host string, validFor time.Duration) ([]byte, []byte) {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -168,15 +191,8 @@ func writeCachedLiveCert(t *testing.T, host string, validFor time.Duration) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	certFile, err := os.Create(filepath.Join(dir, "live-cert.pem"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: der}); err != nil {
-		certFile.Close()
-		t.Fatal(err)
-	}
-	if err := certFile.Close(); err != nil {
+	var certPEM bytes.Buffer
+	if err := pem.Encode(&certPEM, &pem.Block{Type: "CERTIFICATE", Bytes: der}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -184,17 +200,11 @@ func writeCachedLiveCert(t *testing.T, host string, validFor time.Duration) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyFile, err := os.OpenFile(filepath.Join(dir, "live-key.pem"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
+	var keyPEM bytes.Buffer
+	if err := pem.Encode(&keyPEM, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}); err != nil {
 		t.Fatal(err)
 	}
-	if err := pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}); err != nil {
-		keyFile.Close()
-		t.Fatal(err)
-	}
-	if err := keyFile.Close(); err != nil {
-		t.Fatal(err)
-	}
+	return certPEM.Bytes(), keyPEM.Bytes()
 }
 
 // ------------------------------------------------- disowned install recovery

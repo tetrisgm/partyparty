@@ -35,6 +35,10 @@ const (
 )
 
 // PlaneHooks connects the plane to the room the Mac is actually running.
+// Hooks may read Manager state, but ApplyWrite and Presence must not call
+// SetEnabled or SetTarget synchronously: lifecycle changes wait for an
+// in-progress delivery to finish so that no old-generation callback can run
+// after the change returns.
 type PlaneHooks struct {
 	// Snapshots returns the room state to publish, keyed by the endpoint a guest
 	// reads (for example "status" and "feed"). Called every cycle.
@@ -91,16 +95,37 @@ func (m *Manager) RunPlane(ctx context.Context, hooks PlaneHooks) {
 		if ctx.Err() != nil {
 			return
 		}
-		if m.isEnabled() {
-			m.planeCycle(ctx, hooks)
+		enabled, observedGeneration := m.lifecycleState()
+		if enabled {
+			target := m.resolveTarget()
+			cycleCtx, finish, generation, ok := m.beginOperation(ctx, target.generation)
+			if !ok {
+				continue
+			}
+			m.planeCycleTo(cycleCtx, hooks, target)
+			finish()
+			if ctx.Err() != nil {
+				return
+			}
+			if !m.generationIsCurrent(generation, true) {
+				continue
+			}
+			observedGeneration = generation
 		}
-		if !m.wait(ctx, planeInterval) {
+		if !m.waitForChange(ctx, planeInterval, observedGeneration) {
 			return
 		}
 	}
 }
 
 func (m *Manager) planeCycle(ctx context.Context, hooks PlaneHooks) {
+	m.planeCycleTo(ctx, hooks, m.resolveTarget())
+}
+
+func (m *Manager) planeCycleTo(ctx context.Context, hooks PlaneHooks, target relayTarget) {
+	if target.base == "" || !m.generationIsCurrent(target.generation, false) {
+		return
+	}
 	delay := 0.0
 	if hooks.DelaySec != nil {
 		delay = hooks.DelaySec()
@@ -109,50 +134,60 @@ func (m *Manager) planeCycle(ctx context.Context, hooks PlaneHooks) {
 		if len(body) == 0 || !json.Valid(body) {
 			continue
 		}
-		if err := m.publishSnapshot(ctx, kind, body, delay); err != nil {
+		if err := m.publishSnapshotTo(ctx, target, kind, body, delay); err != nil {
 			// A failed publish is not fatal: the next cycle republishes, and
 			// guests keep reading the previous snapshot meanwhile.
 			return
 		}
 	}
 
-	d, err := m.drain(ctx)
+	d, err := m.drainFrom(ctx, target)
 	if err != nil {
 		return
 	}
 	if hooks.Presence != nil {
-		hooks.Presence(Presence{
-			Listeners: d.Listeners,
-			SpreadMs:  d.SpreadMs,
-			Roster:    d.Roster,
-		})
+		if !m.commitGeneration(target.generation, func() {
+			hooks.Presence(Presence{
+				Listeners: d.Listeners,
+				SpreadMs:  d.SpreadMs,
+				Roster:    d.Roster,
+			})
+		}) {
+			return
+		}
 	}
 	if hooks.ApplyWrite != nil {
 		for _, w := range d.Writes {
-			hooks.ApplyWrite(w.Path, w.Body)
+			if !m.commitGeneration(target.generation, func() {
+				hooks.ApplyWrite(w.Path, w.Body)
+			}) {
+				return
+			}
 		}
 	}
 }
 
-func (m *Manager) publishSnapshot(ctx context.Context, kind string, body json.RawMessage, delaySec float64) error {
-	base, token := m.cfg.target()
-	if base == "" {
+func (m *Manager) publishSnapshotTo(ctx context.Context, target relayTarget, kind string, body json.RawMessage, delaySec float64) error {
+	if target.base == "" {
 		return errNoOrigin
 	}
-	target, err := joinURL(base, "__pp/plane/"+kind)
+	if !m.generationIsCurrent(target.generation, false) {
+		return errStaleCycle
+	}
+	requestURL, err := joinURL(target.base, "__pp/plane/"+kind)
 	if err != nil {
 		return err
 	}
 	if delaySec > 0 {
-		target += fmt.Sprintf("?delaySec=%.3f", delaySec)
+		requestURL += fmt.Sprintf("?delaySec=%.3f", delaySec)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, target, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if target.token != "" {
+		req.Header.Set("Authorization", "Bearer "+target.token)
 	}
 	resp, err := m.originClient.Do(req)
 	if err != nil {
@@ -163,25 +198,30 @@ func (m *Manager) publishSnapshot(ctx context.Context, kind string, body json.Ra
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("publish %s: status %d", kind, resp.StatusCode)
 	}
+	if !m.generationIsCurrent(target.generation, false) {
+		return errStaleCycle
+	}
 	return nil
 }
 
-func (m *Manager) drain(ctx context.Context) (digest, error) {
+func (m *Manager) drainFrom(ctx context.Context, target relayTarget) (digest, error) {
 	var out digest
-	base, token := m.cfg.target()
-	if base == "" {
+	if target.base == "" {
 		return out, errNoOrigin
 	}
-	target, err := joinURL(base, "__pp/drain")
+	if !m.generationIsCurrent(target.generation, false) {
+		return out, errStaleCycle
+	}
+	requestURL, err := joinURL(target.base, "__pp/drain")
 	if err != nil {
 		return out, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, nil)
 	if err != nil {
 		return out, err
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if target.token != "" {
+		req.Header.Set("Authorization", "Bearer "+target.token)
 	}
 	resp, err := m.originClient.Do(req)
 	if err != nil {
@@ -197,6 +237,9 @@ func (m *Manager) drain(ctx context.Context) (digest, error) {
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
 		return out, err
+	}
+	if !m.generationIsCurrent(target.generation, false) {
+		return digest{}, errStaleCycle
 	}
 	return out, nil
 }

@@ -7,7 +7,7 @@
 //     guests on the same Wi-Fi resolve it locally (RFC1918 in public DNS -
 //     exactly what Plex does).
 //
-// Optional self-managed configuration (normal installs use the account broker):
+// Optional self-managed configuration (normal installs use the anonymous install broker):
 //   - PARTYPARTY_LIVE_HOST (or --live-host): e.g. "dj.example.net"
 //   - PARTYPARTY_CF_TOKEN env, or a token in <app-support>/cf-token, scoped to
 //     Zone → DNS → Edit for that host's zone.
@@ -20,9 +20,10 @@ package activate
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
@@ -31,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"partyparty/internal/netinfo"
@@ -69,6 +71,11 @@ type Result struct {
 	ReasonCode       string // stable machine code (see reason codes below); "" on success
 
 	Reason string // human-readable detail (for the log); text may change, code does not
+
+	// install is the immutable identity snapshot that produced this result. It
+	// stays private so neither the install secret nor its generation can escape
+	// through JSON, logs, or status responses. CommitResult is the only consumer.
+	install installSnapshot
 }
 
 // Stable activation reason codes. Branch on these, never on Reason prose.
@@ -102,7 +109,53 @@ type RelayRegistration struct {
 	// the last poll. There is no socket for the browser to push it over any more,
 	// so it rides the registration response instead. nil means nothing new.
 	Probe *bool `json:"probe"`
+
+	// install carries the exact credentials used for this broker response. Relay
+	// consumers commit the response and credentials together through
+	// CommitRelayRegistration instead of rereading a potentially newer file.
+	install installSnapshot
 }
+
+type installGeneration [sha256.Size]byte
+
+type installSnapshot struct {
+	id         string
+	secret     string
+	base       string
+	hostLabel  string
+	generation installGeneration
+}
+
+func snapshotFromRecord(rec installRecord) installSnapshot {
+	rec.HostLabel = rec.label()
+	rec.Slug = ""
+	data, _ := json.Marshal(rec) // a fixed struct cannot fail to marshal
+	return installSnapshot{
+		id:         rec.ID,
+		secret:     rec.Secret,
+		base:       rec.Base,
+		hostLabel:  rec.HostLabel,
+		generation: sha256.Sum256(data),
+	}
+}
+
+func (s installSnapshot) valid() bool {
+	return s.id != "" && s.secret != "" && s.hostLabel != "" && s.generation != (installGeneration{})
+}
+
+func (b *brokerClient) snapshot() installSnapshot {
+	return snapshotFromRecord(installRecord{ID: b.id, Secret: b.secret, Base: b.base, HostLabel: b.hostLabel})
+}
+
+func (b *brokerClient) result(res Result) Result {
+	res.install = b.snapshot()
+	return res
+}
+
+// InstallID returns the non-secret install identifier that produced r. BYO and
+// pre-registration results return "". It lets a successful activation start
+// peer discovery from the same immutable identity snapshot.
+func (r Result) InstallID() string { return r.install.id }
 
 // RegisterRelay ensures this install has a stable, unguessable public join
 // address. The broker combines the venue's public address with the Mac's LAN
@@ -117,9 +170,7 @@ func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL, partyID str
 	if err != nil {
 		return RelayRegistration{}, err
 	}
-	if logf == nil {
-		logf = func(string, ...any) {}
-	}
+	logf = nonNilLogf(logf)
 	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
 	if err != nil {
 		return RelayRegistration{}, err
@@ -136,8 +187,7 @@ func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL, partyID str
 	if err := register(); errors.Is(err, errUnknownInstall) {
 		// Registered again under a new identity, then straight back to what we
 		// came here to do. A room filling up must not wait for a restart.
-		forgetInstall(dir, logf)
-		if b, err = loadOrRegisterInstall(ctx, brokerURL, dir, logf); err != nil {
+		if b, err = recoverUnknownInstall(ctx, brokerURL, dir, b, logf); err != nil {
 			return RelayRegistration{}, err
 		}
 		if err := register(); err != nil {
@@ -151,16 +201,20 @@ func RegisterRelay(ctx context.Context, brokerURL, lanIP, directURL, partyID str
 		out.NetworkKey == "" {
 		return RelayRegistration{}, errors.New("relay registration: malformed response")
 	}
+	out.install = b.snapshot()
+	if err := requireCurrentInstall(ctx, dir, b); err != nil {
+		return RelayRegistration{}, err
+	}
 	return out, nil
 }
 
 // TryBroker is the zero-config activation path (the Plex pattern): the install
 // registers with the PartyParty.party cert broker once and gets a MEMORABLE
-// hostname (disco42.pp.example.net - no IP-encoded eyesores), issues an exact
-// cert for it locally (the private key never leaves this Mac; the broker only
-// publishes DNS records), and upserts the single A record to the current venue
-// IP at every launch. Fails soft like Try.
+// hostname (disco42.pp.example.net - no IP-encoded eyesores), caches the shared
+// broker-provisioned wildcard certificate/key, and upserts the single A record
+// to the current venue IP at every launch. Fails soft like Try.
 func TryBroker(brokerURL, lanIP string, logf Logf) Result {
+	logf = nonNilLogf(logf)
 	if lanIP == "" {
 		return Result{Reason: "no LAN IP yet"}
 	}
@@ -168,15 +222,19 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	if err != nil {
 		return Result{Reason: "no state dir: " + err.Error()}
 	}
-	certFile := filepath.Join(dir, "live-cert.pem")
-	keyFile := filepath.Join(dir, "live-key.pem")
-
 	ctx, cancel := context.WithTimeout(context.Background(), brokerAttemptTimeout)
 	defer cancel()
 
 	b, err := loadOrRegisterInstall(ctx, brokerURL, dir, logf)
 	if err != nil {
 		return Result{Reason: "broker: " + err.Error()}
+	}
+	finish := func(res Result) Result {
+		res = b.result(res)
+		if err := requireCurrentInstall(ctx, dir, b); err != nil {
+			return b.result(Result{ExpectedIP: lanIP, Reason: "broker: " + err.Error()})
+		}
+		return res
 	}
 
 	// The BROKER is the source of truth for the hostname AND returns a strict,
@@ -194,8 +252,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 		// A new identity means a new machine name, so the cert on disk is for a
 		// host this Mac no longer answers to; the wildcard fetch below sees that
 		// through certUsable and pulls a fresh one.
-		forgetInstall(dir, logf)
-		if b, err = loadOrRegisterInstall(ctx, brokerURL, dir, logf); err != nil {
+		if b, err = recoverUnknownInstall(ctx, brokerURL, dir, b, logf); err != nil {
 			return Result{Reason: "broker: " + err.Error()}
 		}
 		aResp = struct {
@@ -211,26 +268,26 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 	if host == "" {
 		host = b.hostLabel + "." + b.base
 	}
-	if err := b.rememberHost(dir, host); err != nil {
+	if err := b.rememberHost(ctx, dir, host); errors.Is(err, errInstallChanged) {
+		return finish(Result{ExpectedIP: lanIP, Reason: "broker: " + err.Error()})
+	} else if err != nil {
 		logf("activate: could not persist broker host %s: %v", host, err)
 	}
 	dnsPublished := postErr == nil && aResp.OK && aResp.Verified
 
-	if !certUsable(certFile, host) {
-		// The shared machine wildcard (*.party.<base>) is the ONLY cert path for
-		// broker installs: one cert covers every machine host under the base, so
-		// there is no per-Mac ACME and no Let's Encrypt rate limit. It is fetched
-		// over the authed broker endpoint and validated with certUsable - exactly
-		// like a self-issued cert - before it is trusted. No fallback by design: a
-		// transient fetch failure leaves the cert not-yet-ready and the refresh
-		// loop retries; the renew window gives a buffer before any real expiry, and
-		// once fetched the cert is cached locally so later parties run offline.
-		if err := fetchWildcard(ctx, b, certFile, keyFile); err != nil {
-			return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "wildcard cert: " + err.Error()}
-		}
-		if !certUsable(certFile, host) {
-			return Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "wildcard cert not usable for " + host}
-		}
+	// The shared machine wildcard (*.party.<base>) is the ONLY cert path for
+	// broker installs: one cert covers every machine host under the base, so
+	// there is no per-Mac ACME and no Let's Encrypt rate limit. It is fetched
+	// over the authed broker endpoint and validated as a complete keypair before
+	// it is installed. No fallback by design: a transient fetch failure leaves
+	// the cert not-yet-ready and the refresh loop retries; the renew window gives
+	// a buffer before any real expiry, and once fetched the cert is cached locally
+	// so later parties run offline.
+	certFile, keyFile, fetchedCert, certErr := ensureWildcardCertificate(ctx, b, dir, host)
+	if certErr != nil {
+		return finish(Result{Host: host, ExpectedIP: lanIP, ReasonCode: ReasonCert, Reason: "wildcard cert: " + certErr.Error()})
+	}
+	if fetchedCert {
 		logf("activate: using shared wildcard cert for %s", host)
 	}
 	// OK means only that the certificate is usable (Go Live works everywhere).
@@ -247,7 +304,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 		default:
 			res.Reason = "DNS publish unverified"
 		}
-		return res
+		return finish(res)
 	}
 
 	// DNS agreement is readiness evidence, not certificate provisioning. Keep
@@ -264,7 +321,7 @@ func TryBroker(brokerURL, lanIP string, logf Logf) Result {
 		res.ReasonCode = ReasonResolverMismatch
 		res.Reason = obs.describe()
 	}
-	return res
+	return finish(res)
 }
 
 // brokerClient talks to the cert broker
@@ -332,36 +389,127 @@ func (b *brokerClient) post(ctx context.Context, path string, body any, out any)
 // means the identity is worthless.
 var errUnknownInstall = errors.New("broker: unknown install")
 
-// forgetInstall drops a broker identity the broker itself has disowned, so the
-// next call registers a fresh one. Only ever called on errUnknownInstall - a Mac
-// that threw its identity away on a timeout would rename itself every time the
-// venue Wi-Fi hiccuped, and the guest link would move with it.
-func forgetInstall(dir string, logf Logf) {
-	path := filepath.Join(dir, "install.json")
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		logf("activate: could not clear the disowned install record: %v", err)
-		return
+var errInstallChanged = errors.New("install identity changed during broker operation")
+
+var installStateGate = func() chan struct{} {
+	gate := make(chan struct{}, 1)
+	gate <- struct{}{}
+	return gate
+}()
+
+func lockInstallState(ctx context.Context, dir string) (*os.File, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	logf("activate: the broker no longer knows this install; registering again")
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-installStateGate:
+	}
+	lockFile, err := os.OpenFile(filepath.Join(dir, ".install.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		installStateGate <- struct{}{}
+		return nil, err
+	}
+	if err := lockFile.Chmod(0o600); err != nil {
+		_ = lockFile.Close()
+		installStateGate <- struct{}{}
+		return nil, err
+	}
+	for {
+		err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return lockFile, nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			_ = lockFile.Close()
+			installStateGate <- struct{}{}
+			return nil, err
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			_ = lockFile.Close()
+			installStateGate <- struct{}{}
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func unlockInstallState(lockFile *os.File) {
+	_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+	_ = lockFile.Close()
+	installStateGate <- struct{}{}
+}
+
+func nonNilLogf(logf Logf) Logf {
+	if logf == nil {
+		return func(string, ...any) {}
+	}
+	return logf
+}
+
+type pendingLogEntry struct {
+	format string
+	args   []any
+}
+
+type pendingLogs []pendingLogEntry
+
+func (p *pendingLogs) add(format string, args ...any) {
+	copyArgs := append([]any(nil), args...)
+	*p = append(*p, pendingLogEntry{format: format, args: copyArgs})
+}
+
+func (p pendingLogs) replay(logf Logf) {
+	logf = nonNilLogf(logf)
+	for _, entry := range p {
+		logf(entry.format, entry.args...)
+	}
 }
 
 // loadOrRegisterInstall returns this Mac's broker identity, registering on
 // first use and persisting it (install.json, 0600).
 func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf) (*brokerClient, error) {
+	lockFile, err := lockInstallState(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	cleanupStaleAtomicTemps(dir, []string{".install.json.tmp-"}, time.Now(), time.Hour, 32)
+	var pending pendingLogs
+	b, loadErr := loadOrRegisterInstallLocked(ctx, brokerURL, dir, pending.add)
+	unlockInstallState(lockFile)
+	pending.replay(logf)
+	return b, loadErr
+}
+
+func loadOrRegisterInstallLocked(ctx context.Context, brokerURL, dir string, logf Logf) (*brokerClient, error) {
 	path := filepath.Join(dir, "install.json")
 	var rec installRecord
 	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil &&
-		rec.ID != "" && rec.label() != "" && brokerOwnsBase(brokerURL, rec.Base) {
-		rec.HostLabel = rec.label()
+		rec.ID != "" && rec.Secret != "" && rec.label() != "" && brokerOwnsBase(brokerURL, rec.Base) {
+		label := rec.label()
+		needsMigration := rec.HostLabel != label || rec.Slug != ""
+		rec.HostLabel = label
 		rec.Slug = ""
-		if migrated, err := json.Marshal(rec); err == nil {
-			_ = os.WriteFile(path, migrated, 0o600)
+		if needsMigration {
+			_ = writeInstallRecord(path, rec)
+		} else {
+			repairPrivateRegularFile(path)
 		}
-		return &brokerClient{url: brokerURL, id: rec.ID, secret: rec.Secret, base: rec.Base, hostLabel: rec.HostLabel}, nil
+		return brokerFromRecord(brokerURL, rec), nil
 	}
 	if rec.ID != "" && rec.label() != "" {
 		logf("activate: retired broker registration %s.%s does not belong to %s; registering this install with the current broker", rec.label(), rec.Base, brokerURL)
 	}
+	return registerInstallLocked(ctx, brokerURL, path, logf)
+}
+
+func registerInstallLocked(ctx context.Context, brokerURL, path string, logf Logf) (*brokerClient, error) {
 	b := &brokerClient{url: brokerURL}
 	var out struct {
 		ID        string `json:"id"`
@@ -375,14 +523,129 @@ func loadOrRegisterInstall(ctx context.Context, brokerURL, dir string, logf Logf
 	if out.ID == "" || out.Secret == "" || out.Base == "" || out.HostLabel == "" {
 		return nil, errors.New("register: malformed response")
 	}
-	rec.ID, rec.Secret, rec.Base, rec.HostLabel = out.ID, out.Secret, out.Base, out.HostLabel
-	data, _ := json.Marshal(rec)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	rec := installRecord{ID: out.ID, Secret: out.Secret, Base: out.Base, HostLabel: out.HostLabel}
+	if err := writeInstallRecord(path, rec); err != nil {
 		return nil, err
 	}
 	logf("activate: registered install %s → %s.%s", out.ID, out.HostLabel, out.Base)
 	b.id, b.secret, b.base, b.hostLabel = out.ID, out.Secret, out.Base, out.HostLabel
 	return b, nil
+}
+
+// recoverUnknownInstall replaces stale credentials only after the replacement
+// registration has succeeded. Concurrent broker users that were refused at the
+// same time reuse the first replacement instead of minting competing identities.
+func recoverUnknownInstall(ctx context.Context, brokerURL, dir string, stale *brokerClient, logf Logf) (*brokerClient, error) {
+	lockFile, err := lockInstallState(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	cleanupStaleAtomicTemps(dir, []string{".install.json.tmp-"}, time.Now(), time.Hour, 32)
+	var pending pendingLogs
+	path := filepath.Join(dir, "install.json")
+
+	var rec installRecord
+	if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &rec) == nil &&
+		rec.ID != "" && rec.Secret != "" && rec.label() != "" && brokerOwnsBase(brokerURL, rec.Base) &&
+		(rec.ID != stale.id || rec.Secret != stale.secret) {
+		repairPrivateRegularFile(path)
+		b := brokerFromRecord(brokerURL, rec)
+		unlockInstallState(lockFile)
+		return b, nil
+	}
+
+	pending.add("activate: the broker no longer knows this install; registering again")
+	b, registerErr := registerInstallLocked(ctx, brokerURL, path, pending.add)
+	unlockInstallState(lockFile)
+	pending.replay(logf)
+	return b, registerErr
+}
+
+func brokerFromRecord(brokerURL string, rec installRecord) *brokerClient {
+	snapshot := snapshotFromRecord(rec)
+	return &brokerClient{url: brokerURL, id: snapshot.id, secret: snapshot.secret, base: snapshot.base, hostLabel: snapshot.hostLabel}
+}
+
+func requireCurrentInstall(ctx context.Context, dir string, b *brokerClient) error {
+	lockFile, err := lockInstallState(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer unlockInstallState(lockFile)
+	var rec installRecord
+	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
+	if err != nil || json.Unmarshal(data, &rec) != nil || snapshotFromRecord(rec).generation != b.snapshot().generation {
+		return errInstallChanged
+	}
+	return nil
+}
+
+// CommitResult makes validation and application one install-generation
+// transaction. A replacement identity cannot land between the check and the
+// callback, including when another PartyParty process is running. Results that
+// do not come from the anonymous broker (BYO certificates) commit directly.
+func CommitResult(ctx context.Context, res Result, commit func()) (bool, error) {
+	if commit == nil {
+		return false, errors.New("activation result commit callback is nil")
+	}
+	if !res.install.valid() {
+		commit()
+		return true, nil
+	}
+	dir, err := stateDir()
+	if err != nil {
+		return false, err
+	}
+	lockFile, err := lockInstallState(ctx, dir)
+	if err != nil {
+		return false, err
+	}
+	defer unlockInstallState(lockFile)
+	var current installRecord
+	data, readErr := os.ReadFile(filepath.Join(dir, "install.json"))
+	if readErr != nil || json.Unmarshal(data, &current) != nil ||
+		snapshotFromRecord(current).generation != res.install.generation {
+		return false, nil
+	}
+	commit()
+	return true, nil
+}
+
+// CommitRelayRegistration atomically commits a broker response with the exact
+// install credentials used to obtain it. The credentials are supplied only to
+// the callback and are never reread from install.json after validation.
+func CommitRelayRegistration(ctx context.Context, registration RelayRegistration, commit func(id, secret string)) (bool, error) {
+	if commit == nil {
+		return false, errors.New("relay registration commit callback is nil")
+	}
+	if !registration.install.valid() {
+		return false, errors.New("relay registration has no install snapshot")
+	}
+	dir, err := stateDir()
+	if err != nil {
+		return false, err
+	}
+	lockFile, err := lockInstallState(ctx, dir)
+	if err != nil {
+		return false, err
+	}
+	defer unlockInstallState(lockFile)
+	var current installRecord
+	data, readErr := os.ReadFile(filepath.Join(dir, "install.json"))
+	if readErr != nil || json.Unmarshal(data, &current) != nil ||
+		snapshotFromRecord(current).generation != registration.install.generation {
+		return false, nil
+	}
+	commit(registration.install.id, registration.install.secret)
+	return true, nil
+}
+
+func writeInstallRecord(path string, rec installRecord) error {
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(path, data, 0o600)
 }
 
 func brokerOwnsBase(brokerURL, base string) bool {
@@ -395,15 +658,38 @@ func brokerOwnsBase(brokerURL, base string) bool {
 	return host != "" && (base == host || strings.HasSuffix(base, "."+host))
 }
 
-func (b *brokerClient) rememberHost(dir, host string) error {
+func (b *brokerClient) rememberHost(ctx context.Context, dir, host string) error {
 	base, ok := brokerBaseFromHost(host, b.hostLabel)
 	if !ok {
 		return nil
 	}
+	lockFile, err := lockInstallState(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer unlockInstallState(lockFile)
+
+	path := filepath.Join(dir, "install.json")
+	var current installRecord
+	if data, readErr := os.ReadFile(path); readErr == nil && json.Unmarshal(data, &current) == nil && current.ID != "" {
+		if snapshotFromRecord(current).generation != b.snapshot().generation {
+			return errInstallChanged
+		}
+	} else if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	rec := installRecord{ID: b.id, Secret: b.secret, Base: base, HostLabel: b.hostLabel}
+	if current.ID == rec.ID && current.Secret == rec.Secret && current.Base == rec.Base &&
+		current.HostLabel == rec.HostLabel && current.Slug == "" {
+		b.base = base
+		repairPrivateRegularFile(path)
+		return nil
+	}
+	if err := writeInstallRecord(path, rec); err != nil {
+		return err
+	}
 	b.base = base
-	rec := installRecord{ID: b.id, Secret: b.secret, Base: b.base, HostLabel: b.hostLabel}
-	data, _ := json.Marshal(rec)
-	return os.WriteFile(filepath.Join(dir, "install.json"), data, 0o600)
+	return nil
 }
 
 func brokerBaseFromHost(host, hostLabel string) (string, bool) {
@@ -444,35 +730,30 @@ func CachedCert() (certFile, keyFile string, ok bool) {
 	if err != nil {
 		return "", "", false
 	}
-	certFile = filepath.Join(dir, "live-cert.pem")
-	keyFile = filepath.Join(dir, "live-key.pem")
-	certPEM, err := os.ReadFile(certFile)
+	pairFile, err := cachedCertificateSnapshot(context.Background(), dir, "", time.Hour)
 	if err != nil {
-		return "", "", false
-	}
-	if _, err := os.Stat(keyFile); err != nil {
-		return "", "", false
-	}
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		return "", "", false
-	}
-	c, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return "", "", false
-	}
-	now := time.Now()
-	if now.Before(c.NotBefore) || now.After(c.NotAfter.Add(-time.Hour)) {
 		return "", "", false // expired / not-yet-valid - don't serve it
 	}
-	return certFile, keyFile, true
+	return pairFile, pairFile, true
 }
 
 // CachedCertReady returns the local live cert/key when they are immediately
-// valid for host. This is intentionally network-free: a party can start
-// offline with a still-valid cached cert even when online activation would
-// prefer to renew it soon.
+// valid for host. Certificate readiness is network-free; when a LAN IP exists,
+// the result also includes one bounded observation of the local resolver so an
+// offline party can select its guest path without waiting for the broker.
 func CachedCertReady(host string) (Result, bool) {
+	return cachedCertReadyForResult(Result{}, host)
+}
+
+// CachedCertReadyForResult gives a cached fallback the same immutable install
+// generation as the broker attempt that selected its host. This closes the gap
+// where a replacement identity could otherwise turn an old broker hostname
+// into an apparently unowned (BYO) cached result.
+func CachedCertReadyForResult(source Result, host string) (Result, bool) {
+	return cachedCertReadyForResult(source, host)
+}
+
+func cachedCertReadyForResult(source Result, host string) (Result, bool) {
 	if host == "" {
 		return Result{Reason: "no cached activation host"}, false
 	}
@@ -480,15 +761,16 @@ func CachedCertReady(host string) (Result, bool) {
 	if err != nil {
 		return Result{Host: host, Reason: "no state dir: " + err.Error()}, false
 	}
-	certFile := filepath.Join(dir, "live-cert.pem")
-	keyFile := filepath.Join(dir, "live-key.pem")
-	if _, err := os.Stat(keyFile); err != nil {
-		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "no cached key"}, false
+	pairFile, pairErr := cachedCertificateSnapshot(context.Background(), dir, host, time.Hour)
+	if pairErr != nil {
+		return Result{Host: host, Reason: "cached certificate is missing, expired, or for a different host"}, false
 	}
-	if !certValid(certFile, host, time.Hour) {
-		return Result{Host: host, CertFile: certFile, KeyFile: keyFile, Reason: "cached certificate is missing, expired, or for a different host"}, false
+	res := Result{OK: true, Host: host, CertFile: pairFile, KeyFile: pairFile, CertReady: true}
+	if source.install.valid() {
+		res.install = source.install
+	} else if snapshot, ok := currentInstallSnapshotForHost(context.Background(), dir, host); ok {
+		res.install = snapshot
 	}
-	res := Result{OK: true, Host: host, CertFile: certFile, KeyFile: keyFile, CertReady: true}
 	// The cached-cert path is the OFFLINE path: a travel-router party boots
 	// here with no broker and no internet, and whether guests can find this Mac
 	// rests entirely on the venue's own resolver. Not observing it left
@@ -503,6 +785,25 @@ func CachedCertReady(host string) (Result, bool) {
 		res.ResolverObserved = true
 	}
 	return res, true
+}
+
+func currentInstallSnapshotForHost(ctx context.Context, dir, host string) (installSnapshot, bool) {
+	lockFile, err := lockInstallState(ctx, dir)
+	if err != nil {
+		return installSnapshot{}, false
+	}
+	defer unlockInstallState(lockFile)
+	var rec installRecord
+	data, err := os.ReadFile(filepath.Join(dir, "install.json"))
+	if err != nil || json.Unmarshal(data, &rec) != nil || rec.ID == "" || rec.Secret == "" {
+		return installSnapshot{}, false
+	}
+	snapshot := snapshotFromRecord(rec)
+	wantHost := snapshot.hostLabel + "." + snapshot.base
+	if !strings.EqualFold(wantHost, strings.TrimSuffix(strings.TrimSpace(host), ".")) {
+		return installSnapshot{}, false
+	}
+	return snapshot, true
 }
 
 // BrokerHost returns this install's guest hostname (<hostLabel>.<base>) from the
@@ -571,53 +872,104 @@ func stateDir() (string, error) {
 // packages can cache alongside without re-deriving the path.
 func StateDir() (string, error) { return stateDir() }
 
-// certUsable reports whether the cached cert covers host and has >renewWindow left.
-func certUsable(certFile, host string) bool {
-	return certValid(certFile, host, renewWindow)
+// certUsable reports whether the cached pair covers host and has >renewWindow left.
+func certUsable(certFile, keyFile, host string) bool {
+	return certificatePairValid(certFile, keyFile, host, renewWindow)
 }
 
-func certValid(certFile, host string, minRemaining time.Duration) bool {
-	data, err := os.ReadFile(certFile)
+func certificatePairValid(certFile, keyFile, host string, minRemaining time.Duration) bool {
+	cert, err := readCertificatePair(certFile, keyFile)
 	if err != nil {
 		return false
 	}
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return false
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
+	return certificateValid(cert, host, minRemaining)
+}
+
+func readCertificatePair(certFile, keyFile string) (*x509.Certificate, error) {
+	certPEM, err := os.ReadFile(certFile)
 	if err != nil {
-		return false
+		return nil, err
 	}
-	if err := cert.VerifyHostname(host); err != nil {
-		return false
+	keyPEM, err := os.ReadFile(keyFile)
+	if err != nil {
+		return nil, err
+	}
+	return parseCertificatePair(certPEM, keyPEM)
+}
+
+func parseCertificatePair(certPEM, keyPEM []byte) (*x509.Certificate, error) {
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, err
+	}
+	if len(pair.Certificate) == 0 {
+		return nil, errors.New("certificate chain is empty")
+	}
+	return x509.ParseCertificate(pair.Certificate[0])
+}
+
+func certificateValid(cert *x509.Certificate, host string, minRemaining time.Duration) bool {
+	if host != "" {
+		if err := cert.VerifyHostname(host); err != nil {
+			return false
+		}
 	}
 	now := time.Now()
 	if now.Before(cert.NotBefore) {
 		return false
 	}
-	return time.Until(cert.NotAfter) > minRemaining
+	return cert.NotAfter.Sub(now) > minRemaining
 }
 
-// fetchWildcard pulls the shared *.party.<base> machine cert+key from the broker
-// (authed with this install's id/secret) and writes them to certFile/keyFile.
-// The caller validates the result with certUsable before trusting it, so a
-// missing/expired/wrong response is simply ignored in favor of per-Mac ACME.
-func fetchWildcard(ctx context.Context, b *brokerClient, certFile, keyFile string) error {
+// ensureWildcardCertificate pulls the shared *.party.<base> machine cert+key
+// when the cached pair needs renewal. Concurrent activation attempts share the
+// first completed fetch instead of downloading and rewriting the same pair.
+func ensureWildcardCertificate(ctx context.Context, b *brokerClient, dir, host string) (string, string, bool, error) {
+	if err := lockCertificateFetch(ctx); err != nil {
+		return "", "", false, err
+	}
+	defer unlockCertificateFetch()
+	if pairFile, err := cachedCertificateSnapshot(ctx, dir, host, renewWindow); err == nil {
+		return pairFile, pairFile, false, nil
+	} else if ctx.Err() != nil {
+		return "", "", false, ctx.Err()
+	}
+
 	var out struct {
 		Cert string `json:"cert"`
 		Key  string `json:"key"`
 	}
 	if err := b.post(ctx, "/api/broker/wildcard-cert", map[string]any{"id": b.id, "secret": b.secret}, &out); err != nil {
-		return err
+		return "", "", false, err
 	}
 	if out.Cert == "" || out.Key == "" {
-		return errors.New("empty wildcard cert response")
+		return "", "", false, errors.New("empty wildcard cert response")
 	}
-	if err := os.WriteFile(keyFile, []byte(out.Key), 0o600); err != nil {
-		return err
+	certPEM, keyPEM := []byte(out.Cert), []byte(out.Key)
+	cert, err := parseCertificatePair(certPEM, keyPEM)
+	if err != nil {
+		return "", "", false, fmt.Errorf("invalid wildcard certificate/key: %w", err)
 	}
-	return os.WriteFile(certFile, []byte(out.Cert), 0o600)
+	if !certificateValid(cert, host, renewWindow) {
+		return "", "", false, fmt.Errorf("wildcard certificate not usable for %s", host)
+	}
+	lockFile, err := lockCertificateState(ctx, dir)
+	if err != nil {
+		return "", "", false, err
+	}
+	defer unlockCertificateState(lockFile)
+	// Another process may have completed the same refresh while this process was
+	// fetching. Prefer that complete generation and avoid a redundant manifest
+	// rewrite.
+	if pairFile, cachedCert, cachedErr := currentCertificatePairLocked(dir); cachedErr == nil &&
+		certificateValid(cachedCert, host, renewWindow) {
+		return pairFile, pairFile, false, nil
+	}
+	pairFile, err := publishCertificatePairLocked(dir, certPEM, keyPEM)
+	if err != nil {
+		return "", "", false, err
+	}
+	return pairFile, pairFile, true, nil
 }
 
 // ResolverObservation is the structured result of asking the network's own DNS

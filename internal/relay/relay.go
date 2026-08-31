@@ -68,6 +68,10 @@ type Config struct {
 	// pushes; a Wi-Fi + cloud room also pushes whenever the internet is up,
 	// so remote guests and isolated-Wi-Fi guests always have a stream.
 	OnPush func(enabled bool)
+	// OnTarget fires whenever the broker changes either the relay room or its
+	// publish credential. Delivered without the manager lock and before OnPush,
+	// so contribution adopts the exact registration before it can start work.
+	OnTarget func(originURL, publishToken string)
 
 	// PartyID reports the party this Mac is currently playing, so the broker can
 	// tell which live Macs are the SAME party. It is read at each registration
@@ -326,13 +330,14 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 
 		attemptCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
 		registered, err := activate.RegisterRelay(attemptCtx, m.brokerURL(), lanIP, m.currentDirectURL(), m.currentPartyID(), m.cfg.Logf)
-		cancel()
 		if currentIP := netinfo.PrimaryLanIP(); currentIP != lanIP {
+			cancel()
 			lanIP = currentIP
 			continue
 		}
 		nextDelay := registrationRefreshInterval
 		if err != nil {
+			cancel()
 			settled := m.noteRegistrationFailure()
 			m.cfg.Logf("relay: registration unavailable: %v", err)
 			nextDelay = registrationRetryInterval
@@ -342,22 +347,32 @@ func (m *Manager) registrationLoop(ctx context.Context) {
 				nextDelay = 2 * time.Second
 			}
 		} else {
-			id, secret := activate.InstallCreds()
-			if id == "" || secret == "" {
-				m.noteRegistrationFailure()
-				nextDelay = 5 * time.Second
-			} else {
-				next := registration{
+			var next registration
+			committed, commitErr := activate.CommitRelayRegistration(attemptCtx, registered, func(id, secret string) {
+				next = registration{
 					RelayRegistration: registered,
 					InstallID:         id,
 					Secret:            secret,
 				}
+				m.applyRegistration(next)
+			})
+			cancel()
+			if commitErr != nil {
+				m.noteRegistrationFailure()
+				m.cfg.Logf("relay: registration commit unavailable: %v", commitErr)
+				nextDelay = 5 * time.Second
+			} else if !committed {
+				// Another activation replaced this install after the broker replied.
+				// Leave the current manager state intact and retry from the new
+				// snapshot instead of publishing a stale room or credential pair.
+				nextDelay = 2 * time.Second
+			} else {
 				// Registration succeeding proves the BROKER answers; it says
 				// nothing about the origin that would actually serve relayed
 				// guests. Probe the origin returned by this registration, not the
 				// previous registration, then associate the verdict with this exact
 				// state generation. At most one small request per refresh cycle.
-				m.applyRegistrationWithOriginProbe(ctx, next)
+				m.probeRegistrationOrigin(ctx, next)
 				status := m.Snapshot()
 				if status.Mode == ModeChecking && status.Reason == ReasonAwaitingProbe {
 					nextDelay = 2 * time.Second
@@ -416,6 +431,7 @@ func (m *Manager) brokerURL() string {
 func (m *Manager) applyRegistration(next registration) {
 	m.mu.Lock()
 	previousRelay := m.reg.RelayURL
+	previousToken := m.reg.PublishToken
 	networkChanged := m.reg.NetworkKey != next.NetworkKey
 	m.reg = next
 	m.netTried = true
@@ -440,6 +456,9 @@ func (m *Manager) applyRegistration(next registration) {
 	networkKey := m.reg.NetworkKey
 	m.mu.Unlock()
 
+	if (previousRelay != next.RelayURL || previousToken != next.PublishToken) && m.cfg.OnTarget != nil {
+		m.cfg.OnTarget(next.RelayURL, next.PublishToken)
+	}
 	m.flushModeChange()
 	m.signal(m.stateChanged)
 	// A guest's verdict rides the registration response now that there is no

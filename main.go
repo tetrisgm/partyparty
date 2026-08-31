@@ -260,17 +260,6 @@ func main() {
 		// serves on loopback, so internal/broadcast is untouched.
 		contributor = contribute.New(contribute.Config{
 			SourceURL: fmt.Sprintf("https://127.0.0.1:%d/%s/index.m3u8", cfg.HLSPort, cfg.StreamPath),
-			// Resolved per push from the broker registration, so this install can
-			// only ever publish to its own room and needs nothing configured by hand.
-			Target: func() (string, string) {
-				if cfg.RelayOrigin != "" {
-					return cfg.RelayOrigin, cfg.RelayToken // explicit override, for testing
-				}
-				if relayManager == nil {
-					return "", ""
-				}
-				return relayManager.Relay()
-			},
 			// The Mac publishes its OWN guest page, so a relayed guest always gets
 			// the page matching the app they are listening to and a web change ships
 			// with the app rather than needing the origin redeployed.
@@ -281,6 +270,10 @@ func main() {
 			AssetsRev: func() string { return handler.PageAssetsRev() },
 			Logf:      log.Printf,
 		})
+		if cfg.RelayOrigin != "" {
+			// Explicit override for testing; broker refreshes never replace it.
+			contributor.SetTarget(cfg.RelayOrigin, cfg.RelayToken)
+		}
 		relayManager = relay.New(relay.Config{
 			BrokerURL: brokerURL,
 			Version:   appVersion,
@@ -290,6 +283,11 @@ func main() {
 					return ""
 				}
 				return events.Identity().ID
+			},
+			OnTarget: func(originURL, publishToken string) {
+				if contributor != nil && cfg.RelayOrigin == "" {
+					contributor.SetTarget(originURL, publishToken)
+				}
 			},
 			OnPush: func(enabled bool) {
 				// Relay mode always pushes. A Wi-Fi + cloud room ALSO pushes
@@ -353,32 +351,38 @@ func main() {
 			})
 		}
 	}
-	startPeerDiscovery := func(host string) {
+	startPeerDiscovery := func(host, snapshotID string) (string, error) {
 		if host == "" || (peerDirectory != nil && peerHost == host) {
-			return
+			return "", nil
 		}
 		if peerDirectory != nil {
 			peerDirectory.Close()
 			peerDirectory = nil
 		}
-		id, _ := activate.InstallCreds()
+		id := snapshotID
+		if id == "" {
+			id, _ = activate.InstallCreds()
+		}
 		if id == "" {
 			id = activate.InstallHostLabel()
 		}
 		if id == "" {
-			return
+			return "", nil
 		}
 		directory, derr := peers.New(peerCtx, id, host, cfg.TLSPort)
 		if derr != nil {
-			log.Printf("peer discovery unavailable: %v", derr)
-			return
+			return "", derr
 		}
 		peerDirectory = directory
 		peerHost = host
 		handler.SetPeers(directory, id)
-		log.Printf("peer discovery: advertising %s as %s", host, id)
+		return fmt.Sprintf("peer discovery: advertising %s as %s", host, id), nil
 	}
-	startPeerDiscovery(activationHost())
+	if message, peerErr := startPeerDiscovery(activationHost(), ""); peerErr != nil {
+		log.Printf("peer discovery unavailable: %v", peerErr)
+	} else if message != "" {
+		log.Print(message)
+	}
 
 	// tcp4, NOT tcp: on some Macs `net.Listen("tcp", ...)` binds an IPv6-only
 	// socket, and if that machine's IPv6 loopback (::1) is also broken, NOTHING
@@ -466,26 +470,61 @@ func main() {
 		defer activationMu.Unlock()
 		return activationEngaged && activationEngagedHost == host
 	}
-	applyActivationResult := func(res activate.Result, source string) bool {
-		handler.SetActivationResult(res)
-		if !res.OK {
-			return false
-		}
-		if applyActivation != nil {
-			if err := applyActivation(res.CertFile, res.KeyFile); err != nil {
-				log.Printf("activate: mediamtx config failed after %s: %v - LL-HLS unavailable", source, err)
-				return false
+	applyActivationResult := func(res activate.Result, source string) (committed, engaged bool, reason string) {
+		var mediaErr, certErr, peerErr error
+		var peerMessage string
+		becameReady := false
+		committed, commitErr := activate.CommitResult(context.Background(), res, func() {
+			handler.SetActivationResult(res)
+			engaged = isActivationEngagedFor(res.Host)
+			if res.OK && !engaged {
+				if applyActivation != nil {
+					if mediaErr = applyActivation(res.CertFile, res.KeyFile); mediaErr != nil {
+						res.Reason = "local activation apply failed"
+						handler.SetActivationPending(humanizeActivation(res.Reason))
+						return
+					}
+				}
+				if certErr = loadCert(res.CertFile, res.KeyFile); certErr != nil {
+					res.Reason = "local certificate load failed"
+					handler.SetActivationPending(humanizeActivation(res.Reason))
+					return
+				}
+				handler.SetActivation(res.Host)
+				peerMessage, peerErr = startPeerDiscovery(res.Host, res.InstallID())
+				markActivationEngaged(res.Host)
+				engaged = true
+				becameReady = true
 			}
+			if !engaged {
+				if res.Reason == "" {
+					res.Reason = "local activation apply failed"
+				}
+				handler.SetActivationPending(humanizeActivation(res.Reason))
+			}
+		})
+		if commitErr != nil {
+			log.Printf("activate: could not commit %s result: %v", source, commitErr)
+			return false, false, res.Reason
 		}
-		if err := loadCert(res.CertFile, res.KeyFile); err != nil {
-			log.Printf("activate: cert load for the guest page failed after %s: %v", source, err)
-			return false
+		if !committed {
+			return false, false, res.Reason
 		}
-		handler.SetActivation(res.Host)
-		startPeerDiscovery(res.Host)
-		markActivationEngaged(res.Host)
-		log.Printf("activate: secure link ready from %s - %s", source, res.Host)
-		return true
+		if mediaErr != nil {
+			log.Printf("activate: mediamtx config failed after %s: %v - LL-HLS unavailable", source, mediaErr)
+		}
+		if certErr != nil {
+			log.Printf("activate: cert load for the guest page failed after %s: %v", source, certErr)
+		}
+		if peerErr != nil {
+			log.Printf("peer discovery unavailable: %v", peerErr)
+		} else if peerMessage != "" {
+			log.Print(peerMessage)
+		}
+		if becameReady {
+			log.Printf("activate: secure link ready from %s - %s", source, res.Host)
+		}
+		return true, engaged, res.Reason
 	}
 	explicitCertLoaded := false
 	if cfg.CertFile != "" && cfg.KeyFile != "" {
@@ -631,7 +670,7 @@ func main() {
 					if host == "" {
 						host = activationHost()
 					}
-					if cached, ok := activate.CachedCertReady(host); ok {
+					if cached, ok := activate.CachedCertReadyForResult(res, host); ok {
 						if res.CertReady {
 							cached.OK = res.OK
 							cached.DNSPublished = res.DNSPublished
@@ -650,14 +689,16 @@ func main() {
 					// offline and the secure hostname cannot resolve.
 					res.ExpectedIP = netinfo.PrimaryLanIP()
 				}
-				handler.SetActivationResult(res)
-				// OK now means the certificate is usable - apply it ONCE so the
-				// HTTPS listener + Go Live work everywhere, even where this Wi-Fi
-				// blocks LAN routing. Re-running Try/TryBroker each cycle also
-				// re-publishes the current LAN IP (the self-healing DNS refresh).
-				engaged := isActivationEngagedFor(res.Host)
-				if res.OK && !engaged {
-					engaged = applyActivationResult(res, "online refresh")
+				// Commit the evidence and any first certificate application under
+				// the install generation that produced them. A replacement after
+				// the broker's final check therefore cannot publish the old host.
+				committed, engaged, applyReason := applyActivationResult(res, "online refresh")
+				if !committed {
+					waitForRefresh(time.Second)
+					continue
+				}
+				if applyReason != "" {
+					res.Reason = applyReason
 				}
 				// Long refresh only when the WHOLE LAN chain is proven for this
 				// network; otherwise keep repairing DNS/resolver on the short
@@ -668,10 +709,6 @@ func main() {
 					continue
 				}
 				if !engaged {
-					if res.Reason == "" {
-						res.Reason = "local activation apply failed"
-					}
-					handler.SetActivationPending(humanizeActivation(res.Reason))
 					log.Printf("activate: secure link not ready - %s (retrying in %s)", res.Reason, retryIn)
 				} else {
 					log.Printf("activate: LAN not fully ready on this network - %s (retrying in %s)", res.Reason, retryIn)

@@ -125,10 +125,11 @@ type Config struct {
 	// Page returns the guest page to publish, or nil to publish none. Called once
 	// per session rather than per cycle: it does not change while a party runs.
 	Page func() []byte
-	// Target resolves this install's relay origin and publish credential. They
-	// come from the broker at registration rather than from static configuration,
-	// so every install gets its own and a Mac can only publish to its own room.
-	// Returning an empty origin disables contribution.
+	// Target optionally resolves this install's relay origin and publish
+	// credential. Production registration changes use SetTarget so active work is
+	// canceled immediately; this resolver remains for callers with a static or
+	// otherwise externally synchronized destination. Returning an empty origin
+	// leaves contribution without a destination.
 	Target func() (originURL, token string)
 	// Assets returns the static files the published page references by absolute
 	// path: the DJ avatar, the event cover, the fonts. A relayed guest resolves
@@ -157,6 +158,11 @@ func (c Config) target() (string, string) {
 		return "", ""
 	}
 	origin, token := c.Target()
+	return normalizeTarget(origin, token)
+}
+
+func normalizeTarget(origin, token string) (string, string) {
+	origin = strings.TrimSpace(origin)
 	if origin == "" {
 		return "", ""
 	}
@@ -170,9 +176,26 @@ type Manager struct {
 	originClient *http.Client
 
 	mu      sync.RWMutex
+	commit  sync.RWMutex
 	status  Status
 	enabled bool
 	wake    chan struct{}
+
+	// generation changes whenever enabled state or the resolved relay target
+	// changes. Active HTTP work is registered here so a state transition can
+	// cancel it, and results carry the generation they belong to so a response
+	// that wins the cancellation race cannot mutate the new session.
+	generation uint64
+	nextActive uint64
+	active     map[uint64]context.CancelFunc
+
+	// Target is a live broker result, not static configuration. Keep one
+	// normalized snapshot for an entire cycle; target-bound dedupe state is
+	// discarded before the first upload to a replacement room.
+	targetKnown bool
+	targetBase  string
+	targetToken string
+	targetMu    sync.Mutex
 
 	// pageSent records that the guest page is on the origin's current
 	// incarnation; originEpoch is which incarnation that is. assetsRev is the
@@ -209,6 +232,14 @@ type Manager struct {
 // the conversation itself is broken, not the network.
 const failResetAfter = 3
 
+var errStaleCycle = errors.New("contribution state changed during cycle")
+
+type relayTarget struct {
+	base       string
+	token      string
+	generation uint64
+}
+
 func New(cfg Config) *Manager {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {}
@@ -221,7 +252,8 @@ func New(cfg Config) *Manager {
 	jar, _ := cookiejar.New(nil)
 	return &Manager{
 		cfg:          cfg,
-		wake:         make(chan struct{}, 1),
+		wake:         make(chan struct{}),
+		active:       make(map[uint64]context.CancelFunc),
 		sent:         make(map[string]bool),
 		originClient: &http.Client{Timeout: uploadTimeout},
 		sourceClient: newSourceClient(jar),
@@ -259,16 +291,16 @@ func (m *Manager) SetEnabled(on bool) {
 		return
 	}
 	m.enabled = on
+	cancels := m.invalidateLocked()
 	if !on {
 		m.status.Running = false
-		m.sent = make(map[string]bool) // a fresh session re-pushes what the origin needs
-		m.pageSent = false
-		m.assetsRev = ""
+		m.resetTargetStateLocked() // a fresh session re-pushes what the origin needs
 		m.variant = ""
 		m.failStreak = 0
 	}
 	m.mu.Unlock()
-	m.signal()
+	cancelAll(cancels)
+	m.joinCommits()
 }
 
 // Snapshot returns a consistent copy for /api/status.
@@ -278,17 +310,159 @@ func (m *Manager) Snapshot() Status {
 	return m.status
 }
 
-func (m *Manager) signal() {
-	select {
-	case m.wake <- struct{}{}:
-	default:
-	}
-}
-
 func (m *Manager) isEnabled() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.enabled
+}
+
+func (m *Manager) lifecycleState() (enabled bool, generation uint64) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.enabled, m.generation
+}
+
+// resolveTarget freezes the broker's current room and credential into one
+// cycle-wide value. A replacement destination owns different remote state, so
+// media/page dedupe from the previous room must be cleared before any playlist
+// can be published there.
+func (m *Manager) resolveTarget() relayTarget {
+	// Serialize the resolver call through adoption. Otherwise a caller that read
+	// the old broker value just before a rotation could acquire m.mu after a
+	// caller that read the new value and roll the manager back to the stale room.
+	m.targetMu.Lock()
+	defer m.targetMu.Unlock()
+
+	if m.cfg.Target == nil {
+		m.mu.RLock()
+		target := relayTarget{base: m.targetBase, token: m.targetToken, generation: m.generation}
+		m.mu.RUnlock()
+		return target
+	}
+	base, token := m.cfg.target()
+	return m.adoptTarget(base, token)
+}
+
+// SetTarget immediately adopts a broker registration's relay room and publish
+// credential. It is the production path for target rotation: registration
+// changes do not wait for either periodic loop to ask the resolver again.
+func (m *Manager) SetTarget(origin, token string) {
+	base, token := normalizeTarget(origin, token)
+	m.targetMu.Lock()
+	defer m.targetMu.Unlock()
+	m.adoptTarget(base, token)
+}
+
+// adoptTarget runs with targetMu held. It resets all destination-bound state,
+// cancels old HTTP work, wakes every loop, and joins callbacks that committed
+// before the generation change.
+func (m *Manager) adoptTarget(base, token string) relayTarget {
+	m.mu.Lock()
+	changed := !m.targetKnown || m.targetBase != base || m.targetToken != token
+	var cancels []context.CancelFunc
+	if changed {
+		m.targetKnown = true
+		m.targetBase = base
+		m.targetToken = token
+		cancels = m.invalidateLocked()
+		m.resetTargetStateLocked()
+		m.originEpoch = ""
+		m.status.Running = false
+		m.status.Failures = 0
+		m.status.LastError = ""
+		m.status.Target = redact(base)
+		m.failStreak = 0
+	}
+	target := relayTarget{base: base, token: token, generation: m.generation}
+	m.mu.Unlock()
+
+	cancelAll(cancels)
+	if changed {
+		m.joinCommits()
+	}
+	return target
+}
+
+func (m *Manager) resetTargetStateLocked() {
+	m.sent = make(map[string]bool)
+	m.pageSent = false
+	m.assetsRev = ""
+}
+
+// invalidateLocked advances the state generation and collects all active
+// operations. The caller releases m.mu before invoking the returned cancels;
+// each operation removes itself after it has actually retired.
+func (m *Manager) invalidateLocked() []context.CancelFunc {
+	m.generation++
+	close(m.wake)
+	m.wake = make(chan struct{})
+	cancels := make([]context.CancelFunc, 0, len(m.active))
+	for _, cancel := range m.active {
+		cancels = append(cancels, cancel)
+	}
+	return cancels
+}
+
+// joinCommits is the writer side of the plane callback gate. Generation is
+// advanced and HTTP work is canceled before this join, and no manager state
+// lock is held while waiting, so callbacks may safely read manager state.
+func (m *Manager) joinCommits() {
+	m.commit.Lock()
+	m.commit.Unlock()
+}
+
+// commitGeneration is the reader side of the plane callback gate. The final
+// generation check and callback invocation are one lifecycle commit: an
+// invalidation either happens first and suppresses the callback, or waits for
+// the already-committed callback to finish before returning.
+func (m *Manager) commitGeneration(generation uint64, callback func()) bool {
+	m.commit.RLock()
+	defer m.commit.RUnlock()
+	m.mu.RLock()
+	current := m.generation == generation
+	m.mu.RUnlock()
+	if !current {
+		return false
+	}
+	callback()
+	return true
+}
+
+func cancelAll(cancels []context.CancelFunc) {
+	for _, cancel := range cancels {
+		cancel()
+	}
+}
+
+// beginOperation registers one enabled-state operation. The expected
+// generation closes the gap between resolving a target and starting work: if
+// another loop observed a newer target in between, this operation never starts.
+func (m *Manager) beginOperation(parent context.Context, expected uint64) (context.Context, func(), uint64, bool) {
+	m.mu.Lock()
+	if !m.enabled || m.generation != expected {
+		m.mu.Unlock()
+		return nil, nil, 0, false
+	}
+	ctx, cancel := context.WithCancel(parent)
+	m.nextActive++
+	id := m.nextActive
+	m.active[id] = cancel
+	generation := m.generation
+	m.mu.Unlock()
+
+	finish := func() {
+		cancel()
+		m.mu.Lock()
+		delete(m.active, id)
+		m.mu.Unlock()
+	}
+	return ctx, finish, generation, true
+}
+
+func (m *Manager) generationIsCurrent(generation uint64, requireEnabled bool) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.generation == generation && (!requireEnabled || m.enabled)
 }
 
 // Run pushes until ctx is cancelled.
@@ -297,18 +471,29 @@ func (m *Manager) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if !m.isEnabled() {
-			if !m.wait(ctx, time.Second) {
+		enabled, observedGeneration := m.lifecycleState()
+		if !enabled {
+			if !m.waitForChange(ctx, time.Second, observedGeneration) {
 				return
 			}
 			continue
 		}
 
-		err := m.cycle(ctx)
+		target := m.resolveTarget()
+		cycleCtx, finish, generation, ok := m.beginOperation(ctx, target.generation)
+		if !ok {
+			continue
+		}
+		err := m.cycleTo(cycleCtx, target)
 		if ctx.Err() != nil {
+			finish()
 			return
 		}
-		failures := m.noteCycle(err)
+		failures, recorded := m.noteCycleAt(generation, err)
+		finish()
+		if !recorded {
+			continue
+		}
 
 		delay := pollInterval
 		if err != nil {
@@ -319,7 +504,7 @@ func (m *Manager) Run(ctx context.Context) {
 				m.cfg.Logf("contribute: push failing (%d in a row): %v", failures, err)
 			}
 		}
-		if !m.wait(ctx, delay) {
+		if !m.waitForChange(ctx, delay, generation) {
 			return
 		}
 	}
@@ -330,7 +515,24 @@ func (m *Manager) Run(ctx context.Context) {
 // suspect), and failResetAfter consecutive failures trigger a full session
 // reset.
 func (m *Manager) noteCycle(err error) int {
+	failures, _ := m.recordCycle(0, false, err)
+	return failures
+}
+
+// noteCycleAt records a result only while the enabled target generation that
+// produced it is still current. Cancellation is cooperative, so this guard is
+// what prevents a response already in hand from reviving disabled status or
+// repopulating a replacement room's state.
+func (m *Manager) noteCycleAt(generation uint64, err error) (int, bool) {
+	return m.recordCycle(generation, true, err)
+}
+
+func (m *Manager) recordCycle(generation uint64, guarded bool, err error) (int, bool) {
 	m.mu.Lock()
+	if guarded && (m.generation != generation || !m.enabled) {
+		m.mu.Unlock()
+		return 0, false
+	}
 	if err != nil {
 		m.status.Running = false
 		m.status.Failures++
@@ -344,21 +546,23 @@ func (m *Manager) noteCycle(err error) int {
 		m.status.Failures = 0
 		m.status.LastError = ""
 		m.failStreak = 0
-		base, _ := m.cfg.target()
-		m.status.Target = redact(base)
+		m.status.Target = redact(m.targetBase)
 	}
 	failures := m.status.Failures
 	needsReset := m.failStreak >= failResetAfter
+	if needsReset {
+		m.resetSessionLocked()
+	}
 	m.mu.Unlock()
 
 	if needsReset {
-		m.resetSession(err)
+		m.cfg.Logf("contribute: resetting session after %d consecutive failures: %v", failResetAfter, err)
 	}
-	return failures
+	return failures, true
 }
 
-// localClient returns the current MediaMTX client. It is swapped by
-// resetSession, so all local stream reads go through this accessor. The
+// localClient returns the current MediaMTX client. It is swapped by a session
+// reset, so all local stream reads go through this accessor. The
 // separate origin client always performs normal TLS certificate verification.
 func (m *Manager) localClient() *http.Client {
 	m.mu.RLock()
@@ -366,15 +570,8 @@ func (m *Manager) localClient() *http.Client {
 	return m.sourceClient
 }
 
-// resetSession discards the cookie jar and everything believed already sent,
-// so the next cycle rebuilds the MediaMTX conversation from the master
-// playlist and re-pushes the fixed-name files. This is the self-heal for a
-// mid-set MediaMTX reload (certificate hot-swap) invalidating the session the
-// jar holds: without it, contribution 401s forever while the console still
-// looks healthy.
-func (m *Manager) resetSession(cause error) {
+func (m *Manager) resetSessionLocked() {
 	jar, _ := cookiejar.New(nil)
-	m.mu.Lock()
 	m.sourceClient = &http.Client{
 		Jar:           jar,
 		Timeout:       m.sourceClient.Timeout,
@@ -382,21 +579,25 @@ func (m *Manager) resetSession(cause error) {
 		CheckRedirect: m.sourceClient.CheckRedirect,
 	}
 	m.variant = ""
-	m.sent = make(map[string]bool)
-	m.pageSent = false
-	m.assetsRev = ""
+	m.resetTargetStateLocked()
 	m.failStreak = 0
-	m.mu.Unlock()
-	m.cfg.Logf("contribute: resetting session after %d consecutive failures: %v", failResetAfter, cause)
 }
 
-func (m *Manager) wait(ctx context.Context, d time.Duration) bool {
+func (m *Manager) waitForChange(ctx context.Context, d time.Duration, generation uint64) bool {
+	m.mu.RLock()
+	if m.generation != generation {
+		m.mu.RUnlock()
+		return true
+	}
+	wake := m.wake
+	m.mu.RUnlock()
+
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return false
-	case <-m.wake:
+	case <-wake:
 		return true
 	case <-timer.C:
 		return true
@@ -411,6 +612,17 @@ func (m *Manager) wait(ctx context.Context, d time.Duration) bool {
 // get a 404 mid-stream, which native players treat as fatal rather than as
 // something to retry.
 func (m *Manager) cycle(ctx context.Context) error {
+	return m.cycleTo(ctx, m.resolveTarget())
+}
+
+func (m *Manager) cycleTo(ctx context.Context, target relayTarget) error {
+	if target.base == "" {
+		return errNoOrigin
+	}
+	if !m.generationIsCurrent(target.generation, false) {
+		return errStaleCycle
+	}
+
 	// Step one: the multivariant playlist. This names the media playlist and, on
 	// the same request, establishes the session the media playlist requires.
 	//
@@ -434,6 +646,10 @@ func (m *Manager) cycle(ctx context.Context) error {
 		}
 		variant = found
 		m.mu.Lock()
+		if m.generation != target.generation {
+			m.mu.Unlock()
+			return errStaleCycle
+		}
 		m.variant = variant
 		m.mu.Unlock()
 	}
@@ -456,7 +672,14 @@ func (m *Manager) cycle(ctx context.Context) error {
 	}
 
 	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		m.mu.RLock()
+		if m.generation != target.generation {
+			m.mu.RUnlock()
+			return errStaleCycle
+		}
 		already := m.sent[name]
 		m.mu.RUnlock()
 		if already {
@@ -464,15 +687,22 @@ func (m *Manager) cycle(ctx context.Context) error {
 		}
 		body, err := m.fetch(ctx, m.resolveSource(name), maxMediaBytes)
 		if err != nil {
+			if ctx.Err() != nil || !m.generationIsCurrent(target.generation, false) {
+				return err
+			}
 			// A part can vanish between being listed and being fetched at the tail
 			// of a live window. That is normal; skip it rather than failing the
 			// whole cycle and stalling every other part behind it.
 			continue
 		}
-		if err := m.upload(ctx, name, body, "video/mp4"); err != nil {
+		if err := m.putTo(ctx, target, name, body, "video/mp4", false); err != nil {
 			return fmt.Errorf("upload %s: %w", name, err)
 		}
 		m.mu.Lock()
+		if m.generation != target.generation {
+			m.mu.Unlock()
+			return errStaleCycle
+		}
 		m.sent[name] = true
 		m.status.Pushed++
 		m.mu.Unlock()
@@ -484,14 +714,20 @@ func (m *Manager) cycle(ctx context.Context) error {
 	// restarts it drops everything, and while rolling segment names re-upload on
 	// their own, the two fixed names (this page and the init segment) would
 	// never be sent again and every guest would sit on a dead page for the rest
-	// of the night. The epoch check in upload() clears the sent state the moment
+	// of the night. The epoch check on each PUT clears the sent state the moment
 	// a response reveals a new incarnation.
-	if !m.pagePushed() && m.cfg.Page != nil {
+	pagePushed, current := m.pagePushedAt(target.generation)
+	if !current {
+		return errStaleCycle
+	}
+	if !pagePushed && m.cfg.Page != nil {
 		if page := m.cfg.Page(); len(page) > 0 {
-			if err := m.upload(ctx, PublishedPage, page, "text/html; charset=utf-8"); err != nil {
+			if err := m.putTo(ctx, target, PublishedPage, page, "text/html; charset=utf-8", false); err != nil {
 				return fmt.Errorf("upload page: %w", err)
 			}
-			m.markPagePushed()
+			if !m.markPagePushedAt(target.generation) {
+				return errStaleCycle
+			}
 		}
 	}
 
@@ -504,6 +740,10 @@ func (m *Manager) cycle(ctx context.Context) error {
 	if m.cfg.Assets != nil && m.cfg.AssetsRev != nil {
 		rev := m.cfg.AssetsRev()
 		m.mu.RLock()
+		if m.generation != target.generation {
+			m.mu.RUnlock()
+			return errStaleCycle
+		}
 		have := m.assetsRev
 		m.mu.RUnlock()
 		if rev != have {
@@ -511,11 +751,15 @@ func (m *Manager) cycle(ctx context.Context) error {
 				if a.Name == "" || len(a.Body) == 0 {
 					continue
 				}
-				if err := m.uploadPinned(ctx, a.Name, a.Body, a.ContentType); err != nil {
+				if err := m.putTo(ctx, target, a.Name, a.Body, a.ContentType, true); err != nil {
 					return fmt.Errorf("upload asset %s: %w", a.Name, err)
 				}
 			}
 			m.mu.Lock()
+			if m.generation != target.generation {
+				m.mu.Unlock()
+				return errStaleCycle
+			}
 			m.assetsRev = rev
 			m.mu.Unlock()
 		}
@@ -523,11 +767,13 @@ func (m *Manager) cycle(ctx context.Context) error {
 
 	// Forward the playlist otherwise untouched. This is what carries
 	// PROGRAM-DATE-TIME, and therefore the room's schedule, to relayed guests.
-	if err := m.upload(ctx, PublishedPlaylist, playlist, "application/vnd.apple.mpegurl"); err != nil {
+	if err := m.putTo(ctx, target, PublishedPlaylist, playlist, "application/vnd.apple.mpegurl", false); err != nil {
 		return fmt.Errorf("upload playlist: %w", err)
 	}
 
-	m.pruneSent(names)
+	if !m.pruneSentAt(target.generation, names) {
+		return errStaleCycle
+	}
 	return nil
 }
 
@@ -538,7 +784,25 @@ func (m *Manager) pruneSent(names []string) {
 		live[n] = true
 	}
 	m.mu.Lock()
+	m.pruneSentLocked(live)
+	m.mu.Unlock()
+}
+
+func (m *Manager) pruneSentAt(generation uint64, names []string) bool {
+	live := make(map[string]bool, len(names))
+	for _, n := range names {
+		live[n] = true
+	}
+	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.generation != generation {
+		return false
+	}
+	m.pruneSentLocked(live)
+	return true
+}
+
+func (m *Manager) pruneSentLocked(live map[string]bool) {
 	for name := range m.sent {
 		if !live[name] {
 			delete(m.sent, name)
@@ -581,25 +845,21 @@ func validateLoopbackSourceURL(target *url.URL) error {
 }
 
 func (m *Manager) upload(ctx context.Context, name string, body []byte, contentType string) error {
-	return m.put(ctx, name, body, contentType, false)
+	return m.putTo(ctx, m.resolveTarget(), name, body, contentType, false)
 }
 
-// uploadPinned marks the file as sticky on the origin: live-window eviction
-// must never delete it, because its age says nothing about its relevance.
-func (m *Manager) uploadPinned(ctx context.Context, name string, body []byte, contentType string) error {
-	return m.put(ctx, name, body, contentType, true)
-}
-
-func (m *Manager) put(ctx context.Context, name string, body []byte, contentType string, pin bool) error {
-	base, token := m.cfg.target()
-	if base == "" {
+func (m *Manager) putTo(ctx context.Context, target relayTarget, name string, body []byte, contentType string, pin bool) error {
+	if target.base == "" {
 		return errors.New("no relay origin yet")
 	}
-	target, err := joinURL(base, name)
+	if !m.generationIsCurrent(target.generation, false) {
+		return errStaleCycle
+	}
+	requestURL, err := joinURL(target.base, name)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, target, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -607,8 +867,8 @@ func (m *Manager) put(ctx context.Context, name string, body []byte, contentType
 	if pin {
 		req.Header.Set("X-PP-Pin", "1")
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if target.token != "" {
+		req.Header.Set("Authorization", "Bearer "+target.token)
 	}
 	resp, err := m.originClient.Do(req)
 	if err != nil {
@@ -616,7 +876,9 @@ func (m *Manager) put(ctx context.Context, name string, body []byte, contentType
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
-	m.observeEpoch(resp.Header.Get("X-PP-Room-Epoch"))
+	if !m.observeEpochAt(target.generation, resp.Header.Get("X-PP-Room-Epoch")) {
+		return errStaleCycle
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("status %d", resp.StatusCode)
 	}
@@ -780,39 +1042,48 @@ func redact(raw string) string {
 	return scheme + "***@" + raw[at+1:]
 }
 
-func (m *Manager) pagePushed() bool {
+func (m *Manager) pagePushedAt(generation uint64) (bool, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.pageSent
+	if m.generation != generation {
+		return false, false
+	}
+	return m.pageSent, true
 }
 
-func (m *Manager) markPagePushed() {
+func (m *Manager) markPagePushedAt(generation uint64) bool {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.generation != generation {
+		return false
+	}
 	m.pageSent = true
-	m.mu.Unlock()
+	return true
 }
 
 // observeEpoch notices the origin restarting. Every PUT response carries the
 // room's epoch; a change means the store behind those successful-looking
 // uploads was emptied, so everything this side believes it already sent,
 // including the fixed-name page and init segment, must be sent again.
-func (m *Manager) observeEpoch(header string) {
+func (m *Manager) observeEpochAt(generation uint64, header string) bool {
 	header = strings.TrimSpace(header)
-	if header == "" {
-		return // an origin too old to say; assume continuity rather than churn
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.generation != generation {
+		return false
+	}
+	if header == "" {
+		return true // an origin too old to say; assume continuity rather than churn
+	}
 	if m.originEpoch == header {
-		return
+		return true
 	}
 	first := m.originEpoch == ""
 	m.originEpoch = header
 	if first {
-		return // first sight of this origin, nothing was lost
+		return true // first sight of this origin, nothing was lost
 	}
-	m.sent = make(map[string]bool)
-	m.pageSent = false
-	m.assetsRev = ""
+	m.resetTargetStateLocked()
 	m.cfg.Logf("contribute: origin restarted (epoch %s); re-sending fixed-name assets", header)
+	return true
 }
