@@ -203,7 +203,7 @@ accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
 The product site was deployed from that work and most recently verified as
-Cloudflare Worker version `30fcf1ff-a2c9-421f-9b70-8b0495c36cf1`. It serves the launch social card,
+Cloudflare Worker version `ce70455e-d8a0-49db-83f3-0da825f0cbf4`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -346,3 +346,11 @@ They are now intrinsic-size `<img>` elements with the same crop positions,
 descriptive alt text, lazy loading, and asynchronous decoding. Together they
 represent 746 KiB of source imagery that no longer needs to enter the initial
 request set solely because CSS referenced it.
+
+The venue-image loading change is live as Worker version
+`ce70455e-d8a0-49db-83f3-0da825f0cbf4`. The production HTML has ten lazy
+images total and contains the four venue `<img>` elements with their intended
+dimensions and crop classes; the old background-image references are absent.
+Browser-contract tests, 25 Worker smoke tests, and Wrangler dry-run passed.
+Chrome performance tracing and visual browser inspection were unavailable in
+this session, so no Core Web Vitals or pixel-equivalence claim is recorded.
