@@ -6,7 +6,7 @@ release. Keep that status explicit everywhere.
 
 ## Positioning
 
-**Core promise:** Turn your Mac into a synchronized headphone party.
+**Core promise:** Turn your Mac into a live headphone party.
 
 **One sentence:** PartyParty broadcasts anything playing on a Mac to friends'
 phones over Wi-Fi; guests scan a QR code, tap play, and listen together through
@@ -16,7 +16,8 @@ Use these qualifications consistently:
 
 - Say “no guest app or account,” not “no app.” The DJ installs the Mac app.
 - Say “works without internet after setup,” not an unconditional “no internet.”
-- Say “about three seconds behind the Mac,” not “real time” or subsecond.
+- Describe playback as low-latency, not synchronized or real time. Direct and
+  relayed listeners can currently land at different delays.
 - Say “free public beta,” without promising permanent pricing.
 - Do not claim large-venue scale until it has been physically demonstrated.
 
@@ -33,11 +34,11 @@ Use these qualifications consistently:
 > clicks Go Live; guests scan a QR code and tap play in their browser. There is
 > no guest app or account.
 >
-> The deceptively difficult part was keeping phones on one beat without active
-> seeking or rate steering causing audible skips. The current design uses
+> The deceptively difficult part was keeping low-latency playback stable without
+> active seeking or rate steering causing audible skips. The current design uses
 > native HLS/AVPlayer, 500 ms segments, 150 ms LL-HLS parts, and a fixed room
-> target about three seconds behind the Mac. On iPhone it continues while
-> Safari is backgrounded or the phone is locked.
+> latency target. On iPhone it continues while Safari is backgrounded or the
+> phone is locked.
 >
 > Ordinary Wi-Fi uses direct local HTTPS and can keep running without internet
 > after setup. There is also an optional relay for venue networks that isolate
@@ -47,8 +48,7 @@ Use these qualifications consistently:
 >
 > The app is a free public TestFlight beta for macOS 26+, and the source is at
 > https://github.com/tetrisgm/partyparty. I am looking for feedback on
-> onboarding, real venue networks, and whether the fixed three-second tradeoff
-> feels right.
+> onboarding, real venue networks, and the latency/stability tradeoff.
 >
 > I am still validating many-phone venue behavior, mixed direct/relay field
 > behavior, and Shazam recognition in the distribution-signed build.
@@ -60,7 +60,7 @@ upvotes, coordinate comments, or obscure the beta and hardware requirements.
 
 **Name:** PartyParty
 
-**Tagline:** Turn your Mac into a synchronized headphone party
+**Tagline:** Turn your Mac into a live headphone party
 
 **Description:**
 
@@ -82,10 +82,9 @@ upvotes, coordinate comments, or obscure the beta and hardware requirements.
 > playback continues when the screen locks.
 >
 > Keeping the room together was the hard part. PartyParty uses native HLS
-> playback and one fixed target about three seconds behind the Mac, giving
-> ordinary Wi-Fi hiccups enough room without pushing different listeners onto
-> different beats. It can run locally after setup, with an optional relay for
-> venue Wi-Fi that blocks devices from reaching one another.
+> playback and a short cushion for ordinary Wi-Fi hiccups. It can run locally
+> after setup, with an optional relay for venue Wi-Fi that blocks devices from
+> reaching one another.
 >
 > This is a free public beta for macOS 26 or later. I'd especially love
 > feedback from DJs, silent-disco organizers, and anyone who has tried to play
@@ -121,6 +120,8 @@ final Product Hunt launch.
 - [ ] Social-card previews render correctly on target networks.
 - [ ] Product Hunt thumbnail, gallery, and YouTube link are attached.
 - [ ] Launch copy contains no unsupported scale, latency, or offline claims.
+- [ ] A supervised real-AVPlayer field test has closed the direct/relay delay
+      mismatch before any synchronized-playback claim is restored.
 - [ ] Owner is available to answer comments and triage reports.
 
 ## Owner-only actions

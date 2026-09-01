@@ -1,6 +1,6 @@
 # PartyParty
 
-**Turn a Mac into a synchronized headphone party.**
+**Turn a Mac into a live headphone party.**
 
 PartyParty is a macOS menu-bar app that broadcasts a DJ set to phones on the
 same venue Wi-Fi. Guests scan the in-app QR code, press play in Safari, and
