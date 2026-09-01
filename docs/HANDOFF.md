@@ -203,7 +203,7 @@ accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
 The product site was deployed from that work and most recently verified as
-Cloudflare Worker version `4e2def86-c4d4-4103-8865-7994e3fb0beb`. It serves the launch social card,
+Cloudflare Worker version `30fcf1ff-a2c9-421f-9b70-8b0495c36cf1`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -334,3 +334,8 @@ accents were darkened to `#d7193f` (5.12:1) and `#d41446` (5.27:1), and the
 small `#86868b` footer/secondary ink was replaced by `#6e6e73` (5.07:1). These
 are computed sRGB contrast ratios against white; visual browser verification
 remains separate from the unavailable Chrome trace/a11y tooling.
+
+The contrast correction is live as Worker version
+`30fcf1ff-a2c9-421f-9b70-8b0495c36cf1`; fresh apex and Support responses both
+contain the intended darker variables. Browser-contract tests, 25 Worker smoke
+tests, and Wrangler dry-run passed before deployment.
