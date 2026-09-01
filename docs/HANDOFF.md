@@ -139,8 +139,8 @@ timestamps must never control a local logical clock.
 
 ## Distribution boundary
 
-The active release lanes are the Mac App Store and invitation-only TestFlight.
-Uploading happens only when the owner explicitly asks. The standalone Sparkle
+The active release lanes are the Mac App Store and public TestFlight beta.
+Uploading a new build happens only when the owner explicitly asks. The standalone Sparkle
 lane is dormant but intentionally retained for already-installed builds. No
 commit, timer, launch agent, workflow, or watcher may publish or install a
 release automatically.
@@ -283,3 +283,9 @@ The sanitized marketing screenshot was deployed as Worker version
 to the committed source (SHA-256
 `137161917175ef19a46c2e28825ba7e6fbc646ba1798a8c0936b9614482984ec`), and
 macOS Vision reports `LIVE_NO_BARCODE` on a fresh production download.
+
+The launch FAQ previously overclaimed support for “any Mac” and implied
+permanent free pricing. It now states the proven distribution requirement—an
+Apple-silicon Mac running macOS 26 or later with recent-iPhone guests—and says
+only that the current public beta is free. Android and future-pricing claims
+remain out of launch copy until the owner establishes those contracts.
