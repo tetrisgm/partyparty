@@ -203,7 +203,7 @@ accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
 The product site was deployed from that work and most recently verified as
-Cloudflare Worker version `aed623f3-a01c-497c-b787-e42f71da92c3`. It serves the launch social card,
+Cloudflare Worker version `3c9d3de1-e06f-42cc-9013-491db15f5c99`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -304,3 +304,9 @@ explicit `aria-controls` relationships to their detail panels. Below-fold
 inline images declare intrinsic dimensions, lazy loading, and asynchronous
 decoding, while the preloaded hero remains eager. Twitter metadata now carries
 the same descriptive image alt text as Open Graph.
+
+That accessibility and image-loading increment was deployed as Worker version
+`3c9d3de1-e06f-42cc-9013-491db15f5c99`. A fresh production response contains
+all eight `aria-controls` relationships, six below-fold lazy images, and the
+Twitter image alt metadata. Root browser-contract tests, all 24 Worker smoke
+tests, and Wrangler dry-run passed before deployment.
