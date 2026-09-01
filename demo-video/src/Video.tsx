@@ -69,9 +69,9 @@ const Phone: React.FC<{children: React.ReactNode; scale?: number}> = ({children,
 const MacScene: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const click = spring({frame: frame - 45, fps, config: {damping: 18}});
-  const live = frame >= 51;
-  return <AbsoluteFill style={{opacity: fade(frame, 0, 112), background: '#0b0b0e', fontFamily, alignItems: 'center', justifyContent: 'center'}}>
+  const click = spring({frame: frame - 24, fps, config: {damping: 18}});
+  const live = frame >= 30;
+  return <AbsoluteFill style={{opacity: fade(frame, 0, 75), background: '#0b0b0e', fontFamily, alignItems: 'center', justifyContent: 'center'}}>
     <Img src={hero} style={{position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(18px) brightness(.28)', transform: 'scale(1.08)'}}/>
     <div style={{position: 'absolute', top: 70, left: 110, color: 'white'}}><div style={{fontSize: 27, fontWeight: 700, color: '#ff7a9f'}}>STEP 1</div><div style={{fontSize: 58, fontWeight: 900}}>Start the party on your Mac.</div></div>
     <MacFrame scale={.75}><Console live={live}/></MacFrame>
@@ -81,9 +81,9 @@ const MacScene: React.FC = () => {
 
 const ScanScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const scan = interpolate(frame, [0, 75], [185, 610], {extrapolateRight: 'clamp'});
+  const scan = interpolate(frame, [0, 50], [185, 610], {extrapolateRight: 'clamp'});
   const pop = spring({frame, fps: 30, config: {damping: 16}});
-  return <AbsoluteFill style={{opacity: fade(frame, 0, 98), background: '#101014', fontFamily, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 170}}>
+  return <AbsoluteFill style={{opacity: fade(frame, 0, 70), background: '#101014', fontFamily, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 170}}>
     <div><div style={{fontSize: 27, color: '#ff7a9f', fontWeight: 750}}>STEP 2</div><div style={{fontSize: 64, width: 650, lineHeight: 1.02, fontWeight: 900}}>Guests scan.<br/>No app. No account.</div><div style={{fontSize: 25, color: '#b7b7bd', marginTop: 25}}>The secure party page opens instantly.</div></div>
     <Phone scale={.87}><div style={{height: '100%', background: '#060607', position: 'relative'}}><Img src={joinRail} style={{position: 'absolute', width: 330, left: 30, top: 120, borderRadius: 18, transform: `scale(${.86 + pop * .14})`}}/><div style={{position: 'absolute', left: 38, right: 38, top: scan, height: 3, background: pink, boxShadow: `0 0 18px ${pink}`}}/><div style={{position: 'absolute', bottom: 60, left: 0, right: 0, textAlign: 'center', color: '#ccc', fontSize: 17}}>Point camera at the QR code</div></div></Phone>
   </AbsoluteFill>;
@@ -91,9 +91,9 @@ const ScanScene: React.FC = () => {
 
 const ListenScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const playing = frame >= 42;
+  const playing = frame >= 18;
   const pulse = 1 + Math.sin(frame / 3) * .05;
-  return <AbsoluteFill style={{opacity: fade(frame, 0, 128), background: 'radial-gradient(circle at 65% 42%,#40202b,#101014 60%)', fontFamily, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 160}}>
+  return <AbsoluteFill style={{opacity: fade(frame, 0, 65), background: 'radial-gradient(circle at 65% 42%,#40202b,#101014 60%)', fontFamily, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 160}}>
     <Phone scale={1}><Img src={phonePage} style={{width: '100%', height: '100%', objectFit: 'cover'}}/><div style={{position: 'absolute', left: 16, right: 16, bottom: 20, height: 74, borderRadius: 18, background: playing ? green : '#fff', color: playing ? 'white' : '#16161a', display: 'flex', alignItems: 'center', padding: '0 18px', boxShadow: '0 8px 30px #0005'}}><div style={{fontSize: 28, transform: `scale(${playing ? pulse : 1})`}}>{playing ? '▮▮▮' : '▶'}</div><div style={{marginLeft: 18}}><b style={{fontSize: 18}}>{playing ? 'Playing live' : 'Tap to listen'}</b><div style={{fontSize: 13, opacity: .75}}>Low-latency party audio</div></div></div></Phone>
     <div style={{width: 720}}><div style={{fontSize: 27, color: '#ff7a9f', fontWeight: 750}}>STEP 3</div><div style={{fontSize: 72, lineHeight: .98, fontWeight: 900}}>Tap play.<br/>Keep dancing.</div><div style={{fontSize: 26, color: '#c6c6cc', marginTop: 30, lineHeight: 1.45}}>Native iPhone playback keeps the music going—even when the screen locks.</div>{playing && <div style={{marginTop: 45, display: 'inline-flex', gap: 10, alignItems: 'center', background: '#31c87122', color: '#7dea9f', border: '1px solid #31c87166', padding: '14px 22px', borderRadius: 99, fontSize: 20, fontWeight: 750}}>● LIVE · 3 seconds from the room</div>}</div>
   </AbsoluteFill>;
@@ -111,9 +111,9 @@ const EndScene: React.FC = () => {
 
 export const PartyPartyDemo: React.FC = () => (
   <AbsoluteFill style={{background: '#101014'}}>
-    <Sequence from={0} durationInFrames={120}><MacScene/></Sequence>
-    <Sequence from={105} durationInFrames={105}><ScanScene/></Sequence>
-    <Sequence from={195} durationInFrames={135}><ListenScene/></Sequence>
-    <Sequence from={315} durationInFrames={135}><EndScene/></Sequence>
+    <Sequence from={0} durationInFrames={75}><MacScene/></Sequence>
+    <Sequence from={60} durationInFrames={70}><ScanScene/></Sequence>
+    <Sequence from={115} durationInFrames={65}><ListenScene/></Sequence>
+    <Sequence from={165} durationInFrames={45}><EndScene/></Sequence>
   </AbsoluteFill>
 );
