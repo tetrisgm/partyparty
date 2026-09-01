@@ -293,3 +293,8 @@ remain out of launch copy until the owner establishes those contracts.
 The corrected support and pricing FAQ was deployed as Worker version
 `aed623f3-a01c-497c-b787-e42f71da92c3` and both exact sentences were verified
 on the live apex after deployment.
+
+`CONTRIBUTING.md` no longer gives pull-request instructions immediately before
+saying that pull requests cannot be accepted. Until explicit contributor terms
+exist, it consistently directs proposed changes to issue discussion and asks
+people not to spend time preparing an unusable pull request.
