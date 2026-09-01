@@ -223,7 +223,7 @@ an exact three-second promise to honest low-latency beta language. Do not
 restore synchronized-playback claims until a candidate passes the required
 pre-upload real-AVPlayer soak and supervised mixed-path field test.
 
-The repository is intentionally source-visible with no reuse rights declared
-until the owner selects a license. Product Hunt video upload, final real-device
+The repository is source-visible under an explicit all-rights-reserved notice;
+the owner may later replace it with an open-source license. Product Hunt video upload, final real-device
 screenshots, actual Product Hunt/Hacker News posting, and any App Store action
 remain owner-account decisions.

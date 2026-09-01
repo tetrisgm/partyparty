@@ -109,24 +109,28 @@ final Product Hunt launch.
 
 ## Release-day checks
 
-- [ ] Repository license selected and published.
-- [ ] README links and images render while signed out of GitHub.
-- [ ] Public TestFlight link accepts a new tester.
+- [x] Source-visible, all-rights-reserved notice published. Replace it only
+      through an explicit owner licensing decision.
+- [x] README and its launch image are publicly readable while signed out.
+- [x] Public TestFlight invitation resolves, latest build is assigned to the
+      external group, and App Store Connect reports `IN_BETA_TESTING`.
 - [ ] Fresh Mac completes installation and permission onboarding.
 - [ ] Fresh iPhone scans, plays, backgrounds, and locks successfully.
 - [ ] Direct Wi-Fi path passes on the launch build.
 - [ ] Relay path passes on the launch build.
-- [ ] Support email and GitHub security-report instructions work.
+- [x] Public support page and GitHub private security-report instructions work.
 - [ ] Social-card previews render correctly on target networks.
 - [ ] Product Hunt thumbnail, gallery, and YouTube link are attached.
-- [ ] Launch copy contains no unsupported scale, latency, or offline claims.
+- [x] Launch copy contains no unsupported scale, synchronization, latency, or
+      offline claims.
 - [ ] A supervised real-AVPlayer field test has closed the direct/relay delay
       mismatch before any synchronized-playback claim is restored.
 - [ ] Owner is available to answer comments and triage reports.
 
 ## Owner-only actions
 
-- Choose the repository license.
+- Decide whether to keep the source-visible notice or replace it with an
+  open-source license.
 - Capture any real-device images that should not be simulated.
 - Upload the demo to YouTube under the desired account.
 - Create or schedule the Product Hunt post from the maker's personal account.

@@ -11,7 +11,7 @@ account.
 [Join the public TestFlight beta](https://testflight.apple.com/join/HPRAgyJk) ·
 [Report a problem](https://github.com/tetrisgm/partyparty/issues)
 
-![PartyParty running on a DJ's Mac and a guest's iPhone](demo-video/out/qa/contact-sheet-7s.png)
+![PartyParty running on a DJ's Mac and a guest's iPhone](launch/social-card.png)
 
 ## Try the beta
 
@@ -71,9 +71,9 @@ The production stream profile is fixed at 320 kbps stereo AAC-LC, 500 ms LL-HLS
 segments, 150 ms parts, and 48 retained segments. Do not add alternate playback
 engines or "safe" stream presets without new physical field evidence.
 
-The repository does not currently declare a source license. Until one is
-added, copyright remains with the project owner and no reuse rights are
-granted by the repository being public.
+The source is public for inspection under an
+[all-rights-reserved source-visible notice](LICENSE). No permission to reuse,
+modify, or distribute it is granted by the repository being public.
 
 ## Permissions
 
