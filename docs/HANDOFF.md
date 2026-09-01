@@ -354,3 +354,41 @@ dimensions and crop classes; the old background-image references are absent.
 Browser-contract tests, 25 Worker smoke tests, and Wrangler dry-run passed.
 Chrome performance tracing and visual browser inspection were unavailable in
 this session, so no Core Web Vitals or pixel-equivalence claim is recorded.
+
+## Launch handoff checkpoint (2026-09-01)
+
+Repository and deployment work is coherent through `e84dd8e` on `main`, plus
+the checkpoint-only documentation commit containing this section; the checkout
+and `origin/main` were synchronized and clean at this checkpoint. The
+current product Worker is `ce70455e-d8a0-49db-83f3-0da825f0cbf4`. Automated
+gates most recently passed the root browser-contract suite, 25 Worker smoke
+tests, Worker syntax check, and Wrangler dry-run. The public TestFlight remains
+build 271 (`125.49`); no new app binary was uploaded or submitted.
+
+Launch media is ready for account upload but is designed animation, not proof
+of physical behavior. The seven-second MP4 and Product Hunt gallery use a
+non-decodable demo pattern rather than a live room QR. Do not publish an older
+copy from outside the repository. The Product Hunt dimensions and description
+limit pass current official requirements. Hacker News material is facts only;
+the owner must write the title and submission text without LLM writing or
+editing.
+
+What still requires the owner or physical devices:
+
+- install build 271 on a fresh Apple-silicon Mac and complete first-run
+  permissions;
+- start a real server, then scan, play, background Safari, and lock a real
+  iPhone;
+- test direct Wi-Fi and relay on the launch build and run the supervised mixed
+  direct/relay AVPlayer measurement;
+- capture genuine Mac and iPhone images, upload the video to a non-private
+  YouTube URL, assemble/preview Product Hunt, and post Show HN in the owner's
+  own words while available to respond;
+- decide whether to retain the source-visible all-rights-reserved license.
+
+`AGENTS.md` still says TestFlight is invitation-only and refers to a removed PC
+merge-gate/stack path. Those statements conflict with the verified public beta
+and the higher-level contract in the same file, but this session did not edit
+them because the file says its rules change only at the owner's explicit
+instruction. A future agent should not undo the public TestFlight work based on
+those stale paragraphs; ask the owner before changing `AGENTS.md`.
