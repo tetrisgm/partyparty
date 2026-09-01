@@ -644,6 +644,12 @@ test("the web ships no broadcaster: it may listen, never transmit", async () => 
   assert.ok(!site.includes("dj.html"), "the DJ console is not served by the web");
 });
 
+test("the product hero links to the public source repository", async () => {
+  const html = readFileSync(new URL("../site/index.html", new URL("../", import.meta.url)), "utf8");
+  assert.match(html, /href="https:\/\/github\.com\/tetrisgm\/partyparty"/);
+  assert.match(html, /aria-label="View PartyParty on GitHub"/);
+});
+
 test("Apple's domain proof is served from the bucket, not from a deploy", async () => {
   const env = baseEnv();
   const path = "https://partyparty.party/.well-known/apple-developer-domain-association.txt";
