@@ -186,6 +186,19 @@ function withoutBodyForHead(request, response) {
     headers: response.headers,
   });
 }
+function withProductSecurityHeaders(response) {
+  const headers = new Headers(response.headers);
+  headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 var BROKER_HOST_FIRST_WORDS = [
   "disco",
   "neon",
@@ -1076,6 +1089,11 @@ var worker_default = {
       secure.protocol = "https:";
       return new Response(null, { status: 301, headers: { location: secure.toString() } });
     }
+    if (url.hostname === `www.${env.BROKER_BASE}`) {
+      const canonical = new URL(url);
+      canonical.hostname = env.BROKER_BASE;
+      return new Response(null, { status: 308, headers: { location: canonical.toString() } });
+    }
 
     const relayToken = relayTokenFromHost(url.hostname, env);
     if (relayToken) {
@@ -1187,7 +1205,8 @@ var worker_default = {
         return methodNotAllowed("GET, HEAD");
       }
       const response = legalResponse(pathname);
-      return request.method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
+      const productResponse = request.method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
+      return withProductSecurityHeaders(productResponse);
     }
     if (pathname.startsWith("/api/broker/")) {
       try {
@@ -1202,9 +1221,9 @@ var worker_default = {
       }
       const u = new URL(request.url);
       u.pathname = "/";
-      return env.ASSETS.fetch(new Request(u, request));
+      return withProductSecurityHeaders(await env.ASSETS.fetch(new Request(u, request)));
     }
-    return env.ASSETS.fetch(request);
+    return withProductSecurityHeaders(await env.ASSETS.fetch(request));
   },
   // Keep the machine namespace anchored so absent hostnames return NXDOMAIN
   // instead of falling through to a product wildcard, and watch the relay

@@ -145,7 +145,13 @@ test("landing, legal pages, version, and the update feed - but no public downloa
     <sparkle:version>990</sparkle:version>
     <pubDate>Wed, 29 Jul 2026 12:00:00 +0000</pubDate>
   </item></channel></rss>`);
-  assert.equal(await (await worker.fetch(new Request("https://partyparty.party/"), env)).text(), "landing");
+  const landing = await worker.fetch(new Request("https://partyparty.party/"), env);
+  assert.equal(await landing.text(), "landing");
+  assert.equal(landing.headers.get("strict-transport-security"), "max-age=31536000; includeSubDomains");
+  assert.equal(landing.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(landing.headers.get("x-frame-options"), "DENY");
+  assert.equal(landing.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  assert.match(landing.headers.get("permissions-policy"), /microphone=\(\)/);
   for (const path of ["/privacy", "/support"]) {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
     assert.equal(response.status, 200, path);
@@ -182,6 +188,12 @@ test("landing, legal pages, version, and the update feed - but no public downloa
   for (const path of ["/private-beta/PartyParty-123.88.zip", "/PartyParty.pkg", "/PartyParty.zip", "/content/manifest.json", "/content/state.json"]) {
     assert.equal((await worker.fetch(new Request(`https://partyparty.party${path}`), env)).status, 404, path);
   }
+});
+
+test("www redirects to the canonical product domain", async () => {
+  const response = await worker.fetch(new Request("https://www.partyparty.party/support?from=test"), baseEnv());
+  assert.equal(response.status, 308);
+  assert.equal(response.headers.get("location"), "https://partyparty.party/support?from=test");
 });
 
 test("retired public party, profile, discovery, sign-up, and media routes stay gone", async () => {
