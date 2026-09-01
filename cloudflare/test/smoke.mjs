@@ -680,6 +680,8 @@ test("the product hero links to the public source repository", async () => {
 
 test("launch CTAs use measurable first-party redirects", async () => {
   const env = baseEnv();
+  const events = [];
+  env.LAUNCH_ANALYTICS = { writeDataPoint: (event) => events.push(event) };
   const cases = [
     ["/go/testflight/hero", "https://testflight.apple.com/join/HPRAgyJk"],
     ["/go/github/hero", "https://github.com/tetrisgm/partyparty"],
@@ -691,6 +693,14 @@ test("launch CTAs use measurable first-party redirects", async () => {
     assert.equal(response.headers.get("cache-control"), "no-store", path);
     assert.equal(response.headers.get("referrer-policy"), "no-referrer", path);
   }
+  assert.deepEqual(events, [
+    { blobs: ["testflight", "hero"], doubles: [1], indexes: ["launch"] },
+    { blobs: ["github", "hero"], doubles: [1], indexes: ["launch"] },
+  ]);
+  await worker.fetch(new Request("https://partyparty.party/go/testflight/untrusted"), env);
+  assert.deepEqual(events.at(-1).blobs, ["testflight", "unknown"]);
+  await worker.fetch(new Request("https://partyparty.party/go/testflight/hero", { method: "HEAD" }), env);
+  assert.equal(events.length, 3, "HEAD checks must not count as clicks");
 });
 
 test("the product site uses the dancer favicon", async () => {

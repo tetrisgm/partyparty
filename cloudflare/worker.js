@@ -128,7 +128,7 @@ function legalResponse(pathname) {
       <h2>Secure room address</h2>
       <p>Each installation receives a random credential and a two-word hostname used only to provision its certificate-backed local room address. This infrastructure identifier is not connected to a PartyParty account or profile.</p>
       <h2>Diagnostics</h2>
-      <p>The Mac App Store edition keeps diagnostics on the Mac and does not upload session logs or status telemetry. Cloudflare may process ordinary request metadata needed to operate and secure the website and certificate broker.</p>
+      <p>The Mac App Store edition keeps diagnostics on the Mac and does not upload session logs or status telemetry. Cloudflare may process ordinary request metadata needed to operate and secure the website and certificate broker. PartyParty records aggregate clicks on its TestFlight and GitHub buttons using only the destination, the button's page placement, and a count; it does not include an IP address, user agent, referrer, cookie, or identity in those events.</p>
       <h2>Sharing and tracking</h2>
       <p>PartyParty does not sell personal data, track people across apps or websites, or use infrastructure data for advertising.</p>
       <h2>Contact</h2>
@@ -197,6 +197,16 @@ function withProductSecurityHeaders(response) {
     status: response.status,
     statusText: response.statusText,
     headers,
+  });
+}
+const LAUNCH_PLACEMENTS = new Set(["nav", "hero", "faq", "final"]);
+function recordLaunchClick(env, destination, pathname) {
+  if (!env.LAUNCH_ANALYTICS) return;
+  const placement = pathname.split("/")[3] || "unknown";
+  env.LAUNCH_ANALYTICS.writeDataPoint({
+    blobs: [destination, LAUNCH_PLACEMENTS.has(placement) ? placement : "unknown"],
+    doubles: [1],
+    indexes: ["launch"],
   });
 }
 var BROKER_HOST_FIRST_WORDS = [
@@ -1186,6 +1196,7 @@ var worker_default = {
     }
     if (pathname.startsWith("/go/testflight/")) {
       if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed("GET, HEAD");
+      if (request.method === "GET") recordLaunchClick(env, "testflight", pathname);
       return new Response(null, {
         status: 302,
         headers: {
@@ -1197,6 +1208,7 @@ var worker_default = {
     }
     if (pathname.startsWith("/go/github/")) {
       if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed("GET, HEAD");
+      if (request.method === "GET") recordLaunchClick(env, "github", pathname);
       return new Response(null, {
         status: 302,
         headers: {

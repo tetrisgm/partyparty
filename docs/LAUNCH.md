@@ -127,6 +127,14 @@ final Product Hunt launch.
       mismatch before any synchronized-playback claim is restored.
 - [ ] Owner is available to answer comments and triage reports.
 
+## Measurement
+
+The landing page routes TestFlight and GitHub calls to first-party `/go/`
+redirects. The Worker writes one aggregate Analytics Engine point containing
+only destination (`testflight` or `github`), an allowlisted placement, and the
+count `1`. It deliberately records no IP address, user agent, referrer, cookie,
+party identifier, or person identifier. The dataset is `partyparty_launch`.
+
 ## Owner-only actions
 
 - Decide whether to keep the source-visible notice or replace it with an

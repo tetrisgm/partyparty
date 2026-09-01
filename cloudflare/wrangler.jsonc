@@ -29,6 +29,12 @@
     }
   ],
 
+  // Aggregate launch conversion only. Events contain destination, allowlisted
+  // placement, and a count—never an address, user agent, referrer, or identity.
+  "analytics_engine_datasets": [
+    { "binding": "LAUNCH_ANALYTICS", "dataset": "partyparty_launch" }
+  ],
+
   // The relay Durable Object is gone: guest media and the room API go straight to
   // the relay origin, never through a Worker. The delete migration retires the
   // class so its storage is released.
