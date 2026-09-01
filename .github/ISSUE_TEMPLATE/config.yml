@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://partyparty.party/support
+    about: Report vulnerabilities privately instead of opening a public issue.
+  - name: Public beta
+    url: https://testflight.apple.com/join/HPRAgyJk
+    about: Install the current PartyParty beta through TestFlight.

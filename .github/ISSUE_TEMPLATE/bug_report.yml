@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible PartyParty problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve the public beta. Do not include credentials, private party URLs, or guest data.
+  - type: input
+    id: version
+    attributes:
+      label: PartyParty version
+      placeholder: Find this in PartyParty's About or Settings view.
+    validations:
+      required: true
+  - type: input
+    id: devices
+    attributes:
+      label: Devices and operating systems
+      placeholder: Mac model and macOS version; iPhone model and iOS version when relevant.
+    validations:
+      required: true
+  - type: dropdown
+    id: path
+    attributes:
+      label: Connection path
+      options:
+        - Direct / ordinary Wi-Fi
+        - Local / offline Wi-Fi
+        - Relay / Wi-Fi + cloud
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest sequence that reliably reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: checkboxes
+    id: sensitive
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, private party URLs, and guest information.
+          required: true
