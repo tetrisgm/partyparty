@@ -327,3 +327,10 @@ The corrected discovery/support increment is live as Worker version
 name `/img/social-card.png` with matching 1200×630 dimensions and canonical
 URLs, Support exposes the issue chooser, and the live managed `robots.txt`
 includes the committed sitemap directive after Cloudflare's content signals.
+
+The launch audit measured white CTA text at 3.90:1 on the landing accent and
+3.59:1 on the legal/support accent, below WCAG AA for their text sizes. The
+accents were darkened to `#d7193f` (5.12:1) and `#d41446` (5.27:1), and the
+small `#86868b` footer/secondary ink was replaced by `#6e6e73` (5.07:1). These
+are computed sRGB contrast ratios against white; visual browser verification
+remains separate from the unavailable Chrome trace/a11y tooling.
