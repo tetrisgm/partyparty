@@ -129,11 +129,11 @@ final Product Hunt launch.
 
 ## Measurement
 
-The landing page routes TestFlight and GitHub calls to first-party `/go/`
-redirects. The Worker writes one aggregate Analytics Engine point containing
-only destination (`testflight` or `github`), an allowlisted placement, and the
-count `1`. It deliberately records no IP address, user agent, referrer, cookie,
-party identifier, or person identifier. The dataset is `partyparty_launch`.
+The landing page routes TestFlight and GitHub calls through distinct
+first-party `/go/` paths for each placement. Aggregate request counts are
+available through the Worker's existing observability; PartyParty adds no
+client tracker, cookie, fingerprint, or person identifier. Analytics Engine is
+not enabled because doing so creates a separately priced account feature.
 
 ## Owner-only actions
 
