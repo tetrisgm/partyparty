@@ -56,6 +56,7 @@ const baseEnv = () => ({
   BROKER_BASE: "partyparty.party",
   CF_DNS_TOKEN: "token",
   CF_ZONE_ID: "0123456789abcdef0123456789abcdef",
+  REGISTRATION_RATE_LIMITER: { limit: async () => ({ success: true }) },
 });
 
 const tests = [];
@@ -112,6 +113,19 @@ test("broker JSON envelopes are rejected before broker work", async () => {
 
   assert.equal((await env.DL.list({ prefix: "broker/" })).objects.length, 0,
     "rejected envelopes must not create broker state");
+});
+
+test("registration stops before storage when the network rate limit is exhausted", async () => {
+  const env = baseEnv();
+  env.REGISTRATION_RATE_LIMITER = { limit: async () => ({ success: false }) };
+  const response = await worker.fetch(new Request("https://partyparty.party/api/broker/register", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.8" },
+    body: "{}",
+  }), env);
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("retry-after"), "60");
+  assert.equal((await env.DL.list({ prefix: "broker/" })).objects.length, 0);
 });
 
 test("read-only public routes reject mutating methods before storage", async () => {

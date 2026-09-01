@@ -479,6 +479,12 @@ async function broker(request, env, pathname) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return jsonResp(400, { error: "bad json" });
   if (pathname === "/api/broker/register") {
     const ipHash = await sha256Hex(`ip:${request.headers.get("cf-connecting-ip") || ""}`);
+    if (env.REGISTRATION_RATE_LIMITER) {
+      const result = await env.REGISTRATION_RATE_LIMITER.limit({ key: ipHash });
+      if (!result.success) {
+        return jsonResp(429, { error: "slow down" }, { "retry-after": "60" });
+      }
+    }
     if (await discoverRateLimited(ipHash, "register", 10)) {
       return jsonResp(429, { error: "slow down" }, { "retry-after": "10" });
     }

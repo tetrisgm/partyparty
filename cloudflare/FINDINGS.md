@@ -1,12 +1,13 @@
 # Cloudflare worker review findings
 
-## Deferred infrastructure work
+## Registration abuse boundary
 
-- The registration throttle uses Cache API state, so it is intentionally
-  per-edge and fail-open. It blocks immediate unauthenticated R2-write floods but
-  is not an authoritative global quota. A stronger bound needs a deployed Rate
-  Limiting binding or Durable Object and therefore configuration/provisioning
-  outside this code-only, no-deploy review.
+- Anonymous registration is protected first by the Worker's
+  `REGISTRATION_RATE_LIMITER` binding (30 attempts per source address per
+  minute), then by a short Cache API throttle. The network limiter is
+  eventually consistent by design, so it is an abuse control rather than an
+  authoritative billing quota. Registration writes remain small and bounded,
+  and Workers observability records rate-limited responses.
 
 The other two findings recorded here concerned the account worker in
 `cloudflare/app` (D1 token cleanup outside `waitUntil`, and event-slug renames).

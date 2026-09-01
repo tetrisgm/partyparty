@@ -18,6 +18,17 @@
     { "binding": "DL", "bucket_name": "partyparty-dl" }
   ],
 
+  // Registration is intentionally anonymous, but minting an install writes to
+  // R2. Apply a network-level per-address bound before the existing short
+  // Cache API throttle so a burst cannot turn into unbounded storage writes.
+  "ratelimits": [
+    {
+      "name": "REGISTRATION_RATE_LIMITER",
+      "namespace_id": "6794880742",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
+
   // The relay Durable Object is gone: guest media and the room API go straight to
   // the relay origin, never through a Worker. The delete migration retires the
   // class so its storage is released.
