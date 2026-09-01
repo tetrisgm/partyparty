@@ -20,6 +20,7 @@
 <meta name="twitter:title" content="PartyParty - A live headphone party from your Mac">
 <meta name="twitter:description" content="Guests scan a QR code and listen together with no guest app or account. Works offline after setup.">
 <meta name="twitter:image" content="https://partyparty.party/img/social-card.png">
+<meta name="twitter:image:alt" content="PartyParty: Your Mac, their phones, one live room">
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="preload" as="image" href="/img/pp-hero.jpg" fetchpriority="high">
 <script>document.documentElement.className+=' js'</script>
@@ -366,8 +367,8 @@ footer a:hover{color:var(--ink);text-decoration:underline}
         <h3>Party in the park.</h3>
         <p>Nothing for the rangers to shut down.</p>
       </div>
-        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-        <div class="detail"><h4>No permit for a PA you never brought.</h4><p>A ranger can shut down a speaker. There isn&rsquo;t one. Your MacBook runs the set, the sound lands in everyone&rsquo;s own headphones, and the lawn around you stays exactly as quiet as it was before you arrived.</p></div>
+        <button class="plus" type="button" aria-expanded="false" aria-controls="detail-park"><span class="glyph" aria-hidden="true"></span><span class="sr">More about park parties</span></button>
+        <div class="detail" id="detail-park"><h4>No permit for a PA you never brought.</h4><p>A ranger can shut down a speaker. There isn&rsquo;t one. Your MacBook runs the set, the sound lands in everyone&rsquo;s own headphones, and the lawn around you stays exactly as quiet as it was before you arrived.</p></div>
     </div>
 
     <div class="trio3 rv">
@@ -378,8 +379,8 @@ footer a:hover{color:var(--ink);text-decoration:underline}
           <h3>Silent disco.</h3>
           <p>No expensive rental gear. Nothing to carry.</p>
         </div>
-        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-        <div class="detail"><h4>A silent disco without the rental truck.</h4><p>The usual version means hiring headsets, handing them out at the door and collecting them at 2 a.m. Your friends already own better headphones than the rental ones. They scan a code and they are in.</p></div>
+        <button class="plus" type="button" aria-expanded="false" aria-controls="detail-silent-disco"><span class="glyph" aria-hidden="true"></span><span class="sr">More about silent discos</span></button>
+        <div class="detail" id="detail-silent-disco"><h4>A silent disco without the rental truck.</h4><p>The usual version means hiring headsets, handing them out at the door and collecting them at 2 a.m. Your friends already own better headphones than the rental ones. They scan a code and they are in.</p></div>
       </div>
       <div class="scene">
         <div class="ph afterhours" role="img" aria-label="An apartment building at night, one window still lit."></div>
@@ -388,8 +389,8 @@ footer a:hover{color:var(--ink);text-decoration:underline}
           <h3>Apartment after-party.</h3>
           <p>Keep the night going without waking your neighbors.</p>
         </div>
-        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-        <div class="detail"><h4>The building sleeps through the after-party.</h4><p>Nothing leaves the room but conversation. The set runs at whatever hour it wants, guests can lock their phones and pocket them, and the neighbours never learn what time it ended.</p></div>
+        <button class="plus" type="button" aria-expanded="false" aria-controls="detail-after-party"><span class="glyph" aria-hidden="true"></span><span class="sr">More about apartment after-parties</span></button>
+        <div class="detail" id="detail-after-party"><h4>The building sleeps through the after-party.</h4><p>Nothing leaves the room but conversation. The set runs at whatever hour it wants, guests can lock their phones and pocket them, and the neighbours never learn what time it ended.</p></div>
       </div>
       <div class="scene">
         <div class="ph beach" role="img" aria-label="Friends around a fire on the beach at dusk."></div>
@@ -398,8 +399,8 @@ footer a:hover{color:var(--ink);text-decoration:underline}
           <h3>Beach party. Offline.</h3>
           <p>Take a travel router and keep the party local.</p>
         </div>
-        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-        <div class="detail"><h4>No signal? The party brings its own.</h4><p>Pack a travel router and the network travels with you. Your MacBook and everyone&rsquo;s phones make their own Wi&#8209;Fi on the sand, with no bars of service and no venue network to borrow.</p></div>
+        <button class="plus" type="button" aria-expanded="false" aria-controls="detail-beach"><span class="glyph" aria-hidden="true"></span><span class="sr">More about offline beach parties</span></button>
+        <div class="detail" id="detail-beach"><h4>No signal? The party brings its own.</h4><p>Pack a travel router and the network travels with you. Your MacBook and everyone&rsquo;s phones make their own Wi&#8209;Fi on the sand, with no bars of service and no venue network to borrow.</p></div>
       </div>
     </div>
   </div>
@@ -417,13 +418,13 @@ footer a:hover{color:var(--ink);text-decoration:underline}
           </div>
           <div class="mvis src">
             <div class="macstage">
-              <img class="behind" src="/img/pp-rekordbox.jpg" alt="rekordbox running on the Mac behind PartyParty.">
-              <img class="front" src="/img/pp-transport.png" alt="PartyParty's console set to broadcast the Mac's output, with Go live ready.">
+              <img class="behind" src="/img/pp-rekordbox.jpg" width="1190" height="476" loading="lazy" decoding="async" alt="rekordbox running on the Mac behind PartyParty.">
+              <img class="front" src="/img/pp-transport.png" width="1130" height="138" loading="lazy" decoding="async" alt="PartyParty's console set to broadcast the Mac's output, with Go live ready.">
             </div>
           </div>
         </div>
-        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-        <div class="detail"><h4>Whatever your Mac can play.</h4><p>PartyParty broadcasts the Mac&rsquo;s own audio, so the source is whatever you already use: Apple Music, a browser tab, rekordbox or another DJ app, or decks and a controller coming in through an audio interface.</p></div>
+        <button class="plus" type="button" aria-expanded="false" aria-controls="detail-sources"><span class="glyph" aria-hidden="true"></span><span class="sr">More about audio sources</span></button>
+        <div class="detail" id="detail-sources"><h4>Whatever your Mac can play.</h4><p>PartyParty broadcasts the Mac&rsquo;s own audio, so the source is whatever you already use: Apple Music, a browser tab, rekordbox or another DJ app, or decks and a controller coming in through an audio interface.</p></div>
       </div>
       <div class="moment">
         <div class="mcard">
@@ -432,11 +433,11 @@ footer a:hover{color:var(--ink);text-decoration:underline}
             <p>PartyParty creates a QR code.</p>
           </div>
           <div class="mvis golive">
-            <img class="joinrailshot" src="/img/pp-joinrail.png" alt="PartyParty's Invite guests panel: the party's QR code and its join address, ready to share.">
+            <img class="joinrailshot" src="/img/pp-joinrail.png" width="534" height="722" loading="lazy" decoding="async" alt="PartyParty's Invite guests panel: a demo QR pattern and share address.">
           </div>
         </div>
-        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-        <div class="detail"><h4>One code, and the room is in.</h4><p>Going live publishes a private address for tonight and turns it into a QR code. Point a camera at it, or send the link in a group chat. There is nothing to configure and nothing to hand out at the door.</p></div>
+        <button class="plus" type="button" aria-expanded="false" aria-controls="detail-invites"><span class="glyph" aria-hidden="true"></span><span class="sr">More about inviting guests</span></button>
+        <div class="detail" id="detail-invites"><h4>One code, and the room is in.</h4><p>Going live publishes a private address for tonight and turns it into a QR code. Point a camera at it, or send the link in a group chat. There is nothing to configure and nothing to hand out at the door.</p></div>
       </div>
       <div class="moment">
         <div class="mcard">
@@ -447,12 +448,12 @@ footer a:hover{color:var(--ink);text-decoration:underline}
           <div class="mvis listen">
             <div class="phframe mini">
               <div class="island"></div>
-              <div class="pscreen"><img src="/img/pp-phone.jpg" alt="The real guest page on an iPhone: the party header, one DJ playing, and the green listen bar."></div>
+              <div class="pscreen"><img src="/img/pp-phone.jpg" width="605" height="760" loading="lazy" decoding="async" alt="The real guest page on an iPhone: the party header, one DJ playing, and the green listen bar."></div>
             </div>
           </div>
         </div>
-        <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-        <div class="detail"><h4>One live set, on every phone.</h4><p>PartyParty keeps playback close to the live room while each pair of ears picks its own level. Locked screens keep playing. Direct and cloud-relayed listeners can land at different delays during the public beta.</p></div>
+        <button class="plus" type="button" aria-expanded="false" aria-controls="detail-listening"><span class="glyph" aria-hidden="true"></span><span class="sr">More about guest listening</span></button>
+        <div class="detail" id="detail-listening"><h4>One live set, on every phone.</h4><p>PartyParty keeps playback close to the live room while each pair of ears picks its own level. Locked screens keep playing. Direct and cloud-relayed listeners can land at different delays during the public beta.</p></div>
       </div>
     </div>
 </section>
@@ -460,12 +461,12 @@ footer a:hover{color:var(--ink);text-decoration:underline}
 <section class="sect setlist" id="remembers">
   <div class="wrap wide">
     <div class="rpanel shz rv">
-      <img class="shazwash" src="/img/pp-shazam-glyph.png" alt="" aria-hidden="true">
+      <img class="shazwash" src="/img/pp-shazam-glyph.png" width="240" height="257" loading="lazy" decoding="async" alt="" aria-hidden="true">
       <h2 class="h2">Track recognition is part of the beta.</h2>
       <p class="rlede">PartyParty can identify tracks as they play and build the party&rsquo;s tracklist automatically. Recognition in the TestFlight-signed build is still being validated.</p>
-      <div class="setshotwrap"><img src="/img/pp-setcard.jpg" alt="The console's Tracks played card: four recognized tracks with timestamps, the current one marked now."></div>
-      <button class="plus" type="button" aria-expanded="false"><span class="glyph" aria-hidden="true"></span><span class="sr">More about this</span></button>
-      <div class="detail"><h4>The night can write itself down.</h4><p>When recognition is available, the set list fills in without anyone typing. It needs an internet connection to identify a track, and it keeps the artwork, the artist and the moment each one dropped. This capability is proven in a development-signed build; TestFlight verification remains open.</p></div>
+      <div class="setshotwrap"><img src="/img/pp-setcard.jpg" width="1408" height="544" loading="lazy" decoding="async" alt="The console's Tracks played card: four recognized tracks with timestamps, the current one marked now."></div>
+      <button class="plus" type="button" aria-expanded="false" aria-controls="detail-recognition"><span class="glyph" aria-hidden="true"></span><span class="sr">More about track recognition</span></button>
+      <div class="detail" id="detail-recognition"><h4>The night can write itself down.</h4><p>When recognition is available, the set list fills in without anyone typing. It needs an internet connection to identify a track, and it keeps the artwork, the artist and the moment each one dropped. This capability is proven in a development-signed build; TestFlight verification remains open.</p></div>
     </div>
   </div>
 </section>

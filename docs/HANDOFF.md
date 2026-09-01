@@ -298,3 +298,9 @@ on the live apex after deployment.
 saying that pull requests cannot be accepted. Until explicit contributor terms
 exist, it consistently directs proposed changes to issue discussion and asks
 people not to spend time preparing an unusable pull request.
+
+The launch page's eight expansion controls now have unique accessible names and
+explicit `aria-controls` relationships to their detail panels. Below-fold
+inline images declare intrinsic dimensions, lazy loading, and asynchronous
+decoding, while the preloaded hero remains eager. Twitter metadata now carries
+the same descriptive image alt text as Open Graph.
