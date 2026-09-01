@@ -651,6 +651,14 @@ test("the product hero links to the public source repository", async () => {
   assert.match(html, /stargazers_count/);
 });
 
+test("the product site uses the dancer favicon", async () => {
+  const root = new URL("../", import.meta.url);
+  const html = readFileSync(new URL("../site/index.html", root), "utf8");
+  const icon = readFileSync(new URL("../site/favicon.svg", root), "utf8");
+  assert.match(html, /href="\/favicon\.svg\?v=2" type="image\/svg\+xml"/);
+  assert.match(icon, /🕺/u);
+});
+
 test("Apple's domain proof is served from the bucket, not from a deploy", async () => {
   const env = baseEnv();
   const path = "https://partyparty.party/.well-known/apple-developer-domain-association.txt";
