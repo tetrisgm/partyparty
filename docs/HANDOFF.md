@@ -202,8 +202,8 @@ gallery/thumbnail/social assets, and the seven-second Remotion demo. GitHub has
 accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
-The product site was deployed from that commit as Cloudflare Worker version
-`b8aa449e-5a87-4721-b2d3-80742ad8a1a9`. It serves the launch social card,
+The product site was deployed from that work and most recently verified as
+Cloudflare Worker version `1979ef46-025e-45b4-b50e-19cf10908183`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -227,3 +227,12 @@ The repository is source-visible under an explicit all-rights-reserved notice;
 the owner may later replace it with an open-source license. Product Hunt video upload, final real-device
 screenshots, actual Product Hunt/Hacker News posting, and any App Store action
 remain owner-account decisions.
+
+The public TestFlight link resolves to Apple's invitation for “partyparty: DJ
+Wi-Fi Radio.” Build 271 (`125.49`) is assigned to the external `Party testing`
+group, Apple-approved, valid through 2026-11-13, and reports
+`IN_BETA_TESTING`; the public group limit is 10,000 testers. The tester-facing
+description was updated in App Store Connect to the honest live-headphone-party
+positioning and discloses the direct/relay delay difference. This proves the
+public distribution configuration, not a fresh-device installation. The latter
+still needs the release-day Mac walkthrough in `docs/LAUNCH.md`.
