@@ -701,6 +701,20 @@ test("the product site uses the dancer favicon", async () => {
   assert.match(icon, /🕺/u);
 });
 
+test("launch support pages carry canonical social metadata", async () => {
+  const env = baseEnv();
+  for (const path of ["/privacy", "/support"]) {
+    const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
+    assert.equal(response.status, 200, path);
+    const html = await response.text();
+    assert.match(html, new RegExp(`<link rel="canonical" href="https://partyparty\\.party${path}">`), path);
+    assert.match(html, /<meta property="og:image:width" content="1200">/, path);
+    assert.match(html, /<meta property="og:image:height" content="630">/, path);
+    assert.match(html, /<meta property="og:image:alt" content="PartyParty:/, path);
+    assert.match(html, /<meta name="twitter:image:alt" content="PartyParty:/, path);
+  }
+});
+
 test("Apple's domain proof is served from the bucket, not from a deploy", async () => {
   const env = baseEnv();
   const path = "https://partyparty.party/.well-known/apple-developer-domain-association.txt";

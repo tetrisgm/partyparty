@@ -109,9 +109,10 @@ function shell({ title, desc, ogImage, url, body }) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
-<meta property="og:type" content="website"><meta property="og:url" content="${esc(pageUrl)}"><meta property="og:site_name" content="PartyParty"><meta property="og:image" content="${esc(imageUrl)}">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(imageUrl)}">
+<meta property="og:type" content="website"><meta property="og:url" content="${esc(pageUrl)}"><meta property="og:site_name" content="PartyParty"><meta property="og:image" content="${esc(imageUrl)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="PartyParty: Your Mac, their phones, one live room">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(imageUrl)}"><meta name="twitter:image:alt" content="PartyParty: Your Mac, their phones, one live room">
 <meta name="theme-color" content="#f5f5f7"><meta name="color-scheme" content="light">
+<link rel="canonical" href="${esc(pageUrl)}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>\u{1F57A}</text></svg>">
 <style>${CSS}</style></head><body>${SVGDEFS}${NAV}${body}${TOAST_JS}</body></html>`;
 }
@@ -140,6 +141,7 @@ function legalResponse(pathname) {
       <p class="sub">Help with PartyParty for Mac.</p>
       <h2>Contact</h2>
       <p>Email <a href="mailto:support@partyparty.party"><u>support@PartyParty.party</u></a> with the app version, macOS version, and a short description of what happened.</p>
+      <p>For reproducible bugs, use the <a href="https://github.com/tetrisgm/partyparty/issues/new/choose"><u>GitHub issue templates</u></a> and omit credentials, private party URLs, and guest information.</p>
       <h2>Before a party</h2>
       <p>Connect the Mac and guests to the venue Wi-Fi, open PartyParty, select the audio source, and use the displayed HTTPS QR code. Guests need no account and can keep listening while their iPhone is locked.</p>
       <h2>Privacy</h2>

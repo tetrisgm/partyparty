@@ -310,3 +310,9 @@ That accessibility and image-loading increment was deployed as Worker version
 all eight `aria-controls` relationships, six below-fold lazy images, and the
 Twitter image alt metadata. Root browser-contract tests, all 24 Worker smoke
 tests, and Wrangler dry-run passed before deployment.
+
+Privacy and Support now emit their own canonical URLs plus complete 1200×630
+Open Graph and Twitter image metadata, including alt text. Support links to the
+repository's issue-template chooser with an explicit reminder to omit private
+data. The product site now owns a deterministic `robots.txt` that allows
+indexing and points crawlers to the existing sitemap.
