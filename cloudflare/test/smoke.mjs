@@ -647,7 +647,8 @@ test("the web ships no broadcaster: it may listen, never transmit", async () => 
 test("the product hero links to the public source repository", async () => {
   const html = readFileSync(new URL("../site/index.html", new URL("../", import.meta.url)), "utf8");
   assert.match(html, /href="https:\/\/github\.com\/tetrisgm\/partyparty"/);
-  assert.match(html, /aria-label="View PartyParty on GitHub"/);
+  assert.match(html, /aria-label="Star PartyParty on GitHub, 0 stars"/);
+  assert.match(html, /stargazers_count/);
 });
 
 test("Apple's domain proof is served from the bucket, not from a deploy", async () => {
