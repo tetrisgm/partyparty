@@ -192,3 +192,38 @@ playback-geometry change was made.
 
 These are field-verification debts, not invitations to deploy, upload, alter
 shared infrastructure, or claim native Safari behavior from simulation.
+
+## Public-beta launch preparation (2026-09-01)
+
+Launch preparation landed on `main` through commit `b3fca1a`. The repository
+now has stranger-first beta onboarding, security and contribution guidance,
+structured bug reports, a Hacker News/Product Hunt launch kit, exact-size
+gallery/thumbnail/social assets, and the seven-second Remotion demo. GitHub has
+accurate discovery topics, secret scanning, push protection, Dependabot
+security updates, and zero open dependency alerts.
+
+The product site was deployed from that commit as Cloudflare Worker version
+`b8aa449e-5a87-4721-b2d3-80742ad8a1a9`. It serves the launch social card,
+canonical `www` redirect, sitemap, product security headers, and first-party
+TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
+analytics without cookies or cross-site tracking. Anonymous install
+registration now passes through a 30-per-minute source-address Rate Limiting
+binding before the existing short Cache API throttle.
+
+Verification passed: all Go tests and vet, the full browser contract suite,
+Swift build and tests, 24 Worker smoke tests and Wrangler dry-run, Remotion
+render, npm audits, and live apex/header/redirect/sitemap/social-card checks.
+No app binary was uploaded or submitted.
+
+The direct/relay timing debt above remains launch-significant. The latest real
+AVPlayer evidence still places direct playback near 1.17 seconds and relay near
+3.33 seconds, and the current per-phone bootstrap permits both paths in one
+Wi-Fi + cloud room. Public copy was therefore changed from “synchronized” and
+an exact three-second promise to honest low-latency beta language. Do not
+restore synchronized-playback claims until a candidate passes the required
+pre-upload real-AVPlayer soak and supervised mixed-path field test.
+
+The repository is intentionally source-visible with no reuse rights declared
+until the owner selects a license. Product Hunt video upload, final real-device
+screenshots, actual Product Hunt/Hacker News posting, and any App Store action
+remain owner-account decisions.
