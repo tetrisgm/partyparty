@@ -249,8 +249,8 @@ from the owner's launch accounts.
 
 Current Hacker News moderator guidance asks makers not to post LLM-written or
 LLM-edited submission prose. `docs/LAUNCH.md` therefore treats its Hacker News
-material as a private factual outline; the owner must write the final Show HN
-text in their own voice.
+material as a fact bank rather than a finished title or first comment; the owner
+must write both final elements independently in their own voice.
 
 The product site previously presented automatic Shazam track recognition as an
 unqualified shipping feature even though the distribution-signing result above

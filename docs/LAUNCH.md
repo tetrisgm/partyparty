@@ -23,43 +23,31 @@ Use these qualifications consistently:
 
 ## Hacker News
 
-Write the submission text yourself on launch day. Hacker News moderators now
-explicitly ask makers not to post LLM-written or LLM-edited prose. The material
-below is a private factual outline, not paste-ready copy. Keep the final version
-plain, personal, and in the owner's own voice.
+Write both the title and submission text yourself on launch day. Hacker News
+moderators explicitly ask makers not to post LLM-written or LLM-edited prose.
+Do not copy or lightly rewrite generated launch copy.
 
-**Title**
+Facts to check and express in the owner's own words:
 
-> Show HN: PartyParty – stream a Mac's audio to phones over Wi-Fi
+- PartyParty is a macOS menu-bar app that turns one Mac into a live audio server
+  for a room.
+- The DJ selects Mac output or an audio interface and goes live; guests scan a
+  QR code and tap play in Safari, with no guest app or account.
+- Native HLS/AVPlayer continues when Safari is backgrounded or the iPhone locks.
+- The stream uses 500 ms segments and 150 ms LL-HLS parts. Passive native
+  playback replaced audible active-seeking and rate-steering failures.
+- Direct mode uses local HTTPS and can continue without internet after setup.
+  The optional relay is for venue networks that isolate clients; it receives one
+  stream copy from the Mac and fans out the original playlists.
+- It is a free public TestFlight beta for Apple-silicon Macs on macOS 26 or
+  later. Source is visible at `https://github.com/tetrisgm/partyparty` under an
+  all-rights-reserved notice.
+- Open validation debts are many-phone venue behavior, mixed direct/relay
+  timing, fresh-device onboarding, and Shazam in the distribution-signed build.
 
-**First comment**
-
-> I built PartyParty, a macOS menu-bar app that turns one Mac into a live audio
-> server for a room. The DJ selects the Mac's output or an audio interface and
-> clicks Go Live; guests scan a QR code and tap play in their browser. There is
-> no guest app or account.
->
-> The deceptively difficult part was keeping low-latency playback stable without
-> active seeking or rate steering causing audible skips. The current design uses
-> native HLS/AVPlayer, 500 ms segments, 150 ms LL-HLS parts, and a fixed room
-> latency target. On iPhone it continues while Safari is backgrounded or the
-> phone is locked.
->
-> Ordinary Wi-Fi uses direct local HTTPS and can keep running without internet
-> after setup. There is also an optional relay for venue networks that isolate
-> clients. The Mac uploads one stream copy to an origin that fans out the
-> original playlists; the Cloudflare Worker handles bootstrap and certificate
-> coordination, but never carries media.
->
-> The app is a free public TestFlight beta for macOS 26+, and the source is at
-> https://github.com/tetrisgm/partyparty. I am looking for feedback on
-> onboarding, real venue networks, and the latency/stability tradeoff.
->
-> I am still validating many-phone venue behavior, mixed direct/relay field
-> behavior, and Shazam recognition in the distribution-signed build.
-
-Link the Show HN title directly to `https://partyparty.party`. Do not ask for
-upvotes, coordinate comments, or obscure the beta and hardware requirements.
+The title must begin with `Show HN:` and link directly to
+`https://partyparty.party`. Do not ask for upvotes, coordinate comments, or
+obscure the beta and hardware requirements.
 
 ## Product Hunt
 
