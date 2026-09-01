@@ -203,7 +203,7 @@ accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
 The product site was deployed from that work and most recently verified as
-Cloudflare Worker version `1979ef46-025e-45b4-b50e-19cf10908183`. It serves the launch social card,
+Cloudflare Worker version `dc7efff0-44d6-4a09-8d9d-4bb6dccc932b`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -258,3 +258,8 @@ remains unverified. The launch page now labels recognition as part of the beta,
 states that TestFlight validation is still open, and preserves the exact proven
 boundary: development-signed recognition works. Do not remove that qualifier
 until the fielded TestFlight/App Store build is tested.
+
+The qualified recognition copy was deployed as Worker version
+`dc7efff0-44d6-4a09-8d9d-4bb6dccc932b` and verified on the live apex. The
+deployment uploaded only the changed `index.html`; Worker check, all 24 smoke
+tests, and Wrangler dry-run passed before deployment.
