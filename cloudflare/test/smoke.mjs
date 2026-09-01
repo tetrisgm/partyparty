@@ -119,6 +119,7 @@ test("read-only public routes reject mutating methods before storage", async () 
   for (const path of [
     "/", "/privacy", "/support", "/api/version", "/api/relay-canary",
     "/.well-known/apple-developer-domain-association.txt", "/appcast.xml",
+    "/go/testflight/test", "/go/github/test",
   ]) {
     const response = await worker.fetch(new Request(`https://partyparty.party${path}`, {
       method: "POST",
@@ -646,9 +647,24 @@ test("the web ships no broadcaster: it may listen, never transmit", async () => 
 
 test("the product hero links to the public source repository", async () => {
   const html = readFileSync(new URL("../site/index.html", new URL("../", import.meta.url)), "utf8");
-  assert.match(html, /href="https:\/\/github\.com\/tetrisgm\/partyparty"/);
+  assert.match(html, /href="\/go\/github\/hero"/);
   assert.match(html, /aria-label="Star PartyParty on GitHub, 0 stars"/);
   assert.match(html, /stargazers_count/);
+});
+
+test("launch CTAs use measurable first-party redirects", async () => {
+  const env = baseEnv();
+  const cases = [
+    ["/go/testflight/hero", "https://testflight.apple.com/join/HPRAgyJk"],
+    ["/go/github/hero", "https://github.com/tetrisgm/partyparty"],
+  ];
+  for (const [path, destination] of cases) {
+    const response = await worker.fetch(new Request(`https://partyparty.party${path}`), env);
+    assert.equal(response.status, 302, path);
+    assert.equal(response.headers.get("location"), destination, path);
+    assert.equal(response.headers.get("cache-control"), "no-store", path);
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer", path);
+  }
 });
 
 test("the product site uses the dancer favicon", async () => {

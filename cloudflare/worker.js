@@ -1160,6 +1160,28 @@ var worker_default = {
         date: current.date,
       }, headers);
     }
+    if (pathname.startsWith("/go/testflight/")) {
+      if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed("GET, HEAD");
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "https://testflight.apple.com/join/HPRAgyJk",
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer",
+        },
+      });
+    }
+    if (pathname.startsWith("/go/github/")) {
+      if (request.method !== "GET" && request.method !== "HEAD") return methodNotAllowed("GET, HEAD");
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "https://github.com/tetrisgm/partyparty",
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer",
+        },
+      });
+    }
     if (pathname === "/privacy" || pathname === "/support") {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return methodNotAllowed("GET, HEAD");
