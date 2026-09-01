@@ -236,3 +236,18 @@ description was updated in App Store Connect to the honest live-headphone-party
 positioning and discloses the direct/relay delay difference. This proves the
 public distribution configuration, not a fresh-device installation. The latter
 still needs the release-day Mac walkthrough in `docs/LAUNCH.md`.
+
+On 2026-09-01 the launch media and live discovery surface were rechecked. The
+rendered demo is 7.061 seconds, 1920×1080 H.264 with AAC audio, and uses the
+qualified “Playing live / Low-latency party audio” language. The Product Hunt
+thumbnail is 240×240, all four gallery images are 1270×760, and its description
+is within the current 260-character limit. The live Open Graph and Twitter-card
+metadata resolves to the deployed 1200×630 image; the dancer favicon, canonical
+redirect, TestFlight and GitHub redirects, sitemap, and security headers also
+respond correctly. Actual social-network cache previews still need checking
+from the owner's launch accounts.
+
+Current Hacker News moderator guidance asks makers not to post LLM-written or
+LLM-edited submission prose. `docs/LAUNCH.md` therefore treats its Hacker News
+material as a private factual outline; the owner must write the final Show HN
+text in their own voice.

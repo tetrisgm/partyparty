@@ -23,6 +23,11 @@ Use these qualifications consistently:
 
 ## Hacker News
 
+Write the submission text yourself on launch day. Hacker News moderators now
+explicitly ask makers not to post LLM-written or LLM-edited prose. The material
+below is a private factual outline, not paste-ready copy. Keep the final version
+plain, personal, and in the owner's own voice.
+
 **Title**
 
 > Show HN: PartyParty – stream a Mac's audio to phones over Wi-Fi
@@ -119,6 +124,8 @@ final Product Hunt launch.
 - [ ] Direct Wi-Fi path passes on the launch build.
 - [ ] Relay path passes on the launch build.
 - [x] Public support page and GitHub private security-report instructions work.
+- [x] Live Open Graph and Twitter-card metadata resolves to the deployed
+      1200×630 social image.
 - [ ] Social-card previews render correctly on target networks.
 - [ ] Product Hunt thumbnail, gallery, and YouTube link are attached.
 - [x] Launch copy contains no unsupported scale, synchronization, latency, or
@@ -142,5 +149,6 @@ not enabled because doing so creates a separately priced account feature.
 - Capture any real-device images that should not be simulated.
 - Upload the demo to YouTube under the desired account.
 - Create or schedule the Product Hunt post from the maker's personal account.
-- Submit the Show HN post from the owner's Hacker News account.
+- Write the Show HN text in the owner's own words, then submit it from the
+  owner's Hacker News account.
 - Decide separately whether and when to attach and submit an App Store build.
