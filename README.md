@@ -1,8 +1,35 @@
 # PartyParty
 
+**Turn a Mac into a synchronized headphone party.**
+
 PartyParty is a macOS menu-bar app that broadcasts a DJ set to phones on the
-same venue Wi-Fi. Guests scan the in-app QR code, open the HTTPS player, and
-keep listening when Safari is backgrounded or the phone is locked.
+same venue Wi-Fi. Guests scan the in-app QR code, press play in Safari, and
+keep listening when the phone is locked. They install nothing and create no
+account.
+
+[Website](https://partyparty.party) ·
+[Join the public TestFlight beta](https://testflight.apple.com/join/HPRAgyJk) ·
+[Report a problem](https://github.com/tetrisgm/partyparty/issues)
+
+![PartyParty running on a DJ's Mac and a guest's iPhone](demo-video/out/qa/contact-sheet-7s.png)
+
+## Try the beta
+
+PartyParty is currently a public beta for Apple-silicon Macs running macOS 26
+or newer. Install TestFlight from the Mac App Store, open the
+[PartyParty invitation](https://testflight.apple.com/join/HPRAgyJk), and choose
+Install.
+
+Start PartyParty on the Mac, select the audio source, and press **Go Live**.
+Guests scan the QR code with an iPhone and listen in Safari. Ordinary venue
+Wi-Fi works without an internet connection; an optional relay handles networks
+that isolate guests from one another.
+
+The beta is real software and may still have rough edges. Before using it for
+an important event, test the exact Mac, phones, Wi-Fi, and audio setup you plan
+to use. Questions and bug reports are welcome through
+[GitHub Issues](https://github.com/tetrisgm/partyparty/issues) or
+[support@partyparty.party](mailto:support@partyparty.party).
 
 ## Product contract
 
@@ -43,6 +70,10 @@ Go Live. Guests use the HTTPS QR shown in the console.
 The production stream profile is fixed at 320 kbps stereo AAC-LC, 500 ms LL-HLS
 segments, 150 ms parts, and 48 retained segments. Do not add alternate playback
 engines or "safe" stream presets without new physical field evidence.
+
+The repository does not currently declare a source license. Until one is
+added, copyright remains with the project owner and no reuse rights are
+granted by the repository being public.
 
 ## Permissions
 
