@@ -263,3 +263,17 @@ The qualified recognition copy was deployed as Worker version
 `dc7efff0-44d6-4a09-8d9d-4bb6dccc932b` and verified on the live apex. The
 deployment uploaded only the changed `index.html`; Worker check, all 24 smoke
 tests, and Wrangler dry-run passed before deployment.
+
+The launch screenshot QR had been captured from a historical room rather than
+made as inert demo art. macOS Vision decoded it as
+`https://groovy-dance.partyparty.party/`, and that bootstrap was still live on
+2026-09-01. The marketing source image was replaced with a visibly similar
+but non-decodable generated pattern and the reserved display address
+`demo-party.example`; the affected Product Hunt gallery image and video were
+rebuilt from that sanitized source. macOS Vision reported `NO_BARCODE` for the
+source image, gallery image, and a scan-scene frame from the final MP4. This
+does not authorize deleting or revoking the
+historical room. The Remotion render is also muted so a digital-silence AAC
+stream does not add payload, and “opens instantly” is replaced by the factual
+“opens in Safari.” The rebuilt video is exactly 7.000 seconds, 1920×1080 H.264
+with no audio stream, and 1,727,431 bytes.

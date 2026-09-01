@@ -87,7 +87,7 @@ const ScanScene: React.FC = () => {
   const scan = interpolate(frame, [0, 50], [185, 610], {extrapolateRight: 'clamp'});
   const pop = spring({frame, fps: 30, config: {damping: 16}});
   return <AbsoluteFill style={{opacity: fade(frame, 0, 70), background: '#101014', fontFamily, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 170}}>
-    <div><div style={{fontSize: 27, color: '#ff7a9f', fontWeight: 750}}>STEP 2</div><div style={{fontSize: 64, width: 650, lineHeight: 1.02, fontWeight: 900}}>Guests scan.<br/>No guest app. No account.</div><div style={{fontSize: 25, color: '#b7b7bd', marginTop: 25}}>The secure party page opens instantly.</div></div>
+    <div><div style={{fontSize: 27, color: '#ff7a9f', fontWeight: 750}}>STEP 2</div><div style={{fontSize: 64, width: 650, lineHeight: 1.02, fontWeight: 900}}>Guests scan.<br/>No guest app. No account.</div><div style={{fontSize: 25, color: '#b7b7bd', marginTop: 25}}>The secure party page opens in Safari.</div></div>
     <Phone scale={.87}><div style={{height: '100%', background: '#060607', position: 'relative'}}><Img src={joinRail} style={{position: 'absolute', width: 330, left: 30, top: 120, borderRadius: 18, transform: `scale(${.86 + pop * .14})`}}/><div style={{position: 'absolute', left: 38, right: 38, top: scan, height: 3, background: pink, boxShadow: `0 0 18px ${pink}`}}/><div style={{position: 'absolute', bottom: 60, left: 0, right: 0, textAlign: 'center', color: '#ccc', fontSize: 17}}>Point camera at the QR code</div></div></Phone>
   </AbsoluteFill>;
 };

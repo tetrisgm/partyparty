@@ -2,7 +2,7 @@
   "name": "partyparty-demo-video",
   "private": true,
   "scripts": {
-    "render": "remotion render src/index.ts PartyPartyDemo out/partyparty-demo.mp4",
+    "render": "remotion render src/index.ts PartyPartyDemo out/partyparty-demo.mp4 --muted",
     "preview": "remotion studio src/index.ts"
   },
   "dependencies": {
