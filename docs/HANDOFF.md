@@ -251,3 +251,10 @@ Current Hacker News moderator guidance asks makers not to post LLM-written or
 LLM-edited submission prose. `docs/LAUNCH.md` therefore treats its Hacker News
 material as a private factual outline; the owner must write the final Show HN
 text in their own voice.
+
+The product site previously presented automatic Shazam track recognition as an
+unqualified shipping feature even though the distribution-signing result above
+remains unverified. The launch page now labels recognition as part of the beta,
+states that TestFlight validation is still open, and preserves the exact proven
+boundary: development-signed recognition works. Do not remove that qualifier
+until the fielded TestFlight/App Store build is tested.
