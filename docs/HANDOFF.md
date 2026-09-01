@@ -203,7 +203,7 @@ accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
 The product site was deployed from that work and most recently verified as
-Cloudflare Worker version `1b3c4d14-7ee6-4206-af0e-f615d6c11d1b`. It serves the launch social card,
+Cloudflare Worker version `aed623f3-a01c-497c-b787-e42f71da92c3`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -289,3 +289,7 @@ permanent free pricing. It now states the proven distribution requirement—an
 Apple-silicon Mac running macOS 26 or later with recent-iPhone guests—and says
 only that the current public beta is free. Android and future-pricing claims
 remain out of launch copy until the owner establishes those contracts.
+
+The corrected support and pricing FAQ was deployed as Worker version
+`aed623f3-a01c-497c-b787-e42f71da92c3` and both exact sentences were verified
+on the live apex after deployment.
