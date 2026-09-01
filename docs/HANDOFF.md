@@ -203,7 +203,7 @@ accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
 The product site was deployed from that work and most recently verified as
-Cloudflare Worker version `dc7efff0-44d6-4a09-8d9d-4bb6dccc932b`. It serves the launch social card,
+Cloudflare Worker version `1b3c4d14-7ee6-4206-af0e-f615d6c11d1b`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -277,3 +277,9 @@ historical room. The Remotion render is also muted so a digital-silence AAC
 stream does not add payload, and “opens instantly” is replaced by the factual
 “opens in Safari.” The rebuilt video is exactly 7.000 seconds, 1920×1080 H.264
 with no audio stream, and 1,727,431 bytes.
+
+The sanitized marketing screenshot was deployed as Worker version
+`1b3c4d14-7ee6-4206-af0e-f615d6c11d1b`. The live asset is byte-for-byte equal
+to the committed source (SHA-256
+`137161917175ef19a46c2e28825ba7e6fbc646ba1798a8c0936b9614482984ec`), and
+macOS Vision reports `LIVE_NO_BARCODE` on a fresh production download.
