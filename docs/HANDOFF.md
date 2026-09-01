@@ -339,3 +339,10 @@ The contrast correction is live as Worker version
 `30fcf1ff-a2c9-421f-9b70-8b0495c36cf1`; fresh apex and Support responses both
 contain the intended darker variables. Browser-contract tests, 25 Worker smoke
 tests, and Wrangler dry-run passed before deployment.
+
+The four below-fold venue photographs were CSS backgrounds, making the browser
+discover them eagerly and hiding their semantics from native image loading.
+They are now intrinsic-size `<img>` elements with the same crop positions,
+descriptive alt text, lazy loading, and asynchronous decoding. Together they
+represent 746 KiB of source imagery that no longer needs to enter the initial
+request set solely because CSS referenced it.

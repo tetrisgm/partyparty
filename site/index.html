@@ -180,17 +180,15 @@ img{display:block}
   .trio3{grid-template-columns:1fr}
   .trio3 .scene{min-height:clamp(280px,58vw,360px)}
 }
-.scene .ph{position:absolute;inset:0;background-size:cover;background-position:center}
+.scene .ph{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .scene .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,4,8,.05) 26%,rgba(4,4,8,.58) 66%,rgba(4,4,8,.90) 100%)}
 /* Every card composes around the shared control: the caption stops above it rather
    than running under it, which is what moving the plus in from 18px to 28px exposed. */
 .scene .txt{position:relative;padding:clamp(26px,4vw,44px);padding-bottom:76px}
 .scene h3{font-size:32px;font-weight:700;letter-spacing:.002em;line-height:1.125}
 .scene p{margin-top:8px;font-size:17px;font-weight:600;line-height:1.235;letter-spacing:-.022em;color:rgba(255,255,255,.88);max-width:40ch}
-.ph.afterhours{background-image:url(/img/pp-afterhours.jpg);background-position:center 46%}
-.ph.beach{background-image:url(/img/pp-beach.jpg);background-position:center 46%}
-.ph.park{background-image:url(/img/pp-park.jpg);background-position:center 42%}
-.ph.silent{background-image:url(/img/pp-silent.jpg);background-position:center 42%}
+.ph.afterhours,.ph.beach{object-position:center 46%}
+.ph.park,.ph.silent{object-position:center 42%}
 
 /* setlist panel */
 .rpanel{position:relative;isolation:isolate;border-radius:28px;padding:clamp(34px,4.4vw,60px)}
@@ -361,7 +359,7 @@ footer a:hover{color:var(--ink);text-decoration:underline}
     <h2 class="h2 rv">The party goes where speakers can&rsquo;t.</h2>
 
     <div class="scene lead rv">
-      <div class="ph park" role="img" aria-label="A group of friends sitting together in a city park."></div>
+      <img class="ph park" src="/img/pp-park.jpg" width="1400" height="933" loading="lazy" decoding="async" alt="A group of friends sitting together in a city park.">
       <div class="scrim"></div>
       <div class="txt">
         <h3>Party in the park.</h3>
@@ -373,7 +371,7 @@ footer a:hover{color:var(--ink);text-decoration:underline}
 
     <div class="trio3 rv">
       <div class="scene">
-        <div class="ph silent" role="img" aria-label="Friends dancing together in headphones under string lights at dusk."></div>
+        <img class="ph silent" src="/img/pp-silent.jpg" width="1300" height="866" loading="lazy" decoding="async" alt="Friends dancing together in headphones under string lights at dusk.">
         <div class="scrim"></div>
         <div class="txt">
           <h3>Silent disco.</h3>
@@ -383,7 +381,7 @@ footer a:hover{color:var(--ink);text-decoration:underline}
         <div class="detail" id="detail-silent-disco"><h4>A silent disco without the rental truck.</h4><p>The usual version means hiring headsets, handing them out at the door and collecting them at 2 a.m. Your friends already own better headphones than the rental ones. They scan a code and they are in.</p></div>
       </div>
       <div class="scene">
-        <div class="ph afterhours" role="img" aria-label="An apartment building at night, one window still lit."></div>
+        <img class="ph afterhours" src="/img/pp-afterhours.jpg" width="1300" height="866" loading="lazy" decoding="async" alt="An apartment building at night, one window still lit.">
         <div class="scrim"></div>
         <div class="txt">
           <h3>Apartment after-party.</h3>
@@ -393,7 +391,7 @@ footer a:hover{color:var(--ink);text-decoration:underline}
         <div class="detail" id="detail-after-party"><h4>The building sleeps through the after-party.</h4><p>Nothing leaves the room but conversation. The set runs at whatever hour it wants, guests can lock their phones and pocket them, and the neighbours never learn what time it ended.</p></div>
       </div>
       <div class="scene">
-        <div class="ph beach" role="img" aria-label="Friends around a fire on the beach at dusk."></div>
+        <img class="ph beach" src="/img/pp-beach.jpg" width="1300" height="866" loading="lazy" decoding="async" alt="Friends around a fire on the beach at dusk.">
         <div class="scrim"></div>
         <div class="txt">
           <h3>Beach party. Offline.</h3>
