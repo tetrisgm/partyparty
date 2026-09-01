@@ -1,0 +1,19 @@
+{
+  "name": "partyparty-demo-video",
+  "private": true,
+  "scripts": {
+    "render": "remotion render src/index.ts PartyPartyDemo out/partyparty-demo.mp4",
+    "preview": "remotion studio src/index.ts"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.374",
+    "@remotion/google-fonts": "4.0.374",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.374"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.10",
+    "typescript": "5.9.2"
+  }
+}
