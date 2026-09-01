@@ -316,3 +316,8 @@ Open Graph and Twitter image metadata, including alt text. Support links to the
 repository's issue-template chooser with an explicit reminder to omit private
 data. The product site now owns a deterministic `robots.txt` that allows
 indexing and points crawlers to the existing sitemap.
+
+The first metadata deploy exposed a source mismatch during live verification:
+the shared legal-page shell still selected the older 1300×867 `og-default.jpg`
+while declaring 1200×630. The default was immediately corrected to the actual
+1200×630 launch social card before this increment was closed.

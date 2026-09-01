@@ -1,6 +1,6 @@
 // cloudflare/worker.js
 var SITE_ORIGIN = "https://partyparty.party";
-var DEFAULT_OG_IMAGE = "/img/og-default.jpg";
+var DEFAULT_OG_IMAGE = "/img/social-card.png";
 // There is no public download any more: the app reaches people through the
 // permanent TestFlight link, which is the site's only call to action. What
 // remains here is the UPDATE path for Macs already carrying a standalone build
