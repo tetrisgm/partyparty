@@ -203,7 +203,7 @@ accurate discovery topics, secret scanning, push protection, Dependabot
 security updates, and zero open dependency alerts.
 
 The product site was deployed from that work and most recently verified as
-Cloudflare Worker version `3c9d3de1-e06f-42cc-9013-491db15f5c99`. It serves the launch social card,
+Cloudflare Worker version `4e2def86-c4d4-4103-8865-7994e3fb0beb`. It serves the launch social card,
 canonical `www` redirect, sitemap, product security headers, and first-party
 TestFlight/GitHub redirect paths that can be counted in ordinary Worker request
 analytics without cookies or cross-site tracking. Anonymous install
@@ -321,3 +321,9 @@ The first metadata deploy exposed a source mismatch during live verification:
 the shared legal-page shell still selected the older 1300×867 `og-default.jpg`
 while declaring 1200×630. The default was immediately corrected to the actual
 1200×630 launch social card before this increment was closed.
+
+The corrected discovery/support increment is live as Worker version
+`4e2def86-c4d4-4103-8865-7994e3fb0beb`. Production Privacy and Support both
+name `/img/social-card.png` with matching 1200×630 dimensions and canonical
+URLs, Support exposes the issue chooser, and the live managed `robots.txt`
+includes the committed sitemap directive after Cloudflare's content signals.
