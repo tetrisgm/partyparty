@@ -15,7 +15,10 @@ import joinRail from '../../site/img/pp-joinrail.png';
 import phonePage from '../../site/img/pp-phone.jpg';
 import transport from '../../site/img/pp-transport.png';
 
-const {fontFamily} = loadFont();
+const {fontFamily} = loadFont('normal', {
+  weights: ['400', '700', '800', '900'],
+  subsets: ['latin'],
+});
 const pink = '#ff2d68';
 const green = '#31c871';
 

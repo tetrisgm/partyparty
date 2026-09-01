@@ -6,11 +6,11 @@
     "preview": "remotion studio src/index.ts"
   },
   "dependencies": {
-    "@remotion/cli": "4.0.374",
-    "@remotion/google-fonts": "4.0.374",
+    "@remotion/cli": "4.0.520",
+    "@remotion/google-fonts": "4.0.520",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "remotion": "4.0.374"
+    "remotion": "4.0.520"
   },
   "devDependencies": {
     "@types/react": "19.1.10",
