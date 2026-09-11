@@ -698,6 +698,41 @@ takes that branch. If none does, the correct outcome is a comment and no code
 change. This is the audio core either way, so it needs the owner's ask and a
 supervised go-live test.
 
+## Worker deployed (2026-09-11)
+
+The room-scoped relay-liveness fix is live. Worker version
+`ef6bd7da-d85a-4ee8-a54c-4c294c3ba927`, replacing
+`ce70455e-d8a0-49db-83f3-0da825f0cbf4`, which had been current since
+2026-09-01 and matched what this handoff recorded, so nothing newer was
+overwritten. The deploy carried exactly one change, the `/__pp/relay-live`
+handler; `site/` was unchanged and uploaded no new assets.
+
+Behaviour is preserved until the origin ships its half. Verified against the
+live production origin BEFORE deploying: `/__pp/health` answers 200 and
+`/__pp/room-health` answers 404, so the Worker takes its documented fallback
+branch and every relayed guest is routed exactly as before. `internal/origin`
+returns a plain 404 for an unknown name, and the polite waiting page fires only
+for `index.html`, so there is no path where the new request is answered with
+something that parses as live.
+
+Verified live after deploying: apex 200 with the launch copy intact, HSTS,
+`x-content-type-options` and `referrer-policy` present, `www` 308 to the apex,
+`/go/testflight/*` and `/go/github/*` 302 to Apple and GitHub, `robots.txt` and
+`sitemap.xml` 200, the 1200x630 social card 200, and on the changed handler
+itself an unregistered token 404 and a POST 405.
+
+**The origin half is NOT deployed.** `/__pp/room-health` does not exist in
+production yet, so a Wi-Fi-only party's guests still see the reloading waiting
+page rather than honest copy. Shipping it means deploying `cmd/pporigin` to the
+relay box, which restarts a live media server and would interrupt any party in
+progress. That is its own owner-approved step.
+
+The fork hazard this handoff and the memory notes warn about is GONE, and has
+been since 2026-08-15: `~/dev/clubclub` deleted its byte-identical copy of this
+Worker in `847b595`, whose message states that `partyparty-site` belongs to
+`~/dev/partyparty/cloudflare` and is deployed there. Its `cloudflare/` directory
+no longer contains a `worker.js` or a `wrangler.jsonc`.
+
 ## Still true, and still owed
 
 Nothing in this session uploaded, submitted, deployed, or changed playback
