@@ -115,6 +115,8 @@
   .modechip::before{content:"📶";font-size:10px}
   .modechip.relay::before{content:"↗"}
   .modechip.checking::before{content:"…"}
+  .modechip.nopath{background:#6e6e73}
+  .modechip.nopath::before{content:"⚠"}
   .delaybadge{
     position:fixed;top:calc(12px + env(safe-area-inset-top));left:12px;z-index:6;
     min-width:92px;padding:7px 9px;border:1px solid var(--separator);border-radius:7px;
@@ -964,25 +966,45 @@
     const ROOM_TARGET_FALLBACK = 3.0;
     let latencyTarget = 0, streamGeneration = 0, streamReady = false;
     let localLatencyTarget = 0, localStreamGeneration = 0, localStreamReady = false, localLive = false;
-    let connectionMode = /^r-[a-f0-9]{32}\.partyparty\.party$/i.test(location.hostname) ? 'relay' : 'checking';
+    // Which host a relayed guest is actually ON. There are two relay hostnames
+    // and they are not interchangeable: the Worker serves the bootstrap page at
+    // r-<token>.partyparty.party, and that page immediately location.replace()s
+    // to the ORIGIN at <token>.relay.partyparty.party, which is where the guest
+    // stays for the whole set. Testing only the bootstrap host meant this never
+    // matched a relayed guest: the page opened in 'checking' and stayed there,
+    // and relayVideosAvailable() reported video uploads the server refuses.
+    function isRelayHost(hostname){
+      const host = String(hostname || '').toLowerCase();
+      return /\.relay\.partyparty\.party$/.test(host) || /^r-[a-f0-9]{32}\.partyparty\.party$/.test(host);
+    }
+    let connectionMode = isRelayHost(location.hostname) ? 'relay' : 'checking';
     const connectionModeListeners = [];
+    // internal/relay publishes five modes: checking, local, direct, relay and
+    // no_path. This used to accept three and coerce everything else to
+    // 'direct', which painted "Guests are listening directly from the DJ Mac on
+    // this Wi-Fi" over a room that by definition has NO path to the Mac and no
+    // internet to relay through. LOCAL really is direct from the Mac and shares
+    // the Wi-Fi chip; NO PATH gets told the truth.
+    const CHIP = {
+      direct:   { cls: 'wifi',     text: 'Wi-Fi',          title: 'Guests are listening directly from the DJ Mac on this Wi-Fi' },
+      local:    { cls: 'wifi',     text: 'Wi-Fi',          title: 'Guests are listening directly from the DJ Mac on this Wi-Fi' },
+      relay:    { cls: 'relay',    text: 'Internet relay', title: 'This Wi-Fi blocks nearby devices, so music is using an internet relay' },
+      checking: { cls: 'checking', text: 'Checking Wi-Fi', title: 'Checking whether guests can connect directly on this Wi-Fi' },
+      no_path:  { cls: 'nopath',   text: 'No path',        title: 'Guests cannot reach the DJ Mac on this Wi-Fi, and there is no internet to relay through' },
+    };
     function setConnectionMode(nextMode){
-      const valid = nextMode === 'direct' || nextMode === 'relay' || nextMode === 'checking';
-      const next = valid ? nextMode : 'direct';
+      const next = Object.prototype.hasOwnProperty.call(CHIP, nextMode) ? nextMode : 'checking';
       const changed = next !== connectionMode;
       connectionMode = next;
       if (modeChip.dataset.mode !== next) {
+        const chip = CHIP[next];
         modeChip.dataset.mode = next;
         document.body.dataset.connectionMode = next;
-        modeChip.classList.toggle('wifi', next === 'direct');
-        modeChip.classList.toggle('relay', next === 'relay');
-        modeChip.classList.toggle('checking', next === 'checking');
-        setText(modeChip, next === 'relay' ? 'Internet relay' : next === 'checking' ? 'Checking Wi-Fi' : 'Wi-Fi');
-        modeChip.title = next === 'relay'
-          ? 'This Wi-Fi blocks nearby devices, so music is using an internet relay'
-          : next === 'checking'
-            ? 'Checking whether guests can connect directly on this Wi-Fi'
-            : 'Guests are listening directly from the DJ Mac on this Wi-Fi';
+        for (const name of ['wifi', 'relay', 'checking', 'nopath']) {
+          modeChip.classList.toggle(name, chip.cls === name);
+        }
+        setText(modeChip, chip.text);
+        modeChip.title = chip.title;
       }
       if (changed) {
         for (const listener of connectionModeListeners) listener(next);
@@ -2622,15 +2644,39 @@
     let lastPollOK = 0; // last successful /api/status - proves a reload could actually fetch the page
     let relayRecoveryTimer = 0;
     let relayRecoveryBusy = false;
+    let relayHomeBusy = false;
+    // Can THIS phone reach the Mac right now? Room mode cannot answer that:
+    // internal/relay latches direct reachability once any guest proves it
+    // (relay.go, applyProbe ignores a failed probe once *m.probe is true), so a
+    // room can sit in direct mode while this particular phone still cannot get
+    // to the Mac at all. Only an actual request from here settles it.
+    async function directIsReachable(connection){
+      if (!connection || !connection.directUrl) return false;
+      try {
+        const target = new URL('/api/time?partyPartyRelayRecovery=' + Date.now(), connection.directUrl);
+        const response = await fetch(target, { cache: 'no-store', mode: 'cors' });
+        if (!response.ok) return false;
+        return Number((await response.json()).t) > 0;
+      } catch (e) {
+        // A failed probe is expected on an isolated network.
+        return false;
+      }
+    }
+    function onRelayOrigin(connection){
+      if (!connection) return false;
+      try {
+        const relayOrigin = new URL(connection.relayOrigin || '', location.href).origin;
+        return !!relayOrigin && relayOrigin === location.origin;
+      } catch (e) {
+        return false;
+      }
+    }
     async function probeDirectFromRelay(connection){
       if (relayRecoveryBusy || !connection || connection.mode !== 'relay' || !connection.directUrl || !connection.joinUrl) return;
       try {
-        const relayOrigin = new URL(connection.relayOrigin || '', location.href).origin;
-        if (!relayOrigin || relayOrigin !== location.origin) return;
+        if (!onRelayOrigin(connection)) return;
         relayRecoveryBusy = true;
-        const target = new URL('/api/time?partyPartyRelayRecovery=' + Date.now(), connection.directUrl);
-        const response = await fetch(target, { cache: 'no-store', mode: 'cors' });
-        if (!response.ok || !(Number((await response.json()).t) > 0)) return;
+        if (!(await directIsReachable(connection))) return;
         const reportURL = new URL('__pp/probe', connection.joinUrl);
         await fetch(reportURL, {
           method: 'POST',
@@ -2692,14 +2738,20 @@
         }
         // The room came back to the LAN while this guest is on the relay origin.
         // Send it home, using directUrl rather than joinUrl for the same reason.
-        if (connection && (connection.mode === 'direct' || connection.mode === 'local') && connection.directUrl) {
-          try {
-            const relayOrigin = connection.relayOrigin ? new URL(connection.relayOrigin, location.href).origin : '';
-            if (relayOrigin && relayOrigin === location.origin) {
-              location.replace(new URL(connection.directUrl, location.href).href);
-              return;
-            }
-          } catch (e) {}
+        //
+        // PROBE FIRST. This guest is on the relay because it could not reach the
+        // Mac, and the room can be in direct mode purely because a DIFFERENT
+        // guest could. Navigating on room mode alone drops this phone on a page
+        // it cannot load, with its audio gone and no way back, and the poll runs
+        // from page load so it happens before playback is even established.
+        // Nothing here returns early either: a phone that cannot go home must
+        // keep playing from the relay in the meantime.
+        if (connection && (connection.mode === 'direct' || connection.mode === 'local')
+            && connection.directUrl && onRelayOrigin(connection) && !relayHomeBusy) {
+          relayHomeBusy = true;
+          directIsReachable(connection).then((reachable) => {
+            if (reachable) location.replace(new URL(connection.directUrl, location.href).href);
+          }).catch(() => {}).finally(() => { relayHomeBusy = false; });
         }
         setConnectionMode(connection ? connection.mode : 'direct');
         localStreamURL = s.llhlsUrl || null;

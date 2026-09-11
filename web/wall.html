@@ -137,7 +137,10 @@
     const media = new Map();
     const tiles = [];
     let newestAct = 0, feedOn = false, feedTag = '', curDir = '', qrSignature = '';
-    let relayVideosUnavailable = /^r-[a-f0-9]{32}\.partyparty\.party$/i.test(location.hostname);
+    // The origin host a relayed guest actually lands on, not the Worker
+    // bootstrap host it passes through. See the same note in listener.html.
+    let relayVideosUnavailable = /\.relay\.partyparty\.party$/i.test(location.hostname)
+      || /^r-[a-f0-9]{32}\.partyparty\.party$/i.test(location.hostname);
     let lastStatusOK = 0;
     let statusPollPromise = null;
     let linkPromptSignature = '';

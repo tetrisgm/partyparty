@@ -387,6 +387,54 @@ func (s *Store) Sweep() int {
 	return dropped
 }
 
+// roomLiveWindow is how recently a room must have received a publish for its
+// room-scoped health answer to call it live.
+//
+// It is far shorter than roomIdleTimeout, because the two answer different
+// questions. roomIdleTimeout asks whether a room is worth keeping in memory;
+// this asks whether a guest sent here right now would hear music. A publishing
+// Mac lands a playlist several times a second, so ten seconds is many missed
+// cycles, while still surviving an ordinary uplink hiccup.
+const roomLiveWindow = 10 * time.Second
+
+// RoomHealth is the room-scoped liveness answer, as opposed to the
+// process-wide Stats below.
+//
+// The distinction is the whole point. The process health endpoint answers 200
+// whenever the origin is running, for every room that has ever been asked
+// about and every room that has not. The bootstrap page used it to decide
+// whether THIS party was reachable through the relay, so in a Wi-Fi-only room
+// that the Mac never pushes to, a guest whose direct probe failed was sent to
+// the origin and shown a waiting page that reloads forever, instead of being
+// told to join the party's Wi-Fi.
+type RoomHealth struct {
+	Live     bool  `json:"live"`
+	Playlist bool  `json:"playlist"`
+	AgeMs    int64 `json:"ageMs"`
+}
+
+// Health reports whether this room has been published to recently enough that a
+// guest arriving now would find media.
+func (s *Store) Health(token string) RoomHealth {
+	room, ok := s.Room(token, false)
+	if !ok {
+		return RoomHealth{AgeMs: -1}
+	}
+	now := s.now()
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	if room.lastPublish.IsZero() {
+		return RoomHealth{AgeMs: -1}
+	}
+	age := now.Sub(room.lastPublish)
+	hasPlaylist := len(room.playlist) > 0
+	return RoomHealth{
+		Live:     hasPlaylist && age <= roomLiveWindow,
+		Playlist: hasPlaylist,
+		AgeMs:    age.Milliseconds(),
+	}
+}
+
 // Stats is the health payload: aggregates only, never party content.
 type Stats struct {
 	Rooms      int `json:"rooms"`

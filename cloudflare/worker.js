@@ -980,13 +980,36 @@ async function relayBootstrapRequest(request, env, token) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 2500);
       try {
-        const response = await fetch(origin + "/__pp/health", {
+        // Ask about THIS ROOM, not about the process.
+        //
+        // /__pp/health answers 200 whenever the origin is running, for every
+        // room including ones nothing has ever published to. A Wi-Fi-only party
+        // never pushes to the relay at all, so a guest whose direct probe
+        // failed was told the relay was live, sent to the origin, and parked on
+        // a page that reloads every second - instead of being told to join the
+        // party's Wi-Fi, which is the one thing that would have worked.
+        const response = await fetch(origin + "/__pp/room-health", {
           signal: controller.signal,
           cf: { cacheTtl: 0 },
         });
-        live = response.ok;
-        if (response.body) await response.body.cancel().catch(() => {
-        });
+        if (response.status === 404) {
+          // An origin from before room-scoped health exists. Fall back to the
+          // process answer rather than stranding every relayed guest during a
+          // rollout where the Worker is deployed first. Delete this branch once
+          // every origin serves /__pp/room-health.
+          if (response.body) await response.body.cancel().catch(() => {});
+          const legacy = await fetch(origin + "/__pp/health", {
+            signal: controller.signal,
+            cf: { cacheTtl: 0 },
+          });
+          live = legacy.ok;
+          if (legacy.body) await legacy.body.cancel().catch(() => {});
+        } else if (response.ok) {
+          const health = await response.json().catch(() => null);
+          live = !!(health && health.live);
+        } else {
+          if (response.body) await response.body.cancel().catch(() => {});
+        }
       } catch (e) {}
       finally { clearTimeout(timer); }
     }

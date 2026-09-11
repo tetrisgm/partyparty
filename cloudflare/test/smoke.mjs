@@ -730,6 +730,79 @@ test("Apple's domain proof is served from the bucket, not from a deploy", async 
 
 // Actually run them.
 //
+test("relay liveness asks about the room, not about the origin process", async () => {
+  const token = "c".repeat(32);
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  const stub = (answers) => {
+    globalThis.fetch = async (input) => {
+      const href = typeof input === "string" ? input : input.url;
+      calls.push(href);
+      const answer = answers[href];
+      if (!answer) throw new Error(`unexpected fetch ${href}`);
+      return answer();
+    };
+  };
+
+  try {
+    const env = baseEnv();
+    await env.DL.put("broker/relay/" + token, "install-1");
+    const origin = `https://${token}.relay.partyparty.party`;
+    const liveURL = `https://r-${token}.partyparty.party/__pp/relay-live`;
+
+    // A Wi-Fi-only party: the origin process is up and answers its process
+    // health endpoint, but nothing has ever been published for THIS room. The
+    // bootstrap must not send the guest to the relay, or they land on a page
+    // that reloads forever instead of being told to join the party's Wi-Fi.
+    stub({
+      [origin + "/__pp/room-health"]: () => new Response(
+        JSON.stringify({ live: false, playlist: false, ageMs: -1 }),
+        { headers: { "content-type": "application/json" } }),
+      [origin + "/__pp/health"]: () => new Response('{"rooms":3}'),
+    });
+    let response = await worker.fetch(new Request(liveURL), env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).live, false,
+      "a room nothing is publishing to is not live, however healthy the origin is");
+    assert.ok(calls.some((href) => href.endsWith("/__pp/room-health")),
+      "liveness must ask the room-scoped endpoint");
+    assert.ok(!calls.some((href) => href.endsWith("/__pp/health")),
+      "the process endpoint must not be consulted when the room answered");
+
+    // The same room, actually being published to.
+    calls.length = 0;
+    stub({
+      [origin + "/__pp/room-health"]: () => new Response(
+        JSON.stringify({ live: true, playlist: true, ageMs: 120 }),
+        { headers: { "content-type": "application/json" } }),
+    });
+    response = await worker.fetch(new Request(liveURL), env);
+    assert.equal((await response.json()).live, true);
+
+    // An origin deployed before room-scoped health exists must not strand every
+    // relayed guest while a rollout is half done.
+    calls.length = 0;
+    stub({
+      [origin + "/__pp/room-health"]: () => new Response("Not Found", { status: 404 }),
+      [origin + "/__pp/health"]: () => new Response('{"rooms":1}'),
+    });
+    response = await worker.fetch(new Request(liveURL), env);
+    assert.equal((await response.json()).live, true,
+      "a 404 from room-health falls back to the process answer");
+    assert.ok(calls.some((href) => href.endsWith("/__pp/health")),
+      "the fallback must actually be taken");
+
+    // An unknown room never reaches the origin at all.
+    calls.length = 0;
+    const unknown = await worker.fetch(new Request(
+      `https://r-${"d".repeat(32)}.partyparty.party/__pp/relay-live`), env);
+    assert.equal(unknown.status, 404);
+    assert.equal(calls.length, 0, "an unregistered token must not cause an origin fetch");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 // This line used to read `console.log(`PASS ${tests.length} ...`)` and nothing
 // else: every test was registered into the array above and not one was ever
 // called. The suite printed "PASS 14 worker smoke tests" on any worker.js at

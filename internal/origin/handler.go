@@ -67,6 +67,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case rest == "__pp/room-health":
+		h.roomHealth(w, room)
 	case strings.HasPrefix(rest, "__pp/plane/"):
 		h.planePublish(w, r, room, strings.TrimPrefix(rest, "__pp/plane/"))
 	case rest == "__pp/drain":
@@ -522,6 +524,17 @@ func (h *Handler) health(w http.ResponseWriter) {
 	noStore(w.Header())
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(h.store.Stats())
+}
+
+// roomHealth answers for ONE room. It deliberately sits on its own path rather
+// than sharing /__pp/health, which is matched before routing and is the
+// process-wide answer the deployment canary depends on. A room that has never
+// been published to answers live:false rather than 404, so a caller can tell
+// "this origin does not know that room" from "this origin has no such feature".
+func (h *Handler) roomHealth(w http.ResponseWriter, room string) {
+	noStore(w.Header())
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(h.store.Health(room))
 }
 
 func writeBody(w http.ResponseWriter, r *http.Request, body []byte) {

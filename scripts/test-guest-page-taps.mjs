@@ -25,6 +25,9 @@ const pixel = Buffer.from(
 );
 
 let statusFails = false;
+// Mutable so a test can move the room between the five modes internal/relay
+// publishes, and can put this page ON the relay origin.
+let connection = { mode: 'direct' };
 const livePeers = [{
   id: 'peer-two', name: 'DJ Two', live: true, ready: true,
   roomUrl: 'https://dj-two.example',
@@ -111,7 +114,7 @@ const server = http.createServer((request, response) => {
   if (url.pathname === '/api/status') {
     if (statusFails) { response.writeHead(503); response.end(); return; }
     // appVersion must match the served page or it reloads itself mid-tap.
-    sendJSON(response, { ...statusBody, appVersion: 'tap-test', peers: livePeers });
+    sendJSON(response, { ...statusBody, appVersion: 'tap-test', peers: livePeers, connection });
     return;
   }
   if (url.pathname === '/api/feed') {
@@ -205,6 +208,61 @@ try {
   await page.waitForTimeout(9000);
   statusFails = false;
   await page.waitForTimeout(2000);
+
+  // Every mode internal/relay can publish must paint something true.
+  //
+  // setConnectionMode used to accept three modes and coerce everything else to
+  // 'direct', which painted "Guests are listening directly from the DJ Mac on
+  // this Wi-Fi" over a no_path room - one that by definition has no route to
+  // the Mac and no internet to relay through.
+  const chipFor = async (mode) => {
+    connection = { mode };
+    await page.waitForTimeout(4200); // the page polls /api/status every 3s
+    return page.evaluate(() => {
+      const chip = document.getElementById('modeChip');
+      return { mode: chip.dataset.mode, text: chip.textContent.trim(), title: chip.title };
+    });
+  };
+
+  let chip = await chipFor('no_path');
+  assert.equal(chip.mode, 'no_path', 'no_path must not be coerced to another mode');
+  assert.match(chip.text, /no path/i, `no_path chip said ${JSON.stringify(chip.text)}`);
+  assert.doesNotMatch(chip.title, /listening directly/i,
+    'a room with no path must not claim guests are listening directly');
+
+  chip = await chipFor('local');
+  assert.equal(chip.mode, 'local', 'local must not be coerced to another mode');
+  assert.match(chip.text, /wi-?fi/i, 'local really is direct from the Mac and shares the Wi-Fi chip');
+
+  chip = await chipFor('relay');
+  assert.equal(chip.mode, 'relay');
+  assert.match(chip.text, /relay/i);
+
+  chip = await chipFor('direct');
+  assert.equal(chip.mode, 'direct');
+
+  // A guest sitting on the relay origin must NOT be thrown at the Mac just
+  // because the room went direct.
+  //
+  // internal/relay latches direct reachability once ANY guest proves it, so the
+  // room can report direct while this particular phone still cannot reach the
+  // Mac at all. Navigating on room mode alone dropped that phone on a page it
+  // could not load, with its audio gone and no way back - and the poll runs
+  // from page load, so it happened before playback was even established.
+  const before = page.url();
+  connection = {
+    mode: 'direct',
+    relayOrigin: `http://127.0.0.1:${address.port}`,
+    directUrl: 'http://127.0.0.1:1/',
+    joinUrl: 'http://127.0.0.1:1/',
+  };
+  await page.waitForTimeout(4000);
+  assert.equal(page.url(), before,
+    'the page navigated to an unreachable directUrl without probing it first');
+  assert.ok(await page.evaluate(() => !document.getElementById('btn').hidden
+    || !!document.getElementById('modeChip')),
+    'the page stopped rendering after the relay handoff check');
+  connection = { mode: 'direct' };
 
   assert.deepEqual(errors, [], `console errors while tapping: ${errors.join(' | ')}`);
   console.log('PASS guest page taps');

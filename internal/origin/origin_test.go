@@ -766,3 +766,88 @@ func TestStickyPinsSurviveWindowAndPlaylistPins(t *testing.T) {
 		t.Fatal("playlist Pin() replaced the sticky pin")
 	}
 }
+
+// Room-scoped health is the answer the bootstrap page actually needs.
+//
+// /__pp/health says only that the origin process is up, which it always is when
+// anyone can ask. The bootstrap used that to decide whether THIS party was
+// reachable through the relay, so in a Wi-Fi-only room the Mac never pushes to,
+// a guest whose direct probe failed was sent here and parked on a reloading
+// waiting page instead of being told to join the party's Wi-Fi.
+func TestRoomHealthIsScopedToOneRoom(t *testing.T) {
+	h, store := testHandler()
+
+	// A room nothing has ever published to is not live, and says so with a
+	// payload rather than a 404, so a caller can tell an unknown room from an
+	// origin that does not have this endpoint at all.
+	w := get(t, h, "__pp/room-health")
+	if w.Code != http.StatusOK {
+		t.Fatalf("room-health for an unpublished room = %d, want 200", w.Code)
+	}
+	var health RoomHealth
+	if err := json.Unmarshal(w.Body.Bytes(), &health); err != nil {
+		t.Fatalf("room-health payload = %s (%v)", w.Body.String(), err)
+	}
+	if health.Live || health.Playlist {
+		t.Fatalf("an unpublished room reported %+v, want not live", health)
+	}
+
+	// The process endpoint answers 200 for that same room either way. That is
+	// exactly why it cannot be used for this decision.
+	req := httptest.NewRequest(http.MethodGet, "/__pp/health", nil)
+	pw := httptest.NewRecorder()
+	h.ServeHTTP(pw, req)
+	if pw.Code != http.StatusOK {
+		t.Fatalf("process health = %d, want 200 even with no live room", pw.Code)
+	}
+
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	w = get(t, h, "__pp/room-health")
+	if err := json.Unmarshal(w.Body.Bytes(), &health); err != nil {
+		t.Fatalf("room-health payload = %s (%v)", w.Body.String(), err)
+	}
+	if !health.Live || !health.Playlist {
+		t.Fatalf("a freshly published room reported %+v, want live", health)
+	}
+
+	// Stale is not live. A Mac that stopped pushing leaves the room in memory
+	// for roomIdleTimeout, which is far longer than a guest would wait in
+	// silence, so liveness has to be about recency and not existence.
+	room, ok := store.Room(roomToken, false)
+	if !ok {
+		t.Fatal("room vanished")
+	}
+	room.mu.Lock()
+	room.lastPublish = room.lastPublish.Add(-roomLiveWindow - time.Second)
+	room.mu.Unlock()
+	if got := store.Health(roomToken); got.Live {
+		t.Fatalf("a room last published %v ago reported %+v, want not live", roomLiveWindow+time.Second, got)
+	} else if !got.Playlist {
+		t.Fatalf("a stale room still holds its playlist, got %+v", got)
+	}
+
+	// A room this origin has never heard of is not live either.
+	req = httptest.NewRequest(http.MethodGet, "/r/someone-elses-room/__pp/room-health", nil)
+	ow := httptest.NewRecorder()
+	h.ServeHTTP(ow, req)
+	if err := json.Unmarshal(ow.Body.Bytes(), &health); err != nil {
+		t.Fatalf("foreign room-health payload = %s (%v)", ow.Body.String(), err)
+	}
+	if health.Live {
+		t.Fatalf("a room this origin never saw reported %+v, want not live", health)
+	}
+}
+
+// Room health must not need a publish credential: the caller is the bootstrap
+// Worker, which has no room secret and must not be given one.
+func TestRoomHealthNeedsNoCredential(t *testing.T) {
+	h, _ := testHandler()
+	put(t, h, "stream.m3u8", livePlaylist, "", publishToken)
+	w := get(t, h, "__pp/room-health")
+	if w.Code != http.StatusOK {
+		t.Fatalf("unauthenticated room-health = %d, want 200", w.Code)
+	}
+	if strings.Contains(w.Body.String(), publishToken) {
+		t.Fatalf("room-health leaked the publish credential: %s", w.Body.String())
+	}
+}
