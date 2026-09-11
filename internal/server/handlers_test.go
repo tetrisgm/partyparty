@@ -79,7 +79,7 @@ func newTestEnv(t *testing.T, mutate func(*config.Config)) *testEnv {
 	}
 	bc := broadcast.New(cfg, runDir, "", "")
 	web := fstest.MapFS{
-		"listener.html": {Data: []byte("<html>listener __PP_VERSION__</html>")},
+		"listener.html": {Data: []byte(`<html>listener __PP_VERSION__ <img id="coverImage" src="__PP_COVER_SRC__"></html>`)},
 		"dj.html":       {Data: []byte("<html>dj __PP_VERSION__ <script>const U=__PP_INITIAL_GUEST_URL_JSON__;</script></html>")},
 		"wall.html":     {Data: []byte("<html>wall __PP_VERSION__</html>")},
 		"covers/hero.jpg": {
@@ -1678,5 +1678,67 @@ func TestTimeEndpoint(t *testing.T) {
 	sent, sentOK := body["sent"].(float64)
 	if !receivedOK || !sentOK || received <= 0 || sent < received || ts != sent {
 		t.Errorf("NTP timestamps = received:%v sent:%v t:%v", body["received"], body["sent"], body["t"])
+	}
+}
+
+// No template placeholder may ever reach a guest.
+//
+// The guest page's cover src is substituted server-side so the browser's
+// preload scanner fetches the room's real cover at parse time instead of
+// downloading /covers/hero.jpg and then replacing it from the feed. A
+// substitution that silently does not happen is worse than the download it
+// replaced: the guest gets a broken image instead of a slow one. This asserts
+// the page is clean of placeholders on every path, including the one with no
+// event store at all.
+func TestGuestPageCarriesNoUnsubstitutedPlaceholders(t *testing.T) {
+	env := newTestEnv(t, nil)
+	body := do(env.srv, http.MethodGet, "/", "").Body.String()
+	for _, token := range []string{"__PP_COVER_SRC__", "__PP_VERSION__", "__PP_INITIAL_GUEST_URL_JSON__"} {
+		if strings.Contains(body, token) {
+			t.Fatalf("guest page still contains %s:\n%s", token, body)
+		}
+	}
+	if !strings.Contains(body, `src="/covers/hero.jpg"`) {
+		t.Fatalf("a room with no chosen cover must fall back to the default cover:\n%s", body)
+	}
+}
+
+// The injected cover is an HTML attribute value, and a cover reference is a
+// filename the room chose. normalizeCoverRef keeps it under /covers/ with a
+// known extension but does not forbid a quote in the basename, so the value is
+// escaped on the way in rather than trusted.
+func TestGuestPageEscapesTheInjectedCover(t *testing.T) {
+	store, err := event.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// normalizeCoverRef constrains a cover to /covers/<basename>.<known ext>.
+	// It does NOT forbid a quote in the basename, so this value survives all
+	// the way to the attribute, and escaping it is load-bearing rather than
+	// decorative.
+	const hostile = `/covers/a".webp`
+	if err := store.SetCover(hostile); err != nil {
+		t.Fatalf("SetCover(%q) = %v; if this reference is now rejected upstream, "+
+			"say so here rather than deleting the test", hostile, err)
+	}
+	if got := store.Meta().Cover; got != hostile {
+		t.Fatalf("cover normalized to %q, want %q", got, hostile)
+	}
+
+	srv := New(Deps{
+		Config:    config.Config{Port: 8000, TLSPort: 8443, Name: "PartyParty", StreamPath: "party"},
+		Listeners: stats.New(15 * time.Second),
+		RunDir:    t.TempDir(),
+		Web:       fstest.MapFS{"listener.html": {Data: []byte(`<img id="coverImage" src="__PP_COVER_SRC__">`)}},
+		Events:    store,
+		PeerID:    "test-peer",
+		Version:   "test-1.2.3",
+	})
+	body := do(srv, http.MethodGet, "/", "").Body.String()
+	if strings.Contains(body, `src="/covers/a".webp"`) {
+		t.Fatalf("the injected cover broke out of its attribute:\n%s", body)
+	}
+	if !strings.Contains(body, "&#34;") {
+		t.Fatalf("the injected cover was not escaped:\n%s", body)
 	}
 }

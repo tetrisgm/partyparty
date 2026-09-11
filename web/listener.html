@@ -695,7 +695,7 @@
 
   <div class="hero">
     <div class="artwork">
-      <img id="coverImage" src="/covers/hero.jpg" alt="Event cover">
+      <img id="coverImage" src="__PP_COVER_SRC__" alt="Event cover">
       <div class="coverid">
         <div class="covername" id="coverTitle"></div>
         <div class="coverplace" id="coverPlace" hidden></div>
@@ -729,7 +729,7 @@
     <div class="playerbarrow">
       <button class="btn" id="btn" aria-label="Play"><span class="ico" id="ico">▶</span></button>
       <button class="playersummary" id="playerSummary" type="button" aria-label="Show player details">
-        <img class="miniart" id="miniArt" src="/art-512.png" alt="">
+        <img class="miniart" id="miniArt" alt="" hidden>
         <span class="listen-copy">
           <b id="btnlabel">Tap to listen</b>
           <small id="btnhint">Low-latency party audio</small>
@@ -768,7 +768,7 @@
         <div class="djprofilelinks" id="sheetLinks"></div>
       </section>
       <div class="sheettrack">
-        <img class="sheetart" id="sheetArt" src="/art-512.png" alt="">
+        <img class="sheetart" id="sheetArt" alt="" hidden>
         <div class="sheettrackmeta">
           <div class="sheettitle" id="sheetTrackTitle">Live party audio</div>
           <div class="sheetartist" id="sheetTrackArtist"></div>
@@ -835,9 +835,14 @@
   </div>
 
   <!-- hls.js (404KB) stays lazy: Apple devices use native HLS and never touch
-       it. The tiny QR renderer loads eagerly because Share must work on the
-       first tap even when iOS throttles dynamically inserted scripts. -->
-  <script src="/vendor/qrcode.min.js"></script>
+       it. The tiny QR renderer keeps its eager, high-priority fetch, because
+       Share must work on the first tap even when iOS throttles dynamically
+       inserted scripts - but DEFERRED, so the parser no longer stops on a round
+       trip in front of the audio element and the inline script below, which
+       together are the join path. loadQR() already guards on window.QRCode and
+       falls back to injecting the script, so Share is correct whether or not
+       the deferred copy has executed yet. -->
+  <script defer src="/vendor/qrcode.min.js"></script>
   <audio id="player" playsinline preload="auto"></audio>
   <script>
     const player = document.getElementById('player');
@@ -1321,7 +1326,10 @@
       setText(coverPlace, text);
       coverPlace.hidden = !text;
     }
-    let currentCoverSrc = '';
+    // Seeded from the src the server injected, so the feed's first answer is a
+    // no-op rather than a second download of the image already on screen. The
+    // page is served no-cache, so per-room injection is safe.
+    let currentCoverSrc = (coverImageEl && coverImageEl.getAttribute('src')) || '';
     function setEventCover(src){
       src = String(src || '/covers/hero.jpg');
       if (!coverImageEl || src === currentCoverSrc) return;
@@ -2058,8 +2066,17 @@
       if (now - lastReattach < 2500) return;
       lastReattach = now;
       resetAudibleWatchdogs();
-      setStatus('reconnecting…');
+      // Say "reconnecting" only once there is genuinely a reconnection under
+      // way. attach() is synchronous, so this word was never describing it; it
+      // describes the media loading that follows. Setting it BEFORE the attempt
+      // left the page stranded on a lie whenever attachSafe() returned false,
+      // which happens when the stream is ready but there is no stream URL to
+      // attach to: nothing was pending, and no later event cleared the word.
+      // The throwing path is deliberately not touched, because attachSafe()
+      // has already set "player error - reload the page", which is both more
+      // specific and more useful than anything written here.
       if (!attachSafe()) return;
+      setStatus('reconnecting…');
       if (started && document.visibilityState === 'visible' && !userPaused && !yielded) beginAudible(reason || 'reattach');
       if (started && !userPaused && !yielded) player.play().catch(()=>{});
     }

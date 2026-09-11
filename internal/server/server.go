@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"net"
@@ -605,6 +606,11 @@ func serveDiskFile(w http.ResponseWriter, r *http.Request, path string) {
 	http.ServeContent(w, r, filepath.Base(path), st.ModTime(), struct{ io.ReadSeeker }{f})
 }
 
+// defaultGuestCover is what the guest page shows when the room has not chosen a
+// cover. It must stay in step with the same fallback in web/listener.html,
+// which is what an older page served by a newer binary still falls back to.
+const defaultGuestCover = "/covers/hero.jpg"
+
 func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache string) {
 	data, err := fs.ReadFile(s.webFS(), name)
 	if err != nil {
@@ -616,6 +622,33 @@ func (s *srv) serveWeb(w http.ResponseWriter, r *http.Request, name, cache strin
 		// app OR payload update and refresh itself (stale open tabs run old
 		// logic forever).
 		data = []byte(strings.ReplaceAll(string(data), "__PP_VERSION__", s.version()))
+	}
+	if name == "listener.html" {
+		// Inject the room's ACTUAL cover so the preload scanner fetches the right
+		// image at parse time.
+		//
+		// The src used to be a hard-coded /covers/hero.jpg, which the feed then
+		// replaced with the real cover once /api/feed answered. Almost every room
+		// is affected: web/dj.html picks a random index out of 51 curated covers
+		// when localStorage is empty, so roughly 98% of consoles land on
+		// something that is not hero.jpg. Every guest at every one of those
+		// parties downloaded 108KB of hero.jpg, discarded it, and only then
+		// started fetching the cover they were going to see, while the first HLS
+		// segments were competing for the same connection.
+		//
+		// The element keeps its eager, high-priority fetch: it is the above-fold
+		// LCP image, so lazy loading it would delay the join rather than speed it
+		// up. This page is served no-cache, so a per-room value is safe here.
+		// Substituted unconditionally, including when there is no event store at
+		// all. A placeholder that survives into a served page is a guest staring
+		// at a broken image, so there is no path here that leaves one behind.
+		cover := defaultGuestCover
+		if s.Events != nil {
+			if chosen := strings.TrimSpace(s.Events.Meta().Cover); chosen != "" {
+				cover = chosen
+			}
+		}
+		data = []byte(strings.ReplaceAll(string(data), "__PP_COVER_SRC__", html.EscapeString(cover)))
 	}
 	if name == "dj.html" {
 		// The server already knows whether its cached certificate is engaged.
