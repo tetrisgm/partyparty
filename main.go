@@ -273,6 +273,14 @@ func main() {
 		if cfg.RelayOrigin != "" {
 			// Explicit override for testing; broker refreshes never replace it.
 			contributor.SetTarget(cfg.RelayOrigin, cfg.RelayToken)
+			if cfg.RelayPush {
+				// A harness that pins the origin by hand has no broker, so no
+				// registration, so reach detection never asks for a push and the
+				// configured origin would receive nothing at all. Turning it on
+				// here, and ignoring OnPush below, makes --relay-origin mean what
+				// it looks like it means. Production never takes this path.
+				contributor.SetEnabled(true)
+			}
 		}
 		relayManager = relay.New(relay.Config{
 			BrokerURL: brokerURL,
@@ -294,7 +302,7 @@ func main() {
 				// whenever the internet is up, so a phone on 5G or an isolated
 				// venue always has a stream; a Wi-Fi-only room never spends
 				// the DJ's uplink.
-				if contributor != nil {
+				if contributor != nil && !cfg.RelayPush {
 					contributor.SetEnabled(enabled)
 				}
 			},

@@ -36,10 +36,18 @@ type Config struct {
 	// because pushing to an origin that does not exist would fail quietly.
 	RelayOrigin string
 	RelayToken  string
-	Domain      string // public hostname for the cert/URL; "" = broker activation
-	CertFile    string // real cert (fullchain); "" = self-signed
-	KeyFile     string
-	LiveHost    string // Plex-style low-latency host (auto cert + A record via Cloudflare); "" = off
+
+	// RelayPush forces contribution on for as long as the process runs, instead
+	// of letting the room-mode manager decide. It exists for harnesses that pin
+	// RelayOrigin by hand: without a broker there is no registration, so reach
+	// detection never turns pushing on and an explicitly configured origin
+	// silently receives nothing. It is never set in production, where the room
+	// mode is the authority.
+	RelayPush bool
+	Domain    string // public hostname for the cert/URL; "" = broker activation
+	CertFile  string // real cert (fullchain); "" = self-signed
+	KeyFile   string
+	LiveHost  string // Plex-style low-latency host (auto cert + A record via Cloudflare); "" = off
 
 	// Fixed LL-HLS profile verified with native iPhone playback.
 	PartDur  string
@@ -63,6 +71,7 @@ func Parse() Config {
 	flag.StringVar(&c.StreamPath, "stream-path", env("PARTYPARTY_STREAM_PATH", "party"), "MediaMTX stream path name")
 	flag.StringVar(&c.RelayOrigin, "relay-origin", env("PARTYPARTY_RELAY_ORIGIN", ""), "relay origin base URL for this room, e.g. https://<room>.relay.partyparty.party (empty disables contribution)")
 	flag.StringVar(&c.RelayToken, "relay-token", env("PARTYPARTY_RELAY_TOKEN", ""), "publish credential for the relay origin")
+	flag.BoolVar(&c.RelayPush, "relay-push", envBool("PARTYPARTY_RELAY_PUSH", false), "keep contribution on regardless of room mode; only meaningful with an explicit --relay-origin, and only for harnesses")
 	flag.StringVar(&c.Domain, "domain", env("PARTYPARTY_DOMAIN", ""), "public hostname for guests (matches your cert); empty uses broker activation")
 	flag.StringVar(&c.CertFile, "cert", env("PARTYPARTY_CERT", ""), "TLS cert (fullchain) for LL-HLS; empty = self-signed")
 	flag.StringVar(&c.KeyFile, "key", env("PARTYPARTY_KEY", ""), "TLS private key for LL-HLS; empty = self-signed")
@@ -84,6 +93,15 @@ func Parse() Config {
 func env(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok {
 		return v
+	}
+	return def
+}
+
+func envBool(key string, def bool) bool {
+	if v, ok := os.LookupEnv(key); ok {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
 	}
 	return def
 }
