@@ -62,6 +62,19 @@ reproduces within 0.1s: pin effect +0.00s, `HOLD-BACK=3.0` to 3.21s attach,
 The first run overlapped some build and test load on this Mac; the replication
 did not, and did not move.
 
+`soak-lab-20260911-after-changes/` is a third ten-minute run, taken at the end of
+the same day AFTER this session changed `internal/mediamtx` (the RealHistory
+miscount) and `web/listener.html`. It exists to show those changes moved nothing
+here: pin effect +0.00s again, `HOLD-BACK=5.0` to 5.02s attach, `HOLD-BACK=1.5`
+refused outright, direct attach 2.96s, relay `edge` 0.27s, every arm in
+low-latency mode.
+
+One negative result worth keeping with it. An earlier attempt at this run, taken
+while six audit agents were working, failed EVERY arm on drift, all by the same
+1.8s, with the relative structure between arms intact. That is machine load, not
+a regression, and it is the reason the receipt kept here is the quiet-machine
+one. A soak taken on a busy Mac measures the Mac.
+
 What it does NOT establish. Every arm ran over plaintext HTTP/1.1, because
 AVPlayer will not attach to the throwaway certificate a lab stack presents and
 this Mac's own hostname no longer resolves to it. The 2026-08-11 direct run that

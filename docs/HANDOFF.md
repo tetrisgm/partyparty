@@ -771,12 +771,158 @@ Worker in `847b595`, whose message states that `partyparty-site` belongs to
 `~/dev/partyparty/cloudflare` and is deployed there. Its `cloudflare/` directory
 no longer contains a `worker.js` or a `wrangler.jsonc`.
 
-## Still true, and still owed
+## Guest-surface audit (2026-09-11)
 
-Nothing in this session uploaded, submitted, deployed, or changed playback
-geometry. The public TestFlight remains build 271 (`125.49`) and the product
-Worker remains `ce70455e-d8a0-49db-83f3-0da825f0cbf4`. Every debt in "Owed to
-physical reality" and every unchecked box in `docs/LAUNCH.md` is still open.
+`internal/event` (4,700 lines), `internal/activate` (2,795) and `internal/peers`
+(707) had never been surveyed. They are the code strangers reach: the store
+behind `/api/upload`, `/api/post`, `/api/post-delete`, `/api/post-reaction`,
+`/api/comment`, `/api/comment-delete`, `/api/guest-profile` and `/api/mod`, the
+anonymous install identity, and Bonjour party adoption. There are no accounts,
+so any phone that can reach the room can write to it.
+
+Six lenses produced 40 findings. Each non-low finding then faced three
+independent skeptics, each told to refute it and to default to refuted when it
+could not confirm by reading the code. Thirteen high-severity findings survived
+two of three votes. The numbers below are the verifiers' corrections, not the
+original claims: several findings were overstated and the corrections are
+sharper than what they replaced.
+
+### Fixed
+
+**Guest rate limits were keyed on a value the guest picks.** `guestLimitKey`
+preferred the cid from the request body, which the browser generates and echoes
+on every write, so a guest sending a fresh cid per request was not limited at
+all. Measured: 20 of 20 posts accepted by rotating, against 1 of 20 with a
+stable cid. Now keyed on the transport address, which on the party Wi-Fi is one
+address per phone.
+
+**A full limiter table locked everyone else out.** `limiter.allow` refused any
+key not already resident once the 4096-entry map was full, so a phone that
+filled it locked out every guest who arrived afterwards and could hold them out
+by refilling it. A cap meant to bound memory was deciding who could speak. It
+now evicts the least recently used entry.
+
+**A torn journal line silently deleted an acknowledged post.** The journal is
+newline delimited; an append cut short by a crash left no trailing newline, and
+the next record fused with the truncated bytes into one unparseable line that
+replay skipped. The damaged record was already lost, but it took the following
+one with it, and that one had been shown on the wall and acknowledged to its
+guest. `appendLine` now closes a torn record off first.
+
+**`internal/diag` documented an uploader that does not exist.** Recorded in its
+own section above.
+
+### Confirmed, deliberately not fixed, and why
+
+**Any anonymous caller can obtain the wildcard private key.**
+`/api/broker/register` mints an install credential for an empty JSON body with
+nothing but an IP rate limit, and `/api/broker/wildcard-cert` returns
+`wildcard/current.json` to any install credential.
+`scripts/issue-wildcard.sh` writes that object as `{cert, key}`. Two
+unauthenticated calls therefore yield the private key for
+`*.party.partyparty.party`, which is the certificate every guest hostname is
+served with. A guest could answer DNS or ARP for the DJ's own hostname on the
+venue Wi-Fi, present the genuine certificate, and collect everything guests
+post, with a valid padlock on every phone.
+
+`build/wildcard-renew.log` shows the launchd job re-publishing that object to R2
+on 2026-08-18 and 2026-09-03, on both occasions when certbot itself reported
+"not yet due for renewal; no action taken", so the key is routinely re-uploaded
+to a bucket any anonymously minted credential can read.
+
+This is not a patch. It is what a single shared wildcard implies, and the fix is
+a design decision: per-install certificates via an ACME DNS-01 path at the
+broker, which already writes TXT records, or attestation on first registration.
+Either way the current key should be assumed exposed. Tightening the endpoint
+without the first half locks every existing install out of certificates, which
+is why nothing was changed here.
+
+**Any install can join any party, and the party id is handed to every guest.**
+Party membership is asserted rather than proved, and `PartyID` is returned from
+the unauthenticated `/api/peer` and `/api/status`. Same class of decision.
+
+**Bonjour TXT is the only identity check for peers.** Any device on the Wi-Fi
+can advertise itself as a PartyParty Mac, and an adopted party's Join URL, Name
+and Cover are taken unvalidated, so a rogue peer can repoint the QR. Fixing it
+means authenticating the peer channel, which is a protocol change.
+
+**`/api/upload` accepts unlimited bytes at unlimited rate with no disk quota.**
+Real, and one phone can fill the Mac's disk during a set. NOT fixed because the
+absence is deliberate: `SaveMedia`'s comment says "There is intentionally no
+app-level size cap: guests may post full-quality phone videos over the LAN, and
+the Mac should store the original bytes." Bounding it means choosing a maximum
+file size and deciding whether selecting several photos at once must still work.
+That is a product decision. A per-party total-bytes budget is probably the shape
+that keeps the promise and stops the attack.
+
+**`/api/peer` publishes every guest's raw cid**, which is the same value that
+authorizes writing their profile and posting as them. The audit's proposed fix,
+a per-run HMAC under a process-random key, WOULD BREAK cross-Mac listener
+counting: `assign()` in `roomRoster` uses that id as a dedup key, so when a guest
+re-homes from Mac A to Mac B, A's hash and B's raw cid stop matching and the same
+person is counted twice. Any fix needs a party-scoped salt shared by every Mac in
+the room, or the identity has to stop travelling at all. Worth doing, not worth
+guessing at during a wrap-up.
+
+**No `fsync` anywhere in `internal/event`.** Mutations are acknowledged from page
+cache, which contradicts the stated invariant that mutations are written before
+being acknowledged. Not fixed because an fsync per post on a busy wall is exactly
+the kind of disk contention `AGENTS.md` warns has already caused audible cutoffs.
+It wants a group-commit window, measured against the audio path, not a one-line
+change.
+
+Also confirmed and unfixed: deleting or hiding a post does not stop the Mac
+serving its media file; `/api/guest-profile` is unauthenticated, unthrottled and
+rewrites the whole guests roster per call under the store lock; guest photos are
+served to every other guest with EXIF including GPS intact; party folders
+accumulate with no retention limit and nothing a guest can remove.
+
+### Contested
+
+"A joined Mac hands out the host's link forever, so the QR dies when the host Mac
+leaves" was refuted two votes to one, but the dissenting verifier said it read
+every caller and proved the behaviour at runtime. Treat it as open rather than
+settled.
+
+### Low severity, not verified
+
+A duplicate post id makes a permanently undeletable post; the thumbnail rewrite
+concatenates a peer string into a URL that can leave the source Mac; the
+memorable-hostname namespace is 400 names, anonymously consumable and never
+reclaimed; `AddTrackAsk` wakes every parked guest to deliver a counter only the
+DJ can see.
+
+## Where this leaves the app (2026-09-11, end of session)
+
+Green on every wired gate, on a cleared build cache: `go build` and
+`go vet` under both `bundle` and `embedhelpers`, `go test`, `go test -race`,
+seven browser suites, the real stream E2E end to end including audio RMS and
+room-sync spread, 26 Worker smoke tests, Wrangler dry-run, Swift build and
+tests. `npm run gate` is the single command for the browser half.
+
+Deployed this session, both verified live: Worker
+`ef6bd7da-d85a-4ee8-a54c-4c294c3ba927` and origin release `20260911-052634`.
+The relay-liveness fix works end to end.
+
+Playback was re-measured after every change in this session, on a quiet machine:
+`docs/receipts/soak-lab-20260911-after-changes/`. Nothing moved. Pin effect
++0.00s for the third time, `HOLD-BACK=5.0` to 5.02s attach, `HOLD-BACK=1.5`
+refused outright, direct attach 2.96s, relay edge 0.27s, every arm in
+low-latency mode. The `RealHistory` correction and the listener changes are
+clear of the audio path.
+
+NO BUILD WAS UPLOADED OR SUBMITTED. The public TestFlight is still build 271
+(`125.49`). No playback geometry changed. Every debt in "Owed to physical
+reality" and every unchecked box in `docs/LAUNCH.md` is still open, and they are
+still the things only the owner and real hardware can close.
+
+The honest summary of the audit above: the app WORKS, and its guest-facing
+surface is not yet hardened for strangers. Those are different statements and
+both are true. Nothing found is a reason to stop, but the wildcard key and the
+unauthenticated peer trust are worth a decision before the beta is pointed at
+people nobody knows.
+
+## Still true, and still owed
 
 Three things a future session should not have to rediscover:
 
