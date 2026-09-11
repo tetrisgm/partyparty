@@ -949,13 +949,26 @@ func TestReactionsGateLimitAndFeedAggregates(t *testing.T) {
 	now := time.Now()
 	s.limits.now = func() time.Time { return now }
 
-	postReaction := func(cid, typ string) *httptest.ResponseRecorder {
+	// Each simulated guest gets its OWN address, because each real phone on the
+	// party Wi-Fi has its own. Guest writes are rate limited on the transport
+	// address rather than on the client-supplied cid, since the cid is chosen by
+	// the browser and a guest who rotated it was never limited at all.
+	addrFor := map[string]string{"c1": "192.168.1.44:3333", "c2": "192.168.1.45:3333", "c3": "192.168.1.46:3333"}
+	postReactionFrom := func(addr, cid, typ string) *httptest.ResponseRecorder {
 		t.Helper()
 		data, err := json.Marshal(map[string]string{"cid": cid, "type": typ})
 		if err != nil {
 			t.Fatal(err)
 		}
-		return doBody(s, http.MethodPost, "/api/reactions", "192.168.1.44:3333", "application/json", bytes.NewBuffer(data))
+		return doBody(s, http.MethodPost, "/api/reactions", addr, "application/json", bytes.NewBuffer(data))
+	}
+	postReaction := func(cid, typ string) *httptest.ResponseRecorder {
+		t.Helper()
+		addr, ok := addrFor[cid]
+		if !ok {
+			addr = "192.168.1.99:3333"
+		}
+		return postReactionFrom(addr, cid, typ)
 	}
 	feed := func() map[string]any {
 		t.Helper()
@@ -993,6 +1006,13 @@ func TestReactionsGateLimitAndFeedAggregates(t *testing.T) {
 			t.Fatalf("burst reaction %s status = %d, body %q; want 204", cid, w.Code, w.Body.String())
 		}
 	}
+
+	// The limit is not walked around by inventing a new identity. c1 has already
+	// been told to wait; sending a fresh cid from the same phone must not reset
+	// that, or the interval means nothing.
+	if w = postReactionFrom(addrFor["c1"], "c1-pretending-to-be-someone-else", "fire"); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("a rotated cid from the same address was allowed through: status = %d, body %q; want 429", w.Code, w.Body.String())
+	}
 	body := feed()
 	reactions, ok := body["reactions"].(map[string]any)
 	if !ok {
@@ -1025,13 +1045,25 @@ func TestTrackIDAskGateDoesNotHideRecognizedTracks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	postTrackAsk := func(cid string) *httptest.ResponseRecorder {
+	// One address per simulated guest: guest writes are rate limited on the
+	// transport address, because the cid in the body is chosen by the browser
+	// and a guest who rotated it used to escape every limit.
+	trackAskAddr := map[string]string{"c1": "192.168.1.44:3333", "c2": "192.168.1.45:3333"}
+	postTrackAskFrom := func(addr, cid string) *httptest.ResponseRecorder {
 		t.Helper()
 		data, err := json.Marshal(map[string]string{"cid": cid})
 		if err != nil {
 			t.Fatal(err)
 		}
-		return doBody(s, http.MethodPost, "/api/track-id-request", "192.168.1.44:3333", "application/json", bytes.NewBuffer(data))
+		return doBody(s, http.MethodPost, "/api/track-id-request", addr, "application/json", bytes.NewBuffer(data))
+	}
+	postTrackAsk := func(cid string) *httptest.ResponseRecorder {
+		t.Helper()
+		addr, ok := trackAskAddr[cid]
+		if !ok {
+			addr = "192.168.1.99:3333"
+		}
+		return postTrackAskFrom(addr, cid)
 	}
 	feed := func(target, remote string) map[string]any {
 		t.Helper()
@@ -1075,6 +1107,10 @@ func TestTrackIDAskGateDoesNotHideRecognizedTracks(t *testing.T) {
 	}
 	if w := postTrackAsk("c2"); w.Code != http.StatusNoContent {
 		t.Fatalf("second guest track ask status = %d, body %q; want 204", w.Code, w.Body.String())
+	}
+	// A new cid from the phone that was just told to wait does not buy another ask.
+	if w := postTrackAskFrom(trackAskAddr["c1"], "c1-with-a-brand-new-cid"); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("a rotated cid from the same address was allowed through: status = %d, body %q; want 429", w.Code, w.Body.String())
 	}
 
 	body = feed("/api/feed", "127.0.0.1:1234")

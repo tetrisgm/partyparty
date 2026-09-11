@@ -53,6 +53,11 @@ type relayPhotoImport struct {
 // them rather than as the DJ console does.
 const relayGuestAddr = "203.0.113.1:9999"
 
+// relayGuestIP is the host half of relayGuestAddr. Every relayed guest shares
+// it, so it identifies "arrived through the relay" and never an individual
+// phone; guestLimitKey checks for it before keying a rate limit on an address.
+const relayGuestIP = "203.0.113.1"
+
 // recorder is a minimal ResponseWriter. net/http/httptest would do this, but it
 // is a testing package and this is production code.
 type recorder struct {
