@@ -721,11 +721,49 @@ Verified live after deploying: apex 200 with the launch copy intact, HSTS,
 `sitemap.xml` 200, the 1200x630 social card 200, and on the changed handler
 itself an unregistered token 404 and a POST 405.
 
-**The origin half is NOT deployed.** `/__pp/room-health` does not exist in
-production yet, so a Wi-Fi-only party's guests still see the reloading waiting
-page rather than honest copy. Shipping it means deploying `cmd/pporigin` to the
-relay box, which restarts a live media server and would interrupt any party in
-progress. That is its own owner-approved step.
+### The origin half, and the trap it was hiding
+
+Also deployed, release `20260911-052634`, replacing a binary from 2026-08-04.
+`https://<token>.relay.partyparty.party/__pp/room-health` now answers
+`{"live":false,"playlist":false,"ageMs":-1}` for a room nothing is publishing
+to, so the Worker uses it instead of its fallback and a guest at a Wi-Fi-only
+party is told to join the Wi-Fi rather than parked on a page that reloads
+forever. The box was idle (`{"rooms":0}`) so no party was interrupted, and no
+other session had touched it: nothing modified in 24 hours, no backup files,
+config untouched since 2026-07-29.
+
+Deploying it nearly broke the relay outright, and the reason is worth keeping.
+`deploy/origin/pporigin.service` is a template; systemd resolves `${VAR}` from
+`/etc/pporigin.env` at start, and an UNSET name expands to an empty string
+rather than to an error. Commit `89e979f` had moved that file from
+`-rooms /etc/pporigin-rooms.json` to `-broker ${PPORIGIN_BROKER}`, while the
+box's env file, last touched 2026-07-29, contained no `PPORIGIN_BROKER`. The
+deploy script installs the service file unconditionally, so it would have
+started the origin with `-broker ""`, which disables broker lookup, with no
+`-rooms` to fall back on. The origin would have authenticated nobody and 403ed
+every Mac's publish, while `/__pp/health` answered 200 and the script's only
+rollback trigger, a failed health check, never fired.
+
+`scripts/deploy-origin.sh` now refuses to install a service file whose `${VAR}`
+names are not all present and non-empty in `/etc/pporigin.env`. The names are
+read out of the service file itself, so the check cannot drift from the
+template. It was run against the box before the deploy and printed exactly
+`missing values the service file needs: PPORIGIN_BROKER`. Health is no longer
+the last word either: an unauthenticated PUT must answer 403, or the deploy
+rolls back.
+
+`PPORIGIN_BROKER=https://partyparty.party` was added to `/etc/pporigin.env`,
+after a backup at `/etc/pporigin.env.bak-20260911`. The origin now runs on
+broker auth, which is what `89e979f` intended: publish credentials are minted
+per install and the static rooms file is only a local override. The box reaches
+the broker (`/api/broker/ping` 200), and the single hand-placed entry left in
+`/etc/pporigin-rooms.json` is no longer consulted.
+
+Verified after: process health 200, room-scoped health returns the new JSON,
+an unauthenticated publish 403s, the service is active on the new flags, and an
+unknown room's `stream.m3u8` still 404s cleanly. Rollback remains one command,
+`scripts/deploy-origin.sh --rollback`, and the previous release is still on the
+box.
 
 The fork hazard this handoff and the memory notes warn about is GONE, and has
 been since 2026-08-15: `~/dev/clubclub` deleted its byte-identical copy of this
