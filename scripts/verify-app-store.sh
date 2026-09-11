@@ -45,7 +45,13 @@ for key in BuildMachineOSBuild DTPlatformBuild DTPlatformName DTPlatformVersion 
 done
 unreadable="$(find "$APP" ! -perm -o+r -print -quit)"
 [ -z "$unreadable" ] || fail "bundle item is not world-readable: $unreadable"
-quarantine_xattr="$(xattr -lr "$APP" 2>/dev/null | grep -E 'com\\.apple\\.quarantine:' | head -1 || true)"
+# The pattern here was 'com\\.apple\\.quarantine:', which in an ERE means a
+# LITERAL BACKSLASH followed by any character, so it demanded backslashes that
+# xattr output never contains. The guard could not match anything and had never
+# fired. The app bundle's only other quarantine check lives in
+# verify-app-store-package.sh, over the EXPANDED package, so a build verified
+# through this script alone had no quarantine check at all.
+quarantine_xattr="$(xattr -lr "$APP" 2>/dev/null | grep -E 'com\.apple\.quarantine:' | head -1 || true)"
 [ -z "$quarantine_xattr" ] || fail "bundle contains a quarantine attribute: $quarantine_xattr"
 
 PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
@@ -84,6 +90,39 @@ app_mach_services="$(entitlements "$APP" | /usr/bin/plutil -convert json -o - - 
 if entitlement_value "$APP" com.apple.security.inherit >/dev/null 2>&1; then
   fail "main app must not inherit a sandbox"
 fi
+
+# ShazamKit, named explicitly so the failure carries its reason forward.
+#
+# The App ID has the ShazamKit capability, but the inspected Mac development and
+# App Store provisioning profiles do not expose the entitlement, and a binary
+# that CLAIMS com.apple.developer.shazamkit is killed at launch. Recognition
+# works through the Mach service exception above, not through this key. The set
+# check below would also catch it; this exists so nobody has to rediscover why.
+if entitlement_value "$APP" com.apple.developer.shazamkit >/dev/null 2>&1; then
+  fail "app claims com.apple.developer.shazamkit; the provisioning profiles do not carry it and the binary is killed at launch (see docs/HANDOFF.md)"
+fi
+
+# The main app's entitlements as a SET, not as a list of things that must be
+# present.
+#
+# Every check above asks "is this key here", so an entitlement that should NEVER
+# be here passed all of them. The helpers and ppcapture have had exact-set
+# assertions for exactly this reason; the main app did not. An extra key is not
+# a cosmetic problem: com.apple.developer.shazamkit crashes the app at launch,
+# get-task-allow is an automatic App Review rejection, and a widened file or
+# library-validation entitlement is a review conversation nobody wants to have
+# from a build that already shipped.
+#
+# The allowlist is the checked-in app/PartyParty-app-store.entitlements plus the
+# two keys xcodebuild -exportArchive injects during a real Store export, which
+# an ad-hoc local build does not carry. If Apple ever injects another one, this
+# fails loudly with the key named, which is the right way round: a new key gets
+# looked at and then added here, instead of arriving unnoticed.
+unexpected_app_keys="$(entitlements "$APP" | /usr/bin/plutil -convert json -o - - | /usr/bin/python3 -c \
+  'import json,sys; allowed=set(sys.argv[1].split(",")); print("\n".join(sorted(set(json.load(sys.stdin)) - allowed)))' \
+  'com.apple.application-identifier,com.apple.developer.team-identifier,com.apple.security.app-sandbox,com.apple.security.device.audio-input,com.apple.security.files.user-selected.read-only,com.apple.security.network.client,com.apple.security.network.server,com.apple.security.temporary-exception.mach-lookup.global-name')"
+[ -z "$unexpected_app_keys" ] ||
+  fail "main app carries entitlements nothing asked for: $(printf '%s' "$unexpected_app_keys" | tr '\n' ' ')"
 
 for helper in ffmpeg mediamtx partyparty-server; do
   path="$APP/Contents/Helpers/$helper"
