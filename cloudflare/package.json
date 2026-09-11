@@ -13,6 +13,6 @@
     "tail": "wrangler tail"
   },
   "dependencies": {
-    "wrangler": "4.127.1"
+    "wrangler": "4.131.0"
   }
 }
