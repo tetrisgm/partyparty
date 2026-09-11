@@ -1,0 +1,65 @@
+{
+  "direct": {
+    "tier": "multivariant",
+    "start": "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES",
+    "mediaStart": "absent",
+    "holdback": "0.90000",
+    "partTarget": "0.17100",
+    "serverControl": "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000",
+    "targetDuration": "1"
+  },
+  "proxy-keep": {
+    "tier": "multivariant",
+    "start": "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES",
+    "mediaStart": "absent",
+    "holdback": "0.90000",
+    "partTarget": "0.17100",
+    "serverControl": "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000",
+    "targetDuration": "1"
+  },
+  "proxy-strip": {
+    "tier": "multivariant",
+    "start": "absent",
+    "mediaStart": "absent",
+    "holdback": "0.90000",
+    "partTarget": "0.17100",
+    "serverControl": "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000",
+    "targetDuration": "1"
+  },
+  "holdback-1.5": {
+    "tier": "multivariant",
+    "start": "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES",
+    "mediaStart": "absent",
+    "holdback": "0.90000",
+    "partTarget": "0.17100",
+    "serverControl": "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000,HOLD-BACK=1.50000",
+    "targetDuration": "1"
+  },
+  "holdback-3.0": {
+    "tier": "multivariant",
+    "start": "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES",
+    "mediaStart": "absent",
+    "holdback": "0.90000",
+    "partTarget": "0.17100",
+    "serverControl": "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000,HOLD-BACK=3.00000",
+    "targetDuration": "1"
+  },
+  "holdback-5.0": {
+    "tier": "multivariant",
+    "start": "#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES",
+    "mediaStart": "absent",
+    "holdback": "0.90000",
+    "partTarget": "0.17100",
+    "serverControl": "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000,HOLD-BACK=5.00000",
+    "targetDuration": "1"
+  },
+  "relay": {
+    "tier": "media",
+    "start": "absent",
+    "mediaStart": "absent",
+    "holdback": "0.90000",
+    "partTarget": "0.17100",
+    "serverControl": "#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000",
+    "targetDuration": "1"
+  }
+}

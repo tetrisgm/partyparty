@@ -1,0 +1,25 @@
+soak t=005s pos=28.17s latency=1.16s status=ready ok
+soak t=010s pos=33.17s latency=1.16s status=ready ok
+soak t=015s pos=38.17s latency=1.16s status=ready ok
+soak t=020s pos=43.17s latency=1.16s status=ready ok
+soak t=025s pos=48.17s latency=1.16s status=ready ok
+soak t=030s pos=53.17s latency=1.16s status=ready ok
+soak t=035s pos=58.17s latency=1.16s status=ready ok
+soak t=040s pos=63.17s latency=1.16s status=ready ok
+soak t=045s pos=68.17s latency=1.16s status=ready ok
+soak t=050s pos=73.17s latency=1.16s status=ready ok
+soak t=055s pos=78.17s latency=1.16s status=ready ok
+soak t=060s pos=83.17s latency=1.16s status=ready ok
+soak t=065s pos=88.17s latency=1.16s status=ready ok
+soak t=070s pos=93.17s latency=1.16s status=ready ok
+soak t=075s pos=98.17s latency=1.16s status=ready ok
+soak t=080s pos=103.17s latency=1.16s status=ready ok
+soak t=085s pos=108.17s latency=1.16s status=ready ok
+soak t=090s pos=113.17s latency=1.16s status=ready ok
+soak t=095s pos=118.17s latency=1.16s status=ready ok
+soak t=100s pos=123.17s latency=1.16s status=ready ok
+soak t=105s pos=128.26s latency=1.16s status=ready ok
+soak t=110s pos=133.17s latency=1.16s status=ready ok
+soak t=115s pos=138.17s latency=1.16s status=ready ok
+soak t=120s pos=143.17s latency=1.16s status=ready ok
+SOAK FAIL: median position 1.16s is not the declared target 3.00s

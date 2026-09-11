@@ -10,6 +10,7 @@
 # for any claim about where a real AVPlayer sat, so these are evidence, not
 # build noise, and they have to survive the session that produced them.
 !docs/receipts/*.log
+!docs/receipts/**/*.log
 .DS_Store
 # certs / private keys - NEVER commit these (all generated at runtime)
 *.pem

@@ -1,0 +1,72 @@
+work: /var/folders/tq/_6yt1vp555qcj2jwgxmz060w0000gn/T/pp-soak-lab-Pb9uBs
+>> building pporigin
+origin: http://127.0.0.1:53529/r/lab
+>> building dev partyparty-server
+PASS server stream readiness: generation=1789093786148 real=3.072s gaps=3.584s target=3.000s
+stack: http=53534 tls=53535 hls=53537
+relay: contribution is landing on the origin
+>> building soakarm
+
+>> what each arm is serving
+   direct       tier=multivariant multivariant-start=#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES
+                TARGETDURATION=1 PART-TARGET=0.17100 PART-HOLD-BACK=0.90000 media-start=absent
+                #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000
+   proxy-keep   tier=multivariant multivariant-start=#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES
+                TARGETDURATION=1 PART-TARGET=0.17100 PART-HOLD-BACK=0.90000 media-start=absent
+                #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000
+   proxy-strip  tier=multivariant multivariant-start=absent
+                TARGETDURATION=1 PART-TARGET=0.17100 PART-HOLD-BACK=0.90000 media-start=absent
+                #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000
+   holdback-1.5 tier=multivariant multivariant-start=#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES
+                TARGETDURATION=1 PART-TARGET=0.17100 PART-HOLD-BACK=0.90000 media-start=absent
+                #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000,HOLD-BACK=1.50000
+   holdback-3.0 tier=multivariant multivariant-start=#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES
+                TARGETDURATION=1 PART-TARGET=0.17100 PART-HOLD-BACK=0.90000 media-start=absent
+                #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000,HOLD-BACK=3.00000
+   holdback-5.0 tier=multivariant multivariant-start=#EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES
+                TARGETDURATION=1 PART-TARGET=0.17100 PART-HOLD-BACK=0.90000 media-start=absent
+                #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000,HOLD-BACK=5.00000
+   relay        tier=media        multivariant-start=absent
+                TARGETDURATION=1 PART-TARGET=0.17100 PART-HOLD-BACK=0.90000 media-start=absent
+                #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=0.90000,CAN-SKIP-UNTIL=6.00000
+>> building the soak player
+
+>> soaking 7 arms concurrently for 10 minute(s)
+
+================ SOAK LAB ================
+arm           tier          pin      latency  =   edge  +  attach   AVPlayer mode  verdict
+direct        multivariant  master   2.72s   0.10s   2.62s   low-latency    PASS
+proxy-keep    multivariant  master   2.73s   0.10s   2.63s   low-latency    PASS
+proxy-strip   multivariant  none     2.73s   0.09s   2.63s   low-latency    PASS
+holdback-1.5  multivariant  master    n/as   0.09s    n/as   ordinary-live  FAIL
+holdback-3.0  multivariant  master   3.24s   0.09s   3.15s   low-latency    PASS
+holdback-5.0  multivariant  master   5.30s   0.09s   5.21s   low-latency    FAIL
+relay         media         none     3.17s   0.27s   2.90s   low-latency    PASS
+
+---- reading it ----
+control ok: proxy-keep reproduces direct within 0.01s, so the lab proxy is transparent.
+pin effect on attachment: +0.00s (with pin 2.63s, without 2.63s).
+INERT: EXT-X-START in the multivariant playlist does not move where AVPlayer attaches.
+The room has no three-second cushion on any path, and the declared target is decorative.
+explicit segment HOLD-BACK, against an undeclared baseline of 2.63s:
+   HOLD-BACK=3  ->  attach 3.15s
+   HOLD-BACK=5  ->  attach 5.21s
+   HOLD-BACK=1.5  ->  THE PLAYER NEVER PLAYED
+HOLD-BACK IS A LEVER: declaring it moves where AVPlayer attaches, by about the amount declared.
+The shipping media playlist declares PART-HOLD-BACK but NO HOLD-BACK, so the room inherits the
+HLS default of three target durations. gohlslib rounds TARGETDURATION to an integer second, so
+that default is 3 x 1s = 3s. The room's declared three-second cushion is a
+coincidence of that rounding, not something the code asks for, and it would move on its own if
+the segment duration ever changed.
+The 1.5s arm did not play at all, which is the HLS floor asserting itself: HOLD-BACK below three
+target durations (3s here) is invalid, and AVPlayer refuses the playlist outright rather
+than holding back less. HOLD-BACK can lengthen the cushion. It cannot shorten it below that floor.
+relay transport floor on loopback: edge 0.27s, attach 2.90s.
+A venue adds wide-area delay on top of that edge; it never reduces it.
+
+receipts: /Users/shokunin/dev/partyparty/build/soak-lab-20260911-023953
+build/ is gitignored and `make clean` deletes it. Copy what matters into docs/receipts/.
+
+2 arm(s) did not pass. That is a result, not necessarily a defect in the run:
+   holdback-1.5: SOAK FAIL: player reported failure on 120 sample(s); only 0/120 samples were ready to play; playback position never advanced (attached but silent?); no live-edge measurement was ever available; attachment position was never measurable (0 failed edge probes): this run says nothing about the schedule
+   holdback-5.0: SOAK FAIL: median attachment 5.21s is not the declared target 3.00s
