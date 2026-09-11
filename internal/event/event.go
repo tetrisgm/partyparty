@@ -1909,18 +1909,59 @@ func visibleComments(comments []Comment, cid string, dj bool) []Comment {
 	return out
 }
 
+// appendLine adds one record to the party journal.
+//
+// A TORN LAST LINE MUST NOT EAT THE NEXT RECORD. The journal is newline
+// delimited and replayed line by line, so if a previous append was cut short by
+// a crash or a full disk, the file ends without a newline. Appending straight
+// onto that leaves the truncated bytes and the new record FUSED INTO ONE LINE,
+// which json.Unmarshal rejects, and replay skips the whole line. The damaged
+// record was already lost; the cost was that it silently took the next one with
+// it, and that one had been acknowledged to the guest who wrote it. A post that
+// the wall showed, that the guest saw appear, gone after a restart with nothing
+// logged.
+//
+// So: if the file is non-empty and does not end in a newline, close the torn
+// record off first. It stays unparseable and is still skipped, but the damage
+// stops at one record instead of two.
 func (s *Store) appendLine(l line) error {
 	data, err := json.Marshal(l)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(dataPath(s.dir, "posts.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	// O_RDWR, not O_WRONLY: endsMidLine has to read the final byte, and ReadAt on
+	// a write-only descriptor fails with EBADF, which would make the torn-line
+	// guard below silently never fire.
+	f, err := os.OpenFile(dataPath(s.dir, "posts.jsonl"), os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	torn, err := endsMidLine(f)
+	if err != nil {
+		return err
+	}
+	if torn {
+		if _, err := f.Write([]byte{'\n'}); err != nil {
+			return err
+		}
+	}
 	_, err = f.Write(append(data, '\n'))
 	return err
+}
+
+// endsMidLine reports whether the journal's final byte is something other than
+// a newline, which means the previous append did not complete.
+func endsMidLine(f *os.File) (bool, error) {
+	st, err := f.Stat()
+	if err != nil || st.Size() == 0 {
+		return false, err
+	}
+	var last [1]byte
+	if _, err := f.ReadAt(last[:], st.Size()-1); err != nil {
+		return false, err
+	}
+	return last[0] != '\n', nil
 }
 
 func clip(s string, n int) string {
