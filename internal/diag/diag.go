@@ -1,10 +1,27 @@
 // Package diag writes the per-session diagnostics log - the "send us your
 // logs" file every real service has. One file per app run, verbose on
 // purpose: hardware, network, activation attempts, capture formats, every
-// broadcast transition, who connected and how their playback went. The file
-// is gzipped and shipped to the cloud periodically (and on quit), keyed by
-// install id, so a field problem can be diagnosed without asking anyone to
-// screenshot a console.
+// broadcast transition, who connected and how their playback went.
+//
+// THE LOG NEVER LEAVES THE MAC. This package imports no network package and
+// has no transport; TestDiagHasNoNetworkTransport enforces that. The file sits
+// under the app's own directory until prune() drops it after fourteen days.
+//
+// The comments here used to say the file was "gzipped and shipped to the cloud
+// periodically, keyed by install id", and MarkUrgent, Urgent and TailIfDirty
+// were all documented as parts of that upload loop. No uploader has ever
+// existed: TailIfDirty has no caller anywhere in the repository and the Worker
+// exposes no ingest route. That fiction was dangerous rather than merely
+// untidy. This log contains guest IP addresses, reverse-DNS device names and
+// guest cids, so a future session that read those comments, concluded the
+// uploader had regressed, and reinstated it from the documented API would have
+// turned an on-device diagnostic into a third-party transfer of guest personal
+// data, contradicting the published privacy policy, with nothing in the build
+// to catch it.
+//
+// If an uploader is ever wanted, it is a product and privacy decision first: it
+// needs the owner's ask, a policy that describes it, and a deliberate deletion
+// of the test below.
 package diag
 
 import (
@@ -22,7 +39,7 @@ type Logger struct {
 	path    string
 	session string
 	dirty   bool
-	urgent  chan struct{} // nudges the uploader to ship NOW (a problem happened)
+	urgent  chan struct{} // signalled when something went wrong; see MarkUrgent
 }
 
 // Open creates ~/Library/Logs/PartyParty/session-<ts>.log (Console.app finds
@@ -41,8 +58,13 @@ func Open(dir string) (*Logger, error) {
 	return &Logger{f: f, path: path, session: session, urgent: make(chan struct{}, 1)}, nil
 }
 
-// MarkUrgent nudges the upload loop to ship the log promptly (a client
-// reported an error/stall/etc). Non-blocking; coalesces bursts.
+// MarkUrgent records that something went wrong (a client reported an
+// error/stall) by signalling Urgent. Non-blocking; coalesces bursts.
+//
+// NOTHING CONSUMES THIS TODAY. It is called from main.go and the server, and no
+// reader waits on the channel, so it is currently a no-op with a name. It is
+// kept rather than deleted because the call sites mark genuinely interesting
+// moments, but do not read it as evidence that a shipping mechanism exists.
 func (l *Logger) MarkUrgent() {
 	if l == nil {
 		return
@@ -53,7 +75,7 @@ func (l *Logger) MarkUrgent() {
 	}
 }
 
-// Urgent is the channel the upload loop waits on for prompt-upload nudges.
+// Urgent is the channel MarkUrgent signals. It has no consumer; see MarkUrgent.
 func (l *Logger) Urgent() <-chan struct{} {
 	if l == nil {
 		return nil
@@ -106,7 +128,12 @@ func (l *Logger) Write(p []byte) (int, error) {
 }
 
 // TailIfDirty returns up to max bytes from the file's end when new content
-// arrived since the last call ("" = nothing new). The upload loop's fuel.
+// arrived since the last call (nil = nothing new).
+//
+// IT HAS NO CALLER. It was written as an uploader's fuel and the uploader was
+// never built. Anything that starts calling this is moving guest IP addresses,
+// device names and cids somewhere, so treat a new caller as a privacy change
+// rather than a plumbing one.
 func (l *Logger) TailIfDirty(max int64) []byte {
 	if l == nil {
 		return nil

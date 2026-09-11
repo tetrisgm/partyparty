@@ -919,7 +919,7 @@ func (s *srv) handleAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if urgent && s.Diag != nil {
-			s.Diag.MarkUrgent() // ship the log to the cloud within seconds, not on the 30s tick
+			s.Diag.MarkUrgent() // mark the moment in the local session log; nothing uploads it
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/api/heartbeat":

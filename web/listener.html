@@ -1103,10 +1103,12 @@
     // ── Black-box recorder ──────────────────────────────────────────────
     // A structured, batched event stream for EVERY meaningful thing this
     // client does - open, environment, play/pause/stall/recover/align/error,
-    // connectivity, multi-tab, periodic health - POSTed to the Mac, folded
-    // into its session log, and uploaded to the cloud. This is how a guest's
-    // whole story (joined → played → stalled → lost) becomes visible for
-    // after-the-fact analysis. Fire-and-forget: it must NEVER touch playback.
+    // connectivity, multi-tab, periodic health - POSTed to the Mac and folded
+    // into its session log, WHICH STAYS ON THAT MAC. Nothing uploads it; this
+    // comment used to say it went to the cloud and that has never been true.
+    // This is how a guest's whole story (joined, played, stalled, lost) becomes
+    // visible to the DJ for after-the-fact analysis, on their own machine.
+    // Fire-and-forget: it must NEVER touch playback.
     // IMPORTANT declared before logEvent: an error thrown during early page
     // parse routes error→reportErr→logEvent, which reads IMPORTANT - keep it
     // out of the temporal dead zone so that path can never throw.
