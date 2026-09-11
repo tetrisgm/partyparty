@@ -41,6 +41,33 @@ import (
 	"strings"
 )
 
+// MEASURED 2026-09-11, and it contradicts the comments below. Read this first.
+//
+// The EXT-X-START pin this package authors into the multivariant playlist does
+// NOT move where AVPlayer attaches. Stripping it changed attachment by 0.00s
+// over a ten-minute soak, against a pass-through control arm that reproduced
+// the unproxied path within 0.01s. The three seconds a direct listener actually
+// sits back is the HLS default hold-back of three target durations: gohlslib
+// rounds TARGETDURATION to an integer second, so 500ms segments make that
+// default 3.0s. The room's cushion is a coincidence of that rounding, not
+// something this code obtains, and it would move on its own if the segment
+// duration changed. An explicit HOLD-BACK, which the media playlist does not
+// declare, does move the attachment point, and only upward: below three target
+// durations AVPlayer refuses the playlist outright.
+//
+// Relayed guests receive no pin at all. RewritePlaylist only pins a body
+// containing EXT-X-STREAM-INF, and internal/contribute publishes the MEDIA
+// playlist alone.
+//
+// The "3.11s flat" receipt cited below is real and is now kept at
+// docs/receipts/soak-20260806-build125.40-260-UNKNOWN-URL-3.11s.log, but it does
+// not record which URL it measured, so it does not establish that the pin did
+// the work. The full lab is docs/receipts/soak-lab-20260911/.
+//
+// Nothing here has been changed on that evidence. Geometry still moves only
+// behind the pre-upload real-AVPlayer soak on the real guest path and the
+// supervised set that AGENTS.md requires.
+
 // PartHoldBack is the modest media-playlist floor, in seconds. It remains a
 // constant of the design rather than a network tuning knob, and must stay inside
 // the region where parts exist. It is intentionally not stretched to the full
@@ -57,8 +84,11 @@ import (
 // window's oldest edge), and the tag in the MEDIA playlist without PRECISE
 // measured 25.00s from the edge on the soak harness - AVPlayer applied the
 // offset from the wrong end. The shipped form measured 3.11s flat on a muted
-// real AVPlayer against the live stream (scratchpad soak-july-form.log)
-// BEFORE upload, per the contract's soak rule.
+// real AVPlayer against the live stream BEFORE upload, per the contract's soak
+// rule. That receipt was cited as "scratchpad soak-july-form.log", a path that
+// has never existed in this repository; the ten-minute 3.11s log it describes
+// is docs/receipts/soak-20260806-build125.40-260-UNKNOWN-URL-3.11s.log, and it
+// does not name the URL it measured.
 const PartHoldBack = 0.9
 
 // Delay is the room's fixed published D: what a guest should expect between a

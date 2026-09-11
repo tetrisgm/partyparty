@@ -68,14 +68,32 @@ are retired.
 
 ## 3. Fixed playback contract
 
-Every viable mode publishes the same fixed room target:
+Every viable mode publishes the same fixed geometry:
 
 - 500 ms segments;
 - 150 ms parts;
 - 48 retained segments;
 - `PART-HOLD-BACK` floor of 0.9 seconds;
 - `EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES` in the multivariant playlist;
-- `schedule.Delay == 3s` everywhere.
+- `schedule.Delay == 3s` as the declared value.
+
+Two corrections measured on 2026-09-11, kept here so this section is not read as
+a description of what reaches a listener. See
+`docs/receipts/soak-lab-20260911/` and the handoff.
+
+**Relayed guests never receive the attachment pin.** `schedule.RewritePlaylist`
+inserts `EXT-X-START` only into a body containing `#EXT-X-STREAM-INF`, and
+contribution publishes the MEDIA playlist alone, under the fixed name
+`stream.m3u8`. There is no multivariant on the origin, so there is nowhere for
+the pin to go. A relayed guest gets `PART-HOLD-BACK=0.90000` and nothing else.
+
+**The pin does not move AVPlayer anyway.** Stripping it changed attachment by
+0.00s against a transparent control. The three seconds a direct listener sits
+back is the HLS default of three target durations, and gohlslib rounds
+`TARGETDURATION` to an integer second, so 500 ms segments make that default
+3.0 s. The room gets its cushion by coincidence of that rounding rather than by
+asking for it. `HOLD-BACK`, which the media playlist does not declare, is the
+tag that actually moves the attachment point, and only upward.
 
 The relay does not add a second target and no listener can change the room-wide
 value. Native HLS/AVPlayer is the production iPhone engine. Healthy playback is
@@ -104,7 +122,8 @@ The contributor:
 - discovers the actual media playlist through the multivariant playlist;
 - uploads the matching guest page and its fixed assets;
 - sends every referenced media object once per origin incarnation;
-- preserves playlists and media byte for byte;
+- rewrites `PART-HOLD-BACK` to the room floor and preserves everything else in
+  the playlist, and media objects, byte for byte;
 - notices origin restarts through the room epoch and republishes fixed assets;
 - cancels obsolete work when enablement or broker target changes.
 

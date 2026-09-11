@@ -24,9 +24,16 @@ production iPhone path.
 
 `internal/schedule` owns the room-wide target. The multivariant playlist carries
 `EXT-X-START:TIME-OFFSET=-3.000,PRECISE=YES`, while media playlists retain a
-modest 0.9-second part hold-back. Direct, local, and relay publish the same
-three-second target. It is fixed: listener health, network quality, mode, and
-room size never adapt it.
+modest 0.9-second part hold-back. It is fixed: listener health, network quality,
+mode, and room size never adapt it.
+
+What that declaration actually delivers was measured on 2026-09-11 and is not
+what this paragraph used to claim. The pin is inert: removing it moves AVPlayer
+by 0.00s. Relayed guests never see it at all, because contribution publishes
+only the media playlist. The three seconds a direct listener sits back comes
+from the HLS default of three target durations, which gohlslib rounds to
+3 x 1 s. See `docs/receipts/soak-lab-20260911/` and the handoff before changing
+anything here.
 
 Healthy native playback is passive. PartyParty does not seek or rate-steer it.
 Program Date Time and the Mac/phone clock estimate are telemetry. If a visible
